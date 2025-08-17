@@ -19,8 +19,8 @@ import AppLayout from "./layout/AppLayout";
 import { ScrollToTop } from "./components/common/ScrollToTop";
 import Home from "./pages/Dashboard/Home";
 import Projects from "./pages/Dashboard/Projects"
-import Plugins from "./pages/Dashboard/Plugins";
 import ProjectPage from "./pages/Dashboard/ProjectPage";
+import Plugins from "./pages/Dashboard/Plugins";
 
 export default function App() {
   return (
@@ -38,8 +38,8 @@ export default function App() {
             {/* Projects Page */}
             <Route path="/project/load/:projectName" element={<ProjectPage />} />
 
-            {/* Projects Page */}
-            <Route path="/plugins" element={<Plugins />} />
+            {/* Plugins Page */}
+            <Route path="/plugins/" element={<Plugins />} />
 
             {/* Others Page */}
             <Route path="/profile" element={<UserProfiles />} />
