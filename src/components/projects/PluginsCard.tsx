@@ -1,9 +1,8 @@
 import { useNavigate } from "react-router-dom";
-import { GridIcon, HorizontaLDots } from "../../icons";
+import { CalendarIcon, GridIcon, HorizontaLDots } from "../../icons";
 import { installPlugin, Plugin, uninstallPlugin } from "../../api/plugins";
-import { CardContent, CardHeader } from "@mui/material";
 
-import { Card, CardFooter } from "@/components/ui/card";
+import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
 export default function PluginCard(plugin: Plugin) {
@@ -35,7 +34,8 @@ export default function PluginCard(plugin: Plugin) {
     >
       {/* Header */}
       <CardHeader className="flex flex-row items-center space-x-4">
-        <div className="w-16 h-16 flex items-center justify-center rounded-xl bg-gray-100 dark:bg-gray-800 overflow-hidden">
+        <div>
+          <div className="w-26 h-16 flex items-center justify-center  dark:bg-gray-800 overflow-hidden">
           <img
             src={plugin.iconUrl}
             alt={`${plugin.name} icon`}
@@ -45,7 +45,6 @@ export default function PluginCard(plugin: Plugin) {
             className="w-full h-full object-contain rounded-xl"
           />
         </div>
-        <div>
           <h3 className="text-lg md:text-xl font-semibold text-gray-800 dark:text-gray-200">
             {plugin.name}
           </h3>
@@ -57,6 +56,7 @@ export default function PluginCard(plugin: Plugin) {
 
       {/* Content */}
       <CardContent className="flex-1">
+        
         <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-2">
           {plugin.shortDescription}
         </p>
