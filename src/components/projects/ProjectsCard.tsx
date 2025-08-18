@@ -7,10 +7,6 @@ import {
   StorageIcon,
   TrashBinIcon,
 } from "../../icons";
-import ComponentCard from "../common/ComponentCard";
-import DefaultInputs from "../form/form-elements/DefaultInputs";
-import { CardContent, CardHeader } from "@mui/material";
-import Form from "../form/Form";
 
 interface ProjectCardProps {
   label: string;

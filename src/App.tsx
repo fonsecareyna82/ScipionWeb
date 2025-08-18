@@ -18,9 +18,10 @@ import Blank from "./pages/Blank";
 import AppLayout from "./layout/AppLayout";
 import { ScrollToTop } from "./components/common/ScrollToTop";
 import Home from "./pages/Dashboard/Home";
-import Projects from "./pages/Dashboard/Projects"
-import ProjectPage from "./pages/Dashboard/ProjectPage";
-import Plugins from "./pages/Dashboard/Plugins";
+import Projects from "./pages/Dashboard/projects/Projects"
+import ProjectPage from "./pages/Dashboard/projects/ProjectPage";
+import Plugins from "./pages/Dashboard/plugins/Plugins";
+import PluginPage from "./pages/Dashboard/plugins/PluginPage";
 
 export default function App() {
   return (
@@ -40,6 +41,7 @@ export default function App() {
 
             {/* Plugins Page */}
             <Route path="/plugins/" element={<Plugins />} />
+            <Route path="/plugins/:pipName" element={<PluginPage />} />
 
             {/* Others Page */}
             <Route path="/profile" element={<UserProfiles />} />

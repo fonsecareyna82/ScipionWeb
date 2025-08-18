@@ -1,8 +1,8 @@
 import { useParams } from "react-router-dom";
 import { useEffect, useState, useMemo } from 'react';
-import { fetchProject, Project, fetchProtocolDetails } from "../../api/projects";
-import ProtocolForm from "../../components/projects/ProtocolForm";
-import { buildGraphElements } from "../../utils/graph_utils";
+import { fetchProject, Project, fetchProtocolDetails } from "../../../api/projects";
+import ProtocolForm from "../../../components/projects/ProtocolForm";
+import { buildGraphElements } from "../../../utils/graph_utils";
 
 import ReactFlow, {
   Background,
@@ -11,9 +11,9 @@ import ReactFlow, {
   useNodesState,
   useEdgesState,
 } from 'reactflow';
-import { RefreshIcon } from "../../icons";
+import { RefreshIcon } from "../../../icons";
 import 'reactflow/dist/style.css';
-import { createStatusNodeWrapper } from "../../components/projects/StatusNodeWrapper";
+import { createStatusNodeWrapper } from "../../../components/projects/StatusNodeWrapper";
 
 const REFRESH_INTERVAL_MS = 15000; // 15 seconds
 

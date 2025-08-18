@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { installPlugin, Plugin, uninstallPlugin } from "../../api/plugins";
+import { Plugin } from "../../api/plugins";
 
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
 
@@ -7,8 +7,8 @@ export default function PluginCard(plugin: Plugin) {
   const navigate = useNavigate();
 
 
-  const handleNavigate = () => {
-    navigate(`/plugin/${plugin.name}`);
+  const handleNavigate = async () => {
+    navigate(`/plugins/${plugin.pipName}`, { state: { plugin } });
   };
 
   return (
@@ -20,6 +20,7 @@ export default function PluginCard(plugin: Plugin) {
         w-80
         bg-gray-100
         transition hover:-translate-y-1 hover:shadow-xl
+        bg-gray-200 dark:bg-gray-800
       "
     >
       {/* Header */}

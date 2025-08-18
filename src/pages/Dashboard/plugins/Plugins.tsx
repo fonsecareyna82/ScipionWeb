@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import PageBreadcrumb from "../../components/common/PageBreadCrumb";
-import PageMeta from "../../components/common/PageMeta";
-import { fetchPlugins, Plugin } from "../../api/plugins";
-import PluginCard from "../../components/projects/PluginsCard";
+import PageBreadcrumb from "../../../components/common/PageBreadCrumb";
+import PageMeta from "../../../components/common/PageMeta";
+import { fetchPlugins, Plugin } from "../../../api/plugins";
+import PluginCard from "../../../components/projects/PluginsCard";
 import CircularProgress from "@mui/material/CircularProgress"; // ← MUI spinner
 
 export default function Plugins() {

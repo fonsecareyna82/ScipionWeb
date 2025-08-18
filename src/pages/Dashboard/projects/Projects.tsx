@@ -1,8 +1,8 @@
-import PageBreadcrumb from "../../components/common/PageBreadCrumb";
-import PageMeta from "../../components/common/PageMeta";
+import PageBreadcrumb from "../../../components/common/PageBreadCrumb";
+import PageMeta from "../../../components/common/PageMeta";
 import { useEffect, useState } from 'react';
-import { fetchProjects, Project } from '../../api/projects';
-import ProjectCard from "../../components/projects/ProjectsCard";
+import { fetchProjects, Project } from '../../../api/projects';
+import ProjectCard from "../../../components/projects/ProjectsCard";
 
 export default function Projects() {
   const [projects, setProjects] = useState<Project[]>([]);
