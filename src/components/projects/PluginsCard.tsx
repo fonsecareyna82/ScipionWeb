@@ -29,7 +29,7 @@ export default function PluginCard(plugin: Plugin) {
       className="
         group relative flex flex-col
         rounded-2xl cursor-pointer
-        w-90
+        w-80
         bg-gray-100
         transition hover:-translate-y-1 hover:shadow-xl
       "
@@ -41,10 +41,7 @@ export default function PluginCard(plugin: Plugin) {
           <img
             src={plugin.iconUrl}
             alt={`${plugin.name} icon`}
-            onError={(e) => {
-              (e.target as HTMLImageElement).src = "/icons/alert.svg"; 
-            }}
-            className="w-full h-full object-contain rounded-xl"
+            className="w-25 object-contain mb-2"
           />
         </div>
           <h3 className="text-lg md:text-xl font-semibold text-gray-800 dark:text-gray-200">

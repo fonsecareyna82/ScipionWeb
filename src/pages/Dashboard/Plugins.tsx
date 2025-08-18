@@ -40,7 +40,7 @@ export default function Plugins() {
             ? "Loading plugins..."
             : error
             ? "Error"
-            : "Available Plugins"}
+            : ""}
         </h3>
 
         {loading ? (
@@ -53,14 +53,14 @@ export default function Plugins() {
           <p className="text-center text-red-500">{error}</p>
         ) : (
           // Render the grid of PluginCard once plugins are loaded
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6 ml-1">
             {plugins.map((plugin) => (
               <PluginCard
                 key={plugin.name}
                 name={plugin.name}
                 latestRelease={plugin.latestRelease}
                 icon={plugin.icon}
-                iconUrl={plugin.icon}
+                iconUrl={plugin.fullLogo}
                 summary={plugin.summary}
                 installed={plugin.installed}
                 author={plugin.author}

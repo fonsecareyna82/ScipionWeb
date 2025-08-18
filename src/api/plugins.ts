@@ -20,6 +20,7 @@ export interface Plugin {
     summary: string;
     icon?: string;
     iconUrl?: string;
+    fullLogo?: string;
     installed?: boolean;
 }
 
