@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { CalendarIcon, GridIcon, HorizontaLDots } from "../../icons";
+import {GridIcon, HorizontaLDots } from "../../icons";
 import { installPlugin, Plugin, uninstallPlugin } from "../../api/plugins";
 
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
@@ -10,17 +10,17 @@ export default function PluginCard(plugin: Plugin) {
 
 
   const handleNavigate = () => {
-    navigate(`/plugin/${plugin.id}`);
+    navigate(`/plugin/${plugin.name}`);
   };
 
   const handleInstall = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    await installPlugin(plugin.id);
+    await installPlugin(plugin.name);
   };
 
   const handleUninstall = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    await uninstallPlugin(plugin.id);
+    await uninstallPlugin(plugin.name);
   };
 
   return (
@@ -29,18 +29,19 @@ export default function PluginCard(plugin: Plugin) {
       className="
         group relative flex flex-col
         rounded-2xl cursor-pointer
+        w-90
         transition hover:-translate-y-1 hover:shadow-xl
       "
     >
       {/* Header */}
       <CardHeader className="flex flex-row items-center space-x-4">
         <div>
-          <div className="w-26 h-16 flex items-center justify-center  dark:bg-gray-800 overflow-hidden">
+          <div className="flex items-center justify-center  dark:bg-gray-800 overflow-hidden">
           <img
             src={plugin.iconUrl}
             alt={`${plugin.name} icon`}
             onError={(e) => {
-              (e.target as HTMLImageElement).src = "/icons/alert.svg"; // icono local de fallback
+              (e.target as HTMLImageElement).src = "/icons/alert.svg"; 
             }}
             className="w-full h-full object-contain rounded-xl"
           />
@@ -49,7 +50,7 @@ export default function PluginCard(plugin: Plugin) {
             {plugin.name}
           </h3>
           <span className="text-xs md:text-sm text-gray-500 dark:text-gray-400">
-            v{plugin.version}
+            v{plugin.latestRelease}
           </span>
         </div>
       </CardHeader>
@@ -58,7 +59,7 @@ export default function PluginCard(plugin: Plugin) {
       <CardContent className="flex-1">
         
         <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-2">
-          {plugin.shortDescription}
+          {plugin.pipName}
         </p>
       </CardContent>
 
