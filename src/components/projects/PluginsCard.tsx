@@ -30,6 +30,7 @@ export default function PluginCard(plugin: Plugin) {
         group relative flex flex-col
         rounded-2xl cursor-pointer
         w-90
+        bg-gray-100
         transition hover:-translate-y-1 hover:shadow-xl
       "
     >
