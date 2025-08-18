@@ -56,7 +56,7 @@ export default function ProjectPage() {
   const handleNodeDoubleClick = async (nodeData: any) => {
     try {
       if (projectName) {
-        const fullNodeData = await fetchProtocolDetails(nodeData.id);
+        const fullNodeData = await fetchProtocolDetails(projectName, nodeData.id);
         setSelectedNodeDetails(fullNodeData);
         setPreviousNodeId(nodeData.id);
 
@@ -139,7 +139,7 @@ export default function ProjectPage() {
 
   return (
     <div className="p-6 h-screen">
-      <h1 className="text-2xl mb-4">Project: {projectName}</h1>
+      <h1 className="text-2xl mb-4">{projectName}</h1>
 
       {!project ? (
         <p className="text-gray-500">Loading project data...</p>

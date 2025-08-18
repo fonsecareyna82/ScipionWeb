@@ -50,8 +50,8 @@ export async function createProject(name: string, description: string): Promise<
 /**
  * Fetch detailed info of a protocol node by its id
  */
-export async function fetchProtocolDetails(protocolId: string): Promise<ProtocolNode> {
-  const response = await fetch(`${BASE_URL}/projects/protocols/${protocolId}`);
+export async function fetchProtocolDetails(projectName: string, protocolId: string): Promise<ProtocolNode> {
+  const response = await fetch(`${BASE_URL}/projects/${projectName}/${protocolId}`);
   if (!response.ok) throw new Error('Failed to fetch protocol details');
   return response.json();
 }

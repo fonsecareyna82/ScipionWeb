@@ -50,7 +50,7 @@ export default function StatusNode({ data, selectedNodeId, onClick, onDoubleClic
         minWidth: 160,
         textAlign: 'left',
         lineHeight: 1.4,
-        transition: 'transform 0.3s ease-in-out, border 0.2s ease',
+        transition: 'transform 0.2s ease-in-out, border 0.2s ease',
         position: 'relative',
         transform: isHovered ? 'scale(1.1)' : 'scale(1)',
         border: borderStyle,
