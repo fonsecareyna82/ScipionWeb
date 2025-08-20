@@ -1,7 +1,7 @@
 import { Dictionary } from "@fullcalendar/core/internal";
 import axios from "axios";
+import { BASE_URL } from "@/config";
 
-const BASE_URL = 'http://localhost:8080';
 
 export interface Plugin {
     author: string;
@@ -33,23 +33,30 @@ export async function fetchPlugins(): Promise<Plugin[]> {
     return response.json();
 }
 
-export async function fetchPlugin(id: string): Promise<Plugin> {
-    const res = await fetch(`${BASE_URL}/plugins/${id}`);
+export async function fetchPlugin(pipName: string): Promise<Plugin> {
+    const res = await fetch(`${BASE_URL}/plugins/${pipName}`);
     if (!res.ok) throw new Error('Error fetching plugin details');
     return res.json();
 }
 
-export async function installPlugin(id: string): Promise<void> {
-    const res = await fetch(`${BASE_URL}/plugins/${id}/install`, { method: 'POST' });
+export async function installPlugin(pipName: string): Promise<{ task_id: string }> {
+    const res = await fetch(`${BASE_URL}/plugins/install/${pipName}`, { method: 'POST' });
     if (!res.ok) throw new Error('Error installing plugin');
+    return res.json(); // espera { task_id: '...' } desde el backend
 }
 
-export async function uninstallPlugin(id: string): Promise<void> {
-    const res = await fetch(`${BASE_URL}/plugins/${id}/uninstall`, { method: 'POST' });
+export async function uninstallPlugin(pipName: string): Promise<void> {
+    const res = await fetch(`${BASE_URL}/plugins/${pipName}/uninstall`, { method: 'POST' });
     if (!res.ok) throw new Error('Error uninstalling plugin');
 }
 
-export async function fetchPluginById(id: string): Promise<Plugin> {
-    const { data } = await axios.get<Plugin>(`${BASE_URL}/plugins/${id}`);
+export async function fetchPluginById(pipName: string): Promise<Plugin> {
+    const { data } = await axios.get<Plugin>(`${BASE_URL}/plugins/${pipName}`);
     return data;
+}
+
+export async function checkTaskStatus(taskId: string) {
+  const res = await fetch(`${BASE_URL}/plugins/status/${taskId}`);
+  if (!res.ok) throw new Error("Error fetching task status");
+  return res.json();
 }

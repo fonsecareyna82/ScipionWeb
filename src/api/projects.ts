@@ -1,9 +1,7 @@
 // src/api/projects.ts
 
 import { ProtocolNode } from "./protocols";
-
-const BASE_URL = 'http://localhost:8080';
-
+import { BASE_URL } from "@/config";
 
 export interface Project {
   id: string;

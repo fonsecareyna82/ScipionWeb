@@ -1,7 +1,6 @@
 // src/api/protocols.ts
 
-
-const BASE_URL = 'http://localhost:8080';
+import { BASE_URL } from "@/config";
 
 /**
  * Interface for a protocol node

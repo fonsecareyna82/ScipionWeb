@@ -28,7 +28,7 @@ export default function PluginCard(plugin: Plugin) {
         {/* Icono a la izquierda */}
         <div className="flex-shrink-0">
           <img
-            src={plugin.iconUrl}
+            src={plugin.fullLogo}
             alt={`${plugin.name} icon`}
             className="w-20 h-10 object-contain bg-gray-100 dark:bg-gray-800"
           />

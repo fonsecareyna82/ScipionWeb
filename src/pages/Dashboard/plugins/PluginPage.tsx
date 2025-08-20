@@ -1,15 +1,18 @@
 import { useParams, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
-import { fetchPluginById, Plugin } from "@/api/plugins";
+import { fetchPluginById, Plugin, installPlugin, checkTaskStatus } from "@/api/plugins";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
-import { AngleLeftIcon, FolderIcon, GroupIcon, HelpIcon, HomeIcon, InfoIcon, UserCircleIcon } from "@/icons";
+import { AngleLeftIcon, FolderIcon, GroupIcon, HelpIcon, HomeIcon, ExecuteIcon } from "@/icons";
+import { BASE_URL } from "@/config";
 
 export default function PluginPage() {
     const { pipName } = useParams<{ pipName: string }>();
     const [plugin, setPlugin] = useState<Plugin | null>(null);
-
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const [success, setSuccess] = useState<string | null>(null);
     const navigate = useNavigate();
 
     useEffect(() => {
@@ -40,6 +43,35 @@ export default function PluginPage() {
     const isUpdateAvailable =
         isInstalled && isVersionGreater(releasedVersion, installedVersion);
 
+    // --- handle Install with Celery polling ---
+    const handleInstall = async () => {
+        if (!pipName) return;
+        setLoading(true);
+        try {
+            const { task_id } = await installPlugin(pipName);
+            let taskFinished = false;
+            while (!taskFinished) {
+                await new Promise((resolve) => setTimeout(resolve, 2000)); // espera 2s
+                const res = await fetch(`${BASE_URL}/plugins/tasks/${task_id}`);
+                const data = await res.json();
+
+                if (data.status === "SUCCESS") {
+                    taskFinished = true;
+                    console.log("Install finished:", data.result);
+                } else if (data.status === "FAILURE") {
+                    taskFinished = true;
+                    console.error("Install failed:", data.result);
+                }
+            }
+
+            const updated = await fetchPluginById(pipName);
+            setPlugin(updated);
+        } catch (err) {
+            console.error("Error installing plugin:", err);
+        } finally {
+            setLoading(false);
+        }
+    };
 
     return (
         <motion.div
@@ -48,7 +80,6 @@ export default function PluginPage() {
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: "100vh", opacity: 0 }}
             transition={{ duration: 0.5, ease: "easeOut" }}
-
         >
             {/* Back button */}
             <Button
@@ -60,13 +91,12 @@ export default function PluginPage() {
                 <AngleLeftIcon className="h-12 w-12" />
             </Button>
 
-
             {/* Hero */}
             <div className="flex items-center gap-6 mt-10">
                 <img
                     src={plugin.fullLogo}
                     alt={`${plugin.name} logo`}
-                    className="w-30 h-30 object-contain rounded-xl bg-white  mr-8"
+                    className="w-30 h-30 object-contain rounded-xl bg-white mr-8"
                 />
                 <div>
                     <h1 className="text-4xl font-bold text-gray-900 dark:text-gray-100">
@@ -76,10 +106,24 @@ export default function PluginPage() {
                         v{plugin.latestRelease}
                     </p>
                     <div className="mt-4 flex gap-3">
-                        <Button disabled={isInstalled} className="bg-green-700 hover:bg-green-500 text-white">Install</Button>
-                        <Button disabled={!isUpdateAvailable} className="bg-yellow-600 hover:bg-yellow-500 text-white">Update</Button>
-                        <Button variant="destructive" disabled={!isInstalled} className="bg-red-800 hover:bg-red-500 text-white"> Remove</Button>
+                        <Button
+                            disabled={isInstalled || loading}
+                            className="bg-green-700 hover:bg-green-600 text-white flex items-center gap-2"
+                            onClick={handleInstall}
+                        >
+                            {loading && <ExecuteIcon className="h-4 w-4 animate-spin" />}
+                            {loading ? "Installing..." : "Install"}
+                        </Button>
+                        <Button disabled={!isUpdateAvailable} className="bg-yellow-700 hover:bg-yellow-600 text-white">
+                            Update
+                        </Button>
+                        <Button variant="destructive" disabled={!isInstalled} className="bg-red-800 hover:bg-red-700 text-white">
+                            Remove
+                        </Button>
                     </div>
+
+                    {error && <p className="text-red-500 mt-2">{error}</p>}
+                    {success && <p className="text-green-500 mt-2">{success}</p>}
                 </div>
             </div>
 
