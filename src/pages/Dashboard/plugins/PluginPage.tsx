@@ -1,6 +1,6 @@
 import { useParams, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
-import { fetchPluginById, Plugin, installPlugin, checkTaskStatus } from "@/api/plugins";
+import { fetchPluginById, Plugin, installPlugin, checkTaskStatus, uninstallPlugin } from "@/api/plugins";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
@@ -10,7 +10,8 @@ import { BASE_URL } from "@/config";
 export default function PluginPage() {
     const { pipName } = useParams<{ pipName: string }>();
     const [plugin, setPlugin] = useState<Plugin | null>(null);
-    const [loading, setLoading] = useState(false);
+    const [installing, setInstalling] = useState(false);
+    const [uninstalling, setUnstalling] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState<string | null>(null);
     const navigate = useNavigate();
@@ -43,10 +44,41 @@ export default function PluginPage() {
     const isUpdateAvailable =
         isInstalled && isVersionGreater(releasedVersion, installedVersion);
 
+    
+    // --- handle Install with pip ---
+    const handleInstallPip = async () => {
+        if (!pipName) return;
+        setInstalling(true);
+        try {
+            await installPlugin(pipName);
+            const updated = await fetchPluginById(pipName);
+            setPlugin(updated);
+        } catch (err) {
+            console.error("Error installing plugin:", err);
+        } finally {
+            setInstalling(false);
+        }
+    };
+
+    // --- handle Install with pip ---
+    const handleUninstallPip = async () => {
+        if (!pipName) return;
+        setUnstalling(true);
+        try {
+            await uninstallPlugin(pipName);
+            const updated = await fetchPluginById(pipName);
+            setPlugin(updated);
+        } catch (err) {
+            console.error("Error installing plugin:", err);
+        } finally {
+            setUnstalling(false);
+        }
+    };
+
     // --- handle Install with Celery polling ---
     const handleInstall = async () => {
         if (!pipName) return;
-        setLoading(true);
+        setInstalling(true);
         try {
             const { task_id } = await installPlugin(pipName);
             let taskFinished = false;
@@ -69,7 +101,7 @@ export default function PluginPage() {
         } catch (err) {
             console.error("Error installing plugin:", err);
         } finally {
-            setLoading(false);
+            setInstalling(false);
         }
     };
 
@@ -107,18 +139,23 @@ export default function PluginPage() {
                     </p>
                     <div className="mt-4 flex gap-3">
                         <Button
-                            disabled={isInstalled || loading}
+                            disabled={isInstalled || installing}
                             className="bg-green-700 hover:bg-green-600 text-white flex items-center gap-2"
-                            onClick={handleInstall}
+                            onClick={handleInstallPip}
                         >
-                            {loading && <ExecuteIcon className="h-4 w-4 animate-spin" />}
-                            {loading ? "Installing..." : "Install"}
+                            {installing && <ExecuteIcon className="h-4 w-4 animate-spin" />}
+                            {installing ? "Installing..." : "Install"}
                         </Button>
                         <Button disabled={!isUpdateAvailable} className="bg-yellow-700 hover:bg-yellow-600 text-white">
                             Update
                         </Button>
-                        <Button variant="destructive" disabled={!isInstalled} className="bg-red-800 hover:bg-red-700 text-white">
-                            Remove
+                        <Button 
+                        variant="destructive" disabled={!isInstalled} 
+                        className="bg-red-800 hover:bg-red-700 text-white"
+                             onClick={handleUninstallPip}
+                        >
+                            {uninstalling && <ExecuteIcon className="h-4 w-4 animate-spin" />}
+                            {uninstalling ? "Removing..." : "Remove"}
                         </Button>
                     </div>
 

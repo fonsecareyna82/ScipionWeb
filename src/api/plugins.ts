@@ -42,11 +42,12 @@ export async function fetchPlugin(pipName: string): Promise<Plugin> {
 export async function installPlugin(pipName: string): Promise<{ task_id: string }> {
     const res = await fetch(`${BASE_URL}/plugins/install/${pipName}`, { method: 'POST' });
     if (!res.ok) throw new Error('Error installing plugin');
-    return res.json(); // espera { task_id: '...' } desde el backend
+    return res.json(); 
 }
 
+
 export async function uninstallPlugin(pipName: string): Promise<void> {
-    const res = await fetch(`${BASE_URL}/plugins/${pipName}/uninstall`, { method: 'POST' });
+    const res = await fetch(`${BASE_URL}/plugins/uninstall/${pipName}`, { method: 'POST' });
     if (!res.ok) throw new Error('Error uninstalling plugin');
 }
 
