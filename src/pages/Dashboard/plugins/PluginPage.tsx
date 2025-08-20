@@ -5,8 +5,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
 import { AngleLeftIcon, FolderIcon, GroupIcon, HelpIcon, HomeIcon, ExecuteIcon } from "@/icons";
-import { BASE_URL } from "@/config";
-import { useInstallingPlugins } from "@/hooks/useInstallingPlugins";
+import { useProcessingPlugins } from "@/hooks/useProcessingPlugins";
 
 export default function PluginPage() {
     const { pipName } = useParams<{ pipName: string }>();
@@ -15,7 +14,14 @@ export default function PluginPage() {
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState<string | null>(null);
     const navigate = useNavigate();
-    const { installing, start, finish } = useInstallingPlugins();
+    const {
+        installing,
+        removing,
+        startInstall,
+        finishInstall,
+        startRemove,
+        finishRemove,
+    } = useProcessingPlugins();
 
     useEffect(() => {
         if (pipName) {
@@ -46,6 +52,7 @@ export default function PluginPage() {
         isInstalled && isVersionGreater(releasedVersion, installedVersion);
 
     const isInstalling = pipName ? installing.has(pipName) : false;
+    const isRemoving = pipName ? removing.has(pipName) : false;
 
     // Polling helper: vuelve a llamar a fetchPluginById hasta que installed===true
     async function waitForInstalled(
@@ -63,38 +70,54 @@ export default function PluginPage() {
         throw new Error("Timeout waiting for the installation");
     }
 
+    async function waitForRemoved(
+        pip: string,
+        interval = 1500,
+        retries = 10
+    ): Promise<Plugin> {
+        for (let i = 0; i < retries; i++) {
+            const fresh = await fetchPluginById(pip);
+            if (!fresh.installed) return fresh;
+            await new Promise((r) => setTimeout(r, interval));
+        }
+        throw new Error("Timeout esperando la desinstalación");
+    }
+
     // --- handle Install with pip ---
-    const handleInstallPip = () => {
+    const handleInstall = () => {
         if (!pipName) return;
         setError(null);
-        start(pipName);               // <-- start installation
+        startInstall(pipName);
+
         installPlugin(pipName)
             .then(() => waitForInstalled(pipName))
-            .then((updated) => {
-                setPlugin(updated);
-            })
+            .then((updated) => setPlugin(updated))
             .catch((err) => {
                 console.error(err);
-                setError("Error installing the plugin");
+                setError("Error instalando el plugin");
             })
             .finally(() => {
-                finish(pipName);          // <-- finish the installation
+                finishInstall(pipName);
             });
     };
 
+
     // --- handle Install with pip ---
-    const handleUninstallPip = async () => {
+    const handleRemove = () => {
         if (!pipName) return;
-        setUnstalling(true);
-        try {
-            await uninstallPlugin(pipName);
-            const updated = await fetchPluginById(pipName);
-            setPlugin(updated);
-        } catch (err) {
-            console.error("Error installing plugin:", err);
-        } finally {
-            setUnstalling(false);
-        }
+        setError(null);
+        startRemove(pipName);
+
+        uninstallPlugin(pipName)
+            .then(() => waitForRemoved(pipName))
+            .then((updated) => setPlugin(updated))
+            .catch((err) => {
+                console.error(err);
+                setError("Error desinstalando el plugin");
+            })
+            .finally(() => {
+                finishRemove(pipName);
+            });
     };
 
     // --- handle Install with Celery polling ---
@@ -160,31 +183,46 @@ export default function PluginPage() {
                         v{plugin.latestRelease}
                     </p>
                     <div className="mt-4 flex gap-3">
-                        <Button className="bg-green-700 hover:bg-green-600 text-white"
+                        <Button
+                            onClick={handleInstall}
                             disabled={isInstalling || plugin.installed}
-                            onClick={handleInstallPip}
+                            className={`${plugin.installed
+                                ? "bg-gray-400 cursor-not-allowed"
+                                : "bg-green-700 hover:bg-green-600"
+                                } text-white flex items-center gap-2`}
                         >
-                            {isInstalling
-                                ? (
-                                    <>
-                                        <ExecuteIcon className="h-4 w-4 animate-spin" />
-                                        Installing…
-                                    </>
-                                )
-                                : plugin.installed
-                                    ? "Installed"
-                                    : "Install"}
+                            {isInstalling ? (
+                                <>
+                                    <ExecuteIcon className="h-4 w-4 animate-spin" />
+                                    Installing…
+                                </>
+                            ) : plugin.installed ? (
+                                "Installed"
+                            ) : (
+                                "Install"
+                            )}
                         </Button>
                         <Button disabled={!isUpdateAvailable} className="bg-yellow-700 hover:bg-yellow-600 text-white">
                             Update
                         </Button>
-                        <Button 
-                            variant="destructive" disabled={!isInstalled}
-                            className="bg-red-800 hover:bg-red-700 text-white"
-                            onClick={handleUninstallPip}
+                        <Button
+                            onClick={handleRemove}
+                            disabled={isRemoving || !plugin.installed}
+                            className={`${!plugin.installed
+                                    ? "bg-gray-400 cursor-not-allowed"
+                                    : "bg-red-700 hover:bg-red-600"
+                                } text-white flex items-center gap-2`}
                         >
-                            {uninstalling && <ExecuteIcon className="h-4 w-4 animate-spin" />}
-                            {uninstalling ? "Removing..." : "Remove"}
+                            {isRemoving ? (
+                                <>
+                                    <ExecuteIcon className="h-4 w-4 animate-spin" />
+                                    Removing…
+                                </>
+                            ) : !plugin.installed ? (
+                                "Removed"
+                            ) : (
+                                "Remove"
+                            )}
                         </Button>
                     </div>
 
@@ -192,7 +230,8 @@ export default function PluginPage() {
                     {success && <p className="text-green-500 mt-2">{success}</p>}
                 </div>
             </div>
-
+            {/* Separator */}
+            <div className="my-1 border-t border-gray-200 dark:border-gray-700 mb-5" />
             {/* Info */}
             <p className="text-gray-500 dark:text-gray-400">
                 Installed:{" "}
@@ -204,6 +243,8 @@ export default function PluginPage() {
                 </span>
                 <br />
                 Latest release: v{plugin.latestRelease}
+                <br />
+                Published: {plugin.compatibleReleases[plugin.latestRelease]['upload_time'].split('T')[0]}
             </p>
             {/* Separator */}
             <div className="my-1 border-t border-gray-200 dark:border-gray-700 mb-5" />

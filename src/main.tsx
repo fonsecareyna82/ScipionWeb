@@ -6,16 +6,16 @@ import "flatpickr/dist/flatpickr.css";
 import App from "./App.tsx";
 import { AppWrapper } from "./components/common/PageMeta.tsx";
 import { ThemeProvider } from "./context/ThemeContext.tsx";
-import { InstallingProvider } from "@/hooks/useInstallingPlugins";
+import { ProcessingProvider} from "@/hooks/useProcessingPlugins.tsx";
 
 createRoot(document.getElementById("root")!).render(
   //<StrictMode>
-  <InstallingProvider>
+  <ProcessingProvider>
     <ThemeProvider>
       <AppWrapper>
         <App />
       </AppWrapper>
     </ThemeProvider>
-    </InstallingProvider>
+    </ProcessingProvider>
  // </StrictMode>,
 );
