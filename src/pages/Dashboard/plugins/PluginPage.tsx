@@ -6,15 +6,16 @@ import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
 import { AngleLeftIcon, FolderIcon, GroupIcon, HelpIcon, HomeIcon, ExecuteIcon } from "@/icons";
 import { BASE_URL } from "@/config";
+import { useInstallingPlugins } from "@/hooks/useInstallingPlugins";
 
 export default function PluginPage() {
     const { pipName } = useParams<{ pipName: string }>();
     const [plugin, setPlugin] = useState<Plugin | null>(null);
-    const [installing, setInstalling] = useState(false);
     const [uninstalling, setUnstalling] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState<string | null>(null);
     const navigate = useNavigate();
+    const { installing, start, finish } = useInstallingPlugins();
 
     useEffect(() => {
         if (pipName) {
@@ -44,20 +45,41 @@ export default function PluginPage() {
     const isUpdateAvailable =
         isInstalled && isVersionGreater(releasedVersion, installedVersion);
 
-    
-    // --- handle Install with pip ---
-    const handleInstallPip = async () => {
-        if (!pipName) return;
-        setInstalling(true);
-        try {
-            await installPlugin(pipName);
-            const updated = await fetchPluginById(pipName);
-            setPlugin(updated);
-        } catch (err) {
-            console.error("Error installing plugin:", err);
-        } finally {
-            setInstalling(false);
+    const isInstalling = pipName ? installing.has(pipName) : false;
+
+    // Polling helper: vuelve a llamar a fetchPluginById hasta que installed===true
+    async function waitForInstalled(
+        pipName: string,
+        interval = 1500,
+        retries = 10
+    ): Promise<Plugin> {
+        for (let i = 0; i < retries; i++) {
+            const fresh = await fetchPluginById(pipName);
+            if (fresh.installed) {
+                return fresh;
+            }
+            await new Promise((r) => setTimeout(r, interval));
         }
+        throw new Error("Timeout waiting for the installation");
+    }
+
+    // --- handle Install with pip ---
+    const handleInstallPip = () => {
+        if (!pipName) return;
+        setError(null);
+        start(pipName);               // <-- start installation
+        installPlugin(pipName)
+            .then(() => waitForInstalled(pipName))
+            .then((updated) => {
+                setPlugin(updated);
+            })
+            .catch((err) => {
+                console.error(err);
+                setError("Error installing the plugin");
+            })
+            .finally(() => {
+                finish(pipName);          // <-- finish the installation
+            });
     };
 
     // --- handle Install with pip ---
@@ -76,7 +98,7 @@ export default function PluginPage() {
     };
 
     // --- handle Install with Celery polling ---
-    const handleInstall = async () => {
+    /*const handleInstall = async () => {
         if (!pipName) return;
         setInstalling(true);
         try {
@@ -103,7 +125,7 @@ export default function PluginPage() {
         } finally {
             setInstalling(false);
         }
-    };
+    };*/
 
     return (
         <motion.div
@@ -138,21 +160,28 @@ export default function PluginPage() {
                         v{plugin.latestRelease}
                     </p>
                     <div className="mt-4 flex gap-3">
-                        <Button
-                            disabled={isInstalled || installing}
-                            className="bg-green-700 hover:bg-green-600 text-white flex items-center gap-2"
+                        <Button className="bg-green-700 hover:bg-green-600 text-white"
+                            disabled={isInstalling || plugin.installed}
                             onClick={handleInstallPip}
                         >
-                            {installing && <ExecuteIcon className="h-4 w-4 animate-spin" />}
-                            {installing ? "Installing..." : "Install"}
+                            {isInstalling
+                                ? (
+                                    <>
+                                        <ExecuteIcon className="h-4 w-4 animate-spin" />
+                                        Installing…
+                                    </>
+                                )
+                                : plugin.installed
+                                    ? "Installed"
+                                    : "Install"}
                         </Button>
                         <Button disabled={!isUpdateAvailable} className="bg-yellow-700 hover:bg-yellow-600 text-white">
                             Update
                         </Button>
                         <Button 
-                        variant="destructive" disabled={!isInstalled} 
-                        className="bg-red-800 hover:bg-red-700 text-white"
-                             onClick={handleUninstallPip}
+                            variant="destructive" disabled={!isInstalled}
+                            className="bg-red-800 hover:bg-red-700 text-white"
+                            onClick={handleUninstallPip}
                         >
                             {uninstalling && <ExecuteIcon className="h-4 w-4 animate-spin" />}
                             {uninstalling ? "Removing..." : "Remove"}
