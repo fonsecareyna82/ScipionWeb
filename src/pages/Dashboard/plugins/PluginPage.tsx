@@ -33,8 +33,8 @@ export default function PluginPage() {
 
     // --- button logic ---
     const isInstalled = plugin.installed;
-    const installedVersion = plugin.latestRelease;
-    const releasedVersion = plugin.pipVersion;
+    const installedVersion = plugin.pipVersion;
+    const releasedVersion = plugin.latestRelease;
 
     function isVersionGreater(v1: string, v2: string) {
         const a = v1.split(".").map(Number);
@@ -54,33 +54,53 @@ export default function PluginPage() {
     const isInstalling = pipName ? installing.has(pipName) : false;
     const isRemoving = pipName ? removing.has(pipName) : false;
 
-    // Polling helper: vuelve a llamar a fetchPluginById hasta que installed===true
-    async function waitForInstalled(
+
+    async function waitForCondition(
         pipName: string,
-        interval = 1500,
-        retries = 10
+        condition: (p: Plugin) => boolean,
+        interval = 2000,
+        timeoutMs?: number
     ): Promise<Plugin> {
-        for (let i = 0; i < retries; i++) {
+        const start = Date.now();
+
+        while (true) {
             const fresh = await fetchPluginById(pipName);
-            if (fresh.installed) {
+            if (condition(fresh)) {
                 return fresh;
             }
-            await new Promise((r) => setTimeout(r, interval));
+            if (timeoutMs != null && Date.now() - start > timeoutMs) {
+                throw new Error("Timeout waiting for plugin state change");
+            }
+            await new Promise((res) => setTimeout(res, interval));
         }
-        throw new Error("Timeout waiting for the installation");
     }
 
-    async function waitForRemoved(
-        pip: string,
-        interval = 1500,
-        retries = 10
+    // Polling helper: call fetchPluginById while installed===true
+    function waitForInstalled(
+        pipName: string,
+        interval = 2000,
+        timeoutMs?: number
     ): Promise<Plugin> {
-        for (let i = 0; i < retries; i++) {
-            const fresh = await fetchPluginById(pip);
-            if (!fresh.installed) return fresh;
-            await new Promise((r) => setTimeout(r, interval));
-        }
-        throw new Error("Timeout esperando la desinstalación");
+        return waitForCondition(
+            pipName,
+            (p) => p.installed === true,
+            interval,
+            timeoutMs
+        );
+    }
+
+    // Polling helper: call fetchPluginById while installed===false
+    function waitForRemoved(
+        pipName: string,
+        interval = 2000,
+        timeoutMs?: number
+    ): Promise<Plugin> {
+        return waitForCondition(
+            pipName,
+            (p) => p.installed === false,
+            interval,
+            timeoutMs
+        );
     }
 
     // --- handle Install with pip ---
@@ -90,11 +110,11 @@ export default function PluginPage() {
         startInstall(pipName);
 
         installPlugin(pipName)
-            .then(() => waitForInstalled(pipName))
+            .then(() => waitForInstalled(pipName, 5000, 25*60000))
             .then((updated) => setPlugin(updated))
             .catch((err) => {
                 console.error(err);
-                setError("Error instalando el plugin");
+                setError("Error installing the plugin");
             })
             .finally(() => {
                 finishInstall(pipName);
@@ -109,11 +129,11 @@ export default function PluginPage() {
         startRemove(pipName);
 
         uninstallPlugin(pipName)
-            .then(() => waitForRemoved(pipName))
+            .then(() => waitForRemoved(pipName, 5000, 25*60000))
             .then((updated) => setPlugin(updated))
             .catch((err) => {
                 console.error(err);
-                setError("Error desinstalando el plugin");
+                setError("Error uninstalling the plugin");
             })
             .finally(() => {
                 finishRemove(pipName);
@@ -209,8 +229,8 @@ export default function PluginPage() {
                             onClick={handleRemove}
                             disabled={isRemoving || !plugin.installed}
                             className={`${!plugin.installed
-                                    ? "bg-gray-400 cursor-not-allowed"
-                                    : "bg-red-700 hover:bg-red-600"
+                                ? "bg-gray-400 cursor-not-allowed"
+                                : "bg-red-700 hover:bg-red-600"
                                 } text-white flex items-center gap-2`}
                         >
                             {isRemoving ? (

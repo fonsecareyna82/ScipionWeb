@@ -7,6 +7,7 @@ const STATUS_SAVED = '#D9F1FA';
 const STATUS_RUNNING = '#FCCE62';
 const STATUS_FINISHED = '#D2F5CB';
 const STATUS_FAILED = '#F5CCCB';
+const STATUS_INTERACTIVE = '#f7f3bfff';
 
 type StatusNodeProps = {
   data: {
@@ -28,6 +29,7 @@ export default function StatusNode({ data, selectedNodeId, onClick, onDoubleClic
   if (data.status === 'running') bgColor = STATUS_RUNNING;
   else if (data.status === '' || data.status === 'saved' || data.status === 'launched') bgColor = STATUS_SAVED;
   else if (data.status === 'failed' || data.status === 'aborted') bgColor = STATUS_FAILED;
+  else if (data.status === 'interactive') bgColor = STATUS_INTERACTIVE;
 
   data.color = bgColor;
 

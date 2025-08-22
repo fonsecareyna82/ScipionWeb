@@ -62,8 +62,10 @@ import { ReactComponent as ExecuteIcon } from "./execute.svg?react";
 import { ReactComponent as HelpIcon } from "./help.svg?react";
 import { ReactComponent as FindIcon } from "./find.svg?react";
 import { ReactComponent as HomeIcon } from "./home.svg?react";
+import { ReactComponent as UpdateIcon } from "./update.svg?react";
 
 export {
+  UpdateIcon,
   HomeIcon,
   FindIcon,
   HelpIcon,
