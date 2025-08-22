@@ -2,11 +2,10 @@ import { useNavigate } from "react-router-dom";
 import { useState, useRef, useEffect } from "react";
 import {
   CalendarIcon,
-  FileIcon,
   FolderIcon,
   StorageIcon,
-  TrashBinIcon,
 } from "../../icons";
+import ProjectAction from './ProjectActions'
 
 interface ProjectCardProps {
   label: string;
@@ -15,6 +14,8 @@ interface ProjectCardProps {
   icon?: React.ReactNode;
   createdAt?: string;
   diskUsage?: string;
+  isSelected?: boolean;
+  onSelect?: () => void;
 }
 
 export default function ProjectCard({
@@ -23,6 +24,8 @@ export default function ProjectCard({
   icon = <FolderIcon className="text-yellow-600 text-gray-800 size-5 dark:text-white/90" />,
   createdAt,
   diskUsage,
+  isSelected,
+  onSelect,
 }: ProjectCardProps) {
   const navigate = useNavigate();
   const cardRef = useRef<HTMLDivElement>(null);
@@ -30,9 +33,10 @@ export default function ProjectCard({
 
   const projectSlug = label;
 
-  const handleClick = () => {
+  const handleDoubleClick = () => {
     navigate(`/project/load/${projectSlug}`);
   };
+
 
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -52,87 +56,67 @@ export default function ProjectCard({
 
   return (
     <div
-    
       ref={cardRef}
-      onClick={handleClick}
+      onClick={onSelect}
+      onDoubleClick={handleDoubleClick}
       onContextMenu={handleContextMenu}
-      className="relative cursor-pointer rounded-2xl border border-gray-200 bg-gray-150 p-5
-                 dark:border-gray-800 dark:bg-white/[0.03] md:p-6
-                 transform transition duration-300 hover:scale-105"
+      className={`relative cursor-pointer rounded-2xl border p-5 md:p-6
+    transform transition duration-300 hover:scale-105
+    ${isSelected ? 'border-blue-700' : 'border-gray-200 dark:border-gray-800'}
+    bg-gray-100 dark:bg-white/[0.03]`}
     >
       {/* Icon + Label */}
-      <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl dark:bg-gray-800">
-          {icon}
+      <div className="px-3 pt-1 pb-2 rounded-lg">
+        {/* Primera línea: solo ProjectAction alineado a la derecha */}
+        <div className="flex justify-end mb-0">
+          <ProjectAction
+            icon={null}
+            label=""
+            onOpen={handleDoubleClick}
+            onRename={() => console.log('Rename', label)}
+            onRemove={() => console.log('Remove', label)}
+          />
         </div>
-        <span className="text-base text-gray-500 dark:text-gray-400">{label}</span>
+
+        {/* Segunda línea: icono + label alineados a la izquierda */}
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl">
+            {icon}
+          </div>
+          <span className="text-black dark:text-gray-400">{label}</span>
+        </div>
       </div>
       {/* Separator */}
       <div className="my-1 border-t border-gray-200 dark:border-gray-700" />
-
-      {/* Value */}
-      <div className="mt-5 text-center">
-        <h5 className="text-title-sm font-bold text-gray-800 dark:text-white/90">
-          {value} protocols
-        </h5>
-      </div>
 
       {/* Extra Info */}
       <div className="mt-4 space-y-1 text-sm text-gray-500 dark:text-gray-400">
         {createdAt && (
           <div className="flex items-center gap-3">
             <div className="flex h-12 w-12 items-center justify-center rounded-xl dark:bg-gray-800">
-              <CalendarIcon className="w-7 h-7 text-blue-600 dark:text-gray-100" />
+              <CalendarIcon className="ml-4 w-7 h-7 text-blue-600 dark:text-gray-100" />
             </div>
-            <div>Created: {createdAt}</div>
+            <div>Created at: {createdAt.split('T')[0]}</div>
           </div>
         )}
         {diskUsage && (
           <div className="flex items-center gap-3">
             <div className="flex h-12 w-12 items-center justify-center rounded-xl dark:bg-gray-800">
-              <StorageIcon className="w-6 h-9 text-blue-600 dark:text-gray-100" />
+              <StorageIcon className="ml-4 w-6 h-9 text-blue-600 dark:text-gray-100" />
             </div>
             <div>Disk Usage: {diskUsage}</div>
           </div>
         )}
-      </div>
+        {/* Separator */}
+        <div className="my-1 border-t border-gray-200 dark:border-gray-700" />
+        {/* Value */}
+        <div className="mt-3 ml-7">
+          <span className="text-sm text-gray-800 dark:text-white/90">
+            {value} protocols
+          </span>
+        </div>
 
-      {/* Context Menu */}
-      {contextMenu && (
-        <ul
-          className="absolute w-44 rounded border shadow-lg"
-          style={{
-            top: contextMenu.y,
-            left: contextMenu.x,
-            backgroundColor: document.documentElement.classList.contains("dark")
-              ? "#111827"
-              : "#ffffff",
-            color: document.documentElement.classList.contains("dark")
-              ? "#f9fafb"
-              : "#1f2937",
-            zIndex: 9999,
-          }}
-        >
-          <li
-            className="flex cursor-pointer items-center gap-2 px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600"
-            onClick={() => {
-              navigate(`/project/load/${projectSlug}`);
-              setContextMenu(null);
-            }}
-          >
-            <FolderIcon className="shrink-0 w-5 h-5 text-gray-600 dark:text-gray-300" />
-            <span className="whitespace-nowrap">Open</span>
-          </li>
-          <li className="flex cursor-pointer items-center gap-2 px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700">
-            <TrashBinIcon className="shrink-0 w-5 h-5 text-red-500 dark:text-red-400" />
-            <span className="whitespace-nowrap">Remove</span>
-          </li>
-          <li className="flex cursor-pointer items-center gap-2 px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700">
-            <FileIcon className="shrink-0 w-5 h-5 text-blue-500 dark:text-blue-400" />
-            <span className="whitespace-nowrap">Rename</span>
-          </li>
-        </ul>
-      )}
+      </div>
     </div>
   );
 }

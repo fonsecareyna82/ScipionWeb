@@ -63,8 +63,12 @@ import { ReactComponent as HelpIcon } from "./help.svg?react";
 import { ReactComponent as FindIcon } from "./find.svg?react";
 import { ReactComponent as HomeIcon } from "./home.svg?react";
 import { ReactComponent as UpdateIcon } from "./update.svg?react";
+import { ReactComponent as OpenFolderIcon } from "./open.svg?react";
+import { ReactComponent as RenameIcon } from "./rename.svg?react";
 
 export {
+  RenameIcon,
+  OpenFolderIcon,
   UpdateIcon,
   HomeIcon,
   FindIcon,

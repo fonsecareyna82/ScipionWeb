@@ -68,21 +68,19 @@ export default function Plugins() {
             <div className="flex space-x-2 mb-4">
               <button
                 onClick={() => setActiveTab("installed")}
-                className={`px-4 py-2 rounded ${
-                  activeTab === "installed"
+                className={`px-4 py-2 rounded ${activeTab === "installed"
                     ? "bg-blue-500 text-white"
                     : "bg-gray-200 dark:bg-gray-700 dark:text-gray-300"
-                }`}
+                  }`}
               >
                 Installed ({installedPlugins.length})
               </button>
               <button
                 onClick={() => setActiveTab("available")}
-                className={`px-4 py-2 rounded ${
-                  activeTab === "available"
+                className={`px-4 py-2 rounded ${activeTab === "available"
                     ? "bg-blue-500 text-white"
                     : "bg-gray-200 dark:bg-gray-700 dark:text-gray-300"
-                }`}
+                  }`}
               >
                 Available ({availablePlugins.length})
               </button>
@@ -91,7 +89,20 @@ export default function Plugins() {
             {/* Search field */}
             <div className="relative mb-6 w-full max-w-sm">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <FindIcon className="h-5 w-5 text-gray-400 dark:text-gray-500" />
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-5 w-5 text-gray-400 dark:text-gray-500"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                  />
+                </svg>
               </div>
               <input
                 type="text"

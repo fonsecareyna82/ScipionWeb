@@ -28,10 +28,10 @@ export default function ProjectPage() {
 
   const handleNodeClick = (nodeData: any, event?: React.MouseEvent) => {
     const isMultiSelect = event?.shiftKey;
-  
+
     if (!isMultiSelect) {
       setPreviousNodeId(nodeData.id);
-  
+
       setNodes((nds) =>
         nds.map((node) =>
           node.id === nodeData.id ? node : { ...node, style: undefined }
@@ -41,13 +41,13 @@ export default function ProjectPage() {
         eds.map((edge) =>
           edge.source === nodeData.id || edge.target === nodeData.id
             ? {
-                ...edge,
-                style: {
-                  ...edge.style,
-                  stroke: '#0070f3',
-                  strokeWidth: 3,
-                },
-              }
+              ...edge,
+              style: {
+                ...edge.style,
+                stroke: '#0070f3',
+                strokeWidth: 3,
+              },
+            }
             : { ...edge, style: undefined }
         )
       );
@@ -142,7 +142,7 @@ export default function ProjectPage() {
   const handleSearch = (query: string) => {
     const reactFlowInstance = (window as any).reactFlowInstance;
     if (!reactFlowInstance) return;
-  
+
     if (!query.trim()) {
       // 🔹 Deseleccionar nodos y edges
       setNodes((nds) =>
@@ -151,7 +151,7 @@ export default function ProjectPage() {
           style: undefined,
         }))
       );
-  
+
       setEdges((eds) =>
         eds.map((edge) => ({
           ...edge,
@@ -161,42 +161,55 @@ export default function ProjectPage() {
           },
         }))
       );
-  
+
       // 🔹 Reset selected node
       setPreviousNodeId(null);
-  
+
       // Adjust view
       setTimeout(() => {
         reactFlowInstance.fitView({ padding: 0.2, duration: 800 });
       }, 100);
-  
+
       return;
     }
-  
+
     const match = nodes.find(
       (node) =>
         node.id.toLowerCase().includes(query.toLowerCase()) ||
         (node.data?.label?.toLowerCase?.().includes(query.toLowerCase()))
     );
-  
+
     if (!match) return;
-  
+
     handleNodeClick(match);
-  
+
     reactFlowInstance.setCenter(match.position.x, match.position.y, {
       zoom: reactFlowInstance.getViewport().zoom,
       duration: 800,
     });
   };
-  
-  
+
+
 
   return (
     <div className="p-6 h-screen">
-            <h1 className="text-2xl mb-4">{projectName}</h1>
+      <h1 className="text-2xl mb-4">{projectName}</h1>
       < div className="relative mb-6 w-full max-w-sm">
         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-          <FindIcon className="h-5 w-5 text-gray-400 dark:text-gray-500" />
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            className="h-5 w-5 text-gray-400 dark:text-gray-500"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2}
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+            />
+          </svg>
         </div>
         <input
           type="text"
@@ -233,7 +246,7 @@ export default function ProjectPage() {
 
             <div className="absolute inset-0">
 
-              
+
             </div>
 
             <ReactFlow

@@ -10,6 +10,7 @@ export default function Projects() {
   // Estados
   const [projects, setProjects] = useState<Project[]>([]);
   const [search, setSearch] = useState<string>("");
+  const [selectedLabel, setSelectedLabel] = useState<string | null>(null);
 
   // Carga inicial
   useEffect(() => {
@@ -76,6 +77,8 @@ export default function Projects() {
               value={project.protocolsCount}
               createdAt={project.created_at.toString()}
               diskUsage={project.diskUsage.toString()}
+              isSelected={selectedLabel === project.name}
+              onSelect={() => setSelectedLabel(project.name)}
             />
           ))}
 
