@@ -61,7 +61,7 @@ export default function StatusNode({ data, selectedNodeId, onClick, onDoubleClic
     >
       <div className="flex items-center gap-2 mb-2">
         {data.id !== 'PROJECT' && (
-          <div className="inline-flex items-center justify-center rounded-full bg-gray-700 text-white text-xl  px-4 py-2">
+          <div className="inline-flex items-center justify-center rounded-full bg-gray-500 text-white text-2xl  px-4 py-2">
             {data.id}
           </div>
         )}

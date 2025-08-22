@@ -11,7 +11,7 @@ import ReactFlow, {
   useNodesState,
   useEdgesState,
 } from 'reactflow';
-import { RefreshIcon } from "../../../icons";
+import { FindIcon, RefreshIcon } from "../../../icons";
 import 'reactflow/dist/style.css';
 import { createStatusNodeWrapper } from "../../../components/projects/StatusNodeWrapper";
 
@@ -26,30 +26,32 @@ export default function ProjectPage() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [previousNodeId, setPreviousNodeId] = useState<string | null>(null);
 
-  // 🔹 Click → resalta pero NO cierra formulario si está abierto
-  const handleNodeClick = (nodeData: any) => {
-    setPreviousNodeId(nodeData.id);
-
-    setNodes((nds) =>
-      nds.map((node) =>
-        node.id === nodeData.id ? node : { ...node, style: undefined }
-      )
-    );
-
-    setEdges((eds) =>
-      eds.map((edge) =>
-        edge.source === nodeData.id || edge.target === nodeData.id
-          ? {
-            ...edge,
-            style: {
-              ...edge.style,
-              stroke: '#0070f3',
-              strokeWidth: 3,
-            },
-          }
-          : { ...edge, style: undefined }
-      )
-    );
+  const handleNodeClick = (nodeData: any, event?: React.MouseEvent) => {
+    const isMultiSelect = event?.shiftKey;
+  
+    if (!isMultiSelect) {
+      setPreviousNodeId(nodeData.id);
+  
+      setNodes((nds) =>
+        nds.map((node) =>
+          node.id === nodeData.id ? node : { ...node, style: undefined }
+        )
+      );
+      setEdges((eds) =>
+        eds.map((edge) =>
+          edge.source === nodeData.id || edge.target === nodeData.id
+            ? {
+                ...edge,
+                style: {
+                  ...edge.style,
+                  stroke: '#0070f3',
+                  strokeWidth: 3,
+                },
+              }
+            : { ...edge, style: undefined }
+        )
+      );
+    }
   };
 
   // 🔹 Doble click → open the protocol form
@@ -137,10 +139,74 @@ export default function ProjectPage() {
     }
   };
 
+  const handleSearch = (query: string) => {
+    const reactFlowInstance = (window as any).reactFlowInstance;
+    if (!reactFlowInstance) return;
+  
+    if (!query.trim()) {
+      // 🔹 Deseleccionar nodos y edges
+      setNodes((nds) =>
+        nds.map((node) => ({
+          ...node,
+          style: undefined,
+        }))
+      );
+  
+      setEdges((eds) =>
+        eds.map((edge) => ({
+          ...edge,
+          style: {
+            stroke: '#999',
+            strokeWidth: 2,
+          },
+        }))
+      );
+  
+      // 🔹 Reset selected node
+      setPreviousNodeId(null);
+  
+      // Adjust view
+      setTimeout(() => {
+        reactFlowInstance.fitView({ padding: 0.2, duration: 800 });
+      }, 100);
+  
+      return;
+    }
+  
+    const match = nodes.find(
+      (node) =>
+        node.id.toLowerCase().includes(query.toLowerCase()) ||
+        (node.data?.label?.toLowerCase?.().includes(query.toLowerCase()))
+    );
+  
+    if (!match) return;
+  
+    handleNodeClick(match);
+  
+    reactFlowInstance.setCenter(match.position.x, match.position.y, {
+      zoom: reactFlowInstance.getViewport().zoom,
+      duration: 800,
+    });
+  };
+  
+  
+
   return (
     <div className="p-6 h-screen">
-      <h1 className="text-2xl mb-4">{projectName}</h1>
-
+            <h1 className="text-2xl mb-4">{projectName}</h1>
+      < div className="relative mb-6 w-full max-w-sm">
+        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+          <FindIcon className="h-5 w-5 text-gray-400 dark:text-gray-500" />
+        </div>
+        <input
+          type="text"
+          placeholder="Search protocol..."
+          onChange={(e) => handleSearch(e.target.value)}
+          className="w-full px-3 py-2 pl-10 pr-3 border border-gray-300 rounded-md 
+                           focus:outline-none focus:ring-2 focus:ring-blue-500 
+                           dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+        />
+      </div>
       {!project ? (
         <p className="text-gray-500">Loading project data...</p>
       ) : (
@@ -165,6 +231,11 @@ export default function ProjectPage() {
               </defs>
             </svg>
 
+            <div className="absolute inset-0">
+
+              
+            </div>
+
             <ReactFlow
               nodes={nodes}
               edges={edges}
@@ -175,8 +246,11 @@ export default function ProjectPage() {
               fitViewOptions={{ padding: 0.2 }}
               defaultEdgeOptions={{
                 type: 'default',
-                style: { stroke: "#999", strokeWidth: 2},
+                style: { stroke: "#999", strokeWidth: 2 },
                 markerEnd: 'url(#circle)',
+              }}
+              onInit={(instance) => {
+                (window as any).reactFlowInstance = instance;
               }}
             >
               <Background />
