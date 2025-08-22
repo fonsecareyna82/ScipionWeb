@@ -69,7 +69,7 @@ export function buildGraphElements(protocols: Record<string, ProtocolNode>) {
   // Position nodes horizontally based on estimated width
   Object.entries(levelBuckets).forEach(([levelStr, ids]) => {
     const level = parseInt(levelStr, 10);
-    const y = level * 240;
+    const y = level * 300;
 
     const widths = ids.map(id => {
       const label = protocols[id]?.label || id;
