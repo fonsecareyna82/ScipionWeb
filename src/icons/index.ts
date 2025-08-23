@@ -65,8 +65,10 @@ import { ReactComponent as HomeIcon } from "./home.svg?react";
 import { ReactComponent as UpdateIcon } from "./update.svg?react";
 import { ReactComponent as OpenFolderIcon } from "./open.svg?react";
 import { ReactComponent as RenameIcon } from "./rename.svg?react";
+import { ReactComponent as ImportIcon } from "./import.svg?react";
 
 export {
+  ImportIcon,
   RenameIcon,
   OpenFolderIcon,
   UpdateIcon,

@@ -67,7 +67,7 @@ export default function ProjectCard({
     >
       {/* Icon + Label */}
       <div className="px-3 pt-1 pb-2 rounded-lg">
-        {/* Primera línea: solo ProjectAction alineado a la derecha */}
+        {/* First line: only ProjectAction right aligned */}
         <div className="flex justify-end mb-0">
           <ProjectAction
             icon={null}
@@ -78,7 +78,7 @@ export default function ProjectCard({
           />
         </div>
 
-        {/* Segunda línea: icono + label alineados a la izquierda */}
+        {/* Second line: icon + label aligned to the left */}
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl">
             {icon}
@@ -96,15 +96,15 @@ export default function ProjectCard({
             <div className="flex h-12 w-12 items-center justify-center rounded-xl dark:bg-gray-800">
               <CalendarIcon className="ml-4 w-7 h-7 text-blue-600 dark:text-gray-100" />
             </div>
-            <div>Created at: {createdAt.split('T')[0]}</div>
+            <div className="text-black dark:text-gray-400 ">Created at: {createdAt.split('T')[0]}</div>
           </div>
         )}
         {diskUsage && (
           <div className="flex items-center gap-3">
             <div className="flex h-12 w-12 items-center justify-center rounded-xl dark:bg-gray-800">
-              <StorageIcon className="ml-4 w-6 h-9 text-blue-600 dark:text-gray-100" />
+              <StorageIcon className="ml-4 w-7 h-9 text-gray-600 dark:text-gray-100" />
             </div>
-            <div>Disk Usage: {diskUsage}</div>
+            <div className="text-black dark:text-gray-400 ">{diskUsage}</div>
           </div>
         )}
         {/* Separator */}
