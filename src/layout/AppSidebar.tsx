@@ -30,7 +30,7 @@ const navItems: NavItem[] = [
   {
     icon: <GridIcon />,
     name: "Home",
-    path: "/",
+    path: "/home",
   },
   {
     icon: <FolderIcon />,
