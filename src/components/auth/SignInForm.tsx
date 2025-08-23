@@ -23,7 +23,8 @@ export default function SignInForm() {
       await login(email, password);
       navigate("/home");
     } catch (err: any) {
-      setError(err.message);
+      const errorMessage ="Invalid credentials. Check your email and password";
+      setError(errorMessage);
     }
   };
 
