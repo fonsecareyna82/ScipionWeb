@@ -23,10 +23,21 @@ export default function SignInForm() {
       await login(email, password);
       navigate("/home");
     } catch (err: any) {
-      const errorMessage ="Invalid credentials. Check your email and password";
+      let errorMessage = "Unexpected error during login";
+    
+      if (err instanceof Error) {
+        if (err.message === "Invalid credentials") {
+          errorMessage = "Invalid credentials. Check your email and password.";
+        } else if (err.message === "Email not verified") {
+          errorMessage = "You must verify your email before logging in.";
+        } else {
+          errorMessage = err.message;
+        }
+      }
+    
       setError(errorMessage);
     }
-  };
+  }
 
   return (
     <div className="flex flex-col flex-1">

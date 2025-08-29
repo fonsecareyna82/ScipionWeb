@@ -23,6 +23,7 @@ import ProjectPage from "./pages/Dashboard/projects/ProjectPage";
 import Plugins from "./pages/Dashboard/plugins/Plugins";
 import PluginPage from "./pages/Dashboard/plugins/PluginPage";
 import ProtectedRoute from "./components/auth/ProtectedRoute";
+import VerifyEmailForm from "./components/auth/VerifyEmailForm";
 
 export default function App() {
   return (
@@ -62,6 +63,7 @@ export default function App() {
           <Route path="/videos" element={<Videos />} />
           <Route path="/line-chart" element={<LineChart />} />
           <Route path="/bar-chart" element={<BarChart />} />
+          <Route path="/verify-email" element={<VerifyEmailForm />} />
         </Route>
 
         {/* Page not found */}

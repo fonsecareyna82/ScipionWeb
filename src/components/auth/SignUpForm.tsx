@@ -4,7 +4,7 @@ import { EyeCloseIcon, EyeIcon } from "../../icons";
 import Label from "../form/Label";
 import Input from "../form/input/InputField";
 import Checkbox from "../form/input/Checkbox";
-import { register } from "@/api/auth";
+import { register, UserCreatePayload } from "@/api/auth";
 
 export default function SignUpForm() {
   const [firstName, setFirstName] = useState("");
@@ -15,27 +15,45 @@ export default function SignUpForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [isChecked, setIsChecked] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [emailError, setEmailError] = useState("");
   const navigate = useNavigate();
 
   const handleSignup = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+
+    setErrorMessage("");
+    setEmailError("");
 
     if (!isChecked) {
       setErrorMessage("You must accept the Terms and Conditions");
       return;
     }
 
+    const userData: UserCreatePayload = {
+      email,
+      password,
+      firstName,
+      lastName,
+      institution
+    };
+
     try {
-      await register(email, password, firstName, lastName, institution);
-      navigate("/");
+      await register(userData);
+      navigate("/verify-email", { state: { email: userData.email } });
     } catch (error) {
       if (error instanceof Error) {
-        setErrorMessage(error.message);
+        if (error.message === "Email already registered") {
+          setEmailError("This email is already registered");
+        } else {
+          setErrorMessage(error.message);
+        }
       } else {
         setErrorMessage("Unexpected error during signup");
       }
     }
   };
+
+  const hasErrors = !!emailError || !!errorMessage || !isChecked;
 
   return (
     <div className="flex flex-col flex-1 w-full overflow-y-auto lg:w-1/2 no-scrollbar">
@@ -109,8 +127,15 @@ export default function SignUpForm() {
                     name="email"
                     placeholder="Enter your email"
                     value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    onChange={(e) => {
+                      setEmail(e.target.value);
+                      setEmailError("");
+                    }}
+                    className={emailError ? "border border-error-500" : ""}
                   />
+                  {emailError && (
+                    <p className="text-sm text-error-500 mt-1">{emailError}</p>
+                  )}
                 </div>
 
                 {/* Password */}
@@ -143,7 +168,10 @@ export default function SignUpForm() {
                   <Checkbox
                     className="w-5 h-5"
                     checked={isChecked}
-                    onChange={setIsChecked}
+                    onChange={(checked) => {
+                      setIsChecked(checked);
+                      setErrorMessage("");
+                    }}
                   />
                   <p className="inline-block font-normal text-gray-500 dark:text-gray-400">
                     By creating an account you agree to the{" "}
@@ -158,7 +186,7 @@ export default function SignUpForm() {
                   </p>
                 </div>
 
-                {/* Error Message */}
+                {/* General Error Message */}
                 {errorMessage && (
                   <p className="text-sm text-error-500 text-center">
                     {errorMessage}
@@ -169,7 +197,12 @@ export default function SignUpForm() {
                 <div>
                   <button
                     type="submit"
-                    className="flex items-center justify-center w-full px-4 py-3 text-sm font-medium text-white transition rounded-lg bg-brand-500 shadow-theme-xs hover:bg-brand-600"
+                    disabled={hasErrors}
+                    className={`flex items-center justify-center w-full px-4 py-3 text-sm font-medium text-white transition rounded-lg shadow-theme-xs ${
+                      hasErrors
+                        ? "bg-gray-400 cursor-not-allowed"
+                        : "bg-brand-500 hover:bg-brand-600"
+                    }`}
                   >
                     Sign Up
                   </button>
