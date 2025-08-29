@@ -29,14 +29,14 @@ export default function App() {
     <Router>
       <ScrollToTop />
       <Routes>
-        {/* Página de inicio: login */}
+        {/* Home page: login */}
         <Route path="/" element={<SignIn />} />
 
-        {/* Rutas públicas */}
+        {/* Publicas routes */}
         <Route path="/signin" element={<SignIn />} />
         <Route path="/signup" element={<SignUp />} />
 
-        {/* Rutas protegidas dentro del layout */}
+        {/* Protected rutes inside layout */}
         <Route
           element={
             <ProtectedRoute>
@@ -64,7 +64,7 @@ export default function App() {
           <Route path="/bar-chart" element={<BarChart />} />
         </Route>
 
-        {/* Página no encontrada */}
+        {/* Page not found */}
         <Route path="*" element={<NotFound />} />
       </Routes>
     </Router>

@@ -22,7 +22,7 @@ export default function Home() {
           </h3>
           <Alert
             variant="success"
-            title="Welcome to Scipion v1.0.0"
+            title="Welcome to Scipion v4.0.0"
             message="To learn more about Scipion you can go to our documentation"
             showLink={true}
             linkHref="https://scipion-em.github.io/docs/release-3.0.0/index.html"
@@ -36,7 +36,7 @@ export default function Home() {
 export  function Home1() {
   return (
     <div style={{ marginLeft: '2rem'}} className="bg-white p-6 rounded shadow">
-      <h1 className="text-2xl mb-4">Welcome to Scipion v1.0.0</h1>
+      <h1 className="text-2xl mb-4">Welcome to Scipion v4.0.0</h1>
       <p>This is the dashboard home.</p>
     </div>
   );

@@ -31,7 +31,7 @@ export default function PluginCard(plugin: Plugin) {
           <img
             src={plugin.fullLogo}
             alt={`${plugin.name} icon`}
-            className="w-20 h-10 object-contain bg-gray-100 dark:bg-gray-800"
+            className="w-20 h-10 object-contain bg-gray-200 dark:bg-gray-800"
           />
         </div>
 
