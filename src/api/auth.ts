@@ -21,23 +21,36 @@ export async function login(email: string, password: string) {
     return data;
 }
 
-export async function register(email: string, password: string) {
-    const res = await fetch(`${BASE_URL}/auth/register`, {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ email, password })
+export async function register(
+    email: string,
+    password: string,
+    firstName: string,
+    lastName: string,
+    institution: string
+  ) {
+    const res = await fetch(`${BASE_URL}/auth/signup`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        email,
+        password,
+        firstName,
+        lastName,
+        institution
+      })
     });
-
+  
     const data = await res.json();
-
+  
     if (!res.ok) {
-        throw new Error(data.detail || "Registration failed");
+      throw new Error(data.detail || "Registration failed");
     }
-
+  
+    localStorage.setItem("accessToken", data.accessToken);
     return data;
-}
+  }
 
 export function getAccessToken(): string | null {
     return localStorage.getItem("accessToken");
