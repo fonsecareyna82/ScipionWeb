@@ -1,16 +1,30 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { DropdownItem } from "../ui/dropdown/DropdownItem";
 import { Dropdown } from "../ui/dropdown/Dropdown";
 import { Link, useNavigate } from "react-router";
+import { UserIcon } from "@/icons";
+import { getUserProfile } from "@/api/auth";
 
 export default function UserDropdown() {
   const [isOpen, setIsOpen] = useState(false);
+  const [user, setUser] = useState<{ firstName: string; lastName: string; email: string } | null>(null);
   const navigate = useNavigate();
 
 
-  function toggleDropdown() {
-    setIsOpen(!isOpen);
-  }
+  const toggleDropdown = async () => {
+    const nextState = !isOpen;
+    setIsOpen(nextState);
+
+    if (nextState && !user) {
+      try {
+        const data = await getUserProfile();
+        setUser(data);
+      } catch (error) {
+        console.error("Error fetching user profile:", error);
+      }
+    }
+  };
+
 
   function closeDropdown() {
     setIsOpen(false);
@@ -29,13 +43,13 @@ export default function UserDropdown() {
         onClick={toggleDropdown}
         className="flex items-center text-gray-700 dropdown-toggle dark:text-gray-400"
       >
-        <span >
-          <div className="w-10 h-10 overflow-hidden border border-gray-200 rounded-full dark:border-gray-800 ml-2 mr-2">
-            <img src="/images/user/owner.jpg" alt="user" />
-          </div>
-        </span>
-
-        <span className="block mr-1 font-medium text-theme-sm">Yun</span>
+        <div className="flex justify-center items-center">
+          <span>
+            <div className="w-10 h-10 overflow-hidden border border-gray-200 rounded-full dark:border-gray-800 mr-1">
+              <UserIcon className="w-5 h-5 ml-2 mt-2"/>
+            </div>
+          </span>
+        </div>
         <svg
           className={`stroke-gray-500 dark:stroke-gray-400 transition-transform duration-200 ${isOpen ? "rotate-180" : ""
             }`}
@@ -62,10 +76,10 @@ export default function UserDropdown() {
       >
         <div>
           <span className="block font-medium text-gray-700 text-theme-sm dark:text-gray-400">
-            Yunior C. Fonseca Reyna
+            {user ? `${user.firstName} ${user.lastName}` : "Loading..."}
           </span>
           <span className="mt-0.5 block text-theme-xs text-gray-500 dark:text-gray-400">
-            cfonseca@cnb.csic.es
+          {user ? user.email : ""}
           </span>
         </div>
 

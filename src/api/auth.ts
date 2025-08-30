@@ -1,6 +1,7 @@
 // api/auth.ts
 
 import { BASE_URL } from "@/config";
+import { UserProfile } from "@/types/user";
 
 export interface UserCreatePayload {
     email: string;
@@ -119,4 +120,38 @@ export async function verifyEmail(code: string) {
   
     return data;
   }
+
+  export async function getUserProfile() {
+    const token = localStorage.getItem("accessToken");
+    console.log(token)
+    const res = await fetch(`${BASE_URL}/auth/me`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
   
+    if (!res.ok) {
+      throw new Error("Failed to fetch user profile");
+    }
+  
+    return await res.json();
+  }
+  
+
+  export async function updateUserProfile(data: Partial<UserProfile>) {
+    const token = localStorage.getItem("accessToken");
+    const res = await fetch(`${BASE_URL}/auth/me`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(data),
+    });
+  
+    if (!res.ok) {
+      throw new Error("Failed to update profile");
+    }
+  
+    return await res.json();
+  }
