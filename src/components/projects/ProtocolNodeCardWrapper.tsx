@@ -1,5 +1,5 @@
 import { NodeProps } from 'reactflow';
-import StatusNode from './StatusNode';
+import StatusNode from './ProtocolNodeCard';
 
 export const createStatusNodeWrapper = (
   onClick: (data: any) => void,

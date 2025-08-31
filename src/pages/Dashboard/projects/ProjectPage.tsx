@@ -13,7 +13,7 @@ import ReactFlow, {
 } from 'reactflow';
 import { FindIcon, RefreshIcon } from "../../../icons";
 import 'reactflow/dist/style.css';
-import { createStatusNodeWrapper } from "../../../components/projects/StatusNodeWrapper";
+import { createStatusNodeWrapper } from "../../../components/projects/ProtocolNodeCardWrapper";
 
 const REFRESH_INTERVAL_MS = 15000; // 15 seconds
 

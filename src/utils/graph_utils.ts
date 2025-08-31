@@ -99,7 +99,8 @@ export function buildGraphElements(protocols: Record<string, ProtocolNode>) {
         draggable: true,
       });
 
-      x += nodeWidth + 50;
+      const spacing = Math.max(80, nodeWidth * 0.3);
+      x += nodeWidth + spacing;
     });
   });
 
