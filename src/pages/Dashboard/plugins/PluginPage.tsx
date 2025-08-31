@@ -110,7 +110,7 @@ export default function PluginPage() {
         startInstall(pipName);
 
         installPlugin(pipName)
-            .then(() => waitForInstalled(pipName, 5000, 25*60000))
+            .then(() => waitForInstalled(pipName, 5000, 25 * 60000))
             .then((updated) => setPlugin(updated))
             .catch((err) => {
                 console.error(err);
@@ -129,7 +129,7 @@ export default function PluginPage() {
         startRemove(pipName);
 
         uninstallPlugin(pipName)
-            .then(() => waitForRemoved(pipName, 5000, 25*60000))
+            .then(() => waitForRemoved(pipName, 5000, 25 * 60000))
             .then((updated) => setPlugin(updated))
             .catch((err) => {
                 console.error(err);
@@ -183,33 +183,42 @@ export default function PluginPage() {
                 variant="ghost"
                 size="icon"
                 onClick={() => navigate(-1)}
-                className="absolute h-12 w-12 top-4 left-1 rounded-full bg-gray-100"
+                className="absolute h-12 w-12 top-1 left-1 rounded-full bg-gray-100"
             >
                 <AngleLeftIcon className="h-12 w-12" />
             </Button>
 
             {/* Hero */}
-            <div className="flex items-center gap-6 mt-10">
-                <img
-                    src={plugin.fullLogo}
-                    alt={`${plugin.name} logo`}
-                    className="w-30 h-30 object-contain rounded-xl bg-white mr-8"
-                />
-                <div>
-                    <h1 className="text-4xl font-bold text-gray-900 dark:text-gray-100">
+            <div className="flex flex-wrap items-center gap-8 mt-10">
+                {/* Logo */}
+                <div className="flex-shrink-0">
+                    <img
+                        src={plugin.fullLogo}
+                        alt={`${plugin.name} logo`}
+                        className="w-40 h-40 object-contain rounded-xl bg-white shadow-md"
+                    />
+                </div>
+
+                {/* Info + Actions */}
+                <div className="flex flex-col gap-2">
+                    <h1 className="text-3xl font-bold text-gray-900 dark:text-white leading-tight">
                         {plugin.name}
                     </h1>
-                    <p className="text-gray-500 dark:text-gray-400">
-                        v{plugin.latestRelease}
+                    <p className="text-sm text-gray-600 dark:text-gray-400">
+                        Latest release: <span className="font-medium">v{plugin.latestRelease}</span>
                     </p>
-                    <div className="mt-4 flex gap-3">
+
+                    {/* Actions */}
+                    <div className="mt-4 flex flex-wrap gap-3">
+                        {/* Install Button */}
                         <Button
                             onClick={handleInstall}
                             disabled={isInstalling || plugin.installed}
-                            className={`${plugin.installed
-                                ? "bg-gray-400 cursor-not-allowed"
-                                : "bg-green-700 hover:bg-green-600"
-                                } text-white flex items-center gap-2`}
+                            className={`flex items-center gap-2 text-white px-4 py-2 rounded-md transition
+          ${plugin.installed
+                                    ? "bg-gray-400 cursor-not-allowed"
+                                    : "bg-green-700 hover:bg-green-600"}
+        `}
                         >
                             {isInstalling ? (
                                 <>
@@ -222,16 +231,24 @@ export default function PluginPage() {
                                 "Install"
                             )}
                         </Button>
-                        <Button disabled={!isUpdateAvailable} className="bg-yellow-700 hover:bg-yellow-600 text-white">
+
+                        {/* Update Button */}
+                        <Button
+                            disabled={!isUpdateAvailable}
+                            className="bg-yellow-600 hover:bg-yellow-500 text-white px-4 py-2 rounded-md transition"
+                        >
                             Update
                         </Button>
+
+                        {/* Remove Button */}
                         <Button
                             onClick={handleRemove}
                             disabled={isRemoving || !plugin.installed}
-                            className={`${!plugin.installed
-                                ? "bg-gray-400 cursor-not-allowed"
-                                : "bg-red-700 hover:bg-red-600"
-                                } text-white flex items-center gap-2`}
+                            className={`flex items-center gap-2 text-white px-4 py-2 rounded-md transition
+          ${!plugin.installed
+                                    ? "bg-gray-400 cursor-not-allowed"
+                                    : "bg-red-700 hover:bg-red-600"}
+        `}
                         >
                             {isRemoving ? (
                                 <>
@@ -246,66 +263,105 @@ export default function PluginPage() {
                         </Button>
                     </div>
 
-                    {error && <p className="text-red-500 mt-2">{error}</p>}
-                    {success && <p className="text-green-500 mt-2">{success}</p>}
+                    {/* Feedback messages */}
+                    {error && <p className="text-sm text-red-500 mt-3">{error}</p>}
+                    {success && <p className="text-sm text-green-600 mt-3">{success}</p>}
+                </div>
+            </div>
+
+            {/* Separator */}
+            <div className="my-1 border-t border-gray-300 dark:border-gray-700 mb-5" />
+            {/* Info */}
+            <div className="space-y-2 text-sm text-gray-600 dark:text-gray-400">
+                {/* Installed version */}
+                <div className="flex items-center gap-2">
+                    <span className="font-medium">Installed:</span>
+                    <span
+                        className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold text-white 
+        ${isInstalled ? "bg-green-500" : "bg-red-800"}`}
+                    >
+                        {isInstalled ? `v${installedVersion}` : "Not installed"}
+                    </span>
+                </div>
+
+                {/* Latest release */}
+                <div>
+                    <span className="font-medium">Latest release:</span>{" "}
+                    <span className="text-gray-700 dark:text-gray-300">v{plugin.latestRelease}</span>
+                </div>
+
+                {/* Published date */}
+                <div>
+                    <span className="font-medium">Published:</span>{" "}
+                    <span className="text-gray-700 dark:text-gray-300">
+                        {plugin.compatibleReleases[plugin.latestRelease]["upload_time"].split("T")[0]}
+                    </span>
                 </div>
             </div>
             {/* Separator */}
-            <div className="my-1 border-t border-gray-200 dark:border-gray-700 mb-5" />
-            {/* Info */}
-            <p className="text-gray-500 dark:text-gray-400">
-                Installed:{" "}
-                <span
-                    className={`mb-2 inline-flex items-center justify-center px-3 py-1 rounded-full text-white  ${isInstalled ? "bg-green-500" : "bg-red-800"
-                        }`}
-                >
-                    {isInstalled ? `v${installedVersion}` : "Not installed"}
-                </span>
-                <br />
-                Latest release: v{plugin.latestRelease}
-                <br />
-                Published: {plugin.compatibleReleases[plugin.latestRelease]['upload_time'].split('T')[0]}
-            </p>
-            {/* Separator */}
-            <div className="my-1 border-t border-gray-200 dark:border-gray-700 mb-5" />
+            <div className="my-1 border-t border-gray-300 dark:border-gray-700 mb-5" />
             {/* Info cards */}
             <div className="grid md:grid-cols-3 gap-6">
-                <Card className="bg-gray-200 dark:bg-gray-800">
-                    <CardHeader className="flex items-center space-x-2">
-                        <FolderIcon className="h-5 w-5" />
-                        <span className="text-xl">Pip name</span>
+                {/* Card: Pip Name */}
+                <Card className="rounded-xl bg-gradient-to-br from-gray-100 via-gray-200 to-gray-300 dark:from-gray-800 dark:via-gray-700 dark:to-gray-900 shadow-sm">
+                    <CardHeader className="flex items-center gap-3 px-4 pt-4">
+                        <FolderIcon className="h-5 w-5 text-gray-600 dark:text-gray-300" />
+                        <span className="text-base font-semibold text-gray-800 dark:text-white">Pip name</span>
                     </CardHeader>
-                    <CardContent>{plugin.pipName}</CardContent>
+                    <CardContent className="px-4 pb-4 text-sm text-gray-700 dark:text-gray-300">
+                        {plugin.pipName}
+                    </CardContent>
                 </Card>
 
-                <Card className="bg-gray-200 dark:bg-gray-800">
-                    <CardHeader className="flex items-center space-x-2">
-                        <GroupIcon className="h-5 w-5" />
-                        <span className="text-xl">Author</span>
+                {/* Card: Author */}
+                <Card className="rounded-xl bg-gradient-to-br from-gray-100 via-gray-200 to-gray-300 dark:from-gray-800 dark:via-gray-700 dark:to-gray-900 shadow-sm">
+                    <CardHeader className="flex items-center gap-3 px-4 pt-4">
+                        <GroupIcon className="h-5 w-5 text-gray-600 dark:text-gray-300" />
+                        <span className="text-base font-semibold text-gray-800 dark:text-white">Author</span>
                     </CardHeader>
-                    <CardContent>{plugin.author ?? "Unknown"}</CardContent>
+                    <CardContent className="px-4 pb-4 text-sm text-gray-700 dark:text-gray-300">
+                        {plugin.author ? (
+                            <div className="flex flex-wrap gap-2">
+                                {plugin.author.split(",").map((name, index) => (
+                                    <span
+                                        key={index}
+                                        className="inline-block max-w-full truncate bg-white/80 dark:bg-white/10 text-gray-800 dark:text-white px-3 py-1 rounded-full text-xs font-medium shadow-sm"
+                                        title={name.trim()}
+                                    >
+                                        {name.trim()}
+                                    </span>
+                                ))}
+                            </div>
+                        ) : (
+                            "Unknown"
+                        )}
+                    </CardContent>
                 </Card>
 
-                <Card className="bg-gray-200 dark:bg-gray-800">
-                    <CardHeader className="flex items-center space-x-2">
-                        <HelpIcon className="h-5 w-5" />
-                        <span className="text-xl">Summary</span>
+                {/* Card: Summary */}
+                <Card className="rounded-xl bg-gradient-to-br from-gray-100 via-gray-200 to-gray-300 dark:from-gray-800 dark:via-gray-700 dark:to-gray-900 shadow-sm">
+                    <CardHeader className="flex items-center gap-3 px-4 pt-4">
+                        <HelpIcon className="h-5 w-5 text-gray-600 dark:text-gray-300" />
+                        <span className="text-base font-semibold text-gray-800 dark:text-white">Summary</span>
                     </CardHeader>
-                    <CardContent>{plugin.summary ?? "General"}</CardContent>
+                    <CardContent className="px-4 pb-4 text-sm text-gray-700 dark:text-gray-300">
+                        {plugin.summary ?? "General"}
+                    </CardContent>
                 </Card>
 
-                <Card className="bg-gray-200 dark:bg-gray-800">
-                    <CardHeader className="flex items-center space-x-2">
-                        <HomeIcon className="h-5 w-5" />
-                        <span className="text-xl">Home page</span>
+                {/* Card: Home Page */}
+                <Card className="rounded-xl bg-gradient-to-br from-gray-100 via-gray-200 to-gray-300 dark:from-gray-800 dark:via-gray-700 dark:to-gray-900 shadow-sm">
+                    <CardHeader className="flex items-center gap-3 px-4 pt-4">
+                        <HomeIcon className="h-5 w-5 text-gray-600 dark:text-gray-300" />
+                        <span className="text-base font-semibold text-gray-800 dark:text-white">Home page</span>
                     </CardHeader>
-                    <CardContent>
+                    <CardContent className="px-4 pb-4 text-sm text-gray-700 dark:text-gray-300">
                         {plugin.homePage ? (
                             <a
                                 href={plugin.homePage}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="text-blue-600 dark:text-blue-400 underline"
+                                className="text-blue-600 dark:text-blue-400 underline break-words"
                             >
                                 {plugin.homePage}
                             </a>
@@ -315,6 +371,7 @@ export default function PluginPage() {
                     </CardContent>
                 </Card>
             </div>
+
         </motion.div>
     );
 }
