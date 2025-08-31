@@ -38,12 +38,12 @@ export default function PluginCard(plugin: Plugin) {
         {/* Plugin Name and Version */}
         <div className="flex flex-col">
           <div className="flex items-center space-x-2">
-            <h3 className="text-2xl font-semibold text-gray-800 dark:text-gray-200">
+            <h3 className="text-xl text-gray-800 dark:text-gray-200">
               {plugin.name}
             </h3>
 
           </div>
-          <span className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+          <span className="mt-1 text-sm text-gray-500 dark:text-gray-400 ml-1">
           {plugin.installed && (
             <span>  
                 v{plugin.pipVersion}
@@ -61,7 +61,7 @@ export default function PluginCard(plugin: Plugin) {
 
       {/* Card Content */}
       <CardContent className="flex items-center justify-center">
-        <span className="text-center text-xl">
+        <span className="text-center text-lg">
           {plugin.pipName}
         </span>
       </CardContent>

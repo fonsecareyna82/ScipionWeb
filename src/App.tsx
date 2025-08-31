@@ -24,16 +24,19 @@ import Plugins from "./pages/Dashboard/plugins/Plugins";
 import PluginPage from "./pages/Dashboard/plugins/PluginPage";
 import ProtectedRoute from "./components/auth/ProtectedRoute";
 import VerifyEmailForm from "./components/auth/VerifyEmailForm";
+import SessionManager from "./components/common/SessionManager";
+
 
 export default function App() {
   return (
     <Router>
       <ScrollToTop />
+      <SessionManager />  {/* Controlling inactivity */}
       <Routes>
         {/* Home page: login */}
         <Route path="/" element={<SignIn />} />
 
-        {/* Publicas routes */}
+        {/* Publics routes */}
         <Route path="/signin" element={<SignIn />} />
         <Route path="/signup" element={<SignUp />} />
 
