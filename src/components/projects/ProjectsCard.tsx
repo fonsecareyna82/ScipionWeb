@@ -1,5 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { useState, useRef, useEffect } from "react";
+import { motion } from "framer-motion";
 import {
   CalendarIcon,
   FolderIcon,
@@ -64,26 +65,31 @@ export default function ProjectCard({
   }, []);
 
   return (
-    <div
+    <motion.div
       ref={cardRef}
       onClick={onSelect}
       onDoubleClick={handleDoubleClick}
       onContextMenu={handleContextMenu}
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4, ease: "easeOut" }}
       className={`relative cursor-pointer rounded-2xl border p-5 md:p-6
         transform transition-all duration-300 ease-in-out hover:scale-[1.03] hover:shadow-xl
         ${isSelected ? "border-blue-700 shadow-blue-100" : "border-gray-200 dark:border-gray-800"}
-        bg-white dark:bg-white/5 backdrop-blur-md`}
+        bg-gray-100 dark:bg-white/5 backdrop-blur-md`}
     >
-      {/* Icon + Label */}
       {/* Header wrapped in compact mini-card */}
-      <div className="mb-4 rounded-xl bg-gradient-to-r from-yellow-50 via-white to-blue-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 px-4 py-2 border border-transparent transition-all duration-300">
+      <div className="mb-4 rounded-xl bg-gradient-to-r from-green-100 via-white to-blue-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 px-4 py-2 border transition-all duration-300">
         <div className="flex justify-between items-center">
-          {/*Project name */}
-          <div className="flex items-center gap-3 group">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-yellow-100 dark:bg-yellow-900 group-hover:scale-110 transition-transform duration-300">
+          {/* Project name */}
+          <div className="flex items-center gap-3 group min-w-0">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white-100 dark:bg-yellow-900 group-hover:scale-110 transition-transform duration-300">
               {icon}
             </div>
-            <span className="text-sm font-semibold text-gray-800 dark:text-white/90">
+            <span
+              className="text-lg text-gray-800 dark:text-white/90 truncate flex-grow"
+              title={label}
+            >
               {label}
             </span>
           </div>
@@ -102,7 +108,7 @@ export default function ProjectCard({
       </div>
 
       {/* Separator */}
-      <div className="my-2 border-t border-gray-100 dark:border-gray-700" />
+      <div className="my-2 border-t border-gray-300 dark:border-gray-700" />
 
       {/* Extra Info */}
       <div className="mt-4 space-y-3 text-sm text-gray-500 dark:text-gray-400">
@@ -126,7 +132,7 @@ export default function ProjectCard({
         )}
 
         {/* Separator */}
-        <div className="my-2 border-t border-gray-100 dark:border-gray-700" />
+        <div className="my-2 border-t border-gray-300 dark:border-gray-700" />
 
         {/* Value */}
         <div className="mt-2 ml-7">
@@ -135,6 +141,7 @@ export default function ProjectCard({
           </span>
         </div>
       </div>
+
       {/* Sección expandida (comentada) */}
       {/*
       {isExpanded && (
@@ -148,6 +155,6 @@ export default function ProjectCard({
         </div>
       )}
       */}
-    </div>
+    </motion.div>
   );
 }
