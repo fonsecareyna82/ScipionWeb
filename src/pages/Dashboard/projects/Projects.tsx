@@ -14,6 +14,7 @@ export default function Projects() {
   const [selectedLabel, setSelectedLabel] = useState<string | null>(null);
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const [expandedLabel, setExpandedLabel] = useState<string | null>(null);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -147,6 +148,12 @@ export default function Projects() {
               diskUsage={project.diskUsage.toString()}
               isSelected={selectedLabel === project.name}
               onSelect={() => setSelectedLabel(project.name)}
+              isExpanded={expandedLabel === project.name}
+              onToggleExpand={() =>
+                setExpandedLabel((prev) =>
+                  prev === project.name ? null : project.name
+                )
+              }
             />
           ))}
 

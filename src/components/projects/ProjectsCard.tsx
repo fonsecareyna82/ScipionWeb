@@ -16,18 +16,26 @@ interface ProjectCardProps {
   diskUsage?: string;
   isSelected?: boolean;
   onSelect?: () => void;
+  isExpanded?: boolean;
+  onToggleExpand?: () => void;
+  description?: string;
+  status?: string;
 }
 
 export default function ProjectCard({
   label,
   value,
-  icon = (
-    <FolderIcon className="text-yellow-600 text-gray-800 size-5 dark:text-white/90" />
-  ),
   createdAt,
   diskUsage,
   isSelected,
   onSelect,
+  isExpanded = false,
+  onToggleExpand,
+  description = "No description available.",
+  status = "Active",
+  icon = (
+    <FolderIcon className="text-yellow-600 text-gray-800 size-5 dark:text-white/90" />
+  ),
 }: ProjectCardProps) {
   const navigate = useNavigate();
   const cardRef = useRef<HTMLDivElement>(null);
@@ -67,26 +75,29 @@ export default function ProjectCard({
         bg-white dark:bg-white/5 backdrop-blur-md`}
     >
       {/* Icon + Label */}
-      <div className="px-3 pt-1 pb-2 rounded-lg">
-        {/* First line: ProjectAction */}
-        <div className="flex justify-end mb-0">
-          <ProjectAction
-            icon={null}
-            label=""
-            onOpen={handleDoubleClick}
-            onRename={() => console.log("Rename", label)}
-            onRemove={() => console.log("Remove", label)}
-          />
-        </div>
-
-        {/* Second line: icon + label */}
-        <div className="flex items-center gap-3 group">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gray-100 dark:bg-gray-900 group-hover:scale-110 transition-transform duration-300">
-            {icon}
+      {/* Header wrapped in compact mini-card */}
+      <div className="mb-4 rounded-xl bg-gradient-to-r from-yellow-50 via-white to-blue-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 px-4 py-2 border border-transparent transition-all duration-300">
+        <div className="flex justify-between items-center">
+          {/*Project name */}
+          <div className="flex items-center gap-3 group">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-yellow-100 dark:bg-yellow-900 group-hover:scale-110 transition-transform duration-300">
+              {icon}
+            </div>
+            <span className="text-sm font-semibold text-gray-800 dark:text-white/90">
+              {label}
+            </span>
           </div>
-          <span className="text-base font-semibold text-gray-800 dark:text-white/90">
-            {label}
-          </span>
+
+          {/* Actions */}
+          <div className="shrink-0">
+            <ProjectAction
+              icon={null}
+              label=""
+              onOpen={handleDoubleClick}
+              onRename={() => console.log("Rename", label)}
+              onRemove={() => console.log("Remove", label)}
+            />
+          </div>
         </div>
       </div>
 
@@ -124,6 +135,19 @@ export default function ProjectCard({
           </span>
         </div>
       </div>
+      {/* Sección expandida (comentada) */}
+      {/*
+      {isExpanded && (
+        <div className="mt-5 px-3 py-4 rounded-xl bg-gray-50 dark:bg-gray-800 transition-all duration-300">
+          <p className="text-sm text-gray-700 dark:text-gray-300 mb-2">
+            <strong>Description:</strong> {description}
+          </p>
+          <p className="text-sm text-gray-700 dark:text-gray-300">
+            <strong>Status:</strong> {status}
+          </p>
+        </div>
+      )}
+      */}
     </div>
   );
 }
