@@ -1,5 +1,5 @@
 import { useParams } from "react-router-dom";
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { fetchProject, Project, fetchProtocolDetails } from "../../../api/projects";
 import ProtocolForm from "../../../components/projects/ProtocolForm";
 import { buildGraphElements } from "../../../utils/graph_utils";
@@ -11,11 +11,10 @@ import ReactFlow, {
   useNodesState,
   useEdgesState,
 } from 'reactflow';
-import { FindIcon, RefreshIcon } from "../../../icons";
+import { RefreshIcon } from "../../../icons";
 import 'reactflow/dist/style.css';
 import { createStatusNodeWrapper } from "../../../components/projects/ProtocolNodeCardWrapper";
-
-const REFRESH_INTERVAL_MS = 15000; // 15 seconds
+import { color } from "framer-motion";
 
 export default function ProjectPage() {
   const { projectName } = useParams();
@@ -23,8 +22,13 @@ export default function ProjectPage() {
   const [selectedNodeDetails, setSelectedNodeDetails] = useState<any>(null);
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  const [tableData, setTableData] = useState<any[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [previousNodeId, setPreviousNodeId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'hierarchical' | 'table'>('hierarchical');
+  const [highlightedId, setHighlightedId] = useState<string | null>(null);
+  const rowRefs = useRef<Record<string, HTMLTableRowElement | null>>({});
+  const tableContainerRef = useRef<HTMLDivElement | null>(null);
 
   const handleNodeClick = (nodeData: any, event?: React.MouseEvent) => {
     const isMultiSelect = event?.shiftKey;
@@ -54,7 +58,6 @@ export default function ProjectPage() {
     }
   };
 
-  // 🔹 Doble click → open the protocol form
   const handleNodeDoubleClick = async (nodeData: any) => {
     try {
       if (projectName) {
@@ -88,7 +91,6 @@ export default function ProjectPage() {
     }
   };
 
-  // Close only from the button/X of the form
   const handleCloseForm = () => {
     setSelectedNodeDetails(null);
   };
@@ -104,25 +106,27 @@ export default function ProjectPage() {
     [previousNodeId]
   );
 
-  // Fetch project data when projectName changes
   useEffect(() => {
     if (!projectName) return;
 
     setProject(undefined);
     setNodes([]);
     setEdges([]);
+    setTableData([]);
     setSelectedNodeDetails(null);
     setPreviousNodeId(null);
+    setHighlightedId(null);
 
     fetchProject(projectName)
       .then((data) => {
         setProject(data);
-        const { nodes, edges } = buildGraphElements(data.protocols);
+        const { nodes, edges, table } = buildGraphElements(data.protocols, viewMode);
         setNodes(nodes);
         setEdges(edges);
+        setTableData(table ?? []);
       })
       .catch((err) => console.error(err));
-  }, [projectName, setNodes, setEdges]);
+  }, [projectName, viewMode]);
 
   const handleRefresh = () => {
     if (projectName) {
@@ -130,9 +134,10 @@ export default function ProjectPage() {
       fetchProject(projectName)
         .then((data) => {
           setProject(data);
-          const { nodes, edges } = buildGraphElements(data.protocols);
+          const { nodes, edges, table } = buildGraphElements(data.protocols, viewMode);
           setNodes(nodes);
           setEdges(edges);
+          setTableData(table ?? []);
         })
         .catch((err) => console.error(err))
         .finally(() => setIsRefreshing(false));
@@ -140,38 +145,41 @@ export default function ProjectPage() {
   };
 
   const handleSearch = (query: string) => {
-    const reactFlowInstance = (window as any).reactFlowInstance;
-    if (!reactFlowInstance) return;
-
     if (!query.trim()) {
-      // 🔹 Deseleccionar nodos y edges
-      setNodes((nds) =>
-        nds.map((node) => ({
-          ...node,
-          style: undefined,
-        }))
+      setHighlightedId(null);
+      return;
+    }
+
+    if (viewMode === 'table') {
+      const match = tableData.find(
+        (row) =>
+          row.id.toLowerCase().includes(query.toLowerCase()) ||
+          row.label.toLowerCase().includes(query.toLowerCase())
       );
 
-      setEdges((eds) =>
-        eds.map((edge) => ({
-          ...edge,
-          style: {
-            stroke: '#999',
-            strokeWidth: 2,
-          },
-        }))
-      );
+      if (match) {
+        setHighlightedId(match.id);
 
-      // 🔹 Reset selected node
-      setPreviousNodeId(null);
+        const row = rowRefs.current[match.id];
+        const container = tableContainerRef.current;
 
-      // Adjust view
-      setTimeout(() => {
-        reactFlowInstance.fitView({ padding: 0.2, duration: 800 });
-      }, 100);
+        if (row && container) {
+          const rowTop = row.offsetTop;
+          const rowHeight = row.offsetHeight;
+          const containerHeight = container.offsetHeight;
+
+          container.scrollTo({
+            top: rowTop - containerHeight / 2 + rowHeight / 2,
+            behavior: 'smooth',
+          });
+        }
+      }
 
       return;
     }
+
+    const reactFlowInstance = (window as any).reactFlowInstance;
+    if (!reactFlowInstance) return;
 
     const match = nodes.find(
       (node) =>
@@ -189,39 +197,167 @@ export default function ProjectPage() {
     });
   };
 
+  const scrollToProtocol = (id: string) => {
+    const row = rowRefs.current[id];
+    const container = tableContainerRef.current;
 
+    if (row && container) {
+      setHighlightedId(id);
+
+      const rowTop = row.offsetTop;
+      const rowHeight = row.offsetHeight;
+      const containerHeight = container.offsetHeight;
+
+      container.scrollTo({
+        top: rowTop - containerHeight / 2 + rowHeight / 2,
+        behavior: 'smooth',
+      });
+    }
+  };
+
+  const getStatusStyle = (status: string | undefined) => {
+    const colorMap: Record<string, string> = {
+      running: '#FCCE62',
+      saved: '#D9F1FA',
+      launched: '#D9F1FA',
+      finished: '#D2F5CB',
+      failed: '#F5CCCB',
+      aborted: '#F5CCCB',
+      interactive: '#f7f3bf',
+    };
+
+    return {
+      backgroundColor: colorMap[status ?? ''] ?? '#eee',
+      padding: '4px 8px',
+      borderRadius: '6px',
+      fontWeight: 300,
+      color: 'black'
+    };
+  };
+
+  const handleRowClick = async (id: string) => {
+    if (!projectName) return;
+
+    try {
+      setHighlightedId(id);
+    } catch (err) {
+      console.error('Failed to fetch protocol details', err);
+    }
+  };
+
+  const handleRowDoubleClick = async (id: string) => {
+    if (!projectName) return;
+
+    try {
+      const fullNodeData = await fetchProtocolDetails(projectName, id);
+      setHighlightedId(id);
+      setSelectedNodeDetails(fullNodeData);
+      setPreviousNodeId(id);
+
+    } catch (err) {
+      console.error('Failed to fetch protocol details', err);
+    }
+  };
 
   return (
     <div className="p-6 h-screen">
       <h1 className="text-2xl mb-4">{projectName}</h1>
-      < div className="relative mb-6 w-full max-w-sm">
-        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            className="h-5 w-5 text-gray-400 dark:text-gray-500"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={2}
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-            />
-          </svg>
+
+      <div className="flex justify-between items-center mb-6">
+        <div className="relative w-full max-w-sm">
+          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="h-5 w-5 text-gray-400 dark:text-gray-500"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+              />
+            </svg>
+          </div>
+          <input
+            type="text"
+            placeholder="Search protocol..."
+            onChange={(e) => handleSearch(e.target.value)}
+            className="w-full px-3 py-2 pl-10 pr-3 border border-gray-300 rounded-md 
+                       focus:outline-none focus:ring-2 focus:ring-blue-500 
+                       dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+          />
         </div>
-        <input
-          type="text"
-          placeholder="Search protocol..."
-          onChange={(e) => handleSearch(e.target.value)}
-          className="w-full px-3 py-2 pl-10 pr-3 border border-gray-300 rounded-md 
-                           focus:outline-none focus:ring-2 focus:ring-blue-500 
-                           dark:bg-gray-800 dark:border-gray-700 dark:text-white"
-        />
+
+        <div className="ml-4">
+          <label className="mr-2 font-small">View mode:</label>
+          <select
+            value={viewMode}
+            onChange={(e) => setViewMode(e.target.value as any)}
+            className="px-2 py-1 border rounded dark:bg-gray-800 dark:text-white"
+          >
+            <option value="hierarchical">Tree</option>
+            <option value="table">Table</option>
+          </select>
+        </div>
       </div>
+
       {!project ? (
         <p className="text-gray-500">Loading project data...</p>
+      ) : viewMode === 'table' ? (
+
+        <div
+          ref={tableContainerRef}
+          className="overflow-auto h-[80vh] border rounded shadow p-4"
+        >
+          <table className="w-full text-sm border border-gray-300 dark:border-gray-700">
+            <thead className="bg-gray-300 dark:bg-gray-800">
+              <tr>
+                <th className="px-4 py-2 text-left">Id</th>
+                <th className="px-4 py-2 text-left">Run</th>
+                <th className="px-4 py-2 text-left">State</th>
+                <th className="px-4 py-2 text-left">Time</th>
+                <th className="px-4 py-2 text-left">Children</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tableData.map((row) => (
+                <tr
+                  key={row.id}
+                  ref={(el) => {
+                    rowRefs.current[row.id] = el;
+                  }}
+                  onDoubleClick={() => handleRowDoubleClick(row.id)}
+                  //onClick={() => handleRowClick(row.id)}
+                  className={`border-t border-gray-200 dark:border-gray-700 ${highlightedId === row.id ? 'bg-yellow-100 dark:bg-yellow-900' : ''
+                    }`}
+                >
+                  <td className="px-4 py-2">{row.id}</td>
+                  <td className="px-4 py-2">{row.label}</td>
+                  <td className="px-4 py-2">
+                    <span style={getStatusStyle(row.status)}>
+                      {row.status ?? '—'}
+                    </span>
+                  </td>
+                  <td className="px-4 py-2">0.00</td>
+                  <td className="px-4 py-2 space-x-2">
+                    {row.children.map((childId: string) => (
+                      <button
+                        key={childId}
+                        onClick={() => scrollToProtocol(childId)}
+                        className="text-blue-600 dark:text-blue-400 underline hover:text-blue-800"
+                      >
+                        {childId}
+                      </button>
+                    ))}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       ) : (
         <div className="h-[80vh] border rounded shadow relative">
           <ReactFlowProvider>
@@ -243,11 +379,6 @@ export default function ProjectPage() {
                 </marker>
               </defs>
             </svg>
-
-            <div className="absolute inset-0">
-
-
-            </div>
 
             <ReactFlow
               nodes={nodes}

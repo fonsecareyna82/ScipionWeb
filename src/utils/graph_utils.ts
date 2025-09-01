@@ -15,25 +15,41 @@ function estimateLabelWidth(label: string, fontSize = 20, fontFamily = 'Arial'):
 /**
  * Build nodes and edges for ReactFlow from protocols.
  */
-export function buildGraphElements(protocols: Record<string, ProtocolNode>) {
+export function buildGraphElements(
+  protocols: Record<string, ProtocolNode>,
+  viewMode: 'hierarchical' | 'grid' | 'table' = 'hierarchical'
+) {
   const nodes: Node[] = [];
   const edges: Edge[] = [];
 
+  // TABLE VIEW
+  if (viewMode === 'table') {
+    const sorted = Object.entries(protocols)
+  .filter(([id]) => id !== 'PROJECT')
+  .sort(([idA], [idB]) => parseInt(idA, 10) - parseInt(idB, 10));
+
+    const tableData = sorted.map(([id, prot]) => ({
+      id,
+      label: prot.label,
+      status: prot.status,
+      parameters: prot.parameters,
+      children: prot.children,
+    }));
+
+    return { nodes: [], edges: [], table: tableData };
+  }
+
+  //  TREE VIEW
   const levelMap: Record<string, number> = {};
   const levelBuckets: Record<number, string[]> = {};
   const edgeSet = new Set<string>();
 
-  /**
-   * Recursive traversal to build edges and assign deepest level.
-   */
   function traverse(id: string, level: number) {
     const currentLevel = levelMap[id];
 
-    // Update level only if it's deeper
     if (currentLevel === undefined || level > currentLevel) {
       levelMap[id] = level;
 
-      // Remove from previous bucket if needed
       Object.values(levelBuckets).forEach(bucket => {
         const index = bucket.indexOf(id);
         if (index !== -1) bucket.splice(index, 1);
@@ -63,10 +79,8 @@ export function buildGraphElements(protocols: Record<string, ProtocolNode>) {
     });
   }
 
-  // Start traversal from the root node "PROJECT"
   traverse("PROJECT", 0);
 
-  // Position nodes horizontally based on estimated width
   Object.entries(levelBuckets).forEach(([levelStr, ids]) => {
     const level = parseInt(levelStr, 10);
     const y = level * 300;
@@ -85,6 +99,7 @@ export function buildGraphElements(protocols: Record<string, ProtocolNode>) {
       const status = prot?.status;
       const parameters = prot?.parameters;
       const nodeWidth = widths[index];
+      const spacing = Math.max(80, nodeWidth * 0.2);
 
       nodes.push({
         id,
@@ -99,7 +114,6 @@ export function buildGraphElements(protocols: Record<string, ProtocolNode>) {
         draggable: true,
       });
 
-      const spacing = Math.max(80, nodeWidth * 0.3);
       x += nodeWidth + spacing;
     });
   });
