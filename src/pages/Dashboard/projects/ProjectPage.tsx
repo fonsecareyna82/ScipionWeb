@@ -259,9 +259,19 @@ export default function ProjectPage() {
     }
   };
 
+  const formatCpuTime = (seconds: number): string => {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+  
+    const pad = (n: number) => n.toString().padStart(2, '0');
+  
+    return `${pad(hours)}h:${pad(minutes)}m:${pad(secs)}s`;
+  };
+
   return (
     <div className="h-screen">
-      <h1 className="text-2xl mb-2">{projectName}</h1>
+      <h1 className="text-2xl mb-2 mt-2">{projectName}</h1>
 
       <div className="flex justify-between items-center mb-4">
         <div className="relative w-full max-w-sm">
@@ -285,13 +295,13 @@ export default function ProjectPage() {
             type="text"
             placeholder="Search protocol..."
             onChange={(e) => handleSearch(e.target.value)}
-            className="w-full px-3 py-2 pl-10 pr-3 border border-gray-300 rounded-md 
+            className="w-full px-3 py-2 pl-10 pr-3 border border-gray-300 rounded-md
                        focus:outline-none focus:ring-2 focus:ring-blue-500 
                        dark:bg-gray-800 dark:border-gray-700 dark:text-white"
           />
         </div>
 
-        <div className="ml-4">
+        <div className="ml-4 mr-4">
           <label className="mr-2 font-small">View mode:</label>
           <select
             value={viewMode}
@@ -303,6 +313,10 @@ export default function ProjectPage() {
           </select>
         </div>
       </div>
+
+      {selectedNodeDetails && (
+              <ProtocolForm data={selectedNodeDetails} onClose={handleCloseForm} />
+            )}
 
       {!project ? (
         <p className="text-gray-500">Loading project data...</p>
@@ -316,10 +330,10 @@ export default function ProjectPage() {
             <thead className="bg-gray-300 dark:bg-gray-800">
               <tr>
                 <th className="px-4 py-2 text-left">Id</th>
-                <th className="px-4 py-2 text-left">Run</th>
+                <th className="px-4 py-2 text-left">Protocol</th>
                 <th className="px-4 py-2 text-left">State</th>
                 <th className="px-4 py-2 text-left">Time</th>
-                <th className="px-4 py-2 text-left">Children</th>
+                <th className="px-4 py-2 text-left">Dependent</th>
               </tr>
             </thead>
             <tbody>
@@ -341,7 +355,7 @@ export default function ProjectPage() {
                       {row.status ?? '—'}
                     </span>
                   </td>
-                  <td className="px-4 py-2">0.00</td>
+                  <td className="px-4 py-2">{formatCpuTime(Number(row.cpuTime))}</td>
                   <td className="px-4 py-2 space-x-2">
                     {row.children.map((childId: string) => (
                       <button
@@ -359,11 +373,9 @@ export default function ProjectPage() {
           </table>
         </div>
       ) : (
-        <div className="h-full w-full">
+        <div className="h-full w-full border">
           <ReactFlowProvider>
-            {selectedNodeDetails && (
-              <ProtocolForm data={selectedNodeDetails} onClose={handleCloseForm} />
-            )}
+            
             <svg width="0" height="0">
               <defs>
                 <marker

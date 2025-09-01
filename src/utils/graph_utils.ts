@@ -34,6 +34,7 @@ export function buildGraphElements(
       status: prot.status,
       parameters: prot.parameters,
       children: prot.children,
+      cpuTime: prot.cpuTime,
     }));
 
     return { nodes: [], edges: [], table: tableData };
@@ -98,6 +99,7 @@ export function buildGraphElements(
       const label = prot?.label || id;
       const status = prot?.status;
       const parameters = prot?.parameters;
+      const cpuTime = prot?.cpuTime;
       const nodeWidth = widths[index];
       const spacing = Math.max(80, nodeWidth * 0.2);
 
@@ -109,6 +111,7 @@ export function buildGraphElements(
           status,
           id,
           parameters,
+          cpuTime,
         },
         position: { x, y },
         draggable: true,

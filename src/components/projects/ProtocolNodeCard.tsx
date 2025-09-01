@@ -19,10 +19,21 @@ type StatusNodeProps = {
     status?: string;
     id: string;
     color?: string;
+    cpuTime?: string;
   };
   selectedNodeId?: string;
   onClick?: () => void;
   onDoubleClick?: () => void;
+};
+
+const formatCpuTime = (seconds: number): string => {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = seconds % 60;
+
+  const pad = (n: number) => n.toString().padStart(2, '0');
+
+  return `${pad(hours)}h:${pad(minutes)}m:${pad(secs)}s`;
 };
 
 export default function StatusNode({
@@ -37,7 +48,6 @@ export default function StatusNode({
   const bgColor =
     STATUS_COLORS[data.status ?? 'finished'] ?? STATUS_COLORS['finished'];
   data.color = bgColor;
-
   const classNames = [
     'status-node',
     isHovered ? 'hovered' : '',
@@ -56,13 +66,17 @@ export default function StatusNode({
       onMouseLeave={() => setIsHovered(false)}
       style={{ backgroundColor: bgColor }}
     >
-      <div className="node-header">
+
+      <div
+        className={`node-header flex ${data.id === 'PROJECT' ? 'flex-col items-center text-center' : 'flex-row items-center space-x-2'
+          }`}
+      >
         {data.id !== 'PROJECT' && (
           <div className="node-id-badge">{data.id}</div>
         )}
         <div className="node-label">{data.label}</div>
       </div>
-
+      
       {data.id !== 'PROJECT' && (
         <>
           <hr className="node-divider" />
@@ -81,7 +95,28 @@ export default function StatusNode({
       )}
 
       {data.status && (
-        <div className="node-status-text">Status: {data.status}</div>
+        <div className="flex items-center justify-between text-2xl text-gray-800 dark:text-black-100">
+          <span>
+            Status: {data.status}
+          </span>
+          <span className="flex items-center space-x-1">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="h-8 w-8 text-gray-500 dark:text-gray-400"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
+            <span>{formatCpuTime(Number(data.cpuTime))}</span>
+          </span>
+        </div>
       )}
 
       <Handle type="target" position={Position.Top} />
