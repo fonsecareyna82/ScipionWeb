@@ -260,10 +260,10 @@ export default function ProjectPage() {
   };
 
   return (
-    <div className="p-6 h-screen">
-      <h1 className="text-2xl mb-4">{projectName}</h1>
+    <div className="h-screen">
+      <h1 className="text-2xl mb-2">{projectName}</h1>
 
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex justify-between items-center mb-4">
         <div className="relative w-full max-w-sm">
           <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
             <svg
@@ -359,7 +359,7 @@ export default function ProjectPage() {
           </table>
         </div>
       ) : (
-        <div className="h-[80vh] border rounded shadow relative">
+        <div className="h-full w-full">
           <ReactFlowProvider>
             {selectedNodeDetails && (
               <ProtocolForm data={selectedNodeDetails} onClose={handleCloseForm} />
