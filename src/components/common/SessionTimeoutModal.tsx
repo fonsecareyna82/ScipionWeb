@@ -1,6 +1,5 @@
 // src/components/common/SessionTimeoutModal.tsx
-import React, { useEffect, useState } from "react";
-import Button from "../ui/button/Button";
+import { useEffect, useState } from "react";
 import { Modal } from "../ui/modal";
 
 interface Props {

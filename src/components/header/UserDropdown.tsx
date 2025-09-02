@@ -11,6 +11,8 @@ export default function UserDropdown() {
   const navigate = useNavigate();
 
 
+  //const dropdownRef = useRef<HTMLDivElement>(null);
+
   const toggleDropdown = async () => {
     const nextState = !isOpen;
     setIsOpen(nextState);
@@ -25,15 +27,12 @@ export default function UserDropdown() {
     }
   };
 
-
   function closeDropdown() {
     setIsOpen(false);
-    const dropdownRef = useRef<HTMLDivElement>(null);
-
   }
 
   const handleLogout = () => {
-    localStorage.removeItem("accessToken"); // 🔥 Remove the token
+    localStorage.removeItem("accessToken");
     navigate("/");
   };
 
