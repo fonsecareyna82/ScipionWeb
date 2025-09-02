@@ -14,7 +14,6 @@ import ReactFlow, {
 import { RefreshIcon } from "../../../icons";
 import 'reactflow/dist/style.css';
 import { createStatusNodeWrapper } from "../../../components/projects/ProtocolNodeCardWrapper";
-import { color } from "framer-motion";
 
 export default function ProjectPage() {
   const { projectName } = useParams();

@@ -13,6 +13,7 @@ export interface ProtocolNode {
   status: string;
   parameters: Record<string, any>;
   cpuTime: string;
+  elapsedTime: string;
 }
 
 /**

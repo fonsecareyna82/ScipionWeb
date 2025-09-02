@@ -17,7 +17,7 @@ function estimateLabelWidth(label: string, fontSize = 20, fontFamily = 'Arial'):
  */
 export function buildGraphElements(
   protocols: Record<string, ProtocolNode>,
-  viewMode: 'hierarchical' | 'grid' | 'table' = 'hierarchical'
+  viewMode: 'hierarchical' | 'grid' | 'table' = 'hierarchical',
 ) {
   const nodes: Node[] = [];
   const edges: Edge[] = [];
@@ -100,6 +100,7 @@ export function buildGraphElements(
       const status = prot?.status;
       const parameters = prot?.parameters;
       const cpuTime = prot?.cpuTime;
+      const elapsedTime = prot?.elapsedTime;
       const nodeWidth = widths[index];
       const spacing = Math.max(80, nodeWidth * 0.2);
 
@@ -112,6 +113,7 @@ export function buildGraphElements(
           id,
           parameters,
           cpuTime,
+          elapsedTime,      
         },
         position: { x, y },
         draggable: true,

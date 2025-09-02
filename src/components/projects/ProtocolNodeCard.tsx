@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Handle, Position } from 'reactflow';
 import './ProtocolNodeCard.css';
 import { ArrowDownIcon, ArrowUpIcon } from '../../icons';
@@ -20,6 +20,7 @@ type StatusNodeProps = {
     id: string;
     color?: string;
     cpuTime?: string;
+    elapsedTime?: string;
   };
   selectedNodeId?: string;
   onClick?: () => void;
@@ -30,9 +31,7 @@ const formatCpuTime = (seconds: number): string => {
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
   const secs = seconds % 60;
-
   const pad = (n: number) => n.toString().padStart(2, '0');
-
   return `${pad(hours)}h:${pad(minutes)}m:${pad(secs)}s`;
 };
 
@@ -114,7 +113,7 @@ export default function StatusNode({
                 d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
               />
             </svg>
-            <span>{formatCpuTime(Number(data.cpuTime))}</span>
+            <span>{formatCpuTime(Number(data.elapsedTime))}</span>
           </span>
         </div>
       )}
