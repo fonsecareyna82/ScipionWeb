@@ -171,6 +171,17 @@ export default function ProjectPage() {
     }
   };
 
+  // ------------------------ Automatic Refresh --------------------------------
+  const TIME_TO_REFRESH = 15000 // 15s
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      handleRefresh();
+    }, TIME_TO_REFRESH); 
+  
+    return () => clearInterval(interval);
+  }, [projectName, viewMode]); 
+
   // ------------------------ Tick updater ------------------------
   const nodesRef = useRef(nodes);
   useEffect(() => {
@@ -247,8 +258,17 @@ export default function ProjectPage() {
   const handleSearch = (query: string) => {
     if (!query.trim()) {
       setHighlightedId(null);
+  
+      if (viewMode === 'hierarchical') {
+        const reactFlowInstance = (window as any).reactFlowInstance;
+        if (reactFlowInstance) {
+          reactFlowInstance.fitView({ duration: 800 });
+        }
+      }
+  
       return;
     }
+  
     if (viewMode === 'table') {
       const match = tableData.find(
         (row) =>
@@ -258,20 +278,26 @@ export default function ProjectPage() {
       if (match) scrollToProtocol(match.id);
       return;
     }
+  
     const reactFlowInstance = (window as any).reactFlowInstance;
     if (!reactFlowInstance) return;
+  
     const match = nodes.find(
       (node) =>
         node.id.toLowerCase().includes(query.toLowerCase()) ||
-        (node.data?.label?.toLowerCase?.().includes(query.toLowerCase()))
+        node.data?.label?.toLowerCase?.().includes(query.toLowerCase())
     );
+  
     if (!match) return;
+  
     handleNodeClick(match);
+  
     reactFlowInstance.setCenter(match.position.x, match.position.y, {
       zoom: reactFlowInstance.getViewport().zoom,
       duration: 800,
     });
   };
+  
 
   const handleRowDoubleClick = async (id: string) => {
     if (!projectName) return;
