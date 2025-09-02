@@ -5,14 +5,19 @@
   min-width: 460px;
   text-align: left;
   line-height: 1.4;
-  transition: transform 0.3s ease-in-out, border 0.2s ease, box-shadow 0.2s ease;
   position: relative;
   border: 1px solid #ccc;
   box-shadow: none;
+  transform-origin: center center;
+
+  /* transición más suave */
+  transition: transform 0.6s cubic-bezier(0.25, 0.8, 0.25, 1), 
+              border 0.3s ease, 
+              box-shadow 0.3s ease;
 }
 
 .status-node.hovered {
-  transform: scale(1.1);
+  transform: scale(1.05);
   border: 2px solid #999;
   cursor: pointer;
   z-index: 10;
@@ -26,6 +31,15 @@
 
 .status-node.pulsing {
   animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
 }
 
 .node-header {
@@ -77,17 +91,4 @@
   font-size: 1.4rem;
   color: #222;
   margin-top: 6px;
-}
-
-@keyframes pulse {
-  0%, 100% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(1.1);
-  }
-}
-
-.pulsing {
-  animation: pulse 1s infinite;
 }

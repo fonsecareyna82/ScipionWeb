@@ -113,7 +113,8 @@ export function buildGraphElements(
           id,
           parameters,
           cpuTime,
-          elapsedTime,      
+          elapsedTime,
+          tick: Number(elapsedTime) || 0, // inicializamos tick
         },
         position: { x, y },
         draggable: true,

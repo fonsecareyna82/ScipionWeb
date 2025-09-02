@@ -10,6 +10,8 @@ import ReactFlow, {
   ReactFlowProvider,
   useNodesState,
   useEdgesState,
+  Node,
+  Edge,
 } from 'reactflow';
 import { RefreshIcon } from "../../../icons";
 import 'reactflow/dist/style.css';
@@ -19,38 +21,37 @@ export default function ProjectPage() {
   const { projectName } = useParams();
   const [project, setProject] = useState<Project>();
   const [selectedNodeDetails, setSelectedNodeDetails] = useState<any>(null);
-  const [nodes, setNodes, onNodesChange] = useNodesState([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node[]>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge[]>([]);
   const [tableData, setTableData] = useState<any[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [previousNodeId, setPreviousNodeId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'hierarchical' | 'table'>('hierarchical');
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
+  const [nodeTicks, setNodeTicks] = useState<Record<string, number>>({});
   const rowRefs = useRef<Record<string, HTMLTableRowElement | null>>({});
   const tableContainerRef = useRef<HTMLDivElement | null>(null);
+  const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
 
+  // ------------------------ Node click handlers ------------------------
   const handleNodeClick = (nodeData: any, event?: React.MouseEvent) => {
     const isMultiSelect = event?.shiftKey;
 
     if (!isMultiSelect) {
       setPreviousNodeId(nodeData.id);
 
+      // Reset node styles except clicked node
       setNodes((nds) =>
         nds.map((node) =>
           node.id === nodeData.id ? node : { ...node, style: undefined }
         )
       );
+
+      // Highlight edges connected to clicked node
       setEdges((eds) =>
         eds.map((edge) =>
           edge.source === nodeData.id || edge.target === nodeData.id
-            ? {
-              ...edge,
-              style: {
-                ...edge.style,
-                stroke: '#0070f3',
-                strokeWidth: 3,
-              },
-            }
+            ? { ...edge, style: { ...edge.style, stroke: '#0070f3', strokeWidth: 3 } }
             : { ...edge, style: undefined }
         )
       );
@@ -73,14 +74,7 @@ export default function ProjectPage() {
         setEdges((eds) =>
           eds.map((edge) =>
             edge.source === nodeData.id || edge.target === nodeData.id
-              ? {
-                ...edge,
-                style: {
-                  ...edge.style,
-                  stroke: '#0070f3',
-                  strokeWidth: 3,
-                },
-              }
+              ? { ...edge, style: { ...edge.style, stroke: '#0070f3', strokeWidth: 3 } }
               : { ...edge, style: undefined }
           )
         );
@@ -94,17 +88,18 @@ export default function ProjectPage() {
     setSelectedNodeDetails(null);
   };
 
-  const nodeTypes = useMemo(
-    () => ({
-      status: createStatusNodeWrapper(
-        handleNodeClick,
-        handleNodeDoubleClick,
-        previousNodeId ?? undefined
-      ),
-    }),
-    [previousNodeId]
-  );
+  // ------------------------ Node types ------------------------
+  const nodeTypes = useMemo(() => ({
+    status: createStatusNodeWrapper(
+      handleNodeClick,
+      handleNodeDoubleClick,
+      previousNodeId ?? undefined,
+      hoveredNodeId,
+      setHoveredNodeId
+    ),
+  }), [previousNodeId, hoveredNodeId]);
 
+  // ------------------------ Fetch project ------------------------
   useEffect(() => {
     if (!projectName) return;
 
@@ -115,6 +110,7 @@ export default function ProjectPage() {
     setSelectedNodeDetails(null);
     setPreviousNodeId(null);
     setHighlightedId(null);
+    setNodeTicks({});
 
     fetchProject(projectName)
       .then((data) => {
@@ -123,10 +119,20 @@ export default function ProjectPage() {
         setNodes(nodes);
         setEdges(edges);
         setTableData(table ?? []);
+
+        // Inicializar ticks
+        const initialTicks: Record<string, number> = {};
+        nodes.forEach((n) => {
+          if (n.data?.status === 'running') {
+            initialTicks[n.id] = Number(n.data.elapsedTime) ?? 0;
+          }
+        });
+        setNodeTicks(initialTicks);
       })
       .catch((err) => console.error(err));
   }, [projectName, viewMode]);
 
+  // ------------------------ Refresh ------------------------
   const handleRefresh = () => {
     if (projectName) {
       setIsRefreshing(true);
@@ -137,76 +143,70 @@ export default function ProjectPage() {
           setNodes(nodes);
           setEdges(edges);
           setTableData(table ?? []);
+
+          // Mantener ticks actualizados con nuevos datos
+          setNodeTicks((prev) => {
+            const updated: Record<string, number> = { ...prev };
+            nodes.forEach((n) => {
+              if (n.data?.status === 'running') {
+                updated[n.id] = Math.max(prev[n.id] ?? 0, Number(n.data.elapsedTime) ?? 0);
+              }
+            });
+            return updated;
+          });
         })
         .catch((err) => console.error(err))
         .finally(() => setIsRefreshing(false));
     }
   };
 
-  const handleSearch = (query: string) => {
-    if (!query.trim()) {
-      setHighlightedId(null);
-      return;
-    }
+  // ------------------------ Tick updater ------------------------
+  const nodesRef = useRef(nodes);
+  useEffect(() => {
+    nodesRef.current = nodes;
+  }, [nodes]);
 
-    if (viewMode === 'table') {
-      const match = tableData.find(
-        (row) =>
-          row.id.toLowerCase().includes(query.toLowerCase()) ||
-          row.label.toLowerCase().includes(query.toLowerCase())
-      );
+  // Intervalo que incrementa los ticks
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setNodeTicks((prev) => {
+        const updated: Record<string, number> = { ...prev };
 
-      if (match) {
-        setHighlightedId(match.id);
+        Object.values(nodesRef.current).forEach((node) => {
+          if (node.data?.status === 'running') {
+            updated[node.id] = (prev[node.id] ?? Number(node.data.elapsedTime) ?? 0) + 1;
+          }
+        });
 
-        const row = rowRefs.current[match.id];
-        const container = tableContainerRef.current;
+        return updated;
+      });
+    }, 1000);
 
-        if (row && container) {
-          const rowTop = row.offsetTop;
-          const rowHeight = row.offsetHeight;
-          const containerHeight = container.offsetHeight;
+    return () => clearInterval(interval);
+  }, []); // <-- no dependencias, interval se mantiene
 
-          container.scrollTo({
-            top: rowTop - containerHeight / 2 + rowHeight / 2,
-            behavior: 'smooth',
-          });
-        }
-      }
-
-      return;
-    }
-
-    const reactFlowInstance = (window as any).reactFlowInstance;
-    if (!reactFlowInstance) return;
-
-    const match = nodes.find(
-      (node) =>
-        node.id.toLowerCase().includes(query.toLowerCase()) ||
-        (node.data?.label?.toLowerCase?.().includes(query.toLowerCase()))
+  // Inject ticks into nodes para ReactFlow re-render
+  useEffect(() => {
+    setNodes((nds) =>
+      nds.map((node) => ({
+        ...node,
+        data: {
+          ...node.data,
+          tick: nodeTicks[node.id] ?? Number(node.data.elapsedTime) ?? 0,
+        },
+      }))
     );
+  }, [nodeTicks]);
 
-    if (!match) return;
-
-    handleNodeClick(match);
-
-    reactFlowInstance.setCenter(match.position.x, match.position.y, {
-      zoom: reactFlowInstance.getViewport().zoom,
-      duration: 800,
-    });
-  };
-
+  // ------------------------ Table helpers ------------------------
   const scrollToProtocol = (id: string) => {
     const row = rowRefs.current[id];
     const container = tableContainerRef.current;
-
     if (row && container) {
       setHighlightedId(id);
-
       const rowTop = row.offsetTop;
       const rowHeight = row.offsetHeight;
       const containerHeight = container.offsetHeight;
-
       container.scrollTo({
         top: rowTop - containerHeight / 2 + rowHeight / 2,
         behavior: 'smooth',
@@ -224,35 +224,51 @@ export default function ProjectPage() {
       aborted: '#F5CCCB',
       interactive: '#f7f3bf',
     };
-
     return {
       backgroundColor: colorMap[status ?? ''] ?? '#eee',
       padding: '4px 8px',
       borderRadius: '6px',
       fontWeight: 300,
-      color: 'black'
+      color: 'black',
     };
   };
 
-  const handleRowClick = async (id: string) => {
-    if (!projectName) return;
-
-    try {
-      setHighlightedId(id);
-    } catch (err) {
-      console.error('Failed to fetch protocol details', err);
+  const handleSearch = (query: string) => {
+    if (!query.trim()) {
+      setHighlightedId(null);
+      return;
     }
+    if (viewMode === 'table') {
+      const match = tableData.find(
+        (row) =>
+          row.id.toLowerCase().includes(query.toLowerCase()) ||
+          row.label.toLowerCase().includes(query.toLowerCase())
+      );
+      if (match) scrollToProtocol(match.id);
+      return;
+    }
+    const reactFlowInstance = (window as any).reactFlowInstance;
+    if (!reactFlowInstance) return;
+    const match = nodes.find(
+      (node) =>
+        node.id.toLowerCase().includes(query.toLowerCase()) ||
+        (node.data?.label?.toLowerCase?.().includes(query.toLowerCase()))
+    );
+    if (!match) return;
+    handleNodeClick(match);
+    reactFlowInstance.setCenter(match.position.x, match.position.y, {
+      zoom: reactFlowInstance.getViewport().zoom,
+      duration: 800,
+    });
   };
 
   const handleRowDoubleClick = async (id: string) => {
     if (!projectName) return;
-
     try {
       const fullNodeData = await fetchProtocolDetails(projectName, id);
       setHighlightedId(id);
       setSelectedNodeDetails(fullNodeData);
       setPreviousNodeId(id);
-
     } catch (err) {
       console.error('Failed to fetch protocol details', err);
     }
@@ -262,12 +278,11 @@ export default function ProjectPage() {
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
     const secs = seconds % 60;
-  
     const pad = (n: number) => n.toString().padStart(2, '0');
-  
     return `${pad(hours)}h:${pad(minutes)}m:${pad(secs)}s`;
   };
 
+  // ------------------------ Render ------------------------
   return (
     <div className="h-screen">
       <h1 className="text-2xl mb-2 mt-2">{projectName}</h1>
@@ -275,28 +290,15 @@ export default function ProjectPage() {
       <div className="flex justify-between items-center mb-4">
         <div className="relative w-full max-w-sm">
           <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-5 w-5 text-gray-400 dark:text-gray-500"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={2}
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-              />
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-400 dark:text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
           </div>
           <input
             type="text"
             placeholder="Search protocol..."
             onChange={(e) => handleSearch(e.target.value)}
-            className="w-full px-3 py-2 pl-10 pr-3 border border-gray-300 rounded-md
-                       focus:outline-none focus:ring-2 focus:ring-blue-500 
-                       dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+            className="w-full px-3 py-2 pl-10 pr-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:border-gray-700 dark:text-white"
           />
         </div>
 
@@ -314,17 +316,13 @@ export default function ProjectPage() {
       </div>
 
       {selectedNodeDetails && (
-              <ProtocolForm data={selectedNodeDetails} onClose={handleCloseForm} />
-            )}
+        <ProtocolForm data={selectedNodeDetails} onClose={handleCloseForm} />
+      )}
 
       {!project ? (
         <p className="text-gray-500">Loading project data...</p>
       ) : viewMode === 'table' ? (
-
-        <div
-          ref={tableContainerRef}
-          className="overflow-auto h-[80vh] border rounded shadow p-4"
-        >
+        <div ref={tableContainerRef} className="overflow-auto h-[80vh] border rounded shadow p-4">
           <table className="w-full text-sm border border-gray-300 dark:border-gray-700">
             <thead className="bg-gray-300 dark:bg-gray-800">
               <tr>
@@ -339,31 +337,17 @@ export default function ProjectPage() {
               {tableData.map((row) => (
                 <tr
                   key={row.id}
-                  ref={(el) => {
-                    rowRefs.current[row.id] = el;
-                  }}
+                  ref={(el) => { rowRefs.current[row.id] = el; }}
                   onDoubleClick={() => handleRowDoubleClick(row.id)}
-                  //onClick={() => handleRowClick(row.id)}
-                  className={`border-t border-gray-200 dark:border-gray-700 ${highlightedId === row.id ? 'bg-yellow-100 dark:bg-yellow-900' : ''
-                    }`}
+                  className={`border-t border-gray-200 dark:border-gray-700 ${highlightedId === row.id ? 'bg-yellow-100 dark:bg-yellow-900' : ''}`}
                 >
                   <td className="px-4 py-2">{row.id}</td>
                   <td className="px-4 py-2">{row.label}</td>
-                  <td className="px-4 py-2">
-                    <span style={getStatusStyle(row.status)}>
-                      {row.status ?? '—'}
-                    </span>
-                  </td>
+                  <td className="px-4 py-2"><span style={getStatusStyle(row.status)}>{row.status ?? '—'}</span></td>
                   <td className="px-4 py-2">{formatCpuTime(Number(row.cpuTime))}</td>
                   <td className="px-4 py-2 space-x-2">
                     {row.children.map((childId: string) => (
-                      <button
-                        key={childId}
-                        onClick={() => scrollToProtocol(childId)}
-                        className="text-blue-600 dark:text-blue-400 underline hover:text-blue-800"
-                      >
-                        {childId}
-                      </button>
+                      <button key={childId} onClick={() => scrollToProtocol(childId)} className="text-blue-600 dark:text-blue-400 underline hover:text-blue-800">{childId}</button>
                     ))}
                   </td>
                 </tr>
@@ -374,18 +358,9 @@ export default function ProjectPage() {
       ) : (
         <div className="h-full w-full border">
           <ReactFlowProvider>
-            
             <svg width="0" height="0">
               <defs>
-                <marker
-                  id="circle"
-                  viewBox="0 0 40 40"
-                  refX="20"
-                  refY="20"
-                  markerWidth="20"
-                  markerHeight="20"
-                  orient="auto-start-reverse"
-                >
+                <marker id="circle" viewBox="0 0 40 40" refX="20" refY="20" markerWidth="20" markerHeight="20" orient="auto-start-reverse">
                   <circle cx="20" cy="20" r="10" fill="#ff0000" />
                 </marker>
               </defs>
@@ -399,27 +374,13 @@ export default function ProjectPage() {
               nodeTypes={nodeTypes}
               fitView
               fitViewOptions={{ padding: 0.2 }}
-              defaultEdgeOptions={{
-                type: 'default',
-                style: { stroke: "#999", strokeWidth: 2 },
-                markerEnd: 'url(#circle)',
-              }}
-              onInit={(instance) => {
-                (window as any).reactFlowInstance = instance;
-              }}
+              defaultEdgeOptions={{ type: 'default', style: { stroke: "#999", strokeWidth: 2 }, markerEnd: 'url(#circle)' }}
+              onInit={(instance) => { (window as any).reactFlowInstance = instance; }}
             >
               <Background />
               <Controls position="top-right" showInteractive={false}>
-                <button
-                  className="refresh-btn"
-                  title="Refresh project"
-                  onClick={handleRefresh}
-                  disabled={isRefreshing}
-                >
-                  <RefreshIcon
-                    className={`w-5 h-4 text-blue-600 dark:text-gray-100 dark:bg-gray-200 mr-1 ml-1 mt-1 ${isRefreshing ? 'animate-spin' : ''
-                      }`}
-                  />
+                <button className="refresh-btn" title="Refresh project" onClick={handleRefresh} disabled={isRefreshing}>
+                  <RefreshIcon className={`w-5 h-4 text-blue-600 dark:text-gray-100 dark:bg-gray-200 mr-1 ml-1 mt-1 ${isRefreshing ? 'animate-spin' : ''}`} />
                 </button>
               </Controls>
             </ReactFlow>

@@ -1,4 +1,3 @@
-import { useState, useEffect, useRef } from 'react';
 import { Handle, Position } from 'reactflow';
 import './ProtocolNodeCard.css';
 import { ArrowDownIcon, ArrowUpIcon } from '../../icons';
@@ -21,8 +20,11 @@ type StatusNodeProps = {
     color?: string;
     cpuTime?: string;
     elapsedTime?: string;
+    tick?: number;
   };
   selectedNodeId?: string;
+  hoveredNodeId?: string | null;        
+  setHoveredNodeId?: (id: string | null) => void;
   onClick?: () => void;
   onDoubleClick?: () => void;
 };
@@ -38,15 +40,19 @@ const formatCpuTime = (seconds: number): string => {
 export default function StatusNode({
   data,
   selectedNodeId,
+  hoveredNodeId,
+  setHoveredNodeId,
   onClick,
   onDoubleClick,
 }: StatusNodeProps) {
-  const [isHovered, setIsHovered] = useState(false);
   const isSelected = selectedNodeId === data.id;
+  const isHovered = hoveredNodeId === data.id;
 
+  // Compute background color
   const bgColor =
     STATUS_COLORS[data.status ?? 'finished'] ?? STATUS_COLORS['finished'];
   data.color = bgColor;
+
   const classNames = [
     'status-node',
     isHovered ? 'hovered' : '',
@@ -61,21 +67,23 @@ export default function StatusNode({
       className={classNames}
       onClick={onClick}
       onDoubleClick={onDoubleClick}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
+      onMouseEnter={() => setHoveredNodeId?.(data.id)}
+      onMouseLeave={() => setHoveredNodeId?.(null)}
       style={{ backgroundColor: bgColor }}
     >
-
       <div
-        className={`node-header flex ${data.id === 'PROJECT' ? 'flex-col items-center text-center' : 'flex-row items-center space-x-2'
-          }`}
+        className={`node-header flex ${
+          data.id === 'PROJECT'
+            ? 'flex-col items-center text-center'
+            : 'flex-row items-center space-x-2'
+        }`}
       >
         {data.id !== 'PROJECT' && (
           <div className="node-id-badge">{data.id}</div>
         )}
         <div className="node-label">{data.label}</div>
       </div>
-      
+
       {data.id !== 'PROJECT' && (
         <>
           <hr className="node-divider" />
@@ -95,9 +103,7 @@ export default function StatusNode({
 
       {data.status && (
         <div className="flex items-center justify-between text-2xl text-gray-800 dark:text-black-100">
-          <span>
-            Status: {data.status}
-          </span>
+          <span>Status: {data.status}</span>
           <span className="flex items-center space-x-1">
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -113,7 +119,7 @@ export default function StatusNode({
                 d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
               />
             </svg>
-            <span>{formatCpuTime(Number(data.elapsedTime))}</span>
+            <span>{formatCpuTime(Number(data.tick ?? data.elapsedTime ?? 0))}</span>
           </span>
         </div>
       )}
