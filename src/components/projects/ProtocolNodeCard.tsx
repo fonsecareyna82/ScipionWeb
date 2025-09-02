@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { Handle, Position } from 'reactflow';
 import './ProtocolNodeCard.css';
 import { ArrowDownIcon, ArrowUpIcon } from '../../icons';
@@ -23,8 +24,8 @@ type StatusNodeProps = {
     tick?: number;
   };
   selectedNodeId?: string;
-  hoveredNodeId?: string | null;        
-  setHoveredNodeId?: (id: string | null) => void;
+  hoveredNodeId?: string; // <--- añadir
+  setHoveredNodeId?: React.Dispatch<React.SetStateAction<string | null>>; // <--- añadir
   onClick?: () => void;
   onDoubleClick?: () => void;
 };
@@ -40,17 +41,13 @@ const formatCpuTime = (seconds: number): string => {
 export default function StatusNode({
   data,
   selectedNodeId,
-  hoveredNodeId,
-  setHoveredNodeId,
   onClick,
   onDoubleClick,
 }: StatusNodeProps) {
+  const [isHovered, setIsHovered] = useState(false);
   const isSelected = selectedNodeId === data.id;
-  const isHovered = hoveredNodeId === data.id;
 
-  // Compute background color
-  const bgColor =
-    STATUS_COLORS[data.status ?? 'finished'] ?? STATUS_COLORS['finished'];
+  const bgColor = STATUS_COLORS[data.status ?? 'finished'] ?? STATUS_COLORS['finished'];
   data.color = bgColor;
 
   const classNames = [
@@ -65,22 +62,14 @@ export default function StatusNode({
   return (
     <div
       className={classNames}
+      style={{ backgroundColor: bgColor }}
       onClick={onClick}
       onDoubleClick={onDoubleClick}
-      onMouseEnter={() => setHoveredNodeId?.(data.id)}
-      onMouseLeave={() => setHoveredNodeId?.(null)}
-      style={{ backgroundColor: bgColor }}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
     >
-      <div
-        className={`node-header flex ${
-          data.id === 'PROJECT'
-            ? 'flex-col items-center text-center'
-            : 'flex-row items-center space-x-2'
-        }`}
-      >
-        {data.id !== 'PROJECT' && (
-          <div className="node-id-badge">{data.id}</div>
-        )}
+      <div className={`node-header flex ${data.id === 'PROJECT' ? 'flex-col items-center text-center' : 'flex-row items-center space-x-2'}`}>
+        {data.id !== 'PROJECT' && <div className="node-id-badge">{data.id}</div>}
         <div className="node-label">{data.label}</div>
       </div>
 
@@ -88,14 +77,8 @@ export default function StatusNode({
         <>
           <hr className="node-divider" />
           <div className="io-section">
-            <div className="inputs">
-              <ArrowDownIcon />
-              <span>Inputs</span>
-            </div>
-            <div className="outputs">
-              <ArrowUpIcon />
-              <span>Outputs</span>
-            </div>
+            <div className="inputs"><ArrowDownIcon /><span>Inputs</span></div>
+            <div className="outputs"><ArrowUpIcon /><span>Outputs</span></div>
           </div>
           <hr className="node-divider" />
         </>
@@ -113,13 +96,9 @@ export default function StatusNode({
               stroke="currentColor"
               strokeWidth={2}
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-              />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
             </svg>
-            <span>{formatCpuTime(Number(data.tick ?? data.elapsedTime ?? 0))}</span>
+            <span>{formatCpuTime(data.tick ?? Number(data.elapsedTime) ?? 0)}</span>
           </span>
         </div>
       )}

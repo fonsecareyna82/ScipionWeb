@@ -5,22 +5,17 @@
   min-width: 460px;
   text-align: left;
   line-height: 1.4;
-  position: relative;
   border: 1px solid #ccc;
   box-shadow: none;
-  transform-origin: center center;
-
-  /* transición más suave */
-  transition: transform 0.6s cubic-bezier(0.25, 0.8, 0.25, 1), 
-              border 0.3s ease, 
-              box-shadow 0.3s ease;
+  position: relative;
+  transition: transform 0.5s ease-in-out, box-shadow 0.4s ease-in-out;
 }
 
 .status-node.hovered {
-  transform: scale(1.05);
-  border: 2px solid #999;
+  transform: scale(1.1);
   cursor: pointer;
   z-index: 10;
+  box-shadow: 0 0 12px rgba(0,0,0,0.2);
 }
 
 .status-node.selected {
@@ -34,14 +29,11 @@
 }
 
 @keyframes pulse {
-  0%, 100% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(1.05);
-  }
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.1); }
 }
 
+/* resto del CSS igual */
 .node-header {
   display: flex;
   align-items: center;

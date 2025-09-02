@@ -17,11 +17,22 @@ import { RefreshIcon } from "../../../icons";
 import 'reactflow/dist/style.css';
 import { createStatusNodeWrapper } from "../../../components/projects/ProtocolNodeCardWrapper";
 
+interface StatusNodeData {
+  label: string;
+  status?: string;
+  id: string;
+  color?: string;
+  cpuTime?: string;
+  elapsedTime?: string;
+  tick?: number; // si usas tick para el timer
+}
+
+
 export default function ProjectPage() {
   const { projectName } = useParams();
   const [project, setProject] = useState<Project>();
   const [selectedNodeDetails, setSelectedNodeDetails] = useState<any>(null);
-  const [nodes, setNodes, onNodesChange] = useNodesState<Node[]>([]);
+  const [nodes, setNodes, onNodesChange] = useNodesState<StatusNodeData>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge[]>([]);
   const [tableData, setTableData] = useState<any[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -94,7 +105,7 @@ export default function ProjectPage() {
       handleNodeClick,
       handleNodeDoubleClick,
       previousNodeId ?? undefined,
-      hoveredNodeId,
+      hoveredNodeId ?? undefined,
       setHoveredNodeId
     ),
   }), [previousNodeId, hoveredNodeId]);
