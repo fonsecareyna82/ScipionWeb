@@ -84,3 +84,13 @@
   color: #222;
   margin-top: 6px;
 }
+
+@keyframes pulse-table {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+
+.pulsing-table {
+  display: inline-block;
+  animation: pulse-table 1s infinite;
+}

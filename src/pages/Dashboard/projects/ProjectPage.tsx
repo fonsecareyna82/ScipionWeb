@@ -334,6 +334,19 @@ export default function ProjectPage() {
         <p className="text-gray-500">Loading project data...</p>
       ) : viewMode === 'table' ? (
         <div ref={tableContainerRef} className="overflow-auto h-[80vh] border rounded shadow p-4">
+          <div className="flex justify-end mb-4 mr-1">
+            <button
+              className="refresh-btn"
+              title="Refresh project"
+              onClick={handleRefresh}
+              disabled={isRefreshing}
+            >
+              <RefreshIcon
+                className={`w-5 h-4 text-blue-600 dark:text-gray-100 dark:bg-gray-200 mr-1 ml-1 mt-1 ${isRefreshing ? 'animate-spin' : ''
+                  }`}
+              />
+            </button>
+          </div>
           <table className="w-full text-sm border border-gray-300 dark:border-gray-700">
             <thead className="bg-gray-300 dark:bg-gray-800">
               <tr>
@@ -354,7 +367,14 @@ export default function ProjectPage() {
                 >
                   <td className="px-4 py-2">{row.id}</td>
                   <td className="px-4 py-2">{row.label}</td>
-                  <td className="px-4 py-2"><span style={getStatusStyle(row.status)}>{row.status ?? '—'}</span></td>
+                  <td className="px-4 py-2">
+                    <span
+                      className={`${row.status === 'running' ? 'pulsing-table' : ''}`}
+                      style={getStatusStyle(row.status)}
+                    >
+                      {row.status ?? '—'}
+                    </span>
+                  </td>
                   <td className="px-4 py-2">{formatCpuTime(Number(row.cpuTime))}</td>
                   <td className="px-4 py-2 space-x-2">
                     {row.children.map((childId: string) => (
