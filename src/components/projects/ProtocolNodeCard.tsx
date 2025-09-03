@@ -13,6 +13,16 @@ const STATUS_COLORS: Record<string, string> = {
   interactive: '#f7f3bf',
 };
 
+const STATUS_BADGE_COLORS: Record<string, string> = {
+  running: '#b6ac21',      
+  saved: '#1E90FF',        
+  launched: '#1E90FF',
+  finished: '#28A745',     
+  failed: '#DC3545',       
+  aborted: '#DC3545',
+  interactive: '#FFC107', 
+};
+
 type StatusNodeProps = {
   data: {
     label: string;
@@ -85,8 +95,16 @@ export default function StatusNode({
       )}
 
       {data.status && (
-        <div className="flex items-center justify-between text-2xl text-gray-800 dark:text-black-100">
-          <span>Status: {data.status}</span>
+        <div className="flex items-center justify-between text-2xl text-white-800 dark:text-black-100">
+          <span
+            className="node-status-badge px-2 py-1 rounded text-sm flex items-center gap-1"
+            style={{
+              backgroundColor: STATUS_BADGE_COLORS[data.status] || '#999',
+              color: 'white',
+            }}
+          >
+            {data.status}
+          </span>
           <span className="flex items-center space-x-1">
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -96,7 +114,7 @@ export default function StatusNode({
               stroke="currentColor"
               strokeWidth={2}
             >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             <span>{formatCpuTime(data.tick ?? Number(data.elapsedTime) ?? 0)}</span>
           </span>

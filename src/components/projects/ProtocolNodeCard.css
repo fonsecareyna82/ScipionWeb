@@ -42,12 +42,22 @@
 }
 
 .node-id-badge {
-  background-color: #5c5a5a;
+  background-color: #555252;
   color: rgb(251, 252, 251);
   font-size: 1.5rem;
   font-weight: 500;
   padding: 2px 13px;
   border-radius: 9999px;
+}
+
+.node-status-badge {
+  background-color: #b6ac21;
+  font-size: 1.5rem;
+  font-weight: 400;
+  padding: 2px 13px;
+  border-radius: 9999px;
+  border: 2px solid #666;
+
 }
 
 .node-label {

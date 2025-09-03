@@ -13,9 +13,11 @@ import ReactFlow, {
   Node,
   Edge,
 } from 'reactflow';
-import { RefreshIcon } from "../../../icons";
+import { FolderIcon, RefreshIcon, TableIcon, TreeIcon } from "../../../icons";
 import 'reactflow/dist/style.css';
 import { createStatusNodeWrapper } from "../../../components/projects/ProtocolNodeCardWrapper";
+import Select from "@/components/form/Select";
+import SelectInputs from "@/components/form/form-elements/SelectInputs";
 
 interface StatusNodeData {
   label: string;
@@ -177,10 +179,10 @@ export default function ProjectPage() {
   useEffect(() => {
     const interval = setInterval(() => {
       handleRefresh();
-    }, TIME_TO_REFRESH); 
-  
+    }, TIME_TO_REFRESH);
+
     return () => clearInterval(interval);
-  }, [projectName, viewMode]); 
+  }, [projectName, viewMode]);
 
   // ------------------------ Tick updater ------------------------
   const nodesRef = useRef(nodes);
@@ -258,17 +260,17 @@ export default function ProjectPage() {
   const handleSearch = (query: string) => {
     if (!query.trim()) {
       setHighlightedId(null);
-  
+
       if (viewMode === 'hierarchical') {
         const reactFlowInstance = (window as any).reactFlowInstance;
         if (reactFlowInstance) {
           reactFlowInstance.fitView({ duration: 800 });
         }
       }
-  
+
       return;
     }
-  
+
     if (viewMode === 'table') {
       const match = tableData.find(
         (row) =>
@@ -278,26 +280,26 @@ export default function ProjectPage() {
       if (match) scrollToProtocol(match.id);
       return;
     }
-  
+
     const reactFlowInstance = (window as any).reactFlowInstance;
     if (!reactFlowInstance) return;
-  
+
     const match = nodes.find(
       (node) =>
         node.id.toLowerCase().includes(query.toLowerCase()) ||
         node.data?.label?.toLowerCase?.().includes(query.toLowerCase())
     );
-  
+
     if (!match) return;
-  
+
     handleNodeClick(match);
-  
+
     reactFlowInstance.setCenter(match.position.x, match.position.y, {
       zoom: reactFlowInstance.getViewport().zoom,
       duration: 800,
     });
   };
-  
+
 
   const handleRowDoubleClick = async (id: string) => {
     if (!projectName) return;
@@ -338,17 +340,34 @@ export default function ProjectPage() {
             className="w-full px-3 py-2 pl-10 pr-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:border-gray-700 dark:text-white"
           />
         </div>
+        <div className="ml-4 mr-4 p-4 border rounded-lg shadow-sm bg-white dark:bg-gray-800 flex items-center gap-4">
+          <span className="font-medium text-sm">View mode:</span>
 
-        <div className="ml-4 mr-4">
-          <label className="mr-2 font-small">View mode:</label>
-          <select
-            value={viewMode}
-            onChange={(e) => setViewMode(e.target.value as any)}
-            className="px-2 py-1 border rounded dark:bg-gray-800 dark:text-white"
-          >
-            <option value="hierarchical">Tree</option>
-            <option value="table">Table</option>
-          </select>
+          <div className="flex gap-2">
+            {/* Tree button */}
+            <button
+              onClick={() => setViewMode('hierarchical')}
+              className={`px-3 py-1 rounded-lg text-sm flex items-center gap-1 ${viewMode === 'hierarchical'
+                ? 'bg-blue-500 text-white'
+                : 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
+                }`}
+            >
+              <TreeIcon className="w-4 h-4" />
+              Tree
+            </button>
+
+            {/* Table button */}
+            <button
+              onClick={() => setViewMode('table')}
+              className={`px-3 py-1 rounded-lg text-sm flex items-center gap-1 ${viewMode === 'table'
+                ? 'bg-blue-500 text-white'
+                : 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
+                }`}
+            >
+              <TableIcon className="w-4 h-4" />
+              Table
+            </button>
+          </div>
         </div>
       </div>
 
@@ -374,13 +393,13 @@ export default function ProjectPage() {
             </button>
           </div>
           <table className="w-full text-sm border border-gray-300 dark:border-gray-700">
-            <thead className="bg-gray-300 dark:bg-gray-800">
+            <thead className="bg-gray-300 dark:bg-gray-800 font-normal dark:font-normal">
               <tr>
-                <th className="px-4 py-2 text-left">Id</th>
-                <th className="px-4 py-2 text-left">Protocol</th>
-                <th className="px-4 py-2 text-left">State</th>
-                <th className="px-4 py-2 text-left">Time</th>
-                <th className="px-4 py-2 text-left">Dependent</th>
+                <th className="px-4 py-2 text-left font-normal">Id</th>
+                <th className="px-4 py-2 text-left font-normal">Protocol</th>
+                <th className="px-4 py-2 text-left font-normal">State</th>
+                <th className="px-4 py-2 text-left font-normal">Elapsed</th>
+                <th className="px-4 py-2 text-left font-normal">Dependent</th>
               </tr>
             </thead>
             <tbody>
