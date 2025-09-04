@@ -322,7 +322,7 @@ export default function ProjectPage() {
   // ------------------------ Render ------------------------
   return (
     <div className="h-screen">
-      <h1 className="text-2xl mb-2 mt-2">{projectName}</h1>
+      <h1 className="text-2xl mb-2 mt-2">{project?.shortName}</h1>
 
       <div className="flex justify-between items-center mb-4">
         <div className="relative w-full max-w-sm">

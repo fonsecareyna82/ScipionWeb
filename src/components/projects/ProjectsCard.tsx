@@ -9,6 +9,7 @@ import {
 import ProjectAction from "./ProjectActions";
 
 interface ProjectCardProps {
+  id: number,
   label: string;
   value: string | number;
   badgeValue?: string;
@@ -24,6 +25,7 @@ interface ProjectCardProps {
 }
 
 export default function ProjectCard({
+  id,
   label,
   value,
   createdAt,
@@ -42,10 +44,10 @@ export default function ProjectCard({
   const cardRef = useRef<HTMLDivElement>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
 
-  const projectSlug = label;
+  const projectId = id;
 
   const handleDoubleClick = () => {
-    navigate(`/project/load/${projectSlug}`);
+    navigate(`/project/load/${projectId}`);
   };
 
   const handleContextMenu = (e: React.MouseEvent) => {

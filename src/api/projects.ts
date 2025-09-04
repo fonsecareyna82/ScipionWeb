@@ -6,6 +6,7 @@ import { BASE_URL } from "@/config";
 export interface Project {
   id: string;
   name: string;
+  shortName: string;
   description: string;
   createdAt: Date;
   updatedAt?: Date;
