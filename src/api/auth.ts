@@ -123,7 +123,6 @@ export async function verifyEmail(code: string) {
 
   export async function getUserProfile() {
     const token = localStorage.getItem("accessToken");
-    console.log(token)
     const res = await fetch(`${BASE_URL}/auth/me`, {
       headers: {
         Authorization: `Bearer ${token}`,

@@ -13,11 +13,9 @@ import ReactFlow, {
   Node,
   Edge,
 } from 'reactflow';
-import { FolderIcon, RefreshIcon, TableIcon, TreeIcon } from "../../../icons";
+import { RefreshIcon, TableIcon, TreeIcon } from "../../../icons";
 import 'reactflow/dist/style.css';
 import { createStatusNodeWrapper } from "../../../components/projects/ProtocolNodeCardWrapper";
-import Select from "@/components/form/Select";
-import SelectInputs from "@/components/form/form-elements/SelectInputs";
 
 interface StatusNodeData {
   label: string;
