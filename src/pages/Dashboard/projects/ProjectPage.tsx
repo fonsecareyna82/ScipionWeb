@@ -126,19 +126,21 @@ export default function ProjectPage() {
     fetchProject(projectName)
       .then((data) => {
         setProject(data);
-        const { nodes, edges, table } = buildGraphElements(data.protocols, viewMode);
-        setNodes(nodes);
-        setEdges(edges);
-        setTableData(table ?? []);
+        if (data.protocols) {
+          const { nodes, edges, table } = buildGraphElements(data.protocols, viewMode);
+          setNodes(nodes);
+          setEdges(edges);
+          setTableData(table ?? []);
 
-        // Inicializar ticks
-        const initialTicks: Record<string, number> = {};
-        nodes.forEach((n) => {
-          if (n.data?.status === 'running') {
-            initialTicks[n.id] = Number(n.data.elapsedTime) ?? 0;
-          }
-        });
-        setNodeTicks(initialTicks);
+          // Inicializar ticks
+          const initialTicks: Record<string, number> = {};
+          nodes.forEach((n) => {
+            if (n.data?.status === 'running') {
+              initialTicks[n.id] = Number(n.data.elapsedTime) ?? 0;
+            }
+          });
+          setNodeTicks(initialTicks);
+        }
       })
       .catch((err) => console.error(err));
   }, [projectName, viewMode]);
@@ -150,21 +152,23 @@ export default function ProjectPage() {
       fetchProject(projectName)
         .then((data) => {
           setProject(data);
-          const { nodes, edges, table } = buildGraphElements(data.protocols, viewMode);
-          setNodes(nodes);
-          setEdges(edges);
-          setTableData(table ?? []);
+          if (data.protocols) {
+            const { nodes, edges, table } = buildGraphElements(data.protocols, viewMode);
+            setNodes(nodes);
+            setEdges(edges);
+            setTableData(table ?? []);
 
-          // Mantener ticks actualizados con nuevos datos
-          setNodeTicks((prev) => {
-            const updated: Record<string, number> = { ...prev };
-            nodes.forEach((n) => {
-              if (n.data?.status === 'running') {
-                updated[n.id] = Math.max(prev[n.id] ?? 0, Number(n.data.elapsedTime) ?? 0);
-              }
+            // Mantener ticks actualizados con nuevos datos
+            setNodeTicks((prev) => {
+              const updated: Record<string, number> = { ...prev };
+              nodes.forEach((n) => {
+                if (n.data?.status === 'running') {
+                  updated[n.id] = Math.max(prev[n.id] ?? 0, Number(n.data.elapsedTime) ?? 0);
+                }
+              });
+              return updated;
             });
-            return updated;
-          });
+          }
         })
         .catch((err) => console.error(err))
         .finally(() => setIsRefreshing(false));

@@ -75,8 +75,8 @@ export async function createProject(name: string, description: string): Promise<
 /**
  * Fetch detailed info of a protocol node by its id
  */
-export async function fetchProtocolDetails(projectName: string, protocolId: string): Promise<ProtocolNode> {
-  const response = await fetch(`${BASE_URL}/projects/${projectName}/${protocolId}`, {
+export async function fetchProtocolDetails(projectId: string, protocolId: string): Promise<ProtocolNode> {
+  const response = await fetch(`${BASE_URL}/projects/${projectId}/${protocolId}`, {
     headers: getAuthHeaders(),
   });
   if (!response.ok) throw new Error("Failed to fetch protocol details");
