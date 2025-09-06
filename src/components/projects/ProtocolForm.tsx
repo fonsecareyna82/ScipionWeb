@@ -1,6 +1,8 @@
-// src/components/ProtocolForm.tsx
 
-import { useState, useEffect, JSX } from 'react';
+
+      // src/components/ProtocolForm.tsx
+
+import React, { useState, useEffect, useCallback, JSX } from 'react';
 import {
   Tabs,
   Tab,
@@ -25,7 +27,6 @@ import {
   TableBody,
   CircularProgress,
 } from '@mui/material';
-
 import './ProtocolForm.css';
 import {
   ChevronDownIcon,
@@ -51,15 +52,15 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
   const [bottomTab, setBottomTab] = useState(0);
   const [sectionTab, setSectionTab] = useState(0);
 
-  // protocol details & form state
+  // Form state
   const [protocolDetails, setProtocolDetails] = useState<any>({});
   const [expandedGroups, setExpandedGroups] = useState<{ [key: string]: boolean }>({});
 
-  // execution state
+  // Execution state
   const [execLoading, setExecLoading] = useState(false);
   const [execError, setExecError] = useState<string | null>(null);
 
-  // ---------- Helpers ----------
+  // Parse JSON-wrapped values
   const parseFromJSONValue = (maybeJson: any) => {
     try {
       if (typeof maybeJson === 'string') {
@@ -72,6 +73,7 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
     return maybeJson;
   };
 
+  // Coerce strings to numbers/booleans
   const coerceToken = (raw: any) => {
     if (raw === undefined || raw === null) return '';
     if (typeof raw === 'boolean' || typeof raw === 'number') return raw;
@@ -84,65 +86,54 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
     return trimmed;
   };
 
+  // Get the current editableValue of a param
   const getParamCurrentValue = (sectionIdx: number, paramName: string) => {
-    const fieldKey = `${sectionIdx}_${paramName}`;
-    const paramState = protocolDetails.params?.[fieldKey];
-    if (!paramState) return '';
-    if (paramState._class === 'EnumParam' && Array.isArray(paramState.choices)) {
-      const editable = paramState.editableValue ?? paramState.default ?? '';
-      if (typeof editable === 'number') return editable;
-      const idx = paramState.choices.indexOf(editable);
+    const key = `${sectionIdx}_${paramName}`;
+    const state = protocolDetails.params?.[key];
+    if (!state) return '';
+    if (state._class === 'EnumParam' && Array.isArray(state.choices)) {
+      const v = state.editableValue ?? state.default ?? '';
+      if (typeof v === 'number') return v;
+      const idx = state.choices.indexOf(v);
       return idx >= 0 ? idx : 0;
     }
-    return paramState.editableValue ?? '';
+    return state.editableValue ?? '';
   };
 
-  const evalAtom = (sectionIdx: number, atomRaw: string): boolean => {
-    let atom = atomRaw.replace(/[()]/g, '').trim();
-    let negate = false;
-    if (/^not\s+/i.test(atom)) {
-      negate = true;
-      atom = atom.replace(/^not\s+/i, '').trim();
-    } else if (atom.startsWith('!')) {
-      negate = true;
-      atom = atom.slice(1).trim();
+  // Evaluate logical atom (e.g. "x > 5")
+  const evalAtom = (sectionIdx: number, atom: string): boolean => {
+    let a = atom.replace(/[()]/g, '').trim();
+    let neg = false;
+    if (/^not\s+/i.test(a)) {
+      neg = true;
+      a = a.replace(/^not\s+/i, '').trim();
+    } else if (a.startsWith('!')) {
+      neg = true;
+      a = a.slice(1).trim();
     }
-    const m = atom.match(/^(.*?)\s*(==|!=|>=|<=|>|<|=)\s*(.*)$/);
-    let result: boolean;
+    const m = a.match(/^(.*?)\s*(==|!=|>=|<=|>|<|=)\s*(.*)$/);
+    let res = false;
     if (m) {
       const [, leftRaw, opRaw, rightRaw] = m;
       const left = coerceToken(getParamCurrentValue(sectionIdx, leftRaw.trim()));
       const op = opRaw === '=' ? '==' : opRaw;
       const right = coerceToken(rightRaw.replace(/[()]/g, '').trim());
       switch (op) {
-        case '==':
-          result = left === right;
-          break;
-        case '!=':
-          result = left !== right;
-          break;
-        case '>':
-          result = (left as any) > (right as any);
-          break;
-        case '<':
-          result = (left as any) < (right as any);
-          break;
-        case '>=':
-          result = (left as any) >= (right as any);
-          break;
-        case '<=':
-          result = (left as any) <= (right as any);
-          break;
-        default:
-          result = false;
+        case '==': res = left === right; break;
+        case '!=': res = left !== right; break;
+        case '>':  res = (left as any) >  (right as any); break;
+        case '<':  res = (left as any) <  (right as any); break;
+        case '>=': res = (left as any) >= (right as any); break;
+        case '<=': res = (left as any) <= (right as any); break;
       }
     } else {
-      const val = coerceToken(getParamCurrentValue(sectionIdx, atom));
-      result = !!(val === true || val === 'True' || val === 1 || val === '1');
+      const v = coerceToken(getParamCurrentValue(sectionIdx, a));
+      res = !!(v === true || v === 'True' || v === 1 || v === '1');
     }
-    return negate ? !result : result;
+    return neg ? !res : res;
   };
 
+  // Evaluate logical expression with && and ||
   const evalExpr = (sectionIdx: number, exprRaw: string): boolean => {
     const expr = exprRaw
       .replace(/[()]/g, ' ')
@@ -151,60 +142,85 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
       .replace(/\s+/g, ' ')
       .trim();
     if (!expr) return true;
-    const orParts = expr.split('||').map((s) => s.trim()).filter(Boolean);
-    return orParts.some((orPart) =>
-      orPart
-        .split('&&')
-        .map((s) => s.trim())
-        .filter(Boolean)
-        .every((atom) => evalAtom(sectionIdx, atom))
-    );
+    return expr
+      .split('||')
+      .some((part) =>
+        part
+          .split('&&')
+          .every((atom) => evalAtom(sectionIdx, atom.trim()))
+      );
   };
 
-  // ---------- Initialization of params ----------
+  // Initialize protocolDetails.params from data.definition
   useEffect(() => {
     if (!data) {
       setProtocolDetails({});
       return;
     }
-    const initialParams: any = {};
-    const addParamRec = (sectionIdx: number, paramObj: any) => {
-      const [pName, pData] = Object.entries(paramObj)[0] as [string, any];
-      if (pData?._class === 'Group' && Array.isArray(pData.children)) {
-        pData.children.forEach((child: any) => addParamRec(sectionIdx, child));
+    const params: any = {};
+    const walk = (secIdx: number, obj: any) => {
+      const [name, def] = Object.entries(obj)[0] as [string, any];
+      if (def._class === 'Group' && Array.isArray(def.children)) {
+        def.children.forEach((c: any) => walk(secIdx, c));
         return;
       }
-      const fieldKey = `${sectionIdx}_${pName}`;
-      const rawInit = pData?.value ?? pData?.default ?? '';
-      const parsedInit = parseFromJSONValue(rawInit);
-      let editableInit: any = parsedInit ?? '';
-      if (
-        pData?._class === 'EnumParam' &&
-        Array.isArray(pData.choices) &&
-        typeof editableInit === 'number'
-      ) {
-        editableInit = pData.choices[editableInit] ?? pData.default ?? '';
+      const key = `${secIdx}_${name}`;
+      const raw = def.value ?? def.default ?? '';
+      const parsed = parseFromJSONValue(raw);
+      let init = parsed ?? '';
+      if (def._class === 'EnumParam' && Array.isArray(def.choices) && typeof init === 'number') {
+        init = def.choices[init] ?? def.default ?? '';
       }
-      initialParams[fieldKey] = {
-        ...pData,
-        value: pData?.value,
-        editableValue: editableInit,
-      };
+      params[key] = { ...def, value: def.value, editableValue: init };
     };
-    data.definition?.forEach((section: any, sIdx: number) => {
-      section.params?.forEach((paramObj: any) => addParamRec(sIdx, paramObj));
+
+    data.definition?.forEach((section: any, i: number) => {
+      section.params?.forEach((p: any) => walk(i, p));
     });
+
     setProtocolDetails({
-      label: data.protocolName || '',
-      status: data.status || '',
-      id: data.id || '',
-      color: data.color || '',
-      params: initialParams,
+      label: data.protocolName ?? '',
+      status: data.status ?? '',
+      id: data.id ?? '',
+      color: data.color ?? '',
+      params,
     });
   }, [data]);
 
-  // ---------- ParamRow component ----------
-  const ParamRow = ({
+  // Serialize params for execution
+  const getSerializedParams = useCallback(() => {
+    const out: any = {};
+    Object.entries(protocolDetails.params || {}).forEach(([k, p]: any) => {
+      let v = p.value;
+      try {
+        const obj = JSON.parse(p.value);
+        obj._objValue = p.editableValue;
+        v = JSON.stringify(obj, null, 2);
+      } catch {
+        v = p.editableValue;
+      }
+      out[k] = { ...p, value: v };
+    });
+    return out;
+  }, [protocolDetails.params]);
+
+  // Execute protocol
+  const handleExecute = async () => {
+    setExecLoading(true);
+    setExecError(null);
+    try {
+      await executeProtocol(data.id, getSerializedParams());
+      onClose();
+    } catch (err: any) {
+      console.error(err);
+      setExecError(err.message || 'Error al ejecutar protocolo');
+    } finally {
+      setExecLoading(false);
+    }
+  };
+
+  // ParamRow: memoized to avoid full re-render
+  const ParamRow = React.memo(({
     label,
     control,
     rowIndex = 0,
@@ -213,14 +229,13 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
     onClear,
   }: {
     label: string;
-    rowIndex?: number;
     control: JSX.Element;
+    rowIndex?: number;
     helpText?: string;
     isPointerParam?: boolean;
     onClear?: () => void;
   }) => {
     const [openHelp, setOpenHelp] = useState(false);
-
     return (
       <>
         <Box
@@ -230,21 +245,13 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
             alignItems: 'center',
             gap: 1,
             mb: 1,
-            backgroundColor: rowIndex % 2 === 1 ? 'white' : '#EDEBEB',
+            backgroundColor: rowIndex % 2 ? 'white' : '#EDEBEB',
           }}
         >
-          <Typography
-            variant="body2"
-            sx={{
-              justifySelf: 'start',
-              pr: 2,
-              fontSize: '0.8rem',
-              fontWeight: 500,
-            }}
-          >
+          <Typography variant="body2" sx={{ pr: 2, fontSize: '0.8rem', fontWeight: 500 }}>
             {label}
           </Typography>
-          <Box sx={{ justifySelf: 'start' }}>{control}</Box>
+          <Box>{control}</Box>
           <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
             {isPointerParam && (
               <Tooltip title="Find">
@@ -262,7 +269,7 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
             )}
             {isPointerParam && (
               <Tooltip title="Visualize">
-                <IconButton size="small" onClick={() => console.log('Eye clicked')}>
+                <IconButton size="small" onClick={() => console.log('View')}>
                   <EyeIcon fontSize="1.3rem" />
                 </IconButton>
               </Tooltip>
@@ -275,27 +282,18 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
               </Tooltip>
             )}
           </Box>
-        </Box>
 
+        </Box>
         {helpText && (
-          <Dialog
-            open={openHelp}
-            onClose={() => setOpenHelp(false)}
-            maxWidth="sm"
-            fullWidth
-          >
+          <Dialog open={openHelp} onClose={() => setOpenHelp(false)} maxWidth="sm" fullWidth>
             <DialogTitle className="form-header">Help</DialogTitle>
-            <DialogContent sx={{ padding: 2 }}>
-              <Typography variant="body2" sx={{ lineHeight: 1.6, mt: 2 }}>
+            <DialogContent sx={{ p: 2 }}>
+              <Typography variant="body2" sx={{ lineHeight: 1.6 }}>
                 {helpText}
               </Typography>
             </DialogContent>
-            <DialogActions sx={{ padding: 1, justifyContent: 'center' }}>
-              <Button
-                onClick={() => setOpenHelp(false)}
-                variant="outlined"
-                startIcon={<CloseIcon />}
-              >
+            <DialogActions sx={{ justifyContent: 'center' }}>
+              <Button variant="outlined" onClick={() => setOpenHelp(false)} startIcon={<CloseIcon />}>
                 Close
               </Button>
             </DialogActions>
@@ -303,46 +301,29 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
         )}
       </>
     );
-  };
+  });
 
-  // ---------- MultiParamRow component ----------
-  const MultiParamRow = ({
+  // MultiParamRow: memoized
+  const MultiParamRow = React.memo(({
     label,
     items,
-    rowIndex = 0,
     helpText,
     onRowClear,
   }: {
     label: string;
     items: any[];
-    rowIndex: number;
     helpText?: string;
-    onRowClear?: (index: number) => void;
+    onRowClear?: (i: number) => void;
   }) => {
     const [openHelp, setOpenHelp] = useState(false);
-
-    const displayItems = [...items];
-    while (displayItems.length < 5) {
-      displayItems.push({ object: '', info: '' });
-    }
-
-    const isRowEmpty = (row: any) =>
-      (!row?.object || row.object.trim() === '') &&
-      (!row?.info || row.info.trim() === '');
+    const display = [...items];
+    while (display.length < 5) display.push({ object: '', info: '' });
+    const isEmpty = (r: any) => !r.object?.trim() && !r.info?.trim();
 
     return (
       <Box sx={{ mb: 2 }}>
-        <Box
-          sx={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            mb: 1,
-          }}
-        >
-          <Typography variant="body2" sx={{ fontWeight: 500 }}>
-            {label}
-          </Typography>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+          <Typography variant="body2" sx={{ fontWeight: 500 }}>{label}</Typography>
           {helpText && (
             <Tooltip title="Help">
               <IconButton size="small" onClick={() => setOpenHelp(true)}>
@@ -351,15 +332,7 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
             </Tooltip>
           )}
         </Box>
-
-        <Box
-          sx={{
-            maxHeight: 200,
-            overflowY: 'auto',
-            border: '1px solid #ddd',
-            borderRadius: 1,
-          }}
-        >
+        <Box sx={{ maxHeight: 200, overflowY: 'auto', border: '1px solid #ddd', borderRadius: 1 }}>
           <Table size="small">
             <TableHead sx={{ backgroundColor: '#BABABA' }}>
               <TableRow>
@@ -369,64 +342,38 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
               </TableRow>
             </TableHead>
             <TableBody>
-              {displayItems.map((item, idx) => {
-                const objVal = item ?? { object: '', info: '' };
-                const empty = isRowEmpty(objVal);
-                return (
-                  <TableRow
-                    key={idx}
-                    sx={{
-                      backgroundColor: idx % 2 === 0 ? '#f5f5f5' : '#ffffff',
-                    }}
-                  >
-                    <TableCell>{objVal.object}</TableCell>
-                    <TableCell>{objVal.info}</TableCell>
-                    {onRowClear && (
-                      <TableCell>
-                        {!empty && (
-                          <>
-                            <IconButton
-                              size="small"
-                              onClick={() => onRowClear(idx)}
-                            >
-                              <TrashBinIcon fontSize="1.3rem" />
-                            </IconButton>
-                            <IconButton
-                              size="small"
-                              onClick={() => console.log('View row', idx)}
-                            >
-                              <EyeIcon fontSize="1.3rem" />
-                            </IconButton>
-                          </>
-                        )}
-                      </TableCell>
-                    )}
-                  </TableRow>
-                );
-              })}
+              {display.map((row, i) => (
+                <TableRow key={i} sx={{ backgroundColor: i % 2 ? '#ffffff' : '#f5f5f5' }}>
+                  <TableCell>{row.object}</TableCell>
+                  <TableCell>{row.info}</TableCell>
+                  {onRowClear && (
+                    <TableCell>
+                      {!isEmpty(row) && (
+                        <>
+                          <IconButton size="small" onClick={() => onRowClear(i)}>
+                            <TrashBinIcon fontSize="1.3rem" />
+                          </IconButton>
+                          <IconButton size="small" onClick={() => console.log('View', i)}>
+                            <EyeIcon fontSize="1.3rem" />
+                          </IconButton>
+                        </>
+                      )}
+                    </TableCell>
+                  )}
+                </TableRow>
+              ))}
             </TableBody>
           </Table>
         </Box>
 
         {helpText && (
-          <Dialog
-            open={openHelp}
-            onClose={() => setOpenHelp(false)}
-            maxWidth="sm"
-            fullWidth
-          >
+          <Dialog open={openHelp} onClose={() => setOpenHelp(false)} maxWidth="sm" fullWidth>
             <DialogTitle className="form-header">Help</DialogTitle>
-            <DialogContent sx={{ padding: 2 }}>
-              <Typography variant="body2" sx={{ lineHeight: 1.6, mt: 2 }}>
-                {helpText}
-              </Typography>
+            <DialogContent sx={{ p: 2 }}>
+              <Typography variant="body2" sx={{ lineHeight: 1.6 }}>{helpText}</Typography>
             </DialogContent>
-            <DialogActions sx={{ padding: 1, justifyContent: 'center' }}>
-              <Button
-                onClick={() => setOpenHelp(false)}
-                variant="outlined"
-                startIcon={<CloseIcon />}
-              >
+            <DialogActions sx={{ justifyContent: 'center' }}>
+              <Button variant="outlined" onClick={() => setOpenHelp(false)} startIcon={<CloseIcon />}>
                 Close
               </Button>
             </DialogActions>
@@ -434,179 +381,152 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
         )}
       </Box>
     );
-  };
+  });
 
-  // ---------- renderParam helper ----------
-  const renderParam = (paramObj: any, sectionIdx: number, rowIndex = 0): JSX.Element | null => {
-    const [paramName, paramData] = Object.entries(paramObj)[0] as [string, any];
-    if (!protocolDetails?.params) return null;
+  // renderParam: memoized so stable across renders
+  const renderParam = useCallback(
+    (paramObj: any, sectionIdx: number, rowIndex = 0): JSX.Element | null => {
+      const [name, def] = Object.entries(paramObj)[0] as [string, any];
+      const key = `${sectionIdx}_${name}`;
+      const value = protocolDetails.params?.[key]?.editableValue;
 
-    const fieldKey = `${sectionIdx}_${paramName}`;
-    const value = protocolDetails.params[fieldKey]?.editableValue;
-    if (paramData.condition && !evalExpr(sectionIdx, paramData.condition)) {
-      return null;
-    }
+      if (def.condition && !evalExpr(sectionIdx, def.condition)) return null;
 
-    const advancedTag =
-      paramData.expertLevel === 1 ? (
+      const advancedTag = def.expertLevel === 1 ? (
         <Tooltip title="Advanced">
-          <div className="inline-flex items-center justify-center rounded-full bg-gray-500 text-white text-xs px-2 py-1">
-            A
-          </div>
-        </Tooltip>
-      ) : (
-        <div className="inline-flex items-center justify-center rounded-full text-white text-xs px-3 py-1" />
-      );
-
-    // MultiPointerParam
-    if (paramData._class === 'MultiPointerParam') {
-      const items: any[] = Array.isArray(value) ? value : paramData.default ?? [];
-      const handleRowClear = (idx: number) => {
-        const newItems = [...items];
-        newItems.splice(idx, 1);
-        newItems.push({ object: '', info: '' });
-        setProtocolDetails({
-          ...protocolDetails,
-          params: {
-            ...protocolDetails.params,
-            [fieldKey]: {
-              ...protocolDetails.params[fieldKey],
-              editableValue: newItems,
-            },
-          },
-        });
-      };
-      return (
-        <MultiParamRow
-          key={fieldKey}
-          rowIndex={rowIndex}
-          label={paramData.label || paramName}
-          items={items}
-          helpText={paramData.help}
-          onRowClear={handleRowClear}
-        />
-      );
-    }
-
-    // PointerParam
-    if (paramData._class === 'PointerParam') {
-      const fieldValue = value ?? paramData.default ?? '';
-      const handleClear = () => {
-        setProtocolDetails({
-          ...protocolDetails,
-          params: {
-            ...protocolDetails.params,
-            [fieldKey]: {
-              ...protocolDetails.params[fieldKey],
-              editableValue: '',
-            },
-          },
-        });
-      };
-      const control = (
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          {advancedTag}
-          <TextField
-            size="small"
-            value={fieldValue}
-            onChange={(e) => {
-              setProtocolDetails({
-                ...protocolDetails,
-                params: {
-                  ...protocolDetails.params,
-                  [fieldKey]: {
-                    ...protocolDetails.params[fieldKey],
-                    editableValue: e.target.value,
-                  },
-                },
-              });
-            }}
-            sx={{
-              minWidth: 300,
-              '& .MuiInputBase-input': { fontSize: '0.8rem', py: 0.5 },
-            }}
-          />
-        </Box>
-      );
-      return (
-        <ParamRow
-          key={fieldKey}
-          rowIndex={rowIndex}
-          label={paramData.label || paramName}
-          control={control}
-          helpText={paramData.help}
-          isPointerParam
-          onClear={handleClear}
-        />
-      );
-    }
-
-    // Group
-    if (paramData._class === 'Group' && Array.isArray(paramData.children)) {
-      const isExpanded = expandedGroups[fieldKey] ?? true;
-      return (
-        <Box
-          key={fieldKey}
-          sx={{ mb: 2, pl: 2, border: '2px solid #ddd', borderRadius: 1 }}
-        >
           <Box
             sx={{
               display: 'flex',
               alignItems: 'center',
-              cursor: 'pointer',
-              mb: 1,
+              justifyContent: 'center',
+              width: '1.5rem',
+              height: '1.5rem',
+              bgcolor: '#777',
+              color: 'white',
+              borderRadius: '50%',
+              fontSize: '0.8rem',
             }}
-            onClick={() =>
-              setExpandedGroups({
-                ...expandedGroups,
-                [fieldKey]: !expandedGroups[fieldKey],
-              })
-            }
           >
-            <Typography variant="subtitle2" sx={{ flexGrow: 1 }}>
-              {paramData.label || paramName}
-            </Typography>
-            {isExpanded ? <ChevronUpIcon /> : <ChevronDownIcon />}
+            A
           </Box>
-          {isExpanded &&
-            paramData.children.map((childObj: any, idx: number) =>
-              renderParam(childObj, sectionIdx, idx)
-            )}
-        </Box>
-      );
-    }
+        </Tooltip>
+      ) : null;
 
-    // EnumParam
-    if (paramData._class === 'EnumParam' && Array.isArray(paramData.choices)) {
-      let selectedValue: any = value ?? paramData.default ?? '';
-      if (typeof selectedValue === 'number') {
-        selectedValue = paramData.choices[selectedValue] ?? '';
+      // MultiPointerParam
+      if (def._class === 'MultiPointerParam') {
+        const items = Array.isArray(value) ? value : def.default ?? [];
+        const onClear = (i: number) => {
+          setProtocolDetails((prev: any) => {
+            const list = [...prev.params[key].editableValue];
+            list.splice(i, 1);
+            list.push({ object: '', info: '' });
+            return {
+              ...prev,
+              params: {
+                ...prev.params,
+                [key]: { ...prev.params[key], editableValue: list },
+              },
+            };
+          });
+        };
+        return (
+          <MultiParamRow
+            key={key}
+            label={def.label || name}
+            items={items}
+            helpText={def.help}
+            onRowClear={onClear}
+          />
+        );
       }
-      const controlBase =
-        paramData.display === 0 ? (
+
+      // PointerParam
+      if (def._class === 'PointerParam') {
+        const onClear = () =>
+          setProtocolDetails((prev: any) => ({
+            ...prev,
+            params: {
+              ...prev.params,
+              [key]: { ...prev.params[key], editableValue: '' },
+            },
+          }));
+        const control = (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            {advancedTag}
+            <TextField
+              size="small"
+              value={value ?? def.default ?? ''}
+              onChange={(e) => {
+                const v = e.target.value;
+                setProtocolDetails((prev: any) => ({
+                  ...prev,
+                  params: {
+                    ...prev.params,
+                    [key]: { ...prev.params[key], editableValue: v },
+                  },
+                }));
+              }}
+              sx={{ minWidth: 300, '& .MuiInputBase-input': { fontSize: '0.8rem' } }}
+            />
+          </Box>
+        );
+        return (
+          <ParamRow
+            key={key}
+            label={def.label || name}
+            control={control}
+            helpText={def.help}
+            isPointerParam
+            onClear={onClear}
+            rowIndex={rowIndex}
+          />
+        );
+      }
+
+      // Group
+      if (def._class === 'Group' && Array.isArray(def.children)) {
+        const expanded = expandedGroups[key] ?? true;
+        return (
+          <Box key={key} sx={{ mb: 2, pl: 2, border: '1px solid #ccc', borderRadius: 1 }}>
+            <Box
+              sx={{ display: 'flex', alignItems: 'center', cursor: 'pointer', mb: 1 }}
+              onClick={() =>
+                setExpandedGroups((prev) => ({ ...prev, [key]: !prev[key] }))
+              }
+            >
+              <Typography sx={{ flexGrow: 1 }}>{def.label || name}</Typography>
+              {expanded ? <ChevronUpIcon /> : <ChevronDownIcon />}
+            </Box>
+            {expanded &&
+              def.children.map((c: any, i: number) => renderParam(c, sectionIdx, i))}
+          </Box>
+        );
+      }
+
+      // EnumParam
+      if (def._class === 'EnumParam' && Array.isArray(def.choices)) {
+        let sel = value ?? def.default ?? '';
+        if (typeof sel === 'number') sel = def.choices[sel] ?? '';
+        const onChange = (v: any) =>
+          setProtocolDetails((prev: any) => ({
+            ...prev,
+            params: {
+              ...prev.params,
+              [key]: { ...prev.params[key], editableValue: v },
+            },
+          }));
+        const controlBase = def.display === 0 ? (
           <RadioGroup
             row
-            value={selectedValue}
-            onChange={(e) => {
-              const newValue = e.target.value;
-              setProtocolDetails({
-                ...protocolDetails,
-                params: {
-                  ...protocolDetails.params,
-                  [fieldKey]: {
-                    ...protocolDetails.params[fieldKey],
-                    editableValue: newValue,
-                  },  
-                },
-              });
-            }}
+            value={sel}
+            onChange={(e) => onChange(e.target.value)}
           >
-            {paramData.choices.map((choice: string, idx: number) => (
+            {def.choices.map((ch: string, i: number) => (
               <FormControlLabel
-                key={idx}
-                value={choice}
+                key={i}
+                value={ch}
                 control={<Radio size="small" />}
-                label={choice}
+                label={ch}
               />
             ))}
           </RadioGroup>
@@ -614,183 +534,122 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
           <TextField
             select
             size="small"
-            value={selectedValue}
-            onChange={(e) => {
-              const newValue = e.target.value;
-              setProtocolDetails({
-                ...protocolDetails,
-                params: {
-                  ...protocolDetails.params,
-                  [fieldKey]: {
-                    ...protocolDetails.params[fieldKey],
-                    editableValue: newValue,
-                  },
-                },  
-              });
-            }}
+            value={sel}
+            onChange={(e) => onChange(e.target.value)}
             SelectProps={{ native: true }}
-            sx={{
-              minWidth: 300,
-              '& .MuiInputBase-input': { fontSize: '0.8rem', py: 0.5 },
-            }}
+            sx={{ minWidth: 300, '& .MuiInputBase-input': { fontSize: '0.8rem' } }}
           >
-            {paramData.choices.map((choice: string, idx: number) => (
-              <option key={idx} value={choice}>
-                {choice}
+            {def.choices.map((ch: string, i: number) => (
+              <option key={i} value={ch}>
+                {ch}
               </option>
             ))}
           </TextField>
         );
-      const control = (
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          {advancedTag}
-          {controlBase}
-        </Box>
-      );
-      return (
-        <ParamRow
-          key={fieldKey}
-          rowIndex={rowIndex}
-          label={paramData.label || paramName}
-          control={control}
-          helpText={paramData.help}
-        />
-      );
-    }
-
-    // BooleanParam
-    if (paramData._class === 'BooleanParam') {
-      const boolValue =
-        value !== undefined
-          ? (value === 'True' || value === true || value === 1 || value === '1')
-          : (paramData.default === 'True' ||
-             paramData.default === true ||
-             paramData.default === 1 ||
-             paramData.default === '1');
-      const control = (
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          {advancedTag}
-          <Switch
-            checked={!!boolValue}
-            onChange={(e) => {
-              const newValue = e.target.checked ? 'True' : 'False';
-              setProtocolDetails({
-                ...protocolDetails,
-                params: {
-                  ...protocolDetails.params,
-                  [fieldKey]: {
-                    ...protocolDetails.params[fieldKey],
-                    editableValue: newValue,
-                  },
-                },
-              });
-            }}
-            color="primary"
+        return (
+          <ParamRow
+            key={key}
+            label={def.label || name}
+            control={
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                {advancedTag}
+                {controlBase}
+              </Box>
+            }
+            helpText={def.help}
+            rowIndex={rowIndex}
           />
-        </Box>
-      );
+        );
+      }
+
+      // BooleanParam
+      if (def._class === 'BooleanParam') {
+        const checked =
+          value !== undefined
+            ? ['True', true, 1, '1'].includes(value)
+            : ['True', true, 1, '1'].includes(def.default);
+        return (
+          <ParamRow
+            key={key}
+            label={def.label || name}
+            control={
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                {advancedTag}
+                <Switch
+                  checked={!!checked}
+                  onChange={(e) => {
+                    const v = e.target.checked ? 'True' : 'False';
+                    setProtocolDetails((prev: any) => ({
+                      ...prev,
+                      params: {
+                        ...prev.params,
+                        [key]: { ...prev.params[key], editableValue: v },
+                      },
+                    }));
+                  }}
+                  color="primary"
+                />
+              </Box>
+            }
+            helpText={def.help}
+            rowIndex={rowIndex}
+          />
+        );
+      }
+
+      // Default TextField
       return (
         <ParamRow
-          key={fieldKey}
+          key={key}
+          label={def.label || name}
+          control={
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              {advancedTag}
+              <TextField
+                size="small"
+                name={key}
+                value={value ?? def.default ?? ''}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setProtocolDetails((prev: any) => ({
+                    ...prev,
+                    params: {
+                      ...prev.params,
+                      [key]: { ...prev.params[key], editableValue: v },
+                    },
+                  }));
+                }}
+                sx={{
+                  minWidth: 300,
+                  '& .MuiInputBase-input': { fontSize: '0.8rem' },
+                }}
+              />
+            </Box>
+          }
+          helpText={def.help}
           rowIndex={rowIndex}
-          label={paramData.label || paramName}
-          control={control}
-          helpText={paramData.help}
         />
       );
-    }
-
-    // Default TextField
-    const fieldValue = value ?? paramData.default ?? '';
-    const control = (
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-        {advancedTag}
-        <TextField
-          variant="outlined"
-          size="small"
-          name={fieldKey}
-          value={fieldValue}
-          onChange={(e) => {
-            const { name, value } = e.target;
-            setProtocolDetails({
-              ...protocolDetails,
-              params: {
-                ...protocolDetails.params,
-                [name]: {
-                  ...protocolDetails.params[name],
-                  editableValue: value,
-                },
-              },
-            });
-          }}
-          sx={{
-            minWidth: 300,
-            '& .MuiInputBase-input': { fontSize: '0.8rem', py: 0.5 },
-          }}
-        />
-      </Box>
-    );
-    return (
-      <ParamRow
-        key={fieldKey}
-        rowIndex={rowIndex}
-        label={paramData.label || paramName}
-        control={control}
-        helpText={paramData.help}
-      />
-    );
-  };
-
-  // ---------- Serialize params ----------
-  const getSerializedParams = () => {
-    const updatedParams: any = {};
-    Object.entries(protocolDetails.params || {}).forEach(([key, param]: any) => {
-      let newValue = param.value;
-      try {
-        const obj = JSON.parse(param.value);
-        obj._objValue = param.editableValue;
-        newValue = JSON.stringify(obj, null, 2);
-      } catch {
-        newValue = param.editableValue;
-      }
-      updatedParams[key] = { ...param, value: newValue };
-    });
-    return updatedParams;
-  };
-
-  // ---------- Execute handler ----------
-  const handleExecute = async () => {
-    setExecLoading(true);
-    setExecError(null);
-    try {
-      const params = getSerializedParams();
-      await executeProtocol(data.id, params);
-      onClose();
-    } catch (err: any) {
-      console.error(err);
-      setExecError(err.message || 'Error al ejecutar protocolo');
-    } finally {
-      setExecLoading(false);
-    }
-  };
+    },
+    [protocolDetails.params, expandedGroups]
+  );
 
   if (!data || !protocolDetails.params) return null;
 
   return (
     <div className="protocol-form slide-in-right">
-      {/* ===== HEADER ===== */}
+      {/* HEADER */}
       <div className="form-header">
         <div className="form-title-wrapper">
-          <div className="inline-flex items-center justify-center rounded-full bg-green-500 text-black text-xs font-bold px-2 py-1">
+          <Box
+            className="inline-flex items-center justify-center rounded-full bg-green-500 text-black text-xs font-bold px-2 py-1"
+          >
             {data.id}
-          </div>
+          </Box>
           <h2>{protocolDetails.label}</h2>
           <span
             className="node-status-pill"
-            style={{
-              backgroundColor: protocolDetails.color,
-              color: 'black',
-            }}
+            style={{ backgroundColor: protocolDetails.color, color: 'black' }}
           >
             {protocolDetails.status || 'Unknown'}
           </span>

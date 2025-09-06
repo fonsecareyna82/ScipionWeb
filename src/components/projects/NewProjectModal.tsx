@@ -55,7 +55,7 @@ export default function NewProjectModal({ onProjectCreated }: NewProjectModalPro
 
           {/* Modal content */}
           <div className="relative bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-md z-50">
-            <h2 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white">
+            <h2 className="text-lg  mb-4 text-gray-900 dark:text-white">
               Create New Project
             </h2>
 

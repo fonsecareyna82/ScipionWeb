@@ -20,7 +20,7 @@ export interface Project {
  * Helper to get the auth token and return default headers
  */
 function getAuthHeaders(): HeadersInit {
-  const token = localStorage.getItem("accessToken"); // Ajusta según dónde guardes tu token
+  const token = localStorage.getItem("accessToken");
   return {
     "Content-Type": "application/json",
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
