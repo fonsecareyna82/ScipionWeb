@@ -122,3 +122,17 @@ export async function deleteProject(id: string): Promise<void> {
   });
   if (!response.ok) throw new Error("Failed to delete project");
 }
+
+
+/**
+ * Load all protocols by numeric project ID
+ */
+export async function loadProtocols(projectId: number): Promise<any> {
+  const response = await fetch(
+    `${BASE_URL}/projects/${projectId}/protocols`,
+    { headers: getAuthHeaders() }
+  );
+  if (!response.ok) throw new Error("Failed to fetch protocols");
+  console.log(response)
+  return response.json();
+}

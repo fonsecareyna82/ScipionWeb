@@ -792,6 +792,7 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
           startIcon={<CloseIcon />}
           onClick={onClose}
           disabled={execLoading}
+          sx={{ textTransform: 'none' }}
         >
           Close
         </Button>
@@ -800,6 +801,7 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
           startIcon={<SaveIcon />}
           onClick={() => console.log('Save', getSerializedParams())}
           disabled={execLoading}
+          sx={{ textTransform: 'none' }}
         >
           Save
         </Button>
@@ -815,8 +817,9 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
           color="success"
           onClick={handleExecute}
           disabled={execLoading}
+          sx={{ textTransform: 'none' }}
         >
-          {execLoading ? 'Ejecutando…' : 'Execute'}
+          {execLoading ? 'Executing...' : 'Execute'}
         </Button>
       </div>
     </div>

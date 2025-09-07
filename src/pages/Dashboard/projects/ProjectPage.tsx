@@ -1,6 +1,6 @@
 import { useParams } from "react-router-dom";
-import { useEffect, useState, useMemo, useRef } from 'react';
-import { fetchProject, Project, fetchProtocolDetails } from "../../../api/projects";
+import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
+import { fetchProject, Project, fetchProtocolDetails, loadProtocols } from "../../../api/projects";
 import ProtocolForm from "../../../components/projects/ProtocolForm";
 import { buildGraphElements } from "../../../utils/graph_utils";
 
@@ -13,9 +13,10 @@ import ReactFlow, {
   Node,
   Edge,
 } from 'reactflow';
-import { RefreshIcon, TableIcon, TreeIcon } from "../../../icons";
+import { BoxCubeIcon, RefreshIcon, TableIcon, TreeIcon } from "../../../icons";
 import 'reactflow/dist/style.css';
 import { createStatusNodeWrapper } from "../../../components/projects/ProtocolNodeCardWrapper";
+import { ProtocolsDrawer } from "@/components/projects/ProtocolsDrawer";
 
 interface StatusNodeData {
   label: string;
@@ -43,6 +44,9 @@ export default function ProjectPage() {
   const rowRefs = useRef<Record<string, HTMLTableRowElement | null>>({});
   const tableContainerRef = useRef<HTMLDivElement | null>(null);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
+  const [protocols, setProtocols] = useState<any[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   // ------------------------ Node click handlers ------------------------
   const handleNodeClick = (nodeData: any, event?: React.MouseEvent) => {
@@ -174,6 +178,21 @@ export default function ProjectPage() {
         .finally(() => setIsRefreshing(false));
     }
   };
+
+  const handleLoadProtocols = useCallback(
+    async (projectId: number) => {
+      setLoading(true);
+      try {
+        const data = await loadProtocols(projectId);
+        setProtocols(data);
+      } catch (err) {
+        console.error('Error loading protocols:', err);
+      } finally {
+        setLoading(false);
+      }
+    },
+    []
+  );
 
   // ------------------------ Automatic Refresh --------------------------------
   const TIME_TO_REFRESH = 15000 // 15s
@@ -343,7 +362,27 @@ export default function ProjectPage() {
           />
         </div>
         <div className="ml-4 mr-4 p-4 border rounded-lg shadow-sm bg-white dark:bg-gray-800 flex items-center gap-4">
-          <span className="font-medium text-sm">View mode:</span>
+          <span className="font-smal text-sm"></span>
+
+          <div className="flex gap-2">
+            {/* Protocols button */}
+            <div>
+            <ProtocolsDrawer projectId={project?.id ?? null} />
+            </div>
+
+            {/* Workflows button */}
+            <button
+              onClick={() => console.log('Workflow clicked')}
+              className={`px-3 py-1 rounded-lg text-sm flex items-center gap-1 bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300
+                }`}
+            >
+              <TreeIcon className="w-4 h-4" />
+              Workflows
+            </button>
+          </div>
+        </div>
+        <div className="ml-4 mr-4 p-4 border rounded-lg shadow-sm bg-white dark:bg-gray-800 flex items-center gap-4">
+          <span className="font-smal text-sm">View mode:</span>
 
           <div className="flex gap-2">
             {/* Tree button */}
