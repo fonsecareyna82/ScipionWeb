@@ -84,26 +84,6 @@ export const ProtocolsTree: React.FC<ProtocolsTreeProps> = ({ data }) => {
 
     return (
         <div className="flex flex-col h-full">
-            {/* Search fixed at the top */}
-            <div className="relative w-full max-w-sm">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-400 dark:text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                    </svg>
-                </div>
-                <input
-                    type="text"
-                    placeholder="Search protocols..."
-                    value={searchText}
-                    onChange={(e) => setSearchText(e.target.value)}
-                    className="w-full px-3 py-2 pl-10 pr-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:border-gray-700 dark:text-white"
-                />
-            </div>
-            {/* Separator */}
-            <div className="my-2 border-t border-gray-300 dark:border-gray-700" />
-
-
-
             {/* Scrollable tree */}
             <div className="flex-1 overflow-y-auto p-2">
                 {filteredData.map((node, idx) => (
@@ -135,9 +115,9 @@ const ProtocolNodeItem: React.FC<{ node: ProtocolNode }> = ({ node }) => {
     };
 
     return (
-        <div className="flex flex-col">
+        <div className="flex flex-col mb-0">
             <div
-                className="flex items-center gap-2 cursor-pointer select-none p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
+                className="flex items-center gap-2 cursor-pointer select-none p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700"
                 onClick={() => hasChildren && setExpanded(!expanded)}
             >
                 {hasChildren && (

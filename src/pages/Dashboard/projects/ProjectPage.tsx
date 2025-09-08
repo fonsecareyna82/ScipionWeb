@@ -367,7 +367,7 @@ export default function ProjectPage() {
           <div className="flex gap-2">
             {/* Protocols button */}
             <div>
-            <ProtocolsDrawer projectId={project?.id ?? null} />
+            <ProtocolsDrawer projectId={project?.id ? Number(project.id) : null} />
             </div>
 
             {/* Workflows button */}
