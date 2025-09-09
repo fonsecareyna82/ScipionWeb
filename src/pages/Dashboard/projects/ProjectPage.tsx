@@ -1,7 +1,7 @@
 import { useParams } from "react-router-dom";
 import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { fetchProject, Project, fetchProtocolDetails, loadProtocols } from "../../../api/projects";
-import ProtocolForm from "../../../components/projects/ProtocolForm";
+import ProtocolForm from "../../../components/protocol/ProtocolForm";
 import { buildGraphElements } from "../../../utils/graph_utils";
 
 import ReactFlow, {
@@ -10,13 +10,12 @@ import ReactFlow, {
   ReactFlowProvider,
   useNodesState,
   useEdgesState,
-  Node,
   Edge,
 } from 'reactflow';
-import { BoxCubeIcon, RefreshIcon, TableIcon, TreeIcon } from "../../../icons";
+import { RefreshIcon, TableIcon, TreeIcon } from "../../../icons";
 import 'reactflow/dist/style.css';
-import { createStatusNodeWrapper } from "../../../components/projects/ProtocolNodeCardWrapper";
-import { ProtocolsDrawer } from "@/components/projects/ProtocolsDrawer";
+import { createStatusNodeWrapper } from "../../../components/protocol/ProtocolNodeCardWrapper";
+import { ProtocolsDrawer } from "@/components/protocol/ProtocolsDrawer";
 
 interface StatusNodeData {
   label: string;
@@ -26,6 +25,8 @@ interface StatusNodeData {
   cpuTime?: string;
   elapsedTime?: string;
   tick?: number; // si usas tick para el timer
+  numberOfSteps?: number;
+  stepsDone?: number;
 }
 
 
@@ -46,7 +47,7 @@ export default function ProjectPage() {
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [protocols, setProtocols] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [error] = useState<string | null>(null)
 
   // ------------------------ Node click handlers ------------------------
   const handleNodeClick = (nodeData: any, event?: React.MouseEvent) => {
@@ -130,8 +131,9 @@ export default function ProjectPage() {
     fetchProject(projectName)
       .then((data) => {
         setProject(data);
+        console.log(data)
         if (data.protocols) {
-          const { nodes, edges, table } = buildGraphElements(data.protocols, viewMode);
+          const { nodes, edges, table } = buildGraphElements(data.shortName, data.protocols, viewMode);
           setNodes(nodes);
           setEdges(edges);
           setTableData(table ?? []);
@@ -157,7 +159,7 @@ export default function ProjectPage() {
         .then((data) => {
           setProject(data);
           if (data.protocols) {
-            const { nodes, edges, table } = buildGraphElements(data.protocols, viewMode);
+            const { nodes, edges, table } = buildGraphElements(data.shortName, data.protocols, viewMode);
             setNodes(nodes);
             setEdges(edges);
             setTableData(table ?? []);
@@ -178,21 +180,6 @@ export default function ProjectPage() {
         .finally(() => setIsRefreshing(false));
     }
   };
-
-  const handleLoadProtocols = useCallback(
-    async (projectId: number) => {
-      setLoading(true);
-      try {
-        const data = await loadProtocols(projectId);
-        setProtocols(data);
-      } catch (err) {
-        console.error('Error loading protocols:', err);
-      } finally {
-        setLoading(false);
-      }
-    },
-    []
-  );
 
   // ------------------------ Automatic Refresh --------------------------------
   const TIME_TO_REFRESH = 15000 // 15s
@@ -345,7 +332,7 @@ export default function ProjectPage() {
   // ------------------------ Render ------------------------
   return (
     <div className="h-screen">
-      <h1 className="text-2xl mb-2 mt-2">{project?.shortName}</h1>
+      {/* <h1 className="text-2xl mb-2 mt-2">{project?.shortName}</h1> */}
 
       <div className="flex justify-between items-center mb-4">
         <div className="relative w-full max-w-sm">
@@ -364,7 +351,9 @@ export default function ProjectPage() {
         <div className="ml-4 mr-4 p-4 border rounded-lg shadow-sm bg-white dark:bg-gray-800 flex items-center gap-4">
           <span className="font-smal text-sm"></span>
 
+          
           <div className="flex gap-2">
+            
             {/* Protocols button */}
             <div>
             <ProtocolsDrawer projectId={project?.id ? Number(project.id) : null} />

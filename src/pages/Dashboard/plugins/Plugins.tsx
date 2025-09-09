@@ -4,9 +4,8 @@ import { useEffect, useState } from "react";
 import PageBreadcrumb from "../../../components/common/PageBreadCrumb";
 import PageMeta from "../../../components/common/PageMeta";
 import { fetchPlugins, Plugin } from "../../../api/plugins";
-import PluginCard from "../../../components/projects/PluginsCard";
+import PluginCard from "../../../components/plugin/PluginsCard";
 import CircularProgress from "@mui/material/CircularProgress";
-import { FindIcon } from "@/icons";
 
 export default function Plugins() {
   // estados

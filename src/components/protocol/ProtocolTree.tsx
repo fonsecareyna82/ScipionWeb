@@ -78,7 +78,7 @@ const filterTree = (nodes: ProtocolNode[], search: string): ProtocolNode[] => {
 
 // Main tree component
 export const ProtocolsTree: React.FC<ProtocolsTreeProps> = ({ data }) => {
-    const [searchText, setSearchText] = useState("");
+    const [searchText] = useState("");
 
     const filteredData = searchText ? filterTree(data, searchText) : data;
 

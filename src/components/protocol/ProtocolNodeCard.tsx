@@ -11,16 +11,17 @@ const STATUS_COLORS: Record<string, string> = {
   failed: '#F5CCCB',
   aborted: '#F5CCCB',
   interactive: '#f7f3bf',
+  root: '#94949C',
 };
 
 const STATUS_BADGE_COLORS: Record<string, string> = {
-  running: '#b6ac21',      
-  saved: '#1E90FF',        
+  running: '#b6ac21',
+  saved: '#1E90FF',
   launched: '#1E90FF',
-  finished: '#28A745',     
-  failed: '#DC3545',       
+  finished: '#28A745',
+  failed: '#DC3545',
   aborted: '#DC3545',
-  interactive: '#FFC107', 
+  interactive: '#FFC107',
 };
 
 type StatusNodeProps = {
@@ -32,10 +33,12 @@ type StatusNodeProps = {
     cpuTime?: string;
     elapsedTime?: string;
     tick?: number;
+    numberOfSteps?: number;
+    stepsDone?: number;
   };
   selectedNodeId?: string;
-  hoveredNodeId?: string; // <--- añadir
-  setHoveredNodeId?: React.Dispatch<React.SetStateAction<string | null>>; // <--- añadir
+  hoveredNodeId?: string; 
+  setHoveredNodeId?: React.Dispatch<React.SetStateAction<string | null>>; 
   onClick?: () => void;
   onDoubleClick?: () => void;
 };
@@ -57,7 +60,7 @@ export default function StatusNode({
   const [isHovered, setIsHovered] = useState(false);
   const isSelected = selectedNodeId === data.id;
 
-  const bgColor = STATUS_COLORS[data.status ?? 'finished'] ?? STATUS_COLORS['finished'];
+  const bgColor = STATUS_COLORS[data.status ?? 'finished'] ?? STATUS_COLORS['root'];
   data.color = bgColor;
 
   const classNames = [
@@ -80,7 +83,11 @@ export default function StatusNode({
     >
       <div className={`node-header flex ${data.id === 'PROJECT' ? 'flex-col items-center text-center' : 'flex-row items-center space-x-2'}`}>
         {data.id !== 'PROJECT' && <div className="node-id-badge">{data.id}</div>}
-        <div className="node-label">{data.label}</div>
+        {data.id === 'PROJECT' ? (
+          <div className="text-4xl text-black">{data.label}</div>
+        ) : (
+          <div className="node-label">{data.label}</div>
+        )}
       </div>
 
       {data.id !== 'PROJECT' && (
@@ -100,10 +107,12 @@ export default function StatusNode({
             className="node-status-badge px-2 py-1 rounded text-sm flex items-center gap-1"
             style={{
               backgroundColor: STATUS_BADGE_COLORS[data.status] || '#999',
-              color: 'white',
+              color: 'black',
             }}
           >
             {data.status}
+            {(data.status === 'running' || data.status === 'failed' || data.status === 'aborted') &&
+              ` (${data.stepsDone} / ${data.numberOfSteps})`}
           </span>
           <span className="flex items-center space-x-1">
             <svg

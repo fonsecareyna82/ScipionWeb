@@ -14,6 +14,8 @@ export interface ProtocolNode {
   parameters: Record<string, any>;
   cpuTime: string;
   elapsedTime: string;
+  stepsDone: string;
+  numberOfSteps: string;
 }
 
 /**

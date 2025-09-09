@@ -16,6 +16,7 @@ function estimateLabelWidth(label: string, fontSize = 20, fontFamily = 'Arial'):
  * Build nodes and edges for ReactFlow from protocols.
  */
 export function buildGraphElements(
+  projectName: string,
   protocols: Record<string, ProtocolNode>,
   viewMode: 'hierarchical' | 'grid' | 'table' = 'hierarchical',
 ) {
@@ -35,7 +36,11 @@ export function buildGraphElements(
       parameters: prot.parameters,
       children: prot.children,
       cpuTime: prot.cpuTime,
+      stepsDone: prot.stepsDone,
+      numberOfSteps: prot.numberOfSteps
     }));
+
+    console.log(tableData)
 
     return { nodes: [], edges: [], table: tableData };
   }
@@ -101,6 +106,8 @@ export function buildGraphElements(
       const parameters = prot?.parameters;
       const cpuTime = prot?.cpuTime;
       const elapsedTime = prot?.elapsedTime;
+      const stepsDone = prot?.stepsDone;
+      const numberOfSteps = prot?.numberOfSteps;
       const nodeWidth = widths[index];
       const spacing = Math.max(80, nodeWidth * 0.2);
 
@@ -108,12 +115,14 @@ export function buildGraphElements(
         id,
         type: 'status',
         data: {
-          label: id === "PROJECT" ? "📁 PROJECT" : label,
+          label: id === "PROJECT" ? projectName : label,
           status,
           id,
           parameters,
           cpuTime,
           elapsedTime,
+          stepsDone,
+          numberOfSteps,
           tick: Number(elapsedTime) || 0, // inicializamos tick
         },
         position: { x, y },

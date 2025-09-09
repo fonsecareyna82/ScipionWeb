@@ -81,7 +81,7 @@ export default function ProjectCard({
         bg-gray-100 dark:bg-white/5 backdrop-blur-md`}
     >
       {/* Header wrapped in compact mini-card */}
-      <div className="mb-4 rounded-xl bg-gradient-to-r from-green-100 via-white to-blue-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 px-4 py-2 border transition-all duration-300">
+      <div className="mb-2 rounded-xl bg-gradient-to-r from-green-100 via-white to-blue-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 px-4 py-2 border transition-all duration-300">
         <div className="flex justify-between items-center">
           {/* Project name */}
           <div className="flex items-center gap-3 group min-w-0">
