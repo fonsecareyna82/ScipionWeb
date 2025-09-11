@@ -131,7 +131,6 @@ export default function ProjectPage() {
     fetchProject(projectName)
       .then((data) => {
         setProject(data);
-        console.log(data)
         if (data.protocols) {
           const { nodes, edges, table } = buildGraphElements(data.shortName, data.protocols, viewMode);
           setNodes(nodes);
@@ -150,6 +149,19 @@ export default function ProjectPage() {
       })
       .catch((err) => console.error(err));
   }, [projectName, viewMode]);
+
+  // Inject ticks into tableData so rows update in table view
+  useEffect(() => {
+    setTableData((prev) =>
+      prev.map((row) => ({
+        ...row,
+        elapsedTime:
+          row.status === "running"
+            ? nodeTicks[row.id] ?? Number(row.elapsedTime) ?? 0
+            : Number(row.elapsedTime) ?? 0,
+      }))
+    );
+  }, [nodeTicks]);
 
   // ------------------------ Refresh ------------------------
   const handleRefresh = () => {
@@ -212,6 +224,13 @@ export default function ProjectPage() {
 
         return updated;
       });
+      setTableData(prev =>
+        prev.map(row =>
+          row.status === "running"
+            ? { ...row, tick: (row.tick ?? Number(row.elapsedTime) ?? 0) + 1 }
+            : row
+        )
+      );
     }, 1000);
 
     return () => clearInterval(interval);
@@ -351,12 +370,12 @@ export default function ProjectPage() {
         <div className="ml-4 mr-4 p-4 border rounded-lg shadow-sm bg-white dark:bg-gray-800 flex items-center gap-4">
           <span className="font-smal text-sm"></span>
 
-          
+
           <div className="flex gap-2">
-            
+
             {/* Protocols button */}
             <div>
-            <ProtocolsDrawer projectId={project?.id ? Number(project.id) : null} />
+              <ProtocolsDrawer projectId={project?.id ? Number(project.id) : null} />
             </div>
 
             {/* Workflows button */}
@@ -438,22 +457,54 @@ export default function ProjectPage() {
                   key={row.id}
                   ref={(el) => { rowRefs.current[row.id] = el; }}
                   onDoubleClick={() => handleRowDoubleClick(row.id)}
-                  className={`border-t border-gray-200 dark:border-gray-700 ${highlightedId === row.id ? 'bg-yellow-100 dark:bg-yellow-900' : ''}`}
+                  className={`border-t border-gray-200 dark:border-gray-700 ${highlightedId === row.id ? 'bg-yellow-100 dark:bg-yellow-900' : ''
+                    }`}
                 >
                   <td className="px-4 py-2">{row.id}</td>
                   <td className="px-4 py-2">{row.label}</td>
                   <td className="px-4 py-2">
-                    <span
-                      className={`${row.status === 'running' ? 'pulsing-table' : ''}`}
-                      style={getStatusStyle(row.status)}
-                    >
-                      {row.status ?? '—'}
-                    </span>
+                    <div className="flex items-center justify-between">
+                      <span
+                        className={`${row.status === 'running' ? 'pulsing-table' : ''}`}
+                        style={getStatusStyle(row.status)}
+                      >
+                        {row.status ?? '—'}
+                      </span>
+
+                      {(row.status === 'running' || row.status === 'failed' || row.status === 'aborted') && (
+                        <div className="flex items-center gap-2 ml-4 flex-1">
+                          <div className="w-16 h-3 bg-gray-300 dark:bg-gray-700 rounded overflow-hidden">
+                            <div
+                              className={`h-3 ${row.status === 'running'
+                                  ? 'bg-yellow-400'
+                                  : row.status === 'failed' || row.status === 'aborted'
+                                    ? 'bg-red-500'
+                                    : 'bg-gray-400'
+                                } transition-all duration-300`}
+                              style={{
+                                width: `${((row.stepsDone ?? 0) / (row.numberOfSteps ?? 1)) * 100}%`,
+                              }}
+                            />
+                          </div>
+                          <span className="text-sm opacity-80">
+                            {row.stepsDone}/{row.numberOfSteps}
+                          </span>
+                        </div>
+                      )}
+                    </div>
                   </td>
-                  <td className="px-4 py-2">{formatCpuTime(Number(row.cpuTime))}</td>
+                  <td className="px-4 py-2 font-mono">
+                    {formatCpuTime(row.tick ?? Number(row.elapsedTime) ?? 0)}
+                  </td>
                   <td className="px-4 py-2 space-x-2">
                     {row.children.map((childId: string) => (
-                      <button key={childId} onClick={() => scrollToProtocol(childId)} className="text-blue-600 dark:text-blue-400 underline hover:text-blue-800">{childId}</button>
+                      <button
+                        key={childId}
+                        onClick={() => scrollToProtocol(childId)}
+                        className="text-blue-600 dark:text-blue-400 underline hover:text-blue-800"
+                      >
+                        {childId}
+                      </button>
                     ))}
                   </td>
                 </tr>

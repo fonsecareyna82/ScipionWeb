@@ -25,6 +25,7 @@ import PluginPage from "./pages/Dashboard/plugins/PluginPage";
 import ProtectedRoute from "./components/auth/ProtectedRoute";
 import VerifyEmailForm from "./components/auth/VerifyEmailForm";
 import SessionManager from "./components/common/SessionManager";
+import { Toaster } from "react-hot-toast";
 
 
 export default function App() {
@@ -72,6 +73,14 @@ export default function App() {
         {/* Page not found */}
         <Route path="*" element={<NotFound />} />
       </Routes>
+      <Toaster
+        position="top-right"
+        containerStyle={{
+          zIndex: 999999,  // ⬅️ asegúrate que es mayor al toolbar
+        }}
+      />
     </Router>
+    
+
   );
 }

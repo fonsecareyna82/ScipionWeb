@@ -103,13 +103,23 @@ export async function executeProtocol(protocolId: string, params: Record<string,
  * Rename a project and update its description
  */
 export async function renameProject(id: string, newName: string, newDescription: string): Promise<Project> {
-  const response = await fetch(`${BASE_URL}/projects/${id}`, {
-    method: "PUT",
-    headers: getAuthHeaders(),
-    body: JSON.stringify({ name: newName, description: newDescription }),
-  });
-  if (!response.ok) throw new Error("Failed to rename project");
-  return response.json();
+  try {
+    const response = await fetch(`${BASE_URL}/projects/${id}`, {
+      method: "PUT",
+      headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify({ name: newName, description: newDescription }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to rename project: ${errorText}`);
+    }
+
+    return await response.json() as Project;
+  } catch (err) {
+    console.error("renameProject error:", err);
+    throw err;
+  }
 }
 
 /**
@@ -133,6 +143,5 @@ export async function loadProtocols(projectId: number): Promise<any> {
     { headers: getAuthHeaders() }
   );
   if (!response.ok) throw new Error("Failed to fetch protocols");
-  console.log(response)
   return response.json();
 }

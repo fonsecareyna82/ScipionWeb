@@ -1,15 +1,13 @@
 import { useNavigate } from "react-router-dom";
 import { useState, useRef, useEffect } from "react";
-import { motion } from "framer-motion";
-import {
-  CalendarIcon,
-  FolderIcon,
-  StorageIcon,
-} from "../../icons";
+import { motion, AnimatePresence } from "framer-motion";
+import { CalendarIcon, FolderIcon, StorageIcon } from "../../icons";
 import ProjectAction from "./ProjectActions";
+import { deleteProject, renameProject } from "@/api/projects";
+import toast from "react-hot-toast";
 
 interface ProjectCardProps {
-  id: number,
+  id: number;
   label: string;
   value: string | number;
   badgeValue?: string;
@@ -22,6 +20,8 @@ interface ProjectCardProps {
   onToggleExpand?: () => void;
   description?: string;
   status?: string;
+  onDelete?: (id: number) => void;
+  onRename?: (id: number, newLabel: string, newDescription: string) => void;
 }
 
 export default function ProjectCard({
@@ -39,124 +39,234 @@ export default function ProjectCard({
   icon = (
     <FolderIcon className="text-yellow-600 text-gray-800 size-5 dark:text-white/90" />
   ),
+  onDelete,
+  onRename,
 }: ProjectCardProps) {
   const navigate = useNavigate();
   const cardRef = useRef<HTMLDivElement>(null);
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [isRenaming, setIsRenaming] = useState(false);
+  const [newLabel, setNewLabel] = useState(label);
+  const [newDescription, setNewDescription] = useState(description);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
 
-  const projectId = id;
-
+  // Navigate to project detail
   const handleDoubleClick = () => {
-    navigate(`/project/load/${projectId}`);
+    if (!isRenaming) {
+      navigate(`/project/load/${id}`);
+    }
   };
 
-  const handleContextMenu = (e: React.MouseEvent) => {
-    e.preventDefault();
-    if (cardRef.current) {
-      const rect = cardRef.current.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
-      setContextMenu({ x, y });
+  // Trigger rename mode
+  const handleRename = () => {
+    setNewLabel(label);
+    setNewDescription(description);
+    setIsRenaming(true);
+    setErrorMessage("");
+  };
+
+  // Show delete modal
+  const handleRemove = () => {
+    setShowDeleteModal(true);
+  };
+
+  // Confirm deletion
+  const confirmRemove = async () => {
+    try {
+      await deleteProject(id.toString());
+      toast.success(`Project "${label}" deleted successfully`);
+      setShowDeleteModal(false);
+      onDelete?.(id);
+    } catch (error) {
+      toast.error(`Error deleting project`);
+    }
+  };
+
+  // Handle rename and description update
+  const handleRenameSubmit = async () => {
+    if (!newLabel.trim()) {
+      setErrorMessage("Project name cannot be empty.");
+      return;
+    }
+    if (newDescription && newDescription.trim().length < 10) {
+      setErrorMessage("Description must be at least 10 characters.");
+      return;
+    }
+
+    try {
+      await renameProject(id.toString(), newLabel.trim(), newDescription.trim());
+      toast.success(`Project renamed to "${newLabel}"`);
+      setIsRenaming(false);
+      setErrorMessage("");
+      onRename?.(id, newLabel, newDescription);
+    } catch (error) {
+      toast.error("Failed to rename project");
+      setErrorMessage("Failed to update project.");
     }
   };
 
   useEffect(() => {
-    const handleClickOutside = () => setContextMenu(null);
-    window.addEventListener("click", handleClickOutside);
-    return () => window.removeEventListener("click", handleClickOutside);
-  }, []);
+      setNewLabel(label);
+      setNewDescription(description);
+  }, [label, description]);
 
   return (
-    <motion.div
-      ref={cardRef}
-      onClick={onSelect}
-      onDoubleClick={handleDoubleClick}
-      onContextMenu={handleContextMenu}
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4, ease: "easeOut" }}
-      className={`relative cursor-pointer rounded-2xl border p-5 md:p-6
-        transform transition-all duration-300 ease-in-out hover:scale-[1.03] hover:shadow-xl
-        ${isSelected ? "border-blue-700 shadow-blue-100" : "border-gray-200 dark:border-gray-800"}
-        bg-gray-100 dark:bg-white/5 backdrop-blur-md`}
-    >
-      {/* Header wrapped in compact mini-card */}
-      <div className="mb-2 rounded-xl bg-gradient-to-r from-green-100 via-white to-blue-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 px-4 py-2 border transition-all duration-300">
-        <div className="flex justify-between items-center">
-          {/* Project name */}
-          <div className="flex items-center gap-3 group min-w-0">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white-100 dark:bg-yellow-900 group-hover:scale-110 transition-transform duration-300">
-              {icon}
+    <>
+      <motion.div
+        ref={cardRef}
+        onClick={onSelect}
+        onDoubleClick={handleDoubleClick}
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, ease: "easeOut" }}
+        className={`relative cursor-pointer rounded-2xl border p-5 md:p-6
+          transform transition-all duration-300 ease-in-out hover:scale-[1.03] hover:shadow-xl
+          ${isSelected ? "border-blue-700 shadow-blue-100" : "border-gray-200 dark:border-gray-800"}
+          bg-gray-100 dark:bg-white/5 backdrop-blur-md`}
+      >
+        {/* Header section */}
+        <div className="mb-2 rounded-xl bg-gradient-to-r from-green-100 via-white to-blue-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 px-4 py-2 border transition-all duration-300">
+          <div className="flex justify-between items-center">
+            {/* Project name and icon */}
+            <div className="flex items-center gap-3 group min-w-0">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white-100 dark:bg-yellow-900 group-hover:scale-110 transition-transform duration-300">
+                {icon}
+              </div>
+              {isRenaming ? (
+                <div className="flex flex-col gap-2 w-full">
+                  <input
+                    type="text"
+                    value={newLabel}
+                    onChange={(e) => setNewLabel(e.target.value)}
+                    placeholder="Project name"
+                    className="text-lg text-gray-800 dark:text-white/90 bg-transparent border-b border-gray-400 focus:outline-none"
+                    autoFocus
+                  />
+                  <textarea
+                    value={newDescription}
+                    onChange={(e) => setNewDescription(e.target.value)}
+                    placeholder="Project description"
+                    className="text-sm text-gray-700 dark:text-gray-300 bg-transparent border border-gray-300 dark:border-gray-600 rounded-md p-2"
+                  />
+                  {errorMessage && (
+                    <span className="text-red-500 text-sm">{errorMessage}</span>
+                  )}
+                  <div className="flex gap-2 mt-2">
+                    <button
+                      onClick={handleRenameSubmit}
+                      className="px-3 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition"
+                    >
+                      Save
+                    </button>
+                    <button
+                      onClick={() => setIsRenaming(false)}
+                      className="px-3 py-1 bg-gray-300 dark:bg-gray-700 text-gray-800 dark:text-white rounded-md hover:bg-gray-400 dark:hover:bg-gray-600 transition"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <span
+                  className="text-lg text-gray-800 dark:text-white/90 truncate flex-grow"
+                  title={label}
+                >
+                  {newLabel}
+                </span>
+              )}
             </div>
-            <span
-              className="text-lg text-gray-800 dark:text-white/90 truncate flex-grow"
-              title={label}
-            >
-              {label}
-            </span>
-          </div>
 
-          {/* Actions */}
-          <div className="shrink-0">
-            <ProjectAction
-              icon={null}
-              label=""
-              onOpen={handleDoubleClick}
-              onRename={() => console.log("Rename", label)}
-              onRemove={() => console.log("Remove", label)}
-            />
+            {/* Action buttons */}
+            {!isRenaming && ( 
+              <div className="shrink-0">
+              <ProjectAction
+                icon={null}
+                label=""
+                onOpen={handleDoubleClick}
+                onRename={handleRename}
+                onRemove={handleRemove}
+              />
+            </div>
+            )}
+            
           </div>
         </div>
-      </div>
 
-      {/* Separator */}
-      <div className="my-2 border-t border-gray-300 dark:border-gray-700" />
-
-      {/* Extra Info */}
-      <div className="mt-4 space-y-3 text-sm text-gray-500 dark:text-gray-400">
-        {createdAt && (
-          <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl dark:bg-gray-800 bg-blue-50">
-              <CalendarIcon className="w-6 h-6 text-blue-600 dark:text-white" />
-            </div>
-            <div className="text-black dark:text-gray-400">
-              Created at: {createdAt.split("T")[0]}
-            </div>
-          </div>
-        )}
-        {diskUsage && (
-          <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl dark:bg-gray-800 bg-gray-100">
-              <StorageIcon className="w-7 h-7 text-gray-600 dark:text-white" />
-            </div>
-            <div className="text-black dark:text-gray-400">{diskUsage}</div>
-          </div>
-        )}
-
-        {/* Separator */}
+        {/* Divider */}
         <div className="my-2 border-t border-gray-300 dark:border-gray-700" />
 
-        {/* Value */}
-        <div className="mt-2 ml-7">
-          <span className="text-sm text-gray-800 dark:text-white/90">
-            {value} protocols
-          </span>
-        </div>
-      </div>
+        {/* Metadata section */}
+        <div className="mt-4 space-y-3 text-sm text-gray-500 dark:text-gray-400">
+          {createdAt && (
+            <div className="flex items-center gap-3">
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl dark:bg-gray-800 bg-blue-50">
+                <CalendarIcon className="w-6 h-6 text-blue-600 dark:text-white" />
+              </div>
+              <div className="text-black dark:text-gray-400">
+                Created at: {new Date(createdAt).toLocaleDateString()}
+              </div>
+            </div>
+          )}
+          {diskUsage && (
+            <div className="flex items-center gap-3">
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl dark:bg-gray-800 bg-gray-100">
+                <StorageIcon className="w-7 h-7 text-gray-600 dark:text-white" />
+              </div>
+              <div className="text-black dark:text-gray-400">{diskUsage}</div>
+            </div>
+          )}
 
-      {/* Sección expandida (comentada) */}
-      {/*
-      {isExpanded && (
-        <div className="mt-5 px-3 py-4 rounded-xl bg-gray-50 dark:bg-gray-800 transition-all duration-300">
-          <p className="text-sm text-gray-700 dark:text-gray-300 mb-2">
-            <strong>Description:</strong> {description}
-          </p>
-          <p className="text-sm text-gray-700 dark:text-gray-300">
-            <strong>Status:</strong> {status}
-          </p>
+          <div className="my-2 border-t border-gray-300 dark:border-gray-700" />
+
+          <div className="mt-2 ml-7">
+            <span className="text-sm text-gray-800 dark:text-white/90">
+              {value} protocols
+            </span>
+          </div>
         </div>
-      )}
-      */}
-    </motion.div>
+      </motion.div>
+
+      {/* Delete confirmation modal */}
+      <AnimatePresence>
+        {showDeleteModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+          >
+            <motion.div
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.8, opacity: 0 }}
+              transition={{ duration: 0.3 }}
+              className="bg-white dark:bg-gray-900 rounded-xl p-6 shadow-xl max-w-sm w-full"
+            >
+              <h2 className="text-lg font-semibold text-gray-800 dark:text-white mb-4">
+                Delete project?
+              </h2>
+              <p className="text-sm text-gray-600 dark:text-gray-300 mb-6">
+                This action cannot be undone. Are you sure you want to delete{" "}
+                <strong>{label}</strong>?
+              </p>
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={() => setShowDeleteModal(false)}
+                  className="px-4 py-2 rounded-md bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-white hover:bg-gray-300 dark:hover:bg-gray-600 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmRemove}
+                  className="px-4 py-2 rounded-md bg-red-600 text-white hover:bg-red-700 transition"
+                >
+                  Delete
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </>
   );
 }

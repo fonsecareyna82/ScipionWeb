@@ -16,6 +16,7 @@ export default function Projects() {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const [expandedLabel, setExpandedLabel] = useState<string | null>(null);
 
+  // Handle click outside dropdown
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (
@@ -47,6 +48,20 @@ export default function Projects() {
     );
   });
 
+  // Callback to remove a project from the list
+  const handleDeleteProject = (id: number) => {
+    setProjects((prev) => prev.filter((p) => Number(p.id) !== id));
+  };
+
+  // Callback to update a project after rename
+  const handleRenameProject = (id: number, newName: string, newDescription: string) => {
+    setProjects((prev) =>
+      prev.map((p) =>
+        Number(p.id) === id ? { ...p, name: newName, description: newDescription } : p
+      )
+    );
+  };
+
   return (
     <>
       <PageMeta title="Scipion | Projects" description="Projects page" />
@@ -55,7 +70,6 @@ export default function Projects() {
       <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] lg:p-6">
         {/* Search & dropdown */}
         <div className="flex items-center justify-between mb-6 w-full">
-          {/* Search input */}
           <div className="relative w-full max-w-md">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
               <svg
@@ -143,11 +157,14 @@ export default function Projects() {
               isSelected={selectedLabel === project.name}
               onSelect={() => setSelectedLabel(project.name)}
               isExpanded={expandedLabel === project.name}
+              description={project.description ?? "No description available."}
               onToggleExpand={() =>
                 setExpandedLabel((prev) =>
                   prev === project.name ? null : project.name
                 )
               }
+              onDelete={handleDeleteProject} 
+              onRename={handleRenameProject}
             />
           ))}
 

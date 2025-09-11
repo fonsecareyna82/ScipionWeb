@@ -104,3 +104,74 @@
   display: inline-block;
   animation: pulse-table 1s infinite;
 }
+
+
+.glow-badge {
+  position: relative;
+  z-index: 1;
+  padding: 2px 13px;
+  border-radius: 9999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #555252;
+  color: rgb(251, 252, 251);
+  font-size: 1.5rem;
+  font-weight: 500;
+  animation: smoothPulse 1.5s infinite ease-in-out;
+}
+
+  
+  
+
+.glow-badge span {
+  transform: none !important; /* evita que el texto se deforme */
+  z-index: 3;
+}
+
+@keyframes smoothPulse {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 0 6px var(--badge-color, #03580e);
+  }
+  50% {
+    transform: scale(1.08);
+    box-shadow: 0 0 16px var(--badge-color, #03580e);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 6px var(--badge-color, #03580e);
+  }
+}
+
+
+
+.flashing-badge {
+  position: relative;
+  overflow: hidden;
+}
+
+.flashing-badge::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 200%;
+  height: 100%;
+  background: linear-gradient(
+    120deg,
+    rgba(255, 255, 255, 0) 30%,
+    rgba(255, 255, 255, 0.7) 50%,
+    rgba(255, 255, 255, 0) 70%
+  );
+  animation: shine 2s infinite;
+}
+
+@keyframes shine {
+  0% {
+    left: -100%;
+  }
+  100% {
+    left: 100%;
+  }
+}

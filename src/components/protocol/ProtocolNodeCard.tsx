@@ -11,11 +11,11 @@ const STATUS_COLORS: Record<string, string> = {
   failed: '#F5CCCB',
   aborted: '#F5CCCB',
   interactive: '#f7f3bf',
-  root: '#94949C',
+  root: '#D9F1FA',
 };
 
 const STATUS_BADGE_COLORS: Record<string, string> = {
-  running: '#b6ac21',
+  running: '#918516',
   saved: '#1E90FF',
   launched: '#1E90FF',
   finished: '#28A745',
@@ -37,8 +37,8 @@ type StatusNodeProps = {
     stepsDone?: number;
   };
   selectedNodeId?: string;
-  hoveredNodeId?: string; 
-  setHoveredNodeId?: React.Dispatch<React.SetStateAction<string | null>>; 
+  hoveredNodeId?: string;
+  setHoveredNodeId?: React.Dispatch<React.SetStateAction<string | null>>;
   onClick?: () => void;
   onDoubleClick?: () => void;
 };
@@ -67,7 +67,7 @@ export default function StatusNode({
     'status-node',
     isHovered ? 'hovered' : '',
     isSelected ? 'selected' : '',
-    data.status === 'running' ? 'pulsing' : '',
+    //data.status === 'running' ? 'pulsing' : '',
   ]
     .filter(Boolean)
     .join(' ');
@@ -82,7 +82,14 @@ export default function StatusNode({
       onMouseLeave={() => setIsHovered(false)}
     >
       <div className={`node-header flex ${data.id === 'PROJECT' ? 'flex-col items-center text-center' : 'flex-row items-center space-x-2'}`}>
-        {data.id !== 'PROJECT' && <div className="node-id-badge">{data.id}</div>}
+        {data.id !== 'PROJECT' && (
+          <div
+            className={`node-id-badge ${data.status === 'running' ? 'glow-badge' : ''
+              }`}
+          >
+            {data.id}
+          </div>
+        )}
         {data.id === 'PROJECT' ? (
           <div className="text-4xl text-black">{data.label}</div>
         ) : (
@@ -104,16 +111,34 @@ export default function StatusNode({
       {data.status && (
         <div className="flex items-center justify-between text-2xl text-white-800 dark:text-black-100">
           <span
-            className="node-status-badge px-2 py-1 rounded text-sm flex items-center gap-1"
+            className="node-status-badge px-2 py-1 rounded text-sm flex items-center gap-2"
             style={{
               backgroundColor: STATUS_BADGE_COLORS[data.status] || '#999',
-              color: 'black',
+              color: 'white',
+              minWidth: '120px',
             }}
           >
             {data.status}
-            {(data.status === 'running' || data.status === 'failed' || data.status === 'aborted') &&
-              ` (${data.stepsDone} / ${data.numberOfSteps})`}
+
+            {(data.status === 'running' || data.status === 'failed' || data.status === 'aborted') && (
+              <div className="flex items-center gap-1 flex-1">
+                <div className="w-16 h-3 bg-white/30 rounded overflow-hidden">
+                  <div
+                    className="h-3 bg-white"
+                    style={{
+                      width: `${((data.stepsDone ?? 0) / (data.numberOfSteps ?? 1)) * 100
+                        }%`,
+                    }}
+                  />
+                </div>
+                <span className="text-2xl opacity-80 ml-4">
+                  {data.stepsDone}/{data.numberOfSteps}
+                </span>
+              </div>
+            )}
           </span>
+
+
           <span className="flex items-center space-x-1">
             <svg
               xmlns="http://www.w3.org/2000/svg"

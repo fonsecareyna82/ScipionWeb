@@ -37,10 +37,10 @@ export function buildGraphElements(
       children: prot.children,
       cpuTime: prot.cpuTime,
       stepsDone: prot.stepsDone,
-      numberOfSteps: prot.numberOfSteps
+      numberOfSteps: prot.numberOfSteps,
+      elapsedTime: prot.elapsedTime,
+      tick: Number(prot.elapsedTime) || 0,
     }));
-
-    console.log(tableData)
 
     return { nodes: [], edges: [], table: tableData };
   }
