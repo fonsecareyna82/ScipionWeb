@@ -204,12 +204,12 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
   const getDraggedOutput = (dataTransfer: DataTransfer) => {
     try {
       const raw =
-        dataTransfer.getData('application/scipion-output') || // tipo correcto
-        dataTransfer.getData('text/plain');                   // fallback
+        dataTransfer.getData('application/scipion-output') ||
+        dataTransfer.getData('text/plain') ||
+        dataTransfer.getData('text');
       if (!raw) return null;
       return JSON.parse(raw);
     } catch (err) {
-      console.warn('Failed to parse drag payload', err);
       return null;
     }
   };
@@ -310,87 +310,66 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
     const isOver = dragOverKey === key;
     const expectedClass = getExpectedClass(def);
   
-    // Calculamos matches reactivo, usando el estado actual de draggedOutput
-    const matches = draggedOutput?._class === expectedClass;
+    const matches = false;
+  
+    const borderColor = isOver ? 'transparent' : 'transparent';
   
     return (
       <div
         onDragEnter={(e) => {
           e.preventDefault();
           setDragOverKey(key);
-          try {
-            const payload = e.dataTransfer.getData('application/scipion-output');
-            if (payload) setDraggedOutput(JSON.parse(payload));
-            else setDraggedOutput(null);
-          } catch {
-            setDraggedOutput(null);
-          }
         }}
-        onDragOver={(e) => e.preventDefault()} // necesario para permitir drop
-        onDragLeave={() => {
-          setDragOverKey(null);
-          setDraggedOutput(null);
-        }}
+        onDragOver={(e) => e.preventDefault()}
+        onDragLeave={() => setDragOverKey(null)}
         onDrop={(e) => {
           e.preventDefault();
           setDragOverKey(null);
+  
+          const dt = (e.nativeEvent as DragEvent).dataTransfer;
+          if (!dt) return;
+  
           try {
-            const payload = e.dataTransfer.getData('application/scipion-output');
-            if (!payload) return;
-            const output = JSON.parse(payload);
-            setDraggedOutput(null);
+            const out = getDraggedOutput(dt);
+            console.log("onDrop >> expected:", expectedClass, "got:", out);
   
-            const expected = getExpectedClass(def);
-            if (!expected || output._class !== expected) return;
+            if (!out) return;
+            if (out._class !== expectedClass) {
+              return;
+            }
   
-            // Actualizamos protocolDetails con el valor del output
             setProtocolDetails((prev: any) => ({
               ...prev,
               params: {
                 ...prev.params,
-                [key]: { ...prev.params[key], editableValue: output._objValue ?? '' },
+                [key]: {
+                  ...prev.params[key],
+                  editableValue: out._objValue ?? '',
+                },
               },
             }));
-          } catch {
-            console.error('Drop failed');
+          } catch (err) {
+            console.error("Drop failed", err);
           }
         }}
         style={{
-          border: `2px solid ${isOver ? (matches ? 'green' : 'red') : 'transparent'}`,
+          border: `2px solid ${borderColor}`,
           borderRadius: 4,
           padding: 4,
           boxSizing: 'border-box',
           transition: 'border-color 0.2s',
           position: 'relative',
+          display: 'inline-block',
+          width: '100%',
         }}
       >
         {control}
-  
-        {/* Indicador de match */}
-        {isOver && matches && (
-          <span
-            style={{
-              position: 'absolute',
-              top: -4,
-              right: -4,
-              backgroundColor: 'green',
-              color: 'white',
-              fontWeight: 'bold',
-              borderRadius: '50%',
-              width: 16,
-              height: 16,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: 12,
-            }}
-          >
-            +
-          </span>
-        )}
       </div>
     );
   };
+  
+  
+  
   
 
 
@@ -709,10 +688,6 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
                 }
                 sx={{ minWidth: 300, '& .MuiInputBase-input': { fontSize: '0.8rem' } }}
               />
-              {/* MATCH / NO MATCH basado en el valor actual, no en el drag */}
-              <Box sx={{ ml: 1, fontWeight: 'bold', color: (value ?? '') === (protocolDetails.params[key]?.editableValue ?? '') ? 'green' : 'red' }}>
-                {(value ?? '') === (protocolDetails.params[key]?.editableValue ?? '') ? 'MATCH' : 'NO MATCH'}
-              </Box>
             </Box>
           );
 
