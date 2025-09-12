@@ -22,8 +22,6 @@ export const createStatusNodeWrapper = (
         {...rest} // aquí pasan style, className, draggable, etc.
         data={data}
         selectedNodeId={selectedNodeId}
-        hoveredNodeId={hoveredNodeId}
-        setHoveredNodeId={setHoveredNodeId}
         onClick={() => onClick(data)}
         onDoubleClick={() => onDoubleClick(data)}
       />

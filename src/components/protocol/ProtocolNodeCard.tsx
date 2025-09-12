@@ -39,8 +39,6 @@ type StatusNodeProps = {
     outputs?: any[];
   };
   selectedNodeId?: string;
-  hoveredNodeId?: string;
-  setHoveredNodeId?: React.Dispatch<React.SetStateAction<string | null>>;
   onClick?: () => void;
   onDoubleClick?: () => void;
 };
@@ -62,6 +60,7 @@ export default function StatusNodeCard({
   const [isHovered, setIsHovered] = useState(false);
   const [draggingIdx, setDraggingIdx] = useState<number | null>(null);
   const isSelected = selectedNodeId === data.id;
+  const [currentDraggedOutput, setCurrentDraggedOutput] = useState<any | null>(null);
 
   const bgColor = STATUS_COLORS[data.status ?? 'finished'] ?? STATUS_COLORS['root'];
   data.color = bgColor;
@@ -127,8 +126,16 @@ export default function StatusNodeCard({
                       e.stopPropagation();
                       setDraggingIdx(idx);
                     
-                      const payload = JSON.stringify({ parentId: data.id, key, ...value });
-                      e.dataTransfer.setData('text/plain', payload);
+                      const output = {
+                        _class: value._class,
+                        _objValue: value._objValue,
+                        info: value.info,
+                      };
+                    
+                      setCurrentDraggedOutput(output);
+                    
+                      const payload = JSON.stringify(output);
+                      e.dataTransfer.setData('application/scipion-output', payload);
                     
                       // Drag ghost
                       const dragGhost = document.createElement('div');
@@ -136,21 +143,15 @@ export default function StatusNodeCard({
                       dragGhost.style.top = '-1000px';
                       dragGhost.style.left = '-1000px';
                       dragGhost.style.padding = '6px 12px';
-                      dragGhost.style.background = 'linear-gradient(to right, #f0f0f0, #e0e0e0)';
+                      dragGhost.style.background = '#eee';
                       dragGhost.style.border = '1px solid #ccc';
                       dragGhost.style.borderRadius = '0.5rem';
-                      dragGhost.style.fontSize = '16px';
-                      dragGhost.style.whiteSpace = 'nowrap';
-                      dragGhost.style.transform = 'scale(0.6)';
-                      dragGhost.style.transformOrigin = 'top left';
-                      dragGhost.style.boxShadow = '0 2px 6px rgba(0,0,0,0.2)';
                       dragGhost.innerText = `${value._class} (${value.info})`;
-                    
                       document.body.appendChild(dragGhost);
                       e.dataTransfer.setDragImage(dragGhost, 0, 15);
-                    
                       setTimeout(() => document.body.removeChild(dragGhost), 0);
                     }}
+                    
                     onDragEnd={() => setDraggingIdx(null)}
                   >
                     <span className="font-normal text-gray-900 dark:text-gray-100 text-2xl">
