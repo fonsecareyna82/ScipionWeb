@@ -16,6 +16,7 @@ export interface ProtocolNode {
   elapsedTime: string;
   stepsDone: string;
   numberOfSteps: string;
+  outputs: any;
 }
 
 /**

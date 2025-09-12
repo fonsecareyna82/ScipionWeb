@@ -89,7 +89,7 @@ export function buildGraphElements(
 
   Object.entries(levelBuckets).forEach(([levelStr, ids]) => {
     const level = parseInt(levelStr, 10);
-    const y = level * 300;
+    const y = level * 330;
 
     const widths = ids.map(id => {
       const label = protocols[id]?.label || id;
@@ -109,7 +109,8 @@ export function buildGraphElements(
       const stepsDone = prot?.stepsDone;
       const numberOfSteps = prot?.numberOfSteps;
       const nodeWidth = widths[index];
-      const spacing = Math.max(80, nodeWidth * 0.2);
+      const spacing = Math.max(140, nodeWidth * 0.4);
+      const outputs = prot?.outputs;
 
       nodes.push({
         id,
@@ -123,6 +124,7 @@ export function buildGraphElements(
           elapsedTime,
           stepsDone,
           numberOfSteps,
+          outputs,
           tick: Number(elapsedTime) || 0, // inicializamos tick
         },
         position: { x, y },
