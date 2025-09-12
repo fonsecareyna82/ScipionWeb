@@ -126,10 +126,10 @@ export default function StatusNodeCard({
                     onDragStart={(e) => {
                       e.stopPropagation();
                       setDraggingIdx(idx);
-
+                    
                       const payload = JSON.stringify({ parentId: data.id, key, ...value });
-                      e.dataTransfer.setData('text/plain', payload); // ✅ Usamos text/plain
-
+                      e.dataTransfer.setData('text/plain', payload);
+                    
                       // Drag ghost
                       const dragGhost = document.createElement('div');
                       dragGhost.style.position = 'absolute';
@@ -145,10 +145,10 @@ export default function StatusNodeCard({
                       dragGhost.style.transformOrigin = 'top left';
                       dragGhost.style.boxShadow = '0 2px 6px rgba(0,0,0,0.2)';
                       dragGhost.innerText = `${value._class} (${value.info})`;
-
+                    
                       document.body.appendChild(dragGhost);
                       e.dataTransfer.setDragImage(dragGhost, 0, 15);
-
+                    
                       setTimeout(() => document.body.removeChild(dragGhost), 0);
                     }}
                     onDragEnd={() => setDraggingIdx(null)}
