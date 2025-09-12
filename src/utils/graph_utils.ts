@@ -109,7 +109,7 @@ export function buildGraphElements(
       const stepsDone = prot?.stepsDone;
       const numberOfSteps = prot?.numberOfSteps;
       const nodeWidth = widths[index];
-      const spacing = Math.max(140, nodeWidth * 0.4);
+      const spacing = Math.max(140, nodeWidth * 0.6);
       const outputs = prot?.outputs;
 
       nodes.push({

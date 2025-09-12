@@ -1,6 +1,4 @@
-
-
-      // src/components/ProtocolForm.tsx
+// src/components/ProtocolForm.tsx
 
 import React, { useState, useEffect, useCallback, JSX } from 'react';
 import {
@@ -47,20 +45,19 @@ type ProtocolFormProps = {
 };
 
 export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
-  // UI tabs
   const [topTab, setTopTab] = useState(0);
   const [bottomTab, setBottomTab] = useState(0);
   const [sectionTab, setSectionTab] = useState(0);
-
-  // Form state
   const [protocolDetails, setProtocolDetails] = useState<any>({});
   const [expandedGroups, setExpandedGroups] = useState<{ [key: string]: boolean }>({});
-
-  // Execution state
   const [execLoading, setExecLoading] = useState(false);
   const [execError, setExecError] = useState<string | null>(null);
 
-  // Parse JSON-wrapped values
+  // Drag/drop state
+  const [dragOverKey, setDragOverKey] = useState<string | null>(null);
+  const [currentDraggedOutput, setCurrentDraggedOutput] = useState<any>(null);
+
+  // Parse JSON value
   const parseFromJSONValue = (maybeJson: any) => {
     try {
       if (typeof maybeJson === 'string') {
@@ -69,11 +66,10 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
           return obj._objValue;
         }
       }
-    } catch {}
+    } catch { }
     return maybeJson;
   };
 
-  // Coerce strings to numbers/booleans
   const coerceToken = (raw: any) => {
     if (raw === undefined || raw === null) return '';
     if (typeof raw === 'boolean' || typeof raw === 'number') return raw;
@@ -86,7 +82,6 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
     return trimmed;
   };
 
-  // Get the current editableValue of a param
   const getParamCurrentValue = (sectionIdx: number, paramName: string) => {
     const key = `${sectionIdx}_${paramName}`;
     const state = protocolDetails.params?.[key];
@@ -100,7 +95,6 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
     return state.editableValue ?? '';
   };
 
-  // Evaluate logical atom (e.g. "x > 5")
   const evalAtom = (sectionIdx: number, atom: string): boolean => {
     let a = atom.replace(/[()]/g, '').trim();
     let neg = false;
@@ -121,8 +115,8 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
       switch (op) {
         case '==': res = left === right; break;
         case '!=': res = left !== right; break;
-        case '>':  res = (left as any) >  (right as any); break;
-        case '<':  res = (left as any) <  (right as any); break;
+        case '>': res = (left as any) > (right as any); break;
+        case '<': res = (left as any) < (right as any); break;
         case '>=': res = (left as any) >= (right as any); break;
         case '<=': res = (left as any) <= (right as any); break;
       }
@@ -133,7 +127,6 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
     return neg ? !res : res;
   };
 
-  // Evaluate logical expression with && and ||
   const evalExpr = (sectionIdx: number, exprRaw: string): boolean => {
     const expr = exprRaw
       .replace(/[()]/g, ' ')
@@ -151,7 +144,6 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
       );
   };
 
-  // Initialize protocolDetails.params from data.definition
   useEffect(() => {
     if (!data) {
       setProtocolDetails({});
@@ -187,7 +179,109 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
     });
   }, [data]);
 
-  // Serialize params for execution
+  const getExpectedClass = (def: any): string | undefined => {
+    if (!def) return undefined;
+    const candidates = [
+      def.pointerClass,
+      def.accept,
+      def.accepts,
+      def.accepted,
+      def.objectClass,
+      def.targetClass,
+      def._expectedClass,
+      def.acceptsClass,
+      def.type,
+      def._type,
+      def._classAccepted,
+      def.class,
+    ];
+    for (const c of candidates) {
+      if (typeof c === 'string' && c.trim()) return c.trim();
+    }
+    return undefined;
+  };
+
+  const getDraggedOutput = (dataTransfer: DataTransfer) => {
+    try {
+      const raw = dataTransfer.getData('text/plain'); 
+      if (!raw) return null;
+      return JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  };
+
+  const handleDragOverParam = (e: React.DragEvent, def: any, key: string) => {
+    const dragged = getDraggedOutput(e.dataTransfer);
+    const expected = getExpectedClass(def);
+  
+    if (dragged && expected) {
+      e.preventDefault(); 
+      setDragOverKey(key);
+      setCurrentDraggedOutput(dragged);
+    }
+  };
+  
+
+  const getBorderColor = (key: string, def: any) => {
+    if (!dragOverKey || !currentDraggedOutput) return 'transparent';
+    if (dragOverKey !== key) return 'transparent';
+    const expected = getExpectedClass(def);
+    if (!expected) return 'transparent';
+    return currentDraggedOutput._class === expected ? 'green' : 'red';
+  };
+
+
+  const handleDragLeaveParam = (_e: React.DragEvent) => {
+    setDragOverKey(null);
+    setCurrentDraggedOutput(null);
+  };
+
+  const handleDropOnParam = (e: React.DragEvent, def: any, key: string, multiIndex?: number) => {
+    e.preventDefault();
+    const dragged = getDraggedOutput(e.dataTransfer);
+    const expected = getExpectedClass(def);
+    if (!dragged || !expected || dragged._class !== expected) {
+      setDragOverKey(null);
+      setCurrentDraggedOutput(null);
+      return;
+    }
+  
+    if (def._class === 'MultiPointerParam') {
+      setProtocolDetails((prev: any) => {
+        const prevList = Array.isArray(prev.params[key].editableValue)
+          ? [...prev.params[key].editableValue]
+          : [];
+        if (typeof multiIndex === 'number') {
+          while (prevList.length <= multiIndex) prevList.push({ object: '', info: '' });
+          prevList[multiIndex] = { object: dragged._objValue ?? '', info: dragged.info ?? '' };
+        } else {
+          let placed = false;
+          for (let i = 0; i < prevList.length; i++) {
+            if (!prevList[i].object || prevList[i].object === '') {
+              prevList[i] = { object: dragged._objValue ?? '', info: dragged.info ?? '' };
+              placed = true;
+              break;
+            }
+          }
+          if (!placed) prevList.push({ object: dragged._objValue ?? '', info: dragged.info ?? '' });
+        }
+        return {
+          ...prev,
+          params: { ...prev.params, [key]: { ...prev.params[key], editableValue: prevList } },
+        };
+      });
+    } else {
+      setProtocolDetails((prev: any) => ({
+        ...prev,
+        params: { ...prev.params, [key]: { ...prev.params[key], editableValue: dragged._objValue } },
+      }));
+    }
+  
+    setDragOverKey(null);
+    setCurrentDraggedOutput(null);
+  };
+
   const getSerializedParams = useCallback(() => {
     const out: any = {};
     Object.entries(protocolDetails.params || {}).forEach(([k, p]: any) => {
@@ -204,7 +298,6 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
     return out;
   }, [protocolDetails.params]);
 
-  // Execute protocol
   const handleExecute = async () => {
     setExecLoading(true);
     setExecError(null);
@@ -217,6 +310,60 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
     } finally {
       setExecLoading(false);
     }
+  };
+
+  const wrapWithDrop = (control: JSX.Element, def: any, key: string) => {
+    const isActive = dragOverKey === key;
+    const expected = getExpectedClass(def);
+    let borderColor = getBorderColor(key, def);
+    let showPlus = false;
+  
+    if (isActive && currentDraggedOutput && expected) {
+      if (currentDraggedOutput._class === expected) {
+        borderColor = 'green';
+        showPlus = true;
+      } else {
+        borderColor = 'red';
+      }
+    }
+  
+    return (
+      <div
+        onDragOver={(e) => handleDragOverParam(e, def, key)}
+        onDragLeave={handleDragLeaveParam}
+        onDrop={(e) => handleDropOnParam(e, def, key)}
+        style={{
+          border: `2px solid ${borderColor}`,
+          borderRadius: 4,
+          padding: 2,
+          position: 'relative',
+          transition: 'border 0.15s',
+        }}
+      >
+        {control}
+        {showPlus && (
+          <span
+            style={{
+              position: 'absolute',
+              top: -4,
+              right: -4,
+              backgroundColor: 'green',
+              color: 'white',
+              fontWeight: 'bold',
+              borderRadius: '50%',
+              width: 16,
+              height: 16,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: 12,
+            }}
+          >
+            +
+          </span>
+        )}
+      </div>
+    );
   };
 
   // ParamRow: memoized to avoid full re-render
@@ -282,7 +429,6 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
               </Tooltip>
             )}
           </Box>
-
         </Box>
         {helpText && (
           <Dialog open={openHelp} onClose={() => setOpenHelp(false)} maxWidth="sm" fullWidth>
@@ -303,17 +449,19 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
     );
   });
 
-  // MultiParamRow: memoized
+  // MultiParamRow: memoized, now accepts onRowClear and onRowDrop
   const MultiParamRow = React.memo(({
     label,
     items,
     helpText,
     onRowClear,
+    onRowDrop,
   }: {
     label: string;
     items: any[];
     helpText?: string;
     onRowClear?: (i: number) => void;
+    onRowDrop?: (i: number, dragged: any) => void;
   }) => {
     const [openHelp, setOpenHelp] = useState(false);
     const display = [...items];
@@ -343,7 +491,33 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
             </TableHead>
             <TableBody>
               {display.map((row, i) => (
-                <TableRow key={i} sx={{ backgroundColor: i % 2 ? '#ffffff' : '#f5f5f5' }}>
+                <TableRow
+                  key={i}
+                  sx={{ backgroundColor: i % 2 ? '#ffffff' : '#f5f5f5' }}
+                  onDragOver={(e) => {
+                    // Try to allow drop if onRowDrop exists and classes match
+                    if (!onRowDrop) return;
+                    try {
+                      const raw = e.dataTransfer.getData('application/scipion-output');
+                      if (!raw) return;
+                      const dragged = JSON.parse(raw);
+                      // Allow drop if dragged._class exists (we don't have def here)
+                      if (dragged && dragged._class) {
+                        e.preventDefault();
+                      }
+                    } catch { }
+                  }}
+                  onDrop={(e) => {
+                    if (!onRowDrop) return;
+                    e.preventDefault();
+                    try {
+                      const raw = e.dataTransfer.getData('application/scipion-output');
+                      if (!raw) return;
+                      const dragged = JSON.parse(raw);
+                      onRowDrop(i, dragged);
+                    } catch { }
+                  }}
+                >
                   <TableCell>{row.object}</TableCell>
                   <TableCell>{row.info}</TableCell>
                   {onRowClear && (
@@ -429,6 +603,25 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
             };
           });
         };
+
+        // onRowDrop: update the MultiPointer row `i` with the dragged output if classes match
+        const onRowDrop = (i: number, dragged: any) => {
+          const expected = getExpectedClass(def);
+          if (!expected || dragged._class !== expected) return;
+          setProtocolDetails((prev: any) => {
+            const list = Array.isArray(prev.params[key].editableValue) ? [...prev.params[key].editableValue] : [];
+            while (list.length <= i) list.push({ object: '', info: '' });
+            list[i] = { object: dragged._objValue ?? '', info: dragged.info ?? '' };
+            return {
+              ...prev,
+              params: {
+                ...prev.params,
+                [key]: { ...prev.params[key], editableValue: list },
+              },
+            };
+          });
+        };
+
         return (
           <MultiParamRow
             key={key}
@@ -436,6 +629,7 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
             items={items}
             helpText={def.help}
             onRowClear={onClear}
+            onRowDrop={onRowDrop}
           />
         );
       }
@@ -474,7 +668,7 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
           <ParamRow
             key={key}
             label={def.label || name}
-            control={control}
+            control={wrapWithDrop(control, def, key)}
             helpText={def.help}
             isPointerParam
             onClear={onClear}
@@ -598,40 +792,46 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
       }
 
       // Default TextField
+      const defaultControl = (
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          {advancedTag}
+          <TextField
+            size="small"
+            name={key}
+            value={value ?? def.default ?? ''}
+            onChange={(e) => {
+              const v = e.target.value;
+              setProtocolDetails((prev: any) => ({
+                ...prev,
+                params: {
+                  ...prev.params,
+                  [key]: { ...prev.params[key], editableValue: v },
+                },
+              }));
+            }}
+            sx={{
+              minWidth: 300,
+              '& .MuiInputBase-input': { fontSize: '0.8rem' },
+            }}
+          />
+        </Box>
+      );
+
+      // For default controls, wrap with drop only if def has an expected class
+      const expectedForDefault = getExpectedClass(def);
+      const controlToUse = expectedForDefault ? wrapWithDrop(defaultControl, def, key) : defaultControl;
+
       return (
         <ParamRow
           key={key}
           label={def.label || name}
-          control={
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              {advancedTag}
-              <TextField
-                size="small"
-                name={key}
-                value={value ?? def.default ?? ''}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  setProtocolDetails((prev: any) => ({
-                    ...prev,
-                    params: {
-                      ...prev.params,
-                      [key]: { ...prev.params[key], editableValue: v },
-                    },
-                  }));
-                }}
-                sx={{
-                  minWidth: 300,
-                  '& .MuiInputBase-input': { fontSize: '0.8rem' },
-                }}
-              />
-            </Box>
-          }
+          control={controlToUse}
           helpText={def.help}
           rowIndex={rowIndex}
         />
       );
     },
-    [protocolDetails.params, expandedGroups]
+    [protocolDetails.params, expandedGroups, dragOverKey]
   );
 
   if (!data || !protocolDetails.params) return null;

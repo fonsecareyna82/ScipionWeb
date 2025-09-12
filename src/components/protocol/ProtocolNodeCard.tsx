@@ -11,6 +11,7 @@ const STATUS_COLORS: Record<string, string> = {
   aborted: '#F5CCCB',
   interactive: '#f7f3bf',
   root: '#D9F1FA',
+  scheduled: '#f7f3bf'
 };
 
 const STATUS_BADGE_COLORS: Record<string, string> = {
@@ -21,6 +22,7 @@ const STATUS_BADGE_COLORS: Record<string, string> = {
   failed: '#DC3545',
   aborted: '#DC3545',
   interactive: '#FFC107',
+  scheduled: '#918516'
 };
 
 type StatusNodeProps = {
@@ -51,23 +53,24 @@ const formatCpuTime = (seconds: number): string => {
   return `${pad(hours)}h:${pad(minutes)}m:${pad(secs)}s`;
 };
 
-export default function StatusNode({
+export default function StatusNodeCard({
   data,
   selectedNodeId,
   onClick,
   onDoubleClick,
 }: StatusNodeProps) {
   const [isHovered, setIsHovered] = useState(false);
+  const [draggingIdx, setDraggingIdx] = useState<number | null>(null);
   const isSelected = selectedNodeId === data.id;
 
-  const bgColor =
-    STATUS_COLORS[data.status ?? 'finished'] ?? STATUS_COLORS['root'];
+  const bgColor = STATUS_COLORS[data.status ?? 'finished'] ?? STATUS_COLORS['root'];
   data.color = bgColor;
 
   const classNames = [
-    'status-node',
-    isHovered ? 'hovered' : '',
-    isSelected ? 'selected' : '',
+    'status-node-card',
+    'rounded-2xl border transition-shadow transform',
+    isHovered ? 'shadow-xl scale-[1.03]' : 'shadow-md',
+    isSelected ? 'border-blue-600' : 'border-gray-300',
   ]
     .filter(Boolean)
     .join(' ');
@@ -83,114 +86,116 @@ export default function StatusNode({
     >
       {/* Header */}
       <div
-        className={`node-header flex ${data.id === 'PROJECT'
+        className={`node-card-header p-3 border-b flex ${data.id === 'PROJECT'
           ? 'flex-col items-center text-center'
           : 'flex-row items-center space-x-2'
           }`}
       >
         {data.id !== 'PROJECT' && (
-          <div
-            className={`node-id-badge ${data.status === 'running' ? 'glow-badge' : ''
-              }`}
-          >
+          <div className={`node-id-badge ${data.status === 'running' ? 'glow-badge' : ''}`}>
             {data.id}
           </div>
         )}
-        {data.id === 'PROJECT' ? (
-          <div className="text-4xl text-black">{data.label}</div>
-        ) : (
-          <div className="node-label">{data.label}</div>
-        )}
+        <div className={data.id === 'PROJECT' ? 'text-4xl text-black' : 'node-label dark:text-black'}>
+          {data.label}
+        </div>
       </div>
+      <div className={data.id != 'PROJECT' ? "border-t-1 border-gray-400 dark:border-gray-600" : ''} />
 
-      {/* IO Section */}
+      {/* Content */}
       {data.id !== 'PROJECT' && (
-        <>
-          <hr className="node-divider" />
+        <div
+          className="node-card-content p-3 mt-4"
+          style={{ minHeight: '120px', maxHeight: '300px', overflowY: 'auto' }}
+        >
           {/* Outputs list draggable */}
           {Array.isArray(data.outputs) && data.outputs.length > 0 && (
-            <div className="outputs-list mt-3 ml-6 space-y-2">
+            <div className="outputs-list space-y-2">
               {data.outputs.map((outputObj, idx) => {
                 const [key, rawValue] = Object.entries(outputObj)[0];
-                const value = rawValue as {
-                  info: string;
-                  _class: string;
-                  _objValue: string;
-                };
+                const value = rawValue as { info: string; _class: string; _objValue: string };
+
+                const isDragging = draggingIdx === idx;
 
                 return (
                   <div
                     key={idx}
-                    className="nodrag group cursor-grab active:cursor-grabbing flex flex-col px-3 py-2 rounded-lg bg-gradient-to-r from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-700 border border-gray-300 dark:border-gray-600 shadow-sm hover:shadow-md hover:from-blue-50 hover:to-blue-100 dark:hover:from-gray-700 dark:hover:to-gray-600 transition-all"
+                    className={`nodrag group cursor-grab flex items-center px-3 py-1 rounded-full border border-gray-400 dark:border-gray-600 shadow-sm hover:shadow-md transition-transform ${isDragging ? 'scale-100 opacity-70' : 'bg-gradient-to-r from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-700'
+                      }`}
                     draggable
                     onDragStart={(e) => {
                       e.stopPropagation();
-                      e.dataTransfer.setData(
-                        'application/scipion-output',
-                        JSON.stringify({
-                          parentId: data.id,
-                          key,
-                          ...value,
-                        })
-                      );
+                      setDraggingIdx(idx);
+
+                      const payload = JSON.stringify({ parentId: data.id, key, ...value });
+                      e.dataTransfer.setData('text/plain', payload); // ✅ Usamos text/plain
+
+                      // Drag ghost
+                      const dragGhost = document.createElement('div');
+                      dragGhost.style.position = 'absolute';
+                      dragGhost.style.top = '-1000px';
+                      dragGhost.style.left = '-1000px';
+                      dragGhost.style.padding = '6px 12px';
+                      dragGhost.style.background = 'linear-gradient(to right, #f0f0f0, #e0e0e0)';
+                      dragGhost.style.border = '1px solid #ccc';
+                      dragGhost.style.borderRadius = '0.5rem';
+                      dragGhost.style.fontSize = '16px';
+                      dragGhost.style.whiteSpace = 'nowrap';
+                      dragGhost.style.transform = 'scale(0.6)';
+                      dragGhost.style.transformOrigin = 'top left';
+                      dragGhost.style.boxShadow = '0 2px 6px rgba(0,0,0,0.2)';
+                      dragGhost.innerText = `${value._class} (${value.info})`;
+
+                      document.body.appendChild(dragGhost);
+                      e.dataTransfer.setDragImage(dragGhost, 0, 15);
+
+                      setTimeout(() => document.body.removeChild(dragGhost), 0);
                     }}
+                    onDragEnd={() => setDraggingIdx(null)}
                   >
-                    <div className="flex items-center space-x-2">
-                      <div className="w-3 h-3 rounded-full bg-blue-500 group-hover:bg-blue-400" />
-                      <span className="font-normal text-gray-900 dark:text-gray-100 text-2xl">
-                        {value.info}
-                      </span>
-                    </div>
-                    <span className="text-lg text-gray-500 dark:text-gray-400 ml-5 mt-1">
-                      {value._class}
+                    <span className="font-normal text-gray-900 dark:text-gray-100 text-2xl">
+                      {value.info}
                     </span>
                   </div>
                 );
               })}
             </div>
           )}
-
-          <hr className="node-divider" />
-        </>
+        </div>
       )}
+      <div className="border-t-1 border-gray-400 dark:border-gray-600 mt-3" />
 
-      {/* Status badge */}
+      {/* Footer / Status + Progress */}
       {data.status && (
-        <div className="flex items-center justify-between text-2xl text-white-800 dark:text-black-100">
+        <div className="node-card-footer p-3 border-t flex items-center justify-between">
           <span
             className="node-status-badge px-2 py-1 rounded text-sm flex items-center gap-2"
             style={{
-              backgroundColor:
-                STATUS_BADGE_COLORS[data.status] || '#999',
+              backgroundColor: STATUS_BADGE_COLORS[data.status] || '#999',
               color: 'white',
               minWidth: '120px',
             }}
           >
             {data.status}
 
-            {(data.status === 'running' ||
-              data.status === 'failed' ||
-              data.status === 'aborted') && (
-                <div className="flex items-center gap-1 flex-1">
-                  <div className="w-16 h-3 bg-white/30 rounded overflow-hidden">
-                    <div
-                      className="h-3 bg-white"
-                      style={{
-                        width: `${((data.stepsDone ?? 0) /
-                          (data.numberOfSteps ?? 1)) *
-                          100
-                          }%`,
-                      }}
-                    />
-                  </div>
-                  <span className="text-2xl opacity-80 ml-4">
-                    {data.stepsDone}/{data.numberOfSteps}
-                  </span>
+            {(data.status === 'running' || data.status === 'failed' || data.status === 'aborted') && (
+              <div className="flex items-center gap-1 flex-1 ml-2 transition-all duration-300">
+                <div className="w-16 h-3 bg-white/30 rounded overflow-hidden">
+                  <div
+                    className="h-3 bg-white transition-all duration-500"
+                    style={{
+                      width: `${((data.stepsDone ?? 0) / (data.numberOfSteps ?? 1)) * 100}%`,
+                    }}
+                  />
                 </div>
-              )}
+                <span className="text-xl opacity-80 ml-4">
+                  {data.stepsDone}/{data.numberOfSteps}
+                </span>
+              </div>
+            )}
           </span>
 
-          <span className="flex items-center space-x-1 ml-6">
+          <span className="flex items-center space-x-1 ml-6 text-2xl dark:text-black">
             <svg
               xmlns="http://www.w3.org/2000/svg"
               className="h-8 w-8 text-gray-500 dark:text-gray-400"
@@ -205,14 +210,12 @@ export default function StatusNode({
                 d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
               />
             </svg>
-            <span>
-              {formatCpuTime(data.tick ?? Number(data.elapsedTime) ?? 0)}
-            </span>
+            <span>{formatCpuTime(data.tick ?? Number(data.elapsedTime) ?? 0)}</span>
           </span>
         </div>
       )}
 
-      {/* React Flow handles (edges normales) */}
+      {/* React Flow handles */}
       <Handle type="target" position={Position.Top} />
       <Handle type="source" position={Position.Bottom} />
     </div>
