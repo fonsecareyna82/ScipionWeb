@@ -27,8 +27,6 @@ import {
 } from '@mui/material';
 import './ProtocolForm.css';
 import {
-  ChevronDownIcon,
-  ChevronUpIcon,
   CloseIcon,
   ExecuteIcon,
   SaveIcon,
@@ -49,7 +47,7 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
   const [bottomTab, setBottomTab] = useState(0);
   const [sectionTab, setSectionTab] = useState(0);
   const [protocolDetails, setProtocolDetails] = useState<any>({});
-  const [expandedGroups, setExpandedGroups] = useState<{ [key: string]: boolean }>({});
+  const [expandedGroups] = useState<{ [key: string]: boolean }>({});
   const [execLoading, setExecLoading] = useState(false);
   const [execError, setExecError] = useState<string | null>(null);
 
@@ -214,66 +212,6 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
     }
   };
 
-  const handleDragOverParam = (e: React.DragEvent, def: any, key: string) => {
-    e.preventDefault(); // necesario para permitir drop
-    setDragOverKey(key);
-
-    try {
-      const payload = e.dataTransfer.getData('application/scipion-output');
-      if (payload) {
-        const output = JSON.parse(payload);
-        setCurrentDraggedOutput(output); // ahora currentDraggedOutput es el output real
-      }
-    } catch (err) {
-      console.error('Error parsing dragged data:', err);
-      setCurrentDraggedOutput(null);
-    }
-  };
-
-
-
-  const getBorderColor = (key: string, def: any) => {
-    if (dragOverKey === key) {
-      const expected = getExpectedClass(def);
-      if (!currentDraggedOutput) return 'transparent';
-      return currentDraggedOutput._class === expected ? 'green' : 'red';
-    }
-    return 'transparent';
-  };
-
-
-  const handleDragLeaveParam = () => {
-    setDragOverKey(null);
-    setCurrentDraggedOutput(null);
-  };
-
-  const handleDropOnParam = (e: React.DragEvent, def: any, key: string) => {
-    e.preventDefault();
-    setDragOverKey(null);
-
-    try {
-      const payload = e.dataTransfer.getData('application/scipion-output');
-      if (!payload) return;
-
-      const output = JSON.parse(payload);
-      setCurrentDraggedOutput(null); // limpiamos
-
-      const expected = getExpectedClass(def);
-      if (!expected || output._class !== expected) return;
-
-      // Actualiza el form con el output real
-      setProtocolDetails((prev: any) => ({
-        ...prev,
-        params: {
-          ...prev.params,
-          [key]: { ...prev.params[key], editableValue: output._objValue ?? '' },
-        },
-      }));
-    } catch (err) {
-      console.error('Error parsing dropped data:', err);
-    }
-  };
-
   const getSerializedParams = useCallback(() => {
     const out: any = {};
     Object.entries(protocolDetails.params || {}).forEach(([k, p]: any) => {
@@ -304,13 +242,11 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
     }
   };
 
-  const [draggedOutput, setDraggedOutput] = useState<any | null>(null);
 
   const wrapWithDrop = (control: JSX.Element, def: any, key: string) => {
     const isOver = dragOverKey === key;
     const expectedClass = getExpectedClass(def);
   
-    const matches = false;
   
     const borderColor = isOver ? 'transparent' : 'transparent';
   
