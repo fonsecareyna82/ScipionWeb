@@ -121,7 +121,7 @@ export default function StatusNode({
                 return (
                   <div
                     key={idx}
-                    className="nodrag group cursor-grab active:cursor-grabbing flex items-center px-3 py-2 rounded-lg bg-gradient-to-r from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-700 border border-gray-300 dark:border-gray-600 shadow-sm hover:shadow-md hover:from-blue-50 hover:to-blue-100 dark:hover:from-gray-700 dark:hover:to-gray-600 transition-all"
+                    className="nodrag group cursor-grab active:cursor-grabbing flex flex-col px-3 py-2 rounded-lg bg-gradient-to-r from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-700 border border-gray-300 dark:border-gray-600 shadow-sm hover:shadow-md hover:from-blue-50 hover:to-blue-100 dark:hover:from-gray-700 dark:hover:to-gray-600 transition-all"
                     draggable
                     onDragStart={(e) => {
                       e.stopPropagation();
@@ -135,12 +135,14 @@ export default function StatusNode({
                       );
                     }}
                   >
-                    {/* Colored dot */}
-                    <div className="w-3 h-3 rounded-full bg-blue-500 group-hover:bg-blue-400 mr-3" />
-
-                    {/* Info text */}
-                    <span className="font-normal text-gray-900 dark:text-gray-100 text-2xl tracking-tight">
-                      {value.info}
+                    <div className="flex items-center space-x-2">
+                      <div className="w-3 h-3 rounded-full bg-blue-500 group-hover:bg-blue-400" />
+                      <span className="font-normal text-gray-900 dark:text-gray-100 text-2xl">
+                        {value.info}
+                      </span>
+                    </div>
+                    <span className="text-lg text-gray-500 dark:text-gray-400 ml-5 mt-1">
+                      {value._class}
                     </span>
                   </div>
                 );
