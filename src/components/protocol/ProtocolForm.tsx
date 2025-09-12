@@ -217,7 +217,7 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
   const handleDragOverParam = (e: React.DragEvent, def: any, key: string) => {
     e.preventDefault(); // necesario para permitir drop
     setDragOverKey(key);
-  
+
     try {
       const payload = e.dataTransfer.getData('application/scipion-output');
       if (payload) {
@@ -229,7 +229,7 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
       setCurrentDraggedOutput(null);
     }
   };
-  
+
 
 
   const getBorderColor = (key: string, def: any) => {
@@ -250,17 +250,17 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
   const handleDropOnParam = (e: React.DragEvent, def: any, key: string) => {
     e.preventDefault();
     setDragOverKey(null);
-  
+
     try {
       const payload = e.dataTransfer.getData('application/scipion-output');
       if (!payload) return;
-  
+
       const output = JSON.parse(payload);
       setCurrentDraggedOutput(null); // limpiamos
-  
+
       const expected = getExpectedClass(def);
       if (!expected || output._class !== expected) return;
-  
+
       // Actualiza el form con el output real
       setProtocolDetails((prev: any) => ({
         ...prev,
@@ -304,48 +304,46 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
     }
   };
 
+  const [draggedOutput, setDraggedOutput] = useState<any | null>(null);
+
   const wrapWithDrop = (control: JSX.Element, def: any, key: string) => {
     const isOver = dragOverKey === key;
+    const expectedClass = getExpectedClass(def);
   
-    const matches = currentDraggedOutput?._class === getExpectedClass(def);
-    const borderColor = isOver ? (matches ? 'green' : 'red') : 'transparent';
-    console.log(currentDraggedOutput)
-  
+    // Calculamos matches reactivo, usando el estado actual de draggedOutput
+    const matches = draggedOutput?._class === expectedClass;
   
     return (
       <div
-        onDragOver={(e) => {
+        onDragEnter={(e) => {
           e.preventDefault();
           setDragOverKey(key);
-  
           try {
             const payload = e.dataTransfer.getData('application/scipion-output');
-            if (payload) {
-              setCurrentDraggedOutput(JSON.parse(payload));
-            }
+            if (payload) setDraggedOutput(JSON.parse(payload));
+            else setDraggedOutput(null);
           } catch {
-            setCurrentDraggedOutput(null);
+            setDraggedOutput(null);
           }
         }}
+        onDragOver={(e) => e.preventDefault()} // necesario para permitir drop
         onDragLeave={() => {
           setDragOverKey(null);
-          setCurrentDraggedOutput(null);
+          setDraggedOutput(null);
         }}
         onDrop={(e) => {
           e.preventDefault();
           setDragOverKey(null);
-  
           try {
             const payload = e.dataTransfer.getData('application/scipion-output');
             if (!payload) return;
-  
             const output = JSON.parse(payload);
-            setCurrentDraggedOutput(null);
+            setDraggedOutput(null);
   
             const expected = getExpectedClass(def);
             if (!expected || output._class !== expected) return;
   
-            // Actualiza el form con el output real
+            // Actualizamos protocolDetails con el valor del output
             setProtocolDetails((prev: any) => ({
               ...prev,
               params: {
@@ -353,23 +351,22 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
                 [key]: { ...prev.params[key], editableValue: output._objValue ?? '' },
               },
             }));
-            setCurrentDraggedOutput(null);
           } catch {
             console.error('Drop failed');
           }
         }}
         style={{
-          border: `2px solid ${borderColor}`,
+          border: `2px solid ${isOver ? (matches ? 'green' : 'red') : 'transparent'}`,
           borderRadius: 4,
           padding: 4,
           boxSizing: 'border-box',
-          backgroundColor: 'inherit',
           transition: 'border-color 0.2s',
           position: 'relative',
         }}
       >
-        <Box sx={{ width: '100%', boxSizing: 'border-box' }}>{control}</Box>
+        {control}
   
+        {/* Indicador de match */}
         {isOver && matches && (
           <span
             style={{
@@ -394,6 +391,8 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
       </div>
     );
   };
+  
+
 
 
 
@@ -692,31 +691,31 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
             ...prev,
             params: { ...prev.params, [key]: { ...prev.params[key], editableValue: '' } },
           }));
-      
-        const expectedClass = getExpectedClass(def);
-        const matches = currentDraggedOutput?._class === expectedClass;
-      
-        const control = (
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            {advancedTag}
-            <TextField
-              size="small"
-              value={value ?? def.default ?? ''}
-              onChange={(e) =>
-                setProtocolDetails((prev: any) => ({
-                  ...prev,
-                  params: { ...prev.params, [key]: { ...prev.params[key], editableValue: e.target.value } },
-                }))
-              }
-              sx={{ minWidth: 300, '& .MuiInputBase-input': { fontSize: '0.8rem' } }}
-            />
-            {/* Prueba visual */}
-            <Box sx={{ ml: 1, fontWeight: 'bold', color: matches ? 'green' : 'red' }}>
-              {matches ? 'MATCH' : 'NO MATCH'}
+
+          const control = (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              {advancedTag}
+              <TextField
+                size="small"
+                value={value ?? def.default ?? ''}
+                onChange={(e) =>
+                  setProtocolDetails((prev: any) => ({
+                    ...prev,
+                    params: {
+                      ...prev.params,
+                      [key]: { ...prev.params[key], editableValue: e.target.value },
+                    },
+                  }))
+                }
+                sx={{ minWidth: 300, '& .MuiInputBase-input': { fontSize: '0.8rem' } }}
+              />
+              {/* MATCH / NO MATCH basado en el valor actual, no en el drag */}
+              <Box sx={{ ml: 1, fontWeight: 'bold', color: (value ?? '') === (protocolDetails.params[key]?.editableValue ?? '') ? 'green' : 'red' }}>
+                {(value ?? '') === (protocolDetails.params[key]?.editableValue ?? '') ? 'MATCH' : 'NO MATCH'}
+              </Box>
             </Box>
-          </Box>
-        );
-      
+          );
+
         return (
           <ParamRow
             key={key}
@@ -729,7 +728,8 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
           />
         );
       }
-      
+
+
 
       // --- EnumParam ---
       if (def._class === 'EnumParam' && Array.isArray(def.choices)) {
