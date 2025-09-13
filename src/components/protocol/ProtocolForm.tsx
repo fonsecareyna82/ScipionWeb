@@ -36,6 +36,9 @@ import {
   EyeIcon,
 } from '../../icons';
 import { executeProtocol } from '../../api/projects';
+import WrapWithDrop from './WrapWithDrop';
+import MultiParamRow from './MultiParamRow';
+import ParamRow from './ParamRow';
 
 type ProtocolFormProps = {
   data: any;
@@ -243,295 +246,15 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
   };
 
 
-  const wrapWithDrop = (control: JSX.Element, def: any, key: string) => {
-    const isOver = dragOverKey === key;
-    const expectedClass = getExpectedClass(def);
-  
-  
-    const borderColor = isOver ? 'transparent' : 'transparent';
-  
-    return (
-      <div
-        onDragEnter={(e) => {
-          e.preventDefault();
-          setDragOverKey(key);
-        }}
-        onDragOver={(e) => e.preventDefault()}
-        onDragLeave={() => setDragOverKey(null)}
-        onDrop={(e) => {
-          e.preventDefault();
-          setDragOverKey(null);
-  
-          const dt = (e.nativeEvent as DragEvent).dataTransfer;
-          if (!dt) return;
-  
-          try {
-            const out = getDraggedOutput(dt);
-            console.log("onDrop >> expected:", expectedClass, "got:", out);
-  
-            if (!out) return;
-            if (out._class !== expectedClass) {
-              return;
-            }
-  
-            setProtocolDetails((prev: any) => ({
-              ...prev,
-              params: {
-                ...prev.params,
-                [key]: {
-                  ...prev.params[key],
-                  editableValue: out._objValue ?? '',
-                },
-              },
-            }));
-          } catch (err) {
-            console.error("Drop failed", err);
-          }
-        }}
-        style={{
-          border: `2px solid ${borderColor}`,
-          borderRadius: 4,
-          padding: 4,
-          boxSizing: 'border-box',
-          transition: 'border-color 0.2s',
-          position: 'relative',
-          display: 'inline-block',
-          width: '100%',
-        }}
-      >
-        {control}
-      </div>
-    );
-  };
-  
-  
-  
-  
-
-
-
-
-  // ParamRow: memoized to avoid full re-render
-  const ParamRow = React.memo(({
-    label,
-    control,
-    rowIndex = 0,
-    helpText,
-    isPointerParam,
-    onClear,
-  }: {
-    label: string;
-    control: JSX.Element;
-    rowIndex?: number;
-    helpText?: string;
-    isPointerParam?: boolean;
-    onClear?: () => void;
-  }) => {
-    const [openHelp, setOpenHelp] = useState(false);
-
-    return (
-      <>
-        <Box
-          sx={{
-            display: 'grid',
-            gridTemplateColumns: '220px 1fr auto',
-            alignItems: 'center',
-            gap: 1,
-            mb: 1,
-            backgroundColor: rowIndex % 2 ? 'white' : '#EDEBEB',
-            position: 'relative',
-          }}
-        >
-          <Typography variant="body2" sx={{ pr: 2, fontSize: '0.8rem', fontWeight: 500 }}>
-            {label}
-          </Typography>
-          <Box>{control}</Box>
-          <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-            {isPointerParam && (
-              <Tooltip title="Find">
-                <IconButton size="small">
-                  <FindIcon fontSize="1.3rem" />
-                </IconButton>
-              </Tooltip>
-            )}
-            {onClear && (
-              <Tooltip title="Clear">
-                <IconButton size="small" onClick={onClear}>
-                  <TrashBinIcon fontSize="1.3rem" />
-                </IconButton>
-              </Tooltip>
-            )}
-            {isPointerParam && (
-              <Tooltip title="Visualize">
-                <IconButton size="small" onClick={() => console.log('View')}>
-                  <EyeIcon fontSize="1.3rem" />
-                </IconButton>
-              </Tooltip>
-            )}
-            {helpText && (
-              <Tooltip title="Help">
-                <IconButton size="small" onClick={() => setOpenHelp(true)}>
-                  <HelpIcon fontSize="1.3rem" />
-                </IconButton>
-              </Tooltip>
-            )}
-          </Box>
-        </Box>
-
-        {helpText && (
-          <Dialog open={openHelp} onClose={() => setOpenHelp(false)} maxWidth="sm" fullWidth>
-            <DialogTitle className="form-header">Help</DialogTitle>
-            <DialogContent sx={{ p: 2 }}>
-              <Typography variant="body2" sx={{ lineHeight: 1.6 }}>
-                {helpText}
-              </Typography>
-            </DialogContent>
-            <DialogActions sx={{ justifyContent: 'center' }}>
-              <Button variant="outlined" onClick={() => setOpenHelp(false)} startIcon={<CloseIcon />}>
-                Close
-              </Button>
-            </DialogActions>
-          </Dialog>
-        )}
-      </>
-    );
-  });
-
-
-  // MultiParamRow: memoized, now accepts onRowClear and onRowDrop
-  const MultiParamRow = React.memo(({
-    label,
-    items,
-    helpText,
-    onRowClear,
-    onRowDrop,
-    dragOverKey,
-    currentDraggedOutput,
-    paramKey,
-  }: {
-    label: string;
-    items: any[];
-    helpText?: string;
-    onRowClear?: (i: number) => void;
-    onRowDrop?: (i: number, dragged: any) => void;
-    dragOverKey?: string | null;
-    currentDraggedOutput?: any;
-    paramKey?: string;
-  }) => {
-    const [openHelp, setOpenHelp] = useState(false);
-    const display = [...items];
-    while (display.length < 5) display.push({ object: '', info: '' });
-
-    const isEmpty = (r: any) => !r.object?.trim() && !r.info?.trim();
-
-    return (
-      <Box sx={{ mb: 2 }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-          <Typography variant="body2" sx={{ fontWeight: 500 }}>{label}</Typography>
-          {helpText && (
-            <Tooltip title="Help">
-              <IconButton size="small" onClick={() => setOpenHelp(true)}>
-                <HelpIcon fontSize="1.3rem" />
-              </IconButton>
-            </Tooltip>
-          )}
-        </Box>
-        <Box sx={{ maxHeight: 200, overflowY: 'auto', borderRadius: 1 }}>
-          <Table size="small">
-            <TableHead sx={{ backgroundColor: '#BABABA' }}>
-              <TableRow>
-                <TableCell>Object</TableCell>
-                <TableCell>Information</TableCell>
-                {onRowClear && <TableCell>Actions</TableCell>}
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {display.map((row, i) => {
-                const keyId = `${paramKey}_${i}`;
-                const isOver = dragOverKey === keyId;
-                const expectedClass = currentDraggedOutput?._expectedClass ?? null;
-                const matches = currentDraggedOutput?._class === expectedClass;
-                const borderColor = isOver ? (matches ? 'green' : 'red') : 'transparent';
-
-                return (
-                  <TableRow
-                    key={i}
-                    sx={{
-                      border: `2px solid ${borderColor}`,
-                      transition: 'border-color 0.2s',
-                    }}
-                    onDragOver={(e) => {
-                      if (!onRowDrop) return;
-                      try {
-                        const raw = e.dataTransfer.getData('application/scipion-output');
-                        if (!raw) return;
-                        const dragged = JSON.parse(raw);
-                        if (dragged && dragged._class) {
-                          e.preventDefault();
-                        }
-                      } catch { }
-                    }}
-                    onDrop={(e) => {
-                      if (!onRowDrop) return;
-                      e.preventDefault();
-                      try {
-                        const raw = e.dataTransfer.getData('application/scipion-output');
-                        if (!raw) return;
-                        const dragged = JSON.parse(raw);
-                        onRowDrop(i, dragged);
-                      } catch { }
-                    }}
-                  >
-                    <TableCell>{row.object}</TableCell>
-                    <TableCell>{row.info}</TableCell>
-                    {onRowClear && (
-                      <TableCell>
-                        {!isEmpty(row) && (
-                          <>
-                            <IconButton size="small" onClick={() => onRowClear(i)}>
-                              <TrashBinIcon fontSize="1.3rem" />
-                            </IconButton>
-                            <IconButton size="small" onClick={() => console.log('View', i)}>
-                              <EyeIcon fontSize="1.3rem" />
-                            </IconButton>
-                          </>
-                        )}
-                      </TableCell>
-                    )}
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </Box>
-
-        {helpText && (
-          <Dialog open={openHelp} onClose={() => setOpenHelp(false)} maxWidth="sm" fullWidth>
-            <DialogTitle className="form-header">Help</DialogTitle>
-            <DialogContent sx={{ p: 2 }}>
-              <Typography variant="body2" sx={{ lineHeight: 1.6 }}>{helpText}</Typography>
-            </DialogContent>
-            <DialogActions sx={{ justifyContent: 'center' }}>
-              <Button variant="outlined" onClick={() => setOpenHelp(false)} startIcon={<CloseIcon />}>
-                Close
-              </Button>
-            </DialogActions>
-          </Dialog>
-        )}
-      </Box>
-    );
-  });
-
-
   // renderParam: memoized so stable across renders
   const renderParam = useCallback(
     (paramObj: any, sectionIdx: number, rowIndex = 0): JSX.Element | null => {
       const [name, def] = Object.entries(paramObj)[0] as [string, any];
       const key = `${sectionIdx}_${name}`;
       const value = protocolDetails.params?.[key]?.editableValue;
-
+  
       if (def.condition && !evalExpr(sectionIdx, def.condition)) return null;
-
+  
       const advancedTag = def.expertLevel === 1 ? (
         <Tooltip title="Advanced">
           <Box
@@ -551,7 +274,7 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
           </Box>
         </Tooltip>
       ) : null;
-
+  
       // --- MultiPointerParam ---
       if (def._class === 'MultiPointerParam') {
         const items = Array.isArray(value) ? value : def.default ?? [];
@@ -606,32 +329,42 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
             ...prev,
             params: { ...prev.params, [key]: { ...prev.params[key], editableValue: '' } },
           }));
-
-          const control = (
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              {advancedTag}
-              <TextField
-                size="small"
-                value={value ?? def.default ?? ''}
-                onChange={(e) =>
-                  setProtocolDetails((prev: any) => ({
-                    ...prev,
-                    params: {
-                      ...prev.params,
-                      [key]: { ...prev.params[key], editableValue: e.target.value },
-                    },
-                  }))
-                }
-                sx={{ minWidth: 300, '& .MuiInputBase-input': { fontSize: '0.8rem' } }}
-              />
-            </Box>
-          );
-
+  
+        const control = (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            {advancedTag}
+            <TextField
+              size="small"
+              value={value ?? def.default ?? ''}
+              onChange={(e) =>
+                setProtocolDetails((prev: any) => ({
+                  ...prev,
+                  params: {
+                    ...prev.params,
+                    [key]: { ...prev.params[key], editableValue: e.target.value },
+                  },
+                }))
+              }
+              sx={{ minWidth: 300, '& .MuiInputBase-input': { fontSize: '0.8rem' } }}
+            />
+          </Box>
+        );
+  
         return (
           <ParamRow
             key={key}
             label={def.label || name}
-            control={wrapWithDrop(control, def, key)}
+            control={
+              <WrapWithDrop
+                control={control}
+                def={def}
+                paramKey={key}
+                setProtocolDetails={setProtocolDetails}
+                setDragOverKey={setDragOverKey}
+                dragOverKey={dragOverKey}
+                currentDraggedOutput={currentDraggedOutput}
+              />
+            }
             helpText={def.help}
             isPointerParam
             onClear={onClear}
@@ -639,20 +372,69 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
           />
         );
       }
-
-
-
+  
+      // --- MultiPointerParam ---
+      if (def._class === 'MultiPointerParam') {
+        const items: any[] = Array.isArray(value) ? value : def.default ?? [];
+  
+        const handleRowClear = (idx: number) => {
+          const newItems = [...items];
+          newItems.splice(idx, 1);
+          newItems.push({ object: '', info: '' });
+          setProtocolDetails((prev: any) => ({
+            ...prev,
+            params: {
+              ...prev.params,
+              [key]: {
+                ...prev.params[key],
+                editableValue: newItems,
+              },
+            },
+          }));
+        };
+  
+        const handleRowDrop = (idx: number, dragged: any) => {
+          const newItems = [...items];
+          newItems[idx] = { object: dragged.id || dragged.name || '', info: '' };
+          setProtocolDetails((prev: any) => ({
+            ...prev,
+            params: {
+              ...prev.params,
+              [key]: {
+                ...prev.params[key],
+                editableValue: newItems,
+              },
+            },
+          }));
+        };
+  
+        return (
+          <MultiParamRow
+            key={key}
+            rowIndex={rowIndex}
+            label={def.label || name}
+            items={items}
+            helpText={def.help}
+            onRowClear={handleRowClear}
+            onRowDrop={handleRowDrop}
+            dragOverKey={dragOverKey}
+            currentDraggedOutput={currentDraggedOutput}
+            paramKey={key}
+          />
+        );
+      }
+  
       // --- EnumParam ---
       if (def._class === 'EnumParam' && Array.isArray(def.choices)) {
         let sel = value ?? def.default ?? '';
         if (typeof sel === 'number') sel = def.choices[sel] ?? '';
-
+  
         const onChange = (v: any) =>
           setProtocolDetails((prev: any) => ({
             ...prev,
             params: { ...prev.params, [key]: { ...prev.params[key], editableValue: v } },
           }));
-
+  
         const controlBase =
           def.display === 0 ? (
             <RadioGroup row value={sel} onChange={(e) => onChange(e.target.value)}>
@@ -676,54 +458,43 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
               ))}
             </TextField>
           );
-
-        return (
-          <ParamRow
-            key={key}
-            label={def.label || name}
-            control={wrapWithDrop(
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>{advancedTag}{controlBase}</Box>,
-              def,
-              key
-            )}
-            helpText={def.help}
-            rowIndex={rowIndex}
-          />
-        );
+  
+        return <ParamRow key={key} label={def.label || name} control={controlBase} helpText={def.help} rowIndex={rowIndex} />;
       }
-
+  
       // --- BooleanParam ---
       if (def._class === 'BooleanParam') {
         const checked =
           value !== undefined ? ['True', true, 1, '1'].includes(value) : ['True', true, 1, '1'].includes(def.default);
-
+  
         return (
           <ParamRow
             key={key}
             label={def.label || name}
-            control={wrapWithDrop(
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                {advancedTag}
-                <Switch
-                  checked={!!checked}
-                  onChange={(e) =>
-                    setProtocolDetails((prev: any) => ({
-                      ...prev,
-                      params: { ...prev.params, [key]: { ...prev.params[key], editableValue: e.target.checked ? 'True' : 'False' } },
-                    }))
-                  }
-                  color="primary"
-                />
-              </Box>,
-              def,
-              key
-            )}
+            control={
+              <Switch
+                checked={!!checked}
+                onChange={(e) =>
+                  setProtocolDetails((prev: any) => ({
+                    ...prev,
+                    params: {
+                      ...prev.params,
+                      [key]: {
+                        ...prev.params[key],
+                        editableValue: e.target.checked ? 'True' : 'False',
+                      },
+                    },
+                  }))
+                }
+                color="primary"
+              />
+            }
             helpText={def.help}
             rowIndex={rowIndex}
           />
         );
       }
-
+  
       // --- Default TextField ---
       const defaultControl = (
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -742,21 +513,11 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
           />
         </Box>
       );
-
-      return (
-        <ParamRow
-          key={key}
-          label={def.label || name}
-          control={wrapWithDrop(defaultControl, def, key)}
-          helpText={def.help}
-          rowIndex={rowIndex}
-        />
-      );
+  
+      return <ParamRow key={key} label={def.label || name} control={defaultControl} helpText={def.help} rowIndex={rowIndex} />;
     },
-    [protocolDetails.params, expandedGroups, dragOverKey, currentDraggedOutput]
+    [protocolDetails.params, dragOverKey, currentDraggedOutput]
   );
-
-
 
   if (!data || !protocolDetails.params) return null;
 

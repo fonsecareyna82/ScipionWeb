@@ -89,7 +89,7 @@ export function buildGraphElements(
 
   Object.entries(levelBuckets).forEach(([levelStr, ids]) => {
     const level = parseInt(levelStr, 10);
-    const y = level * 330;
+    const y = level * 360;
 
     const widths = ids.map(id => {
       const label = protocols[id]?.label || id;
