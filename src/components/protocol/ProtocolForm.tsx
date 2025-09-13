@@ -1,6 +1,6 @@
 // src/components/ProtocolForm.tsx
 
-import React, { useState, useEffect, useCallback, JSX } from 'react';
+import { useState, useEffect, useCallback, JSX } from 'react';
 import {
   Tabs,
   Tab,
@@ -12,28 +12,17 @@ import {
   FormControlLabel,
   Radio,
   Switch,
-  IconButton,
   Tooltip,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Table,
-  TableHead,
-  TableRow,
-  TableCell,
-  TableBody,
   CircularProgress,
+  IconButton,
 } from '@mui/material';
 import './ProtocolForm.css';
 import {
+  ChevronDownIcon,
+  ChevronUpIcon,
   CloseIcon,
   ExecuteIcon,
   SaveIcon,
-  HelpIcon,
-  FindIcon,
-  TrashBinIcon,
-  EyeIcon,
 } from '../../icons';
 import { executeProtocol } from '../../api/projects';
 import WrapWithDrop from './WrapWithDrop';
@@ -50,7 +39,7 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
   const [bottomTab, setBottomTab] = useState(0);
   const [sectionTab, setSectionTab] = useState(0);
   const [protocolDetails, setProtocolDetails] = useState<any>({});
-  const [expandedGroups] = useState<{ [key: string]: boolean }>({});
+  const [expandedGroups, setExpandedGroups] = useState<{ [key: string]: boolean }>({});
   const [execLoading, setExecLoading] = useState(false);
   const [execError, setExecError] = useState<string | null>(null);
 
@@ -252,9 +241,9 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
       const [name, def] = Object.entries(paramObj)[0] as [string, any];
       const key = `${sectionIdx}_${name}`;
       const value = protocolDetails.params?.[key]?.editableValue;
-  
+
       if (def.condition && !evalExpr(sectionIdx, def.condition)) return null;
-  
+
       const advancedTag = def.expertLevel === 1 ? (
         <Tooltip title="Advanced">
           <Box
@@ -274,7 +263,7 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
           </Box>
         </Tooltip>
       ) : null;
-  
+
       // --- MultiPointerParam ---
       if (def._class === 'MultiPointerParam') {
         const items = Array.isArray(value) ? value : def.default ?? [];
@@ -329,7 +318,7 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
             ...prev,
             params: { ...prev.params, [key]: { ...prev.params[key], editableValue: '' } },
           }));
-  
+
         const control = (
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             {advancedTag}
@@ -349,7 +338,7 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
             />
           </Box>
         );
-  
+
         return (
           <ParamRow
             key={key}
@@ -371,18 +360,19 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
           />
         );
       }
-  
+
+
       // --- EnumParam ---
       if (def._class === 'EnumParam' && Array.isArray(def.choices)) {
         let sel = value ?? def.default ?? '';
         if (typeof sel === 'number') sel = def.choices[sel] ?? '';
-  
+
         const onChange = (v: any) =>
           setProtocolDetails((prev: any) => ({
             ...prev,
             params: { ...prev.params, [key]: { ...prev.params[key], editableValue: v } },
           }));
-  
+
         const controlBase =
           def.display === 0 ? (
             <RadioGroup row value={sel} onChange={(e) => onChange(e.target.value)}>
@@ -406,15 +396,46 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
               ))}
             </TextField>
           );
-  
+
         return <ParamRow key={key} label={def.label || name} control={controlBase} helpText={def.help} rowIndex={rowIndex} />;
       }
-  
+
+      // --- Group ---
+      if (def._class === 'Group' && Array.isArray(def.children)) {
+        const groupKey = `${key}_group`;
+        const expanded = expandedGroups[groupKey] ?? true;
+
+        const toggleExpand = () =>
+          setExpandedGroups((prev) => ({ ...prev, [groupKey]: !expanded }));
+
+        return (
+          <Box key={key} sx={{ mb: 2, border: '1px dashed #ccc', borderRadius: 1, p: 1 }}>
+            <Box
+              sx={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                cursor: 'pointer',
+                mb: 1,
+              }}
+              onClick={toggleExpand}
+            >
+              <Typography variant="subtitle2">{def.label || name}</Typography>
+              <IconButton size="small">
+                {expanded ? <ChevronUpIcon fontSize="small" /> : <ChevronDownIcon fontSize="small" />}
+              </IconButton>
+            </Box>
+            {expanded &&
+              def.children.map((child: any, idx: number) => renderParam(child, sectionIdx, idx))}
+          </Box>
+        );
+      }
+
       // --- BooleanParam ---
       if (def._class === 'BooleanParam') {
         const checked =
           value !== undefined ? ['True', true, 1, '1'].includes(value) : ['True', true, 1, '1'].includes(def.default);
-  
+
         return (
           <ParamRow
             key={key}
@@ -442,7 +463,7 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
           />
         );
       }
-  
+
       // --- Default TextField ---
       const defaultControl = (
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -461,10 +482,10 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
           />
         </Box>
       );
-  
+
       return <ParamRow key={key} label={def.label || name} control={defaultControl} helpText={def.help} rowIndex={rowIndex} />;
     },
-    [protocolDetails.params, dragOverKey, currentDraggedOutput]
+    [protocolDetails.params, dragOverKey, currentDraggedOutput, expandedGroups]
   );
 
   if (!data || !protocolDetails.params) return null;
