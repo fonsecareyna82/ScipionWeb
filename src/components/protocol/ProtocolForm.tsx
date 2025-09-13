@@ -373,57 +373,6 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
         );
       }
   
-      // --- MultiPointerParam ---
-      if (def._class === 'MultiPointerParam') {
-        const items: any[] = Array.isArray(value) ? value : def.default ?? [];
-  
-        const handleRowClear = (idx: number) => {
-          const newItems = [...items];
-          newItems.splice(idx, 1);
-          newItems.push({ object: '', info: '' });
-          setProtocolDetails((prev: any) => ({
-            ...prev,
-            params: {
-              ...prev.params,
-              [key]: {
-                ...prev.params[key],
-                editableValue: newItems,
-              },
-            },
-          }));
-        };
-  
-        const handleRowDrop = (idx: number, dragged: any) => {
-          const newItems = [...items];
-          newItems[idx] = { object: dragged.id || dragged.name || '', info: '' };
-          setProtocolDetails((prev: any) => ({
-            ...prev,
-            params: {
-              ...prev.params,
-              [key]: {
-                ...prev.params[key],
-                editableValue: newItems,
-              },
-            },
-          }));
-        };
-  
-        return (
-          <MultiParamRow
-            key={key}
-            rowIndex={rowIndex}
-            label={def.label || name}
-            items={items}
-            helpText={def.help}
-            onRowClear={handleRowClear}
-            onRowDrop={handleRowDrop}
-            dragOverKey={dragOverKey}
-            currentDraggedOutput={currentDraggedOutput}
-            paramKey={key}
-          />
-        );
-      }
-  
       // --- EnumParam ---
       if (def._class === 'EnumParam' && Array.isArray(def.choices)) {
         let sel = value ?? def.default ?? '';

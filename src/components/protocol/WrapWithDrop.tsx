@@ -1,15 +1,37 @@
 // src/components/WrapWithDrop.tsx
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { Box } from '@mui/material';
 
 type WrapWithDropProps = {
   control: React.ReactNode;
   def: any;
   paramKey: string;
-  setProtocolDetails: React.Dispatch<any>;
+  setProtocolDetails: React.Dispatch<React.SetStateAction<any>>;
+  setDragOverKey: (key: string | null) => void;
   dragOverKey: string | null;
-  setDragOverKey: React.Dispatch<React.SetStateAction<string | null>>;
   currentDraggedOutput: any;
+};
+
+const getExpectedClass = (def: any): string | undefined => {
+  if (!def) return undefined;
+  const candidates = [
+    def.pointerClass,
+    def.accept,
+    def.accepts,
+    def.accepted,
+    def.objectClass,
+    def.targetClass,
+    def._expectedClass,
+    def.acceptsClass,
+    def.type,
+    def._type,
+    def._classAccepted,
+    def.class,
+  ];
+  for (const c of candidates) {
+    if (typeof c === 'string' && c.trim()) return c.trim();
+  }
+  return undefined;
 };
 
 export default function WrapWithDrop({
@@ -17,60 +39,62 @@ export default function WrapWithDrop({
   def,
   paramKey,
   setProtocolDetails,
-  dragOverKey,
   setDragOverKey,
+  dragOverKey,
   currentDraggedOutput,
 }: WrapWithDropProps) {
-  const [isOver, setIsOver] = useState(false);
+  const expected = getExpectedClass(def);
 
-  const expectedClass = def._class;
-
-  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+  const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
-    // Verificamos que haya un objeto arrastrado
-    if (!currentDraggedOutput) return;
-
-    const draggedClass = currentDraggedOutput._class;
-    if (draggedClass && draggedClass === expectedClass) {
-      setIsOver(true);
+    if (currentDraggedOutput && currentDraggedOutput._class === expected) {
       setDragOverKey(paramKey);
-    } else {
-      setIsOver(false);
-      setDragOverKey(null);
     }
   };
 
   const handleDragLeave = () => {
-    setIsOver(false);
     setDragOverKey(null);
   };
 
-  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+  const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
-    if (!currentDraggedOutput) return;
-
-    const draggedClass = currentDraggedOutput._class;
-    if (draggedClass && draggedClass === expectedClass) {
-      // Actualizamos editableValue del PointerParam
-      setProtocolDetails((prev: any) => ({
-        ...prev,
-        params: {
-          ...prev.params,
-          [paramKey]: {
-            ...prev.params[paramKey],
-            editableValue: currentDraggedOutput.id || currentDraggedOutput.name || '',
-          },
-        },
-      }));
-    }
-    setIsOver(false);
     setDragOverKey(null);
+
+    let dragged = currentDraggedOutput;
+
+    // fallback: re-parse from DataTransfer
+    if (!dragged) {
+      try {
+        const raw =
+          e.dataTransfer.getData('application/scipion-output') ||
+          e.dataTransfer.getData('text/plain') ||
+          e.dataTransfer.getData('text');
+        if (raw) {
+          dragged = JSON.parse(raw);
+        }
+      } catch (err) {
+        console.error('Drop parse error:', err);
+      }
+    }
+
+    if (!dragged) return;
+    if (expected && dragged._class !== expected) return;
+
+    // Actualizar el valor del campo
+    setProtocolDetails((prev: any) => ({
+      ...prev,
+      params: {
+        ...prev.params,
+        [paramKey]: {
+          ...prev.params[paramKey],
+          editableValue: dragged._objValue ?? dragged.id ?? dragged.name ?? '',
+        },
+      },
+    }));
   };
 
-  // Si el dragOverKey cambia externamente, mantenemos el borde correcto
-  useEffect(() => {
-    setIsOver(dragOverKey === paramKey);
-  }, [dragOverKey, paramKey]);
+  const isActive =
+    dragOverKey === paramKey && currentDraggedOutput?._class === expected;
 
   return (
     <Box
@@ -78,11 +102,10 @@ export default function WrapWithDrop({
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
       sx={{
-        width: '100%',
-        height: '100%',
-        border: isOver ? '2px dashed #4caf50' : '2px dashed transparent',
+        border: isActive ? '2px dashed #3b82f6' : '2px dashed transparent',
         borderRadius: 1,
-        transition: 'border 0.15s ease-in-out',
+        p: 0.5,
+        transition: 'border 0.2s ease-in-out',
       }}
     >
       {control}
