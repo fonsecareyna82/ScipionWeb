@@ -26,10 +26,12 @@ import ProtectedRoute from "./components/auth/ProtectedRoute";
 import VerifyEmailForm from "./components/auth/VerifyEmailForm";
 import SessionManager from "./components/common/SessionManager";
 import { Toaster } from "react-hot-toast";
+import { DragProvider } from "./components/protocol/DragContext";
 
 
 export default function App() {
   return (
+    <DragProvider>
     <Router>
       <ScrollToTop />
       <SessionManager />  {/* Controlling inactivity */}
@@ -80,7 +82,6 @@ export default function App() {
         }}
       />
     </Router>
-    
-
+    </DragProvider>
   );
 }

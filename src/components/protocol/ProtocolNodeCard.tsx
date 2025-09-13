@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Handle, Position } from 'reactflow';
 import './ProtocolNodeCard.css';
+import { useDrag } from './DragContext';
 
 const STATUS_COLORS: Record<string, string> = {
   running: '#FCCE62',
@@ -60,7 +61,7 @@ export default function StatusNodeCard({
   const [isHovered, setIsHovered] = useState(false);
   const [draggingIdx, setDraggingIdx] = useState<number | null>(null);
   const isSelected = selectedNodeId === data.id;
-  const [currentDraggedOutput, setCurrentDraggedOutput] = useState<any | null>(null);
+  const { setCurrentDraggedOutput } = useDrag();
 
   const bgColor = STATUS_COLORS[data.status ?? 'finished'] ?? STATUS_COLORS['root'];
   data.color = bgColor;
@@ -125,18 +126,18 @@ export default function StatusNodeCard({
                     onDragStart={(e) => {
                       e.stopPropagation();
                       setDraggingIdx(idx);
-                    
+
                       const output = {
                         _class: value._class,
                         _objValue: value._objValue,
                         info: value.info,
                       };
-                    
+
                       setCurrentDraggedOutput(output);
-                    
+
                       const payload = JSON.stringify(output);
                       e.dataTransfer.setData('application/scipion-output', payload);
-                    
+
                       // Drag ghost
                       const dragGhost = document.createElement('div');
                       dragGhost.style.position = 'absolute';
@@ -151,8 +152,10 @@ export default function StatusNodeCard({
                       e.dataTransfer.setDragImage(dragGhost, 0, 15);
                       setTimeout(() => document.body.removeChild(dragGhost), 0);
                     }}
-                    
-                    onDragEnd={() => setDraggingIdx(null)}
+                    onDragEnd={() => {
+                      setDraggingIdx(null);
+                      setCurrentDraggedOutput(null);
+                    }}
                   >
                     <span className="font-normal text-gray-900 dark:text-gray-100 text-2xl">
                       {value.info}

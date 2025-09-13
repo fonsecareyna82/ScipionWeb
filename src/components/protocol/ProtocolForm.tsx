@@ -362,7 +362,6 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
                 setProtocolDetails={setProtocolDetails}
                 setDragOverKey={setDragOverKey}
                 dragOverKey={dragOverKey}
-                currentDraggedOutput={currentDraggedOutput}
               />
             }
             helpText={def.help}
