@@ -1,5 +1,5 @@
 // src/components/WrapWithDrop.tsx
-import React from 'react';
+import React, { useState } from 'react';
 import { Box } from '@mui/material';
 
 type WrapWithDropProps = {
@@ -44,25 +44,14 @@ export default function WrapWithDrop({
   currentDraggedOutput,
 }: WrapWithDropProps) {
   const expected = getExpectedClass(def);
+  const [dragMatch, setDragMatch] = useState<null | boolean>(null);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
-    if (currentDraggedOutput && currentDraggedOutput._class === expected) {
-      setDragOverKey(paramKey);
-    }
-  };
+    setDragOverKey(paramKey);
 
-  const handleDragLeave = () => {
-    setDragOverKey(null);
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setDragOverKey(null);
-
+    // leer dataTransfer por si no está en estado
     let dragged = currentDraggedOutput;
-
-    // fallback: re-parse from DataTransfer
     if (!dragged) {
       try {
         const raw =
@@ -72,15 +61,42 @@ export default function WrapWithDrop({
         if (raw) {
           dragged = JSON.parse(raw);
         }
-      } catch (err) {
-        console.error('Drop parse error:', err);
-      }
+      } catch {}
+    }
+
+    if (dragged && expected) {
+      setDragMatch(dragged._class === expected);
+    } else {
+      setDragMatch(null);
+    }
+  };
+
+  const handleDragLeave = () => {
+    setDragOverKey(null);
+    setDragMatch(null);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOverKey(null);
+    setDragMatch(null);
+
+    let dragged = currentDraggedOutput;
+    if (!dragged) {
+      try {
+        const raw =
+          e.dataTransfer.getData('application/scipion-output') ||
+          e.dataTransfer.getData('text/plain') ||
+          e.dataTransfer.getData('text');
+        if (raw) {
+          dragged = JSON.parse(raw);
+        }
+      } catch {}
     }
 
     if (!dragged) return;
     if (expected && dragged._class !== expected) return;
 
-    // Actualizar el valor del campo
     setProtocolDetails((prev: any) => ({
       ...prev,
       params: {
@@ -93,8 +109,7 @@ export default function WrapWithDrop({
     }));
   };
 
-  const isActive =
-    dragOverKey === paramKey && currentDraggedOutput?._class === expected;
+  const isOver = dragOverKey === paramKey;
 
   return (
     <Box
@@ -102,10 +117,23 @@ export default function WrapWithDrop({
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
       sx={{
-        border: isActive ? '2px dashed #3b82f6' : '2px dashed transparent',
+        border: isOver
+          ? dragMatch === true
+            ? '2px dashed #22c55e' // verde
+            : dragMatch === false
+            ? '2px dashed #ef4444' // rojo
+            : '2px dashed #f59e0b' // amarillo = indefinido
+          : '2px dashed transparent',
+        backgroundColor: isOver
+          ? dragMatch === true
+            ? 'rgba(34,197,94,0.15)'
+            : dragMatch === false
+            ? 'rgba(239,68,68,0.15)'
+            : 'rgba(245,158,11,0.15)'
+          : 'transparent',
         borderRadius: 1,
         p: 0.5,
-        transition: 'border 0.2s ease-in-out',
+        transition: 'all 0.2s ease-in-out',
       }}
     >
       {control}
