@@ -74,6 +74,9 @@ export default function WrapWithDrop({
           [paramKey]: {
             ...prev.params[paramKey],
             editableValue: currentDraggedOutput._objValue ?? '',
+            _objValue: currentDraggedOutput._objValue ?? '',
+            info: currentDraggedOutput.info ?? '',
+            _parentId: currentDraggedOutput._parentId ?? null,
           },
         },
       }));

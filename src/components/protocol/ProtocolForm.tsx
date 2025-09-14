@@ -206,19 +206,25 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
 
   const getSerializedParams = useCallback(() => {
     const out: any = {};
+  
     Object.entries(protocolDetails.params || {}).forEach(([k, p]: any) => {
-      let v = p.value;
-      try {
-        const obj = JSON.parse(p.value);
-        obj._objValue = p.editableValue;
-        v = JSON.stringify(obj, null, 2);
-      } catch {
-        v = p.editableValue;
-      }
-      out[k] = { ...p, value: v };
+      const keyParts = k.split('_');
+      keyParts.shift(); // quitar la sección
+      const newKey = keyParts.join('_');
+  
+      out[newKey] = {
+        ...p,
+        value: p.editableValue,   // valor principal
+        _objValue: p._objValue,
+        info: p.info,
+        _parentId: p._parentId,
+      };
     });
+  
     return out;
   }, [protocolDetails.params]);
+  
+  
 
   const handleExecute = async () => {
     setExecLoading(true);

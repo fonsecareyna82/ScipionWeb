@@ -113,7 +113,7 @@ export default function StatusNodeCard({
             <div className="outputs-list space-y-2">
               {data.outputs.map((outputObj, idx) => {
                 const [key, rawValue] = Object.entries(outputObj)[0];
-                const value = rawValue as { info: string; _class: string; _objValue: string };
+                const value = rawValue as { info: string; _class: string; _objValue: string; _parentId: string };
 
                 const isDragging = draggingIdx === idx;
 
@@ -131,6 +131,7 @@ export default function StatusNodeCard({
                         _class: value._class,
                         _objValue: value._objValue,
                         info: value.info,
+                        _parentId: value._parentId
                       };
 
                       setCurrentDraggedOutput(output);
