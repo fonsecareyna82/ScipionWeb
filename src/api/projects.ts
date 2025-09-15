@@ -100,6 +100,22 @@ export async function executeProtocol(protocolId: string, params: Record<string,
 }
 
 /**
+ * Save a protocol for a specific project by ID
+ */
+export async function saveProtocol(protocolId: string, params: Record<string, any>): Promise<any> {
+  const response = await fetch(`${BASE_URL}/projects/save`, {
+    method: "POST",
+    headers: getAuthHeaders(),
+    body: JSON.stringify({ protocolId, params }),
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.message || "Failed to save protocol");
+  }
+  return response.json();
+}
+
+/**
  * Rename a project and update its description
  */
 export async function renameProject(id: string, newName: string, newDescription: string): Promise<Project> {

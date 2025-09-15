@@ -24,7 +24,7 @@ import {
   ExecuteIcon,
   SaveIcon,
 } from '../../icons';
-import { executeProtocol } from '../../api/projects';
+import { executeProtocol, saveProtocol } from '../../api/projects';
 import WrapWithDrop from './WrapWithDrop';
 import MultiParamRow from './MultiParamRow';
 import ParamRow from './ParamRow';
@@ -234,7 +234,21 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
       onClose();
     } catch (err: any) {
       console.error(err);
-      setExecError(err.message || 'Error al ejecutar protocolo');
+      setExecError(err.message || 'Error launching the protocolo');
+    } finally {
+      setExecLoading(false);
+    }
+  };
+
+  const handleSave = async () => {
+    setExecLoading(true);
+    setExecError(null);
+    try {
+      await saveProtocol(data.id, getSerializedParams());
+      onClose();
+    } catch (err: any) {
+      console.error(err);
+      setExecError(err.message || 'Error saving the protocol');
     } finally {
       setExecLoading(false);
     }
@@ -659,7 +673,7 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
         <Button
           variant="contained"
           startIcon={<SaveIcon />}
-          onClick={() => console.log('Save', getSerializedParams())}
+          onClick={handleSave}
           disabled={execLoading}
           sx={{ textTransform: 'none' }}
         >

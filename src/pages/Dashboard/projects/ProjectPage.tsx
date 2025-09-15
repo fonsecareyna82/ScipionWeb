@@ -384,7 +384,7 @@ export default function ProjectPage() {
               className={`px-3 py-1 rounded-lg text-sm flex items-center gap-1 bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300
                 }`}
             >
-              <TreeIcon className="w-4 h-4" />
+              <TreeIcon className="w-4 h-4 text-gray-200" />
               Workflows
             </button>
           </div>
@@ -436,7 +436,7 @@ export default function ProjectPage() {
               disabled={isRefreshing}
             >
               <RefreshIcon
-                className={`w-5 h-4 text-blue-600 dark:text-gray-100 dark:bg-gray-200 mr-1 ml-1 mt-1 ${isRefreshing ? 'animate-spin' : ''
+                className={`w-5 h-5 text-black dark:text-white dark:bg-black mr-1 ml-1 mt-1 ${isRefreshing ? 'animate-spin' : ''
                   }`}
               />
             </button>
@@ -537,7 +537,7 @@ export default function ProjectPage() {
               <Background />
               <Controls position="top-right" showInteractive={false}>
                 <button className="refresh-btn" title="Refresh project" onClick={handleRefresh} disabled={isRefreshing}>
-                  <RefreshIcon className={`w-5 h-4 text-blue-600 dark:text-gray-100 dark:bg-gray-200 mr-1 ml-1 mt-1 ${isRefreshing ? 'animate-spin' : ''}`} />
+                  <RefreshIcon className={`w-5 h-5 text-black dark:text-black dark:w-6.5 dark:h-5 dark:mt-0 dark:ml-0 dark:bg-white mr-1 ml-1 mt-1 ${isRefreshing ? 'animate-spin' : ''}`} />
                 </button>
               </Controls>
             </ReactFlow>

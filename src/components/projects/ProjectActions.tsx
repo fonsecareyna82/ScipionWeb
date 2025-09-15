@@ -52,7 +52,7 @@ const ProjectAction: React.FC<ProjectActionProps> = ({ icon, label, onOpen, onRe
                                 }}
                             >
                                 <div className="flex items-center gap-2">
-                                    <OpenFolderIcon className="shrink-0 w-5 h-5 text-gray-500 dark:text-gray-400" />
+                                    <OpenFolderIcon className="shrink-0 w-5 h-5 text-gray-500 dark:text-white" />
                                     <span className="whitespace-nowrap">Open</span>
                                 </div>
                             </li>
@@ -64,7 +64,7 @@ const ProjectAction: React.FC<ProjectActionProps> = ({ icon, label, onOpen, onRe
                                 }}
                             >
                                 <div className="flex items-center gap-2">
-                                    <RenameIcon className="shrink-0 w-5 h-5 text-gray-500 dark:text-gray-400" />
+                                    <RenameIcon className="shrink-0 w-5 h-5 text-gray-500 dark:text-white" />
                                     <span className="whitespace-nowrap">Rename</span>
                                 </div>
                             </li>
@@ -76,7 +76,7 @@ const ProjectAction: React.FC<ProjectActionProps> = ({ icon, label, onOpen, onRe
                                 }}
                             >
                                  <div className="flex items-center gap-2">
-                                    <TrashBinIcon className="shrink-0 w-5 h-5 text-gray-500 dark:text-black-400" />
+                                    <TrashBinIcon className="shrink-0 w-5 h-5 text-gray-500 dark:text-white" />
                                     <span className="whitespace-nowrap">Remove</span>
                                 </div>
                             </li>

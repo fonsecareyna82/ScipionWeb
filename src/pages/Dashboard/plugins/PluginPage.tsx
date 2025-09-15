@@ -180,10 +180,10 @@ export default function PluginPage() {
         >
             {/* Back button */}
             <Button
-                variant="ghost"
+                variant="default"
                 size="icon"
                 onClick={() => navigate(-1)}
-                className="absolute h-12 w-12 top-1 left-1 rounded-full bg-gray-100"
+                className="absolute h-12 w-12 top-1 left-1 rounded-full bg-gray-100 hover:bg-gray-400 "
             >
                 <AngleLeftIcon className="h-12 w-12" />
             </Button>
