@@ -28,7 +28,7 @@ const ParamRow = ({ label, control, helpText, isPointerParam, onClear, rowIndex 
           position: 'relative',
         }}
       >
-        <Typography variant="body2" sx={{ pr: 2, fontSize: '0.8rem', fontWeight: 500 }}>
+        <Typography variant="body2" sx={{ pr: 2, fontSize: '0.8rem', fontWeight: 500, color: 'black'}}>
           {label}
         </Typography>
         <Box>{control}</Box>

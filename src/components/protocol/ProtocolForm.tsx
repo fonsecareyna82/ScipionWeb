@@ -206,12 +206,12 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
 
   const getSerializedParams = useCallback(() => {
     const out: any = {};
-  
+
     Object.entries(protocolDetails.params || {}).forEach(([k, p]: any) => {
       const keyParts = k.split('_');
       keyParts.shift(); // quitar la sección
       const newKey = keyParts.join('_');
-  
+
       out[newKey] = {
         ...p,
         value: p.editableValue,   // valor principal
@@ -220,11 +220,11 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
         _parentId: p._parentId,
       };
     });
-  
+
     return out;
   }, [protocolDetails.params]);
-  
-  
+
+
 
   const handleExecute = async () => {
     setExecLoading(true);
@@ -424,6 +424,7 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
       }
 
       // --- Group ---
+      // --- Group ---
       if (def._class === 'Group' && Array.isArray(def.children)) {
         const groupKey = `${key}_group`;
         const expanded = expandedGroups[groupKey] ?? true;
@@ -432,7 +433,17 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
           setExpandedGroups((prev) => ({ ...prev, [groupKey]: !expanded }));
 
         return (
-          <Box key={key} sx={{ mb: 2, border: '1px dashed #ccc', borderRadius: 1, p: 1 }}>
+          <Box
+            key={key}
+            sx={{
+              mb: 2,
+              border: '1px dashed #ccc',
+              borderRadius: 1,
+              p: 1,
+              backgroundColor: (theme) =>
+                theme.palette.mode === 'dark' ? '#2c2c2c' : '#f9fafb',
+            }}
+          >
             <Box
               sx={{
                 display: 'flex',
@@ -443,16 +454,25 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
               }}
               onClick={toggleExpand}
             >
-              <Typography variant="subtitle2">{def.label || name}</Typography>
+              <Typography
+                variant="subtitle2"
+                sx={(theme) => ({
+                  color: theme.palette.mode === 'dark' ? '#ffffff' : '#000000',
+                })}
+              >
+                {def.label || name || `Group ${groupKey}`}
+              </Typography>
               <IconButton size="small">
                 {expanded ? <ChevronUpIcon fontSize="small" /> : <ChevronDownIcon fontSize="small" />}
               </IconButton>
             </Box>
+
             {expanded &&
               def.children.map((child: any, idx: number) => renderParam(child, sectionIdx, idx))}
           </Box>
         );
       }
+
 
       // --- BooleanParam ---
       if (def._class === 'BooleanParam') {
