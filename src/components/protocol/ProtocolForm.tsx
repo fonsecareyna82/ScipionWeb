@@ -230,7 +230,8 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
     setExecLoading(true);
     setExecError(null);
     try {
-      await executeProtocol(data.id, getSerializedParams());
+      const protocolId = data.id ?? data.id ?? '';
+      await executeProtocol(protocolId, data.protocolClassName, getSerializedParams());
       onClose();
     } catch (err: any) {
       console.error(err);
@@ -244,7 +245,9 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
     setExecLoading(true);
     setExecError(null);
     try {
-      await saveProtocol(data.id, getSerializedParams());
+      const protocolId = data.id ?? data.id ?? '';
+      console.log(data)
+      await saveProtocol(protocolId, data.protocolClassName, getSerializedParams());
       onClose();
     } catch (err: any) {
       console.error(err);

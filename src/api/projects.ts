@@ -84,13 +84,24 @@ export async function fetchProtocolDetails(projectId: string, protocolId: string
 }
 
 /**
+ * Fetch detailed info of a protocol by its class name
+ */
+export async function fetchNewProtocolDetails(projectId: string, protocolClass: string): Promise<ProtocolNode> {
+  const response = await fetch(`${BASE_URL}/projects/${projectId}/protclass/${protocolClass}`, {
+    headers: getAuthHeaders(),
+  });
+  if (!response.ok) throw new Error("Failed to fetch protocol details");
+  return response.json();
+}
+
+/**
  * Launch a protocol for a specific project by ID
  */
-export async function executeProtocol(protocolId: string, params: Record<string, any>): Promise<any> {
+export async function executeProtocol(protocolId: string, protocolClassName: string, params: Record<string, any>): Promise<any> {
   const response = await fetch(`${BASE_URL}/projects/launch`, {
     method: "POST",
     headers: getAuthHeaders(),
-    body: JSON.stringify({ protocolId, params }),
+    body: JSON.stringify({ protocolId, protocolClassName, params }),
   });
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
@@ -102,11 +113,11 @@ export async function executeProtocol(protocolId: string, params: Record<string,
 /**
  * Save a protocol for a specific project by ID
  */
-export async function saveProtocol(protocolId: string, params: Record<string, any>): Promise<any> {
+export async function saveProtocol(protocolId: string, protocolClassName: string, params: Record<string, any>): Promise<any> {
   const response = await fetch(`${BASE_URL}/projects/save`, {
     method: "POST",
     headers: getAuthHeaders(),
-    body: JSON.stringify({ protocolId, params }),
+    body: JSON.stringify({ protocolId, protocolClassName, params }),
   });
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));

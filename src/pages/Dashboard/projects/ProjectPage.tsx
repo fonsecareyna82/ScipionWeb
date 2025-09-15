@@ -1,6 +1,6 @@
 import { useParams } from "react-router-dom";
 import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
-import { fetchProject, Project, fetchProtocolDetails, loadProtocols } from "../../../api/projects";
+import { fetchProject, Project, fetchProtocolDetails, loadProtocols, fetchNewProtocolDetails } from "../../../api/projects";
 import ProtocolForm from "../../../components/protocol/ProtocolForm";
 import { buildGraphElements } from "../../../utils/graph_utils";
 
@@ -375,7 +375,19 @@ export default function ProjectPage() {
 
             {/* Protocols button */}
             <div>
-              <ProtocolsDrawer projectId={project?.id ? Number(project.id) : null} />
+              <ProtocolsDrawer
+                projectId={project?.id ? Number(project.id) : null}
+                onProtocolDoubleClick={async (protocolClass: string) => {
+                  if (!projectName) return;
+                  try {
+                    const fullNodeData = await fetchNewProtocolDetails(projectName, protocolClass);
+                    setSelectedNodeDetails(fullNodeData);
+                    setPreviousNodeId(protocolClass);
+                  } catch (err) {
+                    console.error("Failed to fetch protocol details", err);
+                  }
+                }}
+              />
             </div>
 
             {/* Workflows button */}
@@ -384,7 +396,7 @@ export default function ProjectPage() {
               className={`px-3 py-1 rounded-lg text-sm flex items-center gap-1 bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300
                 }`}
             >
-              <TreeIcon className="w-4 h-4 text-gray-200" />
+              <TreeIcon className="w-4 h-4" />
               Workflows
             </button>
           </div>
@@ -476,10 +488,10 @@ export default function ProjectPage() {
                           <div className="w-16 h-3 bg-gray-300 dark:bg-gray-700 rounded overflow-hidden">
                             <div
                               className={`h-3 ${row.status === 'running'
-                                  ? 'bg-yellow-400'
-                                  : row.status === 'failed' || row.status === 'aborted'
-                                    ? 'bg-red-500'
-                                    : 'bg-gray-400'
+                                ? 'bg-yellow-400'
+                                : row.status === 'failed' || row.status === 'aborted'
+                                  ? 'bg-red-500'
+                                  : 'bg-gray-400'
                                 } transition-all duration-300`}
                               style={{
                                 width: `${((row.stepsDone ?? 0) / (row.numberOfSteps ?? 1)) * 100}%`,

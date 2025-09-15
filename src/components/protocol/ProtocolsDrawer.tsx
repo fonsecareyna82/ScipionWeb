@@ -5,9 +5,13 @@ import { BoxCubeIcon } from "@/icons";
 
 interface ProtocolsDrawerProps {
   projectId: number | null;
+  onProtocolDoubleClick?: (protocolId: string) => void;
 }
 
-export const ProtocolsDrawer: React.FC<ProtocolsDrawerProps> = ({ projectId }) => {
+export const ProtocolsDrawer: React.FC<ProtocolsDrawerProps> = ({
+  projectId,
+  onProtocolDoubleClick,
+}) => {
   const [protocols, setProtocols] = useState<ProtocolNode[]>([]);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
@@ -45,12 +49,6 @@ export const ProtocolsDrawer: React.FC<ProtocolsDrawerProps> = ({ projectId }) =
     return () => window.removeEventListener("keydown", handleEsc);
   }, []);
 
-  const filteredProtocols = selectedRoot
-    ? searchText
-      ? [selectedRoot]
-      : [selectedRoot]
-    : [];
-
   return (
     <>
       {/* Button */}
@@ -72,7 +70,7 @@ export const ProtocolsDrawer: React.FC<ProtocolsDrawerProps> = ({ projectId }) =
         <div className="relative">
           <button
             onClick={() => setOpen(false)}
-            className="absolute top-4 right-4 z-50 text-gray-500 hover:text-gray-900 dark:hover:text-white bg-white dark:bg-gray-800 rounded-full w-6 h-6 shadow-lg"
+            className="absolute top-18 right-4 z-50 text-gray-500 hover:text-gray-900 dark:hover:text-white bg-white dark:bg-gray-800 rounded-full w-6 h-6 shadow-lg"
             aria-label="Close drawer"
           >
             ✕
@@ -109,8 +107,19 @@ export const ProtocolsDrawer: React.FC<ProtocolsDrawerProps> = ({ projectId }) =
         <div className="p-1 border-b border-gray-200 dark:border-gray-700 sticky top-0 bg-white dark:bg-gray-800 z-40 ml-3">
           <div className="relative w-full max-w-sm">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-400 dark:text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-5 w-5 text-gray-400 dark:text-gray-500"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                />
               </svg>
             </div>
             <input
@@ -126,7 +135,11 @@ export const ProtocolsDrawer: React.FC<ProtocolsDrawerProps> = ({ projectId }) =
         {/* Tree */}
         <div className="p-3 overflow-y-auto h-[calc(100%-192px)] scrollbar-thin scrollbar-thumb-gray-400 scrollbar-track-transparent">
           {selectedRoot ? (
-            <ProtocolsTree data={[selectedRoot]} searchText={searchText} />
+            <ProtocolsTree
+              data={[selectedRoot]}
+              searchText={searchText}
+              onNodeDoubleClick={onProtocolDoubleClick}
+            />
           ) : (
             <div className="text-gray-500">No protocols found</div>
           )}

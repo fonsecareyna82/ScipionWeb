@@ -1,29 +1,50 @@
-import { useState } from 'react';
-import { Handle, Position } from 'reactflow';
-import './ProtocolNodeCard.css';
-import { useDrag } from './DragContext';
+import { useState } from "react";
+import { Handle, Position } from "reactflow";
+import "./ProtocolNodeCard.css";
+import { useDrag } from "./DragContext";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
+import {
+  MoreHorizontal,
+  Pencil,
+  FolderOpen,
+  Copy,
+  Trash2,
+  FileUp,
+  RefreshCw,
+  Play,
+  RotateCcw,
+  ArrowUpRight,
+  ArrowDownLeft,
+  Upload,
+} from "lucide-react";
 
 const STATUS_COLORS: Record<string, string> = {
-  running: '#FCCE62',
-  saved: '#D9F1FA',
-  launched: '#D9F1FA',
-  finished: '#D2F5CB',
-  failed: '#F5CCCB',
-  aborted: '#F5CCCB',
-  interactive: '#f7f3bf',
-  root: '#D9F1FA',
-  scheduled: '#f7f3bf'
+  running: "#FCCE62",
+  saved: "#D9F1FA",
+  launched: "#D9F1FA",
+  finished: "#D2F5CB",
+  failed: "#F5CCCB",
+  aborted: "#F5CCCB",
+  interactive: "#f7f3bf",
+  root: "#D9F1FA",
+  scheduled: "#f7f3bf",
 };
 
 const STATUS_BADGE_COLORS: Record<string, string> = {
-  running: '#918516',
-  saved: '#1E90FF',
-  launched: '#1E90FF',
-  finished: '#28A745',
-  failed: '#DC3545',
-  aborted: '#DC3545',
-  interactive: '#FFC107',
-  scheduled: '#918516'
+  running: "#918516",
+  saved: "#1E90FF",
+  launched: "#1E90FF",
+  finished: "#28A745",
+  failed: "#DC3545",
+  aborted: "#DC3545",
+  interactive: "#FFC107",
+  scheduled: "#918516",
 };
 
 type StatusNodeProps = {
@@ -48,7 +69,7 @@ const formatCpuTime = (seconds: number): string => {
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
   const secs = seconds % 60;
-  const pad = (n: number) => n.toString().padStart(2, '0');
+  const pad = (n: number) => n.toString().padStart(2, "0");
   return `${pad(hours)}h:${pad(minutes)}m:${pad(secs)}s`;
 };
 
@@ -63,17 +84,18 @@ export default function StatusNodeCard({
   const isSelected = selectedNodeId === data.id;
   const { setCurrentDraggedOutput } = useDrag();
 
-  const bgColor = STATUS_COLORS[data.status ?? 'finished'] ?? STATUS_COLORS['root'];
+  const bgColor =
+    STATUS_COLORS[data.status ?? "finished"] ?? STATUS_COLORS["root"];
   data.color = bgColor;
 
   const classNames = [
-    'status-node-card',
-    'rounded-2xl border transition-shadow transform',
-    isHovered ? 'shadow-xl scale-[1.03]' : 'shadow-md',
-    isSelected ? 'border-blue-600' : 'border-gray-300',
+    "status-node-card",
+    "rounded-2xl border transition-shadow transform",
+    isHovered ? "shadow-xl scale-[1.03]" : "shadow-md",
+    isSelected ? "border-blue-600" : "border-gray-300",
   ]
     .filter(Boolean)
-    .join(' ');
+    .join(" ");
 
   return (
     <div
@@ -86,42 +108,120 @@ export default function StatusNodeCard({
     >
       {/* Header */}
       <div
-        className={`node-card-header p-3 border-b flex ${data.id === 'PROJECT'
-          ? 'flex-col items-center text-center'
-          : 'flex-row items-center space-x-2'
-          }`}
+        className={`node-card-header p-3 border-b flex ${
+          data.id === "PROJECT"
+            ? "flex-col items-center text-center"
+            : "flex-row items-center justify-between"
+        }`}
       >
-        {data.id !== 'PROJECT' && (
-          <div className={`node-id-badge ${data.status === 'running' ? 'glow-badge' : ''}`}>
-            {data.id}
+        <div className="flex items-center space-x-2">
+          {data.id !== "PROJECT" && (
+            <div
+              className={`node-id-badge ${
+                data.status === "running" ? "glow-badge" : ""
+              }`}
+            >
+              {data.id}
+            </div>
+          )}
+          <div
+            className={
+              data.id === "PROJECT"
+                ? "text-4xl text-black"
+                : "node-label dark:text-black"
+            }
+          >
+            {data.label}
           </div>
-        )}
-        <div className={data.id === 'PROJECT' ? 'text-4xl text-black' : 'node-label dark:text-black'}>
-          {data.label}
         </div>
+
+        {data.id !== "PROJECT" && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-200 ml-2">
+                <MoreHorizontal className="h-6 w-6 text-black dark:text-black" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent className="w-56">
+              <DropdownMenuItem>
+                <Pencil className="mr-2 h-4 w-4" /> Edit
+              </DropdownMenuItem>
+              <DropdownMenuItem>
+                <FolderOpen className="mr-2 h-4 w-4" /> Browse
+              </DropdownMenuItem>
+              <DropdownMenuItem>
+                <Pencil className="mr-2 h-4 w-4" /> Rename
+              </DropdownMenuItem>
+              <DropdownMenuItem>
+                <Copy className="mr-2 h-4 w-4" /> Duplicate
+              </DropdownMenuItem>
+              <DropdownMenuItem className="text-red-600">
+                <Trash2 className="mr-2 h-4 w-4" /> Delete
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem>
+                <ArrowDownLeft className="mr-2 h-4 w-4" /> Select from
+              </DropdownMenuItem>
+              <DropdownMenuItem>
+                <ArrowUpRight className="mr-2 h-4 w-4" /> Select to
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem>
+                <RefreshCw className="mr-2 h-4 w-4" /> Restart all
+              </DropdownMenuItem>
+              <DropdownMenuItem>
+                <Play className="mr-2 h-4 w-4" /> Continue all
+              </DropdownMenuItem>
+              <DropdownMenuItem>
+                <RotateCcw className="mr-2 h-4 w-4" /> Reset from
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem>
+                <FileUp className="mr-2 h-4 w-4" /> Export
+              </DropdownMenuItem>
+              <DropdownMenuItem>
+                <Upload className="mr-2 h-4 w-4" /> Export & upload
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       </div>
-      <div className={data.id != 'PROJECT' ? "border-t-1 border-gray-400 dark:border-gray-600" : ''} />
+
+      <div
+        className={
+          data.id != "PROJECT"
+            ? "border-t-1 border-gray-400 dark:border-gray-600"
+            : ""
+        }
+      />
 
       {/* Content */}
-      {data.id !== 'PROJECT' && (
+      {data.id !== "PROJECT" && (
         <div
           className="node-card-content p-3 mt-4"
-          style={{ minHeight: '120px', maxHeight: '300px', overflowY: 'auto' }}
+          style={{ minHeight: "120px", maxHeight: "300px", overflowY: "auto" }}
         >
-          {/* Outputs list draggable */}
           {Array.isArray(data.outputs) && data.outputs.length > 0 && (
             <div className="outputs-list space-y-2">
               {data.outputs.map((outputObj, idx) => {
                 const [key, rawValue] = Object.entries(outputObj)[0];
-                const value = rawValue as { info: string; _class: string; _objValue: string; _parentId: string };
+                const value = rawValue as {
+                  info: string;
+                  _class: string;
+                  _objValue: string;
+                  _parentId: string;
+                };
 
                 const isDragging = draggingIdx === idx;
 
                 return (
                   <div
                     key={idx}
-                    className={`nodrag group cursor-grab flex items-center px-3 py-1 rounded-full border border-gray-400 dark:border-gray-600 shadow-sm hover:shadow-md transition-transform ${isDragging ? 'scale-100 opacity-70' : 'bg-gradient-to-r from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-700'
-                      }`}
+                    className={`nodrag group cursor-grab flex items-center px-3 py-1 rounded-full border border-gray-400 dark:border-gray-600 shadow-sm hover:shadow-md transition-transform ${
+                      isDragging
+                        ? "scale-100 opacity-70"
+                        : "bg-gradient-to-r from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-700"
+                    }`}
                     draggable
                     onDragStart={(e) => {
                       e.stopPropagation();
@@ -131,23 +231,25 @@ export default function StatusNodeCard({
                         _class: value._class,
                         _objValue: value._objValue,
                         info: value.info,
-                        _parentId: value._parentId
+                        _parentId: value._parentId,
                       };
 
                       setCurrentDraggedOutput(output);
 
                       const payload = JSON.stringify(output);
-                      e.dataTransfer.setData('application/scipion-output', payload);
+                      e.dataTransfer.setData(
+                        "application/scipion-output",
+                        payload
+                      );
 
-                      // Drag ghost
-                      const dragGhost = document.createElement('div');
-                      dragGhost.style.position = 'absolute';
-                      dragGhost.style.top = '-1000px';
-                      dragGhost.style.left = '-1000px';
-                      dragGhost.style.padding = '6px 12px';
-                      dragGhost.style.background = '#eee';
-                      dragGhost.style.border = '1px solid #ccc';
-                      dragGhost.style.borderRadius = '0.5rem';
+                      const dragGhost = document.createElement("div");
+                      dragGhost.style.position = "absolute";
+                      dragGhost.style.top = "-1000px";
+                      dragGhost.style.left = "-1000px";
+                      dragGhost.style.padding = "6px 12px";
+                      dragGhost.style.background = "#eee";
+                      dragGhost.style.border = "1px solid #ccc";
+                      dragGhost.style.borderRadius = "0.5rem";
                       dragGhost.innerText = `${value._class} (${value.info})`;
                       document.body.appendChild(dragGhost);
                       e.dataTransfer.setDragImage(dragGhost, 0, 15);
@@ -168,6 +270,7 @@ export default function StatusNodeCard({
           )}
         </div>
       )}
+
       <div className="border-t-1 border-gray-400 dark:border-gray-600 mt-3" />
 
       {/* Footer / Status + Progress */}
@@ -176,20 +279,23 @@ export default function StatusNodeCard({
           <span
             className="node-status-badge px-2 py-1 rounded text-sm flex items-center gap-2"
             style={{
-              backgroundColor: STATUS_BADGE_COLORS[data.status] || '#999',
-              color: 'white',
-              minWidth: '120px',
+              backgroundColor: STATUS_BADGE_COLORS[data.status] || "#999",
+              color: "white",
+              minWidth: "120px",
             }}
           >
             {data.status}
-
-            {(data.status === 'running' || data.status === 'failed' || data.status === 'aborted') && (
+            {(data.status === "running" ||
+              data.status === "failed" ||
+              data.status === "aborted") && (
               <div className="flex items-center gap-1 flex-1 ml-2 transition-all duration-300">
                 <div className="w-16 h-3 bg-white/30 rounded overflow-hidden">
                   <div
                     className="h-3 bg-white transition-all duration-500"
                     style={{
-                      width: `${((data.stepsDone ?? 0) / (data.numberOfSteps ?? 1)) * 100}%`,
+                      width: `${
+                        ((data.stepsDone ?? 0) / (data.numberOfSteps ?? 1)) * 100
+                      }%`,
                     }}
                   />
                 </div>
