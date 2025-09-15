@@ -36,7 +36,7 @@ export const ProtocolsDrawer: React.FC<ProtocolsDrawerProps> = ({ projectId }) =
     }
   }, [projectId]);
 
-  // Close drawer on Escape key
+  // Close drawer on Escape
   useEffect(() => {
     const handleEsc = (event: KeyboardEvent) => {
       if (event.key === "Escape") setOpen(false);
@@ -45,30 +45,15 @@ export const ProtocolsDrawer: React.FC<ProtocolsDrawerProps> = ({ projectId }) =
     return () => window.removeEventListener("keydown", handleEsc);
   }, []);
 
-  // Filter tree recursively
-  const filterTree = (nodes: ProtocolNode[], search: string): ProtocolNode[] => {
-    const lowerSearch = search.toLowerCase();
-    return nodes
-      .map(node => {
-        const matches = node.text.toLowerCase().includes(lowerSearch);
-        const filteredChildren = node.childs ? filterTree(node.childs, search) : undefined;
-        if (matches || (filteredChildren && filteredChildren.length > 0)) {
-          return { ...node, childs: filteredChildren };
-        }
-        return null;
-      })
-      .filter(Boolean) as ProtocolNode[];
-  };
-
-  const filteredProtocols = searchText && selectedRoot
-    ? filterTree([selectedRoot], searchText)
-    : selectedRoot
+  const filteredProtocols = selectedRoot
+    ? searchText
       ? [selectedRoot]
-      : [];
+      : [selectedRoot]
+    : [];
 
   return (
     <>
-      {/* Button to load protocols */}
+      {/* Button */}
       <button
         onClick={handleLoadProtocols}
         disabled={loading || projectId == null}
@@ -78,16 +63,16 @@ export const ProtocolsDrawer: React.FC<ProtocolsDrawerProps> = ({ projectId }) =
         {loading ? "Loading…" : "Protocols"}
       </button>
 
-      {/* Drawer panel */}
+      {/* Drawer */}
       <div
         className={`fixed top-0 right-0 h-full w-130 bg-white dark:bg-gray-800 shadow-xl transform transition-transform duration-300 ease-in-out z-50
           ${open ? "translate-x-0" : "translate-x-full"}`}
       >
-        {/* Close button */}
+        {/* Close */}
         <div className="relative">
           <button
             onClick={() => setOpen(false)}
-            className="absolute top-19 right-4 z-50 text-gray-500 hover:text-gray-900 dark:hover:text-white bg-white dark:bg-gray-800 rounded-full w-6 h-6 shadow-lg"
+            className="absolute top-4 right-4 z-50 text-gray-500 hover:text-gray-900 dark:hover:text-white bg-white dark:bg-gray-800 rounded-full w-6 h-6 shadow-lg"
             aria-label="Close drawer"
           >
             ✕
@@ -97,19 +82,18 @@ export const ProtocolsDrawer: React.FC<ProtocolsDrawerProps> = ({ projectId }) =
         {/* Header */}
         <div className="flex flex-col p-3 bg-gradient-to-r from-gray-100 to-gray-500 dark:from-gray-700 dark:to-gray-800 border-b border-gray-300 shadow-sm mt-14">
           <h2 className="text-lg">Protocols</h2>
-         
         </div>
 
-        {/* Root selector dropdown */}
+        {/* Root selector */}
         {protocols.length > 1 && (
-          <div className="p-1 ml-3 border-b border-gray-200 dark:border-gray-700 relative z-50">
+          <div className="p-1 ml-3 border-b border-gray-200 dark:border-gray-700">
             <select
               className="w-full p-2 border rounded bg-white dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-400"
               value={selectedRoot ? protocols.indexOf(selectedRoot) : 0}
               onChange={(e) => {
                 const idx = Number(e.target.value);
                 setSelectedRoot(protocols[idx]);
-                setSearchText(""); // Reset search when changing root
+                setSearchText(""); // reset search
               }}
             >
               {protocols.map((node, idx) => (
@@ -121,7 +105,7 @@ export const ProtocolsDrawer: React.FC<ProtocolsDrawerProps> = ({ projectId }) =
           </div>
         )}
 
-        {/* Search field (fixed below dropdown) */}
+        {/* Search input */}
         <div className="p-1 border-b border-gray-200 dark:border-gray-700 sticky top-0 bg-white dark:bg-gray-800 z-40 ml-3">
           <div className="relative w-full max-w-sm">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -139,10 +123,10 @@ export const ProtocolsDrawer: React.FC<ProtocolsDrawerProps> = ({ projectId }) =
           </div>
         </div>
 
-        {/* Tree content */}
+        {/* Tree */}
         <div className="p-3 overflow-y-auto h-[calc(100%-192px)] scrollbar-thin scrollbar-thumb-gray-400 scrollbar-track-transparent">
-          {filteredProtocols.length > 0 ? (
-            <ProtocolsTree data={filteredProtocols} />
+          {selectedRoot ? (
+            <ProtocolsTree data={[selectedRoot]} searchText={searchText} />
           ) : (
             <div className="text-gray-500">No protocols found</div>
           )}
