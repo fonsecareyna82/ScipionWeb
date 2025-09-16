@@ -78,7 +78,7 @@ export default function App() {
       <Toaster
         position="top-right"
         containerStyle={{
-          zIndex: 999999,  // ⬅️ asegúrate que es mayor al toolbar
+          zIndex: 999999,  
         }}
       />
     </Router>

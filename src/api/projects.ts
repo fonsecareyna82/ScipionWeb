@@ -1,7 +1,7 @@
 // src/api/projects.ts
-
 import { ProtocolNode } from "./protocols";
 import { BASE_URL } from "@/config";
+import { getAccessToken, refreshAccessToken, logout } from "./auth";
 
 export interface Project {
   id: string;
@@ -17,23 +17,47 @@ export interface Project {
 }
 
 /**
- * Helper to get the auth token and return default headers
+ * Wrapper for fetch that automatically refreshes tokens on 401
  */
-function getAuthHeaders(): HeadersInit {
-  const token = localStorage.getItem("accessToken");
-  return {
-    "Content-Type": "application/json",
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
+async function fetchWithAuth(input: RequestInfo, init?: RequestInit): Promise<Response> {
+  let token = getAccessToken();
+
+  const response = await fetch(input, {
+    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      ...(init?.headers || {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  });
+
+  if (response.status === 401) {
+    // try refresh
+    const newToken = await refreshAccessToken();
+    if (!newToken) {
+      logout();
+      throw new Error("Session expired. Please login again.");
+    }
+
+    // retry request with new token
+    return fetch(input, {
+      ...init,
+      headers: {
+        "Content-Type": "application/json",
+        ...(init?.headers || {}),
+        Authorization: `Bearer ${newToken}`,
+      },
+    });
+  }
+
+  return response;
 }
 
 /**
  * Fetch the list of all projects
  */
 export async function fetchProjects(): Promise<Project[]> {
-  const response = await fetch(`${BASE_URL}/projects/`, {
-    headers: getAuthHeaders(),
-  });
+  const response = await fetchWithAuth(`${BASE_URL}/projects/`);
   if (!response.ok) throw new Error("Failed to fetch projects");
   return response.json();
 }
@@ -42,9 +66,7 @@ export async function fetchProjects(): Promise<Project[]> {
  * Fetch detailed data of a single project by ID
  */
 export async function fetchProject(projectId: string): Promise<Project> {
-  const response = await fetch(`${BASE_URL}/projects/${projectId}`, {
-    headers: getAuthHeaders(),
-  });
+  const response = await fetchWithAuth(`${BASE_URL}/projects/${projectId}`);
   if (!response.ok) throw new Error("Failed to fetch project");
   return response.json();
 }
@@ -53,9 +75,8 @@ export async function fetchProject(projectId: string): Promise<Project> {
  * Create a new project with name and description
  */
 export async function createProject(name: string, description: string): Promise<Project> {
-  const response = await fetch(`${BASE_URL}/projects`, {
+  const response = await fetchWithAuth(`${BASE_URL}/projects`, {
     method: "POST",
-    headers: getAuthHeaders(),
     body: JSON.stringify({ name, description }),
   });
 
@@ -64,8 +85,7 @@ export async function createProject(name: string, description: string): Promise<
     try {
       const data = await response.json();
       if (data.detail) errorDetail = data.detail;
-    } catch {
-    }
+    } catch {}
     throw new Error(errorDetail);
   }
 
@@ -76,9 +96,7 @@ export async function createProject(name: string, description: string): Promise<
  * Fetch detailed info of a protocol node by its id
  */
 export async function fetchProtocolDetails(projectId: string, protocolId: string): Promise<ProtocolNode> {
-  const response = await fetch(`${BASE_URL}/projects/${projectId}/${protocolId}`, {
-    headers: getAuthHeaders(),
-  });
+  const response = await fetchWithAuth(`${BASE_URL}/projects/${projectId}/${protocolId}`);
   if (!response.ok) throw new Error("Failed to fetch protocol details");
   return response.json();
 }
@@ -87,9 +105,7 @@ export async function fetchProtocolDetails(projectId: string, protocolId: string
  * Fetch detailed info of a protocol by its class name
  */
 export async function fetchNewProtocolDetails(projectId: string, protocolClass: string): Promise<ProtocolNode> {
-  const response = await fetch(`${BASE_URL}/projects/${projectId}/protclass/${protocolClass}`, {
-    headers: getAuthHeaders(),
-  });
+  const response = await fetchWithAuth(`${BASE_URL}/projects/${projectId}/protclass/${protocolClass}`);
   if (!response.ok) throw new Error("Failed to fetch protocol details");
   return response.json();
 }
@@ -98,11 +114,11 @@ export async function fetchNewProtocolDetails(projectId: string, protocolClass: 
  * Launch a protocol for a specific project by ID
  */
 export async function executeProtocol(protocolId: string, protocolClassName: string, params: Record<string, any>): Promise<any> {
-  const response = await fetch(`${BASE_URL}/projects/launch`, {
+  const response = await fetchWithAuth(`${BASE_URL}/projects/launch`, {
     method: "POST",
-    headers: getAuthHeaders(),
     body: JSON.stringify({ protocolId, protocolClassName, params }),
   });
+
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
     throw new Error(err.message || "Failed to execute protocol");
@@ -114,11 +130,11 @@ export async function executeProtocol(protocolId: string, protocolClassName: str
  * Save a protocol for a specific project by ID
  */
 export async function saveProtocol(protocolId: string, protocolClassName: string, params: Record<string, any>): Promise<any> {
-  const response = await fetch(`${BASE_URL}/projects/save`, {
+  const response = await fetchWithAuth(`${BASE_URL}/projects/save`, {
     method: "POST",
-    headers: getAuthHeaders(),
     body: JSON.stringify({ protocolId, protocolClassName, params }),
   });
+
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
     throw new Error(err.message || "Failed to save protocol");
@@ -130,45 +146,32 @@ export async function saveProtocol(protocolId: string, protocolClassName: string
  * Rename a project and update its description
  */
 export async function renameProject(id: string, newName: string, newDescription: string): Promise<Project> {
-  try {
-    const response = await fetch(`${BASE_URL}/projects/${id}`, {
-      method: "PUT",
-      headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
-      body: JSON.stringify({ name: newName, description: newDescription }),
-    });
+  const response = await fetchWithAuth(`${BASE_URL}/projects/${id}`, {
+    method: "PUT",
+    body: JSON.stringify({ name: newName, description: newDescription }),
+  });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Failed to rename project: ${errorText}`);
-    }
-
-    return await response.json() as Project;
-  } catch (err) {
-    console.error("renameProject error:", err);
-    throw err;
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Failed to rename project: ${errorText}`);
   }
+
+  return (await response.json()) as Project;
 }
 
 /**
  * Delete a project by its ID
  */
 export async function deleteProject(id: string): Promise<void> {
-  const response = await fetch(`${BASE_URL}/projects/${id}`, {
-    method: "DELETE",
-    headers: getAuthHeaders(),
-  });
+  const response = await fetchWithAuth(`${BASE_URL}/projects/${id}`, { method: "DELETE" });
   if (!response.ok) throw new Error("Failed to delete project");
 }
-
 
 /**
  * Load all protocols by numeric project ID
  */
 export async function loadProtocols(projectId: number): Promise<any> {
-  const response = await fetch(
-    `${BASE_URL}/projects/${projectId}/protocols`,
-    { headers: getAuthHeaders() }
-  );
+  const response = await fetchWithAuth(`${BASE_URL}/projects/${projectId}/protocols`);
   if (!response.ok) throw new Error("Failed to fetch protocols");
   return response.json();
 }

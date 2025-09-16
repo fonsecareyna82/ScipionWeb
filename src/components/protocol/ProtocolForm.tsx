@@ -209,12 +209,12 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
 
     Object.entries(protocolDetails.params || {}).forEach(([k, p]: any) => {
       const keyParts = k.split('_');
-      keyParts.shift(); // quitar la sección
+      keyParts.shift(); // remove the section
       const newKey = keyParts.join('_');
 
       out[newKey] = {
         ...p,
-        value: p.editableValue,   // valor principal
+        value: p.editableValue,   // main value
         _objValue: p._objValue,
         info: p.info,
         _parentId: p._parentId,
@@ -423,7 +423,6 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
         return <ParamRow key={key} label={def.label || name} control={controlBase} helpText={def.help} rowIndex={rowIndex} />;
       }
 
-      // --- Group ---
       // --- Group ---
       if (def._class === 'Group' && Array.isArray(def.children)) {
         const groupKey = `${key}_group`;
@@ -664,7 +663,7 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
                     },
                   }}
                 >
-                  {['Output Log', 'Project Log'].map((label, index) => (
+                  {['Output', 'Errors', 'Project'].map((label, index) => (
                     <Tab key={index} label={label} />
                   ))}
                 </Tabs>
