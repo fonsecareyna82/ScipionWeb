@@ -48,31 +48,45 @@ export default function ProjectPage() {
   const [protocols, setProtocols] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [error] = useState<string | null>(null)
+  const [highlightedEdges, setHighlightedEdges] = useState<string[]>([]);
+
+  // ------------------------ Automatic Refresh --------------------------------
+  const TIME_TO_REFRESH = 15000 // 15s
+
 
   // ------------------------ Node click handlers ------------------------
   const handleNodeClick = (nodeData: any, event?: React.MouseEvent) => {
     const isMultiSelect = event?.shiftKey;
-
+  
     if (!isMultiSelect) {
       setPreviousNodeId(nodeData.id);
-
-      // Reset node styles except clicked node
+  
+      // Reset node styles except the clicked node
       setNodes((nds) =>
         nds.map((node) =>
           node.id === nodeData.id ? node : { ...node, style: undefined }
         )
       );
-
-      // Highlight edges connected to clicked node
+  
+      // Determine the edges to highlight
+      const edgesToHighlight = edges
+        .filter(e => e.source === nodeData.id || e.target === nodeData.id)
+        .map(e => e.id);
+  
+      // Guardar los edges resaltados
+      setHighlightedEdges(edgesToHighlight);
+  
+      // Apply the highlight style to the edges 
       setEdges((eds) =>
         eds.map((edge) =>
-          edge.source === nodeData.id || edge.target === nodeData.id
+          edgesToHighlight.includes(edge.id)
             ? { ...edge, style: { ...edge.style, stroke: '#0070f3', strokeWidth: 3 } }
             : { ...edge, style: undefined }
         )
       );
     }
   };
+  
 
   const handleNodeDoubleClick = async (nodeData: any) => {
     try {
@@ -193,9 +207,6 @@ export default function ProjectPage() {
     }
   };
 
-  // ------------------------ Automatic Refresh --------------------------------
-  const TIME_TO_REFRESH = 15000 // 15s
-
   useEffect(() => {
     const interval = setInterval(() => {
       handleRefresh();
@@ -209,6 +220,18 @@ export default function ProjectPage() {
   useEffect(() => {
     nodesRef.current = nodes;
   }, [nodes]);
+
+  useEffect(() => {
+    if (highlightedEdges.length > 0) {
+      setEdges((eds) =>
+        eds.map(edge =>
+          highlightedEdges.includes(edge.id)
+            ? { ...edge, style: { ...edge.style, stroke: '#0070f3', strokeWidth: 3 } }
+            : { ...edge, style: undefined }
+        )
+      );
+    }
+  }, [edges, highlightedEdges]);
 
   // Intervalo que incrementa los ticks
   useEffect(() => {

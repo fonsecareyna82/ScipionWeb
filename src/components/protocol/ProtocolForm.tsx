@@ -682,12 +682,12 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
       </div>
 
       {/* ===== FOOTER ===== */}
+
       <div className="form-footer">
         <Button
           variant="outlined"
           startIcon={<CloseIcon />}
           onClick={onClose}
-          disabled={execLoading}
           sx={{ textTransform: 'none' }}
         >
           Close
@@ -696,7 +696,7 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
           variant="contained"
           startIcon={<SaveIcon />}
           onClick={handleSave}
-          disabled={execLoading}
+          disabled={execLoading || protocolDetails.status === 'running'}
           sx={{ textTransform: 'none' }}
         >
           Save
@@ -712,7 +712,7 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
           }
           color="success"
           onClick={handleExecute}
-          disabled={execLoading}
+          disabled={execLoading || protocolDetails.status === 'running'}
           sx={{ textTransform: 'none' }}
         >
           {execLoading ? 'Executing...' : 'Execute'}

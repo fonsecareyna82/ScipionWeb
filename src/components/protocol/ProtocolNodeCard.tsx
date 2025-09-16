@@ -34,6 +34,7 @@ const STATUS_COLORS: Record<string, string> = {
   interactive: "#f7f3bf",
   root: "#D9F1FA",
   scheduled: "#f7f3bf",
+  new: "#1E90FF",
 };
 
 const STATUS_BADGE_COLORS: Record<string, string> = {
@@ -45,6 +46,7 @@ const STATUS_BADGE_COLORS: Record<string, string> = {
   aborted: "#DC3545",
   interactive: "#FFC107",
   scheduled: "#918516",
+  new: "#1E90FF",
 };
 
 type StatusNodeProps = {
@@ -94,10 +96,10 @@ export default function StatusNodeCard({
     "status-node-card",
     "rounded-2xl border transition-shadow transform",
     isHovered ? "shadow-xl scale-[1.03]" : "shadow-md",
-    isSelected ? "border-blue-600" : "border-gray-300",
-  ]
-    .filter(Boolean)
-    .join(" ");
+    isSelected
+      ? "border-3 border-blue-600 shadow-[0_0_20px_rgba(59,130,246,0.5)]"
+      : "border-gray-300",
+  ].filter(Boolean).join(" ");
 
   // Handler right-click
   const handleContextMenu = (e: React.MouseEvent) => {

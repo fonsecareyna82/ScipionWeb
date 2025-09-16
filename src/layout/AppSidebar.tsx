@@ -18,6 +18,7 @@ import { useSidebar } from "../context/SidebarContext";
 import SidebarWidget from "./SidebarWidget";
 import * as React from "react";
 import * as TooltipPrimitive from "@radix-ui/react-tooltip";
+import { LucideSettings2, Settings, Settings2, Settings2Icon, SettingsIcon } from "lucide-react";
 
 export const TooltipProvider = TooltipPrimitive.Provider;
 export const Tooltip = TooltipPrimitive.Root;
@@ -38,11 +39,8 @@ const navItems: NavItem[] = [
   { icon: <PlugInIcon />, name: "Plugins", path: "/plugins" },
   { separator: true },
   { icon: <UserCircleIcon />, name: "User Profile", path: "/profile"},
-  {
-    icon: <CalenderIcon />,
-    name: "Calendar",
-    path: "/calendar",
-  },
+  { icon: <CalenderIcon />,   name: "Calendar", path: "/calendar",},
+  { icon: <LucideSettings2/>, name: "Settings",}
   
 ];
 
@@ -311,7 +309,24 @@ const AppSidebar: React.FC = () => {
               />
             </>
           ) : (
-            <img src="/images/logo/scipion_icon.png" alt="Logo" width={32} height={32} />
+            <>
+              <div className="flex items-center">
+                <img
+                  className="dark:hidden"
+                  src="/images/logo/scipion_icon.png"
+                  alt="Logo"
+                  width={32}
+                  height={32}
+                />
+              </div>
+              <img
+                className="hidden dark:block"
+                src="/images/logo/scipion_icon_white.png"
+                alt="Logo"
+                width={32}
+                height={32}
+              />
+            </>
           )}
         </Link>
       </div>

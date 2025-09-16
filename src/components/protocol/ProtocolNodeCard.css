@@ -102,7 +102,7 @@
 
 .pulsing-table {
   display: inline-block;
-  animation: pulse-table 1s infinite;
+  animation: pulse-table 1.3s infinite;
 }
 
 
