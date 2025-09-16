@@ -18,6 +18,7 @@ export interface ProtocolNode {
   stepsDone: string;
   numberOfSteps: string;
   outputs: any;
+  inputs: any;
 }
 
 /**

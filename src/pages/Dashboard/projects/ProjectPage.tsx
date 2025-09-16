@@ -49,6 +49,7 @@ export default function ProjectPage() {
   const [loading, setLoading] = useState(false)
   const [error] = useState<string | null>(null)
   const [highlightedEdges, setHighlightedEdges] = useState<string[]>([]);
+  const [graphDirection, setGraphDirection] = useState<'TB' | 'LR'>('TB');
 
   // ------------------------ Automatic Refresh --------------------------------
   const TIME_TO_REFRESH = 15000 // 15s
@@ -57,25 +58,25 @@ export default function ProjectPage() {
   // ------------------------ Node click handlers ------------------------
   const handleNodeClick = (nodeData: any, event?: React.MouseEvent) => {
     const isMultiSelect = event?.shiftKey;
-  
+
     if (!isMultiSelect) {
       setPreviousNodeId(nodeData.id);
-  
+
       // Reset node styles except the clicked node
       setNodes((nds) =>
         nds.map((node) =>
           node.id === nodeData.id ? node : { ...node, style: undefined }
         )
       );
-  
+
       // Determine the edges to highlight
       const edgesToHighlight = edges
         .filter(e => e.source === nodeData.id || e.target === nodeData.id)
         .map(e => e.id);
-  
+
       // Guardar los edges resaltados
       setHighlightedEdges(edgesToHighlight);
-  
+
       // Apply the highlight style to the edges 
       setEdges((eds) =>
         eds.map((edge) =>
@@ -86,7 +87,7 @@ export default function ProjectPage() {
       );
     }
   };
-  
+
 
   const handleNodeDoubleClick = async (nodeData: any) => {
     try {
@@ -125,9 +126,10 @@ export default function ProjectPage() {
       handleNodeDoubleClick,
       previousNodeId ?? undefined,
       hoveredNodeId ?? undefined,
-      setHoveredNodeId
+      setHoveredNodeId, 
+      graphDirection
     ),
-  }), [previousNodeId, hoveredNodeId]);
+  }), [previousNodeId, hoveredNodeId, graphDirection]);
 
   // ------------------------ Fetch project ------------------------
   useEffect(() => {
@@ -146,7 +148,7 @@ export default function ProjectPage() {
       .then((data) => {
         setProject(data);
         if (data.protocols) {
-          const { nodes, edges, table } = buildGraphElements(data.shortName, data.protocols, viewMode);
+          const { nodes, edges, table } = buildGraphElements(data.shortName, data.protocols, viewMode, graphDirection);
           setNodes(nodes);
           setEdges(edges);
           setTableData(table ?? []);
@@ -162,7 +164,7 @@ export default function ProjectPage() {
         }
       })
       .catch((err) => console.error(err));
-  }, [projectName, viewMode]);
+  }, [projectName, viewMode, graphDirection]);
 
   // Inject ticks into tableData so rows update in table view
   useEffect(() => {
@@ -178,42 +180,45 @@ export default function ProjectPage() {
   }, [nodeTicks]);
 
   // ------------------------ Refresh ------------------------
-  const handleRefresh = () => {
-    if (projectName) {
-      setIsRefreshing(true);
-      fetchProject(projectName)
-        .then((data) => {
-          setProject(data);
-          if (data.protocols) {
-            const { nodes, edges, table } = buildGraphElements(data.shortName, data.protocols, viewMode);
-            setNodes(nodes);
-            setEdges(edges);
-            setTableData(table ?? []);
-
-            // Mantener ticks actualizados con nuevos datos
-            setNodeTicks((prev) => {
-              const updated: Record<string, number> = { ...prev };
-              nodes.forEach((n) => {
-                if (n.data?.status === 'running') {
-                  updated[n.id] = Math.max(prev[n.id] ?? 0, Number(n.data.elapsedTime) ?? 0);
-                }
-              });
-              return updated;
+  const handleRefresh = useCallback(() => {
+    if (!projectName) return;
+  
+    setIsRefreshing(true);
+    fetchProject(projectName)
+      .then((data) => {
+        setProject(data);
+        if (data.protocols) {
+          const { nodes, edges, table } = buildGraphElements(
+            data.shortName,
+            data.protocols,
+            viewMode,
+            graphDirection
+          );
+  
+          setNodes(nodes);
+          setEdges(edges);
+          setTableData(table ?? []);
+  
+          // Mantener ticks actualizados con nuevos datos
+          setNodeTicks((prev) => {
+            const updated: Record<string, number> = { ...prev };
+            nodes.forEach((n) => {
+              if (n.data?.status === 'running') {
+                updated[n.id] = Math.max(prev[n.id] ?? 0, Number(n.data.elapsedTime) ?? 0);
+              }
             });
-          }
-        })
-        .catch((err) => console.error(err))
-        .finally(() => setIsRefreshing(false));
-    }
-  };
+            return updated;
+          });
+        }
+      })
+      .catch((err) => console.error(err))
+      .finally(() => setIsRefreshing(false));
+  }, [projectName, viewMode, graphDirection]);
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      handleRefresh();
-    }, TIME_TO_REFRESH);
-
+    const interval = setInterval(() => handleRefresh(), TIME_TO_REFRESH);
     return () => clearInterval(interval);
-  }, [projectName, viewMode]);
+  }, [handleRefresh]);
 
   // ------------------------ Tick updater ------------------------
   const nodesRef = useRef(nodes);
@@ -221,7 +226,7 @@ export default function ProjectPage() {
     nodesRef.current = nodes;
   }, [nodes]);
 
-  useEffect(() => {
+  /*useEffect(() => {
     if (highlightedEdges.length > 0) {
       setEdges((eds) =>
         eds.map(edge =>
@@ -231,7 +236,7 @@ export default function ProjectPage() {
         )
       );
     }
-  }, [edges, highlightedEdges]);
+  }, [edges, highlightedEdges]);*/
 
   // Intervalo que incrementa los ticks
   useEffect(() => {
@@ -424,28 +429,46 @@ export default function ProjectPage() {
             </button>
           </div>
         </div>
-        <div className="ml-4 mr-4 p-4 border rounded-lg shadow-sm bg-white dark:bg-gray-800 flex items-center gap-4">
+        <div className="ml-4 mr-4 p-2 border rounded-lg shadow-sm bg-white dark:bg-gray-800 flex items-center gap-4">
           <span className="font-smal text-sm">View mode:</span>
 
           <div className="flex gap-2">
-            {/* Tree button */}
+            {/* Tree TB */}
             <button
-              onClick={() => setViewMode('hierarchical')}
-              className={`px-3 py-1 rounded-lg text-sm flex items-center gap-1 ${viewMode === 'hierarchical'
-                ? 'bg-blue-500 text-white'
-                : 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
+              onClick={() => {
+                setViewMode('hierarchical');
+                setGraphDirection('TB');
+              }}
+              className={`px-3 py-1 rounded-lg text-sm flex items-center gap-1 ${viewMode === 'hierarchical' && graphDirection === 'TB'
+                  ? 'bg-blue-500 text-white'
+                  : 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
                 }`}
             >
               <TreeIcon className="w-4 h-4" />
-              Tree
+              Tree TB
             </button>
 
-            {/* Table button */}
+            {/* Tree LR */}
+            <button
+              onClick={() => {
+                setViewMode('hierarchical');
+                setGraphDirection('LR');
+              }}
+              className={`px-3 py-1 rounded-lg text-sm flex items-center gap-1 ${viewMode === 'hierarchical' && graphDirection === 'LR'
+                  ? 'bg-blue-500 text-white'
+                  : 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
+                }`}
+            >
+              <TreeIcon className="w-4 h-4 transform rotate-270" />
+              Tree LR
+            </button>
+
+            {/* Table */}
             <button
               onClick={() => setViewMode('table')}
               className={`px-3 py-1 rounded-lg text-sm flex items-center gap-1 ${viewMode === 'table'
-                ? 'bg-blue-500 text-white'
-                : 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
+                  ? 'bg-blue-500 text-white'
+                  : 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
                 }`}
             >
               <TableIcon className="w-4 h-4" />
@@ -453,6 +476,8 @@ export default function ProjectPage() {
             </button>
           </div>
         </div>
+
+
       </div>
 
       {selectedNodeDetails && (
@@ -565,6 +590,8 @@ export default function ProjectPage() {
               onEdgesChange={onEdgesChange}
               nodeTypes={nodeTypes}
               fitView
+              minZoom={0.4}
+              maxZoom={0.8}
               fitViewOptions={{ padding: 0.2 }}
               defaultEdgeOptions={{ type: 'default', style: { stroke: "#999", strokeWidth: 2 }, markerEnd: 'url(#circle)' }}
               onInit={(instance) => { (window as any).reactFlowInstance = instance; }}

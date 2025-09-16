@@ -61,8 +61,10 @@ type StatusNodeProps = {
     numberOfSteps?: number;
     stepsDone?: number;
     outputs?: any[];
+    inputs?: any[];
   };
   selectedNodeId?: string;
+  graphDirection?: "TB" | "LR"; // <-- NUEVO
   onClick?: () => void;
   onDoubleClick?: () => void;
 };
@@ -78,6 +80,7 @@ const formatCpuTime = (seconds: number): string => {
 export default function StatusNodeCard({
   data,
   selectedNodeId,
+  graphDirection = "TB",
   onClick,
   onDoubleClick,
 }: StatusNodeProps) {
@@ -116,33 +119,22 @@ export default function StatusNodeCard({
       onDoubleClick={onDoubleClick}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
-      onContextMenu={handleContextMenu} // <-- right-click
+      onContextMenu={handleContextMenu}
     >
       {/* Header */}
       <div
-        className={`node-card-header p-3 border-b flex ${
-          data.id === "PROJECT"
-            ? "flex-col items-center text-center"
-            : "flex-row items-center justify-between"
-        }`}
+        className={`node-card-header p-3 border-b flex ${data.id === "PROJECT"
+          ? "flex-col items-center text-center"
+          : "flex-row items-center justify-between"
+          }`}
       >
         <div className="flex items-center space-x-2">
           {data.id !== "PROJECT" && (
-            <div
-              className={`node-id-badge ${
-                data.status === "running" ? "glow-badge" : ""
-              }`}
-            >
+            <div className={`node-id-badge ${data.status === "running" ? "glow-badge" : ""}`}>
               {data.id}
             </div>
           )}
-          <div
-            className={
-              data.id === "PROJECT"
-                ? "text-4xl text-black"
-                : "node-label dark:text-black"
-            }
-          >
+          <div className={data.id === "PROJECT" ? "text-4xl text-black" : "node-label dark:text-black"}>
             {data.label}
           </div>
         </div>
@@ -153,7 +145,7 @@ export default function StatusNodeCard({
             <DropdownMenuTrigger asChild>
               <button
                 className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-200 ml-4"
-                onClick={(e) => e.stopPropagation()} // evita propagar click al nodo
+                onClick={(e) => e.stopPropagation()}
               >
                 <MoreHorizontal className="h-7 w-7 text-black dark:text-black ml-1" />
               </button>
@@ -203,94 +195,72 @@ export default function StatusNodeCard({
         )}
       </div>
 
-
-      <div
-        className={
-          data.id !== "PROJECT"
-            ? "border-t-1 border-gray-400 dark:border-gray-600"
-            : ""
-        }
-      />
-
       {/* Content */}
       {data.id !== "PROJECT" && (
         <div
           className="node-card-content p-3 mt-4"
           style={{ minHeight: "120px", maxHeight: "300px", overflowY: "auto" }}
         >
+          {/* Outputs */}
           {Array.isArray(data.outputs) && data.outputs.length > 0 && (
-            <div className="outputs-list space-y-2">
-              {data.outputs.map((outputObj, idx) => {
-                const [key, rawValue] = Object.entries(outputObj)[0];
-                const value = rawValue as {
-                  info: string;
-                  _class: string;
-                  _objValue: string;
-                  _parentId: string;
-                };
+            <div className="outputs-list">
+              <div className="section-header flex items-center px-2 py-1 bg-green-50 dark:bg-green-50 rounded-t-lg border-b border-green-800 dark:border-green-800">
+                <span className="text-black dark:text-black font-normal text-xl">Outputs</span>
+              </div>
+              <div className="section-content p-2 bg-green-100 dark:bg-green-200 rounded-b-lg space-y-2">
+                {data.outputs.map((outputObj, idx) => {
+                  const [key, rawValue] = Object.entries(outputObj)[0];
+                  const value = rawValue as {
+                    info: string;
+                    _class: string;
+                    _objValue: string;
+                    _parentId: string;
+                  };
+                  const isDragging = draggingIdx === idx;
 
-                const isDragging = draggingIdx === idx;
-
-                return (
-                  <div
-                    key={idx}
-                    className={`nodrag group cursor-grab flex items-center px-3 py-1 rounded-full border border-gray-400 dark:border-gray-600 shadow-sm hover:shadow-md transition-transform ${isDragging
+                  return (
+                    <div
+                      key={idx}
+                      className={`nodrag mt-3 group cursor-grab flex items-center px-3 py-1 rounded-full border border-gray-400 dark:border-gray-600 shadow-sm hover:shadow-md transition-transform ${isDragging
                         ? "scale-100 opacity-70"
-                        : "bg-gradient-to-r from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-700"
-                      }`}
-                    draggable
-                    onDragStart={(e) => {
-                      e.stopPropagation();
-                      setDraggingIdx(idx);
-
-                      const output = {
-                        _class: value._class,
-                        _objValue: value._objValue,
-                        info: value.info,
-                        _parentId: value._parentId,
-                      };
-
-                      setCurrentDraggedOutput(output);
-
-                      const payload = JSON.stringify(output);
-                      e.dataTransfer.setData(
-                        "application/scipion-output",
-                        payload
-                      );
-
-                      const dragGhost = document.createElement("div");
-                      dragGhost.style.position = "absolute";
-                      dragGhost.style.top = "-1000px";
-                      dragGhost.style.left = "-1000px";
-                      dragGhost.style.padding = "6px 12px";
-                      dragGhost.style.background = "#eee";
-                      dragGhost.style.border = "1px solid #ccc";
-                      dragGhost.style.borderRadius = "0.5rem";
-                      dragGhost.innerText = `${value._class} (${value.info})`;
-                      document.body.appendChild(dragGhost);
-                      e.dataTransfer.setDragImage(dragGhost, 0, 15);
-                      setTimeout(
-                        () => document.body.removeChild(dragGhost),
-                        0
-                      );
-                    }}
-                    onDragEnd={() => {
-                      setDraggingIdx(null);
-                      setCurrentDraggedOutput(null);
-                    }}
-                  >
-                    <span className="font-normal text-gray-900 dark:text-gray-100 text-2xl">
-                      {value.info}
-                    </span>
-                  </div>
-                );
-              })}
+                        : "bg-gradient-to-r from-gray-200 to-gray-300 dark:from-gray-200 dark:to-gray-300"
+                        }`}
+                      draggable
+                      onDragStart={(e) => {
+                        e.stopPropagation();
+                        setDraggingIdx(idx);
+                        const output = { _class: value._class, _objValue: value._objValue, info: value.info, _parentId: value._parentId };
+                        setCurrentDraggedOutput(output);
+                        e.dataTransfer.setData("application/scipion-output", JSON.stringify(output));
+                        const dragGhost = document.createElement("div");
+                        dragGhost.style.position = "absolute";
+                        dragGhost.style.top = "-1000px";
+                        dragGhost.style.left = "-1000px";
+                        dragGhost.style.padding = "6px 12px";
+                        dragGhost.style.background = "white";
+                        dragGhost.style.border = "1px solid #ccc";
+                        dragGhost.style.color = 'black'
+                        dragGhost.style.borderRadius = "0.5rem";
+                        dragGhost.innerText = `${value._class} (${value.info})`;
+                        document.body.appendChild(dragGhost);
+                        e.dataTransfer.setDragImage(dragGhost, 0, 15);
+                        setTimeout(() => document.body.removeChild(dragGhost), 0);
+                      }}
+                      onDragEnd={() => {
+                        setDraggingIdx(null);
+                        setCurrentDraggedOutput(null);
+                      }}
+                    >
+                      <ArrowUpRight className="h-5 w-5 mr-2 text-black-700 dark:text-black" />
+                      <span className="font-normal text-gray-900 dark:text-gray-900 text-2xl">{value.info}</span>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
         </div>
       )}
-
-      <div className="border-t-1 border-gray-400 dark:border-gray-600 mt-3" />
 
       {/* Footer / Status + Progress */}
       {data.status && (
@@ -312,9 +282,7 @@ export default function StatusNodeCard({
                     <div
                       className="h-3 bg-white transition-all duration-500"
                       style={{
-                        width: `${((data.stepsDone ?? 0) / (data.numberOfSteps ?? 1)) *
-                          100
-                          }%`,
+                        width: `${((data.stepsDone ?? 0) / (data.numberOfSteps ?? 1)) * 100}%`,
                       }}
                     />
                   </div>
@@ -345,55 +313,65 @@ export default function StatusNodeCard({
         </div>
       )}
 
-      {/* React Flow handles */}
-      <Handle type="target" position={Position.Top} />
-      <Handle type="source" position={Position.Bottom} />
-      {/* Menú para right-click */}
+      {/* React Flow handles según graphDirection */}
+      <Handle
+        type="target"
+        position={graphDirection === "TB" ? Position.Top : Position.Left}
+        style={graphDirection === "TB" ? {} : { top: "50%", transform: "translateY(-50%)" }}
+      />
+      <Handle
+        type="source"
+        position={graphDirection === "TB" ? Position.Bottom : Position.Right}
+        style={graphDirection === "TB" ? {} : { top: "50%", transform: "translateY(-50%)" }}
+      />
+
+      {/* Menú contextual al clic derecho */}
       {rightClickOpen && (
         <DropdownMenu open={rightClickOpen} onOpenChange={setRightClickOpen}>
           <DropdownMenuContent
-            className="w-56 absolute"
-            style={{ top: menuPosition.y, left: menuPosition.x }}
+            className="w-56"
+            style={{ position: "fixed", top: menuPosition.y, left: menuPosition.x }}
           >
             <DropdownMenuItem onSelect={onDoubleClick}>
-              <Pencil className="mr-2 h-4 w-4" /> Edit
-            </DropdownMenuItem>
-            <DropdownMenuItem>
-              <FolderOpen className="mr-2 h-4 w-4" /> Browse
-            </DropdownMenuItem>
-            <DropdownMenuItem>
-              <Pencil className="mr-2 h-4 w-4" /> Rename
-            </DropdownMenuItem>
-            <DropdownMenuItem>
-              <Copy className="mr-2 h-4 w-4" /> Duplicate
-            </DropdownMenuItem>
-            <DropdownMenuItem>
-              <Trash2 className="mr-2 h-4 w-4" /> Delete
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem>
-              <ArrowDownLeft className="mr-2 h-4 w-4" /> Select from
-            </DropdownMenuItem>
-            <DropdownMenuItem>
-              <ArrowUpRight className="mr-2 h-4 w-4" /> Select to
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem>
-              <RefreshCw className="mr-2 h-4 w-4" /> Restart all
-            </DropdownMenuItem>
-            <DropdownMenuItem>
-              <Play className="mr-2 h-4 w-4" /> Continue all
-            </DropdownMenuItem>
-            <DropdownMenuItem>
-              <RotateCcw className="mr-2 h-4 w-4" /> Reset from
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem>
-              <FileUp className="mr-2 h-4 w-4" /> Export
-            </DropdownMenuItem>
-            <DropdownMenuItem>
-              <Upload className="mr-2 h-4 w-4" /> Export & upload
-            </DropdownMenuItem>
+                <Pencil className="mr-2 h-4 w-4" /> Edit
+              </DropdownMenuItem>
+              <DropdownMenuItem>
+                <FolderOpen className="mr-2 h-4 w-4" /> Browse
+              </DropdownMenuItem>
+              <DropdownMenuItem>
+                <Pencil className="mr-2 h-4 w-4" /> Rename
+              </DropdownMenuItem>
+              <DropdownMenuItem>
+                <Copy className="mr-2 h-4 w-4" /> Duplicate
+              </DropdownMenuItem>
+              <DropdownMenuItem>
+                <Trash2 className="mr-2 h-4 w-4" /> Delete
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem>
+                <ArrowDownLeft className="mr-2 h-4 w-4" /> Select from
+              </DropdownMenuItem>
+              <DropdownMenuItem>
+                <ArrowUpRight className="mr-2 h-4 w-4" /> Select to
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem>
+                <RefreshCw className="mr-2 h-4 w-4" /> Restart all
+              </DropdownMenuItem>
+              <DropdownMenuItem>
+                <Play className="mr-2 h-4 w-4" /> Continue all
+              </DropdownMenuItem>
+              <DropdownMenuItem>
+                <RotateCcw className="mr-2 h-4 w-4" /> Reset from
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem>
+                <FileUp className="mr-2 h-4 w-4" /> Export
+              </DropdownMenuItem>
+              <DropdownMenuItem>
+                <Upload className="mr-2 h-4 w-4" /> Export & upload
+              </DropdownMenuItem>
+
           </DropdownMenuContent>
         </DropdownMenu>
       )}

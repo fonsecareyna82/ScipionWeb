@@ -4,13 +4,22 @@ import { Node, Edge } from "reactflow";
 /**
  * Estimate the width of a label using canvas.
  */
-function estimateLabelWidth(label: string, fontSize = 20, fontFamily = 'Arial'): number {
-  const canvas = document.createElement('canvas');
-  const context = canvas.getContext('2d');
+function estimateLabelWidth(label: string, fontSize = 20, fontFamily = "Arial"): number {
+  const canvas = document.createElement("canvas");
+  const context = canvas.getContext("2d");
   if (!context) return 100;
   context.font = `${fontSize}px ${fontFamily}`;
-  return context.measureText(label).width + 260; // extra padding
+  return context.measureText(label).width + 480; // extra padding for node
 }
+
+/**
+ * Estimate node height (optional, for LR layout)
+ */
+function estimateNodeHeight(label: string, fontSize = 20, fontFamily = "Arial"): number {
+  return 120; // fixed height for simplicity, puedes calcular según líneas si quieres
+}
+
+type Direction = "TB" | "LR";
 
 /**
  * Build nodes and edges for ReactFlow from protocols.
@@ -18,16 +27,17 @@ function estimateLabelWidth(label: string, fontSize = 20, fontFamily = 'Arial'):
 export function buildGraphElements(
   projectName: string,
   protocols: Record<string, ProtocolNode>,
-  viewMode: 'hierarchical' | 'grid' | 'table' = 'hierarchical',
+  viewMode: "hierarchical" | "grid" | "table" = "hierarchical",
+  direction: Direction = "TB"
 ) {
   const nodes: Node[] = [];
   const edges: Edge[] = [];
 
   // TABLE VIEW
-  if (viewMode === 'table') {
+  if (viewMode === "table") {
     const sorted = Object.entries(protocols)
-  .filter(([id]) => id !== 'PROJECT')
-  .sort(([idA], [idB]) => parseInt(idA, 10) - parseInt(idB, 10));
+      .filter(([id]) => id !== "PROJECT")
+      .sort(([idA], [idB]) => parseInt(idA, 10) - parseInt(idB, 10));
 
     const tableData = sorted.map(([id, prot]) => ({
       id,
@@ -45,18 +55,17 @@ export function buildGraphElements(
     return { nodes: [], edges: [], table: tableData };
   }
 
-  //  TREE VIEW
+  // TREE VIEW
   const levelMap: Record<string, number> = {};
   const levelBuckets: Record<number, string[]> = {};
   const edgeSet = new Set<string>();
 
   function traverse(id: string, level: number) {
     const currentLevel = levelMap[id];
-
     if (currentLevel === undefined || level > currentLevel) {
       levelMap[id] = level;
 
-      Object.values(levelBuckets).forEach(bucket => {
+      Object.values(levelBuckets).forEach((bucket) => {
         const index = bucket.indexOf(id);
         if (index !== -1) bucket.splice(index, 1);
       });
@@ -68,7 +77,7 @@ export function buildGraphElements(
     const prot = protocols[id];
     if (!prot) return;
 
-    prot.children.forEach(childId => {
+    prot.children.forEach((childId) => {
       const edgeId = `${id}-${childId}`;
       if (!edgeSet.has(edgeId)) {
         edgeSet.add(edgeId);
@@ -79,6 +88,8 @@ export function buildGraphElements(
           animated: false,
           style: { stroke: "#CAD5E2", strokeWidth: 2 },
           markerEnd: "url(#circle)",
+          sourceHandle: direction === "TB" ? "bottom" : "right",
+          targetHandle: direction === "TB" ? "top" : "left",
         });
       }
       traverse(childId, levelMap[id] + 1);
@@ -89,49 +100,55 @@ export function buildGraphElements(
 
   Object.entries(levelBuckets).forEach(([levelStr, ids]) => {
     const level = parseInt(levelStr, 10);
-    const y = level * 360;
 
-    const widths = ids.map(id => {
-      const label = protocols[id]?.label || id;
-      return estimateLabelWidth(label);
-    });
+    // Calcula tamaño de cada nodo
+    const sizes = ids.map((id) => estimateLabelWidth(protocols[id]?.label || id));
+    const heights = ids.map((id) => estimateNodeHeight(protocols[id]?.label || id));
+    const spacing = direction === "TB"? 50: 350; // espacio mínimo entre nodos
 
-    const totalWidth = widths.reduce((sum, w) => sum + w + 50, 0);
-    let x = -totalWidth / 2;
+    // Total tamaño en eje transversal
+    const totalSize =
+      direction === "TB"
+        ? sizes.reduce((sum, s) => sum + s + spacing, 0)
+        : heights.reduce((sum, h) => sum + h + spacing, 0);
+
+    let secondary = -totalSize / 2;
 
     ids.forEach((id, index) => {
       const prot = protocols[id];
       const label = prot?.label || id;
       const status = prot?.status;
-      const parameters = prot?.parameters;
-      const cpuTime = prot?.cpuTime;
-      const elapsedTime = prot?.elapsedTime;
-      const stepsDone = prot?.stepsDone;
-      const numberOfSteps = prot?.numberOfSteps;
-      const nodeWidth = widths[index];
-      const spacing = Math.max(140, nodeWidth * 0.6);
-      const outputs = prot?.outputs;
+
+      const nodeWidth = sizes[index];
+      const nodeHeight = heights[index];
+
+      const position =
+        direction === "TB"
+          ? { x: secondary + nodeWidth / 2, y: level * 460 } // TB: x = centrado, y = nivel
+          : { x: level * 750, y: secondary + nodeHeight / 2 }; // LR: y = centrado, x = nivel
 
       nodes.push({
         id,
-        type: 'status',
+        type: "status",
         data: {
           label: id === "PROJECT" ? projectName : label,
           status,
           id,
-          parameters,
-          cpuTime,
-          elapsedTime,
-          stepsDone,
-          numberOfSteps,
-          outputs,
-          tick: Number(elapsedTime) || 0, // inicializamos tick
+          parameters: prot?.parameters,
+          cpuTime: prot?.cpuTime,
+          elapsedTime: prot?.elapsedTime,
+          stepsDone: prot?.stepsDone,
+          numberOfSteps: prot?.numberOfSteps,
+          outputs: prot?.outputs,
+          inputs: prot?.inputs,
+          tick: Number(prot?.elapsedTime) || 0,
         },
-        position: { x, y },
+        position,
         draggable: true,
       });
 
-      x += nodeWidth + spacing;
+      // Avanza secondary
+      secondary += direction === "TB" ? nodeWidth + spacing : nodeHeight + spacing;
     });
   });
 
