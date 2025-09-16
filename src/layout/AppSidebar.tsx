@@ -38,7 +38,7 @@ const navItems: NavItem[] = [
   { icon: <FolderIcon />, name: "Projects", path: "/projects" },
   { icon: <PlugInIcon />, name: "Plugins", path: "/plugins" },
   { separator: true },
-  { icon: <UserCircleIcon />, name: "User Profile", path: "/profile"},
+  { icon: <UserCircleIcon />, name: "User profile", path: "/profile"},
   { icon: <CalenderIcon />,   name: "Calendar", path: "/calendar",},
   { icon: <LucideSettings2/>, name: "Settings",}
   
@@ -52,7 +52,7 @@ const othersItems: NavItem[] = [
   },
   {
     icon: <UserCircleIcon />,
-    name: "User Profile",
+    name: "User profile",
     path: "/profile",
   },
   {
