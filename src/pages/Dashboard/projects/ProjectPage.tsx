@@ -1,6 +1,6 @@
 import { useParams } from "react-router-dom";
 import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
-import { fetchProject, Project, fetchProtocolDetails, loadProtocols, fetchNewProtocolDetails } from "../../../api/projects";
+import { fetchProject, Project, fetchProtocolDetails, fetchNewProtocolDetails } from "../../../api/projects";
 import ProtocolForm from "../../../components/protocol/ProtocolForm";
 import { buildGraphElements } from "../../../utils/graph_utils";
 
@@ -12,7 +12,8 @@ import ReactFlow, {
   useEdgesState,
   Edge,
   applyNodeChanges,
-  NodeChange
+  NodeChange,
+  Node
 } from 'reactflow';
 import { RefreshIcon, TableIcon, TreeIcon } from "../../../icons";
 import 'reactflow/dist/style.css';
@@ -35,7 +36,7 @@ interface StatusNodeData {
   color?: string;
   cpuTime?: string;
   elapsedTime?: string;
-  tick?: number; // si usas tick para el timer
+  tick?: number;
   numberOfSteps?: number;
   stepsDone?: number;
 }
@@ -51,7 +52,7 @@ export default function ProjectPage() {
   const { projectName } = useParams();
   const [project, setProject] = useState<Project>();
   const [selectedNodeDetails, setSelectedNodeDetails] = useState<any>(null);
-  const [nodes, setNodes] = useNodesState<StatusNodeData>([]);
+  const [nodes, setNodes, onNodesChange] = useNodesState<StatusNodeData>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge[]>([]);
   const [tableData, setTableData] = useState<any[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -62,12 +63,7 @@ export default function ProjectPage() {
   const rowRefs = useRef<Record<string, HTMLTableRowElement | null>>({});
   const tableContainerRef = useRef<HTMLDivElement | null>(null);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
-  const [protocols, setProtocols] = useState<any[]>([])
-  const [loading, setLoading] = useState(false)
-  const [error] = useState<string | null>(null)
-  const [highlightedEdges, setHighlightedEdges] = useState<string[]>([]);
   const [graphDirection, setGraphDirection] = useState<'TB' | 'LR'>('TB');
-  const [onNodesChangeRaw] = useNodesState<StatusNodeData>([]);
 
   // 👉 estado del menú contextual
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({
@@ -76,76 +72,31 @@ export default function ProjectPage() {
     y: 0,
   });
 
-  // ------------------------ Automatic Refresh --------------------------------
-  const TIME_TO_REFRESH = 15000 // 15s
-
-  // ------------------------ Nodes with persistence ------------------------
-  const LOCAL_STORAGE_KEY = `nodesPositions_${projectName}`;
-
+  const TIME_TO_REFRESH = 15000; // 15s
 
   // ------------------------ Node click handlers ------------------------
   const handleNodeClick = (nodeData: any, event?: React.MouseEvent) => {
     const isMultiSelect = event?.shiftKey;
-
     if (!isMultiSelect) {
       setPreviousNodeId(nodeData.id);
-
-      // Reset node styles except the clicked node
-      setNodes((nds) =>
-        nds.map((node) =>
-          node.id === nodeData.id ? node : { ...node, style: undefined }
-        )
-      );
-
-      // Determine the edges to highlight
-      const edgesToHighlight = edges
-        .filter(e => e.source === nodeData.id || e.target === nodeData.id)
-        .map(e => e.id);
-
-      // Guardar los edges resaltados
-      setHighlightedEdges(edgesToHighlight);
-
-      // Apply the highlight style to the edges 
-      setEdges((eds) =>
-        eds.map((edge) =>
-          edgesToHighlight.includes(edge.id)
-            ? { ...edge, style: { ...edge.style, stroke: '#0070f3', strokeWidth: 3 } }
-            : { ...edge, style: undefined }
-        )
-      );
+      setNodes((nds) => nds.map(node => node.id === nodeData.id ? node : { ...node, style: undefined }));
+      const edgesToHighlight = edges.filter(e => e.source === nodeData.id || e.target === nodeData.id).map(e => e.id);
+      setEdges((eds) => eds.map(edge => edgesToHighlight.includes(edge.id) ? { ...edge, style: { ...edge.style, stroke: '#0070f3', strokeWidth: 3 } } : { ...edge, style: undefined }));
     }
   };
 
-
   const handleNodeDoubleClick = async (nodeData: any) => {
+    if (!projectName) return;
     try {
-      if (projectName) {
-        const fullNodeData = await fetchProtocolDetails(projectName, nodeData.id);
-        setSelectedNodeDetails(fullNodeData);
-        setPreviousNodeId(nodeData.id);
-
-        setNodes((nds) =>
-          nds.map((node) =>
-            node.id === nodeData.id ? node : { ...node, style: undefined }
-          )
-        );
-
-        setEdges((eds) =>
-          eds.map((edge) =>
-            edge.source === nodeData.id || edge.target === nodeData.id
-              ? { ...edge, style: { ...edge.style, stroke: '#0070f3', strokeWidth: 3 } }
-              : { ...edge, style: undefined }
-          )
-        );
-      }
+      const fullNodeData = await fetchProtocolDetails(projectName, nodeData.id);
+      setSelectedNodeDetails(fullNodeData);
+      setPreviousNodeId(nodeData.id);
     } catch (err) {
       console.error('Failed to fetch protocol details', err);
     }
   };
 
-  const handleCloseForm = () => {
-    setSelectedNodeDetails(null);
-  };
+  const handleCloseForm = () => setSelectedNodeDetails(null);
 
   // ------------------------ Node types ------------------------
   const nodeTypes = useMemo(() => ({
@@ -159,138 +110,135 @@ export default function ProjectPage() {
     ),
   }), [previousNodeId, hoveredNodeId, graphDirection]);
 
+  // ------------------------ Persistence helpers ------------------------
+  const localStorageKey = `project-${projectName}-node-positions`;
+
+  const handleNodesChangeWithPersistence = (changes: NodeChange[]) => {
+    setNodes((nds) => {
+      const updated = applyNodeChanges(changes, nds);
+      const positions = updated.map(n => ({ id: n.id, position: n.position }));
+      localStorage.setItem(`${localStorageKey}-${graphDirection}`, JSON.stringify(positions));
+      return updated;
+    });
+  };
+
+  const loadNodesWithPositions = (loadedNodes: Node[]) => {
+    const savedPositions: { id: string; position: { x: number; y: number } }[] =
+      JSON.parse(localStorage.getItem(`${localStorageKey}-${graphDirection}`) || '[]');
+
+    return loadedNodes.map(n => {
+      const saved = savedPositions.find(p => p.id === n.id);
+      return saved ? { ...n, position: saved.position } : n;
+    });
+  };
+
+  const mergeNodesWithPositions = (newNodes: Node[]) => {
+    return newNodes.map(n => {
+      const old = nodes.find(o => o.id === n.id);
+      return old ? { ...n, position: old.position } : n;
+    });
+  };
+
   // ------------------------ Fetch project ------------------------
-  useEffect(() => {
+  const fetchAndLoadProject = useCallback(async () => {
     if (!projectName) return;
+    setIsRefreshing(true);
+    try {
+      const data = await fetchProject(projectName);
+      setProject(data);
 
-    setProject(undefined);
-    setNodes([]);
-    setEdges([]);
-    setTableData([]);
-    setSelectedNodeDetails(null);
-    setPreviousNodeId(null);
-    setHighlightedId(null);
-    setNodeTicks({});
+      if (data.protocols) {
+        const { nodes: loadedNodes, edges: loadedEdges, table } = buildGraphElements(
+          data.shortName,
+          data.protocols,
+          viewMode,
+          graphDirection
+        );
 
-    fetchProject(projectName)
-      .then((data) => {
-        setProject(data);
-        if (data.protocols) {
-          const { nodes: loadedNodes, edges: loadedEdges, table } = buildGraphElements(data.shortName, data.protocols, viewMode, graphDirection);
+        const nodesWithPositions = loadNodesWithPositions(loadedNodes);
 
-          const savedPositions = JSON.parse(localStorage.getItem(`project-${projectName}-node-positions`) || '[]');
-          const nodesWithPositions = nodes.map(n => {
-            const saved = savedPositions.find((p: any) => p.id === n.id);
-            return saved ? { ...n, position: saved.position } : n;
-          });
-          setNodes(nodesWithPositions);
-          setEdges(loadedEdges);
-          setTableData(table ?? []);
+        setNodes(nodesWithPositions);
+        setEdges(loadedEdges);
+        setTableData(table ?? []);
 
-          // Inicializar ticks
-          const initialTicks: Record<string, number> = {};
-          nodes.forEach((n) => {
-            if (n.data?.status === 'running') {
-              initialTicks[n.id] = Number(n.data.elapsedTime) ?? 0;
-            }
-          });
-          setNodeTicks(initialTicks);
-        }
-      })
-      .catch((err) => console.error(err));
+        // Inicializar ticks
+        const initialTicks: Record<string, number> = {};
+        nodesWithPositions.forEach((n) => {
+          if (n.data?.status === 'running') {
+            initialTicks[n.id] = Number(n.data.elapsedTime) ?? 0;
+          }
+        });
+        setNodeTicks(initialTicks);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsRefreshing(false);
+    }
   }, [projectName, viewMode, graphDirection]);
 
-  // Inject ticks into tableData so rows update in table view
-  useEffect(() => {
-    setTableData((prev) =>
-      prev.map((row) => ({
-        ...row,
-        elapsedTime:
-          row.status === "running"
-            ? nodeTicks[row.id] ?? Number(row.elapsedTime) ?? 0
-            : Number(row.elapsedTime) ?? 0,
-      }))
-    );
-  }, [nodeTicks]);
+  useEffect(() => { fetchAndLoadProject(); }, [fetchAndLoadProject]);
 
   // ------------------------ Refresh ------------------------
-  const handleRefresh = useCallback(() => {
+  const handleRefresh = useCallback(async () => {
     if (!projectName) return;
-
     setIsRefreshing(true);
-    fetchProject(projectName)
-      .then((data) => {
-        setProject(data);
-        if (data.protocols) {
-          const { nodes, edges, table } = buildGraphElements(
-            data.shortName,
-            data.protocols,
-            viewMode,
-            graphDirection
-          );
+    try {
+      const data = await fetchProject(projectName);
+      setProject(data);
 
-          const savedPositions = JSON.parse(localStorage.getItem(`project-${projectName}-node-positions`) || '[]');
-          const nodesWithPositions = nodes.map(n => {
-            const saved = savedPositions.find((p: any) => p.id === n.id);
-            return saved ? { ...n, position: saved.position } : n;
-          });
-          setNodes(nodesWithPositions);
-          setEdges(edges);
-          setTableData(table ?? []);
+      if (data.protocols) {
+        const { nodes: loadedNodes, edges: loadedEdges, table } = buildGraphElements(
+          data.shortName,
+          data.protocols,
+          viewMode,
+          graphDirection
+        );
 
-          // Mantener ticks actualizados con nuevos datos
-          setNodeTicks((prev) => {
-            const updated: Record<string, number> = { ...prev };
-            nodes.forEach((n) => {
-              if (n.data?.status === 'running') {
-                updated[n.id] = Math.max(prev[n.id] ?? 0, Number(n.data.elapsedTime) ?? 0);
-              }
-            });
-            return updated;
+        const nodesWithPositions = mergeNodesWithPositions(loadedNodes);
+
+        setNodes(nodesWithPositions);
+        setEdges(loadedEdges);
+        setTableData(table ?? []);
+
+        setNodeTicks(prev => {
+          const updated: Record<string, number> = { ...prev };
+          nodesWithPositions.forEach(n => {
+            if (n.data?.status === 'running') {
+              updated[n.id] = Math.max(prev[n.id] ?? 0, Number(n.data.elapsedTime) ?? 0);
+            }
           });
-        }
-      })
-      .catch((err) => console.error(err))
-      .finally(() => setIsRefreshing(false));
-  }, [projectName, viewMode, graphDirection]);
+          return updated;
+        });
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [projectName, nodes, viewMode, graphDirection]);
 
   useEffect(() => {
-    const interval = setInterval(() => handleRefresh(), TIME_TO_REFRESH);
+    const interval = setInterval(handleRefresh, TIME_TO_REFRESH);
     return () => clearInterval(interval);
   }, [handleRefresh]);
 
-  // ------------------------ Tick updater ------------------------
+  // ------------------------ Ticks updater ------------------------
   const nodesRef = useRef(nodes);
-  useEffect(() => {
-    nodesRef.current = nodes;
-  }, [nodes]);
+  useEffect(() => { nodesRef.current = nodes; }, [nodes]);
 
-  /*useEffect(() => {
-    if (highlightedEdges.length > 0) {
-      setEdges((eds) =>
-        eds.map(edge =>
-          highlightedEdges.includes(edge.id)
-            ? { ...edge, style: { ...edge.style, stroke: '#0070f3', strokeWidth: 3 } }
-            : { ...edge, style: undefined }
-        )
-      );
-    }
-  }, [edges, highlightedEdges]);*/
-
-  // Intervalo que incrementa los ticks
   useEffect(() => {
     const interval = setInterval(() => {
-      setNodeTicks((prev) => {
+      setNodeTicks(prev => {
         const updated: Record<string, number> = { ...prev };
-
-        Object.values(nodesRef.current).forEach((node) => {
+        nodesRef.current.forEach(node => {
           if (node.data?.status === 'running') {
             updated[node.id] = (prev[node.id] ?? Number(node.data.elapsedTime) ?? 0) + 1;
           }
         });
-
         return updated;
       });
+
       setTableData(prev =>
         prev.map(row =>
           row.status === "running"
@@ -299,22 +247,33 @@ export default function ProjectPage() {
         )
       );
     }, 1000);
-
     return () => clearInterval(interval);
-  }, []); // <-- no dependencias, interval se mantiene
+  }, []);
 
-  // Inject ticks into nodes para ReactFlow re-render
   useEffect(() => {
-    setNodes((nds) =>
-      nds.map((node) => ({
+    setNodes(nds =>
+      nds.map(node => ({
         ...node,
         data: {
           ...node.data,
-          tick: nodeTicks[node.id] ?? Number(node.data.elapsedTime) ?? 0,
-        },
+          tick: nodeTicks[node.id] ?? Number(node.data.elapsedTime) ?? 0
+        }
       }))
     );
   }, [nodeTicks]);
+
+  // ------------------------ Layout change effect ------------------------
+  useEffect(() => {
+    if (!project?.protocols) return;
+    const { nodes: loadedNodes, edges: loadedEdges } = buildGraphElements(
+      project.shortName,
+      project.protocols,
+      viewMode,
+      graphDirection
+    );
+    setNodes(loadNodesWithPositions(loadedNodes));
+    setEdges(loadedEdges);
+  }, [graphDirection, project]);
 
   // ------------------------ Table helpers ------------------------
   const scrollToProtocol = (id: string) => {
@@ -332,7 +291,7 @@ export default function ProjectPage() {
     }
   };
 
-  const getStatusStyle = (status: string | undefined) => {
+  const getStatusStyle = (status?: string) => {
     const colorMap: Record<string, string> = {
       running: '#FCCE62',
       saved: '#D9F1FA',
@@ -354,46 +313,34 @@ export default function ProjectPage() {
   const handleSearch = (query: string) => {
     if (!query.trim()) {
       setHighlightedId(null);
-
-      if (viewMode === 'hierarchical') {
-        const reactFlowInstance = (window as any).reactFlowInstance;
-        if (reactFlowInstance) {
-          reactFlowInstance.fitView({ duration: 800 });
-        }
-      }
-
+      const instance = (window as any).reactFlowInstance;
+      instance?.fitView({ duration: 800 });
       return;
     }
 
     if (viewMode === 'table') {
-      const match = tableData.find(
-        (row) =>
-          row.id.toLowerCase().includes(query.toLowerCase()) ||
-          row.label.toLowerCase().includes(query.toLowerCase())
+      const match = tableData.find(row =>
+        row.id.toLowerCase().includes(query.toLowerCase()) ||
+        row.label.toLowerCase().includes(query.toLowerCase())
       );
       if (match) scrollToProtocol(match.id);
       return;
     }
 
-    const reactFlowInstance = (window as any).reactFlowInstance;
-    if (!reactFlowInstance) return;
-
-    const match = nodes.find(
-      (node) =>
-        node.id.toLowerCase().includes(query.toLowerCase()) ||
-        node.data?.label?.toLowerCase?.().includes(query.toLowerCase())
+    const match = nodes.find(node =>
+      node.id.toLowerCase().includes(query.toLowerCase()) ||
+      node.data?.label?.toLowerCase?.().includes(query.toLowerCase())
     );
 
     if (!match) return;
-
     handleNodeClick(match);
 
-    reactFlowInstance.setCenter(match.position.x, match.position.y, {
-      zoom: reactFlowInstance.getViewport().zoom,
-      duration: 800,
+    const instance = (window as any).reactFlowInstance;
+    instance?.setCenter(match.position.x, match.position.y, {
+      zoom: instance.getViewport().zoom,
+      duration: 800
     });
   };
-
 
   const handleRowDoubleClick = async (id: string) => {
     if (!projectName) return;
@@ -403,7 +350,7 @@ export default function ProjectPage() {
       setSelectedNodeDetails(fullNodeData);
       setPreviousNodeId(id);
     } catch (err) {
-      console.error('Failed to fetch protocol details', err);
+      console.error(err);
     }
   };
 
@@ -415,12 +362,10 @@ export default function ProjectPage() {
     return `${pad(hours)}h:${pad(minutes)}m:${pad(secs)}s`;
   };
 
-  // ------------------------ Context menu helpers ------------------------
+  // ------------------------ Context menu ------------------------
   const handleContextMenu = (event: React.MouseEvent) => {
     event.preventDefault();
-    event.stopPropagation(); // evita propagación a ReactFlow y nodos
-
-    // Detectar si se clicó sobre un nodo
+    event.stopPropagation();
     const nodeEl = (event.target as HTMLElement).closest(".react-flow__node");
     const nodeId = nodeEl?.getAttribute("data-id") ?? null;
 
@@ -428,43 +373,25 @@ export default function ProjectPage() {
       visible: true,
       x: event.clientX,
       y: event.clientY,
-      nodeId: nodeId,
+      nodeId
     });
   };
 
-  const handleCloseMenu = () => {
-    setContextMenu(prev => ({ ...prev, visible: false }));
-  };
+  const handleCloseMenu = () => setContextMenu(prev => ({ ...prev, visible: false }));
 
-  // Cerrar menú con click fuera o ESC
   useEffect(() => {
     if (!contextMenu.visible) return;
 
     const onWindowMouseDown = () => handleCloseMenu();
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') handleCloseMenu();
-    };
+    const onKeyDown = (e: KeyboardEvent) => { if (e.key === 'Escape') handleCloseMenu(); };
 
     window.addEventListener('mousedown', onWindowMouseDown);
     window.addEventListener('keydown', onKeyDown);
-
     return () => {
       window.removeEventListener('mousedown', onWindowMouseDown);
       window.removeEventListener('keydown', onKeyDown);
     };
   }, [contextMenu.visible]);
-
-
-  const handleNodesChange = (changes: NodeChange[]) => {
-    setNodes((nds) => {
-      const updated = applyNodeChanges(changes, nds);
-      // Guardar posiciones en localStorage
-      const positions = updated.map(n => ({ id: n.id, position: n.position }));
-      localStorage.setItem(`project-${projectName}-node-positions`, JSON.stringify(positions));
-      return updated;
-    });
-  };
-
   // ------------------------ Render ------------------------
   return (
     <div className="h-screen">
@@ -676,7 +603,7 @@ export default function ProjectPage() {
             <ReactFlow
               nodes={nodes}
               edges={edges}
-              onNodesChange={handleNodesChange}
+              onNodesChange={handleNodesChangeWithPersistence}
               onEdgesChange={onEdgesChange}
               nodeTypes={nodeTypes}
               fitView
