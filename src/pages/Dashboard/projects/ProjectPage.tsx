@@ -73,6 +73,7 @@ export default function ProjectPage() {
   });
 
   const TIME_TO_REFRESH = 15000; // 15s
+  const getStorageKey = () => `project-${projectName}-node-positions-${viewMode}-${graphDirection}`;
 
   // ------------------------ Node click handlers ------------------------
   const handleNodeClick = (nodeData: any, event?: React.MouseEvent) => {
@@ -117,15 +118,15 @@ export default function ProjectPage() {
     setNodes((nds) => {
       const updated = applyNodeChanges(changes, nds);
       const positions = updated.map(n => ({ id: n.id, position: n.position }));
-      localStorage.setItem(`${localStorageKey}-${graphDirection}`, JSON.stringify(positions));
+      localStorage.setItem(getStorageKey(), JSON.stringify(positions));
       return updated;
     });
   };
 
   const loadNodesWithPositions = (loadedNodes: Node[]) => {
     const savedPositions: { id: string; position: { x: number; y: number } }[] =
-      JSON.parse(localStorage.getItem(`${localStorageKey}-${graphDirection}`) || '[]');
-
+      JSON.parse(localStorage.getItem(getStorageKey()) || '[]');
+  
     return loadedNodes.map(n => {
       const saved = savedPositions.find(p => p.id === n.id);
       return saved ? { ...n, position: saved.position } : n;
@@ -274,6 +275,13 @@ export default function ProjectPage() {
     setNodes(loadNodesWithPositions(loadedNodes));
     setEdges(loadedEdges);
   }, [graphDirection, project]);
+
+  useEffect(() => {
+    const instance = (window as any).reactFlowInstance;
+    if (instance && nodes.length > 0 && viewMode === 'hierarchical') {
+      instance.fitView({ padding: 0.2, duration: 0 });
+    }
+  }, [nodes, viewMode, graphDirection]);
 
   // ------------------------ Table helpers ------------------------
   const scrollToProtocol = (id: string) => {
