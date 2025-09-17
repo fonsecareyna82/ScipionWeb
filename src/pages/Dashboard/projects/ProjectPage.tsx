@@ -392,11 +392,11 @@ export default function ProjectPage() {
             type="text"
             placeholder="Search protocol..."
             onChange={(e) => handleSearch(e.target.value)}
-            className="w-full px-3 py-2 pl-10 pr-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+            className="w-full px-3 py-2 pl-10 pr-3 text-sm text-gray-800 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:border-gray-700 dark:text-white"
           />
         </div>
         <div className="ml-4 mr-4 p-4 border rounded-lg shadow-sm bg-white dark:bg-gray-800 flex items-center gap-4">
-          <span className="font-smal text-sm"></span>
+          <span className="font-smal text-xs"></span>
 
 
           <div className="flex gap-2">
@@ -415,13 +415,14 @@ export default function ProjectPage() {
                     console.error("Failed to fetch protocol details", err);
                   }
                 }}
+                
               />
             </div>
 
             {/* Workflows button */}
             <button
               onClick={() => console.log('Workflow clicked')}
-              className={`px-3 py-1 rounded-lg text-sm flex items-center gap-1 bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300
+              className={`px-3 py-1 rounded-lg text-xs flex items-center gap-1 bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300
                 }`}
             >
               <TreeIcon className="w-4 h-4" />
@@ -430,7 +431,7 @@ export default function ProjectPage() {
           </div>
         </div>
         <div className="ml-4 mr-4 p-2 border rounded-lg shadow-sm bg-white dark:bg-gray-800 flex items-center gap-4">
-          <span className="font-smal text-sm">View mode:</span>
+          <span className="font-small text-xs">View mode:</span>
 
           <div className="flex gap-2">
             {/* Tree TB */}
@@ -439,7 +440,7 @@ export default function ProjectPage() {
                 setViewMode('hierarchical');
                 setGraphDirection('TB');
               }}
-              className={`px-3 py-1 rounded-lg text-sm flex items-center gap-1 ${viewMode === 'hierarchical' && graphDirection === 'TB'
+              className={`px-3 py-1 rounded-lg text-xs flex items-center gap-1 ${viewMode === 'hierarchical' && graphDirection === 'TB'
                   ? 'bg-blue-500 text-white'
                   : 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
                 }`}
@@ -454,7 +455,7 @@ export default function ProjectPage() {
                 setViewMode('hierarchical');
                 setGraphDirection('LR');
               }}
-              className={`px-3 py-1 rounded-lg text-sm flex items-center gap-1 ${viewMode === 'hierarchical' && graphDirection === 'LR'
+              className={`px-3 py-1 rounded-lg text-xs flex items-center gap-1 ${viewMode === 'hierarchical' && graphDirection === 'LR'
                   ? 'bg-blue-500 text-white'
                   : 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
                 }`}
@@ -466,7 +467,7 @@ export default function ProjectPage() {
             {/* Table */}
             <button
               onClick={() => setViewMode('table')}
-              className={`px-3 py-1 rounded-lg text-sm flex items-center gap-1 ${viewMode === 'table'
+              className={`px-3 py-1 rounded-lg text-xs flex items-center gap-1 ${viewMode === 'table'
                   ? 'bg-blue-500 text-white'
                   : 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
                 }`}
@@ -590,7 +591,7 @@ export default function ProjectPage() {
               onEdgesChange={onEdgesChange}
               nodeTypes={nodeTypes}
               fitView
-              minZoom={0.4}
+              minZoom={0.45}
               maxZoom={0.8}
               fitViewOptions={{ padding: 0.2 }}
               defaultEdgeOptions={{ type: 'default', style: { stroke: "#999", strokeWidth: 2 }, markerEnd: 'url(#circle)' }}

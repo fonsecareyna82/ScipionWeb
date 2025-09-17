@@ -55,7 +55,7 @@ export const ProtocolsDrawer: React.FC<ProtocolsDrawerProps> = ({
       <button
         onClick={handleLoadProtocols}
         disabled={loading || projectId == null}
-        className="px-3 py-1 rounded-lg text-sm flex items-center gap-1 bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300"
+        className="px-3 py-1 rounded-lg text-xs flex items-center gap-1 bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300"
       >
         <BoxCubeIcon className="w-4 h-4" />
         {loading ? "Loading…" : "Protocols"}
@@ -127,7 +127,7 @@ export const ProtocolsDrawer: React.FC<ProtocolsDrawerProps> = ({
               placeholder="Search protocols..."
               value={searchText}
               onChange={(e) => setSearchText(e.target.value)}
-              className="w-125 px-3 py-2 pl-10 pr-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+              className="w-125 px-3 py-2 pl-10 pr-3 border text-gray-800 border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:border-gray-700 dark:text-white"
             />
           </div>
         </div>
