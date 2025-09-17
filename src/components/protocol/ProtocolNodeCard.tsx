@@ -135,7 +135,7 @@ export default function StatusNodeCard({
         <div className="flex items-center space-x-2">
           {data.id !== "PROJECT" && (
             <div className={`node-id-badge ${data.status === "running" ? "glow-badge" : ""}`}>
-              {data.id}
+              <span>{data.id}</span>
             </div>
           )}
           <div className={data.id === "PROJECT" ? "text-4xl text-black" : "node-label dark:text-black"}>

@@ -1,5 +1,5 @@
 import { useParams } from "react-router-dom";
-import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
+import { useEffect, useState, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import { fetchProject, Project, fetchProtocolDetails, fetchNewProtocolDetails } from "../../../api/projects";
 import ProtocolForm from "../../../components/protocol/ProtocolForm";
 import { buildGraphElements } from "../../../utils/graph_utils";
@@ -118,15 +118,15 @@ export default function ProjectPage() {
     setNodes((nds) => {
       const updated = applyNodeChanges(changes, nds);
       const positions = updated.map(n => ({ id: n.id, position: n.position }));
-      localStorage.setItem(getStorageKey(), JSON.stringify(positions));
+      localStorage.setItem(`${localStorageKey}-${graphDirection}`, JSON.stringify(positions));
       return updated;
     });
   };
 
   const loadNodesWithPositions = (loadedNodes: Node[]) => {
     const savedPositions: { id: string; position: { x: number; y: number } }[] =
-      JSON.parse(localStorage.getItem(getStorageKey()) || '[]');
-  
+      JSON.parse(localStorage.getItem(`${localStorageKey}-${graphDirection}`) || '[]');
+
     return loadedNodes.map(n => {
       const saved = savedPositions.find(p => p.id === n.id);
       return saved ? { ...n, position: saved.position } : n;
@@ -276,12 +276,24 @@ export default function ProjectPage() {
     setEdges(loadedEdges);
   }, [graphDirection, project]);
 
-  useEffect(() => {
-    const instance = (window as any).reactFlowInstance;
-    if (instance && nodes.length > 0 && viewMode === 'hierarchical') {
-      instance.fitView({ padding: 0.2, duration: 0 });
+  const prevLayout = useRef({ viewMode, graphDirection });
+
+  useLayoutEffect(() => {
+    const layoutChanged =
+      prevLayout.current.viewMode !== viewMode ||
+      prevLayout.current.graphDirection !== graphDirection;
+
+    if (layoutChanged) {
+      const instance = (window as any).reactFlowInstance;
+      if (instance && nodes.length > 0 && viewMode === 'hierarchical') {
+        // small timeout to ensure nodes are rendered
+        setTimeout(() => {
+          instance.fitView({ padding: 0.2, duration: 0 });
+        }, 0);
+      }
+      prevLayout.current = { viewMode, graphDirection };
     }
-  }, [nodes, viewMode, graphDirection]);
+  }, [viewMode, graphDirection, nodes]);
 
   // ------------------------ Table helpers ------------------------
   const scrollToProtocol = (id: string) => {
