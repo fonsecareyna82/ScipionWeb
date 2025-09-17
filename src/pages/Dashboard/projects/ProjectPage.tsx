@@ -11,6 +11,8 @@ import ReactFlow, {
   useNodesState,
   useEdgesState,
   Edge,
+  applyNodeChanges,
+  NodeChange
 } from 'reactflow';
 import { RefreshIcon, TableIcon, TreeIcon } from "../../../icons";
 import 'reactflow/dist/style.css';
@@ -49,7 +51,7 @@ export default function ProjectPage() {
   const { projectName } = useParams();
   const [project, setProject] = useState<Project>();
   const [selectedNodeDetails, setSelectedNodeDetails] = useState<any>(null);
-  const [nodes, setNodes, onNodesChange] = useNodesState<StatusNodeData>([]);
+  const [nodes, setNodes] = useNodesState<StatusNodeData>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge[]>([]);
   const [tableData, setTableData] = useState<any[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -65,6 +67,7 @@ export default function ProjectPage() {
   const [error] = useState<string | null>(null)
   const [highlightedEdges, setHighlightedEdges] = useState<string[]>([]);
   const [graphDirection, setGraphDirection] = useState<'TB' | 'LR'>('TB');
+  const [onNodesChangeRaw] = useNodesState<StatusNodeData>([]);
 
   // 👉 estado del menú contextual
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({
@@ -75,6 +78,9 @@ export default function ProjectPage() {
 
   // ------------------------ Automatic Refresh --------------------------------
   const TIME_TO_REFRESH = 15000 // 15s
+
+  // ------------------------ Nodes with persistence ------------------------
+  const LOCAL_STORAGE_KEY = `nodesPositions_${projectName}`;
 
 
   // ------------------------ Node click handlers ------------------------
@@ -170,9 +176,15 @@ export default function ProjectPage() {
       .then((data) => {
         setProject(data);
         if (data.protocols) {
-          const { nodes, edges, table } = buildGraphElements(data.shortName, data.protocols, viewMode, graphDirection);
-          setNodes(nodes);
-          setEdges(edges);
+          const { nodes: loadedNodes, edges: loadedEdges, table } = buildGraphElements(data.shortName, data.protocols, viewMode, graphDirection);
+
+          const savedPositions = JSON.parse(localStorage.getItem(`project-${projectName}-node-positions`) || '[]');
+          const nodesWithPositions = nodes.map(n => {
+            const saved = savedPositions.find((p: any) => p.id === n.id);
+            return saved ? { ...n, position: saved.position } : n;
+          });
+          setNodes(nodesWithPositions);
+          setEdges(loadedEdges);
           setTableData(table ?? []);
 
           // Inicializar ticks
@@ -217,7 +229,12 @@ export default function ProjectPage() {
             graphDirection
           );
 
-          setNodes(nodes);
+          const savedPositions = JSON.parse(localStorage.getItem(`project-${projectName}-node-positions`) || '[]');
+          const nodesWithPositions = nodes.map(n => {
+            const saved = savedPositions.find((p: any) => p.id === n.id);
+            return saved ? { ...n, position: saved.position } : n;
+          });
+          setNodes(nodesWithPositions);
           setEdges(edges);
           setTableData(table ?? []);
 
@@ -402,11 +419,11 @@ export default function ProjectPage() {
   const handleContextMenu = (event: React.MouseEvent) => {
     event.preventDefault();
     event.stopPropagation(); // evita propagación a ReactFlow y nodos
-  
+
     // Detectar si se clicó sobre un nodo
     const nodeEl = (event.target as HTMLElement).closest(".react-flow__node");
     const nodeId = nodeEl?.getAttribute("data-id") ?? null;
-  
+
     setContextMenu({
       visible: true,
       x: event.clientX,
@@ -436,6 +453,17 @@ export default function ProjectPage() {
       window.removeEventListener('keydown', onKeyDown);
     };
   }, [contextMenu.visible]);
+
+
+  const handleNodesChange = (changes: NodeChange[]) => {
+    setNodes((nds) => {
+      const updated = applyNodeChanges(changes, nds);
+      // Guardar posiciones en localStorage
+      const positions = updated.map(n => ({ id: n.id, position: n.position }));
+      localStorage.setItem(`project-${projectName}-node-positions`, JSON.stringify(positions));
+      return updated;
+    });
+  };
 
   // ------------------------ Render ------------------------
   return (
@@ -648,7 +676,7 @@ export default function ProjectPage() {
             <ReactFlow
               nodes={nodes}
               edges={edges}
-              onNodesChange={onNodesChange}
+              onNodesChange={handleNodesChange}
               onEdgesChange={onEdgesChange}
               nodeTypes={nodeTypes}
               fitView
