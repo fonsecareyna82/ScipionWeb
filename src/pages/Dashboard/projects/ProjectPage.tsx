@@ -17,6 +17,15 @@ import 'reactflow/dist/style.css';
 import { createStatusNodeWrapper } from "../../../components/protocol/ProtocolNodeCardWrapper";
 import { ProtocolsDrawer } from "@/components/protocol/ProtocolsDrawer";
 
+// 👉 importaciones del menú contextual (shadcn/ui)
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Plus, RefreshCw, Trash2 } from "lucide-react";
+
 interface StatusNodeData {
   label: string;
   status?: string;
@@ -29,6 +38,12 @@ interface StatusNodeData {
   stepsDone?: number;
 }
 
+interface ContextMenuState {
+  visible: boolean;
+  x: number;
+  y: number;
+  nodeId?: string | null;
+}
 
 export default function ProjectPage() {
   const { projectName } = useParams();
@@ -50,6 +65,13 @@ export default function ProjectPage() {
   const [error] = useState<string | null>(null)
   const [highlightedEdges, setHighlightedEdges] = useState<string[]>([]);
   const [graphDirection, setGraphDirection] = useState<'TB' | 'LR'>('TB');
+
+  // 👉 estado del menú contextual
+  const [contextMenu, setContextMenu] = useState<ContextMenuState>({
+    visible: false,
+    x: 0,
+    y: 0,
+  });
 
   // ------------------------ Automatic Refresh --------------------------------
   const TIME_TO_REFRESH = 15000 // 15s
@@ -126,7 +148,7 @@ export default function ProjectPage() {
       handleNodeDoubleClick,
       previousNodeId ?? undefined,
       hoveredNodeId ?? undefined,
-      setHoveredNodeId, 
+      setHoveredNodeId,
       graphDirection
     ),
   }), [previousNodeId, hoveredNodeId, graphDirection]);
@@ -182,7 +204,7 @@ export default function ProjectPage() {
   // ------------------------ Refresh ------------------------
   const handleRefresh = useCallback(() => {
     if (!projectName) return;
-  
+
     setIsRefreshing(true);
     fetchProject(projectName)
       .then((data) => {
@@ -194,11 +216,11 @@ export default function ProjectPage() {
             viewMode,
             graphDirection
           );
-  
+
           setNodes(nodes);
           setEdges(edges);
           setTableData(table ?? []);
-  
+
           // Mantener ticks actualizados con nuevos datos
           setNodeTicks((prev) => {
             const updated: Record<string, number> = { ...prev };
@@ -376,6 +398,45 @@ export default function ProjectPage() {
     return `${pad(hours)}h:${pad(minutes)}m:${pad(secs)}s`;
   };
 
+  // ------------------------ Context menu helpers ------------------------
+  const handleContextMenu = (event: React.MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation(); // evita propagación a ReactFlow y nodos
+  
+    // Detectar si se clicó sobre un nodo
+    const nodeEl = (event.target as HTMLElement).closest(".react-flow__node");
+    const nodeId = nodeEl?.getAttribute("data-id") ?? null;
+  
+    setContextMenu({
+      visible: true,
+      x: event.clientX,
+      y: event.clientY,
+      nodeId: nodeId,
+    });
+  };
+
+  const handleCloseMenu = () => {
+    setContextMenu(prev => ({ ...prev, visible: false }));
+  };
+
+  // Cerrar menú con click fuera o ESC
+  useEffect(() => {
+    if (!contextMenu.visible) return;
+
+    const onWindowMouseDown = () => handleCloseMenu();
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') handleCloseMenu();
+    };
+
+    window.addEventListener('mousedown', onWindowMouseDown);
+    window.addEventListener('keydown', onKeyDown);
+
+    return () => {
+      window.removeEventListener('mousedown', onWindowMouseDown);
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [contextMenu.visible]);
+
   // ------------------------ Render ------------------------
   return (
     <div className="h-screen">
@@ -415,7 +476,7 @@ export default function ProjectPage() {
                     console.error("Failed to fetch protocol details", err);
                   }
                 }}
-                
+
               />
             </div>
 
@@ -441,8 +502,8 @@ export default function ProjectPage() {
                 setGraphDirection('TB');
               }}
               className={`px-3 py-1 rounded-lg text-xs flex items-center gap-1 ${viewMode === 'hierarchical' && graphDirection === 'TB'
-                  ? 'bg-blue-500 text-white'
-                  : 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
+                ? 'bg-blue-500 text-white'
+                : 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
                 }`}
             >
               <TreeIcon className="w-4 h-4" />
@@ -456,8 +517,8 @@ export default function ProjectPage() {
                 setGraphDirection('LR');
               }}
               className={`px-3 py-1 rounded-lg text-xs flex items-center gap-1 ${viewMode === 'hierarchical' && graphDirection === 'LR'
-                  ? 'bg-blue-500 text-white'
-                  : 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
+                ? 'bg-blue-500 text-white'
+                : 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
                 }`}
             >
               <TreeIcon className="w-4 h-4 transform rotate-270" />
@@ -468,8 +529,8 @@ export default function ProjectPage() {
             <button
               onClick={() => setViewMode('table')}
               className={`px-3 py-1 rounded-lg text-xs flex items-center gap-1 ${viewMode === 'table'
-                  ? 'bg-blue-500 text-white'
-                  : 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
+                ? 'bg-blue-500 text-white'
+                : 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
                 }`}
             >
               <TableIcon className="w-4 h-4" />
@@ -496,7 +557,7 @@ export default function ProjectPage() {
               onClick={handleRefresh}
               disabled={isRefreshing}
             >
-              <RefreshIcon
+              <RefreshCw
                 className={`w-5 h-5 text-black dark:text-white dark:bg-black mr-1 ml-1 mt-1 ${isRefreshing ? 'animate-spin' : ''
                   }`}
               />
@@ -596,14 +657,108 @@ export default function ProjectPage() {
               fitViewOptions={{ padding: 0.2 }}
               defaultEdgeOptions={{ type: 'default', style: { stroke: "#999", strokeWidth: 2 }, markerEnd: 'url(#circle)' }}
               onInit={(instance) => { (window as any).reactFlowInstance = instance; }}
+              onContextMenu={handleContextMenu}
             >
               <Background />
               <Controls position="top-right" showInteractive={false}>
                 <button className="refresh-btn" title="Refresh project" onClick={handleRefresh} disabled={isRefreshing}>
-                  <RefreshIcon className={`w-5 h-5 text-black dark:text-black dark:w-6.5 dark:h-5 dark:mt-0 dark:ml-0 dark:bg-white mr-1 ml-1 mt-1 ${isRefreshing ? 'animate-spin' : ''}`} />
+                  <RefreshCw className={`ml-1 mt-1 w-4 h-4 dark:w-6.5 dark:h-5 dark:ml-0 dark:mt-0 text-black dark:text-black dark:bg-white ${isRefreshing ? 'animate-spin' : ''}`} />
                 </button>
               </Controls>
             </ReactFlow>
+
+            {contextMenu.visible && (
+              <DropdownMenu open={true} onOpenChange={handleCloseMenu}>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    style={{
+                      position: "fixed",
+                      top: contextMenu.y,
+                      left: contextMenu.x,
+                      width: 0,
+                      height: 0,
+                      opacity: 0,
+                    }}
+                  />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-48">
+                  {contextMenu.nodeId ? (
+                    // Menú para nodos
+                    <>
+                      <DropdownMenuItem
+                        onClick={() => {
+                          console.log("Node ➕ Add protocol", contextMenu.nodeId);
+                          handleCloseMenu();
+                        }}
+                      >
+                        <Plus className="w-4 h-4 mr-2" />
+                        Add protocol
+                      </DropdownMenuItem>
+
+                      <DropdownMenuItem
+                        onClick={() => {
+                          console.log("Node 🔄 Refresh node", contextMenu.nodeId);
+                          handleCloseMenu();
+                        }}
+                      >
+                        <RefreshCw className="w-4 h-4 mr-2" />
+                        Refresh node
+                      </DropdownMenuItem>
+
+                      <DropdownMenuItem
+                        onClick={() => {
+                          setNodes((nds) =>
+                            nds.map((n) =>
+                              n.id === contextMenu.nodeId ? { ...n, selected: false } : n
+                            )
+                          );
+                          handleCloseMenu();
+                        }}
+                      >
+                        <Trash2 className="w-4 h-4 mr-2" />
+                        Clear selection
+                      </DropdownMenuItem>
+                    </>
+                  ) : (
+                    // Menú para canvas
+                    <>
+                      <DropdownMenuItem
+                        onClick={() => {
+                          console.log("Canvas ➕ Add node");
+                          handleCloseMenu();
+                        }}
+                      >
+                        <Plus className="w-4 h-4 mr-2" />
+                        Add node
+                      </DropdownMenuItem>
+
+                      <DropdownMenuItem
+                        onClick={() => {
+                          handleRefresh();
+                          handleCloseMenu();
+                        }}
+                      >
+                        <RefreshCw className="w-4 h-4 mr-2" />
+                        Refresh graph
+                      </DropdownMenuItem>
+
+                      <DropdownMenuItem
+                        onClick={() => {
+                          setNodes((nds) => nds.map((n) => ({ ...n, selected: false })));
+                          handleCloseMenu();
+                        }}
+                      >
+                        <Trash2 className="w-4 h-4 mr-2" />
+                        Clear selection
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+
+
+
           </ReactFlowProvider>
         </div>
       )}

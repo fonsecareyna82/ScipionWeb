@@ -64,7 +64,7 @@ type StatusNodeProps = {
     inputs?: any[];
   };
   selectedNodeId?: string;
-  graphDirection?: "TB" | "LR"; // <-- NUEVO
+  graphDirection?: "TB" | "LR"; 
   onClick?: () => void;
   onDoubleClick?: () => void;
 };
@@ -119,7 +119,11 @@ export default function StatusNodeCard({
       onDoubleClick={onDoubleClick}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
-      onContextMenu={handleContextMenu}
+      onContextMenu={(e) => {
+        e.preventDefault();  // prevents the browser from opening its menu
+        e.stopPropagation(); // Prevent ReactFlow from opening its menu
+        handleContextMenu(e);
+      }}
     >
       {/* Header */}
       <div
@@ -139,7 +143,7 @@ export default function StatusNodeCard({
           </div>
         </div>
 
-        {/* Botón "..." */}
+        {/* Button "..." */}
         {data.id !== "PROJECT" && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -313,7 +317,7 @@ export default function StatusNodeCard({
         </div>
       )}
 
-      {/* React Flow handles según graphDirection */}
+      {/* React Flow handles by graphDirection */}
       <Handle
         type="target"
         position={graphDirection === "TB" ? Position.Top : Position.Left}
@@ -325,7 +329,7 @@ export default function StatusNodeCard({
         style={graphDirection === "TB" ? {} : { top: "50%", transform: "translateY(-50%)" }}
       />
 
-      {/* Menú contextual al clic derecho */}
+      {/* Contextual Menú with right-click */}
       {rightClickOpen && (
         <DropdownMenu open={rightClickOpen} onOpenChange={setRightClickOpen}>
           <DropdownMenuContent
@@ -333,44 +337,44 @@ export default function StatusNodeCard({
             style={{ position: "fixed", top: menuPosition.y, left: menuPosition.x }}
           >
             <DropdownMenuItem onSelect={onDoubleClick}>
-                <Pencil className="mr-2 h-4 w-4" /> Edit
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                <FolderOpen className="mr-2 h-4 w-4" /> Browse
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                <Pencil className="mr-2 h-4 w-4" /> Rename
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                <Copy className="mr-2 h-4 w-4" /> Duplicate
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                <Trash2 className="mr-2 h-4 w-4" /> Delete
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem>
-                <ArrowDownLeft className="mr-2 h-4 w-4" /> Select from
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                <ArrowUpRight className="mr-2 h-4 w-4" /> Select to
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem>
-                <RefreshCw className="mr-2 h-4 w-4" /> Restart all
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                <Play className="mr-2 h-4 w-4" /> Continue all
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                <RotateCcw className="mr-2 h-4 w-4" /> Reset from
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem>
-                <FileUp className="mr-2 h-4 w-4" /> Export
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                <Upload className="mr-2 h-4 w-4" /> Export & upload
-              </DropdownMenuItem>
+              <Pencil className="mr-2 h-4 w-4" /> Edit
+            </DropdownMenuItem>
+            <DropdownMenuItem>
+              <FolderOpen className="mr-2 h-4 w-4" /> Browse
+            </DropdownMenuItem>
+            <DropdownMenuItem>
+              <Pencil className="mr-2 h-4 w-4" /> Rename
+            </DropdownMenuItem>
+            <DropdownMenuItem>
+              <Copy className="mr-2 h-4 w-4" /> Duplicate
+            </DropdownMenuItem>
+            <DropdownMenuItem>
+              <Trash2 className="mr-2 h-4 w-4" /> Delete
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem>
+              <ArrowDownLeft className="mr-2 h-4 w-4" /> Select from
+            </DropdownMenuItem>
+            <DropdownMenuItem>
+              <ArrowUpRight className="mr-2 h-4 w-4" /> Select to
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem>
+              <RefreshCw className="mr-2 h-4 w-4" /> Restart all
+            </DropdownMenuItem>
+            <DropdownMenuItem>
+              <Play className="mr-2 h-4 w-4" /> Continue all
+            </DropdownMenuItem>
+            <DropdownMenuItem>
+              <RotateCcw className="mr-2 h-4 w-4" /> Reset from
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem>
+              <FileUp className="mr-2 h-4 w-4" /> Export
+            </DropdownMenuItem>
+            <DropdownMenuItem>
+              <Upload className="mr-2 h-4 w-4" /> Export & upload
+            </DropdownMenuItem>
 
           </DropdownMenuContent>
         </DropdownMenu>
