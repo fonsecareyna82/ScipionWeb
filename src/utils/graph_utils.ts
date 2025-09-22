@@ -16,7 +16,7 @@ function estimateLabelWidth(label: string, fontSize = 20, fontFamily = "Arial"):
  * Estimate node height (optional, for LR layout)
  */
 function estimateNodeHeight(label: string, fontSize = 20, fontFamily = "Arial"): number {
-  return 120; // fixed height for simplicity, puedes calcular según líneas si quieres
+  return 120; // fixed height for simplicity
 }
 
 type Direction = "TB" | "LR";
@@ -101,12 +101,12 @@ export function buildGraphElements(
   Object.entries(levelBuckets).forEach(([levelStr, ids]) => {
     const level = parseInt(levelStr, 10);
 
-    // Calcula tamaño de cada nodo
+    // Calculate the size of each node
     const sizes = ids.map((id) => estimateLabelWidth(protocols[id]?.label || id));
     const heights = ids.map((id) => estimateNodeHeight(protocols[id]?.label || id));
-    const spacing = direction === "TB"? 50: 350; // espacio mínimo entre nodos
+    const spacing = direction === "TB"? 50: 350; // minimum space between nodes
 
-    // Total tamaño en eje transversal
+    // Total size in transverse axis
     const totalSize =
       direction === "TB"
         ? sizes.reduce((sum, s) => sum + s + spacing, 0)
@@ -124,8 +124,8 @@ export function buildGraphElements(
 
       const position =
         direction === "TB"
-          ? { x: secondary + nodeWidth / 2, y: level * 460 } // TB: x = centrado, y = nivel
-          : { x: level * 750, y: secondary + nodeHeight / 2 }; // LR: y = centrado, x = nivel
+          ? { x: secondary + nodeWidth / 2, y: level * 460 } // TB: x = centered, y = level
+          : { x: level * 750, y: secondary + nodeHeight / 2 }; // LR: y = centered, x = level
 
       nodes.push({
         id,
@@ -147,7 +147,7 @@ export function buildGraphElements(
         draggable: true,
       });
 
-      // Avanza secondary
+      // Advance secondary
       secondary += direction === "TB" ? nodeWidth + spacing : nodeHeight + spacing;
     });
   });

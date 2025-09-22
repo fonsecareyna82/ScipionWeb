@@ -120,8 +120,8 @@ export default function StatusNodeCard({
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       onContextMenu={(e) => {
-        e.preventDefault();  // prevents the browser from opening its menu
-        e.stopPropagation(); // Prevent ReactFlow from opening its menu
+        e.preventDefault();
+        e.stopPropagation();
         handleContextMenu(e);
       }}
     >

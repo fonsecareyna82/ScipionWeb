@@ -20,7 +20,6 @@ import 'reactflow/dist/style.css';
 import { createStatusNodeWrapper } from "../../../components/protocol/ProtocolNodeCardWrapper";
 import { ProtocolsDrawer } from "@/components/protocol/ProtocolsDrawer";
 
-// 👉 importaciones del menú contextual (shadcn/ui)
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -64,8 +63,9 @@ export default function ProjectPage() {
   const tableContainerRef = useRef<HTMLDivElement | null>(null);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [graphDirection, setGraphDirection] = useState<'TB' | 'LR'>('TB');
+  const disablePersistenceRef = useRef(false);
+  const [flowKey, setFlowKey] = useState(`rf-${projectName}-${graphDirection}-${Date.now()}`);
 
-  // 👉 estado del menú contextual
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({
     visible: false,
     x: 0,
@@ -180,6 +180,54 @@ export default function ProjectPage() {
 
   useEffect(() => { fetchAndLoadProject(); }, [fetchAndLoadProject]);
 
+
+  // ------------------------ Reorganize ------------------------
+  const handleReorganize = useCallback(async () => {
+    if (!projectName) return;
+  
+    try {
+      const data = await fetchProject(projectName);
+      setProject(data);
+  
+      if (!data.protocols) return;
+  
+      // 1) remove persisted positions for this project+direction
+      localStorage.removeItem(`${localStorageKey}-${graphDirection}`);
+  
+      // 2) disable the persistence handler while we reset
+      disablePersistenceRef.current = true;
+  
+      // 3) clear react state and force a remount of ReactFlow
+      setNodes([]);
+      setEdges([]);
+      setTableData([]);
+      setNodeTicks({});
+  
+      // bump the key so the <ReactFlow key={flowKey}> instance is recreated
+      setFlowKey(`rf-${projectName}-${graphDirection}-${Date.now()}`);
+  
+      const { nodes, edges, table } = buildGraphElements(
+        data.shortName,
+        data.protocols,
+        viewMode,
+        graphDirection
+      );
+
+      setNodes(nodes);
+      setEdges(edges);
+      setTableData(table ?? []);
+
+      // Inicializar ticks
+      const initialTicks: Record<string, number> = {};
+      setNodeTicks(initialTicks);
+      
+    } catch (err) {
+      console.error(err);
+      disablePersistenceRef.current = false; // make sure it's re-enabled on error
+    }
+  }, [projectName, viewMode, graphDirection]);
+
+
   // ------------------------ Refresh ------------------------
   const handleRefresh = useCallback(async () => {
     if (!projectName) return;
@@ -217,7 +265,7 @@ export default function ProjectPage() {
     } finally {
       setIsRefreshing(false);
     }
-  }, [projectName, nodes, viewMode, graphDirection]);
+  }, [projectName, viewMode, graphDirection]);
 
   useEffect(() => {
     const interval = setInterval(handleRefresh, TIME_TO_REFRESH);
@@ -533,7 +581,7 @@ export default function ProjectPage() {
               disabled={isRefreshing}
             >
               <RefreshCw
-                className={`w-5 h-5 text-black dark:text-white dark:bg-black mr-1 ml-1 mt-1 ${isRefreshing ? 'animate-spin' : ''
+                className={`w-4 h-4 text-black dark:text-white dark:bg-black mr-1 ml-1 mt-1 ${isRefreshing ? 'animate-spin' : ''
                   }`}
               />
             </button>
@@ -626,19 +674,38 @@ export default function ProjectPage() {
               onNodesChange={handleNodesChangeWithPersistence}
               onEdgesChange={onEdgesChange}
               nodeTypes={nodeTypes}
-              fitView
-              minZoom={0.45}
+              minZoom={0.2}
               maxZoom={0.8}
               fitViewOptions={{ padding: 0.2 }}
+              //defaultViewport={{ x: 50, y: 0, zoom: 0.4}}
+              fitView
               defaultEdgeOptions={{ type: 'default', style: { stroke: "#999", strokeWidth: 2 }, markerEnd: 'url(#circle)' }}
               onInit={(instance) => { (window as any).reactFlowInstance = instance; }}
               onContextMenu={handleContextMenu}
             >
               <Background />
               <Controls position="top-right" showInteractive={false}>
-                <button className="refresh-btn" title="Refresh project" onClick={handleRefresh} disabled={isRefreshing}>
-                  <RefreshCw className={`ml-1 mt-1 w-4 h-4 dark:w-6.5 dark:h-5 dark:ml-0 dark:mt-0 text-black dark:text-black dark:bg-white ${isRefreshing ? 'animate-spin' : ''}`} />
-                </button>
+                <div className="flex flex-col gap-0">
+                  <button
+                    title="Reorganize project"
+                    onClick={handleReorganize}
+                  >
+                    <TreeIcon
+                      className={`ml-1 mt-2 mb-1 w-4 h-4 dark:w-6.5 dark:h-5 dark:ml-0 dark:mt-0 dark:mb-1 text-black dark:text-black dark:bg-white`}
+                    />
+                  </button>
+                  <button
+                    className="refresh-btn"
+                    title="Refresh project"
+                    onClick={handleRefresh}
+                    disabled={isRefreshing}
+                  >
+                    <RefreshCw
+                      className={`ml-1 mt-1 w-4 h-4 dark:w-6.5 dark:h-5 dark:ml-0 dark:mt-0 text-black dark:text-black dark:bg-white ${isRefreshing ? 'animate-spin' : ''
+                        }`}
+                    />
+                  </button>
+                </div>
               </Controls>
             </ReactFlow>
 
@@ -657,54 +724,15 @@ export default function ProjectPage() {
                   />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent className="w-48">
-                  {contextMenu.nodeId ? (
-                    // Menú para nodos
                     <>
                       <DropdownMenuItem
                         onClick={() => {
-                          console.log("Node ➕ Add protocol", contextMenu.nodeId);
+                          handleRefresh();
                           handleCloseMenu();
                         }}
                       >
                         <Plus className="w-4 h-4 mr-2" />
                         Add protocol
-                      </DropdownMenuItem>
-
-                      <DropdownMenuItem
-                        onClick={() => {
-                          console.log("Node 🔄 Refresh node", contextMenu.nodeId);
-                          handleCloseMenu();
-                        }}
-                      >
-                        <RefreshCw className="w-4 h-4 mr-2" />
-                        Refresh node
-                      </DropdownMenuItem>
-
-                      <DropdownMenuItem
-                        onClick={() => {
-                          setNodes((nds) =>
-                            nds.map((n) =>
-                              n.id === contextMenu.nodeId ? { ...n, selected: false } : n
-                            )
-                          );
-                          handleCloseMenu();
-                        }}
-                      >
-                        <Trash2 className="w-4 h-4 mr-2" />
-                        Clear selection
-                      </DropdownMenuItem>
-                    </>
-                  ) : (
-                    // Menú para canvas
-                    <>
-                      <DropdownMenuItem
-                        onClick={() => {
-                          console.log("Canvas ➕ Add node");
-                          handleCloseMenu();
-                        }}
-                      >
-                        <Plus className="w-4 h-4 mr-2" />
-                        Add node
                       </DropdownMenuItem>
 
                       <DropdownMenuItem
@@ -727,7 +755,7 @@ export default function ProjectPage() {
                         Clear selection
                       </DropdownMenuItem>
                     </>
-                  )}
+                  
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
