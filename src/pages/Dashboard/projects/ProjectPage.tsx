@@ -184,28 +184,28 @@ export default function ProjectPage() {
   // ------------------------ Reorganize ------------------------
   const handleReorganize = useCallback(async () => {
     if (!projectName) return;
-  
+
     try {
       const data = await fetchProject(projectName);
       setProject(data);
-  
+
       if (!data.protocols) return;
-  
+
       // 1) remove persisted positions for this project+direction
       localStorage.removeItem(`${localStorageKey}-${graphDirection}`);
-  
+
       // 2) disable the persistence handler while we reset
       disablePersistenceRef.current = true;
-  
+
       // 3) clear react state and force a remount of ReactFlow
       setNodes([]);
       setEdges([]);
       setTableData([]);
       setNodeTicks({});
-  
+
       // bump the key so the <ReactFlow key={flowKey}> instance is recreated
       setFlowKey(`rf-${projectName}-${graphDirection}-${Date.now()}`);
-  
+
       const { nodes, edges, table } = buildGraphElements(
         data.shortName,
         data.protocols,
@@ -220,7 +220,7 @@ export default function ProjectPage() {
       // Inicializar ticks
       const initialTicks: Record<string, number> = {};
       setNodeTicks(initialTicks);
-      
+
     } catch (err) {
       console.error(err);
       disablePersistenceRef.current = false; // make sure it's re-enabled on error
@@ -675,12 +675,25 @@ export default function ProjectPage() {
               onEdgesChange={onEdgesChange}
               nodeTypes={nodeTypes}
               minZoom={0.2}
-              maxZoom={0.8}
+              maxZoom={0.6}
               fitViewOptions={{ padding: 0.2 }}
-              //defaultViewport={{ x: 50, y: 0, zoom: 0.4}}
-              fitView
-              defaultEdgeOptions={{ type: 'default', style: { stroke: "#999", strokeWidth: 2 }, markerEnd: 'url(#circle)' }}
-              onInit={(instance) => { (window as any).reactFlowInstance = instance; }}
+              defaultEdgeOptions={{
+                type: 'default',
+                style: { stroke: "#999", strokeWidth: 2 },
+                markerEnd: 'url(#circle)'
+              }}
+              onInit={(instance) => {
+                (window as any).reactFlowInstance = instance;
+                // Center and apply default zoom
+                instance.fitView({ padding: 0.2, duration: 0 });
+                // Adjust the viewport with fixed zoom
+                const currentViewport = instance.getViewport();
+                instance.setViewport({
+                  x: currentViewport.x,
+                  y: currentViewport.y,
+                  zoom: 0.4 // default zoom
+                });
+              }}
               onContextMenu={handleContextMenu}
             >
               <Background />
@@ -724,38 +737,38 @@ export default function ProjectPage() {
                   />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent className="w-48">
-                    <>
-                      <DropdownMenuItem
-                        onClick={() => {
-                          handleRefresh();
-                          handleCloseMenu();
-                        }}
-                      >
-                        <Plus className="w-4 h-4 mr-2" />
-                        Add protocol
-                      </DropdownMenuItem>
+                  <>
+                    <DropdownMenuItem
+                      onClick={() => {
+                        handleRefresh();
+                        handleCloseMenu();
+                      }}
+                    >
+                      <Plus className="w-4 h-4 mr-2" />
+                      Add protocol
+                    </DropdownMenuItem>
 
-                      <DropdownMenuItem
-                        onClick={() => {
-                          handleRefresh();
-                          handleCloseMenu();
-                        }}
-                      >
-                        <RefreshCw className="w-4 h-4 mr-2" />
-                        Refresh graph
-                      </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => {
+                        handleRefresh();
+                        handleCloseMenu();
+                      }}
+                    >
+                      <RefreshCw className="w-4 h-4 mr-2" />
+                      Refresh graph
+                    </DropdownMenuItem>
 
-                      <DropdownMenuItem
-                        onClick={() => {
-                          setNodes((nds) => nds.map((n) => ({ ...n, selected: false })));
-                          handleCloseMenu();
-                        }}
-                      >
-                        <Trash2 className="w-4 h-4 mr-2" />
-                        Clear selection
-                      </DropdownMenuItem>
-                    </>
-                  
+                    <DropdownMenuItem
+                      onClick={() => {
+                        setNodes((nds) => nds.map((n) => ({ ...n, selected: false })));
+                        handleCloseMenu();
+                      }}
+                    >
+                      <Trash2 className="w-4 h-4 mr-2" />
+                      Clear selection
+                    </DropdownMenuItem>
+                  </>
+
                 </DropdownMenuContent>
               </DropdownMenu>
             )}

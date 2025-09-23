@@ -1,4 +1,4 @@
-import { NodeProps, Position } from 'reactflow';
+import { NodeProps, useReactFlow } from 'reactflow';
 import StatusNode from './ProtocolNodeCard';
 
 type StatusNodeWrapperProps = NodeProps & {
@@ -16,8 +16,10 @@ export const createStatusNodeWrapper = (
   setHoveredNodeId?: React.Dispatch<React.SetStateAction<string | null>>,
   graphDirection: 'TB' | 'LR' = 'TB'
 ) => {
-  return function StatusNodeWrapper(props: NodeProps) { // solo NodeProps
+  return function StatusNodeWrapper(props: NodeProps) {
     const { data, ...rest } = props;
+    const { getViewport } = useReactFlow();
+    const { zoom } = getViewport();
 
     return (
       <StatusNode
@@ -27,8 +29,8 @@ export const createStatusNodeWrapper = (
         onClick={() => onClick(data)}
         onDoubleClick={() => onDoubleClick(data)}
         graphDirection={graphDirection}
+        zoomLevel={zoom} // <-- nuevo prop
       />
     );
   };
 };
-

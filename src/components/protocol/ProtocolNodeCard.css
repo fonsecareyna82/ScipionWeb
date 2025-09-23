@@ -44,7 +44,7 @@
 .node-id-badge {
   background-color: #555252;
   color: rgb(251, 252, 251);
-  font-size: 1.5rem;
+  font-size: 1.8rem;
   font-weight: 500;
   padding: 2px 13px;
   border-radius: 9999px;
@@ -61,8 +61,17 @@
 }
 
 .node-label {
-  font-size: 1.8rem;
+  font-size: 2.3rem;
   font-weight: 350;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 700px; 
+}
+
+/* Compact mode */
+.node-label.compact {
+  font-size: 2.7rem; 
 }
 
 .node-divider {

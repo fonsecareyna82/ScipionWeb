@@ -28,12 +28,15 @@ export function buildGraphElements(
   projectName: string,
   protocols: Record<string, ProtocolNode>,
   viewMode: "hierarchical" | "grid" | "table" = "hierarchical",
-  direction: Direction = "TB"
+  direction: Direction = "TB",
 ) {
+
+  const spacingX = direction === 'TB' ? 100 : 900;
+  const spacingY = direction === 'TB' ? 470 : 350;
+
   const nodes: Node[] = [];
   const edges: Edge[] = [];
 
-  // TABLE VIEW
   if (viewMode === "table") {
     const sorted = Object.entries(protocols)
       .filter(([id]) => id !== "PROJECT")
@@ -55,7 +58,6 @@ export function buildGraphElements(
     return { nodes: [], edges: [], table: tableData };
   }
 
-  // TREE VIEW
   const levelMap: Record<string, number> = {};
   const levelBuckets: Record<number, string[]> = {};
   const edgeSet = new Set<string>();
@@ -101,12 +103,11 @@ export function buildGraphElements(
   Object.entries(levelBuckets).forEach(([levelStr, ids]) => {
     const level = parseInt(levelStr, 10);
 
-    // Calculate the size of each node
     const sizes = ids.map((id) => estimateLabelWidth(protocols[id]?.label || id));
     const heights = ids.map((id) => estimateNodeHeight(protocols[id]?.label || id));
-    const spacing = direction === "TB"? 50: 350; // minimum space between nodes
 
-    // Total size in transverse axis
+    const spacing = direction === "TB" ? spacingX : spacingY;
+
     const totalSize =
       direction === "TB"
         ? sizes.reduce((sum, s) => sum + s + spacing, 0)
@@ -124,8 +125,8 @@ export function buildGraphElements(
 
       const position =
         direction === "TB"
-          ? { x: secondary + nodeWidth / 2, y: level * 460 } // TB: x = centered, y = level
-          : { x: level * 750, y: secondary + nodeHeight / 2 }; // LR: y = centered, x = level
+          ? { x: secondary + nodeWidth / 2, y: level * spacingY }
+          : { x: level * spacingX, y: secondary + nodeHeight / 2 };
 
       nodes.push({
         id,
@@ -147,7 +148,6 @@ export function buildGraphElements(
         draggable: true,
       });
 
-      // Advance secondary
       secondary += direction === "TB" ? nodeWidth + spacing : nodeHeight + spacing;
     });
   });
