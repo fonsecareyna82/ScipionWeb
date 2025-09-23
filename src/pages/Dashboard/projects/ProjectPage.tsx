@@ -65,6 +65,7 @@ export default function ProjectPage() {
   const [graphDirection, setGraphDirection] = useState<'TB' | 'LR'>('TB');
   const disablePersistenceRef = useRef(false);
   const [flowKey, setFlowKey] = useState(`rf-${projectName}-${graphDirection}-${Date.now()}`);
+  const [viewport, setViewport] = useState({ x: 0, y: 0, zoom: 0.4 });
 
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({
     visible: false,
@@ -73,7 +74,7 @@ export default function ProjectPage() {
   });
 
   const TIME_TO_REFRESH = 15000; // 15s
-  const getStorageKey = () => `project-${projectName}-node-positions-${viewMode}-${graphDirection}`;
+  const localStorageKey = `project-${projectName}-node-positions`;
 
   // ------------------------ Node click handlers ------------------------
   const handleNodeClick = (nodeData: any, event?: React.MouseEvent) => {
@@ -112,8 +113,6 @@ export default function ProjectPage() {
   }), [previousNodeId, hoveredNodeId, graphDirection]);
 
   // ------------------------ Persistence helpers ------------------------
-  const localStorageKey = `project-${projectName}-node-positions`;
-
   const handleNodesChangeWithPersistence = (changes: NodeChange[]) => {
     setNodes((nds) => {
       const updated = applyNodeChanges(changes, nds);
@@ -136,8 +135,13 @@ export default function ProjectPage() {
   const mergeNodesWithPositions = (newNodes: Node[]) => {
     return newNodes.map(n => {
       const old = nodes.find(o => o.id === n.id);
-      return old ? { ...n, position: old.position } : n;
+      return old ? { ...old, data: { ...old.data, ...n.data } } : n;
     });
+  };
+
+  const mergeEdges = (newEdges: Edge[]) => {
+    const oldEdgesMap = new Map(edges.map(e => [e.id, e]));
+    return newEdges.map(e => oldEdgesMap.get(e.id) ? { ...oldEdgesMap.get(e.id)!, ...e } : e);
   };
 
   // ------------------------ Fetch project ------------------------
@@ -162,7 +166,6 @@ export default function ProjectPage() {
         setEdges(loadedEdges);
         setTableData(table ?? []);
 
-        // Inicializar ticks
         const initialTicks: Record<string, number> = {};
         nodesWithPositions.forEach((n) => {
           if (n.data?.status === 'running') {
@@ -179,6 +182,51 @@ export default function ProjectPage() {
   }, [projectName, viewMode, graphDirection]);
 
   useEffect(() => { fetchAndLoadProject(); }, [fetchAndLoadProject]);
+
+  // ------------------------ Refresh ------------------------
+  const handleRefresh = useCallback(async () => {
+    if (!projectName) return;
+    setIsRefreshing(true);
+    try {
+      const data = await fetchProject(projectName);
+      setProject(data);
+
+      if (data.protocols) {
+        const { nodes: loadedNodes, edges: loadedEdges, table } = buildGraphElements(
+          data.shortName,
+          data.protocols,
+          viewMode,
+          graphDirection
+        );
+
+        const nodesWithPositions = mergeNodesWithPositions(loadedNodes);
+        const edgesMerged = mergeEdges(loadedEdges);
+
+        setNodes(nodesWithPositions);
+        setEdges(edgesMerged);
+        setTableData(table ?? []);
+
+        setNodeTicks(prev => {
+          const updated: Record<string, number> = { ...prev };
+          nodesWithPositions.forEach(n => {
+            if (n.data?.status === 'running') {
+              updated[n.id] = Math.max(prev[n.id] ?? 0, Number(n.data.elapsedTime) ?? 0);
+            }
+          });
+          return updated;
+        });
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [projectName, viewMode, graphDirection, nodes, edges]);
+
+  useEffect(() => {
+    const interval = setInterval(handleRefresh, TIME_TO_REFRESH);
+    return () => clearInterval(interval);
+  }, [handleRefresh]);
 
 
   // ------------------------ Reorganize ------------------------
@@ -224,46 +272,6 @@ export default function ProjectPage() {
     } catch (err) {
       console.error(err);
       disablePersistenceRef.current = false; // make sure it's re-enabled on error
-    }
-  }, [projectName, viewMode, graphDirection]);
-
-
-  // ------------------------ Refresh ------------------------
-  const handleRefresh = useCallback(async () => {
-    if (!projectName) return;
-    setIsRefreshing(true);
-    try {
-      const data = await fetchProject(projectName);
-      setProject(data);
-
-      if (data.protocols) {
-        const { nodes: loadedNodes, edges: loadedEdges, table } = buildGraphElements(
-          data.shortName,
-          data.protocols,
-          viewMode,
-          graphDirection
-        );
-
-        const nodesWithPositions = mergeNodesWithPositions(loadedNodes);
-
-        setNodes(nodesWithPositions);
-        setEdges(loadedEdges);
-        setTableData(table ?? []);
-
-        setNodeTicks(prev => {
-          const updated: Record<string, number> = { ...prev };
-          nodesWithPositions.forEach(n => {
-            if (n.data?.status === 'running') {
-              updated[n.id] = Math.max(prev[n.id] ?? 0, Number(n.data.elapsedTime) ?? 0);
-            }
-          });
-          return updated;
-        });
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setIsRefreshing(false);
     }
   }, [projectName, viewMode, graphDirection]);
 
@@ -676,6 +684,8 @@ export default function ProjectPage() {
               nodeTypes={nodeTypes}
               minZoom={0.2}
               maxZoom={0.6}
+              defaultViewport={viewport}
+              onMoveEnd={(_, vp) => setViewport(vp)}
               fitViewOptions={{ padding: 0.2 }}
               defaultEdgeOptions={{
                 type: 'default',
@@ -686,6 +696,7 @@ export default function ProjectPage() {
                 (window as any).reactFlowInstance = instance;
                 // Center and apply default zoom
                 instance.fitView({ padding: 0.2, duration: 0 });
+                instance.setViewport({ x: 0, y: 0, zoom: 0.4 });
                 // Adjust the viewport with fixed zoom
                 const currentViewport = instance.getViewport();
                 instance.setViewport({

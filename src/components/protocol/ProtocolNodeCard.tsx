@@ -85,7 +85,7 @@ export default function StatusNodeCard({
   graphDirection = "TB",
   onClick,
   onDoubleClick,
-  zoomLevel = 1,
+  zoomLevel = 0.6,
   compactThreshold = 0.3
 }: StatusNodeProps) {
   const [isHovered, setIsHovered] = useState(false);
@@ -114,7 +114,7 @@ export default function StatusNodeCard({
     setRightClickOpen(true);
   };
 
-  const isCompactView = zoomLevel < compactThreshold;
+  const isCompactView = zoomLevel <= compactThreshold;
 
   return (
     <div

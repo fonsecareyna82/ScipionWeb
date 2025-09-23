@@ -29,7 +29,7 @@ export const createStatusNodeWrapper = (
         onClick={() => onClick(data)}
         onDoubleClick={() => onDoubleClick(data)}
         graphDirection={graphDirection}
-        zoomLevel={zoom} // <-- nuevo prop
+        zoomLevel={zoom} 
       />
     );
   };
