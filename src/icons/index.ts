@@ -67,8 +67,10 @@ import { ReactComponent as OpenFolderIcon } from "./open.svg?react";
 import { ReactComponent as RenameIcon } from "./rename.svg?react";
 import { ReactComponent as ImportIcon } from "./import.svg?react";
 import { ReactComponent as TreeIcon } from "./tree.svg?react";
+import { ReactComponent as FitViewIcon } from "./fitview.svg?react";
 
 export {
+  FitViewIcon,
   TreeIcon,
   ImportIcon,
   RenameIcon,
