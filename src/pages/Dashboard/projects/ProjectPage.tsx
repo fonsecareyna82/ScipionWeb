@@ -26,7 +26,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Plus, RefreshCw, Trash2 } from "lucide-react";
+import { MinusIcon, Plus, PlusIcon, RefreshCw, Target, TargetIcon, Trash2 } from "lucide-react";
 import { FitViewIcon, TableIcon, TreeIcon } from "../../../icons";
 
 /**
@@ -81,7 +81,9 @@ export default function ProjectPage() {
   const TIME_TO_REFRESH = 15000; // 15s
   const localStorageKey = `project-${projectName}-node-positions`;
 
+  //----------------------------------------------------------------------
   // ------------------------ Node click handlers ------------------------
+  //----------------------------------------------------------------------
   const handleNodeClick = (nodeData: any, event?: React.MouseEvent) => {
     const isMultiSelect = event?.shiftKey;
     if (!isMultiSelect) {
@@ -113,7 +115,9 @@ export default function ProjectPage() {
     [previousNodeId, hoveredNodeId, graphDirection]
   );
 
+  //----------------------------------------------------------------------
   // ------------------------ Persistence helpers ------------------------
+  //----------------------------------------------------------------------
   const handleNodesChangeWithPersistence = (changes: NodeChange[]) => {
     if (disablePersistenceRef.current) {
       return onNodesChange(changes);
@@ -531,17 +535,29 @@ export default function ProjectPage() {
   }, [contextMenu.visible]);
 
   // ------------------------ ReactFlow init / move handlers ------------------------
-  const handleOnInit = useCallback(
-    (instance: ReactFlowInstance) => {
-      reactFlowInstanceRef.current = instance;
-      try {
-        if (viewport) instance.setViewport(viewport);
-      } catch (err) {
-        // ignore
+  const handleOnInit = useCallback((inst: ReactFlowInstance) => {
+    reactFlowInstanceRef.current = inst;
+  
+    if (nodes.length > 0) {
+      // calculate center of all nodes
+      const validNodes = nodes.filter(
+        n => typeof n.position?.x === "number" && typeof n.position?.y === "number"
+      );
+      if (validNodes.length > 0) {
+        const xSum = validNodes.reduce((s, n) => s + (n.position!.x ?? 0), 0);
+        const ySum = validNodes.reduce((s, n) => s + (n.position!.y ?? 0), 0);
+        const centerX = xSum / validNodes.length;
+        const centerY = ySum / validNodes.length;
+  
+        // use a fixed initial zoom
+        inst.setCenter(centerX, centerY, { zoom: viewport.zoom ?? 0.4, duration: 0 });
+  
+        // synchronize viewport in state
+        const vp = inst.getViewport();
+        setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
       }
-    },
-    [viewport]
-  );
+    }
+  }, [nodes, viewport, setViewport]);
 
   const handleOnMoveEnd = useCallback((_: any, vp: { x: number; y: number; zoom: number }) => {
     setViewport(vp);
@@ -592,6 +608,7 @@ export default function ProjectPage() {
       setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
     }, 350);
   }, []);
+
 
   // ------------------------ Render ------------------------
   return (
@@ -695,12 +712,12 @@ export default function ProjectPage() {
       ) : (
         <div className="h-full w-full border relative">
           {/* custom overlay controls (replaces native Controls) */}
-          <div className="absolute top-4 right-4 z-50">
+          <div className="absolute top-4 right-4 z-10">
             <div className="flex flex-col gap-1 p-1 bg-white/90 rounded shadow">
-              <button title="Zoom in" onClick={handleZoomIn} className="p-1 rounded hover:bg-gray-100 dark:text-black">+</button>
-              <button title="Zoom out" onClick={handleZoomOut} className="p-1 rounded hover:bg-gray-100 dark:text-black">−</button>
-              <button title="Fit view" onClick={handleCenterPreserveZoom} className="p-1 rounded hover:bg-gray-100 dark:text-black"><FitViewIcon/></button>
-              {/* <button title="Fit view (zoom to fit)" onClick={handleZoomToFit} className="p-1 rounded hover:bg-gray-100">🔎</button> */}
+              <button title="Zoom in" onClick={handleZoomIn} className="p-1 rounded hover:bg-gray-100 dark:text-black"><PlusIcon className="w-4 h-4"/></button>
+              <button title="Zoom out" onClick={handleZoomOut} className="p-1 rounded hover:bg-gray-100 dark:text-black"><MinusIcon className="w-4 h-4"/></button>
+              <button title="Fit view" onClick={handleCenterPreserveZoom} className="p-1 rounded hover:bg-gray-100 dark:text-black"><FitViewIcon className="w-4 h-4"/></button>
+              {/* <button title="Fit view (zoom to fit)" onClick={handleZoomToFit} className="p-1 rounded hover:bg-gray-100"><FindIcon/></button> */}
               <button title="Reorganize project" onClick={() => handleReorganize({ preserveZoom: true })} className="p-1 rounded hover:bg-gray-100 dark:text-black"><TreeIcon className="w-4 h-4" /></button>
               <button title="Refresh project" onClick={handleRefresh} className="p-1 rounded hover:bg-gray-100 dark:text-black"><RefreshCw className={`w-4 h-4 ${isRefreshing ? "animate-spin" : ""}`} /></button>
             </div>
@@ -725,13 +742,12 @@ export default function ProjectPage() {
               maxZoom={0.6}
               onInit={handleOnInit}
               onMoveEnd={handleOnMoveEnd}
-              fitViewOptions={{ padding: 0.2 }}
+              defaultViewport={viewport}
               defaultEdgeOptions={{
                 type: "default",
                 style: { stroke: "#999", strokeWidth: 2 },
                 markerEnd: "url(#circle)",
               }}
-              defaultViewport={viewport}
               onNodeDoubleClick={(evt, node) => handleNodeDoubleClick(node)}
               onNodeClick={(evt, node) => handleNodeClick(node, evt)}
               onContextMenu={handleContextMenu}
