@@ -30,10 +30,9 @@ import { MinusIcon, Plus, PlusIcon, RefreshCw, Trash2 } from "lucide-react";
 import { FitViewIcon, TableIcon, TreeIcon } from "../../../icons";
 
 /**
- * ProjectPage (copy-paste ready)
- * - No native Controls (custom overlay controls)
- * - No animations (instant transitions)
- * - Avoids flicker when switching hierarchical <-> table and on first load
+ * ProjectPage
+ * - Evita parpadeo al cambiar vistas / primera carga
+ * - Centrado estable que replica el botón "Fit view"
  */
 
 interface StatusNodeData {
@@ -83,26 +82,31 @@ export default function ProjectPage() {
   const TIME_TO_REFRESH = 15000; // 15s
   const localStorageKey = `project-${projectName}-node-positions`;
 
-  // overlay state to mask repaints when switching layouts (prevents flicker)
-  // starts true to cover the very first mount until we center and paint
+  // overlay / flicker control
   const [isSwitchingLayout, setIsSwitchingLayout] = useState(true);
-
-  // control table visibility to avoid flicker when switching to table
   const [tableVisible, setTableVisible] = useState(viewMode === "table");
-
-  // mark that nodes were loaded from API (used for first-centering)
   const [nodesLoadedOnce, setNodesLoadedOnce] = useState(false);
 
-  // ---- CLAMP ZOOM CONSTANTS & HELPER ----
+  // initial load overlay control
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const firstLoadRef = useRef(true);
+
+  // Zoom clamp
   const MIN_ZOOM = 0.2;
   const MAX_ZOOM = 0.6;
   const clampZoom = (z: number | undefined | null) => {
-    const num = typeof z === "number" && !Number.isNaN(z) ? z : viewport.zoom ?? 0.4;
+    const num = typeof z === "number" && !Number.isNaN(z) ? z : 0.4;
     return Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, num));
   };
 
+  // nodesRef to read latest nodes without causing render loops
+  const nodesRef = useRef<Node[]>(nodes);
+  useEffect(() => {
+    nodesRef.current = nodes;
+  }, [nodes]);
+
   //----------------------------------------------------------------------
-  // ------------------------ Node click handlers ------------------------
+  // Node handlers
   //----------------------------------------------------------------------
   const handleNodeClick = (nodeData: any, event?: React.MouseEvent) => {
     const isMultiSelect = event?.shiftKey;
@@ -127,7 +131,6 @@ export default function ProjectPage() {
 
   const handleCloseForm = () => setSelectedNodeDetails(null);
 
-  // ------------------------ Node types ------------------------
   const nodeTypes = useMemo(
     () => ({
       status: createStatusNodeWrapper(handleNodeClick, handleNodeDoubleClick, previousNodeId ?? undefined, hoveredNodeId ?? undefined, setHoveredNodeId, graphDirection),
@@ -136,7 +139,7 @@ export default function ProjectPage() {
   );
 
   //----------------------------------------------------------------------
-  // ------------------------ Persistence helpers ------------------------
+  // Persistence helpers
   //----------------------------------------------------------------------
   const handleNodesChangeWithPersistence = (changes: NodeChange[]) => {
     if (disablePersistenceRef.current) {
@@ -174,7 +177,43 @@ export default function ProjectPage() {
     return newEdges.map((e) => (oldEdgesMap.get(e.id) ? { ...oldEdgesMap.get(e.id)!, ...e } : e));
   };
 
-  // ------------------------ Fetch project ------------------------
+  // ------------------------ Stable centering that matches the button ------------------------
+  const centerLikeButton = useCallback((nodesList?: Node[], preserveZoom = true) => {
+    const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
+    if (!inst) return;
+    const list = nodesList ?? nodesRef.current ?? [];
+    const validNodes = list.filter((n) => typeof n.position?.x === "number" && typeof n.position?.y === "number");
+    if (validNodes.length === 0) {
+      // fallback to fitView
+      inst.fitView({ padding: 0.15, duration: 0 });
+      requestAnimationFrame(() => {
+        const vp = inst.getViewport();
+        const clamped = { x: vp.x, y: vp.y, zoom: clampZoom(vp.zoom) };
+        inst.setViewport(clamped);
+        setViewport(clamped);
+      });
+      return;
+    }
+
+    const xSum = validNodes.reduce((sum, n) => sum + (n.position!.x ?? 0), 0);
+    const ySum = validNodes.reduce((sum, n) => sum + (n.position!.y ?? 0), 0);
+    const centerX = xSum / validNodes.length;
+    const centerY = ySum / validNodes.length;
+
+    const currentVp = inst.getViewport();
+    const currentZoomRaw = preserveZoom ? currentVp.zoom : currentVp.zoom;
+    const zoom = clampZoom(currentZoomRaw);
+    inst.setCenter(centerX, centerY, { zoom, duration: 0 });
+
+    requestAnimationFrame(() => {
+      const vp = inst.getViewport();
+      setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
+    });
+  }, []);
+
+  //----------------------------------------------------------------------
+  // Fetch / load project
+  //----------------------------------------------------------------------
   const fetchAndLoadProject = useCallback(async () => {
     if (!projectName) return;
     setIsRefreshing(true);
@@ -198,13 +237,16 @@ export default function ProjectPage() {
         });
         setNodeTicks(initialTicks);
 
-        // mark that nodes have been loaded at least once (used to perform the initial centering)
         setNodesLoadedOnce(true);
       }
     } catch (err) {
       console.error(err);
     } finally {
       setIsRefreshing(false);
+      if (firstLoadRef.current) {
+        setIsInitialLoading(false);
+        firstLoadRef.current = false;
+      }
     }
   }, [projectName, viewMode, graphDirection]);
 
@@ -246,7 +288,7 @@ export default function ProjectPage() {
     }
   }, [projectName, viewMode, graphDirection, nodes, edges]);
 
-  // stable interval using ref
+  // stable interval for refresh
   const handleRefreshRef = useRef(handleRefresh);
   useEffect(() => {
     handleRefreshRef.current = handleRefresh;
@@ -301,38 +343,32 @@ export default function ProjectPage() {
           }
 
           if (loadedNodes.length > 0) {
-            const validNodes = loadedNodes.filter((n) => typeof n.position?.x === "number" && typeof n.position?.y === "number");
-            const xSum = validNodes.reduce((sum, n) => sum + (n.position?.x ?? 0), 0);
-            const ySum = validNodes.reduce((sum, n) => sum + (n.position?.y ?? 0), 0);
-            const centerX = xSum / Math.max(1, validNodes.length);
-            const centerY = ySum / Math.max(1, validNodes.length);
-
-            const zoomRaw = opts?.preserveZoom ? currentViewport.zoom ?? inst.getViewport().zoom : inst.getViewport().zoom;
-            const zoom = clampZoom(zoomRaw);
-            inst.setCenter(centerX, centerY, { zoom, duration: 0 });
-            setViewport({ x: inst.getViewport().x, y: inst.getViewport().y, zoom: inst.getViewport().zoom });
+            // center like the button (wait two frames to ensure paint) and then wait extra 60ms before hiding overlay
+            requestAnimationFrame(() => {
+              requestAnimationFrame(() => {
+                centerLikeButton(loadedNodes, opts?.preserveZoom ?? true);
+                // small timeout to make sure browser painted final result -> reduces flicker
+                setTimeout(() => {
+                  disablePersistenceRef.current = false;
+                }, 60);
+              });
+            });
           } else {
             const clamped = { x: currentViewport.x, y: currentViewport.y, zoom: clampZoom(currentViewport.zoom) };
             inst.setViewport(clamped);
             setViewport(clamped);
+            disablePersistenceRef.current = false;
           }
-
-          disablePersistenceRef.current = false;
         }, 0);
       } catch (err) {
         console.error(err);
         disablePersistenceRef.current = false;
       }
     },
-    [projectName, viewMode, graphDirection, viewport]
+    [projectName, viewMode, graphDirection, viewport, centerLikeButton]
   );
 
   // ------------------------ Ticks updater ------------------------
-  const nodesRef = useRef<Node[]>(nodes);
-  useEffect(() => {
-    nodesRef.current = nodes;
-  }, [nodes]);
-
   useEffect(() => {
     const interval = setInterval(() => {
       setNodeTicks((prev) => {
@@ -362,7 +398,7 @@ export default function ProjectPage() {
     );
   }, [nodeTicks]);
 
-  // ------------------------ Layout change effect (instant, no animation, no flicker) ------------------------
+  // ------------------------ Layout change effect ------------------------
   const prevLayout = useRef({ viewMode, graphDirection });
   useLayoutEffect(() => {
     const layoutChanged = prevLayout.current.viewMode !== viewMode || prevLayout.current.graphDirection !== graphDirection;
@@ -386,65 +422,55 @@ export default function ProjectPage() {
     // prevent persistence while we swap
     disablePersistenceRef.current = true;
 
-    // show overlay instantly to mask repaint (blocks interaction while switching)
+    // show blocking overlay instantly to mask repaint
     setIsSwitchingLayout(true);
 
     // batch set nodes/edges — DON'T clear first to avoid a blank frame
     setNodes(nodesWithPositions);
     setEdges(loadedEdges);
 
-    // wait next paint then immediately set viewport (no animation)
+    // wait two frames then center like the button; after that wait a little longer before hiding overlay
     requestAnimationFrame(() => {
-      const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
-      if (!inst) {
-        disablePersistenceRef.current = false;
-        setIsSwitchingLayout(false);
-        prevLayout.current = { viewMode, graphDirection };
-        return;
-      }
-
-      if (nodesWithPositions.length > 0 && viewMode === "hierarchical") {
-        const validNodes = nodesWithPositions.filter((n) => typeof n.position?.x === "number" && typeof n.position?.y === "number");
-        const xSum = validNodes.reduce((sum, n) => sum + (n.position?.x ?? 0), 0);
-        const ySum = validNodes.reduce((sum, n) => sum + (n.position?.y ?? 0), 0);
-        const centerX = xSum / Math.max(1, validNodes.length);
-        const centerY = ySum / Math.max(1, validNodes.length);
-
-        const zoomRaw = currentViewport.zoom ?? inst.getViewport().zoom;
-        const zoom = clampZoom(zoomRaw);
-
-        // instant center (duration: 0) — no animation
-        inst.setCenter(centerX, centerY, { zoom, duration: 0 });
-
-        // sync viewport immediately
-        const vp = inst.getViewport();
-        setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
-
-        // ensure paint applied, then hide overlay
-        requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
+        if (!inst) {
           disablePersistenceRef.current = false;
-          setIsSwitchingLayout(false);
+          // small delay to ensure overlay doesn't flicker off/on
+          setTimeout(() => setIsSwitchingLayout(false), 60);
           prevLayout.current = { viewMode, graphDirection };
-        });
-        
-      } else {
-        // non-hierarchical: restore previous viewport instantly
-        const clamped = { x: currentViewport.x, y: currentViewport.y, zoom: clampZoom(currentViewport.zoom) };
-        inst.setViewport(clamped);
-        setViewport(clamped);
+          return;
+        }
 
-        requestAnimationFrame(() => {
-          disablePersistenceRef.current = false;
-          setIsSwitchingLayout(false);
-          prevLayout.current = { viewMode, graphDirection };
-        });
-      }
+        if (nodesWithPositions.length > 0 && viewMode === "hierarchical") {
+          centerLikeButton(nodesWithPositions, true);
+          // give browser a bit of time to paint final positions (reduces visible flicker)
+          requestAnimationFrame(() => {
+            setTimeout(() => {
+              disablePersistenceRef.current = false;
+              setIsSwitchingLayout(false);
+              prevLayout.current = { viewMode, graphDirection };
+            }, 60);
+          });
+        } else {
+          // non-hierarchical: restore previous viewport instantly
+          const clamped = { x: currentViewport.x, y: currentViewport.y, zoom: clampZoom(currentViewport.zoom) };
+          inst.setViewport(clamped);
+          setViewport(clamped);
+          requestAnimationFrame(() => {
+            setTimeout(() => {
+              disablePersistenceRef.current = false;
+              setIsSwitchingLayout(false);
+              prevLayout.current = { viewMode, graphDirection };
+            }, 60);
+          });
+        }
+      });
     });
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [graphDirection, viewMode, project]);
 
-  // ------------------------ Initial first-center effect (avoid flicker at first load) ----------
-  // Wait until we have nodes loaded and the ReactFlow instance, then center & clear overlay.
+  // ------------------------ Initial first-center effect ----------
   useEffect(() => {
     if (!nodesLoadedOnce) return;
     const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
@@ -456,47 +482,43 @@ export default function ProjectPage() {
     // compute center from the current nodes state (which we set when fetched)
     const validNodes = nodes.filter((n) => typeof n.position?.x === "number" && typeof n.position?.y === "number");
     if (validNodes.length > 0) {
-      const xSum = validNodes.reduce((s, n) => s + (n.position!.x ?? 0), 0);
-      const ySum = validNodes.reduce((s, n) => s + (n.position!.y ?? 0), 0);
-      const centerX = xSum / validNodes.length;
-      const centerY = ySum / validNodes.length;
-
-      const zoomRaw = inst.getViewport().zoom ?? viewport.zoom;
-      const zoom = clampZoom(zoomRaw);
-
-      // apply instantly
-      inst.setCenter(centerX, centerY, { zoom, duration: 0 });
-      // wait two frames to ensure paint applied
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-          const vp = inst.getViewport();
-          setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
-          setIsSwitchingLayout(false);
+          centerLikeButton(nodes, true);
+          // wait a little after paint before hiding overlay to avoid flicker
+          setTimeout(() => {
+            setIsSwitchingLayout(false);
+          }, 60);
         });
       });
     } else {
-      // no nodes: just sync and remove overlay
       inst.setViewport({ x: inst.getViewport().x, y: inst.getViewport().y, zoom: clampZoom(inst.getViewport().zoom) });
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           const vp = inst.getViewport();
           setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
-          setIsSwitchingLayout(false);
+          setTimeout(() => {
+            setIsSwitchingLayout(false);
+          }, 60);
         });
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nodesLoadedOnce]);
 
-  // ------------------------ Table switching: avoid flicker when switching to table ------------------------
+  // ------------------------ Table switching: avoid flicker ------------------------
   useEffect(() => {
     if (viewMode === "table") {
       setTableVisible(false);
+      // while switching to table we still use the overlay (so both panes don't paint intermediate states)
       setIsSwitchingLayout(true);
       requestAnimationFrame(() => {
         setTableVisible(true);
         requestAnimationFrame(() => {
-          setIsSwitchingLayout(false);
+          // small wait to ensure paint complete
+          setTimeout(() => {
+            setIsSwitchingLayout(false);
+          }, 60);
         });
       });
     } else {
@@ -504,7 +526,7 @@ export default function ProjectPage() {
     }
   }, [viewMode]);
 
-  // ------------------------ Table helpers ------------------------
+  // ------------------------ Table helpers / UI helpers ------------------------
   const scrollToProtocol = (id: string) => {
     const row = rowRefs.current[id];
     const container = tableContainerRef.current;
@@ -539,14 +561,12 @@ export default function ProjectPage() {
     };
   };
 
-  // ------------------------ Search (highlights node + edges) ------------------------
   const handleSearch = (query: string) => {
     const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
 
     if (!query.trim()) {
       setHighlightedId(null);
       setPreviousNodeId(null);
-
       setNodes((nds) => nds.map((n) => ({ ...n, selected: false, style: undefined })));
       setEdges((eds) => eds.map((e) => ({ ...e, style: undefined })));
 
@@ -559,7 +579,7 @@ export default function ProjectPage() {
           const centerX = xSum / validNodes.length;
           const centerY = ySum / validNodes.length;
           const zoom = clampZoom(currentViewport.zoom);
-          inst.setCenter(centerX, centerY, { zoom, duration: 0 });
+          inst.setCenter(centerX, centerY, { zoom, duration: 300 });
           const vp = inst.getViewport();
           setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
         } else {
@@ -602,13 +622,12 @@ export default function ProjectPage() {
     if (inst) {
       const currentZoom = inst.getViewport().zoom;
       const zoom = clampZoom(currentZoom);
-      inst.setCenter(match.position.x, match.position.y, { zoom, duration: 0 });
+      inst.setCenter(match.position.x, match.position.y, { zoom, duration: 500 });
       const vp = inst.getViewport();
       setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
     }
   };
 
-  // ------------------------ Row double click ------------------------
   const handleRowDoubleClick = async (id: string) => {
     if (!projectName) return;
     try {
@@ -636,12 +655,9 @@ export default function ProjectPage() {
     event.stopPropagation();
     const nodeEl = (event.target as HTMLElement).closest(".react-flow__node");
     const nodeId = nodeEl?.getAttribute("data-id") ?? null;
-
     setContextMenu({ visible: true, x: event.clientX, y: event.clientY, nodeId });
   };
-
   const handleCloseMenu = () => setContextMenu((prev) => ({ ...prev, visible: false }));
-
   useEffect(() => {
     if (!contextMenu.visible) return;
     const onWindowMouseDown = () => handleCloseMenu();
@@ -659,18 +675,14 @@ export default function ProjectPage() {
   // ------------------------ ReactFlow init / move handlers ------------------------
   const handleOnInit = useCallback((inst: ReactFlowInstance) => {
     reactFlowInstanceRef.current = inst;
-    // do NOT center here forcibly - we perform initial center in dedicated effect once nodesLoadedOnce is true
-    // but we still sync viewport if nodes already initialized earlier
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleOnMoveEnd = useCallback((_: any, vp: { x: number; y: number; zoom: number }) => {
     setViewport(vp);
   }, []);
 
-  // ------------------------ Custom controls: zoom in/out, center preserve zoom, fitView ------------------------
+  // ------------------------ Controls ------------------------
   const ZOOM_FACTOR = 1.2;
-
   const handleZoomIn = useCallback(() => {
     const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
     if (!inst) return;
@@ -691,6 +703,7 @@ export default function ProjectPage() {
     setViewport({ x: newVp.x, y: newVp.y, zoom: newVp.zoom });
   }, []);
 
+  // keep original button implementation (reads nodes state) — left for manual user use
   const handleCenterPreserveZoom = useCallback(() => {
     const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
     if (!inst || !nodes || nodes.length === 0) return;
@@ -710,12 +723,9 @@ export default function ProjectPage() {
   const handleZoomToFit = useCallback(() => {
     const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
     if (!inst) return;
-    // instant fit (duration: 0)
     inst.fitView({ padding: 0.2, duration: 0 });
-    // ensure the viewport read happens after paint
     requestAnimationFrame(() => {
       let vp = inst.getViewport();
-      // clamp the returned zoom too (just in case)
       const clamped = { x: vp.x, y: vp.y, zoom: clampZoom(vp.zoom) };
       inst.setViewport(clamped);
       setViewport(clamped);
@@ -771,14 +781,36 @@ export default function ProjectPage() {
 
       {selectedNodeDetails && <ProtocolForm data={selectedNodeDetails} onClose={handleCloseForm} />}
 
-      {/* Both panes are mounted; visibility controlled to avoid flicker */}
       <div className="flex-1 relative">
-        {/* Overlay that blocks while switching (used both for flow<->table and internal layout swaps) */}
-        {isSwitchingLayout && (
-          <div className="absolute inset-0 bg-white z-40" />
+        {/* Initial blocking overlay only during first fetch (subtle spinner + text) */}
+        {isInitialLoading && isRefreshing && (
+          <div className="absolute inset-0 flex items-center justify-center bg-white/90 z-50">
+            <div className="flex items-center gap-3">
+              <div className="w-6 h-6 border-2 border-gray-300 border-t-gray-500 rounded-full animate-spin" />
+              <span className="text-gray-700 text-sm font-medium">Loading project...</span>
+            </div>
+          </div>
         )}
 
-        {/* TABLE pane (kept mounted) */}
+        {/* Blocking overlay while switching layout (covers content to avoid flicker) */}
+        {/* overlay blocks interactions to prevent transient intermediate frames */}
+        {isSwitchingLayout && ! (isInitialLoading && isRefreshing) && (
+          <div
+            aria-hidden
+            className="absolute inset-0 z-60 flex items-center justify-center"
+            style={{
+              background: "var(--reactflow-background, #ffffff)", // adapt to page bg
+              pointerEvents: "auto",
+            }}
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-7 h-7 border-2 border-gray-300 border-t-gray-500 rounded-full animate-spin" />
+              {/* spinner sutil sin texto grande */}
+            </div>
+          </div>
+        )}
+
+        {/* TABLE pane */}
         <div
           ref={tableContainerRef}
           className="absolute inset-0 overflow-auto border rounded shadow p-4 z-30"
@@ -834,18 +866,25 @@ export default function ProjectPage() {
           </table>
         </div>
 
-        {/* ReactFlow pane (kept mounted) */}
+        {/* ReactFlow pane */}
         <div
           className="absolute inset-0 border"
-          style={{ display: viewMode === "hierarchical" ? "block" : "none", zIndex: 20 }}
+          style={{
+            display: viewMode === "hierarchical" ? "block" : "none",
+            zIndex: 20,
+            // force compositing to reduce flicker / repaints
+            willChange: "transform, opacity",
+            transformStyle: "preserve-3d",
+            WebkitBackfaceVisibility: "hidden",
+            backfaceVisibility: "hidden",
+          }}
           aria-hidden={viewMode !== "hierarchical"}
         >
-          {/* custom overlay controls (replaces native Controls) */}
           <div className="absolute top-4 right-4 z-50">
             <div className="flex flex-col gap-1 p-1 bg-white/90 rounded shadow">
               <button title="Zoom in" onClick={handleZoomIn} className="p-1 rounded hover:bg-gray-100 dark:text-black"><PlusIcon className="w-4 h-4" /></button>
               <button title="Zoom out" onClick={handleZoomOut} className="p-1 rounded hover:bg-gray-100 dark:text-black"><MinusIcon className="w-4 h-4" /></button>
-              <button title="Fit view (preserve zoom)" onClick={handleCenterPreserveZoom} className="p-1 rounded hover:bg-gray-100 dark:text-black"><FitViewIcon className="w-4 h-4" /></button>
+              <button title="Fit view" onClick={handleCenterPreserveZoom} className="p-1 rounded hover:bg-gray-100 dark:text-black"><FitViewIcon className="w-4 h-4" /></button>
               <button title="Reorganize project" onClick={() => handleReorganize({ preserveZoom: true })} className="p-1 rounded hover:bg-gray-100 dark:text-black"><TreeIcon className="w-4 h-4" /></button>
               <button title="Refresh project" onClick={handleRefresh} className="p-1 rounded hover:bg-gray-100 dark:text-black"><RefreshCw className={`w-4 h-4 ${isRefreshing ? "animate-spin" : ""}`} /></button>
             </div>
@@ -882,7 +921,6 @@ export default function ProjectPage() {
               style={{ width: "100%", height: "100%" }}
             >
               <Background />
-              {/* no Controls -> native controls removed */}
             </ReactFlow>
 
             {contextMenu.visible && (
