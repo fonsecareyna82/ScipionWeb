@@ -26,12 +26,14 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { MinusIcon, Plus, PlusIcon, RefreshCw, Target, TargetIcon, Trash2 } from "lucide-react";
+import { MinusIcon, Plus, PlusIcon, RefreshCw, Trash2 } from "lucide-react";
 import { FitViewIcon, TableIcon, TreeIcon } from "../../../icons";
 
 /**
- * ProjectPage without native ReactFlow controls.
- * Custom overlay controls (+ / - / fit / reorganize / refresh).
+ * ProjectPage (copy-paste ready)
+ * - No native Controls (custom overlay controls)
+ * - No animations (instant transitions)
+ * - Avoids flicker when switching hierarchical <-> table and on first load
  */
 
 interface StatusNodeData {
@@ -73,13 +75,31 @@ export default function ProjectPage() {
 
   const disablePersistenceRef = useRef(false);
   const [flowKey, setFlowKey] = useState(() => `rf-${projectName}-${graphDirection}-${Date.now()}`);
-  const [viewport, setViewport] = useState<{ x: number; y: number; zoom: number }>({ x: 0, y: 0, zoom: 0.4 });
+  const [viewport, setViewport] = useState<{ x: number; y: number; zoom: number }>({ x: 0, y: 0, zoom: 0.38 });
   const reactFlowInstanceRef = useRef<ReactFlowInstance | null>(null);
 
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({ visible: false, x: 0, y: 0 });
 
   const TIME_TO_REFRESH = 15000; // 15s
   const localStorageKey = `project-${projectName}-node-positions`;
+
+  // overlay state to mask repaints when switching layouts (prevents flicker)
+  // starts true to cover the very first mount until we center and paint
+  const [isSwitchingLayout, setIsSwitchingLayout] = useState(true);
+
+  // control table visibility to avoid flicker when switching to table
+  const [tableVisible, setTableVisible] = useState(viewMode === "table");
+
+  // mark that nodes were loaded from API (used for first-centering)
+  const [nodesLoadedOnce, setNodesLoadedOnce] = useState(false);
+
+  // ---- CLAMP ZOOM CONSTANTS & HELPER ----
+  const MIN_ZOOM = 0.2;
+  const MAX_ZOOM = 0.6;
+  const clampZoom = (z: number | undefined | null) => {
+    const num = typeof z === "number" && !Number.isNaN(z) ? z : viewport.zoom ?? 0.4;
+    return Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, num));
+  };
 
   //----------------------------------------------------------------------
   // ------------------------ Node click handlers ------------------------
@@ -177,6 +197,9 @@ export default function ProjectPage() {
           }
         });
         setNodeTicks(initialTicks);
+
+        // mark that nodes have been loaded at least once (used to perform the initial centering)
+        setNodesLoadedOnce(true);
       }
     } catch (err) {
       console.error(err);
@@ -284,11 +307,14 @@ export default function ProjectPage() {
             const centerX = xSum / Math.max(1, validNodes.length);
             const centerY = ySum / Math.max(1, validNodes.length);
 
-            const zoom = opts?.preserveZoom ? currentViewport.zoom ?? inst.getViewport().zoom : inst.getViewport().zoom;
+            const zoomRaw = opts?.preserveZoom ? currentViewport.zoom ?? inst.getViewport().zoom : inst.getViewport().zoom;
+            const zoom = clampZoom(zoomRaw);
             inst.setCenter(centerX, centerY, { zoom, duration: 0 });
             setViewport({ x: inst.getViewport().x, y: inst.getViewport().y, zoom: inst.getViewport().zoom });
           } else {
-            inst.setViewport(currentViewport);
+            const clamped = { x: currentViewport.x, y: currentViewport.y, zoom: clampZoom(currentViewport.zoom) };
+            inst.setViewport(clamped);
+            setViewport(clamped);
           }
 
           disablePersistenceRef.current = false;
@@ -336,7 +362,7 @@ export default function ProjectPage() {
     );
   }, [nodeTicks]);
 
-  // ------------------------ Layout change effect ------------------------
+  // ------------------------ Layout change effect (instant, no animation, no flicker) ------------------------
   const prevLayout = useRef({ viewMode, graphDirection });
   useLayoutEffect(() => {
     const layoutChanged = prevLayout.current.viewMode !== viewMode || prevLayout.current.graphDirection !== graphDirection;
@@ -357,14 +383,22 @@ export default function ProjectPage() {
     const { nodes: loadedNodes, edges: loadedEdges } = buildGraphElements(project.shortName, project.protocols, viewMode, graphDirection);
     const nodesWithPositions = loadNodesWithPositions(loadedNodes);
 
+    // prevent persistence while we swap
     disablePersistenceRef.current = true;
+
+    // show overlay instantly to mask repaint (blocks interaction while switching)
+    setIsSwitchingLayout(true);
+
+    // batch set nodes/edges — DON'T clear first to avoid a blank frame
     setNodes(nodesWithPositions);
     setEdges(loadedEdges);
 
-    setTimeout(() => {
+    // wait next paint then immediately set viewport (no animation)
+    requestAnimationFrame(() => {
       const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
       if (!inst) {
         disablePersistenceRef.current = false;
+        setIsSwitchingLayout(false);
         prevLayout.current = { viewMode, graphDirection };
         return;
       }
@@ -376,17 +410,99 @@ export default function ProjectPage() {
         const centerX = xSum / Math.max(1, validNodes.length);
         const centerY = ySum / Math.max(1, validNodes.length);
 
-        const zoom = currentViewport.zoom ?? inst.getViewport().zoom;
-        inst.setCenter(centerX, centerY, { zoom, duration: 0 });
-        setViewport({ x: inst.getViewport().x, y: inst.getViewport().y, zoom: inst.getViewport().zoom });
-      } else {
-        inst.setViewport(currentViewport);
-      }
+        const zoomRaw = currentViewport.zoom ?? inst.getViewport().zoom;
+        const zoom = clampZoom(zoomRaw);
 
-      disablePersistenceRef.current = false;
-      prevLayout.current = { viewMode, graphDirection };
-    }, 0);
+        // instant center (duration: 0) — no animation
+        inst.setCenter(centerX, centerY, { zoom, duration: 0 });
+
+        // sync viewport immediately
+        const vp = inst.getViewport();
+        setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
+
+        // ensure paint applied, then hide overlay
+        requestAnimationFrame(() => {
+          disablePersistenceRef.current = false;
+          setIsSwitchingLayout(false);
+          prevLayout.current = { viewMode, graphDirection };
+        });
+        
+      } else {
+        // non-hierarchical: restore previous viewport instantly
+        const clamped = { x: currentViewport.x, y: currentViewport.y, zoom: clampZoom(currentViewport.zoom) };
+        inst.setViewport(clamped);
+        setViewport(clamped);
+
+        requestAnimationFrame(() => {
+          disablePersistenceRef.current = false;
+          setIsSwitchingLayout(false);
+          prevLayout.current = { viewMode, graphDirection };
+        });
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [graphDirection, viewMode, project]);
+
+  // ------------------------ Initial first-center effect (avoid flicker at first load) ----------
+  // Wait until we have nodes loaded and the ReactFlow instance, then center & clear overlay.
+  useEffect(() => {
+    if (!nodesLoadedOnce) return;
+    const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
+    if (!inst) return;
+
+    // ensure overlay on while we calculate + paint
+    setIsSwitchingLayout(true);
+
+    // compute center from the current nodes state (which we set when fetched)
+    const validNodes = nodes.filter((n) => typeof n.position?.x === "number" && typeof n.position?.y === "number");
+    if (validNodes.length > 0) {
+      const xSum = validNodes.reduce((s, n) => s + (n.position!.x ?? 0), 0);
+      const ySum = validNodes.reduce((s, n) => s + (n.position!.y ?? 0), 0);
+      const centerX = xSum / validNodes.length;
+      const centerY = ySum / validNodes.length;
+
+      const zoomRaw = inst.getViewport().zoom ?? viewport.zoom;
+      const zoom = clampZoom(zoomRaw);
+
+      // apply instantly
+      inst.setCenter(centerX, centerY, { zoom, duration: 0 });
+      // wait two frames to ensure paint applied
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          const vp = inst.getViewport();
+          setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
+          setIsSwitchingLayout(false);
+        });
+      });
+    } else {
+      // no nodes: just sync and remove overlay
+      inst.setViewport({ x: inst.getViewport().x, y: inst.getViewport().y, zoom: clampZoom(inst.getViewport().zoom) });
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          const vp = inst.getViewport();
+          setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
+          setIsSwitchingLayout(false);
+        });
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nodesLoadedOnce]);
+
+  // ------------------------ Table switching: avoid flicker when switching to table ------------------------
+  useEffect(() => {
+    if (viewMode === "table") {
+      setTableVisible(false);
+      setIsSwitchingLayout(true);
+      requestAnimationFrame(() => {
+        setTableVisible(true);
+        requestAnimationFrame(() => {
+          setIsSwitchingLayout(false);
+        });
+      });
+    } else {
+      setTableVisible(false);
+    }
+  }, [viewMode]);
 
   // ------------------------ Table helpers ------------------------
   const scrollToProtocol = (id: string) => {
@@ -442,10 +558,14 @@ export default function ProjectPage() {
           const ySum = validNodes.reduce((s, n) => s + (n.position?.y ?? 0), 0);
           const centerX = xSum / validNodes.length;
           const centerY = ySum / validNodes.length;
-          inst.setCenter(centerX, centerY, { zoom: currentViewport.zoom, duration: 300 });
-          setViewport({ x: inst.getViewport().x, y: inst.getViewport().y, zoom: inst.getViewport().zoom });
+          const zoom = clampZoom(currentViewport.zoom);
+          inst.setCenter(centerX, centerY, { zoom, duration: 0 });
+          const vp = inst.getViewport();
+          setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
         } else {
-          inst.setViewport(currentViewport);
+          const clamped = { x: currentViewport.x, y: currentViewport.y, zoom: clampZoom(currentViewport.zoom) };
+          inst.setViewport(clamped);
+          setViewport(clamped);
         }
       }
       return;
@@ -481,8 +601,10 @@ export default function ProjectPage() {
 
     if (inst) {
       const currentZoom = inst.getViewport().zoom;
-      inst.setCenter(match.position.x, match.position.y, { zoom: currentZoom, duration: 500 });
-      setViewport({ x: inst.getViewport().x, y: inst.getViewport().y, zoom: inst.getViewport().zoom });
+      const zoom = clampZoom(currentZoom);
+      inst.setCenter(match.position.x, match.position.y, { zoom, duration: 0 });
+      const vp = inst.getViewport();
+      setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
     }
   };
 
@@ -537,27 +659,10 @@ export default function ProjectPage() {
   // ------------------------ ReactFlow init / move handlers ------------------------
   const handleOnInit = useCallback((inst: ReactFlowInstance) => {
     reactFlowInstanceRef.current = inst;
-  
-    if (nodes.length > 0) {
-      // calculate center of all nodes
-      const validNodes = nodes.filter(
-        n => typeof n.position?.x === "number" && typeof n.position?.y === "number"
-      );
-      if (validNodes.length > 0) {
-        const xSum = validNodes.reduce((s, n) => s + (n.position!.x ?? 0), 0);
-        const ySum = validNodes.reduce((s, n) => s + (n.position!.y ?? 0), 0);
-        const centerX = xSum / validNodes.length;
-        const centerY = ySum / validNodes.length;
-  
-        // use a fixed initial zoom
-        inst.setCenter(centerX, centerY, { zoom: viewport.zoom ?? 0.4, duration: 0 });
-  
-        // synchronize viewport in state
-        const vp = inst.getViewport();
-        setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
-      }
-    }
-  }, [nodes, viewport, setViewport]);
+    // do NOT center here forcibly - we perform initial center in dedicated effect once nodesLoadedOnce is true
+    // but we still sync viewport if nodes already initialized earlier
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleOnMoveEnd = useCallback((_: any, vp: { x: number; y: number; zoom: number }) => {
     setViewport(vp);
@@ -570,18 +675,20 @@ export default function ProjectPage() {
     const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
     if (!inst) return;
     const vp = inst.getViewport();
-    const newZoom = Math.min(vp.zoom * ZOOM_FACTOR, 0.6);
+    const newZoom = Math.min(vp.zoom * ZOOM_FACTOR, MAX_ZOOM);
     inst.setViewport({ x: vp.x, y: vp.y, zoom: newZoom });
-    setViewport({ x: inst.getViewport().x, y: inst.getViewport().y, zoom: inst.getViewport().zoom });
+    const newVp = inst.getViewport();
+    setViewport({ x: newVp.x, y: newVp.y, zoom: newVp.zoom });
   }, []);
 
   const handleZoomOut = useCallback(() => {
     const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
     if (!inst) return;
     const vp = inst.getViewport();
-    const newZoom = Math.max(vp.zoom / ZOOM_FACTOR, 0.2);
+    const newZoom = Math.max(vp.zoom / ZOOM_FACTOR, MIN_ZOOM);
     inst.setViewport({ x: vp.x, y: vp.y, zoom: newZoom });
-    setViewport({ x: inst.getViewport().x, y: inst.getViewport().y, zoom: inst.getViewport().zoom });
+    const newVp = inst.getViewport();
+    setViewport({ x: newVp.x, y: newVp.y, zoom: newVp.zoom });
   }, []);
 
   const handleCenterPreserveZoom = useCallback(() => {
@@ -593,7 +700,8 @@ export default function ProjectPage() {
     const ySum = validNodes.reduce((sum, n) => sum + (n.position!.y ?? 0), 0);
     const centerX = xSum / validNodes.length;
     const centerY = ySum / validNodes.length;
-    const currentZoom = inst.getViewport().zoom ?? viewport.zoom;
+    const currentZoomRaw = inst.getViewport().zoom ?? viewport.zoom;
+    const currentZoom = clampZoom(currentZoomRaw);
     inst.setCenter(centerX, centerY, { zoom: currentZoom, duration: 0 });
     const vp = inst.getViewport();
     setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
@@ -602,19 +710,23 @@ export default function ProjectPage() {
   const handleZoomToFit = useCallback(() => {
     const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
     if (!inst) return;
+    // instant fit (duration: 0)
     inst.fitView({ padding: 0.2, duration: 0 });
-    setTimeout(() => {
-      const vp = inst.getViewport();
-      setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
-    }, 350);
+    // ensure the viewport read happens after paint
+    requestAnimationFrame(() => {
+      let vp = inst.getViewport();
+      // clamp the returned zoom too (just in case)
+      const clamped = { x: vp.x, y: vp.y, zoom: clampZoom(vp.zoom) };
+      inst.setViewport(clamped);
+      setViewport(clamped);
+    });
   }, []);
-
 
   // ------------------------ Render ------------------------
   return (
-    <div className="h-screen">
+    <div className="h-screen flex flex-col">
       {/* Header */}
-      <div className="flex justify-between items-center mb-4">
+      <div className="flex justify-between items-center mb-1">
         <div className="relative w-full max-w-sm">
           <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-400 dark:text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -624,7 +736,7 @@ export default function ProjectPage() {
           <input type="text" placeholder="Search protocol..." onChange={(e) => handleSearch(e.target.value)} className="w-full px-3 py-2 pl-10 pr-3 text-sm text-gray-800 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:border-gray-700 dark:text-white" />
         </div>
 
-        <div className="ml-4 mr-4 p-4 border rounded-lg shadow-sm bg-white dark:bg-gray-800 flex items-center gap-4">
+        <div className="ml-4 mr-4 p-2 border rounded-lg shadow-sm bg-white dark:bg-gray-800 flex items-center gap-4">
           <ProtocolsDrawer
             projectId={project?.id ? Number(project.id) : null}
             onProtocolDoubleClick={async (protocolClass: string) => {
@@ -659,10 +771,22 @@ export default function ProjectPage() {
 
       {selectedNodeDetails && <ProtocolForm data={selectedNodeDetails} onClose={handleCloseForm} />}
 
-      {!project ? (
-        <p className="text-gray-500">Loading project data...</p>
-      ) : viewMode === "table" ? (
-        <div ref={tableContainerRef} className="overflow-auto h-[80vh] border rounded shadow p-4">
+      {/* Both panes are mounted; visibility controlled to avoid flicker */}
+      <div className="flex-1 relative">
+        {/* Overlay that blocks while switching (used both for flow<->table and internal layout swaps) */}
+        {isSwitchingLayout && (
+          <div className="absolute inset-0 bg-white z-40" />
+        )}
+
+        {/* TABLE pane (kept mounted) */}
+        <div
+          ref={tableContainerRef}
+          className="absolute inset-0 overflow-auto border rounded shadow p-4 z-30"
+          style={{
+            display: viewMode === "table" ? (tableVisible ? "block" : "none") : "none",
+          }}
+          aria-hidden={viewMode !== "table"}
+        >
           <div className="flex justify-end mb-4 mr-1">
             <button className="refresh-btn" title="Refresh project" onClick={handleRefresh} disabled={isRefreshing}>
               <RefreshCw className={`w-4 h-4 ${isRefreshing ? "animate-spin" : ""}`} />
@@ -709,15 +833,19 @@ export default function ProjectPage() {
             </tbody>
           </table>
         </div>
-      ) : (
-        <div className="h-full w-full border relative">
+
+        {/* ReactFlow pane (kept mounted) */}
+        <div
+          className="absolute inset-0 border"
+          style={{ display: viewMode === "hierarchical" ? "block" : "none", zIndex: 20 }}
+          aria-hidden={viewMode !== "hierarchical"}
+        >
           {/* custom overlay controls (replaces native Controls) */}
-          <div className="absolute top-4 right-4 z-10">
+          <div className="absolute top-4 right-4 z-50">
             <div className="flex flex-col gap-1 p-1 bg-white/90 rounded shadow">
-              <button title="Zoom in" onClick={handleZoomIn} className="p-1 rounded hover:bg-gray-100 dark:text-black"><PlusIcon className="w-4 h-4"/></button>
-              <button title="Zoom out" onClick={handleZoomOut} className="p-1 rounded hover:bg-gray-100 dark:text-black"><MinusIcon className="w-4 h-4"/></button>
-              <button title="Fit view" onClick={handleCenterPreserveZoom} className="p-1 rounded hover:bg-gray-100 dark:text-black"><FitViewIcon className="w-4 h-4"/></button>
-              {/* <button title="Fit view (zoom to fit)" onClick={handleZoomToFit} className="p-1 rounded hover:bg-gray-100"><FindIcon/></button> */}
+              <button title="Zoom in" onClick={handleZoomIn} className="p-1 rounded hover:bg-gray-100 dark:text-black"><PlusIcon className="w-4 h-4" /></button>
+              <button title="Zoom out" onClick={handleZoomOut} className="p-1 rounded hover:bg-gray-100 dark:text-black"><MinusIcon className="w-4 h-4" /></button>
+              <button title="Fit view (preserve zoom)" onClick={handleCenterPreserveZoom} className="p-1 rounded hover:bg-gray-100 dark:text-black"><FitViewIcon className="w-4 h-4" /></button>
               <button title="Reorganize project" onClick={() => handleReorganize({ preserveZoom: true })} className="p-1 rounded hover:bg-gray-100 dark:text-black"><TreeIcon className="w-4 h-4" /></button>
               <button title="Refresh project" onClick={handleRefresh} className="p-1 rounded hover:bg-gray-100 dark:text-black"><RefreshCw className={`w-4 h-4 ${isRefreshing ? "animate-spin" : ""}`} /></button>
             </div>
@@ -738,8 +866,8 @@ export default function ProjectPage() {
               onNodesChange={handleNodesChangeWithPersistence}
               onEdgesChange={onEdgesChange}
               nodeTypes={nodeTypes}
-              minZoom={0.2}
-              maxZoom={0.6}
+              minZoom={MIN_ZOOM}
+              maxZoom={MAX_ZOOM}
               onInit={handleOnInit}
               onMoveEnd={handleOnMoveEnd}
               defaultViewport={viewport}
@@ -751,7 +879,7 @@ export default function ProjectPage() {
               onNodeDoubleClick={(evt, node) => handleNodeDoubleClick(node)}
               onNodeClick={(evt, node) => handleNodeClick(node, evt)}
               onContextMenu={handleContextMenu}
-              style={{ width: "100%", height: "calc(100vh - 220px)" }}
+              style={{ width: "100%", height: "100%" }}
             >
               <Background />
               {/* no Controls -> native controls removed */}
@@ -782,7 +910,7 @@ export default function ProjectPage() {
             )}
           </ReactFlowProvider>
         </div>
-      )}
+      </div>
     </div>
   );
 }
