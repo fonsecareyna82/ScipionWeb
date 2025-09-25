@@ -141,7 +141,7 @@ export default function StatusNodeCard({
           {data.id !== "PROJECT" && (
             <div
               className={`node-id-badge ${data.status === "running" ? "glow-badge" : ""}`}
-              style={isCompactView ? { fontSize: "2.8rem", fontWeight: "bold" } : {}}
+              style={isCompactView ? { fontSize: "2.4rem"} : {fontSize: "2.2rem"}}
             >
               <span>{data.id}</span>
             </div>
@@ -229,7 +229,7 @@ export default function StatusNodeCard({
             {Array.isArray(data.outputs) && data.outputs.length > 0 && (
               <div className="outputs-list">
                 <div className="section-header flex items-center px-2 py-1 bg-green-50 dark:bg-green-50 rounded-t-lg border-b border-green-800 dark:border-green-800">
-                  <span className="text-black dark:text-black font-normal text-xl">Outputs</span>
+                  <span className="text-black dark:text-black font-normal text-3xl">Outputs</span>
                 </div>
                 <div className="section-content p-2 bg-green-100 dark:bg-green-200 rounded-b-lg space-y-2">
                   {data.outputs.map((outputObj, idx) => {
@@ -275,8 +275,8 @@ export default function StatusNodeCard({
                           setCurrentDraggedOutput(null);
                         }}
                       >
-                        <ArrowUpRight className="h-5 w-5 mr-2 text-black-700 dark:text-black" />
-                        <span className="font-normal text-gray-900 dark:text-gray-900 text-2xl">{value.info}</span>
+                        <ArrowUpRight className="h-6 w-6 mr-2 text-black-700 dark:text-black" />
+                        <span className="outputs dark:text-black">{value.info}</span>
                       </div>
                     );
                   })}
@@ -295,6 +295,7 @@ export default function StatusNodeCard({
                 backgroundColor: STATUS_BADGE_COLORS[data.status] || "#999",
                 color: "white",
                 minWidth: "120px",
+                fontSize: "2rem"
               }}
             >
               {data.status}
@@ -317,7 +318,7 @@ export default function StatusNodeCard({
                 )}
             </span>
 
-            <span className="flex items-center space-x-1 ml-6 text-2xl dark:text-black">
+            <span className="flex items-center space-x-1 ml-6 text-3xl dark:text-black">
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 className="h-8 w-8 text-gray-500 dark:text-gray-400"

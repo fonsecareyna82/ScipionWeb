@@ -32,7 +32,7 @@ export function buildGraphElements(
 ) {
 
   const spacingX = direction === 'TB' ? 100 : 900;
-  const spacingY = direction === 'TB' ? 470 : 350;
+  const spacingY = direction === 'TB' ? 500 : 380;
 
   const nodes: Node[] = [];
   const edges: Edge[] = [];
