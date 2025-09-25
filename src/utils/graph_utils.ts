@@ -16,7 +16,7 @@ function estimateLabelWidth(label: string, fontSize = 20, fontFamily = "Arial"):
  * Estimate node height (optional, for LR layout)
  */
 function estimateNodeHeight(label: string, fontSize = 20, fontFamily = "Arial"): number {
-  return 120; // fixed height for simplicity
+  return 180; // fixed height for simplicity
 }
 
 type Direction = "TB" | "LR";
@@ -32,7 +32,7 @@ export function buildGraphElements(
 ) {
 
   const spacingX = direction === 'TB' ? 100 : 900;
-  const spacingY = direction === 'TB' ? 500 : 380;
+  const spacingY = direction === 'TB' ? 550 : 380;
 
   const nodes: Node[] = [];
   const edges: Edge[] = [];

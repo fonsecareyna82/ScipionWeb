@@ -44,7 +44,6 @@
 .node-id-badge {
   background-color: #555252;
   color: rgb(251, 252, 251);
-  font-size: 1.8rem;
   padding: 2px 25px;
   border-radius: 9999px;
 }
@@ -93,8 +92,8 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 1.7rem;
-  font-weight: 400;
+  font-size: 1.8rem;
+  font: normal;
 }
 
 .node-status-text {

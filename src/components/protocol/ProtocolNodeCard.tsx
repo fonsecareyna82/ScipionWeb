@@ -141,7 +141,7 @@ export default function StatusNodeCard({
           {data.id !== "PROJECT" && (
             <div
               className={`node-id-badge ${data.status === "running" ? "glow-badge" : ""}`}
-              style={isCompactView ? { fontSize: "2.4rem"} : {fontSize: "2.2rem"}}
+              style={isCompactView ? { fontSize: "2.4rem"} : {fontSize: "2.3rem"}}
             >
               <span>{data.id}</span>
             </div>
@@ -166,7 +166,7 @@ export default function StatusNodeCard({
                 className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-200 ml-4"
                 onClick={(e) => e.stopPropagation()}
               >
-                <MoreHorizontal className="h-7 w-7 text-black dark:text-black ml-1" />
+                <MoreHorizontal className="h-7 w-7 text-black dark:text-black ml-2" />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent className="w-56">

@@ -1,7 +1,20 @@
-// src/pages/project/ProjectPage.tsx
+// File: src/pages/project/ProjectPage.tsx
 import { useParams } from "react-router-dom";
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { fetchProject, Project, fetchProtocolDetails, fetchNewProtocolDetails } from "../../../api/projects";
+import React, {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { createPortal } from "react-dom";
+import {
+  fetchProject,
+  Project,
+  fetchProtocolDetails,
+  fetchNewProtocolDetails,
+} from "../../../api/projects";
 import ProtocolForm from "../../../components/protocol/ProtocolForm";
 import { buildGraphElements } from "../../../utils/graph_utils";
 
@@ -26,15 +39,24 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { MinusIcon, Plus, PlusIcon, RefreshCw, Trash2 } from "lucide-react";
+import {
+  MinusIcon,
+  Plus,
+  PlusIcon,
+  RefreshCw,
+  Trash2,
+} from "lucide-react";
 import { FitViewIcon, TableIcon, TreeIcon } from "../../../icons";
 
 /**
  * ProjectPage
- * - Evita parpadeo al cambiar vistas / primera carga
- * - Centrado estable que replica el botón "Fit view"
+ *
+ * FULL standalone file (copy-paste ready).
+ *
+ * All comments are in English and critical functions are documented.
  */
 
+/* --------------------- Types --------------------- */
 interface StatusNodeData {
   label: string;
   status?: string;
@@ -54,17 +76,21 @@ interface ContextMenuState {
   nodeId?: string | null;
 }
 
+/* --------------------- Component --------------------- */
 export default function ProjectPage() {
   const { projectName } = useParams<{ projectName: string }>();
   const [project, setProject] = useState<Project | undefined>(undefined);
   const [selectedNodeDetails, setSelectedNodeDetails] = useState<any>(null);
 
+  // react-flow nodes / edges state
   const [nodes, setNodes, onNodesChange] = useNodesState<StatusNodeData>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge[]>([]);
   const [tableData, setTableData] = useState<any[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [previousNodeId, setPreviousNodeId] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<"hierarchical" | "table">("hierarchical");
+  const [viewMode, setViewMode] = useState<"hierarchical" | "table">(
+    "hierarchical"
+  );
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const [nodeTicks, setNodeTicks] = useState<Record<string, number>>({});
   const rowRefs = useRef<Record<string, HTMLTableRowElement | null>>({});
@@ -72,14 +98,26 @@ export default function ProjectPage() {
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [graphDirection, setGraphDirection] = useState<"TB" | "LR">("TB");
 
+  // persistence control
   const disablePersistenceRef = useRef(false);
-  const [flowKey, setFlowKey] = useState(() => `rf-${projectName}-${graphDirection}-${Date.now()}`);
-  const [viewport, setViewport] = useState<{ x: number; y: number; zoom: number }>({ x: 0, y: 0, zoom: 0.38 });
+  const [flowKey, setFlowKey] = useState(
+    () => `rf-${projectName}-${graphDirection}-${Date.now()}`
+  );
+  const [viewport, setViewport] = useState<{
+    x: number;
+    y: number;
+    zoom: number;
+  }>({ x: 0, y: 0, zoom: 0.38 });
   const reactFlowInstanceRef = useRef<ReactFlowInstance | null>(null);
 
-  const [contextMenu, setContextMenu] = useState<ContextMenuState>({ visible: false, x: 0, y: 0 });
+  // context menu state (viewport coordinates)
+  const [contextMenu, setContextMenu] = useState<ContextMenuState>({
+    visible: false,
+    x: 0,
+    y: 0,
+  });
 
-  const TIME_TO_REFRESH = 15000; // 15s
+  const TIME_TO_REFRESH = 15000; // 15 seconds
   const localStorageKey = `project-${projectName}-node-positions`;
 
   // overlay / flicker control
@@ -91,7 +129,7 @@ export default function ProjectPage() {
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const firstLoadRef = useRef(true);
 
-  // Zoom clamp
+  // Zoom clamp (ensure zoom stays in acceptable range)
   const MIN_ZOOM = 0.2;
   const MAX_ZOOM = 0.6;
   const clampZoom = (z: number | undefined | null) => {
@@ -99,26 +137,46 @@ export default function ProjectPage() {
     return Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, num));
   };
 
-  // nodesRef to read latest nodes without causing render loops
+  // keep latest nodes in ref to avoid render loops
   const nodesRef = useRef<Node[]>(nodes);
   useEffect(() => {
     nodesRef.current = nodes;
   }, [nodes]);
 
-  //----------------------------------------------------------------------
-  // Node handlers
-  //----------------------------------------------------------------------
+  /* --------------------- Node handlers --------------------- */
+
+  /**
+   * handleNodeClick
+   * - highlight selected node and its connected edges
+   * - if shift is pressed allow multi-select (noop here)
+   */
   const handleNodeClick = (nodeData: any, event?: React.MouseEvent) => {
+    handleCloseMenu();
     const isMultiSelect = event?.shiftKey;
     if (!isMultiSelect) {
       setPreviousNodeId(nodeData.id);
-      setNodes((nds) => nds.map((n) => (n.id === nodeData.id ? n : { ...n, style: undefined })));
-      const edgesToHighlight = edges.filter((e) => e.source === nodeData.id || e.target === nodeData.id).map((e) => e.id);
-      setEdges((eds) => eds.map((edge) => (edgesToHighlight.includes(edge.id) ? { ...edge, style: { ...edge.style, stroke: "#0070f3", strokeWidth: 3 } } : { ...edge, style: undefined })));
+      setNodes((nds) =>
+        nds.map((n) => (n.id === nodeData.id ? n : { ...n, style: undefined }))
+      );
+      const edgesToHighlight = edges
+        .filter((e) => e.source === nodeData.id || e.target === nodeData.id)
+        .map((e) => e.id);
+      setEdges((eds) =>
+        eds.map((edge) =>
+          edgesToHighlight.includes(edge.id)
+            ? { ...edge, style: { ...edge.style, stroke: "#0070f3", strokeWidth: 3 } }
+            : { ...edge, style: undefined }
+        )
+      );
     }
   };
 
+  /**
+   * handleNodeDoubleClick
+   * - fetch full protocol details and open form drawer
+   */
   const handleNodeDoubleClick = async (nodeData: any) => {
+    handleCloseMenu();
     if (!projectName) return;
     try {
       const fullNodeData = await fetchProtocolDetails(projectName, nodeData.id);
@@ -131,16 +189,27 @@ export default function ProjectPage() {
 
   const handleCloseForm = () => setSelectedNodeDetails(null);
 
+  // nodeTypes mapping (wrap status nodes)
   const nodeTypes = useMemo(
     () => ({
-      status: createStatusNodeWrapper(handleNodeClick, handleNodeDoubleClick, previousNodeId ?? undefined, hoveredNodeId ?? undefined, setHoveredNodeId, graphDirection),
+      status: createStatusNodeWrapper(
+        handleNodeClick,
+        handleNodeDoubleClick,
+        previousNodeId ?? undefined,
+        hoveredNodeId ?? undefined,
+        setHoveredNodeId,
+        graphDirection
+      ),
     }),
     [previousNodeId, hoveredNodeId, graphDirection]
   );
 
-  //----------------------------------------------------------------------
-  // Persistence helpers
-  //----------------------------------------------------------------------
+  /* --------------------- Persistence helpers --------------------- */
+
+  /**
+   * handleNodesChangeWithPersistence
+   * - Applies node changes, persists positions to localStorage unless persistence disabled.
+   */
   const handleNodesChangeWithPersistence = (changes: NodeChange[]) => {
     if (disablePersistenceRef.current) {
       return onNodesChange(changes);
@@ -151,14 +220,16 @@ export default function ProjectPage() {
       try {
         localStorage.setItem(`${localStorageKey}-${graphDirection}`, JSON.stringify(positions));
       } catch (err) {
-        // ignore
+        // ignore quota / security errors
       }
       return updated;
     });
   };
 
   const loadNodesWithPositions = (loadedNodes: Node[]) => {
-    const savedPositions: { id: string; position: { x: number; y: number } }[] = JSON.parse(localStorage.getItem(`${localStorageKey}-${graphDirection}`) || "[]");
+    const savedPositions: { id: string; position: { x: number; y: number } }[] = JSON.parse(
+      localStorage.getItem(`${localStorageKey}-${graphDirection}`) || "[]"
+    );
     return loadedNodes.map((n) => {
       const saved = savedPositions.find((p) => p.id === n.id);
       return saved ? { ...n, position: saved.position } : n;
@@ -177,7 +248,13 @@ export default function ProjectPage() {
     return newEdges.map((e) => (oldEdgesMap.get(e.id) ? { ...oldEdgesMap.get(e.id)!, ...e } : e));
   };
 
-  // ------------------------ Stable centering that matches the button ------------------------
+  /* --------------------- Centering helper --------------------- */
+
+  /**
+   * centerLikeButton
+   * - Centers the viewport to the average position of nodes (stable centering).
+   * - Preserves zoom optionally and clamps to defined zoom range.
+   */
   const centerLikeButton = useCallback((nodesList?: Node[], preserveZoom = true) => {
     const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
     if (!inst) return;
@@ -211,9 +288,13 @@ export default function ProjectPage() {
     });
   }, []);
 
-  //----------------------------------------------------------------------
-  // Fetch / load project
-  //----------------------------------------------------------------------
+  /* --------------------- Fetch / load project --------------------- */
+
+  /**
+   * fetchAndLoadProject
+   * - Loads project metadata and builds graph elements
+   * - Applies saved positions if available
+   */
   const fetchAndLoadProject = useCallback(async () => {
     if (!projectName) return;
     setIsRefreshing(true);
@@ -222,7 +303,12 @@ export default function ProjectPage() {
       setProject(data);
 
       if (data.protocols) {
-        const { nodes: loadedNodes, edges: loadedEdges, table } = buildGraphElements(data.shortName, data.protocols, viewMode, graphDirection);
+        const { nodes: loadedNodes, edges: loadedEdges, table } = buildGraphElements(
+          data.shortName,
+          data.protocols,
+          viewMode,
+          graphDirection
+        );
         const nodesWithPositions = loadNodesWithPositions(loadedNodes);
 
         setNodes(nodesWithPositions);
@@ -254,7 +340,12 @@ export default function ProjectPage() {
     fetchAndLoadProject();
   }, [fetchAndLoadProject]);
 
-  // ------------------------ Refresh ------------------------
+  /* --------------------- Refresh --------------------- */
+
+  /**
+   * handleRefresh
+   * - Re-fetch project data and merge new nodes/edges
+   */
   const handleRefresh = useCallback(async () => {
     if (!projectName) return;
     setIsRefreshing(true);
@@ -263,7 +354,12 @@ export default function ProjectPage() {
       setProject(data);
 
       if (data.protocols) {
-        const { nodes: loadedNodes, edges: loadedEdges, table } = buildGraphElements(data.shortName, data.protocols, viewMode, graphDirection);
+        const { nodes: loadedNodes, edges: loadedEdges, table } = buildGraphElements(
+          data.shortName,
+          data.protocols,
+          viewMode,
+          graphDirection
+        );
         const nodesWithPositions = mergeNodesWithPositions(loadedNodes);
         const edgesMerged = mergeEdges(loadedEdges);
 
@@ -288,7 +384,7 @@ export default function ProjectPage() {
     }
   }, [projectName, viewMode, graphDirection, nodes, edges]);
 
-  // stable interval for refresh
+  // stable interval for refresh (keeps closure stable)
   const handleRefreshRef = useRef(handleRefresh);
   useEffect(() => {
     handleRefreshRef.current = handleRefresh;
@@ -300,7 +396,12 @@ export default function ProjectPage() {
     return () => clearInterval(interval);
   }, []);
 
-  // ------------------------ Reorganize ------------------------
+  /* --------------------- Reorganize (rebuild) --------------------- */
+
+  /**
+   * handleReorganize
+   * - Clear persistence, reload project and re-center (used by UI button)
+   */
   const handleReorganize = useCallback(
     async (opts?: { preserveZoom?: boolean }) => {
       if (!projectName) return;
@@ -328,7 +429,12 @@ export default function ProjectPage() {
           return;
         }
 
-        const { nodes: loadedNodes, edges: loadedEdges, table } = buildGraphElements(data.shortName, data.protocols, viewMode, graphDirection);
+        const { nodes: loadedNodes, edges: loadedEdges, table } = buildGraphElements(
+          data.shortName,
+          data.protocols,
+          viewMode,
+          graphDirection
+        );
 
         setNodes(loadedNodes);
         setEdges(loadedEdges);
@@ -343,18 +449,22 @@ export default function ProjectPage() {
           }
 
           if (loadedNodes.length > 0) {
-            // center like the button (wait two frames to ensure paint) and then wait extra 60ms before hiding overlay
+            // center like the button (wait two frames to ensure paint) and then wait a bit before hiding overlay
             requestAnimationFrame(() => {
               requestAnimationFrame(() => {
                 centerLikeButton(loadedNodes, opts?.preserveZoom ?? true);
-                // small timeout to make sure browser painted final result -> reduces flicker
+                // small timeout to ensure browser painted final result -> reduces flicker
                 setTimeout(() => {
                   disablePersistenceRef.current = false;
                 }, 60);
               });
             });
           } else {
-            const clamped = { x: currentViewport.x, y: currentViewport.y, zoom: clampZoom(currentViewport.zoom) };
+            const clamped = {
+              x: currentViewport.x,
+              y: currentViewport.y,
+              zoom: clampZoom(currentViewport.zoom),
+            };
             inst.setViewport(clamped);
             setViewport(clamped);
             disablePersistenceRef.current = false;
@@ -368,7 +478,9 @@ export default function ProjectPage() {
     [projectName, viewMode, graphDirection, viewport, centerLikeButton]
   );
 
-  // ------------------------ Ticks updater ------------------------
+  /* --------------------- Ticks updater --------------------- */
+
+  // increment running ticks every second for UI updates
   useEffect(() => {
     const interval = setInterval(() => {
       setNodeTicks((prev) => {
@@ -381,11 +493,18 @@ export default function ProjectPage() {
         return updated;
       });
 
-      setTableData((prev) => prev.map((row) => (row.status === "running" ? { ...row, tick: (row.tick ?? Number(row.elapsedTime) ?? 0) + 1 } : row)));
+      setTableData((prev) =>
+        prev.map((row) =>
+          row.status === "running"
+            ? { ...row, tick: (row.tick ?? Number(row.elapsedTime) ?? 0) + 1 }
+            : row
+        )
+      );
     }, 1000);
     return () => clearInterval(interval);
   }, []);
 
+  // push tick values into nodes' data
   useEffect(() => {
     setNodes((nds) =>
       nds.map((node) => ({
@@ -398,10 +517,13 @@ export default function ProjectPage() {
     );
   }, [nodeTicks]);
 
-  // ------------------------ Layout change effect ------------------------
+  /* --------------------- Layout change effect --------------------- */
+
   const prevLayout = useRef({ viewMode, graphDirection });
   useLayoutEffect(() => {
-    const layoutChanged = prevLayout.current.viewMode !== viewMode || prevLayout.current.graphDirection !== graphDirection;
+    const layoutChanged =
+      prevLayout.current.viewMode !== viewMode ||
+      prevLayout.current.graphDirection !== graphDirection;
     if (!layoutChanged) return;
     if (!project?.protocols) {
       prevLayout.current = { viewMode, graphDirection };
@@ -416,7 +538,12 @@ export default function ProjectPage() {
 
     const currentViewport = instance.getViewport();
 
-    const { nodes: loadedNodes, edges: loadedEdges } = buildGraphElements(project.shortName, project.protocols, viewMode, graphDirection);
+    const { nodes: loadedNodes, edges: loadedEdges } = buildGraphElements(
+      project.shortName,
+      project.protocols,
+      viewMode,
+      graphDirection
+    );
     const nodesWithPositions = loadNodesWithPositions(loadedNodes);
 
     // prevent persistence while we swap
@@ -453,7 +580,11 @@ export default function ProjectPage() {
           });
         } else {
           // non-hierarchical: restore previous viewport instantly
-          const clamped = { x: currentViewport.x, y: currentViewport.y, zoom: clampZoom(currentViewport.zoom) };
+          const clamped = {
+            x: currentViewport.x,
+            y: currentViewport.y,
+            zoom: clampZoom(currentViewport.zoom),
+          };
           inst.setViewport(clamped);
           setViewport(clamped);
           requestAnimationFrame(() => {
@@ -470,7 +601,8 @@ export default function ProjectPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [graphDirection, viewMode, project]);
 
-  // ------------------------ Initial first-center effect ----------
+  /* --------------------- Initial center effect --------------------- */
+
   useEffect(() => {
     if (!nodesLoadedOnce) return;
     const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
@@ -506,7 +638,8 @@ export default function ProjectPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nodesLoadedOnce]);
 
-  // ------------------------ Table switching: avoid flicker ------------------------
+  /* --------------------- Table switching: avoid flicker --------------------- */
+
   useEffect(() => {
     if (viewMode === "table") {
       setTableVisible(false);
@@ -526,7 +659,8 @@ export default function ProjectPage() {
     }
   }, [viewMode]);
 
-  // ------------------------ Table helpers / UI helpers ------------------------
+  /* --------------------- Table helpers / UI helpers --------------------- */
+
   const scrollToProtocol = (id: string) => {
     const row = rowRefs.current[id];
     const container = tableContainerRef.current;
@@ -640,7 +774,7 @@ export default function ProjectPage() {
     }
   };
 
-  // ------------------------ Time formatting ------------------------
+  /* --------------------- Time formatting helper (for table display) --------------------- */
   const formatCpuTime = (seconds: number): string => {
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
@@ -649,7 +783,13 @@ export default function ProjectPage() {
     return `${pad(hours)}h:${pad(minutes)}m:${pad(secs)}s`;
   };
 
-  // ------------------------ Context menu ------------------------
+  /* --------------------- Context menu (portal) --------------------- */
+
+  /**
+   * handleContextMenu
+   * - Captures right click on the ReactFlow canvas
+   * - Stores clientX/clientY and (optionally) node id for contextual actions
+   */
   const handleContextMenu = (event: React.MouseEvent) => {
     event.preventDefault();
     event.stopPropagation();
@@ -657,7 +797,10 @@ export default function ProjectPage() {
     const nodeId = nodeEl?.getAttribute("data-id") ?? null;
     setContextMenu({ visible: true, x: event.clientX, y: event.clientY, nodeId });
   };
+
   const handleCloseMenu = () => setContextMenu((prev) => ({ ...prev, visible: false }));
+
+  // close menu on outside interactions and ESC
   useEffect(() => {
     if (!contextMenu.visible) return;
     const onWindowMouseDown = () => handleCloseMenu();
@@ -672,7 +815,7 @@ export default function ProjectPage() {
     };
   }, [contextMenu.visible]);
 
-  // ------------------------ ReactFlow init / move handlers ------------------------
+  // ReactFlow init / move handlers (kept as in your original code)
   const handleOnInit = useCallback((inst: ReactFlowInstance) => {
     reactFlowInstanceRef.current = inst;
   }, []);
@@ -681,7 +824,8 @@ export default function ProjectPage() {
     setViewport(vp);
   }, []);
 
-  // ------------------------ Controls ------------------------
+  /* --------------------- Controls for zoom / fit / center --------------------- */
+
   const ZOOM_FACTOR = 1.2;
   const handleZoomIn = useCallback(() => {
     const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
@@ -703,7 +847,6 @@ export default function ProjectPage() {
     setViewport({ x: newVp.x, y: newVp.y, zoom: newVp.zoom });
   }, []);
 
-  // keep original button implementation (reads nodes state) — left for manual user use
   const handleCenterPreserveZoom = useCallback(() => {
     const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
     if (!inst || !nodes || nodes.length === 0) return;
@@ -732,7 +875,50 @@ export default function ProjectPage() {
     });
   }, []);
 
-  // ------------------------ Render ------------------------
+  /* --------------------- Context menu portal component --------------------- */
+
+  /**
+   * ContextMenuPortal
+   * - Renders children into document.body using createPortal.
+   * - Positioned with client viewport coordinates to avoid transform offsets.
+   */
+  const ContextMenuPortal: React.FC<{
+    x: number;
+    y: number;
+    onClose: () => void;
+    children: React.ReactNode;
+  }> = ({ x, y, onClose, children }) => {
+    useEffect(() => {
+      // prevent browser context menu while our menu is open
+      const onContext = (e: MouseEvent) => {
+        e.preventDefault();
+      };
+      window.addEventListener("contextmenu", onContext);
+      return () => window.removeEventListener("contextmenu", onContext);
+    }, []);
+
+    const menu = (
+      <div
+        className="rf-context-menu-portal"
+        style={{
+          position: "fixed",
+          top: y,
+          left: x,
+          zIndex: 99999,
+          transform: "translate(0, 0)",
+          maxWidth: "min(90vw, 420px)",
+        }}
+        onContextMenu={(e) => e.preventDefault()}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        {children}
+      </div>
+    );
+
+    return createPortal(menu, document.body);
+  };
+
+  /* --------------------- Render UI --------------------- */
   return (
     <div className="h-screen flex flex-col">
       {/* Header */}
@@ -779,10 +965,11 @@ export default function ProjectPage() {
         </div>
       </div>
 
+      {/* If a protocol is selected, render form */}
       {selectedNodeDetails && <ProtocolForm data={selectedNodeDetails} onClose={handleCloseForm} />}
 
       <div className="flex-1 relative">
-        {/* Initial blocking overlay only during first fetch (subtle spinner + text) */}
+        {/* Initial blocking overlay only during first fetch */}
         {isInitialLoading && isRefreshing && (
           <div className="absolute inset-0 flex items-center justify-center bg-white/90 z-50">
             <div className="flex items-center gap-3">
@@ -792,20 +979,18 @@ export default function ProjectPage() {
           </div>
         )}
 
-        {/* Blocking overlay while switching layout (covers content to avoid flicker) */}
-        {/* overlay blocks interactions to prevent transient intermediate frames */}
-        {isSwitchingLayout && ! (isInitialLoading && isRefreshing) && (
+        {/* Blocking overlay while switching layout */}
+        {isSwitchingLayout && !(isInitialLoading && isRefreshing) && (
           <div
             aria-hidden
             className="absolute inset-0 z-60 flex items-center justify-center"
             style={{
-              background: "var(--reactflow-background, #ffffff)", // adapt to page bg
+              background: "var(--reactflow-background, #ffffff)",
               pointerEvents: "auto",
             }}
           >
             <div className="flex items-center gap-3">
               <div className="w-7 h-7 border-2 border-gray-300 border-t-gray-500 rounded-full animate-spin" />
-              {/* spinner sutil sin texto grande */}
             </div>
           </div>
         )}
@@ -872,7 +1057,6 @@ export default function ProjectPage() {
           style={{
             display: viewMode === "hierarchical" ? "block" : "none",
             zIndex: 20,
-            // force compositing to reduce flicker / repaints
             willChange: "transform, opacity",
             transformStyle: "preserve-3d",
             WebkitBackfaceVisibility: "hidden",
@@ -909,6 +1093,7 @@ export default function ProjectPage() {
               maxZoom={MAX_ZOOM}
               onInit={handleOnInit}
               onMoveEnd={handleOnMoveEnd}
+              onPaneClick={() => handleCloseMenu()}
               defaultViewport={viewport}
               defaultEdgeOptions={{
                 type: "default",
@@ -923,28 +1108,44 @@ export default function ProjectPage() {
               <Background />
             </ReactFlow>
 
+            {/* Render context menu using portal (so transforms on ReactFlow do not affect positioning) */}
             {contextMenu.visible && (
-              <DropdownMenu open={true} onOpenChange={handleCloseMenu}>
-                <DropdownMenuTrigger asChild>
-                  <button style={{ position: "fixed", top: contextMenu.y, left: contextMenu.x, width: 0, height: 0, opacity: 0 }} />
-                </DropdownMenuTrigger>
-                <DropdownMenuContent className="w-48">
-                  <DropdownMenuItem onClick={() => { handleRefresh(); handleCloseMenu(); }}>
-                    <Plus className="w-4 h-4 mr-2" />
-                    Add protocol
-                  </DropdownMenuItem>
+              <ContextMenuPortal x={contextMenu.x} y={contextMenu.y} onClose={handleCloseMenu}>
+                <div className="bg-white rounded shadow-md w-48 ring-1 ring-black/5 overflow-hidden">
+                  <button
+                    className="w-full text-left px-3 py-2 hover:bg-gray-200 flex items-center gap-2 text-sm dark:text-black"
+                    onClick={() => {
+                      // Example behavior: add protocol - adapt to your actual add flow
+                      handleRefresh();
+                      handleCloseMenu();
+                    }}
+                  >
+                    <Plus className="w-4 h-4 mr-1 text-gray-500" /> Add protocol
+                  </button>
 
-                  <DropdownMenuItem onClick={() => { handleRefresh(); handleCloseMenu(); }}>
-                    <RefreshCw className="w-4 h-4 mr-2" />
+                  <button
+                    className="w-full text-left px-3 py-2 hover:bg-gray-100 flex items-center gap-2 text-sm dark:text-black"
+                    onClick={() => {
+                      handleRefresh();
+                      handleCloseMenu();
+                    }}
+                  >
+                    <RefreshCw className="w-4 h-4 mr-1 text-gray-500" />
                     Refresh graph
-                  </DropdownMenuItem>
+                  </button>
 
-                  <DropdownMenuItem onClick={() => { setNodes((nds) => nds.map((n) => ({ ...n, selected: false }))); handleCloseMenu(); }}>
-                    <Trash2 className="w-4 h-4 mr-2" />
+                  <button
+                    className="w-full text-left px-3 py-2 hover:bg-gray-100 flex items-center gap-2 text-sm dark:text-black"
+                    onClick={() => {
+                      setNodes((nds) => nds.map((n) => ({ ...n, selected: false })));
+                      handleCloseMenu();
+                    }}
+                  >
+                    <Trash2 className="w-4 h-4 mr-1 text-gray-500" />
                     Clear selection
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+                  </button>
+                </div>
+              </ContextMenuPortal>
             )}
           </ReactFlowProvider>
         </div>
