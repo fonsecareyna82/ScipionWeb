@@ -41,11 +41,6 @@ import {
 import { MinusIcon, PlusIcon, RefreshCw, Trash2 } from "lucide-react";
 import { FitViewIcon, TableIcon, TreeIcon } from "../../../icons";
 
-/**
- * ProjectPage
- *
- */
-
 /* --------------------- Types --------------------- */
 interface StatusNodeData {
   label: string;
@@ -98,7 +93,7 @@ export default function ProjectPage() {
   const [viewport, setViewport] = useState<{ x: number; y: number; zoom: number }>({
     x: 0,
     y: 0,
-    zoom: 0.32, // <-- default initial zoom requested
+    zoom: 0.32, // <-- default initial zoom
   });
   const viewportRef = useRef(viewport);
   useEffect(() => {
@@ -232,9 +227,46 @@ export default function ProjectPage() {
     });
   };
 
+  // helper shallow compare for node.data (fast)
+  const shallowEqual = (a: any, b: any) => {
+    if (a === b) return true;
+    if (!a || !b) return false;
+    const aKeys = Object.keys(a);
+    const bKeys = Object.keys(b);
+    if (aKeys.length !== bKeys.length) return false;
+    for (const k of aKeys) {
+      if (a[k] !== b[k]) return false;
+    }
+    return true;
+  };
+
   const mergeNodesWithPositions = (newNodes: Node[]) => {
+    // map of old nodes by id
     const oldMap = new Map(nodes.map((n) => [n.id, n]));
-    return newNodes.map((n) => (oldMap.has(n.id) ? { ...n, position: (oldMap.get(n.id) as Node).position } : n));
+    return newNodes.map((n) => {
+      const old = oldMap.get(n.id);
+      if (old) {
+        // keep the old position (so nodes don't jump) unless the new node explicitly has a saved position
+        const position = (old.position && old.position.x !== undefined && old.position.y !== undefined)
+          ? old.position
+          : (n.position ?? old.position);
+
+        // if data did not change (shallow), reuse the old node object (same ref)
+        if (shallowEqual(old.data, n.data) && position === old.position) {
+          return old;
+        }
+
+        // otherwise return a new object but keep old.position reference
+        return {
+          ...old,
+          position,
+          data: { ...old.data, ...n.data }, // merge new data on top of old (preserve unchanged fields)
+        } as Node;
+      }
+
+      // brand new node -> keep the new node (likely added)
+      return n;
+    });
   };
 
   const mergeEdges = (newEdges: Edge[]) => {
@@ -254,7 +286,7 @@ export default function ProjectPage() {
     if (!inst) return;
     const list = nodesList ?? nodesRef.current ?? [];
     const validNodes = list.filter((n) => typeof n.position?.x === "number" && typeof n.position?.y === "number");
-  
+
     // If no nodes, just clamp current viewport
     if (validNodes.length === 0) {
       const vp = inst.getViewport();
@@ -262,7 +294,7 @@ export default function ProjectPage() {
       setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(vp.zoom) });
       return;
     }
-  
+
     try {
       if (!preserveZoom) {
         // Let React Flow compute the bounding-box center + zoom
@@ -271,17 +303,17 @@ export default function ProjectPage() {
         setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
         return;
       }
-  
+
       // PRESERVE ZOOM CASE (fix):
       // prefer zoomOverride if provided, otherwise use current instance zoom
       const targetZoom = clampZoom(typeof zoomOverride === "number" ? zoomOverride : inst.getViewport().zoom);
-  
+
       // compute bounding-box center from node positions (in graph coords)
       let minX = Number.POSITIVE_INFINITY;
       let maxX = Number.NEGATIVE_INFINITY;
       let minY = Number.POSITIVE_INFINITY;
       let maxY = Number.NEGATIVE_INFINITY;
-  
+
       for (const n of validNodes) {
         const x = n.position!.x ?? 0;
         const y = n.position!.y ?? 0;
@@ -290,14 +322,14 @@ export default function ProjectPage() {
         if (y < minY) minY = y;
         if (y > maxY) maxY = y;
       }
-  
+
       const centerX = (minX + maxX) / 2;
       const centerY = (minY + maxY) / 2;
-  
+
       // Use setCenter so the provided graph-coordinates become centered in view with the desired zoom.
       // duration: 0 for instant (you can use >0 for smooth animation)
       inst.setCenter(centerX, centerY, { zoom: targetZoom, duration: 0 });
-  
+
       // update local state to reflect what we set
       const finalVp = inst.getViewport();
       setViewport({ x: finalVp.x, y: finalVp.y, zoom: finalVp.zoom });
@@ -314,130 +346,87 @@ export default function ProjectPage() {
       setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
     }
   }, []);
-  
 
-  /**
-   * ensureCenterAfterRender
-   * - Ensure that the ReactFlow instance exists and nodes are actually rendered before centering.
-   * - Tries a few times (small delays) to avoid centering too early.
-   * - Accepts zoomOverride which will be passed to centerLikeButton (useful to force initial zoom).
-   */
-  const ensureCenterAfterRender = (nodesList?: Node[], preserveZoom = true, maxAttempts = 18, delayMs = 60, zoomOverride?: number) => {
-    let attempts = 0;
-  
-    const tryCenter = () => {
-      const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
-      const list = nodesList ?? nodesRef.current ?? [];
-      const validNodes = list.filter((n) => typeof n.position?.x === "number" && typeof n.position?.y === "number");
-  
-      // require that reactflow has mounted its internal nodes
-      const instNodesReady = inst && typeof inst.getNodes === "function" && inst.getNodes().length > 0;
-  
-      if (inst && instNodesReady && validNodes.length > 0) {
-        // pasa zoomOverride si lo hay
-        centerLikeButton(list, preserveZoom, zoomOverride);
-        return;
-      }
-  
-      attempts++;
-      if (attempts <= maxAttempts) {
-        setTimeout(() => {
-          requestAnimationFrame(() => requestAnimationFrame(tryCenter));
-        }, delayMs);
-      } else {
-        // fallback: solo clampa zoom para evitar (0,0)
-        const fallbackInst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
-        if (fallbackInst) {
-          const vp = fallbackInst.getViewport();
-          fallbackInst.setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(vp.zoom) });
-          setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(vp.zoom) });
-        }
-      }
-    };
-  
-    requestAnimationFrame(() => requestAnimationFrame(tryCenter));
-  };
-  
   
 /**
- * waitForNodesReady
- * - Espera hasta que React Flow haya montado internamente nodos y que sus posiciones
- *   parezcan válidas (no todas 0,0 / NaN y bounding-box no trivial).
- * - Devuelve true si se detectó un estado válido antes del timeout, false en caso contrario.
- *
- * @param expectedCount número esperado de nodos (si no lo conoces pon 0 o 1)
- * @param timeoutMs tiempo máximo de espera en ms (por defecto 2500)
- * @param debug si true hace console.log de información de depuración
- */
-const waitForNodesReady = async (expectedCount: number, timeoutMs = 2500, debug = false): Promise<boolean> => {
-  const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
-  if (!inst) {
-    if (debug) console.warn("waitForNodesReady: no reactflow instance available");
-    return false;
-  }
+* waitForNodesReady
+* - Waits until React Flow has internally mounted nodes and their positions
+* appear valid (not all 0, 0 / NaN and non-trivial bounding-box).
+* - Returns true if a valid state was detected before the timeout, false otherwise.
+*
+* @param expectedCount expected number of nodes (if unknown, set to 0 or 1)
+* @param timeoutMs maximum wait time in ms (default 2500)
+* @param debug if true console.log debugging information
+*/
+  const waitForNodesReady = async (expectedCount: number, timeoutMs = 2500, debug = false): Promise<boolean> => {
+    const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
+    if (!inst) {
+      if (debug) console.warn("waitForNodesReady: no reactflow instance available");
+      return false;
+    }
 
-  const start = Date.now();
+    const start = Date.now();
 
-  return new Promise<boolean>((resolve) => {
-    const check = () => {
-      try {
-        const instNodes = typeof inst.getNodes === "function" ? inst.getNodes() : [];
-
-        if (debug) {
-          console.debug("waitForNodesReady: instNodes.length=", instNodes.length, "expectedCount=", expectedCount);
-        }
-
-        // Requiere al menos expectedCount nodos (si expectedCount <= 0, requiere al menos 1)
-        const needed = Math.max(1, expectedCount);
-        if (instNodes && instNodes.length >= needed) {
-          // validar posiciones: contar nodos con posición numérica válida
-          let validPosCount = 0;
-          let minX = Number.POSITIVE_INFINITY, maxX = Number.NEGATIVE_INFINITY;
-          let minY = Number.POSITIVE_INFINITY, maxY = Number.NEGATIVE_INFINITY;
-
-          for (const n of instNodes) {
-            const x = n.position?.x;
-            const y = n.position?.y;
-            if (typeof x === "number" && typeof y === "number" && !Number.isNaN(x) && !Number.isNaN(y)) {
-              validPosCount++;
-              if (x < minX) minX = x;
-              if (x > maxX) maxX = x;
-              if (y < minY) minY = y;
-              if (y > maxY) maxY = y;
-            }
-          }
-
-          const bboxWidth = isFinite(minX) && isFinite(maxX) ? Math.abs(maxX - minX) : 0;
-          const bboxHeight = isFinite(minY) && isFinite(maxY) ? Math.abs(maxY - minY) : 0;
+    return new Promise<boolean>((resolve) => {
+      const check = () => {
+        try {
+          const instNodes = typeof inst.getNodes === "function" ? inst.getNodes() : [];
 
           if (debug) {
-            console.debug("waitForNodesReady: validPosCount=", validPosCount, "bboxWidth=", bboxWidth, "bboxHeight=", bboxHeight);
+            console.debug("waitForNodesReady: instNodes.length=", instNodes.length, "expectedCount=", expectedCount);
           }
 
-          // Heurística: al menos 1 posición válida y bounding-box no trivial
-          if (validPosCount >= 1 && (bboxWidth > 1 || bboxHeight > 1)) {
-            resolve(true);
-            return;
+          // Requires at least expectedCount nodes (if expectedCount <= 0, requires at least 1)
+          const needed = Math.max(1, expectedCount);
+          if (instNodes && instNodes.length >= needed) {
+            // validate positions: count nodes with valid numerical position
+            let validPosCount = 0;
+            let minX = Number.POSITIVE_INFINITY, maxX = Number.NEGATIVE_INFINITY;
+            let minY = Number.POSITIVE_INFINITY, maxY = Number.NEGATIVE_INFINITY;
+
+            for (const n of instNodes) {
+              const x = n.position?.x;
+              const y = n.position?.y;
+              if (typeof x === "number" && typeof y === "number" && !Number.isNaN(x) && !Number.isNaN(y)) {
+                validPosCount++;
+                if (x < minX) minX = x;
+                if (x > maxX) maxX = x;
+                if (y < minY) minY = y;
+                if (y > maxY) maxY = y;
+              }
+            }
+
+            const bboxWidth = isFinite(minX) && isFinite(maxX) ? Math.abs(maxX - minX) : 0;
+            const bboxHeight = isFinite(minY) && isFinite(maxY) ? Math.abs(maxY - minY) : 0;
+
+            if (debug) {
+              console.debug("waitForNodesReady: validPosCount=", validPosCount, "bboxWidth=", bboxWidth, "bboxHeight=", bboxHeight);
+            }
+
+            // Heuristic: at least 1 valid position and non-trivial bounding-box
+            if (validPosCount >= 1 && (bboxWidth > 1 || bboxHeight > 1)) {
+              resolve(true);
+              return;
+            }
           }
+        } catch (err) {
+          if (debug) console.warn("waitForNodesReady: check error", err);
+          // keep trying
         }
-      } catch (err) {
-        if (debug) console.warn("waitForNodesReady: check error", err);
-        // seguir intentando
-      }
 
-      if (Date.now() - start > timeoutMs) {
-        if (debug) console.warn("waitForNodesReady: timeout");
-        resolve(false);
-        return;
-      }
+        if (Date.now() - start > timeoutMs) {
+          if (debug) console.warn("waitForNodesReady: timeout");
+          resolve(false);
+          return;
+        }
 
-      // reintentar en la siguiente animation frame (mejor para layout/paint)
+        // retry at the next animation frame (best for layout/paint)
+        requestAnimationFrame(check);
+      };
+
       requestAnimationFrame(check);
-    };
-
-    requestAnimationFrame(check);
-  });
-};
+    });
+  };
 
 
   /**
@@ -452,7 +441,7 @@ const waitForNodesReady = async (expectedCount: number, timeoutMs = 2500, debug 
     try {
       const data = await fetchProject(projectName);
       setProject(data);
-  
+
       if (data.protocols) {
         const { nodes: loadedNodes, edges: loadedEdges, table } = buildGraphElements(
           data.shortName,
@@ -460,16 +449,16 @@ const waitForNodesReady = async (expectedCount: number, timeoutMs = 2500, debug 
           viewMode,
           graphDirection
         );
-  
-        // aplicar posiciones guardadas si existen
+
+        // apply saved positions if they exist
         const nodesWithPositions = loadNodesWithPositions(loadedNodes);
-  
-        // actualizar estado principal
+
+       // update main state
         setNodes(nodesWithPositions);
         setEdges(loadedEdges);
         setTableData(table ?? []);
-  
-        // configurar ticks iniciales
+
+        // set initial ticks
         const initialTicks: Record<string, number> = {};
         nodesWithPositions.forEach((n) => {
           if (n.data?.status === "running") {
@@ -477,28 +466,28 @@ const waitForNodesReady = async (expectedCount: number, timeoutMs = 2500, debug 
           }
         });
         setNodeTicks(initialTicks);
-  
+
         setNodesLoadedOnce(true);
-  
-        // --- CENTRAR SOLO EN LA PRIMERA CARGA (nuevo enfoque: MutationObserver en DOM) ---
+
+        // --- FOCUS ONLY ON FIRST LOAD (new approach: MutationObserver on DOM) ---
         if (firstLoadRef.current && viewMode === "hierarchical") {
           // NO marcar firstLoadRef false hasta que realmente hayamos centrado (evita dobles)
           console.debug("[fetchAndLoadProject] first load: observing DOM for nodes...");
-  
+
           const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
           const desiredCount = Math.max(1, nodesWithPositions.length);
-  
+
           // Helper: cleanup observer + fallback timer
           let observer: MutationObserver | null = null;
           let fallbackTimer: any = null;
           let centered = false;
-  
+
           const doCenter = (methodDesc: string) => {
             if (centered) return;
             centered = true;
             try {
               console.debug(`[fetchAndLoadProject] centering via ${methodDesc}`);
-              // usamos zoom guardado para respetar zoom inicial
+              // we use saved zoom to respect initial zoom
               centerLikeButton(nodesWithPositions, true, viewportRef.current.zoom);
             } catch (err) {
               console.warn("[fetchAndLoadProject] centerLikeButton failed:", err);
@@ -520,7 +509,7 @@ const waitForNodesReady = async (expectedCount: number, timeoutMs = 2500, debug 
               // mark as done
               firstLoadRef.current = false;
               if (observer) {
-                try { observer.disconnect(); } catch {}
+                try { observer.disconnect(); } catch { }
                 observer = null;
               }
               if (fallbackTimer) {
@@ -529,53 +518,53 @@ const waitForNodesReady = async (expectedCount: number, timeoutMs = 2500, debug 
               }
             }
           };
-  
+
           try {
-            // intentamos observar el contenedor de nodos de React Flow
+            // we try to observe the React Flow node container
             const nodesContainer = document.querySelector(".react-flow__nodes");
             if (nodesContainer) {
-              // Si ya hay suficientes .react-flow__node en el DOM, centrar inmediatamente
+              // If there are already enough .react-flow__node in the DOM, center immediately
               const initialNodeEls = nodesContainer.querySelectorAll(".react-flow__node");
               console.debug("[fetchAndLoadProject] initial .react-flow__node count:", initialNodeEls.length, "desired:", desiredCount);
               if (initialNodeEls.length >= desiredCount) {
-                // dar un par de frames para asegurar paint y luego centrar
+                // give a couple of frames to ensure paint and then center
                 requestAnimationFrame(() => requestAnimationFrame(() => doCenter("dom-immediate")));
               } else {
-                // observar mutaciones (children añadidos) hasta que tengamos suficientes nodos
+                // watch for mutations (added children) until we have enough nodes
                 observer = new MutationObserver(() => {
                   const els = nodesContainer.querySelectorAll(".react-flow__node");
                   // debug:
                   // console.debug("MutationObserver: nodes count", els.length);
                   if (els.length >= desiredCount) {
-                    // esperar dos rAF para asegurar que estilos y layout están aplicados
+                    // wait for two rAFs to ensure styles and layout are applied
                     requestAnimationFrame(() => requestAnimationFrame(() => doCenter("dom-observer")));
                   }
                 });
                 observer.observe(nodesContainer, { childList: true, subtree: true });
-                // como seguridad, establece un timeout fallback (3s) que usa waitForNodesReady
+                // as a safety measure, set a fallback timeout (3s) that uses waitForNodesReady
                 fallbackTimer = setTimeout(async () => {
                   console.debug("[fetchAndLoadProject] fallbackTimer fired: trying waitForNodesReady");
                   if (observer) {
-                    try { observer.disconnect(); } catch {}
+                    try { observer.disconnect(); } catch { }
                     observer = null;
                   }
                   const ready = await waitForNodesReady(nodesWithPositions.length, 2000, true);
                   if (ready) {
                     doCenter("waitForNodesReady-fallback");
                   } else {
-                    // última opción: fitView/clamp
+                    // last option: fitView/clamp
                     doCenter("fallback-final");
                   }
                 }, 3000);
               }
             } else {
-              // si no encontramos el contenedor DOM, fallback a waitForNodesReady
+              // if we don't find the DOM container, fallback to waitForNodesReady
               console.debug("[fetchAndLoadProject] .react-flow__nodes not found -> using waitForNodesReady");
               const ready = await waitForNodesReady(nodesWithPositions.length, 2500, true);
               if (ready && inst) {
                 doCenter("waitForNodesReady");
               } else if (inst) {
-                // fallback final
+                // final fallback 
                 try {
                   if (inst.getNodes && inst.getNodes().length > 0) {
                     inst.fitView({ padding: 0.12, duration: 0 });
@@ -597,7 +586,7 @@ const waitForNodesReady = async (expectedCount: number, timeoutMs = 2500, debug 
             }
           } catch (err) {
             console.warn("[fetchAndLoadProject] observer setup failed, doing fallback centering", err);
-            // fallback inmediato: try waitForNodesReady + center
+            // immediate fallback: try waitForNodesReady + center
             const ready = await waitForNodesReady(nodesWithPositions.length, 2000, true);
             if (ready && inst) {
               doCenter("catch-fallback");
@@ -613,7 +602,7 @@ const waitForNodesReady = async (expectedCount: number, timeoutMs = 2500, debug 
                     inst.setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(viewportRef.current.zoom) });
                     setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(viewportRef.current.zoom) });
                   }
-                } catch (_) {}
+                } catch (_) { }
               }
               firstLoadRef.current = false;
             }
@@ -627,7 +616,7 @@ const waitForNodesReady = async (expectedCount: number, timeoutMs = 2500, debug 
       setIsRefreshing(false);
     }
   }, [projectName, viewMode, graphDirection, centerLikeButton]);
-  
+
 
   useEffect(() => {
     fetchAndLoadProject();
@@ -1072,20 +1061,20 @@ const waitForNodesReady = async (expectedCount: number, timeoutMs = 2500, debug 
   }, [contextMenu.visible]);
 
   // ------------------------ ReactFlow init / move handlers ------------------------
-const handleOnInit = useCallback((inst: ReactFlowInstance) => {
-  reactFlowInstanceRef.current = inst;
-  try {
-    const current = inst.getViewport();
-    // clamp zoom but KEEP current x/y que React Flow ya tiene
-    const desiredZoom = clampZoom(viewportRef.current.zoom ?? current.zoom);
-    inst.setViewport({ x: current.x, y: current.y, zoom: desiredZoom });
-    const vp = inst.getViewport();
-    // sincronizamos el state con lo que realmente hay en la instancia
-    setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
-  } catch (err) {
-    // ignore
-  }
-}, []);
+  const handleOnInit = useCallback((inst: ReactFlowInstance) => {
+    reactFlowInstanceRef.current = inst;
+    try {
+      const current = inst.getViewport();
+      // clamp zoom but KEEP current x/y que React Flow ya tiene
+      const desiredZoom = clampZoom(viewportRef.current.zoom ?? current.zoom);
+      inst.setViewport({ x: current.x, y: current.y, zoom: desiredZoom });
+      const vp = inst.getViewport();
+      // sincronizamos el state con lo que realmente hay en la instancia
+      setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
+    } catch (err) {
+      // ignore
+    }
+  }, []);
 
 
 
