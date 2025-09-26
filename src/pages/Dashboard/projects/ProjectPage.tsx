@@ -8,7 +8,6 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { createPortal } from "react-dom";
 import {
   fetchProject,
   Project,
@@ -39,21 +38,12 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  MinusIcon,
-  Plus,
-  PlusIcon,
-  RefreshCw,
-  Trash2,
-} from "lucide-react";
+import { MinusIcon, PlusIcon, RefreshCw, Trash2 } from "lucide-react";
 import { FitViewIcon, TableIcon, TreeIcon } from "../../../icons";
 
 /**
  * ProjectPage
  *
- * FULL standalone file (copy-paste ready).
- *
- * All comments are in English and critical functions are documented.
  */
 
 /* --------------------- Types --------------------- */
@@ -103,11 +93,18 @@ export default function ProjectPage() {
   const [flowKey, setFlowKey] = useState(
     () => `rf-${projectName}-${graphDirection}-${Date.now()}`
   );
-  const [viewport, setViewport] = useState<{
-    x: number;
-    y: number;
-    zoom: number;
-  }>({ x: 0, y: 0, zoom: 0.38 });
+
+  // default initial viewport (zoom 0.32 on first load)
+  const [viewport, setViewport] = useState<{ x: number; y: number; zoom: number }>({
+    x: 0,
+    y: 0,
+    zoom: 0.32, // <-- default initial zoom requested
+  });
+  const viewportRef = useRef(viewport);
+  useEffect(() => {
+    viewportRef.current = viewport;
+  }, [viewport]);
+
   const reactFlowInstanceRef = useRef<ReactFlowInstance | null>(null);
 
   // context menu state (viewport coordinates)
@@ -125,15 +122,14 @@ export default function ProjectPage() {
   const [tableVisible, setTableVisible] = useState(viewMode === "table");
   const [nodesLoadedOnce, setNodesLoadedOnce] = useState(false);
 
-  // initial load overlay control
-  const [isInitialLoading, setIsInitialLoading] = useState(true);
+  // initial load flag to ensure we center only once
   const firstLoadRef = useRef(true);
 
   // Zoom clamp (ensure zoom stays in acceptable range)
   const MIN_ZOOM = 0.2;
   const MAX_ZOOM = 0.6;
   const clampZoom = (z: number | undefined | null) => {
-    const num = typeof z === "number" && !Number.isNaN(z) ? z : 0.4;
+    const num = typeof z === "number" && !Number.isNaN(z) ? z : 0.32;
     return Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, num));
   };
 
@@ -237,10 +233,8 @@ export default function ProjectPage() {
   };
 
   const mergeNodesWithPositions = (newNodes: Node[]) => {
-    return newNodes.map((n) => {
-      const old = nodes.find((o) => o.id === n.id);
-      return old ? { ...old, data: { ...old.data, ...n.data } } : n;
-    });
+    const oldMap = new Map(nodes.map((n) => [n.id, n]));
+    return newNodes.map((n) => (oldMap.has(n.id) ? { ...n, position: (oldMap.get(n.id) as Node).position } : n));
   };
 
   const mergeEdges = (newEdges: Edge[]) => {
@@ -248,52 +242,209 @@ export default function ProjectPage() {
     return newEdges.map((e) => (oldEdgesMap.get(e.id) ? { ...oldEdgesMap.get(e.id)!, ...e } : e));
   };
 
-  /* --------------------- Centering helper --------------------- */
+  // ------------------------ Centering helper ------------------------
 
   /**
    * centerLikeButton
-   * - Centers the viewport to the average position of nodes (stable centering).
-   * - Preserves zoom optionally and clamps to defined zoom range.
+   * - Centers the viewport to the bounding box using React Flow's fitView.
+   * - If preserveZoom = true, we compute the fit center and restore a given zoom (zoomOverride) or the current one.
    */
-  const centerLikeButton = useCallback((nodesList?: Node[], preserveZoom = true) => {
+  const centerLikeButton = useCallback((nodesList?: Node[], preserveZoom = true, zoomOverride?: number) => {
     const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
     if (!inst) return;
     const list = nodesList ?? nodesRef.current ?? [];
     const validNodes = list.filter((n) => typeof n.position?.x === "number" && typeof n.position?.y === "number");
+  
+    // If no nodes, just clamp current viewport
     if (validNodes.length === 0) {
-      // fallback to fitView
-      inst.fitView({ padding: 0.15, duration: 0 });
-      requestAnimationFrame(() => {
-        const vp = inst.getViewport();
-        const clamped = { x: vp.x, y: vp.y, zoom: clampZoom(vp.zoom) };
-        inst.setViewport(clamped);
-        setViewport(clamped);
-      });
+      const vp = inst.getViewport();
+      inst.setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(vp.zoom) });
+      setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(vp.zoom) });
       return;
     }
-
-    const xSum = validNodes.reduce((sum, n) => sum + (n.position!.x ?? 0), 0);
-    const ySum = validNodes.reduce((sum, n) => sum + (n.position!.y ?? 0), 0);
-    const centerX = xSum / validNodes.length;
-    const centerY = ySum / validNodes.length;
-
-    const currentVp = inst.getViewport();
-    const currentZoomRaw = preserveZoom ? currentVp.zoom : currentVp.zoom;
-    const zoom = clampZoom(currentZoomRaw);
-    inst.setCenter(centerX, centerY, { zoom, duration: 0 });
-
-    requestAnimationFrame(() => {
+  
+    try {
+      if (!preserveZoom) {
+        // Let React Flow compute the bounding-box center + zoom
+        inst.fitView({ padding: 0.12, duration: 0 });
+        const vp = inst.getViewport();
+        setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
+        return;
+      }
+  
+      // PRESERVE ZOOM CASE (fix):
+      // prefer zoomOverride if provided, otherwise use current instance zoom
+      const targetZoom = clampZoom(typeof zoomOverride === "number" ? zoomOverride : inst.getViewport().zoom);
+  
+      // compute bounding-box center from node positions (in graph coords)
+      let minX = Number.POSITIVE_INFINITY;
+      let maxX = Number.NEGATIVE_INFINITY;
+      let minY = Number.POSITIVE_INFINITY;
+      let maxY = Number.NEGATIVE_INFINITY;
+  
+      for (const n of validNodes) {
+        const x = n.position!.x ?? 0;
+        const y = n.position!.y ?? 0;
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+  
+      const centerX = (minX + maxX) / 2;
+      const centerY = (minY + maxY) / 2;
+  
+      // Use setCenter so the provided graph-coordinates become centered in view with the desired zoom.
+      // duration: 0 for instant (you can use >0 for smooth animation)
+      inst.setCenter(centerX, centerY, { zoom: targetZoom, duration: 0 });
+  
+      // update local state to reflect what we set
+      const finalVp = inst.getViewport();
+      setViewport({ x: finalVp.x, y: finalVp.y, zoom: finalVp.zoom });
+    } catch (err) {
+      // fallback to average center if something goes wrong
+      const xSum = validNodes.reduce((sum, n) => sum + (n.position!.x ?? 0), 0);
+      const ySum = validNodes.reduce((sum, n) => sum + (n.position!.y ?? 0), 0);
+      const centerX = xSum / validNodes.length;
+      const centerY = ySum / validNodes.length;
+      const currentVp = inst.getViewport();
+      const zoom = clampZoom(currentVp.zoom);
+      inst.setCenter(centerX, centerY, { zoom, duration: 0 });
       const vp = inst.getViewport();
       setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
-    });
+    }
   }, []);
+  
 
-  /* --------------------- Fetch / load project --------------------- */
+  /**
+   * ensureCenterAfterRender
+   * - Ensure that the ReactFlow instance exists and nodes are actually rendered before centering.
+   * - Tries a few times (small delays) to avoid centering too early.
+   * - Accepts zoomOverride which will be passed to centerLikeButton (useful to force initial zoom).
+   */
+  const ensureCenterAfterRender = (nodesList?: Node[], preserveZoom = true, maxAttempts = 18, delayMs = 60, zoomOverride?: number) => {
+    let attempts = 0;
+  
+    const tryCenter = () => {
+      const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
+      const list = nodesList ?? nodesRef.current ?? [];
+      const validNodes = list.filter((n) => typeof n.position?.x === "number" && typeof n.position?.y === "number");
+  
+      // require that reactflow has mounted its internal nodes
+      const instNodesReady = inst && typeof inst.getNodes === "function" && inst.getNodes().length > 0;
+  
+      if (inst && instNodesReady && validNodes.length > 0) {
+        // pasa zoomOverride si lo hay
+        centerLikeButton(list, preserveZoom, zoomOverride);
+        return;
+      }
+  
+      attempts++;
+      if (attempts <= maxAttempts) {
+        setTimeout(() => {
+          requestAnimationFrame(() => requestAnimationFrame(tryCenter));
+        }, delayMs);
+      } else {
+        // fallback: solo clampa zoom para evitar (0,0)
+        const fallbackInst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
+        if (fallbackInst) {
+          const vp = fallbackInst.getViewport();
+          fallbackInst.setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(vp.zoom) });
+          setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(vp.zoom) });
+        }
+      }
+    };
+  
+    requestAnimationFrame(() => requestAnimationFrame(tryCenter));
+  };
+  
+  
+/**
+ * waitForNodesReady
+ * - Espera hasta que React Flow haya montado internamente nodos y que sus posiciones
+ *   parezcan válidas (no todas 0,0 / NaN y bounding-box no trivial).
+ * - Devuelve true si se detectó un estado válido antes del timeout, false en caso contrario.
+ *
+ * @param expectedCount número esperado de nodos (si no lo conoces pon 0 o 1)
+ * @param timeoutMs tiempo máximo de espera en ms (por defecto 2500)
+ * @param debug si true hace console.log de información de depuración
+ */
+const waitForNodesReady = async (expectedCount: number, timeoutMs = 2500, debug = false): Promise<boolean> => {
+  const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
+  if (!inst) {
+    if (debug) console.warn("waitForNodesReady: no reactflow instance available");
+    return false;
+  }
+
+  const start = Date.now();
+
+  return new Promise<boolean>((resolve) => {
+    const check = () => {
+      try {
+        const instNodes = typeof inst.getNodes === "function" ? inst.getNodes() : [];
+
+        if (debug) {
+          console.debug("waitForNodesReady: instNodes.length=", instNodes.length, "expectedCount=", expectedCount);
+        }
+
+        // Requiere al menos expectedCount nodos (si expectedCount <= 0, requiere al menos 1)
+        const needed = Math.max(1, expectedCount);
+        if (instNodes && instNodes.length >= needed) {
+          // validar posiciones: contar nodos con posición numérica válida
+          let validPosCount = 0;
+          let minX = Number.POSITIVE_INFINITY, maxX = Number.NEGATIVE_INFINITY;
+          let minY = Number.POSITIVE_INFINITY, maxY = Number.NEGATIVE_INFINITY;
+
+          for (const n of instNodes) {
+            const x = n.position?.x;
+            const y = n.position?.y;
+            if (typeof x === "number" && typeof y === "number" && !Number.isNaN(x) && !Number.isNaN(y)) {
+              validPosCount++;
+              if (x < minX) minX = x;
+              if (x > maxX) maxX = x;
+              if (y < minY) minY = y;
+              if (y > maxY) maxY = y;
+            }
+          }
+
+          const bboxWidth = isFinite(minX) && isFinite(maxX) ? Math.abs(maxX - minX) : 0;
+          const bboxHeight = isFinite(minY) && isFinite(maxY) ? Math.abs(maxY - minY) : 0;
+
+          if (debug) {
+            console.debug("waitForNodesReady: validPosCount=", validPosCount, "bboxWidth=", bboxWidth, "bboxHeight=", bboxHeight);
+          }
+
+          // Heurística: al menos 1 posición válida y bounding-box no trivial
+          if (validPosCount >= 1 && (bboxWidth > 1 || bboxHeight > 1)) {
+            resolve(true);
+            return;
+          }
+        }
+      } catch (err) {
+        if (debug) console.warn("waitForNodesReady: check error", err);
+        // seguir intentando
+      }
+
+      if (Date.now() - start > timeoutMs) {
+        if (debug) console.warn("waitForNodesReady: timeout");
+        resolve(false);
+        return;
+      }
+
+      // reintentar en la siguiente animation frame (mejor para layout/paint)
+      requestAnimationFrame(check);
+    };
+
+    requestAnimationFrame(check);
+  });
+};
+
 
   /**
    * fetchAndLoadProject
    * - Loads project metadata and builds graph elements
    * - Applies saved positions if available
+   * - Centers reliably on first load using ensureCenterAfterRender helper
    */
   const fetchAndLoadProject = useCallback(async () => {
     if (!projectName) return;
@@ -301,7 +452,7 @@ export default function ProjectPage() {
     try {
       const data = await fetchProject(projectName);
       setProject(data);
-
+  
       if (data.protocols) {
         const { nodes: loadedNodes, edges: loadedEdges, table } = buildGraphElements(
           data.shortName,
@@ -309,12 +460,16 @@ export default function ProjectPage() {
           viewMode,
           graphDirection
         );
+  
+        // aplicar posiciones guardadas si existen
         const nodesWithPositions = loadNodesWithPositions(loadedNodes);
-
+  
+        // actualizar estado principal
         setNodes(nodesWithPositions);
         setEdges(loadedEdges);
         setTableData(table ?? []);
-
+  
+        // configurar ticks iniciales
         const initialTicks: Record<string, number> = {};
         nodesWithPositions.forEach((n) => {
           if (n.data?.status === "running") {
@@ -322,29 +477,168 @@ export default function ProjectPage() {
           }
         });
         setNodeTicks(initialTicks);
-
+  
         setNodesLoadedOnce(true);
+  
+        // --- CENTRAR SOLO EN LA PRIMERA CARGA (nuevo enfoque: MutationObserver en DOM) ---
+        if (firstLoadRef.current && viewMode === "hierarchical") {
+          // NO marcar firstLoadRef false hasta que realmente hayamos centrado (evita dobles)
+          console.debug("[fetchAndLoadProject] first load: observing DOM for nodes...");
+  
+          const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
+          const desiredCount = Math.max(1, nodesWithPositions.length);
+  
+          // Helper: cleanup observer + fallback timer
+          let observer: MutationObserver | null = null;
+          let fallbackTimer: any = null;
+          let centered = false;
+  
+          const doCenter = (methodDesc: string) => {
+            if (centered) return;
+            centered = true;
+            try {
+              console.debug(`[fetchAndLoadProject] centering via ${methodDesc}`);
+              // usamos zoom guardado para respetar zoom inicial
+              centerLikeButton(nodesWithPositions, true, viewportRef.current.zoom);
+            } catch (err) {
+              console.warn("[fetchAndLoadProject] centerLikeButton failed:", err);
+              // intento fallback: fitView if possible
+              try {
+                if (inst && inst.getNodes && inst.getNodes().length > 0) {
+                  inst.fitView({ padding: 0.12, duration: 0 });
+                  const vp = inst.getViewport();
+                  setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
+                } else if (inst) {
+                  const vp = inst.getViewport();
+                  inst.setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(viewportRef.current.zoom) });
+                  setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(viewportRef.current.zoom) });
+                }
+              } catch (_) {
+                // ignore
+              }
+            } finally {
+              // mark as done
+              firstLoadRef.current = false;
+              if (observer) {
+                try { observer.disconnect(); } catch {}
+                observer = null;
+              }
+              if (fallbackTimer) {
+                clearTimeout(fallbackTimer);
+                fallbackTimer = null;
+              }
+            }
+          };
+  
+          try {
+            // intentamos observar el contenedor de nodos de React Flow
+            const nodesContainer = document.querySelector(".react-flow__nodes");
+            if (nodesContainer) {
+              // Si ya hay suficientes .react-flow__node en el DOM, centrar inmediatamente
+              const initialNodeEls = nodesContainer.querySelectorAll(".react-flow__node");
+              console.debug("[fetchAndLoadProject] initial .react-flow__node count:", initialNodeEls.length, "desired:", desiredCount);
+              if (initialNodeEls.length >= desiredCount) {
+                // dar un par de frames para asegurar paint y luego centrar
+                requestAnimationFrame(() => requestAnimationFrame(() => doCenter("dom-immediate")));
+              } else {
+                // observar mutaciones (children añadidos) hasta que tengamos suficientes nodos
+                observer = new MutationObserver(() => {
+                  const els = nodesContainer.querySelectorAll(".react-flow__node");
+                  // debug:
+                  // console.debug("MutationObserver: nodes count", els.length);
+                  if (els.length >= desiredCount) {
+                    // esperar dos rAF para asegurar que estilos y layout están aplicados
+                    requestAnimationFrame(() => requestAnimationFrame(() => doCenter("dom-observer")));
+                  }
+                });
+                observer.observe(nodesContainer, { childList: true, subtree: true });
+                // como seguridad, establece un timeout fallback (3s) que usa waitForNodesReady
+                fallbackTimer = setTimeout(async () => {
+                  console.debug("[fetchAndLoadProject] fallbackTimer fired: trying waitForNodesReady");
+                  if (observer) {
+                    try { observer.disconnect(); } catch {}
+                    observer = null;
+                  }
+                  const ready = await waitForNodesReady(nodesWithPositions.length, 2000, true);
+                  if (ready) {
+                    doCenter("waitForNodesReady-fallback");
+                  } else {
+                    // última opción: fitView/clamp
+                    doCenter("fallback-final");
+                  }
+                }, 3000);
+              }
+            } else {
+              // si no encontramos el contenedor DOM, fallback a waitForNodesReady
+              console.debug("[fetchAndLoadProject] .react-flow__nodes not found -> using waitForNodesReady");
+              const ready = await waitForNodesReady(nodesWithPositions.length, 2500, true);
+              if (ready && inst) {
+                doCenter("waitForNodesReady");
+              } else if (inst) {
+                // fallback final
+                try {
+                  if (inst.getNodes && inst.getNodes().length > 0) {
+                    inst.fitView({ padding: 0.12, duration: 0 });
+                    const vp = inst.getViewport();
+                    setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
+                  } else {
+                    const vp = inst.getViewport();
+                    inst.setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(viewportRef.current.zoom) });
+                    setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(viewportRef.current.zoom) });
+                  }
+                } catch (err) {
+                  console.warn("[fetchAndLoadProject] final fallback failed", err);
+                } finally {
+                  firstLoadRef.current = false;
+                }
+              } else {
+                firstLoadRef.current = false;
+              }
+            }
+          } catch (err) {
+            console.warn("[fetchAndLoadProject] observer setup failed, doing fallback centering", err);
+            // fallback inmediato: try waitForNodesReady + center
+            const ready = await waitForNodesReady(nodesWithPositions.length, 2000, true);
+            if (ready && inst) {
+              doCenter("catch-fallback");
+            } else {
+              if (inst) {
+                try {
+                  if (inst.getNodes && inst.getNodes().length > 0) {
+                    inst.fitView({ padding: 0.12, duration: 0 });
+                    const vp = inst.getViewport();
+                    setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
+                  } else {
+                    const vp = inst.getViewport();
+                    inst.setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(viewportRef.current.zoom) });
+                    setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(viewportRef.current.zoom) });
+                  }
+                } catch (_) {}
+              }
+              firstLoadRef.current = false;
+            }
+          }
+        }
       }
     } catch (err) {
-      console.error(err);
+      console.error("fetchAndLoadProject error:", err);
+      // ensure we don't leave refreshing forever
     } finally {
       setIsRefreshing(false);
-      if (firstLoadRef.current) {
-        setIsInitialLoading(false);
-        firstLoadRef.current = false;
-      }
     }
-  }, [projectName, viewMode, graphDirection]);
+  }, [projectName, viewMode, graphDirection, centerLikeButton]);
+  
 
   useEffect(() => {
     fetchAndLoadProject();
   }, [fetchAndLoadProject]);
 
-  /* --------------------- Refresh --------------------- */
+  // ------------------------ Refresh ------------------------
 
   /**
    * handleRefresh
    * - Re-fetch project data and merge new nodes/edges
+   * - IMPORTANT: does NOT recenter or change node positions
    */
   const handleRefresh = useCallback(async () => {
     if (!projectName) return;
@@ -396,7 +690,7 @@ export default function ProjectPage() {
     return () => clearInterval(interval);
   }, []);
 
-  /* --------------------- Reorganize (rebuild) --------------------- */
+  // ------------------------ Reorganize (rebuild) ------------------------
 
   /**
    * handleReorganize
@@ -406,9 +700,6 @@ export default function ProjectPage() {
     async (opts?: { preserveZoom?: boolean }) => {
       if (!projectName) return;
       try {
-        const instance = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
-        const currentViewport = instance?.getViewport() ?? viewport;
-
         try {
           localStorage.removeItem(`${localStorageKey}-${graphDirection}`);
         } catch (err) {
@@ -441,6 +732,7 @@ export default function ProjectPage() {
         setTableData(table ?? []);
         setNodeTicks({});
 
+        // center after reorganize (preserve zoom)
         setTimeout(() => {
           const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
           if (!inst) {
@@ -448,27 +740,19 @@ export default function ProjectPage() {
             return;
           }
 
-          if (loadedNodes.length > 0) {
-            // center like the button (wait two frames to ensure paint) and then wait a bit before hiding overlay
-            requestAnimationFrame(() => {
-              requestAnimationFrame(() => {
-                centerLikeButton(loadedNodes, opts?.preserveZoom ?? true);
-                // small timeout to ensure browser painted final result -> reduces flicker
-                setTimeout(() => {
-                  disablePersistenceRef.current = false;
-                }, 60);
-              });
-            });
+          if (loadedNodes.length > 0 && viewMode === "hierarchical") {
+            // Use viewportRef.current.zoom to try to preserve initial zoom if needed
+            centerLikeButton(loadedNodes, opts?.preserveZoom ?? true, viewportRef.current.zoom);
           } else {
-            const clamped = {
-              x: currentViewport.x,
-              y: currentViewport.y,
-              zoom: clampZoom(currentViewport.zoom),
-            };
-            inst.setViewport(clamped);
-            setViewport(clamped);
-            disablePersistenceRef.current = false;
+            const vp = inst.getViewport();
+            inst.setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(vp.zoom) });
+            setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(vp.zoom) });
           }
+
+          // re-enable persistence after a short delay
+          setTimeout(() => {
+            disablePersistenceRef.current = false;
+          }, 60);
         }, 0);
       } catch (err) {
         console.error(err);
@@ -478,9 +762,7 @@ export default function ProjectPage() {
     [projectName, viewMode, graphDirection, viewport, centerLikeButton]
   );
 
-  /* --------------------- Ticks updater --------------------- */
-
-  // increment running ticks every second for UI updates
+  // ------------------------ Ticks updater ------------------------
   useEffect(() => {
     const interval = setInterval(() => {
       setNodeTicks((prev) => {
@@ -493,18 +775,11 @@ export default function ProjectPage() {
         return updated;
       });
 
-      setTableData((prev) =>
-        prev.map((row) =>
-          row.status === "running"
-            ? { ...row, tick: (row.tick ?? Number(row.elapsedTime) ?? 0) + 1 }
-            : row
-        )
-      );
+      setTableData((prev) => prev.map((row) => (row.status === "running" ? { ...row, tick: (row.tick ?? Number(row.elapsedTime) ?? 0) + 1 } : row)));
     }, 1000);
     return () => clearInterval(interval);
   }, []);
 
-  // push tick values into nodes' data
   useEffect(() => {
     setNodes((nds) =>
       nds.map((node) => ({
@@ -517,13 +792,10 @@ export default function ProjectPage() {
     );
   }, [nodeTicks]);
 
-  /* --------------------- Layout change effect --------------------- */
-
+  // ------------------------ Layout change effect ------------------------
   const prevLayout = useRef({ viewMode, graphDirection });
   useLayoutEffect(() => {
-    const layoutChanged =
-      prevLayout.current.viewMode !== viewMode ||
-      prevLayout.current.graphDirection !== graphDirection;
+    const layoutChanged = prevLayout.current.viewMode !== viewMode || prevLayout.current.graphDirection !== graphDirection;
     if (!layoutChanged) return;
     if (!project?.protocols) {
       prevLayout.current = { viewMode, graphDirection };
@@ -538,12 +810,7 @@ export default function ProjectPage() {
 
     const currentViewport = instance.getViewport();
 
-    const { nodes: loadedNodes, edges: loadedEdges } = buildGraphElements(
-      project.shortName,
-      project.protocols,
-      viewMode,
-      graphDirection
-    );
+    const { nodes: loadedNodes, edges: loadedEdges } = buildGraphElements(project.shortName, project.protocols, viewMode, graphDirection);
     const nodesWithPositions = loadNodesWithPositions(loadedNodes);
 
     // prevent persistence while we swap
@@ -562,7 +829,6 @@ export default function ProjectPage() {
         const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
         if (!inst) {
           disablePersistenceRef.current = false;
-          // small delay to ensure overlay doesn't flicker off/on
           setTimeout(() => setIsSwitchingLayout(false), 60);
           prevLayout.current = { viewMode, graphDirection };
           return;
@@ -570,7 +836,6 @@ export default function ProjectPage() {
 
         if (nodesWithPositions.length > 0 && viewMode === "hierarchical") {
           centerLikeButton(nodesWithPositions, true);
-          // give browser a bit of time to paint final positions (reduces visible flicker)
           requestAnimationFrame(() => {
             setTimeout(() => {
               disablePersistenceRef.current = false;
@@ -579,12 +844,7 @@ export default function ProjectPage() {
             }, 60);
           });
         } else {
-          // non-hierarchical: restore previous viewport instantly
-          const clamped = {
-            x: currentViewport.x,
-            y: currentViewport.y,
-            zoom: clampZoom(currentViewport.zoom),
-          };
+          const clamped = { x: currentViewport.x, y: currentViewport.y, zoom: clampZoom(currentViewport.zoom) };
           inst.setViewport(clamped);
           setViewport(clamped);
           requestAnimationFrame(() => {
@@ -601,23 +861,22 @@ export default function ProjectPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [graphDirection, viewMode, project]);
 
-  /* --------------------- Initial center effect --------------------- */
-
+  // ------------------------ Initial first-center effect ----------
   useEffect(() => {
     if (!nodesLoadedOnce) return;
     const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
     if (!inst) return;
 
-    // ensure overlay on while we calculate + paint
+    // overlay on while we calculate + paint
     setIsSwitchingLayout(true);
 
-    // compute center from the current nodes state (which we set when fetched)
     const validNodes = nodes.filter((n) => typeof n.position?.x === "number" && typeof n.position?.y === "number");
     if (validNodes.length > 0) {
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-          centerLikeButton(nodes, true);
-          // wait a little after paint before hiding overlay to avoid flicker
+          // only center if this is the very first load (guarded by firstLoadRef in fetch)
+          // here we just make sure viewport state is clamped and that we respect initial zoom
+          inst.setViewport({ x: viewportRef.current.x, y: viewportRef.current.y, zoom: clampZoom(viewportRef.current.zoom) });
           setTimeout(() => {
             setIsSwitchingLayout(false);
           }, 60);
@@ -638,17 +897,14 @@ export default function ProjectPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nodesLoadedOnce]);
 
-  /* --------------------- Table switching: avoid flicker --------------------- */
-
+  // --------------------- Table switching: avoid flicker ---------------------
   useEffect(() => {
     if (viewMode === "table") {
       setTableVisible(false);
-      // while switching to table we still use the overlay (so both panes don't paint intermediate states)
       setIsSwitchingLayout(true);
       requestAnimationFrame(() => {
         setTableVisible(true);
         requestAnimationFrame(() => {
-          // small wait to ensure paint complete
           setTimeout(() => {
             setIsSwitchingLayout(false);
           }, 60);
@@ -815,17 +1071,29 @@ export default function ProjectPage() {
     };
   }, [contextMenu.visible]);
 
-  // ReactFlow init / move handlers (kept as in your original code)
-  const handleOnInit = useCallback((inst: ReactFlowInstance) => {
-    reactFlowInstanceRef.current = inst;
-  }, []);
+  // ------------------------ ReactFlow init / move handlers ------------------------
+const handleOnInit = useCallback((inst: ReactFlowInstance) => {
+  reactFlowInstanceRef.current = inst;
+  try {
+    const current = inst.getViewport();
+    // clamp zoom but KEEP current x/y que React Flow ya tiene
+    const desiredZoom = clampZoom(viewportRef.current.zoom ?? current.zoom);
+    inst.setViewport({ x: current.x, y: current.y, zoom: desiredZoom });
+    const vp = inst.getViewport();
+    // sincronizamos el state con lo que realmente hay en la instancia
+    setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
+  } catch (err) {
+    // ignore
+  }
+}, []);
+
+
 
   const handleOnMoveEnd = useCallback((_: any, vp: { x: number; y: number; zoom: number }) => {
     setViewport(vp);
   }, []);
 
-  /* --------------------- Controls for zoom / fit / center --------------------- */
-
+  // ------------------------ Controls ------------------------
   const ZOOM_FACTOR = 1.2;
   const handleZoomIn = useCallback(() => {
     const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
@@ -847,78 +1115,16 @@ export default function ProjectPage() {
     setViewport({ x: newVp.x, y: newVp.y, zoom: newVp.zoom });
   }, []);
 
-  const handleCenterPreserveZoom = useCallback(() => {
-    const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
-    if (!inst || !nodes || nodes.length === 0) return;
-    const validNodes = nodes.filter((n) => typeof n.position?.x === "number" && typeof n.position?.y === "number");
-    if (validNodes.length === 0) return;
-    const xSum = validNodes.reduce((sum, n) => sum + (n.position!.x ?? 0), 0);
-    const ySum = validNodes.reduce((sum, n) => sum + (n.position!.y ?? 0), 0);
-    const centerX = xSum / validNodes.length;
-    const centerY = ySum / validNodes.length;
-    const currentZoomRaw = inst.getViewport().zoom ?? viewport.zoom;
-    const currentZoom = clampZoom(currentZoomRaw);
-    inst.setCenter(centerX, centerY, { zoom: currentZoom, duration: 0 });
-    const vp = inst.getViewport();
-    setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
-  }, [nodes, viewport]);
-
-  const handleZoomToFit = useCallback(() => {
-    const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
-    if (!inst) return;
-    inst.fitView({ padding: 0.2, duration: 0 });
-    requestAnimationFrame(() => {
-      let vp = inst.getViewport();
-      const clamped = { x: vp.x, y: vp.y, zoom: clampZoom(vp.zoom) };
-      inst.setViewport(clamped);
-      setViewport(clamped);
-    });
-  }, []);
-
-  /* --------------------- Context menu portal component --------------------- */
-
   /**
-   * ContextMenuPortal
-   * - Renders children into document.body using createPortal.
-   * - Positioned with client viewport coordinates to avoid transform offsets.
+   * handleFitView
+   * - behaves like "center, preserve zoom" (the button in your custom controls)
    */
-  const ContextMenuPortal: React.FC<{
-    x: number;
-    y: number;
-    onClose: () => void;
-    children: React.ReactNode;
-  }> = ({ x, y, onClose, children }) => {
-    useEffect(() => {
-      // prevent browser context menu while our menu is open
-      const onContext = (e: MouseEvent) => {
-        e.preventDefault();
-      };
-      window.addEventListener("contextmenu", onContext);
-      return () => window.removeEventListener("contextmenu", onContext);
-    }, []);
+  const handleFitView = useCallback(() => {
+    // preserve zoom by default
+    centerLikeButton(undefined, true);
+  }, [centerLikeButton]);
 
-    const menu = (
-      <div
-        className="rf-context-menu-portal"
-        style={{
-          position: "fixed",
-          top: y,
-          left: x,
-          zIndex: 99999,
-          transform: "translate(0, 0)",
-          maxWidth: "min(90vw, 420px)",
-        }}
-        onContextMenu={(e) => e.preventDefault()}
-        onMouseDown={(e) => e.stopPropagation()}
-      >
-        {children}
-      </div>
-    );
-
-    return createPortal(menu, document.body);
-  };
-
-  /* --------------------- Render UI --------------------- */
+  // ------------------------ Render ------------------------
   return (
     <div className="h-screen flex flex-col">
       {/* Header */}
@@ -965,30 +1171,12 @@ export default function ProjectPage() {
         </div>
       </div>
 
-      {/* If a protocol is selected, render form */}
       {selectedNodeDetails && <ProtocolForm data={selectedNodeDetails} onClose={handleCloseForm} />}
 
       <div className="flex-1 relative">
         {/* Initial blocking overlay only during first fetch */}
-        {isInitialLoading && isRefreshing && (
-          <div className="absolute inset-0 flex items-center justify-center bg-white/90 z-50">
-            <div className="flex items-center gap-3">
-              <div className="w-6 h-6 border-2 border-gray-300 border-t-gray-500 rounded-full animate-spin" />
-              <span className="text-gray-700 text-sm font-medium">Loading project...</span>
-            </div>
-          </div>
-        )}
-
-        {/* Blocking overlay while switching layout */}
-        {isSwitchingLayout && !(isInitialLoading && isRefreshing) && (
-          <div
-            aria-hidden
-            className="absolute inset-0 z-60 flex items-center justify-center"
-            style={{
-              background: "var(--reactflow-background, #ffffff)",
-              pointerEvents: "auto",
-            }}
-          >
+        {isSwitchingLayout && (
+          <div aria-hidden className="absolute inset-0 z-60 flex items-center justify-center" style={{ background: "var(--reactflow-background, #ffffff)", pointerEvents: "auto" }}>
             <div className="flex items-center gap-3">
               <div className="w-7 h-7 border-2 border-gray-300 border-t-gray-500 rounded-full animate-spin" />
             </div>
@@ -996,14 +1184,7 @@ export default function ProjectPage() {
         )}
 
         {/* TABLE pane */}
-        <div
-          ref={tableContainerRef}
-          className="absolute inset-0 overflow-auto border rounded shadow p-4 z-30"
-          style={{
-            display: viewMode === "table" ? (tableVisible ? "block" : "none") : "none",
-          }}
-          aria-hidden={viewMode !== "table"}
-        >
+        <div ref={tableContainerRef} className="absolute inset-0 overflow-auto border rounded shadow p-4 z-30" style={{ display: viewMode === "table" ? (tableVisible ? "block" : "none") : "none" }} aria-hidden={viewMode !== "table"}>
           <div className="flex justify-end mb-4 mr-1">
             <button className="refresh-btn" title="Refresh project" onClick={handleRefresh} disabled={isRefreshing}>
               <RefreshCw className={`w-4 h-4 ${isRefreshing ? "animate-spin" : ""}`} />
@@ -1052,23 +1233,12 @@ export default function ProjectPage() {
         </div>
 
         {/* ReactFlow pane */}
-        <div
-          className="absolute inset-0 border"
-          style={{
-            display: viewMode === "hierarchical" ? "block" : "none",
-            zIndex: 20,
-            willChange: "transform, opacity",
-            transformStyle: "preserve-3d",
-            WebkitBackfaceVisibility: "hidden",
-            backfaceVisibility: "hidden",
-          }}
-          aria-hidden={viewMode !== "hierarchical"}
-        >
+        <div className="absolute inset-0 border" style={{ display: viewMode === "hierarchical" ? "block" : "none", zIndex: 20 }} aria-hidden={viewMode !== "hierarchical"}>
           <div className="absolute top-4 right-4 z-50">
             <div className="flex flex-col gap-1 p-1 bg-white/90 rounded shadow">
               <button title="Zoom in" onClick={handleZoomIn} className="p-1 rounded hover:bg-gray-100 dark:text-black"><PlusIcon className="w-4 h-4" /></button>
               <button title="Zoom out" onClick={handleZoomOut} className="p-1 rounded hover:bg-gray-100 dark:text-black"><MinusIcon className="w-4 h-4" /></button>
-              <button title="Fit view" onClick={handleCenterPreserveZoom} className="p-1 rounded hover:bg-gray-100 dark:text-black"><FitViewIcon className="w-4 h-4" /></button>
+              <button title="Fit view (preserve zoom)" onClick={handleFitView} className="p-1 rounded hover:bg-gray-100 dark:text-black"><FitViewIcon className="w-4 h-4" /></button>
               <button title="Reorganize project" onClick={() => handleReorganize({ preserveZoom: true })} className="p-1 rounded hover:bg-gray-100 dark:text-black"><TreeIcon className="w-4 h-4" /></button>
               <button title="Refresh project" onClick={handleRefresh} className="p-1 rounded hover:bg-gray-100 dark:text-black"><RefreshCw className={`w-4 h-4 ${isRefreshing ? "animate-spin" : ""}`} /></button>
             </div>
@@ -1108,44 +1278,28 @@ export default function ProjectPage() {
               <Background />
             </ReactFlow>
 
-            {/* Render context menu using portal (so transforms on ReactFlow do not affect positioning) */}
             {contextMenu.visible && (
-              <ContextMenuPortal x={contextMenu.x} y={contextMenu.y} onClose={handleCloseMenu}>
-                <div className="bg-white rounded shadow-md w-48 ring-1 ring-black/5 overflow-hidden">
-                  <button
-                    className="w-full text-left px-3 py-2 hover:bg-gray-200 flex items-center gap-2 text-sm dark:text-black"
-                    onClick={() => {
-                      // Example behavior: add protocol - adapt to your actual add flow
-                      handleRefresh();
-                      handleCloseMenu();
-                    }}
-                  >
-                    <Plus className="w-4 h-4 mr-1 text-gray-500" /> Add protocol
-                  </button>
+              <DropdownMenu open={true} onOpenChange={handleCloseMenu}>
+                <DropdownMenuTrigger asChild>
+                  <button style={{ position: "fixed", top: contextMenu.y, left: contextMenu.x, width: 0, height: 0, opacity: 0 }} />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-48">
+                  <DropdownMenuItem onClick={() => { handleRefresh(); handleCloseMenu(); }}>
+                    <PlusIcon className="w-4 h-4 mr-2" />
+                    Add protocol
+                  </DropdownMenuItem>
 
-                  <button
-                    className="w-full text-left px-3 py-2 hover:bg-gray-100 flex items-center gap-2 text-sm dark:text-black"
-                    onClick={() => {
-                      handleRefresh();
-                      handleCloseMenu();
-                    }}
-                  >
-                    <RefreshCw className="w-4 h-4 mr-1 text-gray-500" />
+                  <DropdownMenuItem onClick={() => { handleRefresh(); handleCloseMenu(); }}>
+                    <RefreshCw className="w-4 h-4 mr-2" />
                     Refresh graph
-                  </button>
+                  </DropdownMenuItem>
 
-                  <button
-                    className="w-full text-left px-3 py-2 hover:bg-gray-100 flex items-center gap-2 text-sm dark:text-black"
-                    onClick={() => {
-                      setNodes((nds) => nds.map((n) => ({ ...n, selected: false })));
-                      handleCloseMenu();
-                    }}
-                  >
-                    <Trash2 className="w-4 h-4 mr-1 text-gray-500" />
+                  <DropdownMenuItem onClick={() => { setNodes((nds) => nds.map((n) => ({ ...n, selected: false }))); handleCloseMenu(); }}>
+                    <Trash2 className="w-4 h-4 mr-2" />
                     Clear selection
-                  </button>
-                </div>
-              </ContextMenuPortal>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
           </ReactFlowProvider>
         </div>
