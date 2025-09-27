@@ -3,7 +3,7 @@ import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { CalendarIcon, FolderIcon, StorageIcon } from "../../icons";
 import ProjectAction from "./ProjectActions";
-import { deleteProject, renameProject } from "@/api/projects";
+import { deleteProject, fetchProject, renameProject } from "@/api/projects";
 import toast from "react-hot-toast";
 
 interface ProjectCardProps {
@@ -50,11 +50,16 @@ export default function ProjectCard({
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
+
   // Navigate to project detail
-  const handleDoubleClick = () => {
+  const handleOpen = async () => {
     if (!isRenaming) {
       navigate(`/project/load/${id}`);
     }
+  };
+
+  const handleDoubleClick = () => {
+    handleOpen();
   };
 
   // Trigger rename mode
@@ -106,8 +111,8 @@ export default function ProjectCard({
   };
 
   useEffect(() => {
-      setNewLabel(label);
-      setNewDescription(description);
+    setNewLabel(label);
+    setNewDescription(description);
   }, [label, description]);
 
   return (
@@ -177,18 +182,18 @@ export default function ProjectCard({
             </div>
 
             {/* Action buttons */}
-            {!isRenaming && ( 
+            {!isRenaming && (
               <div className="shrink-0">
-              <ProjectAction
-                icon={null}
-                label=""
-                onOpen={handleDoubleClick}
-                onRename={handleRename}
-                onRemove={handleRemove}
-              />
-            </div>
+                <ProjectAction
+                  icon={null}
+                  label=""
+                  onOpen={handleOpen}
+                  onRename={handleRename}
+                  onRemove={handleRemove}
+                />
+              </div>
             )}
-            
+
           </div>
         </div>
 
