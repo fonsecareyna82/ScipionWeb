@@ -1,6 +1,6 @@
 import { useParams, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
-import { fetchPluginById, Plugin, installPlugin, checkTaskStatus, uninstallPlugin } from "@/api/plugins";
+import { fetchPluginById, Plugin, installPlugin, uninstallPlugin } from "@/api/plugins";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
@@ -10,9 +10,8 @@ import { useProcessingPlugins } from "@/hooks/useProcessingPlugins";
 export default function PluginPage() {
     const { pipName } = useParams<{ pipName: string }>();
     const [plugin, setPlugin] = useState<Plugin | null>(null);
-    const [uninstalling, setUnstalling] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [success, setSuccess] = useState<string | null>(null);
+    const [success] = useState<string | null>(null);
     const navigate = useNavigate();
     const {
         installing,

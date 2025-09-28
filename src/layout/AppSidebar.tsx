@@ -3,7 +3,6 @@ import { Link, useLocation } from "react-router";
 import {
   BoxCubeIcon,
   CalenderIcon,
-  ChevronDownIcon,
   FolderIcon,
   GridIcon,
   HorizontaLDots,
@@ -18,7 +17,7 @@ import { useSidebar } from "../context/SidebarContext";
 import SidebarWidget from "./SidebarWidget";
 import * as React from "react";
 import * as TooltipPrimitive from "@radix-ui/react-tooltip";
-import { LucideSettings2, Settings, Settings2, Settings2Icon, SettingsIcon } from "lucide-react";
+import { LucideSettings2} from "lucide-react";
 
 export const TooltipProvider = TooltipPrimitive.Provider;
 export const Tooltip = TooltipPrimitive.Root;

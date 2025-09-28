@@ -45,7 +45,7 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
 
   // Drag/drop state
   const [dragOverKey, setDragOverKey] = useState<string | null>(null);
-  const [currentDraggedOutput, setCurrentDraggedOutput] = useState<any>(null);
+  const [currentDraggedOutput] = useState<any>(null);
 
   // Parse JSON value
   const parseFromJSONValue = (maybeJson: any) => {
@@ -189,19 +189,6 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
       if (typeof c === 'string' && c.trim()) return c.trim();
     }
     return undefined;
-  };
-
-  const getDraggedOutput = (dataTransfer: DataTransfer) => {
-    try {
-      const raw =
-        dataTransfer.getData('application/scipion-output') ||
-        dataTransfer.getData('text/plain') ||
-        dataTransfer.getData('text');
-      if (!raw) return null;
-      return JSON.parse(raw);
-    } catch (err) {
-      return null;
-    }
   };
 
   const getSerializedParams = useCallback(() => {
@@ -583,7 +570,7 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
         >
           <Tabs
             value={topTab}
-            onChange={(e, val) => setTopTab(val)}
+            onChange={(_, val) => setTopTab(val)}
             variant="scrollable"
             scrollButtons="auto"
             allowScrollButtonsMobile
@@ -612,7 +599,7 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
               <>
                 <Tabs
                   value={sectionTab}
-                  onChange={(e, val) => setSectionTab(val)}
+                  onChange={(_, val) => setSectionTab(val)}
                   variant="scrollable"
                   scrollButtons="auto"
                   allowScrollButtonsMobile
@@ -653,7 +640,7 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
               <Box sx={{ flexGrow: 3, overflowY: 'auto' }}>
                 <Tabs
                   value={bottomTab}
-                  onChange={(e, val) => setBottomTab(val)}
+                  onChange={(_, val) => setBottomTab(val)}
                   sx={{
                     mb: 2,
                     '& .MuiTab-root': {

@@ -1,4 +1,5 @@
-import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+// src/App.tsx
+import { Routes, Route } from "react-router-dom";
 import SignIn from "./pages/AuthPages/SignIn";
 import SignUp from "./pages/AuthPages/SignUp";
 import NotFound from "./pages/OtherPage/NotFound";
@@ -27,61 +28,73 @@ import VerifyEmailForm from "./components/auth/VerifyEmailForm";
 import SessionManager from "./components/common/SessionManager";
 import { Toaster } from "react-hot-toast";
 import { DragProvider } from "./components/protocol/DragContext";
+import { ProjectServiceProvider } from "./ProjectServiceContext";
+import type { ProjectService } from "./services/ProjectService";
 
+/**
+ * App ya NO monta un <Router>.
+ * Quien importe App debe envolverlo en <BrowserRouter> o <MemoryRouter>.
+ *
+ * Recuerda:
+ * - main.tsx (app normal) envolverá a App con BrowserRouter
+ * - entry-umd.tsx (widget) envolerá con MemoryRouter/BrowserRouter según opciones
+ */
 
-export default function App() {
+interface AppProps {
+  service?: ProjectService;
+}
+
+export default function App({ service }: AppProps) {
   return (
     <DragProvider>
-    <Router>
-      <ScrollToTop />
-      <SessionManager />  {/* Controlling inactivity */}
-      <Routes>
-        {/* Home page: login */}
-        <Route path="/" element={<SignIn />} />
+      <ProjectServiceProvider service={service}>
+        <ScrollToTop />
+        <SessionManager /> {/* controlling inactivity, usa useNavigate -> requiere Router en caller */}
+        <Routes>
+          <Route path="/" element={<SignIn />} />
+          <Route path="/signin" element={<SignIn />} />
+          <Route path="/signup" element={<SignUp />} />
 
-        {/* Publics routes */}
-        <Route path="/signin" element={<SignIn />} />
-        <Route path="/signup" element={<SignUp />} />
+          {/* Protected routes inside layout */}
+          <Route
+            element={
+              <ProtectedRoute>
+                <AppLayout />
+              </ProtectedRoute>
+            }
+          >
+            <Route index path="/home" element={<Home />} />
+            <Route path="/projects" element={<Projects />} />
+            <Route path="/project/load/:projectName" element={<ProjectPage />} />
+            <Route path="/plugins/" element={<Plugins />} />
+            <Route path="/plugins/:pipName" element={<PluginPage />} />
+            <Route path="/profile" element={<UserProfiles />} />
+            <Route path="/calendar" element={<Calendar />} />
+            <Route path="/blank" element={<Blank />} />
+            <Route path="/form-elements" element={<FormElements />} />
+            <Route path="/basic-tables" element={<BasicTables />} />
+            <Route path="/alerts" element={<Alerts />} />
+            <Route path="/avatars" element={<Avatars />} />
+            <Route path="/badge" element={<Badges />} />
+            <Route path="/buttons" element={<Buttons />} />
+            <Route path="/images" element={<Images />} />
+            <Route path="/videos" element={<Videos />} />
+            <Route path="/line-chart" element={<LineChart />} />
+            <Route path="/bar-chart" element={<BarChart />} />
+            <Route path="/verify-email" element={<VerifyEmailForm />} />
+          </Route>
 
-        {/* Protected rutes inside layout */}
-        <Route
-          element={
-            <ProtectedRoute>
-              <AppLayout />
-            </ProtectedRoute>
-          }
-        >
-          <Route index path="/home" element={<Home />} />
-          <Route path="/projects" element={<Projects />} />
-          <Route path="/project/load/:projectName" element={<ProjectPage />} />
-          <Route path="/plugins/" element={<Plugins />} />
-          <Route path="/plugins/:pipName" element={<PluginPage />} />
-          <Route path="/profile" element={<UserProfiles />} />
-          <Route path="/calendar" element={<Calendar />} />
-          <Route path="/blank" element={<Blank />} />
-          <Route path="/form-elements" element={<FormElements />} />
-          <Route path="/basic-tables" element={<BasicTables />} />
-          <Route path="/alerts" element={<Alerts />} />
-          <Route path="/avatars" element={<Avatars />} />
-          <Route path="/badge" element={<Badges />} />
-          <Route path="/buttons" element={<Buttons />} />
-          <Route path="/images" element={<Images />} />
-          <Route path="/videos" element={<Videos />} />
-          <Route path="/line-chart" element={<LineChart />} />
-          <Route path="/bar-chart" element={<BarChart />} />
-          <Route path="/verify-email" element={<VerifyEmailForm />} />
-        </Route>
+          {/* Not found */}
+          <Route path="*" element={<NotFound />} />
+        </Routes>
 
-        {/* Page not found */}
-        <Route path="*" element={<NotFound />} />
-      </Routes>
-      <Toaster
-        position="top-right"
-        containerStyle={{
-          zIndex: 999999,  
-        }}
-      />
-    </Router>
+        <Toaster
+          position="top-right"
+          containerStyle={{
+            zIndex: 999999,
+          }}
+        />
+      </ProjectServiceProvider>
     </DragProvider>
   );
 }

@@ -1,13 +1,14 @@
+// src/components/projects/ProjectsCard.tsx
 import { useNavigate } from "react-router-dom";
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { CalendarIcon, FolderIcon, StorageIcon } from "../../icons";
 import ProjectAction from "./ProjectActions";
-import { deleteProject, fetchProject, renameProject } from "@/api/projects";
 import toast from "react-hot-toast";
+import { useProjectService } from "@/ProjectServiceContext";
 
 interface ProjectCardProps {
-  id: number;
+  id: string | number;
   label: string;
   value: string | number;
   badgeValue?: string;
@@ -20,8 +21,8 @@ interface ProjectCardProps {
   onToggleExpand?: () => void;
   description?: string;
   status?: string;
-  onDelete?: (id: number) => void;
-  onRename?: (id: number, newLabel: string, newDescription: string) => void;
+  onDelete?: (id: number | string) => void;
+  onRename?: (id: number | string, newLabel: string, newDescription: string) => void;
 }
 
 export default function ProjectCard({
@@ -50,10 +51,12 @@ export default function ProjectCard({
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
+  const svc = useProjectService();
 
-  // Navigate to project detail
+  // Navigate to project detail (keeps original behavior)
   const handleOpen = async () => {
     if (!isRenaming) {
+      // Optionally you could prefetch project data here via svc.fetchProject(id)
       navigate(`/project/load/${id}`);
     }
   };
@@ -75,10 +78,10 @@ export default function ProjectCard({
     setShowDeleteModal(true);
   };
 
-  // Confirm deletion
+  // Confirm deletion (uses service)
   const confirmRemove = async () => {
     try {
-      await deleteProject(id.toString());
+      await svc.deleteProject(String(id));
       toast.success(`Project "${label}" deleted successfully`);
       setShowDeleteModal(false);
       onDelete?.(id);
@@ -87,7 +90,7 @@ export default function ProjectCard({
     }
   };
 
-  // Handle rename and description update
+  // Handle rename and description update (uses service)
   const handleRenameSubmit = async () => {
     if (!newLabel.trim()) {
       setErrorMessage("Project name cannot be empty.");
@@ -99,7 +102,7 @@ export default function ProjectCard({
     }
 
     try {
-      await renameProject(id.toString(), newLabel.trim(), newDescription.trim());
+      const updated = await svc.renameProject(String(id), newLabel.trim(), newDescription.trim());
       toast.success(`Project renamed to "${newLabel}"`);
       setIsRenaming(false);
       setErrorMessage("");
@@ -129,10 +132,8 @@ export default function ProjectCard({
           ${isSelected ? "border-blue-700 shadow-blue-100" : "border-gray-200 dark:border-gray-800"}
           bg-gray-100 dark:bg-white/5 backdrop-blur-md`}
       >
-        {/* Header section */}
         <div className="mb-2 rounded-xl bg-gradient-to-r from-green-100 via-white to-blue-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 px-4 py-2 border transition-all duration-300">
           <div className="flex justify-between items-center">
-            {/* Project name and icon */}
             <div className="flex items-center gap-3 group min-w-0">
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white-100 dark:bg-yellow-900 group-hover:scale-110 transition-transform duration-300">
                 {icon}
@@ -181,7 +182,6 @@ export default function ProjectCard({
               )}
             </div>
 
-            {/* Action buttons */}
             {!isRenaming && (
               <div className="shrink-0">
                 <ProjectAction
@@ -193,14 +193,11 @@ export default function ProjectCard({
                 />
               </div>
             )}
-
           </div>
         </div>
 
-        {/* Divider */}
         <div className="my-2 border-t border-gray-300 dark:border-gray-700" />
 
-        {/* Metadata section */}
         <div className="mt-4 space-y-3 text-sm text-gray-500 dark:text-gray-400">
           {createdAt && (
             <div className="flex items-center gap-3">

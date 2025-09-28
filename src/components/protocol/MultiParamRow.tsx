@@ -1,6 +1,4 @@
 // src/components/MultiParamRow.tsx
-import React, { useState } from 'react';
-
 import {
   Box,
   Table,
@@ -34,8 +32,8 @@ export default function MultiParamRow({
   dragOverKey,
   currentDraggedOutput,
   paramKey,
-  rowIndex = 0,
 }: MultiParamRowProps) {
+  
   const display = [...items];
   while (display.length < 5) display.push({ object: '', info: '' });
 

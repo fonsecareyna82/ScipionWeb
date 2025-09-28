@@ -1,101 +1,62 @@
 // src/components/projects/NewProjectModal.tsx
-
-import { useState } from "react";
-import { PlusIcon } from "@/icons";
-import { createProject, Project } from "../../api/projects";
+import React, { useState, useEffect } from "react";
+import toast from "react-hot-toast";
+import { useProjectService } from "@/ProjectServiceContext";
 
 interface NewProjectModalProps {
-  onProjectCreated: (project: Project) => void;
+  open: boolean;
+  onClose: () => void;
+  onCreate?: (proj: any) => void;
 }
 
-export default function NewProjectModal({ onProjectCreated }: NewProjectModalProps) {
-  const [showModal, setShowModal] = useState(false);
+export default function NewProjectModal({ open, onClose, onCreate }: NewProjectModalProps) {
+  const svc = useProjectService();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) {
+      setName("");
+      setDescription("");
+      setLoading(false);
+    }
+  }, [open]);
 
   const handleCreate = async () => {
     if (!name.trim()) {
-      setError("Project name is required");
+      toast.error("Project name is required");
       return;
     }
     setLoading(true);
-    setError(null);
     try {
-      const project = await createProject(name, description);
-      onProjectCreated(project);
-      setName("");
-      setDescription("");
-      setShowModal(false);
-    } catch (err: any) {
-      setError(err.message || "Failed to create project");
+      const created = await svc.createProject({ name: name.trim(), description: description.trim() });
+      toast.success("Project created");
+      onCreate?.(created);
+      onClose();
+    } catch (err) {
+      console.error("Failed to create project", err);
+      toast.error("Failed to create project");
     } finally {
       setLoading(false);
     }
   };
 
+  if (!open) return null;
+
   return (
-    <>
-      <li
-        className="px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer flex items-center gap-2"
-        onClick={() => setShowModal(true)}
-      >
-        <PlusIcon className="shrink-0 w-5 h-5 text-gray-500 dark:text-black-400" />
-        <span className="whitespace-nowrap">New project</span>
-      </li>
-
-      {showModal && (
-        <div className="fixed inset-0 flex items-center justify-center z-50">
-          {/* Overlay */}
-          <div
-            className="absolute inset-0 bg-black opacity-30"
-            onClick={() => setShowModal(false)}
-          ></div>
-
-          {/* Modal content */}
-          <div className="relative bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-md z-50">
-            <h2 className="text-lg  mb-4 text-gray-900 dark:text-white">
-              Create New Project
-            </h2>
-
-            {error && (
-              <p className="text-red-400 mb-2">{error}</p>
-            )}
-
-            <input
-              type="text"
-              placeholder="Project name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="w-full mb-3 px-3 py-2 border rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-
-            <textarea
-              placeholder="Description (optional)"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              className="w-full mb-3 px-3 py-2 border rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-
-            <div className="flex justify-end gap-2">
-              <button
-                onClick={() => setShowModal(false)}
-                className="px-4 py-2 bg-gray-200 dark:bg-gray-700 rounded hover:bg-gray-300 dark:hover:bg-gray-600"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleCreate}
-                disabled={loading}
-                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
-              >
-                {loading ? "Creating..." : "Create"}
-              </button>
-            </div>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+      <div className="bg-white dark:bg-gray-900 rounded-lg p-6 w-full max-w-md shadow-lg">
+        <h3 className="text-lg font-semibold mb-3 text-gray-900 dark:text-white">New Project</h3>
+        <div className="flex flex-col gap-3">
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Project name" className="w-full px-3 py-2 border rounded-md" />
+          <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Description (optional)" className="w-full px-3 py-2 border rounded-md" />
+          <div className="flex justify-end gap-2 mt-2">
+            <button onClick={onClose} className="px-3 py-1 rounded-md bg-gray-200 dark:bg-gray-700">Cancel</button>
+            <button onClick={handleCreate} disabled={loading} className="px-3 py-1 rounded-md bg-blue-600 text-white">{loading ? "Creating..." : "Create"}</button>
           </div>
         </div>
-      )}
-    </>
+      </div>
+    </div>
   );
 }

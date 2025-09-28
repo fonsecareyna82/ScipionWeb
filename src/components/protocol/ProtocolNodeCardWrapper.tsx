@@ -1,12 +1,5 @@
-import { NodeProps, useReactFlow } from 'reactflow';
-import StatusNode from './ProtocolNodeCard';
-
-type StatusNodeWrapperProps = NodeProps & {
-  selectedNodeId?: string;
-  hoveredNodeId?: string;
-  setHoveredNodeId?: React.Dispatch<React.SetStateAction<string | null>>;
-  graphDirection: 'TB' | 'LR';
-};
+import { NodeProps, useReactFlow } from "reactflow";
+import StatusNode from "./ProtocolNodeCard";
 
 export const createStatusNodeWrapper = (
   onClick: (data: any) => void,
@@ -14,23 +7,46 @@ export const createStatusNodeWrapper = (
   selectedNodeId?: string,
   hoveredNodeId?: string,
   setHoveredNodeId?: React.Dispatch<React.SetStateAction<string | null>>,
-  graphDirection: 'TB' | 'LR' = 'TB'
+  graphDirection: "TB" | "LR" = "TB"
 ) => {
   return function StatusNodeWrapper(props: NodeProps) {
-    const { data, ...rest } = props;
+    const { data, id, ...rest } = props;
     const { getViewport } = useReactFlow();
     const { zoom } = getViewport();
 
+    // helpers for hover: sólo actúan si setHoveredNodeId fue inyectado
+    const handleMouseEnter = () => {
+      setHoveredNodeId?.(String(id));
+    };
+    const handleMouseLeave = () => {
+      setHoveredNodeId?.(null);
+    };
+
+    const isHovered = typeof hoveredNodeId === "string" && String(id) === String(hoveredNodeId);
+
     return (
-      <StatusNode
-        {...rest}
-        data={data}
-        selectedNodeId={selectedNodeId}
-        onClick={() => onClick(data)}
-        onDoubleClick={() => onDoubleClick(data)}
-        graphDirection={graphDirection}
-        zoomLevel={zoom} 
-      />
+      <div
+        // envolvemos para poder usar eventos DOM si StatusNode no expone props onMouse...
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+        // evita que el wrapper cambie la apariencia por defecto, estilo inline neutral
+        style={{ display: "inline-block" }}
+      >
+        <StatusNode
+          {...rest}
+          id={String(id)}
+          data={data}
+          selectedNodeId={selectedNodeId}
+          onClick={() => onClick(data)}
+          onDoubleClick={() => onDoubleClick(data)}
+          graphDirection={graphDirection}
+          zoomLevel={zoom}
+          // pasamos info de hover por si StatusNode la necesita para pintar distinto
+          hoveredNodeId={hoveredNodeId}
+          setHoveredNodeId={setHoveredNodeId}
+          isHovered={isHovered}
+        />
+      </div>
     );
   };
 };
