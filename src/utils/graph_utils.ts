@@ -16,7 +16,7 @@ function estimateLabelWidth(label: string, fontSize = 20, fontFamily = "Arial"):
  * Estimate node height (optional, for LR layout)
  */
 function estimateNodeHeight(label: string, fontSize = 20, fontFamily = "Arial"): number {
-  console.log(label, fontSize, fontFamily)
+  //console.log(label, fontSize, fontFamily)
   return 180; // fixed height for simplicity
 }
 
