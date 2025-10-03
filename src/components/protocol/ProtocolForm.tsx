@@ -267,25 +267,37 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
 
       if (def.condition && !evalExpr(sectionIdx, def.condition)) return null;
 
-      const advancedTag = def.expertLevel === 1 ? (
-        <Tooltip title="Advanced">
-          <Box
-            sx={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              width: '1.5rem',
-              height: '1.5rem',
-              bgcolor: '#777',
-              color: 'white',
-              borderRadius: '50%',
-              fontSize: '0.8rem',
-            }}
-          >
-            A
-          </Box>
-        </Tooltip>
-      ) : null;
+      const advancedSlot = (
+        <Box
+          sx={{
+            width: '1.5rem',
+            height: '1.5rem',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          {def.expertLevel === 1 ? (
+            <Tooltip title="Advanced">
+              <Box
+                sx={{
+                  width: '1.5rem',
+                  height: '1.5rem',
+                  bgcolor: '#777',
+                  color: 'white',
+                  borderRadius: '50%',
+                  fontSize: '0.8rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                A
+              </Box>
+            </Tooltip>
+          ) : null}
+        </Box>
+      );
 
       // --- MultiPointerParam ---
       if (def._class === 'MultiPointerParam') {
@@ -320,16 +332,26 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
         };
 
         return (
-          <MultiParamRow
+          <ParamRow
             key={key}
             label={def.label || name}
-            items={items}
+            control={
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                {advancedSlot}
+                <MultiParamRow
+                  label={def.label || name}
+                  items={items}
+                  helpText={def.help}
+                  onRowClear={onClear}
+                  onRowDrop={onRowDrop}
+                  dragOverKey={dragOverKey}
+                  currentDraggedOutput={currentDraggedOutput}
+                  paramKey={key}
+                />
+              </Box>
+            }
             helpText={def.help}
-            onRowClear={onClear}
-            onRowDrop={onRowDrop}
-            dragOverKey={dragOverKey}
-            currentDraggedOutput={currentDraggedOutput}
-            paramKey={key}
+            rowIndex={rowIndex}
           />
         );
       }
@@ -344,7 +366,6 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
 
         const control = (
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            {advancedTag}
             <TextField
               size="small"
               value={value ?? def.default ?? ''}
@@ -420,7 +441,20 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
             </TextField>
           );
 
-        return <ParamRow key={key} label={def.label || name} control={controlBase} helpText={def.help} rowIndex={rowIndex} />;
+        return (
+          <ParamRow
+            key={key}
+            label={def.label || name}
+            control={
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                {advancedSlot}
+                {controlBase}
+              </Box>
+            }
+            helpText={def.help}
+            rowIndex={rowIndex}
+          />
+        );
       }
 
       // --- Group ---
@@ -467,7 +501,9 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
             </Box>
 
             {expanded &&
-              def.children.map((child: any, idx: number) => renderParam(child, sectionIdx, idx))}
+              def.children.map((child: any, idx: number) =>
+                renderParam(child, sectionIdx, idx)
+              )}
           </Box>
         );
       }
@@ -476,29 +512,34 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
       // --- BooleanParam ---
       if (def._class === 'BooleanParam') {
         const checked =
-          value !== undefined ? ['True', true, 1, '1'].includes(value) : ['True', true, 1, '1'].includes(def.default);
+          value !== undefined
+            ? ['True', true, 1, '1'].includes(value)
+            : ['True', true, 1, '1'].includes(def.default);
 
         return (
           <ParamRow
             key={key}
             label={def.label || name}
             control={
-              <Switch
-                checked={!!checked}
-                onChange={(e) =>
-                  setProtocolDetails((prev: any) => ({
-                    ...prev,
-                    params: {
-                      ...prev.params,
-                      [key]: {
-                        ...prev.params[key],
-                        editableValue: e.target.checked ? 'True' : 'False',
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                {advancedSlot}
+                <Switch
+                  checked={!!checked}
+                  onChange={(e) =>
+                    setProtocolDetails((prev: any) => ({
+                      ...prev,
+                      params: {
+                        ...prev.params,
+                        [key]: {
+                          ...prev.params[key],
+                          editableValue: e.target.checked ? 'True' : 'False',
+                        },
                       },
-                    },
-                  }))
-                }
-                color="primary"
-              />
+                    }))
+                  }
+                  color="primary"
+                />
+              </Box>
             }
             helpText={def.help}
             rowIndex={rowIndex}
@@ -509,7 +550,7 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
       // --- Default TextField ---
       const defaultControl = (
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          {advancedTag}
+          {advancedSlot}
           <TextField
             size="small"
             name={key}
@@ -525,10 +566,19 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
         </Box>
       );
 
-      return <ParamRow key={key} label={def.label || name} control={defaultControl} helpText={def.help} rowIndex={rowIndex} />;
+      return (
+        <ParamRow
+          key={key}
+          label={def.label || name}
+          control={defaultControl}
+          helpText={def.help}
+          rowIndex={rowIndex}
+        />
+      );
     },
     [protocolDetails.params, dragOverKey, currentDraggedOutput, expandedGroups]
   );
+
 
   if (!data || !protocolDetails.params) return null;
 
@@ -616,20 +666,25 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
                   variant="scrollable"
                   scrollButtons="auto"
                   allowScrollButtonsMobile
-                  sx={{
+                  sx={(theme) => ({
                     mb: 2,
                     '& .MuiTab-root': {
                       textTransform: 'none',
                       fontSize: '0.8rem',
                       fontWeight: 500,
                     },
-                  }}
+                    // aquí forzamos visibilidad de los scroll buttons
+                    '& .MuiTabs-scrollButtons': {
+                      color: theme.palette.mode === 'dark' ? '#fff' : '#000',
+                      opacity: 1, // aseguramos que no desaparezcan
+                    },
+                    '& .MuiTabs-scrollButtons.Mui-disabled': {
+                      opacity: 0.3, // cuando no son clicables
+                    },
+                  })}
                 >
                   {data.definition.map((section: any, idx: number) => (
-                    <Tab
-                      key={idx}
-                      label={section.name || `Section ${idx + 1}`}
-                    />
+                    <Tab key={idx} label={section.name || `Section ${idx + 1}`} />
                   ))}
                 </Tabs>
                 <Box>

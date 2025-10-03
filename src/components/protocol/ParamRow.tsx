@@ -20,19 +20,18 @@ const ParamRow = ({ label, control, helpText, isPointerParam, onClear, rowIndex 
       <Box
         sx={{
           display: 'grid',
-          gridTemplateColumns: '220px 1fr auto',
+          gridTemplateColumns: '224px 1fr auto',
           alignItems: 'center',
-          gap: 1,
           mb: 1,
           backgroundColor: rowIndex % 2 ? 'white' : '#EDEBEB',
           position: 'relative',
         }}
       >
-        <Typography variant="body2" sx={{ pr: 2, fontSize: '0.8rem', fontWeight: 500, color: 'black'}}>
+        <Typography variant="body2" sx={{p: 0.5,  pr: 2, fontSize: '0.8rem', fontWeight: 500, color: 'black'}}>
           {label}
         </Typography>
         <Box>{control}</Box>
-        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+        <Box sx={{ display: 'flex', gap: 0, alignItems: 'center' }}>
           {isPointerParam && (
             <Tooltip title="Find">
               <IconButton size="small">

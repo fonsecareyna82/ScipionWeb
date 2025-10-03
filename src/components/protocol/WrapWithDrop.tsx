@@ -91,11 +91,12 @@ export default function WrapWithDrop({
       sx={{
         border: '2px dashed #888',
         borderRadius: 1,
+        width: 310,
         p: 0.5,
         backgroundColor: isActive
           ? isMatch
-            ? '#b7f5c7' // verde si match
-            : '#f5b7b7' // rojo si no match
+            ? '#b7f5c7' // green if match
+            : '#f5b7b7' // red if no match
           : 'transparent',
         transition: 'background-color 0.2s',
       }}
