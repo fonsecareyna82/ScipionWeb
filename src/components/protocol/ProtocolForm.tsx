@@ -1,6 +1,6 @@
 // src/components/ProtocolForm.tsx
 
-import { useState, useEffect, useCallback, JSX } from 'react';
+import { useState, useEffect, useCallback, JSX, useRef } from 'react';
 import {
   Tabs,
   Tab,
@@ -28,6 +28,7 @@ import { executeProtocol, saveProtocol } from '../../api/projects';
 import WrapWithDrop from './WrapWithDrop';
 import MultiParamRow from './MultiParamRow';
 import ParamRow from './ParamRow';
+import { fetchProtocolLogsStream } from '@/api/protocols';
 
 type ProtocolFormProps = {
   data: any;
@@ -46,6 +47,17 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
   // Drag/drop state
   const [dragOverKey, setDragOverKey] = useState<string | null>(null);
   const [currentDraggedOutput, setCurrentDraggedOutput] = useState<any>(null);
+
+  // Logs
+  const containerRef = useRef<HTMLDivElement>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const [logs, setLogs] = useState<string>("");
+  const [errorLogs, setErrorLogs] = useState<string>("");
+  const [logsError, setLogsError] = useState<string | null>(null);
+  const offsetRef = useRef<number>(0);
+  const errorOffsetRef = useRef<number>(0);
+  const errorContainerRef = useRef<HTMLDivElement>(null);
 
   // Parse JSON value
   const parseFromJSONValue = (maybeJson: any) => {
@@ -134,6 +146,51 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
       );
   };
 
+  // ANSI color parsing to JSX spans (kept exactly as you had, comments updated)
+  function parseAnsi(line: string): JSX.Element[] {
+    const regex = /\x1b\[(\d+)m/g; // matches things like ESC[32m
+    const parts: JSX.Element[] = [];
+    let lastIndex = 0;
+    let match;
+    let currentColor: string | null = null;
+    let key = 0;
+
+    while ((match = regex.exec(line)) !== null) {
+      if (match.index > lastIndex) {
+        parts.push(
+          <span key={key++} style={{ color: currentColor ?? "inherit" }}>
+            {line.slice(lastIndex, match.index)}
+          </span>
+        );
+      }
+
+      // apply color by code
+      const code = parseInt(match[1], 10);
+      switch (code) {
+        case 31: currentColor = "red"; break;
+        case 32: currentColor = "green"; break;
+        case 33: currentColor = "orange"; break;
+        case 35: currentColor = "magenta"; break;
+        case 0: currentColor = null; break; // reset
+        default: currentColor = null; break;
+      }
+
+      lastIndex = regex.lastIndex;
+    }
+
+    // trailing text
+    if (lastIndex < line.length) {
+      parts.push(
+        <span key={key++} style={{ color: currentColor ?? "inherit" }}>
+          {line.slice(lastIndex)}
+        </span>
+      );
+    }
+
+    return parts;
+  }
+
+  // Load initial params and protocol details
   useEffect(() => {
     if (!data) {
       setProtocolDetails({});
@@ -168,6 +225,71 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
       params,
     });
   }, [data]);
+
+  // Incremental logs polling: first load full, then poll incrementally
+  useEffect(() => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+    if (topTab !== 4 || !data?.projectId || !data?.id) return;
+
+    if (protocolDetails.status === "running") {
+      (async () => {
+        try {
+          const res: any = await fetchProtocolLogsStream(data.projectId, data.id, 0);
+          setLogs(res.stdoutLog ?? "");
+          setErrorLogs(res.stderrLog ?? "");
+          offsetRef.current = res.stdoutOffset ?? 0;
+          errorOffsetRef.current = res.stderrOffset ?? 0;
+        } catch (err: any) {
+          setLogsError(err.message || "Failed to load logs");
+        }
+      })();
+
+      pollRef.current = setInterval(async () => {
+        try {
+          const res: any = await fetchProtocolLogsStream(data.projectId, data.id, offsetRef.current);
+          if (res.stdoutLog) {
+            setLogs(prev => prev + res.stdoutLog);
+            offsetRef.current = res.stdoutOffset ?? offsetRef.current;
+          }
+          if (res.stderrLog) {
+            setErrorLogs(prev => prev + res.stderrLog);
+            errorOffsetRef.current = res.stderrOffset ?? errorOffsetRef.current;
+          }
+        } catch (err: any) {
+          setLogsError(err.message || "Failed to load logs");
+        }
+      }, 2000);
+
+      return () => {
+        if (pollRef.current) {
+          clearInterval(pollRef.current);
+          pollRef.current = null;
+        }
+      };
+    }
+
+    if (protocolDetails.status && protocolDetails.status !== "new") {
+      (async () => {
+        try {
+          const res: any = await fetchProtocolLogsStream(data.projectId, data.id, 0);
+          setLogs(res.stdoutLog ?? "");
+          setErrorLogs(res.stderrLog ?? "");
+        } catch (err: any) {
+          setLogsError(err.message || "Failed to load logs");
+        }
+      })();
+    }
+  }, [protocolDetails.status, topTab, data?.projectId, data?.id]);
+
+
+  // Autoscroll to bottom on new logs
+  useEffect(() => {
+    if (!containerRef.current) return;
+    containerRef.current.scrollTop = containerRef.current.scrollHeight;
+  }, [logs]);
 
   const getExpectedClass = (def: any): string | undefined => {
     if (!def) return undefined;
@@ -224,8 +346,6 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
     return out;
   }, [protocolDetails.params]);
 
-
-
   const handleExecute = async () => {
     setExecLoading(true);
     setExecError(null);
@@ -256,7 +376,6 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
       setExecLoading(false);
     }
   };
-
 
   // renderParam: memoized so stable across renders
   const renderParam = useCallback(
@@ -405,7 +524,6 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
         );
       }
 
-
       // --- EnumParam ---
       if (def._class === 'EnumParam' && Array.isArray(def.choices)) {
         let sel = value ?? def.default ?? '';
@@ -508,7 +626,6 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
         );
       }
 
-
       // --- BooleanParam ---
       if (def._class === 'BooleanParam') {
         const checked =
@@ -578,7 +695,6 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
     },
     [protocolDetails.params, dragOverKey, currentDraggedOutput, expandedGroups]
   );
-
 
   if (!data || !protocolDetails.params) return null;
 
@@ -673,13 +789,13 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
                       fontSize: '0.8rem',
                       fontWeight: 500,
                     },
-                    // aquí forzamos visibilidad de los scroll buttons
+                    // force visibility of scroll buttons
                     '& .MuiTabs-scrollButtons': {
                       color: theme.palette.mode === 'dark' ? '#fff' : '#000',
-                      opacity: 1, // aseguramos que no desaparezcan
+                      opacity: 1,
                     },
                     '& .MuiTabs-scrollButtons.Mui-disabled': {
-                      opacity: 0.3, // cuando no son clicables
+                      opacity: 0.3,
                     },
                   })}
                 >
@@ -724,9 +840,53 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
                 </Tabs>
                 <Box className="bottom-tab-content" sx={{ p: 2 }}>
                   {bottomTab === 0 && (
-                    <Typography variant="body1">Outputs Log</Typography>
+                    <Box
+                      ref={containerRef}
+                      sx={{
+                        backgroundColor: "#f5f5f5",
+                        color: "black",
+                        fontFamily: "monospace",
+                        fontSize: "0.85rem",
+                        p: 2,
+                        borderRadius: 1,
+                        maxHeight: "540px",
+                        overflowY: "auto",
+                        whiteSpace: "pre"
+                      }}
+                    >
+                      {logs && logs.length > 0 ? (
+                        logs.split("\n").map((line, idx) => (
+                          <div key={idx} style={{ display: "flex" }}>
+                            <span style={{ color: "blue", userSelect: "none", marginRight: 8 }}>
+                              {String(idx + 1).padStart(5, "0")}:
+                            </span>
+                            <span>{parseAnsi(line)}</span>
+                          </div>
+                        ))
+                      ) : (
+                        <Typography variant="body2" sx={{ opacity: 0.7 }}>
+                          No logs yet.
+                        </Typography>
+                      )}
+                      {logsError && (
+                        <Typography variant="body2" color="error" sx={{ mt: 1 }}>
+                          {logsError}
+                        </Typography>
+                      )}
+                    </Box>
                   )}
+
                   {bottomTab === 1 && (
+                    <Box ref={errorContainerRef} sx={{ backgroundColor: "#f5f5f5", fontFamily: "monospace", fontSize: "0.85rem", p: 2, borderRadius: 1, maxHeight: "540px", overflowY: "auto" }}>
+                      {errorLogs ? errorLogs.split("\n").map((line, idx) => (
+                        <div key={idx} style={{ display: "flex" }}>
+                          <span style={{ color: "red", userSelect: "none", marginRight: 8 }}>{String(idx + 1).padStart(5, "0")}:</span>
+                          <span>{parseAnsi(line)}</span>
+                        </div>
+                      )) : <Typography variant="body2" sx={{ opacity: 0.7 }}>No error logs.</Typography>}
+                    </Box>
+                  )}
+                  {bottomTab === 2 && (
                     <Typography variant="body1">Project Log</Typography>
                   )}
                 </Box>

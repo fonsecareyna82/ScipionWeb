@@ -19,6 +19,7 @@ export interface ProtocolNode {
   numberOfSteps: string;
   outputs: any;
   inputs: any;
+  projectId: string;
 }
 
 /**
@@ -85,5 +86,20 @@ export async function launchProtocol(projectId: string): Promise<any> {
     method: "POST",
   });
   if (!response.ok) throw new Error("Failed to launch protocol");
+  return response.json();
+}
+
+/**
+ * Fetch the stdout log of a protocol
+ */
+export async function fetchProtocolLogsStream(
+  projectId: string | number,
+  protocolId: string | number,
+  offset: number
+): Promise<{ newLog: string; newOffset: number }> {
+  const response = await fetchWithAuth(
+    `${BASE_URL}/protocols/logs/${projectId}/${protocolId}/${offset}`
+  );
+  if (!response.ok) throw new Error("Failed to fetch protocol logs stream");
   return response.json();
 }
