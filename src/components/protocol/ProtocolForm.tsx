@@ -940,8 +940,10 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
   // Global state for OutputSelectorDialog
   // --------------------------------------------
 
-  const handleSelectOutput = (selected: any) => {
+  // ⚠️ Updated to accept single OR multiple selection (array).
+  const handleSelectOutput = (selected: any | any[]) => {
     if (!selectorTarget) return;
+    const pick = Array.isArray(selected) ? selected[0] : selected; // keep single-select behavior for PointerParam
     const { key } = selectorTarget;
     setProtocolDetails((prev: any) => ({
       ...prev,
@@ -949,10 +951,10 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
         ...prev.params,
         [key]: {
           ...prev.params[key],
-          editableValue: selected._objValue ?? "",
-          info: selected.info ?? "",
-          _class: selected._class ?? "",
-          _parentId: selected._parentId ?? null,
+          editableValue: pick?._objValue ?? "",
+          info: pick?.info ?? "",
+          _class: pick?._class ?? "",
+          _parentId: pick?._parentId ?? null,
         },
       },
     }));
@@ -1173,6 +1175,7 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
         expectedClass={expectedClass}
         allOutputs={allOutputs}
         onSelect={handleSelectOutput}
+        multiSelect={false}
       />
     </div>
   );

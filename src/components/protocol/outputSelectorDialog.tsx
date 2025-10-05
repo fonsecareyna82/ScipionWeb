@@ -16,6 +16,7 @@ import {
   Box,
   TextField,
   Typography,
+  Checkbox,
 } from "@mui/material";
 import { CheckCircle as CheckIcon, X as CloseIcon } from "lucide-react";
 
@@ -33,7 +34,8 @@ interface OutputSelectorDialogProps {
   onClose: () => void;
   expectedClass?: string | string[];
   allOutputs: Output[];
-  onSelect: (output: Output) => void;
+  onSelect: (output: Output | Output[]) => void;
+  multiSelect?: boolean;
 }
 
 const OutputSelectorDialog: React.FC<OutputSelectorDialogProps> = ({
@@ -42,19 +44,21 @@ const OutputSelectorDialog: React.FC<OutputSelectorDialogProps> = ({
   expectedClass,
   allOutputs,
   onSelect,
+  multiSelect = false,
 }) => {
   const [filter, setFilter] = useState("");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [highlightedId, setHighlightedId] = useState<string | null>(null);
 
-  // Reset selection on open
   useEffect(() => {
-    if (open) setSelectedId(null);
+    if (open) {
+      setSelectedIds(new Set());
+      setHighlightedId(null);
+    }
   }, [open]);
 
-  // Filter & match logic
   const matchingOutputs = useMemo(() => {
     if (!allOutputs) return [];
-
     let filtered = allOutputs;
 
     if (expectedClass) {
@@ -79,6 +83,54 @@ const OutputSelectorDialog: React.FC<OutputSelectorDialogProps> = ({
     return filtered;
   }, [allOutputs, expectedClass, filter]);
 
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const newSet = new Set(prev);
+      newSet.has(id) ? newSet.delete(id) : newSet.add(id);
+      return newSet;
+    });
+  };
+
+  const handleConfirm = () => {
+    if (multiSelect) {
+      const selected = matchingOutputs.filter((o) =>
+        selectedIds.has(o._objValue || o._protocolId)
+      );
+      onSelect(selected);
+    } else if (highlightedId) {
+      const selected = matchingOutputs.find(
+        (o) => (o._objValue || o._protocolId) === highlightedId
+      );
+      if (selected) onSelect(selected);
+    }
+    onClose();
+  };
+
+  const handleDoubleClick = (o: Output) => {
+    if (multiSelect) return;
+    onSelect(o);
+    onClose();
+  };
+
+  const handleSingleClick = (o: Output) => {
+    if (multiSelect) return;
+    const id = o._objValue || o._protocolId;
+    setHighlightedId((prev) => (prev === id ? null : id));
+  };
+
+  const isRowSelected = (o: Output) => {
+    const id = o._objValue || o._protocolId;
+    return multiSelect ? selectedIds.has(id) : highlightedId === id;
+  };
+
+  const hasSelection = multiSelect
+    ? selectedIds.size > 0
+    : highlightedId !== null;
+
+  const confirmLabel = multiSelect
+    ? `Confirm (${selectedIds.size})`
+    : "Confirm";
+
   return (
     <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth>
       {/* === HEADER === */}
@@ -94,7 +146,7 @@ const OutputSelectorDialog: React.FC<OutputSelectorDialogProps> = ({
           fontWeight: 600,
         }}
       >
-        Select compatible output
+        {multiSelect ? "Select compatible outputs" : "Select compatible output"}
         <IconButton onClick={onClose} size="small">
           <CloseIcon size={18} />
         </IconButton>
@@ -149,8 +201,18 @@ const OutputSelectorDialog: React.FC<OutputSelectorDialogProps> = ({
                   },
                 }}
               >
+                {multiSelect && (
+                  <TableCell
+                    sx={{ width: "5%", textAlign: "center", background: "#d5d5d5" }}
+                  >
+                    ✓
+                  </TableCell>
+                )}
                 <TableCell sx={{ width: "10%", background: "#d5d5d5" }}>
                   Protocol ID
+                </TableCell>
+                <TableCell sx={{ width: "20%", background: "#d5d5d5" }}>
+                  Protocol Label
                 </TableCell>
                 <TableCell sx={{ width: "35%", background: "#d5d5d5" }}>
                   Info
@@ -158,40 +220,30 @@ const OutputSelectorDialog: React.FC<OutputSelectorDialogProps> = ({
                 <TableCell sx={{ width: "25%", background: "#d5d5d5" }}>
                   Class
                 </TableCell>
-                <TableCell sx={{ width: "20%", background: "#d5d5d5" }}>
-                  Protocol Label
-                </TableCell>
-                <TableCell
-                  sx={{ width: "10%", textAlign: "center", background: "#d5d5d5" }}
-                >
-                  Action
-                </TableCell>
+                {!multiSelect && (
+                  <TableCell
+                    sx={{ width: "10%", textAlign: "center", background: "#d5d5d5" }}
+                  >
+                    Action
+                  </TableCell>
+                )}
               </TableRow>
             </TableHead>
 
             <TableBody>
               {matchingOutputs.map((o, i) => {
                 const id = o._objValue || o._protocolId;
-                const isSelected = selectedId === id;
+                const isSelected = isRowSelected(o);
                 const rowBg = isSelected ? "#b5f0b2" : i % 2 === 0 ? "#fafafa" : "#ffffff";
 
                 return (
                   <TableRow
-                    key={i}
-                    // 👇 Quitamos 'hover' de MUI para evitar su estilo por defecto
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setSelectedId(id); // select highlight instantly
-                    }}
-                    onDoubleClick={(e) => {
-                      e.stopPropagation();
-                      onSelect(o);
-                      onClose();
-                    }}
+                    key={id}
+                    onClick={() => handleSingleClick(o)}
+                    onDoubleClick={() => handleDoubleClick(o)}
                     sx={{
                       cursor: "pointer",
                       backgroundColor: rowBg,
-                      // 👇 Controlamos hover manualmente; si está seleccionada, no cambia
                       "&:hover": {
                         backgroundColor: isSelected ? rowBg : "#f1faf1",
                       },
@@ -201,36 +253,72 @@ const OutputSelectorDialog: React.FC<OutputSelectorDialogProps> = ({
                       transition: "border-left 0.15s ease-in-out",
                     }}
                   >
-                    <TableCell title={o._protocolId}>
-                      {o._protocolId || "—"}
+                    {multiSelect && (
+                      <TableCell sx={{ textAlign: "center" }}>
+                        <Checkbox
+                          checked={isSelected}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            toggleSelect(id);
+                          }}
+                          color="success"
+                        />
+                      </TableCell>
+                    )}
+
+                    {/* === Protocol ID chip === */}
+                    <TableCell>
+                      <Box
+                        component="span"
+                        sx={{
+                          display: "inline-block",
+                          px: 1,
+                          py: 0.3,
+                          borderRadius: "16px",
+                          backgroundColor: "#e0e0e0",
+                          fontFamily: "monospace",
+                          fontSize: "0.8rem",
+                          color: "#333",
+                        }}
+                        title={o._protocolId}
+                      >
+                        {o._protocolId || "—"}
+                      </Box>
                     </TableCell>
+
+                    {/* === Protocol Label === */}
+                    <TableCell title={o.protocol}>{o.protocol || "—"}</TableCell>
+
                     <TableCell title={o.info}>{o.info || "—"}</TableCell>
                     <TableCell title={o._class}>{o._class}</TableCell>
-                    <TableCell title={o.protocol}>
-                      {o.protocol || "—"}
-                    </TableCell>
-                    <TableCell sx={{ textAlign: "center" }}>
-                      <Tooltip title="Select this output">
-                        <IconButton
-                          color="success"
-                          size="small"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onSelect(o);
-                            onClose();
-                          }}
-                        >
-                          <CheckIcon size={18} />
-                        </IconButton>
-                      </Tooltip>
-                    </TableCell>
+
+                    {!multiSelect && (
+                      <TableCell sx={{ textAlign: "center" }}>
+                        <Tooltip title="Confirm this output">
+                          <IconButton
+                            color="success"
+                            size="small"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onSelect(o);
+                              onClose();
+                            }}
+                          >
+                            <CheckIcon size={18} />
+                          </IconButton>
+                        </Tooltip>
+                      </TableCell>
+                    )}
                   </TableRow>
                 );
               })}
 
               {matchingOutputs.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={5} sx={{ textAlign: "center", opacity: 0.7 }}>
+                  <TableCell
+                    colSpan={multiSelect ? 5 : 6}
+                    sx={{ textAlign: "center", opacity: 0.7 }}
+                  >
                     No compatible outputs found.
                   </TableCell>
                 </TableRow>
@@ -241,9 +329,25 @@ const OutputSelectorDialog: React.FC<OutputSelectorDialogProps> = ({
       </DialogContent>
 
       {/* === FOOTER === */}
-      <DialogActions sx={{ justifyContent: "center", borderTop: "1px solid #ddd" }}>
+      <DialogActions
+        sx={{
+          justifyContent: "center",
+          borderTop: "1px solid #ddd",
+          gap: 2,
+        }}
+      >
         <Button onClick={onClose} variant="outlined" size="small">
           Close
+        </Button>
+
+        <Button
+          onClick={handleConfirm}
+          variant="contained"
+          color="success"
+          size="small"
+          disabled={!hasSelection}
+        >
+          {confirmLabel}
         </Button>
       </DialogActions>
     </Dialog>

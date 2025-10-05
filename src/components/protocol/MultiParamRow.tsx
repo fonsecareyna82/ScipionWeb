@@ -9,7 +9,6 @@ import {
   TableBody,
   IconButton,
   Tooltip,
-  Button,
 } from "@mui/material";
 import { TrashBinIcon, EyeIcon, FindIcon } from "../../icons";
 import { useDrag } from "./DragContext";
@@ -27,7 +26,7 @@ type MultiParamRowProps = {
   paramKey?: string;
   def?: any;
 
-  // New props to use centralized OutputSelectorDialog
+  // Centralized OutputSelectorDialog
   getAvailableOutputs?: () => any[];
   onPickForRow?: (rowIndex: number, picked: any) => void;
 };
@@ -92,10 +91,12 @@ export default function MultiParamRow({
 
   const expected = useMemo(() => getExpectedClass(def), [def]);
 
-  // Get all available outputs at render (fresh from ProtocolForm)
-  const allOutputs = useMemo(() => {
-    return getAvailableOutputs ? getAvailableOutputs() ?? [] : [];
-  }, [getAvailableOutputs]);
+  // Get all available outputs and filter already used ones
+  const availableOutputs = useMemo(() => {
+    const all = getAvailableOutputs ? getAvailableOutputs() ?? [] : [];
+    const used = new Set(display.map((r) => r.object).filter(Boolean));
+    return all.filter((o) => !used.has(o._objValue));
+  }, [getAvailableOutputs, display]);
 
   return (
     <Box sx={{ mb: 2, ml: -2 }}>
@@ -236,7 +237,7 @@ export default function MultiParamRow({
                   {onRowClear && (
                     <TableCell sx={{ textAlign: "center", verticalAlign: "middle" }}>
                       {isEmpty ? (
-                        <Tooltip title="Find compatible output">
+                        <Tooltip title="Find compatible outputs">
                           <IconButton
                             size="small"
                             onClick={() => setOpenSelectorFor(i)}
@@ -275,11 +276,15 @@ export default function MultiParamRow({
         open={openSelectorFor !== null}
         onClose={() => setOpenSelectorFor(null)}
         expectedClass={expected}
-        allOutputs={allOutputs}
-        onSelect={(o) => {
-          if (openSelectorFor !== null) {
-            onPickForRow?.(openSelectorFor, o);
-          }
+        allOutputs={availableOutputs} // 🔹 Filtered to exclude already used
+        multiSelect={true}
+        onSelect={(selected) => {
+          if (openSelectorFor === null) return;
+          const pickedArray = Array.isArray(selected) ? selected : [selected];
+          pickedArray.forEach((picked, idx) => {
+            const targetRow = openSelectorFor + idx;
+            onPickForRow?.(targetRow, picked);
+          });
           setOpenSelectorFor(null);
         }}
       />
