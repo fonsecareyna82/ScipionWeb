@@ -331,20 +331,32 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
 
     Object.entries(protocolDetails.params || {}).forEach(([k, p]: any) => {
       const keyParts = k.split('_');
-      keyParts.shift(); // remove the section
+      keyParts.shift(); // remove the section index
       const newKey = keyParts.join('_');
 
-      out[newKey] = {
-        ...p,
-        value: p.editableValue,   // main value
-        _objValue: p._objValue,
-        info: p.info,
-        _parentId: p._parentId,
-      };
+      if (p._class === "MultiPointerParam" && Array.isArray(p.editableValue)) {
+        // preserve full array with all metadata
+        out[newKey] = p.editableValue.map((item: any) => ({
+          object: item.object ?? '',
+          info: item.info ?? '',
+          _parentId: item._parentId ?? null,
+          _objValue: item._objValue ?? '',
+          _class: item._class ?? null,
+        }));
+      } else {
+        // default case (PointerParam, TextField, etc.)
+        out[newKey] = {
+          value: p.editableValue,
+          _objValue: p._objValue,
+          info: p.info,
+          _parentId: p._parentId,
+        };
+      }
     });
 
     return out;
   }, [protocolDetails.params]);
+
 
   const handleExecute = async () => {
     setExecLoading(true);
@@ -424,28 +436,50 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
 
         const onClear = (i: number) => {
           setProtocolDetails((prev: any) => {
-            const list = [...prev.params[key].editableValue];
+            const list = Array.isArray(prev.params[key].editableValue)
+              ? [...prev.params[key].editableValue]
+              : [];
             list.splice(i, 1);
             list.push({ object: '', info: '' });
             return {
               ...prev,
-              params: { ...prev.params, [key]: { ...prev.params[key], editableValue: list } },
+              params: {
+                ...prev.params,
+                [key]: { ...prev.params[key], editableValue: list },
+              },
             };
           });
         };
 
         const onRowDrop = (i: number, dragged: any) => {
           const expected = getExpectedClass(def);
-          if (!expected || dragged._class !== expected) return;
+
+          // Allow multiple expected classes or single string
+          const isMatch =
+            !expected ||
+            (Array.isArray(expected)
+              ? expected.includes(dragged._class)
+              : dragged._class === expected);
+
+          if (!isMatch) return; // ignore incompatible drags
+
           setProtocolDetails((prev: any) => {
             const list = Array.isArray(prev.params[key].editableValue)
               ? [...prev.params[key].editableValue]
               : [];
             while (list.length <= i) list.push({ object: '', info: '' });
-            list[i] = { object: dragged._objValue ?? '', info: dragged.info ?? '' };
+            list[i] = {
+              object: dragged._objValue ?? '',
+              info: dragged.info ?? '',
+              _class: dragged._class ?? '',
+              _parentId: dragged._parentId ?? null,
+            };
             return {
               ...prev,
-              params: { ...prev.params, [key]: { ...prev.params[key], editableValue: list } },
+              params: {
+                ...prev.params,
+                [key]: { ...prev.params[key], editableValue: list },
+              },
             };
           });
         };
@@ -464,8 +498,10 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
                   onRowClear={onClear}
                   onRowDrop={onRowDrop}
                   dragOverKey={dragOverKey}
+                  setDragOverKey={setDragOverKey}
                   currentDraggedOutput={currentDraggedOutput}
                   paramKey={key}
+                  def={def}
                 />
               </Box>
             }
@@ -834,7 +870,7 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
                     },
                   }}
                 >
-                  {['Output', 'Errors', 'Project'].map((label, index) => (
+                  {['Output', 'Errors', 'Schedule'].map((label, index) => (
                     <Tab key={index} label={label} />
                   ))}
                 </Tabs>
@@ -887,7 +923,7 @@ export default function ProtocolForm({ data, onClose }: ProtocolFormProps) {
                     </Box>
                   )}
                   {bottomTab === 2 && (
-                    <Typography variant="body1">Project Log</Typography>
+                    <Typography variant="body1">Schedule log</Typography>
                   )}
                 </Box>
               </Box>

@@ -253,7 +253,12 @@ export default function StatusNodeCard({
                         onDragStart={(e) => {
                           e.stopPropagation();
                           setDraggingIdx(idx);
-                          const output = { _class: value._class, _objValue: value._objValue, info: value.info, _parentId: value._parentId };
+                          const output = { 
+                            _class: value._class,
+                            _expectedClass: value._class, 
+                            _objValue: value._objValue, 
+                            info: value.info, 
+                            _parentId: value._parentId };
                           setCurrentDraggedOutput(output);
                           e.dataTransfer.setData("application/scipion-output", JSON.stringify(output));
                           const dragGhost = document.createElement("div");
