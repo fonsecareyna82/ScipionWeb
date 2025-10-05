@@ -9,18 +9,9 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  Button,
+  Button
 } from '@mui/material';
 import { CloseIcon, EyeIcon, FindIcon, HelpIcon, TrashBinIcon } from '../../icons';
-import OutputSelectorDialog from './outputSelectorDialog';
-
-type Output = {
-  _key?: string;
-  _class: string;
-  _objValue: string;
-  info: string;
-  _parentId: string;
-};
 
 type ParamRowProps = {
   label: string;
@@ -29,12 +20,10 @@ type ParamRowProps = {
   isPointerParam?: boolean;
   onClear?: () => void;
   rowIndex?: number;
-  /** Optional: full list of outputs available in the project (for Find button) */
-  allOutputs?: Output[];
-  /** Optional: expected class for filtering in the selector */
-  expectedClass?: string | string[];
-  /** Called when the user selects an output from the selector dialog */
-  onSelectOutput?: (output: Output) => void;
+
+  // NEW: optional callback to open the Finder from parent (ProtocolForm/…)
+  // If not provided, we fall back to local state (noop dialog) to keep behavior.
+  onOpenFind?: () => void;
 };
 
 const ParamRow = ({
@@ -44,12 +33,10 @@ const ParamRow = ({
   isPointerParam,
   onClear,
   rowIndex = 0,
-  allOutputs = [],
-  expectedClass,
-  onSelectOutput,
+  onOpenFind, // <-- NEW prop
 }: ParamRowProps) => {
   const [openHelp, setOpenHelp] = useState(false);
-  const [openSelector, setOpenSelector] = useState(false);
+  const [openSelector, setOpenSelector] = useState(false); // kept as fallback
 
   return (
     <>
@@ -65,13 +52,7 @@ const ParamRow = ({
       >
         <Typography
           variant="body2"
-          sx={{
-            p: 0.5,
-            pr: 2,
-            fontSize: '0.8rem',
-            fontWeight: 500,
-            color: 'black',
-          }}
+          sx={{ p: 0.5, pr: 2, fontSize: '0.8rem', fontWeight: 500, color: 'black' }}
         >
           {label}
         </Typography>
@@ -81,7 +62,11 @@ const ParamRow = ({
         <Box sx={{ display: 'flex', gap: 0, alignItems: 'center' }}>
           {isPointerParam && (
             <Tooltip title="Find">
-              <IconButton size="small" onClick={() => setOpenSelector(true)}>
+              <IconButton
+                size="small"
+                // If parent provided a Finder handler, use it; otherwise keep local fallback
+                onClick={onOpenFind ? onOpenFind : () => setOpenSelector(true)}
+              >
                 <FindIcon fontSize="1.3rem" />
               </IconButton>
             </Tooltip>
@@ -113,7 +98,7 @@ const ParamRow = ({
         </Box>
       </Box>
 
-      {/* --- Help Dialog --- */}
+      {/* Help dialog (unchanged) */}
       {helpText && (
         <Dialog open={openHelp} onClose={() => setOpenHelp(false)} maxWidth="sm" fullWidth>
           <DialogTitle className="form-header">Help</DialogTitle>
@@ -134,19 +119,21 @@ const ParamRow = ({
         </Dialog>
       )}
 
-      {/* --- Output Selector Dialog --- */}
-      {isPointerParam && (
-        <OutputSelectorDialog
-          open={openSelector}
-          onClose={() => setOpenSelector(false)}
-          expectedClass={expectedClass}
-          allOutputs={allOutputs}
-          onSelect={(selected) => {
-            setOpenSelector(false);
-            if (onSelectOutput) onSelectOutput(selected);
-          }}
-        />
-      )}
+      {/* Fallback selector dialog (kept hidden/unused unless you want it) */}
+      <Dialog open={openSelector} onClose={() => setOpenSelector(false)} maxWidth="sm" fullWidth>
+        <DialogTitle className="form-header">Select output</DialogTitle>
+        <DialogContent sx={{ p: 2 }}>
+          <Typography variant="body2" sx={{ lineHeight: 1.6 }}>
+            {/* This is a placeholder. Parent should pass onOpenFind to handle the real Finder. */}
+            No selector implemented here. Use onOpenFind from the parent.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ justifyContent: 'center' }}>
+          <Button variant="outlined" onClick={() => setOpenSelector(false)} startIcon={<CloseIcon />}>
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
     </>
   );
 };
