@@ -62,7 +62,11 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
   // 🔹 New: State for global Output Selector
   const [openSelector, setOpenSelector] = useState(false);
   const [selectorExpectedClass, setSelectorExpectedClass] = useState<string | string[] | undefined>();
-  const [selectorTarget, setSelectorTarget] = useState<{ key: string; expectedClass?: string | string[] } | null>(null);
+  const [selectorTarget, setSelectorTarget] = useState<{
+    key: string;
+    def?: any;
+    expectedClass?: string | string[];
+  } | null>(null);
 
 
   // --- Output selector dialog states ---
@@ -660,16 +664,14 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
 
         // Called when user clicks "Find" in a PointerParam
         // Handle opening the Output Selector for PointerParam
-        const handleOpenFind = (paramExpectedClass?: string | string[]) => {
-          console.log("🧭 handleOpenFind() → expectedClass:", paramExpectedClass);
-
-          const outputs = gatherAllOutputs();
-          console.log("📦 gathered outputs:", outputs);
-
-          setAllOutputs(outputs);
-          setExpectedClass(paramExpectedClass);
-          setOpenOutputSelector(true);
+        const handleOpenFind = (key: string, def: any) => {
+          const expected = getExpectedClass(def);
+          setExpectedClass(expected);
+          setSelectorTarget({ key, def, expectedClass: expected });
+          setAllOutputs(gatherAllOutputs());
+          setOpenSelector(true);
         };
+
 
 
         return (
@@ -690,7 +692,7 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
             isPointerParam
             onClear={onClear}
             rowIndex={rowIndex}
-            onOpenFind={() => handleOpenFind(getExpectedClass(def))}
+            onOpenFind={() => handleOpenFind(key, def)}
           />
         );
       }
@@ -1118,15 +1120,11 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
       </div>
 
       <OutputSelectorDialog
-        open={openOutputSelector}
-        onClose={() => setOpenOutputSelector(false)}
+        open={openSelector}
+        onClose={() => setOpenSelector(false)}
         expectedClass={expectedClass}
         allOutputs={allOutputs}
-        onSelect={(output) => {
-          console.log("✅ Selected output:", output);
-          setOpenOutputSelector(false);
-          // TODO: connect selection to the parameter’s value if needed
-        }}
+        onSelect={handleSelectOutput}
       />
     </div>
   );

@@ -24,6 +24,7 @@ interface Output {
   _objValue: string;
   info: string;
   _parentId: string;
+  protocol?: string; // ✅ añadimos esto por si queremos mostrar el label del protocolo
 }
 
 interface OutputSelectorDialogProps {
@@ -43,22 +44,34 @@ const OutputSelectorDialog: React.FC<OutputSelectorDialogProps> = ({
 }) => {
   const [filter, setFilter] = useState("");
 
+  // Filter & match logic
   const matchingOutputs = useMemo(() => {
-    console.log(expectedClass)
-    if (!expectedClass) return allOutputs;
-  
-    const classes = Array.isArray(expectedClass)
-      ? expectedClass.map((c) => c.toLowerCase())
-      : [expectedClass.toLowerCase()];
-  
-    return allOutputs.filter((o) =>
-      classes.includes(o._class?.toLowerCase())
-    );
-  }, [allOutputs, expectedClass]);
+    if (!allOutputs) return [];
 
+    let filtered = allOutputs;
+    if (expectedClass) {
+      const classes = Array.isArray(expectedClass)
+        ? expectedClass.map((c) => c.toLowerCase())
+        : [expectedClass.toLowerCase()];
+      filtered = filtered.filter((o) => classes.includes(o._class?.toLowerCase()));
+    }
+
+    if (filter.trim()) {
+      const q = filter.toLowerCase();
+      filtered = filtered.filter(
+        (o) =>
+          o._class?.toLowerCase().includes(q) ||
+          o.info?.toLowerCase().includes(q) ||
+          o._objValue?.toLowerCase().includes(q) ||
+          o._parentId?.toLowerCase().includes(q)
+      );
+    }
+
+    return filtered;
+  }, [allOutputs, expectedClass, filter]);
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+    <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth>
       {/* === HEADER === */}
       <DialogTitle
         sx={{
@@ -81,7 +94,7 @@ const OutputSelectorDialog: React.FC<OutputSelectorDialogProps> = ({
       {/* === BODY === */}
       <DialogContent sx={{ p: 2 }}>
         {/* Search bar */}
-        <Box sx={{ display: "flex", justifyContent: "space-between", mb: 2, mt: 2 }}>
+        <Box sx={{ mb: 2, mt: 2 }}>
           <TextField
             size="small"
             fullWidth
@@ -92,7 +105,10 @@ const OutputSelectorDialog: React.FC<OutputSelectorDialogProps> = ({
         </Box>
 
         {/* Count of visible results */}
-        <Typography variant="body2" sx={{ mb: 1, color: "#555", fontStyle: "italic" }}>
+        <Typography
+          variant="body2"
+          sx={{ mb: 1, color: "#555", fontStyle: "italic" }}
+        >
           Showing {matchingOutputs.length} compatible output
           {matchingOutputs.length !== 1 ? "s" : ""}
         </Typography>
@@ -103,7 +119,7 @@ const OutputSelectorDialog: React.FC<OutputSelectorDialogProps> = ({
             border: "1px solid #ddd",
             borderRadius: 1,
             overflow: "auto",
-            maxHeight: 440,
+            maxHeight: 460,
           }}
         >
           <Table
@@ -127,10 +143,13 @@ const OutputSelectorDialog: React.FC<OutputSelectorDialogProps> = ({
                   },
                 }}
               >
-                <TableCell sx={{ width: "40%", background: "#d5d5d5" }}>Info</TableCell>
+                <TableCell sx={{ width: "10%", background: "#d5d5d5" }}>ID</TableCell>
+                <TableCell sx={{ width: "35%", background: "#d5d5d5" }}>Info</TableCell>
                 <TableCell sx={{ width: "25%", background: "#d5d5d5" }}>Class</TableCell>
-                <TableCell sx={{ width: "25%", background: "#d5d5d5" }}>Protocol</TableCell>
-                <TableCell sx={{ width: "10%", textAlign: "center", background: "#d5d5d5" }}>
+                <TableCell sx={{ width: "20%", background: "#d5d5d5" }}>Protocol</TableCell>
+                <TableCell
+                  sx={{ width: "10%", textAlign: "center", background: "#d5d5d5" }}
+                >
                   Action
                 </TableCell>
               </TableRow>
@@ -148,9 +167,10 @@ const OutputSelectorDialog: React.FC<OutputSelectorDialogProps> = ({
                   }}
                   onClick={() => onSelect(o)}
                 >
+                  <TableCell title={o._parentId}>{o._parentId}</TableCell>
                   <TableCell title={o.info}>{o.info || "—"}</TableCell>
                   <TableCell title={o._class}>{o._class}</TableCell>
-                  <TableCell title={o._parentId}>{o._parentId}</TableCell>
+                  <TableCell title={o.protocol}>{o.protocol || "—"}</TableCell>
                   <TableCell sx={{ textAlign: "center" }}>
                     <Tooltip title="Select this output">
                       <IconButton color="success" size="small">
@@ -163,7 +183,7 @@ const OutputSelectorDialog: React.FC<OutputSelectorDialogProps> = ({
 
               {matchingOutputs.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={4} sx={{ textAlign: "center", opacity: 0.7 }}>
+                  <TableCell colSpan={5} sx={{ textAlign: "center", opacity: 0.7 }}>
                     No compatible outputs found.
                   </TableCell>
                 </TableRow>
