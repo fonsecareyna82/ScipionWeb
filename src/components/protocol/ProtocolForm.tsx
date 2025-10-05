@@ -73,6 +73,7 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
   const [openOutputSelector, setOpenOutputSelector] = useState(false);
   const [expectedClass, setExpectedClass] = useState<string | string[] | undefined>(undefined);
   const [allOutputs, setAllOutputs] = useState<any[]>([]);
+  const dependencyMap: Record<string, string[]> = {};
 
   // --------------------------------------------
   // Utility functions
@@ -362,38 +363,51 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
   };
 
   // Gather all outputs available across project protocols
-  const gatherAllOutputs = useCallback(() => {
-    if (!projectProtocols) return [];
+  const gatherAllOutputs = useCallback((): {
+    outputs: any[];
+    dependencyMap: Record<string, string[]>;
+  } => {
+    if (!projectProtocols) return { outputs: [], dependencyMap: {} };
+  
     const protocolsArray = Array.isArray(projectProtocols)
       ? projectProtocols
       : Object.values(projectProtocols);
-
+  
     const outputs: any[] = [];
-
+    const dependencyMap: Record<string, string[]> = {};
+  
     for (const prot of protocolsArray) {
+      const pid = String(prot.id);
+  
+      // 🔹 Mapa de dependencias descendentes
+      dependencyMap[pid] = (prot.children ?? []).map(String);
+  
+      // 🔹 Recolectamos los outputs
       if (!Array.isArray(prot.outputs)) continue;
-
+  
       for (const out of prot.outputs) {
         const entries = Object.entries(out);
         if (entries.length === 0) continue;
-
+  
         const [key, valAny] = entries[0];
         const val = valAny as any;
-
+  
         outputs.push({
           protocol: prot.label ?? prot.protocolName ?? prot.id ?? "Unknown",
           key,
-          info: val.info ?? "",
-          _class: val._class ?? "",
-          _objValue: val._objValue ?? "",
-          _parentId: val._parentId ?? prot.id,
+          info: val?.info ?? "",
+          _class: val?._class ?? "",
+          _objValue: val?._objValue ?? "",
+          _protocolId: pid,
         });
       }
     }
-
-    console.log("✅ Gathered outputs:", outputs);
-    return outputs;
+  
+    return { outputs, dependencyMap };
   }, [projectProtocols]);
+  
+
+
 
   // --------------------------------------------
   // Serialize protocol parameters before save/execute
@@ -594,7 +608,7 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
                   currentDraggedOutput={currentDraggedOutput}
                   paramKey={key}
                   def={def}
-                  getAvailableOutputs={gatherAllOutputs}
+                  getAvailableOutputs={() => gatherAllOutputs().outputs}
                   onPickForRow={handlePickFromDialog}
                 />
               </Box>
@@ -658,21 +672,54 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
           }
 
           if (result.length === 0) return undefined;
-          if (result.length === 1) return result[0];
-          return result;
+          return result.length === 1 ? result[0] : result;
         };
 
         // Called when user clicks "Find" in a PointerParam
-        // Handle opening the Output Selector for PointerParam
         const handleOpenFind = (key: string, def: any) => {
           const expected = getExpectedClass(def);
           setExpectedClass(expected);
           setSelectorTarget({ key, def, expectedClass: expected });
-          setAllOutputs(gatherAllOutputs());
+        
+          const { outputs, dependencyMap } = gatherAllOutputs();
+        
+          const currentId = String(data.id);
+          const blocked = new Set<string>();
+          const stack = [currentId];
+        
+          // 🔹 Recorremos recursivamente los descendientes (hijos, nietos, etc.)
+          while (stack.length > 0) {
+            const parent = stack.pop()!;
+            const children = dependencyMap[parent] || [];
+            for (const child of children) {
+              if (!blocked.has(child)) {
+                blocked.add(child);
+                stack.push(child);
+              }
+            }
+          }
+        
+          // 🔹 Excluimos outputs del propio protocolo y de todos sus descendientes
+          const filteredOutputs = outputs.filter((o) => {
+            const owner = String(o._protocolId);
+            return owner !== currentId && !blocked.has(owner);
+          });
+        
+          // 🔹 Si hay expectedClass, filtramos además por clase compatible
+          const finalOutputs = expected
+            ? filteredOutputs.filter((o) => {
+                const cls = o._class?.toLowerCase?.() ?? "";
+                return Array.isArray(expected)
+                  ? expected.some((ec) => ec.toLowerCase() === cls)
+                  : expected.toLowerCase() === cls;
+              })
+            : filteredOutputs;
+        
+          setAllOutputs(finalOutputs);
           setOpenSelector(true);
         };
-
-
+        
+        
 
         return (
           <ParamRow
@@ -696,6 +743,7 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
           />
         );
       }
+
       // ===========================================
       // EnumParam
       // ===========================================

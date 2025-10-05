@@ -1,4 +1,5 @@
-import React, { useMemo, useState } from "react";
+// src/components/outputSelectorDialog.tsx
+import React, { useMemo, useState, useEffect } from "react";
 import {
   Dialog,
   DialogTitle,
@@ -23,8 +24,8 @@ interface Output {
   _class: string;
   _objValue: string;
   info: string;
-  _parentId: string;
-  protocol?: string; // ✅ añadimos esto por si queremos mostrar el label del protocolo
+  _protocolId: string;
+  protocol?: string;
 }
 
 interface OutputSelectorDialogProps {
@@ -43,12 +44,19 @@ const OutputSelectorDialog: React.FC<OutputSelectorDialogProps> = ({
   onSelect,
 }) => {
   const [filter, setFilter] = useState("");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  // Reset selection on open
+  useEffect(() => {
+    if (open) setSelectedId(null);
+  }, [open]);
 
   // Filter & match logic
   const matchingOutputs = useMemo(() => {
     if (!allOutputs) return [];
 
     let filtered = allOutputs;
+
     if (expectedClass) {
       const classes = Array.isArray(expectedClass)
         ? expectedClass.map((c) => c.toLowerCase())
@@ -63,7 +71,8 @@ const OutputSelectorDialog: React.FC<OutputSelectorDialogProps> = ({
           o._class?.toLowerCase().includes(q) ||
           o.info?.toLowerCase().includes(q) ||
           o._objValue?.toLowerCase().includes(q) ||
-          o._parentId?.toLowerCase().includes(q)
+          o._protocolId?.toLowerCase().includes(q) ||
+          o.protocol?.toLowerCase().includes(q)
       );
     }
 
@@ -93,7 +102,6 @@ const OutputSelectorDialog: React.FC<OutputSelectorDialogProps> = ({
 
       {/* === BODY === */}
       <DialogContent sx={{ p: 2 }}>
-        {/* Search bar */}
         <Box sx={{ mb: 2, mt: 2 }}>
           <TextField
             size="small"
@@ -104,7 +112,6 @@ const OutputSelectorDialog: React.FC<OutputSelectorDialogProps> = ({
           />
         </Box>
 
-        {/* Count of visible results */}
         <Typography
           variant="body2"
           sx={{ mb: 1, color: "#555", fontStyle: "italic" }}
@@ -113,7 +120,6 @@ const OutputSelectorDialog: React.FC<OutputSelectorDialogProps> = ({
           {matchingOutputs.length !== 1 ? "s" : ""}
         </Typography>
 
-        {/* Table */}
         <Box
           sx={{
             border: "1px solid #ddd",
@@ -143,10 +149,18 @@ const OutputSelectorDialog: React.FC<OutputSelectorDialogProps> = ({
                   },
                 }}
               >
-                <TableCell sx={{ width: "10%", background: "#d5d5d5" }}>ID</TableCell>
-                <TableCell sx={{ width: "35%", background: "#d5d5d5" }}>Info</TableCell>
-                <TableCell sx={{ width: "25%", background: "#d5d5d5" }}>Class</TableCell>
-                <TableCell sx={{ width: "20%", background: "#d5d5d5" }}>Protocol</TableCell>
+                <TableCell sx={{ width: "10%", background: "#d5d5d5" }}>
+                  Protocol ID
+                </TableCell>
+                <TableCell sx={{ width: "35%", background: "#d5d5d5" }}>
+                  Info
+                </TableCell>
+                <TableCell sx={{ width: "25%", background: "#d5d5d5" }}>
+                  Class
+                </TableCell>
+                <TableCell sx={{ width: "20%", background: "#d5d5d5" }}>
+                  Protocol Label
+                </TableCell>
                 <TableCell
                   sx={{ width: "10%", textAlign: "center", background: "#d5d5d5" }}
                 >
@@ -156,30 +170,63 @@ const OutputSelectorDialog: React.FC<OutputSelectorDialogProps> = ({
             </TableHead>
 
             <TableBody>
-              {matchingOutputs.map((o, i) => (
-                <TableRow
-                  key={i}
-                  hover
-                  sx={{
-                    cursor: "pointer",
-                    backgroundColor: i % 2 === 0 ? "#fafafa" : "#ffffff",
-                    "&:hover": { backgroundColor: "#f1faf1" },
-                  }}
-                  onClick={() => onSelect(o)}
-                >
-                  <TableCell title={o._parentId}>{o._parentId}</TableCell>
-                  <TableCell title={o.info}>{o.info || "—"}</TableCell>
-                  <TableCell title={o._class}>{o._class}</TableCell>
-                  <TableCell title={o.protocol}>{o.protocol || "—"}</TableCell>
-                  <TableCell sx={{ textAlign: "center" }}>
-                    <Tooltip title="Select this output">
-                      <IconButton color="success" size="small">
-                        <CheckIcon size={18} />
-                      </IconButton>
-                    </Tooltip>
-                  </TableCell>
-                </TableRow>
-              ))}
+              {matchingOutputs.map((o, i) => {
+                const id = o._objValue || o._protocolId;
+                const isSelected = selectedId === id;
+                const rowBg = isSelected ? "#b5f0b2" : i % 2 === 0 ? "#fafafa" : "#ffffff";
+
+                return (
+                  <TableRow
+                    key={i}
+                    // 👇 Quitamos 'hover' de MUI para evitar su estilo por defecto
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedId(id); // select highlight instantly
+                    }}
+                    onDoubleClick={(e) => {
+                      e.stopPropagation();
+                      onSelect(o);
+                      onClose();
+                    }}
+                    sx={{
+                      cursor: "pointer",
+                      backgroundColor: rowBg,
+                      // 👇 Controlamos hover manualmente; si está seleccionada, no cambia
+                      "&:hover": {
+                        backgroundColor: isSelected ? rowBg : "#f1faf1",
+                      },
+                      borderLeft: isSelected
+                        ? "4px solid #4caf50"
+                        : "4px solid transparent",
+                      transition: "border-left 0.15s ease-in-out",
+                    }}
+                  >
+                    <TableCell title={o._protocolId}>
+                      {o._protocolId || "—"}
+                    </TableCell>
+                    <TableCell title={o.info}>{o.info || "—"}</TableCell>
+                    <TableCell title={o._class}>{o._class}</TableCell>
+                    <TableCell title={o.protocol}>
+                      {o.protocol || "—"}
+                    </TableCell>
+                    <TableCell sx={{ textAlign: "center" }}>
+                      <Tooltip title="Select this output">
+                        <IconButton
+                          color="success"
+                          size="small"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onSelect(o);
+                            onClose();
+                          }}
+                        >
+                          <CheckIcon size={18} />
+                        </IconButton>
+                      </Tooltip>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
 
               {matchingOutputs.length === 0 && (
                 <TableRow>
