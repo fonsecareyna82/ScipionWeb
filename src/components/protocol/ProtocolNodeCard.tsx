@@ -316,7 +316,7 @@ export default function StatusNodeCard({
                         }}
                       />
                     </div>
-                    <span className="text-xl opacity-80 ml-4">
+                    <span className="text-3xl opacity-80 ml-4">
                       {data.stepsDone}/{data.numberOfSteps}
                     </span>
                   </div>

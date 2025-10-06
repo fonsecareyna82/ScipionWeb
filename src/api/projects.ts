@@ -1,7 +1,7 @@
 // src/api/projects.ts
 import { ProtocolNode } from "./protocols";
 import { BASE_URL } from "@/config";
-import { fetchWithAuth} from "./auth";
+import { fetchWithAuth } from "./auth";
 
 export interface Project {
   id: string;
@@ -50,7 +50,7 @@ export async function createProject(name: string, description: string): Promise<
     try {
       const data = await response.json();
       if (data.detail) errorDetail = data.detail;
-    } catch {}
+    } catch { }
     throw new Error(errorDetail);
   }
 
@@ -78,18 +78,34 @@ export async function fetchNewProtocolDetails(projectId: string, protocolClass: 
 /**
  * Launch a protocol for a specific project by ID
  */
-export async function executeProtocol(protocolId: string, protocolClassName: string, params: Record<string, any>): Promise<any> {
+export async function executeProtocol(
+  protocolId: string,
+  protocolClassName: string,
+  params: Record<string, any>
+): Promise<any> {
   const response = await fetchWithAuth(`${BASE_URL}/projects/launch`, {
     method: "POST",
     body: JSON.stringify({ protocolId, protocolClassName, params }),
   });
 
   if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error(err.message || "Failed to execute protocol");
+    // Try to parse the response body for details
+    const errData = await response.json().catch(() => ({}));
+
+    // Build a richer error object so the frontend can handle it properly
+    const error: any = new Error(
+      errData.detail || errData.message || "Failed to execute protocol"
+    );
+    error.status = response.status;
+    error.detail = errData.detail || null;
+    error.data = errData;
+
+    throw error;
   }
+
   return response.json();
 }
+
 
 /**
  * Save a protocol for a specific project by ID

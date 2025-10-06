@@ -14,6 +14,10 @@ import {
   Tooltip,
   CircularProgress,
   IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from "@mui/material";
 import "./ProtocolForm.css";
 import {
@@ -58,6 +62,8 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
   const offsetRef = useRef<number>(0);
   const errorOffsetRef = useRef<number>(0);
   const errorContainerRef = useRef<HTMLDivElement>(null);
+  const [validationErrors, setValidationErrors] = useState<string[]>([]);
+  const [showValidationDialog, setShowValidationDialog] = useState(false);
 
   // 🔹 New: State for global Output Selector
   const [openSelector, setOpenSelector] = useState(false);
@@ -414,15 +420,15 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
   // --------------------------------------------
   const getSerializedParams = () => {
     const out: any = {};
-  
+
     Object.entries(protocolDetails.params || {}).forEach(([k, pRaw]: any) => {
       const keyParts = k.split("_");
       keyParts.shift(); // remove section index
       const newKey = keyParts.join("_");
-  
+
       const p = pRaw ?? {};
       const cls = p._class;
-  
+
       // --- POINTER ---
       if (cls === "PointerParam") {
         const editable = p.editableValue ?? "";
@@ -432,7 +438,7 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
           _parentId: p._parentId ?? null,
           _class: p._class ?? "PointerParam",
         };
-  
+
         const token = (p._objValue ?? "").toString().trim();
         if (token) {
           normalized._objValue = token;
@@ -441,11 +447,11 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
         } else {
           normalized._objValue = "";
         }
-  
+
         out[newKey] = normalized;
         return;
       }
-  
+
       // --- MULTI POINTER ---
       if (cls === "MultiPointerParam" && Array.isArray(p.editableValue)) {
         const list = p.editableValue.map((item: any) => {
@@ -464,15 +470,15 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
           return {
             _objValue: (item._objValue ?? item.object ?? "") || "",
             info: item.info ?? "",
-            _parentId: item._parentId ?? null,
+            _parentId: item._parentId ?? item._protocolId ?? null,
             _class: item._class ?? "PointerParam",
           };
         });
-  
+
         out[newKey] = list;
         return;
       }
-  
+
       // --- RESTO (no pointers) ---
       out[newKey] = {
         value: p.editableValue,
@@ -481,42 +487,85 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
         _parentId: p._parentId,
       };
     });
-  
+
     return out;
   };
-  
 
-  // --------------------------------------------
-  // Execution & Save handlers
-  // --------------------------------------------
-  const handleExecute = async () => {
-    setExecLoading(true);
-    setExecError(null);
-  
-    try {
-      const protocolId = data.id ?? "";
-      const serialized = getSerializedParams(); // always current state
-      console.log("🚀 Executing with params:", serialized);
-  
-      await executeProtocol(protocolId, data.protocolClassName, serialized);
-      onClose();
-    } catch (err: any) {
-      console.error("❌ Execute error:", err);
-      setExecError(err.message || "Error launching the protocol");
-    } finally {
-      setExecLoading(false);
+
+ 
+// Extract validation messages from a detail string like:
+// "422: ['msg 1, with comma', 'msg 2']"
+function extractValidationErrors(detail: string): string[] {
+  // 1) Prefer single-quoted segments: '...'
+  const singleQuoted = Array.from(detail.matchAll(/'([^']+)'/g), (m) => m[1].trim());
+  if (singleQuoted.length) return singleQuoted;
+
+  // 2) Fallback: in case the backend ever uses double quotes: "..."
+  const doubleQuoted = Array.from(detail.matchAll(/"([^"]+)"/g), (m) => m[1].trim());
+  if (doubleQuoted.length) return doubleQuoted;
+
+  // 3) Last resort: try to pull content inside brackets and split conservatively
+  const bracket = detail.match(/\[(.*)\]/);
+  if (bracket && bracket[1]) {
+    return bracket[1]
+      .split(/',\s*'|",\s*"/)               // split only on "',' or '", " patterns
+      .map((s: string) => s.replace(/^['"]|['"]$/g, "").trim())
+      .filter((s: string) => s.length > 0);
+  }
+
+  // 4) If nothing matched, return the stripped detail as a single message
+  return [detail.replace(/^422:\s*/, "").trim()];
+}
+
+ // --------------------------------------------
+ // Execution & Save handlers
+ // --------------------------------------------
+const handleExecute = async () => {
+  setExecLoading(true);
+  setExecError(null);
+  setValidationErrors([]);
+
+  try {
+    const protocolId = data.id ?? "";
+    const serialized = getSerializedParams();
+    console.log("Executing with params:", serialized);
+
+    await executeProtocol(protocolId, data.protocolClassName, serialized);
+    onClose();
+  } catch (err: any) {
+    console.error("Execute error:", err);
+
+    // Case: backend returns a detail string like
+    // "422: ['Input volumes detected, please set initialization mode to `input` or clear volume inputs.', 'No. of input volumes must equal no. of classes']"
+    if (typeof err?.detail === "string") {
+      const extracted = extractValidationErrors(err.detail);
+      if (extracted.length > 0) {
+        setValidationErrors(extracted);
+        setShowValidationDialog(true);
+        setExecLoading(false);
+        return;
+      }
     }
-  };
+
+    // Fallback for generic errors
+    setExecError(err.message || "Error launching the protocol");
+  } finally {
+    setExecLoading(false);
+  }
+};
+
+
+
 
   const handleSave = async () => {
     setExecLoading(true);
     setExecError(null);
-  
+
     try {
       const protocolId = data.id ?? "";
       const serialized = getSerializedParams(); // always current state
       console.log("🛰️ Saving with params:", serialized);
-  
+
       await saveProtocol(protocolId, data.protocolClassName, serialized);
       onClose();
     } catch (err: any) {
@@ -526,7 +575,7 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
       setExecLoading(false);
     }
   };
-  
+
 
   // --------------------------------------------
   // renderParam - build UI for each parameter
@@ -629,13 +678,17 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
             const list = Array.isArray(prev.params[key].editableValue)
               ? [...prev.params[key].editableValue]
               : [];
+
             while (list.length <= rowIndex) list.push({ object: "", info: "" });
+
             list[rowIndex] = {
               object: picked._objValue ?? "",
               info: picked.info ?? "",
               _class: picked._class ?? "",
-              _parentId: picked._parentId ?? null,
+              _objValue: picked._objValue ?? "",
+              _parentId: picked._protocolId ?? picked._parentId ?? null
             };
+
             return {
               ...prev,
               params: {
@@ -645,6 +698,7 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
             };
           });
         };
+
 
         return (
           <ParamRow
@@ -999,63 +1053,59 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
 
   if (!data || !protocolDetails.params) return null;
 
- // --------------------------------------------
-// Global state for OutputSelectorDialog
-// --------------------------------------------
-const handleSelectOutput = (selected: any | any[]) => {
-  if (!selectorTarget) return;
+  // --------------------------------------------
+  // Global state for OutputSelectorDialog
+  // --------------------------------------------
+  const handleSelectOutput = (selected: any | any[]) => {
+    if (!selectorTarget) return;
 
-  const { key, def } = selectorTarget;
-  const picks = Array.isArray(selected) ? selected : [selected];
+    const { key, def } = selectorTarget;
+    const picks = Array.isArray(selected) ? selected : [selected];
 
-  setProtocolDetails((prev: any) => {
-    const prevParam = prev.params[key];
+    setProtocolDetails((prev: any) => {
+      const prevParam = prev.params[key];
 
-    // 🔹 MULTI POINTER
-    if (def?._class === "MultiPointerParam") {
-      const newItems = picks.map((pick) => ({
-        _objValue: pick?._objValue ?? "",
-        info: pick?.info ?? "",
-        _class: pick?._class ?? "PointerParam",
-        _parentId: pick?._protocolId ?? pick?._parentId ?? null,
-      }));
+      // 🔹 MULTI POINTER
+      if (def?._class === "MultiPointerParam") {
+        const newItems = picks.map((pick) => ({
+          _objValue: pick?._objValue ?? "",
+          info: pick?.info ?? "",
+          _class: pick?._class ?? "PointerParam",
+          _parentId: pick?._protocolId ?? pick?._parentId ?? null,
+        }));
 
+        return {
+          ...prev,
+          params: {
+            ...prev.params,
+            [key]: {
+              ...prevParam,
+              editableValue: newItems,
+            },
+          },
+        };
+      }
+
+      // 🔹 POINTER normal
+      const pick = picks[0];
       return {
         ...prev,
         params: {
           ...prev.params,
           [key]: {
             ...prevParam,
-            editableValue: newItems,
+            editableValue: pick?._objValue ?? "",
+            _objValue: pick?._objValue ?? "",
+            info: pick?.info ?? "",
+            _class: pick?._class ?? "",
+            _parentId: pick?._protocolId ?? pick?._parentId ?? null,
           },
         },
       };
-    }
+    });
 
-    // 🔹 POINTER normal
-    const pick = picks[0];
-    return {
-      ...prev,
-      params: {
-        ...prev.params,
-        [key]: {
-          ...prevParam,
-          editableValue: pick?._objValue ?? "",
-          _objValue: pick?._objValue ?? "",
-          info: pick?.info ?? "",
-          _class: pick?._class ?? "",
-          _parentId: pick?._protocolId ?? pick?._parentId ?? null,
-        },
-      },
-    };
-  });
-
-  setOpenSelector(false);
-};
-
-
-
-
+    setOpenSelector(false);
+  };
 
   // --------------------------------------------
   // JSX Layout
@@ -1273,6 +1323,141 @@ const handleSelectOutput = (selected: any | any[]) => {
         onSelect={handleSelectOutput}
         multiSelect={false}
       />
+      {
+        showValidationDialog && (
+          <Dialog
+            open={showValidationDialog}
+            onClose={() => setShowValidationDialog(false)}
+            maxWidth="sm"
+            fullWidth
+            PaperProps={{
+              sx: {
+                borderRadius: 3,
+                boxShadow: "0px 10px 25px rgba(0, 0, 0, 0.25)",
+              },
+            }}
+          >
+            <DialogTitle
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                gap: 1.5,
+                fontWeight: "bold",
+                color: "#d32f2f",
+                fontSize: "1.1rem",
+                borderBottom: "1px solid #eee",
+                pb: 1,
+              }}
+            >
+              <Box
+                sx={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: "50%",
+                  backgroundColor: "#f8d7da",
+                  color: "#d32f2f",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontWeight: "bold",
+                }}
+              >
+                !
+              </Box>
+              Validation Errors
+            </DialogTitle>
+
+            <DialogContent
+              dividers
+              sx={{
+                maxHeight: "300px",
+                overflowY: "auto",
+                backgroundColor: "#fff8f8",
+                borderTop: "1px solid #f0f0f0",
+                borderBottom: "1px solid #f0f0f0",
+                p: 2.5,
+              }}
+            >
+              {validationErrors.length > 0 ? (
+                <Box
+                  component="ul"
+                  sx={{
+                    listStyle: "none",
+                    pl: 0,
+                    m: 0,
+                    color: "#b00020",
+                    fontSize: "0.9rem",
+                  }}
+                >
+                  {validationErrors.map((err, i) => (
+                    <Box
+                      key={i}
+                      component="li"
+                      sx={{
+                        display: "flex",
+                        alignItems: "flex-start",
+                        mb: 1.2,
+                      }}
+                    >
+                      <Box
+                        component="span"
+                        sx={{
+                          color: "#d32f2f",
+                          fontWeight: "bold",
+                          mr: 1.2,
+                          fontSize: "1rem",
+                          lineHeight: "1rem",
+                        }}
+                      >
+                        •
+                      </Box>
+                      <Typography
+                        variant="body2"
+                        sx={{
+                          color: "#333",
+                          lineHeight: 1.5,
+                          fontSize: "0.9rem",
+                        }}
+                      >
+                        {err}
+                      </Typography>
+                    </Box>
+                  ))}
+                </Box>
+              ) : (
+                <Typography variant="body2" sx={{ color: "#555" }}>
+                  No validation details provided.
+                </Typography>
+              )}
+            </DialogContent>
+
+            <DialogActions
+              sx={{
+                p: 2,
+                justifyContent: "flex-end",
+                backgroundColor: "#fafafa",
+                borderTop: "1px solid #eee",
+              }}
+            >
+              <Button
+                onClick={() => setShowValidationDialog(false)}
+                variant="contained"
+                color="error"
+                sx={{
+                  textTransform: "none",
+                  px: 3,
+                  borderRadius: 2,
+                  fontWeight: "bold",
+                  boxShadow: "none",
+                  "&:hover": { backgroundColor: "#c62828" },
+                }}
+              >
+                Close
+              </Button>
+            </DialogActions>
+          </Dialog>
+        )
+      }
     </div>
   );
 }

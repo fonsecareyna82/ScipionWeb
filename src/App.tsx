@@ -28,60 +28,57 @@ import SessionManager from "./components/common/SessionManager";
 import { Toaster } from "react-hot-toast";
 import { DragProvider } from "./components/protocol/DragContext";
 
-
 export default function App() {
   return (
     <DragProvider>
-    <Router>
-      <ScrollToTop />
-      <SessionManager />  {/* Controlling inactivity */}
-      <Routes>
-        {/* Home page: login */}
-        <Route path="/" element={<SignIn />} />
+      <Router>
+        <ScrollToTop />
 
-        {/* Publics routes */}
-        <Route path="/signin" element={<SignIn />} />
-        <Route path="/signup" element={<SignUp />} />
+        <Routes>
+          {/* Public routes */}
+          <Route path="/" element={<SignIn />} />
+          <Route path="/signin" element={<SignIn />} />
+          <Route path="/signup" element={<SignUp />} />
 
-        {/* Protected rutes inside layout */}
-        <Route
-          element={
-            <ProtectedRoute>
-              <AppLayout />
-            </ProtectedRoute>
-          }
-        >
-          <Route index path="/home" element={<Home />} />
-          <Route path="/projects" element={<Projects />} />
-          <Route path="/project/load/:projectName" element={<ProjectPage />} />
-          <Route path="/plugins/" element={<Plugins />} />
-          <Route path="/plugins/:pipName" element={<PluginPage />} />
-          <Route path="/profile" element={<UserProfiles />} />
-          <Route path="/calendar" element={<Calendar />} />
-          <Route path="/blank" element={<Blank />} />
-          <Route path="/form-elements" element={<FormElements />} />
-          <Route path="/basic-tables" element={<BasicTables />} />
-          <Route path="/alerts" element={<Alerts />} />
-          <Route path="/avatars" element={<Avatars />} />
-          <Route path="/badge" element={<Badges />} />
-          <Route path="/buttons" element={<Buttons />} />
-          <Route path="/images" element={<Images />} />
-          <Route path="/videos" element={<Videos />} />
-          <Route path="/line-chart" element={<LineChart />} />
-          <Route path="/bar-chart" element={<BarChart />} />
-          <Route path="/verify-email" element={<VerifyEmailForm />} />
-        </Route>
+          {/* Protected routes inside layout */}
+          <Route
+            element={
+              <ProtectedRoute>
+                <SessionManager />
+                <AppLayout />
+              </ProtectedRoute>
+            }
+          >
+            <Route index path="/home" element={<Home />} />
+            <Route path="/projects" element={<Projects />} />
+            <Route path="/project/load/:projectName" element={<ProjectPage />} />
+            <Route path="/plugins" element={<Plugins />} />
+            <Route path="/plugins/:pipName" element={<PluginPage />} />
+            <Route path="/profile" element={<UserProfiles />} />
+            <Route path="/calendar" element={<Calendar />} />
+            <Route path="/blank" element={<Blank />} />
+            <Route path="/form-elements" element={<FormElements />} />
+            <Route path="/basic-tables" element={<BasicTables />} />
+            <Route path="/alerts" element={<Alerts />} />
+            <Route path="/avatars" element={<Avatars />} />
+            <Route path="/badge" element={<Badges />} />
+            <Route path="/buttons" element={<Buttons />} />
+            <Route path="/images" element={<Images />} />
+            <Route path="/videos" element={<Videos />} />
+            <Route path="/line-chart" element={<LineChart />} />
+            <Route path="/bar-chart" element={<BarChart />} />
+            <Route path="/verify-email" element={<VerifyEmailForm />} />
+          </Route>
 
-        {/* Page not found */}
-        <Route path="*" element={<NotFound />} />
-      </Routes>
-      <Toaster
-        position="top-right"
-        containerStyle={{
-          zIndex: 999999,  
-        }}
-      />
-    </Router>
+          {/* Page not found */}
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+
+        <Toaster
+          position="top-right"
+          containerStyle={{ zIndex: 999999 }}
+        />
+      </Router>
     </DragProvider>
   );
 }
