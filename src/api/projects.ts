@@ -1,7 +1,7 @@
 // src/api/projects.ts
 import { ProtocolNode } from "./protocols";
 import { BASE_URL } from "@/config";
-import { getAccessToken, refreshAccessToken, logout } from "./auth";
+import { fetchWithAuth} from "./auth";
 
 export interface Project {
   id: string;
@@ -16,42 +16,7 @@ export interface Project {
   protocols?: Record<string, ProtocolNode>;
 }
 
-/**
- * Wrapper for fetch that automatically refreshes tokens on 401
- */
-async function fetchWithAuth(input: RequestInfo, init?: RequestInit): Promise<Response> {
-  let token = getAccessToken();
 
-  const response = await fetch(input, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers || {}),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-  });
-
-  if (response.status === 401) {
-    // try refresh
-    const newToken = await refreshAccessToken();
-    if (!newToken) {
-      logout();
-      throw new Error("Session expired. Please login again.");
-    }
-
-    // retry request with new token
-    return fetch(input, {
-      ...init,
-      headers: {
-        "Content-Type": "application/json",
-        ...(init?.headers || {}),
-        Authorization: `Bearer ${newToken}`,
-      },
-    });
-  }
-
-  return response;
-}
 
 /**
  * Fetch the list of all projects

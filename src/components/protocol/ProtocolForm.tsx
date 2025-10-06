@@ -368,30 +368,30 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
     dependencyMap: Record<string, string[]>;
   } => {
     if (!projectProtocols) return { outputs: [], dependencyMap: {} };
-  
+
     const protocolsArray = Array.isArray(projectProtocols)
       ? projectProtocols
       : Object.values(projectProtocols);
-  
+
     const outputs: any[] = [];
     const dependencyMap: Record<string, string[]> = {};
-  
+
     for (const prot of protocolsArray) {
       const pid = String(prot.id);
-  
+
       // 🔹 Mapa de dependencias descendentes
       dependencyMap[pid] = (prot.children ?? []).map(String);
-  
+
       // 🔹 Recolectamos los outputs
       if (!Array.isArray(prot.outputs)) continue;
-  
+
       for (const out of prot.outputs) {
         const entries = Object.entries(out);
         if (entries.length === 0) continue;
-  
+
         const [key, valAny] = entries[0];
         const val = valAny as any;
-  
+
         outputs.push({
           protocol: prot.label ?? prot.protocolName ?? prot.id ?? "Unknown",
           key,
@@ -402,42 +402,89 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
         });
       }
     }
-  
+
     return { outputs, dependencyMap };
   }, [projectProtocols]);
-  
+
 
 
 
   // --------------------------------------------
   // Serialize protocol parameters before save/execute
   // --------------------------------------------
-  const getSerializedParams = useCallback(() => {
+  const getSerializedParams = () => {
     const out: any = {};
-    Object.entries(protocolDetails.params || {}).forEach(([k, p]: any) => {
+  
+    Object.entries(protocolDetails.params || {}).forEach(([k, pRaw]: any) => {
       const keyParts = k.split("_");
       keyParts.shift(); // remove section index
       const newKey = keyParts.join("_");
-
-      if (p._class === "MultiPointerParam" && Array.isArray(p.editableValue)) {
-        out[newKey] = p.editableValue.map((item: any) => ({
-          object: item.object ?? "",
-          info: item.info ?? "",
-          _parentId: item._parentId ?? null,
-          _objValue: item._objValue ?? "",
-          _class: item._class ?? null,
-        }));
-      } else {
-        out[newKey] = {
-          value: p.editableValue,
-          _objValue: p._objValue,
-          info: p.info,
-          _parentId: p._parentId,
+  
+      const p = pRaw ?? {};
+      const cls = p._class;
+  
+      // --- POINTER ---
+      if (cls === "PointerParam") {
+        const editable = p.editableValue ?? "";
+        const normalized = {
+          _objValue: "",
+          info: p.info ?? "",
+          _parentId: p._parentId ?? null,
+          _class: p._class ?? "PointerParam",
         };
+  
+        const token = (p._objValue ?? "").toString().trim();
+        if (token) {
+          normalized._objValue = token;
+        } else if (editable) {
+          normalized._objValue = String(editable);
+        } else {
+          normalized._objValue = "";
+        }
+  
+        out[newKey] = normalized;
+        return;
       }
+  
+      // --- MULTI POINTER ---
+      if (cls === "MultiPointerParam" && Array.isArray(p.editableValue)) {
+        const list = p.editableValue.map((item: any) => {
+          if (
+            typeof item === "string" ||
+            typeof item === "number" ||
+            typeof item === "boolean"
+          ) {
+            return {
+              _objValue: String(item),
+              info: "",
+              _parentId: null,
+              _class: p._class ?? "PointerParam",
+            };
+          }
+          return {
+            _objValue: (item._objValue ?? item.object ?? "") || "",
+            info: item.info ?? "",
+            _parentId: item._parentId ?? null,
+            _class: item._class ?? "PointerParam",
+          };
+        });
+  
+        out[newKey] = list;
+        return;
+      }
+  
+      // --- RESTO (no pointers) ---
+      out[newKey] = {
+        value: p.editableValue,
+        _objValue: p._objValue,
+        info: p.info,
+        _parentId: p._parentId,
+      };
     });
+  
     return out;
-  }, [protocolDetails.params]);
+  };
+  
 
   // --------------------------------------------
   // Execution & Save handlers
@@ -445,12 +492,16 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
   const handleExecute = async () => {
     setExecLoading(true);
     setExecError(null);
+  
     try {
       const protocolId = data.id ?? "";
-      await executeProtocol(protocolId, data.protocolClassName, getSerializedParams());
+      const serialized = getSerializedParams(); // always current state
+      console.log("🚀 Executing with params:", serialized);
+  
+      await executeProtocol(protocolId, data.protocolClassName, serialized);
       onClose();
     } catch (err: any) {
-      console.error(err);
+      console.error("❌ Execute error:", err);
       setExecError(err.message || "Error launching the protocol");
     } finally {
       setExecLoading(false);
@@ -460,17 +511,22 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
   const handleSave = async () => {
     setExecLoading(true);
     setExecError(null);
+  
     try {
       const protocolId = data.id ?? "";
-      await saveProtocol(protocolId, data.protocolClassName, getSerializedParams());
+      const serialized = getSerializedParams(); // always current state
+      console.log("🛰️ Saving with params:", serialized);
+  
+      await saveProtocol(protocolId, data.protocolClassName, serialized);
       onClose();
     } catch (err: any) {
-      console.error(err);
+      console.error("❌ Save error:", err);
       setExecError(err.message || "Error saving the protocol");
     } finally {
       setExecLoading(false);
     }
   };
+  
 
   // --------------------------------------------
   // renderParam - build UI for each parameter
@@ -626,7 +682,10 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
         const onClear = () =>
           setProtocolDetails((prev: any) => ({
             ...prev,
-            params: { ...prev.params, [key]: { ...prev.params[key], editableValue: "" } },
+            params: {
+              ...prev.params,
+              [key]: { ...prev.params[key], editableValue: "", _objValue: "" },
+            },
           }));
 
         const control = (
@@ -639,7 +698,11 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
                   ...prev,
                   params: {
                     ...prev.params,
-                    [key]: { ...prev.params[key], editableValue: e.target.value },
+                    [key]: {
+                      ...prev.params[key],
+                      editableValue: e.target.value,
+                      _objValue: e.target.value, // <<< asegura sincronía
+                    },
                   },
                 }))
               }
@@ -680,13 +743,13 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
           const expected = getExpectedClass(def);
           setExpectedClass(expected);
           setSelectorTarget({ key, def, expectedClass: expected });
-        
+
           const { outputs, dependencyMap } = gatherAllOutputs();
-        
+
           const currentId = String(data.id);
           const blocked = new Set<string>();
           const stack = [currentId];
-        
+
           // 🔹 Recorremos recursivamente los descendientes (hijos, nietos, etc.)
           while (stack.length > 0) {
             const parent = stack.pop()!;
@@ -698,28 +761,28 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
               }
             }
           }
-        
+
           // 🔹 Excluimos outputs del propio protocolo y de todos sus descendientes
           const filteredOutputs = outputs.filter((o) => {
             const owner = String(o._protocolId);
             return owner !== currentId && !blocked.has(owner);
           });
-        
+
           // 🔹 Si hay expectedClass, filtramos además por clase compatible
           const finalOutputs = expected
             ? filteredOutputs.filter((o) => {
-                const cls = o._class?.toLowerCase?.() ?? "";
-                return Array.isArray(expected)
-                  ? expected.some((ec) => ec.toLowerCase() === cls)
-                  : expected.toLowerCase() === cls;
-              })
+              const cls = o._class?.toLowerCase?.() ?? "";
+              return Array.isArray(expected)
+                ? expected.some((ec) => ec.toLowerCase() === cls)
+                : expected.toLowerCase() === cls;
+            })
             : filteredOutputs;
-        
+
           setAllOutputs(finalOutputs);
           setOpenSelector(true);
         };
-        
-        
+
+
 
         return (
           <ParamRow
@@ -936,30 +999,63 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
 
   if (!data || !protocolDetails.params) return null;
 
-  // --------------------------------------------
-  // Global state for OutputSelectorDialog
-  // --------------------------------------------
+ // --------------------------------------------
+// Global state for OutputSelectorDialog
+// --------------------------------------------
+const handleSelectOutput = (selected: any | any[]) => {
+  if (!selectorTarget) return;
 
-  // ⚠️ Updated to accept single OR multiple selection (array).
-  const handleSelectOutput = (selected: any | any[]) => {
-    if (!selectorTarget) return;
-    const pick = Array.isArray(selected) ? selected[0] : selected; // keep single-select behavior for PointerParam
-    const { key } = selectorTarget;
-    setProtocolDetails((prev: any) => ({
+  const { key, def } = selectorTarget;
+  const picks = Array.isArray(selected) ? selected : [selected];
+
+  setProtocolDetails((prev: any) => {
+    const prevParam = prev.params[key];
+
+    // 🔹 MULTI POINTER
+    if (def?._class === "MultiPointerParam") {
+      const newItems = picks.map((pick) => ({
+        _objValue: pick?._objValue ?? "",
+        info: pick?.info ?? "",
+        _class: pick?._class ?? "PointerParam",
+        _parentId: pick?._protocolId ?? pick?._parentId ?? null,
+      }));
+
+      return {
+        ...prev,
+        params: {
+          ...prev.params,
+          [key]: {
+            ...prevParam,
+            editableValue: newItems,
+          },
+        },
+      };
+    }
+
+    // 🔹 POINTER normal
+    const pick = picks[0];
+    return {
       ...prev,
       params: {
         ...prev.params,
         [key]: {
-          ...prev.params[key],
+          ...prevParam,
           editableValue: pick?._objValue ?? "",
+          _objValue: pick?._objValue ?? "",
           info: pick?.info ?? "",
           _class: pick?._class ?? "",
-          _parentId: pick?._parentId ?? null,
+          _parentId: pick?._protocolId ?? pick?._parentId ?? null,
         },
       },
-    }));
-    setOpenSelector(false);
-  };
+    };
+  });
+
+  setOpenSelector(false);
+};
+
+
+
+
 
   // --------------------------------------------
   // JSX Layout

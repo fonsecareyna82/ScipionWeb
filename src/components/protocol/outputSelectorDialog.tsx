@@ -140,10 +140,11 @@ const OutputSelectorDialog: React.FC<OutputSelectorDialogProps> = ({
           justifyContent: "space-between",
           alignItems: "center",
           background: "linear-gradient(90deg, #e0e0e0 0%, #d5d5d5 100%)",
-          borderBottom: "1px solid #bbb",
+          borderBottom: "1px #bbb",
           py: 1.2,
           px: 2,
-          fontWeight: 600,
+          fontWeight: 100,
+          fontSize: 18
         }}
       >
         {multiSelect ? "Select compatible outputs" : "Select compatible output"}

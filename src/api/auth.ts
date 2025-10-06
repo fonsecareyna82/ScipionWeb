@@ -82,7 +82,7 @@ export async function refreshAccessToken(): Promise<string | null> {
   const res = await fetch(`${BASE_URL}/auth/refresh`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ refreshToken }),
+    body: JSON.stringify({ token: refreshToken }),
   });
 
   if (!res.ok) {
@@ -204,4 +204,42 @@ export async function updateUserProfile(data: Partial<UserProfile>) {
   }
 
   return await res.json();
+}
+
+
+/**
+ * Wrapper for fetch that automatically refreshes tokens on 401
+ */
+export async function fetchWithAuth(input: RequestInfo, init?: RequestInit): Promise<Response> {
+  let token = getAccessToken();
+
+  const response = await fetch(input, {
+    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      ...(init?.headers || {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  });
+
+  if (response.status === 401) {
+    // try refresh
+    const newToken = await refreshAccessToken();
+    if (!newToken) {
+      logout();
+      throw new Error("Session expired. Please login again.");
+    }
+
+    // retry request with new token
+    return fetch(input, {
+      ...init,
+      headers: {
+        "Content-Type": "application/json",
+        ...(init?.headers || {}),
+        Authorization: `Bearer ${newToken}`,
+      },
+    });
+  }
+
+  return response;
 }

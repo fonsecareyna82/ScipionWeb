@@ -1,7 +1,7 @@
 // src/api/protocols.ts
 
 import { BASE_URL } from "@/config";
-import { getAccessToken, refreshAccessToken, logout } from "./auth";
+import {fetchWithAuth} from "./auth";
 
 /**
  * Interface for a protocol node
@@ -20,41 +20,6 @@ export interface ProtocolNode {
   outputs: any;
   inputs: any;
   projectId: string;
-}
-
-/**
- * Wrapper for fetch that automatically refreshes tokens on 401
- */
-async function fetchWithAuth(input: RequestInfo, init?: RequestInit): Promise<Response> {
-  let token = getAccessToken();
-
-  let response = await fetch(input, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers || {}),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-  });
-
-  if (response.status === 401) {
-    const newToken = await refreshAccessToken();
-    if (!newToken) {
-      logout();
-      throw new Error("Session expired. Please login again.");
-    }
-
-    response = await fetch(input, {
-      ...init,
-      headers: {
-        "Content-Type": "application/json",
-        ...(init?.headers || {}),
-        Authorization: `Bearer ${newToken}`,
-      },
-    });
-  }
-
-  return response;
 }
 
 /**
