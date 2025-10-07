@@ -1,5 +1,4 @@
-// src/App.tsx
-import { Routes, Route } from "react-router-dom";
+import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import SignIn from "./pages/AuthPages/SignIn";
 import SignUp from "./pages/AuthPages/SignUp";
 import NotFound from "./pages/OtherPage/NotFound";
@@ -28,17 +27,8 @@ import VerifyEmailForm from "./components/auth/VerifyEmailForm";
 import SessionManager from "./components/common/SessionManager";
 import { Toaster } from "react-hot-toast";
 import { DragProvider } from "./components/protocol/DragContext";
+import { ProjectService } from "./services/ProjectService";
 import { ProjectServiceProvider } from "./ProjectServiceContext";
-import type { ProjectService } from "./services/ProjectService";
-
-/**
- * App ya NO monta un <Router>.
- * Quien importe App debe envolverlo en <BrowserRouter> o <MemoryRouter>.
- *
- * Recuerda:
- * - main.tsx (app normal) envolverá a App con BrowserRouter
- * - entry-umd.tsx (widget) envolerá con MemoryRouter/BrowserRouter según opciones
- */
 
 interface AppProps {
   service?: ProjectService;
@@ -48,9 +38,11 @@ export default function App({ service }: AppProps) {
   return (
     <DragProvider>
       <ProjectServiceProvider service={service}>
+      <Router>
         <ScrollToTop />
-        <SessionManager /> {/* controlling inactivity, usa useNavigate -> requiere Router en caller */}
+
         <Routes>
+          {/* Public routes */}
           <Route path="/" element={<SignIn />} />
           <Route path="/signin" element={<SignIn />} />
           <Route path="/signup" element={<SignUp />} />
@@ -59,6 +51,7 @@ export default function App({ service }: AppProps) {
           <Route
             element={
               <ProtectedRoute>
+                <SessionManager />
                 <AppLayout />
               </ProtectedRoute>
             }
@@ -66,7 +59,7 @@ export default function App({ service }: AppProps) {
             <Route index path="/home" element={<Home />} />
             <Route path="/projects" element={<Projects />} />
             <Route path="/project/load/:projectName" element={<ProjectPage />} />
-            <Route path="/plugins/" element={<Plugins />} />
+            <Route path="/plugins" element={<Plugins />} />
             <Route path="/plugins/:pipName" element={<PluginPage />} />
             <Route path="/profile" element={<UserProfiles />} />
             <Route path="/calendar" element={<Calendar />} />
@@ -84,16 +77,15 @@ export default function App({ service }: AppProps) {
             <Route path="/verify-email" element={<VerifyEmailForm />} />
           </Route>
 
-          {/* Not found */}
+          {/* Page not found */}
           <Route path="*" element={<NotFound />} />
         </Routes>
 
         <Toaster
           position="top-right"
-          containerStyle={{
-            zIndex: 999999,
-          }}
+          containerStyle={{ zIndex: 999999 }}
         />
+      </Router>
       </ProjectServiceProvider>
     </DragProvider>
   );

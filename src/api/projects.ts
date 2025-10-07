@@ -1,46 +1,8 @@
 // src/api/projects.ts
 import { ProtocolNode } from "./protocols";
 import { BASE_URL } from "@/config";
-import { getAccessToken, refreshAccessToken, logout } from "./auth";
 import { Project } from "@/types/project";
-
-
-/**
- * Wrapper for fetch that automatically refreshes tokens on 401
- */
-async function fetchWithAuth(input: RequestInfo, init?: RequestInit): Promise<Response> {
-  let token = getAccessToken();
-
-  const response = await fetch(input, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers || {}),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-  });
-
-  if (response.status === 401) {
-    // try refresh
-    const newToken = await refreshAccessToken();
-    if (!newToken) {
-      logout();
-      throw new Error("Session expired. Please login again.");
-    }
-
-    // retry request with new token
-    return fetch(input, {
-      ...init,
-      headers: {
-        "Content-Type": "application/json",
-        ...(init?.headers || {}),
-        Authorization: `Bearer ${newToken}`,
-      },
-    });
-  }
-
-  return response;
-}
+import { fetchWithAuth } from "./auth";
 
 /**
  * Fetch the list of all projects
@@ -74,7 +36,7 @@ export async function createProject(name: string, description: string): Promise<
     try {
       const data = await response.json();
       if (data.detail) errorDetail = data.detail;
-    } catch {}
+    } catch { }
     throw new Error(errorDetail);
   }
 
@@ -102,18 +64,34 @@ export async function fetchNewProtocolDetails(projectId: string, protocolClass: 
 /**
  * Launch a protocol for a specific project by ID
  */
-export async function executeProtocol(protocolId: string, protocolClassName: string, params: Record<string, any>): Promise<any> {
+export async function executeProtocol(
+  protocolId: string,
+  protocolClassName: string,
+  params: Record<string, any>
+): Promise<any> {
   const response = await fetchWithAuth(`${BASE_URL}/projects/launch`, {
     method: "POST",
     body: JSON.stringify({ protocolId, protocolClassName, params }),
   });
 
   if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error(err.message || "Failed to execute protocol");
+    // Try to parse the response body for details
+    const errData = await response.json().catch(() => ({}));
+
+    // Build a richer error object so the frontend can handle it properly
+    const error: any = new Error(
+      errData.detail || errData.message || "Failed to execute protocol"
+    );
+    error.status = response.status;
+    error.detail = errData.detail || null;
+    error.data = errData;
+
+    throw error;
   }
+
   return response.json();
 }
+
 
 /**
  * Save a protocol for a specific project by ID

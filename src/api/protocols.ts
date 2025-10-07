@@ -1,7 +1,7 @@
 // src/api/protocols.ts
 
 import { BASE_URL } from "@/config";
-import { getAccessToken, refreshAccessToken, logout } from "./auth";
+import {fetchWithAuth} from "./auth";
 
 /**
  * Interface for a protocol node
@@ -19,41 +19,7 @@ export interface ProtocolNode {
   numberOfSteps: string;
   outputs: any;
   inputs: any;
-}
-
-/**
- * Wrapper for fetch that automatically refreshes tokens on 401
- */
-async function fetchWithAuth(input: RequestInfo, init?: RequestInit): Promise<Response> {
-  let token = getAccessToken();
-
-  let response = await fetch(input, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers || {}),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-  });
-
-  if (response.status === 401) {
-    const newToken = await refreshAccessToken();
-    if (!newToken) {
-      logout();
-      throw new Error("Session expired. Please login again.");
-    }
-
-    response = await fetch(input, {
-      ...init,
-      headers: {
-        "Content-Type": "application/json",
-        ...(init?.headers || {}),
-        Authorization: `Bearer ${newToken}`,
-      },
-    });
-  }
-
-  return response;
+  projectId: string;
 }
 
 /**
@@ -85,5 +51,20 @@ export async function launchProtocol(projectId: string): Promise<any> {
     method: "POST",
   });
   if (!response.ok) throw new Error("Failed to launch protocol");
+  return response.json();
+}
+
+/**
+ * Fetch the stdout log of a protocol
+ */
+export async function fetchProtocolLogsStream(
+  projectId: string | number,
+  protocolId: string | number,
+  offset: number
+): Promise<{ newLog: string; newOffset: number }> {
+  const response = await fetchWithAuth(
+    `${BASE_URL}/protocols/logs/${projectId}/${protocolId}/${offset}`
+  );
+  if (!response.ok) throw new Error("Failed to fetch protocol logs stream");
   return response.json();
 }

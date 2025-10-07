@@ -1,7 +1,7 @@
 // src/api/plugins.ts
 import { Dictionary } from "@fullcalendar/core/internal";
 import { BASE_URL } from "@/config";
-import { getAccessToken, refreshAccessToken, logout } from "./auth";
+import { fetchWithAuth } from "./auth";
 
 export interface Plugin {
   author: string;
@@ -22,42 +22,9 @@ export interface Plugin {
   iconUrl?: string;
   fullLogo?: string;
   installed?: boolean;
+  toUpdate?: boolean
 }
 
-/**
- * Wrapper for fetch that automatically refreshes tokens on 401
- */
-async function fetchWithAuth(input: RequestInfo, init?: RequestInit): Promise<Response> {
-  let token = getAccessToken();
-
-  const response = await fetch(input, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers || {}),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-  });
-
-  if (response.status === 401) {
-    const newToken = await refreshAccessToken();
-    if (!newToken) {
-      logout();
-      throw new Error("Session expired. Please login again.");
-    }
-
-    return fetch(input, {
-      ...init,
-      headers: {
-        "Content-Type": "application/json",
-        ...(init?.headers || {}),
-        Authorization: `Bearer ${newToken}`,
-      },
-    });
-  }
-
-  return response;
-}
 
 /**
  * Fetch the list of all plugins

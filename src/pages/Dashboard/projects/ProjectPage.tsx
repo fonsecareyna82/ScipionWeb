@@ -1036,7 +1036,9 @@ export default function ProjectPage() {
         </div>
       </div>
 
-      {selectedNodeDetails && <ProtocolForm data={selectedNodeDetails} onClose={handleCloseForm} />}
+      {selectedNodeDetails && <ProtocolForm data={selectedNodeDetails} 
+                                            projectProtocols={project?.protocols ?? project?.protocols ?? {}}
+                                            onClose={handleCloseForm} />}
 
       <div className="flex-1 relative">
         {/* Initial blocking overlay only during first fetch */}

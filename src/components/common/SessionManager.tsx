@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import SessionTimeoutModal from "./SessionTimeoutModal";
 
-const SESSION_TIMEOUT = 30 * 60 * 1000; // 30 minutes
+const SESSION_TIMEOUT = 24 * 60 * 60 * 1000; // 1 day
 const WARNING_BEFORE_TIMEOUT = 60; // seconds
 
 export default function SessionManager() {
