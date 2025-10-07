@@ -22,6 +22,7 @@ export interface Plugin {
   iconUrl?: string;
   fullLogo?: string;
   installed?: boolean;
+  toUpdate?: boolean
 }
 
 

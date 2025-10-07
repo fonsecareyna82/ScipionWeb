@@ -13,6 +13,7 @@ export default function PluginCard(plugin: Plugin) {
   };
 
   return (
+    
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
@@ -25,7 +26,7 @@ export default function PluginCard(plugin: Plugin) {
     transition hover:scale-[1.02] hover:shadow-xl
     bg-gradient-to-br from-gray-100 via-gray-200 to-gray-300 dark:from-gray-800 dark:via-gray-700 dark:to-gray-900
     border border-transparent hover:border-blue-400
-    ${plugin.installed && plugin.pipVersion !== plugin.latestRelease ? "border-l-4 border-[#B22222]" : ""}
+    ${plugin.installed && plugin.toUpdate ? "border-l-4 border-[#B22222]" : ""}
   `}
       >
         {/* Header */}
@@ -66,7 +67,7 @@ export default function PluginCard(plugin: Plugin) {
 
         {/* Footer */}
         <CardFooter className="flex justify-center items-center">
-          {plugin.installed && plugin.pipVersion !== plugin.latestRelease && (
+          {plugin.installed && plugin.toUpdate && (
             <span className="inline-flex items-center gap-2 rounded-full bg-yellow-500/90 text-black text-xs font-semibold px-3 py-1 shadow-sm">
               <UpdateIcon className="w-4 h-4" />
               v{plugin.latestRelease} Available

@@ -492,67 +492,66 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
   };
 
 
- 
-// Extract validation messages from a detail string like:
-// "422: ['msg 1, with comma', 'msg 2']"
-function extractValidationErrors(detail: string): string[] {
-  // 1) Prefer single-quoted segments: '...'
-  const singleQuoted = Array.from(detail.matchAll(/'([^']+)'/g), (m) => m[1].trim());
-  if (singleQuoted.length) return singleQuoted;
+  // Extract validation messages from a detail string like:
+  // "422: ['msg 1, with comma', 'msg 2']"
+  function extractValidationErrors(detail: string): string[] {
+    // 1) Prefer single-quoted segments: '...'
+    const singleQuoted = Array.from(detail.matchAll(/'([^']+)'/g), (m) => m[1].trim());
+    if (singleQuoted.length) return singleQuoted;
 
-  // 2) Fallback: in case the backend ever uses double quotes: "..."
-  const doubleQuoted = Array.from(detail.matchAll(/"([^"]+)"/g), (m) => m[1].trim());
-  if (doubleQuoted.length) return doubleQuoted;
+    // 2) Fallback: in case the backend ever uses double quotes: "..."
+    const doubleQuoted = Array.from(detail.matchAll(/"([^"]+)"/g), (m) => m[1].trim());
+    if (doubleQuoted.length) return doubleQuoted;
 
-  // 3) Last resort: try to pull content inside brackets and split conservatively
-  const bracket = detail.match(/\[(.*)\]/);
-  if (bracket && bracket[1]) {
-    return bracket[1]
-      .split(/',\s*'|",\s*"/)               // split only on "',' or '", " patterns
-      .map((s: string) => s.replace(/^['"]|['"]$/g, "").trim())
-      .filter((s: string) => s.length > 0);
-  }
-
-  // 4) If nothing matched, return the stripped detail as a single message
-  return [detail.replace(/^422:\s*/, "").trim()];
-}
-
- // --------------------------------------------
- // Execution & Save handlers
- // --------------------------------------------
-const handleExecute = async () => {
-  setExecLoading(true);
-  setExecError(null);
-  setValidationErrors([]);
-
-  try {
-    const protocolId = data.id ?? "";
-    const serialized = getSerializedParams();
-    console.log("Executing with params:", serialized);
-
-    await executeProtocol(protocolId, data.protocolClassName, serialized);
-    onClose();
-  } catch (err: any) {
-    console.error("Execute error:", err);
-
-    // Case: backend returns a detail string like
-    // "422: ['Input volumes detected, please set initialization mode to `input` or clear volume inputs.', 'No. of input volumes must equal no. of classes']"
-    if (typeof err?.detail === "string") {
-      const extracted = extractValidationErrors(err.detail);
-      if (extracted.length > 0) {
-        setValidationErrors(extracted);
-        setShowValidationDialog(true);
-        setExecLoading(false);
-        return;
-      }
+    // 3) Last resort: try to pull content inside brackets and split conservatively
+    const bracket = detail.match(/\[(.*)\]/);
+    if (bracket && bracket[1]) {
+      return bracket[1]
+        .split(/',\s*'|",\s*"/)               // split only on "',' or '", " patterns
+        .map((s: string) => s.replace(/^['"]|['"]$/g, "").trim())
+        .filter((s: string) => s.length > 0);
     }
 
-    // Fallback for generic errors
-    setExecError(err.message || "Error launching the protocol");
-  } finally {
-    setExecLoading(false);
+    // 4) If nothing matched, return the stripped detail as a single message
+    return [detail.replace(/^422:\s*/, "").trim()];
   }
-};
+
+  // --------------------------------------------
+  // Execution & Save handlers
+  // --------------------------------------------
+  const handleExecute = async () => {
+    setExecLoading(true);
+    setExecError(null);
+    setValidationErrors([]);
+
+    try {
+      const protocolId = data.id ?? "";
+      const serialized = getSerializedParams();
+      console.log("Executing with params:", serialized);
+
+      await executeProtocol(protocolId, data.protocolClassName, serialized);
+      onClose();
+    } catch (err: any) {
+      console.error("Execute error:", err);
+
+      // Case: backend returns a detail string like
+      // "422: ['Input volumes detected, please set initialization mode to `input` or clear volume inputs.', 'No. of input volumes must equal no. of classes']"
+      if (typeof err?.detail === "string") {
+        const extracted = extractValidationErrors(err.detail);
+        if (extracted.length > 0) {
+          setValidationErrors(extracted);
+          setShowValidationDialog(true);
+          setExecLoading(false);
+          return;
+        }
+      }
+
+      // Fallback for generic errors
+      setExecError(err.message || "Error launching the protocol");
+    } finally {
+      setExecLoading(false);
+    }
+  };
 
 
 
@@ -564,12 +563,12 @@ const handleExecute = async () => {
     try {
       const protocolId = data.id ?? "";
       const serialized = getSerializedParams(); // always current state
-      console.log("🛰️ Saving with params:", serialized);
+      console.log("Saving with params:", serialized);
 
       await saveProtocol(protocolId, data.protocolClassName, serialized);
       onClose();
     } catch (err: any) {
-      console.error("❌ Save error:", err);
+      console.error("Save error:", err);
       setExecError(err.message || "Error saving the protocol");
     } finally {
       setExecLoading(false);
@@ -755,7 +754,7 @@ const handleExecute = async () => {
                     [key]: {
                       ...prev.params[key],
                       editableValue: e.target.value,
-                      _objValue: e.target.value, // <<< asegura sincronía
+                      _objValue: e.target.value, 
                     },
                   },
                 }))
@@ -804,7 +803,7 @@ const handleExecute = async () => {
           const blocked = new Set<string>();
           const stack = [currentId];
 
-          // 🔹 Recorremos recursivamente los descendientes (hijos, nietos, etc.)
+          // recursively traversing the descendants (children, grandchildren, etc.)
           while (stack.length > 0) {
             const parent = stack.pop()!;
             const children = dependencyMap[parent] || [];
@@ -816,13 +815,13 @@ const handleExecute = async () => {
             }
           }
 
-          // 🔹 Excluimos outputs del propio protocolo y de todos sus descendientes
+          // Excluding outputs from the protocol itself and all its descendants
           const filteredOutputs = outputs.filter((o) => {
             const owner = String(o._protocolId);
             return owner !== currentId && !blocked.has(owner);
           });
 
-          // 🔹 Si hay expectedClass, filtramos además por clase compatible
+          // If there is expectedClass, we also filter by compatible class
           const finalOutputs = expected
             ? filteredOutputs.filter((o) => {
               const cls = o._class?.toLowerCase?.() ?? "";
@@ -1065,7 +1064,7 @@ const handleExecute = async () => {
     setProtocolDetails((prev: any) => {
       const prevParam = prev.params[key];
 
-      // 🔹 MULTI POINTER
+      // MULTI POINTER
       if (def?._class === "MultiPointerParam") {
         const newItems = picks.map((pick) => ({
           _objValue: pick?._objValue ?? "",
@@ -1086,7 +1085,7 @@ const handleExecute = async () => {
         };
       }
 
-      // 🔹 POINTER normal
+      // POINTER
       const pick = picks[0];
       return {
         ...prev,
@@ -1389,46 +1388,57 @@ const handleExecute = async () => {
                     fontSize: "0.9rem",
                   }}
                 >
-                  {validationErrors.map((err, i) => (
-                    <Box
-                      key={i}
-                      component="li"
-                      sx={{
-                        display: "flex",
-                        alignItems: "flex-start",
-                        mb: 1.2,
-                      }}
-                    >
+                  {validationErrors.map((err, i) => {
+                    // Split message by **bold** markers
+                    const parts = err.split(/(\*\*[^*]+\*\*)/g);
+                    return (
                       <Box
-                        component="span"
+                        key={i}
+                        component="li"
                         sx={{
-                          color: "#d32f2f",
-                          fontWeight: "bold",
-                          mr: 1.2,
-                          fontSize: "1rem",
-                          lineHeight: "1rem",
+                          display: "flex",
+                          alignItems: "flex-start",
+                          mb: 1.2,
                         }}
                       >
-                        •
+                        <Box
+                          component="span"
+                          sx={{
+                            color: "#d32f2f",
+                            fontWeight: "bold",
+                            mr: 1.2,
+                            fontSize: "1rem",
+                            lineHeight: "1rem",
+                          }}
+                        >
+                          •
+                        </Box>
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            color: "#333",
+                            lineHeight: 1.5,
+                            fontSize: "0.9rem",
+                          }}
+                        >
+                          {parts.map((p, j) =>
+                            p.startsWith("**") && p.endsWith("**") ? (
+                              <strong key={j}>{p.slice(2, -2)}</strong>
+                            ) : (
+                              p
+                            )
+                          )}
+                        </Typography>
                       </Box>
-                      <Typography
-                        variant="body2"
-                        sx={{
-                          color: "#333",
-                          lineHeight: 1.5,
-                          fontSize: "0.9rem",
-                        }}
-                      >
-                        {err}
-                      </Typography>
-                    </Box>
-                  ))}
+                    );
+                  })}
                 </Box>
               ) : (
                 <Typography variant="body2" sx={{ color: "#555" }}>
                   No validation details provided.
                 </Typography>
               )}
+
             </DialogContent>
 
             <DialogActions

@@ -80,7 +80,13 @@ const OutputSelectorDialog: React.FC<OutputSelectorDialogProps> = ({
       );
     }
 
-    return filtered;
+    const sorted = [...filtered].sort((a, b) => {
+        const idA = parseInt(a._protocolId, 10) || 0;
+        const idB = parseInt(b._protocolId, 10) || 0;
+        return idB - idA;
+      });
+      
+      return sorted;
   }, [allOutputs, expectedClass, filter]);
 
   const toggleSelect = (id: string) => {
@@ -209,16 +215,16 @@ const OutputSelectorDialog: React.FC<OutputSelectorDialogProps> = ({
                     ✓
                   </TableCell>
                 )}
-                <TableCell sx={{ width: "10%", background: "#d5d5d5" }}>
+                <TableCell sx={{ width: "15%", background: "#d5d5d5" }}>
                   Protocol ID
                 </TableCell>
-                <TableCell sx={{ width: "20%", background: "#d5d5d5" }}>
+                <TableCell sx={{ width: "40%", background: "#d5d5d5" }}>
                   Protocol Label
                 </TableCell>
-                <TableCell sx={{ width: "35%", background: "#d5d5d5" }}>
+                <TableCell sx={{ width: "40%", background: "#d5d5d5" }}>
                   Info
                 </TableCell>
-                <TableCell sx={{ width: "25%", background: "#d5d5d5" }}>
+                <TableCell sx={{ width: "20%", background: "#d5d5d5" }}>
                   Class
                 </TableCell>
                 {!multiSelect && (
