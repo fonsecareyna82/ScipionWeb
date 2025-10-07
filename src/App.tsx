@@ -38,7 +38,6 @@ export default function App({ service }: AppProps) {
   return (
     <DragProvider>
       <ProjectServiceProvider service={service}>
-      <Router>
         <ScrollToTop />
 
         <Routes>
@@ -85,7 +84,6 @@ export default function App({ service }: AppProps) {
           position="top-right"
           containerStyle={{ zIndex: 999999 }}
         />
-      </Router>
       </ProjectServiceProvider>
     </DragProvider>
   );

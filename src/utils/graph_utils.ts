@@ -1,4 +1,4 @@
-import { ProtocolNode } from "../api/protocols";
+import { ProtocolNode } from "@/types/protocolNode";
 import { Node, Edge } from "reactflow";
 
 /**
