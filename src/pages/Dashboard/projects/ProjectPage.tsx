@@ -21,7 +21,7 @@ import ReactFlow, {
   NodeChange,
   Node,
   ReactFlowInstance,
-  Position,
+  useUpdateNodeInternals,
 } from "reactflow";
 import "reactflow/dist/style.css";
 import { createStatusNodeWrapper } from "../../../components/protocol/ProtocolNodeCardWrapper";
@@ -59,9 +59,25 @@ interface ContextMenuState {
   nodeId?: string | null;
 }
 
-/* --------------------- Component --------------------- */
+/* =========================================================
+   Wrapper que aporta el Provider para todo lo que usa hooks
+   ========================================================= */
 export default function ProjectPage() {
   const { projectName } = useParams<{ projectName: string }>();
+  if (!projectName) return null;
+
+  return (
+    <ReactFlowProvider>
+      <ProjectPageInner projectName={projectName} />
+    </ReactFlowProvider>
+  );
+}
+
+/* =========================================================
+   Componente real con toda la lógica de React Flow
+   (ya está DENTRO de ReactFlowProvider)
+   ========================================================= */
+function ProjectPageInner({ projectName }: { projectName: string }) {
   const svc = useProjectService();
 
   const [project, setProject] = useState<Project | undefined>(undefined);
@@ -85,13 +101,7 @@ export default function ProjectPage() {
   const disablePersistenceRef = useRef(false);
   const [flowKey, setFlowKey] = useState(() => `rf-${projectName}-${graphDirection}-${Date.now()}`);
 
-  // viewport controlado
-  const MIN_ZOOM = 0.2;
-  const MAX_ZOOM = 0.6;
-  const clampZoom = (z: number | undefined | null) => {
-    const num = typeof z === "number" && !Number.isNaN(z) ? z : 0.32;
-    return Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, num));
-  };
+  // default initial viewport (zoom 0.32 on first load)
   const [viewport, setViewport] = useState<{ x: number; y: number; zoom: number }>({
     x: 0,
     y: 0,
@@ -119,23 +129,35 @@ export default function ProjectPage() {
   const [tableVisible, setTableVisible] = useState(viewMode === "table");
   const [nodesLoadedOnce, setNodesLoadedOnce] = useState(false);
 
-  // initial load flag to ensure we center only once
+  // initial load flag
   const firstLoadRef = useRef(true);
 
-  // keep latest nodes in ref to avoid render loops
+  // Zoom clamp
+  const MIN_ZOOM = 0.2;
+  const MAX_ZOOM = 0.6;
+  const clampZoom = (z: number | undefined | null) => {
+    const num = typeof z === "number" && !Number.isNaN(z) ? z : 0.32;
+    return Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, num));
+  };
+
+  // keep latest nodes in ref
   const nodesRef = useRef<Node[]>(nodes);
   useEffect(() => {
     nodesRef.current = nodes;
   }, [nodes]);
 
-  /* --------------------- Node handlers --------------------- */
+  // React Flow: force recalc of handles/paths
+  const updateNodeInternals = useUpdateNodeInternals();
 
+  /* --------------------- Node handlers --------------------- */
   const handleNodeClick = (nodeData: any, event?: React.MouseEvent) => {
     handleCloseMenu();
     const isMultiSelect = event?.shiftKey;
     if (!isMultiSelect) {
       setPreviousNodeId(nodeData.id);
-      setNodes((nds) => nds.map((n) => (n.id === nodeData.id ? n : { ...n, style: undefined })));
+      setNodes((nds) =>
+        nds.map((n) => (n.id === nodeData.id ? n : { ...n, style: undefined }))
+      );
       const edgesToHighlight = edges
         .filter((e) => e.source === nodeData.id || e.target === nodeData.id)
         .map((e) => e.id);
@@ -151,7 +173,6 @@ export default function ProjectPage() {
 
   const handleNodeDoubleClick = async (nodeData: any) => {
     handleCloseMenu();
-    if (!projectName) return;
     try {
       const fullNodeData = await svc.fetchProtocolDetails(projectName, nodeData.id);
       setSelectedNodeDetails(fullNodeData);
@@ -163,7 +184,8 @@ export default function ProjectPage() {
 
   const handleCloseForm = () => setSelectedNodeDetails(null);
 
-  /* --------------------- nodeTypes --------------------- */
+  /* --------------------- NodeTypes (memo) --------------------- */
+  // Importante: solo dependemos de graphDirection para evitar warning #002
   const nodeTypes = useMemo(
     () => ({
       status: createStatusNodeWrapper(
@@ -175,11 +197,11 @@ export default function ProjectPage() {
         graphDirection
       ),
     }),
-    [previousNodeId, hoveredNodeId, graphDirection]
+    // no metas hovered/selected aquí para que no cambie en cada hover/click
+    [graphDirection]
   );
 
-  /* --------------------- Persistencia --------------------- */
-
+  /* --------------------- Persistence helpers --------------------- */
   const handleNodesChangeWithPersistence = (changes: NodeChange[]) => {
     if (disablePersistenceRef.current) {
       return onNodesChange(changes);
@@ -204,6 +226,7 @@ export default function ProjectPage() {
     });
   };
 
+  // helper shallow compare for node.data (fast)
   const shallowEqual = (a: any, b: any) => {
     if (a === b) return true;
     if (!a || !b) return false;
@@ -216,6 +239,7 @@ export default function ProjectPage() {
     return true;
   };
 
+  // Conservar y actualizar sourcePosition/targetPosition al mergear
   const mergeNodesWithPositions = (newNodes: Node[]) => {
     const oldMap = new Map(nodes.map((n) => [n.id, n]));
     return newNodes.map((n) => {
@@ -224,16 +248,24 @@ export default function ProjectPage() {
         const position =
           old.position && old.position.x !== undefined && old.position.y !== undefined
             ? old.position
-            : n.position ?? old.position;
+            : (n.position ?? old.position);
 
-        if (shallowEqual((old as any).data, (n as any).data) && position === old.position) {
+        const sameData = shallowEqual(old.data, n.data);
+        const samePosRef = position === old.position;
+        const sameHandles =
+          old.sourcePosition === n.sourcePosition &&
+          old.targetPosition === n.targetPosition;
+
+        if (sameData && samePosRef && sameHandles) {
           return old;
         }
 
         return {
           ...old,
           position,
-          data: { ...(old as any).data, ...(n as any).data },
+          data: { ...old.data, ...n.data },
+          sourcePosition: n.sourcePosition,
+          targetPosition: n.targetPosition,
         } as Node;
       }
       return n;
@@ -245,26 +277,6 @@ export default function ProjectPage() {
     return newEdges.map((e) => (oldEdgesMap.get(e.id) ? { ...oldEdgesMap.get(e.id)!, ...e } : e));
   };
 
-  /* --------------------- LR/TB: lados de conexión --------------------- */
-  const withSidePositions = (list: Node[], dir: "TB" | "LR") => {
-    const sourcePos = dir === "LR" ? Position.Right : Position.Bottom;
-    const targetPos = dir === "LR" ? Position.Left : Position.Top;
-    return list.map((n) => ({
-      ...n,
-      sourcePosition: sourcePos,
-      targetPosition: targetPos,
-      data: { ...(n as any).data, __dir: dir },
-    }));
-  };
-
-  /* --------------------- “Soft refresh” de edges --------------------- */
-  const recomputeEdges = (newEdges: Edge[]) => {
-    setEdges([]);
-    requestAnimationFrame(() => {
-      setEdges(newEdges);
-    });
-  };
-
   // ------------------------ Centering helper ------------------------
   const centerLikeButton = useCallback((nodesList?: Node[], preserveZoom = true, zoomOverride?: number) => {
     const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
@@ -274,9 +286,8 @@ export default function ProjectPage() {
 
     if (validNodes.length === 0) {
       const vp = inst.getViewport();
-      const clamped = { x: vp.x, y: vp.y, zoom: clampZoom(vp.zoom) };
-      // en modo controlado, actualizamos estado; React Flow lo aplicará
-      setViewport(clamped);
+      inst.setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(vp.zoom) });
+      setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(vp.zoom) });
       return;
     }
 
@@ -315,7 +326,6 @@ export default function ProjectPage() {
       const ySum = validNodes.reduce((sum, n) => sum + (n.position!.y ?? 0), 0);
       const centerX = xSum / validNodes.length;
       const centerY = ySum / validNodes.length;
-      const inst = reactFlowInstanceRef.current!;
       const currentVp = inst.getViewport();
       const zoom = clampZoom(currentVp.zoom);
       inst.setCenter(centerX, centerY, { zoom, duration: 0 });
@@ -324,8 +334,10 @@ export default function ProjectPage() {
     }
   }, []);
 
-  /* -------- waitForNodesReady (igual) -------- */
-  const waitForNodesReady = async (expectedCount: number, timeoutMs = 2500, debug = false): Promise<boolean> => {
+  /**
+  * waitForNodesReady
+  */
+  const waitForNodesReady = async (expectedCount: number, timeoutMs = 2500): Promise<boolean> => {
     const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
     if (!inst) return false;
     const start = Date.now();
@@ -352,24 +364,21 @@ export default function ProjectPage() {
             const bboxWidth = isFinite(minX) && isFinite(maxX) ? Math.abs(maxX - minX) : 0;
             const bboxHeight = isFinite(minY) && isFinite(maxY) ? Math.abs(maxY - minY) : 0;
             if (validPosCount >= 1 && (bboxWidth > 1 || bboxHeight > 1)) {
-              resolve(true);
-              return;
+              resolve(true); return;
             }
           }
         } catch {}
-        if (Date.now() - start > timeoutMs) {
-          resolve(false);
-          return;
-        }
+        if (Date.now() - start > timeoutMs) { resolve(false); return; }
         requestAnimationFrame(check);
       };
       requestAnimationFrame(check);
     });
   };
 
-  /* --------------------- fetch/load --------------------- */
+  /**
+   * fetchAndLoadProject
+   */
   const fetchAndLoadProject = useCallback(async () => {
-    if (!projectName) return;
     setIsRefreshing(true);
     try {
       const data = await svc.fetchProject(projectName);
@@ -384,34 +393,44 @@ export default function ProjectPage() {
         );
 
         const nodesWithPositions = loadNodesWithPositions(loadedNodes);
-        const nodesWithSides = withSidePositions(nodesWithPositions, graphDirection);
 
-        setNodes(nodesWithSides);
-        recomputeEdges(loadedEdges);
+        setNodes(nodesWithPositions);
+        setEdges(loadedEdges);
         setTableData(table ?? []);
 
+        // recálculo de anclajes tras pintar (doble frame)
+        requestAnimationFrame(() => {
+          const ids = nodesWithPositions.map((n) => n.id);
+          ids.forEach((id) => updateNodeInternals(id));
+          requestAnimationFrame(() => ids.forEach((id) => updateNodeInternals(id)));
+        });
+
+        // set initial ticks
         const initialTicks: Record<string, number> = {};
-        nodesWithSides.forEach((n) => {
-          const d: any = (n as any).data;
-          if (d?.status === "running") initialTicks[n.id] = Number(d.elapsedTime) ?? 0;
+        nodesWithPositions.forEach((n) => {
+          const d = (n as any).data;
+          if (d?.status === "running") {
+            initialTicks[n.id] = Number(d.elapsedTime) ?? 0;
+          }
         });
         setNodeTicks(initialTicks);
 
         setNodesLoadedOnce(true);
 
+        // centrar en primer load
         if (firstLoadRef.current && viewMode === "hierarchical") {
           const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
-          const desiredCount = Math.max(1, nodesWithSides.length);
+          const desiredCount = Math.max(1, nodesWithPositions.length);
 
           let observer: MutationObserver | null = null;
           let fallbackTimer: any = null;
           let centered = false;
 
-          const doCenter = (methodDesc: string) => {
+          const doCenter = () => {
             if (centered) return;
             centered = true;
             try {
-              centerLikeButton(nodesWithSides, true, viewportRef.current.zoom);
+              centerLikeButton(nodesWithPositions, true, viewportRef.current.zoom);
             } finally {
               firstLoadRef.current = false;
               if (observer) { try { observer.disconnect(); } catch {} observer = null; }
@@ -424,31 +443,61 @@ export default function ProjectPage() {
             if (nodesContainer) {
               const initialNodeEls = nodesContainer.querySelectorAll(".react-flow__node");
               if (initialNodeEls.length >= desiredCount) {
-                requestAnimationFrame(() => requestAnimationFrame(() => doCenter("dom-immediate")));
+                requestAnimationFrame(() => requestAnimationFrame(doCenter));
               } else {
                 observer = new MutationObserver(() => {
                   const els = nodesContainer.querySelectorAll(".react-flow__node");
                   if (els.length >= desiredCount) {
-                    requestAnimationFrame(() => requestAnimationFrame(() => doCenter("dom-observer")));
+                    requestAnimationFrame(() => requestAnimationFrame(doCenter));
                   }
                 });
                 observer.observe(nodesContainer, { childList: true, subtree: true });
                 fallbackTimer = setTimeout(async () => {
                   if (observer) { try { observer.disconnect(); } catch {} observer = null; }
-                  const ready = await waitForNodesReady(nodesWithSides.length, 2000, true);
-                  if (ready) doCenter("waitForNodesReady-fallback");
-                  else doCenter("fallback-final");
+                  const ready = await waitForNodesReady(nodesWithPositions.length, 2000);
+                  if (ready) doCenter();
+                  else doCenter();
                 }, 3000);
               }
             } else {
-              const ready = await waitForNodesReady(nodesWithSides.length, 2500, true);
-              if (ready && inst) doCenter("waitForNodesReady");
-              else doCenter("final");
+              const ready = await waitForNodesReady(nodesWithPositions.length, 2500);
+              if (ready && inst) doCenter();
+              else {
+                if (inst) {
+                  try {
+                    if (inst.getNodes && inst.getNodes().length > 0) {
+                      inst.fitView({ padding: 0.12, duration: 0 });
+                      const vp = inst.getViewport();
+                      setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
+                    } else {
+                      const vp = inst.getViewport();
+                      inst.setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(viewportRef.current.zoom) });
+                      setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(viewportRef.current.zoom) });
+                    }
+                  } catch {}
+                }
+                firstLoadRef.current = false;
+              }
             }
           } catch {
-            const ready = await waitForNodesReady(nodesWithSides.length, 2000, true);
-            if (ready && inst) doCenter("catch-fallback");
-            else doCenter("final2");
+            const ready = await waitForNodesReady(nodesWithPositions.length, 2000);
+            if (ready && inst) doCenter();
+            else {
+              if (inst) {
+                try {
+                  if (inst.getNodes && inst.getNodes().length > 0) {
+                    inst.fitView({ padding: 0.12, duration: 0 });
+                    const vp = inst.getViewport();
+                    setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
+                  } else {
+                    const vp = inst.getViewport();
+                    inst.setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(viewportRef.current.zoom) });
+                    setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(viewportRef.current.zoom) });
+                  }
+                } catch {}
+              }
+              firstLoadRef.current = false;
+            }
           }
         }
       }
@@ -457,7 +506,7 @@ export default function ProjectPage() {
     } finally {
       setIsRefreshing(false);
     }
-  }, [projectName, viewMode, graphDirection, centerLikeButton, svc]);
+  }, [projectName, viewMode, graphDirection, centerLikeButton, svc, updateNodeInternals]);
 
   useEffect(() => {
     fetchAndLoadProject();
@@ -465,7 +514,6 @@ export default function ProjectPage() {
 
   // ------------------------ Refresh ------------------------
   const handleRefresh = useCallback(async () => {
-    if (!projectName) return;
     setIsRefreshing(true);
     try {
       const data = await svc.fetchProject(projectName);
@@ -479,19 +527,25 @@ export default function ProjectPage() {
           graphDirection
         );
         const nodesWithPositions = mergeNodesWithPositions(loadedNodes);
-        const nodesWithSides = withSidePositions(nodesWithPositions, graphDirection);
         const edgesMerged = mergeEdges(loadedEdges);
 
-        setNodes(nodesWithSides);
-        recomputeEdges(edgesMerged);
+        setNodes(nodesWithPositions);
+        setEdges(edgesMerged);
         setTableData(table ?? []);
+
+        // recálculo de anclajes tras refresh
+        requestAnimationFrame(() => {
+          const ids = nodesWithPositions.map((n) => n.id);
+          ids.forEach((id) => updateNodeInternals(id));
+          requestAnimationFrame(() => ids.forEach((id) => updateNodeInternals(id)));
+        });
 
         setNodeTicks((prev) => {
           const updated: Record<string, number> = { ...prev };
-          nodesWithSides.forEach((n) => {
-            const d: any = (n as any).data;
-            if (d?.status === "running") {
-              updated[n.id] = Math.max(prev[n.id] ?? 0, Number(d.elapsedTime) ?? 0);
+          nodesWithPositions.forEach((n) => {
+            const nd = (n as any).data;
+            if (nd?.status === "running") {
+              updated[n.id] = Math.max(prev[n.id] ?? 0, Number(nd.elapsedTime) ?? 0);
             }
           });
           return updated;
@@ -502,9 +556,9 @@ export default function ProjectPage() {
     } finally {
       setIsRefreshing(false);
     }
-  }, [projectName, viewMode, graphDirection, nodes, edges, svc]);
+  }, [projectName, viewMode, graphDirection, nodes, edges, svc, updateNodeInternals]);
 
-  // intervalo refresh
+  // stable interval for refresh
   const handleRefreshRef = useRef(handleRefresh);
   useEffect(() => {
     handleRefreshRef.current = handleRefresh;
@@ -519,7 +573,6 @@ export default function ProjectPage() {
   // ------------------------ Reorganize (rebuild) ------------------------
   const handleReorganize = useCallback(
     async (opts?: { preserveZoom?: boolean }) => {
-      if (!projectName) return;
       try {
         try {
           localStorage.removeItem(`${localStorageKey}-${graphDirection}`);
@@ -546,10 +599,17 @@ export default function ProjectPage() {
           graphDirection
         );
 
-        const nodesWithSides = withSidePositions(loadedNodes, graphDirection);
-        setNodes(nodesWithSides);
-        recomputeEdges(loadedEdges);
+        setNodes(loadedNodes);
+        setEdges(loadedEdges);
         setTableData(table ?? []);
+
+        // recálculo tras reorganize
+        requestAnimationFrame(() => {
+          const ids = loadedNodes.map((n) => n.id);
+          ids.forEach((id) => updateNodeInternals(id));
+          requestAnimationFrame(() => ids.forEach((id) => updateNodeInternals(id)));
+        });
+
         setNodeTicks({});
 
         setTimeout(() => {
@@ -559,10 +619,11 @@ export default function ProjectPage() {
             return;
           }
 
-          if (nodesWithSides.length > 0 && viewMode === "hierarchical") {
-            centerLikeButton(nodesWithSides, opts?.preserveZoom ?? true, viewportRef.current.zoom);
+          if (loadedNodes.length > 0 && viewMode === "hierarchical") {
+            centerLikeButton(loadedNodes, opts?.preserveZoom ?? true, viewportRef.current.zoom);
           } else {
             const vp = inst.getViewport();
+            inst.setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(vp.zoom) });
             setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(vp.zoom) });
           }
 
@@ -575,7 +636,7 @@ export default function ProjectPage() {
         disablePersistenceRef.current = false;
       }
     },
-    [projectName, viewMode, graphDirection, viewport, centerLikeButton, svc]
+    [projectName, viewMode, graphDirection, viewport, centerLikeButton, svc, updateNodeInternals]
   );
 
   // ------------------------ Ticks updater ------------------------
@@ -584,9 +645,9 @@ export default function ProjectPage() {
       setNodeTicks((prev) => {
         const updated: Record<string, number> = { ...prev };
         nodesRef.current.forEach((node) => {
-          const d: any = (node as any).data;
-          if (d?.status === "running") {
-            updated[node.id] = (prev[node.id] ?? Number(d.elapsedTime) ?? 0) + 1;
+          const nd = (node as any).data;
+          if (nd?.status === "running") {
+            updated[node.id] = (prev[node.id] ?? Number(nd.elapsedTime) ?? 0) + 1;
           }
         });
         return updated;
@@ -607,18 +668,17 @@ export default function ProjectPage() {
         ...node,
         data: {
           ...(node as any).data,
-          tick: nodeTicks[node.id] ?? Number((node as any).data.elapsedTime) ?? 0,
+          tick: nodeTicks[node.id] ?? Number((node as any).data?.elapsedTime) ?? 0,
         },
       }))
     );
-  }, [nodeTicks]);
+  }, [nodeTicks, setNodes]);
 
   // ------------------------ Layout change effect ------------------------
   const prevLayout = useRef({ viewMode, graphDirection });
   useLayoutEffect(() => {
     const layoutChanged =
-      prevLayout.current.viewMode !== viewMode ||
-      prevLayout.current.graphDirection !== graphDirection;
+      prevLayout.current.viewMode !== viewMode || prevLayout.current.graphDirection !== graphDirection;
     if (!layoutChanged) return;
     if (!project?.protocols) {
       prevLayout.current = { viewMode, graphDirection };
@@ -639,15 +699,23 @@ export default function ProjectPage() {
       viewMode,
       graphDirection
     );
+    // aplica posiciones guardadas
     const nodesWithPositions = loadNodesWithPositions(loadedNodes);
-    const nodesWithSides = withSidePositions(nodesWithPositions, graphDirection);
 
     disablePersistenceRef.current = true;
     setIsSwitchingLayout(true);
 
-    setNodes(nodesWithSides);
-    recomputeEdges(loadedEdges);
+    setNodes(nodesWithPositions);
+    setEdges(loadedEdges);
 
+    // Recalcular handles/paths tras cambiar de LR/TB
+    requestAnimationFrame(() => {
+      const ids = nodesWithPositions.map((n) => n.id);
+      ids.forEach((id) => updateNodeInternals(id));
+      requestAnimationFrame(() => ids.forEach((id) => updateNodeInternals(id)));
+    });
+
+    // centrar/ajustar viewport después
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
@@ -658,8 +726,8 @@ export default function ProjectPage() {
           return;
         }
 
-        if (nodesWithSides.length > 0 && viewMode === "hierarchical") {
-          centerLikeButton(nodesWithSides, true);
+        if (nodesWithPositions.length > 0 && viewMode === "hierarchical") {
+          centerLikeButton(nodesWithPositions, true);
           requestAnimationFrame(() => {
             setTimeout(() => {
               disablePersistenceRef.current = false;
@@ -668,12 +736,9 @@ export default function ProjectPage() {
             }, 60);
           });
         } else {
-          const clamped = {
-            x: currentViewport.x,
-            y: currentViewport.y,
-            zoom: clampZoom(currentViewport.zoom),
-          };
-          setViewport(clamped); // controlado
+          const clamped = { x: currentViewport.x, y: currentViewport.y, zoom: clampZoom(currentViewport.zoom) };
+          inst.setViewport(clamped);
+          setViewport(clamped);
           requestAnimationFrame(() => {
             setTimeout(() => {
               disablePersistenceRef.current = false;
@@ -684,7 +749,6 @@ export default function ProjectPage() {
         }
       });
     });
-
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [graphDirection, viewMode, project]);
 
@@ -696,28 +760,22 @@ export default function ProjectPage() {
 
     setIsSwitchingLayout(true);
 
-    const validNodes = nodes.filter(
-      (n) => typeof n.position?.x === "number" && typeof n.position?.y === "number"
-    );
+    const validNodes = nodes.filter((n) => typeof n.position?.x === "number" && typeof n.position?.y === "number");
     if (validNodes.length > 0) {
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-          // en modo controlado basta con setViewport
-          setViewport({
-            x: viewportRef.current.x,
-            y: viewportRef.current.y,
-            zoom: clampZoom(viewportRef.current.zoom),
-          });
+          inst.setViewport({ x: viewportRef.current.x, y: viewportRef.current.y, zoom: clampZoom(viewportRef.current.zoom) });
           setTimeout(() => {
             setIsSwitchingLayout(false);
           }, 60);
         });
       });
     } else {
-      const vp = inst.getViewport();
-      setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(vp.zoom) });
+      inst.setViewport({ x: inst.getViewport().x, y: inst.getViewport().y, zoom: clampZoom(inst.getViewport().zoom) });
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
+          const vp = inst.getViewport();
+          setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
           setTimeout(() => {
             setIsSwitchingLayout(false);
           }, 60);
@@ -727,7 +785,7 @@ export default function ProjectPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nodesLoadedOnce]);
 
-  // --------------------- Table switching: evitar flicker ---------------------
+  // --------------------- Table switching: avoid flicker ---------------------
   useEffect(() => {
     if (viewMode === "table") {
       setTableVisible(false);
@@ -746,7 +804,6 @@ export default function ProjectPage() {
   }, [viewMode]);
 
   /* --------------------- Table helpers / UI helpers --------------------- */
-
   const scrollToProtocol = (id: string) => {
     const row = rowRefs.current[id];
     const container = tableContainerRef.current;
@@ -804,6 +861,7 @@ export default function ProjectPage() {
           setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
         } else {
           const clamped = { x: currentViewport.x, y: currentViewport.y, zoom: clampZoom(currentViewport.zoom) };
+          inst.setViewport(clamped);
           setViewport(clamped);
         }
       }
@@ -811,12 +869,20 @@ export default function ProjectPage() {
     }
 
     if (viewMode === "table") {
-      const matchRow = tableData.find((row) => row.id.toLowerCase().includes(query.toLowerCase()) || row.label.toLowerCase().includes(query.toLowerCase()));
+      const matchRow = tableData.find(
+        (row) =>
+          row.id.toLowerCase().includes(query.toLowerCase()) ||
+          row.label.toLowerCase().includes(query.toLowerCase())
+      );
       if (matchRow) scrollToProtocol(matchRow.id);
       return;
     }
 
-    const match = nodes.find((node) => node.id.toLowerCase().includes(query.toLowerCase()) || (node.data?.label ?? "").toLowerCase().includes(query.toLowerCase()));
+    const match = nodes.find(
+      (node) =>
+        node.id.toLowerCase().includes(query.toLowerCase()) ||
+        (((node as any).data?.label ?? "") as string).toLowerCase().includes(query.toLowerCase())
+    );
 
     if (!match) {
       setHighlightedId(null);
@@ -829,11 +895,21 @@ export default function ProjectPage() {
     const highlightNodeStyle = { boxShadow: "0 0 0 4px rgba(0,112,243,0.12)" };
 
     setNodes((nds) =>
-      nds.map((n) => (n.id === match.id ? { ...n, selected: true, style: { ...(n.style ?? {}), ...highlightNodeStyle } } : { ...n, selected: false, style: undefined }))
+      nds.map((n) =>
+        n.id === match.id
+          ? { ...n, selected: true, style: { ...(n as any).style ?? {}, ...highlightNodeStyle } }
+          : { ...n, selected: false, style: undefined }
+      )
     );
 
     const connectedEdgeIds = edges.filter((e) => e.source === match.id || e.target === match.id).map((e) => e.id);
-    setEdges((eds) => eds.map((e) => (connectedEdgeIds.includes(e.id) ? { ...e, style: { ...(e.style ?? {}), stroke: "#0070f3", strokeWidth: 3 } } : { ...e, style: undefined })));
+    setEdges((eds) =>
+      eds.map((e) =>
+        connectedEdgeIds.includes(e.id)
+          ? { ...e, style: { ...(e.style ?? {}), stroke: "#0070f3", strokeWidth: 3 } }
+          : { ...e, style: undefined }
+      )
+    );
 
     setPreviousNodeId(match.id);
     setHighlightedId(match.id);
@@ -848,7 +924,6 @@ export default function ProjectPage() {
   };
 
   const handleRowDoubleClick = async (id: string) => {
-    if (!projectName) return;
     try {
       const fullNodeData = await svc.fetchProtocolDetails(projectName, id);
       setHighlightedId(id);
@@ -859,6 +934,7 @@ export default function ProjectPage() {
     }
   };
 
+  /* --------------------- Time formatting helper --------------------- */
   const formatCpuTime = (seconds: number): string => {
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
@@ -867,8 +943,7 @@ export default function ProjectPage() {
     return `${pad(hours)}h:${pad(minutes)}m:${pad(secs)}s`;
   };
 
-  /* --------------------- Context menu --------------------- */
-
+  /* --------------------- Context menu (portal) --------------------- */
   const handleContextMenu = (event: React.MouseEvent) => {
     event.preventDefault();
     event.stopPropagation();
@@ -896,17 +971,17 @@ export default function ProjectPage() {
   // ------------------------ ReactFlow init / move handlers ------------------------
   const handleOnInit = useCallback((inst: ReactFlowInstance) => {
     reactFlowInstanceRef.current = inst;
-    // no forzamos setViewport aquí; dejamos que el prop controlado mande
-    const current = inst.getViewport();
-    setViewport({ x: current.x, y: current.y, zoom: clampZoom(viewportRef.current.zoom ?? current.zoom) });
-  }, []);
-
-  const handleOnMove = useCallback((_: any, vp: { x: number; y: number; zoom: number }) => {
-    setViewport(vp); // controlado: esto evita “saltos” al panear
+    try {
+      const current = inst.getViewport();
+      const desiredZoom = clampZoom(viewportRef.current.zoom ?? current.zoom);
+      inst.setViewport({ x: current.x, y: current.y, zoom: desiredZoom });
+      const vp = inst.getViewport();
+      setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
+    } catch {}
   }, []);
 
   const handleOnMoveEnd = useCallback((_: any, vp: { x: number; y: number; zoom: number }) => {
-    setViewport(vp); // opcional, pero consistente
+    setViewport(vp);
   }, []);
 
   // ------------------------ Controls ------------------------
@@ -946,14 +1021,18 @@ export default function ProjectPage() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
           </div>
-          <input type="text" placeholder="Search protocol..." onChange={(e) => handleSearch(e.target.value)} className="w-full px-3 py-2 pl-10 pr-3 text-sm text-gray-800 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:border-gray-700 dark:text-white" />
+          <input
+            type="text"
+            placeholder="Search protocol..."
+            onChange={(e) => handleSearch(e.target.value)}
+            className="w-full px-3 py-2 pl-10 pr-3 text-sm text-gray-800 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+          />
         </div>
 
         <div className="ml-4 mr-4 p-2 border rounded-lg shadow-sm bg-white dark:bg-gray-800 flex items-center gap-4">
           <ProtocolsDrawer
             projectId={project?.id ? Number(project.id) : null}
             onProtocolDoubleClick={async (protocolClass: string) => {
-              if (!projectName) return;
               try {
                 const fullNodeData = await svc.fetchNewProtocolDetails(projectName, protocolClass);
                 setSelectedNodeDetails(fullNodeData);
@@ -964,7 +1043,10 @@ export default function ProjectPage() {
             }}
           />
 
-          <button onClick={() => console.log("Workflow clicked")} className={`px-3 py-1 rounded-lg text-xs flex items-center gap-1 bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300`}>
+          <button
+            onClick={() => console.log("Workflow clicked")}
+            className={`px-3 py-1 rounded-lg text-xs flex items-center gap-1 bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300`}
+          >
             <TreeIcon className="w-4 h-4" />
             Workflows
           </button>
@@ -973,18 +1055,37 @@ export default function ProjectPage() {
         <div className="ml-4 mr-4 p-2 border rounded-lg shadow-sm bg-white dark:bg-gray-800 flex items-center gap-4">
           <span className="font-small text-xs">View mode:</span>
           <div className="flex gap-2">
-            <button onClick={() => { setViewMode("hierarchical"); setGraphDirection("TB"); }} className={`px-3 py-1 rounded-lg text-xs flex items-center gap-1 ${viewMode === "hierarchical" && graphDirection === "TB" ? "bg-blue-500 text-white" : "bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300"}`}><TreeIcon className="w-4 h-4" /> Tree TB</button>
+            <button
+              onClick={() => { setViewMode("hierarchical"); setGraphDirection("TB"); }}
+              className={`px-3 py-1 rounded-lg text-xs flex items-center gap-1 ${viewMode === "hierarchical" && graphDirection === "TB" ? "bg-blue-500 text-white" : "bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300"}`}
+            >
+              <TreeIcon className="w-4 h-4" /> Tree TB
+            </button>
 
-            <button onClick={() => { setViewMode("hierarchical"); setGraphDirection("LR"); }} className={`px-3 py-1 rounded-lg text-xs flex items-center gap-1 ${viewMode === "hierarchical" && graphDirection === "LR" ? "bg-blue-500 text-white" : "bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300"}`}><TreeIcon className="w-4 h-4 transform rotate-270" /> Tree LR</button>
+            <button
+              onClick={() => { setViewMode("hierarchical"); setGraphDirection("LR"); }}
+              className={`px-3 py-1 rounded-lg text-xs flex items-center gap-1 ${viewMode === "hierarchical" && graphDirection === "LR" ? "bg-blue-500 text-white" : "bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300"}`}
+            >
+              <TreeIcon className="w-4 h-4 transform rotate-270" /> Tree LR
+            </button>
 
-            <button onClick={() => setViewMode("table")} className={`px-3 py-1 rounded-lg text-xs flex items-center gap-1 ${viewMode === "table" ? "bg-blue-500 text-white" : "bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300"}`}><TableIcon className="w-4 h-4" /> Table</button>
+            <button
+              onClick={() => setViewMode("table")}
+              className={`px-3 py-1 rounded-lg text-xs flex items-center gap-1 ${viewMode === "table" ? "bg-blue-500 text-white" : "bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300"}`}
+            >
+              <TableIcon className="w-4 h-4" /> Table
+            </button>
           </div>
         </div>
       </div>
 
-      {selectedNodeDetails && <ProtocolForm data={selectedNodeDetails}
-        projectProtocols={project?.protocols ?? project?.protocols ?? {}}
-        onClose={handleCloseForm} />}
+      {selectedNodeDetails && (
+        <ProtocolForm
+          data={selectedNodeDetails}
+          projectProtocols={project?.protocols ?? project?.protocols ?? {}}
+          onClose={handleCloseForm}
+        />
+      )}
 
       <div className="flex-1 relative">
         {/* Initial blocking overlay only during first fetch */}
@@ -1031,64 +1132,37 @@ export default function ProjectPage() {
               {tableData.map((row) => (
                 <tr
                   key={row.id}
-                  ref={(el) => {
-                    rowRefs.current[row.id] = el;
-                  }}
+                  ref={(el) => { rowRefs.current[row.id] = el; }}
                   onDoubleClick={() => handleRowDoubleClick(row.id)}
-                  className={`border-t border-gray-200 dark:border-gray-700 ${highlightedId === row.id
-                      ? "bg-yellow-100 dark:bg-yellow-900"
-                      : ""
-                    }`}
+                  className={`border-t border-gray-200 dark:border-gray-700 ${highlightedId === row.id ? "bg-yellow-100 dark:bg-yellow-900" : ""}`}
                 >
                   <td className="px-4 py-2">{row.id}</td>
                   <td className="px-4 py-2">{row.label}</td>
                   <td className="px-4 py-2">
                     <div className="flex items-center justify-between">
-                      <span
-                        className={`${row.status === "running" ? "pulsing-table" : ""
-                          }`}
-                        style={getStatusStyle(row.status)}
-                      >
+                      <span className={`${row.status === "running" ? "pulsing-table" : ""}`} style={getStatusStyle(row.status)}>
                         {row.status ?? "—"}
                       </span>
 
-                      {(row.status === "running" ||
-                        row.status === "failed" ||
-                        row.status === "aborted") && (
-                          <div className="flex items-center gap-2 ml-4 flex-1">
-                            <div className="w-16 h-3 bg-gray-300 dark:bg-gray-700 rounded overflow-hidden">
-                              <div
-                                className={`h-3 ${row.status === "running"
-                                    ? "bg-yellow-400"
-                                    : row.status === "failed" ||
-                                      row.status === "aborted"
-                                      ? "bg-red-500"
-                                      : "bg-gray-400"
-                                  } transition-all duration-300`}
-                                style={{
-                                  width: `${((row.stepsDone ?? 0) /
-                                    (row.numberOfSteps ?? 1)) *
-                                    100}%`,
-                                }}
-                              />
-                            </div>
-                            <span className="text-sm opacity-80">
-                              {row.stepsDone}/{row.numberOfSteps}
-                            </span>
+                      {(row.status === "running" || row.status === "failed" || row.status === "aborted") && (
+                        <div className="flex items-center gap-2 ml-4 flex-1">
+                          <div className="w-16 h-3 bg-gray-300 dark:bg-gray-700 rounded overflow-hidden">
+                            <div
+                              className={`h-3 ${row.status === "running" ? "bg-yellow-400" : row.status === "failed" || row.status === "aborted" ? "bg-red-500" : "bg-gray-400"} transition-all duration-300`}
+                              style={{ width: `${((row.stepsDone ?? 0) / (row.numberOfSteps ?? 1)) * 100}%` }}
+                            />
                           </div>
-                        )}
+                          <span className="text-sm opacity-80">
+                            {row.stepsDone}/{row.numberOfSteps}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </td>
-                  <td className="px-4 py-2 font-mono">
-                    {formatCpuTime(row.tick ?? Number(row.elapsedTime) ?? 0)}
-                  </td>
+                  <td className="px-4 py-2 font-mono">{formatCpuTime(row.tick ?? Number(row.elapsedTime) ?? 0)}</td>
                   <td className="px-4 py-2 space-x-2">
                     {row.children?.map((childId: string) => (
-                      <button
-                        key={childId}
-                        onClick={() => scrollToProtocol(childId)}
-                        className="text-blue-600 dark:text-blue-400 underline hover:text-blue-800"
-                      >
+                      <button key={childId} onClick={() => scrollToProtocol(childId)} className="text-blue-600 dark:text-blue-400 underline hover:text-blue-800">
                         {childId}
                       </button>
                     ))}
@@ -1099,7 +1173,7 @@ export default function ProjectPage() {
           </table>
         </div>
 
-        {/* === ReactFlow pane (siempre montado) === */}
+        {/* === ReactFlow pane === */}
         <div
           className="absolute inset-0 border transition-opacity"
           style={{
@@ -1129,90 +1203,87 @@ export default function ProjectPage() {
             </div>
           </div>
 
-          <ReactFlowProvider>
-            <svg width="0" height="0" aria-hidden>
-              <defs>
-                <marker id="circle" viewBox="0 0 40 40" refX="20" refY="20" markerWidth="20" markerHeight="20" orient="auto-start-reverse">
-                  <circle cx="20" cy="20" r="10" fill="#ff0000" />
-                </marker>
-              </defs>
-            </svg>
+          <svg width="0" height="0" aria-hidden>
+            <defs>
+              <marker id="circle" viewBox="0 0 40 40" refX="20" refY="20" markerWidth="20" markerHeight="20" orient="auto-start-reverse">
+                <circle cx="20" cy="20" r="10" fill="#ff0000" />
+              </marker>
+            </defs>
+          </svg>
 
-            <ReactFlow
-              // OJO: sin key dinámico para evitar remounts durante pan
-              nodes={nodes}
-              edges={edges}
-              onNodesChange={handleNodesChangeWithPersistence}
-              onEdgesChange={onEdgesChange}
-              nodeTypes={nodeTypes}
-              minZoom={MIN_ZOOM}
-              maxZoom={MAX_ZOOM}
-              onInit={handleOnInit}
-              onMove={handleOnMove}
-              onMoveEnd={handleOnMoveEnd}
-              onPaneClick={() => handleCloseMenu()}
-              // viewport controlado (no defaultViewport)
-              viewport={viewport}
-              defaultEdgeOptions={{
-                type: "default",
-                style: { stroke: "#999", strokeWidth: 2 },
-                markerEnd: "url(#circle)",
-              }}
-              onNodeDoubleClick={(evt, node) => handleNodeDoubleClick(node)}
-              onNodeClick={(evt, node) => handleNodeClick(node, evt)}
-              onContextMenu={handleContextMenu}
-              style={{ width: "100%", height: "100%" }}
-            >
-              <Background />
-            </ReactFlow>
-            {contextMenu.visible && (
-              <DropdownMenu open={true} onOpenChange={handleCloseMenu}>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    style={{
-                      position: "fixed",
-                      top: contextMenu.y,
-                      left: contextMenu.x,
-                      width: 0,
-                      height: 0,
-                      opacity: 0,
-                    }}
-                  />
-                </DropdownMenuTrigger>
-                <DropdownMenuContent className="w-48">
-                  <DropdownMenuItem
-                    onClick={() => {
-                      handleRefresh();
-                      handleCloseMenu();
-                    }}
-                  >
-                    <PlusIcon className="w-4 h-4 mr-2" />
-                    Add protocol
-                  </DropdownMenuItem>
+          <ReactFlow
+            key={flowKey}
+            nodes={nodes}
+            edges={edges}
+            onNodesChange={handleNodesChangeWithPersistence}
+            onEdgesChange={onEdgesChange}
+            nodeTypes={nodeTypes}
+            minZoom={MIN_ZOOM}
+            maxZoom={MAX_ZOOM}
+            onInit={handleOnInit}
+            onMoveEnd={handleOnMoveEnd}
+            onPaneClick={() => handleCloseMenu()}
+            defaultViewport={viewport}
+            defaultEdgeOptions={{
+              type: "default",
+              style: { stroke: "#999", strokeWidth: 2 },
+              markerEnd: "url(#circle)",
+            }}
+            onNodeDoubleClick={(evt, node) => handleNodeDoubleClick(node)}
+            onNodeClick={(evt, node) => handleNodeClick(node, evt)}
+            onContextMenu={handleContextMenu}
+            style={{ width: "100%", height: "100%" }}
+          >
+            <Background />
+          </ReactFlow>
 
-                  <DropdownMenuItem
-                    onClick={() => {
-                      handleRefresh();
-                      handleCloseMenu();
-                    }}
-                  >
-                    <RefreshCw className="w-4 h-4 mr-2" />
-                    Refresh graph
-                  </DropdownMenuItem>
+          {contextMenu.visible && (
+            <DropdownMenu open={true} onOpenChange={handleCloseMenu}>
+              <DropdownMenuTrigger asChild>
+                <button
+                  style={{
+                    position: "fixed",
+                    top: contextMenu.y,
+                    left: contextMenu.x,
+                    width: 0,
+                    height: 0,
+                    opacity: 0,
+                  }}
+                />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-48">
+                <DropdownMenuItem
+                  onClick={() => {
+                    handleRefresh();
+                    handleCloseMenu();
+                  }}
+                >
+                  <PlusIcon className="w-4 h-4 mr-2" />
+                  Add protocol
+                </DropdownMenuItem>
 
-                  <DropdownMenuItem
-                    onClick={() => {
-                      setNodes((nds) => nds.map((n) => ({ ...n, selected: false })));
-                      handleCloseMenu();
-                    }}
-                  >
-                    <Trash2 className="w-4 h-4 mr-2" />
-                    Clear selection
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
-          </ReactFlowProvider>
+                <DropdownMenuItem
+                  onClick={() => {
+                    handleRefresh();
+                    handleCloseMenu();
+                  }}
+                >
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  Refresh graph
+                </DropdownMenuItem>
+
+                <DropdownMenuItem
+                  onClick={() => {
+                    setNodes((nds) => nds.map((n) => ({ ...n, selected: false })));
+                    handleCloseMenu();
+                  }}
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Clear selection
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
       </div>
     </div>
