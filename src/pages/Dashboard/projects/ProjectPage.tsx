@@ -185,19 +185,37 @@ export default function ProjectPage() {
   // nodeTypes mapping (wrap status nodes)
   // NOTE: this depends on selection + hover so it will recreate; if you want to avoid warning #002,
   // you can memoize only by graphDirection, but then pass selected/hover via refs.
-  const nodeTypes = useMemo(
-    () => ({
+  // dentro de ProjectPage.tsx (importante: sustituye tu bloque de nodeTypes)
+
+  const onClickRef = useRef(handleNodeClick);
+  const onDblClickRef = useRef(handleNodeDoubleClick);
+  const prevIdRef = useRef<string | null>(null);
+  const hoveredIdRef = useRef<string | null>(null);
+  const graphDirRef = useRef<"TB" | "LR">(graphDirection);
+
+  // keep refs updated
+  useEffect(() => { onClickRef.current = handleNodeClick; }, [handleNodeClick]);
+  useEffect(() => { onDblClickRef.current = handleNodeDoubleClick; }, [handleNodeDoubleClick]);
+  useEffect(() => { prevIdRef.current = previousNodeId; }, [previousNodeId]);
+  useEffect(() => { hoveredIdRef.current = hoveredNodeId; }, [hoveredNodeId]);
+  useEffect(() => { graphDirRef.current = graphDirection; }, [graphDirection]);
+
+  // create nodeTypes ONCE and keep identity stable
+  const nodeTypesRef = useRef<Record<string, any> | null>(null);
+  if (!nodeTypesRef.current) {
+    nodeTypesRef.current = {
       status: createStatusNodeWrapper(
-        handleNodeClick,
-        handleNodeDoubleClick,
-        previousNodeId ?? undefined,
-        hoveredNodeId ?? undefined,
+        (data, evt) => onClickRef.current?.(data, evt),
+        (data) => onDblClickRef.current?.(data),
+        () => prevIdRef.current ?? undefined,
+        () => hoveredIdRef.current ?? undefined,
         setHoveredNodeId,
-        graphDirection
+        () => graphDirRef.current
       ),
-    }),
-    [previousNodeId, hoveredNodeId, graphDirection]
-  );
+    };
+  }
+  const nodeTypes = nodeTypesRef.current;
+
 
   /* --------------------- Persistence helpers --------------------- */
 
@@ -349,17 +367,17 @@ export default function ProjectPage() {
     }
   }, []);
 
-  
-/**
-* waitForNodesReady
-* - Waits until React Flow has internally mounted nodes and their positions
-* appear valid (not all 0, 0 / NaN and non-trivial bounding-box).
-* - Returns true if a valid state was detected before the timeout, false otherwise.
-*
-* @param expectedCount expected number of nodes (if unknown, set to 0 or 1)
-* @param timeoutMs maximum wait time in ms (default 2500)
-* @param debug if true console.log debugging information
-*/
+
+  /**
+  * waitForNodesReady
+  * - Waits until React Flow has internally mounted nodes and their positions
+  * appear valid (not all 0, 0 / NaN and non-trivial bounding-box).
+  * - Returns true if a valid state was detected before the timeout, false otherwise.
+  *
+  * @param expectedCount expected number of nodes (if unknown, set to 0 or 1)
+  * @param timeoutMs maximum wait time in ms (default 2500)
+  * @param debug if true console.log debugging information
+  */
   const waitForNodesReady = async (expectedCount: number, timeoutMs = 2500, debug = false): Promise<boolean> => {
     const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
     if (!inst) {
@@ -497,10 +515,10 @@ export default function ProjectPage() {
                   inst.setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(viewportRef.current.zoom) });
                   setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(viewportRef.current.zoom) });
                 }
-              } catch {}
+              } catch { }
             } finally {
               firstLoadRef.current = false;
-              if (observer) { try { observer.disconnect(); } catch {} observer = null; }
+              if (observer) { try { observer.disconnect(); } catch { } observer = null; }
               if (fallbackTimer) { clearTimeout(fallbackTimer); fallbackTimer = null; }
             }
           };
@@ -520,7 +538,7 @@ export default function ProjectPage() {
                 });
                 observer.observe(nodesContainer, { childList: true, subtree: true });
                 fallbackTimer = setTimeout(async () => {
-                  if (observer) { try { observer.disconnect(); } catch {} observer = null; }
+                  if (observer) { try { observer.disconnect(); } catch { } observer = null; }
                   const ready = await waitForNodesReady(nodesWithPositions.length, 2000, true);
                   if (ready) {
                     doCenter("waitForNodesReady-fallback");
@@ -544,7 +562,7 @@ export default function ProjectPage() {
                     inst.setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(viewportRef.current.zoom) });
                     setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(viewportRef.current.zoom) });
                   }
-                } catch {}
+                } catch { }
                 firstLoadRef.current = false;
               } else {
                 firstLoadRef.current = false;
@@ -566,7 +584,7 @@ export default function ProjectPage() {
                     inst.setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(viewportRef.current.zoom) });
                     setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(viewportRef.current.zoom) });
                   }
-                } catch {}
+                } catch { }
               }
               firstLoadRef.current = false;
             }
@@ -1127,9 +1145,9 @@ export default function ProjectPage() {
         </div>
       </div>
 
-      {selectedNodeDetails && <ProtocolForm data={selectedNodeDetails} 
-                                            projectProtocols={project?.protocols ?? project?.protocols ?? {}}
-                                            onClose={handleCloseForm} />}
+      {selectedNodeDetails && <ProtocolForm data={selectedNodeDetails}
+        projectProtocols={project?.protocols ?? project?.protocols ?? {}}
+        onClose={handleCloseForm} />}
 
       <div className="flex-1 relative">
         {/* Initial blocking overlay only during first fetch */}
@@ -1142,7 +1160,13 @@ export default function ProjectPage() {
         )}
 
         {/* TABLE pane */}
-        <div ref={tableContainerRef} className="absolute inset-0 overflow-auto border rounded shadow p-4 z-30" style={{ display: viewMode === "table" ? (tableVisible ? "block" : "none") : "none" }} aria-hidden={viewMode !== "table"}>
+        <div ref={tableContainerRef}
+          className="absolute inset-0 overflow-auto border rounded shadow p-4 z-30 transition-opacity"
+          style={{
+            opacity: viewMode === "table" ? 1 : 0,
+            pointerEvents: viewMode === "table" ? "auto" : "none",
+          }}
+          aria-hidden={viewMode !== "table"}>
           <div className="flex justify-end mb-4 mr-1">
             <button className="refresh-btn" title="Refresh project" onClick={handleRefresh} disabled={isRefreshing}>
               <RefreshCw className={`w-4 h-4 ${isRefreshing ? "animate-spin" : ""}`} />
@@ -1191,7 +1215,13 @@ export default function ProjectPage() {
         </div>
 
         {/* ReactFlow pane */}
-        <div className="absolute inset-0 border" style={{ display: viewMode === "hierarchical" ? "block" : "none", zIndex: 20 }} aria-hidden={viewMode !== "hierarchical"}>
+        <div className="absolute inset-0 border transition-opacity"
+          style={{
+            opacity: viewMode === "hierarchical" ? 1 : 0,
+            pointerEvents: viewMode === "hierarchical" ? "auto" : "none",
+            zIndex: 20,
+          }}
+          aria-hidden={viewMode !== "hierarchical"}>
           <div className="absolute top-4 right-4 z-50">
             <div className="flex flex-col gap-1 p-1 bg-white/90 rounded shadow">
               <button title="Zoom in" onClick={handleZoomIn} className="p-1 rounded hover:bg-gray-100 dark:text-black"><PlusIcon className="w-4 h-4" /></button>

@@ -1,56 +1,46 @@
-// File: src/components/protocol/ProtocolNodeCardWrapper.tsx
-import React from "react";
+// ProtocolNodeCardWrapper.tsx
 import { NodeProps, useReactFlow } from "reactflow";
 import StatusNode from "./ProtocolNodeCard";
 
-/**
- * Wrapper liviano: NO renderiza <Handle>.
- * Los Handle viven dentro de StatusNode y ahí se posicionan con
- * props.sourcePosition / props.targetPosition (LR/TB).
- */
 export const createStatusNodeWrapper = (
   onClick: (data: any, evt?: React.MouseEvent) => void,
   onDoubleClick: (data: any) => void,
-  selectedNodeId?: string,
-  hoveredNodeId?: string,
+  getSelectedNodeId: () => string | undefined,
+  getHoveredNodeId: () => string | undefined,
   setHoveredNodeId?: React.Dispatch<React.SetStateAction<string | null>>,
-  graphDirection: "TB" | "LR" = "TB"
+  getGraphDirection?: () => "TB" | "LR"
 ) => {
-  const Wrapper: React.FC<NodeProps<any>> = (props) => {
-    const { id, data } = props as any;
-
-    // Hover helpers
-    const isHovered =
-      typeof hoveredNodeId === "string" && String(id) === String(hoveredNodeId);
-    const handleEnter = () => setHoveredNodeId?.(String(id));
-    const handleLeave = () => setHoveredNodeId?.(null);
-
-    // Zoom (por si tu card lo usa)
+  return function StatusNodeWrapper(props: NodeProps) {
+    const { data, id, ...rest } = props;
     const { getViewport } = useReactFlow();
     const { zoom } = getViewport();
 
+    // read latest values from getters (no re-creations of nodeTypes)
+    const selectedNodeId = getSelectedNodeId?.();
+    const hoveredNodeId = getHoveredNodeId?.();
+    const graphDirection = getGraphDirection?.() ?? "TB";
+
+    const handleMouseEnter = () => setHoveredNodeId?.(String(id));
+    const handleMouseLeave = () => setHoveredNodeId?.(null);
+    const isHovered =
+      typeof hoveredNodeId === "string" && String(id) === String(hoveredNodeId);
+
     return (
-      <div
-        onMouseEnter={handleEnter}
-        onMouseLeave={handleLeave}
-        style={{ display: "inline-block", position: "relative" }}
-      >
+      <div onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave} style={{ display: "inline-block" }}>
         <StatusNode
-          {...props}
+          {...rest}
           id={String(id)}
           data={data}
           selectedNodeId={selectedNodeId}
+          onClick={(evt?: React.MouseEvent) => onClick(data, evt)}
+          onDoubleClick={() => onDoubleClick(data)}
+          graphDirection={graphDirection}
+          zoomLevel={zoom}
           hoveredNodeId={hoveredNodeId}
           setHoveredNodeId={setHoveredNodeId}
           isHovered={isHovered}
-          zoomLevel={zoom}
-          graphDirection={graphDirection} 
-          onClick={(evt?: React.MouseEvent) => onClick({ id, data }, evt)}
-          onDoubleClick={() => onDoubleClick({ id, data })}
         />
       </div>
     );
   };
-
-  return Wrapper;
 };
