@@ -145,23 +145,38 @@ export default function ProjectPage() {
   const handleNodeClick = (nodeData: any, event?: React.MouseEvent) => {
     handleCloseMenu();
     const isMultiSelect = event?.shiftKey;
+
+    const highlightNodeStyle = { boxShadow: "0 0 0 4px rgba(0,112,243,0.12)" };
+
     if (!isMultiSelect) {
       setPreviousNodeId(nodeData.id);
+
       setNodes((nds) =>
-        nds.map((n) => (n.id === nodeData.id ? n : { ...n, style: undefined }))
+        nds.map((n) =>
+          n.id === nodeData.id
+            ? {
+              ...n,
+              selected: true,
+              style: { ...(n.style ?? {}), ...highlightNodeStyle },
+            }
+            : { ...n, selected: false, style: undefined }
+        )
       );
+
       const edgesToHighlight = edges
         .filter((e) => e.source === nodeData.id || e.target === nodeData.id)
         .map((e) => e.id);
+
       setEdges((eds) =>
         eds.map((edge) =>
           edgesToHighlight.includes(edge.id)
-            ? { ...edge, style: { ...edge.style, stroke: "#0070f3", strokeWidth: 3 } }
+            ? { ...edge, style: { ...(edge.style ?? {}), stroke: "#0070f3", strokeWidth: 3 } }
             : { ...edge, style: undefined }
         )
       );
     }
   };
+
 
   /**
    * handleNodeDoubleClick
