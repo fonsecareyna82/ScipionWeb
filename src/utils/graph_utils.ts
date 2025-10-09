@@ -31,7 +31,7 @@ export function buildGraphElements(
   viewMode: "hierarchical" | "grid" | "table" = "hierarchical",
   direction: Direction = "TB"
 ) {
-  const spacingX = direction === "TB" ? 180 : 900;
+  const spacingX = direction === "TB" ? 180 : 1000;
   const spacingY = direction === "TB" ? 550 : 380;
 
   const nodes: Node[] = [];
