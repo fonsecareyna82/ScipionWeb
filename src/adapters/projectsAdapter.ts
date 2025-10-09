@@ -3,26 +3,51 @@ import * as api from "@/api/projects";
 import type { ProjectService, ProjectPayload } from "@/services/ProjectService";
 
 /**
- * defaultService: adapta tu lib actual (fetchProjects, fetchProject, ...) a la interfaz ProjectService.
- * Si cambias la API interna, sólo actualiza este fichero.
+ * Small helper to normalize IDs so callers can pass string or number interchangeably.
+ */
+const toId = (id: string | number): string => String(id);
+
+/**
+ * defaultService: adapts the current API layer (fetchProjects, fetchProject, ...)
+ * to the ProjectService interface. If the underlying API changes, update ONLY here.
  */
 const defaultService: ProjectService = {
+  // --- Reads ---
   fetchList: () => api.fetchProjects(),
-  fetchProject: (id: string) => api.fetchProject(id),
-  fetchProtocolDetails: (projectId: string, protocolId: string) => api.fetchProtocolDetails(projectId, protocolId),
-  fetchNewProtocolDetails: (projectId: string, protocolClass: string) => api.fetchNewProtocolDetails(projectId, protocolClass),
 
-  createProject: (payload: ProjectPayload) => api.createProject(payload.name, payload.description ?? ""),
-  renameProject: (id: string, newName: string, newDescription?: string) => api.renameProject(id, newName, newDescription ?? ""),
-  deleteProject: (id: string) => api.deleteProject(id),
+  fetchProject: (id: string | number) => api.fetchProject(toId(id)),
 
-  loadProtocols: (projectId: number) => api.loadProtocols(projectId),
+  fetchProtocolDetails: (projectId: string | number, protocolId: string | number) =>
+    api.fetchProtocolDetails(toId(projectId), toId(protocolId)),
 
-  executeProtocol: (protocolId: string, protocolClassName: string, params: Record<string, any>) =>
-    api.executeProtocol(protocolId, protocolClassName, params),
+  fetchNewProtocolDetails: (projectId: string | number, protocolClass: string) =>
+    api.fetchNewProtocolDetails(toId(projectId), protocolClass),
 
-  saveProtocol: (protocolId: string, protocolClassName: string, params: Record<string, any>) =>
-    api.saveProtocol(protocolId, protocolClassName, params),
+  // --- Mutations ---
+  createProject: (payload: ProjectPayload) =>
+    api.createProject(payload.name, (payload.description ?? "").trim()),
+
+  renameProject: (id: string | number, newName: string, newDescription?: string) =>
+    api.renameProject(toId(id), newName, (newDescription ?? "").trim()),
+
+  deleteProject: (id: string | number) => api.deleteProject(toId(id)),
+
+  // --- Protocol lifecycle ---
+  loadProtocols: (projectId: string | number) =>
+    // original signature was (projectId: number); normalize and keep backward-compat
+    api.loadProtocols(Number(projectId)),
+
+  executeProtocol: (
+    protocolId: string | number,
+    protocolClassName: string,
+    params: Record<string, unknown>
+  ) => api.executeProtocol(toId(protocolId), protocolClassName, params),
+
+  saveProtocol: (
+    protocolId: string | number,
+    protocolClassName: string,
+    params: Record<string, unknown>
+  ) => api.saveProtocol(toId(protocolId), protocolClassName, params),
 };
 
 export default defaultService;

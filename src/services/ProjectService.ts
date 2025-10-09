@@ -1,26 +1,52 @@
 // src/services/ProjectService.ts
+
+/** Common ID type to accept either string or number seamlessly. */
+export type Id = string | number;
+
+/** Payload for creating a project. */
 export type ProjectPayload = { name: string; description?: string };
 
-export interface ProjectService {
-  // lista de proyectos (puede devolver array o objeto paginado; los componentes lo normalizan)
-  fetchList(): Promise<any>;
+/**
+ * Optional generics to let consumers specify concrete return shapes.
+ * - TProject: shape of a single project
+ * - TProjectList: shape of the projects list (array or paginated object)
+ * - TProtocol: shape of a single protocol / protocol details
+ */
+export interface ProjectService<
+  TProject = any,
+  TProjectList = any,
+  TProtocol = any
+> {
+  /**
+   * List projects. It can return an array or a paginated object.
+   * Components should normalize the result.
+   */
+  fetchList(): Promise<TProjectList>;
 
-  // obtener proyecto por id/name
-  fetchProject(projectId: string): Promise<any>;
+  /** Get project by id or name. */
+  fetchProject(projectId: Id): Promise<TProject>;
 
-  // detalles de protocolo (por id)
-  fetchProtocolDetails(projectId: string, protocolId: string): Promise<any>;
+  /** Get protocol details by project/protocol ids. */
+  fetchProtocolDetails(projectId: Id, protocolId: Id): Promise<TProtocol>;
 
-  // detalles de nuevo protocolo por clase
-  fetchNewProtocolDetails(projectId: string, protocolClass: string): Promise<any>;
+  /** Get "new protocol" details by class within a project. */
+  fetchNewProtocolDetails(projectId: Id, protocolClass: string): Promise<TProtocol>;
 
-  // crear / renombrar / borrar
-  createProject(payload: ProjectPayload): Promise<any>;
-  renameProject(id: string, newName: string, newDescription?: string): Promise<any>;
-  deleteProject(id: string): Promise<any>;
+  /** Create / rename / delete project. */
+  createProject(payload: ProjectPayload): Promise<TProject>;
+  renameProject(id: Id, newName: string, newDescription?: string): Promise<TProject>;
+  deleteProject(id: Id): Promise<void | { success: boolean }>;
 
-  // protocolos (lista/guardar/ejecutar)
-  loadProtocols(projectId: number): Promise<any>;
-  executeProtocol(protocolId: string, protocolClassName: string, params: Record<string, any>): Promise<any>;
-  saveProtocol(protocolId: string, protocolClassName: string, params: Record<string, any>): Promise<any>;
+  /** Protocol lifecycle: list / save / execute. */
+  loadProtocols(projectId: Id): Promise<TProtocol[] | any>;
+  executeProtocol(
+    protocolId: Id,
+    protocolClassName: string,
+    params: Record<string, unknown>
+  ): Promise<TProtocol>;
+  saveProtocol(
+    protocolId: Id,
+    protocolClassName: string,
+    params: Record<string, unknown>
+  ): Promise<TProtocol>;
 }

@@ -4,22 +4,76 @@ import { BASE_URL } from "@/config";
 import { Project } from "@/types/project";
 import { fetchWithAuth } from "./auth";
 
+type Id = string | number;
+
+type ApiErrorShape = {
+  message?: string;
+  detail?: unknown;
+  [k: string]: unknown;
+};
+
+class ApiError extends Error {
+  status?: number;
+  detail?: unknown;
+  data?: unknown;
+  constructor(message: string, opts?: { status?: number; detail?: unknown; data?: unknown }) {
+    super(message);
+    this.name = "ApiError";
+    this.status = opts?.status;
+    this.detail = opts?.detail;
+    this.data = opts?.data;
+  }
+}
+
+async function safeJson<T = any>(response: Response): Promise<T> {
+  // 204 No Content or empty body
+  const text = await response.text();
+  if (!text) return undefined as unknown as T;
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    // Fallback to raw text if not JSON
+    return text as unknown as T;
+  }
+}
+
+async function toApiError(response: Response, fallback: string): Promise<ApiError> {
+  let payload: ApiErrorShape | string | undefined;
+  try {
+    payload = await safeJson<ApiErrorShape | string>(response);
+  } catch {
+    // ignore
+  }
+  const message =
+    (typeof payload === "object" && (payload.message as string)) ||
+    (typeof payload === "object" && (payload.detail as string)) ||
+    (typeof payload === "string" && payload) ||
+    fallback;
+
+  const detail = typeof payload === "object" ? payload.detail : undefined;
+  return new ApiError(message || fallback, {
+    status: response.status,
+    detail,
+    data: payload,
+  });
+}
+
 /**
  * Fetch the list of all projects
  */
 export async function fetchProjects(): Promise<Project[]> {
   const response = await fetchWithAuth(`${BASE_URL}/projects/`);
-  if (!response.ok) throw new Error("Failed to fetch projects");
-  return response.json();
+  if (!response.ok) throw await toApiError(response, "Failed to fetch projects");
+  return safeJson<Project[]>(response);
 }
 
 /**
  * Fetch detailed data of a single project by ID
  */
-export async function fetchProject(projectId: string): Promise<Project> {
+export async function fetchProject(projectId: Id): Promise<Project> {
   const response = await fetchWithAuth(`${BASE_URL}/projects/${projectId}`);
-  if (!response.ok) throw new Error("Failed to fetch project");
-  return response.json();
+  if (!response.ok) throw await toApiError(response, "Failed to fetch project");
+  return safeJson<Project>(response);
 }
 
 /**
@@ -30,42 +84,33 @@ export async function createProject(name: string, description: string): Promise<
     method: "POST",
     body: JSON.stringify({ name, description }),
   });
-
-  if (!response.ok) {
-    let errorDetail = "Failed to create project";
-    try {
-      const data = await response.json();
-      if (data.detail) errorDetail = data.detail;
-    } catch { }
-    throw new Error(errorDetail);
-  }
-
-  return response.json();
+  if (!response.ok) throw await toApiError(response, "Failed to create project");
+  return safeJson<Project>(response);
 }
 
 /**
  * Fetch detailed info of a protocol node by its id
  */
-export async function fetchProtocolDetails(projectId: string, protocolId: string): Promise<ProtocolNode> {
+export async function fetchProtocolDetails(projectId: Id, protocolId: Id): Promise<ProtocolNode> {
   const response = await fetchWithAuth(`${BASE_URL}/projects/${projectId}/${protocolId}`);
-  if (!response.ok) throw new Error("Failed to fetch protocol details");
-  return response.json();
+  if (!response.ok) throw await toApiError(response, "Failed to fetch protocol details");
+  return safeJson<ProtocolNode>(response);
 }
 
 /**
  * Fetch detailed info of a protocol by its class name
  */
-export async function fetchNewProtocolDetails(projectId: string, protocolClass: string): Promise<ProtocolNode> {
+export async function fetchNewProtocolDetails(projectId: Id, protocolClass: string): Promise<ProtocolNode> {
   const response = await fetchWithAuth(`${BASE_URL}/projects/${projectId}/protclass/${protocolClass}`);
-  if (!response.ok) throw new Error("Failed to fetch protocol details");
-  return response.json();
+  if (!response.ok) throw await toApiError(response, "Failed to fetch protocol details");
+  return safeJson<ProtocolNode>(response);
 }
 
 /**
  * Launch a protocol for a specific project by ID
  */
 export async function executeProtocol(
-  protocolId: string,
+  protocolId: Id,
   protocolClassName: string,
   params: Record<string, any>
 ): Promise<any> {
@@ -74,64 +119,47 @@ export async function executeProtocol(
     body: JSON.stringify({ protocolId, protocolClassName, params }),
   });
 
-  if (!response.ok) {
-    // Try to parse the response body for details
-    const errData = await response.json().catch(() => ({}));
-
-    // Build a richer error object so the frontend can handle it properly
-    const error: any = new Error(
-      errData.detail || errData.message || "Failed to execute protocol"
-    );
-    error.status = response.status;
-    error.detail = errData.detail || null;
-    error.data = errData;
-
-    throw error;
-  }
-
-  return response.json();
+  if (!response.ok) throw await toApiError(response, "Failed to execute protocol");
+  return safeJson<any>(response);
 }
-
 
 /**
  * Save a protocol for a specific project by ID
  */
-export async function saveProtocol(protocolId: string, protocolClassName: string, params: Record<string, any>): Promise<any> {
+export async function saveProtocol(
+  protocolId: Id,
+  protocolClassName: string,
+  params: Record<string, any>
+): Promise<any> {
   const response = await fetchWithAuth(`${BASE_URL}/projects/save`, {
     method: "POST",
     body: JSON.stringify({ protocolId, protocolClassName, params }),
   });
 
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error(err.message || "Failed to save protocol");
-  }
-  return response.json();
+  if (!response.ok) throw await toApiError(response, "Failed to save protocol");
+  return safeJson<any>(response);
 }
 
 /**
  * Rename a project and update its description
  */
-export async function renameProject(id: string, newName: string, newDescription: string): Promise<Project> {
+export async function renameProject(id: Id, newName: string, newDescription: string): Promise<Project> {
   const response = await fetchWithAuth(`${BASE_URL}/projects/${id}`, {
     method: "PUT",
     body: JSON.stringify({ name: newName, description: newDescription }),
   });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Failed to rename project: ${errorText}`);
-  }
-
-  return (await response.json()) as Project;
+  if (!response.ok) throw await toApiError(response, "Failed to rename project");
+  return safeJson<Project>(response);
 }
 
 /**
  * Delete a project by its ID
  */
-export async function deleteProject(id: string): Promise<void> {
+export async function deleteProject(id: Id): Promise<void> {
   const response = await fetchWithAuth(`${BASE_URL}/projects/${id}`, { method: "DELETE" });
-  if (!response.ok) throw new Error("Failed to delete project");
+  if (!response.ok) throw await toApiError(response, "Failed to delete project");
+  // 204 No Content expected; nothing to return
 }
 
 /**
@@ -139,6 +167,6 @@ export async function deleteProject(id: string): Promise<void> {
  */
 export async function loadProtocols(projectId: number): Promise<any> {
   const response = await fetchWithAuth(`${BASE_URL}/projects/${projectId}/protocols`);
-  if (!response.ok) throw new Error("Failed to fetch protocols");
-  return response.json();
+  if (!response.ok) throw await toApiError(response, "Failed to fetch protocols");
+  return safeJson<any>(response);
 }
