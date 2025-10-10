@@ -1,4 +1,5 @@
-import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+// src/App.tsx
+import { Routes, Route } from "react-router-dom";
 import SignIn from "./pages/AuthPages/SignIn";
 import SignUp from "./pages/AuthPages/SignUp";
 import NotFound from "./pages/OtherPage/NotFound";
@@ -27,11 +28,19 @@ import VerifyEmailForm from "./components/auth/VerifyEmailForm";
 import SessionManager from "./components/common/SessionManager";
 import { Toaster } from "react-hot-toast";
 import { DragProvider } from "./components/protocol/DragContext";
+import { ProjectService } from "./services/ProjectService";
+import { ProjectServiceProvider } from "./ProjectServiceContext";
 
-export default function App() {
+interface AppProps {
+  service?: ProjectService;
+}
+
+export default function App({ service }: AppProps) {
   return (
+    // NOTE: BrowserRouter is provided in src/main.tsx. Do NOT mount another Router here.
     <DragProvider>
-      <Router>
+      <ProjectServiceProvider service={service}>
+        {/* Needs to be inside a Router (provided by main.tsx) */}
         <ScrollToTop />
 
         <Routes>
@@ -74,11 +83,8 @@ export default function App() {
           <Route path="*" element={<NotFound />} />
         </Routes>
 
-        <Toaster
-          position="top-right"
-          containerStyle={{ zIndex: 999999 }}
-        />
-      </Router>
+        <Toaster position="top-right" containerStyle={{ zIndex: 999999 }} />
+      </ProjectServiceProvider>
     </DragProvider>
   );
 }

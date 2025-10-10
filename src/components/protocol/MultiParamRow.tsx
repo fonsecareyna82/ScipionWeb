@@ -1,5 +1,5 @@
 // src/components/MultiParamRow.tsx
-import React, { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Box,
   Table,
@@ -59,9 +59,7 @@ const getExpectedClass = (def: any): string | string[] | undefined => {
 };
 
 export default function MultiParamRow({
-  label,
   items,
-  helpText,
   onRowClear,
   onRowDrop,
   dragOverKey,

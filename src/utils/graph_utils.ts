@@ -1,5 +1,6 @@
-import { ProtocolNode } from "../api/protocols";
-import { Node, Edge } from "reactflow";
+// File: src/utils/graph_utils.ts
+import { ProtocolNode } from "@/types/protocolNode";
+import { Node, Edge, Position } from "reactflow";
 
 /**
  * Estimate the width of a label using canvas.
@@ -16,7 +17,17 @@ function estimateLabelWidth(label: string, fontSize = 20, fontFamily = "Arial"):
  * Estimate node height (optional, for LR layout)
  */
 function estimateNodeHeight(label: string, fontSize = 20, fontFamily = "Arial"): number {
-  return 180; // fixed height for simplicity
+  const avgCharWidth = fontSize * 0.6; // rough average
+  const maxWidth = 240;                // px, assumed node width
+  const text = String(label ?? "");
+  const charsPerLine = Math.max(1, Math.floor(maxWidth / avgCharWidth));
+  const lines = Math.ceil(text.length / charsPerLine) || 1;
+
+  // Line height with a small family factor (keeps arguments “used” meaningfully)
+  const baseLineHeight = Math.round(fontSize * 1.2);
+  const familyFactor = /arial/i.test(fontFamily) ? 1 : 1.05;
+
+  return Math.ceil(lines * baseLineHeight * familyFactor) + 180;
 }
 
 type Direction = "TB" | "LR";
@@ -28,15 +39,15 @@ export function buildGraphElements(
   projectName: string,
   protocols: Record<string, ProtocolNode>,
   viewMode: "hierarchical" | "grid" | "table" = "hierarchical",
-  direction: Direction = "TB",
+  direction: Direction = "TB"
 ) {
-
-  const spacingX = direction === 'TB' ? 180 : 900;
-  const spacingY = direction === 'TB' ? 550 : 380;
+  const spacingX = direction === "TB" ? 180 : 1000;
+  const spacingY = direction === "TB" ? 550 : 380;
 
   const nodes: Node[] = [];
   const edges: Edge[] = [];
 
+  // Table mode (for dashboard list)
   if (viewMode === "table") {
     const sorted = Object.entries(protocols)
       .filter(([id]) => id !== "PROJECT")
@@ -62,6 +73,7 @@ export function buildGraphElements(
   const levelBuckets: Record<number, string[]> = {};
   const edgeSet = new Set<string>();
 
+  // Recursive traversal to compute levels and edges
   function traverse(id: string, level: number) {
     const currentLevel = levelMap[id];
     if (currentLevel === undefined || level > currentLevel) {
@@ -90,6 +102,7 @@ export function buildGraphElements(
           animated: false,
           style: { stroke: "#CAD5E2", strokeWidth: 2 },
           markerEnd: "url(#circle)",
+          // edge handles depend on direction
           sourceHandle: direction === "TB" ? "bottom" : "right",
           targetHandle: direction === "TB" ? "top" : "left",
         });
@@ -100,14 +113,13 @@ export function buildGraphElements(
 
   traverse("PROJECT", 0);
 
+  // Position nodes by level
   Object.entries(levelBuckets).forEach(([levelStr, ids]) => {
     const level = parseInt(levelStr, 10);
-
     const sizes = ids.map((id) => estimateLabelWidth(protocols[id]?.label || id));
     const heights = ids.map((id) => estimateNodeHeight(protocols[id]?.label || id));
 
     const spacing = direction === "TB" ? spacingX : spacingY;
-
     const totalSize =
       direction === "TB"
         ? sizes.reduce((sum, s) => sum + s + spacing, 0)
@@ -119,7 +131,6 @@ export function buildGraphElements(
       const prot = protocols[id];
       const label = prot?.label || id;
       const status = prot?.status;
-
       const nodeWidth = sizes[index];
       const nodeHeight = heights[index];
 
@@ -127,6 +138,12 @@ export function buildGraphElements(
         direction === "TB"
           ? { x: secondary + nodeWidth / 2, y: level * spacingY }
           : { x: level * spacingX, y: secondary + nodeHeight / 2 };
+
+      // ✅ Correct handle positions per direction
+      const sourcePosition: Position =
+        direction === "LR" ? Position.Right : Position.Bottom;
+      const targetPosition: Position =
+        direction === "LR" ? Position.Left : Position.Top;
 
       nodes.push({
         id,
@@ -146,9 +163,13 @@ export function buildGraphElements(
         },
         position,
         draggable: true,
+        // 👇 crucial for proper edge orientation
+        sourcePosition,
+        targetPosition,
       });
 
-      secondary += direction === "TB" ? nodeWidth + spacing : nodeHeight + spacing;
+      secondary +=
+        direction === "TB" ? nodeWidth + spacing : nodeHeight + spacing;
     });
   });
 

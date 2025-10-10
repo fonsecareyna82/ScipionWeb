@@ -1,101 +1,187 @@
 // src/components/projects/NewProjectModal.tsx
-
-import { useState } from "react";
-import { PlusIcon } from "@/icons";
-import { createProject, Project } from "../../api/projects";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import toast from "react-hot-toast";
+import { useProjectService } from "@/ProjectServiceContext";
 
 interface NewProjectModalProps {
-  onProjectCreated: (project: Project) => void;
+  open: boolean;
+  onClose: () => void;
+  onCreate?: (proj: any) => void;
 }
 
-export default function NewProjectModal({ onProjectCreated }: NewProjectModalProps) {
-  const [showModal, setShowModal] = useState(false);
+export default function NewProjectModal({ open, onClose, onCreate }: NewProjectModalProps) {
+  const svc = useProjectService();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string>("");
 
-  const handleCreate = async () => {
-    if (!name.trim()) {
-      setError("Project name is required");
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    try {
-      const project = await createProject(name, description);
-      onProjectCreated(project);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const nameInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Reset state when closed
+  useEffect(() => {
+    if (!open) {
       setName("");
       setDescription("");
-      setShowModal(false);
+      setLoading(false);
+      setErrorMsg("");
+    }
+  }, [open]);
+
+  // Focus the name input on open
+  useEffect(() => {
+    if (open) {
+      // microtask ensures the node exists
+      queueMicrotask(() => nameInputRef.current?.focus());
+    }
+  }, [open]);
+
+  const validate = useCallback(() => {
+    const trimmed = name.trim();
+    if (!trimmed) {
+      setErrorMsg("Project name is required.");
+      return false;
+    }
+    if (trimmed.length < 2) {
+      setErrorMsg("Project name must be at least 2 characters.");
+      return false;
+    }
+    if (trimmed.length > 120) {
+      setErrorMsg("Project name is too long (max 120).");
+      return false;
+    }
+    setErrorMsg("");
+    return true;
+  }, [name]);
+
+  const handleCreate = useCallback(async () => {
+    if (!validate()) return;
+    setLoading(true);
+    try {
+      const created = await svc.createProject({
+        name: name.trim(),
+        description: description.trim(),
+      });
+      toast.success("Project created");
+      onCreate?.(created);
+      onClose();
     } catch (err: any) {
-      setError(err.message || "Failed to create project");
+      console.error("Failed to create project", err);
+      toast.error(err?.message || "Failed to create project");
     } finally {
       setLoading(false);
     }
+  }, [svc, name, description, onCreate, onClose, validate]);
+
+  // Close on overlay click (but ignore clicks inside the dialog)
+  const onOverlayClick = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      if (dialogRef.current && !dialogRef.current.contains(e.target as Node)) {
+        onClose();
+      }
+    },
+    [onClose]
+  );
+
+  // Escape to close; Enter to submit when focused on inputs
+  const onKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        onClose();
+      }
+    },
+    [onClose]
+  );
+
+  // Submit on Enter in inputs (avoid newline submit for textarea unless Ctrl/Cmd+Enter)
+  const onInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !(e.shiftKey || e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      handleCreate();
+    }
   };
 
+  if (!open) return null;
+
   return (
-    <>
-      <li
-        className="px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer flex items-center gap-2"
-        onClick={() => setShowModal(true)}
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+      onMouseDown={onOverlayClick}
+      onKeyDown={onKeyDown}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="new-project-title"
+      aria-describedby="new-project-desc"
+    >
+      <div
+        ref={dialogRef}
+        className="bg-white dark:bg-gray-900 rounded-lg p-6 w-full max-w-md shadow-lg"
+        onMouseDown={(e) => e.stopPropagation()} // prevent overlay close when clicking inside
       >
-        <PlusIcon className="shrink-0 w-5 h-5 text-gray-500 dark:text-black-400" />
-        <span className="whitespace-nowrap">New project</span>
-      </li>
+        <h3 id="new-project-title" className="text-lg font-semibold mb-3 text-gray-900 dark:text-white">
+          New Project
+        </h3>
+        <p id="new-project-desc" className="sr-only">
+          Create a new project by providing a name and an optional description.
+        </p>
 
-      {showModal && (
-        <div className="fixed inset-0 flex items-center justify-center z-50">
-          {/* Overlay */}
-          <div
-            className="absolute inset-0 bg-black opacity-30"
-            onClick={() => setShowModal(false)}
-          ></div>
-
-          {/* Modal content */}
-          <div className="relative bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-md z-50">
-            <h2 className="text-lg  mb-4 text-gray-900 dark:text-white">
-              Create New Project
-            </h2>
-
-            {error && (
-              <p className="text-red-400 mb-2">{error}</p>
-            )}
-
+        <div className="flex flex-col gap-3">
+          <label className="text-sm text-gray-700 dark:text-gray-300">
+            Name <span className="text-red-500">*</span>
             <input
-              type="text"
-              placeholder="Project name"
+              ref={nameInputRef}
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full mb-3 px-3 py-2 border rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              onKeyDown={onInputKeyDown}
+              placeholder="Project name"
+              className="mt-1 w-full px-3 py-2 border rounded-md bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white"
+              aria-invalid={!!errorMsg}
+              aria-describedby={errorMsg ? "new-project-error" : undefined}
+              maxLength={120}
             />
+          </label>
 
+          <label className="text-sm text-gray-700 dark:text-gray-300">
+            Description <span className="text-gray-400">(optional)</span>
             <textarea
-              placeholder="Description (optional)"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              className="w-full mb-3 px-3 py-2 border rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              onKeyDown={onInputKeyDown}
+              placeholder="A short description"
+              className="mt-1 w-full px-3 py-2 border rounded-md bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white"
+              rows={3}
+              maxLength={2000}
             />
+          </label>
 
-            <div className="flex justify-end gap-2">
-              <button
-                onClick={() => setShowModal(false)}
-                className="px-4 py-2 bg-gray-200 dark:bg-gray-700 rounded hover:bg-gray-300 dark:hover:bg-gray-600"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleCreate}
-                disabled={loading}
-                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
-              >
-                {loading ? "Creating..." : "Create"}
-              </button>
+          {errorMsg && (
+            <div id="new-project-error" className="text-sm text-red-600">
+              {errorMsg}
             </div>
+          )}
+
+          <div className="flex justify-end gap-2 mt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={loading}
+              className="px-3 py-2 rounded-md bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-white hover:bg-gray-300 dark:hover:bg-gray-600 transition disabled:opacity-60"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleCreate}
+              disabled={loading}
+              className="px-3 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 transition disabled:opacity-60"
+            >
+              {loading ? "Creating..." : "Create"}
+            </button>
           </div>
         </div>
-      )}
-    </>
+      </div>
+    </div>
   );
 }

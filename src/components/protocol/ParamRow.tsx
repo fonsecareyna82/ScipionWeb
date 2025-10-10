@@ -1,5 +1,5 @@
 // src/components/ParamRow.tsx
-import React, { JSX, useState } from 'react';
+import { JSX, useState } from 'react';
 import {
   Box,
   Typography,

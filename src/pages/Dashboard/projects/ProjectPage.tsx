@@ -4,16 +4,10 @@ import React, {
   useCallback,
   useEffect,
   useLayoutEffect,
-  useMemo,
   useRef,
   useState,
 } from "react";
-import {
-  fetchProject,
-  Project,
-  fetchProtocolDetails,
-  fetchNewProtocolDetails,
-} from "../../../api/projects";
+
 import ProtocolForm from "../../../components/protocol/ProtocolForm";
 import { buildGraphElements } from "../../../utils/graph_utils";
 
@@ -41,6 +35,10 @@ import {
 import { MinusIcon, PlusIcon, RefreshCw, Trash2 } from "lucide-react";
 import { FitViewIcon, TableIcon, TreeIcon } from "../../../icons";
 
+// <-- svc integration
+import { useProjectService } from "@/ProjectServiceContext";
+import { Project } from "@/types/project";
+
 /* --------------------- Types --------------------- */
 interface StatusNodeData {
   label: string;
@@ -64,6 +62,8 @@ interface ContextMenuState {
 /* --------------------- Component --------------------- */
 export default function ProjectPage() {
   const { projectName } = useParams<{ projectName: string }>();
+  const svc = useProjectService();
+
   const [project, setProject] = useState<Project | undefined>(undefined);
   const [selectedNodeDetails, setSelectedNodeDetails] = useState<any>(null);
 
@@ -93,7 +93,7 @@ export default function ProjectPage() {
   const [viewport, setViewport] = useState<{ x: number; y: number; zoom: number }>({
     x: 0,
     y: 0,
-    zoom: 0.32, // <-- default initial zoom
+    zoom: 0.32, // initial zoom for first render
   });
   const viewportRef = useRef(viewport);
   useEffect(() => {
@@ -113,11 +113,11 @@ export default function ProjectPage() {
   const localStorageKey = `project-${projectName}-node-positions`;
 
   // overlay / flicker control
-  const [isSwitchingLayout, setIsSwitchingLayout] = useState(true);
-  const [tableVisible, setTableVisible] = useState(viewMode === "table");
+  const [isSwitchingLayout, setIsSwitchingLayout] = useState(false);
+  const [, setTableVisible] = useState(viewMode === "table");
   const [nodesLoadedOnce, setNodesLoadedOnce] = useState(false);
 
-  // initial load flag to ensure we center only once
+  // first load flag to ensure we center only once
   const firstLoadRef = useRef(true);
 
   // Zoom clamp (ensure zoom stays in acceptable range)
@@ -144,23 +144,38 @@ export default function ProjectPage() {
   const handleNodeClick = (nodeData: any, event?: React.MouseEvent) => {
     handleCloseMenu();
     const isMultiSelect = event?.shiftKey;
+
+    const highlightNodeStyle = { boxShadow: "0 0 0 4px rgba(0,112,243,0.12)" };
+
     if (!isMultiSelect) {
       setPreviousNodeId(nodeData.id);
+
       setNodes((nds) =>
-        nds.map((n) => (n.id === nodeData.id ? n : { ...n, style: undefined }))
+        nds.map((n) =>
+          n.id === nodeData.id
+            ? {
+              ...n,
+              selected: true,
+              style: { ...(n.style ?? {}), ...highlightNodeStyle },
+            }
+            : { ...n, selected: false, style: undefined }
+        )
       );
+
       const edgesToHighlight = edges
         .filter((e) => e.source === nodeData.id || e.target === nodeData.id)
         .map((e) => e.id);
+
       setEdges((eds) =>
         eds.map((edge) =>
           edgesToHighlight.includes(edge.id)
-            ? { ...edge, style: { ...edge.style, stroke: "#0070f3", strokeWidth: 3 } }
+            ? { ...edge, style: { ...(edge.style ?? {}), stroke: "#0070f3", strokeWidth: 3 } }
             : { ...edge, style: undefined }
         )
       );
     }
   };
+
 
   /**
    * handleNodeDoubleClick
@@ -170,7 +185,8 @@ export default function ProjectPage() {
     handleCloseMenu();
     if (!projectName) return;
     try {
-      const fullNodeData = await fetchProtocolDetails(projectName, nodeData.id);
+      // svc: fetchProtocolDetails
+      const fullNodeData = await svc.fetchProtocolDetails(projectName, nodeData.id);
       setSelectedNodeDetails(fullNodeData);
       setPreviousNodeId(nodeData.id);
     } catch (err) {
@@ -181,19 +197,39 @@ export default function ProjectPage() {
   const handleCloseForm = () => setSelectedNodeDetails(null);
 
   // nodeTypes mapping (wrap status nodes)
-  const nodeTypes = useMemo(
-    () => ({
+  // NOTE: this depends on selection + hover so it will recreate; if you want to avoid warning #002,
+  // you can memoize only by graphDirection, but then pass selected/hover via refs.
+  // dentro de ProjectPage.tsx (importante: sustituye tu bloque de nodeTypes)
+
+  const onClickRef = useRef(handleNodeClick);
+  const onDblClickRef = useRef(handleNodeDoubleClick);
+  const prevIdRef = useRef<string | null>(null);
+  const hoveredIdRef = useRef<string | null>(null);
+  const graphDirRef = useRef<"TB" | "LR">(graphDirection);
+
+  // keep refs updated
+  useEffect(() => { onClickRef.current = handleNodeClick; }, [handleNodeClick]);
+  useEffect(() => { onDblClickRef.current = handleNodeDoubleClick; }, [handleNodeDoubleClick]);
+  useEffect(() => { prevIdRef.current = previousNodeId; }, [previousNodeId]);
+  useEffect(() => { hoveredIdRef.current = hoveredNodeId; }, [hoveredNodeId]);
+  useEffect(() => { graphDirRef.current = graphDirection; }, [graphDirection]);
+
+  // create nodeTypes ONCE and keep identity stable
+  const nodeTypesRef = useRef<Record<string, any> | null>(null);
+  if (!nodeTypesRef.current) {
+    nodeTypesRef.current = {
       status: createStatusNodeWrapper(
-        handleNodeClick,
-        handleNodeDoubleClick,
-        previousNodeId ?? undefined,
-        hoveredNodeId ?? undefined,
+        (data, evt) => onClickRef.current?.(data, evt),
+        (data) => onDblClickRef.current?.(data),
+        () => prevIdRef.current ?? undefined,
+        () => hoveredIdRef.current ?? undefined,
         setHoveredNodeId,
-        graphDirection
+        () => graphDirRef.current
       ),
-    }),
-    [previousNodeId, hoveredNodeId, graphDirection]
-  );
+    };
+  }
+  const nodeTypes = nodeTypesRef.current;
+
 
   /* --------------------- Persistence helpers --------------------- */
 
@@ -304,8 +340,7 @@ export default function ProjectPage() {
         return;
       }
 
-      // PRESERVE ZOOM CASE (fix):
-      // prefer zoomOverride if provided, otherwise use current instance zoom
+      // preserve current or override zoom
       const targetZoom = clampZoom(typeof zoomOverride === "number" ? zoomOverride : inst.getViewport().zoom);
 
       // compute bounding-box center from node positions (in graph coords)
@@ -327,7 +362,6 @@ export default function ProjectPage() {
       const centerY = (minY + maxY) / 2;
 
       // Use setCenter so the provided graph-coordinates become centered in view with the desired zoom.
-      // duration: 0 for instant (you can use >0 for smooth animation)
       inst.setCenter(centerX, centerY, { zoom: targetZoom, duration: 0 });
 
       // update local state to reflect what we set
@@ -347,17 +381,17 @@ export default function ProjectPage() {
     }
   }, []);
 
-  
-/**
-* waitForNodesReady
-* - Waits until React Flow has internally mounted nodes and their positions
-* appear valid (not all 0, 0 / NaN and non-trivial bounding-box).
-* - Returns true if a valid state was detected before the timeout, false otherwise.
-*
-* @param expectedCount expected number of nodes (if unknown, set to 0 or 1)
-* @param timeoutMs maximum wait time in ms (default 2500)
-* @param debug if true console.log debugging information
-*/
+
+  /**
+  * waitForNodesReady
+  * - Waits until React Flow has internally mounted nodes and their positions
+  * appear valid (not all 0, 0 / NaN and non-trivial bounding-box).
+  * - Returns true if a valid state was detected before the timeout, false otherwise.
+  *
+  * @param expectedCount expected number of nodes (if unknown, set to 0 or 1)
+  * @param timeoutMs maximum wait time in ms (default 2500)
+  * @param debug if true console.log debugging information
+  */
   const waitForNodesReady = async (expectedCount: number, timeoutMs = 2500, debug = false): Promise<boolean> => {
     const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
     if (!inst) {
@@ -439,7 +473,8 @@ export default function ProjectPage() {
     if (!projectName) return;
     setIsRefreshing(true);
     try {
-      const data = await fetchProject(projectName);
+      // svc: fetchProject
+      const data = await svc.fetchProject(projectName);
       setProject(data);
 
       if (data.protocols) {
@@ -453,45 +488,50 @@ export default function ProjectPage() {
         // apply saved positions if they exist
         const nodesWithPositions = loadNodesWithPositions(loadedNodes);
 
-       // update main state
+        // update main state
         setNodes(nodesWithPositions);
         setEdges(loadedEdges);
         setTableData(table ?? []);
+        setIsSwitchingLayout(false);
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            try {
+              const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
+              if (inst && nodesWithPositions.length > 0 && viewMode === "hierarchical") {
+                centerLikeButton(nodesWithPositions, true, viewportRef.current.zoom);
+              }
+            } finally {
+              setIsSwitchingLayout(false);
+            }
+          });
+        });
 
         // set initial ticks
         const initialTicks: Record<string, number> = {};
         nodesWithPositions.forEach((n) => {
-          if (n.data?.status === "running") {
-            initialTicks[n.id] = Number(n.data.elapsedTime) ?? 0;
+          if ((n as any).data?.status === "running") {
+            initialTicks[n.id] = Number((n as any).data.elapsedTime) ?? 0;
           }
         });
         setNodeTicks(initialTicks);
 
         setNodesLoadedOnce(true);
 
-        // --- FOCUS ONLY ON FIRST LOAD (new approach: MutationObserver on DOM) ---
+        // --- center only on first load (MutationObserver + rAF double frame) ---
         if (firstLoadRef.current && viewMode === "hierarchical") {
-          // NO marcar firstLoadRef false hasta que realmente hayamos centrado (evita dobles)
-          console.debug("[fetchAndLoadProject] first load: observing DOM for nodes...");
-
           const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
           const desiredCount = Math.max(1, nodesWithPositions.length);
 
-          // Helper: cleanup observer + fallback timer
           let observer: MutationObserver | null = null;
           let fallbackTimer: any = null;
           let centered = false;
 
-          const doCenter = (methodDesc: string) => {
+          const doCenter = (_methodDesc: string) => {
             if (centered) return;
             centered = true;
             try {
-              console.debug(`[fetchAndLoadProject] centering via ${methodDesc}`);
-              // we use saved zoom to respect initial zoom
               centerLikeButton(nodesWithPositions, true, viewportRef.current.zoom);
             } catch (err) {
-              console.warn("[fetchAndLoadProject] centerLikeButton failed:", err);
-              // intento fallback: fitView if possible
               try {
                 if (inst && inst.getNodes && inst.getNodes().length > 0) {
                   inst.fitView({ padding: 0.12, duration: 0 });
@@ -502,69 +542,43 @@ export default function ProjectPage() {
                   inst.setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(viewportRef.current.zoom) });
                   setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(viewportRef.current.zoom) });
                 }
-              } catch (_) {
-                // ignore
-              }
+              } catch { }
             } finally {
-              // mark as done
               firstLoadRef.current = false;
-              if (observer) {
-                try { observer.disconnect(); } catch { }
-                observer = null;
-              }
-              if (fallbackTimer) {
-                clearTimeout(fallbackTimer);
-                fallbackTimer = null;
-              }
+              if (observer) { try { observer.disconnect(); } catch { } observer = null; }
+              if (fallbackTimer) { clearTimeout(fallbackTimer); fallbackTimer = null; }
             }
           };
 
           try {
-            // we try to observe the React Flow node container
             const nodesContainer = document.querySelector(".react-flow__nodes");
             if (nodesContainer) {
-              // If there are already enough .react-flow__node in the DOM, center immediately
               const initialNodeEls = nodesContainer.querySelectorAll(".react-flow__node");
-              console.debug("[fetchAndLoadProject] initial .react-flow__node count:", initialNodeEls.length, "desired:", desiredCount);
               if (initialNodeEls.length >= desiredCount) {
-                // give a couple of frames to ensure paint and then center
                 requestAnimationFrame(() => requestAnimationFrame(() => doCenter("dom-immediate")));
               } else {
-                // watch for mutations (added children) until we have enough nodes
                 observer = new MutationObserver(() => {
                   const els = nodesContainer.querySelectorAll(".react-flow__node");
-                  // debug:
-                  // console.debug("MutationObserver: nodes count", els.length);
                   if (els.length >= desiredCount) {
-                    // wait for two rAFs to ensure styles and layout are applied
                     requestAnimationFrame(() => requestAnimationFrame(() => doCenter("dom-observer")));
                   }
                 });
                 observer.observe(nodesContainer, { childList: true, subtree: true });
-                // as a safety measure, set a fallback timeout (3s) that uses waitForNodesReady
                 fallbackTimer = setTimeout(async () => {
-                  console.debug("[fetchAndLoadProject] fallbackTimer fired: trying waitForNodesReady");
-                  if (observer) {
-                    try { observer.disconnect(); } catch { }
-                    observer = null;
-                  }
+                  if (observer) { try { observer.disconnect(); } catch { } observer = null; }
                   const ready = await waitForNodesReady(nodesWithPositions.length, 2000, true);
                   if (ready) {
                     doCenter("waitForNodesReady-fallback");
                   } else {
-                    // last option: fitView/clamp
                     doCenter("fallback-final");
                   }
                 }, 3000);
               }
             } else {
-              // if we don't find the DOM container, fallback to waitForNodesReady
-              console.debug("[fetchAndLoadProject] .react-flow__nodes not found -> using waitForNodesReady");
               const ready = await waitForNodesReady(nodesWithPositions.length, 2500, true);
               if (ready && inst) {
                 doCenter("waitForNodesReady");
               } else if (inst) {
-                // final fallback 
                 try {
                   if (inst.getNodes && inst.getNodes().length > 0) {
                     inst.fitView({ padding: 0.12, duration: 0 });
@@ -575,18 +589,13 @@ export default function ProjectPage() {
                     inst.setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(viewportRef.current.zoom) });
                     setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(viewportRef.current.zoom) });
                   }
-                } catch (err) {
-                  console.warn("[fetchAndLoadProject] final fallback failed", err);
-                } finally {
-                  firstLoadRef.current = false;
-                }
+                } catch { }
+                firstLoadRef.current = false;
               } else {
                 firstLoadRef.current = false;
               }
             }
-          } catch (err) {
-            console.warn("[fetchAndLoadProject] observer setup failed, doing fallback centering", err);
-            // immediate fallback: try waitForNodesReady + center
+          } catch {
             const ready = await waitForNodesReady(nodesWithPositions.length, 2000, true);
             if (ready && inst) {
               doCenter("catch-fallback");
@@ -602,7 +611,7 @@ export default function ProjectPage() {
                     inst.setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(viewportRef.current.zoom) });
                     setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(viewportRef.current.zoom) });
                   }
-                } catch (_) { }
+                } catch { }
               }
               firstLoadRef.current = false;
             }
@@ -611,11 +620,12 @@ export default function ProjectPage() {
       }
     } catch (err) {
       console.error("fetchAndLoadProject error:", err);
+      setIsSwitchingLayout(false);
       // ensure we don't leave refreshing forever
     } finally {
       setIsRefreshing(false);
     }
-  }, [projectName, viewMode, graphDirection, centerLikeButton]);
+  }, [projectName, viewMode, graphDirection, centerLikeButton, svc]);
 
 
   useEffect(() => {
@@ -633,7 +643,8 @@ export default function ProjectPage() {
     if (!projectName) return;
     setIsRefreshing(true);
     try {
-      const data = await fetchProject(projectName);
+      // svc: fetchProject
+      const data = await svc.fetchProject(projectName);
       setProject(data);
 
       if (data.protocols) {
@@ -653,8 +664,8 @@ export default function ProjectPage() {
         setNodeTicks((prev) => {
           const updated: Record<string, number> = { ...prev };
           nodesWithPositions.forEach((n) => {
-            if (n.data?.status === "running") {
-              updated[n.id] = Math.max(prev[n.id] ?? 0, Number(n.data.elapsedTime) ?? 0);
+            if ((n as any).data?.status === "running") {
+              updated[n.id] = Math.max(prev[n.id] ?? 0, Number((n as any).data.elapsedTime) ?? 0);
             }
           });
           return updated;
@@ -665,7 +676,7 @@ export default function ProjectPage() {
     } finally {
       setIsRefreshing(false);
     }
-  }, [projectName, viewMode, graphDirection, nodes, edges]);
+  }, [projectName, viewMode, graphDirection, nodes, edges, svc]);
 
   // stable interval for refresh (keeps closure stable)
   const handleRefreshRef = useRef(handleRefresh);
@@ -702,7 +713,8 @@ export default function ProjectPage() {
         setNodeTicks({});
         setFlowKey(`rf-${projectName}-${graphDirection}-${Date.now()}`);
 
-        const data = await fetchProject(projectName);
+        // svc: fetchProject
+        const data = await svc.fetchProject(projectName);
         setProject(data);
         if (!data.protocols) {
           disablePersistenceRef.current = false;
@@ -748,7 +760,7 @@ export default function ProjectPage() {
         disablePersistenceRef.current = false;
       }
     },
-    [projectName, viewMode, graphDirection, viewport, centerLikeButton]
+    [projectName, viewMode, graphDirection, viewport, centerLikeButton, svc]
   );
 
   // ------------------------ Ticks updater ------------------------
@@ -757,8 +769,8 @@ export default function ProjectPage() {
       setNodeTicks((prev) => {
         const updated: Record<string, number> = { ...prev };
         nodesRef.current.forEach((node) => {
-          if (node.data?.status === "running") {
-            updated[node.id] = (prev[node.id] ?? Number(node.data.elapsedTime) ?? 0) + 1;
+          if ((node as any).data?.status === "running") {
+            updated[node.id] = (prev[node.id] ?? Number((node as any).data.elapsedTime) ?? 0) + 1;
           }
         });
         return updated;
@@ -774,8 +786,8 @@ export default function ProjectPage() {
       nds.map((node) => ({
         ...node,
         data: {
-          ...node.data,
-          tick: nodeTicks[node.id] ?? Number(node.data.elapsedTime) ?? 0,
+          ...(node as any).data,
+          tick: nodeTicks[node.id] ?? Number((node as any).data.elapsedTime) ?? 0,
         },
       }))
     );
@@ -802,17 +814,17 @@ export default function ProjectPage() {
     const { nodes: loadedNodes, edges: loadedEdges } = buildGraphElements(project.shortName, project.protocols, viewMode, graphDirection);
     const nodesWithPositions = loadNodesWithPositions(loadedNodes);
 
-    // prevent persistence while we swap
+    // prevent persistence while swapping layout
     disablePersistenceRef.current = true;
 
-    // show blocking overlay instantly to mask repaint
+    // show blocking overlay to mask repaint
     setIsSwitchingLayout(true);
 
-    // batch set nodes/edges — DON'T clear first to avoid a blank frame
+    // batch set nodes/edges — don't clear first to avoid a blank frame
     setNodes(nodesWithPositions);
     setEdges(loadedEdges);
 
-    // wait two frames then center like the button; after that wait a little longer before hiding overlay
+    // wait two frames then center; after that hide overlay
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
@@ -863,8 +875,7 @@ export default function ProjectPage() {
     if (validNodes.length > 0) {
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-          // only center if this is the very first load (guarded by firstLoadRef in fetch)
-          // here we just make sure viewport state is clamped and that we respect initial zoom
+          // keep the existing viewport but clamp zoom only
           inst.setViewport({ x: viewportRef.current.x, y: viewportRef.current.y, zoom: clampZoom(viewportRef.current.zoom) });
           setTimeout(() => {
             setIsSwitchingLayout(false);
@@ -976,7 +987,7 @@ export default function ProjectPage() {
       return;
     }
 
-    const match = nodes.find((node) => node.id.toLowerCase().includes(query.toLowerCase()) || (node.data?.label ?? "").toLowerCase().includes(query.toLowerCase()));
+    const match = nodes.find((node) => node.id.toLowerCase().includes(query.toLowerCase()) || ((node as any).data?.label ?? "").toLowerCase().includes(query.toLowerCase()));
 
     if (!match) {
       setHighlightedId(null);
@@ -989,7 +1000,7 @@ export default function ProjectPage() {
     const highlightNodeStyle = { boxShadow: "0 0 0 4px rgba(0,112,243,0.12)" };
 
     setNodes((nds) =>
-      nds.map((n) => (n.id === match.id ? { ...n, selected: true, style: { ...(n.style ?? {}), ...highlightNodeStyle } } : { ...n, selected: false, style: undefined }))
+      nds.map((n) => (n.id === match.id ? { ...n, selected: true, style: { ...((n as any).style ?? {}), ...highlightNodeStyle } } : { ...n, selected: false, style: undefined }))
     );
 
     const connectedEdgeIds = edges.filter((e) => e.source === match.id || e.target === match.id).map((e) => e.id);
@@ -1010,7 +1021,8 @@ export default function ProjectPage() {
   const handleRowDoubleClick = async (id: string) => {
     if (!projectName) return;
     try {
-      const fullNodeData = await fetchProtocolDetails(projectName, id);
+      // svc: fetchProtocolDetails
+      const fullNodeData = await svc.fetchProtocolDetails(projectName, id);
       setHighlightedId(id);
       setSelectedNodeDetails(fullNodeData);
       setPreviousNodeId(id);
@@ -1065,14 +1077,14 @@ export default function ProjectPage() {
     reactFlowInstanceRef.current = inst;
     try {
       const current = inst.getViewport();
-      // clamp zoom but KEEP current x/y que React Flow ya tiene
+      // clamp zoom but KEEP current x/y that React Flow already set
       const desiredZoom = clampZoom(viewportRef.current.zoom ?? current.zoom);
       inst.setViewport({ x: current.x, y: current.y, zoom: desiredZoom });
       const vp = inst.getViewport();
-      // sincronizamos el state con lo que realmente hay en la instancia
+      // sync state with instance's viewport
       setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
     } catch (err) {
-      // ignore
+      setIsSwitchingLayout(false);
     }
   }, []);
 
@@ -1133,7 +1145,8 @@ export default function ProjectPage() {
             onProtocolDoubleClick={async (protocolClass: string) => {
               if (!projectName) return;
               try {
-                const fullNodeData = await fetchNewProtocolDetails(projectName, protocolClass);
+                // svc: fetchNewProtocolDetails
+                const fullNodeData = await svc.fetchNewProtocolDetails(projectName, protocolClass);
                 setSelectedNodeDetails(fullNodeData);
                 setPreviousNodeId(protocolClass);
               } catch (err) {
@@ -1160,9 +1173,9 @@ export default function ProjectPage() {
         </div>
       </div>
 
-      {selectedNodeDetails && <ProtocolForm data={selectedNodeDetails} 
-                                            projectProtocols={project?.protocols ?? project?.protocols ?? {}}
-                                            onClose={handleCloseForm} />}
+      {selectedNodeDetails && <ProtocolForm data={selectedNodeDetails}
+        projectProtocols={project?.protocols ?? project?.protocols ?? {}}
+        onClose={handleCloseForm} />}
 
       <div className="flex-1 relative">
         {/* Initial blocking overlay only during first fetch */}
@@ -1175,7 +1188,13 @@ export default function ProjectPage() {
         )}
 
         {/* TABLE pane */}
-        <div ref={tableContainerRef} className="absolute inset-0 overflow-auto border rounded shadow p-4 z-30" style={{ display: viewMode === "table" ? (tableVisible ? "block" : "none") : "none" }} aria-hidden={viewMode !== "table"}>
+        <div ref={tableContainerRef}
+          className="absolute inset-0 overflow-auto border rounded shadow p-4 z-30 transition-opacity"
+          style={{
+            opacity: viewMode === "table" ? 1 : 0,
+            pointerEvents: viewMode === "table" ? "auto" : "none",
+          }}
+          aria-hidden={viewMode !== "table"}>
           <div className="flex justify-end mb-4 mr-1">
             <button className="refresh-btn" title="Refresh project" onClick={handleRefresh} disabled={isRefreshing}>
               <RefreshCw className={`w-4 h-4 ${isRefreshing ? "animate-spin" : ""}`} />
@@ -1224,7 +1243,13 @@ export default function ProjectPage() {
         </div>
 
         {/* ReactFlow pane */}
-        <div className="absolute inset-0 border" style={{ display: viewMode === "hierarchical" ? "block" : "none", zIndex: 20 }} aria-hidden={viewMode !== "hierarchical"}>
+        <div className="absolute inset-0 border transition-opacity"
+          style={{
+            opacity: viewMode === "hierarchical" ? 1 : 0,
+            pointerEvents: viewMode === "hierarchical" ? "auto" : "none",
+            zIndex: 20,
+          }}
+          aria-hidden={viewMode !== "hierarchical"}>
           <div className="absolute top-4 right-4 z-50">
             <div className="flex flex-col gap-1 p-1 bg-white/90 rounded shadow">
               <button title="Zoom in" onClick={handleZoomIn} className="p-1 rounded hover:bg-gray-100 dark:text-black"><PlusIcon className="w-4 h-4" /></button>
@@ -1261,7 +1286,7 @@ export default function ProjectPage() {
                 style: { stroke: "#999", strokeWidth: 2 },
                 markerEnd: "url(#circle)",
               }}
-              onNodeDoubleClick={(evt, node) => handleNodeDoubleClick(node)}
+              onNodeDoubleClick={(_, node) => handleNodeDoubleClick(node)}
               onNodeClick={(evt, node) => handleNodeClick(node, evt)}
               onContextMenu={handleContextMenu}
               style={{ width: "100%", height: "100%" }}

@@ -51,14 +51,14 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
 
   // Drag/drop state
   const [dragOverKey, setDragOverKey] = useState<string | null>(null);
-  const [currentDraggedOutput, setCurrentDraggedOutput] = useState<any>(null);
+  const [currentDraggedOutput] = useState<any>(null);
 
   // Logs
   const containerRef = useRef<HTMLDivElement>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [logs, setLogs] = useState<string>("");
   const [errorLogs, setErrorLogs] = useState<string>("");
-  const [logsError, setLogsError] = useState<string | null>(null);
+  const [, setLogsError] = useState<string | null>(null);
   const offsetRef = useRef<number>(0);
   const errorOffsetRef = useRef<number>(0);
   const errorContainerRef = useRef<HTMLDivElement>(null);
@@ -67,7 +67,7 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
 
   // 🔹 New: State for global Output Selector
   const [openSelector, setOpenSelector] = useState(false);
-  const [selectorExpectedClass, setSelectorExpectedClass] = useState<string | string[] | undefined>();
+  //const [selectorExpectedClass, setSelectorExpectedClass] = useState<string | string[] | undefined>();
   const [selectorTarget, setSelectorTarget] = useState<{
     key: string;
     def?: any;
@@ -76,10 +76,10 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
 
 
   // --- Output selector dialog states ---
-  const [openOutputSelector, setOpenOutputSelector] = useState(false);
+  //const [openOutputSelector, setOpenOutputSelector] = useState(false);
   const [expectedClass, setExpectedClass] = useState<string | string[] | undefined>(undefined);
   const [allOutputs, setAllOutputs] = useState<any[]>([]);
-  const dependencyMap: Record<string, string[]> = {};
+  //const dependencyMap: Record<string, string[]> = {};
 
   // --------------------------------------------
   // Utility functions
@@ -1150,7 +1150,7 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
         >
           <Tabs
             value={topTab}
-            onChange={(e, val) => setTopTab(val)}
+            onChange={(_, val) => setTopTab(val)}
             variant="scrollable"
             scrollButtons="auto"
             allowScrollButtonsMobile
@@ -1179,7 +1179,7 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
               <>
                 <Tabs
                   value={sectionTab}
-                  onChange={(e, val) => setSectionTab(val)}
+                  onChange={(_, val) => setSectionTab(val)}
                   variant="scrollable"
                   scrollButtons="auto"
                   allowScrollButtonsMobile
@@ -1206,7 +1206,7 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
               <Box sx={{ flexGrow: 3, overflowY: "auto" }}>
                 <Tabs
                   value={bottomTab}
-                  onChange={(e, val) => setBottomTab(val)}
+                  onChange={(_, val) => setBottomTab(val)}
                   sx={{
                     mb: 2,
                     "& .MuiTab-root": { textTransform: "none", fontSize: "0.8rem", fontWeight: 500 },

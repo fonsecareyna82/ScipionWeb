@@ -50,6 +50,7 @@ const STATUS_BADGE_COLORS: Record<string, string> = {
 };
 
 type StatusNodeProps = {
+  id?: string; // opcional si tu componente lo necesita
   data: {
     label: string;
     status?: string;
@@ -64,12 +65,16 @@ type StatusNodeProps = {
     inputs?: any[];
   };
   selectedNodeId?: string;
+  hoveredNodeId?: string; // nuevo (opcional)
+  isHovered?: boolean;    // nuevo (opcional)
+  setHoveredNodeId?: React.Dispatch<React.SetStateAction<string | null>>; // nuevo (opcional)
   graphDirection?: "TB" | "LR";
   onClick?: () => void;
   onDoubleClick?: () => void;
   zoomLevel?: number;
   compactThreshold?: number;
 };
+
 
 const formatCpuTime = (seconds: number): string => {
   const hours = Math.floor(seconds / 3600);
@@ -233,7 +238,7 @@ export default function StatusNodeCard({
                 </div>
                 <div className="section-content p-2 bg-green-100 dark:bg-green-200 rounded-b-lg space-y-2">
                   {data.outputs.map((outputObj, idx) => {
-                    const [key, rawValue] = Object.entries(outputObj)[0];
+                    const [_, rawValue] = Object.entries(outputObj)[0];
                     const value = rawValue as {
                       info: string;
                       _class: string;

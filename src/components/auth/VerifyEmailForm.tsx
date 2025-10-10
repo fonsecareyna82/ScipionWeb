@@ -14,8 +14,13 @@ export default function VerifyEmailForm() {
     e.preventDefault();
     try {
       const data = await verifyEmail(code);
-      setSuccessMessage("Email verified successfully!");
-      setTimeout(() => navigate("/signin"), 2000);
+      if (data) {
+        setSuccessMessage("Email verified successfully!");
+        setTimeout(() => navigate("/signin"), 2000);
+      }
+      else {
+        setErrorMessage("Unexpected error");
+      }
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unexpected error");
     }
@@ -24,7 +29,10 @@ export default function VerifyEmailForm() {
   const handleResend = async () => {
     try {
       const data = await resendVerificationCode(email);
-      setResendMessage("Verification code resent to your email.");
+      if (data)
+        setResendMessage("Verification code resent to your email.");
+      else
+        setResendMessage("Failed to resend code");
     } catch (error) {
       setResendMessage(error instanceof Error ? error.message : "Failed to resend code");
     }
