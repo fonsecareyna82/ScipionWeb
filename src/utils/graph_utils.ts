@@ -17,7 +17,17 @@ function estimateLabelWidth(label: string, fontSize = 20, fontFamily = "Arial"):
  * Estimate node height (optional, for LR layout)
  */
 function estimateNodeHeight(label: string, fontSize = 20, fontFamily = "Arial"): number {
-  return 180; // fixed height for simplicity
+  const avgCharWidth = fontSize * 0.6; // rough average
+  const maxWidth = 240;                // px, assumed node width
+  const text = String(label ?? "");
+  const charsPerLine = Math.max(1, Math.floor(maxWidth / avgCharWidth));
+  const lines = Math.ceil(text.length / charsPerLine) || 1;
+
+  // Line height with a small family factor (keeps arguments “used” meaningfully)
+  const baseLineHeight = Math.round(fontSize * 1.2);
+  const familyFactor = /arial/i.test(fontFamily) ? 1 : 1.05;
+
+  return Math.ceil(lines * baseLineHeight * familyFactor) + 180;
 }
 
 type Direction = "TB" | "LR";

@@ -5,11 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "node ./node_modules/vite/bin/vite.js",
-    "build:umd:standalone": "node ./node_modules/vite/bin/vite.js build --mode standalone",
-    "build:umd:peer": "node ./node_modules/vite/bin/vite.js build --mode peer",
-    "build:umd": "npm run build:umd:standalone && npm run build:umd:peer",
-    "build": "npm run build:ts && npm run build:umd",
-    "preview": "node ./node_modules/vite/bin/vite.js preview"
+    "build:widget:list": "vite build --mode projects",
+    "build:widget:page": "vite build --mode projectpage",
+    "build:widgets": "npm run build:widget:list && npm run build:widget:page"
   },
   "engines": {
     "node": ">=20.18.0 <21"

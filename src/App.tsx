@@ -1,4 +1,5 @@
-import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+// src/App.tsx
+import { Routes, Route } from "react-router-dom";
 import SignIn from "./pages/AuthPages/SignIn";
 import SignUp from "./pages/AuthPages/SignUp";
 import NotFound from "./pages/OtherPage/NotFound";
@@ -36,8 +37,10 @@ interface AppProps {
 
 export default function App({ service }: AppProps) {
   return (
+    // NOTE: BrowserRouter is provided in src/main.tsx. Do NOT mount another Router here.
     <DragProvider>
       <ProjectServiceProvider service={service}>
+        {/* Needs to be inside a Router (provided by main.tsx) */}
         <ScrollToTop />
 
         <Routes>
@@ -80,10 +83,7 @@ export default function App({ service }: AppProps) {
           <Route path="*" element={<NotFound />} />
         </Routes>
 
-        <Toaster
-          position="top-right"
-          containerStyle={{ zIndex: 999999 }}
-        />
+        <Toaster position="top-right" containerStyle={{ zIndex: 999999 }} />
       </ProjectServiceProvider>
     </DragProvider>
   );

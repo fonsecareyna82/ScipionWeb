@@ -4,7 +4,6 @@ import React, {
   useCallback,
   useEffect,
   useLayoutEffect,
-  useMemo,
   useRef,
   useState,
 } from "react";
@@ -114,8 +113,8 @@ export default function ProjectPage() {
   const localStorageKey = `project-${projectName}-node-positions`;
 
   // overlay / flicker control
-  const [isSwitchingLayout, setIsSwitchingLayout] = useState(true);
-  const [tableVisible, setTableVisible] = useState(viewMode === "table");
+  const [isSwitchingLayout, setIsSwitchingLayout] = useState(false);
+  const [, setTableVisible] = useState(viewMode === "table");
   const [nodesLoadedOnce, setNodesLoadedOnce] = useState(false);
 
   // first load flag to ensure we center only once
@@ -493,6 +492,19 @@ export default function ProjectPage() {
         setNodes(nodesWithPositions);
         setEdges(loadedEdges);
         setTableData(table ?? []);
+        setIsSwitchingLayout(false);
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            try {
+              const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
+              if (inst && nodesWithPositions.length > 0 && viewMode === "hierarchical") {
+                centerLikeButton(nodesWithPositions, true, viewportRef.current.zoom);
+              }
+            } finally {
+              setIsSwitchingLayout(false);
+            }
+          });
+        });
 
         // set initial ticks
         const initialTicks: Record<string, number> = {};
@@ -514,7 +526,7 @@ export default function ProjectPage() {
           let fallbackTimer: any = null;
           let centered = false;
 
-          const doCenter = (methodDesc: string) => {
+          const doCenter = (_methodDesc: string) => {
             if (centered) return;
             centered = true;
             try {
@@ -608,6 +620,7 @@ export default function ProjectPage() {
       }
     } catch (err) {
       console.error("fetchAndLoadProject error:", err);
+      setIsSwitchingLayout(false);
       // ensure we don't leave refreshing forever
     } finally {
       setIsRefreshing(false);
@@ -1071,7 +1084,7 @@ export default function ProjectPage() {
       // sync state with instance's viewport
       setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
     } catch (err) {
-      // ignore
+      setIsSwitchingLayout(false);
     }
   }, []);
 
@@ -1273,7 +1286,7 @@ export default function ProjectPage() {
                 style: { stroke: "#999", strokeWidth: 2 },
                 markerEnd: "url(#circle)",
               }}
-              onNodeDoubleClick={(evt, node) => handleNodeDoubleClick(node)}
+              onNodeDoubleClick={(_, node) => handleNodeDoubleClick(node)}
               onNodeClick={(evt, node) => handleNodeClick(node, evt)}
               onContextMenu={handleContextMenu}
               style={{ width: "100%", height: "100%" }}

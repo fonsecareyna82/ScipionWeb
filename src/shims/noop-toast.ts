@@ -1,24 +1,37 @@
 // src/shims/noop-toast.ts
-// No-op shim for react-hot-toast used only in UMD builds.
-// Prevents crashes from portal/style mounting in host pages.
+// Minimal no-op shim for react-hot-toast used in UMD builds.
+// It exports a default "toast" function/object and a named <Toaster/> component.
 
-type ToastFn = (msg?: any, opts?: any) => void;
+import React from "react";
 
-const nop: ToastFn = () => { /* noop */ };
+// No-op Toaster component
+export const Toaster: React.FC<any> = () => null;
 
-const toast = Object.assign(nop, {
-  success: nop,
-  error: nop,
-  loading: nop,
-  dismiss: (_id?: string) => { /* noop */ },
-  remove: (_id?: string) => { /* noop */ },
-  custom: nop,
-  promise: async <T>(p: Promise<T>, _msgs: any) => p,
-  // expose config but ignore
-  configure: (_opts: any) => { /* noop */ },
-  // Toaster component no-ops (returns null)
-  Toaster: () => null,
-});
+// No-op toast function with common methods
+type ToastFn = ((message?: any, opts?: any) => void) & {
+  success: (message?: any, opts?: any) => void;
+  error: (message?: any, opts?: any) => void;
+  loading: (message?: any, opts?: any) => string | void;
+  dismiss: (toastId?: any) => void;
+  remove: (toastId?: any) => void;
+  promise: <T>(p: Promise<T>, msgs: { loading?: any; success?: any; error?: any }, opts?: any) => Promise<T>;
+};
 
-export default toast;
-export { toast };
+// Create a noop implementation
+const toastImpl: ToastFn = Object.assign(
+  function toast() { /* no-op */ },
+  {
+    success() { /* no-op */ },
+    error() { /* no-op */ },
+    loading() { return undefined; },
+    dismiss() { /* no-op */ },
+    remove() { /* no-op */ },
+    async promise<T>(p: Promise<T>) { return p; },
+  }
+);
+
+// Default export must mimic react-hot-toast API
+export default toastImpl;
+
+// Also export anything else you might import by name elsewhere
+export const toast = toastImpl;

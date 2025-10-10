@@ -58,7 +58,7 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [logs, setLogs] = useState<string>("");
   const [errorLogs, setErrorLogs] = useState<string>("");
-  const [logsError, setLogsError] = useState<string | null>(null);
+  const [, setLogsError] = useState<string | null>(null);
   const offsetRef = useRef<number>(0);
   const errorOffsetRef = useRef<number>(0);
   const errorContainerRef = useRef<HTMLDivElement>(null);
@@ -67,7 +67,7 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
 
   // 🔹 New: State for global Output Selector
   const [openSelector, setOpenSelector] = useState(false);
-  const [selectorExpectedClass, setSelectorExpectedClass] = useState<string | string[] | undefined>();
+  //const [selectorExpectedClass, setSelectorExpectedClass] = useState<string | string[] | undefined>();
   const [selectorTarget, setSelectorTarget] = useState<{
     key: string;
     def?: any;
@@ -76,10 +76,10 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
 
 
   // --- Output selector dialog states ---
-  const [openOutputSelector, setOpenOutputSelector] = useState(false);
+  //const [openOutputSelector, setOpenOutputSelector] = useState(false);
   const [expectedClass, setExpectedClass] = useState<string | string[] | undefined>(undefined);
   const [allOutputs, setAllOutputs] = useState<any[]>([]);
-  const dependencyMap: Record<string, string[]> = {};
+  //const dependencyMap: Record<string, string[]> = {};
 
   // --------------------------------------------
   // Utility functions
