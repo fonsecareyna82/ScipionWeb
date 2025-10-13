@@ -49,6 +49,9 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
   const [execLoading, setExecLoading] = useState(false);
   const [execError, setExecError] = useState<string | null>(null);
 
+  // exit animation state
+  const [isClosing, setIsClosing] = useState(false);
+
   // Drag/drop state
   const [dragOverKey, setDragOverKey] = useState<string | null>(null);
   const [currentDraggedOutput] = useState<any>(null);
@@ -65,7 +68,7 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const [showValidationDialog, setShowValidationDialog] = useState(false);
 
-  // 🔹 New: State for global Output Selector
+  // State for global Output Selector
   const [openSelector, setOpenSelector] = useState(false);
   //const [selectorExpectedClass, setSelectorExpectedClass] = useState<string | string[] | undefined>();
   const [selectorTarget, setSelectorTarget] = useState<{
@@ -74,6 +77,18 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
     expectedClass?: string | string[];
   } | null>(null);
 
+
+  //call this instead of onClose() directly
+   const requestClose = () => {
+    // Start exit animation from left to right (slide-out-right)
+    setIsClosing(true);
+  };
+
+  // when exit animation ends, actually unmount via onClose()
+  const handleAnimationEnd = () => {
+    // Only fire on real closing to avoid running after enter animation
+    if (isClosing) onClose();
+  };
 
   // --- Output selector dialog states ---
   //const [openOutputSelector, setOpenOutputSelector] = useState(false);
@@ -530,7 +545,7 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
       console.log("Executing with params:", serialized);
 
       await executeProtocol(protocolId, data.protocolClassName, serialized);
-      onClose();
+      requestClose();
     } catch (err: any) {
       console.error("Execute error:", err);
 
@@ -566,7 +581,7 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
       console.log("Saving with params:", serialized);
 
       await saveProtocol(protocolId, data.protocolClassName, serialized);
-      onClose();
+      requestClose();
     } catch (err: any) {
       console.error("Save error:", err);
       setExecError(err.message || "Error saving the protocol");
@@ -1110,7 +1125,8 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
   // JSX Layout
   // --------------------------------------------
   return (
-    <div className="protocol-form slide-in-right">
+    <div className={`protocol-form ${isClosing ? "slide-out-right" : "slide-in-right"}`}
+      onAnimationEnd={handleAnimationEnd}>
       {/* HEADER */}
       <div className="form-header">
         <div className="form-title-wrapper">
@@ -1125,7 +1141,7 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
             {protocolDetails.status || "Unknown"}
           </span>
         </div>
-        <button className="close-btn" onClick={onClose}>
+        <button className="close-btn" onClick={requestClose}>
           ×
         </button>
       </div>
@@ -1288,7 +1304,7 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
 
       {/* ===== FOOTER ===== */}
       <div className="form-footer">
-        <Button variant="outlined" startIcon={<CloseIcon />} onClick={onClose} sx={{ textTransform: "none" }}>
+        <Button variant="outlined" startIcon={<CloseIcon />} onClick={requestClose} sx={{ textTransform: "none" }}>
           Close
         </Button>
         <Button

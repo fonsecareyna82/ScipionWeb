@@ -60,7 +60,7 @@ const STATUS_BADGE_COLORS: Record<string, string> = {
 };
 
 type StatusNodeProps = {
-  id?: string; // opcional si tu componente lo necesita
+  id?: string; // optional
   data: {
     label: string;
     status?: string;
@@ -75,9 +75,9 @@ type StatusNodeProps = {
     inputs?: any[];
   };
   selectedNodeId?: string;
-  hoveredNodeId?: string; // new (opcional)
-  isHovered?: boolean;    // new (opcional)
-  setHoveredNodeId?: React.Dispatch<React.SetStateAction<string | null>>; // new (opcional)
+  hoveredNodeId?: string; // new (optional)
+  isHovered?: boolean;    // new (optional)
+  setHoveredNodeId?: React.Dispatch<React.SetStateAction<string | null>>; // new (optional)
   graphDirection?: "TB" | "LR";
   onClick?: () => void;
   onDoubleClick?: () => void;
