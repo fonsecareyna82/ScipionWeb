@@ -196,6 +196,8 @@ export default function ProjectPage() {
   const handleNodeClick = (nodeData: any, event?: React.MouseEvent) => {
     handleCloseMenu();
     if (event?.shiftKey) return; // keep noop for multi-select
+    prevIdRef.current = nodeData.id;
+    selectedIdRef.current = nodeData.id;
     setPreviousNodeId(nodeData.id);
     setHighlightedId(nodeData.id);
     applyEdgeHighlight(nodeData.id); // only touches edges; nodes untouched → no shake
@@ -206,6 +208,8 @@ export default function ProjectPage() {
     if (!projectName) return;
     try {
       const fullNodeData = await svc.fetchProtocolDetails(projectName, nodeData.id);
+      prevIdRef.current = nodeData.id;
+      selectedIdRef.current = nodeData.id;
       setSelectedNodeDetails(fullNodeData);
       setPreviousNodeId(nodeData.id);
       setHighlightedId(nodeData.id);
@@ -371,7 +375,7 @@ export default function ProjectPage() {
             const h = isFinite(minY) && isFinite(maxY) ? Math.abs(maxY - minY) : 0;
             if (valid >= 1 && (w > 1 || h > 1)) return resolve(true);
           }
-        } catch {}
+        } catch { }
         if (Date.now() - start > timeoutMs) return resolve(false);
         requestAnimationFrame(check);
       };
@@ -432,7 +436,7 @@ export default function ProjectPage() {
             try { centerLikeButton(nodesWithPositions, true, viewportRef.current.zoom); }
             finally {
               firstLoadRef.current = false;
-              if (observer) { try { observer.disconnect(); } catch {} observer = null; }
+              if (observer) { try { observer.disconnect(); } catch { } observer = null; }
               if (fallbackTimer) { clearTimeout(fallbackTimer); fallbackTimer = null; }
             }
           };
@@ -452,7 +456,7 @@ export default function ProjectPage() {
                 });
                 observer.observe(nodesContainer, { childList: true, subtree: true });
                 fallbackTimer = setTimeout(async () => {
-                  if (observer) { try { observer.disconnect(); } catch {} observer = null; }
+                  if (observer) { try { observer.disconnect(); } catch { } observer = null; }
                   const ready = await waitForNodesReady(nodesWithPositions.length, 2000);
                   if (ready) doCenter(); else doCenter();
                 }, 3000);
@@ -536,7 +540,7 @@ export default function ProjectPage() {
     async (opts?: { preserveZoom?: boolean }) => {
       if (!projectName) return;
       try {
-        try { localStorage.removeItem(`${localStorageKey}-${graphDirection}`); } catch {}
+        try { localStorage.removeItem(`${localStorageKey}-${graphDirection}`); } catch { }
         disablePersistenceRef.current = true;
         setHideGraphDuringCenter(true);
 
@@ -681,7 +685,7 @@ export default function ProjectPage() {
         }
       });
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [graphDirection, viewMode, project]);
 
   /* ------------------------ First-center ------------------------ */
@@ -709,7 +713,7 @@ export default function ProjectPage() {
         });
       });
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nodesLoadedOnce]);
 
   /* --------------------- Table switching --------------------- */
@@ -873,7 +877,7 @@ export default function ProjectPage() {
       inst.setViewport({ x: current.x, y: current.y, zoom: desiredZoom });
       const vp = inst.getViewport();
       setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
-    } catch {}
+    } catch { }
   }, []);
 
   const handleOnMoveEnd = useCallback((_: any, vp: { x: number; y: number; zoom: number }) => {
