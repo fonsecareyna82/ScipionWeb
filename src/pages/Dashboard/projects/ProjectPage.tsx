@@ -6,6 +6,7 @@ import React, {
   useLayoutEffect,
   useRef,
   useState,
+  useTransition,
 } from "react";
 
 import ProtocolForm from "../../../components/protocol/ProtocolForm";
@@ -35,7 +36,7 @@ import {
 import { MinusIcon, PlusIcon, RefreshCw, Trash2 } from "lucide-react";
 import { FitViewIcon, TableIcon, TreeIcon } from "../../../icons";
 
-// <-- svc integration
+// svc integration
 import { useProjectService } from "@/ProjectServiceContext";
 import { Project } from "@/types/project";
 
@@ -67,6 +68,9 @@ export default function ProjectPage() {
   const [project, setProject] = useState<Project | undefined>(undefined);
   const [selectedNodeDetails, setSelectedNodeDetails] = useState<any>(null);
 
+  // Initial loading overlay (first load / project change)
+  const [isLoadingProject, setIsLoadingProject] = useState(true);
+
   // react-flow nodes / edges state
   const [nodes, setNodes, onNodesChange] = useNodesState<StatusNodeData>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge[]>([]);
@@ -83,17 +87,20 @@ export default function ProjectPage() {
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [graphDirection, setGraphDirection] = useState<"TB" | "LR">("TB");
 
+  // ocultar el grafo durante recentrado para evitar “temblor”
+  const [hideGraphDuringCenter, setHideGraphDuringCenter] = useState(false);
+
+  // React 18: keep heavy updates off the urgent lane
+  const [isPending, startTransition] = useTransition();
+
   // persistence control
   const disablePersistenceRef = useRef(false);
-  const [flowKey, setFlowKey] = useState(
-    () => `rf-${projectName}-${graphDirection}-${Date.now()}`
-  );
 
   // default initial viewport (zoom 0.32 on first load)
   const [viewport, setViewport] = useState<{ x: number; y: number; zoom: number }>({
     x: 0,
     y: 0,
-    zoom: 0.32, // initial zoom for first render
+    zoom: 0.32,
   });
   const viewportRef = useRef(viewport);
   useEffect(() => {
@@ -120,7 +127,7 @@ export default function ProjectPage() {
   // first load flag to ensure we center only once
   const firstLoadRef = useRef(true);
 
-  // Zoom clamp (ensure zoom stays in acceptable range)
+  // Zoom clamp
   const MIN_ZOOM = 0.2;
   const MAX_ZOOM = 0.6;
   const clampZoom = (z: number | undefined | null) => {
@@ -134,13 +141,11 @@ export default function ProjectPage() {
     nodesRef.current = nodes;
   }, [nodes]);
 
+  // helper
+  const isRunningNode = (n: Node) => (n as any).data?.status === "running";
+
   /* --------------------- Node handlers --------------------- */
 
-  /**
-   * handleNodeClick
-   * - highlight selected node and its connected edges
-   * - if shift is pressed allow multi-select (noop here)
-   */
   const handleNodeClick = (nodeData: any, event?: React.MouseEvent) => {
     handleCloseMenu();
     const isMultiSelect = event?.shiftKey;
@@ -154,10 +159,10 @@ export default function ProjectPage() {
         nds.map((n) =>
           n.id === nodeData.id
             ? {
-              ...n,
-              selected: true,
-              style: { ...(n.style ?? {}), ...highlightNodeStyle },
-            }
+                ...n,
+                selected: true,
+                style: { ...(n.style ?? {}), ...highlightNodeStyle },
+              }
             : { ...n, selected: false, style: undefined }
         )
       );
@@ -176,16 +181,10 @@ export default function ProjectPage() {
     }
   };
 
-
-  /**
-   * handleNodeDoubleClick
-   * - fetch full protocol details and open form drawer
-   */
   const handleNodeDoubleClick = async (nodeData: any) => {
     handleCloseMenu();
     if (!projectName) return;
     try {
-      // svc: fetchProtocolDetails
       const fullNodeData = await svc.fetchProtocolDetails(projectName, nodeData.id);
       setSelectedNodeDetails(fullNodeData);
       setPreviousNodeId(nodeData.id);
@@ -196,25 +195,18 @@ export default function ProjectPage() {
 
   const handleCloseForm = () => setSelectedNodeDetails(null);
 
-  // nodeTypes mapping (wrap status nodes)
-  // NOTE: this depends on selection + hover so it will recreate; if you want to avoid warning #002,
-  // you can memoize only by graphDirection, but then pass selected/hover via refs.
-  // dentro de ProjectPage.tsx (importante: sustituye tu bloque de nodeTypes)
-
   const onClickRef = useRef(handleNodeClick);
   const onDblClickRef = useRef(handleNodeDoubleClick);
   const prevIdRef = useRef<string | null>(null);
   const hoveredIdRef = useRef<string | null>(null);
   const graphDirRef = useRef<"TB" | "LR">(graphDirection);
 
-  // keep refs updated
   useEffect(() => { onClickRef.current = handleNodeClick; }, [handleNodeClick]);
   useEffect(() => { onDblClickRef.current = handleNodeDoubleClick; }, [handleNodeDoubleClick]);
   useEffect(() => { prevIdRef.current = previousNodeId; }, [previousNodeId]);
   useEffect(() => { hoveredIdRef.current = hoveredNodeId; }, [hoveredNodeId]);
   useEffect(() => { graphDirRef.current = graphDirection; }, [graphDirection]);
 
-  // create nodeTypes ONCE and keep identity stable
   const nodeTypesRef = useRef<Record<string, any> | null>(null);
   if (!nodeTypesRef.current) {
     nodeTypesRef.current = {
@@ -230,13 +222,8 @@ export default function ProjectPage() {
   }
   const nodeTypes = nodeTypesRef.current;
 
-
   /* --------------------- Persistence helpers --------------------- */
 
-  /**
-   * handleNodesChangeWithPersistence
-   * - Applies node changes, persists positions to localStorage unless persistence disabled.
-   */
   const handleNodesChangeWithPersistence = (changes: NodeChange[]) => {
     if (disablePersistenceRef.current) {
       return onNodesChange(changes);
@@ -246,7 +233,7 @@ export default function ProjectPage() {
       const positions = updated.map((n) => ({ id: n.id, position: n.position }));
       try {
         localStorage.setItem(`${localStorageKey}-${graphDirection}`, JSON.stringify(positions));
-      } catch (err) {
+      } catch {
         // ignore quota / security errors
       }
       return updated;
@@ -263,7 +250,6 @@ export default function ProjectPage() {
     });
   };
 
-  // helper shallow compare for node.data (fast)
   const shallowEqual = (a: any, b: any) => {
     if (a === b) return true;
     if (!a || !b) return false;
@@ -277,30 +263,25 @@ export default function ProjectPage() {
   };
 
   const mergeNodesWithPositions = (newNodes: Node[]) => {
-    // map of old nodes by id
     const oldMap = new Map(nodes.map((n) => [n.id, n]));
     return newNodes.map((n) => {
       const old = oldMap.get(n.id);
       if (old) {
-        // keep the old position (so nodes don't jump) unless the new node explicitly has a saved position
-        const position = (old.position && old.position.x !== undefined && old.position.y !== undefined)
-          ? old.position
-          : (n.position ?? old.position);
+        const position =
+          old.position && old.position.x !== undefined && old.position.y !== undefined
+            ? old.position
+            : n.position ?? old.position;
 
-        // if data did not change (shallow), reuse the old node object (same ref)
         if (shallowEqual(old.data, n.data) && position === old.position) {
           return old;
         }
 
-        // otherwise return a new object but keep old.position reference
         return {
           ...old,
           position,
-          data: { ...old.data, ...n.data }, // merge new data on top of old (preserve unchanged fields)
+          data: { ...old.data, ...n.data },
         } as Node;
       }
-
-      // brand new node -> keep the new node (likely added)
       return n;
     });
   };
@@ -310,20 +291,13 @@ export default function ProjectPage() {
     return newEdges.map((e) => (oldEdgesMap.get(e.id) ? { ...oldEdgesMap.get(e.id)!, ...e } : e));
   };
 
-  // ------------------------ Centering helper ------------------------
-
-  /**
-   * centerLikeButton
-   * - Centers the viewport to the bounding box using React Flow's fitView.
-   * - If preserveZoom = true, we compute the fit center and restore a given zoom (zoomOverride) or the current one.
-   */
+  /* ------------------------ Centering helper ------------------------ */
   const centerLikeButton = useCallback((nodesList?: Node[], preserveZoom = true, zoomOverride?: number) => {
     const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
     if (!inst) return;
     const list = nodesList ?? nodesRef.current ?? [];
     const validNodes = list.filter((n) => typeof n.position?.x === "number" && typeof n.position?.y === "number");
 
-    // If no nodes, just clamp current viewport
     if (validNodes.length === 0) {
       const vp = inst.getViewport();
       inst.setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(vp.zoom) });
@@ -333,17 +307,14 @@ export default function ProjectPage() {
 
     try {
       if (!preserveZoom) {
-        // Let React Flow compute the bounding-box center + zoom
         inst.fitView({ padding: 0.12, duration: 0 });
         const vp = inst.getViewport();
         setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
         return;
       }
 
-      // preserve current or override zoom
       const targetZoom = clampZoom(typeof zoomOverride === "number" ? zoomOverride : inst.getViewport().zoom);
 
-      // compute bounding-box center from node positions (in graph coords)
       let minX = Number.POSITIVE_INFINITY;
       let maxX = Number.NEGATIVE_INFINITY;
       let minY = Number.POSITIVE_INFINITY;
@@ -361,14 +332,11 @@ export default function ProjectPage() {
       const centerX = (minX + maxX) / 2;
       const centerY = (minY + maxY) / 2;
 
-      // Use setCenter so the provided graph-coordinates become centered in view with the desired zoom.
       inst.setCenter(centerX, centerY, { zoom: targetZoom, duration: 0 });
 
-      // update local state to reflect what we set
       const finalVp = inst.getViewport();
       setViewport({ x: finalVp.x, y: finalVp.y, zoom: finalVp.zoom });
-    } catch (err) {
-      // fallback to average center if something goes wrong
+    } catch {
       const xSum = validNodes.reduce((sum, n) => sum + (n.position!.x ?? 0), 0);
       const ySum = validNodes.reduce((sum, n) => sum + (n.position!.y ?? 0), 0);
       const centerX = xSum / validNodes.length;
@@ -381,17 +349,7 @@ export default function ProjectPage() {
     }
   }, []);
 
-
-  /**
-  * waitForNodesReady
-  * - Waits until React Flow has internally mounted nodes and their positions
-  * appear valid (not all 0, 0 / NaN and non-trivial bounding-box).
-  * - Returns true if a valid state was detected before the timeout, false otherwise.
-  *
-  * @param expectedCount expected number of nodes (if unknown, set to 0 or 1)
-  * @param timeoutMs maximum wait time in ms (default 2500)
-  * @param debug if true console.log debugging information
-  */
+  /* ------------------------ Wait for nodes helper ------------------------ */
   const waitForNodesReady = async (expectedCount: number, timeoutMs = 2500, debug = false): Promise<boolean> => {
     const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
     if (!inst) {
@@ -410,10 +368,8 @@ export default function ProjectPage() {
             console.debug("waitForNodesReady: instNodes.length=", instNodes.length, "expectedCount=", expectedCount);
           }
 
-          // Requires at least expectedCount nodes (if expectedCount <= 0, requires at least 1)
           const needed = Math.max(1, expectedCount);
           if (instNodes && instNodes.length >= needed) {
-            // validate positions: count nodes with valid numerical position
             let validPosCount = 0;
             let minX = Number.POSITIVE_INFINITY, maxX = Number.NEGATIVE_INFINITY;
             let minY = Number.POSITIVE_INFINITY, maxY = Number.NEGATIVE_INFINITY;
@@ -437,14 +393,12 @@ export default function ProjectPage() {
               console.debug("waitForNodesReady: validPosCount=", validPosCount, "bboxWidth=", bboxWidth, "bboxHeight=", bboxHeight);
             }
 
-            // Heuristic: at least 1 valid position and non-trivial bounding-box
             if (validPosCount >= 1 && (bboxWidth > 1 || bboxHeight > 1)) {
               resolve(true);
               return;
             }
           }
-        } catch (err) {
-          if (debug) console.warn("waitForNodesReady: check error", err);
+        } catch {
           // keep trying
         }
 
@@ -454,7 +408,6 @@ export default function ProjectPage() {
           return;
         }
 
-        // retry at the next animation frame (best for layout/paint)
         requestAnimationFrame(check);
       };
 
@@ -462,18 +415,11 @@ export default function ProjectPage() {
     });
   };
 
-
-  /**
-   * fetchAndLoadProject
-   * - Loads project metadata and builds graph elements
-   * - Applies saved positions if available
-   * - Centers reliably on first load using ensureCenterAfterRender helper
-   */
+  /* ------------------------ Fetch & load ------------------------ */
   const fetchAndLoadProject = useCallback(async () => {
     if (!projectName) return;
     setIsRefreshing(true);
     try {
-      // svc: fetchProject
       const data = await svc.fetchProject(projectName);
       setProject(data);
 
@@ -485,13 +431,33 @@ export default function ProjectPage() {
           graphDirection
         );
 
-        // apply saved positions if they exist
         const nodesWithPositions = loadNodesWithPositions(loadedNodes);
 
-        // update main state
-        setNodes(nodesWithPositions);
-        setEdges(loadedEdges);
-        setTableData(table ?? []);
+        // seed ticks for running nodes
+        const initialTicks: Record<string, number> = {};
+        nodesWithPositions.forEach((n) => {
+          if ((n as any).data?.status === "running") {
+            initialTicks[n.id] = Number((n as any).data.elapsedTime) ?? 0;
+          }
+        });
+        const nodesWithTick = nodesWithPositions.map((n) =>
+          isRunningNode(n)
+            ? {
+                ...n,
+                data: {
+                  ...(n as any).data,
+                  tick: initialTicks[n.id] ?? Number((n as any).data?.elapsedTime) ?? 0,
+                },
+              }
+            : n
+        );
+
+        startTransition(() => {
+          setNodes(nodesWithTick);
+          setEdges(loadedEdges);
+          setTableData(table ?? []);
+        });
+
         setIsSwitchingLayout(false);
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
@@ -506,18 +472,9 @@ export default function ProjectPage() {
           });
         });
 
-        // set initial ticks
-        const initialTicks: Record<string, number> = {};
-        nodesWithPositions.forEach((n) => {
-          if ((n as any).data?.status === "running") {
-            initialTicks[n.id] = Number((n as any).data.elapsedTime) ?? 0;
-          }
-        });
         setNodeTicks(initialTicks);
-
         setNodesLoadedOnce(true);
 
-        // --- center only on first load (MutationObserver + rAF double frame) ---
         if (firstLoadRef.current && viewMode === "hierarchical") {
           const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
           const desiredCount = Math.max(1, nodesWithPositions.length);
@@ -531,7 +488,7 @@ export default function ProjectPage() {
             centered = true;
             try {
               centerLikeButton(nodesWithPositions, true, viewportRef.current.zoom);
-            } catch (err) {
+            } catch {
               try {
                 if (inst && inst.getNodes && inst.getNodes().length > 0) {
                   inst.fitView({ padding: 0.12, duration: 0 });
@@ -542,10 +499,10 @@ export default function ProjectPage() {
                   inst.setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(viewportRef.current.zoom) });
                   setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(viewportRef.current.zoom) });
                 }
-              } catch { }
+              } catch {}
             } finally {
               firstLoadRef.current = false;
-              if (observer) { try { observer.disconnect(); } catch { } observer = null; }
+              if (observer) { try { observer.disconnect(); } catch {} observer = null; }
               if (fallbackTimer) { clearTimeout(fallbackTimer); fallbackTimer = null; }
             }
           };
@@ -565,7 +522,7 @@ export default function ProjectPage() {
                 });
                 observer.observe(nodesContainer, { childList: true, subtree: true });
                 fallbackTimer = setTimeout(async () => {
-                  if (observer) { try { observer.disconnect(); } catch { } observer = null; }
+                  if (observer) { try { observer.disconnect(); } catch {} observer = null; }
                   const ready = await waitForNodesReady(nodesWithPositions.length, 2000, true);
                   if (ready) {
                     doCenter("waitForNodesReady-fallback");
@@ -589,7 +546,7 @@ export default function ProjectPage() {
                     inst.setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(viewportRef.current.zoom) });
                     setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(viewportRef.current.zoom) });
                   }
-                } catch { }
+                } catch {}
                 firstLoadRef.current = false;
               } else {
                 firstLoadRef.current = false;
@@ -611,7 +568,7 @@ export default function ProjectPage() {
                     inst.setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(viewportRef.current.zoom) });
                     setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(viewportRef.current.zoom) });
                   }
-                } catch { }
+                } catch {}
               }
               firstLoadRef.current = false;
             }
@@ -621,29 +578,23 @@ export default function ProjectPage() {
     } catch (err) {
       console.error("fetchAndLoadProject error:", err);
       setIsSwitchingLayout(false);
-      // ensure we don't leave refreshing forever
     } finally {
       setIsRefreshing(false);
+      setIsLoadingProject(false);
     }
   }, [projectName, viewMode, graphDirection, centerLikeButton, svc]);
 
-
+  // When projectName changes, show the loading overlay again while fetching
   useEffect(() => {
+    setIsLoadingProject(true);
     fetchAndLoadProject();
-  }, [fetchAndLoadProject]);
+  }, [projectName, fetchAndLoadProject]);
 
-  // ------------------------ Refresh ------------------------
-
-  /**
-   * handleRefresh
-   * - Re-fetch project data and merge new nodes/edges
-   * - IMPORTANT: does NOT recenter or change node positions
-   */
+  /* ------------------------ Refresh ------------------------ */
   const handleRefresh = useCallback(async () => {
     if (!projectName) return;
     setIsRefreshing(true);
     try {
-      // svc: fetchProject
       const data = await svc.fetchProject(projectName);
       setProject(data);
 
@@ -657,15 +608,33 @@ export default function ProjectPage() {
         const nodesWithPositions = mergeNodesWithPositions(loadedNodes);
         const edgesMerged = mergeEdges(loadedEdges);
 
-        setNodes(nodesWithPositions);
-        setEdges(edgesMerged);
-        setTableData(table ?? []);
+        // seed/keep ticks on running nodes
+        const nodesSeed = nodesWithPositions.map((n) =>
+          isRunningNode(n)
+            ? {
+                ...n,
+                data: {
+                  ...(n as any).data,
+                  tick: (nodeTicks[n.id] ?? Number((n as any).data?.elapsedTime) ?? 0),
+                },
+              }
+            : n
+        );
 
+        startTransition(() => {
+          setNodes(nodesSeed);
+          setEdges(edgesMerged);
+          setTableData(table ?? []);
+        });
+
+        // Refresh running ticks map (preserve max; remove non-running)
         setNodeTicks((prev) => {
-          const updated: Record<string, number> = { ...prev };
+          const updated: Record<string, number> = {};
           nodesWithPositions.forEach((n) => {
-            if ((n as any).data?.status === "running") {
-              updated[n.id] = Math.max(prev[n.id] ?? 0, Number((n as any).data.elapsedTime) ?? 0);
+            const status = (n as any).data?.status;
+            const elapsed = Number((n as any).data?.elapsedTime) ?? 0;
+            if (status === "running") {
+              updated[n.id] = Math.max(prev[n.id] ?? 0, elapsed);
             }
           });
           return updated;
@@ -676,9 +645,9 @@ export default function ProjectPage() {
     } finally {
       setIsRefreshing(false);
     }
-  }, [projectName, viewMode, graphDirection, nodes, edges, svc]);
+  }, [projectName, viewMode, graphDirection, nodeTicks, svc]);
 
-  // stable interval for refresh (keeps closure stable)
+  // stable interval for refresh
   const handleRefreshRef = useRef(handleRefresh);
   useEffect(() => {
     handleRefreshRef.current = handleRefresh;
@@ -690,34 +659,25 @@ export default function ProjectPage() {
     return () => clearInterval(interval);
   }, []);
 
-  // ------------------------ Reorganize (rebuild) ------------------------
-
-  /**
-   * handleReorganize
-   * - Clear persistence, reload project and re-center (used by UI button)
-   */
+  /* ------------------------ Reorganize (rebuild, sin “temblor”) ------------------------ */
   const handleReorganize = useCallback(
     async (opts?: { preserveZoom?: boolean }) => {
       if (!projectName) return;
       try {
+        // 1) limpia persistencia SOLO del layout actual
         try {
           localStorage.removeItem(`${localStorageKey}-${graphDirection}`);
-        } catch (err) {
-          /* ignore */
-        }
+        } catch { /* ignore */ }
 
         disablePersistenceRef.current = true;
-        setNodes([]);
-        setEdges([]);
-        setTableData([]);
-        setNodeTicks({});
-        setFlowKey(`rf-${projectName}-${graphDirection}-${Date.now()}`);
+        setHideGraphDuringCenter(true); // ocultar durante el recenter
 
-        // svc: fetchProject
+        // 2) fetch datos + construir nuevo layout
         const data = await svc.fetchProject(projectName);
         setProject(data);
         if (!data.protocols) {
           disablePersistenceRef.current = false;
+          setHideGraphDuringCenter(false);
           return;
         }
 
@@ -728,72 +688,107 @@ export default function ProjectPage() {
           graphDirection
         );
 
-        setNodes(loadedNodes);
-        setEdges(loadedEdges);
-        setTableData(table ?? []);
-        setNodeTicks({});
+        // 3) aplicar posiciones guardadas si existen
+        const nodesWithPositions = loadNodesWithPositions(loadedNodes);
 
-        // center after reorganize (preserve zoom)
-        setTimeout(() => {
-          const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
-          if (!inst) {
-            disablePersistenceRef.current = false;
-            return;
-          }
+        // 4) lote de estados (sin dejar un frame vacío)
+        startTransition(() => {
+          setNodes(nodesWithPositions);
+          setEdges(loadedEdges);
+          setTableData(table ?? []);
+          // reset ticks solo si quieres resembrar estrictamente en refresh
+          setNodeTicks((prev) => {
+            const seeded: Record<string, number> = {};
+            nodesWithPositions.forEach((n) => {
+              if ((n as any).data?.status === "running") {
+                const v = Number((n as any).data?.elapsedTime) ?? prev[n.id] ?? 0;
+                seeded[n.id] = v;
+              }
+            });
+            return seeded;
+          });
+        });
 
-          if (loadedNodes.length > 0 && viewMode === "hierarchical") {
-            // Use viewportRef.current.zoom to try to preserve initial zoom if needed
-            centerLikeButton(loadedNodes, opts?.preserveZoom ?? true, viewportRef.current.zoom);
-          } else {
-            const vp = inst.getViewport();
-            inst.setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(vp.zoom) });
-            setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(vp.zoom) });
-          }
+        // 5) centrar sin animación visible mientras está oculto
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
+            if (inst && nodesWithPositions.length > 0 && viewMode === "hierarchical") {
+              const preserve = opts?.preserveZoom ?? true;
+              centerLikeButton(nodesWithPositions, preserve, viewportRef.current.zoom);
+            } else if (inst) {
+              const vp = inst.getViewport();
+              inst.setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(vp.zoom) });
+              setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(vp.zoom) });
+            }
 
-          // re-enable persistence after a short delay
-          setTimeout(() => {
-            disablePersistenceRef.current = false;
-          }, 60);
-        }, 0);
+            // 6) volver a mostrar
+            setTimeout(() => {
+              disablePersistenceRef.current = false;
+              setHideGraphDuringCenter(false);
+            }, 0);
+          });
+        });
       } catch (err) {
         console.error(err);
         disablePersistenceRef.current = false;
+        setHideGraphDuringCenter(false);
       }
     },
-    [projectName, viewMode, graphDirection, viewport, centerLikeButton, svc]
+    [projectName, viewMode, graphDirection, centerLikeButton, svc]
   );
 
-  // ------------------------ Ticks updater ------------------------
+  /* ------------------------ Ticks updater (lightweight + nodes running) ------------------------ */
   useEffect(() => {
     const interval = setInterval(() => {
+      // 1) compute next ticks
+      let nextTicks: Record<string, number> = {};
       setNodeTicks((prev) => {
-        const updated: Record<string, number> = { ...prev };
-        nodesRef.current.forEach((node) => {
-          if ((node as any).data?.status === "running") {
-            updated[node.id] = (prev[node.id] ?? Number((node as any).data.elapsedTime) ?? 0) + 1;
-          }
-        });
-        return updated;
+        const next: Record<string, number> = {};
+        for (const id in prev) next[id] = prev[id] + 1;
+        nextTicks = next;
+        return next;
       });
 
-      setTableData((prev) => prev.map((row) => (row.status === "running" ? { ...row, tick: (row.tick ?? Number(row.elapsedTime) ?? 0) + 1 } : row)));
+      // 2) update ONLY running nodes' tick field
+      setNodes((prev) => {
+        if (!prev || prev.length === 0) return prev;
+
+        let changed = false;
+        const updated = prev.map((n) => {
+          if (!isRunningNode(n)) return n;
+
+          const prevTick = Number((n as any).data?.tick ?? (n as any).data?.elapsedTime ?? 0);
+          const newTick =
+            nextTicks[n.id] !== undefined ? nextTicks[n.id] : prevTick + 1;
+
+          if (newTick === prevTick) return n;
+          changed = true;
+          return {
+            ...n,
+            data: {
+              ...(n as any).data,
+              tick: newTick,
+            },
+          };
+        });
+
+        return changed ? updated : prev;
+      });
+
+      // 3) update table for running rows
+      setTableData((prev) =>
+        prev.map((row) =>
+          row.status === "running"
+            ? { ...row, tick: (row.tick ?? Number(row.elapsedTime) ?? 0) + 1 }
+            : row
+        )
+      );
     }, 1000);
     return () => clearInterval(interval);
   }, []);
 
-  useEffect(() => {
-    setNodes((nds) =>
-      nds.map((node) => ({
-        ...node,
-        data: {
-          ...(node as any).data,
-          tick: nodeTicks[node.id] ?? Number((node as any).data.elapsedTime) ?? 0,
-        },
-      }))
-    );
-  }, [nodeTicks]);
-
-  // ------------------------ Layout change effect ------------------------
+  /* ------------------------ Layout change effect ------------------------ */
   const prevLayout = useRef({ viewMode, graphDirection });
   useLayoutEffect(() => {
     const layoutChanged = prevLayout.current.viewMode !== viewMode || prevLayout.current.graphDirection !== graphDirection;
@@ -814,15 +809,14 @@ export default function ProjectPage() {
     const { nodes: loadedNodes, edges: loadedEdges } = buildGraphElements(project.shortName, project.protocols, viewMode, graphDirection);
     const nodesWithPositions = loadNodesWithPositions(loadedNodes);
 
-    // prevent persistence while swapping layout
     disablePersistenceRef.current = true;
 
-    // show blocking overlay to mask repaint
     setIsSwitchingLayout(true);
 
-    // batch set nodes/edges — don't clear first to avoid a blank frame
-    setNodes(nodesWithPositions);
-    setEdges(loadedEdges);
+    startTransition(() => {
+      setNodes(nodesWithPositions);
+      setEdges(loadedEdges);
+    });
 
     // wait two frames then center; after that hide overlay
     requestAnimationFrame(() => {
@@ -858,24 +852,21 @@ export default function ProjectPage() {
         }
       });
     });
-
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [graphDirection, viewMode, project]);
 
-  // ------------------------ Initial first-center effect ----------
+  /* ------------------------ Initial first-center effect ------------------------ */
   useEffect(() => {
     if (!nodesLoadedOnce) return;
     const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
     if (!inst) return;
 
-    // overlay on while we calculate + paint
     setIsSwitchingLayout(true);
 
     const validNodes = nodes.filter((n) => typeof n.position?.x === "number" && typeof n.position?.y === "number");
     if (validNodes.length > 0) {
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-          // keep the existing viewport but clamp zoom only
           inst.setViewport({ x: viewportRef.current.x, y: viewportRef.current.y, zoom: clampZoom(viewportRef.current.zoom) });
           setTimeout(() => {
             setIsSwitchingLayout(false);
@@ -897,7 +888,7 @@ export default function ProjectPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nodesLoadedOnce]);
 
-  // --------------------- Table switching: avoid flicker ---------------------
+  /* --------------------- Table switching: avoid flicker --------------------- */
   useEffect(() => {
     if (viewMode === "table") {
       setTableVisible(false);
@@ -943,7 +934,7 @@ export default function ProjectPage() {
       interactive: "#f7f3bf",
     };
     return {
-      backgroundColor: colorMap[status ?? ""] ?? "#eee",
+      backgroundColor: colorMap[status ?? "" ] ?? "#eee",
       padding: "4px 8px",
       borderRadius: "6px",
       fontWeight: 300,
@@ -982,12 +973,20 @@ export default function ProjectPage() {
     }
 
     if (viewMode === "table") {
-      const matchRow = tableData.find((row) => row.id.toLowerCase().includes(query.toLowerCase()) || row.label.toLowerCase().includes(query.toLowerCase()));
+      const matchRow = tableData.find(
+        (row) =>
+          row.id.toLowerCase().includes(query.toLowerCase()) ||
+          row.label.toLowerCase().includes(query.toLowerCase())
+      );
       if (matchRow) scrollToProtocol(matchRow.id);
       return;
     }
 
-    const match = nodes.find((node) => node.id.toLowerCase().includes(query.toLowerCase()) || ((node as any).data?.label ?? "").toLowerCase().includes(query.toLowerCase()));
+    const match = nodes.find(
+      (node) =>
+        node.id.toLowerCase().includes(query.toLowerCase()) ||
+        ((node as any).data?.label ?? "").toLowerCase().includes(query.toLowerCase())
+    );
 
     if (!match) {
       setHighlightedId(null);
@@ -1000,11 +999,24 @@ export default function ProjectPage() {
     const highlightNodeStyle = { boxShadow: "0 0 0 4px rgba(0,112,243,0.12)" };
 
     setNodes((nds) =>
-      nds.map((n) => (n.id === match.id ? { ...n, selected: true, style: { ...((n as any).style ?? {}), ...highlightNodeStyle } } : { ...n, selected: false, style: undefined }))
+      nds.map((n) =>
+        n.id === match.id
+          ? { ...n, selected: true, style: { ...((n as any).style ?? {}), ...highlightNodeStyle } }
+          : { ...n, selected: false, style: undefined }
+      )
     );
 
-    const connectedEdgeIds = edges.filter((e) => e.source === match.id || e.target === match.id).map((e) => e.id);
-    setEdges((eds) => eds.map((e) => (connectedEdgeIds.includes(e.id) ? { ...e, style: { ...(e.style ?? {}), stroke: "#0070f3", strokeWidth: 3 } } : { ...e, style: undefined })));
+    const connectedEdgeIds = edges
+      .filter((e) => e.source === match.id || e.target === match.id)
+      .map((e) => e.id);
+
+    setEdges((eds) =>
+      eds.map((e) =>
+        connectedEdgeIds.includes(e.id)
+          ? { ...e, style: { ...(e.style ?? {}), stroke: "#0070f3", strokeWidth: 3 } }
+          : { ...e, style: undefined }
+      )
+    );
 
     setPreviousNodeId(match.id);
     setHighlightedId(match.id);
@@ -1012,7 +1024,7 @@ export default function ProjectPage() {
     if (inst) {
       const currentZoom = inst.getViewport().zoom;
       const zoom = clampZoom(currentZoom);
-      inst.setCenter(match.position.x, match.position.y, { zoom, duration: 500 });
+      inst.setCenter((match as any).position.x, (match as any).position.y, { zoom, duration: 500 });
       const vp = inst.getViewport();
       setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
     }
@@ -1021,7 +1033,6 @@ export default function ProjectPage() {
   const handleRowDoubleClick = async (id: string) => {
     if (!projectName) return;
     try {
-      // svc: fetchProtocolDetails
       const fullNodeData = await svc.fetchProtocolDetails(projectName, id);
       setHighlightedId(id);
       setSelectedNodeDetails(fullNodeData);
@@ -1031,22 +1042,16 @@ export default function ProjectPage() {
     }
   };
 
-  /* --------------------- Time formatting helper (for table display) --------------------- */
+  /* --------------------- Time formatting helper --------------------- */
   const formatCpuTime = (seconds: number): string => {
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
-    const secs = seconds % 60;
+    const secs = Math.floor(seconds % 60);
     const pad = (n: number) => n.toString().padStart(2, "0");
     return `${pad(hours)}h:${pad(minutes)}m:${pad(secs)}s`;
   };
 
-  /* --------------------- Context menu (portal) --------------------- */
-
-  /**
-   * handleContextMenu
-   * - Captures right click on the ReactFlow canvas
-   * - Stores clientX/clientY and (optionally) node id for contextual actions
-   */
+  /* --------------------- Context menu --------------------- */
   const handleContextMenu = (event: React.MouseEvent) => {
     event.preventDefault();
     event.stopPropagation();
@@ -1072,29 +1077,25 @@ export default function ProjectPage() {
     };
   }, [contextMenu.visible]);
 
-  // ------------------------ ReactFlow init / move handlers ------------------------
+  /* ------------------------ ReactFlow init / move handlers ------------------------ */
   const handleOnInit = useCallback((inst: ReactFlowInstance) => {
     reactFlowInstanceRef.current = inst;
     try {
       const current = inst.getViewport();
-      // clamp zoom but KEEP current x/y that React Flow already set
       const desiredZoom = clampZoom(viewportRef.current.zoom ?? current.zoom);
       inst.setViewport({ x: current.x, y: current.y, zoom: desiredZoom });
       const vp = inst.getViewport();
-      // sync state with instance's viewport
       setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
-    } catch (err) {
+    } catch {
       setIsSwitchingLayout(false);
     }
   }, []);
-
-
 
   const handleOnMoveEnd = useCallback((_: any, vp: { x: number; y: number; zoom: number }) => {
     setViewport(vp);
   }, []);
 
-  // ------------------------ Controls ------------------------
+  /* ------------------------ Controls ------------------------ */
   const ZOOM_FACTOR = 1.2;
   const handleZoomIn = useCallback(() => {
     const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
@@ -1116,18 +1117,13 @@ export default function ProjectPage() {
     setViewport({ x: newVp.x, y: newVp.y, zoom: newVp.zoom });
   }, []);
 
-  /**
-   * handleFitView
-   * - behaves like "center, preserve zoom" (the button in your custom controls)
-   */
   const handleFitView = useCallback(() => {
-    // preserve zoom by default
     centerLikeButton(undefined, true);
   }, [centerLikeButton]);
 
-  // ------------------------ Render ------------------------
+  /* ------------------------ Render ------------------------ */
   return (
-    <div className="h-screen flex flex-col">
+    <div className="h-screen flex flex-col relative">
       {/* Header */}
       <div className="flex justify-between items-center mb-1">
         <div className="relative w-full max-w-sm">
@@ -1136,7 +1132,12 @@ export default function ProjectPage() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
           </div>
-          <input type="text" placeholder="Search protocol..." onChange={(e) => handleSearch(e.target.value)} className="w-full px-3 py-2 pl-10 pr-3 text-sm text-gray-800 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:border-gray-700 dark:text-white" />
+          <input
+            type="text"
+            placeholder="Search protocol..."
+            onChange={(e) => handleSearch(e.target.value)}
+            className="w-full px-3 py-2 pl-10 pr-3 text-sm text-gray-800 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+          />
         </div>
 
         <div className="ml-4 mr-4 p-2 border rounded-lg shadow-sm bg-white dark:bg-gray-800 flex items-center gap-4">
@@ -1145,7 +1146,6 @@ export default function ProjectPage() {
             onProtocolDoubleClick={async (protocolClass: string) => {
               if (!projectName) return;
               try {
-                // svc: fetchNewProtocolDetails
                 const fullNodeData = await svc.fetchNewProtocolDetails(projectName, protocolClass);
                 setSelectedNodeDetails(fullNodeData);
                 setPreviousNodeId(protocolClass);
@@ -1155,7 +1155,10 @@ export default function ProjectPage() {
             }}
           />
 
-          <button onClick={() => console.log("Workflow clicked")} className={`px-3 py-1 rounded-lg text-xs flex items-center gap-1 bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300`}>
+          <button
+            onClick={() => console.log("Workflow clicked")}
+            className="px-3 py-1 rounded-lg text-xs flex items-center gap-1 bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300"
+          >
             <TreeIcon className="w-4 h-4" />
             Workflows
           </button>
@@ -1164,37 +1167,82 @@ export default function ProjectPage() {
         <div className="ml-4 mr-4 p-2 border rounded-lg shadow-sm bg-white dark:bg-gray-800 flex items-center gap-4">
           <span className="font-small text-xs">View mode:</span>
           <div className="flex gap-2">
-            <button onClick={() => { setViewMode("hierarchical"); setGraphDirection("TB"); }} className={`px-3 py-1 rounded-lg text-xs flex items-center gap-1 ${viewMode === "hierarchical" && graphDirection === "TB" ? "bg-blue-500 text-white" : "bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300"}`}><TreeIcon className="w-4 h-4" /> Tree TB</button>
+            <button
+              onClick={() => { setViewMode("hierarchical"); setGraphDirection("TB"); }}
+              className={`px-3 py-1 rounded-lg text-xs flex items-center gap-1 ${viewMode === "hierarchical" && graphDirection === "TB" ? "bg-blue-500 text-white" : "bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300"}`}
+            >
+              <TreeIcon className="w-4 h-4" /> Tree TB
+            </button>
 
-            <button onClick={() => { setViewMode("hierarchical"); setGraphDirection("LR"); }} className={`px-3 py-1 rounded-lg text-xs flex items-center gap-1 ${viewMode === "hierarchical" && graphDirection === "LR" ? "bg-blue-500 text-white" : "bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300"}`}><TreeIcon className="w-4 h-4 transform rotate-270" /> Tree LR</button>
+            <button
+              onClick={() => { setViewMode("hierarchical"); setGraphDirection("LR"); }}
+              className={`px-3 py-1 rounded-lg text-xs flex items-center gap-1 ${viewMode === "hierarchical" && graphDirection === "LR" ? "bg-blue-500 text-white" : "bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300"}`}
+            >
+              <TreeIcon className="w-4 h-4 transform rotate-270" /> Tree LR
+            </button>
 
-            <button onClick={() => setViewMode("table")} className={`px-3 py-1 rounded-lg text-xs flex items-center gap-1 ${viewMode === "table" ? "bg-blue-500 text-white" : "bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300"}`}><TableIcon className="w-4 h-4" /> Table</button>
+            <button
+              onClick={() => setViewMode("table")}
+              className={`px-3 py-1 rounded-lg text-xs flex items-center gap-1 ${viewMode === "table" ? "bg-blue-500 text-white" : "bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300"}`}
+            >
+              <TableIcon className="w-4 h-4" /> Table
+            </button>
           </div>
         </div>
       </div>
 
-      {selectedNodeDetails && <ProtocolForm data={selectedNodeDetails}
-        projectProtocols={project?.protocols ?? project?.protocols ?? {}}
-        onClose={handleCloseForm} />}
+      {selectedNodeDetails && (
+        <ProtocolForm
+          data={selectedNodeDetails}
+          projectProtocols={project?.protocols ?? project?.protocols ?? {}}
+          onClose={handleCloseForm}
+        />
+      )}
 
       <div className="flex-1 relative">
-        {/* Initial blocking overlay only during first fetch */}
+        {/* Overlay while switching layouts — non-blocking */}
         {isSwitchingLayout && (
-          <div aria-hidden className="absolute inset-0 z-60 flex items-center justify-center" style={{ background: "var(--reactflow-background, #ffffff)", pointerEvents: "auto" }}>
+          <div
+            aria-hidden
+            className="absolute inset-0 z-60 flex items-center justify-center"
+            style={{ background: "var(--reactflow-background, #ffffff)", pointerEvents: "none" }}
+          >
             <div className="flex items-center gap-3">
-              <div className="w-7 h-7 border-2 border-gray-300 border-t-gray-500 rounded-full animate-spin" />
+              <div className="w-6 h-6 border-2 border-gray-300 border-t-gray-500 rounded-full animate-spin" />
             </div>
           </div>
         )}
 
+        {/* Initial project loading overlay (smaller, spinning) */}
+        {isLoadingProject && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="absolute inset-0 z-[80] flex flex-col items-center justify-center bg-white/75 dark:bg-gray-900/75 backdrop-blur-[2px]"
+            style={{ pointerEvents: "auto" }}
+          >
+            <div className="relative">
+              {/* outer ring */}
+              <div className="w-8 h-8 rounded-full border-2 border-gray-300" />
+              {/* top ring spinning */}
+              <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-gray-700 animate-spin" />
+            </div>
+            <p className="mt-3 text-xs tracking-wide text-gray-700 dark:text-gray-200">
+              Loading <span className="font-medium">Project</span>…
+            </p>
+          </div>
+        )}
+
         {/* TABLE pane */}
-        <div ref={tableContainerRef}
+        <div
+          ref={tableContainerRef}
           className="absolute inset-0 overflow-auto border rounded shadow p-4 z-30 transition-opacity"
           style={{
             opacity: viewMode === "table" ? 1 : 0,
             pointerEvents: viewMode === "table" ? "auto" : "none",
           }}
-          aria-hidden={viewMode !== "table"}>
+          aria-hidden={viewMode !== "table"}
+        >
           <div className="flex justify-end mb-4 mr-1">
             <button className="refresh-btn" title="Refresh project" onClick={handleRefresh} disabled={isRefreshing}>
               <RefreshCw className={`w-4 h-4 ${isRefreshing ? "animate-spin" : ""}`} />
@@ -1213,7 +1261,12 @@ export default function ProjectPage() {
             </thead>
             <tbody>
               {tableData.map((row) => (
-                <tr key={row.id} ref={(el) => { rowRefs.current[row.id] = el; }} onDoubleClick={() => handleRowDoubleClick(row.id)} className={`border-t border-gray-200 dark:border-gray-700 ${highlightedId === row.id ? "bg-yellow-100 dark:bg-yellow-900" : ""}`}>
+                <tr
+                  key={row.id}
+                  ref={(el) => { rowRefs.current[row.id] = el; }}
+                  onDoubleClick={() => handleRowDoubleClick(row.id)}
+                  className={`border-t border-gray-200 dark:border-gray-700 ${highlightedId === row.id ? "bg-yellow-100 dark:bg-yellow-900" : ""}`}
+                >
                   <td className="px-4 py-2">{row.id}</td>
                   <td className="px-4 py-2">{row.label}</td>
                   <td className="px-4 py-2">
@@ -1223,17 +1276,28 @@ export default function ProjectPage() {
                       {(row.status === "running" || row.status === "failed" || row.status === "aborted") && (
                         <div className="flex items-center gap-2 ml-4 flex-1">
                           <div className="w-16 h-3 bg-gray-300 dark:bg-gray-700 rounded overflow-hidden">
-                            <div className={`h-3 ${row.status === "running" ? "bg-yellow-400" : row.status === "failed" || row.status === "aborted" ? "bg-red-500" : "bg-gray-400"} transition-all duration-300`} style={{ width: `${((row.stepsDone ?? 0) / (row.numberOfSteps ?? 1)) * 100}%` }} />
+                            <div
+                              className={`h-3 ${row.status === "running" ? "bg-yellow-400" : row.status === "failed" || row.status === "aborted" ? "bg-red-500" : "bg-gray-400"} transition-all duration-300`}
+                              style={{ width: `${((row.stepsDone ?? 0) / (row.numberOfSteps ?? 1)) * 100}%` }}
+                            />
                           </div>
                           <span className="text-sm opacity-80">{row.stepsDone}/{row.numberOfSteps}</span>
                         </div>
                       )}
                     </div>
                   </td>
-                  <td className="px-4 py-2 font-mono">{formatCpuTime(row.tick ?? Number(row.elapsedTime) ?? 0)}</td>
+                  <td className="px-4 py-2 font-mono">
+                    {formatCpuTime(row.tick ?? Number(row.elapsedTime) ?? 0)}
+                  </td>
                   <td className="px-4 py-2 space-x-2">
                     {row.children?.map((childId: string) => (
-                      <button key={childId} onClick={() => scrollToProtocol(childId)} className="text-blue-600 dark:text-blue-400 underline hover:text-blue-800">{childId}</button>
+                      <button
+                        key={childId}
+                        onClick={() => scrollToProtocol(childId)}
+                        className="text-blue-600 dark:text-blue-400 underline hover:text-blue-800"
+                      >
+                        {childId}
+                      </button>
                     ))}
                   </td>
                 </tr>
@@ -1243,24 +1307,28 @@ export default function ProjectPage() {
         </div>
 
         {/* ReactFlow pane */}
-        <div className="absolute inset-0 border transition-opacity"
+        <div
+          className="absolute inset-0 border transition-opacity"
           style={{
-            opacity: viewMode === "hierarchical" ? 1 : 0,
+            opacity: viewMode === "hierarchical" ? (hideGraphDuringCenter ? 0 : 1) : 0,
             pointerEvents: viewMode === "hierarchical" ? "auto" : "none",
             zIndex: 20,
           }}
-          aria-hidden={viewMode !== "hierarchical"}>
+          aria-hidden={viewMode !== "hierarchical"}
+        >
           <div className="absolute top-4 right-4 z-50">
             <div className="flex flex-col gap-1 p-1 bg-white/90 rounded shadow">
               <button title="Zoom in" onClick={handleZoomIn} className="p-1 rounded hover:bg-gray-100 dark:text-black"><PlusIcon className="w-4 h-4" /></button>
               <button title="Zoom out" onClick={handleZoomOut} className="p-1 rounded hover:bg-gray-100 dark:text-black"><MinusIcon className="w-4 h-4" /></button>
               <button title="Fit view (preserve zoom)" onClick={handleFitView} className="p-1 rounded hover:bg-gray-100 dark:text-black"><FitViewIcon className="w-4 h-4" /></button>
               <button title="Reorganize project" onClick={() => handleReorganize({ preserveZoom: true })} className="p-1 rounded hover:bg-gray-100 dark:text-black"><TreeIcon className="w-4 h-4" /></button>
-              <button title="Refresh project" onClick={handleRefresh} className="p-1 rounded hover:bg-gray-100 dark:text-black"><RefreshCw className={`w-4 h-4 ${isRefreshing ? "animate-spin" : ""}`} /></button>
+              <button title="Refresh project" onClick={handleRefresh} className="p-1 rounded hover:bg-gray-100 dark:text-black">
+                <RefreshCw className={`w-4 h-4 ${isRefreshing ? "animate-spin" : ""}`} />
+              </button>
             </div>
           </div>
 
-          <ReactFlowProvider key={flowKey}>
+          <ReactFlowProvider>
             <svg width="0" height="0" aria-hidden>
               <defs>
                 <marker id="circle" viewBox="0 0 40 40" refX="20" refY="20" markerWidth="20" markerHeight="20" orient="auto-start-reverse">
