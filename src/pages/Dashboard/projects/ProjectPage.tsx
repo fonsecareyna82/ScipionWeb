@@ -36,7 +36,7 @@ import {
 import { MinusIcon, PlusIcon, RefreshCw, Trash2 } from "lucide-react";
 import { FitViewIcon, TableIcon, TreeIcon } from "../../../icons";
 
-// svc integration
+// svc
 import { useProjectService } from "@/ProjectServiceContext";
 import { Project } from "@/types/project";
 
@@ -68,18 +68,21 @@ export default function ProjectPage() {
   const [project, setProject] = useState<Project | undefined>(undefined);
   const [selectedNodeDetails, setSelectedNodeDetails] = useState<any>(null);
 
-  // Initial loading overlay (first load / project change)
+  // initial loading overlay
   const [isLoadingProject, setIsLoadingProject] = useState(true);
 
-  // react-flow nodes / edges state
+  // react-flow state
   const [nodes, setNodes, onNodesChange] = useNodesState<StatusNodeData>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge[]>([]);
   const [tableData, setTableData] = useState<any[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // selection (used by wrapper + edge highlight)
   const [previousNodeId, setPreviousNodeId] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<"hierarchical" | "table">(
-    "hierarchical"
-  );
+  const selectedIdRef = useRef<string | null>(null);
+  useEffect(() => { selectedIdRef.current = previousNodeId; }, [previousNodeId]);
+
+  const [viewMode, setViewMode] = useState<"hierarchical" | "table">("hierarchical");
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const [nodeTicks, setNodeTicks] = useState<Record<string, number>>({});
   const rowRefs = useRef<Record<string, HTMLTableRowElement | null>>({});
@@ -87,47 +90,35 @@ export default function ProjectPage() {
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [graphDirection, setGraphDirection] = useState<"TB" | "LR">("TB");
 
-  // ocultar el grafo durante recentrado para evitar “temblor”
+  // hide graph while centering (avoid visible jumps)
   const [hideGraphDuringCenter, setHideGraphDuringCenter] = useState(false);
 
-  // React 18: keep heavy updates off the urgent lane
-  const [isPending, startTransition] = useTransition();
+  // React 18 transitions for heavy updates
+  const [, startTransition] = useTransition();
 
   // persistence control
   const disablePersistenceRef = useRef(false);
 
-  // default initial viewport (zoom 0.32 on first load)
-  const [viewport, setViewport] = useState<{ x: number; y: number; zoom: number }>({
-    x: 0,
-    y: 0,
-    zoom: 0.32,
-  });
+  // viewport
+  const [viewport, setViewport] = useState<{ x: number; y: number; zoom: number }>({ x: 0, y: 0, zoom: 0.32 });
   const viewportRef = useRef(viewport);
-  useEffect(() => {
-    viewportRef.current = viewport;
-  }, [viewport]);
+  useEffect(() => { viewportRef.current = viewport; }, [viewport]);
 
   const reactFlowInstanceRef = useRef<ReactFlowInstance | null>(null);
 
-  // context menu state (viewport coordinates)
-  const [contextMenu, setContextMenu] = useState<ContextMenuState>({
-    visible: false,
-    x: 0,
-    y: 0,
-  });
+  // context menu
+  const [contextMenu, setContextMenu] = useState<ContextMenuState>({ visible: false, x: 0, y: 0 });
 
-  const TIME_TO_REFRESH = 15000; // 15 seconds
+  const TIME_TO_REFRESH = 15000;
   const localStorageKey = `project-${projectName}-node-positions`;
 
-  // overlay / flicker control
+  // flicker control
   const [isSwitchingLayout, setIsSwitchingLayout] = useState(false);
   const [, setTableVisible] = useState(viewMode === "table");
   const [nodesLoadedOnce, setNodesLoadedOnce] = useState(false);
-
-  // first load flag to ensure we center only once
   const firstLoadRef = useRef(true);
 
-  // Zoom clamp
+  // zoom clamp
   const MIN_ZOOM = 0.2;
   const MAX_ZOOM = 0.6;
   const clampZoom = (z: number | undefined | null) => {
@@ -135,50 +126,79 @@ export default function ProjectPage() {
     return Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, num));
   };
 
-  // keep latest nodes in ref to avoid render loops
+  // nodes ref
   const nodesRef = useRef<Node[]>(nodes);
-  useEffect(() => {
-    nodesRef.current = nodes;
-  }, [nodes]);
+  useEffect(() => { nodesRef.current = nodes; }, [nodes]);
 
-  // helper
   const isRunningNode = (n: Node) => (n as any).data?.status === "running";
 
-  /* --------------------- Node handlers --------------------- */
+  /* --------------------- Node click / dblclick --------------------- */
+
+  // edge highlight painter (minimal diff)
+  const paintEdgeHighlight = useCallback((eds: Edge[], selectedId: string | null): Edge[] => {
+    if (!selectedId) {
+      // clear styles only if some had styles
+      let anyStyled = false;
+      for (const e of eds) {
+        if (e.style?.stroke === "#0070f3" || (e as any).__hl) { anyStyled = true; break; }
+      }
+      if (!anyStyled) return eds;
+      return eds.map((e) => {
+        if ((e as any).__hl || (e.style && (e.style as any).stroke === "#0070f3")) {
+          const { style, ...rest } = e;
+          const newStyle = { ...(style ?? {}) };
+          delete (newStyle as any).stroke;
+          delete (newStyle as any).strokeWidth;
+          const clean = { ...rest, style: Object.keys(newStyle).length ? newStyle : undefined } as Edge;
+          delete (clean as any).__hl;
+          return clean;
+        }
+        return e;
+      });
+    }
+
+    // add highlight only to connected edges; avoid rewriting others
+    let changed = false;
+    const next = eds.map((e) => {
+      const isConn = e.source === selectedId || e.target === selectedId;
+      if (isConn) {
+        const curStroke = (e.style as any)?.stroke;
+        const curWidth = (e.style as any)?.strokeWidth;
+        if (curStroke === "#0070f3" && curWidth === 3) return e; // already highlighted
+        changed = true;
+        return {
+          ...e,
+          style: { ...(e.style ?? {}), stroke: "#0070f3", strokeWidth: 3 },
+          __hl: true as any, // internal flag
+        };
+      } else if ((e as any).__hl || curIsBlue(e)) {
+        // was highlighted; remove
+        changed = true;
+        const { style, ...rest } = e;
+        const newStyle = { ...(style ?? {}) };
+        delete (newStyle as any).stroke;
+        delete (newStyle as any).strokeWidth;
+        const clean = { ...rest, style: Object.keys(newStyle).length ? newStyle : undefined } as Edge;
+        delete (clean as any).__hl;
+        return clean;
+      }
+      return e;
+    });
+    return changed ? next : eds;
+  }, []);
+
+  const curIsBlue = (e: Edge) => (e.style as any)?.stroke === "#0070f3" && (e.style as any)?.strokeWidth === 3;
+
+  const applyEdgeHighlight = useCallback((selectedId: string | null) => {
+    setEdges((eds) => paintEdgeHighlight(eds, selectedId));
+  }, [paintEdgeHighlight, setEdges]);
 
   const handleNodeClick = (nodeData: any, event?: React.MouseEvent) => {
     handleCloseMenu();
-    const isMultiSelect = event?.shiftKey;
-
-    const highlightNodeStyle = { boxShadow: "0 0 0 4px rgba(0,112,243,0.12)" };
-
-    if (!isMultiSelect) {
-      setPreviousNodeId(nodeData.id);
-
-      setNodes((nds) =>
-        nds.map((n) =>
-          n.id === nodeData.id
-            ? {
-                ...n,
-                selected: true,
-                style: { ...(n.style ?? {}), ...highlightNodeStyle },
-              }
-            : { ...n, selected: false, style: undefined }
-        )
-      );
-
-      const edgesToHighlight = edges
-        .filter((e) => e.source === nodeData.id || e.target === nodeData.id)
-        .map((e) => e.id);
-
-      setEdges((eds) =>
-        eds.map((edge) =>
-          edgesToHighlight.includes(edge.id)
-            ? { ...edge, style: { ...(edge.style ?? {}), stroke: "#0070f3", strokeWidth: 3 } }
-            : { ...edge, style: undefined }
-        )
-      );
-    }
+    if (event?.shiftKey) return; // keep noop for multi-select
+    setPreviousNodeId(nodeData.id);
+    setHighlightedId(nodeData.id);
+    applyEdgeHighlight(nodeData.id); // only touches edges; nodes untouched → no shake
   };
 
   const handleNodeDoubleClick = async (nodeData: any) => {
@@ -188,6 +208,8 @@ export default function ProjectPage() {
       const fullNodeData = await svc.fetchProtocolDetails(projectName, nodeData.id);
       setSelectedNodeDetails(fullNodeData);
       setPreviousNodeId(nodeData.id);
+      setHighlightedId(nodeData.id);
+      applyEdgeHighlight(nodeData.id);
     } catch (err) {
       console.error("Failed to fetch protocol details", err);
     }
@@ -195,6 +217,7 @@ export default function ProjectPage() {
 
   const handleCloseForm = () => setSelectedNodeDetails(null);
 
+  /* --------------------- Wrapper plumbing --------------------- */
   const onClickRef = useRef(handleNodeClick);
   const onDblClickRef = useRef(handleNodeDoubleClick);
   const prevIdRef = useRef<string | null>(null);
@@ -213,7 +236,7 @@ export default function ProjectPage() {
       status: createStatusNodeWrapper(
         (data, evt) => onClickRef.current?.(data, evt),
         (data) => onDblClickRef.current?.(data),
-        () => prevIdRef.current ?? undefined,
+        () => prevIdRef.current ?? undefined,     // selected id source for node visual
         () => hoveredIdRef.current ?? undefined,
         setHoveredNodeId,
         () => graphDirRef.current
@@ -223,30 +246,24 @@ export default function ProjectPage() {
   const nodeTypes = nodeTypesRef.current;
 
   /* --------------------- Persistence helpers --------------------- */
-
   const handleNodesChangeWithPersistence = (changes: NodeChange[]) => {
-    if (disablePersistenceRef.current) {
-      return onNodesChange(changes);
-    }
+    if (disablePersistenceRef.current) return onNodesChange(changes);
     setNodes((nds) => {
       const updated = applyNodeChanges(changes, nds);
       const positions = updated.map((n) => ({ id: n.id, position: n.position }));
       try {
         localStorage.setItem(`${localStorageKey}-${graphDirection}`, JSON.stringify(positions));
-      } catch {
-        // ignore quota / security errors
-      }
+      } catch { /* ignore */ }
       return updated;
     });
   };
 
   const loadNodesWithPositions = (loadedNodes: Node[]) => {
-    const savedPositions: { id: string; position: { x: number; y: number } }[] = JSON.parse(
-      localStorage.getItem(`${localStorageKey}-${graphDirection}`) || "[]"
-    );
+    const saved: { id: string; position: { x: number; y: number } }[] =
+      JSON.parse(localStorage.getItem(`${localStorageKey}-${graphDirection}`) || "[]");
     return loadedNodes.map((n) => {
-      const saved = savedPositions.find((p) => p.id === n.id);
-      return saved ? { ...n, position: saved.position } : n;
+      const s = saved.find((p) => p.id === n.id);
+      return s ? { ...n, position: s.position } : n;
     });
   };
 
@@ -256,9 +273,7 @@ export default function ProjectPage() {
     const aKeys = Object.keys(a);
     const bKeys = Object.keys(b);
     if (aKeys.length !== bKeys.length) return false;
-    for (const k of aKeys) {
-      if (a[k] !== b[k]) return false;
-    }
+    for (const k of aKeys) if (a[k] !== b[k]) return false;
     return true;
   };
 
@@ -271,16 +286,8 @@ export default function ProjectPage() {
           old.position && old.position.x !== undefined && old.position.y !== undefined
             ? old.position
             : n.position ?? old.position;
-
-        if (shallowEqual(old.data, n.data) && position === old.position) {
-          return old;
-        }
-
-        return {
-          ...old,
-          position,
-          data: { ...old.data, ...n.data },
-        } as Node;
+        if (shallowEqual(old.data, n.data) && position === old.position) return old;
+        return { ...old, position, data: { ...old.data, ...n.data } } as Node;
       }
       return n;
     });
@@ -297,14 +304,12 @@ export default function ProjectPage() {
     if (!inst) return;
     const list = nodesList ?? nodesRef.current ?? [];
     const validNodes = list.filter((n) => typeof n.position?.x === "number" && typeof n.position?.y === "number");
-
     if (validNodes.length === 0) {
       const vp = inst.getViewport();
       inst.setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(vp.zoom) });
       setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(vp.zoom) });
       return;
     }
-
     try {
       if (!preserveZoom) {
         inst.fitView({ padding: 0.12, duration: 0 });
@@ -312,14 +317,8 @@ export default function ProjectPage() {
         setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
         return;
       }
-
       const targetZoom = clampZoom(typeof zoomOverride === "number" ? zoomOverride : inst.getViewport().zoom);
-
-      let minX = Number.POSITIVE_INFINITY;
-      let maxX = Number.NEGATIVE_INFINITY;
-      let minY = Number.POSITIVE_INFINITY;
-      let maxY = Number.NEGATIVE_INFINITY;
-
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
       for (const n of validNodes) {
         const x = n.position!.x ?? 0;
         const y = n.position!.y ?? 0;
@@ -328,17 +327,14 @@ export default function ProjectPage() {
         if (y < minY) minY = y;
         if (y > maxY) maxY = y;
       }
-
       const centerX = (minX + maxX) / 2;
       const centerY = (minY + maxY) / 2;
-
       inst.setCenter(centerX, centerY, { zoom: targetZoom, duration: 0 });
-
       const finalVp = inst.getViewport();
       setViewport({ x: finalVp.x, y: finalVp.y, zoom: finalVp.zoom });
     } catch {
-      const xSum = validNodes.reduce((sum, n) => sum + (n.position!.x ?? 0), 0);
-      const ySum = validNodes.reduce((sum, n) => sum + (n.position!.y ?? 0), 0);
+      const xSum = validNodes.reduce((s, n) => s + (n.position!.x ?? 0), 0);
+      const ySum = validNodes.reduce((s, n) => s + (n.position!.y ?? 0), 0);
       const centerX = xSum / validNodes.length;
       const centerY = ySum / validNodes.length;
       const currentVp = inst.getViewport();
@@ -350,67 +346,35 @@ export default function ProjectPage() {
   }, []);
 
   /* ------------------------ Wait for nodes helper ------------------------ */
-  const waitForNodesReady = async (expectedCount: number, timeoutMs = 2500, debug = false): Promise<boolean> => {
+  const waitForNodesReady = async (expectedCount: number, timeoutMs = 2500): Promise<boolean> => {
     const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
-    if (!inst) {
-      if (debug) console.warn("waitForNodesReady: no reactflow instance available");
-      return false;
-    }
-
+    if (!inst) return false;
     const start = Date.now();
-
     return new Promise<boolean>((resolve) => {
       const check = () => {
         try {
           const instNodes = typeof inst.getNodes === "function" ? inst.getNodes() : [];
-
-          if (debug) {
-            console.debug("waitForNodesReady: instNodes.length=", instNodes.length, "expectedCount=", expectedCount);
-          }
-
           const needed = Math.max(1, expectedCount);
           if (instNodes && instNodes.length >= needed) {
-            let validPosCount = 0;
-            let minX = Number.POSITIVE_INFINITY, maxX = Number.NEGATIVE_INFINITY;
-            let minY = Number.POSITIVE_INFINITY, maxY = Number.NEGATIVE_INFINITY;
-
+            let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, valid = 0;
             for (const n of instNodes) {
-              const x = n.position?.x;
-              const y = n.position?.y;
+              const x = n.position?.x, y = n.position?.y;
               if (typeof x === "number" && typeof y === "number" && !Number.isNaN(x) && !Number.isNaN(y)) {
-                validPosCount++;
+                valid++;
                 if (x < minX) minX = x;
                 if (x > maxX) maxX = x;
                 if (y < minY) minY = y;
                 if (y > maxY) maxY = y;
               }
             }
-
-            const bboxWidth = isFinite(minX) && isFinite(maxX) ? Math.abs(maxX - minX) : 0;
-            const bboxHeight = isFinite(minY) && isFinite(maxY) ? Math.abs(maxY - minY) : 0;
-
-            if (debug) {
-              console.debug("waitForNodesReady: validPosCount=", validPosCount, "bboxWidth=", bboxWidth, "bboxHeight=", bboxHeight);
-            }
-
-            if (validPosCount >= 1 && (bboxWidth > 1 || bboxHeight > 1)) {
-              resolve(true);
-              return;
-            }
+            const w = isFinite(minX) && isFinite(maxX) ? Math.abs(maxX - minX) : 0;
+            const h = isFinite(minY) && isFinite(maxY) ? Math.abs(maxY - minY) : 0;
+            if (valid >= 1 && (w > 1 || h > 1)) return resolve(true);
           }
-        } catch {
-          // keep trying
-        }
-
-        if (Date.now() - start > timeoutMs) {
-          if (debug) console.warn("waitForNodesReady: timeout");
-          resolve(false);
-          return;
-        }
-
+        } catch {}
+        if (Date.now() - start > timeoutMs) return resolve(false);
         requestAnimationFrame(check);
       };
-
       requestAnimationFrame(check);
     });
   };
@@ -425,15 +389,12 @@ export default function ProjectPage() {
 
       if (data.protocols) {
         const { nodes: loadedNodes, edges: loadedEdges, table } = buildGraphElements(
-          data.shortName,
-          data.protocols,
-          viewMode,
-          graphDirection
+          data.shortName, data.protocols, viewMode, graphDirection
         );
 
         const nodesWithPositions = loadNodesWithPositions(loadedNodes);
 
-        // seed ticks for running nodes
+        // seed ticks
         const initialTicks: Record<string, number> = {};
         nodesWithPositions.forEach((n) => {
           if ((n as any).data?.status === "running") {
@@ -442,65 +403,34 @@ export default function ProjectPage() {
         });
         const nodesWithTick = nodesWithPositions.map((n) =>
           isRunningNode(n)
-            ? {
-                ...n,
-                data: {
-                  ...(n as any).data,
-                  tick: initialTicks[n.id] ?? Number((n as any).data?.elapsedTime) ?? 0,
-                },
-              }
+            ? { ...n, data: { ...(n as any).data, tick: initialTicks[n.id] ?? Number((n as any).data?.elapsedTime) ?? 0 } }
             : n
         );
 
         startTransition(() => {
           setNodes(nodesWithTick);
-          setEdges(loadedEdges);
-          setTableData(table ?? []);
-        });
-
-        setIsSwitchingLayout(false);
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            try {
-              const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
-              if (inst && nodesWithPositions.length > 0 && viewMode === "hierarchical") {
-                centerLikeButton(nodesWithPositions, true, viewportRef.current.zoom);
-              }
-            } finally {
-              setIsSwitchingLayout(false);
-            }
+          // set edges first, then apply highlight if a node is selected
+          setEdges((_) => {
+            const base = loadedEdges;
+            return paintEdgeHighlight(base, selectedIdRef.current ?? null);
           });
+          setTableData(table ?? []);
         });
 
         setNodeTicks(initialTicks);
         setNodesLoadedOnce(true);
 
         if (firstLoadRef.current && viewMode === "hierarchical") {
-          const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
           const desiredCount = Math.max(1, nodesWithPositions.length);
-
           let observer: MutationObserver | null = null;
           let fallbackTimer: any = null;
           let centered = false;
 
-          const doCenter = (_methodDesc: string) => {
+          const doCenter = () => {
             if (centered) return;
             centered = true;
-            try {
-              centerLikeButton(nodesWithPositions, true, viewportRef.current.zoom);
-            } catch {
-              try {
-                if (inst && inst.getNodes && inst.getNodes().length > 0) {
-                  inst.fitView({ padding: 0.12, duration: 0 });
-                  const vp = inst.getViewport();
-                  setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
-                } else if (inst) {
-                  const vp = inst.getViewport();
-                  inst.setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(viewportRef.current.zoom) });
-                  setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(viewportRef.current.zoom) });
-                }
-              } catch {}
-            } finally {
+            try { centerLikeButton(nodesWithPositions, true, viewportRef.current.zoom); }
+            finally {
               firstLoadRef.current = false;
               if (observer) { try { observer.disconnect(); } catch {} observer = null; }
               if (fallbackTimer) { clearTimeout(fallbackTimer); fallbackTimer = null; }
@@ -512,79 +442,39 @@ export default function ProjectPage() {
             if (nodesContainer) {
               const initialNodeEls = nodesContainer.querySelectorAll(".react-flow__node");
               if (initialNodeEls.length >= desiredCount) {
-                requestAnimationFrame(() => requestAnimationFrame(() => doCenter("dom-immediate")));
+                requestAnimationFrame(() => requestAnimationFrame(doCenter));
               } else {
                 observer = new MutationObserver(() => {
                   const els = nodesContainer.querySelectorAll(".react-flow__node");
                   if (els.length >= desiredCount) {
-                    requestAnimationFrame(() => requestAnimationFrame(() => doCenter("dom-observer")));
+                    requestAnimationFrame(() => requestAnimationFrame(doCenter));
                   }
                 });
                 observer.observe(nodesContainer, { childList: true, subtree: true });
                 fallbackTimer = setTimeout(async () => {
                   if (observer) { try { observer.disconnect(); } catch {} observer = null; }
-                  const ready = await waitForNodesReady(nodesWithPositions.length, 2000, true);
-                  if (ready) {
-                    doCenter("waitForNodesReady-fallback");
-                  } else {
-                    doCenter("fallback-final");
-                  }
+                  const ready = await waitForNodesReady(nodesWithPositions.length, 2000);
+                  if (ready) doCenter(); else doCenter();
                 }, 3000);
               }
             } else {
-              const ready = await waitForNodesReady(nodesWithPositions.length, 2500, true);
-              if (ready && inst) {
-                doCenter("waitForNodesReady");
-              } else if (inst) {
-                try {
-                  if (inst.getNodes && inst.getNodes().length > 0) {
-                    inst.fitView({ padding: 0.12, duration: 0 });
-                    const vp = inst.getViewport();
-                    setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
-                  } else {
-                    const vp = inst.getViewport();
-                    inst.setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(viewportRef.current.zoom) });
-                    setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(viewportRef.current.zoom) });
-                  }
-                } catch {}
-                firstLoadRef.current = false;
-              } else {
-                firstLoadRef.current = false;
-              }
+              const ready = await waitForNodesReady(nodesWithPositions.length, 2500);
+              if (ready) doCenter(); else firstLoadRef.current = false;
             }
           } catch {
-            const ready = await waitForNodesReady(nodesWithPositions.length, 2000, true);
-            if (ready && inst) {
-              doCenter("catch-fallback");
-            } else {
-              if (inst) {
-                try {
-                  if (inst.getNodes && inst.getNodes().length > 0) {
-                    inst.fitView({ padding: 0.12, duration: 0 });
-                    const vp = inst.getViewport();
-                    setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
-                  } else {
-                    const vp = inst.getViewport();
-                    inst.setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(viewportRef.current.zoom) });
-                    setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(viewportRef.current.zoom) });
-                  }
-                } catch {}
-              }
-              firstLoadRef.current = false;
-            }
+            const ready = await waitForNodesReady(nodesWithPositions.length, 2000);
+            if (ready) doCenter(); else firstLoadRef.current = false;
           }
         }
       }
     } catch (err) {
       console.error("fetchAndLoadProject error:", err);
-      setIsSwitchingLayout(false);
     } finally {
       setIsRefreshing(false);
       setIsLoadingProject(false);
     }
-  }, [projectName, viewMode, graphDirection, centerLikeButton, svc]);
+  }, [projectName, viewMode, graphDirection, centerLikeButton, svc, paintEdgeHighlight]);
 
-  // When projectName changes, show the loading overlay again while fetching
   useEffect(() => {
     setIsLoadingProject(true);
     fetchAndLoadProject();
@@ -600,42 +490,29 @@ export default function ProjectPage() {
 
       if (data.protocols) {
         const { nodes: loadedNodes, edges: loadedEdges, table } = buildGraphElements(
-          data.shortName,
-          data.protocols,
-          viewMode,
-          graphDirection
+          data.shortName, data.protocols, viewMode, graphDirection
         );
         const nodesWithPositions = mergeNodesWithPositions(loadedNodes);
         const edgesMerged = mergeEdges(loadedEdges);
 
-        // seed/keep ticks on running nodes
         const nodesSeed = nodesWithPositions.map((n) =>
           isRunningNode(n)
-            ? {
-                ...n,
-                data: {
-                  ...(n as any).data,
-                  tick: (nodeTicks[n.id] ?? Number((n as any).data?.elapsedTime) ?? 0),
-                },
-              }
+            ? { ...n, data: { ...(n as any).data, tick: (nodeTicks[n.id] ?? Number((n as any).data?.elapsedTime) ?? 0) } }
             : n
         );
 
         startTransition(() => {
           setNodes(nodesSeed);
-          setEdges(edgesMerged);
+          setEdges((_) => paintEdgeHighlight(edgesMerged, selectedIdRef.current ?? null));
           setTableData(table ?? []);
         });
 
-        // Refresh running ticks map (preserve max; remove non-running)
         setNodeTicks((prev) => {
           const updated: Record<string, number> = {};
           nodesWithPositions.forEach((n) => {
             const status = (n as any).data?.status;
             const elapsed = Number((n as any).data?.elapsedTime) ?? 0;
-            if (status === "running") {
-              updated[n.id] = Math.max(prev[n.id] ?? 0, elapsed);
-            }
+            if (status === "running") updated[n.id] = Math.max(prev[n.id] ?? 0, elapsed);
           });
           return updated;
         });
@@ -645,34 +522,24 @@ export default function ProjectPage() {
     } finally {
       setIsRefreshing(false);
     }
-  }, [projectName, viewMode, graphDirection, nodeTicks, svc]);
+  }, [projectName, viewMode, graphDirection, nodeTicks, svc, paintEdgeHighlight]);
 
-  // stable interval for refresh
   const handleRefreshRef = useRef(handleRefresh);
+  useEffect(() => { handleRefreshRef.current = handleRefresh; }, [handleRefresh]);
   useEffect(() => {
-    handleRefreshRef.current = handleRefresh;
-  }, [handleRefresh]);
-  useEffect(() => {
-    const interval = setInterval(() => {
-      handleRefreshRef.current();
-    }, TIME_TO_REFRESH);
+    const interval = setInterval(() => { handleRefreshRef.current(); }, TIME_TO_REFRESH);
     return () => clearInterval(interval);
   }, []);
 
-  /* ------------------------ Reorganize (rebuild, sin “temblor”) ------------------------ */
+  /* ------------------------ Reorganize ------------------------ */
   const handleReorganize = useCallback(
     async (opts?: { preserveZoom?: boolean }) => {
       if (!projectName) return;
       try {
-        // 1) limpia persistencia SOLO del layout actual
-        try {
-          localStorage.removeItem(`${localStorageKey}-${graphDirection}`);
-        } catch { /* ignore */ }
-
+        try { localStorage.removeItem(`${localStorageKey}-${graphDirection}`); } catch {}
         disablePersistenceRef.current = true;
-        setHideGraphDuringCenter(true); // ocultar durante el recenter
+        setHideGraphDuringCenter(true);
 
-        // 2) fetch datos + construir nuevo layout
         const data = await svc.fetchProject(projectName);
         setProject(data);
         if (!data.protocols) {
@@ -682,21 +549,14 @@ export default function ProjectPage() {
         }
 
         const { nodes: loadedNodes, edges: loadedEdges, table } = buildGraphElements(
-          data.shortName,
-          data.protocols,
-          viewMode,
-          graphDirection
+          data.shortName, data.protocols, viewMode, graphDirection
         );
-
-        // 3) aplicar posiciones guardadas si existen
         const nodesWithPositions = loadNodesWithPositions(loadedNodes);
 
-        // 4) lote de estados (sin dejar un frame vacío)
         startTransition(() => {
           setNodes(nodesWithPositions);
-          setEdges(loadedEdges);
+          setEdges((_) => paintEdgeHighlight(loadedEdges, selectedIdRef.current ?? null));
           setTableData(table ?? []);
-          // reset ticks solo si quieres resembrar estrictamente en refresh
           setNodeTicks((prev) => {
             const seeded: Record<string, number> = {};
             nodesWithPositions.forEach((n) => {
@@ -709,25 +569,18 @@ export default function ProjectPage() {
           });
         });
 
-        // 5) centrar sin animación visible mientras está oculto
         requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
-            if (inst && nodesWithPositions.length > 0 && viewMode === "hierarchical") {
-              const preserve = opts?.preserveZoom ?? true;
-              centerLikeButton(nodesWithPositions, preserve, viewportRef.current.zoom);
-            } else if (inst) {
-              const vp = inst.getViewport();
-              inst.setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(vp.zoom) });
-              setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(vp.zoom) });
-            }
-
-            // 6) volver a mostrar
-            setTimeout(() => {
-              disablePersistenceRef.current = false;
-              setHideGraphDuringCenter(false);
-            }, 0);
-          });
+          const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
+          if (inst && nodesWithPositions.length > 0 && viewMode === "hierarchical") {
+            const preserve = opts?.preserveZoom ?? true;
+            centerLikeButton(nodesWithPositions, preserve, viewportRef.current.zoom);
+          } else if (inst) {
+            const vp = inst.getViewport();
+            inst.setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(vp.zoom) });
+            setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(vp.zoom) });
+          }
+          disablePersistenceRef.current = false;
+          setHideGraphDuringCenter(false);
         });
       } catch (err) {
         console.error(err);
@@ -735,13 +588,12 @@ export default function ProjectPage() {
         setHideGraphDuringCenter(false);
       }
     },
-    [projectName, viewMode, graphDirection, centerLikeButton, svc]
+    [projectName, viewMode, graphDirection, centerLikeButton, svc, paintEdgeHighlight]
   );
 
-  /* ------------------------ Ticks updater (lightweight + nodes running) ------------------------ */
+  /* ------------------------ Ticks updater ------------------------ */
   useEffect(() => {
     const interval = setInterval(() => {
-      // 1) compute next ticks
       let nextTicks: Record<string, number> = {};
       setNodeTicks((prev) => {
         const next: Record<string, number> = {};
@@ -750,39 +602,24 @@ export default function ProjectPage() {
         return next;
       });
 
-      // 2) update ONLY running nodes' tick field
       setNodes((prev) => {
         if (!prev || prev.length === 0) return prev;
-
         let changed = false;
         const updated = prev.map((n) => {
           if (!isRunningNode(n)) return n;
-
           const prevTick = Number((n as any).data?.tick ?? (n as any).data?.elapsedTime ?? 0);
-          const newTick =
-            nextTicks[n.id] !== undefined ? nextTicks[n.id] : prevTick + 1;
-
+          const newTick = nextTicks[n.id] !== undefined ? nextTicks[n.id] : prevTick + 1;
           if (newTick === prevTick) return n;
           changed = true;
-          return {
-            ...n,
-            data: {
-              ...(n as any).data,
-              tick: newTick,
-            },
-          };
+          return { ...n, data: { ...(n as any).data, tick: newTick } };
         });
-
         return changed ? updated : prev;
       });
 
-      // 3) update table for running rows
       setTableData((prev) =>
-        prev.map((row) =>
-          row.status === "running"
-            ? { ...row, tick: (row.tick ?? Number(row.elapsedTime) ?? 0) + 1 }
-            : row
-        )
+        prev.map((row) => (row.status === "running"
+          ? { ...row, tick: (row.tick ?? Number(row.elapsedTime) ?? 0) + 1 }
+          : row))
       );
     }, 1000);
     return () => clearInterval(interval);
@@ -793,32 +630,24 @@ export default function ProjectPage() {
   useLayoutEffect(() => {
     const layoutChanged = prevLayout.current.viewMode !== viewMode || prevLayout.current.graphDirection !== graphDirection;
     if (!layoutChanged) return;
-    if (!project?.protocols) {
-      prevLayout.current = { viewMode, graphDirection };
-      return;
-    }
+    if (!project?.protocols) { prevLayout.current = { viewMode, graphDirection }; return; }
 
     const instance = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
-    if (!instance) {
-      prevLayout.current = { viewMode, graphDirection };
-      return;
-    }
+    if (!instance) { prevLayout.current = { viewMode, graphDirection }; return; }
 
     const currentViewport = instance.getViewport();
-
-    const { nodes: loadedNodes, edges: loadedEdges } = buildGraphElements(project.shortName, project.protocols, viewMode, graphDirection);
+    const { nodes: loadedNodes, edges: loadedEdges } =
+      buildGraphElements(project.shortName, project.protocols, viewMode, graphDirection);
     const nodesWithPositions = loadNodesWithPositions(loadedNodes);
 
     disablePersistenceRef.current = true;
-
     setIsSwitchingLayout(true);
 
     startTransition(() => {
       setNodes(nodesWithPositions);
-      setEdges(loadedEdges);
+      setEdges((_) => paintEdgeHighlight(loadedEdges, selectedIdRef.current ?? null));
     });
 
-    // wait two frames then center; after that hide overlay
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
@@ -852,15 +681,14 @@ export default function ProjectPage() {
         }
       });
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [graphDirection, viewMode, project]);
 
-  /* ------------------------ Initial first-center effect ------------------------ */
+  /* ------------------------ First-center ------------------------ */
   useEffect(() => {
     if (!nodesLoadedOnce) return;
     const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
     if (!inst) return;
-
     setIsSwitchingLayout(true);
 
     const validNodes = nodes.filter((n) => typeof n.position?.x === "number" && typeof n.position?.y === "number");
@@ -868,9 +696,7 @@ export default function ProjectPage() {
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           inst.setViewport({ x: viewportRef.current.x, y: viewportRef.current.y, zoom: clampZoom(viewportRef.current.zoom) });
-          setTimeout(() => {
-            setIsSwitchingLayout(false);
-          }, 60);
+          setTimeout(() => setIsSwitchingLayout(false), 60);
         });
       });
     } else {
@@ -879,35 +705,28 @@ export default function ProjectPage() {
         requestAnimationFrame(() => {
           const vp = inst.getViewport();
           setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
-          setTimeout(() => {
-            setIsSwitchingLayout(false);
-          }, 60);
+          setTimeout(() => setIsSwitchingLayout(false), 60);
         });
       });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nodesLoadedOnce]);
 
-  /* --------------------- Table switching: avoid flicker --------------------- */
+  /* --------------------- Table switching --------------------- */
   useEffect(() => {
     if (viewMode === "table") {
       setTableVisible(false);
       setIsSwitchingLayout(true);
       requestAnimationFrame(() => {
         setTableVisible(true);
-        requestAnimationFrame(() => {
-          setTimeout(() => {
-            setIsSwitchingLayout(false);
-          }, 60);
-        });
+        requestAnimationFrame(() => setTimeout(() => setIsSwitchingLayout(false), 60));
       });
     } else {
       setTableVisible(false);
     }
   }, [viewMode]);
 
-  /* --------------------- Table helpers / UI helpers --------------------- */
-
+  /* --------------------- Helpers --------------------- */
   const scrollToProtocol = (id: string) => {
     const row = rowRefs.current[id];
     const container = tableContainerRef.current;
@@ -916,10 +735,7 @@ export default function ProjectPage() {
       const rowTop = row.offsetTop;
       const rowHeight = row.offsetHeight;
       const containerHeight = container.offsetHeight;
-      container.scrollTo({
-        top: rowTop - containerHeight / 2 + rowHeight / 2,
-        behavior: "smooth",
-      });
+      container.scrollTo({ top: rowTop - containerHeight / 2 + rowHeight / 2, behavior: "smooth" });
     }
   };
 
@@ -934,7 +750,7 @@ export default function ProjectPage() {
       interactive: "#f7f3bf",
     };
     return {
-      backgroundColor: colorMap[status ?? "" ] ?? "#eee",
+      backgroundColor: colorMap[status ?? ""] ?? "#eee",
       padding: "4px 8px",
       borderRadius: "6px",
       fontWeight: 300,
@@ -948,9 +764,7 @@ export default function ProjectPage() {
     if (!query.trim()) {
       setHighlightedId(null);
       setPreviousNodeId(null);
-      setNodes((nds) => nds.map((n) => ({ ...n, selected: false, style: undefined })));
-      setEdges((eds) => eds.map((e) => ({ ...e, style: undefined })));
-
+      applyEdgeHighlight(null);
       if (inst && nodes.length > 0) {
         const currentViewport = inst.getViewport();
         const validNodes = nodes.filter((n) => typeof n.position?.x === "number" && typeof n.position?.y === "number");
@@ -973,53 +787,29 @@ export default function ProjectPage() {
     }
 
     if (viewMode === "table") {
-      const matchRow = tableData.find(
-        (row) =>
-          row.id.toLowerCase().includes(query.toLowerCase()) ||
-          row.label.toLowerCase().includes(query.toLowerCase())
+      const matchRow = tableData.find((row) =>
+        row.id.toLowerCase().includes(query.toLowerCase()) ||
+        row.label.toLowerCase().includes(query.toLowerCase())
       );
       if (matchRow) scrollToProtocol(matchRow.id);
       return;
     }
 
-    const match = nodes.find(
-      (node) =>
-        node.id.toLowerCase().includes(query.toLowerCase()) ||
-        ((node as any).data?.label ?? "").toLowerCase().includes(query.toLowerCase())
+    const match = nodes.find((node) =>
+      node.id.toLowerCase().includes(query.toLowerCase()) ||
+      ((node as any).data?.label ?? "").toLowerCase().includes(query.toLowerCase())
     );
 
     if (!match) {
       setHighlightedId(null);
       setPreviousNodeId(null);
-      setNodes((nds) => nds.map((n) => ({ ...n, selected: false, style: undefined })));
-      setEdges((eds) => eds.map((e) => ({ ...e, style: undefined })));
+      applyEdgeHighlight(null);
       return;
     }
 
-    const highlightNodeStyle = { boxShadow: "0 0 0 4px rgba(0,112,243,0.12)" };
-
-    setNodes((nds) =>
-      nds.map((n) =>
-        n.id === match.id
-          ? { ...n, selected: true, style: { ...((n as any).style ?? {}), ...highlightNodeStyle } }
-          : { ...n, selected: false, style: undefined }
-      )
-    );
-
-    const connectedEdgeIds = edges
-      .filter((e) => e.source === match.id || e.target === match.id)
-      .map((e) => e.id);
-
-    setEdges((eds) =>
-      eds.map((e) =>
-        connectedEdgeIds.includes(e.id)
-          ? { ...e, style: { ...(e.style ?? {}), stroke: "#0070f3", strokeWidth: 3 } }
-          : { ...e, style: undefined }
-      )
-    );
-
     setPreviousNodeId(match.id);
     setHighlightedId(match.id);
+    applyEdgeHighlight(match.id);
 
     if (inst) {
       const currentZoom = inst.getViewport().zoom;
@@ -1037,12 +827,12 @@ export default function ProjectPage() {
       setHighlightedId(id);
       setSelectedNodeDetails(fullNodeData);
       setPreviousNodeId(id);
+      applyEdgeHighlight(id);
     } catch (err) {
       console.error(err);
     }
   };
 
-  /* --------------------- Time formatting helper --------------------- */
   const formatCpuTime = (seconds: number): string => {
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
@@ -1062,13 +852,10 @@ export default function ProjectPage() {
 
   const handleCloseMenu = () => setContextMenu((prev) => ({ ...prev, visible: false }));
 
-  // close menu on outside interactions and ESC
   useEffect(() => {
     if (!contextMenu.visible) return;
     const onWindowMouseDown = () => handleCloseMenu();
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") handleCloseMenu();
-    };
+    const onKeyDown = (e: KeyboardEvent) => { if (e.key === "Escape") handleCloseMenu(); };
     window.addEventListener("mousedown", onWindowMouseDown);
     window.addEventListener("keydown", onKeyDown);
     return () => {
@@ -1077,7 +864,7 @@ export default function ProjectPage() {
     };
   }, [contextMenu.visible]);
 
-  /* ------------------------ ReactFlow init / move handlers ------------------------ */
+  /* ------------------------ ReactFlow init / move ------------------------ */
   const handleOnInit = useCallback((inst: ReactFlowInstance) => {
     reactFlowInstanceRef.current = inst;
     try {
@@ -1086,9 +873,7 @@ export default function ProjectPage() {
       inst.setViewport({ x: current.x, y: current.y, zoom: desiredZoom });
       const vp = inst.getViewport();
       setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
-    } catch {
-      setIsSwitchingLayout(false);
-    }
+    } catch {}
   }, []);
 
   const handleOnMoveEnd = useCallback((_: any, vp: { x: number; y: number; zoom: number }) => {
@@ -1106,7 +891,6 @@ export default function ProjectPage() {
     const newVp = inst.getViewport();
     setViewport({ x: newVp.x, y: newVp.y, zoom: newVp.zoom });
   }, []);
-
   const handleZoomOut = useCallback(() => {
     const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
     if (!inst) return;
@@ -1116,10 +900,7 @@ export default function ProjectPage() {
     const newVp = inst.getViewport();
     setViewport({ x: newVp.x, y: newVp.y, zoom: newVp.zoom });
   }, []);
-
-  const handleFitView = useCallback(() => {
-    centerLikeButton(undefined, true);
-  }, [centerLikeButton]);
+  const handleFitView = useCallback(() => { centerLikeButton(undefined, true); }, [centerLikeButton]);
 
   /* ------------------------ Render ------------------------ */
   return (
@@ -1149,12 +930,12 @@ export default function ProjectPage() {
                 const fullNodeData = await svc.fetchNewProtocolDetails(projectName, protocolClass);
                 setSelectedNodeDetails(fullNodeData);
                 setPreviousNodeId(protocolClass);
+                applyEdgeHighlight(protocolClass);
               } catch (err) {
                 console.error("Failed to fetch protocol details", err);
               }
             }}
           />
-
           <button
             onClick={() => console.log("Workflow clicked")}
             className="px-3 py-1 rounded-lg text-xs flex items-center gap-1 bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300"
@@ -1173,14 +954,12 @@ export default function ProjectPage() {
             >
               <TreeIcon className="w-4 h-4" /> Tree TB
             </button>
-
             <button
               onClick={() => { setViewMode("hierarchical"); setGraphDirection("LR"); }}
               className={`px-3 py-1 rounded-lg text-xs flex items-center gap-1 ${viewMode === "hierarchical" && graphDirection === "LR" ? "bg-blue-500 text-white" : "bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300"}`}
             >
               <TreeIcon className="w-4 h-4 transform rotate-270" /> Tree LR
             </button>
-
             <button
               onClick={() => setViewMode("table")}
               className={`px-3 py-1 rounded-lg text-xs flex items-center gap-1 ${viewMode === "table" ? "bg-blue-500 text-white" : "bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300"}`}
@@ -1200,7 +979,7 @@ export default function ProjectPage() {
       )}
 
       <div className="flex-1 relative">
-        {/* Overlay while switching layouts — non-blocking */}
+        {/* switching overlay */}
         {isSwitchingLayout && (
           <div
             aria-hidden
@@ -1213,7 +992,7 @@ export default function ProjectPage() {
           </div>
         )}
 
-        {/* Initial project loading overlay (smaller, spinning) */}
+        {/* initial loading overlay */}
         {isLoadingProject && (
           <div
             role="status"
@@ -1222,9 +1001,7 @@ export default function ProjectPage() {
             style={{ pointerEvents: "auto" }}
           >
             <div className="relative">
-              {/* outer ring */}
               <div className="w-8 h-8 rounded-full border-2 border-gray-300" />
-              {/* top ring spinning */}
               <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-gray-700 animate-spin" />
             </div>
             <p className="mt-3 text-xs tracking-wide text-gray-700 dark:text-gray-200">
@@ -1233,14 +1010,11 @@ export default function ProjectPage() {
           </div>
         )}
 
-        {/* TABLE pane */}
+        {/* TABLE */}
         <div
           ref={tableContainerRef}
           className="absolute inset-0 overflow-auto border rounded shadow p-4 z-30 transition-opacity"
-          style={{
-            opacity: viewMode === "table" ? 1 : 0,
-            pointerEvents: viewMode === "table" ? "auto" : "none",
-          }}
+          style={{ opacity: viewMode === "table" ? 1 : 0, pointerEvents: viewMode === "table" ? "auto" : "none" }}
           aria-hidden={viewMode !== "table"}
         >
           <div className="flex justify-end mb-4 mr-1">
@@ -1272,7 +1046,6 @@ export default function ProjectPage() {
                   <td className="px-4 py-2">
                     <div className="flex items-center justify-between">
                       <span className={`${row.status === "running" ? "pulsing-table" : ""}`} style={getStatusStyle(row.status)}>{row.status ?? "—"}</span>
-
                       {(row.status === "running" || row.status === "failed" || row.status === "aborted") && (
                         <div className="flex items-center gap-2 ml-4 flex-1">
                           <div className="w-16 h-3 bg-gray-300 dark:bg-gray-700 rounded overflow-hidden">
@@ -1291,11 +1064,7 @@ export default function ProjectPage() {
                   </td>
                   <td className="px-4 py-2 space-x-2">
                     {row.children?.map((childId: string) => (
-                      <button
-                        key={childId}
-                        onClick={() => scrollToProtocol(childId)}
-                        className="text-blue-600 dark:text-blue-400 underline hover:text-blue-800"
-                      >
+                      <button key={childId} onClick={() => scrollToProtocol(childId)} className="text-blue-600 dark:text-blue-400 underline hover:text-blue-800">
                         {childId}
                       </button>
                     ))}
@@ -1306,7 +1075,7 @@ export default function ProjectPage() {
           </table>
         </div>
 
-        {/* ReactFlow pane */}
+        {/* ReactFlow */}
         <div
           className="absolute inset-0 border transition-opacity"
           style={{
@@ -1378,7 +1147,7 @@ export default function ProjectPage() {
                     Refresh graph
                   </DropdownMenuItem>
 
-                  <DropdownMenuItem onClick={() => { setNodes((nds) => nds.map((n) => ({ ...n, selected: false }))); handleCloseMenu(); }}>
+                  <DropdownMenuItem onClick={() => { setPreviousNodeId(null); setHighlightedId(null); applyEdgeHighlight(null); handleCloseMenu(); }}>
                     <Trash2 className="w-4 h-4 mr-2" />
                     Clear selection
                   </DropdownMenuItem>

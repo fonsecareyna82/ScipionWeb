@@ -139,7 +139,7 @@ export function buildGraphElements(
           ? { x: secondary + nodeWidth / 2, y: level * spacingY }
           : { x: level * spacingX, y: secondary + nodeHeight / 2 };
 
-      // ✅ Correct handle positions per direction
+      // Correct handle positions per direction
       const sourcePosition: Position =
         direction === "LR" ? Position.Right : Position.Bottom;
       const targetPosition: Position =
@@ -163,7 +163,7 @@ export function buildGraphElements(
         },
         position,
         draggable: true,
-        // 👇 crucial for proper edge orientation
+        // crucial for proper edge orientation
         sourcePosition,
         targetPosition,
       });

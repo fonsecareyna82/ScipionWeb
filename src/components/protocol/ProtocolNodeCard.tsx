@@ -131,7 +131,10 @@ export default function StatusNodeCard({
           className={classNames}
           style={{ backgroundColor: bgColor }}
           onClick={onClick}
-          onDoubleClick={onDoubleClick}
+          onDoubleClick={(e) => {
+            e.stopPropagation();
+            onDoubleClick?.();
+          }}
           onMouseEnter={() => setIsHovered(true)}
           onMouseLeave={() => setIsHovered(false)}
           onContextMenu={(e) => {
@@ -179,7 +182,10 @@ export default function StatusNodeCard({
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent className="w-56">
-                  <DropdownMenuItem onSelect={onDoubleClick}>
+                  <DropdownMenuItem onSelect={(e) => {
+                    e.stopPropagation();
+                    onDoubleClick?.();
+                  }}>
                     <Pencil className="mr-2 h-4 w-4" /> Edit
                   </DropdownMenuItem>
                   <DropdownMenuItem>
@@ -383,7 +389,10 @@ export default function StatusNodeCard({
         onContextMenu={(e) => e.stopPropagation()} // extra safety against canvas
         onClick={(e) => e.stopPropagation()}
       >
-        <ContextMenuItem onSelect={onDoubleClick}>
+        <ContextMenuItem onSelect={(e) => {
+          e.stopPropagation();
+          onDoubleClick?.();
+        }}>
           <Pencil className="mr-2 h-4 w-4" /> Edit
         </ContextMenuItem>
         <ContextMenuItem>
