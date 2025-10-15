@@ -43,7 +43,7 @@ const ParamRow = ({
       <Box
         sx={{
           display: 'grid',
-          gridTemplateColumns: '224px 1fr auto',
+          gridTemplateColumns: '210px 1fr auto',
           alignItems: 'center',
           mb: 1,
           backgroundColor: rowIndex % 2 ? 'white' : '#EDEBEB',
@@ -67,7 +67,7 @@ const ParamRow = ({
                 // If parent provided a Finder handler, use it; otherwise keep local fallback
                 onClick={onOpenFind ? onOpenFind : () => setOpenSelector(true)}
               >
-                <FindIcon fontSize="1.3rem" />
+                <FindIcon className='ml-0' fontSize="1.3rem" />
               </IconButton>
             </Tooltip>
           )}
@@ -75,7 +75,7 @@ const ParamRow = ({
           {onClear && (
             <Tooltip title="Clear">
               <IconButton size="small" onClick={onClear}>
-                <TrashBinIcon fontSize="1.3rem" />
+                <TrashBinIcon className='ml-0' fontSize="1.3rem" />
               </IconButton>
             </Tooltip>
           )}
@@ -83,7 +83,7 @@ const ParamRow = ({
           {isPointerParam && (
             <Tooltip title="Visualize">
               <IconButton size="small" onClick={() => console.log('View')}>
-                <EyeIcon fontSize="1.3rem" />
+                <EyeIcon className='ml-0' fontSize="1.3rem" />
               </IconButton>
             </Tooltip>
           )}
@@ -91,7 +91,7 @@ const ParamRow = ({
           {helpText && (
             <Tooltip title="Help">
               <IconButton size="small" onClick={() => setOpenHelp(true)}>
-                <HelpIcon fontSize="1.3rem" />
+                <HelpIcon className='ml-0' fontSize="1.3rem" />
               </IconButton>
             </Tooltip>
           )}

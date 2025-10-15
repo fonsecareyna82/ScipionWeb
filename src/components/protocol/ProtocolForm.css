@@ -1,9 +1,9 @@
 .protocol-form {
   position: absolute;
-  top: 6%;
+  top: 0%;
   right: 0%;
   bottom: 0%;
-  width: 38%;
+  width: 40%;
   display: flex;
   flex-direction: column;
   background-color: #fff;
