@@ -292,6 +292,74 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
   }, [data]);
 
   // --------------------------------------------
+  // Incremental log polling
+  // --------------------------------------------
+  useEffect(() => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+    if (topTab !== 4 || !data?.projectId || !data?.id) return;
+
+    if (protocolDetails.status === "running") {
+      (async () => {
+        try {
+          const res: any = await fetchProtocolLogsStream(data.projectId, data.id, 0);
+          setLogs(res.stdoutLog ?? "");
+          setErrorLogs(res.stderrLog ?? "");
+          offsetRef.current = res.stdoutOffset ?? 0;
+          errorOffsetRef.current = res.stderrOffset ?? 0;
+        } catch (err: any) {
+          setLogsError(err.message || "Failed to load logs");
+        }
+      })();
+
+      pollRef.current = setInterval(async () => {
+        try {
+          const res: any = await fetchProtocolLogsStream(data.projectId, data.id, offsetRef.current);
+          if (res.stdoutLog) {
+            setLogs((prev) => prev + res.stdoutLog);
+            offsetRef.current = res.stdoutOffset ?? offsetRef.current;
+          }
+          if (res.stderrLog) {
+            setErrorLogs((prev) => prev + res.stderrLog);
+            errorOffsetRef.current = res.stderrOffset ?? errorOffsetRef.current;
+          }
+        } catch (err: any) {
+          setLogsError(err.message || "Failed to load logs");
+        }
+      }, 2000);
+
+      return () => {
+        if (pollRef.current) {
+          clearInterval(pollRef.current);
+          pollRef.current = null;
+        }
+      };
+    }
+
+    if (protocolDetails.status && protocolDetails.status !== "new") {
+      (async () => {
+        try {
+          const res: any = await fetchProtocolLogsStream(data.projectId, data.id, 0);
+          setLogs(res.stdoutLog ?? "");
+          setErrorLogs(res.stderrLog ?? "");
+        } catch (err: any) {
+          setLogsError(err.message || "Failed to load logs");
+        }
+      })();
+    }
+  }, [protocolDetails.status, topTab, data?.projectId, data?.id]);
+
+  // --------------------------------------------
+  // Scroll on new logs
+  // --------------------------------------------
+  useEffect(() => {
+    if (!containerRef.current) return;
+    containerRef.current.scrollTop = containerRef.current.scrollHeight;
+  }, [logs]);
+
+  // --------------------------------------------
   // Live expected-class reader: ignore param meta-classes; dedupe
   // Returns:
   //  - string/string[] when there is a class restriction
@@ -1109,7 +1177,7 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
       {/* HEADER */}
       <div className="form-header">
         <div className="form-title-wrapper">
-          <Box className="inline-flex items-center justify-center rounded-full bg-green-500 text-black text-xs font-bold px: 2; py: 1;">
+          <Box className="inline-flex items-center justify-center rounded-full bg-green-500 text-black text-xs font-bold px-2 py-1">
             {data.id}
           </Box>
           <h2>{protocolDetails.label}</h2>
