@@ -292,64 +292,97 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
   }, [data]);
 
   // --------------------------------------------
-  // Incremental log polling
+  // Helpers for Logs
+  // --------------------------------------------
+  const isTerminalStatus = (s: any) =>
+    ["finished", "success", "done", "failed", "error", "cancelled", "canceled", "stopped", "aborted"]
+      .includes(String(s || "").toLowerCase());
+  const idleStreakRef = useRef<number>(0);
+
+  // --------------------------------------------
+  // Incremental log polling (siempre que el tab Logs esté activo)
   // --------------------------------------------
   useEffect(() => {
+    // Cleanning a preview interval
     if (pollRef.current) {
       clearInterval(pollRef.current);
       pollRef.current = null;
     }
+
+    // Minimal conditions for activating the polling
     if (topTab !== 4 || !data?.projectId || !data?.id) return;
 
-    if (protocolDetails.status === "running") {
-      (async () => {
-        try {
-          const res: any = await fetchProtocolLogsStream(data.projectId, data.id, 0);
-          setLogs(res.stdoutLog ?? "");
-          setErrorLogs(res.stderrLog ?? "");
-          offsetRef.current = res.stdoutOffset ?? 0;
-          errorOffsetRef.current = res.stderrOffset ?? 0;
-        } catch (err: any) {
-          setLogsError(err.message || "Failed to load logs");
-        }
-      })();
+    let cancelled = false;
+    idleStreakRef.current = 0;
 
-      pollRef.current = setInterval(async () => {
-        try {
-          const res: any = await fetchProtocolLogsStream(data.projectId, data.id, offsetRef.current);
-          if (res.stdoutLog) {
-            setLogs((prev) => prev + res.stdoutLog);
-            offsetRef.current = res.stdoutOffset ?? offsetRef.current;
+    // 1) Initial loading from offset 0
+    (async () => {
+      try {
+        const res: any = await fetchProtocolLogsStream(data.projectId, data.id, 0);
+        if (cancelled) return;
+
+        setLogs(res.stdoutLog ?? "");
+        setErrorLogs(res.stderrLog ?? "");
+        offsetRef.current = res.stdoutOffset ?? (res.stdoutLog ? res.stdoutLog.length : 0);
+        errorOffsetRef.current = res.stderrOffset ?? (res.stderrLog ? res.stderrLog.length : 0);
+      } catch (err: any) {
+        if (!cancelled) setLogsError(err.message || "Failed to load logs");
+      }
+    })();
+
+    // 2) Incremental polling  every 2s
+    pollRef.current = setInterval(async () => {
+      try {
+        const res: any = await fetchProtocolLogsStream(
+          data.projectId,
+          data.id,
+          Math.min(offsetRef.current || 0, Number.MAX_SAFE_INTEGER),
+        );
+        if (cancelled) return;
+
+        let gotNew = false;
+
+        if (res.stdoutLog) {
+          setLogs((prev) => prev + res.stdoutLog);
+          offsetRef.current = res.stdoutOffset ?? offsetRef.current;
+          gotNew = true;
+        }
+
+        if (res.stderrLog) {
+          setErrorLogs((prev) => prev + res.stderrLog);
+          errorOffsetRef.current = res.stderrOffset ?? errorOffsetRef.current;
+          gotNew = true;
+        }
+
+        // SIf we are in a terminal state and nothing arrives in 2 cycles, we stop
+        if (isTerminalStatus(protocolDetails.status)) {
+          idleStreakRef.current = gotNew ? 0 : idleStreakRef.current + 1;
+          if (idleStreakRef.current >= 2 && pollRef.current) {
+            clearInterval(pollRef.current);
+            pollRef.current = null;
           }
-          if (res.stderrLog) {
-            setErrorLogs((prev) => prev + res.stderrLog);
-            errorOffsetRef.current = res.stderrOffset ?? errorOffsetRef.current;
+        } else {
+          // If it is not terminal and there is no news, we maintain continuous polling.
+          if (!gotNew) {
+            // no-op: we continue probing
+          } else {
+            idleStreakRef.current = 0;
           }
-        } catch (err: any) {
-          setLogsError(err.message || "Failed to load logs");
         }
-      }, 2000);
+      } catch (err: any) {
+        if (!cancelled) setLogsError(err.message || "Failed to load logs");
+      }
+    }, 2000);
 
-      return () => {
-        if (pollRef.current) {
-          clearInterval(pollRef.current);
-          pollRef.current = null;
-        }
-      };
-    }
-
-    if (protocolDetails.status && protocolDetails.status !== "new") {
-      (async () => {
-        try {
-          const res: any = await fetchProtocolLogsStream(data.projectId, data.id, 0);
-          setLogs(res.stdoutLog ?? "");
-          setErrorLogs(res.stderrLog ?? "");
-        } catch (err: any) {
-          setLogsError(err.message || "Failed to load logs");
-        }
-      })();
-    }
-  }, [protocolDetails.status, topTab, data?.projectId, data?.id]);
+    // Cleanup on tab exit or unmount
+    return () => {
+      cancelled = true;
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+    };
+  }, [topTab, data?.projectId, data?.id, protocolDetails.status]);
 
   // --------------------------------------------
   // Scroll on new logs
@@ -358,6 +391,12 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
     if (!containerRef.current) return;
     containerRef.current.scrollTop = containerRef.current.scrollHeight;
   }, [logs]);
+
+  // Autoscroll para errores también
+  useEffect(() => {
+    if (!errorContainerRef.current) return;
+    errorContainerRef.current.scrollTop = errorContainerRef.current.scrollHeight;
+  }, [errorLogs]);
 
   // --------------------------------------------
   // Live expected-class reader: ignore param meta-classes; dedupe
