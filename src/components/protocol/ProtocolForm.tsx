@@ -98,7 +98,7 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
           return obj._objValue;
         }
       }
-    } catch {}
+    } catch { }
     return maybeJson;
   };
 
@@ -126,6 +126,32 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
     }
     return state.editableValue ?? "";
   };
+
+  // ---------- ExpertLevel helpers ----------
+  // Find the 'expertLevel' EnumParam (usually in "General" section)
+  const findGeneralExpertLocator = useCallback(() => {
+    if (!data?.expertLevel || !Array.isArray(data?.definition)) return null;
+
+    for (let i = 0; i < data.definition.length; i++) {
+      const section = data.definition[i];
+      const params = section?.params ?? [];
+      for (const p of params) {
+        const [n, def] = Object.entries(p)[0] as [string, any];
+        if (n === "expertLevel" && def?._class === "EnumParam") {
+          return { sectionIdx: i, name: n };
+        }
+      }
+    }
+    return null;
+  }, [data]);
+
+  // Read current general expert level (0=Normal, 1=Advanced)
+  const generalExpertLevel = (() => {
+    const loc = findGeneralExpertLocator();
+    if (!loc) return null;
+    const v = getParamCurrentValue(loc.sectionIdx, "expertLevel");
+    return typeof v === "number" ? v : Number(v) || 0;
+  })();
 
   // Simple condition evaluator used to show/hide params
   const evalAtom = (sectionIdx: number, atom: string): boolean => {
@@ -284,8 +310,8 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
           typeof it.editableValue === "string"
             ? it.editableValue
             : typeof it.default === "string"
-            ? it.default
-            : null;
+              ? it.default
+              : null;
         prevSelectedInputTypeRef.current = label ?? null;
       }
     }
@@ -757,6 +783,21 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
       const value = protocolDetails.params?.[key]?.editableValue;
       if (def.condition && !evalExpr(sectionIdx, def.condition)) return null;
 
+      // Hide advanced params when general expertLevel is "Normal" (0).
+      // Keep the 'expertLevel' selector itself always visible.
+      const expertLocator = findGeneralExpertLocator();
+      const isExpertSelector =
+        !!expertLocator && expertLocator.sectionIdx === sectionIdx && name === "expertLevel";
+
+      if (
+        data?.expertLevel &&            // protocol supports expert mode
+        generalExpertLevel === 0 &&     // currently in Normal
+        def?.expertLevel === 1 &&       // param is Advanced
+        !isExpertSelector               // but don't hide the selector itself
+      ) {
+        return null; // skip rendering advanced field/group in Normal
+      }
+
       // Optional advanced indicator
       const advancedSlot = (
         <Box
@@ -823,8 +864,8 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
             expected === null // null => "All" (no filter)
               ? true
               : Array.isArray(expected)
-              ? expected.some((e) => norm(e) === draggedClass)
-              : norm(expected) === draggedClass;
+                ? expected.some((e) => norm(e) === draggedClass)
+                : norm(expected) === draggedClass;
 
           if (!matches) return;
 
@@ -989,9 +1030,23 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
 
         const controlBase =
           def.display === 0 ? (
-            <RadioGroup row value={sel} onChange={(e) => onChange(e.target.value)}>
+            <RadioGroup
+              row
+              value={
+                def.choices?.includes(sel)
+                  ? sel
+                  : def.choices?.[0] ?? ''
+              }
+              onChange={(e) => onChange(e.target.value)}
+            >
               {def.choices.map((ch: string, i: number) => (
-                <FormControlLabel key={i} value={ch} control={<Radio size="small" />} label={ch} />
+                <FormControlLabel
+                  key={i}
+                  value={ch}
+                  control={<Radio size="small" />}
+                  label={ch}
+                  sx={{ '& .MuiFormControlLabel-label': { fontSize: 12, lineHeight: 1.2 } }}
+                />
               ))}
             </RadioGroup>
           ) : (
@@ -1149,7 +1204,15 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
         />
       );
     },
-    [protocolDetails.params, dragOverKey, currentDraggedOutput, expandedGroups]
+    [
+      protocolDetails.params,
+      dragOverKey,
+      currentDraggedOutput,
+      expandedGroups,
+      data,
+      generalExpertLevel,
+      findGeneralExpertLocator
+    ]
   );
 
   if (!data || !protocolDetails.params) return null;
