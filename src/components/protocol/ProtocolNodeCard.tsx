@@ -1,4 +1,3 @@
-// ProtocolNodeCard.tsx
 import { useState } from "react";
 import { Handle, Position } from "reactflow";
 import "./ProtocolNodeCard.css";
@@ -10,7 +9,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
-// Use shadcn ContextMenu for right-click (auto flip/collision)
 import {
   ContextMenu,
   ContextMenuContent,
@@ -61,7 +59,7 @@ const STATUS_BADGE_COLORS: Record<string, string> = {
 };
 
 type StatusNodeProps = {
-  id?: string; // optional
+  id?: string;
   data: {
     label: string;
     status?: string;
@@ -76,14 +74,22 @@ type StatusNodeProps = {
     inputs?: any[];
   };
   selectedNodeId?: string;
-  hoveredNodeId?: string; // new (optional)
-  isHovered?: boolean;    // new (optional)
-  setHoveredNodeId?: React.Dispatch<React.SetStateAction<string | null>>; // new (optional)
+  hoveredNodeId?: string;
+  isHovered?: boolean;
+  setHoveredNodeId?: React.Dispatch<React.SetStateAction<string | null>>;
   graphDirection?: "TB" | "LR";
   onClick?: () => void;
   onDoubleClick?: () => void;
   zoomLevel?: number;
   compactThreshold?: number;
+
+  onEdit?: (id: string) => void;
+  onRename?: (id: string) => void;
+  onDuplicate?: (id: string) => void;
+  onDelete?: (id: string) => void;
+  onRestartAll?: (id: string) => void;
+  onContinueAll?: (id: string) => void;
+  onResetFrom?: (id: string) => void;
 };
 
 const formatCpuTime = (seconds: number): string => {
@@ -94,28 +100,34 @@ const formatCpuTime = (seconds: number): string => {
   return `${pad(hours)}h:${pad(minutes)}m:${pad(secs)}s`;
 };
 
-export default function StatusNodeCard({
+export default function StatusNode({
   data,
   selectedNodeId,
   graphDirection = "TB",
   onClick,
   onDoubleClick,
   zoomLevel = 0.6,
-  compactThreshold = 0.3
+  compactThreshold = 0.3,
+  onEdit,
+  onRename,
+  onDuplicate,
+  onDelete,
+  onRestartAll,
+  onContinueAll,
+  onResetFrom,
 }: StatusNodeProps) {
   const [isHovered, setIsHovered] = useState(false);
   const [draggingIdx, setDraggingIdx] = useState<number | null>(null);
   const isSelected = selectedNodeId === data.id;
   const { setCurrentDraggedOutput } = useDrag();
 
-  const bgColor =
-    STATUS_COLORS[data.status ?? "finished"] ?? STATUS_COLORS["root"];
+  const bgColor = STATUS_COLORS[data.status ?? "finished"] ?? STATUS_COLORS["root"];
   data.color = bgColor;
 
   const classNames = [
     "status-node-card",
     "rounded-2xl border transition-shadow transform",
-    isHovered ? "shadow-xl scale-[1.03]" : "shadow-md",
+    isHovered ? "shadow-xl scale-[1.01]" : "shadow-md",
     isSelected
       ? "border-3 border-blue-600 shadow-[0_0_20px_rgba(59,130,246,0.5)]"
       : "border-gray-300",
@@ -123,25 +135,24 @@ export default function StatusNodeCard({
 
   const isCompactView = zoomLevel <= compactThreshold;
 
-  // Wrap the whole node with ContextMenu to get proper right-click behavior
+  const handleEdit = () => onEdit?.(data.id);
+  const handleRename = () => onRename?.(data.id);
+  const handleDuplicate = () => onDuplicate?.(data.id);
+  const handleDelete = () => onDelete?.(data.id);
+  const handleRestartAll = () => onRestartAll?.(data.id);
+  const handleContinueAll = () => onContinueAll?.(data.id);
+  const handleResetFrom = () => onResetFrom?.(data.id);
+
   return (
     <ContextMenu>
-      {/* Use the node card as the context menu trigger */}
       <ContextMenuTrigger asChild>
         <div
           className={classNames}
           style={{ backgroundColor: bgColor }}
           onClick={onClick}
-          onDoubleClick={(e) => {
-            e.stopPropagation();
-            onDoubleClick?.();
-          }}
+          onDoubleClick={(e) => { e.stopPropagation(); onDoubleClick?.(); }}
           onMouseEnter={() => setIsHovered(true)}
           onMouseLeave={() => setIsHovered(false)}
-          onContextMenu={(e) => {
-            // Prevent canvas/global handlers from also opening their menus
-            e.stopPropagation();
-          }}
         >
           {/* Header */}
           <div
@@ -159,14 +170,8 @@ export default function StatusNodeCard({
                   <span>{data.id}</span>
                 </div>
               )}
-              <div
-                className={data.id === "PROJECT" ? "text-4xl text-black" : "node-label dark:text-black"}
-                style={isCompactView ? { fontSize: "2.8rem" } : {}}
-              >
-                <div
-                  className={`node-label dark:text-black ${isCompactView ? "compact" : ""}`}
-                  title={data.label}
-                >
+              <div className={data.id === "PROJECT" ? "text-4xl text-black" : "node-label dark:text-black"} style={isCompactView ? { fontSize: "2.8rem" } : {}}>
+                <div className={`node-label dark:text-black ${isCompactView ? "compact" : ""}`} title={data.label}>
                   {data.label}
                 </div>
               </div>
@@ -175,30 +180,24 @@ export default function StatusNodeCard({
             {data.id !== "PROJECT" && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <button
-                    className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-200 ml-4"
-                    onClick={(e) => e.stopPropagation()}
-                  >
+                  <button className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-200 ml-4" onClick={(e) => e.stopPropagation()}>
                     <MoreHorizontal className="h-12 w-12 text-black dark:text-black" />
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent className="w-56">
-                  <DropdownMenuItem onSelect={(e) => {
-                    e.stopPropagation();
-                    onDoubleClick?.();
-                  }}>
+                  <DropdownMenuItem onClick={handleEdit}>
                     <Pencil className="mr-2 h-4 w-4" /> Edit
                   </DropdownMenuItem>
                   <DropdownMenuItem>
                     <FolderOpen className="mr-2 h-4 w-4" /> Browse
                   </DropdownMenuItem>
-                  <DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleRename}>
                     <Pencil className="mr-2 h-4 w-4" /> Rename
                   </DropdownMenuItem>
-                  <DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleDuplicate}>
                     <Copy className="mr-2 h-4 w-4" /> Duplicate
                   </DropdownMenuItem>
-                  <DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleDelete}>
                     <Trash2 className="mr-2 h-4 w-4" /> Delete
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
@@ -209,21 +208,18 @@ export default function StatusNodeCard({
                     <ArrowUpRight className="mr-2 h-4 w-4" /> Select to
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
-                  {/* Stop ABOVE "Restart all" when running */}
                   {data.status === "running" && (
-                    <>
-                      <DropdownMenuItem>
-                        <Square className="mr-2 h-4 w-4" /> Stop
-                      </DropdownMenuItem>
-                    </>
+                    <DropdownMenuItem>
+                      <Square className="mr-2 h-4 w-4" /> Stop
+                    </DropdownMenuItem>
                   )}
-                  <DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleRestartAll}>
                     <RefreshCw className="mr-2 h-4 w-4" /> Restart all
                   </DropdownMenuItem>
-                  <DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleContinueAll}>
                     <Play className="mr-2 h-4 w-4" /> Continue all
                   </DropdownMenuItem>
-                  <DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleResetFrom}>
                     <RotateCcw className="mr-2 h-4 w-4" /> Reset from
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
@@ -238,18 +234,10 @@ export default function StatusNodeCard({
             )}
           </div>
 
-          {/* Content with animation */}
-          <div
-            className={`transition-all duration-300 ease-in-out overflow-hidden ${isCompactView ? "opacity-0 max-h-0" : "opacity-100 max-h-[2000px]"
-              }`}
-          >
-            {/* Content */}
+          {/* Content */}
+          <div className={`transition-all duration-300 ease-in-out overflow-hidden ${isCompactView ? "opacity-0 max-h-0" : "opacity-100 max-h-[2000px]"}`}>
             {data.id !== "PROJECT" && (
-              <div
-                className="node-card-content p-3 mt-4"
-                style={{ minHeight: "120px", maxHeight: "300px", overflowY: "auto" }}
-              >
-                {/* Outputs */}
+              <div className="node-card-content p-3 mt-4" style={{ minHeight: "120px", maxHeight: "300px", overflowY: "auto" }}>
                 {Array.isArray(data.outputs) && data.outputs.length > 0 && (
                   <div className="outputs-list">
                     <div className="section-header flex items-center px-2 py-1 bg-green-50 dark:bg-green-50 rounded-t-lg border-b border-green-800 dark:border-green-800">
@@ -258,21 +246,13 @@ export default function StatusNodeCard({
                     <div className="section-content p-2 bg-green-100 dark:bg-green-200 rounded-b-lg space-y-2">
                       {data.outputs.map((outputObj, idx) => {
                         const [_, rawValue] = Object.entries(outputObj)[0];
-                        const value = rawValue as {
-                          info: string;
-                          _class: string;
-                          _objValue: string;
-                          _parentId: string;
-                        };
+                        const value = rawValue as { info: string; _class: string; _objValue: string; _parentId: string; };
                         const isDragging = draggingIdx === idx;
 
                         return (
                           <div
                             key={idx}
-                            className={`nodrag mt-3 group cursor-grab flex items-center px-3 py-1 rounded-full border border-gray-400 dark:border-gray-600 shadow-sm hover:shadow-md transition-transform ${isDragging
-                              ? "scale-100 opacity-70"
-                              : "bg-gradient-to-r from-gray-200 to-gray-300 dark:from-gray-200 dark:to-gray-300"
-                              }`}
+                            className={`nodrag mt-3 group cursor-grab flex items-center px-3 py-1 rounded-full border border-gray-400 dark:border-gray-600 shadow-sm hover:shadow-md transition-transform ${isDragging ? "scale-100 opacity-70" : "bg-gradient-to-r from-gray-200 to-gray-300 dark:from-gray-200 dark:to-gray-300"}`}
                             draggable
                             onDragStart={(e) => {
                               e.stopPropagation();
@@ -293,7 +273,7 @@ export default function StatusNodeCard({
                               dragGhost.style.padding = "6px 12px";
                               dragGhost.style.background = "white";
                               dragGhost.style.border = "1px solid #ccc";
-                              dragGhost.style.color = 'black'
+                              dragGhost.style.color = 'black';
                               dragGhost.style.borderRadius = "0.5rem";
                               dragGhost.innerText = `${value._class} (${value.info})`;
                               document.body.appendChild(dragGhost);
@@ -329,39 +309,24 @@ export default function StatusNodeCard({
                   }}
                 >
                   {data.status}
-                  {(data.status === "running" ||
-                    data.status === "failed" ||
-                    data.status === "aborted") && (
-                      <div className="flex items-center gap-1 flex-1 ml-2 transition-all duration-300">
-                        <div className="w-16 h-3 bg-white/30 rounded overflow-hidden">
-                          <div
-                            className="h-3 bg-white transition-all duration-500"
-                            style={{
-                              width: `${((data.stepsDone ?? 0) / (data.numberOfSteps ?? 1)) * 100}%`,
-                            }}
-                          />
-                        </div>
-                        <span className="text-3xl opacity-80 ml-4">
-                          {data.stepsDone}/{data.numberOfSteps}
-                        </span>
+                  {(data.status === "running" || data.status === "failed" || data.status === "aborted") && (
+                    <div className="flex items-center gap-1 flex-1 ml-2 transition-all duration-300">
+                      <div className="w-16 h-3 bg-white/30 rounded overflow-hidden">
+                        <div
+                          className="h-3 bg-white transition-all duration-500"
+                          style={{ width: `${((data.stepsDone ?? 0) / (data.numberOfSteps ?? 1)) * 100}%` }}
+                        />
                       </div>
-                    )}
+                      <span className="text-3xl opacity-80 ml-4">
+                        {data.stepsDone}/{data.numberOfSteps}
+                      </span>
+                    </div>
+                  )}
                 </span>
 
                 <span className="flex items-center space-x-1 ml-6 text-3xl dark:text-black">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    className="h-10 w-10 text-gray-500 dark:text-gray-400 mr-2"
-                    fill="none"
-                    viewBox="0 0 22 24"
-                    stroke="currentColor"
-                    strokeWidth={2}
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                    />
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-gray-500 dark:text-gray-400 mr-2" fill="none" viewBox="0 0 22 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                   <span>{formatCpuTime(data.tick ?? Number(data.elapsedTime) ?? 0)}</span>
                 </span>
@@ -369,7 +334,7 @@ export default function StatusNodeCard({
             )}
           </div>
 
-          {/* React Flow handles by graphDirection (siempre visibles) */}
+          {/* React Flow handles */}
           <Handle
             type="target"
             position={graphDirection === "TB" ? Position.Top : Position.Left}
@@ -383,29 +348,20 @@ export default function StatusNodeCard({
         </div>
       </ContextMenuTrigger>
 
-      {/* Right-click context menu (auto flip & collision so it's always fully visible) */}
-      <ContextMenuContent
-        className="w-56"
-        // Note: no sideOffset here; Radix handles viewport collision automatically.
-        onContextMenu={(e) => e.stopPropagation()} // extra safety against canvas
-        onClick={(e) => e.stopPropagation()}
-      >
-        <ContextMenuItem onSelect={(e) => {
-          e.stopPropagation();
-          onDoubleClick?.();
-        }}>
+      <ContextMenuContent className="w-56" onClick={(e) => e.stopPropagation()}>
+        <ContextMenuItem onClick={handleEdit}>
           <Pencil className="mr-2 h-4 w-4" /> Edit
         </ContextMenuItem>
         <ContextMenuItem>
           <FolderOpen className="mr-2 h-4 w-4" /> Browse
         </ContextMenuItem>
-        <ContextMenuItem>
+        <ContextMenuItem onClick={handleRename}>
           <Pencil className="mr-2 h-4 w-4" /> Rename
         </ContextMenuItem>
-        <ContextMenuItem>
+        <ContextMenuItem onClick={handleDuplicate}>
           <Copy className="mr-2 h-4 w-4" /> Duplicate
         </ContextMenuItem>
-        <ContextMenuItem>
+        <ContextMenuItem onClick={handleDelete}>
           <Trash2 className="mr-2 h-4 w-4" /> Delete
         </ContextMenuItem>
         <ContextMenuSeparator />
@@ -417,19 +373,17 @@ export default function StatusNodeCard({
         </ContextMenuItem>
         <ContextMenuSeparator />
         {data.status === "running" && (
-          <>
-            <ContextMenuItem>
-              <Square className="mr-2 h-4 w-4" /> Stop
-            </ContextMenuItem>
-          </>
+          <ContextMenuItem>
+            <Square className="mr-2 h-4 w-4" /> Stop
+          </ContextMenuItem>
         )}
-        <ContextMenuItem>
+        <ContextMenuItem onClick={handleRestartAll}>
           <RefreshCw className="mr-2 h-4 w-4" /> Restart all
         </ContextMenuItem>
-        <ContextMenuItem>
+        <ContextMenuItem onClick={handleContinueAll}>
           <Play className="mr-2 h-4 w-4" /> Continue all
         </ContextMenuItem>
-        <ContextMenuItem>
+        <ContextMenuItem onClick={handleResetFrom}>
           <RotateCcw className="mr-2 h-4 w-4" /> Reset from
         </ContextMenuItem>
         <ContextMenuSeparator />

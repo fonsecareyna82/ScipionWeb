@@ -37,7 +37,9 @@ const defaultService: ProjectService = {
     // original signature was (projectId: number); normalize and keep backward-compat
     api.loadProtocols(Number(projectId)),
 
-  executeProtocol: (
+  
+  // --- Protocol actions
+    executeProtocol: (
     protocolId: string | number,
     protocolClassName: string,
     params: Record<string, unknown>
@@ -48,6 +50,40 @@ const defaultService: ProjectService = {
     protocolClassName: string,
     params: Record<string, unknown>
   ) => api.saveProtocol(toId(protocolId), protocolClassName, params),
+
+  renameProtocol: (
+    projectId: string,
+    protocolId: string,
+    newName: string
+  ) => api.renameProtocol(toId(projectId), toId(protocolId), newName),
+
+  duplicateProtocol: (
+    projectId: string,
+    protocolId: string,
+    newName: string
+  ) => api.duplicateProtocol(toId(projectId), toId(protocolId), newName),
+
+  deleteProtocol: (
+    projectId: string,
+    protocolId: string,
+  ) => api.deleteProtocol(toId(projectId), toId(protocolId)),
+
+  restartAll: (
+    projectId: string,
+    protocolId: string,
+  ) => api.restartAll(toId(projectId), toId(protocolId)),
+
+  continueAll: (
+    projectId: string,
+    protocolId: string,
+  ) => api.continueAll(toId(projectId), toId(protocolId)),
+
+  resetFrom: (
+    projectId: string,
+    protocolId: string,
+  ) => api.resetFrom(toId(projectId), toId(protocolId)),
+
+
 };
 
 export default defaultService;

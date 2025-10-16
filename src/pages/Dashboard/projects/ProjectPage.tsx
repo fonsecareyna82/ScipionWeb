@@ -27,14 +27,39 @@ import "reactflow/dist/style.css";
 import { createStatusNodeWrapper } from "../../../components/protocol/ProtocolNodeCardWrapper";
 import { ProtocolsDrawer } from "@/components/protocol/ProtocolsDrawer";
 
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { MinusIcon, PlusIcon, RefreshCw, Trash2 } from "lucide-react";
 import { FitViewIcon, TableIcon, TreeIcon } from "../../../icons";
+
+// shadcn menus + dialogs
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
+
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog/dialog";
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogCancel,
+  AlertDialogAction,
+} from "@/components/ui/dialog/alert-dialog";
+import { Button } from "@/components/ui/button";
+import Label from "@/components/form/Label";
+import { Input } from "@mui/material";
 
 // svc
 import { useProjectService } from "@/ProjectServiceContext";
@@ -51,13 +76,6 @@ interface StatusNodeData {
   tick?: number;
   numberOfSteps?: number;
   stepsDone?: number;
-}
-
-interface ContextMenuState {
-  visible: boolean;
-  x: number;
-  y: number;
-  nodeId?: string | null;
 }
 
 /* --------------------- Component --------------------- */
@@ -90,13 +108,10 @@ export default function ProjectPage() {
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [graphDirection, setGraphDirection] = useState<"TB" | "LR">("TB");
 
-  // hide graph while centering (avoid visible jumps)
+  // hide graph while centering
   const [hideGraphDuringCenter, setHideGraphDuringCenter] = useState(false);
 
-  // React 18 transitions for heavy updates
   const [, startTransition] = useTransition();
-
-  // persistence control
   const disablePersistenceRef = useRef(false);
 
   // viewport
@@ -106,13 +121,9 @@ export default function ProjectPage() {
 
   const reactFlowInstanceRef = useRef<ReactFlowInstance | null>(null);
 
-  // context menu
-  const [contextMenu, setContextMenu] = useState<ContextMenuState>({ visible: false, x: 0, y: 0 });
-
   const TIME_TO_REFRESH = 15000;
   const localStorageKey = `project-${projectName}-node-positions`;
 
-  // flicker control
   const [isSwitchingLayout, setIsSwitchingLayout] = useState(false);
   const [, setTableVisible] = useState(viewMode === "table");
   const [nodesLoadedOnce, setNodesLoadedOnce] = useState(false);
@@ -132,12 +143,11 @@ export default function ProjectPage() {
 
   const isRunningNode = (n: Node) => (n as any).data?.status === "running";
 
-  /* --------------------- Node click / dblclick --------------------- */
+  /* --------------------- Edge highlight helpers --------------------- */
+  const curIsBlue = (e: Edge) => (e.style as any)?.stroke === "#0070f3" && (e.style as any)?.strokeWidth === 3;
 
-  // edge highlight painter (minimal diff)
   const paintEdgeHighlight = useCallback((eds: Edge[], selectedId: string | null): Edge[] => {
     if (!selectedId) {
-      // clear styles only if some had styles
       let anyStyled = false;
       for (const e of eds) {
         if (e.style?.stroke === "#0070f3" || (e as any).__hl) { anyStyled = true; break; }
@@ -156,23 +166,16 @@ export default function ProjectPage() {
         return e;
       });
     }
-
-    // add highlight only to connected edges; avoid rewriting others
     let changed = false;
     const next = eds.map((e) => {
       const isConn = e.source === selectedId || e.target === selectedId;
       if (isConn) {
         const curStroke = (e.style as any)?.stroke;
         const curWidth = (e.style as any)?.strokeWidth;
-        if (curStroke === "#0070f3" && curWidth === 3) return e; // already highlighted
+        if (curStroke === "#0070f3" && curWidth === 3) return e;
         changed = true;
-        return {
-          ...e,
-          style: { ...(e.style ?? {}), stroke: "#0070f3", strokeWidth: 3 },
-          __hl: true as any, // internal flag
-        };
+        return { ...e, style: { ...(e.style ?? {}), stroke: "#0070f3", strokeWidth: 3 }, __hl: true as any };
       } else if ((e as any).__hl || curIsBlue(e)) {
-        // was highlighted; remove
         changed = true;
         const { style, ...rest } = e;
         const newStyle = { ...(style ?? {}) };
@@ -187,24 +190,21 @@ export default function ProjectPage() {
     return changed ? next : eds;
   }, []);
 
-  const curIsBlue = (e: Edge) => (e.style as any)?.stroke === "#0070f3" && (e.style as any)?.strokeWidth === 3;
-
   const applyEdgeHighlight = useCallback((selectedId: string | null) => {
     setEdges((eds) => paintEdgeHighlight(eds, selectedId));
   }, [paintEdgeHighlight, setEdges]);
 
+  /* --------------------- Node click / dblclick --------------------- */
   const handleNodeClick = (nodeData: any, event?: React.MouseEvent) => {
-    handleCloseMenu();
-    if (event?.shiftKey) return; // keep noop for multi-select
+    if (event?.shiftKey) return;
     prevIdRef.current = nodeData.id;
     selectedIdRef.current = nodeData.id;
     setPreviousNodeId(nodeData.id);
     setHighlightedId(nodeData.id);
-    applyEdgeHighlight(nodeData.id); // only touches edges; nodes untouched → no shake
+    applyEdgeHighlight(nodeData.id);
   };
 
   const handleNodeDoubleClick = async (nodeData: any) => {
-    handleCloseMenu();
     if (!projectName) return;
     try {
       const fullNodeData = await svc.fetchProtocolDetails(projectName, nodeData.id);
@@ -234,16 +234,28 @@ export default function ProjectPage() {
   useEffect(() => { hoveredIdRef.current = hoveredNodeId; }, [hoveredNodeId]);
   useEffect(() => { graphDirRef.current = graphDirection; }, [graphDirection]);
 
+  // acciones expuestas a los nodos
+  const getNodeActions = useRef(() => ({
+    onEdit: (id: string) => { console.log("Edit", id); handleNodeDoubleClick({ id }); },
+    onRename: (id: string) => { console.log("Rename", id); openRename(id); },
+    onDuplicate: (id: string) => { console.log("Duplicate", id); openDuplicate(id); },
+    onDelete: (id: string) => { console.log("Delete", id); openDelete(id); },
+    onRestartAll: (id: string) => { console.log("RestartAll", id); openRestartAll(id); },
+    onContinueAll: (id: string) => { console.log("ContinueAll", id); openContinueAll(id); },
+    onResetFrom: (id: string) => { console.log("ResetFrom", id); openResetFrom(id); },
+  }));
+
   const nodeTypesRef = useRef<Record<string, any> | null>(null);
   if (!nodeTypesRef.current) {
     nodeTypesRef.current = {
       status: createStatusNodeWrapper(
         (data, evt) => onClickRef.current?.(data, evt),
         (data) => onDblClickRef.current?.(data),
-        () => prevIdRef.current ?? undefined,     // selected id source for node visual
+        () => prevIdRef.current ?? undefined,
         () => hoveredIdRef.current ?? undefined,
         setHoveredNodeId,
-        () => graphDirRef.current
+        () => graphDirRef.current,
+        () => getNodeActions.current()
       ),
     };
   }
@@ -255,9 +267,7 @@ export default function ProjectPage() {
     setNodes((nds) => {
       const updated = applyNodeChanges(changes, nds);
       const positions = updated.map((n) => ({ id: n.id, position: n.position }));
-      try {
-        localStorage.setItem(`${localStorageKey}-${graphDirection}`, JSON.stringify(positions));
-      } catch { /* ignore */ }
+      try { localStorage.setItem(`${localStorageKey}-${graphDirection}`, JSON.stringify(positions)); } catch { }
       return updated;
     });
   };
@@ -290,8 +300,8 @@ export default function ProjectPage() {
           old.position && old.position.x !== undefined && old.position.y !== undefined
             ? old.position
             : n.position ?? old.position;
-        if (shallowEqual(old.data, n.data) && position === old.position) return old;
-        return { ...old, position, data: { ...old.data, ...n.data } } as Node;
+        if (shallowEqual((old as any).data, (n as any).data) && position === old.position) return old;
+        return { ...old, position, data: { ...(old as any).data, ...(n as any).data } } as Node;
       }
       return n;
     });
@@ -398,7 +408,6 @@ export default function ProjectPage() {
 
         const nodesWithPositions = loadNodesWithPositions(loadedNodes);
 
-        // seed ticks
         const initialTicks: Record<string, number> = {};
         nodesWithPositions.forEach((n) => {
           if ((n as any).data?.status === "running") {
@@ -413,11 +422,7 @@ export default function ProjectPage() {
 
         startTransition(() => {
           setNodes(nodesWithTick);
-          // set edges first, then apply highlight if a node is selected
-          setEdges((_) => {
-            const base = loadedEdges;
-            return paintEdgeHighlight(base, selectedIdRef.current ?? null);
-          });
+          setEdges((_) => paintEdgeHighlight(loadedEdges, selectedIdRef.current ?? null));
           setTableData(table ?? []);
         });
 
@@ -713,8 +718,7 @@ export default function ProjectPage() {
         });
       });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nodesLoadedOnce]);
+  }, [nodesLoadedOnce]); // eslint-disable-line
 
   /* --------------------- Table switching --------------------- */
   useEffect(() => {
@@ -815,11 +819,11 @@ export default function ProjectPage() {
     setHighlightedId(match.id);
     applyEdgeHighlight(match.id);
 
-    if (inst) {
-      const currentZoom = inst.getViewport().zoom;
-      const zoom = clampZoom(currentZoom);
-      inst.setCenter((match as any).position.x, (match as any).position.y, { zoom, duration: 500 });
-      const vp = inst.getViewport();
+    const inst2 = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
+    if (inst2) {
+      const zoom = clampZoom(inst2.getViewport().zoom);
+      inst2.setCenter((match as any).position.x, (match as any).position.y, { zoom, duration: 500 });
+      const vp = inst2.getViewport();
       setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
     }
   };
@@ -845,29 +849,6 @@ export default function ProjectPage() {
     return `${pad(hours)}h:${pad(minutes)}m:${pad(secs)}s`;
   };
 
-  /* --------------------- Context menu --------------------- */
-  const handleContextMenu = (event: React.MouseEvent) => {
-    event.preventDefault();
-    event.stopPropagation();
-    const nodeEl = (event.target as HTMLElement).closest(".react-flow__node");
-    const nodeId = nodeEl?.getAttribute("data-id") ?? null;
-    setContextMenu({ visible: true, x: event.clientX, y: event.clientY, nodeId });
-  };
-
-  const handleCloseMenu = () => setContextMenu((prev) => ({ ...prev, visible: false }));
-
-  useEffect(() => {
-    if (!contextMenu.visible) return;
-    const onWindowMouseDown = () => handleCloseMenu();
-    const onKeyDown = (e: KeyboardEvent) => { if (e.key === "Escape") handleCloseMenu(); };
-    window.addEventListener("mousedown", onWindowMouseDown);
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.removeEventListener("mousedown", onWindowMouseDown);
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [contextMenu.visible]);
-
   /* ------------------------ ReactFlow init / move ------------------------ */
   const handleOnInit = useCallback((inst: ReactFlowInstance) => {
     reactFlowInstanceRef.current = inst;
@@ -883,6 +864,82 @@ export default function ProjectPage() {
   const handleOnMoveEnd = useCallback((_: any, vp: { x: number; y: number; zoom: number }) => {
     setViewport(vp);
   }, []);
+
+  /* ------------------------ Node actions (dialogs + API) ------------------------ */
+  type ConfirmKind = "delete" | "restartAll" | "continueAll";
+
+  const [dlgRename, setDlgRename] = useState<{ open: boolean; id: string | null; value: string }>({
+    open: false, id: null, value: "",
+  });
+  const [dlgDup, setDlgDup] = useState<{ open: boolean; id: string | null; value: string }>({
+    open: false, id: null, value: "",
+  });
+  const [dlgResetFrom, setDlgResetFrom] = useState<{ open: boolean; id: string | null }>({
+    open: false, id: null,
+  });
+  const [confirm, setConfirm] = useState<{ open: boolean; id: string | null; kind: ConfirmKind | null; }>({
+    open: false, id: null, kind: null,
+  });
+  const [busy, setBusy] = useState<null | "rename" | "duplicate" | "delete" | "restartAll" | "continueAll" | "resetFrom">(null);
+
+  const findNodeLabel = (id: string) => {
+    const n = nodesRef.current.find((m) => m.id === id);
+    return ((n as any)?.data?.label as string) ?? id;
+  };
+
+  const openRename = (id: string) => setDlgRename({ open: true, id, value: findNodeLabel(id) });
+  const openDuplicate = (id: string) => setDlgDup({ open: true, id, value: `${findNodeLabel(id)}_copy` });
+  const openDelete = (id: string) => setConfirm({ open: true, id, kind: "delete" });
+  const openRestartAll = (id: string) => setConfirm({ open: true, id, kind: "restartAll" });
+  const openContinueAll = (id: string) => setConfirm({ open: true, id, kind: "continueAll" });
+  const openResetFrom = (id: string) => setDlgResetFrom({ open: true, id });
+
+  const submitRename = async () => {
+    if (!projectName || !dlgRename.id) return;
+    setBusy("rename");
+    try {
+      await svc.renameProtocol(projectName, dlgRename.id, dlgRename.value.trim());
+      setDlgRename({ open: false, id: null, value: "" });
+      await handleRefresh();
+    } catch (e) { console.error(e); }
+    finally { setBusy(null); }
+  };
+
+  const submitDuplicate = async () => {
+    if (!projectName || !dlgDup.id) return;
+    setBusy("duplicate");
+    try {
+      await svc.duplicateProtocol(projectName, dlgDup.id, dlgDup.value.trim());
+      setDlgDup({ open: false, id: null, value: "" });
+      await handleRefresh();
+    } catch (e) { console.error(e); }
+    finally { setBusy(null); }
+  };
+
+  const submitConfirm = async () => {
+    if (!projectName || !confirm.id || !confirm.kind) return;
+    const id = confirm.id;
+    setBusy(confirm.kind);
+    try {
+      if (confirm.kind === "delete") await svc.deleteProtocol(projectName, id);
+      if (confirm.kind === "restartAll") await svc.restartAll(projectName, id);
+      if (confirm.kind === "continueAll") await svc.continueAll(projectName, id);
+      setConfirm({ open: false, id: null, kind: null });
+      await handleRefresh();
+    } catch (e) { console.error(e); }
+    finally { setBusy(null); }
+  };
+
+  const submitResetFrom = async () => {
+    if (!projectName || !dlgResetFrom.id) return;
+    setBusy("resetFrom");
+    try {
+      await svc.resetFrom(projectName, dlgResetFrom.id);
+      setDlgResetFrom({ open: false, id: null });
+      await handleRefresh();
+    } catch (e) { console.error(e); }
+    finally { setBusy(null); }
+  };
 
   /* ------------------------ Controls ------------------------ */
   const ZOOM_FACTOR = 1.2;
@@ -1079,7 +1136,7 @@ export default function ProjectPage() {
           </table>
         </div>
 
-        {/* ReactFlow */}
+        {/* ReactFlow + ContextMenu (canvas) */}
         <div
           className="absolute inset-0 border transition-opacity"
           style={{
@@ -1110,57 +1167,232 @@ export default function ProjectPage() {
               </defs>
             </svg>
 
-            <ReactFlow
-              nodes={nodes}
-              edges={edges}
-              onNodesChange={handleNodesChangeWithPersistence}
-              onEdgesChange={onEdgesChange}
-              nodeTypes={nodeTypes}
-              minZoom={MIN_ZOOM}
-              maxZoom={MAX_ZOOM}
-              onInit={handleOnInit}
-              onMoveEnd={handleOnMoveEnd}
-              onPaneClick={() => handleCloseMenu()}
-              defaultViewport={viewport}
-              defaultEdgeOptions={{
-                type: "default",
-                style: { stroke: "#999", strokeWidth: 2 },
-                markerEnd: "url(#circle)",
-              }}
-              onNodeDoubleClick={(_, node) => handleNodeDoubleClick(node)}
-              onNodeClick={(evt, node) => handleNodeClick(node, evt)}
-              onContextMenu={handleContextMenu}
-              style={{ width: "100%", height: "100%" }}
-            >
-              <Background />
-            </ReactFlow>
-
-            {contextMenu.visible && (
-              <DropdownMenu open={true} onOpenChange={handleCloseMenu}>
-                <DropdownMenuTrigger asChild>
-                  <button style={{ position: "fixed", top: contextMenu.y, left: contextMenu.x, width: 0, height: 0, opacity: 0 }} />
-                </DropdownMenuTrigger>
-                <DropdownMenuContent className="w-48">
-                  <DropdownMenuItem onClick={() => { handleRefresh(); handleCloseMenu(); }}>
-                    <PlusIcon className="w-4 h-4 mr-2" />
-                    Add protocol
-                  </DropdownMenuItem>
-
-                  <DropdownMenuItem onClick={() => { handleRefresh(); handleCloseMenu(); }}>
-                    <RefreshCw className="w-4 h-4 mr-2" />
-                    Refresh graph
-                  </DropdownMenuItem>
-
-                  <DropdownMenuItem onClick={() => { setPreviousNodeId(null); setHighlightedId(null); applyEdgeHighlight(null); handleCloseMenu(); }}>
-                    <Trash2 className="w-4 h-4 mr-2" />
-                    Clear selection
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
+            <ContextMenu>
+              <ContextMenuTrigger asChild>
+                <div className="w-full h-full">
+                  <ReactFlow
+                    nodes={nodes}
+                    edges={edges}
+                    onNodesChange={handleNodesChangeWithPersistence}
+                    onEdgesChange={onEdgesChange}
+                    nodeTypes={nodeTypes}
+                    minZoom={MIN_ZOOM}
+                    maxZoom={MAX_ZOOM}
+                    onInit={handleOnInit}
+                    onMoveEnd={handleOnMoveEnd}
+                    style={{ width: "100%", height: "100%" }}
+                    defaultViewport={viewport}
+                    defaultEdgeOptions={{
+                      type: "default",
+                      style: { stroke: "#999", strokeWidth: 2 },
+                      markerEnd: "url(#circle)",
+                    }}
+                    onNodeDoubleClick={(_, node) => handleNodeDoubleClick(node)}
+                    onNodeClick={(evt, node) => handleNodeClick(node, evt)}
+                  >
+                    <Background />
+                  </ReactFlow>
+                </div>
+              </ContextMenuTrigger>
+              <ContextMenuContent className="w-56">
+                <ContextMenuItem inset onClick={() => { console.log("Canvas: refresh"); handleRefresh(); }}>
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  Refresh graph
+                </ContextMenuItem>
+                <ContextMenuItem
+                  inset
+                  onClick={() => {
+                    console.log("Canvas: clear selection");
+                    setPreviousNodeId(null);
+                    setHighlightedId(null);
+                    applyEdgeHighlight(null);
+                  }}
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Clear selection
+                </ContextMenuItem>
+                <ContextMenuSeparator />
+                <ContextMenuItem inset onClick={() => { console.log("Canvas: reorganize"); handleReorganize({ preserveZoom: true }); }}>
+                  <TreeIcon className="w-4 h-4 mr-2" />
+                  Reorganize layout
+                </ContextMenuItem>
+                <ContextMenuItem inset onClick={() => { console.log("Canvas: fit view"); handleFitView(); }}>
+                  <FitViewIcon className="w-4 h-4 mr-2" />
+                  Fit view
+                </ContextMenuItem>
+              </ContextMenuContent>
+            </ContextMenu>
           </ReactFlowProvider>
         </div>
       </div>
+
+      {/* --- Dialogs --- */}
+      {/* Rename */}
+      <Dialog
+        open={dlgRename.open}
+        onOpenChange={(open: boolean) => {
+          if (!open) setDlgRename({ open: false, id: null, value: "" });
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Rename protocol</DialogTitle>
+            <DialogDescription>Set a new name for this protocol.</DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-3 py-2">
+            <Label htmlFor="rename">New name</Label>
+            <Input
+              id="rename"
+              value={dlgRename.value}
+              onChange={(e) => setDlgRename((s) => ({ ...s, value: e.target.value }))}
+              placeholder="e.g. motioncorr_02"
+            />
+          </div>
+
+          <DialogFooter>
+            <Button
+              onClick={() => setDlgRename({ open: false, id: null, value: "" })}
+              className="rounded-full px-4 py-2 min-w-[140px] font-medium bg-gray-200 hover:bg-gray-300 text-gray-800"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={submitRename}
+              disabled={busy === "rename" || !dlgRename.value.trim()}
+              className="rounded-full px-4 py-2 min-w-[140px] font-medium bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {busy === "rename" ? "Renaming..." : "Rename"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Duplicate */}
+      <Dialog
+        open={dlgDup.open}
+        onOpenChange={(open: boolean) => {
+          if (!open) setDlgDup({ open: false, id: null, value: "" });
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Duplicate protocol</DialogTitle>
+            <DialogDescription>Choose a name for the new copy.</DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-3 py-2">
+            <Label htmlFor="duplicate">Copy name</Label>
+            <Input
+              id="duplicate"
+              value={dlgDup.value}
+              onChange={(e) => setDlgDup((s) => ({ ...s, value: e.target.value }))}
+              placeholder="e.g. motioncorr_copy"
+            />
+          </div>
+
+          <DialogFooter>
+            <Button
+              onClick={() => setDlgDup({ open: false, id: null, value: "" })}
+              className="rounded-full px-4 py-2 min-w-[140px] font-medium bg-gray-200 hover:bg-gray-300 text-gray-800"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={submitDuplicate}
+              disabled={busy === "duplicate" || !dlgDup.value.trim()}
+              className="rounded-full px-4 py-2 min-w-[140px] font-medium bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {busy === "duplicate" ? "Duplicating..." : "Duplicate"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete / Restart All / Continue All */}
+      <AlertDialog
+        open={confirm.open}
+        onOpenChange={(open: boolean) => {
+          if (!open) setConfirm({ open: false, id: null, kind: null });
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {confirm.kind === "delete" && "Delete protocol?"}
+              {confirm.kind === "restartAll" && "Restart all steps?"}
+              {confirm.kind === "continueAll" && "Continue all steps?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirm.kind === "delete" &&
+                "This action cannot be undone. This will permanently remove the protocol and its outputs that are not used elsewhere."}
+              {confirm.kind === "restartAll" &&
+                "All protocols will be restarted from this protocol, so the previous results will be deleted"}
+              {confirm.kind === "continueAll" &&
+                "All protocols will continue for this protocol, so the previous results will be affected"}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={() => setConfirm({ open: false, id: null, kind: null })}
+              className="rounded-full px-4 py-2 min-w-[140px] font-medium bg-gray-200 hover:bg-gray-300 text-gray-800"
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={submitConfirm}
+              disabled={busy !== null}
+              className="rounded-full px-4 py-2 min-w-[140px] font-medium bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {busy === "delete" && "Deleting..."}
+              {busy === "restartAll" && "Restarting..."}
+              {busy === "continueAll" && "Continuing..."}
+              {busy === null &&
+                (confirm.kind === "delete"
+                  ? "Delete"
+                  : confirm.kind === "restartAll"
+                    ? "Restart"
+                    : "Continue")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Reset From */}
+      <Dialog
+        open={dlgResetFrom.open}
+        onOpenChange={(open: boolean) => {
+          if (!open) setDlgResetFrom({ open: false, id: null });
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Reset from this protocol?</DialogTitle>
+            <DialogDescription>
+              Downstream steps may be invalidated. You can re-run them later.
+            </DialogDescription>
+          </DialogHeader>
+
+          <DialogFooter>
+            <Button
+              onClick={() => setDlgResetFrom({ open: false, id: null })}
+              className="rounded-full px-4 py-2 min-w-[140px] font-medium bg-gray-200 hover:bg-gray-300 text-gray-800"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={submitResetFrom}
+              disabled={busy === "resetFrom"}
+              className="rounded-full px-4 py-2 min-w-[140px] font-medium bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {busy === "resetFrom" ? "Resetting..." : "Reset from here"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+
     </div>
   );
 }
