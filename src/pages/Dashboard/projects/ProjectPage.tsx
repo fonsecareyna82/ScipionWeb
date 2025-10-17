@@ -1,4 +1,4 @@
-// File: src/pages/project/ProjectPage.tsx
+// File: src/pages/Dashboard/projects/ProjectPage.tsx
 import { useParams } from "react-router-dom";
 import React, {
   useCallback,
@@ -27,17 +27,12 @@ import "reactflow/dist/style.css";
 import { createStatusNodeWrapper } from "../../../components/protocol/ProtocolNodeCardWrapper";
 import { ProtocolsDrawer } from "@/components/protocol/ProtocolsDrawer";
 
-import { MinusIcon, PlusIcon, RefreshCw, Trash2 } from "lucide-react";
-import { FitViewIcon, TableIcon, TreeIcon } from "../../../icons";
-
-// shadcn menus + dialogs
 import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuSeparator,
-  ContextMenuTrigger,
-} from "@/components/ui/context-menu";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 import {
   Dialog,
@@ -58,12 +53,16 @@ import {
   AlertDialogAction,
 } from "@/components/ui/dialog/alert-dialog";
 import { Button } from "@/components/ui/button";
-import Label from "@/components/form/Label";
-import { Input } from "@mui/material";
+
+import { MinusIcon, PlusIcon, RefreshCw, Trash2, Pencil, Copy, Play, RotateCcw } from "lucide-react";
+import { FitViewIcon, TableIcon, TreeIcon } from "../../../icons";
 
 // svc
 import { useProjectService } from "@/ProjectServiceContext";
 import { Project } from "@/types/project";
+import Label from "@/components/form/Label";
+import { Input } from "@mui/material";
+import toast from "react-hot-toast";
 
 /* --------------------- Types --------------------- */
 interface StatusNodeData {
@@ -77,6 +76,23 @@ interface StatusNodeData {
   numberOfSteps?: number;
   stepsDone?: number;
 }
+
+interface ContextMenuState {
+  visible: boolean;
+  x: number;
+  y: number;
+  nodeId?: string | null;
+}
+
+type NodeActions = {
+  onEdit?: (id: string) => void;
+  onRename?: (id: string) => void;
+  onDuplicate?: (id: string) => void;
+  onDelete?: (id: string) => void;
+  onRestartAll?: (id: string) => void;
+  onContinueAll?: (id: string) => void;
+  onResetFrom?: (id: string) => void;
+};
 
 /* --------------------- Component --------------------- */
 export default function ProjectPage() {
@@ -108,10 +124,13 @@ export default function ProjectPage() {
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [graphDirection, setGraphDirection] = useState<"TB" | "LR">("TB");
 
-  // hide graph while centering
+  // hide graph while centering (avoid visible jumps)
   const [hideGraphDuringCenter, setHideGraphDuringCenter] = useState(false);
 
+  // React 18 transitions for heavy updates
   const [, startTransition] = useTransition();
+
+  // persistence control
   const disablePersistenceRef = useRef(false);
 
   // viewport
@@ -121,9 +140,13 @@ export default function ProjectPage() {
 
   const reactFlowInstanceRef = useRef<ReactFlowInstance | null>(null);
 
+  // context menu (pane)
+  const [contextMenu, setContextMenu] = useState<ContextMenuState>({ visible: false, x: 0, y: 0 });
+
   const TIME_TO_REFRESH = 15000;
   const localStorageKey = `project-${projectName}-node-positions`;
 
+  // flicker control
   const [isSwitchingLayout, setIsSwitchingLayout] = useState(false);
   const [, setTableVisible] = useState(viewMode === "table");
   const [nodesLoadedOnce, setNodesLoadedOnce] = useState(false);
@@ -143,9 +166,9 @@ export default function ProjectPage() {
 
   const isRunningNode = (n: Node) => (n as any).data?.status === "running";
 
-  /* --------------------- Edge highlight helpers --------------------- */
-  const curIsBlue = (e: Edge) => (e.style as any)?.stroke === "#0070f3" && (e.style as any)?.strokeWidth === 3;
+  /* --------------------- Node click / dblclick --------------------- */
 
+  // edge highlight painter (minimal diff)
   const paintEdgeHighlight = useCallback((eds: Edge[], selectedId: string | null): Edge[] => {
     if (!selectedId) {
       let anyStyled = false;
@@ -166,6 +189,7 @@ export default function ProjectPage() {
         return e;
       });
     }
+
     let changed = false;
     const next = eds.map((e) => {
       const isConn = e.source === selectedId || e.target === selectedId;
@@ -174,7 +198,11 @@ export default function ProjectPage() {
         const curWidth = (e.style as any)?.strokeWidth;
         if (curStroke === "#0070f3" && curWidth === 3) return e;
         changed = true;
-        return { ...e, style: { ...(e.style ?? {}), stroke: "#0070f3", strokeWidth: 3 }, __hl: true as any };
+        return {
+          ...e,
+          style: { ...(e.style ?? {}), stroke: "#0070f3", strokeWidth: 3 },
+          __hl: true as any,
+        };
       } else if ((e as any).__hl || curIsBlue(e)) {
         changed = true;
         const { style, ...rest } = e;
@@ -190,12 +218,14 @@ export default function ProjectPage() {
     return changed ? next : eds;
   }, []);
 
+  const curIsBlue = (e: Edge) => (e.style as any)?.stroke === "#0070f3" && (e.style as any)?.strokeWidth === 3;
+
   const applyEdgeHighlight = useCallback((selectedId: string | null) => {
     setEdges((eds) => paintEdgeHighlight(eds, selectedId));
   }, [paintEdgeHighlight, setEdges]);
 
-  /* --------------------- Node click / dblclick --------------------- */
   const handleNodeClick = (nodeData: any, event?: React.MouseEvent) => {
+    handleCloseMenu();
     if (event?.shiftKey) return;
     prevIdRef.current = nodeData.id;
     selectedIdRef.current = nodeData.id;
@@ -205,6 +235,7 @@ export default function ProjectPage() {
   };
 
   const handleNodeDoubleClick = async (nodeData: any) => {
+    handleCloseMenu();
     if (!projectName) return;
     try {
       const fullNodeData = await svc.fetchProtocolDetails(projectName, nodeData.id);
@@ -234,16 +265,66 @@ export default function ProjectPage() {
   useEffect(() => { hoveredIdRef.current = hoveredNodeId; }, [hoveredNodeId]);
   useEffect(() => { graphDirRef.current = graphDirection; }, [graphDirection]);
 
-  // acciones expuestas a los nodos
-  const getNodeActions = useRef(() => ({
-    onEdit: (id: string) => { console.log("Edit", id); handleNodeDoubleClick({ id }); },
-    onRename: (id: string) => { console.log("Rename", id); openRename(id); },
-    onDuplicate: (id: string) => { console.log("Duplicate", id); openDuplicate(id); },
-    onDelete: (id: string) => { console.log("Delete", id); openDelete(id); },
-    onRestartAll: (id: string) => { console.log("RestartAll", id); openRestartAll(id); },
-    onContinueAll: (id: string) => { console.log("ContinueAll", id); openContinueAll(id); },
-    onResetFrom: (id: string) => { console.log("ResetFrom", id); openResetFrom(id); },
-  }));
+  // === Node actions expuestas a los nodos ===
+  const nodeActionsRef = useRef<NodeActions>({});
+
+  // helpers para toast / errores
+  const getErrorMsg = (e: any) => {
+    if (e && typeof e === "object") {
+      const status = (e as any).status;
+      const data = (e as any).data;
+      if (status === 500) return (data?.detail as string) || (e.message as string) || "Server error";
+      return (data?.message as string) || (e.message as string) || "Operation failed";
+    }
+    return "Operation failed";
+  };
+
+  const getNodeLabelById = (id: string) => {
+    const node = nodesRef.current.find((n) => n.id === id);
+    return ((node as any)?.data?.label as string) || id;
+  };
+
+  const genCopyName = (id: string) => {
+    const label = getNodeLabelById(id);
+    // normaliza: trim, espacios→_, y elimina caracteres raros
+    const normalized = String(label).trim().replace(/\s+/g, "_").replace(/[^\w.-]/g, "");
+    return `${normalized}_copy_${Date.now().toString().slice(-5)}`;
+  };
+
+  const duplicateNow = async (ids: string[]) => {
+    if (!projectName || !ids.length) return;
+    setBusy("duplicate");
+    try {
+      await Promise.all(
+        ids.map((id) => svc.duplicateProtocol(projectName, id, genCopyName(id)))
+      );
+      toast.success("Protocols duplicated successfully.");
+      await handleRefresh();
+    } catch (e) {
+      console.error(e);
+      toast.error(getErrorMsg(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const openRename = (id: string) => setDlgRename({ open: true, id, value: findNodeLabel(id) });
+  const openDelete = (id: string) => setConfirm({ open: true, id, kind: "delete" });
+  const openRestartAll = (id: string) => setConfirm({ open: true, id, kind: "restartAll" });
+  const openContinueAll = (id: string) => setConfirm({ open: true, id, kind: "continueAll" });
+  const openResetFrom = (id: string) => setDlgResetFrom({ open: true, id });
+
+  useEffect(() => {
+    nodeActionsRef.current = {
+      onEdit: (id) => handleNodeDoubleClick({ id }),
+      onRename: openRename,
+      onDuplicate: (id) => duplicateNow([id]),
+      onDelete: openDelete,
+      onRestartAll: openRestartAll,
+      onContinueAll: openContinueAll,
+      onResetFrom: openResetFrom,
+    };
+  }, [handleNodeDoubleClick]);
 
   const nodeTypesRef = useRef<Record<string, any> | null>(null);
   if (!nodeTypesRef.current) {
@@ -255,7 +336,7 @@ export default function ProjectPage() {
         () => hoveredIdRef.current ?? undefined,
         setHoveredNodeId,
         () => graphDirRef.current,
-        () => getNodeActions.current()
+        () => nodeActionsRef.current
       ),
     };
   }
@@ -267,7 +348,9 @@ export default function ProjectPage() {
     setNodes((nds) => {
       const updated = applyNodeChanges(changes, nds);
       const positions = updated.map((n) => ({ id: n.id, position: n.position }));
-      try { localStorage.setItem(`${localStorageKey}-${graphDirection}`, JSON.stringify(positions)); } catch { }
+      try {
+        localStorage.setItem(`${localStorageKey}-${graphDirection}`, JSON.stringify(positions));
+      } catch { /* ignore */ }
       return updated;
     });
   };
@@ -408,6 +491,7 @@ export default function ProjectPage() {
 
         const nodesWithPositions = loadNodesWithPositions(loadedNodes);
 
+        // seed ticks
         const initialTicks: Record<string, number> = {};
         nodesWithPositions.forEach((n) => {
           if ((n as any).data?.status === "running") {
@@ -718,7 +802,8 @@ export default function ProjectPage() {
         });
       });
     }
-  }, [nodesLoadedOnce]); // eslint-disable-line
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nodesLoadedOnce]);
 
   /* --------------------- Table switching --------------------- */
   useEffect(() => {
@@ -819,11 +904,11 @@ export default function ProjectPage() {
     setHighlightedId(match.id);
     applyEdgeHighlight(match.id);
 
-    const inst2 = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
-    if (inst2) {
-      const zoom = clampZoom(inst2.getViewport().zoom);
-      inst2.setCenter((match as any).position.x, (match as any).position.y, { zoom, duration: 500 });
-      const vp = inst2.getViewport();
+    if (inst) {
+      const currentZoom = inst.getViewport().zoom;
+      const zoom = clampZoom(currentZoom);
+      inst.setCenter((match as any).position.x, (match as any).position.y, { zoom, duration: 500 });
+      const vp = inst.getViewport();
       setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
     }
   };
@@ -849,6 +934,42 @@ export default function ProjectPage() {
     return `${pad(hours)}h:${pad(minutes)}m:${pad(secs)}s`;
   };
 
+  /* --------------------- Context menu (pane) --------------------- */
+  const handleContextMenu = (event: React.MouseEvent) => {
+    if ((event as any).defaultPrevented) return;
+
+    const target = event.target as HTMLElement;
+    const isNode = !!target.closest(".react-flow__node");
+    if (isNode) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    setContextMenu({
+      visible: true,
+      x: event.clientX,
+      y: event.clientY,
+      nodeId: null,
+    });
+  };
+
+
+  const handleCloseMenu = () => setContextMenu((prev) => ({ ...prev, visible: false }));
+
+  useEffect(() => {
+    if (!contextMenu.visible) return;
+    const onWindowMouseDown = () => handleCloseMenu();
+    const onKeyDown = (e: KeyboardEvent) => { if (e.key === "Escape") handleCloseMenu(); };
+    window.addEventListener("mousedown", onWindowMouseDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("mousedown", onWindowMouseDown);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [contextMenu.visible]);
+
   /* ------------------------ ReactFlow init / move ------------------------ */
   const handleOnInit = useCallback((inst: ReactFlowInstance) => {
     reactFlowInstanceRef.current = inst;
@@ -871,9 +992,6 @@ export default function ProjectPage() {
   const [dlgRename, setDlgRename] = useState<{ open: boolean; id: string | null; value: string }>({
     open: false, id: null, value: "",
   });
-  const [dlgDup, setDlgDup] = useState<{ open: boolean; id: string | null; value: string }>({
-    open: false, id: null, value: "",
-  });
   const [dlgResetFrom, setDlgResetFrom] = useState<{ open: boolean; id: string | null }>({
     open: false, id: null,
   });
@@ -887,33 +1005,23 @@ export default function ProjectPage() {
     return ((n as any)?.data?.label as string) ?? id;
   };
 
-  const openRename = (id: string) => setDlgRename({ open: true, id, value: findNodeLabel(id) });
-  const openDuplicate = (id: string) => setDlgDup({ open: true, id, value: `${findNodeLabel(id)}_copy` });
-  const openDelete = (id: string) => setConfirm({ open: true, id, kind: "delete" });
-  const openRestartAll = (id: string) => setConfirm({ open: true, id, kind: "restartAll" });
-  const openContinueAll = (id: string) => setConfirm({ open: true, id, kind: "continueAll" });
-  const openResetFrom = (id: string) => setDlgResetFrom({ open: true, id });
-
   const submitRename = async () => {
-    if (!projectName || !dlgRename.id) return;
+    if (!projectName || !dlgRename.id || !dlgRename.value.trim()) return;
+    const id = dlgRename.id;
+    const value = dlgRename.value.trim();
+
+    setDlgRename({ open: false, id: null, value: "" });
     setBusy("rename");
     try {
-      await svc.renameProtocol(projectName, dlgRename.id, dlgRename.value.trim());
-      setDlgRename({ open: false, id: null, value: "" });
+      await svc.renameProtocol(projectName, id, value);
+      toast.success("Protocol renamed.");
       await handleRefresh();
-    } catch (e) { console.error(e); }
-    finally { setBusy(null); }
-  };
-
-  const submitDuplicate = async () => {
-    if (!projectName || !dlgDup.id) return;
-    setBusy("duplicate");
-    try {
-      await svc.duplicateProtocol(projectName, dlgDup.id, dlgDup.value.trim());
-      setDlgDup({ open: false, id: null, value: "" });
-      await handleRefresh();
-    } catch (e) { console.error(e); }
-    finally { setBusy(null); }
+    } catch (e) {
+      console.error(e);
+      toast.error(getErrorMsg(e));
+    } finally {
+      setBusy(null);
+    }
   };
 
   const submitConfirm = async () => {
@@ -925,9 +1033,17 @@ export default function ProjectPage() {
       if (confirm.kind === "restartAll") await svc.restartAll(projectName, id);
       if (confirm.kind === "continueAll") await svc.continueAll(projectName, id);
       setConfirm({ open: false, id: null, kind: null });
+      toast.success(
+        confirm.kind === "delete" ? "Protocol deleted." :
+          confirm.kind === "restartAll" ? "Restart started." : "Continue started."
+      );
       await handleRefresh();
-    } catch (e) { console.error(e); }
-    finally { setBusy(null); }
+    } catch (e) {
+      console.error(e);
+      toast.error(getErrorMsg(e));
+    } finally {
+      setBusy(null);
+    }
   };
 
   const submitResetFrom = async () => {
@@ -936,9 +1052,14 @@ export default function ProjectPage() {
     try {
       await svc.resetFrom(projectName, dlgResetFrom.id);
       setDlgResetFrom({ open: false, id: null });
+      toast.success("Reset completed.");
       await handleRefresh();
-    } catch (e) { console.error(e); }
-    finally { setBusy(null); }
+    } catch (e) {
+      console.error(e);
+      toast.error(getErrorMsg(e));
+    } finally {
+      setBusy(null);
+    }
   };
 
   /* ------------------------ Controls ------------------------ */
@@ -1010,13 +1131,19 @@ export default function ProjectPage() {
           <span className="font-small text-xs">View mode:</span>
           <div className="flex gap-2">
             <button
-              onClick={() => { setViewMode("hierarchical"); setGraphDirection("TB"); }}
+              onClick={() => {
+                setViewMode("hierarchical");
+                setGraphDirection("TB");
+              }}
               className={`px-3 py-1 rounded-lg text-xs flex items-center gap-1 ${viewMode === "hierarchical" && graphDirection === "TB" ? "bg-blue-500 text-white" : "bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300"}`}
             >
               <TreeIcon className="w-4 h-4" /> Tree TB
             </button>
             <button
-              onClick={() => { setViewMode("hierarchical"); setGraphDirection("LR"); }}
+              onClick={() => {
+                setViewMode("hierarchical");
+                setGraphDirection("LR");
+              }}
               className={`px-3 py-1 rounded-lg text-xs flex items-center gap-1 ${viewMode === "hierarchical" && graphDirection === "LR" ? "bg-blue-500 text-white" : "bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300"}`}
             >
               <TreeIcon className="w-4 h-4 transform rotate-270" /> Tree LR
@@ -1099,6 +1226,12 @@ export default function ProjectPage() {
                 <tr
                   key={row.id}
                   ref={(el) => { rowRefs.current[row.id] = el; }}
+                  onClick={(e) => {
+                    const target = e.target as HTMLElement;
+                    if (target.closest("button,a")) return;
+                    setHighlightedId(row.id);
+                    applyEdgeHighlight(row.id);
+                  }}
                   onDoubleClick={() => handleRowDoubleClick(row.id)}
                   className={`border-t border-gray-200 dark:border-gray-700 ${highlightedId === row.id ? "bg-yellow-100 dark:bg-yellow-900" : ""}`}
                 >
@@ -1136,7 +1269,7 @@ export default function ProjectPage() {
           </table>
         </div>
 
-        {/* ReactFlow + ContextMenu (canvas) */}
+        {/* ReactFlow */}
         <div
           className="absolute inset-0 border transition-opacity"
           style={{
@@ -1148,11 +1281,31 @@ export default function ProjectPage() {
         >
           <div className="absolute top-4 right-4 z-50">
             <div className="flex flex-col gap-1 p-1 bg-white/90 rounded shadow">
-              <button title="Zoom in" onClick={handleZoomIn} className="p-1 rounded hover:bg-gray-100 dark:text-black"><PlusIcon className="w-4 h-4" /></button>
-              <button title="Zoom out" onClick={handleZoomOut} className="p-1 rounded hover:bg-gray-100 dark:text-black"><MinusIcon className="w-4 h-4" /></button>
-              <button title="Fit view (preserve zoom)" onClick={handleFitView} className="p-1 rounded hover:bg-gray-100 dark:text-black"><FitViewIcon className="w-4 h-4" /></button>
-              <button title="Reorganize project" onClick={() => handleReorganize({ preserveZoom: true })} className="p-1 rounded hover:bg-gray-100 dark:text-black"><TreeIcon className="w-4 h-4" /></button>
-              <button title="Refresh project" onClick={handleRefresh} className="p-1 rounded hover:bg-gray-100 dark:text-black">
+              <button title="Zoom in" onClick={handleZoomIn} className="p-1 rounded hover:bg-gray-100 dark:text-black">
+                <PlusIcon className="w-4 h-4" />
+              </button>
+              <button title="Zoom out" onClick={handleZoomOut} className="p-1 rounded hover:bg-gray-100 dark:text-black">
+                <MinusIcon className="w-4 h-4" />
+              </button>
+              <button
+                title="Fit view (preserve zoom)"
+                onClick={handleFitView}
+                className="p-1 rounded hover:bg-gray-100 dark:text-black"
+              >
+                <FitViewIcon className="w-4 h-4" />
+              </button>
+              <button
+                title="Reorganize project"
+                onClick={() => handleReorganize({ preserveZoom: true })}
+                className="p-1 rounded hover:bg-gray-100 dark:text-black"
+              >
+                <TreeIcon className="w-4 h-4" />
+              </button>
+              <button
+                title="Refresh project"
+                onClick={handleRefresh}
+                className="p-1 rounded hover:bg-gray-100 dark:text-black"
+              >
                 <RefreshCw className={`w-4 h-4 ${isRefreshing ? "animate-spin" : ""}`} />
               </button>
             </div>
@@ -1161,72 +1314,129 @@ export default function ProjectPage() {
           <ReactFlowProvider>
             <svg width="0" height="0" aria-hidden>
               <defs>
-                <marker id="circle" viewBox="0 0 40 40" refX="20" refY="20" markerWidth="20" markerHeight="20" orient="auto-start-reverse">
+                <marker
+                  id="circle"
+                  viewBox="0 0 40 40"
+                  refX="20"
+                  refY="20"
+                  markerWidth="20"
+                  markerHeight="20"
+                  orient="auto-start-reverse"
+                >
                   <circle cx="20" cy="20" r="10" fill="#ff0000" />
                 </marker>
               </defs>
             </svg>
 
-            <ContextMenu>
-              <ContextMenuTrigger asChild>
-                <div className="w-full h-full">
-                  <ReactFlow
-                    nodes={nodes}
-                    edges={edges}
-                    onNodesChange={handleNodesChangeWithPersistence}
-                    onEdgesChange={onEdgesChange}
-                    nodeTypes={nodeTypes}
-                    minZoom={MIN_ZOOM}
-                    maxZoom={MAX_ZOOM}
-                    onInit={handleOnInit}
-                    onMoveEnd={handleOnMoveEnd}
-                    style={{ width: "100%", height: "100%" }}
-                    defaultViewport={viewport}
-                    defaultEdgeOptions={{
-                      type: "default",
-                      style: { stroke: "#999", strokeWidth: 2 },
-                      markerEnd: "url(#circle)",
+            <ReactFlow
+              nodes={nodes}
+              edges={edges}
+              onNodesChange={handleNodesChangeWithPersistence}
+              onEdgesChange={onEdgesChange}
+              nodeTypes={nodeTypes}
+              minZoom={MIN_ZOOM}
+              maxZoom={MAX_ZOOM}
+              onInit={handleOnInit}
+              onMoveEnd={handleOnMoveEnd}
+              onPaneClick={() => handleCloseMenu()}
+              defaultViewport={viewport}
+              defaultEdgeOptions={{
+                type: "default",
+                style: { stroke: "#999", strokeWidth: 2 },
+                markerEnd: "url(#circle)",
+              }}
+              onNodeDoubleClick={(_, node) => handleNodeDoubleClick(node)}
+              onNodeClick={(evt, node) => handleNodeClick(node, evt)}
+              onContextMenu={handleContextMenu}
+              style={{ width: "100%", height: "100%" }}
+            >
+              <Background />
+            </ReactFlow>
+
+            {/* Context menu del pane (opcional) */}
+            {contextMenu.visible && (
+              <DropdownMenu open onOpenChange={() => handleCloseMenu()}>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    style={{
+                      position: "fixed",
+                      top: contextMenu.y,
+                      left: contextMenu.x,
+                      width: 0,
+                      height: 0,
+                      opacity: 0,
                     }}
-                    onNodeDoubleClick={(_, node) => handleNodeDoubleClick(node)}
-                    onNodeClick={(evt, node) => handleNodeClick(node, evt)}
-                  >
-                    <Background />
-                  </ReactFlow>
-                </div>
-              </ContextMenuTrigger>
-              <ContextMenuContent className="w-56">
-                <ContextMenuItem inset onClick={() => { console.log("Canvas: refresh"); handleRefresh(); }}>
-                  <RefreshCw className="w-4 h-4 mr-2" />
-                  Refresh graph
-                </ContextMenuItem>
-                <ContextMenuItem
-                  inset
-                  onClick={() => {
-                    console.log("Canvas: clear selection");
-                    setPreviousNodeId(null);
-                    setHighlightedId(null);
-                    applyEdgeHighlight(null);
-                  }}
-                >
-                  <Trash2 className="w-4 h-4 mr-2" />
-                  Clear selection
-                </ContextMenuItem>
-                <ContextMenuSeparator />
-                <ContextMenuItem inset onClick={() => { console.log("Canvas: reorganize"); handleReorganize({ preserveZoom: true }); }}>
-                  <TreeIcon className="w-4 h-4 mr-2" />
-                  Reorganize layout
-                </ContextMenuItem>
-                <ContextMenuItem inset onClick={() => { console.log("Canvas: fit view"); handleFitView(); }}>
-                  <FitViewIcon className="w-4 h-4 mr-2" />
-                  Fit view
-                </ContextMenuItem>
-              </ContextMenuContent>
-            </ContextMenu>
+                  />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-56">
+                  {contextMenu.nodeId ? (
+                    <>
+                      <DropdownMenuItem onSelect={() => handleNodeDoubleClick({ id: contextMenu.nodeId! })}>
+                        <Pencil className="w-4 h-4 mr-2" />
+                        Edit
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onSelect={() => openRename(contextMenu.nodeId!)}>
+                        <Pencil className="w-4 h-4 mr-2" />
+                        Rename
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onSelect={() => duplicateNow([contextMenu.nodeId!])}>
+                        <Copy className="w-4 h-4 mr-2" />
+                        Duplicate
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onSelect={() => openDelete(contextMenu.nodeId!)}>
+                        <Trash2 className="w-4 h-4 mr-2" />
+                        Delete
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onSelect={() => openRestartAll(contextMenu.nodeId!)}>
+                        <RotateCcw className="w-4 h-4 mr-2" />
+                        Restart all
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onSelect={() => openContinueAll(contextMenu.nodeId!)}>
+                        <Play className="w-4 h-4 mr-2" />
+                        Continue all
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onSelect={() => openResetFrom(contextMenu.nodeId!)}>
+                        <RotateCcw className="w-4 h-4 mr-2" />
+                        Reset from
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onSelect={() => {
+                          setPreviousNodeId(null);
+                          setHighlightedId(null);
+                          applyEdgeHighlight(null);
+                        }}
+                      >
+                        <Trash2 className="w-4 h-4 mr-2" />
+                        Clear selection
+                      </DropdownMenuItem>
+                    </>
+                  ) : (
+                    <>
+                      <DropdownMenuItem onSelect={handleRefresh}>
+                        <RefreshCw className="w-4 h-4 mr-2" />
+                        Refresh graph
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onSelect={() => {
+                          setPreviousNodeId(null);
+                          setHighlightedId(null);
+                          applyEdgeHighlight(null);
+                        }}
+                      >
+                        <Trash2 className="w-4 h-4 mr-2" />
+                        Clear selection
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
           </ReactFlowProvider>
         </div>
       </div>
 
       {/* --- Dialogs --- */}
+
       {/* Rename */}
       <Dialog
         open={dlgRename.open}
@@ -1263,47 +1473,6 @@ export default function ProjectPage() {
               className="rounded-full px-4 py-2 min-w-[140px] font-medium bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {busy === "rename" ? "Renaming..." : "Rename"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Duplicate */}
-      <Dialog
-        open={dlgDup.open}
-        onOpenChange={(open: boolean) => {
-          if (!open) setDlgDup({ open: false, id: null, value: "" });
-        }}
-      >
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Duplicate protocol</DialogTitle>
-            <DialogDescription>Choose a name for the new copy.</DialogDescription>
-          </DialogHeader>
-
-          <div className="grid gap-3 py-2">
-            <Label htmlFor="duplicate">Copy name</Label>
-            <Input
-              id="duplicate"
-              value={dlgDup.value}
-              onChange={(e) => setDlgDup((s) => ({ ...s, value: e.target.value }))}
-              placeholder="e.g. motioncorr_copy"
-            />
-          </div>
-
-          <DialogFooter>
-            <Button
-              onClick={() => setDlgDup({ open: false, id: null, value: "" })}
-              className="rounded-full px-4 py-2 min-w-[140px] font-medium bg-gray-200 hover:bg-gray-300 text-gray-800"
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={submitDuplicate}
-              disabled={busy === "duplicate" || !dlgDup.value.trim()}
-              className="rounded-full px-4 py-2 min-w-[140px] font-medium bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              {busy === "duplicate" ? "Duplicating..." : "Duplicate"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1391,8 +1560,6 @@ export default function ProjectPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-
     </div>
   );
 }

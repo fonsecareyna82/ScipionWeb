@@ -25,14 +25,17 @@ export const createStatusNodeWrapper = (
     const { getViewport } = useReactFlow();
     const { zoom } = getViewport();
 
+    // estados externos
     const selectedNodeId = getSelectedNodeId?.();
     const hoveredNodeId = getHoveredNodeId?.();
     const graphDirection = getGraphDirection?.() ?? "TB";
 
+    // hover visual
     const handleMouseEnter = () => setHoveredNodeId?.(String(id));
     const handleMouseLeave = () => setHoveredNodeId?.(null);
     const isHovered = typeof hoveredNodeId === "string" && String(id) === String(hoveredNodeId);
 
+    // acciones
     const actions = getNodeActions?.() ?? {};
 
     return (

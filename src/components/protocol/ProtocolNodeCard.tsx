@@ -78,7 +78,7 @@ type StatusNodeProps = {
   isHovered?: boolean;
   setHoveredNodeId?: React.Dispatch<React.SetStateAction<string | null>>;
   graphDirection?: "TB" | "LR";
-  onClick?: () => void;
+  onClick?: (evt?: React.MouseEvent) => void;
   onDoubleClick?: () => void;
   zoomLevel?: number;
   compactThreshold?: number;
@@ -180,53 +180,56 @@ export default function StatusNode({
             {data.id !== "PROJECT" && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <button className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-200 ml-4" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-200 ml-4"
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     <MoreHorizontal className="h-12 w-12 text-black dark:text-black" />
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent className="w-56">
-                  <DropdownMenuItem onClick={handleEdit}>
+                  <DropdownMenuItem onSelect={handleEdit}>
                     <Pencil className="mr-2 h-4 w-4" /> Edit
                   </DropdownMenuItem>
-                  <DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => { /* tu acción Browse si aplica */ }}>
                     <FolderOpen className="mr-2 h-4 w-4" /> Browse
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={handleRename}>
+                  <DropdownMenuItem onSelect={handleRename}>
                     <Pencil className="mr-2 h-4 w-4" /> Rename
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={handleDuplicate}>
+                  <DropdownMenuItem onSelect={handleDuplicate}>
                     <Copy className="mr-2 h-4 w-4" /> Duplicate
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={handleDelete}>
+                  <DropdownMenuItem onSelect={handleDelete}>
                     <Trash2 className="mr-2 h-4 w-4" /> Delete
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => { /* select from */ }}>
                     <ArrowDownLeft className="mr-2 h-4 w-4" /> Select from
                   </DropdownMenuItem>
-                  <DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => { /* select to */ }}>
                     <ArrowUpRight className="mr-2 h-4 w-4" /> Select to
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   {data.status === "running" && (
-                    <DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => { /* Stop */ }}>
                       <Square className="mr-2 h-4 w-4" /> Stop
                     </DropdownMenuItem>
                   )}
-                  <DropdownMenuItem onClick={handleRestartAll}>
+                  <DropdownMenuItem onSelect={handleRestartAll}>
                     <RefreshCw className="mr-2 h-4 w-4" /> Restart all
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={handleContinueAll}>
+                  <DropdownMenuItem onSelect={handleContinueAll}>
                     <Play className="mr-2 h-4 w-4" /> Continue all
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={handleResetFrom}>
+                  <DropdownMenuItem onSelect={handleResetFrom}>
                     <RotateCcw className="mr-2 h-4 w-4" /> Reset from
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => { /* Export */ }}>
                     <FileUp className="mr-2 h-4 w-4" /> Export
                   </DropdownMenuItem>
-                  <DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => { /* Export & upload */ }}>
                     <Upload className="mr-2 h-4 w-4" /> Export & upload
                   </DropdownMenuItem>
                 </DropdownMenuContent>
@@ -349,48 +352,48 @@ export default function StatusNode({
       </ContextMenuTrigger>
 
       <ContextMenuContent className="w-56" onClick={(e) => e.stopPropagation()}>
-        <ContextMenuItem onClick={handleEdit}>
+        <ContextMenuItem onSelect={handleEdit}>
           <Pencil className="mr-2 h-4 w-4" /> Edit
         </ContextMenuItem>
-        <ContextMenuItem>
+        <ContextMenuItem onSelect={() => { /* Browse si aplica */ }}>
           <FolderOpen className="mr-2 h-4 w-4" /> Browse
         </ContextMenuItem>
-        <ContextMenuItem onClick={handleRename}>
+        <ContextMenuItem onSelect={handleRename}>
           <Pencil className="mr-2 h-4 w-4" /> Rename
         </ContextMenuItem>
-        <ContextMenuItem onClick={handleDuplicate}>
+        <ContextMenuItem onSelect={handleDuplicate}>
           <Copy className="mr-2 h-4 w-4" /> Duplicate
         </ContextMenuItem>
-        <ContextMenuItem onClick={handleDelete}>
+        <ContextMenuItem onSelect={handleDelete}>
           <Trash2 className="mr-2 h-4 w-4" /> Delete
         </ContextMenuItem>
         <ContextMenuSeparator />
-        <ContextMenuItem>
+        <ContextMenuItem onSelect={() => { /* Select from */ }}>
           <ArrowDownLeft className="mr-2 h-4 w-4" /> Select from
         </ContextMenuItem>
-        <ContextMenuItem>
+        <ContextMenuItem onSelect={() => { /* Select to */ }}>
           <ArrowUpRight className="mr-2 h-4 w-4" /> Select to
         </ContextMenuItem>
         <ContextMenuSeparator />
         {data.status === "running" && (
-          <ContextMenuItem>
+          <ContextMenuItem onSelect={() => { /* Stop */ }}>
             <Square className="mr-2 h-4 w-4" /> Stop
           </ContextMenuItem>
         )}
-        <ContextMenuItem onClick={handleRestartAll}>
+        <ContextMenuItem onSelect={handleRestartAll}>
           <RefreshCw className="mr-2 h-4 w-4" /> Restart all
         </ContextMenuItem>
-        <ContextMenuItem onClick={handleContinueAll}>
+        <ContextMenuItem onSelect={handleContinueAll}>
           <Play className="mr-2 h-4 w-4" /> Continue all
         </ContextMenuItem>
-        <ContextMenuItem onClick={handleResetFrom}>
+        <ContextMenuItem onSelect={handleResetFrom}>
           <RotateCcw className="mr-2 h-4 w-4" /> Reset from
         </ContextMenuItem>
         <ContextMenuSeparator />
-        <ContextMenuItem>
+        <ContextMenuItem onSelect={() => { /* Export */ }}>
           <FileUp className="mr-2 h-4 w-4" /> Export
         </ContextMenuItem>
-        <ContextMenuItem>
+        <ContextMenuItem onSelect={() => { /* Export & upload */ }}>
           <Upload className="mr-2 h-4 w-4" /> Export & upload
         </ContextMenuItem>
       </ContextMenuContent>
