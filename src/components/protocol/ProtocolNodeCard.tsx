@@ -255,7 +255,7 @@ export default function StatusNode({
                         return (
                           <div
                             key={idx}
-                            className={`nodrag mt-3 group cursor-grab flex items-center px-3 py-1 rounded-full border border-gray-400 dark:border-gray-600 shadow-sm hover:shadow-md transition-transform ${isDragging ? "scale-100 opacity-70" : "bg-gradient-to-r from-gray-200 to-gray-300 dark:from-gray-200 dark:to-gray-300"}`}
+                            className={`nodrag mt-3 group cursor-grab flex items-center px-3 py-1 rounded-full border border-gray-400 dark:border-gray-600  ${isDragging ? "scale-100 opacity-70" : "bg-gradient-to-r from-gray-300 to-gray-200 dark:from-gray-300 dark:to-gray-200"}`}
                             draggable
                             onDragStart={(e) => {
                               e.stopPropagation();

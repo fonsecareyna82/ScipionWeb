@@ -1014,7 +1014,7 @@ export default function ProjectPage() {
     setBusy("rename");
     try {
       await svc.renameProtocol(projectName, id, value);
-      toast.success("Protocol renamed.");
+      toast.success("Protocol renamed successfully.");
       await handleRefresh();
     } catch (e) {
       console.error(e);
@@ -1034,7 +1034,7 @@ export default function ProjectPage() {
       if (confirm.kind === "continueAll") await svc.continueAll(projectName, id);
       setConfirm({ open: false, id: null, kind: null });
       toast.success(
-        confirm.kind === "delete" ? "Protocol deleted." :
+        confirm.kind === "delete" ? "Protocol deleted successfully." :
           confirm.kind === "restartAll" ? "Restart started." : "Continue started."
       );
       await handleRefresh();
