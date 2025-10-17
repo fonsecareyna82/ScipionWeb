@@ -77,7 +77,7 @@ interface StatusNodeData {
   stepsDone?: number;
   children?: string[];
   parents?: string[];
-  __pathSelected?: boolean; // visual selection flag (no global CSS)
+  __pathSelected?: boolean;
 }
 
 interface ContextMenuState {
@@ -98,6 +98,9 @@ type NodeActions = {
   onSelectFrom?: (id: string) => void;
   onSelectTo?: (id: string) => void;
 };
+
+/* --------------------- Constants --------------------- */
+const ROOT_ID = "PROJECT";
 
 /* --------------------- Component --------------------- */
 export default function ProjectPage() {
@@ -269,10 +272,14 @@ export default function ProjectPage() {
 
   /* --------------------- Selection helpers --------------------- */
 
-  // Clear multi-selection and single-node highlight visuals
+  // Clear path selection synchronously (also updates the ref first)
   const clearPathSelection = useCallback(() => {
-    setPathSel({ nodes: new Set(), edges: new Set() });
+    // Update ref immediately so subsequent logic sees empty sets
+    pathSelRef.current = { nodes: new Set(), edges: new Set() };
+    setPathSel(pathSelRef.current);
     setRangeSel({ from: null, to: null });
+
+    // Clear node visual flags
     setNodes((prev) =>
       prev.map((n) => ({
         ...n,
@@ -280,7 +287,11 @@ export default function ProjectPage() {
         data: { ...(n as any).data, __pathSelected: false },
       }))
     );
+
+    // Clear edge highlights
     setEdges((eds) => paintEdgeHighlight(eds, null, undefined));
+
+    // Clear single-node highlight state
     setPreviousNodeId(null);
     setHighlightedId(null);
   }, [paintEdgeHighlight, setNodes, setEdges]);
@@ -288,28 +299,34 @@ export default function ProjectPage() {
   /* --------------------- Node click / dblclick --------------------- */
 
   const handleNodeClick = (nodeData: any, event?: React.MouseEvent) => {
-    // Left click should clear multi-selection
+    // If there is a path selection, clear it immediately and then select the clicked node
     if (pathSelRef.current.nodes.size || pathSelRef.current.edges.size) {
       clearPathSelection();
     }
-    // Select the clicked node immediately (forces node re-render)
+
     const id = nodeData.id;
+
+    // Select the clicked node instantly (React Flow "selected" prop)
     setNodes((prev) => prev.map((n) => ({ ...n, selected: n.id === id })));
+
     selectedIdRef.current = id;
     setPreviousNodeId(id);
     setHighlightedId(id);
+
+    // Repaint edges related to the single selected node
     applyEdgeHighlight(id);
   };
 
   const handleNodeDoubleClick = async (nodeData: any) => {
-    // Double click also clears multi-selection
+    // Double click clears path selection as well (if any)
     if (pathSelRef.current.nodes.size || pathSelRef.current.edges.size) {
       clearPathSelection();
     }
     if (!projectName) return;
     try {
-      // Select the node immediately as well
       const id = nodeData.id;
+
+      // Select the node immediately
       setNodes((prev) => prev.map((n) => ({ ...n, selected: n.id === id })));
       selectedIdRef.current = id;
       setPreviousNodeId(id);
@@ -384,7 +401,7 @@ export default function ProjectPage() {
   const openContinueAll = (id: string) => setConfirm({ open: true, id, kind: "continueAll" });
   const openResetFrom = (id: string) => setDlgResetFrom({ open: true, id });
 
-  /* --------------------- Build adjacency from children/parents (fallback edges) --------------------- */
+  /* --------------------- Build adjacency from children/parents --------------------- */
   const buildAdj = useCallback(() => {
     const fwd: Record<string, string[]> = {};
     const rev: Record<string, string[]> = {};
@@ -408,6 +425,7 @@ export default function ProjectPage() {
       }
     });
 
+    // Also consider actual edges
     edges.forEach((e) => {
       (fwd[e.source] ||= []).push(e.target);
       (rev[e.target] ||= []).push(e.source);
@@ -423,7 +441,7 @@ export default function ProjectPage() {
     (id: string) => {
       const { fwd } = buildAdj();
 
-      // Downstream traversal
+      // Downstream traversal (BFS/DFS). Exclude ROOT_ID from visited set.
       const q: string[] = [id];
       const visited = new Set<string>([id]);
       while (q.length) {
@@ -435,15 +453,20 @@ export default function ProjectPage() {
           }
         }
       }
+      // Ensure root is not selected
+      visited.delete(ROOT_ID);
 
-      // Induced edges
+      // Induced edges on visited set
       const edgeSet = new Set<string>();
       edges.forEach((e) => {
         if (visited.has(e.source) && visited.has(e.target)) edgeSet.add(e.id);
       });
 
       setRangeSel({ from: id, to: null });
-      setPathSel({ nodes: visited, edges: edgeSet });
+
+      // Update ref FIRST (important for immediate click behavior)
+      pathSelRef.current = { nodes: visited, edges: edgeSet };
+      setPathSel(pathSelRef.current);
 
       // Visuals: mark selected and __pathSelected
       setNodes((prev) =>
@@ -468,7 +491,7 @@ export default function ProjectPage() {
     (id: string) => {
       const { rev } = buildAdj();
 
-      // Upstream traversal
+      // Upstream traversal. Exclude ROOT_ID from visited set.
       const q: string[] = [id];
       const visited = new Set<string>([id]);
       while (q.length) {
@@ -480,15 +503,19 @@ export default function ProjectPage() {
           }
         }
       }
+      visited.delete(ROOT_ID);
 
-      // Induced edges
+      // Induced edges on visited set
       const edgeSet = new Set<string>();
       edges.forEach((e) => {
         if (visited.has(e.source) && visited.has(e.target)) edgeSet.add(e.id);
       });
 
       setRangeSel((r) => ({ from: r.from, to: id }));
-      setPathSel({ nodes: visited, edges: edgeSet });
+
+      // Update ref FIRST
+      pathSelRef.current = { nodes: visited, edges: edgeSet };
+      setPathSel(pathSelRef.current);
 
       setNodes((prev) =>
         prev.map((n) => ({
@@ -598,7 +625,6 @@ export default function ProjectPage() {
       const selEdges = pathSelRef.current.edges;
       const hasPathSel = selNodes.size > 0 || selEdges.size > 0;
 
-      // Nodes: set selected for path selection OR single selected id, and set __pathSelected flag
       const nodesWithSel = newNodes.map((n) => {
         const pathSelected = selNodes.has(n.id);
         const singleSelected = !hasPathSel && currentSelId ? n.id === currentSelId : false;
@@ -609,7 +635,6 @@ export default function ProjectPage() {
         };
       });
 
-      // Edges: highlight forced edges if path selection, otherwise highlight edges related to single selected id
       const edgesWithHL = paintEdgeHighlight(
         newEdges,
         hasPathSel ? null : (currentSelId ?? null),
@@ -1172,6 +1197,10 @@ export default function ProjectPage() {
   const handleRowDoubleClick = async (id: string) => {
     if (!projectName) return;
     try {
+      // If path selection exists, clear it first for consistent UX
+      if (pathSelRef.current.nodes.size || pathSelRef.current.edges.size) {
+        clearPathSelection();
+      }
       // Select row's node visually
       setNodes((prev) => prev.map((n) => ({ ...n, selected: n.id === id })));
       const fullNodeData = await svc.fetchProtocolDetails(projectName, id);
@@ -1482,11 +1511,12 @@ export default function ProjectPage() {
                   onClick={(e) => {
                     const target = e.target as HTMLElement;
                     if (target.closest("button,a")) return;
-                    // Clear multi-selection if any
+
+                    // Clear path selection if present, then select single node
                     if (pathSelRef.current.nodes.size || pathSelRef.current.edges.size) {
                       clearPathSelection();
                     }
-                    // Mark single selected node
+
                     setNodes((prev) => prev.map((n) => ({ ...n, selected: n.id === row.id })));
                     setHighlightedId(row.id);
                     setPreviousNodeId(row.id);
@@ -1791,7 +1821,7 @@ export default function ProjectPage() {
             </DialogDescription>
           </DialogHeader>
 
-        <DialogFooter>
+          <DialogFooter>
             <Button
               onClick={() => setDlgResetFrom({ open: false, id: null })}
               className="rounded-full px-4 py-2 min-w-[140px] font-medium bg-gray-200 hover:bg-gray-300 text-gray-800"

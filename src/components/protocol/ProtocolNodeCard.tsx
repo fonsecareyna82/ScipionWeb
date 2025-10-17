@@ -75,9 +75,9 @@ type StatusNodeProps = {
     inputs?: any[];
     children?: string[];
     parents?: string[];
-    __pathSelected?: boolean; // provided by parent for path selection
+    __pathSelected?: boolean;
   };
-  selected?: boolean; // React Flow "selected" prop for instant visual update
+  selected?: boolean;
   hoveredNodeId?: string;
   isHovered?: boolean;
   setHoveredNodeId?: React.Dispatch<React.SetStateAction<string | null>>;
@@ -126,14 +126,14 @@ export default function StatusNode({
 }: StatusNodeProps) {
   const [isHovered, setIsHovered] = useState(false);
   const [draggingIdx, setDraggingIdx] = useState<number | null>(null);
-  const isSelected = !!selected;                 // single or multi selection (React Flow prop)
-  const isPathSelected = !!data.__pathSelected;  // extra ring for path selection
+  const isSelected = !!selected;
+  const isPathSelected = !!data.__pathSelected;
   const { setCurrentDraggedOutput } = useDrag();
 
   const bgColor = STATUS_COLORS[data.status ?? "finished"] ?? STATUS_COLORS["root"];
   data.color = bgColor;
 
-  // Keep your original rounded/card styles; add only a subtle outline when selected or path-selected
+  // Keep original node look; add only a light outline for selection/path selection
   const classNames = [
     "status-node-card",
     "rounded-2xl border transition-shadow transform",
@@ -143,7 +143,7 @@ export default function StatusNode({
     .filter(Boolean)
     .join(" ");
 
-  // Extra visual without touching global CSS: inline boxShadow ring when path-selected
+  // Extra ring when path-selected (no global CSS changes)
   const pathSelectedStyle = isPathSelected
     ? { boxShadow: "0 0 0 3px rgba(59,130,246,0.75), 0 8px 16px rgba(0,0,0,0.10)" }
     : undefined;

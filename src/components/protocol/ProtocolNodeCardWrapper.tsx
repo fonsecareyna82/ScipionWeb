@@ -17,7 +17,7 @@ type NodeActions = {
 export const createStatusNodeWrapper = (
   onClick: (data: any, evt?: React.MouseEvent) => void,
   onDoubleClick: (data: any) => void,
-  getSelectedNodeId: () => string | undefined, // kept for backward-compat; not used now
+  getSelectedNodeId: () => string | undefined,
   getHoveredNodeId: () => string | undefined,
   setHoveredNodeId?: React.Dispatch<React.SetStateAction<string | null>>,
   getGraphDirection?: () => "TB" | "LR",
@@ -43,7 +43,7 @@ export const createStatusNodeWrapper = (
           {...rest}
           id={String(id)}
           data={data}
-          selected={selected}            // <-- use React Flow's selected for instant visual update
+          selected={selected}
           onClick={(evt?: React.MouseEvent) => onClick(data, evt)}
           onDoubleClick={() => onDoubleClick(data)}
           graphDirection={graphDirection}
