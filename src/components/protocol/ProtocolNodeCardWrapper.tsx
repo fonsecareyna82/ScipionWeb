@@ -1,3 +1,4 @@
+// File: src/components/protocol/ProtocolNodeCardWrapper.tsx
 import { NodeProps, useReactFlow } from "reactflow";
 import StatusNode from "./ProtocolNodeCard";
 
@@ -9,33 +10,31 @@ type NodeActions = {
   onRestartAll?: (id: string) => void;
   onContinueAll?: (id: string) => void;
   onResetFrom?: (id: string) => void;
+  onSelectFrom?: (id: string) => void;
+  onSelectTo?: (id: string) => void;
 };
 
 export const createStatusNodeWrapper = (
   onClick: (data: any, evt?: React.MouseEvent) => void,
   onDoubleClick: (data: any) => void,
-  getSelectedNodeId: () => string | undefined,
+  getSelectedNodeId: () => string | undefined, // kept for backward-compat; not used now
   getHoveredNodeId: () => string | undefined,
   setHoveredNodeId?: React.Dispatch<React.SetStateAction<string | null>>,
   getGraphDirection?: () => "TB" | "LR",
   getNodeActions?: () => NodeActions
 ) => {
   return function StatusNodeWrapper(props: NodeProps) {
-    const { data, id, ...rest } = props;
+    const { data, id, selected, ...rest } = props;
     const { getViewport } = useReactFlow();
     const { zoom } = getViewport();
 
-    // estados externos
-    const selectedNodeId = getSelectedNodeId?.();
     const hoveredNodeId = getHoveredNodeId?.();
     const graphDirection = getGraphDirection?.() ?? "TB";
 
-    // hover visual
     const handleMouseEnter = () => setHoveredNodeId?.(String(id));
     const handleMouseLeave = () => setHoveredNodeId?.(null);
     const isHovered = typeof hoveredNodeId === "string" && String(id) === String(hoveredNodeId);
 
-    // acciones
     const actions = getNodeActions?.() ?? {};
 
     return (
@@ -44,7 +43,7 @@ export const createStatusNodeWrapper = (
           {...rest}
           id={String(id)}
           data={data}
-          selectedNodeId={selectedNodeId}
+          selected={selected}            // <-- use React Flow's selected for instant visual update
           onClick={(evt?: React.MouseEvent) => onClick(data, evt)}
           onDoubleClick={() => onDoubleClick(data)}
           graphDirection={graphDirection}
@@ -59,6 +58,8 @@ export const createStatusNodeWrapper = (
           onRestartAll={actions.onRestartAll}
           onContinueAll={actions.onContinueAll}
           onResetFrom={actions.onResetFrom}
+          onSelectFrom={actions.onSelectFrom}
+          onSelectTo={actions.onSelectTo}
         />
       </div>
     );

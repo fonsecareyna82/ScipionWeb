@@ -75,6 +75,9 @@ interface StatusNodeData {
   tick?: number;
   numberOfSteps?: number;
   stepsDone?: number;
+  children?: string[];
+  parents?: string[];
+  __pathSelected?: boolean; // visual selection flag (no global CSS)
 }
 
 interface ContextMenuState {
@@ -92,6 +95,8 @@ type NodeActions = {
   onRestartAll?: (id: string) => void;
   onContinueAll?: (id: string) => void;
   onResetFrom?: (id: string) => void;
+  onSelectFrom?: (id: string) => void;
+  onSelectTo?: (id: string) => void;
 };
 
 /* --------------------- Component --------------------- */
@@ -111,7 +116,7 @@ export default function ProjectPage() {
   const [tableData, setTableData] = useState<any[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // selection (used by wrapper + edge highlight)
+  // single-node selection id (for edge highlight persistence)
   const [previousNodeId, setPreviousNodeId] = useState<string | null>(null);
   const selectedIdRef = useRef<string | null>(null);
   useEffect(() => { selectedIdRef.current = previousNodeId; }, [previousNodeId]);
@@ -124,10 +129,10 @@ export default function ProjectPage() {
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [graphDirection, setGraphDirection] = useState<"TB" | "LR">("TB");
 
-  // hide graph while centering (avoid visible jumps)
+  // hide graph while centering
   const [hideGraphDuringCenter, setHideGraphDuringCenter] = useState(false);
 
-  // React 18 transitions for heavy updates
+  // React 18 transitions
   const [, startTransition] = useTransition();
 
   // persistence control
@@ -140,7 +145,7 @@ export default function ProjectPage() {
 
   const reactFlowInstanceRef = useRef<ReactFlowInstance | null>(null);
 
-  // context menu (pane)
+  // pane context menu
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({ visible: false, x: 0, y: 0 });
 
   const TIME_TO_REFRESH = 15000;
@@ -164,20 +169,81 @@ export default function ProjectPage() {
   const nodesRef = useRef<Node[]>(nodes);
   useEffect(() => { nodesRef.current = nodes; }, [nodes]);
 
+  // --- Path selection (multi) ---
+  const [pathSel, setPathSel] = useState<{ nodes: Set<string>; edges: Set<string> }>({
+    nodes: new Set(),
+    edges: new Set(),
+  });
+  const pathSelRef = useRef(pathSel);
+  useEffect(() => { pathSelRef.current = pathSel; }, [pathSel]);
+  const [rangeSel, setRangeSel] = useState<{ from: string | null; to: string | null }>({ from: null, to: null });
+
   const isRunningNode = (n: Node) => (n as any).data?.status === "running";
 
-  /* --------------------- Node click / dblclick --------------------- */
+  /* --------------------- Edge highlight painter --------------------- */
 
-  // edge highlight painter (minimal diff)
-  const paintEdgeHighlight = useCallback((eds: Edge[], selectedId: string | null): Edge[] => {
-    if (!selectedId) {
-      let anyStyled = false;
-      for (const e of eds) {
-        if (e.style?.stroke === "#0070f3" || (e as any).__hl) { anyStyled = true; break; }
+  const curIsBlue = (e: Edge) =>
+    (e.style as any)?.stroke === "#0070f3" && (e.style as any)?.strokeWidth === 3;
+
+  const paintEdgeHighlight = useCallback(
+    (eds: Edge[], selectedId: string | null, forcedEdges?: Set<string>): Edge[] => {
+      // Apply forced highlight (path selection) if provided
+      if (forcedEdges && forcedEdges.size) {
+        let changed = false;
+        const out = eds.map((e) => {
+          const should = forcedEdges.has(e.id);
+          const is = curIsBlue(e);
+          if (should && !is) {
+            changed = true;
+            return { ...e, style: { ...(e.style ?? {}), stroke: "#0070f3", strokeWidth: 3 }, __hl: true as any };
+          }
+          if (!should && (e as any).__hl) {
+            changed = true;
+            const { style, ...rest } = e;
+            const newStyle = { ...(style ?? {}) };
+            delete (newStyle as any).stroke;
+            delete (newStyle as any).strokeWidth;
+            const clean = { ...rest, style: Object.keys(newStyle).length ? newStyle : undefined } as Edge;
+            delete (clean as any).__hl;
+            return clean;
+          }
+          return e;
+        });
+        return changed ? out : eds;
       }
-      if (!anyStyled) return eds;
-      return eds.map((e) => {
-        if ((e as any).__hl || (e.style && (e.style as any).stroke === "#0070f3")) {
+
+      // Fallback to single-node edge highlight
+      if (!selectedId) {
+        let anyStyled = false;
+        for (const e of eds) {
+          if ((e as any).__hl || curIsBlue(e)) { anyStyled = true; break; }
+        }
+        if (!anyStyled) return eds;
+        return eds.map((e) => {
+          if ((e as any).__hl || curIsBlue(e)) {
+            const { style, ...rest } = e;
+            const newStyle = { ...(style ?? {}) };
+            delete (newStyle as any).stroke;
+            delete (newStyle as any).strokeWidth;
+            const clean = { ...rest, style: Object.keys(newStyle).length ? newStyle : undefined } as Edge;
+            delete (clean as any).__hl;
+            return clean;
+          }
+          return e;
+        });
+      }
+
+      let changed = false;
+      const next = eds.map((e) => {
+        const isConn = e.source === selectedId || e.target === selectedId;
+        if (isConn) {
+          const curStroke = (e.style as any)?.stroke;
+          const curWidth = (e.style as any)?.strokeWidth;
+          if (curStroke === "#0070f3" && curWidth === 3) return e;
+          changed = true;
+          return { ...e, style: { ...(e.style ?? {}), stroke: "#0070f3", strokeWidth: 3 }, __hl: true as any };
+        } else if ((e as any).__hl || curIsBlue(e)) {
+          changed = true;
           const { style, ...rest } = e;
           const newStyle = { ...(style ?? {}) };
           delete (newStyle as any).stroke;
@@ -188,63 +254,70 @@ export default function ProjectPage() {
         }
         return e;
       });
-    }
+      return changed ? next : eds;
+    },
+    []
+  );
 
-    let changed = false;
-    const next = eds.map((e) => {
-      const isConn = e.source === selectedId || e.target === selectedId;
-      if (isConn) {
-        const curStroke = (e.style as any)?.stroke;
-        const curWidth = (e.style as any)?.strokeWidth;
-        if (curStroke === "#0070f3" && curWidth === 3) return e;
-        changed = true;
-        return {
-          ...e,
-          style: { ...(e.style ?? {}), stroke: "#0070f3", strokeWidth: 3 },
-          __hl: true as any,
-        };
-      } else if ((e as any).__hl || curIsBlue(e)) {
-        changed = true;
-        const { style, ...rest } = e;
-        const newStyle = { ...(style ?? {}) };
-        delete (newStyle as any).stroke;
-        delete (newStyle as any).strokeWidth;
-        const clean = { ...rest, style: Object.keys(newStyle).length ? newStyle : undefined } as Edge;
-        delete (clean as any).__hl;
-        return clean;
-      }
-      return e;
-    });
-    return changed ? next : eds;
-  }, []);
+  const applyEdgeHighlight = useCallback(
+    (selectedId: string | null) => {
+      const forced = pathSelRef.current.edges;
+      setEdges((eds) => paintEdgeHighlight(eds, forced.size ? null : selectedId, forced.size ? forced : undefined));
+    },
+    [paintEdgeHighlight, setEdges]
+  );
 
-  const curIsBlue = (e: Edge) => (e.style as any)?.stroke === "#0070f3" && (e.style as any)?.strokeWidth === 3;
+  /* --------------------- Selection helpers --------------------- */
 
-  const applyEdgeHighlight = useCallback((selectedId: string | null) => {
-    setEdges((eds) => paintEdgeHighlight(eds, selectedId));
-  }, [paintEdgeHighlight, setEdges]);
+  // Clear multi-selection and single-node highlight visuals
+  const clearPathSelection = useCallback(() => {
+    setPathSel({ nodes: new Set(), edges: new Set() });
+    setRangeSel({ from: null, to: null });
+    setNodes((prev) =>
+      prev.map((n) => ({
+        ...n,
+        selected: false,
+        data: { ...(n as any).data, __pathSelected: false },
+      }))
+    );
+    setEdges((eds) => paintEdgeHighlight(eds, null, undefined));
+    setPreviousNodeId(null);
+    setHighlightedId(null);
+  }, [paintEdgeHighlight, setNodes, setEdges]);
+
+  /* --------------------- Node click / dblclick --------------------- */
 
   const handleNodeClick = (nodeData: any, event?: React.MouseEvent) => {
-    handleCloseMenu();
-    if (event?.shiftKey) return;
-    prevIdRef.current = nodeData.id;
-    selectedIdRef.current = nodeData.id;
-    setPreviousNodeId(nodeData.id);
-    setHighlightedId(nodeData.id);
-    applyEdgeHighlight(nodeData.id);
+    // Left click should clear multi-selection
+    if (pathSelRef.current.nodes.size || pathSelRef.current.edges.size) {
+      clearPathSelection();
+    }
+    // Select the clicked node immediately (forces node re-render)
+    const id = nodeData.id;
+    setNodes((prev) => prev.map((n) => ({ ...n, selected: n.id === id })));
+    selectedIdRef.current = id;
+    setPreviousNodeId(id);
+    setHighlightedId(id);
+    applyEdgeHighlight(id);
   };
 
   const handleNodeDoubleClick = async (nodeData: any) => {
-    handleCloseMenu();
+    // Double click also clears multi-selection
+    if (pathSelRef.current.nodes.size || pathSelRef.current.edges.size) {
+      clearPathSelection();
+    }
     if (!projectName) return;
     try {
-      const fullNodeData = await svc.fetchProtocolDetails(projectName, nodeData.id);
-      prevIdRef.current = nodeData.id;
-      selectedIdRef.current = nodeData.id;
+      // Select the node immediately as well
+      const id = nodeData.id;
+      setNodes((prev) => prev.map((n) => ({ ...n, selected: n.id === id })));
+      selectedIdRef.current = id;
+      setPreviousNodeId(id);
+      setHighlightedId(id);
+      applyEdgeHighlight(id);
+
+      const fullNodeData = await svc.fetchProtocolDetails(projectName, id);
       setSelectedNodeDetails(fullNodeData);
-      setPreviousNodeId(nodeData.id);
-      setHighlightedId(nodeData.id);
-      applyEdgeHighlight(nodeData.id);
     } catch (err) {
       console.error("Failed to fetch protocol details", err);
     }
@@ -265,10 +338,10 @@ export default function ProjectPage() {
   useEffect(() => { hoveredIdRef.current = hoveredNodeId; }, [hoveredNodeId]);
   useEffect(() => { graphDirRef.current = graphDirection; }, [graphDirection]);
 
-  // === Node actions expuestas a los nodos ===
+  // Exposed actions to node cards
   const nodeActionsRef = useRef<NodeActions>({});
 
-  // helpers para toast / errores
+  // Toast/error helpers
   const getErrorMsg = (e: any) => {
     if (e && typeof e === "object") {
       const status = (e as any).status;
@@ -286,7 +359,6 @@ export default function ProjectPage() {
 
   const genCopyName = (id: string) => {
     const label = getNodeLabelById(id);
-    // normaliza: trim, espacios→_, y elimina caracteres raros
     const normalized = String(label).trim().replace(/\s+/g, "_").replace(/[^\w.-]/g, "");
     return `${normalized}_copy_${Date.now().toString().slice(-5)}`;
   };
@@ -295,9 +367,7 @@ export default function ProjectPage() {
     if (!projectName || !ids.length) return;
     setBusy("duplicate");
     try {
-      await Promise.all(
-        ids.map((id) => svc.duplicateProtocol(projectName, id, genCopyName(id)))
-      );
+      await Promise.all(ids.map((id) => svc.duplicateProtocol(projectName, id, genCopyName(id))));
       toast.success("Protocols duplicated successfully.");
       await handleRefresh();
     } catch (e) {
@@ -314,6 +384,130 @@ export default function ProjectPage() {
   const openContinueAll = (id: string) => setConfirm({ open: true, id, kind: "continueAll" });
   const openResetFrom = (id: string) => setDlgResetFrom({ open: true, id });
 
+  /* --------------------- Build adjacency from children/parents (fallback edges) --------------------- */
+  const buildAdj = useCallback(() => {
+    const fwd: Record<string, string[]> = {};
+    const rev: Record<string, string[]> = {};
+
+    nodesRef.current.forEach((n) => {
+      const id = n.id;
+      const children = ((n as any).data?.children as string[] | undefined) ?? [];
+      const parents = ((n as any).data?.parents as string[] | undefined) ?? [];
+
+      if (children.length) {
+        for (const c of children) {
+          (fwd[id] ||= []).push(c);
+          (rev[c] ||= []).push(id);
+        }
+      }
+      if (parents.length) {
+        for (const p of parents) {
+          (rev[id] ||= []).push(p);
+          (fwd[p] ||= []).push(id);
+        }
+      }
+    });
+
+    edges.forEach((e) => {
+      (fwd[e.source] ||= []).push(e.target);
+      (rev[e.target] ||= []).push(e.source);
+    });
+
+    for (const k in fwd) fwd[k] = Array.from(new Set(fwd[k]));
+    for (const k in rev) rev[k] = Array.from(new Set(rev[k]));
+    return { fwd, rev };
+  }, [edges]);
+
+  /* --------------------- Path selection actions --------------------- */
+  const selectFromAction = useCallback(
+    (id: string) => {
+      const { fwd } = buildAdj();
+
+      // Downstream traversal
+      const q: string[] = [id];
+      const visited = new Set<string>([id]);
+      while (q.length) {
+        const u = q.shift()!;
+        for (const v of fwd[u] || []) {
+          if (!visited.has(v)) {
+            visited.add(v);
+            q.push(v);
+          }
+        }
+      }
+
+      // Induced edges
+      const edgeSet = new Set<string>();
+      edges.forEach((e) => {
+        if (visited.has(e.source) && visited.has(e.target)) edgeSet.add(e.id);
+      });
+
+      setRangeSel({ from: id, to: null });
+      setPathSel({ nodes: visited, edges: edgeSet });
+
+      // Visuals: mark selected and __pathSelected
+      setNodes((prev) =>
+        prev.map((n) => ({
+          ...n,
+          selected: visited.has(n.id),
+          data: { ...(n as any).data, __pathSelected: visited.has(n.id) },
+        }))
+      );
+      setEdges((eds) => paintEdgeHighlight(eds, null, edgeSet));
+
+      // Clear single-node highlight state
+      setPreviousNodeId(null);
+      setHighlightedId(null);
+
+      toast.success(`Selected ${visited.size} protocol(s) downstream from "${getNodeLabelById(id)}".`);
+    },
+    [buildAdj, edges, paintEdgeHighlight, setEdges, setNodes]
+  );
+
+  const selectToAction = useCallback(
+    (id: string) => {
+      const { rev } = buildAdj();
+
+      // Upstream traversal
+      const q: string[] = [id];
+      const visited = new Set<string>([id]);
+      while (q.length) {
+        const u = q.shift()!;
+        for (const p of rev[u] || []) {
+          if (!visited.has(p)) {
+            visited.add(p);
+            q.push(p);
+          }
+        }
+      }
+
+      // Induced edges
+      const edgeSet = new Set<string>();
+      edges.forEach((e) => {
+        if (visited.has(e.source) && visited.has(e.target)) edgeSet.add(e.id);
+      });
+
+      setRangeSel((r) => ({ from: r.from, to: id }));
+      setPathSel({ nodes: visited, edges: edgeSet });
+
+      setNodes((prev) =>
+        prev.map((n) => ({
+          ...n,
+          selected: visited.has(n.id),
+          data: { ...(n as any).data, __pathSelected: visited.has(n.id) },
+        }))
+      );
+      setEdges((eds) => paintEdgeHighlight(eds, null, edgeSet));
+
+      setPreviousNodeId(null);
+      setHighlightedId(null);
+
+      toast.success(`Selected ${visited.size} protocol(s) up to root(s) from "${getNodeLabelById(id)}".`);
+    },
+    [buildAdj, edges, paintEdgeHighlight, setEdges, setNodes]
+  );
+
+  // Expose actions to node components
   useEffect(() => {
     nodeActionsRef.current = {
       onEdit: (id) => handleNodeDoubleClick({ id }),
@@ -323,8 +517,10 @@ export default function ProjectPage() {
       onRestartAll: openRestartAll,
       onContinueAll: openContinueAll,
       onResetFrom: openResetFrom,
+      onSelectFrom: selectFromAction,
+      onSelectTo: selectToAction,
     };
-  }, [handleNodeDoubleClick]);
+  }, [handleNodeDoubleClick, selectFromAction, selectToAction]);
 
   const nodeTypesRef = useRef<Record<string, any> | null>(null);
   if (!nodeTypesRef.current) {
@@ -394,6 +590,36 @@ export default function ProjectPage() {
     const oldEdgesMap = new Map(edges.map((e) => [e.id, e]));
     return newEdges.map((e) => (oldEdgesMap.get(e.id) ? { ...oldEdgesMap.get(e.id)!, ...e } : e));
   };
+
+  /* --------------------- Re-apply selection (path or single) after rebuild --------------------- */
+  const applyCurrentSelection = useCallback(
+    (newNodes: Node[], newEdges: Edge[], currentSelId?: string | null) => {
+      const selNodes = pathSelRef.current.nodes;
+      const selEdges = pathSelRef.current.edges;
+      const hasPathSel = selNodes.size > 0 || selEdges.size > 0;
+
+      // Nodes: set selected for path selection OR single selected id, and set __pathSelected flag
+      const nodesWithSel = newNodes.map((n) => {
+        const pathSelected = selNodes.has(n.id);
+        const singleSelected = !hasPathSel && currentSelId ? n.id === currentSelId : false;
+        return {
+          ...n,
+          selected: pathSelected ? true : singleSelected,
+          data: { ...(n as any).data, __pathSelected: pathSelected },
+        };
+      });
+
+      // Edges: highlight forced edges if path selection, otherwise highlight edges related to single selected id
+      const edgesWithHL = paintEdgeHighlight(
+        newEdges,
+        hasPathSel ? null : (currentSelId ?? null),
+        hasPathSel ? selEdges : undefined
+      );
+
+      return { nodesWithSel, edgesWithHL };
+    },
+    [paintEdgeHighlight]
+  );
 
   /* ------------------------ Centering helper ------------------------ */
   const centerLikeButton = useCallback((nodesList?: Node[], preserveZoom = true, zoomOverride?: number) => {
@@ -491,7 +717,7 @@ export default function ProjectPage() {
 
         const nodesWithPositions = loadNodesWithPositions(loadedNodes);
 
-        // seed ticks
+        // Seed ticks
         const initialTicks: Record<string, number> = {};
         nodesWithPositions.forEach((n) => {
           if ((n as any).data?.status === "running") {
@@ -504,15 +730,23 @@ export default function ProjectPage() {
             : n
         );
 
+        // Re-apply current selection (multi or single)
+        const { nodesWithSel, edgesWithHL } = applyCurrentSelection(
+          nodesWithTick,
+          loadedEdges,
+          selectedIdRef.current
+        );
+
         startTransition(() => {
-          setNodes(nodesWithTick);
-          setEdges((_) => paintEdgeHighlight(loadedEdges, selectedIdRef.current ?? null));
+          setNodes(nodesWithSel);
+          setEdges(edgesWithHL);
           setTableData(table ?? []);
         });
 
         setNodeTicks(initialTicks);
         setNodesLoadedOnce(true);
 
+        // Initial center on first hierarchical load
         if (firstLoadRef.current && viewMode === "hierarchical") {
           const desiredCount = Math.max(1, nodesWithPositions.length);
           let observer: MutationObserver | null = null;
@@ -566,7 +800,7 @@ export default function ProjectPage() {
       setIsRefreshing(false);
       setIsLoadingProject(false);
     }
-  }, [projectName, viewMode, graphDirection, centerLikeButton, svc, paintEdgeHighlight]);
+  }, [projectName, viewMode, graphDirection, centerLikeButton, svc, applyCurrentSelection]);
 
   useEffect(() => {
     setIsLoadingProject(true);
@@ -594,9 +828,15 @@ export default function ProjectPage() {
             : n
         );
 
+        const { nodesWithSel, edgesWithHL } = applyCurrentSelection(
+          nodesSeed,
+          edgesMerged,
+          selectedIdRef.current
+        );
+
         startTransition(() => {
-          setNodes(nodesSeed);
-          setEdges((_) => paintEdgeHighlight(edgesMerged, selectedIdRef.current ?? null));
+          setNodes(nodesWithSel);
+          setEdges(edgesWithHL);
           setTableData(table ?? []);
         });
 
@@ -615,7 +855,7 @@ export default function ProjectPage() {
     } finally {
       setIsRefreshing(false);
     }
-  }, [projectName, viewMode, graphDirection, nodeTicks, svc, paintEdgeHighlight]);
+  }, [projectName, viewMode, graphDirection, nodeTicks, svc, applyCurrentSelection]);
 
   const handleRefreshRef = useRef(handleRefresh);
   useEffect(() => { handleRefreshRef.current = handleRefresh; }, [handleRefresh]);
@@ -646,9 +886,15 @@ export default function ProjectPage() {
         );
         const nodesWithPositions = loadNodesWithPositions(loadedNodes);
 
+        const { nodesWithSel, edgesWithHL } = applyCurrentSelection(
+          nodesWithPositions,
+          loadedEdges,
+          selectedIdRef.current
+        );
+
         startTransition(() => {
-          setNodes(nodesWithPositions);
-          setEdges((_) => paintEdgeHighlight(loadedEdges, selectedIdRef.current ?? null));
+          setNodes(nodesWithSel);
+          setEdges(edgesWithHL);
           setTableData(table ?? []);
           setNodeTicks((prev) => {
             const seeded: Record<string, number> = {};
@@ -681,7 +927,7 @@ export default function ProjectPage() {
         setHideGraphDuringCenter(false);
       }
     },
-    [projectName, viewMode, graphDirection, centerLikeButton, svc, paintEdgeHighlight]
+    [projectName, viewMode, graphDirection, centerLikeButton, svc, applyCurrentSelection]
   );
 
   /* ------------------------ Ticks updater ------------------------ */
@@ -733,12 +979,19 @@ export default function ProjectPage() {
       buildGraphElements(project.shortName, project.protocols, viewMode, graphDirection);
     const nodesWithPositions = loadNodesWithPositions(loadedNodes);
 
+    // Re-apply selection after layout switch
+    const { nodesWithSel, edgesWithHL } = applyCurrentSelection(
+      nodesWithPositions,
+      loadedEdges,
+      selectedIdRef.current
+    );
+
     disablePersistenceRef.current = true;
     setIsSwitchingLayout(true);
 
     startTransition(() => {
-      setNodes(nodesWithPositions);
-      setEdges((_) => paintEdgeHighlight(loadedEdges, selectedIdRef.current ?? null));
+      setNodes(nodesWithSel);
+      setEdges(edgesWithHL);
     });
 
     requestAnimationFrame(() => {
@@ -900,6 +1153,9 @@ export default function ProjectPage() {
       return;
     }
 
+    // Mark the matched node as selected for immediate visual feedback
+    setNodes((prev) => prev.map((n) => ({ ...n, selected: n.id === match.id })));
+
     setPreviousNodeId(match.id);
     setHighlightedId(match.id);
     applyEdgeHighlight(match.id);
@@ -916,6 +1172,8 @@ export default function ProjectPage() {
   const handleRowDoubleClick = async (id: string) => {
     if (!projectName) return;
     try {
+      // Select row's node visually
+      setNodes((prev) => prev.map((n) => ({ ...n, selected: n.id === id })));
       const fullNodeData = await svc.fetchProtocolDetails(projectName, id);
       setHighlightedId(id);
       setSelectedNodeDetails(fullNodeData);
@@ -934,15 +1192,11 @@ export default function ProjectPage() {
     return `${pad(hours)}h:${pad(minutes)}m:${pad(secs)}s`;
   };
 
-  /* --------------------- Context menu (pane) --------------------- */
+  /* --------------------- Pane context menu --------------------- */
   const handleContextMenu = (event: React.MouseEvent) => {
-    if ((event as any).defaultPrevented) return;
-
     const target = event.target as HTMLElement;
     const isNode = !!target.closest(".react-flow__node");
-    if (isNode) {
-      return;
-    }
+    if (isNode) return;
 
     event.preventDefault();
     event.stopPropagation();
@@ -954,7 +1208,6 @@ export default function ProjectPage() {
       nodeId: null,
     });
   };
-
 
   const handleCloseMenu = () => setContextMenu((prev) => ({ ...prev, visible: false }));
 
@@ -1229,7 +1482,14 @@ export default function ProjectPage() {
                   onClick={(e) => {
                     const target = e.target as HTMLElement;
                     if (target.closest("button,a")) return;
+                    // Clear multi-selection if any
+                    if (pathSelRef.current.nodes.size || pathSelRef.current.edges.size) {
+                      clearPathSelection();
+                    }
+                    // Mark single selected node
+                    setNodes((prev) => prev.map((n) => ({ ...n, selected: n.id === row.id })));
                     setHighlightedId(row.id);
+                    setPreviousNodeId(row.id);
                     applyEdgeHighlight(row.id);
                   }}
                   onDoubleClick={() => handleRowDoubleClick(row.id)}
@@ -1338,7 +1598,19 @@ export default function ProjectPage() {
               maxZoom={MAX_ZOOM}
               onInit={handleOnInit}
               onMoveEnd={handleOnMoveEnd}
-              onPaneClick={() => handleCloseMenu()}
+              onPaneClick={() => {
+                // Left click on canvas clears any selection
+                if (pathSelRef.current.nodes.size || pathSelRef.current.edges.size) {
+                  clearPathSelection();
+                } else {
+                  // If only single-node selection, also clear it on canvas click
+                  setNodes((prev) => prev.map((n) => ({ ...n, selected: false })));
+                  setPreviousNodeId(null);
+                  setHighlightedId(null);
+                  applyEdgeHighlight(null);
+                }
+                handleCloseMenu();
+              }}
               defaultViewport={viewport}
               defaultEdgeOptions={{
                 type: "default",
@@ -1353,7 +1625,7 @@ export default function ProjectPage() {
               <Background />
             </ReactFlow>
 
-            {/* Context menu del pane (opcional) */}
+            {/* Pane context menu */}
             {contextMenu.visible && (
               <DropdownMenu open onOpenChange={() => handleCloseMenu()}>
                 <DropdownMenuTrigger asChild>
@@ -1368,66 +1640,42 @@ export default function ProjectPage() {
                     }}
                   />
                 </DropdownMenuTrigger>
-                <DropdownMenuContent className="w-56">
-                  {contextMenu.nodeId ? (
-                    <>
-                      <DropdownMenuItem onSelect={() => handleNodeDoubleClick({ id: contextMenu.nodeId! })}>
-                        <Pencil className="w-4 h-4 mr-2" />
-                        Edit
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onSelect={() => openRename(contextMenu.nodeId!)}>
-                        <Pencil className="w-4 h-4 mr-2" />
-                        Rename
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onSelect={() => duplicateNow([contextMenu.nodeId!])}>
-                        <Copy className="w-4 h-4 mr-2" />
-                        Duplicate
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onSelect={() => openDelete(contextMenu.nodeId!)}>
-                        <Trash2 className="w-4 h-4 mr-2" />
-                        Delete
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onSelect={() => openRestartAll(contextMenu.nodeId!)}>
-                        <RotateCcw className="w-4 h-4 mr-2" />
-                        Restart all
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onSelect={() => openContinueAll(contextMenu.nodeId!)}>
-                        <Play className="w-4 h-4 mr-2" />
-                        Continue all
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onSelect={() => openResetFrom(contextMenu.nodeId!)}>
-                        <RotateCcw className="w-4 h-4 mr-2" />
-                        Reset from
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onSelect={() => {
+                <DropdownMenuContent className="w-56" onClick={(e) => e.stopPropagation()}>
+                  <>
+                    <DropdownMenuItem onSelect={handleRefresh}>
+                      <RefreshCw className="w-4 h-4 mr-2" />
+                      Refresh graph
+                    </DropdownMenuItem>
+
+                    {/* Duplicate selection when there is a path selection */}
+                    <DropdownMenuItem
+                      disabled={pathSelRef.current.nodes.size === 0}
+                      onSelect={() => {
+                        const ids = Array.from(pathSelRef.current.nodes);
+                        if (ids.length) duplicateNow(ids);
+                      }}
+                    >
+                      <Copy className="w-4 h-4 mr-2" />
+                      Duplicate selection ({pathSelRef.current.nodes.size})
+                    </DropdownMenuItem>
+
+                    <DropdownMenuItem
+                      onSelect={() => {
+                        if (pathSelRef.current.nodes.size || pathSelRef.current.edges.size) {
+                          clearPathSelection();
+                        } else {
+                          // Clear single-node selection
+                          setNodes((prev) => prev.map((n) => ({ ...n, selected: false })));
                           setPreviousNodeId(null);
                           setHighlightedId(null);
                           applyEdgeHighlight(null);
-                        }}
-                      >
-                        <Trash2 className="w-4 h-4 mr-2" />
-                        Clear selection
-                      </DropdownMenuItem>
-                    </>
-                  ) : (
-                    <>
-                      <DropdownMenuItem onSelect={handleRefresh}>
-                        <RefreshCw className="w-4 h-4 mr-2" />
-                        Refresh graph
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onSelect={() => {
-                          setPreviousNodeId(null);
-                          setHighlightedId(null);
-                          applyEdgeHighlight(null);
-                        }}
-                      >
-                        <Trash2 className="w-4 h-4 mr-2" />
-                        Clear selection
-                      </DropdownMenuItem>
-                    </>
-                  )}
+                        }
+                      }}
+                    >
+                      <Trash2 className="w-4 h-4 mr-2" />
+                      Clear selection
+                    </DropdownMenuItem>
+                  </>
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
@@ -1543,7 +1791,7 @@ export default function ProjectPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <DialogFooter>
+        <DialogFooter>
             <Button
               onClick={() => setDlgResetFrom({ open: false, id: null })}
               className="rounded-full px-4 py-2 min-w-[140px] font-medium bg-gray-200 hover:bg-gray-300 text-gray-800"
