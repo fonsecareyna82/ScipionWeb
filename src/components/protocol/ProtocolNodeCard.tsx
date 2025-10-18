@@ -31,7 +31,6 @@ import {
   ArrowDownLeft,
   Upload,
   Square,
-  ArrowUpRightFromSquare,
 } from "lucide-react";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -98,7 +97,7 @@ type StatusNodeProps = {
   onSelectTo?: (id: string) => void;
 
   inPathSelection?: boolean;
-  /** ✅ When any Select from/to path is active, reduce menus globally */
+  /** When any Select from/to path is active, reduce menus globally */
   pathSelectionActive?: boolean;
 };
 
@@ -175,7 +174,8 @@ export default function StatusNode({
   const handleSelectTo = () => { if (data.id !== "PROJECT") onSelectTo?.(data.id); };
 
   // 🔒 If a path selection is active, show only: Delete, Duplicate, Export, Export & Upload
-  const reduceMenus = pathSelectionActive;
+  //     Usamos OR para que funcione aunque el wrapper no pase pathSelectionActive.
+  const reduceMenus = pathSelectionActive || inPathSelection;
 
   return (
     <ContextMenu>

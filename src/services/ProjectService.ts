@@ -51,8 +51,8 @@ export interface ProjectService<
   ): Promise<TProtocol>;
 
   renameProtocol(projectId: Id, protocolId: Id, newName: string): Promise<TProtocol>
-  duplicateProtocol(projectId: Id, protocolId: Id, newName?: string): Promise<TProtocol>
-  deleteProtocol(projectId: Id, protocolId: Id): Promise<TProtocol>
+  duplicateProtocol(projectId: Id, items: { id: string; name?: string }[],): Promise<TProtocol>
+  deleteProtocol(projectId: Id, ids: string[]): Promise<TProtocol>
   restartAll(projectId: Id, protocolId: Id): Promise<TProject>
   continueAll(projectId: Id, protocolId: Id): Promise<TProject>
   resetFrom(projectId: Id, protocolId: Id): Promise<TProject>

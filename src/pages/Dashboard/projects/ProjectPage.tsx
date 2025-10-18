@@ -156,7 +156,7 @@ export default function ProjectPage() {
 
   const isRunningNode = (n: Node) => (n as any).data?.status === "running";
 
-  // Path selection state (refs + state for re-rendering)
+  // Path selection state
   const [pathNodeIds, setPathNodeIds] = useState<string[]>([]);
   const [pathEdgeIds, setPathEdgeIds] = useState<string[]>([]);
   const pathSelRef = useRef<{ nodes: Set<string>; edges: Set<string> }>({ nodes: new Set(), edges: new Set() });
@@ -164,9 +164,8 @@ export default function ProjectPage() {
   const suppressNextSyncRef = useRef(false);
 
   const getSelectedPathIds = () => pathSelRef.current.nodes;
-  // Colors for highlights
-  const SELECT_COLOR = "#0070f3"; // blue for node-adjacent highlight
-  const PATH_COLOR = "#0070f3";   // blue for path selection (was cyan)
+  const SELECT_COLOR = "#0070f3";
+  const PATH_COLOR = "#0070f3";
 
   /* --------------------- Edge painters --------------------- */
   const curIsBlue = (e: Edge) =>
@@ -241,7 +240,7 @@ export default function ProjectPage() {
       const isHL = !!(e as any).__hl;
 
       if (inPath) {
-        if (isHL) return e; // keep node-adjacent blue overrides
+        if (isHL) return e;
         const newStyle: any = {
           ...(e.style ?? {}),
           stroke: PATH_COLOR,
@@ -301,27 +300,19 @@ export default function ProjectPage() {
 
   /* --------------------- Node click / dblclick --------------------- */
   const handleNodeClick = (nodeData: any, _evt?: React.MouseEvent) => {
-    // Clear path selection first if any
     if (pathSelRef.current.nodes.size || pathSelRef.current.edges.size) {
       clearPathSelection();
     }
     const id = String(nodeData.id);
-
-    // Update refs/states first
     selectedIdRef.current = id;
     setPreviousNodeId(id);
     setHighlightedId(id);
-
-    // ✅ Apply edge highlight immediately (instant feedback)
     applyEdgeHighlight(id);
 
-    // Make this node the only selected node in RF sense (UI selection)
     suppressNextSyncRef.current = true;
     setNodes((prev) =>
       prev.map((n) =>
-        n.id === id
-          ? (n.selected ? n : { ...n, selected: true })
-          : (n.selected ? { ...n, selected: false } : n)
+        n.id === id ? (n.selected ? n : { ...n, selected: true }) : (n.selected ? { ...n, selected: false } : n)
       )
     );
   };
@@ -380,11 +371,15 @@ export default function ProjectPage() {
     return `${normalized}_copy_${Date.now().toString().slice(-5)}`;
   };
 
+  // ⚡️ Duplicación en UNA llamada
   const duplicateNow = async (ids: string[]) => {
-    if (!projectName || !ids.length) return;
+    if (!projectName) return;
+    const cleanIds = ids.filter((i) => i && i !== "PROJECT");
+    if (cleanIds.length === 0) return;
     try {
-      await Promise.all(ids.map((id) => svc.duplicateProtocol(projectName, id, genCopyName(id))));
-      toast.success("Protocols duplicated successfully.");
+      const items = cleanIds.map((id) => ({ id, name: genCopyName(id) }));
+      await svc.duplicateProtocol(projectName, items);
+      toast.success(cleanIds.length > 1 ? "Protocols duplicated successfully." : "Protocol duplicated successfully.");
       await handleRefresh();
     } catch (e) {
       console.error(e);
@@ -393,9 +388,20 @@ export default function ProjectPage() {
   };
 
   const openRename = (id: string) => setDlgRename({ open: true, id, value: findNodeLabel(id) });
-  const openDelete = (id: string) => setConfirm({ open: true, id, kind: "delete" });
-  const openRestartAll = (id: string) => setConfirm({ open: true, id, kind: "restartAll" });
-  const openContinueAll = (id: string) => setConfirm({ open: true, id, kind: "continueAll" });
+
+  // ❗️Eliminar: si hay path activo, preparamos ids de toda la selección; si no, solo el id del nodo
+  const openDelete = (id: string) => {
+    const selected =
+      pathSelRef.current.nodes.size > 0
+        ? Array.from(pathSelRef.current.nodes)
+            .map(String)
+            .filter((x) => x !== "PROJECT")
+        : [String(id)];
+    setConfirm({ open: true, id: null, ids: selected, kind: "delete" });
+  };
+
+  const openRestartAll = (id: string) => setConfirm({ open: true, id, ids: null, kind: "restartAll" });
+  const openContinueAll = (id: string) => setConfirm({ open: true, id, ids: null, kind: "continueAll" });
   const openResetFrom = (id: string) => setDlgResetFrom({ open: true, id });
 
   /* -------- Build adjacency from edges (robust) -------- */
@@ -410,7 +416,6 @@ export default function ProjectPage() {
       if (!parents.has(t)) parents.set(t, new Set());
       children.get(s)!.add(t);
       parents.get(t)!.add(s);
-      // Ensure entries exist for isolated nodes as well
       if (!parents.has(s)) parents.set(s, new Set());
       if (!children.has(t)) children.set(t, new Set());
     }
@@ -421,16 +426,14 @@ export default function ProjectPage() {
     const startId = String(startIdRaw);
     const { children } = buildAdjacency();
     const q: string[] = [startId];
-    const visited = new Set<string>();
+       const visited = new Set<string>();
     while (q.length) {
       const cur = String(q.shift()!);
       if (cur === "PROJECT") continue;
       if (visited.has(cur)) continue;
       visited.add(cur);
       const ch = children.get(cur) ?? new Set<string>();
-      for (const c of ch) {
-        if (!visited.has(c)) q.push(String(c));
-      }
+      for (const c of ch) if (!visited.has(c)) q.push(String(c));
     }
     visited.delete("PROJECT");
     return visited;
@@ -447,9 +450,7 @@ export default function ProjectPage() {
       if (visited.has(cur)) continue;
       visited.add(cur);
       const pa = parents.get(cur) ?? new Set<string>();
-      for (const p of pa) {
-        if (!visited.has(p)) q.push(String(p));
-      }
+      for (const p of pa) if (!visited.has(p)) q.push(String(p));
     }
     visited.delete("PROJECT");
     return visited;
@@ -460,14 +461,11 @@ export default function ProjectPage() {
     for (const e of edgesRef.current) {
       const s = String(e.source);
       const t = String(e.target);
-      if (nodeSet.has(s) && nodeSet.has(t)) {
-        edgeIds.push(e.id);
-      }
+      if (nodeSet.has(s) && nodeSet.has(t)) edgeIds.push(e.id);
     }
     return new Set(edgeIds);
   }, []);
 
-  // Force RF nodes to re-render so wrappers reevaluate inPathSelection
   const bumpNodesForPath = useCallback(() => {
     setNodes((prev) =>
       prev.map((n) => ({
@@ -494,12 +492,18 @@ export default function ProjectPage() {
     bumpNodesForPath();
   }, [paintPathHighlight, bumpNodesForPath]);
 
-  // Wire actions (including Select from / Select to)
+  // Wire actions (incluye Select from / Select to con duplicado/eliminado en masa)
   useEffect(() => {
     nodeActionsRef.current = {
       onEdit: (id) => handleNodeDoubleClick({ id }),
       onRename: openRename,
-      onDuplicate: (id) => duplicateNow([id]),
+      onDuplicate: (id) => {
+        const ids =
+          pathSelRef.current.nodes.size > 0
+            ? Array.from(pathSelRef.current.nodes).map(String).filter((x) => x !== "PROJECT")
+            : [String(id)];
+        duplicateNow(ids);
+      },
       onDelete: openDelete,
       onRestartAll: openRestartAll,
       onContinueAll: openContinueAll,
@@ -526,8 +530,7 @@ export default function ProjectPage() {
       status: createStatusNodeWrapper(
         (data, evt) => onClickRef.current?.(data, evt),
         (data) => onDblClickRef.current?.(data),
-        // ⚡ Use the immediate selectedIdRef (not the effect-updated prevIdRef)
-        () => selectedIdRef.current ?? undefined,
+        () => selectedIdRef.current ?? undefined, // selected inmediato
         () => hoveredIdRef.current ?? undefined,
         setHoveredNodeId,
         () => graphDirRef.current,
@@ -727,8 +730,7 @@ export default function ProjectPage() {
             try { centerLikeButton(nodesWithPositions, true, viewportRef.current.zoom); }
             finally {
               firstLoadRef.current = false;
-              if (observer) { try { observer.disconnect(); } catch {} observer = null;
-              }
+              if (observer) { try { observer.disconnect(); } catch {} observer = null; }
               if (fallbackTimer) { clearTimeout(fallbackTimer); fallbackTimer = null; }
             }
           };
@@ -955,9 +957,7 @@ export default function ProjectPage() {
       setNodes(nodesWithPositions);
       setEdges((_) => {
         let out = paintEdgeHighlight(loadedEdges, selectedIdRef.current ?? null);
-        if (pathSelRef.current.edges.size) {
-          out = paintPathHighlight(out, pathSelRef.current.edges);
-        }
+        if (pathSelRef.current.edges.size) out = paintPathHighlight(out, pathSelRef.current.edges);
         return out;
       });
     });
@@ -995,7 +995,6 @@ export default function ProjectPage() {
         }
       });
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [graphDirection, viewMode, project]);
 
   /* ------------------------ First-center ------------------------ */
@@ -1023,7 +1022,6 @@ export default function ProjectPage() {
         });
       });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nodesLoadedOnce]);
 
   /* --------------------- Table switching --------------------- */
@@ -1242,8 +1240,15 @@ export default function ProjectPage() {
   const [dlgResetFrom, setDlgResetFrom] = useState<{ open: boolean; id: string | null }>({
     open: false, id: null,
   });
-  const [confirm, setConfirm] = useState<{ open: boolean; id: string | null; kind: ConfirmKind | null; }>({
-    open: false, id: null, kind: null,
+
+  // ⬇️ ahora soporta ids (lista) para delete
+  const [confirm, setConfirm] = useState<{
+    open: boolean;
+    id: string | null;
+    ids: string[] | null;
+    kind: ConfirmKind | null;
+  }>({
+    open: false, id: null, ids: null, kind: null,
   });
 
   const submitRename = async () => {
@@ -1500,13 +1505,7 @@ export default function ProjectPage() {
           </div>
 
           <ReactFlowProvider>
-            <svg width="0" height="0" aria-hidden>
-              <defs>
-                <marker id="circle" viewBox="0 0 40 40" refX="20" refY="20" markerWidth="20" markerHeight="20" orient="auto-start-reverse">
-                  <circle cx="20" cy="20" r="10" fill="#ff0000" />
-                </marker>
-              </defs>
-            </svg>
+            {/* ... defs ... */}
 
             <ReactFlow
               nodes={nodes}
@@ -1599,34 +1598,44 @@ export default function ProjectPage() {
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={confirm.open} onOpenChange={(open: boolean) => { if (!open) setConfirm({ open: false, id: null, kind: null }); }}>
+      <AlertDialog open={confirm.open} onOpenChange={(open: boolean) => { if (!open) setConfirm({ open: false, id: null, ids: null, kind: null }); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {confirm.kind === "delete" && "Delete protocol?"}
+              {confirm.kind === "delete" && "Delete protocol(s)?"}
               {confirm.kind === "restartAll" && "Restart all steps?"}
               {confirm.kind === "continueAll" && "Continue all steps?"}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              {confirm.kind === "delete" && "This action cannot be undone. This will permanently remove the protocol and its outputs that are not used elsewhere."}
+              {confirm.kind === "delete" && "This action cannot be undone. This will permanently remove the selected protocol(s) and outputs not used elsewhere."}
               {confirm.kind === "restartAll" && "All protocols will be restarted from this protocol, so the previous results will be deleted"}
               {confirm.kind === "continueAll" && "All protocols will continue for this protocol, so the previous results will be affected"}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setConfirm({ open: false, id: null, kind: null })} className="rounded-full px-4 py-2 min-w-[140px] font-medium bg-gray-200 hover:bg-gray-300 text-gray-800">
+            <AlertDialogCancel onClick={() => setConfirm({ open: false, id: null, ids: null, kind: null })} className="rounded-full px-4 py-2 min-w-[140px] font-medium bg-gray-200 hover:bg-gray-300 text-gray-800">
               Cancel
             </AlertDialogCancel>
             <AlertDialogAction
               onClick={async () => {
-                if (!projectName || !confirm.id || !confirm.kind) return;
-                const id = confirm.id;
+                if (!projectName || !confirm.kind) return;
                 try {
-                  if (confirm.kind === "delete") await svc.deleteProtocol(projectName, id);
-                  if (confirm.kind === "restartAll") await svc.restartAll(projectName, id);
-                  if (confirm.kind === "continueAll") await svc.continueAll(projectName, id);
-                  setConfirm({ open: false, id: null, kind: null });
-                  toast.success(confirm.kind === "delete" ? "Protocol deleted successfully." : confirm.kind === "restartAll" ? "Restart started." : "Continue started.");
+                  if (confirm.kind === "delete") {
+                    const ids = confirm.ids ?? (confirm.id ? [confirm.id] : []);
+                    if (ids.length === 0) return;
+                    await svc.deleteProtocol(projectName, ids);
+                    if (pathSelRef.current.nodes.size || pathSelRef.current.edges.size) {
+                      clearPathSelection();
+                    }
+                    toast.success(ids.length > 1 ? "Protocols deleted." : "Protocol deleted.");
+                  } else if (confirm.kind === "restartAll" && confirm.id) {
+                    await svc.restartAll(projectName, confirm.id);
+                    toast.success("Restart started.");
+                  } else if (confirm.kind === "continueAll" && confirm.id) {
+                    await svc.continueAll(projectName, confirm.id);
+                    toast.success("Continue started.");
+                  }
+                  setConfirm({ open: false, id: null, ids: null, kind: null });
                   await handleRefresh();
                 } catch (e) {
                   console.error(e);

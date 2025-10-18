@@ -59,14 +59,13 @@ const defaultService: ProjectService = {
 
   duplicateProtocol: (
     projectId: string,
-    protocolId: string,
-    newName: string
-  ) => api.duplicateProtocol(toId(projectId), toId(protocolId), newName),
+    items: { id: string; name?: string }[],
+  ) => api.duplicateProtocol(toId(projectId), items),
 
   deleteProtocol: (
     projectId: string,
-    protocolId: string,
-  ) => api.deleteProtocol(toId(projectId), toId(protocolId)),
+    ids: string[],
+  ) => api.deleteProtocol(toId(projectId), ids),
 
   restartAll: (
     projectId: string,
