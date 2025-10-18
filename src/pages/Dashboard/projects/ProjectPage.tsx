@@ -1,4 +1,3 @@
-// File: src/pages/Dashboard/projects/ProjectPage.tsx
 import { useParams } from "react-router-dom";
 import React, {
   useCallback,
@@ -76,7 +75,7 @@ interface StatusNodeData {
   stepsDone?: number;
   parents?: string[];
   children?: string[];
-  __pathVer?: number; // internal re-render bump
+  __pathVer?: number;
 }
 
 interface ContextMenuState {
@@ -156,16 +155,24 @@ export default function ProjectPage() {
 
   const isRunningNode = (n: Node) => (n as any).data?.status === "running";
 
-  // Path selection state
+  /* --------------------- Selection state (unified for path and multi) --------------------- */
   const [pathNodeIds, setPathNodeIds] = useState<string[]>([]);
   const [pathEdgeIds, setPathEdgeIds] = useState<string[]>([]);
   const pathSelRef = useRef<{ nodes: Set<string>; edges: Set<string> }>({ nodes: new Set(), edges: new Set() });
 
+  /* Programmatic selection writes may still use this to avoid a single redundant sync. */
   const suppressNextSyncRef = useRef(false);
 
   const getSelectedPathIds = () => pathSelRef.current.nodes;
   const SELECT_COLOR = "#0070f3";
   const PATH_COLOR = "#0070f3";
+
+  /* --------------------- Utils --------------------- */
+  const setsEqual = (a: Set<string>, b: Set<string>) => {
+    if (a.size !== b.size) return false;
+    for (const v of a) if (!b.has(v)) return false;
+    return true;
+  };
 
   /* --------------------- Edge painters --------------------- */
   const curIsBlue = (e: Edge) =>
@@ -175,7 +182,7 @@ export default function ProjectPage() {
     if (!selectedId) {
       let anyStyled = false;
       for (const e of eds) {
-        if ((e.style as any)?.stroke === SELECT_COLOR || (e as any).__hl) { anyStyled = true; break; }
+        if ((e as any).__hl || (e.style as any)?.stroke === SELECT_COLOR) { anyStyled = true; break; }
       }
       if (!anyStyled) return eds;
       return eds.map((e) => {
@@ -191,7 +198,7 @@ export default function ProjectPage() {
             delete newStyle.strokeWidth;
           }
           const clean: any = { ...rest, style: Object.keys(newStyle).length ? newStyle : undefined };
-          delete clean.__hl;
+          delete (clean as any).__hl;
           return clean;
         }
         return e;
@@ -224,7 +231,7 @@ export default function ProjectPage() {
           delete newStyle.strokeWidth;
         }
         const clean: any = { ...rest, style: Object.keys(newStyle).length ? newStyle : undefined };
-        delete clean.__hl;
+        delete (clean as any).__hl;
         return clean;
       }
       return e;
@@ -232,14 +239,14 @@ export default function ProjectPage() {
     return changed ? next : eds;
   }, []);
 
-  const paintPathHighlight = useCallback((eds: Edge[], pathEdgeIdsSet: Set<string>): Edge[] => {
+  const paintPathHighlight = useCallback((eds: Edge[], edgeIdsSet: Set<string>): Edge[] => {
     let changed = false;
     const next = eds.map((e) => {
-      const inPath = pathEdgeIdsSet.has(e.id);
+      const inSet = edgeIdsSet.has(e.id);
       const wasPath = !!(e as any).__path;
       const isHL = !!(e as any).__hl;
 
-      if (inPath) {
+      if (inSet) {
         if (isHL) return e;
         const newStyle: any = {
           ...(e.style ?? {}),
@@ -259,7 +266,7 @@ export default function ProjectPage() {
           if (styleCopy.strokeDasharray === "0 0") delete styleCopy.strokeDasharray;
           changed = true;
           const cleaned: any = { ...e, style: Object.keys(styleCopy).length ? styleCopy : undefined };
-          delete cleaned.__path;
+          delete (cleaned as any).__path;
           return cleaned;
         } else {
           if (styleCopy.stroke === PATH_COLOR) delete styleCopy.stroke;
@@ -268,7 +275,7 @@ export default function ProjectPage() {
           if (styleCopy.strokeDasharray === "0 0") delete styleCopy.strokeDasharray;
           changed = true;
           const cleaned: any = { ...e, style: Object.keys(styleCopy).length ? styleCopy : undefined };
-          delete cleaned.__path;
+          delete (cleaned as any).__path;
           return cleaned;
         }
       }
@@ -276,6 +283,52 @@ export default function ProjectPage() {
     });
     return changed ? next : eds;
   }, []);
+
+  /* --------------------- Edge set helpers --------------------- */
+  const computeEdgesTouchingNodes = useCallback((nodeSet: Set<string>) => {
+    const edgeIds: string[] = [];
+    for (const e of edgesRef.current) {
+      const s = String(e.source);
+      const t = String(e.target);
+      if (nodeSet.has(s) || nodeSet.has(t)) edgeIds.push(e.id);
+    }
+    return new Set(edgeIds);
+  }, []);
+
+  /* --------------------- Selection application --------------------- */
+  const bumpNodesForPath = useCallback(() => {
+    setNodes((prev) =>
+      prev.map((n) => ({
+        ...n,
+        data: { ...(n as any).data, __pathVer: ((n as any).data?.__pathVer ?? 0) + 1 },
+      }))
+    );
+  }, [setNodes]);
+
+  const applyPathSelection = useCallback((nodeIds: string[], edgeIds?: string[]) => {
+    const nextNodes = new Set(nodeIds.map(String));
+    const nextEdges = new Set(edgeIds ?? Array.from(computeEdgesTouchingNodes(nextNodes)));
+    pathSelRef.current = { nodes: nextNodes, edges: nextEdges };
+    setPathNodeIds(Array.from(nextNodes));
+    setPathEdgeIds(Array.from(nextEdges));
+
+    // Mirror selected flags for UI state
+    setNodes((prev) => prev.map((n) => ({ ...n, selected: nextNodes.has(n.id) })));
+
+    // Paint multi-selection edges and clear single-node highlight
+    setEdges((eds) => paintPathHighlight(eds, nextEdges));
+    setEdges((eds) => paintEdgeHighlight(eds, null));
+    bumpNodesForPath();
+  }, [computeEdgesTouchingNodes, paintPathHighlight, paintEdgeHighlight, setNodes, setEdges, bumpNodesForPath]);
+
+  const clearPathSelection = useCallback(() => {
+    if (pathSelRef.current.nodes.size === 0 && pathSelRef.current.edges.size === 0) return;
+    pathSelRef.current = { nodes: new Set(), edges: new Set() };
+    setPathNodeIds([]);
+    setPathEdgeIds([]);
+    setEdges((eds) => paintPathHighlight(eds, new Set()));
+    bumpNodesForPath();
+  }, [paintPathHighlight, bumpNodesForPath]);
 
   const applyEdgeHighlight = useCallback((selectedId: string | null) => {
     setEdges((eds) => {
@@ -287,28 +340,23 @@ export default function ProjectPage() {
     });
   }, [paintEdgeHighlight, paintPathHighlight, setEdges]);
 
-  const reapplyAllEdgeStyles = useCallback(() => {
-    setEdges((eds) => {
-      let out = eds;
-      out = paintEdgeHighlight(out, selectedIdRef.current ?? null);
-      if (pathSelRef.current.edges.size) {
-        out = paintPathHighlight(out, pathSelRef.current.edges);
-      }
-      return out;
-    });
-  }, [paintEdgeHighlight, paintPathHighlight]);
+  /* --------------------- Node click / double click --------------------- */
+  const handleNodeClick = (nodeData: any, evt?: React.MouseEvent) => {
+    // When Ctrl/Meta/Shift is pressed, React Flow handles multi-select toggling
+    if (evt?.ctrlKey || evt?.metaKey || evt?.shiftKey) return;
 
-  /* --------------------- Node click / dblclick --------------------- */
-  const handleNodeClick = (nodeData: any, _evt?: React.MouseEvent) => {
+    // Single click: clear multi-selection and select only this node
     if (pathSelRef.current.nodes.size || pathSelRef.current.edges.size) {
       clearPathSelection();
     }
+
     const id = String(nodeData.id);
     selectedIdRef.current = id;
     setPreviousNodeId(id);
     setHighlightedId(id);
     applyEdgeHighlight(id);
 
+    // Prevent one redundant downstream sync
     suppressNextSyncRef.current = true;
     setNodes((prev) =>
       prev.map((n) =>
@@ -349,7 +397,7 @@ export default function ProjectPage() {
 
   const nodeActionsRef = useRef<NodeActions>({});
 
-  // Toast error helper
+  /* Error message helper */
   const getErrorMsg = (e: any) => {
     if (e && typeof e === "object") {
       const status = (e as any).status;
@@ -371,7 +419,7 @@ export default function ProjectPage() {
     return `${normalized}_copy_${Date.now().toString().slice(-5)}`;
   };
 
-  // ⚡️ Duplicación en UNA llamada
+  /* Duplicate multiple in a single API call */
   const duplicateNow = async (ids: string[]) => {
     if (!projectName) return;
     const cleanIds = ids.filter((i) => i && i !== "PROJECT");
@@ -389,7 +437,7 @@ export default function ProjectPage() {
 
   const openRename = (id: string) => setDlgRename({ open: true, id, value: findNodeLabel(id) });
 
-  // ❗️Eliminar: si hay path activo, preparamos ids de toda la selección; si no, solo el id del nodo
+  /* Delete uses the selection set if present; otherwise single id */
   const openDelete = (id: string) => {
     const selected =
       pathSelRef.current.nodes.size > 0
@@ -404,7 +452,7 @@ export default function ProjectPage() {
   const openContinueAll = (id: string) => setConfirm({ open: true, id, ids: null, kind: "continueAll" });
   const openResetFrom = (id: string) => setDlgResetFrom({ open: true, id });
 
-  /* -------- Build adjacency from edges (robust) -------- */
+  /* -------- Build adjacency from edges -------- */
   const buildAdjacency = useCallback(() => {
     const parents = new Map<string, Set<string>>();
     const children = new Map<string, Set<string>>();
@@ -426,7 +474,7 @@ export default function ProjectPage() {
     const startId = String(startIdRaw);
     const { children } = buildAdjacency();
     const q: string[] = [startId];
-       const visited = new Set<string>();
+    const visited = new Set<string>();
     while (q.length) {
       const cur = String(q.shift()!);
       if (cur === "PROJECT") continue;
@@ -456,43 +504,24 @@ export default function ProjectPage() {
     return visited;
   }, [buildAdjacency]);
 
-  const computePathEdges = useCallback((nodeSet: Set<string>) => {
-    const edgeIds: string[] = [];
-    for (const e of edgesRef.current) {
-      const s = String(e.source);
-      const t = String(e.target);
-      if (nodeSet.has(s) && nodeSet.has(t)) edgeIds.push(e.id);
-    }
-    return new Set(edgeIds);
-  }, []);
+  const applyGenericSelectionFromSet = useCallback((ids: Set<string>) => {
+    applyPathSelection(Array.from(ids));
+    applyEdgeHighlight(null);
+  }, [applyPathSelection, applyEdgeHighlight]);
 
-  const bumpNodesForPath = useCallback(() => {
-    setNodes((prev) =>
-      prev.map((n) => ({
-        ...n,
-        data: { ...(n as any).data, __pathVer: ((n as any).data?.__pathVer ?? 0) + 1 },
-      }))
-    );
-  }, [setNodes]);
+  const handleSelectFrom = useCallback((id: string) => {
+    const nodesSet = collectDescendants(id);
+    if (id !== "PROJECT") nodesSet.add(String(id));
+    applyGenericSelectionFromSet(nodesSet);
+  }, [collectDescendants, applyGenericSelectionFromSet]);
 
-  const applyPathSelection = useCallback((nodeIds: string[], edgeIds: string[]) => {
-    pathSelRef.current = { nodes: new Set(nodeIds.map(String)), edges: new Set(edgeIds) };
-    setPathNodeIds(nodeIds.map(String));
-    setPathEdgeIds(edgeIds);
-    setEdges((eds) => paintPathHighlight(eds, pathSelRef.current.edges));
-    bumpNodesForPath();
-  }, [paintPathHighlight, setEdges, bumpNodesForPath]);
+  const handleSelectTo = useCallback((id: string) => {
+    const nodesSet = collectAncestors(id);
+    if (id !== "PROJECT") nodesSet.add(String(id));
+    applyGenericSelectionFromSet(nodesSet);
+  }, [collectAncestors, applyGenericSelectionFromSet]);
 
-  const clearPathSelection = useCallback(() => {
-    if (pathSelRef.current.nodes.size === 0 && pathSelRef.current.edges.size === 0) return;
-    pathSelRef.current = { nodes: new Set(), edges: new Set() };
-    setPathNodeIds([]);
-    setPathEdgeIds([]);
-    setEdges((eds) => paintPathHighlight(eds, new Set()));
-    bumpNodesForPath();
-  }, [paintPathHighlight, bumpNodesForPath]);
-
-  // Wire actions (incluye Select from / Select to con duplicado/eliminado en masa)
+  /* Wire node actions */
   useEffect(() => {
     nodeActionsRef.current = {
       onEdit: (id) => handleNodeDoubleClick({ id }),
@@ -508,21 +537,11 @@ export default function ProjectPage() {
       onRestartAll: openRestartAll,
       onContinueAll: openContinueAll,
       onResetFrom: openResetFrom,
-      onSelectFrom: (id) => {
-        const nodesSet = collectDescendants(id);
-        if (id !== "PROJECT") nodesSet.add(String(id));
-        const edgesSet = computePathEdges(nodesSet);
-        applyPathSelection([...nodesSet], [...edgesSet]);
-      },
-      onSelectTo: (id) => {
-        const nodesSet = collectAncestors(id);
-        if (id !== "PROJECT") nodesSet.add(String(id));
-        const edgesSet = computePathEdges(nodesSet);
-        applyPathSelection([...nodesSet], [...edgesSet]);
-      },
+      onSelectFrom: handleSelectFrom,
+      onSelectTo: handleSelectTo,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [collectDescendants, collectAncestors, computePathEdges, applyPathSelection]);
+  }, [handleSelectFrom, handleSelectTo, duplicateNow]);
 
   const nodeTypesRef = useRef<Record<string, any> | null>(null);
   if (!nodeTypesRef.current) {
@@ -530,7 +549,7 @@ export default function ProjectPage() {
       status: createStatusNodeWrapper(
         (data, evt) => onClickRef.current?.(data, evt),
         (data) => onDblClickRef.current?.(data),
-        () => selectedIdRef.current ?? undefined, // selected inmediato
+        () => selectedIdRef.current ?? undefined,
         () => hoveredIdRef.current ?? undefined,
         setHoveredNodeId,
         () => graphDirRef.current,
@@ -541,7 +560,7 @@ export default function ProjectPage() {
   }
   const nodeTypes = nodeTypesRef.current;
 
-  /* --------------------- Persistence helpers --------------------- */
+  /* --------------------- Persistence of positions --------------------- */
   const handleNodesChangeWithPersistence = (changes: NodeChange[]) => {
     if (disablePersistenceRef.current) return onNodesChange(changes);
     setNodes((nds) => {
@@ -702,13 +721,21 @@ export default function ProjectPage() {
             : n
         );
 
+        // Re-apply selection flags based on current selection set
+        const selectedIds = new Set(pathSelRef.current.nodes);
+        const seededNodes = nodesWithTick.map((n) => ({ ...n, selected: selectedIds.has(n.id) }));
+
+        // Recompute selection edges against the new edge list and paint
+        const recomputedEdgeSet = computeEdgesTouchingNodes(selectedIds);
+        pathSelRef.current.edges = recomputedEdgeSet;
+
         startTransition(() => {
-          setNodes(nodesWithTick);
+          setNodes(seededNodes);
           setEdges((_) => {
             let base = loadedEdges;
             base = paintEdgeHighlight(base, selectedIdRef.current ?? null);
-            if (pathSelRef.current.edges.size) {
-              base = paintPathHighlight(base, pathSelRef.current.edges);
+            if (recomputedEdgeSet.size) {
+              base = paintPathHighlight(base, recomputedEdgeSet);
             }
             return base;
           });
@@ -771,7 +798,7 @@ export default function ProjectPage() {
       setIsRefreshing(false);
       setIsLoadingProject(false);
     }
-  }, [projectName, viewMode, graphDirection, centerLikeButton, svc, paintEdgeHighlight, paintPathHighlight]);
+  }, [projectName, viewMode, graphDirection, centerLikeButton, svc, paintEdgeHighlight, paintPathHighlight, computeEdgesTouchingNodes]);
 
   useEffect(() => {
     setIsLoadingProject(true);
@@ -793,18 +820,22 @@ export default function ProjectPage() {
         const nodesWithPositions = mergeNodesWithPositions(loadedNodes);
         const edgesMerged = mergeEdges(loadedEdges);
 
+        const selectedIds = new Set(pathSelRef.current.nodes);
         const nodesSeed = nodesWithPositions.map((n) =>
           isRunningNode(n)
-            ? { ...n, data: { ...(n as any).data, tick: (nodeTicks[n.id] ?? Number((n as any).data?.elapsedTime) ?? 0) } }
-            : n
+            ? { ...n, data: { ...(n as any).data, tick: (nodeTicks[n.id] ?? Number((n as any).data?.elapsedTime) ?? 0) }, selected: selectedIds.has(n.id) }
+            : { ...n, selected: selectedIds.has(n.id) }
         );
+
+        const recomputedEdgeSet = computeEdgesTouchingNodes(selectedIds);
+        pathSelRef.current.edges = recomputedEdgeSet;
 
         startTransition(() => {
           setNodes(nodesSeed);
           setEdges((_) => {
             let out = paintEdgeHighlight(edgesMerged, selectedIdRef.current ?? null);
-            if (pathSelRef.current.edges.size) {
-              out = paintPathHighlight(out, pathSelRef.current.edges);
+            if (recomputedEdgeSet.size) {
+              out = paintPathHighlight(out, recomputedEdgeSet);
             }
             return out;
           });
@@ -826,7 +857,7 @@ export default function ProjectPage() {
     } finally {
       setIsRefreshing(false);
     }
-  }, [projectName, viewMode, graphDirection, nodeTicks, svc, paintEdgeHighlight, paintPathHighlight]);
+  }, [projectName, viewMode, graphDirection, nodeTicks, svc, paintEdgeHighlight, paintPathHighlight, computeEdgesTouchingNodes]);
 
   const handleRefreshRef = useRef(handleRefresh);
   useEffect(() => { handleRefreshRef.current = handleRefresh; }, [handleRefresh]);
@@ -857,13 +888,16 @@ export default function ProjectPage() {
         );
         const nodesWithPositions = loadNodesWithPositions(loadedNodes);
 
+        const selectedIds = new Set(pathSelRef.current.nodes);
+        const nodesSeeded = nodesWithPositions.map((n) => ({ ...n, selected: selectedIds.has(n.id) }));
+        const recomputedEdgeSet = computeEdgesTouchingNodes(selectedIds);
+        pathSelRef.current.edges = recomputedEdgeSet;
+
         startTransition(() => {
-          setNodes(nodesWithPositions);
+          setNodes(nodesSeeded);
           setEdges((_) => {
             let out = paintEdgeHighlight(loadedEdges, selectedIdRef.current ?? null);
-            if (pathSelRef.current.edges.size) {
-              out = paintPathHighlight(out, pathSelRef.current.edges);
-            }
+            if (recomputedEdgeSet.size) out = paintPathHighlight(out, recomputedEdgeSet);
             return out;
           });
           setTableData(table ?? []);
@@ -898,7 +932,7 @@ export default function ProjectPage() {
         setHideGraphDuringCenter(false);
       }
     },
-    [projectName, viewMode, graphDirection, centerLikeButton, svc, paintEdgeHighlight, paintPathHighlight]
+    [projectName, viewMode, graphDirection, centerLikeButton, svc, paintEdgeHighlight, paintPathHighlight, computeEdgesTouchingNodes]
   );
 
   /* ------------------------ Ticks updater ------------------------ */
@@ -950,14 +984,20 @@ export default function ProjectPage() {
       buildGraphElements(project.shortName, project.protocols, viewMode, graphDirection);
     const nodesWithPositions = loadNodesWithPositions(loadedNodes);
 
+    // Re-apply selection on layout switch
+    const selectedIds = new Set(pathSelRef.current.nodes);
+    const nodesSeeded = nodesWithPositions.map((n) => ({ ...n, selected: selectedIds.has(n.id) }));
+    const recomputedEdgeSet = computeEdgesTouchingNodes(selectedIds);
+    pathSelRef.current.edges = recomputedEdgeSet;
+
     disablePersistenceRef.current = true;
     setIsSwitchingLayout(true);
 
     startTransition(() => {
-      setNodes(nodesWithPositions);
+      setNodes(nodesSeeded);
       setEdges((_) => {
         let out = paintEdgeHighlight(loadedEdges, selectedIdRef.current ?? null);
-        if (pathSelRef.current.edges.size) out = paintPathHighlight(out, pathSelRef.current.edges);
+        if (recomputedEdgeSet.size) out = paintPathHighlight(out, recomputedEdgeSet);
         return out;
       });
     });
@@ -995,7 +1035,7 @@ export default function ProjectPage() {
         }
       });
     });
-  }, [graphDirection, viewMode, project]);
+  }, [graphDirection, viewMode, project, paintEdgeHighlight, paintPathHighlight, computeEdgesTouchingNodes]);
 
   /* ------------------------ First-center ------------------------ */
   useEffect(() => {
@@ -1038,7 +1078,7 @@ export default function ProjectPage() {
     }
   }, [viewMode]);
 
-  /* --------------------- Helpers --------------------- */
+  /* --------------------- Search helpers --------------------- */
   const scrollToProtocol = (id: string) => {
     const row = rowRefs.current[id];
     const container = tableContainerRef.current;
@@ -1153,7 +1193,7 @@ export default function ProjectPage() {
     return ((n as any)?.data?.label as string) ?? id;
   };
 
-  /* --------------------- Context menu (pane) --------------------- */
+  /* --------------------- Pane context menu --------------------- */
   const handleContextMenu = (event: React.MouseEvent) => {
     if ((event as any).defaultPrevented) return;
     const target = event.target as HTMLElement;
@@ -1196,6 +1236,7 @@ export default function ProjectPage() {
     setViewport(vp);
   }, []);
 
+  /* Adopt RF selection. This path runs for Ctrl/Meta/Shift-click and box-selection. */
   const onSelectionChange = useCallback(({ nodes: selNodes }: { nodes: Node[]; edges: Edge[] }) => {
     if (suppressNextSyncRef.current) {
       suppressNextSyncRef.current = false;
@@ -1204,32 +1245,35 @@ export default function ProjectPage() {
 
     const ids = new Set((selNodes ?? []).map((n) => n.id));
 
-    setNodes((prev) => {
-      let changed = false;
-      const next = prev.map((n) => {
-        const want = ids.has(n.id);
-        if (n.selected !== want) {
-          changed = true;
-          return { ...n, selected: want };
-        }
-        return n;
-      });
-      return changed ? next : prev;
-    });
+    // Multi-selection: adopt the set and paint all touching edges.
+    if (ids.size > 1) {
+      if (setsEqual(ids, pathSelRef.current.nodes)) return;
+      applyGenericSelectionFromSet(ids);
+      return;
+    }
 
+    // Single selection
     if (ids.size === 1) {
+      if (pathSelRef.current.nodes.size || pathSelRef.current.edges.size) {
+        clearPathSelection();
+      }
       const id = selNodes![0].id;
       selectedIdRef.current = id;
       setPreviousNodeId(id);
       setHighlightedId(id);
       applyEdgeHighlight(id);
-    } else {
-      selectedIdRef.current = null;
-      setPreviousNodeId(null);
-      setHighlightedId(null);
-      applyEdgeHighlight(null);
+      setNodes((prev) => prev.map((n) => ({ ...n, selected: n.id === id })));
+      return;
     }
-  }, [setNodes, applyEdgeHighlight]);
+
+    // None
+    selectedIdRef.current = null;
+    setPreviousNodeId(null);
+    setHighlightedId(null);
+    clearPathSelection();
+    applyEdgeHighlight(null);
+    setNodes((prev) => (prev.some((n) => n.selected) ? prev.map((n) => ({ ...n, selected: false })) : prev));
+  }, [setNodes, applyGenericSelectionFromSet, clearPathSelection, applyEdgeHighlight]);
 
   /* ------------------------ Dialogs + API ------------------------ */
   type ConfirmKind = "delete" | "restartAll" | "continueAll";
@@ -1241,7 +1285,6 @@ export default function ProjectPage() {
     open: false, id: null,
   });
 
-  // ⬇️ ahora soporta ids (lista) para delete
   const [confirm, setConfirm] = useState<{
     open: boolean;
     id: string | null;
@@ -1505,8 +1548,6 @@ export default function ProjectPage() {
           </div>
 
           <ReactFlowProvider>
-            {/* ... defs ... */}
-
             <ReactFlow
               nodes={nodes}
               edges={edges}
@@ -1535,11 +1576,14 @@ export default function ProjectPage() {
               defaultEdgeOptions={{ type: "default", style: { stroke: "#999", strokeWidth: 2 }, markerEnd: "url(#circle)" }}
               onNodeDoubleClick={(_, node) => handleNodeDoubleClick(node)}
               onNodeClick={(evt, node) => handleNodeClick(node, evt)}
+              /* Enable Ctrl/Meta/Shift multi-selection and Shift box-selection */
+              multiSelectionKeyCode={['Meta', 'Control', 'Shift']}
+              selectionKeyCode="Shift"
+              selectionOnDrag
               style={{ width: "100%", height: "100%" }}
             >
               <Background />
             </ReactFlow>
-
             {/* Pane context menu */}
             {contextMenu.visible && (
               <DropdownMenu open onOpenChange={() => handleCloseMenu()}>

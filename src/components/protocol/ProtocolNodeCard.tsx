@@ -74,7 +74,7 @@ type StatusNodeProps = {
     inputs?: any[];
     parents?: string[];
     children?: string[];
-    __pathVer?: number; // internal re-render bump
+    __pathVer?: number;
   };
   selectedNodeId?: string;
   hoveredNodeId?: string;
@@ -97,7 +97,6 @@ type StatusNodeProps = {
   onSelectTo?: (id: string) => void;
 
   inPathSelection?: boolean;
-  /** When any Select from/to path is active, reduce menus globally */
   pathSelectionActive?: boolean;
 };
 
@@ -137,7 +136,7 @@ export default function StatusNode({
   const bgColor = STATUS_COLORS[data.status ?? "finished"] ?? STATUS_COLORS["root"];
   data.color = bgColor;
 
-  // Keep your base styling; we only add an outline when part of path selection or selected.
+  /* Base styling; outline is added when part of a selection set. */
   const classNames = [
     "status-node-card",
     "rounded-2xl border transition-shadow transform",
@@ -173,8 +172,7 @@ export default function StatusNode({
   const handleSelectFrom = () => { if (data.id !== "PROJECT") onSelectFrom?.(data.id); };
   const handleSelectTo = () => { if (data.id !== "PROJECT") onSelectTo?.(data.id); };
 
-  // 🔒 If a path selection is active, show only: Delete, Duplicate, Export, Export & Upload
-  //     Usamos OR para que funcione aunque el wrapper no pase pathSelectionActive.
+  /* If a selection (path or multi) is active, reduce menu to destructive/export ops. */
   const reduceMenus = pathSelectionActive || inPathSelection;
 
   return (
@@ -191,9 +189,7 @@ export default function StatusNode({
         >
           {/* Header */}
           <div
-            className={`node-card-header p-3 border-b flex ${
-              data.id === "PROJECT" ? "flex-col items-center text-center" : "flex-row items-center justify-between"
-            }`}
+            className={`node-card-header p-3 border-b flex ${data.id === "PROJECT" ? "flex-col items-center text-center" : "flex-row items-center justify-between"}`}
           >
             <div className="flex items-center space-x-2">
               {data.id !== "PROJECT" && (
@@ -256,7 +252,7 @@ export default function StatusNode({
                       <DropdownMenuSeparator />
                     </>
                   )}
-                  {/* Always visible (and the only ones when reduceMenus=true) */}
+                  {/* Always visible */}
                   <DropdownMenuItem onClick={handleDelete}>
                     <Trash2 className="mr-2 h-4 w-4" /> Delete
                   </DropdownMenuItem>
