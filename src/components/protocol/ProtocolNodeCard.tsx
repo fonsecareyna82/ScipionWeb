@@ -98,6 +98,8 @@ type StatusNodeProps = {
   onSelectTo?: (id: string) => void;
 
   inPathSelection?: boolean;
+  /** ✅ When any Select from/to path is active, reduce menus globally */
+  pathSelectionActive?: boolean;
 };
 
 const formatCpuTime = (seconds: number): string => {
@@ -126,6 +128,7 @@ export default function StatusNode({
   onSelectFrom,
   onSelectTo,
   inPathSelection = false,
+  pathSelectionActive = false,
 }: StatusNodeProps) {
   const [isHovered, setIsHovered] = useState(false);
   const [draggingIdx, setDraggingIdx] = useState<number | null>(null);
@@ -135,7 +138,7 @@ export default function StatusNode({
   const bgColor = STATUS_COLORS[data.status ?? "finished"] ?? STATUS_COLORS["root"];
   data.color = bgColor;
 
-  // Keep your base styling; we only add an outline when part of path selection.
+  // Keep your base styling; we only add an outline when part of path selection or selected.
   const classNames = [
     "status-node-card",
     "rounded-2xl border transition-shadow transform",
@@ -146,19 +149,15 @@ export default function StatusNode({
   ].join(" ");
 
   const nodeStyle: React.CSSProperties = { backgroundColor: bgColor };
-  // Single selection -> solid blue border 5px
   if (isSelected) {
     nodeStyle.borderColor = "#0070f3";
     nodeStyle.borderStyle = "solid";
-    nodeStyle.borderWidth = 5; // <-- thicker border
+    nodeStyle.borderWidth = 5;
   }
-
-  // Path selection -> also solid blue border 5px (and keep dashed outline if you like it)
   if (inPathSelection) {
     nodeStyle.borderColor = "#0070f3";
     nodeStyle.borderStyle = "solid";
-    nodeStyle.borderWidth = 5; // <-- thicker border for path-selected nodes
-    // keep the dashed outline to differentiate path-selection; remove if not needed
+    nodeStyle.borderWidth = 5;
     nodeStyle.outline = "4px dashed #0070f3";
     nodeStyle.outlineOffset = "2px";
   }
@@ -174,6 +173,9 @@ export default function StatusNode({
   const handleResetFrom = () => onResetFrom?.(data.id);
   const handleSelectFrom = () => { if (data.id !== "PROJECT") onSelectFrom?.(data.id); };
   const handleSelectTo = () => { if (data.id !== "PROJECT") onSelectTo?.(data.id); };
+
+  // 🔒 If a path selection is active, show only: Delete, Duplicate, Export, Export & Upload
+  const reduceMenus = pathSelectionActive;
 
   return (
     <ContextMenu>
@@ -216,43 +218,50 @@ export default function StatusNode({
                     <MoreHorizontal className="h-12 w-12 text-black dark:text-black" />
                   </button>
                 </DropdownMenuTrigger>
+
                 <DropdownMenuContent className="w-56" onClick={(e) => e.stopPropagation()}>
-                  <DropdownMenuItem onClick={handleEdit}>
-                    <Pencil className="mr-2 h-4 w-4" /> Edit
-                  </DropdownMenuItem>
-                  <DropdownMenuItem>
-                    <FolderOpen className="mr-2 h-4 w-4" /> Browse
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={handleRename}>
-                    <Pencil className="mr-2 h-4 w-4" /> Rename
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={handleDuplicate}>
-                    <Copy className="mr-2 h-4 w-4" /> Duplicate
-                  </DropdownMenuItem>
+                  {!reduceMenus && (
+                    <>
+                      <DropdownMenuItem onClick={handleEdit}>
+                        <Pencil className="mr-2 h-4 w-4" /> Edit
+                      </DropdownMenuItem>
+                      <DropdownMenuItem>
+                        <FolderOpen className="mr-2 h-4 w-4" /> Browse
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={handleRename}>
+                        <Pencil className="mr-2 h-4 w-4" /> Rename
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={handleSelectFrom}>
+                        <ArrowDownLeft className="mr-2 h-4 w-4" /> Select from
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={handleSelectTo}>
+                        <ArrowUpRightFromSquare className="mr-2 h-4 w-4" /> Select to
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      {data.status === "running" && (
+                        <DropdownMenuItem>
+                          <Square className="mr-2 h-4 w-4" /> Stop
+                        </DropdownMenuItem>
+                      )}
+                      <DropdownMenuItem onClick={handleRestartAll}>
+                        <RefreshCw className="mr-2 h-4 w-4" /> Restart all
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={handleContinueAll}>
+                        <Play className="mr-2 h-4 w-4" /> Continue all
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={handleResetFrom}>
+                        <RotateCcw className="mr-2 h-4 w-4" /> Reset from
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                    </>
+                  )}
+                  {/* Always visible (and the only ones when reduceMenus=true) */}
                   <DropdownMenuItem onClick={handleDelete}>
                     <Trash2 className="mr-2 h-4 w-4" /> Delete
                   </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={handleSelectFrom}>
-                    <ArrowDownLeft className="mr-2 h-4 w-4" /> Select from
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={handleSelectTo}>
-                    <ArrowUpRightFromSquare className="mr-2 h-4 w-4" /> Select to
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  {data.status === "running" && (
-                    <DropdownMenuItem>
-                      <Square className="mr-2 h-4 w-4" /> Stop
-                    </DropdownMenuItem>
-                  )}
-                  <DropdownMenuItem onClick={handleRestartAll}>
-                    <RefreshCw className="mr-2 h-4 w-4" /> Restart all
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={handleContinueAll}>
-                    <Play className="mr-2 h-4 w-4" /> Continue all
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={handleResetFrom}>
-                    <RotateCcw className="mr-2 h-4 w-4" /> Reset from
+                  <DropdownMenuItem onClick={handleDuplicate}>
+                    <Copy className="mr-2 h-4 w-4" /> Duplicate
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem>
@@ -382,42 +391,48 @@ export default function StatusNode({
 
       {/* Node-specific context menu */}
       <ContextMenuContent className="w-56" onClick={(e) => e.stopPropagation()}>
-        <ContextMenuItem onClick={handleEdit}>
-          <Pencil className="mr-2 h-4 w-4" /> Edit
-        </ContextMenuItem>
-        <ContextMenuItem>
-          <FolderOpen className="mr-2 h-4 w-4" /> Browse
-        </ContextMenuItem>
-        <ContextMenuItem onClick={handleRename}>
-          <Pencil className="mr-2 h-4 w-4" /> Rename
-        </ContextMenuItem>
-        <ContextMenuItem onClick={handleDuplicate}>
-          <Copy className="mr-2 h-4 w-4" /> Duplicate
-        </ContextMenuItem>
+        {!reduceMenus && (
+          <>
+            <ContextMenuItem onClick={handleEdit}>
+              <Pencil className="mr-2 h-4 w-4" /> Edit
+            </ContextMenuItem>
+            <ContextMenuItem>
+              <FolderOpen className="mr-2 h-4 w-4" /> Browse
+            </ContextMenuItem>
+            <ContextMenuItem onClick={handleRename}>
+              <Pencil className="mr-2 h-4 w-4" /> Rename
+            </ContextMenuItem>
+            <ContextMenuSeparator />
+            <ContextMenuItem onClick={handleSelectFrom}>
+              <ArrowDownLeft className="mr-2 h-4 w-4" /> Select from
+            </ContextMenuItem>
+            <ContextMenuItem onClick={handleSelectTo}>
+              <ArrowUpRightFromSquare className="mr-2 h-4 w-4" /> Select to
+            </ContextMenuItem>
+            <ContextMenuSeparator />
+            {data.status === "running" && (
+              <ContextMenuItem>
+                <Square className="mr-2 h-4 w-4" /> Stop
+              </ContextMenuItem>
+            )}
+            <ContextMenuItem onClick={handleRestartAll}>
+              <RefreshCw className="mr-2 h-4 w-4" /> Restart all
+            </ContextMenuItem>
+            <ContextMenuItem onClick={handleContinueAll}>
+              <Play className="mr-2 h-4 w-4" /> Continue all
+            </ContextMenuItem>
+            <ContextMenuItem onClick={handleResetFrom}>
+              <RotateCcw className="mr-2 h-4 w-4" /> Reset from
+            </ContextMenuItem>
+            <ContextMenuSeparator />
+          </>
+        )}
+        {/* Always visible */}
         <ContextMenuItem onClick={handleDelete}>
           <Trash2 className="mr-2 h-4 w-4" /> Delete
         </ContextMenuItem>
-        <ContextMenuSeparator />
-        <ContextMenuItem onClick={handleSelectFrom}>
-          <ArrowDownLeft className="mr-2 h-4 w-4" /> Select from
-        </ContextMenuItem>
-        <ContextMenuItem onClick={handleSelectTo}>
-          <ArrowUpRightFromSquare className="mr-2 h-4 w-4" /> Select to
-        </ContextMenuItem>
-        <ContextMenuSeparator />
-        {data.status === "running" && (
-          <ContextMenuItem>
-            <Square className="mr-2 h-4 w-4" /> Stop
-          </ContextMenuItem>
-        )}
-        <ContextMenuItem onClick={handleRestartAll}>
-          <RefreshCw className="mr-2 h-4 w-4" /> Restart all
-        </ContextMenuItem>
-        <ContextMenuItem onClick={handleContinueAll}>
-          <Play className="mr-2 h-4 w-4" /> Continue all
-        </ContextMenuItem>
-        <ContextMenuItem onClick={handleResetFrom}>
-          <RotateCcw className="mr-2 h-4 w-4" /> Reset from
+        <ContextMenuItem onClick={handleDuplicate}>
+          <Copy className="mr-2 h-4 w-4" /> Duplicate
         </ContextMenuItem>
         <ContextMenuSeparator />
         <ContextMenuItem>

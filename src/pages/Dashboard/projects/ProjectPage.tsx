@@ -54,7 +54,7 @@ import {
 } from "@/components/ui/dialog/alert-dialog";
 import { Button } from "@/components/ui/button";
 
-import { MinusIcon, PlusIcon, RefreshCw, Trash2, Pencil, Copy, Play, RotateCcw } from "lucide-react";
+import { MinusIcon, PlusIcon, RefreshCw, Trash2 } from "lucide-react";
 import { FitViewIcon, TableIcon, TreeIcon } from "../../../icons";
 
 import { useProjectService } from "@/ProjectServiceContext";
@@ -245,9 +245,7 @@ export default function ProjectPage() {
         const newStyle: any = {
           ...(e.style ?? {}),
           stroke: PATH_COLOR,
-          // make it clearly thicker
           strokeWidth: Math.max(4, Number((e.style as any)?.strokeWidth) || 4),
-          // keep dashed look; if you prefer solid, remove this line:
           strokeDasharray: "6 3",
         };
         if (!wasPath || (e.style as any)?.stroke !== PATH_COLOR || Number((e.style as any)?.strokeWidth) < 4) {
@@ -308,12 +306,16 @@ export default function ProjectPage() {
       clearPathSelection();
     }
     const id = String(nodeData.id);
+
+    // Update refs/states first
     selectedIdRef.current = id;
     setPreviousNodeId(id);
     setHighlightedId(id);
+
+    // ✅ Apply edge highlight immediately (instant feedback)
     applyEdgeHighlight(id);
 
-    // Make this node the only selected node in RF sense
+    // Make this node the only selected node in RF sense (UI selection)
     suppressNextSyncRef.current = true;
     setNodes((prev) =>
       prev.map((n) =>
@@ -524,7 +526,8 @@ export default function ProjectPage() {
       status: createStatusNodeWrapper(
         (data, evt) => onClickRef.current?.(data, evt),
         (data) => onDblClickRef.current?.(data),
-        () => prevIdRef.current ?? undefined,
+        // ⚡ Use the immediate selectedIdRef (not the effect-updated prevIdRef)
+        () => selectedIdRef.current ?? undefined,
         () => hoveredIdRef.current ?? undefined,
         setHoveredNodeId,
         () => graphDirRef.current,
@@ -1522,6 +1525,7 @@ export default function ProjectPage() {
                 }
                 suppressNextSyncRef.current = true;
                 setNodes((prev) => prev.map((n) => (n.selected ? { ...n, selected: false } : n)));
+                selectedIdRef.current = null;
                 setPreviousNodeId(null);
                 setHighlightedId(null);
                 applyEdgeHighlight(null);
@@ -1556,6 +1560,7 @@ export default function ProjectPage() {
                         }
                         suppressNextSyncRef.current = true;
                         setNodes((prev) => prev.map((n) => (n.selected ? { ...n, selected: false } : n)));
+                        selectedIdRef.current = null;
                         setPreviousNodeId(null);
                         setHighlightedId(null);
                         applyEdgeHighlight(null);
