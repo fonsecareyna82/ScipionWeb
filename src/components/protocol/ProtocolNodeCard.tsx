@@ -158,7 +158,7 @@ export default function StatusNode({
     nodeStyle.borderColor = "#0070f3";
     nodeStyle.borderStyle = "solid";
     nodeStyle.borderWidth = 5;
-    nodeStyle.outline = "4px dashed #0070f3";
+    nodeStyle.outline = "4px #0070f3";
     nodeStyle.outlineOffset = "2px";
   }
 

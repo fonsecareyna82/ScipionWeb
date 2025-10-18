@@ -246,7 +246,7 @@ export default function ProjectPage() {
           ...(e.style ?? {}),
           stroke: PATH_COLOR,
           strokeWidth: Math.max(4, Number((e.style as any)?.strokeWidth) || 4),
-          strokeDasharray: "6 3",
+          strokeDasharray: "0 0",
         };
         if (!wasPath || (e.style as any)?.stroke !== PATH_COLOR || Number((e.style as any)?.strokeWidth) < 4) {
           changed = true;
@@ -257,7 +257,7 @@ export default function ProjectPage() {
         const styleCopy: any = { ...(e.style ?? {}) };
         if (isHL) {
           if (styleCopy.stroke === PATH_COLOR) delete styleCopy.stroke;
-          if (styleCopy.strokeDasharray === "6 3") delete styleCopy.strokeDasharray;
+          if (styleCopy.strokeDasharray === "0 0") delete styleCopy.strokeDasharray;
           changed = true;
           const cleaned: any = { ...e, style: Object.keys(styleCopy).length ? styleCopy : undefined };
           delete cleaned.__path;
@@ -266,7 +266,7 @@ export default function ProjectPage() {
           if (styleCopy.stroke === PATH_COLOR) delete styleCopy.stroke;
           const sw = Number(styleCopy.strokeWidth);
           if (!Number.isNaN(sw) && sw <= 4) delete styleCopy.strokeWidth;
-          if (styleCopy.strokeDasharray === "6 3") delete styleCopy.strokeDasharray;
+          if (styleCopy.strokeDasharray === "0 0") delete styleCopy.strokeDasharray;
           changed = true;
           const cleaned: any = { ...e, style: Object.keys(styleCopy).length ? styleCopy : undefined };
           delete cleaned.__path;
