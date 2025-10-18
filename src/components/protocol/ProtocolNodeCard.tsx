@@ -1,4 +1,3 @@
-// File: src/components/protocol/ProtocolNodeCard.tsx
 import { useState } from "react";
 import { Handle, Position } from "reactflow";
 import "./ProtocolNodeCard.css";
@@ -32,6 +31,7 @@ import {
   ArrowDownLeft,
   Upload,
   Square,
+  ArrowUpRightFromSquare,
 } from "lucide-react";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -73,16 +73,16 @@ type StatusNodeProps = {
     stepsDone?: number;
     outputs?: any[];
     inputs?: any[];
-    children?: string[];
     parents?: string[];
-    __pathSelected?: boolean;
+    children?: string[];
+    __pathVer?: number; // internal re-render bump
   };
-  selected?: boolean;
+  selectedNodeId?: string;
   hoveredNodeId?: string;
   isHovered?: boolean;
   setHoveredNodeId?: React.Dispatch<React.SetStateAction<string | null>>;
   graphDirection?: "TB" | "LR";
-  onClick?: () => void;
+  onClick?: (evt?: React.MouseEvent) => void;
   onDoubleClick?: () => void;
   zoomLevel?: number;
   compactThreshold?: number;
@@ -96,6 +96,8 @@ type StatusNodeProps = {
   onResetFrom?: (id: string) => void;
   onSelectFrom?: (id: string) => void;
   onSelectTo?: (id: string) => void;
+
+  inPathSelection?: boolean;
 };
 
 const formatCpuTime = (seconds: number): string => {
@@ -108,7 +110,7 @@ const formatCpuTime = (seconds: number): string => {
 
 export default function StatusNode({
   data,
-  selected = false,
+  selectedNodeId,
   graphDirection = "TB",
   onClick,
   onDoubleClick,
@@ -123,30 +125,43 @@ export default function StatusNode({
   onResetFrom,
   onSelectFrom,
   onSelectTo,
+  inPathSelection = false,
 }: StatusNodeProps) {
   const [isHovered, setIsHovered] = useState(false);
   const [draggingIdx, setDraggingIdx] = useState<number | null>(null);
-  const isSelected = !!selected;
-  const isPathSelected = !!data.__pathSelected;
+  const isSelected = selectedNodeId === data.id;
   const { setCurrentDraggedOutput } = useDrag();
 
   const bgColor = STATUS_COLORS[data.status ?? "finished"] ?? STATUS_COLORS["root"];
   data.color = bgColor;
 
-  // Keep original node look; add only a light outline for selection/path selection
+  // Keep your base styling; we only add an outline when part of path selection.
   const classNames = [
     "status-node-card",
     "rounded-2xl border transition-shadow transform",
     isHovered ? "shadow-xl scale-[1.01]" : "shadow-md",
-    isSelected ? "border-3 border-blue-600 shadow-[0_0_20px_rgba(59,130,246,0.5)]" : "border-gray-300",
-  ]
-    .filter(Boolean)
-    .join(" ");
+    isSelected
+      ? "border-[3px] border-blue-600 shadow-[0_0_20px_rgba(59,130,246,0.5)]"
+      : "border-gray-300",
+  ].join(" ");
 
-  // Extra ring when path-selected (no global CSS changes)
-  const pathSelectedStyle = isPathSelected
-    ? { boxShadow: "0 0 0 3px rgba(59,130,246,0.75), 0 8px 16px rgba(0,0,0,0.10)" }
-    : undefined;
+  const nodeStyle: React.CSSProperties = { backgroundColor: bgColor };
+  // Single selection -> solid blue border 5px
+  if (isSelected) {
+    nodeStyle.borderColor = "#0070f3";
+    nodeStyle.borderStyle = "solid";
+    nodeStyle.borderWidth = 5; // <-- thicker border
+  }
+
+  // Path selection -> also solid blue border 5px (and keep dashed outline if you like it)
+  if (inPathSelection) {
+    nodeStyle.borderColor = "#0070f3";
+    nodeStyle.borderStyle = "solid";
+    nodeStyle.borderWidth = 5; // <-- thicker border for path-selected nodes
+    // keep the dashed outline to differentiate path-selection; remove if not needed
+    nodeStyle.outline = "4px dashed #0070f3";
+    nodeStyle.outlineOffset = "2px";
+  }
 
   const isCompactView = zoomLevel <= compactThreshold;
 
@@ -157,19 +172,20 @@ export default function StatusNode({
   const handleRestartAll = () => onRestartAll?.(data.id);
   const handleContinueAll = () => onContinueAll?.(data.id);
   const handleResetFrom = () => onResetFrom?.(data.id);
-  const handleSelectFrom = () => onSelectFrom?.(data.id);
-  const handleSelectTo = () => onSelectTo?.(data.id);
+  const handleSelectFrom = () => { if (data.id !== "PROJECT") onSelectFrom?.(data.id); };
+  const handleSelectTo = () => { if (data.id !== "PROJECT") onSelectTo?.(data.id); };
 
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
         <div
           className={classNames}
-          style={{ backgroundColor: bgColor, ...(pathSelectedStyle || {}) }}
+          style={nodeStyle}
           onClick={onClick}
           onDoubleClick={(e) => { e.stopPropagation(); onDoubleClick?.(); }}
           onMouseEnter={() => setIsHovered(true)}
           onMouseLeave={() => setIsHovered(false)}
+          onContextMenu={(e) => e.stopPropagation()}
         >
           {/* Header */}
           <div
@@ -186,10 +202,7 @@ export default function StatusNode({
                   <span>{data.id}</span>
                 </div>
               )}
-              <div
-                className={data.id === "PROJECT" ? "text-4xl text-black" : "node-label dark:text-black"}
-                style={isCompactView ? { fontSize: "2.8rem" } : {}}
-              >
+              <div className={data.id === "PROJECT" ? "text-4xl text-black" : "node-label dark:text-black"} style={isCompactView ? { fontSize: "2.8rem" } : {}}>
                 <div className={`node-label dark:text-black ${isCompactView ? "compact" : ""}`} title={data.label}>
                   {data.label}
                 </div>
@@ -199,10 +212,7 @@ export default function StatusNode({
             {data.id !== "PROJECT" && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <button
-                    className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-200 ml-4"
-                    onClick={(e) => e.stopPropagation()}
-                  >
+                  <button className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-200 ml-4" onClick={(e) => e.stopPropagation()}>
                     <MoreHorizontal className="h-12 w-12 text-black dark:text-black" />
                   </button>
                 </DropdownMenuTrigger>
@@ -227,7 +237,7 @@ export default function StatusNode({
                     <ArrowDownLeft className="mr-2 h-4 w-4" /> Select from
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={handleSelectTo}>
-                    <ArrowUpRight className="mr-2 h-4 w-4" /> Select to
+                    <ArrowUpRightFromSquare className="mr-2 h-4 w-4" /> Select to
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   {data.status === "running" && (
@@ -257,16 +267,9 @@ export default function StatusNode({
           </div>
 
           {/* Content */}
-          <div
-            className={`transition-all duration-300 ease-in-out overflow-hidden ${
-              isCompactView ? "opacity-0 max-h-0" : "opacity-100 max-h-[2000px]"
-            }`}
-          >
+          <div className={`transition-all duration-300 ease-in-out overflow-hidden ${isCompactView ? "opacity-0 max-h-0" : "opacity-100 max-h-[2000px]"}`}>
             {data.id !== "PROJECT" && (
-              <div
-                className="node-card-content p-3 mt-4"
-                style={{ minHeight: "120px", maxHeight: "300px", overflowY: "auto" }}
-              >
+              <div className="node-card-content p-3 mt-4" style={{ minHeight: "120px", maxHeight: "300px", overflowY: "auto" }}>
                 {Array.isArray(data.outputs) && data.outputs.length > 0 && (
                   <div className="outputs-list">
                     <div className="section-header flex items-center px-2 py-1 bg-green-50 dark:bg-green-50 rounded-t-lg border-b border-green-800 dark:border-green-800">
@@ -275,22 +278,13 @@ export default function StatusNode({
                     <div className="section-content p-2 bg-green-100 dark:bg-green-200 rounded-b-lg space-y-2">
                       {data.outputs.map((outputObj, idx) => {
                         const [_, rawValue] = Object.entries(outputObj)[0];
-                        const value = rawValue as {
-                          info: string;
-                          _class: string;
-                          _objValue: string;
-                          _parentId: string;
-                        };
+                        const value = rawValue as { info: string; _class: string; _objValue: string; _parentId: string };
                         const isDragging = draggingIdx === idx;
 
                         return (
                           <div
                             key={idx}
-                            className={`nodrag mt-3 group cursor-grab flex items-center px-3 py-1 rounded-full border border-gray-400 dark:border-gray-600 shadow-sm hover:shadow-md transition-transform ${
-                              isDragging
-                                ? "scale-100 opacity-70"
-                                : "bg-gradient-to-r from-gray-200 to-gray-300 dark:from-gray-200 dark:to-gray-300"
-                            }`}
+                            className={`nodrag mt-3 group cursor-grab flex items-center px-3 py-1 rounded-full border border-gray-400 dark:border-gray-600 shadow-sm hover:shadow-md transition-transform ${isDragging ? "scale-100 opacity-70" : "bg-gradient-to-r from-gray-200 to-gray-300 dark:from-gray-200 dark:to-gray-300"}`}
                             draggable
                             onDragStart={(e) => {
                               e.stopPropagation();
@@ -302,25 +296,25 @@ export default function StatusNode({
                                 info: value.info,
                                 _parentId: value._parentId,
                               };
-                              setCurrentDraggedOutput?.(output);
+                              setCurrentDraggedOutput(output);
                               e.dataTransfer.setData("application/scipion-output", JSON.stringify(output));
-                              const dragGhost = document.createElement("div");
-                              dragGhost.style.position = "absolute";
-                              dragGhost.style.top = "-1000px";
-                              dragGhost.style.left = "-1000px";
-                              dragGhost.style.padding = "6px 12px";
-                              dragGhost.style.background = "white";
-                              dragGhost.style.border = "1px solid #ccc";
-                              dragGhost.style.color = "black";
-                              dragGhost.style.borderRadius = "0.5rem";
-                              dragGhost.innerText = `${value._class} (${value.info})`;
-                              document.body.appendChild(dragGhost);
-                              e.dataTransfer.setDragImage(dragGhost, 0, 15);
-                              setTimeout(() => document.body.removeChild(dragGhost), 0);
+                              const ghost = document.createElement("div");
+                              ghost.style.position = "absolute";
+                              ghost.style.top = "-1000px";
+                              ghost.style.left = "-1000px";
+                              ghost.style.padding = "6px 12px";
+                              ghost.style.background = "white";
+                              ghost.style.border = "1px solid #ccc";
+                              ghost.style.color = "black";
+                              ghost.style.borderRadius = "0.5rem";
+                              ghost.innerText = `${value._class} (${value.info})`;
+                              document.body.appendChild(ghost);
+                              e.dataTransfer.setDragImage(ghost, 0, 15);
+                              setTimeout(() => document.body.removeChild(ghost), 0);
                             }}
                             onDragEnd={() => {
                               setDraggingIdx(null);
-                              setCurrentDraggedOutput?.(null);
+                              setCurrentDraggedOutput(null);
                             }}
                           >
                             <ArrowUpRight className="h-6 w-6 mr-2 text-black-700 dark:text-black" />
@@ -352,7 +346,7 @@ export default function StatusNode({
                       <div className="w-16 h-3 bg-white/30 rounded overflow-hidden">
                         <div
                           className="h-3 bg-white transition-all duration-500"
-                          style={{ width: `${((data.numberOfSteps ?? 1) ? ((data.stepsDone ?? 0) / (data.numberOfSteps ?? 1)) : 0) * 100}%` }}
+                          style={{ width: `${((data.stepsDone ?? 0) / (data.numberOfSteps ?? 1)) * 100}%` }}
                         />
                       </div>
                       <span className="text-3xl opacity-80 ml-4">
@@ -363,14 +357,7 @@ export default function StatusNode({
                 </span>
 
                 <span className="flex items-center space-x-1 ml-6 text-3xl dark:text-black">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    className="h-10 w-10 text-gray-500 dark:text-gray-400 mr-2"
-                    fill="none"
-                    viewBox="0 0 22 24"
-                    stroke="currentColor"
-                    strokeWidth={2}
-                  >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-gray-500 dark:text-gray-400 mr-2" fill="none" viewBox="0 0 22 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                   <span>{formatCpuTime(data.tick ?? Number(data.elapsedTime) ?? 0)}</span>
@@ -393,29 +380,29 @@ export default function StatusNode({
         </div>
       </ContextMenuTrigger>
 
-      {/* Right-click context menu over the node */}
+      {/* Node-specific context menu */}
       <ContextMenuContent className="w-56" onClick={(e) => e.stopPropagation()}>
-        <ContextMenuItem onSelect={handleEdit}>
+        <ContextMenuItem onClick={handleEdit}>
           <Pencil className="mr-2 h-4 w-4" /> Edit
         </ContextMenuItem>
         <ContextMenuItem>
           <FolderOpen className="mr-2 h-4 w-4" /> Browse
         </ContextMenuItem>
-        <ContextMenuItem onSelect={handleRename}>
+        <ContextMenuItem onClick={handleRename}>
           <Pencil className="mr-2 h-4 w-4" /> Rename
         </ContextMenuItem>
-        <ContextMenuItem onSelect={handleDuplicate}>
+        <ContextMenuItem onClick={handleDuplicate}>
           <Copy className="mr-2 h-4 w-4" /> Duplicate
         </ContextMenuItem>
-        <ContextMenuItem onSelect={handleDelete}>
+        <ContextMenuItem onClick={handleDelete}>
           <Trash2 className="mr-2 h-4 w-4" /> Delete
         </ContextMenuItem>
         <ContextMenuSeparator />
-        <ContextMenuItem onSelect={handleSelectFrom}>
+        <ContextMenuItem onClick={handleSelectFrom}>
           <ArrowDownLeft className="mr-2 h-4 w-4" /> Select from
         </ContextMenuItem>
-        <ContextMenuItem onSelect={handleSelectTo}>
-          <ArrowUpRight className="mr-2 h-4 w-4" /> Select to
+        <ContextMenuItem onClick={handleSelectTo}>
+          <ArrowUpRightFromSquare className="mr-2 h-4 w-4" /> Select to
         </ContextMenuItem>
         <ContextMenuSeparator />
         {data.status === "running" && (
@@ -423,13 +410,13 @@ export default function StatusNode({
             <Square className="mr-2 h-4 w-4" /> Stop
           </ContextMenuItem>
         )}
-        <ContextMenuItem onSelect={handleRestartAll}>
+        <ContextMenuItem onClick={handleRestartAll}>
           <RefreshCw className="mr-2 h-4 w-4" /> Restart all
         </ContextMenuItem>
-        <ContextMenuItem onSelect={handleContinueAll}>
+        <ContextMenuItem onClick={handleContinueAll}>
           <Play className="mr-2 h-4 w-4" /> Continue all
         </ContextMenuItem>
-        <ContextMenuItem onSelect={handleResetFrom}>
+        <ContextMenuItem onClick={handleResetFrom}>
           <RotateCcw className="mr-2 h-4 w-4" /> Reset from
         </ContextMenuItem>
         <ContextMenuSeparator />

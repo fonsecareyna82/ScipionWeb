@@ -1,4 +1,3 @@
-// File: src/components/protocol/ProtocolNodeCardWrapper.tsx
 import { NodeProps, useReactFlow } from "reactflow";
 import StatusNode from "./ProtocolNodeCard";
 
@@ -21,29 +20,34 @@ export const createStatusNodeWrapper = (
   getHoveredNodeId: () => string | undefined,
   setHoveredNodeId?: React.Dispatch<React.SetStateAction<string | null>>,
   getGraphDirection?: () => "TB" | "LR",
-  getNodeActions?: () => NodeActions
+  getNodeActions?: () => NodeActions,
+  getPathSelectionNodeIds?: () => Set<string>
 ) => {
   return function StatusNodeWrapper(props: NodeProps) {
-    const { data, id, selected, ...rest } = props;
+    const { data, id, ...rest } = props;
     const { getViewport } = useReactFlow();
     const { zoom } = getViewport();
 
+    const selectedNodeId = getSelectedNodeId?.();
     const hoveredNodeId = getHoveredNodeId?.();
     const graphDirection = getGraphDirection?.() ?? "TB";
 
     const handleMouseEnter = () => setHoveredNodeId?.(String(id));
     const handleMouseLeave = () => setHoveredNodeId?.(null);
-    const isHovered = typeof hoveredNodeId === "string" && String(id) === String(hoveredNodeId);
+    const isHovered =
+      typeof hoveredNodeId === "string" && String(id) === String(hoveredNodeId);
 
     const actions = getNodeActions?.() ?? {};
+    const pathSelectedSet = getPathSelectionNodeIds?.() ?? new Set<string>();
+    const inPathSelection = pathSelectedSet.has(String(id));
 
     return (
       <div onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave} style={{ display: "inline-block" }}>
         <StatusNode
           {...rest}
           id={String(id)}
-          data={data}
-          selected={selected}
+          data={data as any}
+          selectedNodeId={selectedNodeId}
           onClick={(evt?: React.MouseEvent) => onClick(data, evt)}
           onDoubleClick={() => onDoubleClick(data)}
           graphDirection={graphDirection}
@@ -51,6 +55,7 @@ export const createStatusNodeWrapper = (
           hoveredNodeId={hoveredNodeId}
           setHoveredNodeId={setHoveredNodeId}
           isHovered={isHovered}
+          // actions
           onEdit={actions.onEdit}
           onRename={actions.onRename}
           onDuplicate={actions.onDuplicate}
@@ -60,6 +65,8 @@ export const createStatusNodeWrapper = (
           onResetFrom={actions.onResetFrom}
           onSelectFrom={actions.onSelectFrom}
           onSelectTo={actions.onSelectTo}
+          // path-selected styling
+          inPathSelection={inPathSelection}
         />
       </div>
     );
