@@ -236,7 +236,7 @@ export default function StatusNode({
                         <ArrowDownLeft className="mr-2 h-4 w-4" /> Select from
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={handleSelectTo}>
-                        <ArrowUpRightFromSquare className="mr-2 h-4 w-4" /> Select to
+                        <ArrowUpRight className="mr-2 h-4 w-4" /> Select to
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
                       {data.status === "running" && (
@@ -407,7 +407,7 @@ export default function StatusNode({
               <ArrowDownLeft className="mr-2 h-4 w-4" /> Select from
             </ContextMenuItem>
             <ContextMenuItem onClick={handleSelectTo}>
-              <ArrowUpRightFromSquare className="mr-2 h-4 w-4" /> Select to
+              <ArrowUpRight className="mr-2 h-4 w-4" /> Select to
             </ContextMenuItem>
             <ContextMenuSeparator />
             {data.status === "running" && (
