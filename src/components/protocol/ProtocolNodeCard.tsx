@@ -153,7 +153,7 @@ export default function StatusNode({
     nodeStyle.borderWidth = 5;
   }
   if (inPathSelection) {
-    nodeStyle.borderColor = "#0070f3";
+    nodeStyle.borderColor = "#f30029ff";
     nodeStyle.borderStyle = "solid";
     nodeStyle.borderWidth = 5;
     nodeStyle.outline = "4px #0070f3";
