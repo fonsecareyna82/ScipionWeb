@@ -1,3 +1,4 @@
+// --- ProjectPage.tsx (completo) ---
 import { useParams } from "react-router-dom";
 import React, {
   useCallback,
@@ -160,7 +161,6 @@ export default function ProjectPage() {
   const [, setPathEdgeIds] = useState<string[]>([]);
   const pathSelRef = useRef<{ nodes: Set<string>; edges: Set<string> }>({ nodes: new Set(), edges: new Set() });
 
-  /* Programmatic selection writes may still use this to avoid a single redundant sync. */
   const suppressNextSyncRef = useRef(false);
 
   const getSelectedPathIds = () => pathSelRef.current.nodes;
@@ -340,12 +340,23 @@ export default function ProjectPage() {
     });
   }, [paintEdgeHighlight, paintPathHighlight, setEdges]);
 
+  /* --------------------- Helpers to clear all selection --------------------- */
+  const clearAllSelection = useCallback(() => {
+    clearPathSelection();
+    suppressNextSyncRef.current = true;
+    setNodes((prev) => (prev.some((n) => n.selected) ? prev.map((n) => ({ ...n, selected: false })) : prev));
+    selectedIdRef.current = null;
+    setPreviousNodeId(null);
+    setHighlightedId(null);
+    applyEdgeHighlight(null);
+  }, [clearPathSelection, setNodes, applyEdgeHighlight]);
+
   /* --------------------- Node click / double click --------------------- */
   const handleNodeClick = (nodeData: any, evt?: React.MouseEvent) => {
-    // When Ctrl/Meta/Shift is pressed, React Flow handles multi-select toggling
+    // If Ctrl/Meta/Shift is pressed, let React Flow handle multi-select/box-select.
     if (evt?.ctrlKey || evt?.metaKey || evt?.shiftKey) return;
 
-    // Single click: clear multi-selection and select only this node
+    // Single click: just clear any path/multi selection and let RF select the node.
     if (pathSelRef.current.nodes.size || pathSelRef.current.edges.size) {
       clearPathSelection();
     }
@@ -355,14 +366,7 @@ export default function ProjectPage() {
     setPreviousNodeId(id);
     setHighlightedId(id);
     applyEdgeHighlight(id);
-
-    // Prevent one redundant downstream sync
-    suppressNextSyncRef.current = true;
-    setNodes((prev) =>
-      prev.map((n) =>
-        n.id === id ? (n.selected ? n : { ...n, selected: true }) : (n.selected ? { ...n, selected: false } : n)
-      )
-    );
+    // IMPORTANT: do not set node.selected here; RF will do it.
   };
 
   const handleNodeDoubleClick = async (nodeData: any) => {
@@ -428,6 +432,8 @@ export default function ProjectPage() {
       const items = cleanIds.map((id) => ({ id, name: genCopyName(id) }));
       await svc.duplicateProtocol(projectName, items);
       toast.success(cleanIds.length > 1 ? "Protocols duplicated successfully." : "Protocol duplicated successfully.");
+      // Clear selection immediately after duplicating
+      clearAllSelection();
       await handleRefresh();
     } catch (e) {
       console.error(e);
@@ -541,7 +547,7 @@ export default function ProjectPage() {
       onSelectTo: handleSelectTo,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [handleSelectFrom, handleSelectTo, duplicateNow]);
+  }, [handleSelectFrom, handleSelectTo]);
 
   const nodeTypesRef = useRef<Record<string, any> | null>(null);
   if (!nodeTypesRef.current) {
@@ -1236,7 +1242,7 @@ export default function ProjectPage() {
     setViewport(vp);
   }, []);
 
-  /* Adopt RF selection. This path runs for Ctrl/Meta/Shift-click and box-selection. */
+  /* Adopt RF selection. This path runs for Ctrl/Meta-click and Shift box-selection. */
   const onSelectionChange = useCallback(({ nodes: selNodes }: { nodes: Node[]; edges: Edge[] }) => {
     if (suppressNextSyncRef.current) {
       suppressNextSyncRef.current = false;
@@ -1245,14 +1251,12 @@ export default function ProjectPage() {
 
     const ids = new Set((selNodes ?? []).map((n) => n.id));
 
-    // Multi-selection: adopt the set and paint all touching edges.
     if (ids.size > 1) {
       if (setsEqual(ids, pathSelRef.current.nodes)) return;
       applyGenericSelectionFromSet(ids);
       return;
     }
 
-    // Single selection
     if (ids.size === 1) {
       if (pathSelRef.current.nodes.size || pathSelRef.current.edges.size) {
         clearPathSelection();
@@ -1560,15 +1564,7 @@ export default function ProjectPage() {
               onMoveEnd={handleOnMoveEnd}
               onPaneClick={() => {
                 handleCloseMenu();
-                if (pathSelRef.current.nodes.size || pathSelRef.current.edges.size) {
-                  clearPathSelection();
-                }
-                suppressNextSyncRef.current = true;
-                setNodes((prev) => prev.map((n) => (n.selected ? { ...n, selected: false } : n)));
-                selectedIdRef.current = null;
-                setPreviousNodeId(null);
-                setHighlightedId(null);
-                applyEdgeHighlight(null);
+                clearAllSelection();
               }}
               onSelectionChange={onSelectionChange}
               onContextMenu={handleContextMenu}
@@ -1576,8 +1572,8 @@ export default function ProjectPage() {
               defaultEdgeOptions={{ type: "default", style: { stroke: "#999", strokeWidth: 2 }, markerEnd: "url(#circle)" }}
               onNodeDoubleClick={(_, node) => handleNodeDoubleClick(node)}
               onNodeClick={(evt, node) => handleNodeClick(node, evt)}
-              /* Enable Ctrl/Meta/Shift multi-selection and Shift box-selection */
-              multiSelectionKeyCode={['Meta', 'Control', 'Shift']}
+              /* Multi-select with Meta/Ctrl only; Shift reserved for box selection */
+              multiSelectionKeyCode={['Meta', 'Control']}
               selectionKeyCode="Shift"
               selectionOnDrag
               style={{ width: "100%", height: "100%" }}
@@ -1596,19 +1592,7 @@ export default function ProjectPage() {
                       <RefreshCw className="w-4 h-4 mr-2" />
                       Refresh graph
                     </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onSelect={() => {
-                        if (pathSelRef.current.nodes.size || pathSelRef.current.edges.size) {
-                          clearPathSelection();
-                        }
-                        suppressNextSyncRef.current = true;
-                        setNodes((prev) => prev.map((n) => (n.selected ? { ...n, selected: false } : n)));
-                        selectedIdRef.current = null;
-                        setPreviousNodeId(null);
-                        setHighlightedId(null);
-                        applyEdgeHighlight(null);
-                      }}
-                    >
+                    <DropdownMenuItem onSelect={clearAllSelection}>
                       <Trash2 className="w-4 h-4 mr-2" />
                       Clear selection
                     </DropdownMenuItem>
@@ -1668,9 +1652,7 @@ export default function ProjectPage() {
                     const ids = confirm.ids ?? (confirm.id ? [confirm.id] : []);
                     if (ids.length === 0) return;
                     await svc.deleteProtocol(projectName, ids);
-                    if (pathSelRef.current.nodes.size || pathSelRef.current.edges.size) {
-                      clearPathSelection();
-                    }
+                    clearAllSelection();
                     toast.success(ids.length > 1 ? "Protocols deleted." : "Protocol deleted.");
                   } else if (confirm.kind === "restartAll" && confirm.id) {
                     await svc.restartAll(projectName, confirm.id);

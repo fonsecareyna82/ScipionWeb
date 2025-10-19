@@ -138,7 +138,7 @@ export default function StatusNode({
   const bgColor = STATUS_COLORS[data.status ?? "finished"] ?? STATUS_COLORS["root"];
   data.color = bgColor;
 
-  /* Base styling; outline is added when part of a selection set. */
+  /* Base styling; outline added when part of a selection set */
   const classNames = [
     "status-node-card",
     "rounded-2xl border transition-shadow transform",
@@ -174,10 +174,10 @@ export default function StatusNode({
   const handleSelectFrom = () => { if (data.id !== "PROJECT") onSelectFrom?.(data.id); };
   const handleSelectTo = () => { if (data.id !== "PROJECT") onSelectTo?.(data.id); };
 
-  /* If a selection (path or multi) is active, reduce menu to destructive/export ops. */
+  /* When any selection (path or multi) is active, reduce node menus */
   const reduceMenus = pathSelectionActive || inPathSelection;
 
-  // Choose icons based on graphDirection
+  // Choose direction-aware icons for Select From/To
   const FromIcon = graphDirection === "TB" ? ArrowDownLeft : ArrowRight;
   const ToIcon = graphDirection === "TB" ? ArrowUpRight : ArrowLeft;
 
@@ -297,6 +297,12 @@ export default function StatusNode({
                             key={idx}
                             className={`nodrag mt-3 group cursor-grab flex items-center px-3 py-1 rounded-full border border-gray-400 dark:border-gray-600 shadow-sm hover:shadow-md transition-transform ${isDragging ? "scale-100 opacity-70" : "bg-gradient-to-r from-gray-200 to-gray-300 dark:from-gray-200 dark:to-gray-300"}`}
                             draggable
+                            /* Treat a normal click on the chip as a click on the whole node */
+                            onClick={(e) => {
+                              if (e.ctrlKey || e.metaKey || e.shiftKey) return; // let RF handle multi-select if user holds modifiers
+                              e.stopPropagation();           // avoid duplicate bubbling
+                              onClick?.(e);                  // call node's click handler (wrapper -> ProjectPage)
+                            }}
                             onDragStart={(e) => {
                               e.stopPropagation();
                               setDraggingIdx(idx);
