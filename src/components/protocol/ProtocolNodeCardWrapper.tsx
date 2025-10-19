@@ -40,14 +40,10 @@ export const createStatusNodeWrapper = (
     const actions = getNodeActions?.() ?? {};
     const pathSelectedSet = getPathSelectionNodeIds?.() ?? new Set<string>();
     const inPathSelection = pathSelectedSet.has(String(id));
-    const pathSelectionActive = pathSelectedSet.size > 0;
+    const pathSelectionActive = pathSelectedSet.size > 0; // reduce menus globally while a selection (path or multi) is active
 
     return (
-      <div
-        onMouseEnter={handleMouseEnter}
-        onMouseLeave={handleMouseLeave}
-        style={{ display: "inline-block" }}
-      >
+      <div onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave} style={{ display: "inline-block" }}>
         <StatusNode
           {...rest}
           id={String(id)}
@@ -60,7 +56,7 @@ export const createStatusNodeWrapper = (
           hoveredNodeId={hoveredNodeId}
           setHoveredNodeId={setHoveredNodeId}
           isHovered={isHovered}
-          /* actions */
+          // actions
           onEdit={actions.onEdit}
           onRename={actions.onRename}
           onDuplicate={actions.onDuplicate}
@@ -70,7 +66,7 @@ export const createStatusNodeWrapper = (
           onResetFrom={actions.onResetFrom}
           onSelectFrom={actions.onSelectFrom}
           onSelectTo={actions.onSelectTo}
-          /* selection (path or multi) */
+          // selection (path or multi)
           inPathSelection={inPathSelection}
           pathSelectionActive={pathSelectionActive}
         />

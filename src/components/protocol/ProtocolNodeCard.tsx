@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Handle, Position } from "reactflow";
 import "./ProtocolNodeCard.css";
 import { useDrag } from "./DragContext";
@@ -105,7 +105,7 @@ type StatusNodeProps = {
 const formatCpuTime = (seconds: number): string => {
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
-  const secs = seconds % 60;
+  const secs = Math.floor(seconds % 60);
   const pad = (n: number) => n.toString().padStart(2, "0");
   return `${pad(hours)}h:${pad(minutes)}m:${pad(secs)}s`;
 };
@@ -135,10 +135,12 @@ export default function StatusNode({
   const isSelected = selectedNodeId === data.id;
   const { setCurrentDraggedOutput } = useDrag();
 
+  const rootRef = useRef<HTMLDivElement | null>(null);
+
   const bgColor = STATUS_COLORS[data.status ?? "finished"] ?? STATUS_COLORS["root"];
   data.color = bgColor;
 
-  /* Base styling; outline added when part of a selection set */
+  /* Base styling; outline is added when part of a selection set. */
   const classNames = [
     "status-node-card",
     "rounded-2xl border transition-shadow transform",
@@ -174,17 +176,44 @@ export default function StatusNode({
   const handleSelectFrom = () => { if (data.id !== "PROJECT") onSelectFrom?.(data.id); };
   const handleSelectTo = () => { if (data.id !== "PROJECT") onSelectTo?.(data.id); };
 
-  /* When any selection (path or multi) is active, reduce node menus */
+  /* If a selection (path or multi) is active, reduce menu to destructive/export ops. */
   const reduceMenus = pathSelectionActive || inPathSelection;
 
-  // Choose direction-aware icons for Select From/To
+  // Choose icons based on graphDirection
   const FromIcon = graphDirection === "TB" ? ArrowDownLeft : ArrowRight;
   const ToIcon = graphDirection === "TB" ? ArrowUpRight : ArrowLeft;
+
+  /**
+   * Forward a synthetic click (o ctrl-click) al wrapper de React Flow
+   * para que RF haga el toggle de selección aunque el target real sea un .nodrag.
+   */
+  const forwardClickToRFNode = (e: React.MouseEvent) => {
+    const nodeEl =
+      (e.currentTarget as HTMLElement).closest(".react-flow__node") ||
+      rootRef.current?.closest(".react-flow__node");
+    if (!nodeEl) return;
+
+    const opts: MouseEventInit = {
+      bubbles: true,
+      cancelable: true,
+      button: 0,
+      clientX: e.clientX,
+      clientY: e.clientY,
+      ctrlKey: e.ctrlKey,
+      metaKey: e.metaKey,
+    };
+
+    // Reproducimos la secuencia típica para que RF lo procese como click
+    nodeEl.dispatchEvent(new MouseEvent("mousedown", opts));
+    nodeEl.dispatchEvent(new MouseEvent("mouseup", opts));
+    nodeEl.dispatchEvent(new MouseEvent("click", opts));
+  };
 
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
         <div
+          ref={rootRef}
           className={classNames}
           style={nodeStyle}
           onClick={onClick}
@@ -297,11 +326,20 @@ export default function StatusNode({
                             key={idx}
                             className={`nodrag mt-3 group cursor-grab flex items-center px-3 py-1 rounded-full border border-gray-400 dark:border-gray-600 shadow-sm hover:shadow-md transition-transform ${isDragging ? "scale-100 opacity-70" : "bg-gradient-to-r from-gray-200 to-gray-300 dark:from-gray-200 dark:to-gray-300"}`}
                             draggable
-                            /* Treat a normal click on the chip as a click on the whole node */
+                            onMouseDown={(e) => {
+                              // Si se hace Ctrl/Cmd+click sobre el pill, reenviamos el click al nodo de RF.
+                              if (e.ctrlKey || e.metaKey) {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                forwardClickToRFNode(e);
+                              }
+                              // Si no, dejamos que actúe drag o el click normal (lo manejamos en onClick abajo)
+                            }}
                             onClick={(e) => {
-                              if (e.ctrlKey || e.metaKey || e.shiftKey) return; // let RF handle multi-select if user holds modifiers
-                              e.stopPropagation();           // avoid duplicate bubbling
-                              onClick?.(e);                  // call node's click handler (wrapper -> ProjectPage)
+                              // Click normal sobre el pill => queremos que cuente como click al nodo
+                              e.preventDefault();
+                              e.stopPropagation();
+                              forwardClickToRFNode(e);
                             }}
                             onDragStart={(e) => {
                               e.stopPropagation();
