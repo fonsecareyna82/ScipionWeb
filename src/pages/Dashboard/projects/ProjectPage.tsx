@@ -1,4 +1,3 @@
-// --- ProjectPage.tsx (completo) ---
 import { useParams } from "react-router-dom";
 import React, {
   useCallback,
@@ -156,23 +155,83 @@ export default function ProjectPage() {
 
   const isRunningNode = (n: Node) => (n as any).data?.status === "running";
 
-  /* --------------------- Selection state (unified for path and multi) --------------------- */
+  /* --------------------- Selection state --------------------- */
   const [, setPathNodeIds] = useState<string[]>([]);
   const [, setPathEdgeIds] = useState<string[]>([]);
   const pathSelRef = useRef<{ nodes: Set<string>; edges: Set<string> }>({ nodes: new Set(), edges: new Set() });
 
   const suppressNextSyncRef = useRef(false);
+  const suppressOneFrame = () => {
+    suppressNextSyncRef.current = true;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        suppressNextSyncRef.current = false;
+      });
+    });
+  };
 
   const getSelectedPathIds = () => pathSelRef.current.nodes;
   const SELECT_COLOR = "#0070f3";
   const PATH_COLOR = "#0070f3";
 
-  /* --------------------- Utils --------------------- */
   const setsEqual = (a: Set<string>, b: Set<string>) => {
     if (a.size !== b.size) return false;
     for (const v of a) if (!b.has(v)) return false;
     return true;
   };
+
+  const getUnifiedSelectedIds = (): Set<string> => {
+    const out = new Set<string>(Array.from(pathSelRef.current.nodes));
+    const single = selectedIdRef.current;
+    if (single) out.add(single);
+    return out;
+  };
+
+  const clearAllSelectionHard = useCallback(() => {
+    if (pathSelRef.current.nodes.size || pathSelRef.current.edges.size) {
+      pathSelRef.current = { nodes: new Set(), edges: new Set() };
+      setPathNodeIds([]);
+      setPathEdgeIds([]);
+      setEdges((eds) =>
+        eds.map((e) => {
+          if ((e as any).__path || (e as any).__hl) {
+            const styleCopy: any = { ...(e.style ?? {}) };
+            delete styleCopy.strokeDasharray;
+            if (styleCopy.stroke === PATH_COLOR || styleCopy.stroke === SELECT_COLOR) delete styleCopy.stroke;
+            const sw = Number(styleCopy.strokeWidth);
+            if (!Number.isNaN(sw) && (sw <= 4 || sw === 4)) delete styleCopy.strokeWidth;
+            const cleaned: any = { ...e, style: Object.keys(styleCopy).length ? styleCopy : undefined };
+            delete (cleaned as any).__path;
+            delete (cleaned as any).__hl;
+            return cleaned;
+          }
+          return e;
+        })
+      );
+    } else {
+      setEdges((eds) =>
+        eds.map((e) => {
+          if ((e as any).__hl) {
+            const { style, ...rest } = e;
+            const ns: any = { ...(style ?? {}) };
+            if (ns.stroke === SELECT_COLOR) delete ns.stroke;
+            const sw = Number(ns.strokeWidth);
+            if (!Number.isNaN(sw) && sw === 4) delete ns.strokeWidth;
+            const clean: any = { ...rest, style: Object.keys(ns).length ? ns : undefined };
+            delete (clean as any).__hl;
+            return clean;
+          }
+          return e;
+        })
+      );
+    }
+
+    suppressOneFrame();
+    setNodes((prev) => (prev.some((n) => n.selected) ? prev.map((n) => ({ ...n, selected: false })) : prev));
+    selectedIdRef.current = null;
+    setPreviousNodeId(null);
+    setHighlightedId(null);
+  }, [setNodes, setEdges]);
 
   /* --------------------- Edge painters --------------------- */
   const curIsBlue = (e: Edge) =>
@@ -312,10 +371,8 @@ export default function ProjectPage() {
     setPathNodeIds(Array.from(nextNodes));
     setPathEdgeIds(Array.from(nextEdges));
 
-    // Mirror selected flags for UI state
     setNodes((prev) => prev.map((n) => ({ ...n, selected: nextNodes.has(n.id) })));
 
-    // Paint multi-selection edges and clear single-node highlight
     setEdges((eds) => paintPathHighlight(eds, nextEdges));
     setEdges((eds) => paintEdgeHighlight(eds, null));
     bumpNodesForPath();
@@ -340,23 +397,10 @@ export default function ProjectPage() {
     });
   }, [paintEdgeHighlight, paintPathHighlight, setEdges]);
 
-  /* --------------------- Helpers to clear all selection --------------------- */
-  const clearAllSelection = useCallback(() => {
-    clearPathSelection();
-    suppressNextSyncRef.current = true;
-    setNodes((prev) => (prev.some((n) => n.selected) ? prev.map((n) => ({ ...n, selected: false })) : prev));
-    selectedIdRef.current = null;
-    setPreviousNodeId(null);
-    setHighlightedId(null);
-    applyEdgeHighlight(null);
-  }, [clearPathSelection, setNodes, applyEdgeHighlight]);
-
   /* --------------------- Node click / double click --------------------- */
   const handleNodeClick = (nodeData: any, evt?: React.MouseEvent) => {
-    // If Ctrl/Meta/Shift is pressed, let React Flow handle multi-select/box-select.
     if (evt?.ctrlKey || evt?.metaKey || evt?.shiftKey) return;
 
-    // Single click: just clear any path/multi selection and let RF select the node.
     if (pathSelRef.current.nodes.size || pathSelRef.current.edges.size) {
       clearPathSelection();
     }
@@ -366,7 +410,13 @@ export default function ProjectPage() {
     setPreviousNodeId(id);
     setHighlightedId(id);
     applyEdgeHighlight(id);
-    // IMPORTANT: do not set node.selected here; RF will do it.
+
+    suppressOneFrame();
+    setNodes((prev) =>
+      prev.map((n) =>
+        n.id === id ? (n.selected ? n : { ...n, selected: true }) : (n.selected ? { ...n, selected: false } : n)
+      )
+    );
   };
 
   const handleNodeDoubleClick = async (nodeData: any) => {
@@ -401,7 +451,7 @@ export default function ProjectPage() {
 
   const nodeActionsRef = useRef<NodeActions>({});
 
-  /* Error message helper */
+  /* Error helper */
   const getErrorMsg = (e: any) => {
     if (e && typeof e === "object") {
       const status = (e as any).status;
@@ -423,7 +473,6 @@ export default function ProjectPage() {
     return `${normalized}_copy_${Date.now().toString().slice(-5)}`;
   };
 
-  /* Duplicate multiple in a single API call */
   const duplicateNow = async (ids: string[]) => {
     if (!projectName) return;
     const cleanIds = ids.filter((i) => i && i !== "PROJECT");
@@ -432,8 +481,8 @@ export default function ProjectPage() {
       const items = cleanIds.map((id) => ({ id, name: genCopyName(id) }));
       await svc.duplicateProtocol(projectName, items);
       toast.success(cleanIds.length > 1 ? "Protocols duplicated successfully." : "Protocol duplicated successfully.");
-      // Clear selection immediately after duplicating
-      clearAllSelection();
+
+      clearAllSelectionHard();
       await handleRefresh();
     } catch (e) {
       console.error(e);
@@ -443,13 +492,10 @@ export default function ProjectPage() {
 
   const openRename = (id: string) => setDlgRename({ open: true, id, value: findNodeLabel(id) });
 
-  /* Delete uses the selection set if present; otherwise single id */
   const openDelete = (id: string) => {
     const selected =
       pathSelRef.current.nodes.size > 0
-        ? Array.from(pathSelRef.current.nodes)
-            .map(String)
-            .filter((x) => x !== "PROJECT")
+        ? Array.from(pathSelRef.current.nodes).map(String).filter((x) => x !== "PROJECT")
         : [String(id)];
     setConfirm({ open: true, id: null, ids: selected, kind: "delete" });
   };
@@ -527,7 +573,6 @@ export default function ProjectPage() {
     applyGenericSelectionFromSet(nodesSet);
   }, [collectAncestors, applyGenericSelectionFromSet]);
 
-  /* Wire node actions */
   useEffect(() => {
     nodeActionsRef.current = {
       onEdit: (id) => handleNodeDoubleClick({ id }),
@@ -547,7 +592,7 @@ export default function ProjectPage() {
       onSelectTo: handleSelectTo,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [handleSelectFrom, handleSelectTo]);
+  }, [handleSelectFrom, handleSelectTo, duplicateNow]);
 
   const nodeTypesRef = useRef<Record<string, any> | null>(null);
   if (!nodeTypesRef.current) {
@@ -713,6 +758,14 @@ export default function ProjectPage() {
           data.shortName, data.protocols, viewMode, graphDirection
         );
 
+        // ⚠️ En vista TABLE: NO toques nodes/edges ni la selección
+        if (viewMode === "table") {
+          startTransition(() => setTableData(table ?? []));
+          setIsLoadingProject(false);
+          setIsRefreshing(false);
+          return;
+        }
+
         const nodesWithPositions = loadNodesWithPositions(loadedNodes);
 
         const initialTicks: Record<string, number> = {};
@@ -727,12 +780,10 @@ export default function ProjectPage() {
             : n
         );
 
-        // Re-apply selection flags based on current selection set
-        const selectedIds = new Set(pathSelRef.current.nodes);
-        const seededNodes = nodesWithTick.map((n) => ({ ...n, selected: selectedIds.has(n.id) }));
+        const unifiedSelectedIds = getUnifiedSelectedIds();
+        const seededNodes = nodesWithTick.map((n) => ({ ...n, selected: unifiedSelectedIds.has(n.id) }));
 
-        // Recompute selection edges against the new edge list and paint
-        const recomputedEdgeSet = computeEdgesTouchingNodes(selectedIds);
+        const recomputedEdgeSet = computeEdgesTouchingNodes(unifiedSelectedIds);
         pathSelRef.current.edges = recomputedEdgeSet;
 
         startTransition(() => {
@@ -740,9 +791,7 @@ export default function ProjectPage() {
           setEdges((_) => {
             let base = loadedEdges;
             base = paintEdgeHighlight(base, selectedIdRef.current ?? null);
-            if (recomputedEdgeSet.size) {
-              base = paintPathHighlight(base, recomputedEdgeSet);
-            }
+            if (recomputedEdgeSet.size) base = paintPathHighlight(base, recomputedEdgeSet);
             return base;
           });
           setTableData(table ?? []);
@@ -823,26 +872,32 @@ export default function ProjectPage() {
         const { nodes: loadedNodes, edges: loadedEdges, table } = buildGraphElements(
           data.shortName, data.protocols, viewMode, graphDirection
         );
+
+        // ⚠️ En vista TABLE: NO toques nodes/edges ni selección, solo la tabla
+        if (viewMode === "table") {
+          startTransition(() => setTableData(table ?? []));
+          setIsRefreshing(false);
+          return;
+        }
+
         const nodesWithPositions = mergeNodesWithPositions(loadedNodes);
         const edgesMerged = mergeEdges(loadedEdges);
 
-        const selectedIds = new Set(pathSelRef.current.nodes);
+        const unifiedSelectedIds = getUnifiedSelectedIds();
         const nodesSeed = nodesWithPositions.map((n) =>
           isRunningNode(n)
-            ? { ...n, data: { ...(n as any).data, tick: (nodeTicks[n.id] ?? Number((n as any).data?.elapsedTime) ?? 0) }, selected: selectedIds.has(n.id) }
-            : { ...n, selected: selectedIds.has(n.id) }
+            ? { ...n, data: { ...(n as any).data, tick: (nodeTicks[n.id] ?? Number((n as any).data?.elapsedTime) ?? 0) }, selected: unifiedSelectedIds.has(n.id) }
+            : { ...n, selected: unifiedSelectedIds.has(n.id) }
         );
 
-        const recomputedEdgeSet = computeEdgesTouchingNodes(selectedIds);
+        const recomputedEdgeSet = computeEdgesTouchingNodes(unifiedSelectedIds);
         pathSelRef.current.edges = recomputedEdgeSet;
 
         startTransition(() => {
           setNodes(nodesSeed);
           setEdges((_) => {
             let out = paintEdgeHighlight(edgesMerged, selectedIdRef.current ?? null);
-            if (recomputedEdgeSet.size) {
-              out = paintPathHighlight(out, recomputedEdgeSet);
-            }
+            if (recomputedEdgeSet.size) out = paintPathHighlight(out, recomputedEdgeSet);
             return out;
           });
           setTableData(table ?? []);
@@ -892,11 +947,20 @@ export default function ProjectPage() {
         const { nodes: loadedNodes, edges: loadedEdges, table } = buildGraphElements(
           data.shortName, data.protocols, viewMode, graphDirection
         );
+
+        // ⚠️ Si estás en TABLE, no reorganizamos el grafo ni tocamos selección
+        if (viewMode === "table") {
+          startTransition(() => setTableData(table ?? []));
+          disablePersistenceRef.current = false;
+          setHideGraphDuringCenter(false);
+          return;
+        }
+
         const nodesWithPositions = loadNodesWithPositions(loadedNodes);
 
-        const selectedIds = new Set(pathSelRef.current.nodes);
-        const nodesSeeded = nodesWithPositions.map((n) => ({ ...n, selected: selectedIds.has(n.id) }));
-        const recomputedEdgeSet = computeEdgesTouchingNodes(selectedIds);
+        const unifiedSelectedIds = getUnifiedSelectedIds();
+        const nodesSeeded = nodesWithPositions.map((n) => ({ ...n, selected: unifiedSelectedIds.has(n.id) }));
+        const recomputedEdgeSet = computeEdgesTouchingNodes(unifiedSelectedIds);
         pathSelRef.current.edges = recomputedEdgeSet;
 
         startTransition(() => {
@@ -967,9 +1031,11 @@ export default function ProjectPage() {
       });
 
       setTableData((prev) =>
-        prev.map((row) => (row.status === "running"
-          ? { ...row, tick: (row.tick ?? Number(row.elapsedTime) ?? 0) + 1 }
-          : row))
+        prev.map((row) =>
+          row.status === "running"
+            ? { ...row, tick: (row.tick ?? Number(row.elapsedTime) ?? 0) + 1 }
+            : row
+        )
       );
     }, 1000);
     return () => clearInterval(interval);
@@ -978,10 +1044,22 @@ export default function ProjectPage() {
   /* ------------------------ Layout change effect ------------------------ */
   const prevLayout = useRef({ viewMode, graphDirection });
   useLayoutEffect(() => {
-    const layoutChanged = prevLayout.current.viewMode !== viewMode || prevLayout.current.graphDirection !== graphDirection;
+    const layoutChanged =
+      prevLayout.current.viewMode !== viewMode ||
+      prevLayout.current.graphDirection !== graphDirection;
     if (!layoutChanged) return;
     if (!project?.protocols) { prevLayout.current = { viewMode, graphDirection }; return; }
 
+    // ✅ Si vamos a TABLE, no tocar grafo ni selección; solo gestionar overlay y highlight
+    if (viewMode === "table") {
+      setIsSwitchingLayout(true);
+      requestAnimationFrame(() => setTimeout(() => setIsSwitchingLayout(false), 60));
+      if (pathSelRef.current.nodes.size === 0) setHighlightedId(selectedIdRef.current ?? null);
+      prevLayout.current = { viewMode, graphDirection };
+      return;
+    }
+
+    // Vista jerárquica: sí actualizamos grafo
     const instance = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
     if (!instance) { prevLayout.current = { viewMode, graphDirection }; return; }
 
@@ -990,10 +1068,9 @@ export default function ProjectPage() {
       buildGraphElements(project.shortName, project.protocols, viewMode, graphDirection);
     const nodesWithPositions = loadNodesWithPositions(loadedNodes);
 
-    // Re-apply selection on layout switch
-    const selectedIds = new Set(pathSelRef.current.nodes);
-    const nodesSeeded = nodesWithPositions.map((n) => ({ ...n, selected: selectedIds.has(n.id) }));
-    const recomputedEdgeSet = computeEdgesTouchingNodes(selectedIds);
+    const unifiedSelectedIds = getUnifiedSelectedIds();
+    const nodesSeeded = nodesWithPositions.map((n) => ({ ...n, selected: unifiedSelectedIds.has(n.id) }));
+    const recomputedEdgeSet = computeEdgesTouchingNodes(unifiedSelectedIds);
     pathSelRef.current.edges = recomputedEdgeSet;
 
     disablePersistenceRef.current = true;
@@ -1070,19 +1147,69 @@ export default function ProjectPage() {
     }
   }, [nodesLoadedOnce]);
 
-  /* --------------------- Table switching --------------------- */
-  useEffect(() => {
-    if (viewMode === "table") {
-      setTableVisible(false);
-      setIsSwitchingLayout(true);
-      requestAnimationFrame(() => {
-        setTableVisible(true);
-        requestAnimationFrame(() => setTimeout(() => setIsSwitchingLayout(false), 60));
-      });
-    } else {
-      setTableVisible(false);
+  /* ============================================================
+     Tabla: scroll controlado (una sola vez) + highlight estable
+     ============================================================ */
+  const didScrollForTableRef = useRef(false);
+  const tableScrollRetriesRef = useRef(0);
+
+  const scrollSelectedRowIntoViewOnce = useCallback(() => {
+    const id = pathSelRef.current.nodes.size === 0 ? selectedIdRef.current : null;
+    if (!id) {
+      setHighlightedId(null);
+      didScrollForTableRef.current = true;
+      return;
     }
-  }, [viewMode]);
+
+    setHighlightedId(id);
+
+    const row = rowRefs.current[id];
+    const container = tableContainerRef.current;
+    if (row && container && container.offsetHeight > 0) {
+      const rowTop = row.offsetTop;
+      const desired = rowTop - container.offsetHeight / 2 + row.offsetHeight / 2;
+      container.scrollTop = Math.max(0, desired);
+      didScrollForTableRef.current = true;
+      tableScrollRetriesRef.current = 0;
+      return;
+    }
+
+    if (tableScrollRetriesRef.current < 10) {
+      tableScrollRetriesRef.current += 1;
+      requestAnimationFrame(scrollSelectedRowIntoViewOnce);
+    } else {
+      didScrollForTableRef.current = true;
+      tableScrollRetriesRef.current = 0;
+    }
+  }, [setHighlightedId]);
+
+  useEffect(() => {
+    if (viewMode !== "table") {
+      setTableVisible(false);
+      didScrollForTableRef.current = false;
+      tableScrollRetriesRef.current = 0;
+      return;
+    }
+
+    setTableVisible(false);
+    setIsSwitchingLayout(true);
+    requestAnimationFrame(() => {
+      setTableVisible(true);
+      requestAnimationFrame(() => {
+        setTimeout(() => setIsSwitchingLayout(false), 60);
+        if (!didScrollForTableRef.current) {
+          tableScrollRetriesRef.current = 0;
+          requestAnimationFrame(scrollSelectedRowIntoViewOnce);
+        }
+      });
+    });
+  }, [viewMode, scrollSelectedRowIntoViewOnce]);
+
+  useEffect(() => {
+    if (viewMode === "table" && pathSelRef.current.nodes.size === 0) {
+      setHighlightedId(selectedIdRef.current ?? null);
+    }
+  }, [isRefreshing, viewMode]);
 
   /* --------------------- Search helpers --------------------- */
   const scrollToProtocol = (id: string) => {
@@ -1093,7 +1220,7 @@ export default function ProjectPage() {
       const rowTop = row.offsetTop;
       const rowHeight = row.offsetHeight;
       const containerHeight = container.offsetHeight;
-      container.scrollTo({ top: rowTop - containerHeight / 2 + rowHeight / 2, behavior: "smooth" });
+      container.scrollTop = Math.max(0, rowTop - containerHeight / 2 + rowHeight / 2);
     }
   };
 
@@ -1242,7 +1369,6 @@ export default function ProjectPage() {
     setViewport(vp);
   }, []);
 
-  /* Adopt RF selection. This path runs for Ctrl/Meta-click and Shift box-selection. */
   const onSelectionChange = useCallback(({ nodes: selNodes }: { nodes: Node[]; edges: Edge[] }) => {
     if (suppressNextSyncRef.current) {
       suppressNextSyncRef.current = false;
@@ -1270,7 +1396,6 @@ export default function ProjectPage() {
       return;
     }
 
-    // None
     selectedIdRef.current = null;
     setPreviousNodeId(null);
     setHighlightedId(null);
@@ -1471,7 +1596,7 @@ export default function ProjectPage() {
                       clearPathSelection();
                     }
 
-                    suppressNextSyncRef.current = true;
+                    suppressOneFrame();
                     setNodes((prev) =>
                       prev.map((n) =>
                         n.id === row.id
@@ -1564,7 +1689,8 @@ export default function ProjectPage() {
               onMoveEnd={handleOnMoveEnd}
               onPaneClick={() => {
                 handleCloseMenu();
-                clearAllSelection();
+                clearAllSelectionHard();
+                applyEdgeHighlight(null);
               }}
               onSelectionChange={onSelectionChange}
               onContextMenu={handleContextMenu}
@@ -1572,15 +1698,13 @@ export default function ProjectPage() {
               defaultEdgeOptions={{ type: "default", style: { stroke: "#999", strokeWidth: 2 }, markerEnd: "url(#circle)" }}
               onNodeDoubleClick={(_, node) => handleNodeDoubleClick(node)}
               onNodeClick={(evt, node) => handleNodeClick(node, evt)}
-              /* Multi-select with Meta/Ctrl only; Shift reserved for box selection */
-              multiSelectionKeyCode={['Meta', 'Control']}
+              multiSelectionKeyCode={['Meta', 'Control', 'Shift']}
               selectionKeyCode="Shift"
               selectionOnDrag
               style={{ width: "100%", height: "100%" }}
             >
               <Background />
             </ReactFlow>
-            {/* Pane context menu */}
             {contextMenu.visible && (
               <DropdownMenu open onOpenChange={() => handleCloseMenu()}>
                 <DropdownMenuTrigger asChild>
@@ -1592,7 +1716,12 @@ export default function ProjectPage() {
                       <RefreshCw className="w-4 h-4 mr-2" />
                       Refresh graph
                     </DropdownMenuItem>
-                    <DropdownMenuItem onSelect={clearAllSelection}>
+                    <DropdownMenuItem
+                      onSelect={() => {
+                        clearAllSelectionHard();
+                        applyEdgeHighlight(null);
+                      }}
+                    >
                       <Trash2 className="w-4 h-4 mr-2" />
                       Clear selection
                     </DropdownMenuItem>
@@ -1652,7 +1781,9 @@ export default function ProjectPage() {
                     const ids = confirm.ids ?? (confirm.id ? [confirm.id] : []);
                     if (ids.length === 0) return;
                     await svc.deleteProtocol(projectName, ids);
-                    clearAllSelection();
+
+                    clearAllSelectionHard();
+
                     toast.success(ids.length > 1 ? "Protocols deleted." : "Protocol deleted.");
                   } else if (confirm.kind === "restartAll" && confirm.id) {
                     await svc.restartAll(projectName, confirm.id);
