@@ -31,6 +31,8 @@ import {
   ArrowDownLeft,
   Upload,
   Square,
+  ArrowLeft,
+  ArrowRight,
 } from "lucide-react";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -153,7 +155,7 @@ export default function StatusNode({
     nodeStyle.borderWidth = 5;
   }
   if (inPathSelection) {
-    nodeStyle.borderColor = "#f30029ff";
+    nodeStyle.borderColor = "#cf0d2eff";
     nodeStyle.borderStyle = "solid";
     nodeStyle.borderWidth = 5;
     nodeStyle.outline = "4px #0070f3";
@@ -174,6 +176,10 @@ export default function StatusNode({
 
   /* If a selection (path or multi) is active, reduce menu to destructive/export ops. */
   const reduceMenus = pathSelectionActive || inPathSelection;
+
+  // Choose icons based on graphDirection
+  const FromIcon = graphDirection === "TB" ? ArrowDownLeft : ArrowRight;
+  const ToIcon = graphDirection === "TB" ? ArrowUpRight : ArrowLeft;
 
   return (
     <ContextMenu>
@@ -229,10 +235,10 @@ export default function StatusNode({
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
                       <DropdownMenuItem onClick={handleSelectFrom}>
-                        <ArrowDownLeft className="mr-2 h-4 w-4" /> Select from
+                        <FromIcon className="mr-2 h-4 w-4" /> Select from
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={handleSelectTo}>
-                        <ArrowUpRight className="mr-2 h-4 w-4" /> Select to
+                        <ToIcon className="mr-2 h-4 w-4" /> Select to
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
                       {data.status === "running" && (
@@ -400,10 +406,10 @@ export default function StatusNode({
             </ContextMenuItem>
             <ContextMenuSeparator />
             <ContextMenuItem onClick={handleSelectFrom}>
-              <ArrowDownLeft className="mr-2 h-4 w-4" /> Select from
+              <FromIcon className="mr-2 h-4 w-4" /> Select from
             </ContextMenuItem>
             <ContextMenuItem onClick={handleSelectTo}>
-              <ArrowUpRight className="mr-2 h-4 w-4" /> Select to
+              <ToIcon className="mr-2 h-4 w-4" /> Select to
             </ContextMenuItem>
             <ContextMenuSeparator />
             {data.status === "running" && (
