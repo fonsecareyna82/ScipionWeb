@@ -156,8 +156,8 @@ export default function ProjectPage() {
   const isRunningNode = (n: Node) => (n as any).data?.status === "running";
 
   /* --------------------- Selection state (unified for path and multi) --------------------- */
-  const [pathNodeIds, setPathNodeIds] = useState<string[]>([]);
-  const [pathEdgeIds, setPathEdgeIds] = useState<string[]>([]);
+  const [, setPathNodeIds] = useState<string[]>([]);
+  const [, setPathEdgeIds] = useState<string[]>([]);
   const pathSelRef = useRef<{ nodes: Set<string>; edges: Set<string> }>({ nodes: new Set(), edges: new Set() });
 
   /* Programmatic selection writes may still use this to avoid a single redundant sync. */
