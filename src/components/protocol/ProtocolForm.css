@@ -1,9 +1,9 @@
 .protocol-form {
   position: absolute;
-  top: 6%;
+  top: 0%;
   right: 0%;
   bottom: 0%;
-  width: 38%;
+  width: 40%;
   display: flex;
   flex-direction: column;
   background-color: #fff;
@@ -240,4 +240,42 @@
 .status-unknown {
   background-color: #ccc;
   color: #333;
+}
+
+/* Enter: slides in from right to left */
+.protocol-form.slide-in-right {
+  animation: slideInFromRight 420ms ease-out both;
+}
+
+/* Exit: slides out from left to right (towards the right side) */
+.protocol-form.slide-out-right {
+  animation: slideOutToRight 420ms ease-in both;
+}
+
+@keyframes slideInFromRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0.001;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideOutToRight {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(100%);
+    opacity: 0.001;
+  }
+}
+
+/* Optional: improve perf & avoid jank */
+.protocol-form {
+  will-change: transform, opacity;
+  backface-visibility: hidden;
 }

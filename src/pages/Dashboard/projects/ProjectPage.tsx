@@ -1,4 +1,3 @@
-// File: src/pages/project/ProjectPage.tsx
 import { useParams } from "react-router-dom";
 import React, {
   useCallback,
@@ -6,6 +5,7 @@ import React, {
   useLayoutEffect,
   useRef,
   useState,
+  useTransition,
 } from "react";
 
 import ProtocolForm from "../../../components/protocol/ProtocolForm";
@@ -32,12 +32,35 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog/dialog";
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogCancel,
+  AlertDialogAction,
+} from "@/components/ui/dialog/alert-dialog";
+import { Button } from "@/components/ui/button";
+
 import { MinusIcon, PlusIcon, RefreshCw, Trash2 } from "lucide-react";
 import { FitViewIcon, TableIcon, TreeIcon } from "../../../icons";
 
-// <-- svc integration
 import { useProjectService } from "@/ProjectServiceContext";
 import { Project } from "@/types/project";
+import Label from "@/components/form/Label";
+import { Input } from "@mui/material";
+import toast from "react-hot-toast";
 
 /* --------------------- Types --------------------- */
 interface StatusNodeData {
@@ -50,6 +73,9 @@ interface StatusNodeData {
   tick?: number;
   numberOfSteps?: number;
   stepsDone?: number;
+  parents?: string[];
+  children?: string[];
+  __pathVer?: number;
 }
 
 interface ContextMenuState {
@@ -59,23 +85,37 @@ interface ContextMenuState {
   nodeId?: string | null;
 }
 
-/* --------------------- Component --------------------- */
+type NodeActions = {
+  onEdit?: (id: string) => void;
+  onRename?: (id: string) => void;
+  onDuplicate?: (id: string) => void;
+  onDelete?: (id: string) => void;
+  onRestartAll?: (id: string) => void;
+  onContinueAll?: (id: string) => void;
+  onResetFrom?: (id: string) => void;
+  onSelectFrom?: (id: string) => void;
+  onSelectTo?: (id: string) => void;
+};
+
 export default function ProjectPage() {
   const { projectName } = useParams<{ projectName: string }>();
   const svc = useProjectService();
 
   const [project, setProject] = useState<Project | undefined>(undefined);
   const [selectedNodeDetails, setSelectedNodeDetails] = useState<any>(null);
+  const [isLoadingProject, setIsLoadingProject] = useState(true);
 
-  // react-flow nodes / edges state
   const [nodes, setNodes, onNodesChange] = useNodesState<StatusNodeData>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge[]>([]);
   const [tableData, setTableData] = useState<any[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const delayedRefreshTimerRef = useRef<number | null>(null);
+
   const [previousNodeId, setPreviousNodeId] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<"hierarchical" | "table">(
-    "hierarchical"
-  );
+  const selectedIdRef = useRef<string | null>(null);
+  useEffect(() => { selectedIdRef.current = previousNodeId; }, [previousNodeId]);
+
+  const [viewMode, setViewMode] = useState<"hierarchical" | "table">("hierarchical");
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const [nodeTicks, setNodeTicks] = useState<Record<string, number>>({});
   const rowRefs = useRef<Record<string, HTMLTableRowElement | null>>({});
@@ -83,44 +123,25 @@ export default function ProjectPage() {
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [graphDirection, setGraphDirection] = useState<"TB" | "LR">("TB");
 
-  // persistence control
+  const [hideGraphDuringCenter, setHideGraphDuringCenter] = useState(false);
+  const [, startTransition] = useTransition();
   const disablePersistenceRef = useRef(false);
-  const [flowKey, setFlowKey] = useState(
-    () => `rf-${projectName}-${graphDirection}-${Date.now()}`
-  );
 
-  // default initial viewport (zoom 0.32 on first load)
-  const [viewport, setViewport] = useState<{ x: number; y: number; zoom: number }>({
-    x: 0,
-    y: 0,
-    zoom: 0.32, // initial zoom for first render
-  });
+  const [viewport, setViewport] = useState<{ x: number; y: number; zoom: number }>({ x: 0, y: 0, zoom: 0.32 });
   const viewportRef = useRef(viewport);
-  useEffect(() => {
-    viewportRef.current = viewport;
-  }, [viewport]);
+  useEffect(() => { viewportRef.current = viewport; }, [viewport]);
 
   const reactFlowInstanceRef = useRef<ReactFlowInstance | null>(null);
+  const [contextMenu, setContextMenu] = useState<ContextMenuState>({ visible: false, x: 0, y: 0 });
 
-  // context menu state (viewport coordinates)
-  const [contextMenu, setContextMenu] = useState<ContextMenuState>({
-    visible: false,
-    x: 0,
-    y: 0,
-  });
-
-  const TIME_TO_REFRESH = 15000; // 15 seconds
+  const TIME_TO_REFRESH = 15000;
   const localStorageKey = `project-${projectName}-node-positions`;
 
-  // overlay / flicker control
   const [isSwitchingLayout, setIsSwitchingLayout] = useState(false);
   const [, setTableVisible] = useState(viewMode === "table");
   const [nodesLoadedOnce, setNodesLoadedOnce] = useState(false);
-
-  // first load flag to ensure we center only once
   const firstLoadRef = useRef(true);
 
-  // Zoom clamp (ensure zoom stays in acceptable range)
   const MIN_ZOOM = 0.2;
   const MAX_ZOOM = 0.6;
   const clampZoom = (z: number | undefined | null) => {
@@ -128,67 +149,287 @@ export default function ProjectPage() {
     return Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, num));
   };
 
-  // keep latest nodes in ref to avoid render loops
   const nodesRef = useRef<Node[]>(nodes);
-  useEffect(() => {
-    nodesRef.current = nodes;
-  }, [nodes]);
+  useEffect(() => { nodesRef.current = nodes; }, [nodes]);
+  const edgesRef = useRef<Edge[]>(edges);
+  useEffect(() => { edgesRef.current = edges; }, [edges]);
 
-  /* --------------------- Node handlers --------------------- */
+  const isRunningNode = (n: Node) => (n as any).data?.status === "running";
 
-  /**
-   * handleNodeClick
-   * - highlight selected node and its connected edges
-   * - if shift is pressed allow multi-select (noop here)
-   */
-  const handleNodeClick = (nodeData: any, event?: React.MouseEvent) => {
-    handleCloseMenu();
-    const isMultiSelect = event?.shiftKey;
+  /* --------------------- Selection state --------------------- */
+  const [, setPathNodeIds] = useState<string[]>([]);
+  const [, setPathEdgeIds] = useState<string[]>([]);
+  const pathSelRef = useRef<{ nodes: Set<string>; edges: Set<string> }>({ nodes: new Set(), edges: new Set() });
 
-    const highlightNodeStyle = { boxShadow: "0 0 0 4px rgba(0,112,243,0.12)" };
-
-    if (!isMultiSelect) {
-      setPreviousNodeId(nodeData.id);
-
-      setNodes((nds) =>
-        nds.map((n) =>
-          n.id === nodeData.id
-            ? {
-              ...n,
-              selected: true,
-              style: { ...(n.style ?? {}), ...highlightNodeStyle },
-            }
-            : { ...n, selected: false, style: undefined }
-        )
-      );
-
-      const edgesToHighlight = edges
-        .filter((e) => e.source === nodeData.id || e.target === nodeData.id)
-        .map((e) => e.id);
-
-      setEdges((eds) =>
-        eds.map((edge) =>
-          edgesToHighlight.includes(edge.id)
-            ? { ...edge, style: { ...(edge.style ?? {}), stroke: "#0070f3", strokeWidth: 3 } }
-            : { ...edge, style: undefined }
-        )
-      );
-    }
+  const suppressNextSyncRef = useRef(false);
+  const suppressOneFrame = () => {
+    suppressNextSyncRef.current = true;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        suppressNextSyncRef.current = false;
+      });
+    });
   };
 
+  const getSelectedPathIds = () => pathSelRef.current.nodes;
+  const SELECT_COLOR = "#0070f3";
+  const PATH_COLOR = "#0070f3";
 
-  /**
-   * handleNodeDoubleClick
-   * - fetch full protocol details and open form drawer
-   */
+  const setsEqual = (a: Set<string>, b: Set<string>) => {
+    if (a.size !== b.size) return false;
+    for (const v of a) if (!b.has(v)) return false;
+    return true;
+  };
+
+  const getUnifiedSelectedIds = (): Set<string> => {
+    const out = new Set<string>(Array.from(pathSelRef.current.nodes));
+    const single = selectedIdRef.current;
+    if (single) out.add(single);
+    return out;
+  };
+
+  const clearAllSelectionHard = useCallback(() => {
+    if (pathSelRef.current.nodes.size || pathSelRef.current.edges.size) {
+      pathSelRef.current = { nodes: new Set(), edges: new Set() };
+      setPathNodeIds([]);
+      setPathEdgeIds([]);
+      setEdges((eds) =>
+        eds.map((e) => {
+          if ((e as any).__path || (e as any).__hl) {
+            const styleCopy: any = { ...(e.style ?? {}) };
+            delete styleCopy.strokeDasharray;
+            if (styleCopy.stroke === PATH_COLOR || styleCopy.stroke === SELECT_COLOR) delete styleCopy.stroke;
+            const sw = Number(styleCopy.strokeWidth);
+            if (!Number.isNaN(sw) && (sw <= 4 || sw === 4)) delete styleCopy.strokeWidth;
+            const cleaned: any = { ...e, style: Object.keys(styleCopy).length ? styleCopy : undefined };
+            delete (cleaned as any).__path;
+            delete (cleaned as any).__hl;
+            return cleaned;
+          }
+          return e;
+        })
+      );
+    } else {
+      setEdges((eds) =>
+        eds.map((e) => {
+          if ((e as any).__hl) {
+            const { style, ...rest } = e;
+            const ns: any = { ...(style ?? {}) };
+            if (ns.stroke === SELECT_COLOR) delete ns.stroke;
+            const sw = Number(ns.strokeWidth);
+            if (!Number.isNaN(sw) && sw === 4) delete ns.strokeWidth;
+            const clean: any = { ...rest, style: Object.keys(ns).length ? ns : undefined };
+            delete (clean as any).__hl;
+            return clean;
+          }
+          return e;
+        })
+      );
+    }
+
+    suppressOneFrame();
+    setNodes((prev) => (prev.some((n) => n.selected) ? prev.map((n) => ({ ...n, selected: false })) : prev));
+    selectedIdRef.current = null;
+    setPreviousNodeId(null);
+    setHighlightedId(null);
+  }, [setNodes, setEdges]);
+
+  /* --------------------- Edge painters --------------------- */
+  const curIsBlue = (e: Edge) =>
+    (e.style as any)?.stroke === SELECT_COLOR && Number((e.style as any)?.strokeWidth) === 4;
+
+  const paintEdgeHighlight = useCallback((eds: Edge[], selectedId: string | null): Edge[] => {
+    if (!selectedId) {
+      let anyStyled = false;
+      for (const e of eds) {
+        if ((e as any).__hl || (e.style as any)?.stroke === SELECT_COLOR) { anyStyled = true; break; }
+      }
+      if (!anyStyled) return eds;
+      return eds.map((e) => {
+        if ((e as any).__hl || (e.style && (e.style as any).stroke === SELECT_COLOR)) {
+          const { style, ...rest } = e;
+          const newStyle: any = { ...(style ?? {}) };
+          if ((e as any).__path) {
+            if (newStyle.stroke === SELECT_COLOR) delete newStyle.stroke;
+            const sw = Number(newStyle.strokeWidth);
+            if (!Number.isNaN(sw) && sw === 4) delete newStyle.strokeWidth;
+          } else {
+            delete newStyle.stroke;
+            delete newStyle.strokeWidth;
+          }
+          const clean: any = { ...rest, style: Object.keys(newStyle).length ? newStyle : undefined };
+          delete (clean as any).__hl;
+          return clean;
+        }
+        return e;
+      });
+    }
+
+    let changed = false;
+    const next = eds.map((e) => {
+      const isConn = e.source === selectedId || e.target === selectedId;
+      if (isConn) {
+        const curStroke = (e.style as any)?.stroke;
+        const curWidth = Number((e.style as any)?.strokeWidth);
+        if (curStroke === SELECT_COLOR && curWidth === 4) return e;
+        changed = true;
+        return {
+          ...e,
+          style: { ...(e.style ?? {}), stroke: SELECT_COLOR, strokeWidth: 4 },
+          __hl: true as any,
+        };
+      } else if ((e as any).__hl || curIsBlue(e)) {
+        changed = true;
+        const { style, ...rest } = e;
+        const newStyle: any = { ...(style ?? {}) };
+        if ((e as any).__path) {
+          if (newStyle.stroke === SELECT_COLOR) delete newStyle.stroke;
+          const sw = Number(newStyle.strokeWidth);
+          if (!Number.isNaN(sw) && sw === 4) delete newStyle.strokeWidth;
+        } else {
+          delete newStyle.stroke;
+          delete newStyle.strokeWidth;
+        }
+        const clean: any = { ...rest, style: Object.keys(newStyle).length ? newStyle : undefined };
+        delete (clean as any).__hl;
+        return clean;
+      }
+      return e;
+    });
+    return changed ? next : eds;
+  }, []);
+
+  const paintPathHighlight = useCallback((eds: Edge[], edgeIdsSet: Set<string>): Edge[] => {
+    let changed = false;
+    const next = eds.map((e) => {
+      const inSet = edgeIdsSet.has(e.id);
+      const wasPath = !!(e as any).__path;
+      const isHL = !!(e as any).__hl;
+
+      if (inSet) {
+        if (isHL) return e;
+        const newStyle: any = {
+          ...(e.style ?? {}),
+          stroke: PATH_COLOR,
+          strokeWidth: Math.max(4, Number((e.style as any)?.strokeWidth) || 4),
+          strokeDasharray: "6 3",
+        };
+        if (!wasPath || (e.style as any)?.stroke !== PATH_COLOR || Number((e.style as any)?.strokeWidth) < 4) {
+          changed = true;
+          return { ...e, style: newStyle, __path: true as any };
+        }
+        return e;
+      } else if (wasPath) {
+        const styleCopy: any = { ...(e.style ?? {}) };
+        if (isHL) {
+          if (styleCopy.stroke === PATH_COLOR) delete styleCopy.stroke;
+          if (styleCopy.strokeDasharray === "6 3") delete styleCopy.strokeDasharray;
+          changed = true;
+          const cleaned: any = { ...e, style: Object.keys(styleCopy).length ? styleCopy : undefined };
+          delete (cleaned as any).__path;
+          return cleaned;
+        } else {
+          if (styleCopy.stroke === PATH_COLOR) delete styleCopy.stroke;
+          const sw = Number(styleCopy.strokeWidth);
+          if (!Number.isNaN(sw) && sw <= 4) delete styleCopy.strokeWidth;
+          if (styleCopy.strokeDasharray === "6 3") delete styleCopy.strokeDasharray;
+          changed = true;
+          const cleaned: any = { ...e, style: Object.keys(styleCopy).length ? styleCopy : undefined };
+          delete (cleaned as any).__path;
+          return cleaned;
+        }
+      }
+      return e;
+    });
+    return changed ? next : eds;
+  }, []);
+
+  /* --------------------- Edge set helpers --------------------- */
+  const computeEdgesTouchingNodes = useCallback((nodeSet: Set<string>) => {
+    const edgeIds: string[] = [];
+    for (const e of edgesRef.current) {
+      const s = String(e.source);
+      const t = String(e.target);
+      if (nodeSet.has(s) || nodeSet.has(t)) edgeIds.push(e.id);
+    }
+    return new Set(edgeIds);
+  }, []);
+
+  /* --------------------- Selection application --------------------- */
+  const bumpNodesForPath = useCallback(() => {
+    setNodes((prev) =>
+      prev.map((n) => ({
+        ...n,
+        data: { ...(n as any).data, __pathVer: ((n as any).data?.__pathVer ?? 0) + 1 },
+      }))
+    );
+  }, [setNodes]);
+
+  const applyPathSelection = useCallback((nodeIds: string[], edgeIds?: string[]) => {
+    const nextNodes = new Set(nodeIds.map(String));
+    const nextEdges = new Set(edgeIds ?? Array.from(computeEdgesTouchingNodes(nextNodes)));
+    pathSelRef.current = { nodes: nextNodes, edges: nextEdges };
+    setPathNodeIds(Array.from(nextNodes));
+    setPathEdgeIds(Array.from(nextEdges));
+
+    setNodes((prev) => prev.map((n) => ({ ...n, selected: nextNodes.has(n.id) })));
+
+    setEdges((eds) => paintPathHighlight(eds, nextEdges));
+    setEdges((eds) => paintEdgeHighlight(eds, null));
+    bumpNodesForPath();
+  }, [computeEdgesTouchingNodes, paintPathHighlight, paintEdgeHighlight, setNodes, setEdges, bumpNodesForPath]);
+
+  const clearPathSelection = useCallback(() => {
+    if (pathSelRef.current.nodes.size === 0 && pathSelRef.current.edges.size === 0) return;
+    pathSelRef.current = { nodes: new Set(), edges: new Set() };
+    setPathNodeIds([]);
+    setPathEdgeIds([]);
+    setEdges((eds) => paintPathHighlight(eds, new Set()));
+    bumpNodesForPath();
+  }, [paintPathHighlight, bumpNodesForPath]);
+
+  const applyEdgeHighlight = useCallback((selectedId: string | null) => {
+    setEdges((eds) => {
+      let out = paintEdgeHighlight(eds, selectedId);
+      if (pathSelRef.current.edges.size) {
+        out = paintPathHighlight(out, pathSelRef.current.edges);
+      }
+      return out;
+    });
+  }, [paintEdgeHighlight, paintPathHighlight, setEdges]);
+
+  /* --------------------- Node click / double click --------------------- */
+  const handleNodeClick = (nodeData: any, evt?: React.MouseEvent) => {
+    if (evt?.ctrlKey || evt?.metaKey || evt?.shiftKey) return;
+
+    if (pathSelRef.current.nodes.size || pathSelRef.current.edges.size) {
+      clearPathSelection();
+    }
+
+    const id = String(nodeData.id);
+    selectedIdRef.current = id;
+    setPreviousNodeId(id);
+    setHighlightedId(id);
+    applyEdgeHighlight(id);
+
+    suppressOneFrame();
+    setNodes((prev) =>
+      prev.map((n) =>
+        n.id === id ? (n.selected ? n : { ...n, selected: true }) : (n.selected ? { ...n, selected: false } : n)
+      )
+    );
+  };
+
   const handleNodeDoubleClick = async (nodeData: any) => {
-    handleCloseMenu();
     if (!projectName) return;
     try {
-      // svc: fetchProtocolDetails
       const fullNodeData = await svc.fetchProtocolDetails(projectName, nodeData.id);
+      const id = String(nodeData.id);
+      selectedIdRef.current = id;
       setSelectedNodeDetails(fullNodeData);
-      setPreviousNodeId(nodeData.id);
+      setPreviousNodeId(id);
+      setHighlightedId(id);
+      applyEdgeHighlight(id);
     } catch (err) {
       console.error("Failed to fetch protocol details", err);
     }
@@ -196,111 +437,225 @@ export default function ProjectPage() {
 
   const handleCloseForm = () => setSelectedNodeDetails(null);
 
-  // nodeTypes mapping (wrap status nodes)
-  // NOTE: this depends on selection + hover so it will recreate; if you want to avoid warning #002,
-  // you can memoize only by graphDirection, but then pass selected/hover via refs.
-  // dentro de ProjectPage.tsx (importante: sustituye tu bloque de nodeTypes)
-
+  /* --------------------- Wrapper plumbing --------------------- */
   const onClickRef = useRef(handleNodeClick);
   const onDblClickRef = useRef(handleNodeDoubleClick);
   const prevIdRef = useRef<string | null>(null);
   const hoveredIdRef = useRef<string | null>(null);
   const graphDirRef = useRef<"TB" | "LR">(graphDirection);
 
-  // keep refs updated
   useEffect(() => { onClickRef.current = handleNodeClick; }, [handleNodeClick]);
   useEffect(() => { onDblClickRef.current = handleNodeDoubleClick; }, [handleNodeDoubleClick]);
   useEffect(() => { prevIdRef.current = previousNodeId; }, [previousNodeId]);
   useEffect(() => { hoveredIdRef.current = hoveredNodeId; }, [hoveredNodeId]);
   useEffect(() => { graphDirRef.current = graphDirection; }, [graphDirection]);
 
-  // create nodeTypes ONCE and keep identity stable
+  const nodeActionsRef = useRef<NodeActions>({});
+
+  /* Error helper */
+  const getErrorMsg = (e: any) => {
+    if (e && typeof e === "object") {
+      const status = (e as any).status;
+      const data = (e as any).data;
+      if (status === 500) return (data?.detail as string) || (e.message as string) || "Server error";
+      return (data?.message as string) || (e.message as string) || "Operation failed";
+    }
+    return "Operation failed";
+  };
+
+  const getNodeLabelById = (id: string) => {
+    const node = nodesRef.current.find((n) => n.id === id);
+    return ((node as any)?.data?.label as string) || id;
+  };
+
+  const genCopyName = (id: string) => {
+    const label = getNodeLabelById(id);
+    const normalized = String(label).trim().replace(/\s+/g, "_").replace(/[^\w.-]/g, "");
+    return `${normalized}_copy_${Date.now().toString().slice(-5)}`;
+  };
+
+  const duplicateNow = async (ids: string[]) => {
+    if (!projectName) return;
+    const cleanIds = ids.filter((i) => i && i !== "PROJECT");
+    if (cleanIds.length === 0) return;
+    try {
+      const items = cleanIds.map((id) => ({ id, name: genCopyName(id) }));
+      await svc.duplicateProtocol(projectName, items);
+      toast.success(cleanIds.length > 1 ? "Protocols duplicated successfully." : "Protocol duplicated successfully.");
+
+      clearAllSelectionHard();
+      await handleRefresh();
+    } catch (e) {
+      console.error(e);
+      toast.error(getErrorMsg(e));
+    }
+  };
+
+  const openRename = (id: string) => setDlgRename({ open: true, id, value: findNodeLabel(id) });
+
+  const openDelete = (id: string) => {
+    const selected =
+      pathSelRef.current.nodes.size > 0
+        ? Array.from(pathSelRef.current.nodes).map(String).filter((x) => x !== "PROJECT")
+        : [String(id)];
+    setConfirm({ open: true, id: null, ids: selected, kind: "delete" });
+  };
+
+  const openRestartAll = (id: string) => setConfirm({ open: true, id, ids: null, kind: "restartAll" });
+  const openContinueAll = (id: string) => setConfirm({ open: true, id, ids: null, kind: "continueAll" });
+  const openResetFrom = (id: string) => setDlgResetFrom({ open: true, id });
+
+  /* -------- Build adjacency from edges -------- */
+  const buildAdjacency = useCallback(() => {
+    const parents = new Map<string, Set<string>>();
+    const children = new Map<string, Set<string>>();
+
+    for (const e of edgesRef.current) {
+      const s = String(e.source);
+      const t = String(e.target);
+      if (!children.has(s)) children.set(s, new Set());
+      if (!parents.has(t)) parents.set(t, new Set());
+      children.get(s)!.add(t);
+      parents.get(t)!.add(s);
+      if (!parents.has(s)) parents.set(s, new Set());
+      if (!children.has(t)) children.set(t, new Set());
+    }
+    return { parents, children };
+  }, []);
+
+  const collectDescendants = useCallback((startIdRaw: string) => {
+    const startId = String(startIdRaw);
+    const { children } = buildAdjacency();
+    const q: string[] = [startId];
+    const visited = new Set<string>();
+    while (q.length) {
+      const cur = String(q.shift()!);
+      if (cur === "PROJECT") continue;
+      if (visited.has(cur)) continue;
+      visited.add(cur);
+      const ch = children.get(cur) ?? new Set<string>();
+      for (const c of ch) if (!visited.has(c)) q.push(String(c));
+    }
+    visited.delete("PROJECT");
+    return visited;
+  }, [buildAdjacency]);
+
+  const collectAncestors = useCallback((startIdRaw: string) => {
+    const startId = String(startIdRaw);
+    const { parents } = buildAdjacency();
+    const q: string[] = [startId];
+    const visited = new Set<string>();
+    while (q.length) {
+      const cur = String(q.shift()!);
+      if (cur === "PROJECT") continue;
+      if (visited.has(cur)) continue;
+      visited.add(cur);
+      const pa = parents.get(cur) ?? new Set<string>();
+      for (const p of pa) if (!visited.has(p)) q.push(String(p));
+    }
+    visited.delete("PROJECT");
+    return visited;
+  }, [buildAdjacency]);
+
+  const applyGenericSelectionFromSet = useCallback((ids: Set<string>) => {
+    applyPathSelection(Array.from(ids));
+    applyEdgeHighlight(null);
+  }, [applyPathSelection, applyEdgeHighlight]);
+
+  const handleSelectFrom = useCallback((id: string) => {
+    const nodesSet = collectDescendants(id);
+    if (id !== "PROJECT") nodesSet.add(String(id));
+    applyGenericSelectionFromSet(nodesSet);
+  }, [collectDescendants, applyGenericSelectionFromSet]);
+
+  const handleSelectTo = useCallback((id: string) => {
+    const nodesSet = collectAncestors(id);
+    if (id !== "PROJECT") nodesSet.add(String(id));
+    applyGenericSelectionFromSet(nodesSet);
+  }, [collectAncestors, applyGenericSelectionFromSet]);
+
+  useEffect(() => {
+    nodeActionsRef.current = {
+      onEdit: (id) => handleNodeDoubleClick({ id }),
+      onRename: openRename,
+      onDuplicate: (id) => {
+        const ids =
+          pathSelRef.current.nodes.size > 0
+            ? Array.from(pathSelRef.current.nodes).map(String).filter((x) => x !== "PROJECT")
+            : [String(id)];
+        duplicateNow(ids);
+      },
+      onDelete: openDelete,
+      onRestartAll: openRestartAll,
+      onContinueAll: openContinueAll,
+      onResetFrom: openResetFrom,
+      onSelectFrom: handleSelectFrom,
+      onSelectTo: handleSelectTo,
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [handleSelectFrom, handleSelectTo, duplicateNow]);
+
   const nodeTypesRef = useRef<Record<string, any> | null>(null);
   if (!nodeTypesRef.current) {
     nodeTypesRef.current = {
       status: createStatusNodeWrapper(
         (data, evt) => onClickRef.current?.(data, evt),
         (data) => onDblClickRef.current?.(data),
-        () => prevIdRef.current ?? undefined,
+        () => selectedIdRef.current ?? undefined,
         () => hoveredIdRef.current ?? undefined,
         setHoveredNodeId,
-        () => graphDirRef.current
+        () => graphDirRef.current,
+        () => nodeActionsRef.current,
+        () => getSelectedPathIds()
       ),
     };
   }
   const nodeTypes = nodeTypesRef.current;
 
-
-  /* --------------------- Persistence helpers --------------------- */
-
-  /**
-   * handleNodesChangeWithPersistence
-   * - Applies node changes, persists positions to localStorage unless persistence disabled.
-   */
+  /* --------------------- Persistence of positions --------------------- */
   const handleNodesChangeWithPersistence = (changes: NodeChange[]) => {
-    if (disablePersistenceRef.current) {
-      return onNodesChange(changes);
-    }
+    if (disablePersistenceRef.current) return onNodesChange(changes);
     setNodes((nds) => {
       const updated = applyNodeChanges(changes, nds);
       const positions = updated.map((n) => ({ id: n.id, position: n.position }));
       try {
         localStorage.setItem(`${localStorageKey}-${graphDirection}`, JSON.stringify(positions));
-      } catch (err) {
-        // ignore quota / security errors
-      }
+      } catch { }
       return updated;
     });
   };
 
   const loadNodesWithPositions = (loadedNodes: Node[]) => {
-    const savedPositions: { id: string; position: { x: number; y: number } }[] = JSON.parse(
-      localStorage.getItem(`${localStorageKey}-${graphDirection}`) || "[]"
-    );
+    const saved: { id: string; position: { x: number; y: number } }[] =
+      JSON.parse(localStorage.getItem(`${localStorageKey}-${graphDirection}`) || "[]");
     return loadedNodes.map((n) => {
-      const saved = savedPositions.find((p) => p.id === n.id);
-      return saved ? { ...n, position: saved.position } : n;
+      const s = saved.find((p) => p.id === n.id);
+      return s ? { ...n, position: s.position } : n;
     });
   };
 
-  // helper shallow compare for node.data (fast)
   const shallowEqual = (a: any, b: any) => {
     if (a === b) return true;
     if (!a || !b) return false;
     const aKeys = Object.keys(a);
     const bKeys = Object.keys(b);
     if (aKeys.length !== bKeys.length) return false;
-    for (const k of aKeys) {
-      if (a[k] !== b[k]) return false;
-    }
+    for (const k of aKeys) if (a[k] !== b[k]) return false;
     return true;
   };
 
   const mergeNodesWithPositions = (newNodes: Node[]) => {
-    // map of old nodes by id
     const oldMap = new Map(nodes.map((n) => [n.id, n]));
     return newNodes.map((n) => {
       const old = oldMap.get(n.id);
       if (old) {
-        // keep the old position (so nodes don't jump) unless the new node explicitly has a saved position
-        const position = (old.position && old.position.x !== undefined && old.position.y !== undefined)
-          ? old.position
-          : (n.position ?? old.position);
-
-        // if data did not change (shallow), reuse the old node object (same ref)
-        if (shallowEqual(old.data, n.data) && position === old.position) {
-          return old;
-        }
-
-        // otherwise return a new object but keep old.position reference
-        return {
-          ...old,
-          position,
-          data: { ...old.data, ...n.data }, // merge new data on top of old (preserve unchanged fields)
-        } as Node;
+        const position =
+          old.position && old.position.x !== undefined && old.position.y !== undefined
+            ? old.position
+            : n.position ?? old.position;
+        if (shallowEqual((old as any).data, (n as any).data) && position === old.position) return old;
+        return { ...old, position, data: { ...(old as any).data, ...(n as any).data } } as Node;
       }
-
-      // brand new node -> keep the new node (likely added)
       return n;
     });
   };
@@ -310,45 +665,27 @@ export default function ProjectPage() {
     return newEdges.map((e) => (oldEdgesMap.get(e.id) ? { ...oldEdgesMap.get(e.id)!, ...e } : e));
   };
 
-  // ------------------------ Centering helper ------------------------
-
-  /**
-   * centerLikeButton
-   * - Centers the viewport to the bounding box using React Flow's fitView.
-   * - If preserveZoom = true, we compute the fit center and restore a given zoom (zoomOverride) or the current one.
-   */
+  /* ------------------------ Centering helper ------------------------ */
   const centerLikeButton = useCallback((nodesList?: Node[], preserveZoom = true, zoomOverride?: number) => {
     const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
     if (!inst) return;
     const list = nodesList ?? nodesRef.current ?? [];
     const validNodes = list.filter((n) => typeof n.position?.x === "number" && typeof n.position?.y === "number");
-
-    // If no nodes, just clamp current viewport
     if (validNodes.length === 0) {
       const vp = inst.getViewport();
       inst.setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(vp.zoom) });
       setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(vp.zoom) });
       return;
     }
-
     try {
       if (!preserveZoom) {
-        // Let React Flow compute the bounding-box center + zoom
         inst.fitView({ padding: 0.12, duration: 0 });
         const vp = inst.getViewport();
         setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
         return;
       }
-
-      // preserve current or override zoom
       const targetZoom = clampZoom(typeof zoomOverride === "number" ? zoomOverride : inst.getViewport().zoom);
-
-      // compute bounding-box center from node positions (in graph coords)
-      let minX = Number.POSITIVE_INFINITY;
-      let maxX = Number.NEGATIVE_INFINITY;
-      let minY = Number.POSITIVE_INFINITY;
-      let maxY = Number.NEGATIVE_INFINITY;
-
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
       for (const n of validNodes) {
         const x = n.position!.x ?? 0;
         const y = n.position!.y ?? 0;
@@ -357,20 +694,14 @@ export default function ProjectPage() {
         if (y < minY) minY = y;
         if (y > maxY) maxY = y;
       }
-
       const centerX = (minX + maxX) / 2;
       const centerY = (minY + maxY) / 2;
-
-      // Use setCenter so the provided graph-coordinates become centered in view with the desired zoom.
       inst.setCenter(centerX, centerY, { zoom: targetZoom, duration: 0 });
-
-      // update local state to reflect what we set
       const finalVp = inst.getViewport();
       setViewport({ x: finalVp.x, y: finalVp.y, zoom: finalVp.zoom });
-    } catch (err) {
-      // fallback to average center if something goes wrong
-      const xSum = validNodes.reduce((sum, n) => sum + (n.position!.x ?? 0), 0);
-      const ySum = validNodes.reduce((sum, n) => sum + (n.position!.y ?? 0), 0);
+    } catch {
+      const xSum = validNodes.reduce((s, n) => s + (n.position!.x ?? 0), 0);
+      const ySum = validNodes.reduce((s, n) => s + (n.position!.y ?? 0), 0);
       const centerX = xSum / validNodes.length;
       const centerY = ySum / validNodes.length;
       const currentVp = inst.getViewport();
@@ -381,169 +712,106 @@ export default function ProjectPage() {
     }
   }, []);
 
-
-  /**
-  * waitForNodesReady
-  * - Waits until React Flow has internally mounted nodes and their positions
-  * appear valid (not all 0, 0 / NaN and non-trivial bounding-box).
-  * - Returns true if a valid state was detected before the timeout, false otherwise.
-  *
-  * @param expectedCount expected number of nodes (if unknown, set to 0 or 1)
-  * @param timeoutMs maximum wait time in ms (default 2500)
-  * @param debug if true console.log debugging information
-  */
-  const waitForNodesReady = async (expectedCount: number, timeoutMs = 2500, debug = false): Promise<boolean> => {
+  /* ------------------------ Wait for nodes helper ------------------------ */
+  const waitForNodesReady = async (expectedCount: number, timeoutMs = 2500): Promise<boolean> => {
     const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
-    if (!inst) {
-      if (debug) console.warn("waitForNodesReady: no reactflow instance available");
-      return false;
-    }
-
+    if (!inst) return false;
     const start = Date.now();
-
     return new Promise<boolean>((resolve) => {
       const check = () => {
         try {
           const instNodes = typeof inst.getNodes === "function" ? inst.getNodes() : [];
-
-          if (debug) {
-            console.debug("waitForNodesReady: instNodes.length=", instNodes.length, "expectedCount=", expectedCount);
-          }
-
-          // Requires at least expectedCount nodes (if expectedCount <= 0, requires at least 1)
           const needed = Math.max(1, expectedCount);
           if (instNodes && instNodes.length >= needed) {
-            // validate positions: count nodes with valid numerical position
-            let validPosCount = 0;
-            let minX = Number.POSITIVE_INFINITY, maxX = Number.NEGATIVE_INFINITY;
-            let minY = Number.POSITIVE_INFINITY, maxY = Number.NEGATIVE_INFINITY;
-
+            let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, valid = 0;
             for (const n of instNodes) {
-              const x = n.position?.x;
-              const y = n.position?.y;
+              const x = n.position?.x, y = n.position?.y;
               if (typeof x === "number" && typeof y === "number" && !Number.isNaN(x) && !Number.isNaN(y)) {
-                validPosCount++;
+                valid++;
                 if (x < minX) minX = x;
                 if (x > maxX) maxX = x;
                 if (y < minY) minY = y;
                 if (y > maxY) maxY = y;
               }
             }
-
-            const bboxWidth = isFinite(minX) && isFinite(maxX) ? Math.abs(maxX - minX) : 0;
-            const bboxHeight = isFinite(minY) && isFinite(maxY) ? Math.abs(maxY - minY) : 0;
-
-            if (debug) {
-              console.debug("waitForNodesReady: validPosCount=", validPosCount, "bboxWidth=", bboxWidth, "bboxHeight=", bboxHeight);
-            }
-
-            // Heuristic: at least 1 valid position and non-trivial bounding-box
-            if (validPosCount >= 1 && (bboxWidth > 1 || bboxHeight > 1)) {
-              resolve(true);
-              return;
-            }
+            const w = isFinite(minX) && isFinite(maxX) ? Math.abs(maxX - minX) : 0;
+            const h = isFinite(minY) && isFinite(maxY) ? Math.abs(maxY - minY) : 0;
+            if (valid >= 1 && (w > 1 || h > 1)) return resolve(true);
           }
-        } catch (err) {
-          if (debug) console.warn("waitForNodesReady: check error", err);
-          // keep trying
-        }
-
-        if (Date.now() - start > timeoutMs) {
-          if (debug) console.warn("waitForNodesReady: timeout");
-          resolve(false);
-          return;
-        }
-
-        // retry at the next animation frame (best for layout/paint)
+        } catch { }
+        if (Date.now() - start > timeoutMs) return resolve(false);
         requestAnimationFrame(check);
       };
-
       requestAnimationFrame(check);
     });
   };
 
-
-  /**
-   * fetchAndLoadProject
-   * - Loads project metadata and builds graph elements
-   * - Applies saved positions if available
-   * - Centers reliably on first load using ensureCenterAfterRender helper
-   */
+  /* ------------------------ Fetch & load ------------------------ */
   const fetchAndLoadProject = useCallback(async () => {
     if (!projectName) return;
     setIsRefreshing(true);
     try {
-      // svc: fetchProject
       const data = await svc.fetchProject(projectName);
       setProject(data);
 
       if (data.protocols) {
         const { nodes: loadedNodes, edges: loadedEdges, table } = buildGraphElements(
-          data.shortName,
-          data.protocols,
-          viewMode,
-          graphDirection
+          data.shortName, data.protocols, viewMode, graphDirection
         );
 
-        // apply saved positions if they exist
+        // ⚠️ En vista TABLE: NO toques nodes/edges ni la selección
+        if (viewMode === "table") {
+          startTransition(() => setTableData(table ?? []));
+          setIsLoadingProject(false);
+          setIsRefreshing(false);
+          return;
+        }
+
         const nodesWithPositions = loadNodesWithPositions(loadedNodes);
 
-        // update main state
-        setNodes(nodesWithPositions);
-        setEdges(loadedEdges);
-        setTableData(table ?? []);
-        setIsSwitchingLayout(false);
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            try {
-              const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
-              if (inst && nodesWithPositions.length > 0 && viewMode === "hierarchical") {
-                centerLikeButton(nodesWithPositions, true, viewportRef.current.zoom);
-              }
-            } finally {
-              setIsSwitchingLayout(false);
-            }
-          });
-        });
-
-        // set initial ticks
         const initialTicks: Record<string, number> = {};
         nodesWithPositions.forEach((n) => {
           if ((n as any).data?.status === "running") {
             initialTicks[n.id] = Number((n as any).data.elapsedTime) ?? 0;
           }
         });
-        setNodeTicks(initialTicks);
+        const nodesWithTick = nodesWithPositions.map((n) =>
+          isRunningNode(n)
+            ? { ...n, data: { ...(n as any).data, tick: initialTicks[n.id] ?? Number((n as any).data?.elapsedTime) ?? 0 } }
+            : n
+        );
 
+        const unifiedSelectedIds = getUnifiedSelectedIds();
+        const seededNodes = nodesWithTick.map((n) => ({ ...n, selected: unifiedSelectedIds.has(n.id) }));
+
+        const recomputedEdgeSet = computeEdgesTouchingNodes(unifiedSelectedIds);
+        pathSelRef.current.edges = recomputedEdgeSet;
+
+        startTransition(() => {
+          setNodes(seededNodes);
+          setEdges((_) => {
+            let base = loadedEdges;
+            base = paintEdgeHighlight(base, selectedIdRef.current ?? null);
+            if (recomputedEdgeSet.size) base = paintPathHighlight(base, recomputedEdgeSet);
+            return base;
+          });
+          setTableData(table ?? []);
+        });
+
+        setNodeTicks(initialTicks);
         setNodesLoadedOnce(true);
 
-        // --- center only on first load (MutationObserver + rAF double frame) ---
         if (firstLoadRef.current && viewMode === "hierarchical") {
-          const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
           const desiredCount = Math.max(1, nodesWithPositions.length);
-
           let observer: MutationObserver | null = null;
           let fallbackTimer: any = null;
           let centered = false;
 
-          const doCenter = (_methodDesc: string) => {
+          const doCenter = () => {
             if (centered) return;
             centered = true;
-            try {
-              centerLikeButton(nodesWithPositions, true, viewportRef.current.zoom);
-            } catch (err) {
-              try {
-                if (inst && inst.getNodes && inst.getNodes().length > 0) {
-                  inst.fitView({ padding: 0.12, duration: 0 });
-                  const vp = inst.getViewport();
-                  setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
-                } else if (inst) {
-                  const vp = inst.getViewport();
-                  inst.setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(viewportRef.current.zoom) });
-                  setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(viewportRef.current.zoom) });
-                }
-              } catch { }
-            } finally {
+            try { centerLikeButton(nodesWithPositions, true, viewportRef.current.zoom); }
+            finally {
               firstLoadRef.current = false;
               if (observer) { try { observer.disconnect(); } catch { } observer = null; }
               if (fallbackTimer) { clearTimeout(fallbackTimer); fallbackTimer = null; }
@@ -555,118 +823,93 @@ export default function ProjectPage() {
             if (nodesContainer) {
               const initialNodeEls = nodesContainer.querySelectorAll(".react-flow__node");
               if (initialNodeEls.length >= desiredCount) {
-                requestAnimationFrame(() => requestAnimationFrame(() => doCenter("dom-immediate")));
+                requestAnimationFrame(() => requestAnimationFrame(doCenter));
               } else {
                 observer = new MutationObserver(() => {
                   const els = nodesContainer.querySelectorAll(".react-flow__node");
                   if (els.length >= desiredCount) {
-                    requestAnimationFrame(() => requestAnimationFrame(() => doCenter("dom-observer")));
+                    requestAnimationFrame(() => requestAnimationFrame(doCenter));
                   }
                 });
                 observer.observe(nodesContainer, { childList: true, subtree: true });
                 fallbackTimer = setTimeout(async () => {
                   if (observer) { try { observer.disconnect(); } catch { } observer = null; }
-                  const ready = await waitForNodesReady(nodesWithPositions.length, 2000, true);
-                  if (ready) {
-                    doCenter("waitForNodesReady-fallback");
-                  } else {
-                    doCenter("fallback-final");
-                  }
+                  await waitForNodesReady(nodesWithPositions.length, 2000);
+                  doCenter();
                 }, 3000);
               }
             } else {
-              const ready = await waitForNodesReady(nodesWithPositions.length, 2500, true);
-              if (ready && inst) {
-                doCenter("waitForNodesReady");
-              } else if (inst) {
-                try {
-                  if (inst.getNodes && inst.getNodes().length > 0) {
-                    inst.fitView({ padding: 0.12, duration: 0 });
-                    const vp = inst.getViewport();
-                    setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
-                  } else {
-                    const vp = inst.getViewport();
-                    inst.setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(viewportRef.current.zoom) });
-                    setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(viewportRef.current.zoom) });
-                  }
-                } catch { }
-                firstLoadRef.current = false;
-              } else {
-                firstLoadRef.current = false;
-              }
+              const ready = await waitForNodesReady(nodesWithPositions.length, 2500);
+              if (ready) doCenter(); else firstLoadRef.current = false;
             }
           } catch {
-            const ready = await waitForNodesReady(nodesWithPositions.length, 2000, true);
-            if (ready && inst) {
-              doCenter("catch-fallback");
-            } else {
-              if (inst) {
-                try {
-                  if (inst.getNodes && inst.getNodes().length > 0) {
-                    inst.fitView({ padding: 0.12, duration: 0 });
-                    const vp = inst.getViewport();
-                    setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
-                  } else {
-                    const vp = inst.getViewport();
-                    inst.setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(viewportRef.current.zoom) });
-                    setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(viewportRef.current.zoom) });
-                  }
-                } catch { }
-              }
-              firstLoadRef.current = false;
-            }
+            const ready = await waitForNodesReady(nodesWithPositions.length, 2000);
+            if (ready) doCenter(); else firstLoadRef.current = false;
           }
         }
       }
     } catch (err) {
       console.error("fetchAndLoadProject error:", err);
-      setIsSwitchingLayout(false);
-      // ensure we don't leave refreshing forever
     } finally {
       setIsRefreshing(false);
+      setIsLoadingProject(false);
     }
-  }, [projectName, viewMode, graphDirection, centerLikeButton, svc]);
-
+  }, [projectName, viewMode, graphDirection, centerLikeButton, svc, paintEdgeHighlight, paintPathHighlight, computeEdgesTouchingNodes]);
 
   useEffect(() => {
+    setIsLoadingProject(true);
     fetchAndLoadProject();
-  }, [fetchAndLoadProject]);
+  }, [projectName, fetchAndLoadProject]);
 
-  // ------------------------ Refresh ------------------------
-
-  /**
-   * handleRefresh
-   * - Re-fetch project data and merge new nodes/edges
-   * - IMPORTANT: does NOT recenter or change node positions
-   */
+  /* ------------------------ Refresh ------------------------ */
   const handleRefresh = useCallback(async () => {
     if (!projectName) return;
     setIsRefreshing(true);
     try {
-      // svc: fetchProject
       const data = await svc.fetchProject(projectName);
       setProject(data);
 
       if (data.protocols) {
         const { nodes: loadedNodes, edges: loadedEdges, table } = buildGraphElements(
-          data.shortName,
-          data.protocols,
-          viewMode,
-          graphDirection
+          data.shortName, data.protocols, viewMode, graphDirection
         );
+
+        // ⚠️ En vista TABLE: NO toques nodes/edges ni selección, solo la tabla
+        if (viewMode === "table") {
+          startTransition(() => setTableData(table ?? []));
+          setIsRefreshing(false);
+          return;
+        }
+
         const nodesWithPositions = mergeNodesWithPositions(loadedNodes);
         const edgesMerged = mergeEdges(loadedEdges);
 
-        setNodes(nodesWithPositions);
-        setEdges(edgesMerged);
-        setTableData(table ?? []);
+        const unifiedSelectedIds = getUnifiedSelectedIds();
+        const nodesSeed = nodesWithPositions.map((n) =>
+          isRunningNode(n)
+            ? { ...n, data: { ...(n as any).data, tick: (nodeTicks[n.id] ?? Number((n as any).data?.elapsedTime) ?? 0) }, selected: unifiedSelectedIds.has(n.id) }
+            : { ...n, selected: unifiedSelectedIds.has(n.id) }
+        );
+
+        const recomputedEdgeSet = computeEdgesTouchingNodes(unifiedSelectedIds);
+        pathSelRef.current.edges = recomputedEdgeSet;
+
+        startTransition(() => {
+          setNodes(nodesSeed);
+          setEdges((_) => {
+            let out = paintEdgeHighlight(edgesMerged, selectedIdRef.current ?? null);
+            if (recomputedEdgeSet.size) out = paintPathHighlight(out, recomputedEdgeSet);
+            return out;
+          });
+          setTableData(table ?? []);
+        });
 
         setNodeTicks((prev) => {
-          const updated: Record<string, number> = { ...prev };
+          const updated: Record<string, number> = {};
           nodesWithPositions.forEach((n) => {
-            if ((n as any).data?.status === "running") {
-              updated[n.id] = Math.max(prev[n.id] ?? 0, Number((n as any).data.elapsedTime) ?? 0);
-            }
+            const status = (n as any).data?.status;
+            const elapsed = Number((n as any).data?.elapsedTime) ?? 0;
+            if (status === "running") updated[n.id] = Math.max(prev[n.id] ?? 0, elapsed);
           });
           return updated;
         });
@@ -676,155 +919,182 @@ export default function ProjectPage() {
     } finally {
       setIsRefreshing(false);
     }
-  }, [projectName, viewMode, graphDirection, nodes, edges, svc]);
+  }, [projectName, viewMode, graphDirection, nodeTicks, svc, paintEdgeHighlight, paintPathHighlight, computeEdgesTouchingNodes]);
 
-  // stable interval for refresh (keeps closure stable)
   const handleRefreshRef = useRef(handleRefresh);
+  useEffect(() => { handleRefreshRef.current = handleRefresh; }, [handleRefresh]);
   useEffect(() => {
-    handleRefreshRef.current = handleRefresh;
-  }, [handleRefresh]);
-  useEffect(() => {
-    const interval = setInterval(() => {
-      handleRefreshRef.current();
-    }, TIME_TO_REFRESH);
+    const interval = setInterval(() => { handleRefreshRef.current(); }, TIME_TO_REFRESH);
     return () => clearInterval(interval);
   }, []);
 
-  // ------------------------ Reorganize (rebuild) ------------------------
+  useEffect(() => {
+  return () => {
+    if (delayedRefreshTimerRef.current !== null) {
+      clearTimeout(delayedRefreshTimerRef.current);
+      delayedRefreshTimerRef.current = null;
+    }
+  };
+}, []);
 
-  /**
-   * handleReorganize
-   * - Clear persistence, reload project and re-center (used by UI button)
-   */
+  /* ------------------------ Reorganize ------------------------ */
   const handleReorganize = useCallback(
     async (opts?: { preserveZoom?: boolean }) => {
       if (!projectName) return;
       try {
-        try {
-          localStorage.removeItem(`${localStorageKey}-${graphDirection}`);
-        } catch (err) {
-          /* ignore */
-        }
-
+        try { localStorage.removeItem(`${localStorageKey}-${graphDirection}`); } catch { }
         disablePersistenceRef.current = true;
-        setNodes([]);
-        setEdges([]);
-        setTableData([]);
-        setNodeTicks({});
-        setFlowKey(`rf-${projectName}-${graphDirection}-${Date.now()}`);
+        setHideGraphDuringCenter(true);
 
-        // svc: fetchProject
         const data = await svc.fetchProject(projectName);
         setProject(data);
         if (!data.protocols) {
           disablePersistenceRef.current = false;
+          setHideGraphDuringCenter(false);
           return;
         }
 
         const { nodes: loadedNodes, edges: loadedEdges, table } = buildGraphElements(
-          data.shortName,
-          data.protocols,
-          viewMode,
-          graphDirection
+          data.shortName, data.protocols, viewMode, graphDirection
         );
 
-        setNodes(loadedNodes);
-        setEdges(loadedEdges);
-        setTableData(table ?? []);
-        setNodeTicks({});
+        // ⚠️ Si estás en TABLE, no reorganizamos el grafo ni tocamos selección
+        if (viewMode === "table") {
+          startTransition(() => setTableData(table ?? []));
+          disablePersistenceRef.current = false;
+          setHideGraphDuringCenter(false);
+          return;
+        }
 
-        // center after reorganize (preserve zoom)
-        setTimeout(() => {
+        const nodesWithPositions = loadNodesWithPositions(loadedNodes);
+
+        const unifiedSelectedIds = getUnifiedSelectedIds();
+        const nodesSeeded = nodesWithPositions.map((n) => ({ ...n, selected: unifiedSelectedIds.has(n.id) }));
+        const recomputedEdgeSet = computeEdgesTouchingNodes(unifiedSelectedIds);
+        pathSelRef.current.edges = recomputedEdgeSet;
+
+        startTransition(() => {
+          setNodes(nodesSeeded);
+          setEdges((_) => {
+            let out = paintEdgeHighlight(loadedEdges, selectedIdRef.current ?? null);
+            if (recomputedEdgeSet.size) out = paintPathHighlight(out, recomputedEdgeSet);
+            return out;
+          });
+          setTableData(table ?? []);
+          setNodeTicks((prev) => {
+            const seeded: Record<string, number> = {};
+            nodesWithPositions.forEach((n) => {
+              if ((n as any).data?.status === "running") {
+                const v = Number((n as any).data?.elapsedTime) ?? prev[n.id] ?? 0;
+                seeded[n.id] = v;
+              }
+            });
+            return seeded;
+          });
+        });
+
+        requestAnimationFrame(() => {
           const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
-          if (!inst) {
-            disablePersistenceRef.current = false;
-            return;
-          }
-
-          if (loadedNodes.length > 0 && viewMode === "hierarchical") {
-            // Use viewportRef.current.zoom to try to preserve initial zoom if needed
-            centerLikeButton(loadedNodes, opts?.preserveZoom ?? true, viewportRef.current.zoom);
-          } else {
+          if (inst && nodesWithPositions.length > 0 && viewMode === "hierarchical") {
+            const preserve = opts?.preserveZoom ?? true;
+            centerLikeButton(nodesWithPositions, preserve, viewportRef.current.zoom);
+          } else if (inst) {
             const vp = inst.getViewport();
             inst.setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(vp.zoom) });
             setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(vp.zoom) });
           }
-
-          // re-enable persistence after a short delay
-          setTimeout(() => {
-            disablePersistenceRef.current = false;
-          }, 60);
-        }, 0);
+          disablePersistenceRef.current = false;
+          setHideGraphDuringCenter(false);
+        });
       } catch (err) {
         console.error(err);
         disablePersistenceRef.current = false;
+        setHideGraphDuringCenter(false);
       }
     },
-    [projectName, viewMode, graphDirection, viewport, centerLikeButton, svc]
+    [projectName, viewMode, graphDirection, centerLikeButton, svc, paintEdgeHighlight, paintPathHighlight, computeEdgesTouchingNodes]
   );
 
-  // ------------------------ Ticks updater ------------------------
+  /* ------------------------ Ticks updater ------------------------ */
   useEffect(() => {
     const interval = setInterval(() => {
+      let nextTicks: Record<string, number> = {};
       setNodeTicks((prev) => {
-        const updated: Record<string, number> = { ...prev };
-        nodesRef.current.forEach((node) => {
-          if ((node as any).data?.status === "running") {
-            updated[node.id] = (prev[node.id] ?? Number((node as any).data.elapsedTime) ?? 0) + 1;
-          }
-        });
-        return updated;
+        const next: Record<string, number> = {};
+        for (const id in prev) next[id] = prev[id] + 1;
+        nextTicks = next;
+        return next;
       });
 
-      setTableData((prev) => prev.map((row) => (row.status === "running" ? { ...row, tick: (row.tick ?? Number(row.elapsedTime) ?? 0) + 1 } : row)));
+      setNodes((prev) => {
+        if (!prev || prev.length === 0) return prev;
+        let changed = false;
+        const updated = prev.map((n) => {
+          if (!isRunningNode(n)) return n;
+          const prevTick = Number((n as any).data?.tick ?? (n as any).data?.elapsedTime ?? 0);
+          const newTick = nextTicks[n.id] !== undefined ? nextTicks[n.id] : prevTick + 1;
+          if (newTick === prevTick) return n;
+          changed = true;
+          return { ...n, data: { ...(n as any).data, tick: newTick } };
+        });
+        return changed ? updated : prev;
+      });
+
+      setTableData((prev) =>
+        prev.map((row) =>
+          row.status === "running"
+            ? { ...row, tick: (row.tick ?? Number(row.elapsedTime) ?? 0) + 1 }
+            : row
+        )
+      );
     }, 1000);
     return () => clearInterval(interval);
   }, []);
 
-  useEffect(() => {
-    setNodes((nds) =>
-      nds.map((node) => ({
-        ...node,
-        data: {
-          ...(node as any).data,
-          tick: nodeTicks[node.id] ?? Number((node as any).data.elapsedTime) ?? 0,
-        },
-      }))
-    );
-  }, [nodeTicks]);
-
-  // ------------------------ Layout change effect ------------------------
+  /* ------------------------ Layout change effect ------------------------ */
   const prevLayout = useRef({ viewMode, graphDirection });
   useLayoutEffect(() => {
-    const layoutChanged = prevLayout.current.viewMode !== viewMode || prevLayout.current.graphDirection !== graphDirection;
+    const layoutChanged =
+      prevLayout.current.viewMode !== viewMode ||
+      prevLayout.current.graphDirection !== graphDirection;
     if (!layoutChanged) return;
-    if (!project?.protocols) {
+    if (!project?.protocols) { prevLayout.current = { viewMode, graphDirection }; return; }
+
+    // ✅ Si vamos a TABLE, no tocar grafo ni selección; solo gestionar overlay y highlight
+    if (viewMode === "table") {
+      setIsSwitchingLayout(true);
+      requestAnimationFrame(() => setTimeout(() => setIsSwitchingLayout(false), 60));
+      if (pathSelRef.current.nodes.size === 0) setHighlightedId(selectedIdRef.current ?? null);
       prevLayout.current = { viewMode, graphDirection };
       return;
     }
 
+    // Vista jerárquica: sí actualizamos grafo
     const instance = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
-    if (!instance) {
-      prevLayout.current = { viewMode, graphDirection };
-      return;
-    }
+    if (!instance) { prevLayout.current = { viewMode, graphDirection }; return; }
 
     const currentViewport = instance.getViewport();
-
-    const { nodes: loadedNodes, edges: loadedEdges } = buildGraphElements(project.shortName, project.protocols, viewMode, graphDirection);
+    const { nodes: loadedNodes, edges: loadedEdges } =
+      buildGraphElements(project.shortName, project.protocols, viewMode, graphDirection);
     const nodesWithPositions = loadNodesWithPositions(loadedNodes);
 
-    // prevent persistence while swapping layout
-    disablePersistenceRef.current = true;
+    const unifiedSelectedIds = getUnifiedSelectedIds();
+    const nodesSeeded = nodesWithPositions.map((n) => ({ ...n, selected: unifiedSelectedIds.has(n.id) }));
+    const recomputedEdgeSet = computeEdgesTouchingNodes(unifiedSelectedIds);
+    pathSelRef.current.edges = recomputedEdgeSet;
 
-    // show blocking overlay to mask repaint
+    disablePersistenceRef.current = true;
     setIsSwitchingLayout(true);
 
-    // batch set nodes/edges — don't clear first to avoid a blank frame
-    setNodes(nodesWithPositions);
-    setEdges(loadedEdges);
+    startTransition(() => {
+      setNodes(nodesSeeded);
+      setEdges((_) => {
+        let out = paintEdgeHighlight(loadedEdges, selectedIdRef.current ?? null);
+        if (recomputedEdgeSet.size) out = paintPathHighlight(out, recomputedEdgeSet);
+        return out;
+      });
+    });
 
-    // wait two frames then center; after that hide overlay
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
@@ -858,28 +1128,21 @@ export default function ProjectPage() {
         }
       });
     });
+  }, [graphDirection, viewMode, project, paintEdgeHighlight, paintPathHighlight, computeEdgesTouchingNodes]);
 
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [graphDirection, viewMode, project]);
-
-  // ------------------------ Initial first-center effect ----------
+  /* ------------------------ First-center ------------------------ */
   useEffect(() => {
     if (!nodesLoadedOnce) return;
     const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
     if (!inst) return;
-
-    // overlay on while we calculate + paint
     setIsSwitchingLayout(true);
 
     const validNodes = nodes.filter((n) => typeof n.position?.x === "number" && typeof n.position?.y === "number");
     if (validNodes.length > 0) {
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-          // keep the existing viewport but clamp zoom only
           inst.setViewport({ x: viewportRef.current.x, y: viewportRef.current.y, zoom: clampZoom(viewportRef.current.zoom) });
-          setTimeout(() => {
-            setIsSwitchingLayout(false);
-          }, 60);
+          setTimeout(() => setIsSwitchingLayout(false), 60);
         });
       });
     } else {
@@ -888,35 +1151,77 @@ export default function ProjectPage() {
         requestAnimationFrame(() => {
           const vp = inst.getViewport();
           setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
-          setTimeout(() => {
-            setIsSwitchingLayout(false);
-          }, 60);
+          setTimeout(() => setIsSwitchingLayout(false), 60);
         });
       });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nodesLoadedOnce]);
 
-  // --------------------- Table switching: avoid flicker ---------------------
-  useEffect(() => {
-    if (viewMode === "table") {
-      setTableVisible(false);
-      setIsSwitchingLayout(true);
-      requestAnimationFrame(() => {
-        setTableVisible(true);
-        requestAnimationFrame(() => {
-          setTimeout(() => {
-            setIsSwitchingLayout(false);
-          }, 60);
-        });
-      });
-    } else {
-      setTableVisible(false);
+  /* ============================================================
+     Tabla: scroll controlado (una sola vez) + highlight estable
+     ============================================================ */
+  const didScrollForTableRef = useRef(false);
+  const tableScrollRetriesRef = useRef(0);
+
+  const scrollSelectedRowIntoViewOnce = useCallback(() => {
+    const id = pathSelRef.current.nodes.size === 0 ? selectedIdRef.current : null;
+    if (!id) {
+      setHighlightedId(null);
+      didScrollForTableRef.current = true;
+      return;
     }
-  }, [viewMode]);
 
-  /* --------------------- Table helpers / UI helpers --------------------- */
+    setHighlightedId(id);
 
+    const row = rowRefs.current[id];
+    const container = tableContainerRef.current;
+    if (row && container && container.offsetHeight > 0) {
+      const rowTop = row.offsetTop;
+      const desired = rowTop - container.offsetHeight / 2 + row.offsetHeight / 2;
+      container.scrollTop = Math.max(0, desired);
+      didScrollForTableRef.current = true;
+      tableScrollRetriesRef.current = 0;
+      return;
+    }
+
+    if (tableScrollRetriesRef.current < 10) {
+      tableScrollRetriesRef.current += 1;
+      requestAnimationFrame(scrollSelectedRowIntoViewOnce);
+    } else {
+      didScrollForTableRef.current = true;
+      tableScrollRetriesRef.current = 0;
+    }
+  }, [setHighlightedId]);
+
+  useEffect(() => {
+    if (viewMode !== "table") {
+      setTableVisible(false);
+      didScrollForTableRef.current = false;
+      tableScrollRetriesRef.current = 0;
+      return;
+    }
+
+    setTableVisible(false);
+    setIsSwitchingLayout(true);
+    requestAnimationFrame(() => {
+      setTableVisible(true);
+      requestAnimationFrame(() => {
+        setTimeout(() => setIsSwitchingLayout(false), 60);
+        if (!didScrollForTableRef.current) {
+          tableScrollRetriesRef.current = 0;
+          requestAnimationFrame(scrollSelectedRowIntoViewOnce);
+        }
+      });
+    });
+  }, [viewMode, scrollSelectedRowIntoViewOnce]);
+
+  useEffect(() => {
+    if (viewMode === "table" && pathSelRef.current.nodes.size === 0) {
+      setHighlightedId(selectedIdRef.current ?? null);
+    }
+  }, [isRefreshing, viewMode]);
+
+  /* --------------------- Search helpers --------------------- */
   const scrollToProtocol = (id: string) => {
     const row = rowRefs.current[id];
     const container = tableContainerRef.current;
@@ -925,10 +1230,7 @@ export default function ProjectPage() {
       const rowTop = row.offsetTop;
       const rowHeight = row.offsetHeight;
       const containerHeight = container.offsetHeight;
-      container.scrollTo({
-        top: rowTop - containerHeight / 2 + rowHeight / 2,
-        behavior: "smooth",
-      });
+      container.scrollTop = Math.max(0, rowTop - containerHeight / 2 + rowHeight / 2);
     }
   };
 
@@ -942,13 +1244,15 @@ export default function ProjectPage() {
       aborted: "#F5CCCB",
       interactive: "#f7f3bf",
     };
-    return {
-      backgroundColor: colorMap[status ?? ""] ?? "#eee",
-      padding: "4px 8px",
-      borderRadius: "6px",
-      fontWeight: 300,
-      color: "black",
-    };
+    return { backgroundColor: colorMap[status ?? ""] ?? "#eee", padding: "4px 8px", borderRadius: "6px", fontWeight: 300, color: "black" };
+  };
+
+  const formatCpuTime = (seconds: number): string => {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = Math.floor(seconds % 60);
+    const pad = (n: number) => n.toString().padStart(2, "0");
+    return `${pad(hours)}h:${pad(minutes)}m:${pad(secs)}s`;
   };
 
   const handleSearch = (query: string) => {
@@ -957,9 +1261,7 @@ export default function ProjectPage() {
     if (!query.trim()) {
       setHighlightedId(null);
       setPreviousNodeId(null);
-      setNodes((nds) => nds.map((n) => ({ ...n, selected: false, style: undefined })));
-      setEdges((eds) => eds.map((e) => ({ ...e, style: undefined })));
-
+      applyEdgeHighlight(null);
       if (inst && nodes.length > 0) {
         const currentViewport = inst.getViewport();
         const validNodes = nodes.filter((n) => typeof n.position?.x === "number" && typeof n.position?.y === "number");
@@ -982,38 +1284,36 @@ export default function ProjectPage() {
     }
 
     if (viewMode === "table") {
-      const matchRow = tableData.find((row) => row.id.toLowerCase().includes(query.toLowerCase()) || row.label.toLowerCase().includes(query.toLowerCase()));
+      const matchRow = tableData.find((row) =>
+        row.id.toLowerCase().includes(query.toLowerCase()) ||
+        row.label.toLowerCase().includes(query.toLowerCase())
+      );
       if (matchRow) scrollToProtocol(matchRow.id);
       return;
     }
 
-    const match = nodes.find((node) => node.id.toLowerCase().includes(query.toLowerCase()) || ((node as any).data?.label ?? "").toLowerCase().includes(query.toLowerCase()));
+    const match = nodes.find((node) =>
+      node.id.toLowerCase().includes(query.toLowerCase()) ||
+      ((node as any).data?.label ?? "").toLowerCase().includes(query.toLowerCase())
+    );
 
     if (!match) {
       setHighlightedId(null);
       setPreviousNodeId(null);
-      setNodes((nds) => nds.map((n) => ({ ...n, selected: false, style: undefined })));
-      setEdges((eds) => eds.map((e) => ({ ...e, style: undefined })));
+      applyEdgeHighlight(null);
       return;
     }
 
-    const highlightNodeStyle = { boxShadow: "0 0 0 4px rgba(0,112,243,0.12)" };
-
-    setNodes((nds) =>
-      nds.map((n) => (n.id === match.id ? { ...n, selected: true, style: { ...((n as any).style ?? {}), ...highlightNodeStyle } } : { ...n, selected: false, style: undefined }))
-    );
-
-    const connectedEdgeIds = edges.filter((e) => e.source === match.id || e.target === match.id).map((e) => e.id);
-    setEdges((eds) => eds.map((e) => (connectedEdgeIds.includes(e.id) ? { ...e, style: { ...(e.style ?? {}), stroke: "#0070f3", strokeWidth: 3 } } : { ...e, style: undefined })));
-
     setPreviousNodeId(match.id);
     setHighlightedId(match.id);
+    applyEdgeHighlight(match.id);
 
-    if (inst) {
-      const currentZoom = inst.getViewport().zoom;
+    const inst2 = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
+    if (inst2) {
+      const currentZoom = inst2.getViewport().zoom;
       const zoom = clampZoom(currentZoom);
-      inst.setCenter(match.position.x, match.position.y, { zoom, duration: 500 });
-      const vp = inst.getViewport();
+      inst2.setCenter((match as any).position.x, (match as any).position.y, { zoom, duration: 500 });
+      const vp = inst2.getViewport();
       setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
     }
   };
@@ -1021,49 +1321,40 @@ export default function ProjectPage() {
   const handleRowDoubleClick = async (id: string) => {
     if (!projectName) return;
     try {
-      // svc: fetchProtocolDetails
       const fullNodeData = await svc.fetchProtocolDetails(projectName, id);
       setHighlightedId(id);
       setSelectedNodeDetails(fullNodeData);
       setPreviousNodeId(id);
+      applyEdgeHighlight(id);
     } catch (err) {
       console.error(err);
     }
   };
 
-  /* --------------------- Time formatting helper (for table display) --------------------- */
-  const formatCpuTime = (seconds: number): string => {
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    const secs = seconds % 60;
-    const pad = (n: number) => n.toString().padStart(2, "0");
-    return `${pad(hours)}h:${pad(minutes)}m:${pad(secs)}s`;
+  const findNodeLabel = (id: string) => {
+    const n = nodesRef.current.find((m) => m.id === id);
+    return ((n as any)?.data?.label as string) ?? id;
   };
 
-  /* --------------------- Context menu (portal) --------------------- */
-
-  /**
-   * handleContextMenu
-   * - Captures right click on the ReactFlow canvas
-   * - Stores clientX/clientY and (optionally) node id for contextual actions
-   */
+  /* --------------------- Pane context menu --------------------- */
   const handleContextMenu = (event: React.MouseEvent) => {
+    if ((event as any).defaultPrevented) return;
+    const target = event.target as HTMLElement;
+    const isNode = !!target.closest(".react-flow__node");
+    if (isNode) return;
+
     event.preventDefault();
     event.stopPropagation();
-    const nodeEl = (event.target as HTMLElement).closest(".react-flow__node");
-    const nodeId = nodeEl?.getAttribute("data-id") ?? null;
-    setContextMenu({ visible: true, x: event.clientX, y: event.clientY, nodeId });
+
+    setContextMenu({ visible: true, x: event.clientX, y: event.clientY, nodeId: null });
   };
 
   const handleCloseMenu = () => setContextMenu((prev) => ({ ...prev, visible: false }));
 
-  // close menu on outside interactions and ESC
   useEffect(() => {
     if (!contextMenu.visible) return;
     const onWindowMouseDown = () => handleCloseMenu();
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") handleCloseMenu();
-    };
+    const onKeyDown = (e: KeyboardEvent) => { if (e.key === "Escape") handleCloseMenu(); };
     window.addEventListener("mousedown", onWindowMouseDown);
     window.addEventListener("keydown", onKeyDown);
     return () => {
@@ -1072,29 +1363,93 @@ export default function ProjectPage() {
     };
   }, [contextMenu.visible]);
 
-  // ------------------------ ReactFlow init / move handlers ------------------------
+  /* ------------------------ ReactFlow init / move / selection ------------------------ */
   const handleOnInit = useCallback((inst: ReactFlowInstance) => {
     reactFlowInstanceRef.current = inst;
     try {
       const current = inst.getViewport();
-      // clamp zoom but KEEP current x/y that React Flow already set
       const desiredZoom = clampZoom(viewportRef.current.zoom ?? current.zoom);
       inst.setViewport({ x: current.x, y: current.y, zoom: desiredZoom });
       const vp = inst.getViewport();
-      // sync state with instance's viewport
       setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
-    } catch (err) {
-      setIsSwitchingLayout(false);
-    }
+    } catch { }
   }, []);
-
-
 
   const handleOnMoveEnd = useCallback((_: any, vp: { x: number; y: number; zoom: number }) => {
     setViewport(vp);
   }, []);
 
-  // ------------------------ Controls ------------------------
+  const onSelectionChange = useCallback(({ nodes: selNodes }: { nodes: Node[]; edges: Edge[] }) => {
+    if (suppressNextSyncRef.current) {
+      suppressNextSyncRef.current = false;
+      return;
+    }
+
+    const ids = new Set((selNodes ?? []).map((n) => n.id));
+
+    if (ids.size > 1) {
+      if (setsEqual(ids, pathSelRef.current.nodes)) return;
+      applyGenericSelectionFromSet(ids);
+      return;
+    }
+
+    if (ids.size === 1) {
+      if (pathSelRef.current.nodes.size || pathSelRef.current.edges.size) {
+        clearPathSelection();
+      }
+      const id = selNodes![0].id;
+      selectedIdRef.current = id;
+      setPreviousNodeId(id);
+      setHighlightedId(id);
+      applyEdgeHighlight(id);
+      setNodes((prev) => prev.map((n) => ({ ...n, selected: n.id === id })));
+      return;
+    }
+
+    selectedIdRef.current = null;
+    setPreviousNodeId(null);
+    setHighlightedId(null);
+    clearPathSelection();
+    applyEdgeHighlight(null);
+    setNodes((prev) => (prev.some((n) => n.selected) ? prev.map((n) => ({ ...n, selected: false })) : prev));
+  }, [setNodes, applyGenericSelectionFromSet, clearPathSelection, applyEdgeHighlight]);
+
+  /* ------------------------ Dialogs + API ------------------------ */
+  type ConfirmKind = "delete" | "restartAll" | "continueAll";
+
+  const [dlgRename, setDlgRename] = useState<{ open: boolean; id: string | null; value: string }>({
+    open: false, id: null, value: "",
+  });
+  const [dlgResetFrom, setDlgResetFrom] = useState<{ open: boolean; id: string | null }>({
+    open: false, id: null,
+  });
+
+  const [confirm, setConfirm] = useState<{
+    open: boolean;
+    id: string | null;
+    ids: string[] | null;
+    kind: ConfirmKind | null;
+  }>({
+    open: false, id: null, ids: null, kind: null,
+  });
+
+  const submitRename = async () => {
+    if (!projectName || !dlgRename.id || !dlgRename.value.trim()) return;
+    const id = dlgRename.id;
+    const value = dlgRename.value.trim();
+
+    setDlgRename({ open: false, id: null, value: "" });
+    try {
+      await svc.renameProtocol(projectName, id, value);
+      toast.success("Protocol renamed successfully.");
+      await handleRefresh();
+    } catch (e) {
+      console.error(e);
+      toast.error(getErrorMsg(e));
+    }
+  };
+
+  /* ------------------------ Controls ------------------------ */
   const ZOOM_FACTOR = 1.2;
   const handleZoomIn = useCallback(() => {
     const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
@@ -1105,7 +1460,6 @@ export default function ProjectPage() {
     const newVp = inst.getViewport();
     setViewport({ x: newVp.x, y: newVp.y, zoom: newVp.zoom });
   }, []);
-
   const handleZoomOut = useCallback(() => {
     const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
     if (!inst) return;
@@ -1115,19 +1469,11 @@ export default function ProjectPage() {
     const newVp = inst.getViewport();
     setViewport({ x: newVp.x, y: newVp.y, zoom: newVp.zoom });
   }, []);
+  const handleFitView = useCallback(() => { centerLikeButton(undefined, true); }, [centerLikeButton]);
 
-  /**
-   * handleFitView
-   * - behaves like "center, preserve zoom" (the button in your custom controls)
-   */
-  const handleFitView = useCallback(() => {
-    // preserve zoom by default
-    centerLikeButton(undefined, true);
-  }, [centerLikeButton]);
-
-  // ------------------------ Render ------------------------
+  /* ------------------------ Render ------------------------ */
   return (
-    <div className="h-screen flex flex-col">
+    <div className="h-screen flex flex-col relative">
       {/* Header */}
       <div className="flex justify-between items-center mb-1">
         <div className="relative w-full max-w-sm">
@@ -1136,7 +1482,12 @@ export default function ProjectPage() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
           </div>
-          <input type="text" placeholder="Search protocol..." onChange={(e) => handleSearch(e.target.value)} className="w-full px-3 py-2 pl-10 pr-3 text-sm text-gray-800 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:border-gray-700 dark:text-white" />
+          <input
+            type="text"
+            placeholder="Search protocol..."
+            onChange={(e) => handleSearch(e.target.value)}
+            className="w-full px-3 py-2 pl-10 pr-3 text-sm text-gray-800 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+          />
         </div>
 
         <div className="ml-4 mr-4 p-2 border rounded-lg shadow-sm bg-white dark:bg-gray-800 flex items-center gap-4">
@@ -1145,17 +1496,19 @@ export default function ProjectPage() {
             onProtocolDoubleClick={async (protocolClass: string) => {
               if (!projectName) return;
               try {
-                // svc: fetchNewProtocolDetails
                 const fullNodeData = await svc.fetchNewProtocolDetails(projectName, protocolClass);
                 setSelectedNodeDetails(fullNodeData);
                 setPreviousNodeId(protocolClass);
+                applyEdgeHighlight(protocolClass);
               } catch (err) {
                 console.error("Failed to fetch protocol details", err);
               }
             }}
           />
-
-          <button onClick={() => console.log("Workflow clicked")} className={`px-3 py-1 rounded-lg text-xs flex items-center gap-1 bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300`}>
+          <button
+            onClick={() => console.log("Workflow clicked")}
+            className="px-3 py-1 rounded-lg text-xs flex items-center gap-1 bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300"
+          >
             <TreeIcon className="w-4 h-4" />
             Workflows
           </button>
@@ -1164,37 +1517,78 @@ export default function ProjectPage() {
         <div className="ml-4 mr-4 p-2 border rounded-lg shadow-sm bg-white dark:bg-gray-800 flex items-center gap-4">
           <span className="font-small text-xs">View mode:</span>
           <div className="flex gap-2">
-            <button onClick={() => { setViewMode("hierarchical"); setGraphDirection("TB"); }} className={`px-3 py-1 rounded-lg text-xs flex items-center gap-1 ${viewMode === "hierarchical" && graphDirection === "TB" ? "bg-blue-500 text-white" : "bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300"}`}><TreeIcon className="w-4 h-4" /> Tree TB</button>
-
-            <button onClick={() => { setViewMode("hierarchical"); setGraphDirection("LR"); }} className={`px-3 py-1 rounded-lg text-xs flex items-center gap-1 ${viewMode === "hierarchical" && graphDirection === "LR" ? "bg-blue-500 text-white" : "bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300"}`}><TreeIcon className="w-4 h-4 transform rotate-270" /> Tree LR</button>
-
-            <button onClick={() => setViewMode("table")} className={`px-3 py-1 rounded-lg text-xs flex items-center gap-1 ${viewMode === "table" ? "bg-blue-500 text-white" : "bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300"}`}><TableIcon className="w-4 h-4" /> Table</button>
+            <button
+              onClick={() => { setViewMode("hierarchical"); setGraphDirection("TB"); }}
+              className={`px-3 py-1 rounded-lg text-xs flex items-center gap-1 ${viewMode === "hierarchical" && graphDirection === "TB" ? "bg-blue-500 text-white" : "bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300"}`}
+            >
+              <TreeIcon className="w-4 h-4" /> Tree TB
+            </button>
+            <button
+              onClick={() => { setViewMode("hierarchical"); setGraphDirection("LR"); }}
+              className={`px-3 py-1 rounded-lg text-xs flex items-center gap-1 ${viewMode === "hierarchical" && graphDirection === "LR" ? "bg-blue-500 text-white" : "bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300"}`}
+            >
+              <TreeIcon className="w-4 h-4 transform rotate-270" /> Tree LR
+            </button>
+            <button
+              onClick={() => setViewMode("table")}
+              className={`px-3 py-1 rounded-lg text-xs flex items-center gap-1 ${viewMode === "table" ? "bg-blue-500 text-white" : "bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300"}`}
+            >
+              <TableIcon className="w-4 h-4" /> Table
+            </button>
           </div>
         </div>
       </div>
 
-      {selectedNodeDetails && <ProtocolForm data={selectedNodeDetails}
-        projectProtocols={project?.protocols ?? project?.protocols ?? {}}
-        onClose={handleCloseForm} />}
+      {selectedNodeDetails && (
+        <ProtocolForm
+          data={selectedNodeDetails}
+          projectProtocols={project?.protocols ?? project?.protocols ?? {}}
+          onClose={handleCloseForm}
+          onExecuted={() => {
+            // Immediate refresh
+            handleRefreshRef.current?.();
+            // Schedule a second refresh after 5s; clear any previous pending one
+            if (delayedRefreshTimerRef.current !== null) {
+              clearTimeout(delayedRefreshTimerRef.current);
+            }
+            delayedRefreshTimerRef.current = window.setTimeout(() => {
+              // Safe lookup of the latest handleRefresh
+              handleRefreshRef.current?.();
+            }, 5000);
+          }}
+        />
+      )}
 
       <div className="flex-1 relative">
-        {/* Initial blocking overlay only during first fetch */}
+        {/* switching overlay */}
         {isSwitchingLayout && (
-          <div aria-hidden className="absolute inset-0 z-60 flex items-center justify-center" style={{ background: "var(--reactflow-background, #ffffff)", pointerEvents: "auto" }}>
+          <div aria-hidden className="absolute inset-0 z-60 flex itemscenter justify-center" style={{ background: "var(--reactflow-background, #ffffff)", pointerEvents: "none" }}>
             <div className="flex items-center gap-3">
-              <div className="w-7 h-7 border-2 border-gray-300 border-t-gray-500 rounded-full animate-spin" />
+              <div className="w-6 h-6 border-2 border-gray-300 border-t-gray-500 rounded-full animate-spin" />
             </div>
           </div>
         )}
 
-        {/* TABLE pane */}
-        <div ref={tableContainerRef}
+        {/* initial loading overlay */}
+        {isLoadingProject && (
+          <div role="status" aria-live="polite" className="absolute inset-0 z-[80] flex flex-col items-center justify-center bg-white/75 dark:bg-gray-900/75 backdrop-blur-[2px]" style={{ pointerEvents: "auto" }}>
+            <div className="relative">
+              <div className="w-8 h-8 rounded-full border-2 border-gray-300" />
+              <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-gray-700 animate-spin" />
+            </div>
+            <p className="mt-3 text-xs tracking-wide text-gray-700 dark:text-gray-200">
+              Loading <span className="font-medium">Project</span>…
+            </p>
+          </div>
+        )}
+
+        {/* TABLE */}
+        <div
+          ref={tableContainerRef}
           className="absolute inset-0 overflow-auto border rounded shadow p-4 z-30 transition-opacity"
-          style={{
-            opacity: viewMode === "table" ? 1 : 0,
-            pointerEvents: viewMode === "table" ? "auto" : "none",
-          }}
-          aria-hidden={viewMode !== "table"}>
+          style={{ opacity: viewMode === "table" ? 1 : 0, pointerEvents: viewMode === "table" ? "auto" : "none" }}
+          aria-hidden={viewMode !== "table"}
+        >
           <div className="flex justify-end mb-4 mr-1">
             <button className="refresh-btn" title="Refresh project" onClick={handleRefresh} disabled={isRefreshing}>
               <RefreshCw className={`w-4 h-4 ${isRefreshing ? "animate-spin" : ""}`} />
@@ -1213,27 +1607,59 @@ export default function ProjectPage() {
             </thead>
             <tbody>
               {tableData.map((row) => (
-                <tr key={row.id} ref={(el) => { rowRefs.current[row.id] = el; }} onDoubleClick={() => handleRowDoubleClick(row.id)} className={`border-t border-gray-200 dark:border-gray-700 ${highlightedId === row.id ? "bg-yellow-100 dark:bg-yellow-900" : ""}`}>
+                <tr
+                  key={row.id}
+                  ref={(el) => { rowRefs.current[row.id] = el; }}
+                  onClick={(e) => {
+                    const target = e.target as HTMLElement;
+                    if (target.closest("button,a")) return;
+
+                    if (pathSelRef.current.nodes.size || pathSelRef.current.edges.size) {
+                      clearPathSelection();
+                    }
+
+                    suppressOneFrame();
+                    setNodes((prev) =>
+                      prev.map((n) =>
+                        n.id === row.id
+                          ? (n.selected ? n : { ...n, selected: true })
+                          : (n.selected ? { ...n, selected: false } : n)
+                      )
+                    );
+                    selectedIdRef.current = row.id;
+                    setPreviousNodeId(row.id);
+                    setHighlightedId(row.id);
+                    applyEdgeHighlight(row.id);
+                  }}
+                  onDoubleClick={() => handleRowDoubleClick(row.id)}
+                  className={`border-t border-gray-200 dark:border-gray-700 ${highlightedId === row.id ? "bg-yellow-100 dark:bg-yellow-900" : ""}`}
+                >
                   <td className="px-4 py-2">{row.id}</td>
                   <td className="px-4 py-2">{row.label}</td>
                   <td className="px-4 py-2">
                     <div className="flex items-center justify-between">
                       <span className={`${row.status === "running" ? "pulsing-table" : ""}`} style={getStatusStyle(row.status)}>{row.status ?? "—"}</span>
-
                       {(row.status === "running" || row.status === "failed" || row.status === "aborted") && (
                         <div className="flex items-center gap-2 ml-4 flex-1">
                           <div className="w-16 h-3 bg-gray-300 dark:bg-gray-700 rounded overflow-hidden">
-                            <div className={`h-3 ${row.status === "running" ? "bg-yellow-400" : row.status === "failed" || row.status === "aborted" ? "bg-red-500" : "bg-gray-400"} transition-all duration-300`} style={{ width: `${((row.stepsDone ?? 0) / (row.numberOfSteps ?? 1)) * 100}%` }} />
+                            <div
+                              className={`h-3 ${row.status === "running" ? "bg-yellow-400" : row.status === "failed" || row.status === "aborted" ? "bg-red-500" : "bg-gray-400"} transition-all duration-300`}
+                              style={{ width: `${((row.stepsDone ?? 0) / (row.numberOfSteps ?? 1)) * 100}%` }}
+                            />
                           </div>
                           <span className="text-sm opacity-80">{row.stepsDone}/{row.numberOfSteps}</span>
                         </div>
                       )}
                     </div>
                   </td>
-                  <td className="px-4 py-2 font-mono">{formatCpuTime(row.tick ?? Number(row.elapsedTime) ?? 0)}</td>
+                  <td className="px-4 py-2 font-mono">
+                    {formatCpuTime(row.tick ?? Number(row.elapsedTime) ?? 0)}
+                  </td>
                   <td className="px-4 py-2 space-x-2">
                     {row.children?.map((childId: string) => (
-                      <button key={childId} onClick={() => scrollToProtocol(childId)} className="text-blue-600 dark:text-blue-400 underline hover:text-blue-800">{childId}</button>
+                      <button key={childId} onClick={() => scrollToProtocol(childId)} className="text-blue-600 dark:text-blue-400 underline hover:text-blue-800">
+                        {childId}
+                      </button>
                     ))}
                   </td>
                 </tr>
@@ -1242,33 +1668,37 @@ export default function ProjectPage() {
           </table>
         </div>
 
-        {/* ReactFlow pane */}
-        <div className="absolute inset-0 border transition-opacity"
+        {/* ReactFlow */}
+        <div
+          className="absolute inset-0 border transition-opacity"
           style={{
-            opacity: viewMode === "hierarchical" ? 1 : 0,
+            opacity: viewMode === "hierarchical" ? (hideGraphDuringCenter ? 0 : 1) : 0,
             pointerEvents: viewMode === "hierarchical" ? "auto" : "none",
             zIndex: 20,
           }}
-          aria-hidden={viewMode !== "hierarchical"}>
+          aria-hidden={viewMode !== "hierarchical"}
+        >
           <div className="absolute top-4 right-4 z-50">
             <div className="flex flex-col gap-1 p-1 bg-white/90 rounded shadow">
-              <button title="Zoom in" onClick={handleZoomIn} className="p-1 rounded hover:bg-gray-100 dark:text-black"><PlusIcon className="w-4 h-4" /></button>
-              <button title="Zoom out" onClick={handleZoomOut} className="p-1 rounded hover:bg-gray-100 dark:text-black"><MinusIcon className="w-4 h-4" /></button>
-              <button title="Fit view (preserve zoom)" onClick={handleFitView} className="p-1 rounded hover:bg-gray-100 dark:text-black"><FitViewIcon className="w-4 h-4" /></button>
-              <button title="Reorganize project" onClick={() => handleReorganize({ preserveZoom: true })} className="p-1 rounded hover:bg-gray-100 dark:text-black"><TreeIcon className="w-4 h-4" /></button>
-              <button title="Refresh project" onClick={handleRefresh} className="p-1 rounded hover:bg-gray-100 dark:text-black"><RefreshCw className={`w-4 h-4 ${isRefreshing ? "animate-spin" : ""}`} /></button>
+              <button title="Zoom in" onClick={handleZoomIn} className="p-1 rounded hover:bg-gray-100 dark:text-black">
+                <PlusIcon className="w-4 h-4" />
+              </button>
+              <button title="Zoom out" onClick={handleZoomOut} className="p-1 rounded hover:bg-gray-100 dark:text-black">
+                <MinusIcon className="w-4 h-4" />
+              </button>
+              <button title="Fit view (preserve zoom)" onClick={handleFitView} className="p-1 rounded hover:bg-gray-100 dark:text-black">
+                <FitViewIcon className="w-4 h-4" />
+              </button>
+              <button title="Reorganize project" onClick={() => handleReorganize({ preserveZoom: true })} className="p-1 rounded hover:bg-gray-100 dark:text-black">
+                <TreeIcon className="w-4 h-4" />
+              </button>
+              <button title="Refresh project" onClick={handleRefresh} className="p-1 rounded hover:bg-gray-100 dark:text-black">
+                <RefreshCw className={`w-4 h-4 ${isRefreshing ? "animate-spin" : ""}`} />
+              </button>
             </div>
           </div>
 
-          <ReactFlowProvider key={flowKey}>
-            <svg width="0" height="0" aria-hidden>
-              <defs>
-                <marker id="circle" viewBox="0 0 40 40" refX="20" refY="20" markerWidth="20" markerHeight="20" orient="auto-start-reverse">
-                  <circle cx="20" cy="20" r="10" fill="#ff0000" />
-                </marker>
-              </defs>
-            </svg>
-
+          <ReactFlowProvider>
             <ReactFlow
               nodes={nodes}
               edges={edges}
@@ -1279,47 +1709,156 @@ export default function ProjectPage() {
               maxZoom={MAX_ZOOM}
               onInit={handleOnInit}
               onMoveEnd={handleOnMoveEnd}
-              onPaneClick={() => handleCloseMenu()}
-              defaultViewport={viewport}
-              defaultEdgeOptions={{
-                type: "default",
-                style: { stroke: "#999", strokeWidth: 2 },
-                markerEnd: "url(#circle)",
+              onPaneClick={() => {
+                handleCloseMenu();
+                clearAllSelectionHard();
+                applyEdgeHighlight(null);
               }}
+              onSelectionChange={onSelectionChange}
+              onContextMenu={handleContextMenu}
+              defaultViewport={viewport}
+              defaultEdgeOptions={{ type: "default", style: { stroke: "#999", strokeWidth: 2 }, markerEnd: "url(#circle)" }}
               onNodeDoubleClick={(_, node) => handleNodeDoubleClick(node)}
               onNodeClick={(evt, node) => handleNodeClick(node, evt)}
-              onContextMenu={handleContextMenu}
+              multiSelectionKeyCode={['Meta', 'Control', 'Shift']}
+              selectionKeyCode="Shift"
+              selectionOnDrag
               style={{ width: "100%", height: "100%" }}
             >
               <Background />
             </ReactFlow>
-
             {contextMenu.visible && (
-              <DropdownMenu open={true} onOpenChange={handleCloseMenu}>
+              <DropdownMenu open onOpenChange={() => handleCloseMenu()}>
                 <DropdownMenuTrigger asChild>
                   <button style={{ position: "fixed", top: contextMenu.y, left: contextMenu.x, width: 0, height: 0, opacity: 0 }} />
                 </DropdownMenuTrigger>
-                <DropdownMenuContent className="w-48">
-                  <DropdownMenuItem onClick={() => { handleRefresh(); handleCloseMenu(); }}>
-                    <PlusIcon className="w-4 h-4 mr-2" />
-                    Add protocol
-                  </DropdownMenuItem>
-
-                  <DropdownMenuItem onClick={() => { handleRefresh(); handleCloseMenu(); }}>
-                    <RefreshCw className="w-4 h-4 mr-2" />
-                    Refresh graph
-                  </DropdownMenuItem>
-
-                  <DropdownMenuItem onClick={() => { setNodes((nds) => nds.map((n) => ({ ...n, selected: false }))); handleCloseMenu(); }}>
-                    <Trash2 className="w-4 h-4 mr-2" />
-                    Clear selection
-                  </DropdownMenuItem>
+                <DropdownMenuContent className="w-56">
+                  <>
+                    <DropdownMenuItem onSelect={handleRefresh}>
+                      <RefreshCw className="w-4 h-4 mr-2" />
+                      Refresh graph
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onSelect={() => {
+                        clearAllSelectionHard();
+                        applyEdgeHighlight(null);
+                      }}
+                    >
+                      <Trash2 className="w-4 h-4 mr-2" />
+                      Clear selection
+                    </DropdownMenuItem>
+                  </>
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
           </ReactFlowProvider>
         </div>
       </div>
+
+      {/* --- Dialogs --- */}
+      <Dialog open={dlgRename.open} onOpenChange={(open: boolean) => { if (!open) setDlgRename({ open: false, id: null, value: "" }); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Rename protocol</DialogTitle>
+            <DialogDescription>Set a new name for this protocol.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3 py-2">
+            <Label htmlFor="rename">New name</Label>
+            <Input id="rename" value={dlgRename.value} onChange={(e) => setDlgRename((s) => ({ ...s, value: e.target.value }))} placeholder="e.g. motioncorr_02" />
+          </div>
+          <DialogFooter>
+            <Button onClick={() => setDlgRename({ open: false, id: null, value: "" })} className="rounded-full px-4 py-2 min-w-[140px] font-medium bg-gray-200 hover:bg-gray-300 text-gray-800">
+              Cancel
+            </Button>
+            <Button onClick={submitRename} disabled={!dlgRename.value.trim()} className="rounded-full px-4 py-2 min-w-[140px] font-medium bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-60 disabled:cursor-not-allowed">
+              Rename
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={confirm.open} onOpenChange={(open: boolean) => { if (!open) setConfirm({ open: false, id: null, ids: null, kind: null }); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {confirm.kind === "delete" && "Delete protocol(s)?"}
+              {confirm.kind === "restartAll" && "Restart all steps?"}
+              {confirm.kind === "continueAll" && "Continue all steps?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirm.kind === "delete" && "This action cannot be undone. This will permanently remove the selected protocol(s) and outputs not used elsewhere."}
+              {confirm.kind === "restartAll" && "All protocols will be restarted from this protocol, so the previous results will be deleted"}
+              {confirm.kind === "continueAll" && "All protocols will continue for this protocol, so the previous results will be affected"}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setConfirm({ open: false, id: null, ids: null, kind: null })} className="rounded-full px-4 py-2 min-w-[140px] font-medium bg-gray-200 hover:bg-gray-300 text-gray-800">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async () => {
+                if (!projectName || !confirm.kind) return;
+                try {
+                  if (confirm.kind === "delete") {
+                    const ids = confirm.ids ?? (confirm.id ? [confirm.id] : []);
+                    if (ids.length === 0) return;
+                    await svc.deleteProtocol(projectName, ids);
+
+                    clearAllSelectionHard();
+
+                    toast.success(ids.length > 1 ? "Protocols deleted." : "Protocol deleted.");
+                  } else if (confirm.kind === "restartAll" && confirm.id) {
+                    await svc.restartAll(projectName, confirm.id);
+                    toast.success("Restart started.");
+                  } else if (confirm.kind === "continueAll" && confirm.id) {
+                    await svc.continueAll(projectName, confirm.id);
+                    toast.success("Continue started.");
+                  }
+                  setConfirm({ open: false, id: null, ids: null, kind: null });
+                  await handleRefresh();
+                } catch (e) {
+                  console.error(e);
+                  toast.error(getErrorMsg(e));
+                }
+              }}
+              className="rounded-full px-4 py-2 min-w-[140px] font-medium bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {confirm.kind === "delete" ? "Delete" : confirm.kind === "restartAll" ? "Restart" : "Continue"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <Dialog open={dlgResetFrom.open} onOpenChange={(open: boolean) => { if (!open) setDlgResetFrom({ open: false, id: null }); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Reset from this protocol?</DialogTitle>
+            <DialogDescription>Downstream steps may be invalidated. You can re-run them later.</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button onClick={() => setDlgResetFrom({ open: false, id: null })} className="rounded-full px-4 py-2 min-w-[140px] font-medium bg-gray-200 hover:bg-gray-300 text-gray-800">
+              Cancel
+            </Button>
+            <Button
+              onClick={async () => {
+                if (!projectName || !dlgResetFrom.id) return;
+                try {
+                  await svc.resetFrom(projectName, dlgResetFrom.id);
+                  setDlgResetFrom({ open: false, id: null });
+                  toast.success("Reset completed.");
+                  await handleRefresh();
+                } catch (e) {
+                  console.error(e);
+                  toast.error(getErrorMsg(e));
+                }
+              }}
+              className="rounded-full px-4 py-2 min-w-[140px] font-medium bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              Reset from here
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

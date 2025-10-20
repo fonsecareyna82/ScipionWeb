@@ -36,11 +36,12 @@ import OutputSelectorDialog from "./outputSelectorDialog";
 
 type ProtocolFormProps = {
   data: any;
-  projectProtocols: any,
+  projectProtocols: any;
   onClose: () => void;
+  onExecuted?: () => void;
 };
 
-export default function ProtocolForm({ data, projectProtocols = [], onClose }: ProtocolFormProps) {
+export default function ProtocolForm({ data, projectProtocols = [], onClose, onExecuted, }: ProtocolFormProps) {
   const [topTab, setTopTab] = useState(0);
   const [bottomTab, setBottomTab] = useState(0);
   const [sectionTab, setSectionTab] = useState(0);
@@ -48,6 +49,9 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
   const [expandedGroups, setExpandedGroups] = useState<{ [key: string]: boolean }>({});
   const [execLoading, setExecLoading] = useState(false);
   const [execError, setExecError] = useState<string | null>(null);
+
+  // Exit animation state
+  const [isClosing, setIsClosing] = useState(false);
 
   // Drag/drop state
   const [dragOverKey, setDragOverKey] = useState<string | null>(null);
@@ -58,34 +62,38 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [logs, setLogs] = useState<string>("");
   const [errorLogs, setErrorLogs] = useState<string>("");
+  const [scheduleLogs, setScheduleLogs] = useState<string>("");
   const [, setLogsError] = useState<string | null>(null);
   const offsetRef = useRef<number>(0);
   const errorOffsetRef = useRef<number>(0);
+  const scheduleOffsetRef = useRef<number>(0);
+  const scheduleContainerRef = useRef<HTMLDivElement>(null);
   const errorContainerRef = useRef<HTMLDivElement>(null);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const [showValidationDialog, setShowValidationDialog] = useState(false);
 
-  // 🔹 New: State for global Output Selector
+  // Global Output Selector
   const [openSelector, setOpenSelector] = useState(false);
-  //const [selectorExpectedClass, setSelectorExpectedClass] = useState<string | string[] | undefined>();
   const [selectorTarget, setSelectorTarget] = useState<{
     key: string;
     def?: any;
-    expectedClass?: string | string[];
+    expectedClass?: string | string[] | null;
   } | null>(null);
-
-
-  // --- Output selector dialog states ---
-  //const [openOutputSelector, setOpenOutputSelector] = useState(false);
-  const [expectedClass, setExpectedClass] = useState<string | string[] | undefined>(undefined);
+  const [expectedClass, setExpectedClass] = useState<string | string[] | null | undefined>(undefined);
   const [allOutputs, setAllOutputs] = useState<any[]>([]);
-  //const dependencyMap: Record<string, string[]> = {};
 
-  // --------------------------------------------
-  // Utility functions
-  // --------------------------------------------
+  // Tracks last committed label for inputType to detect user changes
+  const prevSelectedInputTypeRef = useRef<string | null>(null);
 
-  // Parse JSON value
+  // Call this instead of onClose() directly to play exit animation
+  const requestClose = () => setIsClosing(true);
+  const handleAnimationEnd = () => {
+    if (isClosing) onClose();
+  };
+
+  // ---------------- Utilities ----------------
+
+  // Parse JSON envelopes like {"_objValue": "..."} if they appear as strings
   const parseFromJSONValue = (maybeJson: any) => {
     try {
       if (typeof maybeJson === "string") {
@@ -123,6 +131,33 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
     return state.editableValue ?? "";
   };
 
+  // ---------- ExpertLevel helpers ----------
+  // Find the 'expertLevel' EnumParam (usually in "General" section)
+  const findGeneralExpertLocator = useCallback(() => {
+    if (!data?.expertLevel || !Array.isArray(data?.definition)) return null;
+
+    for (let i = 0; i < data.definition.length; i++) {
+      const section = data.definition[i];
+      const params = section?.params ?? [];
+      for (const p of params) {
+        const [n, def] = Object.entries(p)[0] as [string, any];
+        if (n === "expertLevel" && def?._class === "EnumParam") {
+          return { sectionIdx: i, name: n };
+        }
+      }
+    }
+    return null;
+  }, [data]);
+
+  // Read current general expert level (0=Normal, 1=Advanced)
+  const generalExpertLevel = (() => {
+    const loc = findGeneralExpertLocator();
+    if (!loc) return null;
+    const v = getParamCurrentValue(loc.sectionIdx, "expertLevel");
+    return typeof v === "number" ? v : Number(v) || 0;
+  })();
+
+  // Simple condition evaluator used to show/hide params
   const evalAtom = (sectionIdx: number, atom: string): boolean => {
     let a = atom.replace(/[()]/g, "").trim();
     let neg = false;
@@ -180,7 +215,7 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
       .some((part) => part.split("&&").every((atom) => evalAtom(sectionIdx, atom.trim())));
   };
 
-  // ANSI color parser
+  // ANSI color parser for logs
   function parseAnsi(line: string): JSX.Element[] {
     const regex = /\x1b\[(\d+)m/g;
     const parts: JSX.Element[] = [];
@@ -197,7 +232,6 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
           </span>
         );
       }
-
       const code = parseInt(match[1], 10);
       switch (code) {
         case 31:
@@ -219,7 +253,6 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
           currentColor = null;
           break;
       }
-
       lastIndex = regex.lastIndex;
     }
 
@@ -230,18 +263,18 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
         </span>
       );
     }
-
     return parts;
   }
 
   // --------------------------------------------
-  // Load initial params and details
+  // Load initial params and details (no side-effects on inputSets)
   // --------------------------------------------
   useEffect(() => {
     if (!data) {
       setProtocolDetails({});
       return;
     }
+
     const params: any = {};
     const walk = (secIdx: number, obj: any) => {
       const [name, def] = Object.entries(obj)[0] as [string, any];
@@ -253,6 +286,7 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
       const raw = def.value ?? def.default ?? "";
       const parsed = parseFromJSONValue(raw);
       let init = parsed ?? "";
+      // If EnumParam default is index, map to label for UI state
       if (def._class === "EnumParam" && Array.isArray(def.choices) && typeof init === "number") {
         init = def.choices[init] ?? def.default ?? "";
       }
@@ -270,67 +304,139 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
       color: data.color ?? "",
       params,
     });
+
+    // Remember initial inputType label to detect future user change
+    if (data.protocolClassName === "ProtUnionSet") {
+      const inputTypeKey = Object.keys(params).find((k) => k.endsWith("_inputType"));
+      if (inputTypeKey) {
+        const it = params[inputTypeKey];
+        const label =
+          typeof it.editableValue === "string"
+            ? it.editableValue
+            : typeof it.default === "string"
+              ? it.default
+              : null;
+        prevSelectedInputTypeRef.current = label ?? null;
+      }
+    }
   }, [data]);
 
   // --------------------------------------------
-  // Incremental log polling
+  // Helpers for Logs
+  // --------------------------------------------
+  const isTerminalStatus = (s: any) =>
+    ["finished", "success", "done", "failed", "error", "cancelled", "canceled", "stopped", "aborted"]
+      .includes(String(s || "").toLowerCase());
+  const idleStreakRef = useRef<number>(0);
+
+  // --------------------------------------------
+  // Incremental log polling 
   // --------------------------------------------
   useEffect(() => {
+  // Clear any previous interval before starting a new polling cycle
+  if (pollRef.current) {
+    clearInterval(pollRef.current);
+    pollRef.current = null;
+  }
+
+  // Minimal conditions to enable polling
+  if (topTab !== 4 || !data?.projectId || !data?.id) return;
+
+  let cancelled = false;
+  idleStreakRef.current = 0;
+
+  // 1) Initial load from offset 0 (stdout/stderr/schedule)
+  (async () => {
+    try {
+      const res: any = await fetchProtocolLogsStream(data.projectId, data.id, 0, 0, 0);
+      if (cancelled) return;
+
+      // Keep field names consistent: scheduleLog / scheduleOffset
+      setLogs(res.stdoutLog ?? "");
+      setErrorLogs(res.stderrLog ?? "");
+      setScheduleLogs(res.scheduleLog ?? "");
+
+      // Seed offsets: prefer server offsets; otherwise fallback to current chunk length
+      offsetRef.current = typeof res.stdoutOffset === "number"
+        ? res.stdoutOffset
+        : (typeof res.stdoutLog === "string" ? res.stdoutLog.length : 0);
+
+      errorOffsetRef.current = typeof res.stderrOffset === "number"
+        ? res.stderrOffset
+        : (typeof res.stderrLog === "string" ? res.stderrLog.length : 0);
+
+      scheduleOffsetRef.current = typeof res.scheduleOffset === "number"
+        ? res.scheduleOffset
+        : (typeof res.scheduleLog === "string" ? res.scheduleLog.length : 0);
+    } catch (err: any) {
+      if (!cancelled) setLogsError(err.message || "Failed to load logs");
+    }
+  })();
+
+  // 2) Incremental polling every 2s
+  pollRef.current = setInterval(async () => {
+    try {
+      const res: any = await fetchProtocolLogsStream(
+        data.projectId,
+        data.id,
+        offsetRef.current || 0,
+        errorOffsetRef.current || 0,
+        scheduleOffsetRef.current || 0
+      );
+      if (cancelled) return;
+
+      let gotNew = false;
+
+      // Consider "new data" only when string length > 0
+      const hasStdout = typeof res.stdoutLog === "string" && res.stdoutLog.length > 0;
+      const hasStderr = typeof res.stderrLog === "string" && res.stderrLog.length > 0;
+      const hasSched  = typeof res.scheduleLog === "string" && res.scheduleLog.length > 0;
+
+      // Advance offset only if server offset is a number and strictly increases
+      if (hasStdout && typeof res.stdoutOffset === "number" && res.stdoutOffset > offsetRef.current) {
+        setLogs((prev) => prev + res.stdoutLog);
+        offsetRef.current = res.stdoutOffset;
+        gotNew = true;
+      }
+
+      if (hasStderr && typeof res.stderrOffset === "number" && res.stderrOffset > errorOffsetRef.current) {
+        setErrorLogs((prev) => prev + res.stderrLog);
+        errorOffsetRef.current = res.stderrOffset;
+        gotNew = true;
+      }
+
+      if (hasSched && typeof res.scheduleOffset === "number" && res.scheduleOffset > scheduleOffsetRef.current) {
+        setScheduleLogs((prev) => prev + res.scheduleLog);
+        scheduleOffsetRef.current = res.scheduleOffset;
+        gotNew = true;
+      }
+
+      // Stop polling after 2 idle cycles if status is terminal
+      if (isTerminalStatus(protocolDetails.status)) {
+        idleStreakRef.current = gotNew ? 0 : idleStreakRef.current + 1;
+        if (idleStreakRef.current >= 2 && pollRef.current) {
+          clearInterval(pollRef.current);
+          pollRef.current = null;
+        }
+      } else {
+        // Non-terminal: keep polling; reset idle streak if we got something
+        if (gotNew) idleStreakRef.current = 0;
+      }
+    } catch (err: any) {
+      if (!cancelled) setLogsError(err.message || "Failed to load logs");
+    }
+  }, 2000);
+
+  // Cleanup on tab exit or unmount
+  return () => {
+    cancelled = true;
     if (pollRef.current) {
       clearInterval(pollRef.current);
       pollRef.current = null;
     }
-    if (topTab !== 4 || !data?.projectId || !data?.id) return;
+  };
+}, [topTab, data?.projectId, data?.id, protocolDetails.status]);
 
-    if (protocolDetails.status === "running") {
-      (async () => {
-        try {
-          const res: any = await fetchProtocolLogsStream(data.projectId, data.id, 0);
-          setLogs(res.stdoutLog ?? "");
-          setErrorLogs(res.stderrLog ?? "");
-          offsetRef.current = res.stdoutOffset ?? 0;
-          errorOffsetRef.current = res.stderrOffset ?? 0;
-        } catch (err: any) {
-          setLogsError(err.message || "Failed to load logs");
-        }
-      })();
-
-      pollRef.current = setInterval(async () => {
-        try {
-          const res: any = await fetchProtocolLogsStream(data.projectId, data.id, offsetRef.current);
-          if (res.stdoutLog) {
-            setLogs((prev) => prev + res.stdoutLog);
-            offsetRef.current = res.stdoutOffset ?? offsetRef.current;
-          }
-          if (res.stderrLog) {
-            setErrorLogs((prev) => prev + res.stderrLog);
-            errorOffsetRef.current = res.stderrOffset ?? errorOffsetRef.current;
-          }
-        } catch (err: any) {
-          setLogsError(err.message || "Failed to load logs");
-        }
-      }, 2000);
-
-      return () => {
-        if (pollRef.current) {
-          clearInterval(pollRef.current);
-          pollRef.current = null;
-        }
-      };
-    }
-
-    if (protocolDetails.status && protocolDetails.status !== "new") {
-      (async () => {
-        try {
-          const res: any = await fetchProtocolLogsStream(data.projectId, data.id, 0);
-          setLogs(res.stdoutLog ?? "");
-          setErrorLogs(res.stderrLog ?? "");
-        } catch (err: any) {
-          setLogsError(err.message || "Failed to load logs");
-        }
-      })();
-    }
-  }, [protocolDetails.status, topTab, data?.projectId, data?.id]);
 
   // --------------------------------------------
   // Scroll on new logs
@@ -339,14 +445,30 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
     if (!containerRef.current) return;
     containerRef.current.scrollTop = containerRef.current.scrollHeight;
   }, [logs]);
-  // --------------------------------------------
-  // Expected class and serialized params
-  // --------------------------------------------
 
-  const getExpectedClass = (def: any): string | string[] | undefined => {
-    if (!def) return undefined;
+  // Autoscroll on new errores logs
+  useEffect(() => {
+    if (!errorContainerRef.current) return;
+    errorContainerRef.current.scrollTop = errorContainerRef.current.scrollHeight;
+  }, [errorLogs]);
+
+  // Autoscroll on new schedule logs
+  useEffect(() => {
+    if (!scheduleContainerRef.current) return;
+    scheduleContainerRef.current.scrollTop = scheduleContainerRef.current.scrollHeight;
+  }, [scheduleLogs]);
+
+  // --------------------------------------------
+  // Live expected-class reader: ignore param meta-classes; dedupe
+  // Returns:
+  //  - string/string[] when there is a class restriction
+  //  - null when there is NO restriction (e.g., All)
+  // --------------------------------------------
+  const getExpectedClass = (def: any): string | string[] | null => {
+    if (!def) return null;
     const candidates = [
       def.pointerClass,
+      def.pointerClassName,
       def.accept,
       def.accepts,
       def.accepted,
@@ -359,16 +481,28 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
       def._classAccepted,
       def.class,
     ];
-    const result: string[] = [];
+
+    const flat: string[] = [];
+    const push = (s?: any) => {
+      if (typeof s === "string") {
+        const v = s.trim();
+        if (v && !flat.includes(v)) flat.push(v);
+      }
+    };
     for (const c of candidates) {
-      if (typeof c === "string" && c.trim()) result.push(c.trim());
-      if (Array.isArray(c)) result.push(...c.map((s) => s.trim()));
+      if (Array.isArray(c)) c.forEach(push);
+      else push(c);
     }
-    if (result.length === 0) return undefined;
-    return result.length === 1 ? result[0] : result;
+
+    // Drop parameter meta-classes so they never constrain filtering
+    const isParamMeta = (s: string) => /pointerparam$/i.test(s) || /multipointerparam$/i.test(s);
+    const filtered = flat.filter((s) => !isParamMeta(s));
+
+    if (filtered.length === 0) return null;
+    return filtered.length === 1 ? filtered[0] : filtered;
   };
 
-  // Gather all outputs available across project protocols
+  // Gather all outputs across project protocols
   const gatherAllOutputs = useCallback((): {
     outputs: any[];
     dependencyMap: Record<string, string[]>;
@@ -384,17 +518,12 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
 
     for (const prot of protocolsArray) {
       const pid = String(prot.id);
-
-      // 🔹 Mapa de dependencias descendentes
       dependencyMap[pid] = (prot.children ?? []).map(String);
-
-      // 🔹 Recolectamos los outputs
       if (!Array.isArray(prot.outputs)) continue;
 
       for (const out of prot.outputs) {
         const entries = Object.entries(out);
         if (entries.length === 0) continue;
-
         const [key, valAny] = entries[0];
         const val = valAny as any;
 
@@ -412,8 +541,137 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
     return { outputs, dependencyMap };
   }, [projectProtocols]);
 
+  // --------------------------------------------
+  // Sync inputSets constraints ONLY when user changes inputType
+  //  - First render: no-op (keeps existing items and constraints)
+  //  - Change to specific type: set SetOfType + clear items
+  //  - Change to "All": remove constraints + keep items
+  // --------------------------------------------
+  useEffect(() => {
+    if (data?.protocolClassName !== "ProtUnionSet") return;
+    const params = protocolDetails?.params;
+    if (!params || Object.keys(params).length === 0) return;
 
+    const findKey = (name: string) =>
+      Object.keys(params).find((k) => k.endsWith(`_${name}`));
 
+    const inputTypeKey = findKey("inputType");
+    const inputSetsKey = findKey("inputSets");
+    if (!inputTypeKey || !inputSetsKey) return;
+
+    const inputTypeParam = params[inputTypeKey];
+    const inputSetsParam = params[inputSetsKey];
+    if (!inputTypeParam || !inputSetsParam) return;
+
+    // Resolve current label
+    const rawSel =
+      inputTypeParam.editableValue !== undefined
+        ? inputTypeParam.editableValue
+        : inputTypeParam.default;
+
+    let selectedLabel: string | null = null;
+    if (typeof rawSel === "number" && Array.isArray(inputTypeParam.choices)) {
+      selectedLabel = inputTypeParam.choices[rawSel] ?? null;
+    } else if (typeof rawSel === "string") {
+      selectedLabel = rawSel;
+    }
+    if (selectedLabel == null) return;
+
+    const prev = prevSelectedInputTypeRef.current;
+
+    // First run: record and exit (no changes)
+    if (prev === null) {
+      prevSelectedInputTypeRef.current = selectedLabel;
+      return;
+    }
+
+    // No change: do nothing
+    if (prev === selectedLabel) return;
+
+    // Commit new selection
+    prevSelectedInputTypeRef.current = selectedLabel;
+
+    // Apply constraints according to selection
+    const isAll = selectedLabel.trim().toLowerCase() === "all";
+    const nextPointerClass = isAll ? null : `SetOf${selectedLabel.replace(/\s+/g, "")}`;
+
+    setProtocolDetails((prevState: any) => {
+      const clone = { ...prevState, params: { ...prevState.params } };
+      const target = { ...clone.params[inputSetsKey] };
+
+      if (isAll) {
+        // Remove ALL class constraints; keep items
+        delete target.pointerClass;
+        delete target.pointerClassName;
+        delete target.accept;
+        target.accepts = [];
+        delete target.accepted;
+        delete target._expectedClass;
+        delete target.objectClass;
+        delete target.type;
+      } else {
+        // Set SetOf<Type> on all aliases; clear items
+        target.pointerClass = nextPointerClass!;
+        target.pointerClassName = nextPointerClass!;
+        target.accept = nextPointerClass!;
+        target.accepts = [nextPointerClass!];
+        target.accepted = nextPointerClass!;
+        target._expectedClass = nextPointerClass!;
+        target.objectClass = nextPointerClass!;
+        target.type = nextPointerClass!;
+        target.editableValue = [];
+      }
+
+      clone.params[inputSetsKey] = target;
+      return clone;
+    });
+  }, [data?.protocolClassName, protocolDetails.params]);
+
+  // --------------------------------------------
+  // Filter outputs for a given paramKey using LIVE constraints
+  //  - Always exclude current protocol and its descendants
+  //  - When expected === null (All) => return all SetOf* types
+  // --------------------------------------------
+  const getFilteredOutputsForKey = (paramKey: string) => {
+    const liveParam = protocolDetails.params?.[paramKey];
+    const expected = getExpectedClass(liveParam);
+
+    const { outputs, dependencyMap } = gatherAllOutputs();
+    const currentId = String(data.id);
+
+    // Build exclusion set (self + descendants)
+    const blocked = new Set<string>([currentId]);
+    const stack = [currentId];
+    while (stack.length > 0) {
+      const parent = stack.pop()!;
+      const children = dependencyMap[parent] || [];
+      for (const child of children) {
+        if (!blocked.has(child)) {
+          blocked.add(child);
+          stack.push(child);
+        }
+      }
+    }
+
+    // Exclude self + descendants
+    const pool = outputs.filter((o) => !blocked.has(String(o._protocolId)));
+
+    const norm = (s: any) =>
+      typeof s === "string" ? s.replace(/\s+/g, "").toLowerCase() : "";
+
+    // All => allow any SetOf*
+    if (expected === null) {
+      return pool.filter((o) => /^setof/i.test(String(o._class || "")));
+    }
+
+    // Specific class/es
+    return pool.filter((o) => {
+      const oc = norm(o._class);
+      return Array.isArray(expected)
+        ? expected.some((e) => norm(e) === oc)
+        : norm(expected) === oc;
+    });
+  };
 
   // --------------------------------------------
   // Serialize protocol parameters before save/execute
@@ -429,7 +687,7 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
       const p = pRaw ?? {};
       const cls = p._class;
 
-      // --- POINTER ---
+      // POINTER
       if (cls === "PointerParam") {
         const editable = p.editableValue ?? "";
         const normalized = {
@@ -452,14 +710,10 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
         return;
       }
 
-      // --- MULTI POINTER ---
+      // MULTI POINTER
       if (cls === "MultiPointerParam" && Array.isArray(p.editableValue)) {
         const list = p.editableValue.map((item: any) => {
-          if (
-            typeof item === "string" ||
-            typeof item === "number" ||
-            typeof item === "boolean"
-          ) {
+          if (typeof item === "string" || typeof item === "number" || typeof item === "boolean") {
             return {
               _objValue: String(item),
               info: "",
@@ -479,7 +733,7 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
         return;
       }
 
-      // --- RESTO (no pointers) ---
+      // REST (non-pointers)
       out[newKey] = {
         value: p.editableValue,
         _objValue: p._objValue,
@@ -491,28 +745,21 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
     return out;
   };
 
-
-  // Extract validation messages from a detail string like:
-  // "422: ['msg 1, with comma', 'msg 2']"
+  // Extract validation messages from a detail string
   function extractValidationErrors(detail: string): string[] {
-    // 1) Prefer single-quoted segments: '...'
     const singleQuoted = Array.from(detail.matchAll(/'([^']+)'/g), (m) => m[1].trim());
     if (singleQuoted.length) return singleQuoted;
 
-    // 2) Fallback: in case the backend ever uses double quotes: "..."
     const doubleQuoted = Array.from(detail.matchAll(/"([^"]+)"/g), (m) => m[1].trim());
     if (doubleQuoted.length) return doubleQuoted;
 
-    // 3) Last resort: try to pull content inside brackets and split conservatively
     const bracket = detail.match(/\[(.*)\]/);
     if (bracket && bracket[1]) {
       return bracket[1]
-        .split(/',\s*'|",\s*"/)               // split only on "',' or '", " patterns
+        .split(/',\s*'|",\s*"/)
         .map((s: string) => s.replace(/^['"]|['"]$/g, "").trim())
         .filter((s: string) => s.length > 0);
     }
-
-    // 4) If nothing matched, return the stripped detail as a single message
     return [detail.replace(/^422:\s*/, "").trim()];
   }
 
@@ -527,15 +774,10 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
     try {
       const protocolId = data.id ?? "";
       const serialized = getSerializedParams();
-      console.log("Executing with params:", serialized);
-
       await executeProtocol(protocolId, data.protocolClassName, serialized);
-      onClose();
+      onExecuted?.();
+      requestClose();
     } catch (err: any) {
-      console.error("Execute error:", err);
-
-      // Case: backend returns a detail string like
-      // "422: ['Input volumes detected, please set initialization mode to `input` or clear volume inputs.', 'No. of input volumes must equal no. of classes']"
       if (typeof err?.detail === "string") {
         const extracted = extractValidationErrors(err.detail);
         if (extracted.length > 0) {
@@ -545,36 +787,26 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
           return;
         }
       }
-
-      // Fallback for generic errors
       setExecError(err.message || "Error launching the protocol");
     } finally {
       setExecLoading(false);
     }
   };
 
-
-
-
   const handleSave = async () => {
     setExecLoading(true);
     setExecError(null);
-
     try {
       const protocolId = data.id ?? "";
-      const serialized = getSerializedParams(); // always current state
-      console.log("Saving with params:", serialized);
-
+      const serialized = getSerializedParams();
       await saveProtocol(protocolId, data.protocolClassName, serialized);
-      onClose();
+      requestClose();
     } catch (err: any) {
-      console.error("Save error:", err);
       setExecError(err.message || "Error saving the protocol");
     } finally {
       setExecLoading(false);
     }
   };
-
 
   // --------------------------------------------
   // renderParam - build UI for each parameter
@@ -585,6 +817,21 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
       const key = `${sectionIdx}_${name}`;
       const value = protocolDetails.params?.[key]?.editableValue;
       if (def.condition && !evalExpr(sectionIdx, def.condition)) return null;
+
+      // Hide advanced params when general expertLevel is "Normal" (0).
+      // Keep the 'expertLevel' selector itself always visible.
+      const expertLocator = findGeneralExpertLocator();
+      const isExpertSelector =
+        !!expertLocator && expertLocator.sectionIdx === sectionIdx && name === "expertLevel";
+
+      if (
+        data?.expertLevel &&            // protocol supports expert mode
+        generalExpertLevel === 0 &&     // currently in Normal
+        def?.expertLevel === 1 &&       // param is Advanced
+        !isExpertSelector               // but don't hide the selector itself
+      ) {
+        return null; // skip rendering advanced field/group in Normal
+      }
 
       // Optional advanced indicator
       const advancedSlot = (
@@ -619,9 +866,7 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
         </Box>
       );
 
-      // ===========================================
-      // MultiPointerParam
-      // ===========================================
+      // ============ MultiPointerParam ============
       if (def._class === "MultiPointerParam") {
         const items = Array.isArray(value) ? value : def.default ?? [];
 
@@ -643,13 +888,21 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
         };
 
         const onRowDrop = (i: number, dragged: any) => {
-          const expected = getExpectedClass(def);
-          const isMatch =
-            !expected ||
-            (Array.isArray(expected)
-              ? expected.includes(dragged._class)
-              : dragged._class === expected);
-          if (!isMatch) return;
+          // Use LIVE expected class from the current param state (not the static def)
+          const liveParam = protocolDetails.params?.[key];
+          const expected = getExpectedClass(liveParam);
+          const norm = (s: any) =>
+            typeof s === "string" ? s.replace(/\s+/g, "").toLowerCase() : "";
+          const draggedClass = norm(dragged._class);
+
+          const matches =
+            expected === null // null => "All" (no filter)
+              ? true
+              : Array.isArray(expected)
+                ? expected.some((e) => norm(e) === draggedClass)
+                : norm(expected) === draggedClass;
+
+          if (!matches) return;
 
           setProtocolDetails((prev: any) => {
             const list = Array.isArray(prev.params[key].editableValue)
@@ -685,7 +938,7 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
               info: picked.info ?? "",
               _class: picked._class ?? "",
               _objValue: picked._objValue ?? "",
-              _parentId: picked._protocolId ?? picked._parentId ?? null
+              _parentId: picked._protocolId ?? picked._parentId ?? null,
             };
 
             return {
@@ -698,6 +951,8 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
           });
         };
 
+        // Merge LIVE param state with static schema so picker sees updated pointerClass
+        const liveDef = { ...def, ...(protocolDetails.params?.[key] || {}) };
 
         return (
           <ParamRow
@@ -716,8 +971,8 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
                   setDragOverKey={setDragOverKey}
                   currentDraggedOutput={currentDraggedOutput}
                   paramKey={key}
-                  def={def}
-                  getAvailableOutputs={() => gatherAllOutputs().outputs}
+                  def={liveDef}
+                  getAvailableOutputs={() => getFilteredOutputsForKey(key)}
                   onPickForRow={handlePickFromDialog}
                 />
               </Box>
@@ -728,9 +983,7 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
         );
       }
 
-      // ===========================================
-      // PointerParam
-      // ===========================================
+      // ============ PointerParam ============
       if (def._class === "PointerParam") {
         const onClear = () =>
           setProtocolDetails((prev: any) => ({
@@ -754,7 +1007,7 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
                     [key]: {
                       ...prev.params[key],
                       editableValue: e.target.value,
-                      _objValue: e.target.value, 
+                      _objValue: e.target.value,
                     },
                   },
                 }))
@@ -764,78 +1017,17 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
           </Box>
         );
 
-        // Helper to detect the expected class for a pointer parameter
-        const getExpectedClass = (def: any): string | string[] | undefined => {
-          if (!def) return undefined;
-          const candidates = [
-            def.pointerClass,
-            def.pointerClassName,
-            def.objectClass,
-            def.accept,
-            def.accepts,
-            def.accepted,
-            def.targetClass,
-            def._expectedClass,
-            def._classAccepted,
-            def.class,
-            def.type,
-          ];
-
-          const result: string[] = [];
-          for (const c of candidates) {
-            if (typeof c === "string" && c.trim()) result.push(c.trim());
-            else if (Array.isArray(c)) result.push(...c.map((s) => s.trim()));
-          }
-
-          if (result.length === 0) return undefined;
-          return result.length === 1 ? result[0] : result;
-        };
-
-        // Called when user clicks "Find" in a PointerParam
-        const handleOpenFind = (key: string, def: any) => {
-          const expected = getExpectedClass(def);
+        const handleOpenFind = (key: string) => {
+          // Read LIVE param state (includes pointerClass updates)
+          const liveParam = protocolDetails.params?.[key];
+          const expected = getExpectedClass(liveParam);
           setExpectedClass(expected);
-          setSelectorTarget({ key, def, expectedClass: expected });
+          setSelectorTarget({ key, def: liveParam, expectedClass: expected });
 
-          const { outputs, dependencyMap } = gatherAllOutputs();
-
-          const currentId = String(data.id);
-          const blocked = new Set<string>();
-          const stack = [currentId];
-
-          // recursively traversing the descendants (children, grandchildren, etc.)
-          while (stack.length > 0) {
-            const parent = stack.pop()!;
-            const children = dependencyMap[parent] || [];
-            for (const child of children) {
-              if (!blocked.has(child)) {
-                blocked.add(child);
-                stack.push(child);
-              }
-            }
-          }
-
-          // Excluding outputs from the protocol itself and all its descendants
-          const filteredOutputs = outputs.filter((o) => {
-            const owner = String(o._protocolId);
-            return owner !== currentId && !blocked.has(owner);
-          });
-
-          // If there is expectedClass, we also filter by compatible class
-          const finalOutputs = expected
-            ? filteredOutputs.filter((o) => {
-              const cls = o._class?.toLowerCase?.() ?? "";
-              return Array.isArray(expected)
-                ? expected.some((ec) => ec.toLowerCase() === cls)
-                : expected.toLowerCase() === cls;
-            })
-            : filteredOutputs;
-
+          const finalOutputs = getFilteredOutputsForKey(key);
           setAllOutputs(finalOutputs);
           setOpenSelector(true);
         };
-
-
 
         return (
           <ParamRow
@@ -855,14 +1047,12 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
             isPointerParam
             onClear={onClear}
             rowIndex={rowIndex}
-            onOpenFind={() => handleOpenFind(key, def)}
+            onOpenFind={() => handleOpenFind(key)}
           />
         );
       }
 
-      // ===========================================
-      // EnumParam
-      // ===========================================
+      // ============ EnumParam ============
       if (def._class === "EnumParam" && Array.isArray(def.choices)) {
         let sel = value ?? def.default ?? "";
         if (typeof sel === "number") sel = def.choices[sel] ?? "";
@@ -875,9 +1065,23 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
 
         const controlBase =
           def.display === 0 ? (
-            <RadioGroup row value={sel} onChange={(e) => onChange(e.target.value)}>
+            <RadioGroup
+              row
+              value={
+                def.choices?.includes(sel)
+                  ? sel
+                  : def.choices?.[0] ?? ''
+              }
+              onChange={(e) => onChange(e.target.value)}
+            >
               {def.choices.map((ch: string, i: number) => (
-                <FormControlLabel key={i} value={ch} control={<Radio size="small" />} label={ch} />
+                <FormControlLabel
+                  key={i}
+                  value={ch}
+                  control={<Radio size="small" />}
+                  label={ch}
+                  sx={{ '& .MuiFormControlLabel-label': { fontSize: 12, lineHeight: 1.2 } }}
+                />
               ))}
             </RadioGroup>
           ) : (
@@ -913,9 +1117,7 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
         );
       }
 
-      // ===========================================
-      // Group
-      // ===========================================
+      // ============ Group ============
       if (def._class === "Group" && Array.isArray(def.children)) {
         const groupKey = `${key}_group`;
         const expanded = expandedGroups[groupKey] ?? true;
@@ -954,25 +1156,17 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
                 {def.label || name || `Group ${groupKey}`}
               </Typography>
               <IconButton size="small">
-                {expanded ? (
-                  <ChevronUpIcon fontSize="small" />
-                ) : (
-                  <ChevronDownIcon fontSize="small" />
-                )}
+                {expanded ? <ChevronUpIcon fontSize="small" /> : <ChevronDownIcon fontSize="small" />}
               </IconButton>
             </Box>
 
             {expanded &&
-              def.children.map((child: any, idx: number) =>
-                renderParam(child, sectionIdx, idx)
-              )}
+              def.children.map((child: any, idx: number) => renderParam(child, sectionIdx, idx))}
           </Box>
         );
       }
 
-      // ===========================================
-      // BooleanParam
-      // ===========================================
+      // ============ BooleanParam ============
       if (def._class === "BooleanParam") {
         const checked =
           value !== undefined
@@ -1010,9 +1204,7 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
         );
       }
 
-      // ===========================================
-      // Default TextField
-      // ===========================================
+      // ============ Default TextField ============
       const defaultControl = (
         <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
           {advancedSlot}
@@ -1047,7 +1239,15 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
         />
       );
     },
-    [protocolDetails.params, dragOverKey, currentDraggedOutput, expandedGroups]
+    [
+      protocolDetails.params,
+      dragOverKey,
+      currentDraggedOutput,
+      expandedGroups,
+      data,
+      generalExpertLevel,
+      findGeneralExpertLocator
+    ]
   );
 
   if (!data || !protocolDetails.params) return null;
@@ -1110,7 +1310,7 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
   // JSX Layout
   // --------------------------------------------
   return (
-    <div className="protocol-form slide-in-right">
+    <div className={`protocol-form ${isClosing ? "slide-out-right" : "slide-in-right"}`} onAnimationEnd={handleAnimationEnd}>
       {/* HEADER */}
       <div className="form-header">
         <div className="form-title-wrapper">
@@ -1118,14 +1318,11 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
             {data.id}
           </Box>
           <h2>{protocolDetails.label}</h2>
-          <span
-            className="node-status-pill"
-            style={{ backgroundColor: protocolDetails.color, color: "black" }}
-          >
+          <span className="node-status-pill" style={{ backgroundColor: protocolDetails.color, color: "black" }}>
             {protocolDetails.status || "Unknown"}
           </span>
         </div>
-        <button className="close-btn" onClick={onClose}>
+        <button className="close-btn" onClick={requestClose}>
           ×
         </button>
       </div>
@@ -1136,7 +1333,7 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
         </Typography>
       )}
 
-      {/* ===== BODY ===== */}
+      {/* BODY */}
       <div className="form-body" style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
         <Box
           sx={{
@@ -1278,7 +1475,35 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
                       )}
                     </Box>
                   )}
-                  {bottomTab === 2 && <Typography variant="body1">Schedule log</Typography>}
+                  {bottomTab === 2 && (
+                    <Box
+                      ref={scheduleContainerRef}
+                      sx={{
+                        backgroundColor: "#f5f5f5",
+                        fontFamily: "monospace",
+                        fontSize: "0.85rem",
+                        p: 2,
+                        borderRadius: 1,
+                        maxHeight: "540px",
+                        overflowY: "auto",
+                      }}
+                    >
+                      {scheduleLogs ? (
+                        scheduleLogs.split("\n").map((line, idx) => (
+                          <div key={idx} style={{ display: "flex" }}>
+                            <span style={{ color: "red", userSelect: "none", marginRight: 8 }}>
+                              {String(idx + 1).padStart(5, "0")}:
+                            </span>
+                            <span>{parseAnsi(line)}</span>
+                          </div>
+                        ))
+                      ) : (
+                        <Typography variant="body2" sx={{ opacity: 0.7 }}>
+                          No schedule logs.
+                        </Typography>
+                      )}
+                    </Box>
+                  )}
                 </Box>
               </Box>
             )}
@@ -1286,9 +1511,9 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
         </Box>
       </div>
 
-      {/* ===== FOOTER ===== */}
+      {/* FOOTER */}
       <div className="form-footer">
-        <Button variant="outlined" startIcon={<CloseIcon />} onClick={onClose} sx={{ textTransform: "none" }}>
+        <Button variant="outlined" startIcon={<CloseIcon />} onClick={requestClose} sx={{ textTransform: "none" }}>
           Close
         </Button>
         <Button
@@ -1302,9 +1527,7 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
         </Button>
         <Button
           variant="contained"
-          startIcon={
-            execLoading ? <CircularProgress size={16} color="inherit" /> : <ExecuteIcon />
-          }
+          startIcon={execLoading ? <CircularProgress size={16} color="inherit" /> : <ExecuteIcon />}
           color="success"
           onClick={handleExecute}
           disabled={execLoading || protocolDetails.status === "running"}
@@ -1317,157 +1540,150 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
       <OutputSelectorDialog
         open={openSelector}
         onClose={() => setOpenSelector(false)}
-        expectedClass={expectedClass}
+        expectedClass={expectedClass ?? undefined}
         allOutputs={allOutputs}
         onSelect={handleSelectOutput}
         multiSelect={false}
       />
-      {
-        showValidationDialog && (
-          <Dialog
-            open={showValidationDialog}
-            onClose={() => setShowValidationDialog(false)}
-            maxWidth="sm"
-            fullWidth
-            PaperProps={{
-              sx: {
-                borderRadius: 3,
-                boxShadow: "0px 10px 25px rgba(0, 0, 0, 0.25)",
-              },
+
+      {showValidationDialog && (
+        <Dialog
+          open={showValidationDialog}
+          onClose={() => setShowValidationDialog(false)}
+          maxWidth="sm"
+          fullWidth
+          PaperProps={{
+            sx: {
+              borderRadius: 3,
+              boxShadow: "0px 10px 25px rgba(0, 0, 0, 0.25)",
+            },
+          }}
+        >
+          <DialogTitle
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              gap: 1.5,
+              fontWeight: "bold",
+              color: "#d32f2f",
+              fontSize: "1.1rem",
+              borderBottom: "1px solid ",
+              pb: 1,
             }}
           >
-            <DialogTitle
+            <Box
               sx={{
+                width: 32,
+                height: 32,
+                borderRadius: "50%",
+                backgroundColor: "#f8d7da",
+                color: "#d32f2f",
                 display: "flex",
                 alignItems: "center",
-                gap: 1.5,
+                justifyContent: "center",
                 fontWeight: "bold",
-                color: "#d32f2f",
-                fontSize: "1.1rem",
-                borderBottom: "1px solid #eee",
-                pb: 1,
               }}
             >
+              !
+            </Box>
+            Validation Errors
+          </DialogTitle>
+
+          <DialogContent
+            dividers
+            sx={{
+              maxHeight: "300px",
+              overflowY: "auto",
+              backgroundColor: "#fff8f8",
+              borderTop: "1px solid #f0f0f0",
+              borderBottom: "1px solid #f0f0f0",
+              p: 2.5,
+            }}
+          >
+            {validationErrors.length > 0 ? (
               <Box
+                component="ul"
                 sx={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: "50%",
-                  backgroundColor: "#f8d7da",
-                  color: "#d32f2f",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontWeight: "bold",
+                  listStyle: "none",
+                  pl: 0,
+                  m: 0,
+                  color: "#b00020",
+                  fontSize: "0.9rem",
                 }}
               >
-                !
-              </Box>
-              Validation Errors
-            </DialogTitle>
-
-            <DialogContent
-              dividers
-              sx={{
-                maxHeight: "300px",
-                overflowY: "auto",
-                backgroundColor: "#fff8f8",
-                borderTop: "1px solid #f0f0f0",
-                borderBottom: "1px solid #f0f0f0",
-                p: 2.5,
-              }}
-            >
-              {validationErrors.length > 0 ? (
-                <Box
-                  component="ul"
-                  sx={{
-                    listStyle: "none",
-                    pl: 0,
-                    m: 0,
-                    color: "#b00020",
-                    fontSize: "0.9rem",
-                  }}
-                >
-                  {validationErrors.map((err, i) => {
-                    // Split message by **bold** markers
-                    const parts = err.split(/(\*\*[^*]+\*\*)/g);
-                    return (
+                {validationErrors.map((err, i) => {
+                  const parts = err.split(/(\*\*[^*]+\*\*)/g);
+                  return (
+                    <Box
+                      key={i}
+                      component="li"
+                      sx={{
+                        display: "flex",
+                        alignItems: "flex-start",
+                        mb: 1.2,
+                      }}
+                    >
                       <Box
-                        key={i}
-                        component="li"
+                        component="span"
                         sx={{
-                          display: "flex",
-                          alignItems: "flex-start",
-                          mb: 1.2,
+                          color: "#d32f2f",
+                          fontWeight: "bold",
+                          mr: 1.2,
+                          fontSize: "1rem",
+                          lineHeight: "1rem",
                         }}
                       >
-                        <Box
-                          component="span"
-                          sx={{
-                            color: "#d32f2f",
-                            fontWeight: "bold",
-                            mr: 1.2,
-                            fontSize: "1rem",
-                            lineHeight: "1rem",
-                          }}
-                        >
-                          •
-                        </Box>
-                        <Typography
-                          variant="body2"
-                          sx={{
-                            color: "#333",
-                            lineHeight: 1.5,
-                            fontSize: "0.9rem",
-                          }}
-                        >
-                          {parts.map((p, j) =>
-                            p.startsWith("**") && p.endsWith("**") ? (
-                              <strong key={j}>{p.slice(2, -2)}</strong>
-                            ) : (
-                              p
-                            )
-                          )}
-                        </Typography>
+                        •
                       </Box>
-                    );
-                  })}
-                </Box>
-              ) : (
-                <Typography variant="body2" sx={{ color: "#555" }}>
-                  No validation details provided.
-                </Typography>
-              )}
+                      <Typography
+                        variant="body2"
+                        sx={{
+                          color: "#333",
+                          lineHeight: 1.5,
+                          fontSize: "0.9rem",
+                        }}
+                      >
+                        {parts.map((p, j) =>
+                          p.startsWith("**") && p.endsWith("**") ? <strong key={j}>{p.slice(2, -2)}</strong> : p
+                        )}
+                      </Typography>
+                    </Box>
+                  );
+                })}
+              </Box>
+            ) : (
+              <Typography variant="body2" sx={{ color: "#555" }}>
+                No validation details provided.
+              </Typography>
+            )}
+          </DialogContent>
 
-            </DialogContent>
-
-            <DialogActions
+          <DialogActions
+            sx={{
+              p: 2,
+              justifyContent: "flex-end",
+              backgroundColor: "#fafafa",
+              borderTop: "1px solid #eee",
+            }}
+          >
+            <Button
+              onClick={() => setShowValidationDialog(false)}
+              variant="contained"
+              color="error"
               sx={{
-                p: 2,
-                justifyContent: "flex-end",
-                backgroundColor: "#fafafa",
-                borderTop: "1px solid #eee",
+                textTransform: "none",
+                px: 3,
+                borderRadius: 2,
+                fontWeight: "bold",
+                boxShadow: "none",
+                "&:hover": { backgroundColor: "#c62828" },
               }}
             >
-              <Button
-                onClick={() => setShowValidationDialog(false)}
-                variant="contained"
-                color="error"
-                sx={{
-                  textTransform: "none",
-                  px: 3,
-                  borderRadius: 2,
-                  fontWeight: "bold",
-                  boxShadow: "none",
-                  "&:hover": { backgroundColor: "#c62828" },
-                }}
-              >
-                Close
-              </Button>
-            </DialogActions>
-          </Dialog>
-        )
-      }
+              Close
+            </Button>
+          </DialogActions>
+        </Dialog>
+      )}
     </div>
   );
 }

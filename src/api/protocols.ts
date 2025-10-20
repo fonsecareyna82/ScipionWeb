@@ -60,10 +60,12 @@ export async function launchProtocol(projectId: string): Promise<any> {
 export async function fetchProtocolLogsStream(
   projectId: string | number,
   protocolId: string | number,
-  offset: number
+  offset: number,
+  errOffset: number,
+  scheduleOffset: number,
 ): Promise<{ newLog: string; newOffset: number }> {
   const response = await fetchWithAuth(
-    `${BASE_URL}/protocols/logs/${projectId}/${protocolId}/${offset}`
+    `${BASE_URL}/protocols/logs/${projectId}/${protocolId}/${offset}/${errOffset}/${scheduleOffset}`
   );
   if (!response.ok) throw new Error("Failed to fetch protocol logs stream");
   return response.json();

@@ -1,6 +1,17 @@
-// ProtocolNodeCardWrapper.tsx
 import { NodeProps, useReactFlow } from "reactflow";
 import StatusNode from "./ProtocolNodeCard";
+
+type NodeActions = {
+  onEdit?: (id: string) => void;
+  onRename?: (id: string) => void;
+  onDuplicate?: (id: string) => void;
+  onDelete?: (id: string) => void;
+  onRestartAll?: (id: string) => void;
+  onContinueAll?: (id: string) => void;
+  onResetFrom?: (id: string) => void;
+  onSelectFrom?: (id: string) => void;
+  onSelectTo?: (id: string) => void;
+};
 
 export const createStatusNodeWrapper = (
   onClick: (data: any, evt?: React.MouseEvent) => void,
@@ -8,14 +19,15 @@ export const createStatusNodeWrapper = (
   getSelectedNodeId: () => string | undefined,
   getHoveredNodeId: () => string | undefined,
   setHoveredNodeId?: React.Dispatch<React.SetStateAction<string | null>>,
-  getGraphDirection?: () => "TB" | "LR"
+  getGraphDirection?: () => "TB" | "LR",
+  getNodeActions?: () => NodeActions,
+  getPathSelectionNodeIds?: () => Set<string>
 ) => {
   return function StatusNodeWrapper(props: NodeProps) {
     const { data, id, ...rest } = props;
     const { getViewport } = useReactFlow();
     const { zoom } = getViewport();
 
-    // read latest values from getters (no re-creations of nodeTypes)
     const selectedNodeId = getSelectedNodeId?.();
     const hoveredNodeId = getHoveredNodeId?.();
     const graphDirection = getGraphDirection?.() ?? "TB";
@@ -25,12 +37,17 @@ export const createStatusNodeWrapper = (
     const isHovered =
       typeof hoveredNodeId === "string" && String(id) === String(hoveredNodeId);
 
+    const actions = getNodeActions?.() ?? {};
+    const pathSelectedSet = getPathSelectionNodeIds?.() ?? new Set<string>();
+    const inPathSelection = pathSelectedSet.has(String(id));
+    const pathSelectionActive = pathSelectedSet.size > 0; // reduce menus globally while a selection (path or multi) is active
+
     return (
       <div onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave} style={{ display: "inline-block" }}>
         <StatusNode
           {...rest}
           id={String(id)}
-          data={data}
+          data={data as any}
           selectedNodeId={selectedNodeId}
           onClick={(evt?: React.MouseEvent) => onClick(data, evt)}
           onDoubleClick={() => onDoubleClick(data)}
@@ -39,6 +56,19 @@ export const createStatusNodeWrapper = (
           hoveredNodeId={hoveredNodeId}
           setHoveredNodeId={setHoveredNodeId}
           isHovered={isHovered}
+          // actions
+          onEdit={actions.onEdit}
+          onRename={actions.onRename}
+          onDuplicate={actions.onDuplicate}
+          onDelete={actions.onDelete}
+          onRestartAll={actions.onRestartAll}
+          onContinueAll={actions.onContinueAll}
+          onResetFrom={actions.onResetFrom}
+          onSelectFrom={actions.onSelectFrom}
+          onSelectTo={actions.onSelectTo}
+          // selection (path or multi)
+          inPathSelection={inPathSelection}
+          pathSelectionActive={pathSelectionActive}
         />
       </div>
     );
