@@ -33,7 +33,7 @@
   50% { transform: scale(1.1); }
 }
 
-/* resto del CSS igual */
+/* rest of CSS unchanged */
 .node-header {
   display: flex;
   align-items: center;
@@ -113,7 +113,6 @@
   animation: pulse-table 1.3s infinite;
 }
 
-
 .glow-badge {
   position: relative;
   z-index: 1;
@@ -137,7 +136,7 @@
 }
 
 .glow-badge span {
-  position: relative; /* para que quede sobre el ::before */
+  position: relative;
   z-index: 1;
 }
 
@@ -155,10 +154,6 @@
     box-shadow: 0 0 6px var(--badge-color, #03580e);
   }
 }
-
-
-
-
 
 .flashing-badge {
   position: relative;
@@ -182,10 +177,6 @@
 }
 
 @keyframes shine {
-  0% {
-    left: -100%;
-  }
-  100% {
-    left: 100%;
-  }
+  0% { left: -100%; }
+  100% { left: 100%; }
 }

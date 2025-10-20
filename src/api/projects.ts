@@ -1,8 +1,14 @@
-// src/api/projects.ts
 import { ProtocolNode } from "./protocols";
 import { BASE_URL } from "@/config";
 import { Project } from "@/types/project";
 import { fetchWithAuth } from "./auth";
+
+const ACTION_LAUNCH = "launch";
+const ACTION_SAVE = "save";
+const ACTION_RENAME = "rename";
+const ACTION_RESTART_ALL = "restart-all";
+const ACTION_CONTINUE_ALL = "continue-all";
+const ACTION_RESET_FROM = "reset-from";
 
 type Id = string | number;
 
@@ -26,13 +32,11 @@ class ApiError extends Error {
 }
 
 async function safeJson<T = any>(response: Response): Promise<T> {
-  // 204 No Content or empty body
   const text = await response.text();
   if (!text) return undefined as unknown as T;
   try {
     return JSON.parse(text) as T;
   } catch {
-    // Fallback to raw text if not JSON
     return text as unknown as T;
   }
 }
@@ -41,9 +45,7 @@ async function toApiError(response: Response, fallback: string): Promise<ApiErro
   let payload: ApiErrorShape | string | undefined;
   try {
     payload = await safeJson<ApiErrorShape | string>(response);
-  } catch {
-    // ignore
-  }
+  } catch {}
   const message =
     (typeof payload === "object" && (payload.message as string)) ||
     (typeof payload === "object" && (payload.detail as string)) ||
@@ -58,9 +60,8 @@ async function toApiError(response: Response, fallback: string): Promise<ApiErro
   });
 }
 
-/**
- * Fetch the list of all projects
- */
+/* ======================= PROJECTS ======================= */
+
 export async function fetchProjects(): Promise<Project[]> {
   const response = await fetchWithAuth(`${BASE_URL}/projects/`);
   if (!response.ok) throw await toApiError(response, "Failed to fetch projects");
@@ -88,9 +89,8 @@ export async function createProject(name: string, description: string): Promise<
   return safeJson<Project>(response);
 }
 
-/**
- * Fetch detailed info of a protocol node by its id
- */
+/* ======================= PROTOCOL READS ======================= */
+
 export async function fetchProtocolDetails(projectId: Id, protocolId: Id): Promise<ProtocolNode> {
   const response = await fetchWithAuth(`${BASE_URL}/projects/${projectId}/${protocolId}`);
   if (!response.ok) throw await toApiError(response, "Failed to fetch protocol details");
@@ -106,15 +106,14 @@ export async function fetchNewProtocolDetails(projectId: Id, protocolClass: stri
   return safeJson<ProtocolNode>(response);
 }
 
-/**
- * Launch a protocol for a specific project by ID
- */
+/* ======================= EXEC/SAVE ======================= */
+
 export async function executeProtocol(
   protocolId: Id,
   protocolClassName: string,
   params: Record<string, any>
 ): Promise<any> {
-  const response = await fetchWithAuth(`${BASE_URL}/projects/launch`, {
+  const response = await fetchWithAuth(`${BASE_URL}/projects/${ACTION_LAUNCH}`, {
     method: "POST",
     body: JSON.stringify({ protocolId, protocolClassName, params }),
   });
@@ -131,7 +130,7 @@ export async function saveProtocol(
   protocolClassName: string,
   params: Record<string, any>
 ): Promise<any> {
-  const response = await fetchWithAuth(`${BASE_URL}/projects/save`, {
+  const response = await fetchWithAuth(`${BASE_URL}/projects/${ACTION_SAVE}`, {
     method: "POST",
     body: JSON.stringify({ protocolId, protocolClassName, params }),
   });
@@ -140,9 +139,8 @@ export async function saveProtocol(
   return safeJson<any>(response);
 }
 
-/**
- * Rename a project and update its description
- */
+/* ======================= PROJECT MUTATIONS ======================= */
+
 export async function renameProject(id: Id, newName: string, newDescription: string): Promise<Project> {
   const response = await fetchWithAuth(`${BASE_URL}/projects/${id}`, {
     method: "PUT",
@@ -159,7 +157,6 @@ export async function renameProject(id: Id, newName: string, newDescription: str
 export async function deleteProject(id: Id): Promise<void> {
   const response = await fetchWithAuth(`${BASE_URL}/projects/${id}`, { method: "DELETE" });
   if (!response.ok) throw await toApiError(response, "Failed to delete project");
-  // 204 No Content expected; nothing to return
 }
 
 /**
@@ -168,5 +165,78 @@ export async function deleteProject(id: Id): Promise<void> {
 export async function loadProtocols(projectId: number): Promise<any> {
   const response = await fetchWithAuth(`${BASE_URL}/projects/${projectId}/protocols`);
   if (!response.ok) throw await toApiError(response, "Failed to fetch protocols");
+  return safeJson<any>(response);
+}
+
+/* ======================= PROTOCOL ACTIONS (nodes) ======================= */
+
+/** Rename protocol */
+export async function renameProtocol(
+  projectId: Id,
+  protocolId: Id,
+  newName: string
+): Promise<ProtocolNode> {
+  const response = await fetchWithAuth(`${BASE_URL}/projects/${projectId}/${protocolId}/${ACTION_RENAME}`, {
+    method: "PUT",
+    body: JSON.stringify({ name: newName }),
+  });
+  if (!response.ok) throw await toApiError(response, "Failed to rename protocol");
+  return safeJson<ProtocolNode>(response);
+}
+
+/**
+ * Duplicate protocol(s).
+ */
+export async function duplicateProtocol(
+  projectId: Id,
+  items: { id: Id; name?: string }[]
+): Promise<ProtocolNode[]> {
+  const response = await fetchWithAuth(`${BASE_URL}/projects/${projectId}/protocols/duplicate`, {
+    method: "POST",
+    body: JSON.stringify({ items }),
+  });
+  if (!response.ok) throw await toApiError(response, "Failed to duplicate protocol(s)");
+  return safeJson<ProtocolNode[]>(response);
+}
+
+/**
+ * Delete protocol(s).
+ */
+export async function deleteProtocol(
+  projectId: Id,
+  ids: Id[]
+): Promise<void> {
+  const response = await fetchWithAuth(`${BASE_URL}/projects/${projectId}/protocols/delete`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ids: ids }),
+  });
+  if (!response.ok) throw await toApiError(response, "Failed to delete protocol(s)");
+}
+
+/** Restart all the workflow from this protocol node (1 id) */
+export async function restartAll(projectId: Id, protocolId: Id): Promise<any> {
+  const response = await fetchWithAuth(`${BASE_URL}/projects/${projectId}/${protocolId}/${ACTION_RESTART_ALL}`, {
+    method: "POST",
+  });
+  if (!response.ok) throw await toApiError(response, "Failed to restart protocol");
+  return safeJson<any>(response);
+}
+
+/** Continue all the workflow from this protocol node (1 id) */
+export async function continueAll(projectId: Id, protocolId: Id): Promise<any> {
+  const response = await fetchWithAuth(`${BASE_URL}/projects/${projectId}/${protocolId}/${ACTION_CONTINUE_ALL}`, {
+    method: "POST",
+  });
+  if (!response.ok) throw await toApiError(response, "Failed to continue protocol");
+  return safeJson<any>(response);
+}
+
+/** Reset the workflow from this protocol node (1 id) */
+export async function resetFrom(projectId: Id, protocolId: Id): Promise<any> {
+  const response = await fetchWithAuth(`${BASE_URL}/projects/${projectId}/${protocolId}/${ACTION_RESET_FROM}`, {
+    method: "POST",
+  });
+  if (!response.ok) throw await toApiError(response, "Failed to reset from protocol");
   return safeJson<any>(response);
 }
