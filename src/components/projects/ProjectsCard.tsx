@@ -88,15 +88,13 @@ export default function ProjectCard({
       setErrorMessage("Project name cannot be empty.");
       return;
     }
-    // Optional description minimum length guard
     if (newDescription && newDescription.trim().length < 3) {
       setErrorMessage("Description must be at least 3 characters.");
       return;
     }
-
     try {
       await svc.renameProject(String(id), newLabel.trim(), (newDescription || "").trim());
-      toast.success(`Project renamed to "${newLabel}"`);
+      toast.success(`Project renamed successfully`);
       setIsRenaming(false);
       setErrorMessage("");
       onRename?.(id, newLabel.trim(), (newDescription || "").trim());
@@ -114,116 +112,135 @@ export default function ProjectCard({
 
   return (
     <>
+      {/* Enter animation only. We avoid scaling here to keep text crisp. */}
       <motion.div
         ref={cardRef}
-        onClick={onSelect}
-        onDoubleClick={handleDoubleClick}
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, ease: "easeOut" }}
-        className={`relative cursor-pointer rounded-2xl border p-5 md:p-6 transition-all duration-300
-          ${isRenaming ? "" : "transform hover:scale-[1.03] hover:shadow-xl"}
-          ${isSelected ? "border-blue-700 shadow-blue-100" : "border-gray-200 dark:border-gray-800"}
-          bg-gray-100 dark:bg-white/5 backdrop-blur-md`}
+        className="relative"
       >
-        <div className="mb-2 rounded-xl bg-gradient-to-r from-green-100 via-white to-blue-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 px-4 py-2 border transition-all duration-300">
-          <div className="flex justify-between items-center">
-            <div className="flex items-center gap-3 group min-w-0">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/10 dark:bg-yellow-900/30 group-hover:scale-110 transition-transform duration-300">
-                {icon}
+        {/* Main card. No hover scale; we use translate + shadow for focus without text distortion. */}
+        <div
+          onClick={onSelect}
+          onDoubleClick={handleDoubleClick}
+          className={`relative cursor-pointer rounded-2xl border p-5 md:p-6
+                      transition-all duration-200 transform-gpu will-change-transform
+                      ${isSelected ? "border-blue-700 shadow-blue-100" : "border-gray-200 dark:border-gray-800"}
+                      bg-gray-100 dark:bg-white/5 backdrop-blur-md
+                      hover:-translate-y-0.5 hover:shadow-xl`}
+          style={{
+            // Keep fonts sharp while transforming (helps on some platforms)
+            WebkitFontSmoothing: "antialiased",
+            MozOsxFontSmoothing: "grayscale",
+            textRendering: "optimizeLegibility",
+            backfaceVisibility: "hidden",
+          }}
+        >
+          {/* Header */}
+          <div className="mb-2 rounded-xl bg-gradient-to-r from-green-100 via-white to-blue-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 px-4 py-2 border transition-all duration-200">
+            <div className="flex justify-between items-center">
+              <div className="flex items-center gap-3 group min-w-0">
+                {/* Small icon micro-scale is OK; it doesn't blur text */}
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/10 dark:bg-yellow-900/30 group-hover:scale-110 transition-transform duration-200">
+                  {icon}
+                </div>
+
+                {isRenaming ? (
+                  <div className="flex flex-col gap-2 w-full">
+                    <input
+                      type="text"
+                      value={newLabel}
+                      onChange={(e) => setNewLabel(e.target.value)}
+                      placeholder="Project name"
+                      className="text-lg text-gray-800 dark:text-white/90 bg-transparent border-b border-gray-400 focus:outline-none"
+                      autoFocus
+                      onKeyDown={(e) => e.key === "Enter" && handleRenameSubmit()}
+                    />
+                    <textarea
+                      value={newDescription}
+                      onChange={(e) => setNewDescription(e.target.value)}
+                      placeholder="Project description"
+                      className="text-sm text-gray-700 dark:text-gray-300 bg-transparent border border-gray-300 dark:border-gray-600 rounded-md p-2"
+                      rows={3}
+                    />
+                    {errorMessage && (
+                      <span className="text-red-500 text-sm">{errorMessage}</span>
+                    )}
+                    <div className="flex gap-2 mt-2">
+                      <button
+                        type="button"
+                        onClick={handleRenameSubmit}
+                        className="px-3 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition"
+                      >
+                        Save
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setIsRenaming(false)}
+                        className="px-3 py-1 bg-gray-300 dark:bg-gray-700 text-gray-800 dark:text-white rounded-md hover:bg-gray-400 dark:hover:bg-gray-600 transition"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <span
+                    className="text-lg text-gray-800 dark:text-white/90 truncate flex-grow"
+                    title={label}
+                  >
+                    {newLabel}
+                  </span>
+                )}
               </div>
 
-              {isRenaming ? (
-                <div className="flex flex-col gap-2 w-full">
-                  <input
-                    type="text"
-                    value={newLabel}
-                    onChange={(e) => setNewLabel(e.target.value)}
-                    placeholder="Project name"
-                    className="text-lg text-gray-800 dark:text-white/90 bg-transparent border-b border-gray-400 focus:outline-none"
-                    autoFocus
-                    onKeyDown={(e) => e.key === "Enter" && handleRenameSubmit()}
+              {!isRenaming && (
+                <div className="shrink-0">
+                  <ProjectAction
+                    icon={null}
+                    label=""
+                    onOpen={handleOpen}
+                    onRename={handleRename}
+                    onRemove={handleRemove}
                   />
-                  <textarea
-                    value={newDescription}
-                    onChange={(e) => setNewDescription(e.target.value)}
-                    placeholder="Project description"
-                    className="text-sm text-gray-700 dark:text-gray-300 bg-transparent border border-gray-300 dark:border-gray-600 rounded-md p-2"
-                    rows={3}
-                  />
-                  {errorMessage && (
-                    <span className="text-red-500 text-sm">{errorMessage}</span>
-                  )}
-                  <div className="flex gap-2 mt-2">
-                    <button
-                      type="button"
-                      onClick={handleRenameSubmit}
-                      className="px-3 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition"
-                    >
-                      Save
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setIsRenaming(false)}
-                      className="px-3 py-1 bg-gray-300 dark:bg-gray-700 text-gray-800 dark:text-white rounded-md hover:bg-gray-400 dark:hover:bg-gray-600 transition"
-                    >
-                      Cancel
-                    </button>
-                  </div>
                 </div>
-              ) : (
-                <span
-                  className="text-lg text-gray-800 dark:text-white/90 truncate flex-grow"
-                  title={label}
-                >
-                  {newLabel}
-                </span>
               )}
             </div>
-
-            {!isRenaming && (
-              <div className="shrink-0">
-                <ProjectAction
-                  icon={null}
-                  label=""
-                  onOpen={handleOpen}
-                  onRename={handleRename}
-                  onRemove={handleRemove}
-                />
-              </div>
-            )}
           </div>
-        </div>
-
-        <div className="my-2 border-t border-gray-300 dark:border-gray-700" />
-
-        <div className="mt-4 space-y-3 text-sm text-gray-500 dark:text-gray-400">
-          {createdAt && (
-            <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl dark:bg-gray-800 bg-blue-50">
-                <CalendarIcon className="w-6 h-6 text-blue-600 dark:text-white" />
-              </div>
-              <div className="text-black dark:text-gray-400">
-                Created at: {new Date(createdAt).toLocaleDateString()}
-              </div>
-            </div>
-          )}
-
-          {diskUsage && (
-            <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl dark:bg-gray-800 bg-gray-100">
-                <StorageIcon className="w-7 h-7 text-gray-600 dark:text-white" />
-              </div>
-              <div className="text-black dark:text-gray-400">{diskUsage}</div>
-            </div>
-          )}
 
           <div className="my-2 border-t border-gray-300 dark:border-gray-700" />
 
-          <div className="mt-2 ml-7">
-            <span className="text-sm text-gray-800 dark:text-white/90">
-              {value} protocols
-            </span>
+          {/* Body */}
+          <div className="mt-4 space-y-3 text-sm text-gray-500 dark:text-gray-400">
+            {createdAt && (
+              <div className="flex items-center gap-3">
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl dark:bg-gray-800 bg-blue-50">
+                  <CalendarIcon className="w-6 h-6 text-blue-600 dark:text-white" />
+                </div>
+                <div className="text-black dark:text-gray-400">
+                  Created at: {new Date(createdAt).toLocaleDateString()}
+                </div>
+              </div>
+            )}
+
+            {diskUsage && (
+              <div className="flex items-center gap-3">
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl dark:bg-gray-800 bg-gray-100">
+                  <StorageIcon className="w-7 h-7 text-gray-600 dark:text-white" />
+                </div>
+                <div className="inline-flex items-center justify-center rounded-full bg-gray-300 text-black text-xs px-2 py-1">
+                  {diskUsage}
+                </div>
+              </div>
+            )}
+
+            <div className="my-2 border-t border-gray-300 dark:border-gray-700" />
+
+            <div className="mt-2 ml-7">
+              <span className="text-sm text-gray-800 dark:text-white/90">
+                {value} protocols
+              </span>
+            </div>
           </div>
         </div>
       </motion.div>

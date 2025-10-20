@@ -8,6 +8,7 @@ import NewProjectModal from "@/components/projects/NewProjectModal";
 import { useProjectService } from "@/ProjectServiceContext";
 import type { ProjectService } from "@/services/ProjectService";
 import { Project } from "@/types/project";
+import { CloudDownload, Download, Import, PlusCircle } from "lucide-react";
 
 /**
  * Projects page: normaliza respuesta y usa el servicio inyectado.
@@ -134,19 +135,19 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
                 <ul className="text-sm text-gray-700 dark:text-gray-200">
                   <li className="px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer" onClick={() => { setShowDropdown(false); setShowCreate(true); }}>
                     <div className="flex items-center gap-2">
-                      <PlusIcon className="shrink-0 w-5 h-5 text-gray-500 dark:text-black-400" />
+                      <PlusCircle className="shrink-0 w-4 h-4 text-gray-500 dark:text-white" />
                       <span className="whitespace-nowrap">New project</span>
                     </div>
                   </li>
                   <li className="px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer" onClick={() => { setShowDropdown(false); console.log("Import Project"); }}>
                     <div className="flex items-center gap-2">
-                      <DownloadIcon className="shrink-0 w-5 h-5 text-gray-500 dark:text-black-400" />
+                      <Download className="shrink-0 w-4 h-4 text-gray-500 dark:text-white" />
                       <span className="whitespace-nowrap">Import project</span>
                     </div>
                   </li>
                   <li className="px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer" onClick={() => { setShowDropdown(false); console.log("Import Workflow"); }}>
                     <div className="flex items-center gap-2">
-                      <ImportIcon className="shrink-0 w-5 h-5 text-gray-500 dark:text-black-400" />
+                      <CloudDownload className="shrink-0 w-4 h-4 text-gray-500 dark:text-white" />
                       <span className="whitespace-nowrap">Import workflow</span>
                     </div>
                   </li>

@@ -1585,17 +1585,17 @@ export default function ProjectPage() {
         {/* TABLE */}
         <div
           ref={tableContainerRef}
-          className="absolute inset-0 overflow-auto border rounded shadow p-4 z-30 transition-opacity"
+          className="absolute inset-0 overflow-auto border rounded shadow p-3 z-30 transition-opacity"
           style={{ opacity: viewMode === "table" ? 1 : 0, pointerEvents: viewMode === "table" ? "auto" : "none" }}
           aria-hidden={viewMode !== "table"}
         >
-          <div className="flex justify-end mb-4 mr-1">
+          <div className="flex justify-end mb-4 mr-4">
             <button className="refresh-btn" title="Refresh project" onClick={handleRefresh} disabled={isRefreshing}>
               <RefreshCw className={`w-4 h-4 ${isRefreshing ? "animate-spin" : ""}`} />
             </button>
           </div>
 
-          <table className="w-full text-sm border border-gray-300 dark:border-gray-700">
+          <table className="cursor-pointer w-full text-sm border border-gray-300 dark:border-gray-700">
             <thead className="bg-gray-300 dark:bg-gray-800 font-normal">
               <tr>
                 <th className="px-4 py-2 text-left font-normal">Id</th>
@@ -1634,7 +1634,7 @@ export default function ProjectPage() {
                   onDoubleClick={() => handleRowDoubleClick(row.id)}
                   className={`border-t border-gray-200 dark:border-gray-700 ${highlightedId === row.id ? "bg-yellow-100 dark:bg-yellow-900" : ""}`}
                 >
-                  <td className="px-4 py-2">{row.id}</td>
+                  <td className="ml-2 mt-2 px-3 py-1 inline-flex items-center justify-center rounded-full bg-gray-200 text-black text-xs">{row.id}</td>
                   <td className="px-4 py-2">{row.label}</td>
                   <td className="px-4 py-2">
                     <div className="flex items-center justify-between">
@@ -1780,12 +1780,12 @@ export default function ProjectPage() {
       <AlertDialog open={confirm.open} onOpenChange={(open: boolean) => { if (!open) setConfirm({ open: false, id: null, ids: null, kind: null }); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>
+            <AlertDialogTitle className="mb-6">
               {confirm.kind === "delete" && "Delete protocol(s)?"}
               {confirm.kind === "restartAll" && "Restart all steps?"}
               {confirm.kind === "continueAll" && "Continue all steps?"}
             </AlertDialogTitle>
-            <AlertDialogDescription>
+            <AlertDialogDescription className="mb-5">
               {confirm.kind === "delete" && "This action cannot be undone. This will permanently remove the selected protocol(s) and outputs not used elsewhere."}
               {confirm.kind === "restartAll" && "All protocols will be restarted from this protocol, so the previous results will be deleted"}
               {confirm.kind === "continueAll" && "All protocols will continue for this protocol, so the previous results will be affected"}
