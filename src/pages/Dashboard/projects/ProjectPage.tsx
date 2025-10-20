@@ -109,6 +109,7 @@ export default function ProjectPage() {
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge[]>([]);
   const [tableData, setTableData] = useState<any[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const delayedRefreshTimerRef = useRef<number | null>(null);
 
   const [previousNodeId, setPreviousNodeId] = useState<string | null>(null);
   const selectedIdRef = useRef<string | null>(null);
@@ -619,7 +620,7 @@ export default function ProjectPage() {
       const positions = updated.map((n) => ({ id: n.id, position: n.position }));
       try {
         localStorage.setItem(`${localStorageKey}-${graphDirection}`, JSON.stringify(positions));
-      } catch {}
+      } catch { }
       return updated;
     });
   };
@@ -737,7 +738,7 @@ export default function ProjectPage() {
             const h = isFinite(minY) && isFinite(maxY) ? Math.abs(maxY - minY) : 0;
             if (valid >= 1 && (w > 1 || h > 1)) return resolve(true);
           }
-        } catch {}
+        } catch { }
         if (Date.now() - start > timeoutMs) return resolve(false);
         requestAnimationFrame(check);
       };
@@ -812,7 +813,7 @@ export default function ProjectPage() {
             try { centerLikeButton(nodesWithPositions, true, viewportRef.current.zoom); }
             finally {
               firstLoadRef.current = false;
-              if (observer) { try { observer.disconnect(); } catch {} observer = null; }
+              if (observer) { try { observer.disconnect(); } catch { } observer = null; }
               if (fallbackTimer) { clearTimeout(fallbackTimer); fallbackTimer = null; }
             }
           };
@@ -832,7 +833,7 @@ export default function ProjectPage() {
                 });
                 observer.observe(nodesContainer, { childList: true, subtree: true });
                 fallbackTimer = setTimeout(async () => {
-                  if (observer) { try { observer.disconnect(); } catch {} observer = null; }
+                  if (observer) { try { observer.disconnect(); } catch { } observer = null; }
                   await waitForNodesReady(nodesWithPositions.length, 2000);
                   doCenter();
                 }, 3000);
@@ -927,12 +928,21 @@ export default function ProjectPage() {
     return () => clearInterval(interval);
   }, []);
 
+  useEffect(() => {
+  return () => {
+    if (delayedRefreshTimerRef.current !== null) {
+      clearTimeout(delayedRefreshTimerRef.current);
+      delayedRefreshTimerRef.current = null;
+    }
+  };
+}, []);
+
   /* ------------------------ Reorganize ------------------------ */
   const handleReorganize = useCallback(
     async (opts?: { preserveZoom?: boolean }) => {
       if (!projectName) return;
       try {
-        try { localStorage.removeItem(`${localStorageKey}-${graphDirection}`); } catch {}
+        try { localStorage.removeItem(`${localStorageKey}-${graphDirection}`); } catch { }
         disablePersistenceRef.current = true;
         setHideGraphDuringCenter(true);
 
@@ -1362,7 +1372,7 @@ export default function ProjectPage() {
       inst.setViewport({ x: current.x, y: current.y, zoom: desiredZoom });
       const vp = inst.getViewport();
       setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
-    } catch {}
+    } catch { }
   }, []);
 
   const handleOnMoveEnd = useCallback((_: any, vp: { x: number; y: number; zoom: number }) => {
@@ -1534,6 +1544,18 @@ export default function ProjectPage() {
           data={selectedNodeDetails}
           projectProtocols={project?.protocols ?? project?.protocols ?? {}}
           onClose={handleCloseForm}
+          onExecuted={() => {
+            // Immediate refresh
+            handleRefreshRef.current?.();
+            // Schedule a second refresh after 5s; clear any previous pending one
+            if (delayedRefreshTimerRef.current !== null) {
+              clearTimeout(delayedRefreshTimerRef.current);
+            }
+            delayedRefreshTimerRef.current = window.setTimeout(() => {
+              // Safe lookup of the latest handleRefresh
+              handleRefreshRef.current?.();
+            }, 5000);
+          }}
         />
       )}
 

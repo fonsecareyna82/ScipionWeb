@@ -38,9 +38,10 @@ type ProtocolFormProps = {
   data: any;
   projectProtocols: any;
   onClose: () => void;
+  onExecuted?: () => void;
 };
 
-export default function ProtocolForm({ data, projectProtocols = [], onClose }: ProtocolFormProps) {
+export default function ProtocolForm({ data, projectProtocols = [], onClose, onExecuted, }: ProtocolFormProps) {
   const [topTab, setTopTab] = useState(0);
   const [bottomTab, setBottomTab] = useState(0);
   const [sectionTab, setSectionTab] = useState(0);
@@ -774,6 +775,7 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose }: P
       const protocolId = data.id ?? "";
       const serialized = getSerializedParams();
       await executeProtocol(protocolId, data.protocolClassName, serialized);
+      onExecuted?.();
       requestClose();
     } catch (err: any) {
       if (typeof err?.detail === "string") {
