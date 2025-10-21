@@ -19,7 +19,7 @@
 }
 
 .status-node.selected {
-  border: 2px solid #0070f3;
+  border: px solid #0070f3;
   box-shadow: 0 0 10px rgba(0, 112, 243, 0.5);
   z-index: 20;
 }
@@ -92,7 +92,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 1.9rem;
+  font-size: 1.8rem;
   font: normal;
 }
 
@@ -242,3 +242,51 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* === Footer stability: sin jitter ni micro-movimientos === */
+.node-card-footer {
+  /* Aísla el layout/pintado del footer para que el hover del nodo no lo afecte */
+  contain: layout paint;
+  transform: translateZ(0);
+  will-change: box-shadow, opacity;
+  font-variant-numeric: tabular-nums; /* dígitos de ancho fijo (pasos/tiempo) */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  min-height: 86px; /* estabiliza la altura (ajusta si usas otra) */
+}
+
+/* Evita que "transition-all" heredadas provoquen reflow en hover */
+.node-card-footer * {
+  transition-property: box-shadow, opacity, color, background-color !important;
+  transition-timing-function: ease !important;
+  /* No animamos transform en el footer para evitar subpixel jiggle */
+  transform: translateZ(0);
+  will-change: auto;
+}
+
+/* Mantén la transición solo en el ancho del relleno de la barra de progreso */
+.node-card-footer .w-16 .h-3 {
+  transition: width 500ms ease !important; /* en vez de transition-all */
+  transform: translateZ(0);
+  will-change: width;
+}
+
+/* El badge de estado no debe “flexear” su tamaño con hover */
+.node-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;   /* ancho estable, no crece/encoge por flex */
+  line-height: 1;   /* evita saltitos verticales de texto */
+}
+
+/* Los contadores/tiempos usan números tabulares siempre */
+.node-card-footer .text-3xl,
+.node-card-footer span {
+  font-variant-numeric: tabular-nums;
+}
+
+/* El halo exterior del nodo no debe forzar repintados del footer */
+.status-node-card::after {
+  contain: paint;
+  pointer-events: none;
+}

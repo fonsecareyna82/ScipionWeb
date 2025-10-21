@@ -154,7 +154,7 @@ export default function StatusNode({
   if (isSelected) {
     nodeStyle.borderColor = "#0070f3";
     nodeStyle.borderStyle = "solid";
-    nodeStyle.borderWidth = 5;
+    nodeStyle.borderWidth = 4;
   }
   if (inPathSelection) {
     nodeStyle.borderColor = "#cf0d2eff";
@@ -324,7 +324,7 @@ export default function StatusNode({
                         return (
                           <div
                             key={idx}
-                            className={`nodrag mt-3 group cursor-grab flex items-center px-3 py-1 rounded-full border border-gray-400 dark:border-gray-600 shadow-sm ${isDragging ? "scale-100 opacity-70" : "bg-gradient-to-r from-gray-200 to-gray-300 dark:from-gray-200 dark:to-gray-300"}`}
+                            className={`nodrag mt-3 group cursor-grab flex items-center px-3 py-1 rounded-full border border-gray-400 dark:border-gray-400 shadow-sm ${isDragging ? "scale-100 opacity-70" : "bg-gradient-to-r from-gray-200 to-gray-300 dark:from-gray-200 dark:to-gray-300"}`}
                             draggable
                             onMouseDown={(e) => {
                               // If you Ctrl/Cmd+click on the pill, we forward the click to the RF node.
@@ -392,7 +392,7 @@ export default function StatusNode({
                     backgroundColor: STATUS_BADGE_COLORS[data.status] || "#999",
                     color: "white",
                     minWidth: "120px",
-                    fontSize: "2rem",
+                    fontSize: "2.2rem",
                   }}
                 >
                   {data.status}
