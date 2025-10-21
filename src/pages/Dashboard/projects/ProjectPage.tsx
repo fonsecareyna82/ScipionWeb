@@ -95,6 +95,7 @@ type NodeActions = {
   onResetFrom?: (id: string) => void;
   onSelectFrom?: (id: string) => void;
   onSelectTo?: (id: string) => void;
+  onStop?: (id: string) => void;
 };
 
 export default function ProjectPage() {
@@ -491,6 +492,32 @@ export default function ProjectPage() {
     }
   };
 
+  // Stops multiple protocols in a single request (bulk).
+  const stopProtocolNow = async (ids: string[]) => {
+    if (!projectName) return;
+
+    const cleanIds = Array.from(new Set((ids ?? []).map(String)))
+      .filter((id) => id && id !== "PROJECT");
+
+    if (cleanIds.length === 0) return;
+
+    try {
+      await svc.stopProtocol(projectName, cleanIds);
+
+      toast.success(
+        cleanIds.length > 1
+          ? `Stop requested for ${cleanIds.length} protocols.`
+          : "Stop requested."
+      );
+
+      clearAllSelectionHard();
+      await handleRefresh();
+    } catch (e) {
+      console.error(e);
+      toast.error(getErrorMsg(e));
+    }
+  };
+
   const openRename = (id: string) => setDlgRename({ open: true, id, value: findNodeLabel(id) });
 
   const openDelete = (id: string) => {
@@ -504,6 +531,21 @@ export default function ProjectPage() {
   const openRestartAll = (id: string) => setConfirm({ open: true, id, ids: null, kind: "restartAll" });
   const openContinueAll = (id: string) => setConfirm({ open: true, id, ids: null, kind: "continueAll" });
   const openResetFrom = (id: string) => setDlgResetFrom({ open: true, id });
+
+  const openStop = (id: string) => {
+    console.log('openStop', id)
+    const ids =
+      pathSelRef.current.nodes.size > 0
+        ? Array.from(pathSelRef.current.nodes).map(String).filter((x) => x !== "PROJECT")
+        : [String(id)];
+
+    setConfirm({
+      open: true,
+      id: ids.length === 1 ? ids[0] : null,
+      ids: ids.length > 1 ? ids : null,
+      kind: "stop",
+    });
+  };
 
   /* -------- Build adjacency from edges -------- */
   const buildAdjacency = useCallback(() => {
@@ -591,6 +633,7 @@ export default function ProjectPage() {
       onResetFrom: openResetFrom,
       onSelectFrom: handleSelectFrom,
       onSelectTo: handleSelectTo,
+      onStop: openStop,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [handleSelectFrom, handleSelectTo, duplicateNow]);
@@ -929,13 +972,13 @@ export default function ProjectPage() {
   }, []);
 
   useEffect(() => {
-  return () => {
-    if (delayedRefreshTimerRef.current !== null) {
-      clearTimeout(delayedRefreshTimerRef.current);
-      delayedRefreshTimerRef.current = null;
-    }
-  };
-}, []);
+    return () => {
+      if (delayedRefreshTimerRef.current !== null) {
+        clearTimeout(delayedRefreshTimerRef.current);
+        delayedRefreshTimerRef.current = null;
+      }
+    };
+  }, []);
 
   /* ------------------------ Reorganize ------------------------ */
   const handleReorganize = useCallback(
@@ -1415,7 +1458,7 @@ export default function ProjectPage() {
   }, [setNodes, applyGenericSelectionFromSet, clearPathSelection, applyEdgeHighlight]);
 
   /* ------------------------ Dialogs + API ------------------------ */
-  type ConfirmKind = "delete" | "restartAll" | "continueAll";
+  type ConfirmKind = "delete" | "restartAll" | "continueAll" | "stop";
 
   const [dlgRename, setDlgRename] = useState<{ open: boolean; id: string | null; value: string }>({
     open: false, id: null, value: "",
@@ -1784,11 +1827,13 @@ export default function ProjectPage() {
               {confirm.kind === "delete" && "Delete protocol(s)?"}
               {confirm.kind === "restartAll" && "Restart all steps?"}
               {confirm.kind === "continueAll" && "Continue all steps?"}
+              {confirm.kind === "stop" && "Stop protocol(s)?"}
             </AlertDialogTitle>
             <AlertDialogDescription className="mb-5">
               {confirm.kind === "delete" && "This action cannot be undone. This will permanently remove the selected protocol(s) and outputs not used elsewhere."}
               {confirm.kind === "restartAll" && "All protocols will be restarted from this protocol, so the previous results will be deleted"}
               {confirm.kind === "continueAll" && "All protocols will continue for this protocol, so the previous results will be affected"}
+              {confirm.kind === "stop" && "This will attempt to gracefully stop the selected protocol(s). Running work may be interrupted."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1798,6 +1843,7 @@ export default function ProjectPage() {
             <AlertDialogAction
               onClick={async () => {
                 if (!projectName || !confirm.kind) return;
+                const kind = confirm.kind; // snapshot before state changes
                 try {
                   if (confirm.kind === "delete") {
                     const ids = confirm.ids ?? (confirm.id ? [confirm.id] : []);
@@ -1813,9 +1859,13 @@ export default function ProjectPage() {
                   } else if (confirm.kind === "continueAll" && confirm.id) {
                     await svc.continueAll(projectName, confirm.id);
                     toast.success("Continue started.");
+                  } else if (confirm.kind === "stop") {
+                    const ids = confirm.ids ?? (confirm.id ? [confirm.id] : []);
+                    if (ids.length === 0) return;
+                    await stopProtocolNow(ids); // already refreshes
                   }
                   setConfirm({ open: false, id: null, ids: null, kind: null });
-                  await handleRefresh();
+                  if (kind !== "stop") await handleRefresh();
                 } catch (e) {
                   console.error(e);
                   toast.error(getErrorMsg(e));
@@ -1823,7 +1873,13 @@ export default function ProjectPage() {
               }}
               className="rounded-full px-4 py-2 min-w-[140px] font-medium bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              {confirm.kind === "delete" ? "Delete" : confirm.kind === "restartAll" ? "Restart" : "Continue"}
+              {confirm.kind === "delete"
+                ? "Delete"
+                : confirm.kind === "restartAll"
+                  ? "Restart"
+                  : confirm.kind === "continueAll"
+                    ? "Continue"
+                    : "Stop"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

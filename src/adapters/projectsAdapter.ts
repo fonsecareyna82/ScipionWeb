@@ -82,6 +82,11 @@ const defaultService: ProjectService = {
     protocolId: string,
   ) => api.resetFrom(toId(projectId), toId(protocolId)),
 
+  stopProtocol: (
+    projectId: string,
+    ids: string[],
+  ) => api.stopProtocol(toId(projectId), ids),
+
 
 };
 

@@ -240,3 +240,19 @@ export async function resetFrom(projectId: Id, protocolId: Id): Promise<any> {
   if (!response.ok) throw await toApiError(response, "Failed to reset from protocol");
   return safeJson<any>(response);
 }
+
+
+/**
+ * Stop protocol(s).
+ */
+export async function stopProtocol(
+  projectId: Id,
+  ids: Id[]
+): Promise<void> {
+  const response = await fetchWithAuth(`${BASE_URL}/projects/${projectId}/protocols/stop`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ids: ids }),
+  });
+  if (!response.ok) throw await toApiError(response, "Failed to delete protocol(s)");
+}

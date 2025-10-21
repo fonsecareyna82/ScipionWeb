@@ -97,6 +97,7 @@ type StatusNodeProps = {
   onResetFrom?: (id: string) => void;
   onSelectFrom?: (id: string) => void;
   onSelectTo?: (id: string) => void;
+  onStop?: (id: string) => void;
 
   inPathSelection?: boolean;
   pathSelectionActive?: boolean;
@@ -127,6 +128,7 @@ export default function StatusNode({
   onResetFrom,
   onSelectFrom,
   onSelectTo,
+  onStop,
   inPathSelection = false,
   pathSelectionActive = false,
 }: StatusNodeProps) {
@@ -175,7 +177,7 @@ export default function StatusNode({
   const handleResetFrom = () => onResetFrom?.(data.id);
   const handleSelectFrom = () => { if (data.id !== "PROJECT") onSelectFrom?.(data.id); };
   const handleSelectTo = () => { if (data.id !== "PROJECT") onSelectTo?.(data.id); };
-
+  const handleStop = () => { if (data.id !== "PROJECT") onStop?.(data.id); console.log('Stop click', data.id) };
   /* If a selection (path or multi) is active, reduce menu to destructive/export ops. */
   const reduceMenus = pathSelectionActive || inPathSelection;
 
@@ -270,8 +272,8 @@ export default function StatusNode({
                         <ToIcon className="mr-2 h-4 w-4" /> Select to
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
-                      {data.status === "running" && (
-                        <DropdownMenuItem>
+                      {(data.status === "running" || data.status === "launched" || data.status === "scheduled") && (
+                        <DropdownMenuItem onSelect={handleStop}>
                           <Square className="mr-2 h-4 w-4" /> Stop
                         </DropdownMenuItem>
                       )}
@@ -287,6 +289,15 @@ export default function StatusNode({
                       <DropdownMenuSeparator />
                     </>
                   )}
+
+                  {reduceMenus && (data.status === "running" || data.status === "launched" || data.status === "scheduled") && (
+                    <>
+                      <DropdownMenuItem onSelect={handleStop}>
+                        <Square className="mr-2 h-4 w-4" /> Stop selection
+                      </DropdownMenuItem>
+                    </>
+                  )}
+
                   {/* Always visible */}
                   <DropdownMenuItem onClick={handleDelete}>
                     <Trash2 className="mr-2 h-4 w-4" /> Delete
@@ -456,8 +467,8 @@ export default function StatusNode({
               <ToIcon className="mr-2 h-4 w-4" /> Select to
             </ContextMenuItem>
             <ContextMenuSeparator />
-            {data.status === "running" && (
-              <ContextMenuItem>
+            {(data.status === "running" || data.status === "launched" || data.status === "scheduled") && (
+              <ContextMenuItem onClick={handleStop}>
                 <Square className="mr-2 h-4 w-4" /> Stop
               </ContextMenuItem>
             )}
@@ -473,6 +484,15 @@ export default function StatusNode({
             <ContextMenuSeparator />
           </>
         )}
+
+        {reduceMenus && (data.status === "running" || data.status === "launched" || data.status === "scheduled") && (
+          <>
+            <ContextMenuItem onClick={handleStop}>
+                <Square className="mr-2 h-4 w-4" /> Stop selection
+              </ContextMenuItem>
+          </>
+        )}
+
         {/* Always visible */}
         <ContextMenuItem onClick={handleDelete}>
           <Trash2 className="mr-2 h-4 w-4" /> Delete

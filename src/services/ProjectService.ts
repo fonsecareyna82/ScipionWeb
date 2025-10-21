@@ -57,5 +57,6 @@ export interface ProjectService<
   restartAll(projectId: Id, protocolId: Id): Promise<TProject>
   continueAll(projectId: Id, protocolId: Id): Promise<TProject>
   resetFrom(projectId: Id, protocolId: Id): Promise<TProject>
+  stopProtocol(projectId: Id, ids: string[]): Promise<TProject>
 }
 

@@ -11,6 +11,7 @@ type NodeActions = {
   onResetFrom?: (id: string) => void;
   onSelectFrom?: (id: string) => void;
   onSelectTo?: (id: string) => void;
+  onStop?: (id: string) => void;
 };
 
 export const createStatusNodeWrapper = (
@@ -66,6 +67,7 @@ export const createStatusNodeWrapper = (
           onResetFrom={actions.onResetFrom}
           onSelectFrom={actions.onSelectFrom}
           onSelectTo={actions.onSelectTo}
+          onStop={actions.onStop}
           // selection (path or multi)
           inPathSelection={inPathSelection}
           pathSelectionActive={pathSelectionActive}
