@@ -50,6 +50,7 @@ export interface ProjectService<
     params: Record<string, unknown>
   ): Promise<TProtocol>;
 
+  /** Protocol actions */
   renameProtocol(projectId: Id, protocolId: Id, newName: string): Promise<TProtocol>
   duplicateProtocol(projectId: Id, items: { id: string; name?: string }[],): Promise<TProtocol>
   deleteProtocol(projectId: Id, ids: string[]): Promise<TProtocol>

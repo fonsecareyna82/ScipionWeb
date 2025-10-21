@@ -92,7 +92,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 1.8rem;
+  font-size: 1.9rem;
   font: normal;
 }
 
@@ -180,3 +180,65 @@
   0% { left: -100%; }
   100% { left: 100%; }
 }
+
+.status-node-card {
+  position: relative;
+  backface-visibility: hidden;
+  will-change: box-shadow, filter;
+}
+
+.status-node-card::after {
+  content: "";
+  position: absolute;
+  inset: -2px;                 
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow: 0 0 0 0 rgba(59,130,246,0); 
+  transition: box-shadow 160ms ease-in-out;
+}
+
+.status-node-card:hover::after,
+.status-node-card.hovered::after {
+  box-shadow: 0 0 0 6px rgba(59,130,246,0.18);
+}
+
+.status-node-card:hover,
+.status-node-card.hovered {
+  box-shadow: 0 10px 24px rgba(0,0,0,.18);
+  filter: brightness(1.02) contrast(1.02);
+}
+
+.status-node-card:hover {
+  transform: none !important;
+}
+
+.status-node-card:hover,
+.status-node-card.hovered {
+  filter: none; 
+}
+
+.outputs-list .section-content .nodrag {
+  transition-property: box-shadow, opacity !important;
+  transition-duration: 160ms !important;
+  transition-timing-function: ease !important;
+
+  transform: translateZ(0);
+  will-change: box-shadow, opacity;
+  line-height: 1.2;   
+}
+
+.outputs-list .section-content .nodrag:hover {
+  box-shadow: 0 2px 6px rgba(0,0,0,.18);
+  opacity: 0.98;
+}
+
+.outputs-list .section-content {
+  contain: layout paint;
+}
+
+.outputs-list .section-content .nodrag,
+.outputs-list .section-content .nodrag * {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+

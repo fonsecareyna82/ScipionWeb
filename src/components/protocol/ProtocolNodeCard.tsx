@@ -143,8 +143,8 @@ export default function StatusNode({
   /* Base styling; outline is added when part of a selection set. */
   const classNames = [
     "status-node-card",
-    "rounded-2xl border transition-shadow transform",
-    isHovered ? "shadow-xl scale-[1.01]" : "shadow-md",
+    "rounded-2xl border transition-shadow",
+    isHovered ? "shadow-xl" : "shadow-md",
     isSelected
       ? "border-[3px] border-blue-600 shadow-[0_0_20px_rgba(59,130,246,0.5)]"
       : "border-gray-300",
@@ -324,19 +324,19 @@ export default function StatusNode({
                         return (
                           <div
                             key={idx}
-                            className={`nodrag mt-3 group cursor-grab flex items-center px-3 py-1 rounded-full border border-gray-400 dark:border-gray-600 shadow-sm hover:shadow-md transition-transform ${isDragging ? "scale-100 opacity-70" : "bg-gradient-to-r from-gray-200 to-gray-300 dark:from-gray-200 dark:to-gray-300"}`}
+                            className={`nodrag mt-3 group cursor-grab flex items-center px-3 py-1 rounded-full border border-gray-400 dark:border-gray-600 shadow-sm ${isDragging ? "scale-100 opacity-70" : "bg-gradient-to-r from-gray-200 to-gray-300 dark:from-gray-200 dark:to-gray-300"}`}
                             draggable
                             onMouseDown={(e) => {
-                              // Si se hace Ctrl/Cmd+click sobre el pill, reenviamos el click al nodo de RF.
+                              // If you Ctrl/Cmd+click on the pill, we forward the click to the RF node.
                               if (e.ctrlKey || e.metaKey) {
                                 e.preventDefault();
                                 e.stopPropagation();
                                 forwardClickToRFNode(e);
                               }
-                              // Si no, dejamos que actúe drag o el click normal (lo manejamos en onClick abajo)
+                              // If not, we let drag or normal click act (we handle it in onClick below)
                             }}
                             onClick={(e) => {
-                              // Click normal sobre el pill => queremos que cuente como click al nodo
+                              // Normal click on the pill => we want it to count as a click on the node
                               e.preventDefault();
                               e.stopPropagation();
                               forwardClickToRFNode(e);
@@ -372,7 +372,7 @@ export default function StatusNode({
                               setCurrentDraggedOutput(null);
                             }}
                           >
-                            <ArrowUpRight className="h-6 w-6 mr-2 text-black-700 dark:text-black" />
+                            <ArrowUpRight className="h-7 w-7 mr-2 text-black-700 dark:text-black" />
                             <span className="outputs dark:text-black">{value.info}</span>
                           </div>
                         );

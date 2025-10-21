@@ -45,6 +45,8 @@ export function createFlaskAdapter(baseUrl = "/api"): ProjectService {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ protocolId, protocolClassName, params }),
       }).then(json),
+
+      
   };
 }
 
