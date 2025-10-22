@@ -33,6 +33,8 @@ import {
   Square,
   ArrowLeft,
   ArrowRight,
+  ArrowDown,
+  ArrowUp,
 } from "lucide-react";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -182,8 +184,8 @@ export default function StatusNode({
   const reduceMenus = pathSelectionActive || inPathSelection;
 
   // Choose icons based on graphDirection
-  const FromIcon = graphDirection === "TB" ? ArrowDownLeft : ArrowRight;
-  const ToIcon = graphDirection === "TB" ? ArrowUpRight : ArrowLeft;
+  const FromIcon = graphDirection === "TB" ? ArrowDown : ArrowRight;
+  const ToIcon = graphDirection === "TB" ? ArrowUp : ArrowLeft;
 
   /**
    * Forward a synthetic click (o ctrl-click) al wrapper de React Flow
@@ -211,6 +213,9 @@ export default function StatusNode({
     nodeEl.dispatchEvent(new MouseEvent("click", opts));
   };
 
+  const truncateLabel = (text: string = "", max: number = 32) =>
+    text.length > max ? `${text.slice(0, max)}…` : text;
+
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
@@ -237,9 +242,16 @@ export default function StatusNode({
                   <span>{data.id}</span>
                 </div>
               )}
-              <div className={data.id === "PROJECT" ? "text-4xl text-black" : "node-label dark:text-black"} style={isCompactView ? { fontSize: "2.8rem" } : {}}>
-                <div className={`node-label dark:text-black ${isCompactView ? "compact" : ""}`} title={data.label}>
-                  {data.label}
+              <div
+                className={data.id === "PROJECT" ? "text-4xl text-black" : "node-label dark:text-black"}
+                style={isCompactView ? { fontSize: "2.8rem" } : {}}
+              >
+                <div
+                  className={`node-label dark:text-black ${isCompactView ? "compact" : ""}`}
+                  title={data.label} // tooltip
+                >
+                  {truncateLabel(data.label, data.id === "PROJECT" ? 60 : (isCompactView ? 30 : 38)
+                  )}
                 </div>
               </div>
             </div>
@@ -384,7 +396,7 @@ export default function StatusNode({
                             }}
                           >
                             <ArrowUpRight className="h-7 w-7 mr-2 text-black-700 dark:text-black" />
-                            <span className="outputs dark:text-black">{value.info}</span>
+                            <span className="outputs dark:text-black mt-1">{value.info}</span>
                           </div>
                         );
                       })}
@@ -488,8 +500,8 @@ export default function StatusNode({
         {reduceMenus && (data.status === "running" || data.status === "launched" || data.status === "scheduled") && (
           <>
             <ContextMenuItem onClick={handleStop}>
-                <Square className="mr-2 h-4 w-4" /> Stop selection
-              </ContextMenuItem>
+              <Square className="mr-2 h-4 w-4" /> Stop selection
+            </ContextMenuItem>
           </>
         )}
 
