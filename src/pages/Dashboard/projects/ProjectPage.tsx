@@ -3,6 +3,7 @@ import React, {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   useTransition,
@@ -109,6 +110,15 @@ export default function ProjectPage() {
   const [nodes, setNodes, onNodesChange] = useNodesState<StatusNodeData>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge[]>([]);
   const [tableData, setTableData] = useState<any[]>([]);
+  const sortedTableData = useMemo(() => {
+    if (!Array.isArray(tableData)) return [];
+    return [...tableData].sort((a, b) => {
+      const aId = Number(a?.id);
+      const bId = Number(b?.id);
+      if (!Number.isNaN(aId) && !Number.isNaN(bId)) return bId - aId;
+      return String(b?.id ?? "").localeCompare(String(a?.id ?? ""));
+    });
+  }, [tableData]);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const delayedRefreshTimerRef = useRef<number | null>(null);
 
@@ -1649,7 +1659,7 @@ export default function ProjectPage() {
               </tr>
             </thead>
             <tbody>
-              {tableData.map((row) => (
+              {sortedTableData.map((row) => (
                 <tr
                   key={row.id}
                   ref={(el) => { rowRefs.current[row.id] = el; }}

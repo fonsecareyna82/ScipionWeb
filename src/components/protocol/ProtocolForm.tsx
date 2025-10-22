@@ -333,109 +333,109 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose, onE
   // Incremental log polling 
   // --------------------------------------------
   useEffect(() => {
-  // Clear any previous interval before starting a new polling cycle
-  if (pollRef.current) {
-    clearInterval(pollRef.current);
-    pollRef.current = null;
-  }
-
-  // Minimal conditions to enable polling
-  if (topTab !== 4 || !data?.projectId || !data?.id) return;
-
-  let cancelled = false;
-  idleStreakRef.current = 0;
-
-  // 1) Initial load from offset 0 (stdout/stderr/schedule)
-  (async () => {
-    try {
-      const res: any = await fetchProtocolLogsStream(data.projectId, data.id, 0, 0, 0);
-      if (cancelled) return;
-
-      // Keep field names consistent: scheduleLog / scheduleOffset
-      setLogs(res.stdoutLog ?? "");
-      setErrorLogs(res.stderrLog ?? "");
-      setScheduleLogs(res.scheduleLog ?? "");
-
-      // Seed offsets: prefer server offsets; otherwise fallback to current chunk length
-      offsetRef.current = typeof res.stdoutOffset === "number"
-        ? res.stdoutOffset
-        : (typeof res.stdoutLog === "string" ? res.stdoutLog.length : 0);
-
-      errorOffsetRef.current = typeof res.stderrOffset === "number"
-        ? res.stderrOffset
-        : (typeof res.stderrLog === "string" ? res.stderrLog.length : 0);
-
-      scheduleOffsetRef.current = typeof res.scheduleOffset === "number"
-        ? res.scheduleOffset
-        : (typeof res.scheduleLog === "string" ? res.scheduleLog.length : 0);
-    } catch (err: any) {
-      if (!cancelled) setLogsError(err.message || "Failed to load logs");
-    }
-  })();
-
-  // 2) Incremental polling every 2s
-  pollRef.current = setInterval(async () => {
-    try {
-      const res: any = await fetchProtocolLogsStream(
-        data.projectId,
-        data.id,
-        offsetRef.current || 0,
-        errorOffsetRef.current || 0,
-        scheduleOffsetRef.current || 0
-      );
-      if (cancelled) return;
-
-      let gotNew = false;
-
-      // Consider "new data" only when string length > 0
-      const hasStdout = typeof res.stdoutLog === "string" && res.stdoutLog.length > 0;
-      const hasStderr = typeof res.stderrLog === "string" && res.stderrLog.length > 0;
-      const hasSched  = typeof res.scheduleLog === "string" && res.scheduleLog.length > 0;
-
-      // Advance offset only if server offset is a number and strictly increases
-      if (hasStdout && typeof res.stdoutOffset === "number" && res.stdoutOffset > offsetRef.current) {
-        setLogs((prev) => prev + res.stdoutLog);
-        offsetRef.current = res.stdoutOffset;
-        gotNew = true;
-      }
-
-      if (hasStderr && typeof res.stderrOffset === "number" && res.stderrOffset > errorOffsetRef.current) {
-        setErrorLogs((prev) => prev + res.stderrLog);
-        errorOffsetRef.current = res.stderrOffset;
-        gotNew = true;
-      }
-
-      if (hasSched && typeof res.scheduleOffset === "number" && res.scheduleOffset > scheduleOffsetRef.current) {
-        setScheduleLogs((prev) => prev + res.scheduleLog);
-        scheduleOffsetRef.current = res.scheduleOffset;
-        gotNew = true;
-      }
-
-      // Stop polling after 2 idle cycles if status is terminal
-      if (isTerminalStatus(protocolDetails.status)) {
-        idleStreakRef.current = gotNew ? 0 : idleStreakRef.current + 1;
-        if (idleStreakRef.current >= 2 && pollRef.current) {
-          clearInterval(pollRef.current);
-          pollRef.current = null;
-        }
-      } else {
-        // Non-terminal: keep polling; reset idle streak if we got something
-        if (gotNew) idleStreakRef.current = 0;
-      }
-    } catch (err: any) {
-      if (!cancelled) setLogsError(err.message || "Failed to load logs");
-    }
-  }, 2000);
-
-  // Cleanup on tab exit or unmount
-  return () => {
-    cancelled = true;
+    // Clear any previous interval before starting a new polling cycle
     if (pollRef.current) {
       clearInterval(pollRef.current);
       pollRef.current = null;
     }
-  };
-}, [topTab, data?.projectId, data?.id, protocolDetails.status]);
+
+    // Minimal conditions to enable polling
+    if (topTab !== 4 || !data?.projectId || !data?.id) return;
+
+    let cancelled = false;
+    idleStreakRef.current = 0;
+
+    // 1) Initial load from offset 0 (stdout/stderr/schedule)
+    (async () => {
+      try {
+        const res: any = await fetchProtocolLogsStream(data.projectId, data.id, 0, 0, 0);
+        if (cancelled) return;
+
+        // Keep field names consistent: scheduleLog / scheduleOffset
+        setLogs(res.stdoutLog ?? "");
+        setErrorLogs(res.stderrLog ?? "");
+        setScheduleLogs(res.scheduleLog ?? "");
+
+        // Seed offsets: prefer server offsets; otherwise fallback to current chunk length
+        offsetRef.current = typeof res.stdoutOffset === "number"
+          ? res.stdoutOffset
+          : (typeof res.stdoutLog === "string" ? res.stdoutLog.length : 0);
+
+        errorOffsetRef.current = typeof res.stderrOffset === "number"
+          ? res.stderrOffset
+          : (typeof res.stderrLog === "string" ? res.stderrLog.length : 0);
+
+        scheduleOffsetRef.current = typeof res.scheduleOffset === "number"
+          ? res.scheduleOffset
+          : (typeof res.scheduleLog === "string" ? res.scheduleLog.length : 0);
+      } catch (err: any) {
+        if (!cancelled) setLogsError(err.message || "Failed to load logs");
+      }
+    })();
+
+    // 2) Incremental polling every 2s
+    pollRef.current = setInterval(async () => {
+      try {
+        const res: any = await fetchProtocolLogsStream(
+          data.projectId,
+          data.id,
+          offsetRef.current || 0,
+          errorOffsetRef.current || 0,
+          scheduleOffsetRef.current || 0
+        );
+        if (cancelled) return;
+
+        let gotNew = false;
+
+        // Consider "new data" only when string length > 0
+        const hasStdout = typeof res.stdoutLog === "string" && res.stdoutLog.length > 0;
+        const hasStderr = typeof res.stderrLog === "string" && res.stderrLog.length > 0;
+        const hasSched = typeof res.scheduleLog === "string" && res.scheduleLog.length > 0;
+
+        // Advance offset only if server offset is a number and strictly increases
+        if (hasStdout && typeof res.stdoutOffset === "number" && res.stdoutOffset > offsetRef.current) {
+          setLogs((prev) => prev + res.stdoutLog);
+          offsetRef.current = res.stdoutOffset;
+          gotNew = true;
+        }
+
+        if (hasStderr && typeof res.stderrOffset === "number" && res.stderrOffset > errorOffsetRef.current) {
+          setErrorLogs((prev) => prev + res.stderrLog);
+          errorOffsetRef.current = res.stderrOffset;
+          gotNew = true;
+        }
+
+        if (hasSched && typeof res.scheduleOffset === "number" && res.scheduleOffset > scheduleOffsetRef.current) {
+          setScheduleLogs((prev) => prev + res.scheduleLog);
+          scheduleOffsetRef.current = res.scheduleOffset;
+          gotNew = true;
+        }
+
+        // Stop polling after 2 idle cycles if status is terminal
+        if (isTerminalStatus(protocolDetails.status)) {
+          idleStreakRef.current = gotNew ? 0 : idleStreakRef.current + 1;
+          if (idleStreakRef.current >= 2 && pollRef.current) {
+            clearInterval(pollRef.current);
+            pollRef.current = null;
+          }
+        } else {
+          // Non-terminal: keep polling; reset idle streak if we got something
+          if (gotNew) idleStreakRef.current = 0;
+        }
+      } catch (err: any) {
+        if (!cancelled) setLogsError(err.message || "Failed to load logs");
+      }
+    }, 2000);
+
+    // Cleanup on tab exit or unmount
+    return () => {
+      cancelled = true;
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+    };
+  }, [topTab, data?.projectId, data?.id, protocolDetails.status]);
 
 
   // --------------------------------------------
@@ -999,6 +999,8 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose, onE
             <TextField
               size="small"
               value={value ?? def.default ?? ""}
+              InputProps={{ readOnly: true }}
+              onClick={() => handleOpenFind(key)}
               onChange={(e) =>
                 setProtocolDetails((prev: any) => ({
                   ...prev,
@@ -1012,7 +1014,17 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose, onE
                   },
                 }))
               }
-              sx={{ minWidth: 300, "& .MuiInputBase-input": { fontSize: "0.8rem" } }}
+              sx={{
+                minWidth: 300,
+                "& .MuiInputBase-input": {
+                  fontSize: "0.8rem",
+                  userSelect: "none",
+                  cursor: "pointer",           
+                },
+                "& .MuiInputBase-input:active": {
+                  cursor: "grabbing",          
+                },
+              }}
             />
           </Box>
         );
