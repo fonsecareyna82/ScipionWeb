@@ -119,7 +119,7 @@ export default function StatusNode({
   onClick,
   onDoubleClick,
   zoomLevel = 0.6,
-  compactThreshold = 0.3,
+  compactThreshold = 0.28,
   onEdit,
   onRename,
   onDuplicate,
