@@ -250,7 +250,7 @@ export default function StatusNode({
                   className={`node-label dark:text-black ${isCompactView ? "compact" : ""}`}
                   title={data.label} // tooltip
                 >
-                  {truncateLabel(data.label, data.id === "PROJECT" ? 60 : (isCompactView ? 30 : 38)
+                  {truncateLabel(data.label, data.id === "PROJECT" ? 60 : (isCompactView ? 30 : 35)
                   )}
                 </div>
               </div>

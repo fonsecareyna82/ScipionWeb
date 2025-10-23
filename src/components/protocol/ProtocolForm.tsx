@@ -39,9 +39,17 @@ type ProtocolFormProps = {
   projectProtocols: any;
   onClose: () => void;
   onExecuted?: () => void;
+  /** Presentation variant: "drawer" (default) slides in from the right; "docked" fills its parent panel. */
+  variant?: "drawer" | "docked";
 };
 
-export default function ProtocolForm({ data, projectProtocols = [], onClose, onExecuted, }: ProtocolFormProps) {
+export default function ProtocolForm({
+  data,
+  projectProtocols = [],
+  onClose,
+  onExecuted,
+  variant = "drawer",
+}: ProtocolFormProps) {
   const [topTab, setTopTab] = useState(0);
   const [bottomTab, setBottomTab] = useState(0);
   const [sectionTab, setSectionTab] = useState(0);
@@ -85,9 +93,10 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose, onE
   // Tracks last committed label for inputType to detect user changes
   const prevSelectedInputTypeRef = useRef<string | null>(null);
 
-  // Call this instead of onClose() directly to play exit animation
+  // Use this instead of onClose() directly to play exit animation
   const requestClose = () => setIsClosing(true);
   const handleAnimationEnd = () => {
+    // Only propagate close to parent after the exit animation completes
     if (isClosing) onClose();
   };
 
@@ -131,7 +140,7 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose, onE
     return state.editableValue ?? "";
   };
 
-  // ---------- ExpertLevel helpers ----------
+  // ---------- Expert-level helpers ----------
   // Find the 'expertLevel' EnumParam (usually in "General" section)
   const findGeneralExpertLocator = useCallback(() => {
     if (!data?.expertLevel || !Array.isArray(data?.definition)) return null;
@@ -267,7 +276,7 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose, onE
   }
 
   // --------------------------------------------
-  // Load initial params and details (no side-effects on inputSets)
+  // Load initial params and details (no side effects on inputSets)
   // --------------------------------------------
   useEffect(() => {
     if (!data) {
@@ -446,7 +455,7 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose, onE
     containerRef.current.scrollTop = containerRef.current.scrollHeight;
   }, [logs]);
 
-  // Autoscroll on new errores logs
+  // Autoscroll on new error logs
   useEffect(() => {
     if (!errorContainerRef.current) return;
     errorContainerRef.current.scrollTop = errorContainerRef.current.scrollHeight;
@@ -1321,8 +1330,12 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose, onE
   // --------------------------------------------
   // JSX Layout
   // --------------------------------------------
+  const presentationClass = (variant === "docked" ? "as-docked" : "");
   return (
-    <div className={`protocol-form ${isClosing ? "slide-out-right" : "slide-in-right"}`} onAnimationEnd={handleAnimationEnd}>
+    <div
+      className={`protocol-form ${presentationClass} ${isClosing ? "slide-out-right" : "slide-in-right"}`}
+      onAnimationEnd={handleAnimationEnd}
+    >
       {/* HEADER */}
       <div className="form-header">
         <div className="form-title-wrapper">

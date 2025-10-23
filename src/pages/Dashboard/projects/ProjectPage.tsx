@@ -99,13 +99,18 @@ type NodeActions = {
   onStop?: (id: string) => void;
 };
 
+/** Represents a single docked ProtocolForm */
+type OpenForm = { key: string; id: string; details: any };
+
 export default function ProjectPage() {
   const { projectName } = useParams<{ projectName: string }>();
   const svc = useProjectService();
 
   const [project, setProject] = useState<Project | undefined>(undefined);
-  const [selectedNodeDetails, setSelectedNodeDetails] = useState<any>(null);
   const [isLoadingProject, setIsLoadingProject] = useState(true);
+
+  // Multi-form dock state
+  const [openForms, setOpenForms] = useState<OpenForm[]>([]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState<StatusNodeData>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge[]>([]);
@@ -431,131 +436,48 @@ export default function ProjectPage() {
     );
   };
 
+  // Open or focus a form for a node; fetch details only when needed
+  const openFormForNode = useCallback(async (nodeId: string, fetcher: () => Promise<any>) => {
+    if (!projectName) return;
+
+    // Move existing form to the end (front-most position)
+    let alreadyOpen = false;
+    setOpenForms((prev) => {
+      const hit = prev.find((f) => f.id === String(nodeId));
+      if (hit) {
+        alreadyOpen = true;
+        return [...prev.filter((f) => f.id !== String(nodeId)), hit];
+      }
+      return prev;
+    });
+
+    // Keep selection/highlight consistent with the open/focus action
+    selectedIdRef.current = String(nodeId);
+    setPreviousNodeId(String(nodeId));
+    setHighlightedId(String(nodeId));
+    applyEdgeHighlight(String(nodeId));
+
+    if (alreadyOpen) return;
+
+    try {
+      const details = await fetcher();
+      setOpenForms((prev) => [
+        ...prev,
+        { key: `${nodeId}-${Date.now()}`, id: String(nodeId), details },
+      ]);
+    } catch (err) {
+      console.error("openFormForNode failed", err);
+    }
+  }, [projectName, applyEdgeHighlight]);
+
   const handleNodeDoubleClick = async (nodeData: any) => {
     if (!projectName) return;
-    try {
-      const fullNodeData = await svc.fetchProtocolDetails(projectName, nodeData.id);
-      const id = String(nodeData.id);
-      selectedIdRef.current = id;
-      setSelectedNodeDetails(fullNodeData);
-      setPreviousNodeId(id);
-      setHighlightedId(id);
-      applyEdgeHighlight(id);
-    } catch (err) {
-      console.error("Failed to fetch protocol details", err);
-    }
+    await openFormForNode(String(nodeData.id), () => svc.fetchProtocolDetails(projectName, nodeData.id));
   };
 
-  const handleCloseForm = () => setSelectedNodeDetails(null);
-
-  /* --------------------- Wrapper plumbing --------------------- */
-  const onClickRef = useRef(handleNodeClick);
-  const onDblClickRef = useRef(handleNodeDoubleClick);
-  const prevIdRef = useRef<string | null>(null);
-  const hoveredIdRef = useRef<string | null>(null);
-  const graphDirRef = useRef<"TB" | "LR">(graphDirection);
-
-  useEffect(() => { onClickRef.current = handleNodeClick; }, [handleNodeClick]);
-  useEffect(() => { onDblClickRef.current = handleNodeDoubleClick; }, [handleNodeDoubleClick]);
-  useEffect(() => { prevIdRef.current = previousNodeId; }, [previousNodeId]);
-  useEffect(() => { hoveredIdRef.current = hoveredNodeId; }, [hoveredNodeId]);
-  useEffect(() => { graphDirRef.current = graphDirection; }, [graphDirection]);
-
-  const nodeActionsRef = useRef<NodeActions>({});
-
-  /* Error helper */
-  const getErrorMsg = (e: any) => {
-    if (e && typeof e === "object") {
-      const status = (e as any).status;
-      const data = (e as any).data;
-      if (status === 500) return (data?.detail as string) || (e.message as string) || "Server error";
-      return (data?.message as string) || (e.message as string) || "Operation failed";
-    }
-    return "Operation failed";
-  };
-
-  const getNodeLabelById = (id: string) => {
-    const node = nodesRef.current.find((n) => n.id === id);
-    return ((node as any)?.data?.label as string) || id;
-  };
-
-  const genCopyName = (id: string) => {
-    const label = getNodeLabelById(id);
-    const normalized = String(label).trim().replace(/\s+/g, "_").replace(/[^\w.-]/g, "");
-    return `${normalized}_copy_${Date.now().toString().slice(-5)}`;
-  };
-
-  const duplicateNow = async (ids: string[]) => {
-    if (!projectName) return;
-    const cleanIds = ids.filter((i) => i && i !== "PROJECT");
-    if (cleanIds.length === 0) return;
-    try {
-      const items = cleanIds.map((id) => ({ id, name: genCopyName(id) }));
-      await svc.duplicateProtocol(projectName, items);
-      toast.success(cleanIds.length > 1 ? "Protocols duplicated successfully." : "Protocol duplicated successfully.");
-
-      clearAllSelectionHard();
-      await handleRefresh();
-    } catch (e) {
-      console.error(e);
-      toast.error(getErrorMsg(e));
-    }
-  };
-
-  // Stops multiple protocols in a single request (bulk).
-  const stopProtocolNow = async (ids: string[]) => {
-    if (!projectName) return;
-
-    const cleanIds = Array.from(new Set((ids ?? []).map(String)))
-      .filter((id) => id && id !== "PROJECT");
-
-    if (cleanIds.length === 0) return;
-
-    try {
-      await svc.stopProtocol(projectName, cleanIds);
-
-      toast.success(
-        cleanIds.length > 1
-          ? `Stop requested for ${cleanIds.length} protocols.`
-          : "Stop requested."
-      );
-
-      clearAllSelectionHard();
-      await handleRefresh();
-    } catch (e) {
-      console.error(e);
-      toast.error(getErrorMsg(e));
-    }
-  };
-
-  const openRename = (id: string) => setDlgRename({ open: true, id, value: findNodeLabel(id) });
-
-  const openDelete = (id: string) => {
-    const selected =
-      pathSelRef.current.nodes.size > 0
-        ? Array.from(pathSelRef.current.nodes).map(String).filter((x) => x !== "PROJECT")
-        : [String(id)];
-    setConfirm({ open: true, id: null, ids: selected, kind: "delete" });
-  };
-
-  const openRestartAll = (id: string) => setConfirm({ open: true, id, ids: null, kind: "restartAll" });
-  const openContinueAll = (id: string) => setConfirm({ open: true, id, ids: null, kind: "continueAll" });
-  const openResetFrom = (id: string) => setDlgResetFrom({ open: true, id });
-
-  const openStop = (id: string) => {
-    console.log('openStop', id)
-    const ids =
-      pathSelRef.current.nodes.size > 0
-        ? Array.from(pathSelRef.current.nodes).map(String).filter((x) => x !== "PROJECT")
-        : [String(id)];
-
-    setConfirm({
-      open: true,
-      id: ids.length === 1 ? ids[0] : null,
-      ids: ids.length > 1 ? ids : null,
-      kind: "stop",
-    });
-  };
+  const closeFormByKey = useCallback((key: string) => {
+    setOpenForms((prev) => prev.filter((f) => f.key !== key));
+  }, []);
 
   /* -------- Build adjacency from edges -------- */
   const buildAdjacency = useCallback(() => {
@@ -646,7 +568,7 @@ export default function ProjectPage() {
       onStop: openStop,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [handleSelectFrom, handleSelectTo, duplicateNow]);
+  }, [handleSelectFrom, handleSelectTo]);
 
   const nodeTypesRef = useRef<Record<string, any> | null>(null);
   if (!nodeTypesRef.current) {
@@ -812,7 +734,7 @@ export default function ProjectPage() {
           data.shortName, data.protocols, viewMode, graphDirection
         );
 
-        // ⚠️ En vista TABLE: NO toques nodes/edges ni la selección
+        // ⚠️ In TABLE view, do not touch graph/selection. Only update table.
         if (viewMode === "table") {
           startTransition(() => setTableData(table ?? []));
           setIsLoadingProject(false);
@@ -927,7 +849,7 @@ export default function ProjectPage() {
           data.shortName, data.protocols, viewMode, graphDirection
         );
 
-        // ⚠️ En vista TABLE: NO toques nodes/edges ni selección, solo la tabla
+        // ⚠️ TABLE view: do not touch graph/selection; only update the table
         if (viewMode === "table") {
           startTransition(() => setTableData(table ?? []));
           setIsRefreshing(false);
@@ -1011,7 +933,7 @@ export default function ProjectPage() {
           data.shortName, data.protocols, viewMode, graphDirection
         );
 
-        // ⚠️ Si estás en TABLE, no reorganizamos el grafo ni tocamos selección
+        // ⚠️ TABLE view: only update the table, keep selection intact
         if (viewMode === "table") {
           startTransition(() => setTableData(table ?? []));
           disablePersistenceRef.current = false;
@@ -1113,7 +1035,7 @@ export default function ProjectPage() {
     if (!layoutChanged) return;
     if (!project?.protocols) { prevLayout.current = { viewMode, graphDirection }; return; }
 
-    // ✅ Si vamos a TABLE, no tocar grafo ni selección; solo gestionar overlay y highlight
+    // ✅ If switching to TABLE, only manage overlay/highlight; do not touch graph
     if (viewMode === "table") {
       setIsSwitchingLayout(true);
       requestAnimationFrame(() => setTimeout(() => setIsSwitchingLayout(false), 60));
@@ -1122,7 +1044,7 @@ export default function ProjectPage() {
       return;
     }
 
-    // Vista jerárquica: sí actualizamos grafo
+    // Hierarchical view: update graph
     const instance = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
     if (!instance) { prevLayout.current = { viewMode, graphDirection }; return; }
 
@@ -1373,15 +1295,7 @@ export default function ProjectPage() {
 
   const handleRowDoubleClick = async (id: string) => {
     if (!projectName) return;
-    try {
-      const fullNodeData = await svc.fetchProtocolDetails(projectName, id);
-      setHighlightedId(id);
-      setSelectedNodeDetails(fullNodeData);
-      setPreviousNodeId(id);
-      applyEdgeHighlight(id);
-    } catch (err) {
-      console.error(err);
-    }
+    await openFormForNode(String(id), () => svc.fetchProtocolDetails(projectName, id));
   };
 
   const findNodeLabel = (id: string) => {
@@ -1486,6 +1400,99 @@ export default function ProjectPage() {
     open: false, id: null, ids: null, kind: null,
   });
 
+  // Error helper
+  const getErrorMsg = (e: any) => {
+    if (e && typeof e === "object") {
+      const status = (e as any).status;
+      const data = (e as any).data;
+      if (status === 500) return (data?.detail as string) || (e.message as string) || "Server error";
+      return (data?.message as string) || (e.message as string) || "Operation failed";
+    }
+    return "Operation failed";
+  };
+
+  const getNodeLabelById = (id: string) => {
+    const node = nodesRef.current.find((n) => n.id === id);
+    return ((node as any)?.data?.label as string) || id;
+  };
+
+  const genCopyName = (id: string) => {
+    const label = getNodeLabelById(id);
+    const normalized = String(label).trim().replace(/\s+/g, "_").replace(/[^\w.-]/g, "");
+    return `${normalized}_copy_${Date.now().toString().slice(-5)}`;
+  };
+
+  const duplicateNow = async (ids: string[]) => {
+    if (!projectName) return;
+    const cleanIds = ids.filter((i) => i && i !== "PROJECT");
+    if (cleanIds.length === 0) return;
+    try {
+      const items = cleanIds.map((id) => ({ id, name: genCopyName(id) }));
+      await svc.duplicateProtocol(projectName, items);
+      toast.success(cleanIds.length > 1 ? "Protocols duplicated successfully." : "Protocol duplicated successfully.");
+
+      clearAllSelectionHard();
+      await handleRefresh();
+    } catch (e) {
+      console.error(e);
+      toast.error(getErrorMsg(e));
+    }
+  };
+
+  // Stops multiple protocols in a single request (bulk).
+  const stopProtocolNow = async (ids: string[]) => {
+    if (!projectName) return;
+
+    const cleanIds = Array.from(new Set((ids ?? []).map(String)))
+      .filter((id) => id && id !== "PROJECT");
+
+    if (cleanIds.length === 0) return;
+
+    try {
+      await svc.stopProtocol(projectName, cleanIds);
+
+      toast.success(
+        cleanIds.length > 1
+          ? `Stop requested for ${cleanIds.length} protocols.`
+          : "Stop requested."
+      );
+
+      clearAllSelectionHard();
+      await handleRefresh();
+    } catch (e) {
+      console.error(e);
+      toast.error(getErrorMsg(e));
+    }
+  };
+
+  const openRename = (id: string) => setDlgRename({ open: true, id, value: findNodeLabel(id) });
+
+  const openDelete = (id: string) => {
+    const selected =
+      pathSelRef.current.nodes.size > 0
+        ? Array.from(pathSelRef.current.nodes).map(String).filter((x) => x !== "PROJECT")
+        : [String(id)];
+    setConfirm({ open: true, id: null, ids: selected, kind: "delete" });
+  };
+
+  const openRestartAll = (id: string) => setConfirm({ open: true, id, ids: null, kind: "restartAll" });
+  const openContinueAll = (id: string) => setConfirm({ open: true, id, ids: null, kind: "continueAll" });
+  const openResetFrom = (id: string) => setDlgResetFrom({ open: true, id });
+
+  const openStop = (id: string) => {
+    const ids =
+      pathSelRef.current.nodes.size > 0
+        ? Array.from(pathSelRef.current.nodes).map(String).filter((x) => x !== "PROJECT")
+        : [String(id)];
+
+    setConfirm({
+      open: true,
+      id: ids.length === 1 ? ids[0] : null,
+      ids: ids.length > 1 ? ids : null,
+      kind: "stop",
+    });
+  };
+
   const submitRename = async () => {
     if (!projectName || !dlgRename.id || !dlgRename.value.trim()) return;
     const id = dlgRename.id;
@@ -1524,6 +1531,21 @@ export default function ProjectPage() {
   }, []);
   const handleFitView = useCallback(() => { centerLikeButton(undefined, true); }, [centerLikeButton]);
 
+  /* ------------------------ Wrapper plumbing (unchanged) ------------------------ */
+  const onClickRef = useRef(handleNodeClick);
+  const onDblClickRef = useRef(handleNodeDoubleClick);
+  const prevIdRef = useRef<string | null>(null);
+  const hoveredIdRef = useRef<string | null>(null);
+  const graphDirRef = useRef<"TB" | "LR">(graphDirection);
+
+  useEffect(() => { onClickRef.current = handleNodeClick; }, [handleNodeClick]);
+  useEffect(() => { onDblClickRef.current = handleNodeDoubleClick; }, [handleNodeDoubleClick]);
+  useEffect(() => { prevIdRef.current = previousNodeId; }, [previousNodeId]);
+  useEffect(() => { hoveredIdRef.current = hoveredNodeId; }, [hoveredNodeId]);
+  useEffect(() => { graphDirRef.current = graphDirection; }, [graphDirection]);
+
+  const nodeActionsRef = useRef<NodeActions>({});
+
   /* ------------------------ Render ------------------------ */
   return (
     <div className="h-screen flex flex-col relative">
@@ -1548,14 +1570,7 @@ export default function ProjectPage() {
             projectId={project?.id ? Number(project.id) : null}
             onProtocolDoubleClick={async (protocolClass: string) => {
               if (!projectName) return;
-              try {
-                const fullNodeData = await svc.fetchNewProtocolDetails(projectName, protocolClass);
-                setSelectedNodeDetails(fullNodeData);
-                setPreviousNodeId(protocolClass);
-                applyEdgeHighlight(protocolClass);
-              } catch (err) {
-                console.error("Failed to fetch protocol details", err);
-              }
+              await openFormForNode(String(protocolClass), () => svc.fetchNewProtocolDetails(projectName, protocolClass));
             }}
           />
           <button
@@ -1592,49 +1607,29 @@ export default function ProjectPage() {
         </div>
       </div>
 
-      {selectedNodeDetails && (
-        <ProtocolForm
-          data={selectedNodeDetails}
-          projectProtocols={project?.protocols ?? project?.protocols ?? {}}
-          onClose={handleCloseForm}
-          onExecuted={() => {
-            // Immediate refresh
-            handleRefreshRef.current?.();
-            // Schedule a second refresh after 5s; clear any previous pending one
-            if (delayedRefreshTimerRef.current !== null) {
-              clearTimeout(delayedRefreshTimerRef.current);
-            }
-            delayedRefreshTimerRef.current = window.setTimeout(() => {
-              // Safe lookup of the latest handleRefresh
-              handleRefreshRef.current?.();
-            }, 5000);
-          }}
-        />
+      {/* switching overlay */}
+      {isSwitchingLayout && (
+        <div aria-hidden className="absolute inset-0 z-60 flex itemscenter justify-center" style={{ background: "var(--reactflow-background, #ffffff)", pointerEvents: "none" }}>
+          <div className="flex items-center gap-3">
+            <div className="w-6 h-6 border-2 border-gray-300 border-t-gray-500 rounded-full animate-spin" />
+          </div>
+        </div>
+      )}
+
+      {/* initial loading overlay */}
+      {isLoadingProject && (
+        <div role="status" aria-live="polite" className="absolute inset-0 z-[80] flex flex-col items-center justify-center bg-white/75 dark:bg-gray-900/75 backdrop-blur-[2px]" style={{ pointerEvents: "auto" }}>
+          <div className="relative">
+            <div className="w-8 h-8 rounded-full border-2 border-gray-300" />
+            <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-gray-700 animate-spin" />
+          </div>
+          <p className="mt-3 text-xs tracking-wide text-gray-700 dark:text-gray-200">
+            Loading <span className="font-medium">Project</span>…
+          </p>
+        </div>
       )}
 
       <div className="flex-1 relative">
-        {/* switching overlay */}
-        {isSwitchingLayout && (
-          <div aria-hidden className="absolute inset-0 z-60 flex itemscenter justify-center" style={{ background: "var(--reactflow-background, #ffffff)", pointerEvents: "none" }}>
-            <div className="flex items-center gap-3">
-              <div className="w-6 h-6 border-2 border-gray-300 border-t-gray-500 rounded-full animate-spin" />
-            </div>
-          </div>
-        )}
-
-        {/* initial loading overlay */}
-        {isLoadingProject && (
-          <div role="status" aria-live="polite" className="absolute inset-0 z-[80] flex flex-col items-center justify-center bg-white/75 dark:bg-gray-900/75 backdrop-blur-[2px]" style={{ pointerEvents: "auto" }}>
-            <div className="relative">
-              <div className="w-8 h-8 rounded-full border-2 border-gray-300" />
-              <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-gray-700 animate-spin" />
-            </div>
-            <p className="mt-3 text-xs tracking-wide text-gray-700 dark:text-gray-200">
-              Loading <span className="font-medium">Project</span>…
-            </p>
-          </div>
-        )}
-
         {/* TABLE */}
         <div
           ref={tableContainerRef}
@@ -1806,6 +1801,34 @@ export default function ProjectPage() {
             )}
           </ReactFlowProvider>
         </div>
+
+        {/* ===== Multi-Form Dock (right side) ===== */}
+        <div className="form-dock" aria-live="polite">
+          {openForms.map((f) => (
+            <div key={f.key} className="dock-panel" role="dialog" aria-label={`Protocol ${f.id}`}>
+              <ProtocolForm
+                data={f.details}
+                projectProtocols={project?.protocols ?? {}}
+                variant="docked"
+                onClose={() => {
+                  // Close the single docked panel after exit animation completes inside ProtocolForm
+                  closeFormByKey(f.key);
+                }}
+                onExecuted={() => {
+                  // Immediate refresh + delayed 5s re-poll to pick up async updates
+                  handleRefreshRef.current?.();
+                  if (delayedRefreshTimerRef.current !== null) {
+                    clearTimeout(delayedRefreshTimerRef.current);
+                  }
+                  delayedRefreshTimerRef.current = window.setTimeout(() => {
+                    handleRefreshRef.current?.();
+                  }, 5000);
+                }}
+              />
+            </div>
+          ))}
+        </div>
+        {/* ======================================= */}
       </div>
 
       {/* --- Dialogs --- */}
@@ -1817,7 +1840,7 @@ export default function ProjectPage() {
           </DialogHeader>
           <div className="grid gap-3 py-2">
             <Label htmlFor="rename">New name</Label>
-            <Input id="rename" value={dlgRename.value} onChange={(e) => setDlgRename((s) => ({ ...s, value: e.target.value }))} placeholder="e.g. motioncorr_02" />
+            <Input id="rename" value={dlgRename.value} onChange={(e) => setDlgRename((s) => ({ ...s, value: (e.target as any).value }))} placeholder="e.g. motioncorr_02" />
           </div>
           <DialogFooter>
             <Button onClick={() => setDlgRename({ open: false, id: null, value: "" })} className="rounded-full px-4 py-2 min-w-[140px] font-medium bg-gray-200 hover:bg-gray-300 text-gray-800">
