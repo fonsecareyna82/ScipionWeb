@@ -112,6 +112,76 @@ export default function ProjectPage() {
   // Multi-form dock state
   const [openForms, setOpenForms] = useState<OpenForm[]>([]);
 
+  // --- Smooth dock animations (FLIP) ---
+  const dockRef = useRef<HTMLDivElement | null>(null);
+  const lastPositionsRef = useRef<Record<string, DOMRect>>({});
+  const pendingFlipRef = useRef(false);
+
+  /** Measure current positions of panels before changing state (add/remove/reorder). */
+  const captureDockPositions = () => {
+    const root = dockRef.current;
+    if (!root) return;
+    const map: Record<string, DOMRect> = {};
+    root.querySelectorAll<HTMLElement>("[data-dock-key]").forEach((el) => {
+      const key = el.dataset.dockKey!;
+      map[key] = el.getBoundingClientRect();
+    });
+    lastPositionsRef.current = map;
+  };
+
+  /** Animate from previous positions to the new ones (FLIP). */
+  const playDockFlip = () => {
+    const root = dockRef.current;
+    if (!root) return;
+    const prev = lastPositionsRef.current;
+
+    // Honor reduced motion
+    const prefersReduced =
+      typeof window !== "undefined" &&
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const D_MOVE = prefersReduced ? 0 : 300;
+    const D_FADE = prefersReduced ? 0 : 240;
+
+    root.querySelectorAll<HTMLElement>("[data-dock-key]").forEach((el) => {
+      const key = el.dataset.dockKey!;
+      const oldRect = prev[key];
+      const newRect = el.getBoundingClientRect();
+
+      if (oldRect) {
+        // Existing panel moved -> animate translation
+        const dx = oldRect.left - newRect.left;
+        const dy = oldRect.top - newRect.top;
+        if (dx !== 0 || dy !== 0) {
+          el.animate(
+            [
+              { transform: `translate(${dx}px, ${dy}px)`, opacity: 0.92 },
+              { transform: "translate(0, 0)", opacity: 1 },
+            ],
+            { duration: D_MOVE, easing: "cubic-bezier(0.22, 1, 0.36, 1)" }
+          );
+        }
+      } else {
+        // New panel -> subtle fade/slide-in
+        el.animate(
+          [{ opacity: 0, transform: "translateX(12px)" }, { opacity: 1, transform: "translateX(0)" }],
+          { duration: D_FADE, easing: "ease-out" }
+        );
+      }
+    });
+
+    // Clear stored positions after animating
+    lastPositionsRef.current = {};
+  };
+
+  // After openForms changes and we flagged a pending FLIP, play the animation.
+  useLayoutEffect(() => {
+    if (!pendingFlipRef.current) return;
+    pendingFlipRef.current = false;
+    // Wait one frame so layout settles, then play the animations
+    requestAnimationFrame(() => playDockFlip());
+  }, [openForms]);
+
   const [nodes, setNodes, onNodesChange] = useNodesState<StatusNodeData>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge[]>([]);
   const [tableData, setTableData] = useState<any[]>([]);
@@ -409,6 +479,7 @@ export default function ProjectPage() {
       let out = paintEdgeHighlight(eds, selectedId);
       if (pathSelRef.current.edges.size) {
         out = paintPathHighlight(out, pathSelRef.current.edges);
+        return out;
       }
       return out;
     });
@@ -437,45 +508,65 @@ export default function ProjectPage() {
   };
 
   // Open or focus a form for a node; fetch details only when needed
-  const openFormForNode = useCallback(async (nodeId: string, fetcher: () => Promise<any>) => {
-    if (!projectName) return;
+  const openFormForNode = useCallback(
+    async (nodeId: string, fetcher: () => Promise<any>) => {
+      if (!projectName) return;
 
-    // Move existing form to the end (front-most position)
-    let alreadyOpen = false;
-    setOpenForms((prev) => {
-      const hit = prev.find((f) => f.id === String(nodeId));
-      if (hit) {
-        alreadyOpen = true;
-        return [...prev.filter((f) => f.id !== String(nodeId)), hit];
+      // Keep selection/highlight consistent with the open/focus action
+      selectedIdRef.current = String(nodeId);
+      setPreviousNodeId(String(nodeId));
+      setHighlightedId(String(nodeId));
+      applyEdgeHighlight(String(nodeId));
+
+      // Capture positions before any reorder attempt
+      captureDockPositions();
+      pendingFlipRef.current = true;
+
+      // Move existing form to the end (front-most position)
+      let alreadyOpen = false;
+      setOpenForms((prev) => {
+        const hit = prev.find((f) => f.id === String(nodeId));
+        if (hit) {
+          alreadyOpen = true;
+          return [...prev.filter((f) => f.id !== String(nodeId)), hit];
+        }
+        return prev;
+      });
+
+      if (alreadyOpen) return;
+
+      try {
+        const details = await fetcher();
+        // Capture positions right before adding the new panel
+        captureDockPositions();
+        pendingFlipRef.current = true;
+
+        setOpenForms((prev) => [
+          ...prev,
+          { key: `${nodeId}-${Date.now()}`, id: String(nodeId), details },
+        ]);
+      } catch (err) {
+        console.error("openFormForNode failed", err);
       }
-      return prev;
-    });
+    },
+    [projectName, applyEdgeHighlight]
+  );
 
-    // Keep selection/highlight consistent with the open/focus action
-    selectedIdRef.current = String(nodeId);
-    setPreviousNodeId(String(nodeId));
-    setHighlightedId(String(nodeId));
-    applyEdgeHighlight(String(nodeId));
-
-    if (alreadyOpen) return;
-
-    try {
-      const details = await fetcher();
-      setOpenForms((prev) => [
-        ...prev,
-        { key: `${nodeId}-${Date.now()}`, id: String(nodeId), details },
-      ]);
-    } catch (err) {
-      console.error("openFormForNode failed", err);
-    }
-  }, [projectName, applyEdgeHighlight]);
-
-  const handleNodeDoubleClick = async (nodeData: any) => {
-    if (!projectName) return;
-    await openFormForNode(String(nodeData.id), () => svc.fetchProtocolDetails(projectName, nodeData.id));
-  };
+  // 👇 This was missing: open ProtocolForm on node double-click
+  const handleNodeDoubleClick = useCallback(
+    async (nodeData: any) => {
+      if (!projectName) return;
+      await openFormForNode(String(nodeData.id), () =>
+        svc.fetchProtocolDetails(projectName, nodeData.id)
+      );
+    },
+    [projectName, openFormForNode, svc]
+  );
 
   const closeFormByKey = useCallback((key: string) => {
+    // Capture positions right before removing the panel from the dock
+    captureDockPositions();
+    pendingFlipRef.current = true;
     setOpenForms((prev) => prev.filter((f) => f.key !== key));
   }, []);
 
@@ -568,7 +659,7 @@ export default function ProjectPage() {
       onStop: openStop,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [handleSelectFrom, handleSelectTo]);
+  }, [handleSelectFrom, handleSelectTo, handleNodeDoubleClick]);
 
   const nodeTypesRef = useRef<Record<string, any> | null>(null);
   if (!nodeTypesRef.current) {
@@ -734,7 +825,7 @@ export default function ProjectPage() {
           data.shortName, data.protocols, viewMode, graphDirection
         );
 
-        // ⚠️ In TABLE view, do not touch graph/selection. Only update table.
+        // In TABLE view, do not touch graph/selection. Only update table.
         if (viewMode === "table") {
           startTransition(() => setTableData(table ?? []));
           setIsLoadingProject(false);
@@ -849,7 +940,7 @@ export default function ProjectPage() {
           data.shortName, data.protocols, viewMode, graphDirection
         );
 
-        // ⚠️ TABLE view: do not touch graph/selection; only update the table
+        // TABLE view: do not touch graph/selection; only update the table
         if (viewMode === "table") {
           startTransition(() => setTableData(table ?? []));
           setIsRefreshing(false);
@@ -933,7 +1024,7 @@ export default function ProjectPage() {
           data.shortName, data.protocols, viewMode, graphDirection
         );
 
-        // ⚠️ TABLE view: only update the table, keep selection intact
+        // TABLE view: only update the table, keep selection intact
         if (viewMode === "table") {
           startTransition(() => setTableData(table ?? []));
           disablePersistenceRef.current = false;
@@ -1035,7 +1126,7 @@ export default function ProjectPage() {
     if (!layoutChanged) return;
     if (!project?.protocols) { prevLayout.current = { viewMode, graphDirection }; return; }
 
-    // ✅ If switching to TABLE, only manage overlay/highlight; do not touch graph
+    // If switching to TABLE, only manage overlay/highlight; do not touch graph
     if (viewMode === "table") {
       setIsSwitchingLayout(true);
       requestAnimationFrame(() => setTimeout(() => setIsSwitchingLayout(false), 60));
@@ -1803,15 +1894,15 @@ export default function ProjectPage() {
         </div>
 
         {/* ===== Multi-Form Dock (right side) ===== */}
-        <div className="form-dock" aria-live="polite">
+        <div className="form-dock" aria-live="polite" ref={dockRef}>
           {openForms.map((f) => (
-            <div key={f.key} className="dock-panel" role="dialog" aria-label={`Protocol ${f.id}`}>
+            <div key={f.key} className="dock-panel" role="dialog" aria-label={`Protocol ${f.id}`} data-dock-key={f.key}>
               <ProtocolForm
                 data={f.details}
                 projectProtocols={project?.protocols ?? {}}
                 variant="docked"
                 onClose={() => {
-                  // Close the single docked panel after exit animation completes inside ProtocolForm
+                  // The child finished its exit animation; now remove smoothly from the dock
                   closeFormByKey(f.key);
                 }}
                 onExecuted={() => {
