@@ -28,7 +28,6 @@ import {
   Play,
   RotateCcw,
   ArrowUpRight,
-  ArrowDownLeft,
   Upload,
   Square,
   ArrowLeft,
@@ -148,6 +147,7 @@ export default function StatusNode({
   const classNames = [
     "status-node-card",
     "rounded-2xl border transition-shadow",
+    "crisp-text", // Keep subpixel AA and avoid GPU blurring
     isHovered ? "shadow-xl" : "shadow-md",
     isSelected
       ? "border-[3px] border-blue-600 shadow-[0_0_20px_rgba(59,130,246,0.5)]"
@@ -188,8 +188,8 @@ export default function StatusNode({
   const ToIcon = graphDirection === "TB" ? ArrowUp : ArrowLeft;
 
   /**
-   * Forward a synthetic click (o ctrl-click) al wrapper de React Flow
-   * para que RF haga el toggle de selección aunque el target real sea un .nodrag.
+   * Forward a synthetic click (or ctrl-click) to the React Flow wrapper
+   * so RF toggles selection even if the real target is a .nodrag.
    */
   const forwardClickToRFNode = (e: React.MouseEvent) => {
     const nodeEl =
@@ -207,7 +207,6 @@ export default function StatusNode({
       metaKey: e.metaKey,
     };
 
-    // Reproducimos la secuencia típica para que RF lo procese como click
     nodeEl.dispatchEvent(new MouseEvent("mousedown", opts));
     nodeEl.dispatchEvent(new MouseEvent("mouseup", opts));
     nodeEl.dispatchEvent(new MouseEvent("click", opts));
@@ -250,7 +249,9 @@ export default function StatusNode({
                   className={`node-label dark:text-black ${isCompactView ? "compact" : ""}`}
                   title={data.label} // tooltip
                 >
-                  {truncateLabel(data.label, data.id === "PROJECT" ? 60 : (isCompactView ? 30 : 35)
+                  {truncateLabel(
+                    data.label,
+                    data.id === "PROJECT" ? 60 : (isCompactView ? 30 : 35)
                   )}
                 </div>
               </div>
@@ -330,7 +331,12 @@ export default function StatusNode({
           </div>
 
           {/* Content */}
-          <div className={`transition-all duration-300 ease-in-out overflow-hidden ${isCompactView ? "opacity-0 max-h-0" : "opacity-100 max-h-[2000px]"}`}>
+          <div
+            className={`transition-[max-height] duration-300 ease-in-out overflow-hidden ${
+              isCompactView ? "max-h-0" : "max-h-[2000px]"
+            }`}
+            aria-hidden={isCompactView}
+          >
             {data.id !== "PROJECT" && (
               <div className="node-card-content p-3 mt-4" style={{ minHeight: "120px", maxHeight: "300px", overflowY: "auto" }}>
                 {Array.isArray(data.outputs) && data.outputs.length > 0 && (
@@ -356,7 +362,6 @@ export default function StatusNode({
                                 e.stopPropagation();
                                 forwardClickToRFNode(e);
                               }
-                              // If not, we let drag or normal click act (we handle it in onClick below)
                             }}
                             onClick={(e) => {
                               // Normal click on the pill => we want it to count as a click on the node
@@ -396,7 +401,7 @@ export default function StatusNode({
                             }}
                           >
                             <ArrowUpRight className="h-7 w-7 mr-2 text-black-700 dark:text-black" />
-                            <span className="outputs dark:text-black mt-1">{value.info}</span>
+                            <span className="outputs text-gray-800 dark:text-black mt-1">{value.info}</span>
                           </div>
                         );
                       })}
@@ -420,10 +425,10 @@ export default function StatusNode({
                 >
                   {data.status}
                   {(data.status === "running" || data.status === "failed" || data.status === "aborted") && (
-                    <div className="flex items-center gap-1 flex-1 ml-2 transition-all duration-300">
+                    <div className="flex items-center gap-1 flex-1 ml-2">
                       <div className="w-16 h-3 bg-white/30 rounded overflow-hidden">
                         <div
-                          className="h-3 bg-white transition-all duration-500"
+                          className="h-3 bg-white transition-[width] duration-500"
                           style={{ width: `${((data.stepsDone ?? 0) / (data.numberOfSteps ?? 1)) * 100}%` }}
                         />
                       </div>

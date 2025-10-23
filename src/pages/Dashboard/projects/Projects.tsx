@@ -3,12 +3,12 @@ import { useEffect, useState, useRef } from "react";
 import PageBreadcrumb from "../../../components/common/PageBreadCrumb";
 import PageMeta from "../../../components/common/PageMeta";
 import ProjectCard from "../../../components/projects/ProjectsCard";
-import { ChevronDownIcon, DownloadIcon, ImportIcon, PlusIcon } from "@/icons";
+import { ChevronDownIcon } from "@/icons";
 import NewProjectModal from "@/components/projects/NewProjectModal";
 import { useProjectService } from "@/ProjectServiceContext";
 import type { ProjectService } from "@/services/ProjectService";
 import { Project } from "@/types/project";
-import { CloudDownload, Download, Import, PlusCircle } from "lucide-react";
+import { CloudDownload, Download, PlusCircle } from "lucide-react";
 
 /**
  * Projects page: normaliza respuesta y usa el servicio inyectado.

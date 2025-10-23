@@ -552,7 +552,7 @@ export default function ProjectPage() {
     [projectName, applyEdgeHighlight]
   );
 
-  // 👇 This was missing: open ProtocolForm on node double-click
+  // 👇 Double-click handler to open ProtocolForm
   const handleNodeDoubleClick = useCallback(
     async (nodeData: any) => {
       if (!projectName) return;
@@ -1640,7 +1640,7 @@ export default function ProjectPage() {
   /* ------------------------ Render ------------------------ */
   return (
     <div className="h-screen flex flex-col relative">
-      {/* Header */}
+      {/* Header (unchanged) */}
       <div className="flex justify-between items-center mb-1">
         <div className="relative w-full max-w-sm">
           <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -1698,29 +1698,44 @@ export default function ProjectPage() {
         </div>
       </div>
 
-      {/* switching overlay */}
-      {isSwitchingLayout && (
-        <div aria-hidden className="absolute inset-0 z-60 flex itemscenter justify-center" style={{ background: "var(--reactflow-background, #ffffff)", pointerEvents: "none" }}>
-          <div className="flex items-center gap-3">
-            <div className="w-6 h-6 border-2 border-gray-300 border-t-gray-500 rounded-full animate-spin" />
+      {/* Content wrapper */}
+      <div
+        className="flex-1 relative"
+        // FIX: isolate painting so header doesn't repaint on heavy graph updates
+        style={{ contain: "paint" }}
+      >
+        {/* FIX: switching overlay moved INSIDE content area only */}
+        {isSwitchingLayout && (
+          <div
+            aria-hidden
+            className="absolute inset-0 z-50 flex items-center justify-center"
+            // FIX: no background overlaying header; keep transparent so only spinner shows
+            style={{ pointerEvents: "none" }}
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-6 h-6 border-2 border-gray-300 border-t-gray-500 rounded-full animate-spin" />
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* initial loading overlay */}
-      {isLoadingProject && (
-        <div role="status" aria-live="polite" className="absolute inset-0 z-[80] flex flex-col items-center justify-center bg-white/75 dark:bg-gray-900/75 backdrop-blur-[2px]" style={{ pointerEvents: "auto" }}>
-          <div className="relative">
-            <div className="w-8 h-8 rounded-full border-2 border-gray-300" />
-            <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-gray-700 animate-spin" />
+        {/* FIX: initial loading overlay limited to content area (not header) */}
+        {isLoadingProject && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="absolute inset-0 z-[80] flex flex-col items-center justify-center bg-white/75 dark:bg-gray-900/75 backdrop-blur-[2px]"
+            style={{ pointerEvents: "auto" }}
+          >
+            <div className="relative">
+              <div className="w-8 h-8 rounded-full border-2 border-gray-300" />
+              <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-gray-700 animate-spin" />
+            </div>
+            <p className="mt-3 text-xs tracking-wide text-gray-700 dark:text-gray-200">
+              Loading <span className="font-medium">Project</span>…
+            </p>
           </div>
-          <p className="mt-3 text-xs tracking-wide text-gray-700 dark:text-gray-200">
-            Loading <span className="font-medium">Project</span>…
-          </p>
-        </div>
-      )}
+        )}
 
-      <div className="flex-1 relative">
         {/* TABLE */}
         <div
           ref={tableContainerRef}
