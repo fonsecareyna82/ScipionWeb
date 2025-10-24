@@ -1,13 +1,9 @@
+// src/entry-projectpage-umd.tsx
 import "./index.css";
 
 import React from "react";
 import ReactDOM from "react-dom/client";
-import {
-  BrowserRouter,
-  Routes,
-  Route,
-  Navigate,
-} from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 
 // React Query v5
 import {
@@ -78,6 +74,16 @@ function ensureDomRoots() {
   });
 }
 
+/** Force the host container to occupy full height and be a flex column */
+function forceFullHeight(target: HTMLElement) {
+  try {
+    target.style.display = "flex";
+    target.style.flexDirection = "column";
+    target.style.height = "100%";
+    target.style.minHeight = "0";
+  } catch {}
+}
+
 /** Normalize external service into ProjectService contract */
 function normalizeServiceAPI(srv: any): ProjectService {
   if (!srv || typeof srv !== "object") {
@@ -113,6 +119,7 @@ function normalizeServiceAPI(srv: any): ProjectService {
 
 /** Default minimal mock service (fallback) */
 const defaultMockService: ProjectService = {
+  // ----- projects -----
   async fetchList() {
     return [{ id: "demo", name: "Demo project", createdAt: new Date().toISOString(), status: "idle" }];
   },
@@ -126,33 +133,85 @@ const defaultMockService: ProjectService = {
       protocols: [],
     } as any;
   },
+  async createProject(payload) {
+    return { id: "created", name: payload.name, description: payload.description ?? "", status: "idle" } as any;
+  },
+  async renameProject(id: string | number, newName: string, newDescription?: string) {
+    return { id, name: newName, description: newDescription ?? "" } as any;
+  },
+  async deleteProject(_id: string | number) {
+    return { success: true } as any; // interface allows void | { success: boolean }
+  },
+
+  // ----- protocols (load/save/exec/details) -----
+  async loadProtocols(_projectId: string | number) {
+    return [] as any;
+  },
+  async executeProtocol(_protocolId: string | number, _className: string, _params: Record<string, unknown>) {
+    return { success: true } as any;
+  },
+  async saveProtocol(_protocolId: string | number, _className: string, _params: Record<string, unknown>) {
+    return { success: true } as any;
+  },
   async fetchProtocolDetails(_projectId: string, protocolId: string) {
     return { id: protocolId, protocolClassName: "DemoProtocol", params: {} } as any;
   },
   async fetchNewProtocolDetails(_projectId: string, protocolClass: string) {
     return { id: "new", protocolClassName: protocolClass, params: {} } as any;
   },
-  async createProject(payload) {
-    return { id: "created", name: payload.name, description: payload.description ?? "", status: "idle" } as any;
+
+  // ----- protocol actions (required by interface) -----
+  async renameProtocol(_projectId: string | number, protocolId: string | number, newName: string) {
+    return { id: protocolId, name: newName } as any;
   },
-  async renameProject() { return { success: true } as any; },
-  async deleteProject() { return { success: true } as any; },
-  async loadProtocols() { return [] as any; },
-  async executeProtocol() { return { success: true } as any; },
-  async saveProtocol() { return { success: true } as any; },
+  async duplicateProtocol(_projectId: string | number, items: { id: string; name?: string }[]) {
+    return { duplicated: items.map(i => ({ ...i, id: `${i.id}-copy` })) } as any;
+  },
+  async deleteProtocol(_projectId: string | number, _ids: string[]) {
+    return { success: true } as any;
+  },
+  async restartAll(projectId: string | number, protocolId: string | number) {
+    return { id: projectId, action: "restartAll", from: protocolId } as any;
+  },
+  async continueAll(projectId: string | number, protocolId: string | number) {
+    return { id: projectId, action: "continueAll", from: protocolId } as any;
+  },
+  async resetFrom(projectId: string | number, protocolId: string | number) {
+    return { id: projectId, action: "resetFrom", from: protocolId } as any;
+  },
+  async stopProtocol(projectId: string | number, ids: string[]) {
+    return { id: projectId, action: "stopProtocol", stopped: ids } as any;
+  },
+  async resolveProtocolStartPath(projectId: string | number, pid: string) {
+    return { id: projectId, action: "resolveProtocolStartPath", startPid: pid } as any;
+  },
+  async listRemoteDirectory(projectId: string | number, protocolId: string | number, path: string) {
+    return { id: projectId, protocolId, path, entries: [] } as any;
+  },
+  async previewProtocolText(projectId: string | number, id: string, path: string) {
+    return { id: projectId, action: "previewProtocolText", protocolId: id, path, content: "Mock preview..." } as any;
+  },
+  buildProtocolDownloadUrl(projectId: string, protocolId: string, path: string, inline: boolean) {
+    return `/download/${encodeURIComponent(projectId)}/${encodeURIComponent(protocolId)}?path=${encodeURIComponent(
+      path
+    )}&inline=${inline ? 1 : 0}`;
+  },
 };
 
 /** Optional initial props passed by the host page (e.g., Flask) */
-type InitialProps = {
-  /** Preload the current project */
+export type InitialProps = {
   initialProject?: any;
-  /** Preload protocols of the current project (array) */
   initialProtocols?: any[];
-  /** Also pass the original map to serve fetchProtocolDetails by id */
   initialProtocolsMap?: Record<string, any>;
-  /** Cache aliases to seed multiple keys */
   cacheAliases?: { byId?: string; byShortName?: string; byName?: string };
   [k: string]: any;
+};
+
+export type ProjectPageMountOptions = {
+  container: string | HTMLElement;
+  service?: ProjectService;
+  projectName: string;
+  props?: InitialProps;
 };
 
 /** Wrap service to serve initial project/protocols once, then delegate */
@@ -169,12 +228,7 @@ function withInitialProjectOnce(service: ProjectService, props?: InitialProps, p
     const id = String(props.cacheAliases?.byId ?? project?.id ?? "");
     const shortName = String(props.cacheAliases?.byShortName ?? project?.shortName ?? "");
     const name = String(props.cacheAliases?.byName ?? project?.name ?? "");
-    return (
-      asStr === id ||
-      asStr === shortName ||
-      asStr === name ||
-      asStr === projectKey
-    );
+    return asStr === id || asStr === shortName || asStr === name || asStr === projectKey;
   };
 
   return {
@@ -214,16 +268,12 @@ export function mountProjectPageWidget({
   service,
   projectName,
   props,
-}: {
-  container: string | HTMLElement;
-  service?: ProjectService;
-  projectName: string;                 // what ProjectPage expects in useParams()
-  props?: InitialProps;
-}) {
+}: ProjectPageMountOptions) {
   const target = typeof container === "string" ? document.querySelector(container) : container;
   if (!target) throw new Error(`ProjectPageWidget: container '${container}' not found`);
 
   ensureDomRoots();
+  forceFullHeight(target as HTMLElement); // ⬅️ fuerza el contenedor del host a 100% alto
 
   // normalize & wrap the service
   const base = normalizeServiceAPI(service ?? defaultMockService);
@@ -277,20 +327,29 @@ export function mountProjectPageWidget({
       <QueryClientProviderV3 client={qcV3}>
         <QueryClientProviderV5 client={qcV5}>
           <CacheProvider value={emotionCache}>
-            <BrowserRouter>
-              <HelmetProvider>
-                <WidgetErrorBoundary>
-                  <DragProvider>
-                    <Routes>
-                      {/* exact route expected by ProjectPage (so useParams() works) */}
-                      <Route path="/project/load/:projectName" element={<ProjectPage />} />
-                      {/* on first paint, ensure we are on the expected URL */}
-                      <Route path="*" element={<Navigate to={`/project/load/${encodeURIComponent(projectName)}`} replace />} />
-                    </Routes>
-                  </DragProvider>
-                </WidgetErrorBoundary>
-              </HelmetProvider>
-            </BrowserRouter>
+            {/* Wrapper que ocupa 100% del alto del host */}
+            <div style={{ height: "100%", minHeight: 0, display: "flex", flexDirection: "column" }}>
+              <BrowserRouter>
+                <HelmetProvider>
+                  <WidgetErrorBoundary>
+                    <DragProvider>
+                      {/* El contenedor de rutas también se estira y permite que su hijo crezca */}
+                      <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+                        <Routes>
+                          {/* exact route expected by ProjectPage (so useParams() works) */}
+                          <Route path="/project/load/:projectName" element={<ProjectPage />} />
+                          {/* on first paint, ensure we are on the expected URL */}
+                          <Route
+                            path="*"
+                            element={<Navigate to={`/project/load/${encodeURIComponent(projectName)}`} replace />}
+                          />
+                        </Routes>
+                      </div>
+                    </DragProvider>
+                  </WidgetErrorBoundary>
+                </HelmetProvider>
+              </BrowserRouter>
+            </div>
           </CacheProvider>
         </QueryClientProviderV5>
       </QueryClientProviderV3>

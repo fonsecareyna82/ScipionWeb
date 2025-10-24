@@ -119,11 +119,20 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
             </div>
-            <input type="text" placeholder="Search project..." value={search} onChange={(e) => setSearch(e.target.value)} className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:border-gray-700 dark:text-white" />
+            <input
+              type="text"
+              placeholder="Search project..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+            />
           </div>
 
           <div className="relative ml-4" ref={dropdownRef}>
-            <button onClick={() => setShowDropdown((prev) => !prev)} className="px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-800 dark:text-white bg-green-200 hover:bg-green-300 dark:hover:bg-gray-700">
+            <button
+              onClick={() => setShowDropdown((prev) => !prev)}
+              className="px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-800 dark:text-white bg-green-200 hover:bg-green-300 dark:hover:bg-gray-700"
+            >
               <div className="flex items-center gap-2">
                 <span className="whitespace-nowrap mr-2">Projects</span>
                 <ChevronDownIcon className="shrink-0 w-5 h-5 text-gray-500 dark:text-black-400" />
@@ -133,19 +142,37 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
             {showDropdown && (
               <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded shadow-lg z-50">
                 <ul className="text-sm text-gray-700 dark:text-gray-200">
-                  <li className="px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer" onClick={() => { setShowDropdown(false); setShowCreate(true); }}>
+                  <li
+                    className="px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"
+                    onClick={() => {
+                      setShowDropdown(false);
+                      setShowCreate(true);
+                    }}
+                  >
                     <div className="flex items-center gap-2">
                       <PlusCircle className="shrink-0 w-4 h-4 text-gray-500 dark:text-white" />
                       <span className="whitespace-nowrap">New project</span>
                     </div>
                   </li>
-                  <li className="px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer" onClick={() => { setShowDropdown(false); console.log("Import Project"); }}>
+                  <li
+                    className="px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"
+                    onClick={() => {
+                      setShowDropdown(false);
+                      console.log("Import Project");
+                    }}
+                  >
                     <div className="flex items-center gap-2">
                       <Download className="shrink-0 w-4 h-4 text-gray-500 dark:text-white" />
                       <span className="whitespace-nowrap">Import project</span>
                     </div>
                   </li>
-                  <li className="px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer" onClick={() => { setShowDropdown(false); console.log("Import Workflow"); }}>
+                  <li
+                    className="px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"
+                    onClick={() => {
+                      setShowDropdown(false);
+                      console.log("Import Workflow");
+                    }}
+                  >
                     <div className="flex items-center gap-2">
                       <CloudDownload className="shrink-0 w-4 h-4 text-gray-500 dark:text-white" />
                       <span className="whitespace-nowrap">Import workflow</span>
@@ -157,29 +184,32 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
           </div>
         </div>
 
-        {/* Projects grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
-          {loading && <p className="col-span-full text-center text-gray-500">Loading projects...</p>}
-          {!loading && loadError && <p className="col-span-full text-center text-red-500">Error loading projects: {loadError}</p>}
-          {!loading && !loadError && filteredProjects.length === 0 && <p className="col-span-full text-center text-gray-500">No projects found.</p>}
+        {/* Projects grid — ancho fijo de cards */}
+        <div className="flex flex-wrap gap-6 items-stretch">
+          {loading && <p className="w-full text-center text-gray-500">Loading projects...</p>}
+          {!loading && loadError && <p className="w-full text-center text-red-500">Error loading projects: {loadError}</p>}
+          {!loading && !loadError && filteredProjects.length === 0 && <p className="w-full text-center text-gray-500">No projects found.</p>}
 
-          {!loading && !loadError && filteredProjects.map((project) => (
-            <ProjectCard
-              key={String(project.id)}
-              id={project.id}
-              label={project.name}
-              value={project.protocolsCount ?? "0"}
-              createdAt={project.createdAt ? String(project.createdAt) : undefined}
-              diskUsage={project.diskUsage?.toString()}
-              isSelected={selectedLabel === project.name}
-              onSelect={() => setSelectedLabel(project.name)}
-              isExpanded={expandedLabel === project.name}
-              description={project.description ?? "No description available."}
-              onToggleExpand={() => setExpandedLabel((prev) => (prev === project.name ? null : project.name))}
-              onDelete={handleDeleteProject}
-              onRename={handleRenameProject}
-            />
-          ))}
+          {!loading &&
+            !loadError &&
+            filteredProjects.map((project) => (
+              <div key={String(project.id)} className="w-full sm:w-[550px]">
+                <ProjectCard
+                  id={project.id}
+                  label={project.name}
+                  value={project.protocolsCount ?? "0"}
+                  createdAt={project.createdAt ? String(project.createdAt) : undefined}
+                  diskUsage={project.diskUsage?.toString()}
+                  isSelected={selectedLabel === project.name}
+                  onSelect={() => setSelectedLabel(project.name)}
+                  isExpanded={expandedLabel === project.name}
+                  description={project.description ?? "No description available."}
+                  onToggleExpand={() => setExpandedLabel((prev) => (prev === project.name ? null : project.name))}
+                  onDelete={handleDeleteProject}
+                  onRename={handleRenameProject}
+                />
+              </div>
+            ))}
         </div>
       </div>
 
