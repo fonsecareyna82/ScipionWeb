@@ -78,6 +78,8 @@ type StatusNodeProps = {
     parents?: string[];
     children?: string[];
     __pathVer?: number;
+    /** opcional: si lo tienes en tu dato */
+    projectId?: string | number;
   };
   selectedNodeId?: string;
   hoveredNodeId?: string;
@@ -100,6 +102,9 @@ type StatusNodeProps = {
   onSelectTo?: (id: string) => void;
   onStop?: (id: string) => void;
 
+  /** NUEVO: para abrir el RemoteFileDialog desde el padre */
+  onBrowse?: (protocolId: string, projectId?: string | number) => void;
+
   inPathSelection?: boolean;
   pathSelectionActive?: boolean;
 };
@@ -119,7 +124,7 @@ export default function StatusNode({
   onClick,
   onDoubleClick,
   zoomLevel = 0.6,
-  compactThreshold = 0.28,
+  compactThreshold = 0.25,
   onEdit,
   onRename,
   onDuplicate,
@@ -130,6 +135,7 @@ export default function StatusNode({
   onSelectFrom,
   onSelectTo,
   onStop,
+  onBrowse, 
   inPathSelection = false,
   pathSelectionActive = false,
 }: StatusNodeProps) {
@@ -143,11 +149,10 @@ export default function StatusNode({
   const bgColor = STATUS_COLORS[data.status ?? "finished"] ?? STATUS_COLORS["root"];
   data.color = bgColor;
 
-  /* Base styling; outline is added when part of a selection set. */
   const classNames = [
     "status-node-card",
     "rounded-2xl border transition-shadow",
-    "crisp-text", // Keep subpixel AA and avoid GPU blurring
+    "crisp-text",
     isHovered ? "shadow-xl" : "shadow-md",
     isSelected
       ? "border-[3px] border-blue-600 shadow-[0_0_20px_rgba(59,130,246,0.5)]"
@@ -179,18 +184,16 @@ export default function StatusNode({
   const handleResetFrom = () => onResetFrom?.(data.id);
   const handleSelectFrom = () => { if (data.id !== "PROJECT") onSelectFrom?.(data.id); };
   const handleSelectTo = () => { if (data.id !== "PROJECT") onSelectTo?.(data.id); };
-  const handleStop = () => { if (data.id !== "PROJECT") onStop?.(data.id); console.log('Stop click', data.id) };
-  /* If a selection (path or multi) is active, reduce menu to destructive/export ops. */
+  const handleStop = () => { if (data.id !== "PROJECT") onStop?.(data.id); };
+  const handleBrowse = () => {
+    if (data.id !== "PROJECT") onBrowse?.(data.id, data.projectId);
+  };
+
   const reduceMenus = pathSelectionActive || inPathSelection;
 
-  // Choose icons based on graphDirection
   const FromIcon = graphDirection === "TB" ? ArrowDown : ArrowRight;
   const ToIcon = graphDirection === "TB" ? ArrowUp : ArrowLeft;
 
-  /**
-   * Forward a synthetic click (or ctrl-click) to the React Flow wrapper
-   * so RF toggles selection even if the real target is a .nodrag.
-   */
   const forwardClickToRFNode = (e: React.MouseEvent) => {
     const nodeEl =
       (e.currentTarget as HTMLElement).closest(".react-flow__node") ||
@@ -223,10 +226,10 @@ export default function StatusNode({
           className={classNames}
           style={nodeStyle}
           onClick={onClick}
-          onDoubleClick={(e) => { e.stopPropagation(); onDoubleClick?.(); }}
+          onDoubleClick={(e: React.MouseEvent) => { e.stopPropagation(); onDoubleClick?.(); }}
           onMouseEnter={() => setIsHovered(true)}
           onMouseLeave={() => setIsHovered(false)}
-          onContextMenu={(e) => e.stopPropagation()}
+          onContextMenu={(e: React.MouseEvent) => e.stopPropagation()}
         >
           {/* Header */}
           <div
@@ -247,11 +250,11 @@ export default function StatusNode({
               >
                 <div
                   className={`node-label dark:text-black ${isCompactView ? "compact" : ""}`}
-                  title={data.label} // tooltip
+                  title={data.label}
                 >
                   {truncateLabel(
                     data.label,
-                    data.id === "PROJECT" ? 60 : (isCompactView ? 30 : 35)
+                    data.id === "PROJECT" ? 60 : (isCompactView ? 35 : 35)
                   )}
                 </div>
               </div>
@@ -260,20 +263,28 @@ export default function StatusNode({
             {data.id !== "PROJECT" && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <button className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-200 ml-4" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-200 ml-4"
+                    onClick={(e: React.MouseEvent) => e.stopPropagation()}
+                  >
                     <MoreHorizontal className="h-12 w-12 text-black dark:text-black" />
                   </button>
                 </DropdownMenuTrigger>
 
-                <DropdownMenuContent className="w-56" onClick={(e) => e.stopPropagation()}>
+                <DropdownMenuContent
+                  className="w-56"
+                  onClick={(e: React.MouseEvent) => e.stopPropagation()}
+                >
                   {!reduceMenus && (
                     <>
                       <DropdownMenuItem onClick={handleEdit}>
                         <Pencil className="mr-2 h-4 w-4" /> Edit
                       </DropdownMenuItem>
-                      <DropdownMenuItem>
+
+                      <DropdownMenuItem onClick={handleBrowse}>
                         <FolderOpen className="mr-2 h-4 w-4" /> Browse
                       </DropdownMenuItem>
+
                       <DropdownMenuItem onClick={handleRename}>
                         <Pencil className="mr-2 h-4 w-4" /> Rename
                       </DropdownMenuItem>
@@ -342,7 +353,7 @@ export default function StatusNode({
                 {Array.isArray(data.outputs) && data.outputs.length > 0 && (
                   <div className="outputs-list">
                     <div className="section-header flex items-center px-2 py-1 bg-green-50 dark:bg-green-50 rounded-t-lg border-b border-green-800 dark:border-green-800">
-                      <span className="text-black dark:text-black font-normal text-3xl">Outputs</span>
+                      <span className="text-black dark:text-black font-normal text-4xl">Outputs</span>
                     </div>
                     <div className="section-content p-2 bg-green-100 dark:bg-green-200 rounded-b-lg space-y-2">
                       {data.outputs.map((outputObj, idx) => {
@@ -355,21 +366,19 @@ export default function StatusNode({
                             key={idx}
                             className={`nodrag mt-3 group cursor-grab flex items-center px-3 py-1 rounded-full border border-gray-400 dark:border-gray-400 shadow-sm ${isDragging ? "scale-100 opacity-70" : "bg-gradient-to-r from-gray-200 to-gray-300 dark:from-gray-200 dark:to-gray-300"}`}
                             draggable
-                            onMouseDown={(e) => {
-                              // If you Ctrl/Cmd+click on the pill, we forward the click to the RF node.
+                            onMouseDown={(e: React.MouseEvent<HTMLDivElement>) => {
                               if (e.ctrlKey || e.metaKey) {
                                 e.preventDefault();
                                 e.stopPropagation();
                                 forwardClickToRFNode(e);
                               }
                             }}
-                            onClick={(e) => {
-                              // Normal click on the pill => we want it to count as a click on the node
+                            onClick={(e: React.MouseEvent<HTMLDivElement>) => {
                               e.preventDefault();
                               e.stopPropagation();
                               forwardClickToRFNode(e);
                             }}
-                            onDragStart={(e) => {
+                            onDragStart={(e: React.DragEvent<HTMLDivElement>) => {
                               e.stopPropagation();
                               setDraggingIdx(idx);
                               const output = {
@@ -464,13 +473,14 @@ export default function StatusNode({
       </ContextMenuTrigger>
 
       {/* Node-specific context menu */}
-      <ContextMenuContent className="w-56" onClick={(e) => e.stopPropagation()}>
+      <ContextMenuContent className="w-56" onClick={(e: React.MouseEvent) => e.stopPropagation()}>
         {!reduceMenus && (
           <>
             <ContextMenuItem onClick={handleEdit}>
               <Pencil className="mr-2 h-4 w-4" /> Edit
             </ContextMenuItem>
-            <ContextMenuItem>
+            {/* >>>>>> También desde el click derecho */}
+            <ContextMenuItem onClick={handleBrowse}>
               <FolderOpen className="mr-2 h-4 w-4" /> Browse
             </ContextMenuItem>
             <ContextMenuItem onClick={handleRename}>

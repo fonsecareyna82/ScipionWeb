@@ -62,6 +62,8 @@ import { Project } from "@/types/project";
 import Label from "@/components/form/Label";
 import { Input } from "@mui/material";
 import toast from "react-hot-toast";
+import RemoteFileDialog from "@/components/files/RemoteFileDialog";
+import { buildProtocolDownloadUrl } from "@/api/projects";
 
 /* --------------------- Types --------------------- */
 interface StatusNodeData {
@@ -153,7 +155,7 @@ export default function ProjectPage() {
         const dx = oldRect.left - newRect.left;
         const dy = oldRect.top - newRect.top;
         if (dx !== 0 || dy !== 0) {
-          el.animate(
+          (el as any).animate?.(
             [
               { transform: `translate(${dx}px, ${dy}px)`, opacity: 0.92 },
               { transform: "translate(0, 0)", opacity: 1 },
@@ -163,7 +165,7 @@ export default function ProjectPage() {
         }
       } else {
         // New panel -> subtle fade/slide-in
-        el.animate(
+        (el as any).animate?.(
           [{ opacity: 0, transform: "translateX(12px)" }, { opacity: 1, transform: "translateX(0)" }],
           { duration: D_FADE, easing: "ease-out" }
         );
@@ -213,7 +215,7 @@ export default function ProjectPage() {
   const [, startTransition] = useTransition();
   const disablePersistenceRef = useRef(false);
 
-  const [viewport, setViewport] = useState<{ x: number; y: number; zoom: number }>({ x: 0, y: 0, zoom: 0.35 });
+  const [viewport, setViewport] = useState<{ x: number; y: number; zoom: number }>({ x: 0, y: 0, zoom: 0.32 });
   const viewportRef = useRef(viewport);
   useEffect(() => { viewportRef.current = viewport; }, [viewport]);
 
@@ -661,6 +663,19 @@ export default function ProjectPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [handleSelectFrom, handleSelectTo, handleNodeDoubleClick]);
 
+  /** New: state and handler for RemoteFileDialog */
+  const [fileDialogOpen, setFileDialogOpen] = useState(false);
+  const [fileDialogCtx, setFileDialogCtx] = useState<{ protocolId?: string }>({});
+  const canOpenFileDialog = fileDialogOpen && fileDialogCtx.protocolId != null && project?.id != null;
+  const pid = fileDialogCtx.protocolId as string | number;   
+  const projId = project?.id as string | number;
+
+  const openBrowse = useCallback((protocolId: string) => {
+    console.log("[Browse] clicked for protocol:", protocolId);
+    setFileDialogCtx({ protocolId });
+    setFileDialogOpen(true);
+  }, []);
+
   const nodeTypesRef = useRef<Record<string, any> | null>(null);
   if (!nodeTypesRef.current) {
     nodeTypesRef.current = {
@@ -672,7 +687,9 @@ export default function ProjectPage() {
         setHoveredNodeId,
         () => graphDirRef.current,
         () => nodeActionsRef.current,
-        () => getSelectedPathIds()
+        () => getSelectedPathIds(),
+        /** ⬇️ NUEVO: pasamos el onBrowse al StatusNode */
+        (protocolId: string) => openBrowse(protocolId)
       ),
     };
   }
@@ -753,8 +770,8 @@ export default function ProjectPage() {
       const targetZoom = clampZoom(typeof zoomOverride === "number" ? zoomOverride : inst.getViewport().zoom);
       let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
       for (const n of validNodes) {
-        const x = n.position!.x ?? 0;
-        const y = n.position!.y ?? 0;
+        const x = (n.position!.x ?? 0);
+        const y = (n.position!.y ?? 0);
         if (x < minX) minX = x;
         if (x > maxX) maxX = x;
         if (y < minY) minY = y;
@@ -791,7 +808,7 @@ export default function ProjectPage() {
           if (instNodes && instNodes.length >= needed) {
             let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, valid = 0;
             for (const n of instNodes) {
-              const x = n.position?.x, y = n.position?.y;
+              const x = (n.position?.x), y = (n.position?.y);
               if (typeof x === "number" && typeof y === "number" && !Number.isNaN(x) && !Number.isNaN(y)) {
                 valid++;
                 if (x < minX) minX = x;
@@ -1701,15 +1718,12 @@ export default function ProjectPage() {
       {/* Content wrapper */}
       <div
         className="flex-1 relative"
-        // FIX: isolate painting so header doesn't repaint on heavy graph updates
         style={{ contain: "paint" }}
       >
-        {/* FIX: switching overlay moved INSIDE content area only */}
         {isSwitchingLayout && (
           <div
             aria-hidden
             className="absolute inset-0 z-50 flex items-center justify-center"
-            // FIX: no background overlaying header; keep transparent so only spinner shows
             style={{ pointerEvents: "none" }}
           >
             <div className="flex items-center gap-3">
@@ -1718,7 +1732,6 @@ export default function ProjectPage() {
           </div>
         )}
 
-        {/* FIX: initial loading overlay limited to content area (not header) */}
         {isLoadingProject && (
           <div
             role="status"
@@ -2054,6 +2067,28 @@ export default function ProjectPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ================= RemoteFileDialog ================= */}
+
+      {canOpenFileDialog && (
+        <RemoteFileDialog
+          open={fileDialogOpen}
+          onClose={() => setFileDialogOpen(false)}
+          title={`Browsing — ${pid}`}
+          projectId={projId}
+          protocolId={pid}
+          resolveStartPath={() => svc.resolveProtocolStartPath(projId, pid.toString())}
+          listRemoteDirectory={(p) => svc.listRemoteDirectory(projId, pid.toString(), p)}
+          previewRemoteText={(p) => svc.previewProtocolText(projId, pid.toString(), p)}
+          buildDownloadUrl={(p, inline) => buildProtocolDownloadUrl(projId, pid, p, !!inline)}
+          onPick={(relativePath) => {
+            console.log("picked:", relativePath);
+            setFileDialogOpen(false);
+          }}
+        />
+      )}
+
+
     </div>
   );
 }

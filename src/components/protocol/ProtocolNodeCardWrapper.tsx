@@ -1,3 +1,4 @@
+// src/components/protocol/ProtocolNodeCardWrapper.tsx
 import { NodeProps, useReactFlow } from "reactflow";
 import StatusNode from "./ProtocolNodeCard";
 
@@ -22,7 +23,8 @@ export const createStatusNodeWrapper = (
   setHoveredNodeId?: React.Dispatch<React.SetStateAction<string | null>>,
   getGraphDirection?: () => "TB" | "LR",
   getNodeActions?: () => NodeActions,
-  getPathSelectionNodeIds?: () => Set<string>
+  getPathSelectionNodeIds?: () => Set<string>,
+  onBrowse?: (protocolId: string, projectId?: string | number) => void
 ) => {
   return function StatusNodeWrapper(props: NodeProps) {
     const { data, id, ...rest } = props;
@@ -41,7 +43,7 @@ export const createStatusNodeWrapper = (
     const actions = getNodeActions?.() ?? {};
     const pathSelectedSet = getPathSelectionNodeIds?.() ?? new Set<string>();
     const inPathSelection = pathSelectedSet.has(String(id));
-    const pathSelectionActive = pathSelectedSet.size > 0; // reduce menus globally while a selection (path or multi) is active
+    const pathSelectionActive = pathSelectedSet.size > 0;
 
     return (
       <div onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave} style={{ display: "inline-block" }}>
@@ -71,6 +73,8 @@ export const createStatusNodeWrapper = (
           // selection (path or multi)
           inPathSelection={inPathSelection}
           pathSelectionActive={pathSelectionActive}
+          // NEW: Browse handler
+          onBrowse={onBrowse}
         />
       </div>
     );
