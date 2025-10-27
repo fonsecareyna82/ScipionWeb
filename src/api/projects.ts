@@ -314,6 +314,14 @@ export function buildProtocolDownloadUrl(
   path: string,
   inline = false
 ): string {
-  const q = inline ? "&inline=1" : "";
+  const q = inline ? "&inline=true" : "";
   return `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/fs/download?path=${encodeURIComponent(path)}${q}`;
+}
+
+export async function fetchProtocolInlinePreviewBlob(projectId: Id, protocolId: Id, path: string): Promise<Blob> {
+  // use your existing auth-enabled svc/fetch/axios instance:
+  const url = `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/fs/download?path=${encodeURIComponent(path)}&inline=1`;
+  const res = await fetchWithAuth(url, { method: "GET" }); 
+  if (!res.ok) throw new Error("fail");
+  return await res.blob();
 }

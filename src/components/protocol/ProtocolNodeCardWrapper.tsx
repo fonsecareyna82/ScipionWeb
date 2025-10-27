@@ -24,7 +24,7 @@ export const createStatusNodeWrapper = (
   getGraphDirection?: () => "TB" | "LR",
   getNodeActions?: () => NodeActions,
   getPathSelectionNodeIds?: () => Set<string>,
-  onBrowse?: (protocolId: string, projectId?: string | number) => void
+  onBrowse?: (protocolId: string, projectId?: string | number, protocolLabel?: string) => void
 ) => {
   return function StatusNodeWrapper(props: NodeProps) {
     const { data, id, ...rest } = props;
@@ -70,10 +70,8 @@ export const createStatusNodeWrapper = (
           onSelectFrom={actions.onSelectFrom}
           onSelectTo={actions.onSelectTo}
           onStop={actions.onStop}
-          // selection (path or multi)
           inPathSelection={inPathSelection}
           pathSelectionActive={pathSelectionActive}
-          // NEW: Browse handler
           onBrowse={onBrowse}
         />
       </div>

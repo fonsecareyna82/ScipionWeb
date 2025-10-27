@@ -110,6 +110,12 @@ const defaultService: ProjectService = {
     path: string,
     inline: boolean
   ) => api.buildProtocolDownloadUrl(toId(projectId), toId(protocolId), path, inline),
+
+  fetchProtocolInlinePreviewBlob: (
+    projectId: Id,
+    protocolId: Id,
+    path: string,
+  ) => api.fetchProtocolInlinePreviewBlob(toId(projectId), toId(protocolId), path),
 };
 
 

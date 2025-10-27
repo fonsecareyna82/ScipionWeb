@@ -62,5 +62,6 @@ export interface ProjectService<
   listRemoteDirectory(projectId: Id, protocolId: Id, path: string): Promise<TProject>
   previewProtocolText(projectId: Id, id: string, path: string): Promise<TProject>
   buildProtocolDownloadUrl(projectId: string, protocolId: string, path: string, inline: boolean): string
+  fetchProtocolInlinePreviewBlob(projectId: string, protocolId: string, path: string): Promise<Blob>
 }
 

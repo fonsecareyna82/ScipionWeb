@@ -663,16 +663,21 @@ export default function ProjectPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [handleSelectFrom, handleSelectTo, handleNodeDoubleClick]);
 
-  /** New: state and handler for RemoteFileDialog */
+  /** State and handler for RemoteFileDialog */
   const [fileDialogOpen, setFileDialogOpen] = useState(false);
-  const [fileDialogCtx, setFileDialogCtx] = useState<{ protocolId?: string }>({});
+  const [fileDialogCtx, setFileDialogCtx] = useState<{ protocolId?: string; protocolLabel?: string }>({});
   const canOpenFileDialog = fileDialogOpen && fileDialogCtx.protocolId != null && project?.id != null;
-  const pid = fileDialogCtx.protocolId as string | number;   
+  const pid = fileDialogCtx.protocolId as string | number;
   const projId = project?.id as string | number;
+  const plabel = '( ' + pid + ' ) ' + fileDialogCtx.protocolLabel || pid;
 
-  const openBrowse = useCallback((protocolId: string) => {
-    console.log("[Browse] clicked for protocol:", protocolId);
-    setFileDialogCtx({ protocolId });
+  const openBrowse = useCallback((
+    protocolId: string,
+    _projectId?: string | number,
+    protocolLabel?: string
+  ) => {
+    console.log("[Browse] clicked for protocol:", protocolId, protocolLabel);
+    setFileDialogCtx({ protocolId, protocolLabel });
     setFileDialogOpen(true);
   }, []);
 
@@ -688,8 +693,8 @@ export default function ProjectPage() {
         () => graphDirRef.current,
         () => nodeActionsRef.current,
         () => getSelectedPathIds(),
-        /** ⬇️ NUEVO: pasamos el onBrowse al StatusNode */
-        (protocolId: string) => openBrowse(protocolId)
+        (protocolId: string, projectId?: string | number, protocolLabel?: string) =>
+          openBrowse(protocolId, projectId, protocolLabel)
       ),
     };
   }
@@ -2074,13 +2079,14 @@ export default function ProjectPage() {
         <RemoteFileDialog
           open={fileDialogOpen}
           onClose={() => setFileDialogOpen(false)}
-          title={`Browsing — ${pid}`}
+          title={`Browsing — ${plabel}`}
           projectId={projId}
           protocolId={pid}
           resolveStartPath={() => svc.resolveProtocolStartPath(projId, pid.toString())}
           listRemoteDirectory={(p) => svc.listRemoteDirectory(projId, pid.toString(), p)}
           previewRemoteText={(p) => svc.previewProtocolText(projId, pid.toString(), p)}
-          buildDownloadUrl={(p, inline) => buildProtocolDownloadUrl(projId, pid, p, !!inline)}
+          buildDownloadUrl={(p, inline) => svc.buildProtocolDownloadUrl(projId.toString(), pid.toString(), p, !!inline)}
+          fetchInlineBlob={(p) =>  svc.fetchProtocolInlinePreviewBlob(projId.toString(), pid.toString(), p)}
           onPick={(relativePath) => {
             console.log("picked:", relativePath);
             setFileDialogOpen(false);

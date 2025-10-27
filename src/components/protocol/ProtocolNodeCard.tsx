@@ -101,9 +101,7 @@ type StatusNodeProps = {
   onSelectFrom?: (id: string) => void;
   onSelectTo?: (id: string) => void;
   onStop?: (id: string) => void;
-
-  /** NUEVO: para abrir el RemoteFileDialog desde el padre */
-  onBrowse?: (protocolId: string, projectId?: string | number) => void;
+  onBrowse?: (protocolId: string, projectId?: string | number, protocolLabel?: string) => void;
 
   inPathSelection?: boolean;
   pathSelectionActive?: boolean;
@@ -186,7 +184,7 @@ export default function StatusNode({
   const handleSelectTo = () => { if (data.id !== "PROJECT") onSelectTo?.(data.id); };
   const handleStop = () => { if (data.id !== "PROJECT") onStop?.(data.id); };
   const handleBrowse = () => {
-    if (data.id !== "PROJECT") onBrowse?.(data.id, data.projectId);
+    if (data.id !== "PROJECT") onBrowse?.(data.id, data.projectId, data.label);
   };
 
   const reduceMenus = pathSelectionActive || inPathSelection;
