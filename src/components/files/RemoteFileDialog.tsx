@@ -48,19 +48,10 @@ type RemoteFileDialogProps = {
 
   previewRemoteText?: (absOrRelPath: string) => Promise<string | null>;
 
-  /**
-   * fetchInlinePreviewBlob MUST:
-   *  - call GET /fs/download?inline=1 with auth
-   *  - return { blob, meta } where meta comes from X-Preview-* headers
-   */
   fetchInlinePreviewBlob?: (
     absOrRelPath: string
   ) => Promise<{ blob: Blob; meta: PreviewMeta }>;
 
-  /**
-   * Optional download URL builder for the "Select" / "Download" use case.
-   * We still keep it for final download, but we don't rely on it for preview.
-   */
   buildDownloadUrl?: (absOrRelPath: string, inline?: boolean) => string;
 
   onPick?: (relativePath: string) => void;
@@ -92,11 +83,17 @@ export default function RemoteFileDialog({
   const [previewLoading, setPreviewLoading] = useState<boolean>(false);
 
   // image / volume preview state
-  const [imgUrl, setImgUrl] = useState<string>("");     // blob URL
-  const [imgMeta, setImgMeta] = useState<PreviewMeta>({}); // width, height, depth...
+  const [imgUrl, setImgUrl] = useState<string>("");        // blob URL
+  const [imgMeta, setImgMeta] = useState<PreviewMeta>({}); // width/height/depth/etc
   const [imgLoading, setImgLoading] = useState<boolean>(false);
 
-  // build breadcrumbs for cwd
+  // fixed layout numbers
+  const dialogWidthClass = "w-[1300px] max-w-[1300px]";
+  const dialogHeightClass = "h-[700px] max-h-[700px]";
+  const browserHeightClass = "h-[420px]";      // full row: directory + preview
+  const previewHeightClass = "h-[360px]";      // inside preview panel
+
+  // breadcrumbs for cwd
   const breadcrumbs = useMemo(() => {
     const parts = (cwd || "").split("/").filter(Boolean);
     const crumbs = [{ name: "root", path: "" }];
@@ -108,7 +105,7 @@ export default function RemoteFileDialog({
     return crumbs;
   }, [cwd]);
 
-  // helper: does this look text-like?
+  // helpers
   const looksTextLike = (entry: RemoteEntry): boolean => {
     if (entry.isDir) return false;
     const mimeLower = (entry.mime || "").toLowerCase();
@@ -137,7 +134,6 @@ export default function RemoteFileDialog({
     return textExts.some((ext) => lowerName.endsWith(ext));
   };
 
-  // helper: does this look image-like? (including .mrc / .map)
   const isMrcExt = (name: string | undefined) =>
     !!name && /\.(mrc|mrcs|map|em)$/i.test(name);
 
@@ -148,7 +144,18 @@ export default function RemoteFileDialog({
     return false;
   };
 
-  // load directory list
+  const humanBytes = (n?: number) => {
+    if (!n && n !== 0) return undefined;
+    if (n < 1024) return `${n} B`;
+    const kb = n / 1024;
+    if (kb < 1024) return `${kb.toFixed(1)} KB`;
+    const mb = kb / 1024;
+    if (mb < 1024) return `${mb.toFixed(1)} MB`;
+    const gb = mb / 1024;
+    return `${gb.toFixed(1)} GB`;
+  };
+
+  // load directory
   const refresh = async (path: string) => {
     try {
       setLoading(true);
@@ -159,7 +166,7 @@ export default function RemoteFileDialog({
       setItems(listing);
       setCwd(path);
 
-      // reset selection/preview
+      // reset previews
       setSelected(null);
 
       setPreviewText("");
@@ -178,20 +185,18 @@ export default function RemoteFileDialog({
     }
   };
 
-  // enter dir on double click
   const enterDir = (entry: RemoteEntry) => {
     if (!entry.isDir) return;
     void refresh(entry.path);
   };
 
-  // go up one level
   const goUp = () => {
     if (!cwd) return;
     const up = cwd.includes("/") ? cwd.split("/").slice(0, -1).join("/") : "";
     void refresh(up);
   };
 
-  // load text preview
+  // text preview
   const loadTextPreview = async (entry: RemoteEntry) => {
     if (!previewRemoteText) return;
     if (entry.isDir) return;
@@ -209,17 +214,15 @@ export default function RemoteFileDialog({
     }
   };
 
-  // load image / volume preview (blob + meta headers)
+  // image / volume preview
   const loadImagePreview = async (entry: RemoteEntry) => {
     if (!looksImageLike(entry)) return;
     if (!fetchInlinePreviewBlob) {
-      // no fetcher provided => we can't auth-load the blob
       setImgUrl("");
       setImgMeta({});
       return;
     }
 
-    // revoke previous blob URL
     if (imgUrl) URL.revokeObjectURL(imgUrl);
 
     setImgUrl("");
@@ -239,7 +242,6 @@ export default function RemoteFileDialog({
     }
   };
 
-  // handle click in the directory list
   const handleSelectEntry = (entry: RemoteEntry) => {
     setSelected(entry);
 
@@ -251,7 +253,7 @@ export default function RemoteFileDialog({
       setPreviewLoading(false);
     }
 
-    // image/volume branch
+    // image branch
     if (!entry.isDir && looksImageLike(entry)) {
       void loadImagePreview(entry);
     } else {
@@ -262,7 +264,6 @@ export default function RemoteFileDialog({
     }
   };
 
-  // final "Select" action
   const handlePick = () => {
     if (selected && !selected.isDir && onPick) {
       onPick(selected.path);
@@ -270,25 +271,23 @@ export default function RemoteFileDialog({
     }
   };
 
-  // full download (optional)
   const handleDownload = () => {
     if (!selected || selected.isDir || !buildDownloadUrl) return;
     const url = buildDownloadUrl(selected.path, false);
     window.open(url, "_blank");
   };
 
-  // stop bubbling to canvas behind
+  // we keep this so clicks inside the dialog don't bubble to the canvas events
   const handleDialogClick: React.MouseEventHandler = (e) => {
     e.stopPropagation();
   };
 
-  // open/close effect
   useEffect(() => {
     let mounted = true;
 
     const boot = async () => {
       if (!open) {
-        // cleanup on close
+        // cleanup
         setItems([]);
         setCwd(initialPath || "");
 
@@ -320,41 +319,47 @@ export default function RemoteFileDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  // helper to pretty-print file size
-  const humanBytes = (n?: number) => {
-    if (!n && n !== 0) return undefined;
-    if (n < 1024) return `${n} B`;
-    const kb = n / 1024;
-    if (kb < 1024) return `${kb.toFixed(1)} KB`;
-    const mb = kb / 1024;
-    if (mb < 1024) return `${mb.toFixed(1)} MB`;
-    const gb = mb / 1024;
-    return `${gb.toFixed(1)} GB`;
-  };
-
   return (
     <Dialog
       open={open}
       onOpenChange={(o) => {
+        // keep our manual close behavior
         if (!o) onClose();
       }}
     >
       <DialogContent
-        className="sm:max-w-[1100px] max-h-[90vh] overflow-hidden"
+        // IMPORTANT:
+        // prevent Radix from auto-closing when you click outside
+        onInteractOutside={(e) => {
+          e.preventDefault();
+        }}
         onClick={handleDialogClick}
+        className={[
+          dialogWidthClass,
+          dialogHeightClass,
+          "flex flex-col overflow-hidden",
+        ].join(" ")}
       >
-        {/* header */}
-        <DialogHeader className="-mx-6 -mt-6 px-6 py-4 bg-gray-100 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 rounded-t-lg">
+        {/* HEADER */}
+        <DialogHeader
+          className={[
+            "-mx-6 -mt-6 px-6 py-4 bg-gray-100 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 rounded-t-lg",
+            "flex-none",
+          ].join(" ")}
+        >
           <DialogTitle className="text-lg font-medium text-gray-900 dark:text-gray-100 flex flex-col">
             <span className="truncate">{title}</span>
-            <span className="text-xs text-gray-500 dark:text-gray-400 font-normal leading-tight">
-              {cwd ? `/${cwd}` : "/"}
-            </span>
+           
           </DialogTitle>
         </DialogHeader>
 
-        {/* toolbar */}
-        <div className="flex flex-wrap items-center gap-2 mt-4 bg-gray-50 dark:bg-gray-900/40 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-sm">
+        {/* TOOLBAR */}
+        <div
+          className={[
+            "flex flex-wrap items-center gap-2 mt-4 bg-gray-50 dark:bg-gray-900/40 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-sm",
+            "flex-none",
+          ].join(" ")}
+        >
           <Button
             variant="outline"
             onClick={goUp}
@@ -393,11 +398,17 @@ export default function RemoteFileDialog({
           </div>
         </div>
 
-        {/* body: 2 columns */}
-        <div className="grid grid-cols-2 gap-4 mt-4 max-h-[55vh]">
-          {/* left: directory listing */}
-          <div className="border border-gray-200 dark:border-gray-700 rounded-2xl overflow-hidden flex flex-col bg-white dark:bg-gray-900">
-            <div className="px-3 py-2 border-b border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 text-[13px] font-medium text-gray-700 dark:text-gray-200 flex items-center justify-between">
+        {/* BODY: DIRECTORY + PREVIEW */}
+        <div
+          className={[
+            "grid grid-cols-2 gap-4 mt-4",
+            browserHeightClass,
+            "flex-none",
+          ].join(" ")}
+        >
+          {/* LEFT: DIRECTORY LIST */}
+          <div className="h-full border border-gray-200 dark:border-gray-700 rounded-2xl overflow-hidden flex flex-col bg-white dark:bg-gray-900">
+            <div className="px-3 py-2 border-b border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 text-[13px] font-medium text-gray-700 dark:text-gray-200 flex items-center justify-between flex-none">
               <span>Directory</span>
               {error && (
                 <span className="flex items-center gap-1 text-red-600 dark:text-red-400 text-[11px] font-normal">
@@ -463,10 +474,12 @@ export default function RemoteFileDialog({
             </div>
           </div>
 
-          {/* right: preview panel */}
-          <div className="border border-gray-200 dark:border-gray-700 rounded-2xl overflow-hidden flex flex-col bg-white dark:bg-gray-900">
-            <div className="px-3 py-2 border-b border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 text-[13px] font-medium text-gray-700 dark:text-gray-200 flex items-center justify-between">
+          {/* RIGHT: PREVIEW PANEL */}
+          <div className="h-full border border-gray-200 dark:border-gray-700 rounded-2xl overflow-hidden flex flex-col bg-white dark:bg-gray-900">
+            <div className="px-3 py-2 border-b border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 text-[13px] font-medium text-gray-700 dark:text-gray-200 flex items-center justify-between flex-none">
               <span>Preview</span>
+
+              {/*
 
               {selected && !selected.isDir && (
                 <div className="flex items-center gap-2">
@@ -491,157 +504,175 @@ export default function RemoteFileDialog({
                   </Button>
                 </div>
               )}
+                */}
             </div>
 
-            <div className="flex-1 overflow-auto">
-              <div className="p-3 text-sm text-gray-800 dark:text-gray-100">
-                {!selected && (
-                  <div className="text-gray-500 dark:text-gray-400">
-                    Select a file to preview.
-                  </div>
-                )}
+            {/* fixed-height preview viewport */}
+            <div
+              className={[
+                "flex-1 px-3 py-3 text-sm text-gray-800 dark:text-gray-100 overflow-hidden",
+                previewHeightClass,
+              ].join(" ")}
+            >
+              {!selected && (
+                <div className="w-full h-full flex items-center justify-center text-gray-500 dark:text-gray-400 text-center text-[13px]">
+                  Select a file to preview.
+                </div>
+              )}
 
-                {selected && selected.isDir && (
-                  <div className="text-gray-500 dark:text-gray-400">
-                    Double-click a folder to enter it.
-                  </div>
-                )}
+              {selected && selected.isDir && (
+                <div className="w-full h-full flex items-center justify-center text-gray-500 dark:text-gray-400 text-center text-[13px]">
+                  Double-click a folder to enter it.
+                </div>
+              )}
 
-                {selected && !selected.isDir && (
-                  <>
-                    {/* TEXT PREVIEW */}
-                    {looksTextLike(selected) && previewRemoteText && (
-                      <>
-                        {previewLoading && (
-                          <div className="flex items-center gap-2 text-gray-600 dark:text-gray-300">
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                            <span>Loading preview…</span>
-                          </div>
-                        )}
+              {selected && !selected.isDir && (
+                <>
+                  {/* TEXT PREVIEW */}
+                  {looksTextLike(selected) && previewRemoteText && (
+                    <div className="w-full h-full flex flex-col">
+                      {previewLoading && (
+                        <div className="flex items-center gap-2 text-gray-600 dark:text-gray-300 text-[13px]">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          <span>Loading preview…</span>
+                        </div>
+                      )}
 
-                        {!previewLoading && previewText && (
-                          <pre className="whitespace-pre-wrap break-words text-xs sm:text-[13px] leading-relaxed text-gray-800 dark:text-gray-100">
-                            {previewText}
-                          </pre>
-                        )}
+                      {!previewLoading && previewText && (
+                        <div className="flex-1 overflow-auto rounded-md border border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50 p-3 text-[12px] leading-relaxed text-gray-800 dark:text-gray-100 font-mono whitespace-pre-wrap break-words">
+                          {previewText}
+                        </div>
+                      )}
 
-                        {!previewLoading && !previewText && (
-                          <div className="opacity-70 text-gray-500 dark:text-gray-400 text-[13px]">
-                            No text preview available.
-                          </div>
-                        )}
-                      </>
-                    )}
+                      {!previewLoading && !previewText && (
+                        <div className="w-full h-full flex items-center justify-center text-gray-500 dark:text-gray-400 text-[13px] text-center">
+                          No text preview available.
+                        </div>
+                      )}
+                    </div>
+                  )}
 
-                    {/* IMAGE / VOLUME PREVIEW */}
-                    {!looksTextLike(selected) && (
-                      <>
-                        {looksImageLike(selected) ? (
+                  {/* IMAGE / VOLUME PREVIEW */}
+                  {!looksTextLike(selected) && (
+                    <div className="w-full h-full flex flex-col md:flex-row gap-4 overflow-hidden">
+                      {(() => {
+                        const seemsImage = looksImageLike(selected);
+                        if (!seemsImage) {
+                          return (
+                            <div className="w-full h-full flex items-center justify-center text-gray-500 dark:text-gray-400 text-[13px] text-center">
+                              No preview available.
+                            </div>
+                          );
+                        }
+
+                        return (
                           <>
-                            {imgLoading && (
-                              <div className="flex items-center gap-2 text-gray-600 dark:text-gray-300 text-[13px]">
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                                <span>Loading image…</span>
-                              </div>
-                            )}
+                            {/* image block */}
+                            <div className="flex-shrink-0 flex flex-col items-center justify-center">
+                              {imgLoading && (
+                                <div className="flex items-center gap-2 text-gray-600 dark:text-gray-300 text-[13px]">
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                  <span>Loading image…</span>
+                                </div>
+                              )}
 
-                            {!imgLoading && imgUrl ? (
-                              <div className="flex flex-row items-start gap-4">
-                                {/* big preview box */}
-                                <div className="max-w-[642rem] max-h-[32rem] rounded-md border border-gray-300 dark:border-gray-600 bg-black flex items-center justify-center overflow-hidden">
+                              {!imgLoading && imgUrl && (
+                                <div className="w-[320px] h-[320px] max-w-full max-h-[320px] rounded-md border border-gray-300 dark:border-gray-600 bg-black flex items-center justify-center overflow-hidden">
                                   <img
                                     src={imgUrl}
                                     alt={selected.name}
-                                    className="object-contain max-w-full max-h-[32rem]"
+                                    className="object-contain w-full h-full"
                                   />
                                 </div>
+                              )}
 
-                                {/* metadata panel */}
-                                <div className="text-[12px] leading-relaxed text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg p-3 min-w-[12rem] max-w-[16rem]">
-                                  <div className="font-medium text-gray-900 dark:text-gray-100 break-words">
-                                    {selected.name}
-                                  </div>
-
-                                  {imgMeta.sizeBytes !== undefined && (
-                                    <div className="mt-2">
-                                      <span className="font-medium">Size: </span>
-                                      <span>{humanBytes(imgMeta.sizeBytes)}</span>
-                                    </div>
-                                  )}
-
-                                  {(imgMeta.width !== undefined ||
-                                    imgMeta.height !== undefined) && (
-                                    <div className="mt-2">
-                                      <span className="font-medium">
-                                        Dimensions:
-                                      </span>{" "}
-                                      <span>
-                                        {imgMeta.width ?? "?"} ×{" "}
-                                        {imgMeta.height ?? "?"} ×{" "}
-                                        {imgMeta.depth  ?? "?"}
-
-                                      </span>
-                                    </div>
-                                  )}
-
-                                  {imgMeta.depth !== undefined && (
-                                    <div className="mt-2">
-                                      <span className="font-medium">Depth: </span>
-                                      <span>{imgMeta.depth} slices</span>
-                                    </div>
-                                  )}
-
-                                  {imgMeta.voxelSize && (
-                                    <div className="mt-2">
-                                      <span className="font-medium">
-                                        Voxel size:
-                                      </span>{" "}
-                                      <span>
-                                        {imgMeta.voxelSize[0].toFixed(1)} ×{" "}
-                                        {imgMeta.voxelSize[1].toFixed(1)} ×{" "}
-                                        {imgMeta.voxelSize[2].toFixed(1)}
-                                      </span>
-                                    </div>
-                                  )}
-
-                                  
+                              {!imgLoading && !imgUrl && (
+                                <div className="text-gray-500 dark:text-gray-400 text-[13px] text-center">
+                                  No image preview available.
                                 </div>
-                              </div>
-                            ) : null}
+                              )}
+                            </div>
 
-                            {!imgLoading && !imgUrl && (
-                              <div className="opacity-70 text-gray-500 dark:text-gray-400 text-[13px]">
-                                No image preview available.
+                            {/* metadata block */}
+                            <div className="flex-1 min-w-0 overflow-auto rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-3 text-[12px] leading-relaxed text-gray-700 dark:text-gray-300">
+                              <div className="font-medium text-gray-900 dark:text-gray-100 break-words">
+                                {selected.name}
                               </div>
-                            )}
+
+                              {imgMeta.sizeBytes !== undefined && (
+                                <div className="mt-2 flex flex-wrap gap-1">
+                                  <span className="font-medium">Size:</span>
+                                  <span>{humanBytes(imgMeta.sizeBytes)}</span>
+                                </div>
+                              )}
+
+                              {(imgMeta.width !== undefined ||
+                                imgMeta.height !== undefined ||
+                                imgMeta.depth !== undefined) && (
+                                <div className="mt-2 flex flex-wrap gap-1">
+                                  <span className="font-medium">
+                                    Dimensions:
+                                  </span>
+                                  <span>
+                                    {imgMeta.width ?? "?"} ×{" "}
+                                    {imgMeta.height ?? "?"}
+                                    {imgMeta.depth !== undefined
+                                      ? ` × ${imgMeta.depth}`
+                                      : ""}
+                                  </span>
+                                </div>
+                              )}
+
+                              {imgMeta.voxelSize && (
+                                <div className="mt-2 flex flex-wrap gap-1">
+                                  <span className="font-medium">
+                                    Voxel size:
+                                  </span>
+                                  <span>
+                                    {imgMeta.voxelSize[0].toFixed(1)} ×{" "}
+                                    {imgMeta.voxelSize[1].toFixed(1)} ×{" "}
+                                    {imgMeta.voxelSize[2].toFixed(1)}
+                                  </span>
+                                </div>
+                              )}
+
+{/*
+                              {imgMeta.note && (
+                                <div className="mt-2 italic text-[11px] text-gray-500 dark:text-gray-400 break-words">
+                                  {imgMeta.note}
+                                </div>
+                              )}
+                                */}
+                            </div>
                           </>
-                        ) : (
-                          <div className="opacity-70 text-gray-500 dark:text-gray-400 text-[13px]">
-                            No preview available.
-                          </div>
-                        )}
-                      </>
-                    )}
-                  </>
-                )}
-              </div>
+                        );
+                      })()}
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           </div>
         </div>
 
-        {/* footer */}
-        <div className="flex justify-end gap-2 mt-6">
+        {/* FOOTER */}
+        <div
+          className={[
+            "flex justify-end gap-2 mt-4",
+            "flex-none",
+          ].join(" ")}
+        >
           <Button
             variant="outline"
             onClick={onClose}
-            className="h-8 px-4 text-xs leading-none"
+            className="rounded-full px-4 py-2 min-w-[140px] font-medium bg-gray-200 hover:bg-gray-300 text-gray-800 dark:text-gray-300"
           >
             Close
           </Button>
           <Button
             onClick={handlePick}
             disabled={!selected || !!selected?.isDir}
-            className="h-8 px-4 text-xs leading-none"
+            className="rounded-full px-4 py-2 min-w-[140px] font-medium bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-60 disabled:cursor-not-allowed"
           >
             Select
           </Button>
