@@ -1,4 +1,3 @@
-// src/components/files/RemoteFileDialog.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import {
   Dialog,
@@ -10,22 +9,28 @@ import { Button } from "@/components/ui/button";
 import {
   File as FileIcon,
   FolderOpen,
-  Download,
   CornerUpLeft,
   RefreshCw,
   Loader2,
   AlertCircle,
-  Image as ImageIcon,
-  FileText,
 } from "lucide-react";
 
-/** Single remote entry returned by listRemoteDirectory */
 export type RemoteEntry = {
   name: string;
-  path: string; // path relative to the protocol root
+  path: string;      // relative path inside protocol root
   isDir: boolean;
   size?: number;
-  mime?: string; // detected mime type if known
+  mime?: string;     // guessed mime
+};
+
+type PreviewMeta = {
+  mime?: string;
+  width?: number;
+  height?: number;
+  depth?: number;
+  sizeBytes?: number;
+  voxelSize?: [number, number, number];
+  note?: string;
 };
 
 type RemoteFileDialogProps = {
@@ -33,58 +38,31 @@ type RemoteFileDialogProps = {
   onClose: () => void;
   title?: string;
 
-  projectId?: string | number; // kept for symmetry/debug; not directly used here
+  projectId?: string | number;
   protocolId?: string | number;
 
-  /** Optional initial directory path relative to protocol root */
   initialPath?: string;
-
-  /** Optional lazy resolver for the starting path (server is source of truth) */
   resolveStartPath?: () => Promise<string>;
 
-  /** List directory contents at the given relative/absolute path */
   listRemoteDirectory: (absOrRelPath: string) => Promise<RemoteEntry[]>;
 
-  /**
-   * Optional text preview loader.
-   * Should return a short string (<=1MB) for text-like files,
-   * or null/"" if not previewable as text.
-   *
-   * Must already include auth (use your svc).
-   */
   previewRemoteText?: (absOrRelPath: string) => Promise<string | null>;
 
   /**
-   * Optional URL builder.
-   *
-   * If inline=true you return the /fs/download?...&inline=1 URL.
-   * If inline=false you return the /fs/download?... URL.
-   *
-   * NOTE: This raw URL will NOT carry auth headers if we drop it
-   * straight into <img src>. So for protected resources we still
-   * need fetchInlineBlob (see below).
+   * fetchInlinePreviewBlob MUST:
+   *  - call GET /fs/download?inline=1 with auth
+   *  - return { blob, meta } where meta comes from X-Preview-* headers
+   */
+  fetchInlinePreviewBlob?: (
+    absOrRelPath: string
+  ) => Promise<{ blob: Blob; meta: PreviewMeta }>;
+
+  /**
+   * Optional download URL builder for the "Select" / "Download" use case.
+   * We still keep it for final download, but we don't rely on it for preview.
    */
   buildDownloadUrl?: (absOrRelPath: string, inline?: boolean) => string;
 
-  /**
-   * Fetches a binary preview (PNG/JPG/etc.) as a Blob for the given file path,
-   * using authenticated fetch/axios under the hood.
-   *
-   * This must:
-   *   - hit the same backend endpoint you use for inline previews
-   *     (inline=true, which returns either the real image/* OR
-   *     an auto-generated PNG slice for .mrc/.map, etc.)
-   *   - include Authorization token so we don't get 401
-   *   - return the Blob
-   *
-   * We'll turn that Blob into an object URL for <img src>.
-   *
-   * If you don't pass this prop, we'll fall back to buildDownloadUrl(..., true)
-   * and you'll still get 401 for protected routes.
-   */
-  fetchInlineBlob?: (absOrRelPath: string) => Promise<Blob>;
-
-  /** Called when the user confirms "Select" on a file */
   onPick?: (relativePath: string) => void;
 };
 
@@ -92,36 +70,33 @@ export default function RemoteFileDialog({
   open,
   onClose,
   title = "Browse protocol files",
-  projectId, // eslint-disable-line @typescript-eslint/no-unused-vars
-  protocolId, // eslint-disable-line @typescript-eslint/no-unused-vars
   initialPath = "",
   resolveStartPath,
   listRemoteDirectory,
   previewRemoteText,
+  fetchInlinePreviewBlob,
   buildDownloadUrl,
-  fetchInlineBlob,
   onPick,
 }: RemoteFileDialogProps) {
+  // directory state
   const [cwd, setCwd] = useState<string>(initialPath);
   const [items, setItems] = useState<RemoteEntry[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
-  // currently selected entry in the directory list
+  // selection state
   const [selected, setSelected] = useState<RemoteEntry | null>(null);
 
-  // preview of text-like files
-  const [preview, setPreview] = useState<string>("");
+  // text preview state
+  const [previewText, setPreviewText] = useState<string>("");
   const [previewLoading, setPreviewLoading] = useState<boolean>(false);
 
-  // preview for image / mrc: we store a blob URL here
-  const [imgUrl, setImgUrl] = useState<string>(""); // object URL for <img src>
+  // image / volume preview state
+  const [imgUrl, setImgUrl] = useState<string>("");     // blob URL
+  const [imgMeta, setImgMeta] = useState<PreviewMeta>({}); // width, height, depth...
   const [imgLoading, setImgLoading] = useState<boolean>(false);
 
-  /**
-   * Build breadcrumb segments for cwd like:
-   *   root / subdir / subdir2
-   */
+  // build breadcrumbs for cwd
   const breadcrumbs = useMemo(() => {
     const parts = (cwd || "").split("/").filter(Boolean);
     const crumbs = [{ name: "root", path: "" }];
@@ -133,14 +108,10 @@ export default function RemoteFileDialog({
     return crumbs;
   }, [cwd]);
 
-  /**
-   * Return true if this entry is likely "text-like"
-   * so we should try previewRemoteText() for it.
-   */
+  // helper: does this look text-like?
   const looksTextLike = (entry: RemoteEntry): boolean => {
     if (entry.isDir) return false;
     const mimeLower = (entry.mime || "").toLowerCase();
-
     if (
       mimeLower.startsWith("text/") ||
       mimeLower === "application/json" ||
@@ -150,7 +121,6 @@ export default function RemoteFileDialog({
     ) {
       return true;
     }
-
     const lowerName = entry.name.toLowerCase();
     const textExts = [
       ".txt",
@@ -167,13 +137,9 @@ export default function RemoteFileDialog({
     return textExts.some((ext) => lowerName.endsWith(ext));
   };
 
-  /**
-   * Return true if this entry can be visualized as an image,
-   * including MRC / MAP volumes (server should convert
-   * to PNG if inline=true).
-   */
+  // helper: does this look image-like? (including .mrc / .map)
   const isMrcExt = (name: string | undefined) =>
-    !!name && /\.(mrc|mrcs|map)$/i.test(name);
+    !!name && /\.(mrc|mrcs|map|em)$/i.test(name);
 
   const looksImageLike = (entry: RemoteEntry): boolean => {
     if (entry.isDir) return false;
@@ -182,9 +148,7 @@ export default function RemoteFileDialog({
     return false;
   };
 
-  /**
-   * Load directory contents and reset state.
-   */
+  // load directory list
   const refresh = async (path: string) => {
     try {
       setLoading(true);
@@ -194,15 +158,16 @@ export default function RemoteFileDialog({
 
       setItems(listing);
       setCwd(path);
+
+      // reset selection/preview
       setSelected(null);
-      setPreview("");
+
+      setPreviewText("");
       setPreviewLoading(false);
 
-      // clear any image object URL
-      if (imgUrl) {
-        URL.revokeObjectURL(imgUrl);
-      }
+      if (imgUrl) URL.revokeObjectURL(imgUrl);
       setImgUrl("");
+      setImgMeta({});
       setImgLoading(false);
     } catch (e: unknown) {
       const msg =
@@ -213,125 +178,91 @@ export default function RemoteFileDialog({
     }
   };
 
-  /**
-   * Enter a directory on double click.
-   * No-op for files.
-   */
-  const enter = (entry: RemoteEntry) => {
+  // enter dir on double click
+  const enterDir = (entry: RemoteEntry) => {
     if (!entry.isDir) return;
     void refresh(entry.path);
   };
 
-  /**
-   * Go one directory up (..). If already at root => no-op.
-   */
+  // go up one level
   const goUp = () => {
     if (!cwd) return;
     const up = cwd.includes("/") ? cwd.split("/").slice(0, -1).join("/") : "";
     void refresh(up);
   };
 
-  /**
-   * Load textual preview for a file (logs, json, etc.)
-   * using previewRemoteText() which already has auth.
-   */
+  // load text preview
   const loadTextPreview = async (entry: RemoteEntry) => {
     if (!previewRemoteText) return;
     if (entry.isDir) return;
     if (!looksTextLike(entry)) return;
 
-    setPreview("");
+    setPreviewText("");
     setPreviewLoading(true);
     try {
       const text = await previewRemoteText(entry.path);
-      setPreview(text || "");
+      setPreviewText(text || "");
     } catch {
-      setPreview("");
+      setPreviewText("");
     } finally {
       setPreviewLoading(false);
     }
   };
 
-  /**
-   * Load binary preview for an image / mrc entry.
-   *
-   * We prefer fetchInlineBlob() because that can include Authorization
-   * and return a Blob directly. Then we make a blob URL for <img>.
-   *
-   * If fetchInlineBlob() is not provided, we fall back to
-   * buildDownloadUrl(..., true). BUT that will likely 401 if the
-   * backend is protected and the browser can't send auth headers.
-   */
+  // load image / volume preview (blob + meta headers)
   const loadImagePreview = async (entry: RemoteEntry) => {
     if (!looksImageLike(entry)) return;
-
-    // Revoke any previous blob URL
-    if (imgUrl) {
-      URL.revokeObjectURL(imgUrl);
+    if (!fetchInlinePreviewBlob) {
+      // no fetcher provided => we can't auth-load the blob
       setImgUrl("");
-    }
-
-    // If caller didn't provide fetchInlineBlob, we can't auth XHR ourselves.
-    // We'll just try the raw inline URL (may 401 on protected servers).
-    if (!fetchInlineBlob) {
-      if (buildDownloadUrl) {
-        const inlineUrl = buildDownloadUrl(entry.path, true);
-        setImgUrl(inlineUrl); // <img> will hit server directly (unauthenticated)
-      } else {
-        setImgUrl("");
-      }
+      setImgMeta({});
       return;
     }
 
-    // Authenticated path: ask for Blob
+    // revoke previous blob URL
+    if (imgUrl) URL.revokeObjectURL(imgUrl);
+
+    setImgUrl("");
+    setImgMeta({});
+    setImgLoading(true);
+
     try {
-      setImgLoading(true);
-      const blob = await fetchInlineBlob(entry.path); // caller must auth
+      const { blob, meta } = await fetchInlinePreviewBlob(entry.path);
       const objUrl = URL.createObjectURL(blob);
       setImgUrl(objUrl);
+      setImgMeta(meta || {});
     } catch {
-      // couldn't fetch/preview
       setImgUrl("");
+      setImgMeta({});
     } finally {
       setImgLoading(false);
     }
   };
 
-  /**
-   * Handle row click:
-   * - mark selected entry
-   * - if text-like => load text preview
-   * - else clear text preview
-   * - if image-like => load image blob preview
-   * - else clear image preview
-   */
+  // handle click in the directory list
   const handleSelectEntry = (entry: RemoteEntry) => {
     setSelected(entry);
 
-    // manage text preview
+    // text branch
     if (!entry.isDir && looksTextLike(entry) && previewRemoteText) {
       void loadTextPreview(entry);
     } else {
-      setPreview("");
+      setPreviewText("");
       setPreviewLoading(false);
     }
 
-    // manage image preview
+    // image/volume branch
     if (!entry.isDir && looksImageLike(entry)) {
       void loadImagePreview(entry);
     } else {
-      // clear previous image preview
-      if (imgUrl) {
-        URL.revokeObjectURL(imgUrl);
-      }
+      if (imgUrl) URL.revokeObjectURL(imgUrl);
       setImgUrl("");
+      setImgMeta({});
       setImgLoading(false);
     }
   };
 
-  /**
-   * The user confirms "Select".
-   */
+  // final "Select" action
   const handlePick = () => {
     if (selected && !selected.isDir && onPick) {
       onPick(selected.path);
@@ -339,32 +270,19 @@ export default function RemoteFileDialog({
     }
   };
 
-  /**
-   * Download button in the preview panel:
-   * open non-inline URL in new tab (Content-Disposition: attachment).
-   */
+  // full download (optional)
   const handleDownload = () => {
     if (!selected || selected.isDir || !buildDownloadUrl) return;
     const url = buildDownloadUrl(selected.path, false);
     window.open(url, "_blank");
   };
 
-  /**
-   * Stop click propagation so ReactFlow behind doesn't get events.
-   */
+  // stop bubbling to canvas behind
   const handleDialogClick: React.MouseEventHandler = (e) => {
     e.stopPropagation();
   };
 
-  /**
-   * When dialog opens:
-   * - resolve initial path
-   * - list directory
-   *
-   * When dialog closes:
-   * - reset state for next open
-   * - revoke any blob URL we created
-   */
+  // open/close effect
   useEffect(() => {
     let mounted = true;
 
@@ -373,15 +291,15 @@ export default function RemoteFileDialog({
         // cleanup on close
         setItems([]);
         setCwd(initialPath || "");
+
         setSelected(null);
 
-        setPreview("");
+        setPreviewText("");
         setPreviewLoading(false);
 
-        if (imgUrl) {
-          URL.revokeObjectURL(imgUrl);
-        }
+        if (imgUrl) URL.revokeObjectURL(imgUrl);
         setImgUrl("");
+        setImgMeta({});
         setImgLoading(false);
 
         setError(null);
@@ -391,7 +309,6 @@ export default function RemoteFileDialog({
       const start = resolveStartPath
         ? await resolveStartPath()
         : initialPath;
-
       if (!mounted) return;
       await refresh(start || "");
     };
@@ -403,6 +320,18 @@ export default function RemoteFileDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
+  // helper to pretty-print file size
+  const humanBytes = (n?: number) => {
+    if (!n && n !== 0) return undefined;
+    if (n < 1024) return `${n} B`;
+    const kb = n / 1024;
+    if (kb < 1024) return `${kb.toFixed(1)} KB`;
+    const mb = kb / 1024;
+    if (mb < 1024) return `${mb.toFixed(1)} MB`;
+    const gb = mb / 1024;
+    return `${gb.toFixed(1)} GB`;
+  };
+
   return (
     <Dialog
       open={open}
@@ -411,10 +340,10 @@ export default function RemoteFileDialog({
       }}
     >
       <DialogContent
-        className="sm:max-w-[960px] max-h-[90vh] overflow-hidden"
+        className="sm:max-w-[1100px] max-h-[90vh] overflow-hidden"
         onClick={handleDialogClick}
       >
-        {/* Header with subtle background */}
+        {/* header */}
         <DialogHeader className="-mx-6 -mt-6 px-6 py-4 bg-gray-100 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 rounded-t-lg">
           <DialogTitle className="text-lg font-medium text-gray-900 dark:text-gray-100 flex flex-col">
             <span className="truncate">{title}</span>
@@ -424,7 +353,7 @@ export default function RemoteFileDialog({
           </DialogTitle>
         </DialogHeader>
 
-        {/* Toolbar row */}
+        {/* toolbar */}
         <div className="flex flex-wrap items-center gap-2 mt-4 bg-gray-50 dark:bg-gray-900/40 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-sm">
           <Button
             variant="outline"
@@ -464,11 +393,10 @@ export default function RemoteFileDialog({
           </div>
         </div>
 
-        {/* Main body: 2-column layout */}
+        {/* body: 2 columns */}
         <div className="grid grid-cols-2 gap-4 mt-4 max-h-[55vh]">
-          {/* LEFT COLUMN: directory listing */}
+          {/* left: directory listing */}
           <div className="border border-gray-200 dark:border-gray-700 rounded-2xl overflow-hidden flex flex-col bg-white dark:bg-gray-900">
-            {/* Panel header with background */}
             <div className="px-3 py-2 border-b border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 text-[13px] font-medium text-gray-700 dark:text-gray-200 flex items-center justify-between">
               <span>Directory</span>
               {error && (
@@ -479,7 +407,6 @@ export default function RemoteFileDialog({
               )}
             </div>
 
-            {/* Scrollable list region */}
             <div className="flex-1 overflow-auto">
               {error && (
                 <div className="p-3 text-sm text-red-700 dark:text-red-400 flex items-center gap-2">
@@ -499,20 +426,17 @@ export default function RemoteFileDialog({
 
                   {!loading &&
                     items.map((entry) => {
-                      const isSelected = selected?.path === entry.path;
-
+                      const isSel = selected?.path === entry.path;
                       return (
                         <li key={entry.path}>
                           <button
                             className={[
                               "w-full text-left px-3 py-2 flex items-center gap-2",
                               "hover:bg-gray-100 dark:hover:bg-gray-800/70",
-                              isSelected
-                                ? "bg-gray-100 dark:bg-gray-800/70"
-                                : "",
+                              isSel ? "bg-gray-100 dark:bg-gray-800/70" : "",
                             ].join(" ")}
                             onClick={() => handleSelectEntry(entry)}
-                            onDoubleClick={() => enter(entry)}
+                            onDoubleClick={() => enterDir(entry)}
                           >
                             {entry.isDir ? (
                               <>
@@ -539,13 +463,11 @@ export default function RemoteFileDialog({
             </div>
           </div>
 
-          {/* RIGHT COLUMN: preview panel */}
+          {/* right: preview panel */}
           <div className="border border-gray-200 dark:border-gray-700 rounded-2xl overflow-hidden flex flex-col bg-white dark:bg-gray-900">
-            {/* Panel header with background */}
             <div className="px-3 py-2 border-b border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 text-[13px] font-medium text-gray-700 dark:text-gray-200 flex items-center justify-between">
               <span>Preview</span>
 
-              {/*
               {selected && !selected.isDir && (
                 <div className="flex items-center gap-2">
                   {buildDownloadUrl && (
@@ -555,7 +477,6 @@ export default function RemoteFileDialog({
                       onClick={handleDownload}
                       className="gap-2 h-7 text-[11px] leading-none"
                     >
-                      <Download className="h-4 w-4" />
                       Download
                     </Button>
                   )}
@@ -566,15 +487,12 @@ export default function RemoteFileDialog({
                     disabled={!selected || selected.isDir}
                     className="gap-2 h-7 text-[11px] leading-none"
                   >
-                    <FileText className="h-4 w-4" />
                     Select
                   </Button>
                 </div>
               )}
-                */}
             </div>
 
-            {/* Scrollable preview body */}
             <div className="flex-1 overflow-auto">
               <div className="p-3 text-sm text-gray-800 dark:text-gray-100">
                 {!selected && (
@@ -591,7 +509,7 @@ export default function RemoteFileDialog({
 
                 {selected && !selected.isDir && (
                   <>
-                    {/* ===== TEXT PREVIEW BRANCH ===== */}
+                    {/* TEXT PREVIEW */}
                     {looksTextLike(selected) && previewRemoteText && (
                       <>
                         {previewLoading && (
@@ -601,13 +519,13 @@ export default function RemoteFileDialog({
                           </div>
                         )}
 
-                        {!previewLoading && preview && (
+                        {!previewLoading && previewText && (
                           <pre className="whitespace-pre-wrap break-words text-xs sm:text-[13px] leading-relaxed text-gray-800 dark:text-gray-100">
-                            {preview}
+                            {previewText}
                           </pre>
                         )}
 
-                        {!previewLoading && !preview && (
+                        {!previewLoading && !previewText && (
                           <div className="opacity-70 text-gray-500 dark:text-gray-400 text-[13px]">
                             No text preview available.
                           </div>
@@ -615,9 +533,9 @@ export default function RemoteFileDialog({
                       </>
                     )}
 
-                    {/* ===== IMAGE / VOLUME PREVIEW BRANCH ===== */}
+                    {/* IMAGE / VOLUME PREVIEW */}
                     {!looksTextLike(selected) && (
-                      <div className="flex flex-col items-start gap-2">
+                      <>
                         {looksImageLike(selected) ? (
                           <>
                             {imgLoading && (
@@ -628,19 +546,67 @@ export default function RemoteFileDialog({
                             )}
 
                             {!imgLoading && imgUrl ? (
-                              <>
-                                <div className="flex items-center gap-2 opacity-70 text-[11px] text-gray-600 dark:text-gray-400">
-                                  <ImageIcon className="h-4 w-4" />
-                                  <span>
-                                    {selected.mime || "generated/preview"}
-                                  </span>
+                              <div className="flex flex-row items-start gap-4">
+                                {/* big preview box */}
+                                <div className="max-w-[642rem] max-h-[32rem] rounded-md border border-gray-300 dark:border-gray-600 bg-black flex items-center justify-center overflow-hidden">
+                                  <img
+                                    src={imgUrl}
+                                    alt={selected.name}
+                                    className="object-contain max-w-full max-h-[32rem]"
+                                  />
                                 </div>
-                                <img
-                                  src={imgUrl}
-                                  alt={selected.name}
-                                  className="max-h-80 max-w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900"
-                                />
-                              </>
+
+                                {/* metadata panel */}
+                                <div className="text-[12px] leading-relaxed text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg p-3 min-w-[12rem] max-w-[16rem]">
+                                  <div className="font-medium text-gray-900 dark:text-gray-100 break-words">
+                                    {selected.name}
+                                  </div>
+
+                                  {imgMeta.sizeBytes !== undefined && (
+                                    <div className="mt-2">
+                                      <span className="font-medium">Size: </span>
+                                      <span>{humanBytes(imgMeta.sizeBytes)}</span>
+                                    </div>
+                                  )}
+
+                                  {(imgMeta.width !== undefined ||
+                                    imgMeta.height !== undefined) && (
+                                    <div className="mt-2">
+                                      <span className="font-medium">
+                                        Dimensions:
+                                      </span>{" "}
+                                      <span>
+                                        {imgMeta.width ?? "?"} ×{" "}
+                                        {imgMeta.height ?? "?"} ×{" "}
+                                        {imgMeta.depth  ?? "?"}
+
+                                      </span>
+                                    </div>
+                                  )}
+
+                                  {imgMeta.depth !== undefined && (
+                                    <div className="mt-2">
+                                      <span className="font-medium">Depth: </span>
+                                      <span>{imgMeta.depth} slices</span>
+                                    </div>
+                                  )}
+
+                                  {imgMeta.voxelSize && (
+                                    <div className="mt-2">
+                                      <span className="font-medium">
+                                        Voxel size:
+                                      </span>{" "}
+                                      <span>
+                                        {imgMeta.voxelSize[0].toFixed(1)} ×{" "}
+                                        {imgMeta.voxelSize[1].toFixed(1)} ×{" "}
+                                        {imgMeta.voxelSize[2].toFixed(1)}
+                                      </span>
+                                    </div>
+                                  )}
+
+                                  
+                                </div>
+                              </div>
                             ) : null}
 
                             {!imgLoading && !imgUrl && (
@@ -654,7 +620,7 @@ export default function RemoteFileDialog({
                             No preview available.
                           </div>
                         )}
-                      </div>
+                      </>
                     )}
                   </>
                 )}
@@ -663,7 +629,7 @@ export default function RemoteFileDialog({
           </div>
         </div>
 
-        {/* Footer actions */}
+        {/* footer */}
         <div className="flex justify-end gap-2 mt-6">
           <Button
             variant="outline"

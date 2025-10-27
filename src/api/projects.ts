@@ -318,10 +318,53 @@ export function buildProtocolDownloadUrl(
   return `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/fs/download?path=${encodeURIComponent(path)}${q}`;
 }
 
-export async function fetchProtocolInlinePreviewBlob(projectId: Id, protocolId: Id, path: string): Promise<Blob> {
-  // use your existing auth-enabled svc/fetch/axios instance:
-  const url = `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/fs/download?path=${encodeURIComponent(path)}&inline=1`;
-  const res = await fetchWithAuth(url, { method: "GET" }); 
-  if (!res.ok) throw new Error("fail");
-  return await res.blob();
+export async function fetchProtocolInlinePreviewBlob(
+  projectId: number | string,
+  protocolId: number | string,
+  relPath: string,  
+): Promise<{ blob: Blob; meta: any }> {
+  const url = `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/fs/download?path=${encodeURIComponent(
+    relPath
+  )}&inline=1`;
+
+  const res = await fetchWithAuth(url, {method: "GET"});
+
+  if (!res.ok) {
+    throw new Error(`Preview failed: ${res.status}`);
+  }
+
+  // 1) read Blob
+  const blob = await res.blob();
+
+  console.log(res)
+
+  // 2) rebuild meta from response headers
+  const mime = res.headers.get("X-Preview-Mime") || "";
+  const width = res.headers.get("X-Preview-Width");
+  const height = res.headers.get("X-Preview-Height");
+  const depth = res.headers.get("X-Preview-Depth");
+  const sizeBytes = res.headers.get("X-Preview-SizeBytes");
+  const voxelHeader = res.headers.get("X-Preview-VoxelSize"); // "vx,vy,vz"
+  const note = res.headers.get("X-Preview-Note") || "";
+
+  let voxelSize: [number, number, number] | undefined;
+  if (voxelHeader) {
+    const parts = voxelHeader.split(",").map((p) => Number(p.trim()));
+    if (parts.length === 3 && parts.every((n) => Number.isFinite(n))) {
+      voxelSize = [parts[0], parts[1], parts[2]];
+    }
+  }
+
+  const meta = {
+    mime,
+    width: width ? Number(width) : undefined,
+    height: height ? Number(height) : undefined,
+    depth: depth ? Number(depth) : undefined,
+    sizeBytes: sizeBytes ? Number(sizeBytes) : undefined,
+    voxelSize,
+    note,
+  };
+
+  return { blob, meta };
 }
+
