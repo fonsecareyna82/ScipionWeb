@@ -1977,27 +1977,47 @@ export default function ProjectPage() {
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={confirm.open} onOpenChange={(open: boolean) => { if (!open) setConfirm({ open: false, id: null, ids: null, kind: null }); }}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle className="mb-6">
+      <Dialog
+        open={confirm.open}
+        onOpenChange={(open: boolean) => {
+          if (!open) {
+            setConfirm({ open: false, id: null, ids: null, kind: null });
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="mb-6">
               {confirm.kind === "delete" && "Delete protocol(s)?"}
               {confirm.kind === "restartAll" && "Restart all steps?"}
               {confirm.kind === "continueAll" && "Continue all steps?"}
               {confirm.kind === "stop" && "Stop protocol(s)?"}
-            </AlertDialogTitle>
-            <AlertDialogDescription className="mb-5">
-              {confirm.kind === "delete" && "This action cannot be undone. This will permanently remove the selected protocol(s) and outputs not used elsewhere."}
-              {confirm.kind === "restartAll" && "All protocols will be restarted from this protocol, so the previous results will be deleted"}
-              {confirm.kind === "continueAll" && "All protocols will continue for this protocol, so the previous results will be affected"}
-              {confirm.kind === "stop" && "This will attempt to gracefully stop the selected protocol(s). Running work may be interrupted."}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setConfirm({ open: false, id: null, ids: null, kind: null })} className="rounded-full px-4 py-2 min-w-[140px] font-medium bg-gray-200 hover:bg-gray-300 text-gray-800">
+            </DialogTitle>
+          </DialogHeader>
+
+          <p className="mb-5 text-sm text-muted-foreground">
+            {confirm.kind === "delete" &&
+              "This action cannot be undone. This will permanently remove the selected protocol(s) and outputs not used elsewhere."}
+            {confirm.kind === "restartAll" &&
+              "All protocols will be restarted from this protocol, so the previous results will be deleted"}
+            {confirm.kind === "continueAll" &&
+              "All protocols will continue for this protocol, so the previous results will be affected"}
+            {confirm.kind === "stop" &&
+              "This will attempt to gracefully stop the selected protocol(s). Running work may be interrupted."}
+          </p>
+
+          {/* Footer */}
+          <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+            <button
+              onClick={() =>
+                setConfirm({ open: false, id: null, ids: null, kind: null })
+              }
+              className="rounded-full px-4 py-2 min-w-[140px] font-medium bg-gray-200 hover:bg-gray-300 text-gray-800"
+            >
               Cancel
-            </AlertDialogCancel>
-            <AlertDialogAction
+            </button>
+
+            <button
               onClick={async () => {
                 if (!projectName || !confirm.kind) return;
                 const kind = confirm.kind; // snapshot before state changes
@@ -2009,7 +2029,11 @@ export default function ProjectPage() {
 
                     clearAllSelectionHard();
 
-                    toast.success(ids.length > 1 ? "Protocols deleted." : "Protocol deleted.");
+                    toast.success(
+                      ids.length > 1
+                        ? "Protocols deleted."
+                        : "Protocol deleted.",
+                    );
                   } else if (confirm.kind === "restartAll" && confirm.id) {
                     await svc.restartAll(projectName, confirm.id);
                     toast.success("Restart started.");
@@ -2021,8 +2045,12 @@ export default function ProjectPage() {
                     if (ids.length === 0) return;
                     await stopProtocolNow(ids); // already refreshes
                   }
+
                   setConfirm({ open: false, id: null, ids: null, kind: null });
-                  if (kind !== "stop") await handleRefresh();
+
+                  if (kind !== "stop") {
+                    await handleRefresh();
+                  }
                 } catch (e) {
                   console.error(e);
                   toast.error(getErrorMsg(e));
@@ -2037,10 +2065,11 @@ export default function ProjectPage() {
                   : confirm.kind === "continueAll"
                     ? "Continue"
                     : "Stop"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
 
       <Dialog open={dlgResetFrom.open} onOpenChange={(open: boolean) => { if (!open) setDlgResetFrom({ open: false, id: null }); }}>
         <DialogContent className="sm:max-w-md">
@@ -2086,7 +2115,7 @@ export default function ProjectPage() {
           listRemoteDirectory={(p) => svc.listRemoteDirectory(projId, pid.toString(), p)}
           previewRemoteText={(p) => svc.previewProtocolText(projId, pid.toString(), p)}
           buildDownloadUrl={(p, inline) => svc.buildProtocolDownloadUrl(projId.toString(), pid.toString(), p, !!inline)}
-          fetchInlinePreviewBlob ={(p) =>  svc.fetchProtocolInlinePreviewBlob(projId.toString(), pid.toString(), p)}
+          fetchInlinePreviewBlob={(p) => svc.fetchProtocolInlinePreviewBlob(projId.toString(), pid.toString(), p)}
           onPick={(relativePath) => {
             console.log("picked:", relativePath);
             setFileDialogOpen(false);

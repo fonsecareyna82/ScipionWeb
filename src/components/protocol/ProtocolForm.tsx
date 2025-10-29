@@ -1,5 +1,5 @@
 // src/components/ProtocolForm.tsx
-import { useState, useEffect, useCallback, JSX, useRef } from "react";
+import { useState, useEffect, useCallback, JSX, useRef, useMemo } from "react";
 import {
   Tabs,
   Tab,
@@ -92,6 +92,43 @@ export default function ProtocolForm({
 
   // Tracks last committed label for inputType to detect user changes
   const prevSelectedInputTypeRef = useRef<string | null>(null);
+
+  // --------------------------------------------
+  // Outputs tab state
+  // --------------------------------------------
+  // Index del output actualmente seleccionado en la lista izquierda
+  const [selectedOutputIdx, setSelectedOutputIdx] = useState<number | null>(null);
+
+  // Normalizamos los outputs que vienen en `data.outputs`
+  // Ejemplo de data.outputs:
+  // [
+  //   { "outputVolume": { "_class": "Volume", "info": "Volume (140 x ...)", ... } },
+  //   { "outputParticles": { "_class": "SetOfParticles", "info": "Particles (...)", ... } }
+  // ]
+  const normalizedOutputs = useMemo(() => {
+    const arr = Array.isArray(data?.outputs) ? data.outputs : [];
+    return arr.map((entry: any) => {
+      const [name, payload] = Object.entries(entry)[0] as [string, any];
+      const infoText = payload?.info ?? payload?._class ?? "";
+      return {
+        name,
+        infoText, // para la lista izquierda -> "outputFSC: SetOfFSCs (5 items)"
+        raw: payload, // objeto completo, lo mostraremos en el panel derecho
+      };
+    });
+  }, [data?.outputs]);
+
+  // Output actualmente activo para previsualizar
+  const activeOutput = useMemo(() => {
+    if (
+      selectedOutputIdx == null ||
+      selectedOutputIdx < 0 ||
+      selectedOutputIdx >= normalizedOutputs.length
+    ) {
+      return null;
+    }
+    return normalizedOutputs[selectedOutputIdx];
+  }, [selectedOutputIdx, normalizedOutputs]);
 
   // Use this instead of onClose() directly to play exit animation
   const requestClose = () => setIsClosing(true);
@@ -1028,10 +1065,10 @@ export default function ProtocolForm({
                 "& .MuiInputBase-input": {
                   fontSize: "0.8rem",
                   userSelect: "none",
-                  cursor: "pointer",           
+                  cursor: "pointer",
                 },
                 "& .MuiInputBase-input:active": {
-                  cursor: "grabbing",          
+                  cursor: "grabbing",
                 },
               }}
             />
@@ -1421,7 +1458,239 @@ export default function ProtocolForm({
                 </Box>
               </>
             )}
-            {topTab === 1 && <Typography variant="body1">Outputs content goes here.</Typography>}
+
+            {topTab === 1 && (
+              <Box
+                sx={{
+                  display: "flex",
+                  flexDirection: "row",
+                  gap: 2,
+                  minHeight: 320,
+                }}
+              >
+                {/* Left Panel Outputs */}
+                <Box
+                  sx={{
+                    flex: "0 0 45%",
+                    maxWidth: "45%",
+                    minWidth: 0,
+                    backgroundColor: "#fff",
+                    borderRadius: 2,
+                    boxShadow: "0px 2px 6px rgba(0,0,0,0.1)",
+                    border: "1px solid #e5e7eb",
+                    display: "flex",
+                    flexDirection: "column",
+                    overflow: "hidden",
+                  }}
+                >
+                  <Box
+                    sx={{
+                      px: 1.5,
+                      py: 1,
+                      borderBottom: "1px solid #e5e7eb",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <Typography
+                      variant="subtitle2"
+                      sx={{ fontWeight: 600, fontSize: "0.8rem", color: "#111827" }}
+                    >
+                      Outputs
+                    </Typography>
+                    <Typography
+                      variant="caption"
+                      sx={{ color: "#6b7280", fontSize: "0.7rem" }}
+                    >
+                      {normalizedOutputs.length} items
+                    </Typography>
+                  </Box>
+
+                  <Box
+                    sx={{
+                      flex: 1,
+                      overflowY: "auto",
+                      maxHeight: "50vh",
+                      p: 1,
+                    }}
+                  >
+                    {normalizedOutputs.length === 0 ? (
+                      <Typography
+                        variant="body2"
+                        sx={{
+                          color: "#6b7280",
+                          fontSize: "0.8rem",
+                          textAlign: "center",
+                          py: 4,
+                        }}
+                      >
+                        No outputs for this protocol.
+                      </Typography>
+                    ) : (
+                      normalizedOutputs.map((o: any, idx: number) => (
+                        <Box
+                          key={idx}
+                          onClick={() => setSelectedOutputIdx(idx)}
+                          sx={{
+                            cursor: "pointer",
+                            userSelect: "none",
+                            borderRadius: 1.5,
+                            border: "1px solid transparent",
+                            px: 1,
+                            py: 1,
+                            mb: 1,
+                            backgroundColor:
+                              selectedOutputIdx === idx ? "#eef2ff" : "transparent",
+                            borderColor:
+                              selectedOutputIdx === idx ? "#6366f1" : "transparent",
+                            "&:hover": {
+                              backgroundColor:
+                                selectedOutputIdx === idx ? "#eef2ff" : "#f9fafb",
+                              borderColor:
+                                selectedOutputIdx === idx ? "#6366f1" : "#e5e7eb",
+                            },
+                          }}
+                        >
+                          <Typography
+                            variant="body2"
+                            sx={{
+                              color: "#111827",
+                              fontSize: "0.7rem",
+                              fontWeight: selectedOutputIdx === idx ? 600 : 500,
+                              lineHeight: 1.4,
+                              wordBreak: "break-word",
+                              whiteSpace: "pre-wrap",
+                            }}
+                          >
+                            {/* "outputFSC: SetOfFSCs (5 items)" */}
+                            {o.infoText}
+                          </Typography>
+                        </Box>
+                      ))
+                    )}
+                  </Box>
+                </Box>
+
+                {/* Right panel PREVIEW */}
+                <Box
+                  sx={{
+                    flex: "1 1 auto",
+                    minWidth: 0,
+                    backgroundColor: "#fff",
+                    borderRadius: 2,
+                    boxShadow: "0px 2px 6px rgba(0,0,0,0.1)",
+                    border: "1px solid #e5e7eb",
+                    display: "flex",
+                    flexDirection: "column",
+                    overflow: "hidden",
+                  }}
+                >
+                  <Box
+                    sx={{
+                      px: 1.5,
+                      py: 1,
+                      borderBottom: "1px solid #e5e7eb",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <Typography
+                      variant="subtitle2"
+                      sx={{ fontWeight: 600, fontSize: "0.8rem", color: "#111827" }}
+                    >
+                      Preview
+                    </Typography>
+                    {activeOutput ? (
+                      <Typography
+                        variant="caption"
+                        sx={{
+                          color: "#6b7280",
+                          fontSize: "0.7rem",
+                          textAlign: "right",
+                          maxWidth: "60%",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                        title={`${activeOutput.name}: ${activeOutput.infoText}`}
+                      >
+                        {activeOutput.name}: {activeOutput.infoText}
+                      </Typography>
+                    ) : (
+                      <Typography
+                        variant="caption"
+                        sx={{ color: "#6b7280", fontSize: "0.7rem" }}
+                      >
+                        No selection
+                      </Typography>
+                    )}
+                  </Box>
+
+                  <Box
+                    sx={{
+                      flex: 1,
+                      overflowY: "auto",
+                      maxHeight: "50vh",
+                      p: 2,
+                      fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                      fontSize: "0.8rem",
+                      lineHeight: 1.4,
+                      color: "#1f2937",
+                      whiteSpace: "pre-wrap",
+                      wordBreak: "break-word",
+                    }}
+                  >
+                    {activeOutput ? (
+                      <>
+                        {/* placeholder: JSON bonito hasta que metas tu visor real */}
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            fontSize: "0.75rem",
+                            color: "#374151",
+                            mb: 1,
+                          }}
+                        >
+                          Raw object:
+                        </Typography>
+                        <Box
+                          component="pre"
+                          sx={{
+                            m: 0,
+                            p: 1.5,
+                            borderRadius: 1,
+                            backgroundColor: "#f9fafb",
+                            border: "1px solid #e5e7eb",
+                            maxWidth: "100%",
+                            overflowX: "auto",
+                            fontSize: "0.7rem",
+                            lineHeight: 1.5,
+                            color: "#111827",
+                          }}
+                        >
+                          {JSON.stringify(activeOutput.raw, null, 2)}
+                        </Box>
+                      </>
+                    ) : (
+                      <Typography
+                        variant="body2"
+                        sx={{
+                          color: "#6b7280",
+                          fontSize: "0.8rem",
+                          textAlign: "center",
+                          py: 4,
+                        }}
+                      >
+                        Select an output on the left to preview it here.
+                      </Typography>
+                    )}
+                  </Box>
+                </Box>
+              </Box>
+            )}
+
             {topTab === 2 && <Typography variant="body1">Summary content goes here.</Typography>}
             {topTab === 3 && <Typography variant="body1">Methods content goes here.</Typography>}
             {topTab === 4 && (
@@ -1545,7 +1814,7 @@ export default function ProtocolForm({
           variant="contained"
           startIcon={<SaveIcon />}
           onClick={handleSave}
-          disabled={execLoading || protocolDetails.status === "running"}
+          disabled={execLoading || protocolDetails.status === "running" || protocolDetails.status === "scheduled"}
           sx={{ textTransform: "none" }}
         >
           Save
@@ -1555,7 +1824,7 @@ export default function ProtocolForm({
           startIcon={execLoading ? <CircularProgress size={16} color="inherit" /> : <ExecuteIcon />}
           color="success"
           onClick={handleExecute}
-          disabled={execLoading || protocolDetails.status === "running"}
+          disabled={execLoading || protocolDetails.status === "running" || protocolDetails.status === "scheduled"}
           sx={{ textTransform: "none" }}
         >
           {execLoading ? "Executing..." : "Execute"}

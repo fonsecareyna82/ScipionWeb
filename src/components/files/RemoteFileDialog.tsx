@@ -134,13 +134,13 @@ export default function RemoteFileDialog({
     return textExts.some((ext) => lowerName.endsWith(ext));
   };
 
-  const isMrcExt = (name: string | undefined) =>
-    !!name && /\.(mrc|mrcs|map|em)$/i.test(name);
+  const isImageExt = (name: string | undefined) =>
+    !!name && /\.(mrc|mrcs|map|em|stk)$/i.test(name);
 
   const looksImageLike = (entry: RemoteEntry): boolean => {
     if (entry.isDir) return false;
     if (entry.mime && entry.mime.startsWith("image/")) return true;
-    if (isMrcExt(entry.name)) return true;
+    if (isImageExt(entry.name)) return true;
     return false;
   };
 
@@ -343,11 +343,11 @@ export default function RemoteFileDialog({
         {/* HEADER */}
         <DialogHeader
           className={[
-            "-mx-6 -mt-6 px-6 py-4 bg-gray-100 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 rounded-t-lg",
+            "-mx-6 -mt-6 px-6 py-4 bg-gray-300 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 rounded-t-lg",
             "flex-none",
           ].join(" ")}
         >
-          <DialogTitle className="text-lg font-medium text-gray-900 dark:text-gray-100 flex flex-col">
+          <DialogTitle className="text-lg font-medium text-gray-700 dark:text-gray-100 dark:bg-gray-800 flex flex-col bg-gray-300">
             <span className="truncate">{title}</span>
            
           </DialogTitle>
@@ -356,7 +356,7 @@ export default function RemoteFileDialog({
         {/* TOOLBAR */}
         <div
           className={[
-            "flex flex-wrap items-center gap-2 mt-4 bg-gray-50 dark:bg-gray-900/40 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-sm",
+            "flex flex-wrap items-center gap-2 mt-4 bg-gray-100 dark:bg-gray-900/40 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-sm",
             "flex-none",
           ].join(" ")}
         >
@@ -408,7 +408,7 @@ export default function RemoteFileDialog({
         >
           {/* LEFT: DIRECTORY LIST */}
           <div className="h-full border border-gray-200 dark:border-gray-700 rounded-2xl overflow-hidden flex flex-col bg-white dark:bg-gray-900">
-            <div className="px-3 py-2 border-b border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 text-[13px] font-medium text-gray-700 dark:text-gray-200 flex items-center justify-between flex-none">
+            <div className="px-3 py-2 border-b border-gray-200 dark:border-gray-700 bg-gray-300 dark:bg-gray-800 text-[13px] font-medium text-gray-700 dark:text-gray-200 flex items-center justify-between flex-none">
               <span>Directory</span>
               {error && (
                 <span className="flex items-center gap-1 text-red-600 dark:text-red-400 text-[11px] font-normal">
@@ -476,7 +476,7 @@ export default function RemoteFileDialog({
 
           {/* RIGHT: PREVIEW PANEL */}
           <div className="h-full border border-gray-200 dark:border-gray-700 rounded-2xl overflow-hidden flex flex-col bg-white dark:bg-gray-900">
-            <div className="px-3 py-2 border-b border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 text-[13px] font-medium text-gray-700 dark:text-gray-200 flex items-center justify-between flex-none">
+            <div className="px-3 py-2 border-b border-gray-200 dark:border-gray-700 bg-gray-300 dark:bg-gray-800 text-[13px] font-medium text-gray-700 dark:text-gray-200 flex items-center justify-between flex-none">
               <span>Preview</span>
 
               {/*
@@ -626,12 +626,10 @@ export default function RemoteFileDialog({
                               {imgMeta.voxelSize && (
                                 <div className="mt-2 flex flex-wrap gap-1">
                                   <span className="font-medium">
-                                    Voxel size:
+                                    Sampling rate:
                                   </span>
                                   <span>
-                                    {imgMeta.voxelSize[0].toFixed(1)} ×{" "}
-                                    {imgMeta.voxelSize[1].toFixed(1)} ×{" "}
-                                    {imgMeta.voxelSize[2].toFixed(1)}
+                                    {imgMeta.voxelSize[0].toFixed(1)} 
                                   </span>
                                 </div>
                               )}
