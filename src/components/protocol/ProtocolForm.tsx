@@ -27,12 +27,12 @@ import {
   ExecuteIcon,
   SaveIcon,
 } from "../../icons";
-import { executeProtocol, saveProtocol } from "../../api/projects";
 import WrapWithDrop from "./WrapWithDrop";
 import MultiParamRow from "./MultiParamRow";
 import ParamRow from "./ParamRow";
 import { fetchProtocolLogsStream } from "@/api/protocols";
 import OutputSelectorDialog from "./outputSelectorDialog";
+import { useProjectService } from "@/ProjectServiceContext";
 
 type ProtocolFormProps = {
   data: any;
@@ -50,6 +50,7 @@ export default function ProtocolForm({
   onExecuted,
   variant = "drawer",
 }: ProtocolFormProps) {
+  const svc = useProjectService();
   const [topTab, setTopTab] = useState(0);
   const [bottomTab, setBottomTab] = useState(0);
   const [sectionTab, setSectionTab] = useState(0);
@@ -96,15 +97,14 @@ export default function ProtocolForm({
   // --------------------------------------------
   // Outputs tab state
   // --------------------------------------------
-  // Index del output actualmente seleccionado en la lista izquierda
   const [selectedOutputIdx, setSelectedOutputIdx] = useState<number | null>(null);
 
-  // Normalizamos los outputs que vienen en `data.outputs`
-  // Ejemplo de data.outputs:
-  // [
-  //   { "outputVolume": { "_class": "Volume", "info": "Volume (140 x ...)", ... } },
-  //   { "outputParticles": { "_class": "SetOfParticles", "info": "Particles (...)", ... } }
-  // ]
+  // Preview panel state
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [previewData, setPreviewData] = useState<any>(null);
+
+  // Normalize outputs from data.outputs
   const normalizedOutputs = useMemo(() => {
     const arr = Array.isArray(data?.outputs) ? data.outputs : [];
     return arr.map((entry: any) => {
@@ -112,13 +112,13 @@ export default function ProtocolForm({
       const infoText = payload?.info ?? payload?._class ?? "";
       return {
         name,
-        infoText, // para la lista izquierda -> "outputFSC: SetOfFSCs (5 items)"
-        raw: payload, // objeto completo, lo mostraremos en el panel derecho
+        infoText, // ej: "SetOfFSCs (5 items)"
+        raw: payload,
       };
     });
   }, [data?.outputs]);
 
-  // Output actualmente activo para previsualizar
+  // Active Output
   const activeOutput = useMemo(() => {
     if (
       selectedOutputIdx == null ||
@@ -129,6 +129,40 @@ export default function ProtocolForm({
     }
     return normalizedOutputs[selectedOutputIdx];
   }, [selectedOutputIdx, normalizedOutputs]);
+
+  // Requests a preview from the backend when activeOutput changes
+  useEffect(() => {
+    if (!activeOutput) {
+      setPreviewData(null);
+      setPreviewError(null);
+      setPreviewLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setPreviewLoading(true);
+    setPreviewError(null);
+
+    (async () => {
+      try {
+        const res = await svc.fetchOutputPreview(data.projectId, data?.id, activeOutput.name);
+        if (cancelled) return;
+        setPreviewData(res ?? null);
+      } catch (err: any) {
+        if (cancelled) return;
+        setPreviewError(err?.message || "Failed to load preview");
+        setPreviewData(null);
+      } finally {
+        if (!cancelled) {
+          setPreviewLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeOutput, data?.id]);
 
   // Use this instead of onClose() directly to play exit animation
   const requestClose = () => setIsClosing(true);
@@ -195,7 +229,7 @@ export default function ProtocolForm({
     return null;
   }, [data]);
 
-  // Read current general expert level (0=Normal, 1=Advanced)
+  // 0 = Normal, 1 = Advanced
   const generalExpertLevel = (() => {
     const loc = findGeneralExpertLocator();
     if (!loc) return null;
@@ -203,7 +237,7 @@ export default function ProtocolForm({
     return typeof v === "number" ? v : Number(v) || 0;
   })();
 
-  // Simple condition evaluator used to show/hide params
+  // Conditions for showing/hiding params
   const evalAtom = (sectionIdx: number, atom: string): boolean => {
     let a = atom.replace(/[()]/g, "").trim();
     let neg = false;
@@ -313,7 +347,7 @@ export default function ProtocolForm({
   }
 
   // --------------------------------------------
-  // Load initial params and details (no side effects on inputSets)
+  // Load initial parameters into protocolDetails
   // --------------------------------------------
   useEffect(() => {
     if (!data) {
@@ -483,10 +517,7 @@ export default function ProtocolForm({
     };
   }, [topTab, data?.projectId, data?.id, protocolDetails.status]);
 
-
-  // --------------------------------------------
-  // Scroll on new logs
-  // --------------------------------------------
+  // Autoscroll logs
   useEffect(() => {
     if (!containerRef.current) return;
     containerRef.current.scrollTop = containerRef.current.scrollHeight;
@@ -505,10 +536,7 @@ export default function ProtocolForm({
   }, [scheduleLogs]);
 
   // --------------------------------------------
-  // Live expected-class reader: ignore param meta-classes; dedupe
-  // Returns:
-  //  - string/string[] when there is a class restriction
-  //  - null when there is NO restriction (e.g., All)
+  // Live expected-class reader
   // --------------------------------------------
   const getExpectedClass = (def: any): string | string[] | null => {
     if (!def) return null;
@@ -548,7 +576,7 @@ export default function ProtocolForm({
     return filtered.length === 1 ? filtered[0] : filtered;
   };
 
-  // Gather all outputs across project protocols
+  // Recolecta outputs de todos los protocolos (para el selector de inputs)
   const gatherAllOutputs = useCallback((): {
     outputs: any[];
     dependencyMap: Record<string, string[]>;
@@ -674,18 +702,16 @@ export default function ProtocolForm({
   }, [data?.protocolClassName, protocolDetails.params]);
 
   // --------------------------------------------
-  // Filter outputs for a given paramKey using LIVE constraints
-  //  - Always exclude current protocol and its descendants
-  //  - When expected === null (All) => return all SetOf* types
+  // Filter outputs for a given paramKey
   // --------------------------------------------
   const getFilteredOutputsForKey = (paramKey: string) => {
     const liveParam = protocolDetails.params?.[paramKey];
     const expected = getExpectedClass(liveParam);
 
     const { outputs, dependencyMap } = gatherAllOutputs();
-    const currentId = String(data.id);
+    const currentId = String(data?.id ?? "");
 
-    // Build exclusion set (self + descendants)
+    // bloques a excluir: este protocolo y descendientes
     const blocked = new Set<string>([currentId]);
     const stack = [currentId];
     while (stack.length > 0) {
@@ -727,7 +753,7 @@ export default function ProtocolForm({
 
     Object.entries(protocolDetails.params || {}).forEach(([k, pRaw]: any) => {
       const keyParts = k.split("_");
-      keyParts.shift(); // remove section index
+      keyParts.shift();
       const newKey = keyParts.join("_");
 
       const p = pRaw ?? {};
@@ -818,9 +844,9 @@ export default function ProtocolForm({
     setValidationErrors([]);
 
     try {
-      const protocolId = data.id ?? "";
+      const protocolId = data?.id ?? "";
       const serialized = getSerializedParams();
-      await executeProtocol(protocolId, data.protocolClassName, serialized);
+      await svc.executeProtocol(protocolId, data?.protocolClassName, serialized);
       onExecuted?.();
       requestClose();
     } catch (err: any) {
@@ -843,9 +869,9 @@ export default function ProtocolForm({
     setExecLoading(true);
     setExecError(null);
     try {
-      const protocolId = data.id ?? "";
+      const protocolId = data?.id ?? "";
       const serialized = getSerializedParams();
-      await saveProtocol(protocolId, data.protocolClassName, serialized);
+      await svc.saveProtocol(protocolId, data?.protocolClassName, serialized);
       requestClose();
     } catch (err: any) {
       setExecError(err.message || "Error saving the protocol");
@@ -855,7 +881,7 @@ export default function ProtocolForm({
   };
 
   // --------------------------------------------
-  // renderParam - build UI for each parameter
+  // renderParam - para cada parámetro
   // --------------------------------------------
   const renderParam = useCallback(
     (paramObj: any, sectionIdx: number, rowIndex = 0): JSX.Element | null => {
@@ -871,12 +897,12 @@ export default function ProtocolForm({
         !!expertLocator && expertLocator.sectionIdx === sectionIdx && name === "expertLevel";
 
       if (
-        data?.expertLevel &&            // protocol supports expert mode
-        generalExpertLevel === 0 &&     // currently in Normal
-        def?.expertLevel === 1 &&       // param is Advanced
-        !isExpertSelector               // but don't hide the selector itself
+        data?.expertLevel &&
+        generalExpertLevel === 0 &&
+        def?.expertLevel === 1 &&
+        !isExpertSelector
       ) {
-        return null; // skip rendering advanced field/group in Normal
+        return null;
       }
 
       // Optional advanced indicator
@@ -912,7 +938,7 @@ export default function ProtocolForm({
         </Box>
       );
 
-      // ============ MultiPointerParam ============
+      // MultiPointerParam
       if (def._class === "MultiPointerParam") {
         const items = Array.isArray(value) ? value : def.default ?? [];
 
@@ -942,7 +968,7 @@ export default function ProtocolForm({
           const draggedClass = norm(dragged._class);
 
           const matches =
-            expected === null // null => "All" (no filter)
+            expected === null
               ? true
               : Array.isArray(expected)
                 ? expected.some((e) => norm(e) === draggedClass)
@@ -1029,7 +1055,7 @@ export default function ProtocolForm({
         );
       }
 
-      // ============ PointerParam ============
+      // PointerParam
       if (def._class === "PointerParam") {
         const onClear = () =>
           setProtocolDetails((prev: any) => ({
@@ -1110,7 +1136,7 @@ export default function ProtocolForm({
         );
       }
 
-      // ============ EnumParam ============
+      // EnumParam
       if (def._class === "EnumParam" && Array.isArray(def.choices)) {
         let sel = value ?? def.default ?? "";
         if (typeof sel === "number") sel = def.choices[sel] ?? "";
@@ -1175,7 +1201,7 @@ export default function ProtocolForm({
         );
       }
 
-      // ============ Group ============
+      // Group
       if (def._class === "Group" && Array.isArray(def.children)) {
         const groupKey = `${key}_group`;
         const expanded = expandedGroups[groupKey] ?? true;
@@ -1224,7 +1250,7 @@ export default function ProtocolForm({
         );
       }
 
-      // ============ BooleanParam ============
+      // BooleanParam
       if (def._class === "BooleanParam") {
         const checked =
           value !== undefined
@@ -1262,7 +1288,7 @@ export default function ProtocolForm({
         );
       }
 
-      // ============ Default TextField ============
+      // Default text param
       const defaultControl = (
         <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
           {advancedSlot}
@@ -1307,8 +1333,6 @@ export default function ProtocolForm({
       findGeneralExpertLocator
     ]
   );
-
-  if (!data || !protocolDetails.params) return null;
 
   // --------------------------------------------
   // Global state for OutputSelectorDialog
@@ -1365,6 +1389,183 @@ export default function ProtocolForm({
   };
 
   // --------------------------------------------
+  // Preview content renderer (right panel)
+  // --------------------------------------------
+  const previewContent = useMemo(() => {
+    if (!activeOutput) {
+      return (
+        <Typography
+          variant="body2"
+          sx={{
+            color: "#6b7280",
+            fontSize: "0.8rem",
+            textAlign: "center",
+            py: 4,
+          }}
+        >
+          Select an output on the left to preview it here.
+        </Typography>
+      );
+    }
+
+    if (previewLoading) {
+      return (
+        <Box
+          sx={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 1,
+          }}
+        >
+          <CircularProgress size={20} />
+          <Typography
+            variant="caption"
+            sx={{ fontSize: "0.75rem", color: "#4b5563" }}
+          >
+            Loading preview...
+          </Typography>
+        </Box>
+      );
+    }
+
+    if (previewError) {
+      return (
+        <Typography
+          variant="body2"
+          sx={{
+            color: "#dc2626",
+            fontSize: "0.75rem",
+            textAlign: "center",
+            whiteSpace: "pre-wrap",
+            wordBreak: "break-word",
+          }}
+        >
+          {previewError}
+        </Typography>
+      );
+    }
+
+    // If the API returned an image
+    if (previewData && previewData.imageUrl) {
+      return (
+        <Box
+          sx={{
+            maxWidth: "100%",
+            maxHeight: "100%",
+            borderRadius: 2,
+            overflow: "hidden",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
+            border: "1px solid #e5e7eb",
+            backgroundColor: "#fff",
+          }}
+        >
+          <img
+            src={previewData.imageUrl}
+            alt={activeOutput.name}
+            style={{
+              display: "block",
+              width: "100%",
+              height: "auto",
+              objectFit: "contain",
+            }}
+          />
+        </Box>
+      );
+    }
+
+    // If the API returned text
+    if (previewData && previewData.text) {
+      return (
+        <Box
+          sx={{
+            p: 2,
+            borderRadius: 2,
+            backgroundColor: "#fff",
+            border: "1px solid #e5e7eb",
+            boxShadow: "0 2px 4px rgba(0,0,0,0.05)",
+            maxWidth: "100%",
+            maxHeight: "100%",
+            overflowY: "auto",
+            whiteSpace: "pre-wrap",
+            wordBreak: "break-word",
+            fontSize: "0.75rem",
+            lineHeight: 1.4,
+            color: "#111827",
+          }}
+        >
+          {previewData.text}
+        </Box>
+      );
+    }
+
+    // Generic fallback if previewData exists but is not image/text
+    if (previewData) {
+      return (
+        <Box
+          sx={{
+            width: "100%",
+            maxHeight: "100%",
+            overflowY: "auto",
+            border: "2px dashed #e5e7eb",
+            borderRadius: 2,
+            backgroundColor: "#fff",
+            textAlign: "left",
+            p: 2,
+            fontSize: "0.7rem",
+            lineHeight: 1.4,
+            fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+            color: "#1f2937",
+            wordBreak: "break-word",
+            whiteSpace: "pre-wrap",
+          }}
+        >
+          {JSON.stringify(previewData, null, 2)}
+        </Box>
+      );
+    }
+
+    return (
+      <Box
+        sx={{
+          width: "100%",
+          minHeight: "100%",
+          maxHeight: "100%",
+          border: "2px dashed #e5e7eb",
+          borderRadius: 2,
+          backgroundColor: "#fff",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          textAlign: "center",
+          px: 2,
+          py: 3,
+          color: "#6b7280",
+          fontSize: "0.8rem",
+          lineHeight: 1.4,
+          wordBreak: "break-word",
+        }}
+      >
+        <Typography
+          variant="body2"
+          sx={{
+            color: "#4b5563",
+            fontSize: "0.75rem",
+            mb: 1,
+            lineHeight: 1.4,
+          }}
+        >
+          Preview for "{activeOutput.name}".
+        </Typography>
+      </Box>
+    );
+  }, [activeOutput, previewLoading, previewError, previewData]);
+
+  const safeDefinition = Array.isArray(data?.definition) ? data.definition : [];
+
+  // --------------------------------------------
   // JSX Layout
   // --------------------------------------------
   const presentationClass = (variant === "docked" ? "as-docked" : "");
@@ -1377,7 +1578,7 @@ export default function ProtocolForm({
       <div className="form-header">
         <div className="form-title-wrapper">
           <Box className="inline-flex items-center justify-center rounded-full bg-green-500 text-black text-xs font-bold px-2 py-1">
-            {data.id}
+            {data?.id}
           </Box>
           <h2>{protocolDetails.label}</h2>
           <span className="node-status-pill" style={{ backgroundColor: protocolDetails.color, color: "black" }}>
@@ -1447,12 +1648,12 @@ export default function ProtocolForm({
                     "& .MuiTab-root": { textTransform: "none", fontSize: "0.8rem", fontWeight: 500 },
                   }}
                 >
-                  {data.definition.map((section: any, idx: number) => (
+                  {safeDefinition.map((section: any, idx: number) => (
                     <Tab key={idx} label={section.name || `Section ${idx + 1}`} />
                   ))}
                 </Tabs>
                 <Box>
-                  {data.definition[sectionTab]?.params?.map((paramObj: any, idx: number) =>
+                  {safeDefinition[sectionTab]?.params?.map((paramObj: any, idx: number) =>
                     renderParam(paramObj, sectionTab, idx)
                   )}
                 </Box>
@@ -1465,14 +1666,14 @@ export default function ProtocolForm({
                   display: "flex",
                   flexDirection: "row",
                   gap: 2,
-                  minHeight: 320,
+                  minHeight: "480px",
                 }}
               >
                 {/* Left Panel Outputs */}
                 <Box
                   sx={{
                     flex: "0 0 45%",
-                    maxWidth: "45%",
+                    maxWidth: "44%",
                     minWidth: 0,
                     backgroundColor: "#fff",
                     borderRadius: 2,
@@ -1563,7 +1764,6 @@ export default function ProtocolForm({
                               whiteSpace: "pre-wrap",
                             }}
                           >
-                            {/* "outputFSC: SetOfFSCs (5 items)" */}
                             {o.infoText}
                           </Typography>
                         </Box>
@@ -1634,58 +1834,13 @@ export default function ProtocolForm({
                       overflowY: "auto",
                       maxHeight: "50vh",
                       p: 2,
-                      fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-                      fontSize: "0.8rem",
-                      lineHeight: 1.4,
-                      color: "#1f2937",
-                      whiteSpace: "pre-wrap",
-                      wordBreak: "break-word",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: "#f9fafb",
                     }}
                   >
-                    {activeOutput ? (
-                      <>
-                        {/* placeholder: JSON bonito hasta que metas tu visor real */}
-                        <Typography
-                          variant="body2"
-                          sx={{
-                            fontSize: "0.75rem",
-                            color: "#374151",
-                            mb: 1,
-                          }}
-                        >
-                          Raw object:
-                        </Typography>
-                        <Box
-                          component="pre"
-                          sx={{
-                            m: 0,
-                            p: 1.5,
-                            borderRadius: 1,
-                            backgroundColor: "#f9fafb",
-                            border: "1px solid #e5e7eb",
-                            maxWidth: "100%",
-                            overflowX: "auto",
-                            fontSize: "0.7rem",
-                            lineHeight: 1.5,
-                            color: "#111827",
-                          }}
-                        >
-                          {JSON.stringify(activeOutput.raw, null, 2)}
-                        </Box>
-                      </>
-                    ) : (
-                      <Typography
-                        variant="body2"
-                        sx={{
-                          color: "#6b7280",
-                          fontSize: "0.8rem",
-                          textAlign: "center",
-                          py: 4,
-                        }}
-                      >
-                        Select an output on the left to preview it here.
-                      </Typography>
-                    )}
+                    {previewContent}
                   </Box>
                 </Box>
               </Box>
@@ -1714,11 +1869,13 @@ export default function ProtocolForm({
                       sx={{
                         backgroundColor: "#f5f5f5",
                         color: "black",
+                        borderColor: "gray",
                         fontFamily: "monospace",
-                        fontSize: "0.85rem",
+                        fontSize: "0.80rem",
                         p: 2,
                         borderRadius: 1,
-                        maxHeight: "540px",
+                        maxHeight: "420px",
+                        height: "420px",
                         overflowY: "auto",
                         whiteSpace: "pre",
                       }}
@@ -1745,12 +1902,16 @@ export default function ProtocolForm({
                       ref={errorContainerRef}
                       sx={{
                         backgroundColor: "#f5f5f5",
+                        color: "black",
+                        borderColor: "gray",
                         fontFamily: "monospace",
-                        fontSize: "0.85rem",
+                        fontSize: "0.80rem",
                         p: 2,
                         borderRadius: 1,
-                        maxHeight: "540px",
+                        maxHeight: "420px",
+                        height: "420px",
                         overflowY: "auto",
+                        whiteSpace: "pre",
                       }}
                     >
                       {errorLogs ? (
@@ -1774,12 +1935,16 @@ export default function ProtocolForm({
                       ref={scheduleContainerRef}
                       sx={{
                         backgroundColor: "#f5f5f5",
+                        color: "black",
+                        borderColor: "gray",
                         fontFamily: "monospace",
-                        fontSize: "0.85rem",
+                        fontSize: "0.80rem",
                         p: 2,
                         borderRadius: 1,
-                        maxHeight: "540px",
+                        maxHeight: "420px",
+                        height: "420px",
                         overflowY: "auto",
+                        whiteSpace: "pre",
                       }}
                     >
                       {scheduleLogs ? (

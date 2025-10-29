@@ -368,3 +368,9 @@ export async function fetchProtocolInlinePreviewBlob(
   return { blob, meta };
 }
 
+export async function fetchOutputPreview(projectId: Id, protocolId: string | number, outputName: string): Promise<any> {
+  const response = await fetchWithAuth(`${BASE_URL}/projects/${projectId}/protocols/${protocolId}/outputpreview/${outputName}`, {
+    method: "GET"});
+  if (!response.ok) throw await toApiError(response, "Failed previewing the output");
+}
+

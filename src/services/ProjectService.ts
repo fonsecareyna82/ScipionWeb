@@ -63,5 +63,6 @@ export interface ProjectService<
   previewProtocolText(projectId: Id, id: string, path: string): Promise<TProject>
   buildProtocolDownloadUrl(projectId: string, protocolId: string, path: string, inline: boolean): string
   fetchProtocolInlinePreviewBlob(projectId: string, protocolId: string, path: string): Promise<{ blob: Blob; meta: any }>
+  fetchOutputPreview(projectId: string, protocolId: string, path: string): Promise<any>
 }
 

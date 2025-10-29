@@ -116,6 +116,13 @@ const defaultService: ProjectService = {
     protocolId: Id,
     path: string,
   ) => api.fetchProtocolInlinePreviewBlob(toId(projectId), toId(protocolId), path),
+
+fetchOutputPreview: (
+    projectId: Id,
+    protocolId: Id,
+    path: string,
+  ) => api.fetchOutputPreview(toId(projectId), toId(protocolId), path),
+
 };
 
 
