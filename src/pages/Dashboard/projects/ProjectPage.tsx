@@ -54,16 +54,18 @@ import {
 } from "@/components/ui/dialog/alert-dialog";
 import { Button } from "@/components/ui/button";
 
-import { MinusIcon, PlusIcon, RefreshCw, Trash2 } from "lucide-react";
+import { MicIcon, MinusIcon, PlusIcon, RefreshCw, Trash2 } from "lucide-react";
 import { FitViewIcon, TableIcon, TreeIcon } from "../../../icons";
 
 import { useProjectService } from "@/ProjectServiceContext";
 import { Project } from "@/types/project";
 import Label from "@/components/form/Label";
-import { Input } from "@mui/material";
+import { Input, styled } from "@mui/material";
 import toast from "react-hot-toast";
 import RemoteFileDialog from "@/components/files/RemoteFileDialog";
 import { buildProtocolDownloadUrl } from "@/api/projects";
+import { ClassNames } from "@emotion/react";
+import { options } from "@fullcalendar/core/preact.js";
 
 /* --------------------- Types --------------------- */
 interface StatusNodeData {
@@ -1661,9 +1663,9 @@ export default function ProjectPage() {
 
   /* ------------------------ Render ------------------------ */
   return (
-    <div className="h-screen flex flex-col relative">
+    <div className="h-full min-h-0 flex flex-col relative overflow-hidden">
       {/* Header (unchanged) */}
-      <div className="flex justify-between items-center mb-1">
+      <div className="flex justify-between items-center mb-1 ml-1">
         <div className="relative w-full max-w-sm">
           <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-400 dark:text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -1722,7 +1724,7 @@ export default function ProjectPage() {
 
       {/* Content wrapper */}
       <div
-        className="flex-1 relative"
+        className="flex-1 relative min-h-0 overflow-hidden"
         style={{ contain: "paint" }}
       >
         {isSwitchingLayout && (
@@ -1896,6 +1898,7 @@ export default function ProjectPage() {
               selectionKeyCode="Shift"
               selectionOnDrag
               style={{ width: "100%", height: "100%" }}
+              proOptions={{ hideAttribution: true }}
             >
               <Background />
             </ReactFlow>
@@ -1927,32 +1930,33 @@ export default function ProjectPage() {
         </div>
 
         {/* ===== Multi-Form Dock (right side) ===== */}
-        <div className="form-dock" aria-live="polite" ref={dockRef}>
+        <div
+          aria-live="polite"
+          ref={dockRef}
+          className="pointer-events-none absolute inset-y-0 right-0 z-[60] flex gap-2 p-1"
+        >
           {openForms.map((f) => (
-            <div key={f.key} className="dock-panel" role="dialog" aria-label={`Protocol ${f.id}`} data-dock-key={f.key}>
+            <div
+              key={f.key}
+              role="dialog"
+              aria-label={`Protocol ${f.id}`}
+              data-dock-key={f.key}
+              className="dock-panel pointer-events-auto"
+            >
               <ProtocolForm
                 data={f.details}
                 projectProtocols={project?.protocols ?? {}}
                 variant="docked"
-                onClose={() => {
-                  // The child finished its exit animation; now remove smoothly from the dock
-                  closeFormByKey(f.key);
-                }}
+                onClose={() => closeFormByKey(f.key)}
                 onExecuted={() => {
-                  // Immediate refresh + delayed 5s re-poll to pick up async updates
                   handleRefreshRef.current?.();
-                  if (delayedRefreshTimerRef.current !== null) {
-                    clearTimeout(delayedRefreshTimerRef.current);
-                  }
-                  delayedRefreshTimerRef.current = window.setTimeout(() => {
-                    handleRefreshRef.current?.();
-                  }, 5000);
+                  if (delayedRefreshTimerRef.current !== null) clearTimeout(delayedRefreshTimerRef.current);
+                  delayedRefreshTimerRef.current = window.setTimeout(() => { handleRefreshRef.current?.(); }, 5000);
                 }}
               />
             </div>
           ))}
         </div>
-        {/* ======================================= */}
       </div>
 
       {/* --- Dialogs --- */}
@@ -2031,8 +2035,8 @@ export default function ProjectPage() {
 
                     toast.success(
                       ids.length > 1
-                        ? "Protocols deleted."
-                        : "Protocol deleted.",
+                        ? "Protocols deleted successfully."
+                        : "Protocol deleted successfully.",
                     );
                   } else if (confirm.kind === "restartAll" && confirm.id) {
                     await svc.restartAll(projectName, confirm.id);

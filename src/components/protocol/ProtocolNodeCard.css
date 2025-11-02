@@ -292,3 +292,63 @@
   contain: paint;
   pointer-events: none;
 }
+
+/* ========== Node wrapper must allow overflow (so handles can sit outside) ========== */
+.status-node-card {
+  position: relative;     /* ensure absolute children anchor here */
+  overflow: visible;      /* let handles render outside the box */
+}
+
+/* ========== Common handle look (circular) ========== */
+.status-node-card .react-flow__handle {
+  /* size & shape */
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;           /* circle */
+  background: #696666;
+  border: 2px solid #696666;
+
+  /* visibility & interaction */
+  box-shadow: 0 0 0 2px rgba(0,0,0,0.15);
+  pointer-events: all;             /* ensure it's easy to click */
+  z-index: 2;                      /* above node body if needed */
+}
+
+/* ========== Position handles OUTSIDE the node edge ========== */
+/* tweak this value to push more/less outside */
+:root {
+  --handle-outset: 10px;           /* distance outside the edge */
+}
+
+/* Top handle: centered horizontally, pushed above the top edge */
+.status-node-card .react-flow__handle-top {
+  top: calc(-1 * var(--handle-outset));
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+/* Bottom handle: centered horizontally, pushed below the bottom edge */
+.status-node-card .react-flow__handle-bottom {
+  bottom: calc(-1 * var(--handle-outset));
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+/* Left handle: centered vertically, pushed left of the left edge */
+.status-node-card .react-flow__handle-left {
+  left: calc(-1 * var(--handle-outset));
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+/* Right handle: centered vertically, pushed right of the right edge */
+.status-node-card .react-flow__handle-right {
+  right: calc(-1 * var(--handle-outset));
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+/* (Optional) subtle hover feedback */
+.status-node-card .react-flow__handle:hover {
+  filter: brightness(1.15);
+}

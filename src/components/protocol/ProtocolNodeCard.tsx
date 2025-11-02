@@ -34,6 +34,8 @@ import {
   ArrowRight,
   ArrowDown,
   ArrowUp,
+  SquareDashed,
+  Scan,
 } from "lucide-react";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -133,7 +135,7 @@ export default function StatusNode({
   onSelectFrom,
   onSelectTo,
   onStop,
-  onBrowse, 
+  onBrowse,
   inPathSelection = false,
   pathSelectionActive = false,
 }: StatusNodeProps) {
@@ -265,7 +267,7 @@ export default function StatusNode({
                     className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-200 ml-4"
                     onClick={(e: React.MouseEvent) => e.stopPropagation()}
                   >
-                    <MoreHorizontal className="h-12 w-12 text-black dark:text-black" />
+                    <MoreHorizontal className="h-12 w-12 ml-2 text-black dark:text-black" />
                   </button>
                 </DropdownMenuTrigger>
 
@@ -337,13 +339,21 @@ export default function StatusNode({
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
+            {data.id !== "PROJECT" && (
+              <button
+                className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-200 ml-4"
+                onClick={(e: React.MouseEvent) => e.stopPropagation()}
+              >
+                <Scan onClick={handleEdit} className="h-11 w-11 text-black dark:text-black" />
+              </button>
+
+            )}
           </div>
 
           {/* Content */}
           <div
-            className={`transition-[max-height] duration-300 ease-in-out overflow-hidden ${
-              isCompactView ? "max-h-0" : "max-h-[2000px]"
-            }`}
+            className={`transition-[max-height] duration-300 ease-in-out overflow-hidden ${isCompactView ? "max-h-0" : "max-h-[2000px]"
+              }`}
             aria-hidden={isCompactView}
           >
             {data.id !== "PROJECT" && (

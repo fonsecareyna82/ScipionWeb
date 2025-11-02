@@ -3,7 +3,7 @@
   top: 0%;
   right: 0%;
   bottom: 0%;
-  width: 40%;
+  width: 38%;
   display: flex;
   flex-direction: column;
   background-color: #fff;
@@ -294,9 +294,8 @@
 /* Each ProtocolForm lives inside a resizable panel */
 .dock-panel {
   position: relative;
-  height: 91%;
-  min-width: 360px;
-  width: 40vw;            /* default width similar to your 40% */
+  height: 100%;
+  width: 38vw;            /* default width similar to your 40% */
   max-width: 80vw;        /* don't let one panel cover everything */
   background: transparent;
   border-left: 0px solid #ddd;
