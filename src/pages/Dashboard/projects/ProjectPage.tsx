@@ -121,7 +121,7 @@ export default function ProjectPage() {
   const lastPositionsRef = useRef<Record<string, DOMRect>>({});
   const pendingFlipRef = useRef(false);
 
-  /** Measure current positions of panels before changing state (add/remove/reorder). */
+  /** Measure current positions of panels before changing state. */
   const captureDockPositions = () => {
     const root = dockRef.current;
     if (!root) return;
@@ -139,7 +139,7 @@ export default function ProjectPage() {
     if (!root) return;
     const prev = lastPositionsRef.current;
 
-    // Honor reduced motion
+    // Reduced motion support
     const prefersReduced =
       typeof window !== "undefined" &&
       typeof window.matchMedia === "function" &&
@@ -153,7 +153,6 @@ export default function ProjectPage() {
       const newRect = el.getBoundingClientRect();
 
       if (oldRect) {
-        // Existing panel moved -> animate translation
         const dx = oldRect.left - newRect.left;
         const dy = oldRect.top - newRect.top;
         if (dx !== 0 || dy !== 0) {
@@ -166,7 +165,6 @@ export default function ProjectPage() {
           );
         }
       } else {
-        // New panel -> subtle fade/slide-in
         (el as any).animate?.(
           [{ opacity: 0, transform: "translateX(12px)" }, { opacity: 1, transform: "translateX(0)" }],
           { duration: D_FADE, easing: "ease-out" }
@@ -174,15 +172,12 @@ export default function ProjectPage() {
       }
     });
 
-    // Clear stored positions after animating
     lastPositionsRef.current = {};
   };
 
-  // After openForms changes and we flagged a pending FLIP, play the animation.
   useLayoutEffect(() => {
     if (!pendingFlipRef.current) return;
     pendingFlipRef.current = false;
-    // Wait one frame so layout settles, then play the animations
     requestAnimationFrame(() => playDockFlip());
   }, [openForms]);
 
@@ -556,7 +551,7 @@ export default function ProjectPage() {
     [projectName, applyEdgeHighlight]
   );
 
-  // 👇 Double-click handler to open ProtocolForm
+  // Double-click handler to open ProtocolForm
   const handleNodeDoubleClick = useCallback(
     async (nodeData: any) => {
       if (!projectName) return;
@@ -568,7 +563,7 @@ export default function ProjectPage() {
   );
 
   const closeFormByKey = useCallback((key: string) => {
-    // Capture positions right before removing the panel from the dock
+    // Capture positions before removing the panel
     captureDockPositions();
     pendingFlipRef.current = true;
     setOpenForms((prev) => prev.filter((f) => f.key !== key));
@@ -774,7 +769,10 @@ export default function ProjectPage() {
         setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
         return;
       }
-      const targetZoom = clampZoom(typeof zoomOverride === "number" ? zoomOverride : inst.getViewport().zoom);
+      // Preserve current zoom exactly (bounded by ReactFlow min/max props).
+      const current = inst.getViewport().zoom;
+      const targetZoom = typeof zoomOverride === "number" ? zoomOverride : current;
+
       let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
       for (const n of validNodes) {
         const x = (n.position!.x ?? 0);
@@ -795,12 +793,25 @@ export default function ProjectPage() {
       const centerX = xSum / validNodes.length;
       const centerY = ySum / validNodes.length;
       const currentVp = inst.getViewport();
-      const zoom = clampZoom(currentVp.zoom);
+      const zoom = currentVp.zoom;
       inst.setCenter(centerX, centerY, { zoom, duration: 0 });
       const vp = inst.getViewport();
       setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
     }
   }, []);
+
+  /* ------------------------ Force handle recompute ------------------------ */
+  // Force React Flow to recompute handle bounds after orientation changes.
+  const updateAllNodeInternals = (ids?: string[]) => {
+    const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
+    if (!inst) return;
+    const targetIds = ids ?? nodesRef.current.map((n) => n.id);
+    for (const id of targetIds) {
+      try {
+        (inst as any).updateNodeInternals?.(id);
+      } catch { }
+    }
+  };
 
   /* ------------------------ Wait for nodes helper ------------------------ */
   const waitForNodesReady = async (expectedCount: number, timeoutMs = 2500): Promise<boolean> => {
@@ -849,7 +860,7 @@ export default function ProjectPage() {
           data.shortName, data.protocols, viewMode, graphDirection
         );
 
-        // In TABLE view, do not touch graph/selection. Only update table.
+        // In TABLE view, only update the table.
         if (viewMode === "table") {
           startTransition(() => setTableData(table ?? []));
           setIsLoadingProject(false);
@@ -964,7 +975,7 @@ export default function ProjectPage() {
           data.shortName, data.protocols, viewMode, graphDirection
         );
 
-        // TABLE view: do not touch graph/selection; only update the table
+        // TABLE view: only update the table
         if (viewMode === "table") {
           startTransition(() => setTableData(table ?? []));
           setIsRefreshing(false);
@@ -1048,7 +1059,7 @@ export default function ProjectPage() {
           data.shortName, data.protocols, viewMode, graphDirection
         );
 
-        // TABLE view: only update the table, keep selection intact
+        // TABLE view: only update the table
         if (viewMode === "table") {
           startTransition(() => setTableData(table ?? []));
           disablePersistenceRef.current = false;
@@ -1083,15 +1094,24 @@ export default function ProjectPage() {
           });
         });
 
+        // Ensure handles are recomputed after nodes/edges update
+        requestAnimationFrame(() => {
+          updateAllNodeInternals(nodesWithPositions.map((n) => n.id));
+        });
+
         requestAnimationFrame(() => {
           const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
           if (inst && nodesWithPositions.length > 0 && viewMode === "hierarchical") {
             const preserve = opts?.preserveZoom ?? true;
             centerLikeButton(nodesWithPositions, preserve, viewportRef.current.zoom);
+            requestAnimationFrame(() => {
+              updateAllNodeInternals(nodesWithPositions.map((n) => n.id));
+            });
           } else if (inst) {
             const vp = inst.getViewport();
             inst.setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(vp.zoom) });
             setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(vp.zoom) });
+            requestAnimationFrame(() => updateAllNodeInternals());
           }
           disablePersistenceRef.current = false;
           setHideGraphDuringCenter(false);
@@ -1159,7 +1179,7 @@ export default function ProjectPage() {
       return;
     }
 
-    // Hierarchical view: update graph
+    // Hierarchical view: update graph and force handle recompute
     const instance = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
     if (!instance) { prevLayout.current = { viewMode, graphDirection }; return; }
 
@@ -1185,6 +1205,11 @@ export default function ProjectPage() {
       });
     });
 
+    // Make sure handles move to the correct side after TB <-> LR
+    requestAnimationFrame(() => {
+      updateAllNodeInternals(nodesWithPositions.map((n) => n.id));
+    });
+
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
@@ -1196,8 +1221,9 @@ export default function ProjectPage() {
         }
 
         if (nodesWithPositions.length > 0 && viewMode === "hierarchical") {
-          centerLikeButton(nodesWithPositions, true);
+          centerLikeButton(nodesWithPositions, true, viewportRef.current.zoom);
           requestAnimationFrame(() => {
+            updateAllNodeInternals(nodesWithPositions.map((n) => n.id));
             setTimeout(() => {
               disablePersistenceRef.current = false;
               setIsSwitchingLayout(false);
@@ -1209,6 +1235,7 @@ export default function ProjectPage() {
           inst.setViewport(clamped);
           setViewport(clamped);
           requestAnimationFrame(() => {
+            updateAllNodeInternals();
             setTimeout(() => {
               disablePersistenceRef.current = false;
               setIsSwitchingLayout(false);
@@ -1248,7 +1275,7 @@ export default function ProjectPage() {
   }, [nodesLoadedOnce]);
 
   /* ============================================================
-     Tabla: scroll controlado (una sola vez) + highlight estable
+     Table: one-time controlled scroll + stable highlight
      ============================================================ */
   const didScrollForTableRef = useRef(false);
   const tableScrollRetriesRef = useRef(0);
@@ -1360,7 +1387,7 @@ export default function ProjectPage() {
           const ySum = validNodes.reduce((s, n) => s + (n.position?.y ?? 0), 0);
           const centerX = xSum / validNodes.length;
           const centerY = ySum / validNodes.length;
-          const zoom = clampZoom(currentViewport.zoom);
+          const zoom = currentViewport.zoom;
           inst.setCenter(centerX, centerY, { zoom, duration: 300 });
           const vp = inst.getViewport();
           setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
@@ -1401,7 +1428,7 @@ export default function ProjectPage() {
     const inst2 = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
     if (inst2) {
       const currentZoom = inst2.getViewport().zoom;
-      const zoom = clampZoom(currentZoom);
+      const zoom = currentZoom;
       inst2.setCenter((match as any).position.x, (match as any).position.y, { zoom, duration: 500 });
       const vp = inst2.getViewport();
       setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
@@ -1644,9 +1671,10 @@ export default function ProjectPage() {
     const newVp = inst.getViewport();
     setViewport({ x: newVp.x, y: newVp.y, zoom: newVp.zoom });
   }, []);
-  const handleFitView = useCallback(() => { centerLikeButton(undefined, true); }, [centerLikeButton]);
+  // Fit View that preserves the current zoom exactly
+  const handleFitView = useCallback(() => { centerLikeButton(undefined, true, viewportRef.current.zoom); }, [centerLikeButton]);
 
-  /* ------------------------ Wrapper plumbing (unchanged) ------------------------ */
+  /* ------------------------ Wrapper plumbing ------------------------ */
   const onClickRef = useRef(handleNodeClick);
   const onDblClickRef = useRef(handleNodeDoubleClick);
   const prevIdRef = useRef<string | null>(null);
@@ -1664,7 +1692,7 @@ export default function ProjectPage() {
   /* ------------------------ Render ------------------------ */
   return (
     <div className="h-full min-h-0 flex flex-col relative overflow-hidden">
-      {/* Header (unchanged) */}
+      {/* Header */}
       <div className="flex justify-between items-center mb-1 ml-1">
         <div className="relative w-full max-w-sm">
           <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -2024,7 +2052,7 @@ export default function ProjectPage() {
             <button
               onClick={async () => {
                 if (!projectName || !confirm.kind) return;
-                const kind = confirm.kind; // snapshot before state changes
+                const kind = confirm.kind;
                 try {
                   if (confirm.kind === "delete") {
                     const ids = confirm.ids ?? (confirm.id ? [confirm.id] : []);
