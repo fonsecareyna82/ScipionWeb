@@ -28,13 +28,6 @@ import { createStatusNodeWrapper } from "../../../components/protocol/ProtocolNo
 import { ProtocolsDrawer } from "@/components/protocol/ProtocolsDrawer";
 
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-
-import {
   Dialog,
   DialogContent,
   DialogHeader,
@@ -54,18 +47,22 @@ import {
 } from "@/components/ui/dialog/alert-dialog";
 import { Button } from "@/components/ui/button";
 
-import { MicIcon, MinusIcon, PlusIcon, RefreshCw, Trash2 } from "lucide-react";
+import {
+  MinusIcon,
+  PlusIcon,
+  RefreshCw,
+  PlusCircle,
+  Eraser,
+  XCircle,
+} from "lucide-react";
 import { FitViewIcon, TableIcon, TreeIcon } from "../../../icons";
 
 import { useProjectService } from "@/ProjectServiceContext";
 import { Project } from "@/types/project";
 import Label from "@/components/form/Label";
-import { Input, styled } from "@mui/material";
+import { Input } from "@mui/material";
 import toast from "react-hot-toast";
 import RemoteFileDialog from "@/components/files/RemoteFileDialog";
-import { buildProtocolDownloadUrl } from "@/api/projects";
-import { ClassNames } from "@emotion/react";
-import { options } from "@fullcalendar/core/preact.js";
 
 /* --------------------- Types --------------------- */
 interface StatusNodeData {
@@ -85,8 +82,8 @@ interface StatusNodeData {
 
 interface ContextMenuState {
   visible: boolean;
-  x: number;
-  y: number;
+  x: number; // pane-relative
+  y: number; // pane-relative
   nodeId?: string | null;
 }
 
@@ -121,7 +118,7 @@ export default function ProjectPage() {
   const lastPositionsRef = useRef<Record<string, DOMRect>>({});
   const pendingFlipRef = useRef(false);
 
-  /** Measure current positions of panels before changing state. */
+  /** Measure current positions of panels before changing state (add/remove/reorder). */
   const captureDockPositions = () => {
     const root = dockRef.current;
     if (!root) return;
@@ -139,7 +136,7 @@ export default function ProjectPage() {
     if (!root) return;
     const prev = lastPositionsRef.current;
 
-    // Reduced motion support
+    // Honor reduced motion
     const prefersReduced =
       typeof window !== "undefined" &&
       typeof window.matchMedia === "function" &&
@@ -218,6 +215,21 @@ export default function ProjectPage() {
 
   const reactFlowInstanceRef = useRef<ReactFlowInstance | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({ visible: false, x: 0, y: 0 });
+
+  // === NEW: wrapper ref to compute pane-relative coordinates for projection
+  const flowWrapperRef = useRef<HTMLDivElement | null>(null);
+
+  // === NEW: drawer open control (shadcn/ui Drawer controlled pattern)
+  const [drawerOpen, setDrawerOpen] = useState(false);
+
+  // === NEW: remembers last pane right-click projected RF point
+  const lastPaneRFPointRef = useRef<{ x: number; y: number } | null>(null);
+
+  // === NEW: pending placement info to place newly created protocol at the click point
+  const pendingPlacementRef = useRef<{
+    point: { x: number; y: number };
+    beforeIds: Set<string>;
+  } | null>(null);
 
   const TIME_TO_REFRESH = 15000;
   const localStorageKey = `project-${projectName}-node-positions`;
@@ -511,17 +523,14 @@ export default function ProjectPage() {
     async (nodeId: string, fetcher: () => Promise<any>) => {
       if (!projectName) return;
 
-      // Keep selection/highlight consistent with the open/focus action
       selectedIdRef.current = String(nodeId);
       setPreviousNodeId(String(nodeId));
       setHighlightedId(String(nodeId));
       applyEdgeHighlight(String(nodeId));
 
-      // Capture positions before any reorder attempt
       captureDockPositions();
       pendingFlipRef.current = true;
 
-      // Move existing form to the end (front-most position)
       let alreadyOpen = false;
       setOpenForms((prev) => {
         const hit = prev.find((f) => f.id === String(nodeId));
@@ -536,7 +545,6 @@ export default function ProjectPage() {
 
       try {
         const details = await fetcher();
-        // Capture positions right before adding the new panel
         captureDockPositions();
         pendingFlipRef.current = true;
 
@@ -551,7 +559,6 @@ export default function ProjectPage() {
     [projectName, applyEdgeHighlight]
   );
 
-  // Double-click handler to open ProtocolForm
   const handleNodeDoubleClick = useCallback(
     async (nodeData: any) => {
       if (!projectName) return;
@@ -563,7 +570,6 @@ export default function ProjectPage() {
   );
 
   const closeFormByKey = useCallback((key: string) => {
-    // Capture positions before removing the panel
     captureDockPositions();
     pendingFlipRef.current = true;
     setOpenForms((prev) => prev.filter((f) => f.key !== key));
@@ -637,6 +643,23 @@ export default function ProjectPage() {
     if (id !== "PROJECT") nodesSet.add(String(id));
     applyGenericSelectionFromSet(nodesSet);
   }, [collectAncestors, applyGenericSelectionFromSet]);
+
+  const handleAddProtocolFromDrawer = useCallback(
+    async (protocolClass: string) => {
+      if (!projectName) return;
+
+      // Close drawer so the form is in focus
+      setDrawerOpen(false);
+
+      // Open the "new protocol" form for this class
+      await openFormForNode(String(protocolClass), () =>
+        svc.fetchNewProtocolDetails(projectName, protocolClass)
+      );
+
+      // No refrescamos aquí: todavía no hay cambios en backend hasta ejecutar el form
+    },
+    [projectName, openFormForNode, svc]
+  );
 
   useEffect(() => {
     nodeActionsRef.current = {
@@ -726,7 +749,7 @@ export default function ProjectPage() {
     const bKeys = Object.keys(b);
     if (aKeys.length !== bKeys.length) return false;
     for (const k of aKeys) if (a[k] !== b[k]) return false;
-    return true;
+    return false;
   };
 
   const mergeNodesWithPositions = (newNodes: Node[]) => {
@@ -769,10 +792,7 @@ export default function ProjectPage() {
         setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
         return;
       }
-      // Preserve current zoom exactly (bounded by ReactFlow min/max props).
-      const current = inst.getViewport().zoom;
-      const targetZoom = typeof zoomOverride === "number" ? zoomOverride : current;
-
+      const targetZoom = clampZoom(typeof zoomOverride === "number" ? zoomOverride : inst.getViewport().zoom);
       let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
       for (const n of validNodes) {
         const x = (n.position!.x ?? 0);
@@ -793,25 +813,12 @@ export default function ProjectPage() {
       const centerX = xSum / validNodes.length;
       const centerY = ySum / validNodes.length;
       const currentVp = inst.getViewport();
-      const zoom = currentVp.zoom;
+      const zoom = clampZoom(currentVp.zoom);
       inst.setCenter(centerX, centerY, { zoom, duration: 0 });
       const vp = inst.getViewport();
       setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
     }
   }, []);
-
-  /* ------------------------ Force handle recompute ------------------------ */
-  // Force React Flow to recompute handle bounds after orientation changes.
-  const updateAllNodeInternals = (ids?: string[]) => {
-    const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
-    if (!inst) return;
-    const targetIds = ids ?? nodesRef.current.map((n) => n.id);
-    for (const id of targetIds) {
-      try {
-        (inst as any).updateNodeInternals?.(id);
-      } catch { }
-    }
-  };
 
   /* ------------------------ Wait for nodes helper ------------------------ */
   const waitForNodesReady = async (expectedCount: number, timeoutMs = 2500): Promise<boolean> => {
@@ -860,7 +867,6 @@ export default function ProjectPage() {
           data.shortName, data.protocols, viewMode, graphDirection
         );
 
-        // In TABLE view, only update the table.
         if (viewMode === "table") {
           startTransition(() => setTableData(table ?? []));
           setIsLoadingProject(false);
@@ -975,7 +981,6 @@ export default function ProjectPage() {
           data.shortName, data.protocols, viewMode, graphDirection
         );
 
-        // TABLE view: only update the table
         if (viewMode === "table") {
           startTransition(() => setTableData(table ?? []));
           setIsRefreshing(false);
@@ -1019,6 +1024,12 @@ export default function ProjectPage() {
       console.error(err);
     } finally {
       setIsRefreshing(false);
+
+      if (pendingPlacementRef.current) {
+        setTimeout(() => tryPlaceNewlyCreatedNode(), 50);
+        setTimeout(() => tryPlaceNewlyCreatedNode(), 400);
+        setTimeout(() => tryPlaceNewlyCreatedNode(), 1200);
+      }
     }
   }, [projectName, viewMode, graphDirection, nodeTicks, svc, paintEdgeHighlight, paintPathHighlight, computeEdgesTouchingNodes]);
 
@@ -1059,7 +1070,6 @@ export default function ProjectPage() {
           data.shortName, data.protocols, viewMode, graphDirection
         );
 
-        // TABLE view: only update the table
         if (viewMode === "table") {
           startTransition(() => setTableData(table ?? []));
           disablePersistenceRef.current = false;
@@ -1094,24 +1104,15 @@ export default function ProjectPage() {
           });
         });
 
-        // Ensure handles are recomputed after nodes/edges update
-        requestAnimationFrame(() => {
-          updateAllNodeInternals(nodesWithPositions.map((n) => n.id));
-        });
-
         requestAnimationFrame(() => {
           const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
           if (inst && nodesWithPositions.length > 0 && viewMode === "hierarchical") {
             const preserve = opts?.preserveZoom ?? true;
             centerLikeButton(nodesWithPositions, preserve, viewportRef.current.zoom);
-            requestAnimationFrame(() => {
-              updateAllNodeInternals(nodesWithPositions.map((n) => n.id));
-            });
           } else if (inst) {
             const vp = inst.getViewport();
             inst.setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(vp.zoom) });
             setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(vp.zoom) });
-            requestAnimationFrame(() => updateAllNodeInternals());
           }
           disablePersistenceRef.current = false;
           setHideGraphDuringCenter(false);
@@ -1170,7 +1171,6 @@ export default function ProjectPage() {
     if (!layoutChanged) return;
     if (!project?.protocols) { prevLayout.current = { viewMode, graphDirection }; return; }
 
-    // If switching to TABLE, only manage overlay/highlight; do not touch graph
     if (viewMode === "table") {
       setIsSwitchingLayout(true);
       requestAnimationFrame(() => setTimeout(() => setIsSwitchingLayout(false), 60));
@@ -1179,7 +1179,6 @@ export default function ProjectPage() {
       return;
     }
 
-    // Hierarchical view: update graph and force handle recompute
     const instance = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
     if (!instance) { prevLayout.current = { viewMode, graphDirection }; return; }
 
@@ -1205,11 +1204,6 @@ export default function ProjectPage() {
       });
     });
 
-    // Make sure handles move to the correct side after TB <-> LR
-    requestAnimationFrame(() => {
-      updateAllNodeInternals(nodesWithPositions.map((n) => n.id));
-    });
-
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
@@ -1221,9 +1215,8 @@ export default function ProjectPage() {
         }
 
         if (nodesWithPositions.length > 0 && viewMode === "hierarchical") {
-          centerLikeButton(nodesWithPositions, true, viewportRef.current.zoom);
+          centerLikeButton(nodesWithPositions, true);
           requestAnimationFrame(() => {
-            updateAllNodeInternals(nodesWithPositions.map((n) => n.id));
             setTimeout(() => {
               disablePersistenceRef.current = false;
               setIsSwitchingLayout(false);
@@ -1235,7 +1228,6 @@ export default function ProjectPage() {
           inst.setViewport(clamped);
           setViewport(clamped);
           requestAnimationFrame(() => {
-            updateAllNodeInternals();
             setTimeout(() => {
               disablePersistenceRef.current = false;
               setIsSwitchingLayout(false);
@@ -1275,7 +1267,7 @@ export default function ProjectPage() {
   }, [nodesLoadedOnce]);
 
   /* ============================================================
-     Table: one-time controlled scroll + stable highlight
+     Table helpers (unchanged)
      ============================================================ */
   const didScrollForTableRef = useRef(false);
   const tableScrollRetriesRef = useRef(0);
@@ -1387,7 +1379,7 @@ export default function ProjectPage() {
           const ySum = validNodes.reduce((s, n) => s + (n.position?.y ?? 0), 0);
           const centerX = xSum / validNodes.length;
           const centerY = ySum / validNodes.length;
-          const zoom = currentViewport.zoom;
+          const zoom = clampZoom(currentViewport.zoom);
           inst.setCenter(centerX, centerY, { zoom, duration: 300 });
           const vp = inst.getViewport();
           setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
@@ -1428,7 +1420,7 @@ export default function ProjectPage() {
     const inst2 = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
     if (inst2) {
       const currentZoom = inst2.getViewport().zoom;
-      const zoom = currentZoom;
+      const zoom = clampZoom(currentZoom);
       inst2.setCenter((match as any).position.x, (match as any).position.y, { zoom, duration: 500 });
       const vp = inst2.getViewport();
       setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
@@ -1446,8 +1438,50 @@ export default function ProjectPage() {
   };
 
   /* --------------------- Pane context menu --------------------- */
+
+  // Save a position to localStorage for a given node id (helper for placement)
+  const persistPositionForId = (id: string, position: { x: number; y: number }) => {
+    try {
+      const key = `${localStorageKey}-${graphDirection}`;
+      const saved: { id: string; position: { x: number; y: number } }[] =
+        JSON.parse(localStorage.getItem(key) || "[]");
+      const idx = saved.findIndex((p) => p.id === id);
+      if (idx >= 0) saved[idx] = { id, position };
+      else saved.push({ id, position });
+      localStorage.setItem(key, JSON.stringify(saved));
+    } catch { /* ignore */ }
+  };
+
+  // Try to find the newly created node and place it at pending point
+  const tryPlaceNewlyCreatedNode = () => {
+    const pending = pendingPlacementRef.current;
+    if (!pending) return;
+
+    const { beforeIds, point } = pending;
+    const currentIds = new Set(nodesRef.current.map((n) => String(n.id)));
+    const candidates = Array.from(currentIds).filter((id) => !beforeIds.has(id) && id !== "PROJECT");
+
+    if (candidates.length === 0) return;
+
+    let pick = candidates[0];
+    let bestNum = Number.NEGATIVE_INFINITY;
+    for (const id of candidates) {
+      const n = parseInt(id, 10);
+      if (!Number.isNaN(n) && n > bestNum) {
+        bestNum = n;
+        pick = id;
+      }
+    }
+
+    setNodes((prev) =>
+      prev.map((n) => (n.id === pick ? { ...n, position: { x: point.x, y: point.y } } : n))
+    );
+    persistPositionForId(pick, { x: point.x, y: point.y });
+
+    pendingPlacementRef.current = null;
+  };
+
   const handleContextMenu = (event: React.MouseEvent) => {
-    if ((event as any).defaultPrevented) return;
     const target = event.target as HTMLElement;
     const isNode = !!target.closest(".react-flow__node");
     if (isNode) return;
@@ -1455,14 +1489,39 @@ export default function ProjectPage() {
     event.preventDefault();
     event.stopPropagation();
 
-    setContextMenu({ visible: true, x: event.clientX, y: event.clientY, nodeId: null });
+    const inst = reactFlowInstanceRef.current;
+    const wrapper = flowWrapperRef.current;
+    if (inst && wrapper) {
+      const bounds = wrapper.getBoundingClientRect();
+      const px = event.clientX - bounds.left;
+      const py = event.clientY - bounds.top;
+
+      // Project to RF coords for later placement
+      const rfPoint = inst.project({ x: px, y: py });
+      lastPaneRFPointRef.current = rfPoint;
+
+      // Clamp menu inside wrapper bounds to avoid overflow
+      const MENU_W = 230; // px
+      const MENU_H = 150; // px (aprox)
+      const clampedX = Math.max(0, Math.min(px, bounds.width - MENU_W));
+      const clampedY = Math.max(0, Math.min(py, bounds.height - MENU_H));
+
+      // Show at pane-relative coordinates
+      setContextMenu({ visible: true, x: clampedX, y: clampedY, nodeId: null });
+    } else {
+      lastPaneRFPointRef.current = null;
+      setContextMenu({ visible: true, x: event.clientX, y: event.clientY, nodeId: null });
+    }
   };
 
   const handleCloseMenu = () => setContextMenu((prev) => ({ ...prev, visible: false }));
 
   useEffect(() => {
     if (!contextMenu.visible) return;
-    const onWindowMouseDown = () => handleCloseMenu();
+    const onWindowMouseDown = (e: MouseEvent) => {
+      const el = e.target as HTMLElement;
+      if (!el.closest?.("#canvas-context-menu")) handleCloseMenu();
+    };
     const onKeyDown = (e: KeyboardEvent) => { if (e.key === "Escape") handleCloseMenu(); };
     window.addEventListener("mousedown", onWindowMouseDown);
     window.addEventListener("keydown", onKeyDown);
@@ -1471,6 +1530,27 @@ export default function ProjectPage() {
       window.removeEventListener("keydown", onKeyDown);
     };
   }, [contextMenu.visible]);
+
+  const handleAddProtocolFromContext = () => {
+    handleCloseMenu();
+
+    const point = lastPaneRFPointRef.current;
+    if (!point) {
+      const inst = reactFlowInstanceRef.current;
+      if (inst) {
+        const vp = inst.getViewport();
+        lastPaneRFPointRef.current = { x: -vp.x / vp.zoom, y: -vp.y / vp.zoom };
+      }
+    }
+
+    const beforeIds = new Set(nodesRef.current.map((n) => String(n.id)));
+    pendingPlacementRef.current = {
+      point: lastPaneRFPointRef.current ?? { x: 0, y: 0 },
+      beforeIds,
+    };
+
+    setDrawerOpen(true);
+  };
 
   /* ------------------------ ReactFlow init / move / selection ------------------------ */
   const handleOnInit = useCallback((inst: ReactFlowInstance) => {
@@ -1542,7 +1622,6 @@ export default function ProjectPage() {
     open: false, id: null, ids: null, kind: null,
   });
 
-  // Error helper
   const getErrorMsg = (e: any) => {
     if (e && typeof e === "object") {
       const status = (e as any).status;
@@ -1581,7 +1660,6 @@ export default function ProjectPage() {
     }
   };
 
-  // Stops multiple protocols in a single request (bulk).
   const stopProtocolNow = async (ids: string[]) => {
     if (!projectName) return;
 
@@ -1671,10 +1749,9 @@ export default function ProjectPage() {
     const newVp = inst.getViewport();
     setViewport({ x: newVp.x, y: newVp.y, zoom: newVp.zoom });
   }, []);
-  // Fit View that preserves the current zoom exactly
-  const handleFitView = useCallback(() => { centerLikeButton(undefined, true, viewportRef.current.zoom); }, [centerLikeButton]);
+  const handleFitView = useCallback(() => { centerLikeButton(undefined, true); }, [centerLikeButton]);
 
-  /* ------------------------ Wrapper plumbing ------------------------ */
+  /* ------------------------ Wrapper plumbing (unchanged) ------------------------ */
   const onClickRef = useRef(handleNodeClick);
   const onDblClickRef = useRef(handleNodeDoubleClick);
   const prevIdRef = useRef<string | null>(null);
@@ -1711,10 +1788,9 @@ export default function ProjectPage() {
         <div className="ml-4 mr-4 p-2 border rounded-lg shadow-sm bg-white dark:bg-gray-800 flex items-center gap-4">
           <ProtocolsDrawer
             projectId={project?.id ? Number(project.id) : null}
-            onProtocolDoubleClick={async (protocolClass: string) => {
-              if (!projectName) return;
-              await openFormForNode(String(protocolClass), () => svc.fetchNewProtocolDetails(projectName, protocolClass));
-            }}
+            open={drawerOpen}
+            onOpenChange={setDrawerOpen}
+            onProtocolDoubleClick={handleAddProtocolFromDrawer}
           />
           <button
             onClick={() => console.log("Workflow clicked")}
@@ -1872,6 +1948,7 @@ export default function ProjectPage() {
 
         {/* ReactFlow */}
         <div
+          ref={flowWrapperRef}
           className="absolute inset-0 border transition-opacity"
           style={{
             opacity: viewMode === "hierarchical" ? (hideGraphDuringCenter ? 0 : 1) : 0,
@@ -1880,6 +1957,45 @@ export default function ProjectPage() {
           }}
           aria-hidden={viewMode !== "hierarchical"}
         >
+          {/* === Canvas context menu (pane-relative absolute coords) === */}
+          {contextMenu.visible && (
+            <div
+              id="canvas-context-menu"
+              className="fixed z-[100] min-w-[220px] overflow-hidden rounded-md border bg-white shadow-md"
+              style={{ top: contextMenu.y, left: contextMenu.x }}
+              onContextMenu={(e) => e.preventDefault()}
+            >
+              <div className="py-1">
+                <button
+                  className="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                  onClick={handleAddProtocolFromContext}
+                >
+                  <PlusIcon className="w-4 h-4" />
+                  Add protocol
+                </button>
+
+                <div className="h-px my-1 bg-gray-200" />
+
+                <button
+                  className="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                  onClick={() => { handleRefresh(); handleCloseMenu(); }}
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  Refresh graph
+                </button>
+
+                <button
+                  className="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                  onClick={() => { clearAllSelectionHard(); applyEdgeHighlight(null); handleCloseMenu(); }}
+                >
+                  <XCircle className="w-4 h-4" />
+                  Clear selection
+                </button>
+              </div>
+            </div>
+          )}
+
+
           <div className="absolute top-4 right-4 z-50">
             <div className="flex flex-col gap-1 p-1 bg-white/90 rounded shadow">
               <button title="Zoom in" onClick={handleZoomIn} className="p-1 rounded hover:bg-gray-100 dark:text-black">
@@ -1930,30 +2046,6 @@ export default function ProjectPage() {
             >
               <Background />
             </ReactFlow>
-            {contextMenu.visible && (
-              <DropdownMenu open onOpenChange={() => handleCloseMenu()}>
-                <DropdownMenuTrigger asChild>
-                  <button style={{ position: "fixed", top: contextMenu.y, left: contextMenu.x, width: 0, height: 0, opacity: 0 }} />
-                </DropdownMenuTrigger>
-                <DropdownMenuContent className="w-56">
-                  <>
-                    <DropdownMenuItem onSelect={handleRefresh}>
-                      <RefreshCw className="w-4 h-4 mr-2" />
-                      Refresh graph
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onSelect={() => {
-                        clearAllSelectionHard();
-                        applyEdgeHighlight(null);
-                      }}
-                    >
-                      <Trash2 className="w-4 h-4 mr-2" />
-                      Clear selection
-                    </DropdownMenuItem>
-                  </>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
           </ReactFlowProvider>
         </div>
 
@@ -1975,11 +2067,25 @@ export default function ProjectPage() {
                 data={f.details}
                 projectProtocols={project?.protocols ?? {}}
                 variant="docked"
-                onClose={() => closeFormByKey(f.key)}
+                onClose={() => {
+                  handleRefreshRef.current?.();
+                  setTimeout(() => handleRefreshRef.current?.(), 800);
+
+                  // Intenta colocar el nuevo nodo en el punto del click
+                  setTimeout(() => tryPlaceNewlyCreatedNode(), 50);
+                  setTimeout(() => tryPlaceNewlyCreatedNode(), 400);
+
+                  closeFormByKey(f.key);
+                }}
                 onExecuted={() => {
                   handleRefreshRef.current?.();
+                  setTimeout(() => tryPlaceNewlyCreatedNode(), 100);
+
                   if (delayedRefreshTimerRef.current !== null) clearTimeout(delayedRefreshTimerRef.current);
-                  delayedRefreshTimerRef.current = window.setTimeout(() => { handleRefreshRef.current?.(); }, 5000);
+                  delayedRefreshTimerRef.current = window.setTimeout(() => {
+                    handleRefreshRef.current?.();              // segundo refresco breve
+                    setTimeout(() => tryPlaceNewlyCreatedNode(), 100);
+                  }, 1200);
                 }}
               />
             </div>
@@ -2075,7 +2181,7 @@ export default function ProjectPage() {
                   } else if (confirm.kind === "stop") {
                     const ids = confirm.ids ?? (confirm.id ? [confirm.id] : []);
                     if (ids.length === 0) return;
-                    await stopProtocolNow(ids); // already refreshes
+                    await stopProtocolNow(ids);
                   }
 
                   setConfirm({ open: false, id: null, ids: null, kind: null });
