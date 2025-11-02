@@ -34,7 +34,6 @@ import {
   ArrowRight,
   ArrowDown,
   ArrowUp,
-  SquareDashed,
   Scan,
 } from "lucide-react";
 
@@ -80,7 +79,7 @@ type StatusNodeProps = {
     parents?: string[];
     children?: string[];
     __pathVer?: number;
-    /** opcional: si lo tienes en tu dato */
+    /** optional: if present in your data */
     projectId?: string | number;
   };
   selectedNodeId?: string;
@@ -194,6 +193,7 @@ export default function StatusNode({
   const FromIcon = graphDirection === "TB" ? ArrowDown : ArrowRight;
   const ToIcon = graphDirection === "TB" ? ArrowUp : ArrowLeft;
 
+  // Forward a click to the React Flow node to keep selection consistent
   const forwardClickToRFNode = (e: React.MouseEvent) => {
     const nodeEl =
       (e.currentTarget as HTMLElement).closest(".react-flow__node") ||
@@ -261,99 +261,116 @@ export default function StatusNode({
             </div>
 
             {data.id !== "PROJECT" && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-200 ml-4"
+              <div className="flex items-center">
+                {/* Menu trigger button — stops drag/selection and contains the click handler at button level */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-200 ml-4 nodrag"
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onMouseDown={(e) => e.stopPropagation()}
+                      onClick={(e) => e.stopPropagation()}
+                      onDoubleClick={(e) => e.stopPropagation()}
+                      onContextMenu={(e) => e.stopPropagation()}
+                      draggable={false}
+                      data-nodrag
+                      aria-label="Open node menu"
+                    >
+                      <MoreHorizontal className="h-12 w-12 ml-2 text-black dark:text-black pointer-events-none" />
+                    </button>
+                  </DropdownMenuTrigger>
+
+                  <DropdownMenuContent
+                    className="w-56"
                     onClick={(e: React.MouseEvent) => e.stopPropagation()}
                   >
-                    <MoreHorizontal className="h-12 w-12 ml-2 text-black dark:text-black" />
-                  </button>
-                </DropdownMenuTrigger>
-
-                <DropdownMenuContent
-                  className="w-56"
-                  onClick={(e: React.MouseEvent) => e.stopPropagation()}
-                >
-                  {!reduceMenus && (
-                    <>
-                      <DropdownMenuItem onClick={handleEdit}>
-                        <Pencil className="mr-2 h-4 w-4" /> Edit
-                      </DropdownMenuItem>
-
-                      <DropdownMenuItem onClick={handleBrowse}>
-                        <FolderOpen className="mr-2 h-4 w-4" /> Browse
-                      </DropdownMenuItem>
-
-                      <DropdownMenuItem onClick={handleRename}>
-                        <Pencil className="mr-2 h-4 w-4" /> Rename
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem onClick={handleSelectFrom}>
-                        <FromIcon className="mr-2 h-4 w-4" /> Select from
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={handleSelectTo}>
-                        <ToIcon className="mr-2 h-4 w-4" /> Select to
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      {(data.status === "running" || data.status === "launched" || data.status === "scheduled") && (
-                        <DropdownMenuItem onSelect={handleStop}>
-                          <Square className="mr-2 h-4 w-4" /> Stop
+                    {!reduceMenus && (
+                      <>
+                        <DropdownMenuItem onClick={handleEdit}>
+                          <Pencil className="mr-2 h-4 w-4" /> Edit
                         </DropdownMenuItem>
-                      )}
-                      <DropdownMenuItem onClick={handleRestartAll}>
-                        <RefreshCw className="mr-2 h-4 w-4" /> Restart all
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={handleContinueAll}>
-                        <Play className="mr-2 h-4 w-4" /> Continue all
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={handleResetFrom}>
-                        <RotateCcw className="mr-2 h-4 w-4" /> Reset from
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                    </>
-                  )}
 
-                  {reduceMenus && (data.status === "running" || data.status === "launched" || data.status === "scheduled") && (
-                    <>
-                      <DropdownMenuItem onSelect={handleStop}>
-                        <Square className="mr-2 h-4 w-4" /> Stop selection
-                      </DropdownMenuItem>
-                    </>
-                  )}
+                        <DropdownMenuItem onClick={handleBrowse}>
+                          <FolderOpen className="mr-2 h-4 w-4" /> Browse
+                        </DropdownMenuItem>
 
-                  {/* Always visible */}
-                  <DropdownMenuItem onClick={handleDelete}>
-                    <Trash2 className="mr-2 h-4 w-4" /> Delete
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={handleDuplicate}>
-                    <Copy className="mr-2 h-4 w-4" /> Duplicate
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem>
-                    <FileUp className="mr-2 h-4 w-4" /> Export
-                  </DropdownMenuItem>
-                  <DropdownMenuItem>
-                    <Upload className="mr-2 h-4 w-4" /> Export & upload
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
-            {data.id !== "PROJECT" && (
-              <button
-                className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-200 ml-4"
-                onClick={(e: React.MouseEvent) => e.stopPropagation()}
-              >
-                <Scan onClick={handleEdit} className="h-11 w-11 text-black dark:text-black" />
-              </button>
+                        <DropdownMenuItem onClick={handleRename}>
+                          <Pencil className="mr-2 h-4 w-4" /> Rename
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onClick={handleSelectFrom}>
+                          <FromIcon className="mr-2 h-4 w-4" /> Select from
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={handleSelectTo}>
+                          <ToIcon className="mr-2 h-4 w-4" /> Select to
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        {(data.status === "running" || data.status === "launched" || data.status === "scheduled") && (
+                          <DropdownMenuItem onSelect={handleStop}>
+                            <Square className="mr-2 h-4 w-4" /> Stop
+                          </DropdownMenuItem>
+                        )}
+                        <DropdownMenuItem onClick={handleRestartAll}>
+                          <RefreshCw className="mr-2 h-4 w-4" /> Restart all
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={handleContinueAll}>
+                          <Play className="mr-2 h-4 w-4" /> Continue all
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={handleResetFrom}>
+                          <RotateCcw className="mr-2 h-4 w-4" /> Reset from
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                      </>
+                    )}
 
+                    {reduceMenus && (data.status === "running" || data.status === "launched" || data.status === "scheduled") && (
+                      <>
+                        <DropdownMenuItem onSelect={handleStop}>
+                          <Square className="mr-2 h-4 w-4" /> Stop selection
+                        </DropdownMenuItem>
+                      </>
+                    )}
+
+                    {/* Always visible */}
+                    <DropdownMenuItem onClick={handleDelete}>
+                      <Trash2 className="mr-2 h-4 w-4" /> Delete
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleDuplicate}>
+                      <Copy className="mr-2 h-4 w-4" /> Duplicate
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem>
+                      <FileUp className="mr-2 h-4 w-4" /> Export
+                    </DropdownMenuItem>
+                    <DropdownMenuItem>
+                      <Upload className="mr-2 h-4 w-4" /> Export & upload
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
+                {/* Scan/Edit button — handler on the button, not on the SVG; prevent node drag */}
+                <button
+                  type="button"
+                  className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-200 ml-4 nodrag"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={(e) => { e.stopPropagation(); handleEdit(); }}
+                  onDoubleClick={(e) => e.stopPropagation()}
+                  onContextMenu={(e) => e.stopPropagation()}
+                  draggable={false}
+                  data-nodrag
+                  aria-label="Edit protocol"
+                >
+                  <Scan className="h-11 w-11 text-black dark:text-black pointer-events-none" />
+                </button>
+              </div>
             )}
           </div>
 
           {/* Content */}
           <div
-            className={`transition-[max-height] duration-300 ease-in-out overflow-hidden ${isCompactView ? "max-h-0" : "max-h-[2000px]"
-              }`}
+            className={`transition-[max-height] duration-300 ease-in-out overflow-hidden ${isCompactView ? "max-h-0" : "max-h-[2000px]"}`}
             aria-hidden={isCompactView}
           >
             {data.id !== "PROJECT" && (
@@ -487,7 +504,7 @@ export default function StatusNode({
             <ContextMenuItem onClick={handleEdit}>
               <Pencil className="mr-2 h-4 w-4" /> Edit
             </ContextMenuItem>
-            {/* >>>>>> También desde el click derecho */}
+            {/* Also available from right-click */}
             <ContextMenuItem onClick={handleBrowse}>
               <FolderOpen className="mr-2 h-4 w-4" /> Browse
             </ContextMenuItem>
