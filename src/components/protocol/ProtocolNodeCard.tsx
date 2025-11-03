@@ -194,9 +194,14 @@ export default function StatusNode({
   const ToIcon = graphDirection === "TB" ? ArrowUp : ArrowLeft;
 
   const forwardClickToRFNode = (e: React.MouseEvent) => {
+    const doc = (e.target as HTMLElement | null)?.ownerDocument || document;
+    const win = doc.defaultView || window;
+
     const nodeEl =
-      (e.currentTarget as HTMLElement).closest(".react-flow__node") ||
-      rootRef.current?.closest(".react-flow__node");
+      (e.currentTarget as HTMLElement)?.closest(".react-flow__node") ??
+      rootRef.current?.closest(".react-flow__node") ??
+      doc.querySelector(`.react-flow__node[data-id="${CSS.escape(String(data.id))}"]`);
+
     if (!nodeEl) return;
 
     const opts: MouseEventInit = {
@@ -207,12 +212,16 @@ export default function StatusNode({
       clientY: e.clientY,
       ctrlKey: e.ctrlKey,
       metaKey: e.metaKey,
+      view: win,                  
     };
 
+    nodeEl.dispatchEvent(new MouseEvent("pointerdown", opts));
+    nodeEl.dispatchEvent(new MouseEvent("pointerup", opts));
     nodeEl.dispatchEvent(new MouseEvent("mousedown", opts));
     nodeEl.dispatchEvent(new MouseEvent("mouseup", opts));
     nodeEl.dispatchEvent(new MouseEvent("click", opts));
   };
+
 
   const truncateLabel = (text: string = "", max: number = 120) =>
     text.length > max ? `${text.slice(0, max)}…` : text;
@@ -231,16 +240,16 @@ export default function StatusNode({
   // Centralize strings so we re-use consistently in both menus
   const s = {
     edit: "Space / Db-Click",
-    browse: "",               // if later you add Ctrl/⌘+O, just set browse: `${mod}+O`
+    browse: `${mod} + B`,
     rename: "F2",
-    delete: "Del / Backspace",
-    duplicate: `${mod}+D`,
-    restartAll: `${modShift}+R`,
-    continueAll: `${modShift}+C`,
-    resetFrom: `${modShift}+F`,
-    stop: `${modShift}+S`,
-    selectFrom: "Alt+↓",
-    selectTo: "Alt+↑",
+    delete: "Del",
+    duplicate: `${mod} + D`,
+    restartAll: `${modShift} + R`,
+    continueAll: `${modShift} + C`,
+    resetFrom: `${modShift} + F`,
+    stop: `${modShift} + S`,
+    selectFrom: "Alt + ↓",
+    selectTo: "Alt + ↑",
   } as const;
 
   // Small helper for right-aligned shortcut hint

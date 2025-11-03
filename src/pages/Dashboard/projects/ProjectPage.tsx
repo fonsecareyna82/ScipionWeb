@@ -1,4 +1,3 @@
-// File: src/pages/projects/ProjectPage/ProjectPage.tsx
 import { useParams } from "react-router-dom";
 import React, {
   useCallback,
@@ -696,7 +695,7 @@ export default function ProjectPage() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [handleSelectFrom, handleSelectTo, handleNodeDoubleClick]);
-  
+
 
   /** State and handler for RemoteFileDialog */
   const [fileDialogOpen, setFileDialogOpen] = useState(false);
@@ -1076,6 +1075,19 @@ export default function ProjectPage() {
       }
     };
   }, []);
+
+  // --- Double refresh helper (immediate + delayed) ---
+  const scheduleDoubleRefresh = (delayMs = 5000, alsoPlace = false) => {
+    handleRefreshRef.current?.();
+    if (alsoPlace) setTimeout(() => tryPlaceNewlyCreatedNode(), 100);
+
+    if (delayedRefreshTimerRef.current !== null) clearTimeout(delayedRefreshTimerRef.current);
+    delayedRefreshTimerRef.current = window.setTimeout(() => {
+      handleRefreshRef.current?.();
+      if (alsoPlace) setTimeout(() => tryPlaceNewlyCreatedNode(), 100);
+    }, delayMs);
+  };
+
 
   /* ------------------------ Reflow on grid width change ------------------------ */
   useEffect(() => {
@@ -1844,138 +1856,148 @@ export default function ProjectPage() {
   const nodeActionsRef = useRef<NodeActions>({});
 
 
-  // === Keyboard shortcuts for node contextual actions ===
-useEffect(() => {
-  const isTypingTarget = (el: EventTarget | null) => {
-    const node = el as HTMLElement | null;
-    if (!node) return false;
-    const tag = node.tagName?.toLowerCase();
-    if (tag === "input" || tag === "textarea" || tag === "select") return true;
-    if ((node as any).isContentEditable) return true;
-    return !!node.closest('[contenteditable="true"], input, textarea, select');
-  };
+  // --- Global node keyboard shortcuts ---
+  useEffect(() => {
+    const isMac =
+      typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/.test(navigator.platform);
+    const modPressed = (ev: KeyboardEvent) => (isMac ? ev.metaKey : ev.ctrlKey);
 
-  const anyModalOpen = () =>
-    confirm.open || dlgRename.open || dlgResetFrom.open || drawerOpen || fileDialogOpen;
+    const isTypingTarget = (el: EventTarget | null) => {
+      const t = el as HTMLElement | null;
+      if (!t) return false;
+      return !!t.closest(
+        'input, textarea, select, [contenteditable=""], [contenteditable="true"]'
+      );
+    };
 
-  const getPrimaryId = (): string | null => {
-    const id = selectedIdRef.current;
-    if (id) return id;
-    const arr = Array.from(pathSelRef.current.nodes);
-    return arr.length ? String(arr[0]) : null;
-  };
-
-  const showShortcutsHelp = () => {
-    toast(
-      [
-        "Shortcuts:",
-        "Space / Enter → Edit",
-        "F2 → Rename",
-        "Delete / Backspace → Delete",
-        "Ctrl/Cmd + D → Duplicate",
-        "Ctrl/Cmd + Shift + R → Restart all",
-        "Ctrl/Cmd + Shift + C → Continue all",
-        "Ctrl/Cmd + Shift + F → Reset from",
-        "Ctrl/Cmd + Shift + S → Stop",
-        "Alt + ↑ → Select to (ancestors)",
-        "Alt + ↓ → Select from (descendants)",
-      ].join("\n")
-    );
-  };
-
-  const onKeyDown = (e: KeyboardEvent) => {
-    if (isTypingTarget(e.target) || anyModalOpen()) return;
-
-    const ctrlMeta = e.ctrlKey || e.metaKey;
-    const id = getPrimaryId();
-    const actions = nodeActionsRef.current;
-
-    // Space / Enter => Edit
-    if ((e.key === " " || e.key === "Enter") && id) {
-      e.preventDefault();
-      actions?.onEdit?.(id);
-      return;
-    }
-
-    // Delete / Backspace => Delete (multi or single)
-    if (e.key === "Delete" || e.key === "Backspace") {
-      if (pathSelRef.current.nodes.size > 0 || id) {
-        e.preventDefault();
-        actions?.onDelete?.(id ?? "");
+    const getSelectedIds = (): string[] => {
+      if (pathSelRef.current.nodes.size > 0) {
+        return Array.from(pathSelRef.current.nodes)
+          .map(String)
+          .filter((id) => id !== "PROJECT");
       }
-      return;
-    }
+      const id = selectedIdRef.current;
+      return id && id !== "PROJECT" ? [id] : [];
+    };
 
-    // F2 => Rename
-    if (e.key === "F2" && id) {
-      e.preventDefault();
-      actions?.onRename?.(id);
-      return;
-    }
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.repeat) return;
 
-    // Ctrl/Cmd + D => Duplicate
-    if (ctrlMeta && e.key.toLowerCase?.() === "d") {
-      e.preventDefault();
-      if (id) actions?.onDuplicate?.(id);
-      return;
-    }
-
-    // Ctrl/Cmd + Shift + R => Restart all
-    if (ctrlMeta && e.shiftKey && e.key.toLowerCase?.() === "r" && id) {
-      e.preventDefault();
-      actions?.onRestartAll?.(id);
-      return;
-    }
-
-    // Ctrl/Cmd + Shift + C => Continue all
-    if (ctrlMeta && e.shiftKey && e.key.toLowerCase?.() === "c" && id) {
-      e.preventDefault();
-      actions?.onContinueAll?.(id);
-      return;
-    }
-
-    // Ctrl/Cmd + Shift + F => Reset from
-    if (ctrlMeta && e.shiftKey && e.key.toLowerCase?.() === "f" && id) {
-      e.preventDefault();
-      actions?.onResetFrom?.(id);
-      return;
-    }
-
-    // Ctrl/Cmd + Shift + S => Stop (multi or single)
-    if (ctrlMeta && e.shiftKey && e.key.toLowerCase?.() === "s") {
-      if (pathSelRef.current.nodes.size > 0 || id) {
-        e.preventDefault();
-        actions?.onStop?.(id ?? "");
+      // no dispare atajos si hay diálogos abiertos o si estamos escribiendo
+      if (
+        dlgRename.open ||
+        confirm.open ||
+        dlgResetFrom.open ||
+        fileDialogOpen ||
+        drawerOpen ||
+        contextMenu.visible ||
+        isTypingTarget(e.target)
+      ) {
+        return;
       }
-      return;
-    }
 
-    // Alt + ArrowDown => Select From (descendants)
-    if (e.altKey && e.key === "ArrowDown" && id) {
-      e.preventDefault();
-      actions?.onSelectFrom?.(id);
-      return;
-    }
+      const ids = getSelectedIds();
+      const selectedId = selectedIdRef.current;
 
-    // Alt + ArrowUp => Select To (ancestors)
-    if (e.altKey && e.key === "ArrowUp" && id) {
-      e.preventDefault();
-      actions?.onSelectTo?.(id);
-      return;
-    }
+      // Space / Enter -> Edit (open protocol form)
+      if ((e.key === " " || e.key === "Enter" || e.code === "Space" || e.key === " " || e.key === "Spacebar") && selectedId) {
+        e.preventDefault(); 
+        handleNodeDoubleClick({ id: selectedId });
+        return;
+      }
 
-    // Ctrl/Cmd + Shift + / ( ? ) => Help
-    if (ctrlMeta && e.shiftKey && (e.key === "?" || e.key === "/")) {
-      e.preventDefault();
-      showShortcutsHelp();
-      return;
-    }
-  };
+      // Delete / Backspace -> Delete
+      if ((e.key === "Delete" || e.key === "Backspace") && ids.length > 0) {
+        e.preventDefault();
+        openDelete(ids[0]);
+        return;
+      }
 
-  window.addEventListener("keydown", onKeyDown);
-  return () => window.removeEventListener("keydown", onKeyDown);
-  // deps include dialog/drawer flags so we stop handling during modals
-}, [confirm.open, dlgRename.open, dlgResetFrom.open, drawerOpen, fileDialogOpen]);
+      // F2 -> Rename
+      if (e.key === "F2" && selectedId) {
+        e.preventDefault();
+        openRename(selectedId);
+        return;
+      }
+
+      // Ctrl/⌘ + D -> Duplicate
+      if (modPressed(e) && !e.shiftKey && e.key.toLowerCase() === "d" && ids.length > 0) {
+        e.preventDefault();
+        duplicateNow(ids);
+        return;
+      }
+
+      // Ctrl/⌘ + B -> Browse
+      if (modPressed(e) && !e.shiftKey && e.key.toLowerCase() === "b" && selectedId) {
+        e.preventDefault();
+        openBrowse(selectedId, project?.id, findNodeLabel(selectedId));
+        return;
+      }
+
+      // Ctrl/⌘ + Shift + R -> Restart all
+      if (modPressed(e) && e.shiftKey && e.key.toLowerCase() === "r" && selectedId) {
+        e.preventDefault();
+        openRestartAll(selectedId);
+        return;
+      }
+
+      // Ctrl/⌘ + Shift + C -> Continue all
+      if (modPressed(e) && e.shiftKey && e.key.toLowerCase() === "c" && selectedId) {
+        e.preventDefault();
+        openContinueAll(selectedId);
+        return;
+      }
+
+      // Ctrl/⌘ + Shift + F -> Reset from
+      if (modPressed(e) && e.shiftKey && e.key.toLowerCase() === "f" && selectedId) {
+        e.preventDefault();
+        openResetFrom(selectedId);
+        return;
+      }
+
+      // Ctrl/⌘ + Shift + S -> Stop
+      if (modPressed(e) && e.shiftKey && e.key.toLowerCase() === "s" && selectedId) {
+        e.preventDefault();
+        openStop(selectedId);
+        return;
+      }
+
+      // Alt + ArrowDown -> Select from
+      if (!modPressed(e) && e.altKey && e.key === "ArrowDown" && selectedId) {
+        e.preventDefault();
+        handleSelectFrom(selectedId);
+        return;
+      }
+
+      // Alt + ArrowUp -> Select to
+      if (!modPressed(e) && e.altKey && e.key === "ArrowUp" && selectedId) {
+        e.preventDefault();
+        handleSelectTo(selectedId);
+        return;
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [
+    project?.id,
+    drawerOpen,
+    fileDialogOpen,
+    contextMenu.visible,
+    dlgRename.open,
+    dlgResetFrom.open,
+    confirm.open,
+    handleNodeDoubleClick,
+    openDelete,
+    openRename,
+    openRestartAll,
+    openContinueAll,
+    openResetFrom,
+    openStop,
+    handleSelectFrom,
+    handleSelectTo,
+  ]);
+
 
 
   /* ------------------------ Render ------------------------ */
@@ -2166,7 +2188,7 @@ useEffect(() => {
         <div
           ref={flowWrapperRef}
           className="absolute inset-0 border transition-opacity"
-          style={{
+          style={{ width: '100%', height: '100%',
             opacity: viewMode !== "table" ? (hideGraphDuringCenter ? 0 : 1) : 0,
             pointerEvents: viewMode !== "table" ? "auto" : "none",
             zIndex: 20,
@@ -2315,15 +2337,7 @@ useEffect(() => {
 
                   closeFormByKey(f.key);
                 }}
-                onExecuted={() => {
-                  handleRefreshRef.current?.();
-                  setTimeout(() => tryPlaceNewlyCreatedNode(), 100);
-
-                  if (delayedRefreshTimerRef.current !== null) clearTimeout(delayedRefreshTimerRef.current);
-                  delayedRefreshTimerRef.current = window.setTimeout(() => {
-                    handleRefreshRef.current?.();
-                    setTimeout(() => tryPlaceNewlyCreatedNode(), 100);
-                  }, 1200);
+                onExecuted={() => {scheduleDoubleRefresh(5000, true);
                 }}
               />
             </div>
@@ -2369,18 +2383,17 @@ useEffect(() => {
               {confirm.kind === "continueAll" && "Continue all steps?"}
               {confirm.kind === "stop" && "Stop protocol(s)?"}
             </DialogTitle>
+            <DialogDescription className="mb-5 text-sm text-muted-foreground">
+              {confirm.kind === "delete" &&
+                "This action cannot be undone. This will permanently remove the selected protocol(s) and outputs not used elsewhere."}
+              {confirm.kind === "restartAll" &&
+                "All protocols will be restarted from this protocol, so the previous results will be deleted"}
+              {confirm.kind === "continueAll" &&
+                "All protocols will continue for this protocol, so the previous results will be affected"}
+              {confirm.kind === "stop" &&
+                "This will attempt to gracefully stop the selected protocol(s). Running work may be interrupted."}
+            </DialogDescription>
           </DialogHeader>
-
-          <p className="mb-5 text-sm text-muted-foreground">
-            {confirm.kind === "delete" &&
-              "This action cannot be undone. This will permanently remove the selected protocol(s) and outputs not used elsewhere."}
-            {confirm.kind === "restartAll" &&
-              "All protocols will be restarted from this protocol, so the previous results will be deleted"}
-            {confirm.kind === "continueAll" &&
-              "All protocols will continue for this protocol, so the previous results will be affected"}
-            {confirm.kind === "stop" &&
-              "This will attempt to gracefully stop the selected protocol(s). Running work may be interrupted."}
-          </p>
 
           {/* Footer */}
           <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
@@ -2413,6 +2426,7 @@ useEffect(() => {
                   } else if (confirm.kind === "restartAll" && confirm.id) {
                     await svc.restartAll(projectName, confirm.id);
                     toast.success("Restart started.");
+                    scheduleDoubleRefresh(5000, true);
                   } else if (confirm.kind === "continueAll" && confirm.id) {
                     await svc.continueAll(projectName, confirm.id);
                     toast.success("Continue started.");
@@ -2424,7 +2438,7 @@ useEffect(() => {
 
                   setConfirm({ open: false, id: null, ids: null, kind: null });
 
-                  if (kind !== "stop") {
+                  if (kind !== "stop" && kind !== "restartAll") {
                     await handleRefresh();
                   }
                 } catch (e) {
