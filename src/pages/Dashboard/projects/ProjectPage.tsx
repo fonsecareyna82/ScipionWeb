@@ -22,6 +22,7 @@ import ReactFlow, {
   NodeChange,
   Node,
   ReactFlowInstance,
+  MarkerType,
 } from "reactflow";
 import "reactflow/dist/style.css";
 import { createStatusNodeWrapper } from "../../../components/protocol/ProtocolNodeCardWrapper";
@@ -35,24 +36,13 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog/dialog";
-import {
-  AlertDialog,
-  AlertDialogContent,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogCancel,
-  AlertDialogAction,
-} from "@/components/ui/dialog/alert-dialog";
+
 import { Button } from "@/components/ui/button";
 
 import {
   MinusIcon,
   PlusIcon,
   RefreshCw,
-  PlusCircle,
-  Eraser,
   XCircle,
 } from "lucide-react";
 import { FitViewIcon, TableIcon, TreeIcon } from "../../../icons";
@@ -2033,12 +2023,16 @@ export default function ProjectPage() {
                 applyEdgeHighlight(null);
               }}
               onSelectionChange={onSelectionChange}
-              onContextMenu={handleContextMenu}
+              onPaneContextMenu={handleContextMenu}
               defaultViewport={viewport}
-              defaultEdgeOptions={{ type: "default", style: { stroke: "#999", strokeWidth: 2 }, markerEnd: "url(#circle)" }}
+              defaultEdgeOptions={{
+                type: "default",
+                style: { stroke: "#999", strokeWidth: 2 },
+                markerEnd: { type: MarkerType.ArrowClosed },
+              }}
               onNodeDoubleClick={(_, node) => handleNodeDoubleClick(node)}
               onNodeClick={(evt, node) => handleNodeClick(node, evt)}
-              multiSelectionKeyCode={['Meta', 'Control', 'Shift']}
+              multiSelectionKeyCode="Control"
               selectionKeyCode="Shift"
               selectionOnDrag
               style={{ width: "100%", height: "100%" }}
@@ -2083,7 +2077,7 @@ export default function ProjectPage() {
 
                   if (delayedRefreshTimerRef.current !== null) clearTimeout(delayedRefreshTimerRef.current);
                   delayedRefreshTimerRef.current = window.setTimeout(() => {
-                    handleRefreshRef.current?.();              // segundo refresco breve
+                    handleRefreshRef.current?.();              
                     setTimeout(() => tryPlaceNewlyCreatedNode(), 100);
                   }, 1200);
                 }}

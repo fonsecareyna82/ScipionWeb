@@ -10,7 +10,7 @@ function estimateLabelWidth(label: string, fontSize = 20, fontFamily = "Arial"):
   const context = canvas.getContext("2d");
   if (!context) return 100;
   context.font = `${fontSize}px ${fontFamily}`;
-  return context.measureText(label).width + 480; // extra padding for node
+  return context.measureText(label).width + 480; // extra padding for node/card
 }
 
 /**
@@ -47,7 +47,9 @@ export function buildGraphElements(
   const nodes: Node[] = [];
   const edges: Edge[] = [];
 
-  // Table mode (for dashboard list)
+  // -------------------------
+  // TABLE view -> only table
+  // -------------------------
   if (viewMode === "table") {
     const sorted = Object.entries(protocols)
       .filter(([id]) => id !== "PROJECT")
@@ -69,6 +71,67 @@ export function buildGraphElements(
     return { nodes: [], edges: [], table: tableData };
   }
 
+  // -------------------------
+  // GRID view -> boxes only
+  // -------------------------
+  if (viewMode === "grid") {
+    // Exclude the virtual PROJECT node from the grid
+    const items = Object.entries(protocols)
+      .filter(([id]) => id !== "PROJECT")
+      .sort(([idA], [idB]) => parseInt(idA, 10) - parseInt(idB, 10));
+
+    // Choose a near-square layout
+    const total = items.length;
+    const cols = Math.max(2, Math.ceil(Math.sqrt(total)));
+    const rows = Math.max(1, Math.ceil(total / cols));
+
+    // Generous spacing so your Status card doesn't overlap (tune if needed)
+    const gridCellWidth = 1200;   // horizontal step
+    const gridCellHeight = 460;   // vertical step
+
+    // Handles orientation (kept consistent with current direction, even if we don't draw edges)
+    const sourcePosition: Position = direction === "LR" ? Position.Right : Position.Bottom;
+    const targetPosition: Position = direction === "LR" ? Position.Left  : Position.Top;
+
+    // Start near origin; ProjectPage centers viewport afterwards
+    for (let i = 0; i < total; i++) {
+      const [id, prot] = items[i];
+      const row = Math.floor(i / cols);
+      const col = i % cols;
+
+      const x = col * gridCellWidth;
+      const y = row * gridCellHeight;
+
+      nodes.push({
+        id,
+        type: "status",
+        data: {
+          label: prot?.label || id,
+          status: prot?.status,
+          id,
+          parameters: prot?.parameters,
+          cpuTime: prot?.cpuTime,
+          elapsedTime: prot?.elapsedTime,
+          stepsDone: prot?.stepsDone,
+          numberOfSteps: prot?.numberOfSteps,
+          outputs: prot?.outputs,
+          inputs: prot?.inputs,
+          tick: Number(prot?.elapsedTime) || 0,
+        },
+        position: { x, y },
+        draggable: true,
+        sourcePosition,
+        targetPosition,
+      });
+    }
+
+    // No edges in grid view
+    return { nodes, edges: [] };
+  }
+
+  // ---------------------------------
+  // HIERARCHICAL (default) with edges
+  // ---------------------------------
   const levelMap: Record<string, number> = {};
   const levelBuckets: Record<number, string[]> = {};
   const edgeSet = new Set<string>();
@@ -140,10 +203,8 @@ export function buildGraphElements(
           : { x: level * spacingX, y: secondary + nodeHeight / 2 };
 
       // Correct handle positions per direction
-      const sourcePosition: Position =
-        direction === "LR" ? Position.Right : Position.Bottom;
-      const targetPosition: Position =
-        direction === "LR" ? Position.Left : Position.Top;
+      const sourcePosition: Position = direction === "LR" ? Position.Right : Position.Bottom;
+      const targetPosition: Position = direction === "LR" ? Position.Left  : Position.Top;
 
       nodes.push({
         id,
@@ -168,8 +229,7 @@ export function buildGraphElements(
         targetPosition,
       });
 
-      secondary +=
-        direction === "TB" ? nodeWidth + spacing : nodeHeight + spacing;
+      secondary += direction === "TB" ? nodeWidth + spacing : nodeHeight + spacing;
     });
   });
 
