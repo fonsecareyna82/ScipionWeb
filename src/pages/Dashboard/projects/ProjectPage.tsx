@@ -696,6 +696,7 @@ export default function ProjectPage() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [handleSelectFrom, handleSelectTo, handleNodeDoubleClick]);
+  
 
   /** State and handler for RemoteFileDialog */
   const [fileDialogOpen, setFileDialogOpen] = useState(false);
@@ -1841,6 +1842,141 @@ export default function ProjectPage() {
   useEffect(() => { graphDirRef.current = graphDirection; }, [graphDirection]);
 
   const nodeActionsRef = useRef<NodeActions>({});
+
+
+  // === Keyboard shortcuts for node contextual actions ===
+useEffect(() => {
+  const isTypingTarget = (el: EventTarget | null) => {
+    const node = el as HTMLElement | null;
+    if (!node) return false;
+    const tag = node.tagName?.toLowerCase();
+    if (tag === "input" || tag === "textarea" || tag === "select") return true;
+    if ((node as any).isContentEditable) return true;
+    return !!node.closest('[contenteditable="true"], input, textarea, select');
+  };
+
+  const anyModalOpen = () =>
+    confirm.open || dlgRename.open || dlgResetFrom.open || drawerOpen || fileDialogOpen;
+
+  const getPrimaryId = (): string | null => {
+    const id = selectedIdRef.current;
+    if (id) return id;
+    const arr = Array.from(pathSelRef.current.nodes);
+    return arr.length ? String(arr[0]) : null;
+  };
+
+  const showShortcutsHelp = () => {
+    toast(
+      [
+        "Shortcuts:",
+        "Space / Enter → Edit",
+        "F2 → Rename",
+        "Delete / Backspace → Delete",
+        "Ctrl/Cmd + D → Duplicate",
+        "Ctrl/Cmd + Shift + R → Restart all",
+        "Ctrl/Cmd + Shift + C → Continue all",
+        "Ctrl/Cmd + Shift + F → Reset from",
+        "Ctrl/Cmd + Shift + S → Stop",
+        "Alt + ↑ → Select to (ancestors)",
+        "Alt + ↓ → Select from (descendants)",
+      ].join("\n")
+    );
+  };
+
+  const onKeyDown = (e: KeyboardEvent) => {
+    if (isTypingTarget(e.target) || anyModalOpen()) return;
+
+    const ctrlMeta = e.ctrlKey || e.metaKey;
+    const id = getPrimaryId();
+    const actions = nodeActionsRef.current;
+
+    // Space / Enter => Edit
+    if ((e.key === " " || e.key === "Enter") && id) {
+      e.preventDefault();
+      actions?.onEdit?.(id);
+      return;
+    }
+
+    // Delete / Backspace => Delete (multi or single)
+    if (e.key === "Delete" || e.key === "Backspace") {
+      if (pathSelRef.current.nodes.size > 0 || id) {
+        e.preventDefault();
+        actions?.onDelete?.(id ?? "");
+      }
+      return;
+    }
+
+    // F2 => Rename
+    if (e.key === "F2" && id) {
+      e.preventDefault();
+      actions?.onRename?.(id);
+      return;
+    }
+
+    // Ctrl/Cmd + D => Duplicate
+    if (ctrlMeta && e.key.toLowerCase?.() === "d") {
+      e.preventDefault();
+      if (id) actions?.onDuplicate?.(id);
+      return;
+    }
+
+    // Ctrl/Cmd + Shift + R => Restart all
+    if (ctrlMeta && e.shiftKey && e.key.toLowerCase?.() === "r" && id) {
+      e.preventDefault();
+      actions?.onRestartAll?.(id);
+      return;
+    }
+
+    // Ctrl/Cmd + Shift + C => Continue all
+    if (ctrlMeta && e.shiftKey && e.key.toLowerCase?.() === "c" && id) {
+      e.preventDefault();
+      actions?.onContinueAll?.(id);
+      return;
+    }
+
+    // Ctrl/Cmd + Shift + F => Reset from
+    if (ctrlMeta && e.shiftKey && e.key.toLowerCase?.() === "f" && id) {
+      e.preventDefault();
+      actions?.onResetFrom?.(id);
+      return;
+    }
+
+    // Ctrl/Cmd + Shift + S => Stop (multi or single)
+    if (ctrlMeta && e.shiftKey && e.key.toLowerCase?.() === "s") {
+      if (pathSelRef.current.nodes.size > 0 || id) {
+        e.preventDefault();
+        actions?.onStop?.(id ?? "");
+      }
+      return;
+    }
+
+    // Alt + ArrowDown => Select From (descendants)
+    if (e.altKey && e.key === "ArrowDown" && id) {
+      e.preventDefault();
+      actions?.onSelectFrom?.(id);
+      return;
+    }
+
+    // Alt + ArrowUp => Select To (ancestors)
+    if (e.altKey && e.key === "ArrowUp" && id) {
+      e.preventDefault();
+      actions?.onSelectTo?.(id);
+      return;
+    }
+
+    // Ctrl/Cmd + Shift + / ( ? ) => Help
+    if (ctrlMeta && e.shiftKey && (e.key === "?" || e.key === "/")) {
+      e.preventDefault();
+      showShortcutsHelp();
+      return;
+    }
+  };
+
+  window.addEventListener("keydown", onKeyDown);
+  return () => window.removeEventListener("keydown", onKeyDown);
+  // deps include dialog/drawer flags so we stop handling during modals
+}, [confirm.open, dlgRename.open, dlgResetFrom.open, drawerOpen, fileDialogOpen]);
+
 
   /* ------------------------ Render ------------------------ */
   const isGrid = viewMode === "grid";

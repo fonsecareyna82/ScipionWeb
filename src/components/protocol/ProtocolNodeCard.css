@@ -82,6 +82,7 @@
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: var(--label-lines);
+  line-clamp: var(--label-lines);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: normal;
@@ -265,9 +266,6 @@
   text-overflow: ellipsis;
   max-width: calc(var(--node-width) - var(--node-horizontal-gutters));
 }
-
-/* reserved area keeps node height constant even with 0 or 1 output */
-.outputs-reserved { }
 
 .outputs-placeholder {
   height: var(--outputs-list-max-height);

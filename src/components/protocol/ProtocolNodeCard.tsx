@@ -220,6 +220,37 @@ export default function StatusNode({
   const outputsArray = Array.isArray(data.outputs) ? data.outputs : [];
   const hasOutputs = outputsArray.length > 0;
 
+  // --- Shortcut labels (mac vs win/linux) ---
+  const isMac =
+    typeof navigator !== "undefined" &&
+    /Mac|iPhone|iPad|iPod/.test(navigator.platform);
+
+  const mod = isMac ? "⌘" : "Ctrl";
+  const modShift = isMac ? "⌘⇧" : "Ctrl+Shift";
+
+  // Centralize strings so we re-use consistently in both menus
+  const s = {
+    edit: "Space / Db-Click",
+    browse: "",               // if later you add Ctrl/⌘+O, just set browse: `${mod}+O`
+    rename: "F2",
+    delete: "Del / Backspace",
+    duplicate: `${mod}+D`,
+    restartAll: `${modShift}+R`,
+    continueAll: `${modShift}+C`,
+    resetFrom: `${modShift}+F`,
+    stop: `${modShift}+S`,
+    selectFrom: "Alt+↓",
+    selectTo: "Alt+↑",
+  } as const;
+
+  // Small helper for right-aligned shortcut hint
+  const ShortcutHint = ({ text }: { text?: string }) =>
+    text ? (
+      <span className="ml-6 text-xs text-gray-500 font-mono tabular-nums">
+        {text}
+      </span>
+    ) : null;
+
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
@@ -289,38 +320,101 @@ export default function StatusNode({
                     {!reduceMenus && (
                       <>
                         <DropdownMenuItem onClick={handleEdit}>
-                          <Pencil className="mr-2 h-4 w-4" /> Edit
+                          <div className="flex w-full items-center justify-between">
+                            <span className="flex items-center gap-2">
+                              <Pencil className="h-4 w-4" />
+                              <span>Edit</span>
+                            </span>
+                            <ShortcutHint text={s.edit} />
+                          </div>
                         </DropdownMenuItem>
 
                         <DropdownMenuItem onClick={handleBrowse}>
-                          <FolderOpen className="mr-2 h-4 w-4" /> Browse
+                          <div className="flex w-full items-center justify-between">
+                            <span className="flex items-center gap-2">
+                              <FolderOpen className="h-4 w-4" />
+                              <span>Browse</span>
+                            </span>
+                            <ShortcutHint text={s.browse} />
+                          </div>
                         </DropdownMenuItem>
 
                         <DropdownMenuItem onClick={handleRename}>
-                          <Pencil className="mr-2 h-4 w-4" /> Rename
+                          <div className="flex w-full items-center justify-between">
+                            <span className="flex items-center gap-2">
+                              <Pencil className="h-4 w-4" />
+                              <span>Rename</span>
+                            </span>
+                            <ShortcutHint text={s.rename} />
+                          </div>
                         </DropdownMenuItem>
+
                         <DropdownMenuSeparator />
+
                         <DropdownMenuItem onClick={handleSelectFrom}>
-                          <FromIcon className="mr-2 h-4 w-4" /> Select from
+                          <div className="flex w-full items-center justify-between">
+                            <span className="flex items-center gap-2">
+                              <FromIcon className="h-4 w-4" />
+                              <span>Select from</span>
+                            </span>
+                            <ShortcutHint text={s.selectFrom} />
+                          </div>
                         </DropdownMenuItem>
+
                         <DropdownMenuItem onClick={handleSelectTo}>
-                          <ToIcon className="mr-2 h-4 w-4" /> Select to
+                          <div className="flex w-full items-center justify-between">
+                            <span className="flex items-center gap-2">
+                              <ToIcon className="h-4 w-4" />
+                              <span>Select to</span>
+                            </span>
+                            <ShortcutHint text={s.selectTo} />
+                          </div>
                         </DropdownMenuItem>
+
                         <DropdownMenuSeparator />
+
                         {(data.status === "running" || data.status === "launched" || data.status === "scheduled") && (
                           <DropdownMenuItem onSelect={handleStop}>
-                            <Square className="mr-2 h-4 w-4" /> Stop
+                            <div className="flex w-full items-center justify-between">
+                              <span className="flex items-center gap-2">
+                                <Square className="h-4 w-4" />
+                                <span>Stop</span>
+                              </span>
+                              <ShortcutHint text={s.stop} />
+                            </div>
                           </DropdownMenuItem>
                         )}
+
                         <DropdownMenuItem onClick={handleRestartAll}>
-                          <RefreshCw className="mr-2 h-4 w-4" /> Restart all
+                          <div className="flex w-full items-center justify-between">
+                            <span className="flex items-center gap-2">
+                              <RefreshCw className="h-4 w-4" />
+                              <span>Restart all</span>
+                            </span>
+                            <ShortcutHint text={s.restartAll} />
+                          </div>
                         </DropdownMenuItem>
+
                         <DropdownMenuItem onClick={handleContinueAll}>
-                          <Play className="mr-2 h-4 w-4" /> Continue all
+                          <div className="flex w-full items-center justify-between">
+                            <span className="flex items-center gap-2">
+                              <Play className="h-4 w-4" />
+                              <span>Continue all</span>
+                            </span>
+                            <ShortcutHint text={s.continueAll} />
+                          </div>
                         </DropdownMenuItem>
+
                         <DropdownMenuItem onClick={handleResetFrom}>
-                          <RotateCcw className="mr-2 h-4 w-4" /> Reset from
+                          <div className="flex w-full items-center justify-between">
+                            <span className="flex items-center gap-2">
+                              <RotateCcw className="h-4 w-4" />
+                              <span>Reset from</span>
+                            </span>
+                            <ShortcutHint text={s.resetFrom} />
+                          </div>
                         </DropdownMenuItem>
+
                         <DropdownMenuSeparator />
                       </>
                     )}
@@ -328,23 +422,57 @@ export default function StatusNode({
                     {reduceMenus && (data.status === "running" || data.status === "launched" || data.status === "scheduled") && (
                       <>
                         <DropdownMenuItem onSelect={handleStop}>
-                          <Square className="mr-2 h-4 w-4" /> Stop selection
+                          <div className="flex w-full items-center justify-between">
+                            <span className="flex items-center gap-2">
+                              <Square className="h-4 w-4" />
+                              <span>Stop selection</span>
+                            </span>
+                            <ShortcutHint text={s.stop} />
+                          </div>
                         </DropdownMenuItem>
                       </>
                     )}
 
                     <DropdownMenuItem onClick={handleDelete}>
-                      <Trash2 className="mr-2 h-4 w-4" /> Delete
+                      <div className="flex w-full items-center justify-between">
+                        <span className="flex items-center gap-2">
+                          <Trash2 className="h-4 w-4" />
+                          <span>Delete</span>
+                        </span>
+                        <ShortcutHint text={s.delete} />
+                      </div>
                     </DropdownMenuItem>
+
                     <DropdownMenuItem onClick={handleDuplicate}>
-                      <Copy className="mr-2 h-4 w-4" /> Duplicate
+                      <div className="flex w-full items-center justify-between">
+                        <span className="flex items-center gap-2">
+                          <Copy className="h-4 w-4" />
+                          <span>Duplicate</span>
+                        </span>
+                        <ShortcutHint text={s.duplicate} />
+                      </div>
                     </DropdownMenuItem>
+
                     <DropdownMenuSeparator />
+
                     <DropdownMenuItem>
-                      <FileUp className="mr-2 h-4 w-4" /> Export
+                      <div className="flex w-full items-center justify-between">
+                        <span className="flex items-center gap-2">
+                          <FileUp className="h-4 w-4" />
+                          <span>Export</span>
+                        </span>
+                        <ShortcutHint text={undefined} />
+                      </div>
                     </DropdownMenuItem>
+
                     <DropdownMenuItem>
-                      <Upload className="mr-2 h-4 w-4" /> Export & upload
+                      <div className="flex w-full items-center justify-between">
+                        <span className="flex items-center gap-2">
+                          <Upload className="h-4 w-4" />
+                          <span>Export & upload</span>
+                        </span>
+                        <ShortcutHint text={undefined} />
+                      </div>
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -508,36 +636,101 @@ export default function StatusNode({
         {!reduceMenus && (
           <>
             <ContextMenuItem onClick={handleEdit}>
-              <Pencil className="mr-2 h-4 w-4" /> Edit
+              <div className="flex w-full items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <Pencil className="h-4 w-4" />
+                  <span>Edit</span>
+                </span>
+                <ShortcutHint text={s.edit} />
+              </div>
             </ContextMenuItem>
+
             <ContextMenuItem onClick={handleBrowse}>
-              <FolderOpen className="mr-2 h-4 w-4" /> Browse
+              <div className="flex w-full items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <FolderOpen className="h-4 w-4" />
+                  <span>Browse</span>
+                </span>
+                <ShortcutHint text={s.browse} />
+              </div>
             </ContextMenuItem>
+
             <ContextMenuItem onClick={handleRename}>
-              <Pencil className="mr-2 h-4 w-4" /> Rename
+              <div className="flex w-full items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <Pencil className="h-4 w-4" />
+                  <span>Rename</span>
+                </span>
+                <ShortcutHint text={s.rename} />
+              </div>
             </ContextMenuItem>
+
             <ContextMenuSeparator />
+
             <ContextMenuItem onClick={handleSelectFrom}>
-              <FromIcon className="mr-2 h-4 w-4" /> Select from
+              <div className="flex w-full items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <FromIcon className="h-4 w-4" />
+                  <span>Select from</span>
+                </span>
+                <ShortcutHint text={s.selectFrom} />
+              </div>
             </ContextMenuItem>
+
             <ContextMenuItem onClick={handleSelectTo}>
-              <ToIcon className="mr-2 h-4 w-4" /> Select to
+              <div className="flex w-full items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <ToIcon className="h-4 w-4" />
+                  <span>Select to</span>
+                </span>
+                <ShortcutHint text={s.selectTo} />
+              </div>
             </ContextMenuItem>
+
             <ContextMenuSeparator />
+
             {(data.status === "running" || data.status === "launched" || data.status === "scheduled") && (
               <ContextMenuItem onClick={handleStop}>
-                <Square className="mr-2 h-4 w-4" /> Stop
+                <div className="flex w-full items-center justify-between">
+                  <span className="flex items-center gap-2">
+                    <Square className="h-4 w-4" />
+                    <span>Stop</span>
+                  </span>
+                  <ShortcutHint text={s.stop} />
+                </div>
               </ContextMenuItem>
             )}
+
             <ContextMenuItem onClick={handleRestartAll}>
-              <RefreshCw className="mr-2 h-4 w-4" /> Restart all
+              <div className="flex w-full items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <RefreshCw className="h-4 w-4" />
+                  <span>Restart all</span>
+                </span>
+                <ShortcutHint text={s.restartAll} />
+              </div>
             </ContextMenuItem>
+
             <ContextMenuItem onClick={handleContinueAll}>
-              <Play className="mr-2 h-4 w-4" /> Continue all
+              <div className="flex w-full items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <Play className="h-4 w-4" />
+                  <span>Continue all</span>
+                </span>
+                <ShortcutHint text={s.continueAll} />
+              </div>
             </ContextMenuItem>
+
             <ContextMenuItem onClick={handleResetFrom}>
-              <RotateCcw className="mr-2 h-4 w-4" /> Reset from
+              <div className="flex w-full items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <RotateCcw className="h-4 w-4" />
+                  <span>Reset from</span>
+                </span>
+                <ShortcutHint text={s.resetFrom} />
+              </div>
             </ContextMenuItem>
+
             <ContextMenuSeparator />
           </>
         )}
@@ -545,23 +738,57 @@ export default function StatusNode({
         {reduceMenus && (data.status === "running" || data.status === "launched" || data.status === "scheduled") && (
           <>
             <ContextMenuItem onClick={handleStop}>
-              <Square className="mr-2 h-4 w-4" /> Stop selection
+              <div className="flex w-full items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <Square className="h-4 w-4" />
+                  <span>Stop selection</span>
+                </span>
+                <ShortcutHint text={s.stop} />
+              </div>
             </ContextMenuItem>
           </>
         )}
 
         <ContextMenuItem onClick={handleDelete}>
-          <Trash2 className="mr-2 h-4 w-4" /> Delete
+          <div className="flex w-full items-center justify-between">
+            <span className="flex items-center gap-2">
+              <Trash2 className="h-4 w-4" />
+              <span>Delete</span>
+            </span>
+            <ShortcutHint text={s.delete} />
+          </div>
         </ContextMenuItem>
+
         <ContextMenuItem onClick={handleDuplicate}>
-          <Copy className="mr-2 h-4 w-4" /> Duplicate
+          <div className="flex w-full items-center justify-between">
+            <span className="flex items-center gap-2">
+              <Copy className="h-4 w-4" />
+              <span>Duplicate</span>
+            </span>
+            <ShortcutHint text={s.duplicate} />
+          </div>
         </ContextMenuItem>
+
         <ContextMenuSeparator />
+
         <ContextMenuItem>
-          <FileUp className="mr-2 h-4 w-4" /> Export
+          <div className="flex w-full items-center justify-between">
+            <span className="flex items-center gap-2">
+              <FileUp className="h-4 w-4" />
+              <span>Export</span>
+            </span>
+            <ShortcutHint text={undefined} />
+          </div>
         </ContextMenuItem>
+
         <ContextMenuItem>
-          <Upload className="mr-2 h-4 w-4" /> Export & upload
+          <div className="flex w-full items-center justify-between">
+            <span className="flex items-center gap-2">
+              <Upload className="h-4 w-4" />
+              <span>Export & upload</span>
+            </span>
+            <ShortcutHint text={undefined} />
+          </div>
         </ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>
