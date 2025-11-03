@@ -17,13 +17,12 @@ function estimateLabelWidth(label: string, fontSize = 20, fontFamily = "Arial"):
  * Estimate node height (optional, for LR layout)
  */
 function estimateNodeHeight(label: string, fontSize = 20, fontFamily = "Arial"): number {
-  const avgCharWidth = fontSize * 0.6; // rough average
-  const maxWidth = 240;                // px, assumed node width
+  const avgCharWidth = fontSize * 0.6;
+  const maxWidth = 240;
   const text = String(label ?? "");
   const charsPerLine = Math.max(1, Math.floor(maxWidth / avgCharWidth));
   const lines = Math.ceil(text.length / charsPerLine) || 1;
 
-  // Line height with a small family factor (keeps arguments “used” meaningfully)
   const baseLineHeight = Math.round(fontSize * 1.2);
   const familyFactor = /arial/i.test(fontFamily) ? 1 : 1.05;
 
@@ -39,7 +38,9 @@ export function buildGraphElements(
   projectName: string,
   protocols: Record<string, ProtocolNode>,
   viewMode: "hierarchical" | "grid" | "table" = "hierarchical",
-  direction: Direction = "TB"
+  direction: Direction = "TB",
+  containerWidth?: number | null,
+  viewportZoom?: number | null
 ) {
   const spacingX = direction === "TB" ? 250 : 1150;
   const spacingY = direction === "TB" ? 580 : 380;
@@ -47,9 +48,7 @@ export function buildGraphElements(
   const nodes: Node[] = [];
   const edges: Edge[] = [];
 
-  // -------------------------
   // TABLE view -> only table
-  // -------------------------
   if (viewMode === "table") {
     const sorted = Object.entries(protocols)
       .filter(([id]) => id !== "PROJECT")
@@ -71,36 +70,64 @@ export function buildGraphElements(
     return { nodes: [], edges: [], table: tableData };
   }
 
-  // -------------------------
-  // GRID view -> boxes only
-  // -------------------------
+  // GRID view -> rows and columns from top-left, no edges
   if (viewMode === "grid") {
-    // Exclude the virtual PROJECT node from the grid
     const items = Object.entries(protocols)
       .filter(([id]) => id !== "PROJECT")
       .sort(([idA], [idB]) => parseInt(idA, 10) - parseInt(idB, 10));
 
-    // Choose a near-square layout
     const total = items.length;
-    const cols = Math.max(2, Math.ceil(Math.sqrt(total)));
-    const rows = Math.max(1, Math.ceil(total / cols));
+    if (total === 0) return { nodes: [], edges: [] };
 
-    // Generous spacing so your Status card doesn't overlap (tune if needed)
-    const gridCellWidth = 1200;   // horizontal step
-    const gridCellHeight = 460;   // vertical step
+    const fallbackW =
+      typeof window !== "undefined" && typeof window.innerWidth === "number"
+        ? window.innerWidth
+        : 1600;
 
-    // Handles orientation (kept consistent with current direction, even if we don't draw edges)
+    const zoom = typeof viewportZoom === "number" && viewportZoom > 0 ? viewportZoom : 1;
+    const screenWidthPx = Math.max(600, (containerWidth ?? fallbackW));
+    const wrapWorldWidth = screenWidthPx / zoom;
+
+    const estWidths = items.map(([, prot]) => estimateLabelWidth(prot?.label || ""));
+    const estHeights = items.map(([, prot]) => estimateNodeHeight(prot?.label || ""));
+
+    const gapX = 650;
+    const gapY = 200;
+
+    const softWidths = estWidths.map((w) => Math.round(w * 0.45));
+    const avgSoftW =
+      softWidths.length > 0
+        ? Math.round(softWidths.reduce((a, b) => a + b, 0) / softWidths.length)
+        : 560;
+
+    const baseW = Math.min(680, Math.max(440, avgSoftW));
+    const baseH =
+      estHeights.length > 0
+        ? Math.min(520, Math.max(320, Math.round((estHeights.reduce((a, b) => a + b, 0) / estHeights.length) * 0.9)))
+        : 380;
+
+    const cellW = baseW + gapX;
+    const cellH = baseH + gapY;
+
+    const cols = Math.max(
+      1,
+      Math.min(
+        total,
+        Math.floor((wrapWorldWidth - gapX) / Math.max(320, cellW))
+      ) + 1
+    );
+
     const sourcePosition: Position = direction === "LR" ? Position.Right : Position.Bottom;
     const targetPosition: Position = direction === "LR" ? Position.Left  : Position.Top;
 
-    // Start near origin; ProjectPage centers viewport afterwards
+    // Start at (0,0) top-left
     for (let i = 0; i < total; i++) {
       const [id, prot] = items[i];
       const row = Math.floor(i / cols);
       const col = i % cols;
 
-      const x = col * gridCellWidth;
-      const y = row * gridCellHeight;
+      const x = col * cellW;
+      const y = row * cellH;
 
       nodes.push({
         id,
@@ -125,18 +152,14 @@ export function buildGraphElements(
       });
     }
 
-    // No edges in grid view
     return { nodes, edges: [] };
   }
 
-  // ---------------------------------
   // HIERARCHICAL (default) with edges
-  // ---------------------------------
   const levelMap: Record<string, number> = {};
   const levelBuckets: Record<number, string[]> = {};
   const edgeSet = new Set<string>();
 
-  // Recursive traversal to compute levels and edges
   function traverse(id: string, level: number) {
     const currentLevel = levelMap[id];
     if (currentLevel === undefined || level > currentLevel) {
@@ -165,7 +188,6 @@ export function buildGraphElements(
           animated: false,
           style: { stroke: "#CAD5E2", strokeWidth: 2 },
           markerEnd: "url(#circle)",
-          // edge handles depend on direction
           sourceHandle: direction === "TB" ? "bottom" : "right",
           targetHandle: direction === "TB" ? "top" : "left",
         });
@@ -176,7 +198,6 @@ export function buildGraphElements(
 
   traverse("PROJECT", 0);
 
-  // Position nodes by level
   Object.entries(levelBuckets).forEach(([levelStr, ids]) => {
     const level = parseInt(levelStr, 10);
     const sizes = ids.map((id) => estimateLabelWidth(protocols[id]?.label || id));
@@ -202,7 +223,6 @@ export function buildGraphElements(
           ? { x: secondary + nodeWidth / 2, y: level * spacingY }
           : { x: level * spacingX, y: secondary + nodeHeight / 2 };
 
-      // Correct handle positions per direction
       const sourcePosition: Position = direction === "LR" ? Position.Right : Position.Bottom;
       const targetPosition: Position = direction === "LR" ? Position.Left  : Position.Top;
 
@@ -224,7 +244,6 @@ export function buildGraphElements(
         },
         position,
         draggable: true,
-        // crucial for proper edge orientation
         sourcePosition,
         targetPosition,
       });

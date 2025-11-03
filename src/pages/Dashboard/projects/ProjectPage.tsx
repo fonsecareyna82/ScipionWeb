@@ -1,3 +1,4 @@
+// File: src/pages/projects/ProjectPage/ProjectPage.tsx
 import { useParams } from "react-router-dom";
 import React, {
   useCallback,
@@ -44,6 +45,7 @@ import {
   PlusIcon,
   RefreshCw,
   XCircle,
+  LayoutGrid,
 } from "lucide-react";
 import { FitViewIcon, TableIcon, TreeIcon } from "../../../icons";
 
@@ -90,7 +92,6 @@ type NodeActions = {
   onStop?: (id: string) => void;
 };
 
-/** Represents a single docked ProtocolForm */
 type OpenForm = { key: string; id: string; details: any };
 
 export default function ProjectPage() {
@@ -187,7 +188,7 @@ export default function ProjectPage() {
   const selectedIdRef = useRef<string | null>(null);
   useEffect(() => { selectedIdRef.current = previousNodeId; }, [previousNodeId]);
 
-  const [viewMode, setViewMode] = useState<"hierarchical" | "table">("hierarchical");
+  const [viewMode, setViewMode] = useState<"hierarchical" | "grid" | "table">("hierarchical");
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const [nodeTicks, setNodeTicks] = useState<Record<string, number>>({});
   const rowRefs = useRef<Record<string, HTMLTableRowElement | null>>({});
@@ -199,6 +200,7 @@ export default function ProjectPage() {
   const [, startTransition] = useTransition();
   const disablePersistenceRef = useRef(false);
 
+  // Viewport state (used for hierarchical/table; grid uses fixed zoom)
   const [viewport, setViewport] = useState<{ x: number; y: number; zoom: number }>({ x: 0, y: 0, zoom: 0.32 });
   const viewportRef = useRef(viewport);
   useEffect(() => { viewportRef.current = viewport; }, [viewport]);
@@ -206,16 +208,16 @@ export default function ProjectPage() {
   const reactFlowInstanceRef = useRef<ReactFlowInstance | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({ visible: false, x: 0, y: 0 });
 
-  // === NEW: wrapper ref to compute pane-relative coordinates for projection
+  // Wrapper ref
   const flowWrapperRef = useRef<HTMLDivElement | null>(null);
 
-  // === NEW: drawer open control (shadcn/ui Drawer controlled pattern)
+  // Drawer
   const [drawerOpen, setDrawerOpen] = useState(false);
 
-  // === NEW: remembers last pane right-click projected RF point
+  // Last RF point for context menu placement
   const lastPaneRFPointRef = useRef<{ x: number; y: number } | null>(null);
 
-  // === NEW: pending placement info to place newly created protocol at the click point
+  // Pending placement point for newly created protocol
   const pendingPlacementRef = useRef<{
     point: { x: number; y: number };
     beforeIds: Set<string>;
@@ -229,12 +231,15 @@ export default function ProjectPage() {
   const [nodesLoadedOnce, setNodesLoadedOnce] = useState(false);
   const firstLoadRef = useRef(true);
 
+  // Zoom rules
+  const GRID_ZOOM = 0.32;
   const MIN_ZOOM = 0.2;
   const MAX_ZOOM = 0.6;
   const clampZoom = (z: number | undefined | null) => {
     const num = typeof z === "number" && !Number.isNaN(z) ? z : 0.32;
     return Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, num));
   };
+  const getEffectiveZoom = () => (viewMode === "grid" ? GRID_ZOOM : viewportRef.current.zoom);
 
   const nodesRef = useRef<Node[]>(nodes);
   useEffect(() => { nodesRef.current = nodes; }, [nodes]);
@@ -242,6 +247,27 @@ export default function ProjectPage() {
   useEffect(() => { edgesRef.current = edges; }, [edges]);
 
   const isRunningNode = (n: Node) => (n as any).data?.status === "running";
+
+  /* --------------------- Grid container width observer --------------------- */
+  const [gridWidth, setGridWidth] = useState<number>(0);
+
+  useLayoutEffect(() => {
+    const el = flowWrapperRef.current;
+    if (!el) return;
+
+    const ro = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      const w = Math.max(0, Math.floor(entry.contentRect.width));
+      setGridWidth(w);
+    });
+
+    ro.observe(el);
+    setGridWidth(el.clientWidth || 0);
+
+    return () => {
+      try { ro.disconnect(); } catch {}
+    };
+  }, []);
 
   /* --------------------- Selection state --------------------- */
   const [, setPathNodeIds] = useState<string[]>([]);
@@ -645,8 +671,6 @@ export default function ProjectPage() {
       await openFormForNode(String(protocolClass), () =>
         svc.fetchNewProtocolDetails(projectName, protocolClass)
       );
-
-      // No refrescamos aquí: todavía no hay cambios en backend hasta ejecutar el form
     },
     [projectName, openFormForNode, svc]
   );
@@ -686,7 +710,6 @@ export default function ProjectPage() {
     _projectId?: string | number,
     protocolLabel?: string
   ) => {
-    console.log("[Browse] clicked for protocol:", protocolId, protocolLabel);
     setFileDialogCtx({ protocolId, protocolLabel });
     setFileDialogOpen(true);
   }, []);
@@ -711,13 +734,17 @@ export default function ProjectPage() {
   const nodeTypes = nodeTypesRef.current;
 
   /* --------------------- Persistence of positions --------------------- */
+  const storageKeyHier = `${localStorageKey}-${graphDirection}-hier`;
+
   const handleNodesChangeWithPersistence = (changes: NodeChange[]) => {
-    if (disablePersistenceRef.current) return onNodesChange(changes);
+    if (disablePersistenceRef.current || viewMode !== "hierarchical") {
+      return onNodesChange(changes);
+    }
     setNodes((nds) => {
       const updated = applyNodeChanges(changes, nds);
       const positions = updated.map((n) => ({ id: n.id, position: n.position }));
       try {
-        localStorage.setItem(`${localStorageKey}-${graphDirection}`, JSON.stringify(positions));
+        localStorage.setItem(storageKeyHier, JSON.stringify(positions));
       } catch { }
       return updated;
     });
@@ -725,7 +752,7 @@ export default function ProjectPage() {
 
   const loadNodesWithPositions = (loadedNodes: Node[]) => {
     const saved: { id: string; position: { x: number; y: number } }[] =
-      JSON.parse(localStorage.getItem(`${localStorageKey}-${graphDirection}`) || "[]");
+      JSON.parse(localStorage.getItem(storageKeyHier) || "[]");
     return loadedNodes.map((n) => {
       const s = saved.find((p) => p.id === n.id);
       return s ? { ...n, position: s.position } : n;
@@ -742,28 +769,12 @@ export default function ProjectPage() {
     return false;
   };
 
-  const mergeNodesWithPositions = (newNodes: Node[]) => {
-    const oldMap = new Map(nodes.map((n) => [n.id, n]));
-    return newNodes.map((n) => {
-      const old = oldMap.get(n.id);
-      if (old) {
-        const position =
-          old.position && old.position.x !== undefined && old.position.y !== undefined
-            ? old.position
-            : n.position ?? old.position;
-        if (shallowEqual((old as any).data, (n as any).data) && position === old.position) return old;
-        return { ...old, position, data: { ...(old as any).data, ...(n as any).data } } as Node;
-      }
-      return n;
-    });
-  };
-
   const mergeEdges = (newEdges: Edge[]) => {
     const oldEdgesMap = new Map(edges.map((e) => [e.id, e]));
     return newEdges.map((e) => (oldEdgesMap.get(e.id) ? { ...oldEdgesMap.get(e.id)!, ...e } : e));
   };
 
-  /* ------------------------ Centering helper ------------------------ */
+  /* ------------------------ Centering / viewport helpers ------------------------ */
   const centerLikeButton = useCallback((nodesList?: Node[], preserveZoom = true, zoomOverride?: number) => {
     const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
     if (!inst) return;
@@ -810,6 +821,15 @@ export default function ProjectPage() {
     }
   }, []);
 
+  const snapViewportToTopLeft = useCallback((zoomOverride?: number) => {
+    const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
+    if (!inst) return;
+    const current = inst.getViewport();
+    const zoom = typeof zoomOverride === "number" ? zoomOverride : clampZoom(current.zoom);
+    inst.setViewport({ x: 0, y: 0, zoom });
+    setViewport({ x: 0, y: 0, zoom });
+  }, []);
+
   /* ------------------------ Wait for nodes helper ------------------------ */
   const waitForNodesReady = async (expectedCount: number, timeoutMs = 2500): Promise<boolean> => {
     const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
@@ -854,7 +874,9 @@ export default function ProjectPage() {
 
       if (data.protocols) {
         const { nodes: loadedNodes, edges: loadedEdges, table } = buildGraphElements(
-          data.shortName, data.protocols, viewMode, graphDirection
+          data.shortName, data.protocols, viewMode, graphDirection,
+          gridWidth || flowWrapperRef.current?.clientWidth,
+          getEffectiveZoom()
         );
 
         if (viewMode === "table") {
@@ -864,7 +886,10 @@ export default function ProjectPage() {
           return;
         }
 
-        const nodesWithPositions = loadNodesWithPositions(loadedNodes);
+        const nodesWithPositions =
+          viewMode === "hierarchical"
+            ? loadNodesWithPositions(loadedNodes)
+            : loadedNodes;
 
         const initialTicks: Record<string, number> = {};
         nodesWithPositions.forEach((n) => {
@@ -887,7 +912,7 @@ export default function ProjectPage() {
         startTransition(() => {
           setNodes(seededNodes);
           setEdges((_) => {
-            let base = loadedEdges;
+            let base = viewMode === "grid" ? [] : loadedEdges;
             base = paintEdgeHighlight(base, selectedIdRef.current ?? null);
             if (recomputedEdgeSet.size) base = paintPathHighlight(base, recomputedEdgeSet);
             return base;
@@ -898,7 +923,9 @@ export default function ProjectPage() {
         setNodeTicks(initialTicks);
         setNodesLoadedOnce(true);
 
-        if (firstLoadRef.current && viewMode === "hierarchical") {
+        if (viewMode === "grid") {
+          requestAnimationFrame(() => snapViewportToTopLeft(GRID_ZOOM));
+        } else if (firstLoadRef.current && viewMode === "hierarchical") {
           const desiredCount = Math.max(1, nodesWithPositions.length);
           let observer: MutationObserver | null = null;
           let fallbackTimer: any = null;
@@ -951,7 +978,7 @@ export default function ProjectPage() {
       setIsRefreshing(false);
       setIsLoadingProject(false);
     }
-  }, [projectName, viewMode, graphDirection, centerLikeButton, svc, paintEdgeHighlight, paintPathHighlight, computeEdgesTouchingNodes]);
+  }, [projectName, viewMode, graphDirection, centerLikeButton, svc, paintEdgeHighlight, paintPathHighlight, computeEdgesTouchingNodes, gridWidth]);
 
   useEffect(() => {
     setIsLoadingProject(true);
@@ -968,7 +995,9 @@ export default function ProjectPage() {
 
       if (data.protocols) {
         const { nodes: loadedNodes, edges: loadedEdges, table } = buildGraphElements(
-          data.shortName, data.protocols, viewMode, graphDirection
+          data.shortName, data.protocols, viewMode, graphDirection,
+          gridWidth || flowWrapperRef.current?.clientWidth,
+          getEffectiveZoom()
         );
 
         if (viewMode === "table") {
@@ -977,8 +1006,12 @@ export default function ProjectPage() {
           return;
         }
 
-        const nodesWithPositions = mergeNodesWithPositions(loadedNodes);
-        const edgesMerged = mergeEdges(loadedEdges);
+        const nodesWithPositions =
+          viewMode === "hierarchical"
+            ? loadNodesWithPositions(loadedNodes)
+            : loadedNodes;
+
+        const edgesMerged = viewMode === "grid" ? [] : mergeEdges(loadedEdges);
 
         const unifiedSelectedIds = getUnifiedSelectedIds();
         const nodesSeed = nodesWithPositions.map((n) =>
@@ -1009,6 +1042,10 @@ export default function ProjectPage() {
           });
           return updated;
         });
+
+        if (viewMode === "grid") {
+          requestAnimationFrame(() => snapViewportToTopLeft(GRID_ZOOM));
+        }
       }
     } catch (err) {
       console.error(err);
@@ -1021,7 +1058,7 @@ export default function ProjectPage() {
         setTimeout(() => tryPlaceNewlyCreatedNode(), 1200);
       }
     }
-  }, [projectName, viewMode, graphDirection, nodeTicks, svc, paintEdgeHighlight, paintPathHighlight, computeEdgesTouchingNodes]);
+  }, [projectName, viewMode, graphDirection, nodeTicks, svc, paintEdgeHighlight, paintPathHighlight, computeEdgesTouchingNodes, gridWidth]);
 
   const handleRefreshRef = useRef(handleRefresh);
   useEffect(() => { handleRefreshRef.current = handleRefresh; }, [handleRefresh]);
@@ -1039,12 +1076,36 @@ export default function ProjectPage() {
     };
   }, []);
 
+  /* ------------------------ Reflow on grid width change ------------------------ */
+  useEffect(() => {
+    if (viewMode !== "grid") return;
+    if (!project?.protocols) return;
+
+    const { nodes: newNodes } = buildGraphElements(
+      project.shortName,
+      project.protocols,
+      "grid",
+      graphDirection,
+      gridWidth || flowWrapperRef.current?.clientWidth,
+      GRID_ZOOM
+    );
+
+    const sel = getUnifiedSelectedIds();
+    const seeded = newNodes.map((n) => ({ ...n, selected: sel.has(n.id) }));
+
+    setNodes(seeded);
+    setEdges([]); // grid has no edges
+
+    // Always top-left in grid after width changes with fixed zoom
+    requestAnimationFrame(() => snapViewportToTopLeft(GRID_ZOOM));
+  }, [gridWidth, viewMode, project, graphDirection, snapViewportToTopLeft]);
+
   /* ------------------------ Reorganize ------------------------ */
   const handleReorganize = useCallback(
     async (opts?: { preserveZoom?: boolean }) => {
       if (!projectName) return;
       try {
-        try { localStorage.removeItem(`${localStorageKey}-${graphDirection}`); } catch { }
+        try { localStorage.removeItem(storageKeyHier); } catch { }
         disablePersistenceRef.current = true;
         setHideGraphDuringCenter(true);
 
@@ -1057,7 +1118,9 @@ export default function ProjectPage() {
         }
 
         const { nodes: loadedNodes, edges: loadedEdges, table } = buildGraphElements(
-          data.shortName, data.protocols, viewMode, graphDirection
+          data.shortName, data.protocols, viewMode, graphDirection,
+          gridWidth || flowWrapperRef.current?.clientWidth,
+          getEffectiveZoom()
         );
 
         if (viewMode === "table") {
@@ -1067,7 +1130,10 @@ export default function ProjectPage() {
           return;
         }
 
-        const nodesWithPositions = loadNodesWithPositions(loadedNodes);
+        const nodesWithPositions =
+          viewMode === "hierarchical"
+            ? loadNodesWithPositions(loadedNodes)
+            : loadedNodes;
 
         const unifiedSelectedIds = getUnifiedSelectedIds();
         const nodesSeeded = nodesWithPositions.map((n) => ({ ...n, selected: unifiedSelectedIds.has(n.id) }));
@@ -1077,7 +1143,7 @@ export default function ProjectPage() {
         startTransition(() => {
           setNodes(nodesSeeded);
           setEdges((_) => {
-            let out = paintEdgeHighlight(loadedEdges, selectedIdRef.current ?? null);
+            let out = viewMode === "grid" ? [] : paintEdgeHighlight(loadedEdges, selectedIdRef.current ?? null);
             if (recomputedEdgeSet.size) out = paintPathHighlight(out, recomputedEdgeSet);
             return out;
           });
@@ -1100,9 +1166,8 @@ export default function ProjectPage() {
             const preserve = opts?.preserveZoom ?? true;
             centerLikeButton(nodesWithPositions, preserve, viewportRef.current.zoom);
           } else if (inst) {
-            const vp = inst.getViewport();
-            inst.setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(vp.zoom) });
-            setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(vp.zoom) });
+            // In grid always snap to top-left with fixed zoom
+            snapViewportToTopLeft(GRID_ZOOM);
           }
           disablePersistenceRef.current = false;
           setHideGraphDuringCenter(false);
@@ -1113,7 +1178,7 @@ export default function ProjectPage() {
         setHideGraphDuringCenter(false);
       }
     },
-    [projectName, viewMode, graphDirection, centerLikeButton, svc, paintEdgeHighlight, paintPathHighlight, computeEdgesTouchingNodes]
+    [projectName, viewMode, graphDirection, centerLikeButton, svc, paintEdgeHighlight, paintPathHighlight, computeEdgesTouchingNodes, gridWidth]
   );
 
   /* ------------------------ Ticks updater ------------------------ */
@@ -1172,10 +1237,18 @@ export default function ProjectPage() {
     const instance = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
     if (!instance) { prevLayout.current = { viewMode, graphDirection }; return; }
 
-    const currentViewport = instance.getViewport();
     const { nodes: loadedNodes, edges: loadedEdges } =
-      buildGraphElements(project.shortName, project.protocols, viewMode, graphDirection);
-    const nodesWithPositions = loadNodesWithPositions(loadedNodes);
+      buildGraphElements(
+        project.shortName,
+        project.protocols,
+        viewMode,
+        graphDirection,
+        gridWidth || flowWrapperRef.current?.clientWidth,
+        getEffectiveZoom()
+      );
+
+    const nodesWithPositions =
+      viewMode === "hierarchical" ? loadNodesWithPositions(loadedNodes) : loadedNodes;
 
     const unifiedSelectedIds = getUnifiedSelectedIds();
     const nodesSeeded = nodesWithPositions.map((n) => ({ ...n, selected: unifiedSelectedIds.has(n.id) }));
@@ -1188,7 +1261,7 @@ export default function ProjectPage() {
     startTransition(() => {
       setNodes(nodesSeeded);
       setEdges((_) => {
-        let out = paintEdgeHighlight(loadedEdges, selectedIdRef.current ?? null);
+        let out = viewMode === "grid" ? [] : paintEdgeHighlight(loadedEdges, selectedIdRef.current ?? null);
         if (recomputedEdgeSet.size) out = paintPathHighlight(out, recomputedEdgeSet);
         return out;
       });
@@ -1204,30 +1277,22 @@ export default function ProjectPage() {
           return;
         }
 
-        if (nodesWithPositions.length > 0 && viewMode === "hierarchical") {
+        if (viewMode === "hierarchical") {
           centerLikeButton(nodesWithPositions, true);
-          requestAnimationFrame(() => {
-            setTimeout(() => {
-              disablePersistenceRef.current = false;
-              setIsSwitchingLayout(false);
-              prevLayout.current = { viewMode, graphDirection };
-            }, 60);
-          });
         } else {
-          const clamped = { x: currentViewport.x, y: currentViewport.y, zoom: clampZoom(currentViewport.zoom) };
-          inst.setViewport(clamped);
-          setViewport(clamped);
-          requestAnimationFrame(() => {
-            setTimeout(() => {
-              disablePersistenceRef.current = false;
-              setIsSwitchingLayout(false);
-              prevLayout.current = { viewMode, graphDirection };
-            }, 60);
-          });
+          snapViewportToTopLeft(GRID_ZOOM);
         }
+
+        requestAnimationFrame(() => {
+          setTimeout(() => {
+            disablePersistenceRef.current = false;
+            setIsSwitchingLayout(false);
+            prevLayout.current = { viewMode, graphDirection };
+          }, 60);
+        });
       });
     });
-  }, [graphDirection, viewMode, project, paintEdgeHighlight, paintPathHighlight, computeEdgesTouchingNodes]);
+  }, [graphDirection, viewMode, project, paintEdgeHighlight, paintPathHighlight, computeEdgesTouchingNodes, gridWidth, centerLikeButton, snapViewportToTopLeft]);
 
   /* ------------------------ First-center ------------------------ */
   useEffect(() => {
@@ -1240,12 +1305,18 @@ export default function ProjectPage() {
     if (validNodes.length > 0) {
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-          inst.setViewport({ x: viewportRef.current.x, y: viewportRef.current.y, zoom: clampZoom(viewportRef.current.zoom) });
+          if (viewMode === "grid") {
+            inst.setViewport({ x: 0, y: 0, zoom: GRID_ZOOM });
+            setViewport({ x: 0, y: 0, zoom: GRID_ZOOM });
+          } else {
+            inst.setViewport({ x: viewportRef.current.x, y: viewportRef.current.y, zoom: clampZoom(viewportRef.current.zoom) });
+          }
           setTimeout(() => setIsSwitchingLayout(false), 60);
         });
       });
     } else {
-      inst.setViewport({ x: inst.getViewport().x, y: inst.getViewport().y, zoom: clampZoom(inst.getViewport().zoom) });
+      const z = viewMode === "grid" ? GRID_ZOOM : clampZoom(inst.getViewport().zoom);
+      inst.setViewport({ x: inst.getViewport().x, y: inst.getViewport().y, zoom: z });
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           const vp = inst.getViewport();
@@ -1254,7 +1325,7 @@ export default function ProjectPage() {
         });
       });
     }
-  }, [nodesLoadedOnce]);
+  }, [nodesLoadedOnce, viewMode]);
 
   /* ============================================================
      Table helpers (unchanged)
@@ -1369,12 +1440,12 @@ export default function ProjectPage() {
           const ySum = validNodes.reduce((s, n) => s + (n.position?.y ?? 0), 0);
           const centerX = xSum / validNodes.length;
           const centerY = ySum / validNodes.length;
-          const zoom = clampZoom(currentViewport.zoom);
+          const zoom = viewMode === "grid" ? GRID_ZOOM : clampZoom(currentViewport.zoom);
           inst.setCenter(centerX, centerY, { zoom, duration: 300 });
           const vp = inst.getViewport();
           setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
         } else {
-          const clamped = { x: currentViewport.x, y: currentViewport.y, zoom: clampZoom(currentViewport.zoom) };
+          const clamped = { x: currentViewport.x, y: currentViewport.y, zoom: viewMode === "grid" ? GRID_ZOOM : clampZoom(currentViewport.zoom) };
           inst.setViewport(clamped);
           setViewport(clamped);
         }
@@ -1409,8 +1480,7 @@ export default function ProjectPage() {
 
     const inst2 = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
     if (inst2) {
-      const currentZoom = inst2.getViewport().zoom;
-      const zoom = clampZoom(currentZoom);
+      const zoom = viewMode === "grid" ? GRID_ZOOM : clampZoom(inst2.getViewport().zoom);
       inst2.setCenter((match as any).position.x, (match as any).position.y, { zoom, duration: 500 });
       const vp = inst2.getViewport();
       setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
@@ -1429,10 +1499,11 @@ export default function ProjectPage() {
 
   /* --------------------- Pane context menu --------------------- */
 
-  // Save a position to localStorage for a given node id (helper for placement)
+  // Save a position to localStorage for a given node id (only for hierarchical)
   const persistPositionForId = (id: string, position: { x: number; y: number }) => {
+    if (viewMode !== "hierarchical") return;
     try {
-      const key = `${localStorageKey}-${graphDirection}`;
+      const key = storageKeyHier;
       const saved: { id: string; position: { x: number; y: number } }[] =
         JSON.parse(localStorage.getItem(key) || "[]");
       const idx = saved.findIndex((p) => p.id === id);
@@ -1491,8 +1562,8 @@ export default function ProjectPage() {
       lastPaneRFPointRef.current = rfPoint;
 
       // Clamp menu inside wrapper bounds to avoid overflow
-      const MENU_W = 230; // px
-      const MENU_H = 150; // px (aprox)
+      const MENU_W = 230;
+      const MENU_H = 150;
       const clampedX = Math.max(0, Math.min(px, bounds.width - MENU_W));
       const clampedY = Math.max(0, Math.min(py, bounds.height - MENU_H));
 
@@ -1547,14 +1618,21 @@ export default function ProjectPage() {
     reactFlowInstanceRef.current = inst;
     try {
       const current = inst.getViewport();
-      const desiredZoom = clampZoom(viewportRef.current.zoom ?? current.zoom);
-      inst.setViewport({ x: current.x, y: current.y, zoom: desiredZoom });
-      const vp = inst.getViewport();
-      setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
+      const desiredZoom = viewMode === "grid" ? GRID_ZOOM : clampZoom(viewportRef.current.zoom ?? current.zoom);
+      // In grid, always snap to (0,0) with fixed zoom
+      if (viewMode === "grid") {
+        inst.setViewport({ x: 0, y: 0, zoom: GRID_ZOOM });
+        setViewport({ x: 0, y: 0, zoom: GRID_ZOOM });
+      } else {
+        inst.setViewport({ x: current.x, y: current.y, zoom: desiredZoom });
+        const vp = inst.getViewport();
+        setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
+      }
     } catch { }
-  }, []);
+  }, [viewMode]);
 
   const handleOnMoveEnd = useCallback((_: any, vp: { x: number; y: number; zoom: number }) => {
+    // Even in grid we keep viewport state (zoom will always be GRID_ZOOM)
     setViewport(vp);
   }, []);
 
@@ -1722,6 +1800,7 @@ export default function ProjectPage() {
   /* ------------------------ Controls ------------------------ */
   const ZOOM_FACTOR = 1.2;
   const handleZoomIn = useCallback(() => {
+    if (viewMode === "grid") return; // disabled in grid
     const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
     if (!inst) return;
     const vp = inst.getViewport();
@@ -1729,8 +1808,9 @@ export default function ProjectPage() {
     inst.setViewport({ x: vp.x, y: vp.y, zoom: newZoom });
     const newVp = inst.getViewport();
     setViewport({ x: newVp.x, y: newVp.y, zoom: newVp.zoom });
-  }, []);
+  }, [viewMode]);
   const handleZoomOut = useCallback(() => {
+    if (viewMode === "grid") return; // disabled in grid
     const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
     if (!inst) return;
     const vp = inst.getViewport();
@@ -1738,8 +1818,14 @@ export default function ProjectPage() {
     inst.setViewport({ x: vp.x, y: vp.y, zoom: newZoom });
     const newVp = inst.getViewport();
     setViewport({ x: newVp.x, y: newVp.y, zoom: newVp.zoom });
-  }, []);
-  const handleFitView = useCallback(() => { centerLikeButton(undefined, true); }, [centerLikeButton]);
+  }, [viewMode]);
+  const handleFitView = useCallback(() => {
+    if (viewMode === "grid") {
+      snapViewportToTopLeft(GRID_ZOOM);
+      return;
+    }
+    centerLikeButton(undefined, true);
+  }, [viewMode, centerLikeButton, snapViewportToTopLeft]);
 
   /* ------------------------ Wrapper plumbing (unchanged) ------------------------ */
   const onClickRef = useRef(handleNodeClick);
@@ -1757,6 +1843,7 @@ export default function ProjectPage() {
   const nodeActionsRef = useRef<NodeActions>({});
 
   /* ------------------------ Render ------------------------ */
+  const isGrid = viewMode === "grid";
   return (
     <div className="h-full min-h-0 flex flex-col relative overflow-hidden">
       {/* Header */}
@@ -1807,6 +1894,12 @@ export default function ProjectPage() {
               <TreeIcon className="w-4 h-4 transform rotate-270" /> Tree LR
             </button>
             <button
+              onClick={() => setViewMode("grid")}
+              className={`px-3 py-1 rounded-lg text-xs flex items-center gap-1 ${viewMode === "grid" ? "bg-blue-500 text-white" : "bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300"}`}
+            >
+              <LayoutGrid className="w-4 h-4" /> Grid
+            </button>
+            <button
               onClick={() => setViewMode("table")}
               className={`px-3 py-1 rounded-lg text-xs flex items-center gap-1 ${viewMode === "table" ? "bg-blue-500 text-white" : "bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300"}`}
             >
@@ -1817,16 +1910,9 @@ export default function ProjectPage() {
       </div>
 
       {/* Content wrapper */}
-      <div
-        className="flex-1 relative min-h-0 overflow-hidden"
-        style={{ contain: "paint" }}
-      >
+      <div className="flex-1 relative min-h-0 overflow-hidden" style={{ contain: "paint" }}>
         {isSwitchingLayout && (
-          <div
-            aria-hidden
-            className="absolute inset-0 z-50 flex items-center justify-center"
-            style={{ pointerEvents: "none" }}
-          >
+          <div aria-hidden className="absolute inset-0 z-50 flex items-center justify-center" style={{ pointerEvents: "none" }}>
             <div className="flex items-center gap-3">
               <div className="w-6 h-6 border-2 border-gray-300 border-t-gray-500 rounded-full animate-spin" />
             </div>
@@ -1863,7 +1949,7 @@ export default function ProjectPage() {
             </button>
           </div>
 
-          <table className="cursor-pointer w-full text-sm border border-gray-300 dark:border-gray-700">
+          <table className="cursor-pointer w-full text-sm border border-gray-300 dark-border-gray-700">
             <thead className="bg-gray-300 dark:bg-gray-800 font-normal">
               <tr>
                 <th className="px-4 py-2 text-left font-normal">Id</th>
@@ -1941,13 +2027,14 @@ export default function ProjectPage() {
           ref={flowWrapperRef}
           className="absolute inset-0 border transition-opacity"
           style={{
-            opacity: viewMode === "hierarchical" ? (hideGraphDuringCenter ? 0 : 1) : 0,
-            pointerEvents: viewMode === "hierarchical" ? "auto" : "none",
+            opacity: viewMode !== "table" ? (hideGraphDuringCenter ? 0 : 1) : 0,
+            pointerEvents: viewMode !== "table" ? "auto" : "none",
             zIndex: 20,
           }}
-          aria-hidden={viewMode !== "hierarchical"}
+          aria-hidden={viewMode === "table"}
+          onContextMenu={(e) => e.preventDefault()}
         >
-          {/* === Canvas context menu (pane-relative absolute coords) === */}
+          {/* === Canvas context menu === */}
           {contextMenu.visible && (
             <div
               id="canvas-context-menu"
@@ -1985,16 +2072,29 @@ export default function ProjectPage() {
             </div>
           )}
 
-
           <div className="absolute top-4 right-4 z-50">
             <div className="flex flex-col gap-1 p-1 bg-white/90 rounded shadow">
-              <button title="Zoom in" onClick={handleZoomIn} className="p-1 rounded hover:bg-gray-100 dark:text-black">
+              <button
+                title={isGrid ? "Zoom disabled in Grid" : "Zoom in"}
+                onClick={handleZoomIn}
+                disabled={isGrid}
+                className={`p-1 rounded hover:bg-gray-100 dark:text-black ${isGrid ? "opacity-50 cursor-not-allowed" : ""}`}
+              >
                 <PlusIcon className="w-4 h-4" />
               </button>
-              <button title="Zoom out" onClick={handleZoomOut} className="p-1 rounded hover:bg-gray-100 dark:text-black">
+              <button
+                title={isGrid ? "Zoom disabled in Grid" : "Zoom out"}
+                onClick={handleZoomOut}
+                disabled={isGrid}
+                className={`p-1 rounded hover:bg-gray-100 dark:text-black ${isGrid ? "opacity-50 cursor-not-allowed" : ""}`}
+              >
                 <MinusIcon className="w-4 h-4" />
               </button>
-              <button title="Fit view (preserve zoom)" onClick={handleFitView} className="p-1 rounded hover:bg-gray-100 dark:text-black">
+              <button
+                title={isGrid ? "Fixed zoom (Grid)" : "Fit view (preserve zoom)"}
+                onClick={handleFitView}
+                className="p-1 rounded hover:bg-gray-100 dark:text-black"
+              >
                 <FitViewIcon className="w-4 h-4" />
               </button>
               <button title="Reorganize project" onClick={() => handleReorganize({ preserveZoom: true })} className="p-1 rounded hover:bg-gray-100 dark:text-black">
@@ -2013,8 +2113,12 @@ export default function ProjectPage() {
               onNodesChange={handleNodesChangeWithPersistence}
               onEdgesChange={onEdgesChange}
               nodeTypes={nodeTypes}
-              minZoom={MIN_ZOOM}
-              maxZoom={MAX_ZOOM}
+              // Fixed zoom in grid: lock minZoom == maxZoom == GRID_ZOOM and disable zoom gestures
+              minZoom={isGrid ? GRID_ZOOM : MIN_ZOOM}
+              maxZoom={isGrid ? GRID_ZOOM : MAX_ZOOM}
+              zoomOnScroll={!isGrid}
+              zoomOnPinch={!isGrid}
+              zoomOnDoubleClick={!isGrid}
               onInit={handleOnInit}
               onMoveEnd={handleOnMoveEnd}
               onPaneClick={() => {
@@ -2065,7 +2169,7 @@ export default function ProjectPage() {
                   handleRefreshRef.current?.();
                   setTimeout(() => handleRefreshRef.current?.(), 800);
 
-                  // Intenta colocar el nuevo nodo en el punto del click
+                  // Try to place the new node at click point
                   setTimeout(() => tryPlaceNewlyCreatedNode(), 50);
                   setTimeout(() => tryPlaceNewlyCreatedNode(), 400);
 
@@ -2202,7 +2306,6 @@ export default function ProjectPage() {
         </DialogContent>
       </Dialog>
 
-
       <Dialog open={dlgResetFrom.open} onOpenChange={(open: boolean) => { if (!open) setDlgResetFrom({ open: false, id: null }); }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -2235,7 +2338,6 @@ export default function ProjectPage() {
       </Dialog>
 
       {/* ================= RemoteFileDialog ================= */}
-
       {canOpenFileDialog && (
         <RemoteFileDialog
           open={fileDialogOpen}
@@ -2249,13 +2351,10 @@ export default function ProjectPage() {
           buildDownloadUrl={(p, inline) => svc.buildProtocolDownloadUrl(projId.toString(), pid.toString(), p, !!inline)}
           fetchInlinePreviewBlob={(p) => svc.fetchProtocolInlinePreviewBlob(projId.toString(), pid.toString(), p)}
           onPick={(relativePath) => {
-            console.log("picked:", relativePath);
             setFileDialogOpen(false);
           }}
         />
       )}
-
-
     </div>
   );
 }
