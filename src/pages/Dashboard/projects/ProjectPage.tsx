@@ -265,7 +265,7 @@ export default function ProjectPage() {
     setGridWidth(el.clientWidth || 0);
 
     return () => {
-      try { ro.disconnect(); } catch {}
+      try { ro.disconnect(); } catch { }
     };
   }, []);
 
@@ -1883,27 +1883,31 @@ export default function ProjectPage() {
           <div className="flex gap-2">
             <button
               onClick={() => { setViewMode("hierarchical"); setGraphDirection("TB"); }}
+              title="Tree TB"
               className={`px-3 py-1 rounded-lg text-xs flex items-center gap-1 ${viewMode === "hierarchical" && graphDirection === "TB" ? "bg-blue-500 text-white" : "bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300"}`}
             >
-              <TreeIcon className="w-4 h-4" /> Tree TB
+              <TreeIcon className="w-4 h-4" />
             </button>
             <button
+              title="Tree LR"
               onClick={() => { setViewMode("hierarchical"); setGraphDirection("LR"); }}
               className={`px-3 py-1 rounded-lg text-xs flex items-center gap-1 ${viewMode === "hierarchical" && graphDirection === "LR" ? "bg-blue-500 text-white" : "bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300"}`}
             >
-              <TreeIcon className="w-4 h-4 transform rotate-270" /> Tree LR
+              <TreeIcon className="w-4 h-4 transform rotate-270" />
             </button>
             <button
+              title="Grid"
               onClick={() => setViewMode("grid")}
               className={`px-3 py-1 rounded-lg text-xs flex items-center gap-1 ${viewMode === "grid" ? "bg-blue-500 text-white" : "bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300"}`}
             >
-              <LayoutGrid className="w-4 h-4" /> Grid
+              <LayoutGrid className="w-4 h-4" />
             </button>
             <button
+              title="Table"
               onClick={() => setViewMode("table")}
               className={`px-3 py-1 rounded-lg text-xs flex items-center gap-1 ${viewMode === "table" ? "bg-blue-500 text-white" : "bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300"}`}
             >
-              <TableIcon className="w-4 h-4" /> Table
+              <TableIcon className="w-4 h-4" />
             </button>
           </div>
         </div>
@@ -2181,7 +2185,7 @@ export default function ProjectPage() {
 
                   if (delayedRefreshTimerRef.current !== null) clearTimeout(delayedRefreshTimerRef.current);
                   delayedRefreshTimerRef.current = window.setTimeout(() => {
-                    handleRefreshRef.current?.();              
+                    handleRefreshRef.current?.();
                     setTimeout(() => tryPlaceNewlyCreatedNode(), 100);
                   }, 1200);
                 }}

@@ -193,7 +193,6 @@ export default function StatusNode({
   const FromIcon = graphDirection === "TB" ? ArrowDown : ArrowRight;
   const ToIcon = graphDirection === "TB" ? ArrowUp : ArrowLeft;
 
-  // Forward a click to the React Flow node to keep selection consistent
   const forwardClickToRFNode = (e: React.MouseEvent) => {
     const nodeEl =
       (e.currentTarget as HTMLElement).closest(".react-flow__node") ||
@@ -215,8 +214,11 @@ export default function StatusNode({
     nodeEl.dispatchEvent(new MouseEvent("click", opts));
   };
 
-  const truncateLabel = (text: string = "", max: number = 32) =>
+  const truncateLabel = (text: string = "", max: number = 120) =>
     text.length > max ? `${text.slice(0, max)}…` : text;
+
+  const outputsArray = Array.isArray(data.outputs) ? data.outputs : [];
+  const hasOutputs = outputsArray.length > 0;
 
   return (
     <ContextMenu>
@@ -235,7 +237,7 @@ export default function StatusNode({
           <div
             className={`node-card-header p-3 border-b flex ${data.id === "PROJECT" ? "flex-col items-center text-center" : "flex-row items-center justify-between"}`}
           >
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-2 header-left">
               {data.id !== "PROJECT" && (
                 <div
                   className={`node-id-badge ${data.status === "running" ? "glow-badge" : ""}`}
@@ -254,15 +256,14 @@ export default function StatusNode({
                 >
                   {truncateLabel(
                     data.label,
-                    data.id === "PROJECT" ? 60 : (isCompactView ? 35 : 35)
+                    data.id === "PROJECT" ? 120 : 120
                   )}
                 </div>
               </div>
             </div>
 
             {data.id !== "PROJECT" && (
-              <div className="flex items-center">
-                {/* Menu trigger button — stops drag/selection and contains the click handler at button level */}
+              <div className="flex items-center header-right">
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <button
@@ -332,7 +333,6 @@ export default function StatusNode({
                       </>
                     )}
 
-                    {/* Always visible */}
                     <DropdownMenuItem onClick={handleDelete}>
                       <Trash2 className="mr-2 h-4 w-4" /> Delete
                     </DropdownMenuItem>
@@ -349,7 +349,6 @@ export default function StatusNode({
                   </DropdownMenuContent>
                 </DropdownMenu>
 
-                {/* Scan/Edit button — handler on the button, not on the SVG; prevent node drag */}
                 <button
                   type="button"
                   className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-200 ml-4 nodrag"
@@ -368,80 +367,87 @@ export default function StatusNode({
             )}
           </div>
 
-          {/* Content */}
+          {/* Content (reserved height for up to 3 outputs) */}
           <div
             className={`transition-[max-height] duration-300 ease-in-out overflow-hidden ${isCompactView ? "max-h-0" : "max-h-[2000px]"}`}
             aria-hidden={isCompactView}
           >
             {data.id !== "PROJECT" && (
-              <div className="node-card-content p-3 mt-4" style={{ minHeight: "120px", maxHeight: "300px", overflowY: "auto" }}>
-                {Array.isArray(data.outputs) && data.outputs.length > 0 && (
-                  <div className="outputs-list">
-                    <div className="section-header flex items-center px-2 py-1 bg-green-50 dark:bg-green-50 rounded-t-lg border-b border-green-800 dark:border-green-800">
-                      <span className="text-black dark:text-black font-normal text-4xl">Outputs</span>
-                    </div>
-                    <div className="section-content p-2 bg-green-100 dark:bg-green-200 rounded-b-lg space-y-2">
-                      {data.outputs.map((outputObj, idx) => {
-                        const [_, rawValue] = Object.entries(outputObj)[0];
-                        const value = rawValue as { info: string; _class: string; _objValue: string; _parentId: string };
-                        const isDragging = draggingIdx === idx;
+              <div className="node-card-content p-3 mt-4">
+                <div className="outputs-reserved">
+                  {hasOutputs ? (
+                    <div className="outputs-list">
+                      <div className="section-header flex items-center px-2 py-1 bg-green-50 dark:bg-green-50 rounded-t-lg border-b border-green-800 dark:border-green-800">
+                        <span className="text-black dark:text-black font-normal text-4xl">Outputs</span>
+                      </div>
 
-                        return (
-                          <div
-                            key={idx}
-                            className={`nodrag mt-3 group cursor-grab flex items-center px-3 py-1 rounded-full border border-gray-400 dark:border-gray-400 shadow-sm ${isDragging ? "scale-100 opacity-70" : "bg-gradient-to-r from-gray-200 to-gray-300 dark:from-gray-200 dark:to-gray-300"}`}
-                            draggable
-                            onMouseDown={(e: React.MouseEvent<HTMLDivElement>) => {
-                              if (e.ctrlKey || e.metaKey) {
+                      <div className="section-content">
+                        {outputsArray.map((outputObj, idx) => {
+                          const [, rawValue] = Object.entries(outputObj)[0];
+                          const value = rawValue as { info: string; _class: string; _objValue: string; _parentId: string };
+                          const isDragging = draggingIdx === idx;
+
+                          return (
+                            <div
+                              key={idx}
+                              className={`nodrag mt-3 group cursor-grab flex items-center px-3 py-1 rounded-full border border-gray-400 dark:border-gray-400 shadow-sm ${isDragging ? "scale-100 opacity-70" : "bg-gradient-to-r from-gray-200 to-gray-300 dark:from-gray-200 dark:to-gray-300"}`}
+                              draggable
+                              onMouseDown={(e: React.MouseEvent<HTMLDivElement>) => {
+                                if (e.ctrlKey || e.metaKey) {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  forwardClickToRFNode(e);
+                                }
+                              }}
+                              onClick={(e: React.MouseEvent<HTMLDivElement>) => {
                                 e.preventDefault();
                                 e.stopPropagation();
                                 forwardClickToRFNode(e);
-                              }
-                            }}
-                            onClick={(e: React.MouseEvent<HTMLDivElement>) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              forwardClickToRFNode(e);
-                            }}
-                            onDragStart={(e: React.DragEvent<HTMLDivElement>) => {
-                              e.stopPropagation();
-                              setDraggingIdx(idx);
-                              const output = {
-                                _class: value._class,
-                                _expectedClass: value._class,
-                                _objValue: value._objValue,
-                                info: value.info,
-                                _parentId: value._parentId,
-                              };
-                              setCurrentDraggedOutput(output);
-                              e.dataTransfer.setData("application/scipion-output", JSON.stringify(output));
-                              const ghost = document.createElement("div");
-                              ghost.style.position = "absolute";
-                              ghost.style.top = "-1000px";
-                              ghost.style.left = "-1000px";
-                              ghost.style.padding = "6px 12px";
-                              ghost.style.background = "white";
-                              ghost.style.border = "1px solid #ccc";
-                              ghost.style.color = "black";
-                              ghost.style.borderRadius = "0.5rem";
-                              ghost.innerText = `${value._class} (${value.info})`;
-                              document.body.appendChild(ghost);
-                              e.dataTransfer.setDragImage(ghost, 0, 15);
-                              setTimeout(() => document.body.removeChild(ghost), 0);
-                            }}
-                            onDragEnd={() => {
-                              setDraggingIdx(null);
-                              setCurrentDraggedOutput(null);
-                            }}
-                          >
-                            <ArrowUpRight className="h-7 w-7 mr-2 text-black-700 dark:text-black" />
-                            <span className="outputs text-gray-800 dark:text-black mt-1">{value.info}</span>
-                          </div>
-                        );
-                      })}
+                              }}
+                              onDragStart={(e: React.DragEvent<HTMLDivElement>) => {
+                                e.stopPropagation();
+                                setDraggingIdx(idx);
+                                const output = {
+                                  _class: value._class,
+                                  _expectedClass: value._class,
+                                  _objValue: value._objValue,
+                                  info: value.info,
+                                  _parentId: value._parentId,
+                                };
+                                setCurrentDraggedOutput(output);
+                                e.dataTransfer.setData("application/scipion-output", JSON.stringify(output));
+                                const ghost = document.createElement("div");
+                                ghost.style.position = "absolute";
+                                ghost.style.top = "-1000px";
+                                ghost.style.left = "-1000px";
+                                ghost.style.padding = "6px 12px";
+                                ghost.style.background = "white";
+                                ghost.style.border = "1px solid #ccc";
+                                ghost.style.color = "black";
+                                ghost.style.borderRadius = "0.5rem";
+                                ghost.innerText = `${value._class} (${value.info})`;
+                                document.body.appendChild(ghost);
+                                e.dataTransfer.setDragImage(ghost, 0, 15);
+                                setTimeout(() => document.body.removeChild(ghost), 0);
+                              }}
+                              onDragEnd={() => {
+                                setDraggingIdx(null);
+                                setCurrentDraggedOutput(null);
+                              }}
+                            >
+                              <ArrowUpRight className="h-7 w-7 mr-2 text-black-700 dark:text-black" />
+                              <span className="outputs output-text text-gray-800 dark:text-black mt-1">
+                                {value.info}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  ) : (
+                    <div className="outputs-placeholder" aria-hidden="true" />
+                  )}
+                </div>
               </div>
             )}
 
@@ -504,7 +510,6 @@ export default function StatusNode({
             <ContextMenuItem onClick={handleEdit}>
               <Pencil className="mr-2 h-4 w-4" /> Edit
             </ContextMenuItem>
-            {/* Also available from right-click */}
             <ContextMenuItem onClick={handleBrowse}>
               <FolderOpen className="mr-2 h-4 w-4" /> Browse
             </ContextMenuItem>
@@ -545,7 +550,6 @@ export default function StatusNode({
           </>
         )}
 
-        {/* Always visible */}
         <ContextMenuItem onClick={handleDelete}>
           <Trash2 className="mr-2 h-4 w-4" /> Delete
         </ContextMenuItem>

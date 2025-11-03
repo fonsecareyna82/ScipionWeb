@@ -19,7 +19,7 @@
 }
 
 .status-node.selected {
-  border: 2px solid #0070f3; /* fixed invalid 'px' value */
+  border: 2px solid #0070f3;
   box-shadow: 0 0 10px rgba(0, 112, 243, 0.5);
   z-index: 20;
 }
@@ -33,13 +33,22 @@
   50% { transform: scale(1.1); }
 }
 
-/* --- CRISP TEXT PRESETS (avoid GPU compositing on text) --- */
+/* --- Global sizing for consistent node width/height --- */
+:root {
+  --node-width: 900px;                  /* node width */
+  --output-row-height: 46px;            /* row height for output pill */
+  --output-visible-rows: 5;             /* visible rows before scroll */
+  --outputs-list-max-height: calc(var(--output-row-height) * var(--output-visible-rows));
+  --node-horizontal-gutters: 140px;     /* reduce gutters to give more label width */
+  --label-lines: 1;                     /* show up to 2 lines for label */
+}
+
+/* --- CRISP TEXT PRESETS --- */
 .crisp-text,
 .crisp-text * {
-  -webkit-font-smoothing: antialiased;  /* prefer grayscale but consistent */
+  -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
-  /* Micro shadow to stabilize glyph edges in Chromium without blurring */
   text-shadow: rgba(0,0,0,0.01) 0 0 1px;
 }
 
@@ -66,20 +75,26 @@
   border: 2px solid #666;
 }
 
+/* Multi-line clamped label (up to --label-lines with ellipsis) */
 .node-label {
   font-size: 2.3rem;
   font-weight: 350;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: var(--label-lines);
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 700px; 
+  white-space: normal;
+  line-height: 1.15;
+  max-height: calc(1.15 * 2.3rem * var(--label-lines));
+  max-width: calc(var(--node-width) - var(--node-horizontal-gutters));
   margin-left: 1rem;
 }
 
 /* Compact mode */
 .node-label.compact {
   font-size: 2.7rem;
-  margin-left: 1rem; 
+  margin-left: 1rem;
 }
 
 .node-divider {
@@ -190,12 +205,12 @@
   100% { left: 100%; }
 }
 
-/* --- CARD LAYERING: no 3D hacks, no backface, no will-change --- */
+/* --- CARD LAYERING --- */
 .status-node-card {
   position: relative;
-  /* backface-visibility: hidden;  -- removed (can blur fonts) */
-  /* will-change: box-shadow, filter; -- removed */
-  /* Avoid forcing GPU compositing on text layers */
+  overflow: visible;
+  width: var(--node-width);
+  max-width: var(--node-width);
 }
 
 .status-node-card::after {
@@ -216,12 +231,6 @@
 .status-node-card:hover,
 .status-node-card.hovered {
   box-shadow: 0 10px 24px rgba(0,0,0,.18);
-  /* filter: brightness(1.02) contrast(1.02);  -- removed to keep subpixel AA */
-}
-
-/* Do not animate transform on the whole card to avoid text blur on hover */
-.status-node-card:hover {
-  transform: none !important;
 }
 
 /* Outputs list pills */
@@ -229,9 +238,11 @@
   transition-property: box-shadow, opacity !important;
   transition-duration: 160ms !important;
   transition-timing-function: ease !important;
-  /* transform: translateZ(0); -- removed (can kill subpixel AA) */
-  /* will-change: box-shadow, opacity;  keep layout simple */
   line-height: 1.2;
+  min-height: var(--output-row-height);
+  display: flex;
+  align-items: center;
+  max-width: calc(var(--node-width) - 40px);
 }
 
 .outputs-list .section-content .nodrag:hover {
@@ -241,38 +252,47 @@
 
 .outputs-list .section-content {
   contain: layout paint;
+  max-height: var(--outputs-list-max-height);
+  overflow-y: auto;
+  padding-bottom: 6px;
 }
 
-.outputs-list .section-content .nodrag,
-.outputs-list .section-content .nodrag * {
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+/* ellipsis for each output text */
+.output-text {
+  display: inline-block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: calc(var(--node-width) - var(--node-horizontal-gutters));
 }
 
-/* === Footer stability: no jitter and crisp numbers === */
+/* reserved area keeps node height constant even with 0 or 1 output */
+.outputs-reserved { }
+
+.outputs-placeholder {
+  height: var(--outputs-list-max-height);
+  background: transparent;
+  border-radius: 0 0 0.5rem 0.5rem;
+}
+
+/* === Footer stability === */
 .node-card-footer {
   contain: layout paint;
-  /* transform: translateZ(0); -- removed */
-  /* will-change: box-shadow, opacity; -- removed */
   font-variant-numeric: tabular-nums;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   min-height: 86px;
 }
 
-/* Limit transitions to paint-safe properties */
 .node-card-footer * {
   transition-property: box-shadow, opacity, color, background-color !important;
   transition-timing-function: ease !important;
-  /* No transform animations to avoid subpixel jiggle */
 }
 
-/* Only progress bar width transitions (no all) */
 .node-card-footer .w-16 .h-3 {
   transition: width 500ms ease !important;
 }
 
-/* Fixed-width badge content prevents flex jitter */
 .node-status-badge {
   display: inline-flex;
   align-items: center;
@@ -281,74 +301,67 @@
   line-height: 1;
 }
 
-/* Tabular numbers everywhere in footer */
 .node-card-footer .text-3xl,
 .node-card-footer span {
   font-variant-numeric: tabular-nums;
 }
 
-/* Keep halo from forcing full repaints */
 .status-node-card::after {
   contain: paint;
   pointer-events: none;
 }
 
-/* ========== Node wrapper must allow overflow (so handles can sit outside) ========== */
-.status-node-card {
-  position: relative;     /* ensure absolute children anchor here */
-  overflow: visible;      /* let handles render outside the box */
-}
-
-/* ========== Common handle look (circular) ========== */
+/* ========== React Flow handles ========== */
 .status-node-card .react-flow__handle {
-  /* size & shape */
   width: 6px;
   height: 6px;
-  border-radius: 9999px;           /* circle */
+  border-radius: 9999px;
   background: #696666;
   border: 2px solid #696666;
-
-  /* visibility & interaction */
   box-shadow: 0 0 0 2px rgba(0,0,0,0.15);
-  pointer-events: all;             /* ensure it's easy to click */
-  z-index: 2;                      /* above node body if needed */
+  pointer-events: all;
+  z-index: 2;
 }
 
-/* ========== Position handles OUTSIDE the node edge ========== */
-/* tweak this value to push more/less outside */
+/* only handle spacing var here to avoid conflicts */
 :root {
-  --handle-outset: 10px;           /* distance outside the edge */
+  --handle-outset: 10px;
 }
 
-/* Top handle: centered horizontally, pushed above the top edge */
 .status-node-card .react-flow__handle-top {
   top: calc(-1 * var(--handle-outset));
   left: 50%;
   transform: translateX(-50%);
 }
 
-/* Bottom handle: centered horizontally, pushed below the bottom edge */
 .status-node-card .react-flow__handle-bottom {
   bottom: calc(-1 * var(--handle-outset));
   left: 50%;
   transform: translateX(-50%);
 }
 
-/* Left handle: centered vertically, pushed left of the left edge */
 .status-node-card .react-flow__handle-left {
   left: calc(-1 * var(--handle-outset));
   top: 50%;
   transform: translateY(-50%);
 }
 
-/* Right handle: centered vertically, pushed right of the right edge */
 .status-node-card .react-flow__handle-right {
   right: calc(-1 * var(--handle-outset));
   top: 50%;
   transform: translateY(-50%);
 }
 
-/* (Optional) subtle hover feedback */
 .status-node-card .react-flow__handle:hover {
   filter: brightness(1.15);
+}
+
+/* --- Header layout: label gets all possible width --- */
+.header-left {
+  flex: 1 1 auto;
+  min-width: 0; /* allow ellipsis clamp to work */
+}
+
+.header-right {
+  flex: 0 0 auto;
 }

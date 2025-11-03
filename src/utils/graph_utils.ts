@@ -42,7 +42,7 @@ export function buildGraphElements(
   containerWidth?: number | null,
   viewportZoom?: number | null
 ) {
-  const spacingX = direction === "TB" ? 250 : 1150;
+  const spacingX = direction === "TB" ? 330 : 1150;
   const spacingY = direction === "TB" ? 580 : 380;
 
   const nodes: Node[] = [];
@@ -73,8 +73,16 @@ export function buildGraphElements(
   // GRID view -> rows and columns from top-left, no edges
   if (viewMode === "grid") {
     const items = Object.entries(protocols)
-      .filter(([id]) => id !== "PROJECT")
-      .sort(([idA], [idB]) => parseInt(idA, 10) - parseInt(idB, 10));
+    .filter(([id]) => id !== "PROJECT")
+    // DESC: numeric ids first; fallback to lexicographic desc
+    .sort(([idA, _a], [idB, _b]) => {
+      const a = parseInt(idA, 10);
+      const b = parseInt(idB, 10);
+      const aNum = !Number.isNaN(a);
+      const bNum = !Number.isNaN(b);
+      if (aNum && bNum) return b - a;                      // numeric descending
+      return String(idB).localeCompare(String(idA));       // string descending
+    });
 
     const total = items.length;
     if (total === 0) return { nodes: [], edges: [] };
@@ -121,13 +129,15 @@ export function buildGraphElements(
     const targetPosition: Position = direction === "LR" ? Position.Left  : Position.Top;
 
     // Start at (0,0) top-left
+    const offsetX = 100;
+    const offSetY = 100;
     for (let i = 0; i < total; i++) {
       const [id, prot] = items[i];
       const row = Math.floor(i / cols);
       const col = i % cols;
 
-      const x = col * cellW;
-      const y = row * cellH;
+      const x = col * cellW + offsetX;
+      const y = row * cellH + offSetY;
 
       nodes.push({
         id,
