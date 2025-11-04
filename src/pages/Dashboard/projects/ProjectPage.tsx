@@ -268,6 +268,16 @@ export default function ProjectPage() {
     };
   }, []);
 
+  /* --------------------- Keep latest layout params in refs to avoid refetch on view switch --------------------- */
+  const viewModeRef = useRef(viewMode);
+  useEffect(() => { viewModeRef.current = viewMode; }, [viewMode]);
+
+  const graphDirectionRef2 = useRef(graphDirection);
+  useEffect(() => { graphDirectionRef2.current = graphDirection; }, [graphDirection]);
+
+  const gridWidthRef = useRef(gridWidth);
+  useEffect(() => { gridWidthRef.current = gridWidth; }, [gridWidth]);
+
   /* --------------------- Selection state --------------------- */
   const [, setPathNodeIds] = useState<string[]>([]);
   const [, setPathEdgeIds] = useState<string[]>([]);
@@ -285,7 +295,7 @@ export default function ProjectPage() {
 
   const getSelectedPathIds = () => pathSelRef.current.nodes;
 
-  // Colors: keep them DIFFERENT so clearing node highlights doesn't wipe path highlights
+  // Colors
   const SELECT_COLOR = "#0070f3";
   const PATH_COLOR = "#0ea5e9";
 
@@ -346,7 +356,6 @@ export default function ProjectPage() {
     selectedIdRef.current = null;
     setPreviousNodeId(null);
     setHighlightedId(null);
-    // reset path edge mode to default after a hard clear
     pathEdgeModeRef.current = 'all';
   }, [setNodes, setEdges]);
 
@@ -366,8 +375,7 @@ export default function ProjectPage() {
           const { style, ...rest } = e;
           const newStyle: any = { ...(style ?? {}) };
           if ((e as any).__path) {
-            // When clearing node highlight, DO NOT touch the path stroke (it uses PATH_COLOR)
-            delete newStyle.strokeWidth; // remove the 4px width if it came from node highlight
+            delete newStyle.strokeWidth;
           } else {
             delete newStyle.stroke;
             delete newStyle.strokeWidth;
@@ -398,7 +406,6 @@ export default function ProjectPage() {
         const { style, ...rest } = e;
         const newStyle: any = { ...(style ?? {}) };
         if ((e as any).__path) {
-          // keep PATH_COLOR; only drop node-highlight width if present
           const sw = Number(newStyle.strokeWidth);
           if (!Number.isNaN(sw) && sw === 4) delete newStyle.strokeWidth;
         } else {
@@ -437,7 +444,6 @@ export default function ProjectPage() {
       } else if (wasPath) {
         const styleCopy: any = { ...(e.style ?? {}) };
         if (isHL) {
-          // keep node highlight; drop only path dash if present
           if (styleCopy.stroke === PATH_COLOR) delete styleCopy.stroke;
           if (styleCopy.strokeDasharray === "6 3") delete styleCopy.strokeDasharray;
           changed = true;
@@ -519,10 +525,9 @@ export default function ProjectPage() {
 
     setNodes((prev) => prev.map((n) => ({ ...n, selected: nextNodes.has(n.id) })));
 
-    // IMPORTANT: single setEdges combining both painters so edges are highlighted immediately
     setEdges((eds) => {
-      let out = paintEdgeHighlight(eds, null);       // clear node-edge highlights safely
-      out = paintPathHighlight(out, nextEdges);      // then paint path edges (dashed)
+      let out = paintEdgeHighlight(eds, null);
+      out = paintPathHighlight(out, nextEdges);
       return out;
     });
 
@@ -681,7 +686,7 @@ export default function ProjectPage() {
   }, [buildAdjacency]);
 
   const applyGenericSelectionFromSet = useCallback((ids: Set<string>) => {
-    pathEdgeModeRef.current = 'all'; // generic selection paints all touching edges
+    pathEdgeModeRef.current = 'all';
     applyPathSelection(Array.from(ids));
   }, [applyPathSelection]);
 
@@ -705,10 +710,8 @@ export default function ProjectPage() {
     async (protocolClass: string) => {
       if (!projectName) return;
 
-      // Close drawer so the form is in focus
       setDrawerOpen(false);
 
-      // Open the "new protocol" form for this class
       await openFormForNode(String(protocolClass), () =>
         svc.fetchNewProtocolDetails(projectName, protocolClass)
       );
@@ -898,7 +901,7 @@ export default function ProjectPage() {
     });
   };
 
-  /* ------------------------ Fetch & load ------------------------ */
+  /* ------------------------ Fetch & load (NO refetch on view change) ------------------------ */
   const fetchAndLoadProject = useCallback(async () => {
     if (!projectName) return;
     setIsRefreshing(true);
@@ -907,13 +910,16 @@ export default function ProjectPage() {
       setProject(data);
 
       if (data.protocols) {
+        const mode = viewModeRef.current;
+        const dir = graphDirectionRef2.current;
+        const width = gridWidthRef.current || flowWrapperRef.current?.clientWidth;
+        const effectiveZoom = mode === "grid" ? GRID_ZOOM : viewportRef.current.zoom;
+
         const { nodes: loadedNodes, edges: loadedEdges, table } = buildGraphElements(
-          data.shortName, data.protocols, viewMode, graphDirection,
-          gridWidth || flowWrapperRef.current?.clientWidth,
-          getEffectiveZoom()
+          data.shortName, data.protocols, mode, dir, width, effectiveZoom
         );
 
-        if (viewMode === "table") {
+        if (mode === "table") {
           startTransition(() => setTableData(table ?? []));
           setIsLoadingProject(false);
           setIsRefreshing(false);
@@ -921,16 +927,17 @@ export default function ProjectPage() {
         }
 
         const nodesWithPositions =
-          viewMode === "hierarchical"
+          mode === "hierarchical"
             ? loadNodesWithPositions(loadedNodes)
             : loadedNodes;
 
         const initialTicks: Record<string, number> = {};
         nodesWithPositions.forEach((n) => {
-          if ((n as any).data?.status === "running") {
-            initialTicks[n.id] = Number((n as any).data.elapsedTime) ?? 0;
+          if (isRunningNode(n)) {
+            initialTicks[n.id] = Number((n as any).data?.elapsedTime) ?? 0;
           }
         });
+
         const nodesWithTick = nodesWithPositions.map((n) =>
           isRunningNode(n)
             ? { ...n, data: { ...(n as any).data, tick: initialTicks[n.id] ?? Number((n as any).data?.elapsedTime) ?? 0 } }
@@ -938,17 +945,15 @@ export default function ProjectPage() {
         );
 
         const unifiedSelectedIds = getUnifiedSelectedIds();
-        const seededNodes = nodesWithTick.map((n) => ({ ...n, selected: unifiedSelectedIds.has(n.id) }));
-
         const recomputedEdgeSet = unifiedSelectedIds.size
           ? computeEdgesForMode(unifiedSelectedIds, pathEdgeModeRef.current)
           : new Set<string>();
         pathSelRef.current.edges = recomputedEdgeSet;
 
         startTransition(() => {
-          setNodes(seededNodes);
+          setNodes(nodesWithTick.map((n) => ({ ...n, selected: unifiedSelectedIds.has(n.id) })));
           setEdges((_) => {
-            let base = viewMode === "grid" ? [] : loadedEdges;
+            let base = mode === "grid" ? [] : loadedEdges;
             base = paintEdgeHighlight(base, selectedIdRef.current ?? null);
             if (recomputedEdgeSet.size) base = paintPathHighlight(base, recomputedEdgeSet);
             return base;
@@ -959,53 +964,8 @@ export default function ProjectPage() {
         setNodeTicks(initialTicks);
         setNodesLoadedOnce(true);
 
-        if (viewMode === "grid") {
+        if (mode === "grid") {
           requestAnimationFrame(() => snapViewportToTopLeft(GRID_ZOOM));
-        } else if (firstLoadRef.current && viewMode === "hierarchical") {
-          const desiredCount = Math.max(1, nodesWithPositions.length);
-          let observer: MutationObserver | null = null;
-          let fallbackTimer: any = null;
-          let centered = false;
-
-          const doCenter = () => {
-            if (centered) return;
-            centered = true;
-            try { centerLikeButton(nodesWithPositions, true, viewportRef.current.zoom); }
-            finally {
-              firstLoadRef.current = false;
-              if (observer) { try { observer.disconnect(); } catch { } observer = null; }
-              if (fallbackTimer) { clearTimeout(fallbackTimer); fallbackTimer = null; }
-            }
-          };
-
-          try {
-            const nodesContainer = document.querySelector(".react-flow__nodes");
-            if (nodesContainer) {
-              const initialNodeEls = nodesContainer.querySelectorAll(".react-flow__node");
-              if (initialNodeEls.length >= desiredCount) {
-                requestAnimationFrame(() => requestAnimationFrame(doCenter));
-              } else {
-                observer = new MutationObserver(() => {
-                  const els = nodesContainer.querySelectorAll(".react-flow__node");
-                  if (els.length >= desiredCount) {
-                    requestAnimationFrame(() => requestAnimationFrame(doCenter));
-                  }
-                });
-                observer.observe(nodesContainer, { childList: true, subtree: true });
-                fallbackTimer = setTimeout(async () => {
-                  if (observer) { try { observer.disconnect(); } catch { } observer = null; }
-                  await waitForNodesReady(nodesWithPositions.length, 2000);
-                  doCenter();
-                }, 3000);
-              }
-            } else {
-              const ready = await waitForNodesReady(nodesWithPositions.length, 2500);
-              if (ready) doCenter(); else firstLoadRef.current = false;
-            }
-          } catch {
-            const ready = await waitForNodesReady(nodesWithPositions.length, 2000);
-            if (ready) doCenter(); else firstLoadRef.current = false;
-          }
         }
       }
     } catch (err) {
@@ -1014,12 +974,16 @@ export default function ProjectPage() {
       setIsRefreshing(false);
       setIsLoadingProject(false);
     }
-  }, [projectName, viewMode, graphDirection, centerLikeButton, svc, paintEdgeHighlight, paintPathHighlight, computeEdgesForMode, gridWidth]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectName, svc, paintEdgeHighlight, paintPathHighlight, computeEdgesForMode, snapViewportToTopLeft]);
 
   useEffect(() => {
     setIsLoadingProject(true);
+    // eslint-disable-next-line @typescript-eslint/no-floating-promises
     fetchAndLoadProject();
-  }, [projectName, fetchAndLoadProject]);
+    // only reload when changing project
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectName]);
 
   /* ------------------------ Refresh ------------------------ */
   const handleRefresh = useCallback(async () => {
@@ -1147,7 +1111,6 @@ export default function ProjectPage() {
     setNodes(seeded);
     setEdges([]); // grid has no edges
 
-    // Always top-left in grid after width changes with fixed zoom
     requestAnimationFrame(() => snapViewportToTopLeft(GRID_ZOOM));
   }, [gridWidth, viewMode, project, graphDirection, snapViewportToTopLeft]);
 
@@ -1219,7 +1182,6 @@ export default function ProjectPage() {
             const preserve = opts?.preserveZoom ?? true;
             centerLikeButton(nodesWithPositions, preserve, viewportRef.current.zoom);
           } else if (inst) {
-            // In grid always snap to top-left with fixed zoom
             snapViewportToTopLeft(GRID_ZOOM);
           }
           disablePersistenceRef.current = false;
@@ -1277,18 +1239,41 @@ export default function ProjectPage() {
       prevLayout.current.viewMode !== viewMode ||
       prevLayout.current.graphDirection !== graphDirection;
     if (!layoutChanged) return;
-    if (!project?.protocols) { prevLayout.current = { viewMode, graphDirection }; return; }
+    if (!project?.protocols) {
+      prevLayout.current = { viewMode, graphDirection };
+      return;
+    }
 
     if (viewMode === "table") {
+      const { table } = buildGraphElements(
+        project.shortName,
+        project.protocols,
+        "table",
+        graphDirection,
+        gridWidth || flowWrapperRef.current?.clientWidth,
+        getEffectiveZoom()
+      );
+
+      startTransition(() => setTableData(table ?? []));
       setIsSwitchingLayout(true);
-      requestAnimationFrame(() => setTimeout(() => setIsSwitchingLayout(false), 60));
-      if (pathSelRef.current.nodes.size === 0) setHighlightedId(selectedIdRef.current ?? null);
+
+      requestAnimationFrame(() => {
+        setTimeout(() => setIsSwitchingLayout(false), 60);
+      });
+
+      if (pathSelRef.current.nodes.size === 0) {
+        setHighlightedId(selectedIdRef.current ?? null);
+      }
+
       prevLayout.current = { viewMode, graphDirection };
       return;
     }
 
     const instance = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
-    if (!instance) { prevLayout.current = { viewMode, graphDirection }; return; }
+    if (!instance) {
+      prevLayout.current = { viewMode, graphDirection };
+      return;
+    }
 
     const { nodes: loadedNodes, edges: loadedEdges } =
       buildGraphElements(
@@ -1306,7 +1291,7 @@ export default function ProjectPage() {
     const unifiedSelectedIds = getUnifiedSelectedIds();
     const nodesSeeded = nodesWithPositions.map((n) => ({ ...n, selected: unifiedSelectedIds.has(n.id) }));
     const recomputedEdgeSet = unifiedSelectedIds.size
-      ? computeEdgesForMode(unifiedSelectedIds, pathEdgeModeRef.current)
+      ? computeEdgesForMode(unifiedSelectedIds, pathSelRef.current ? (pathSelRef.current as any) && (pathSelRef.current as any) && pathSelRef.current ? (pathSelRef.current as any) : 'all' : 'all') // (no tocar)
       : new Set<string>();
     pathSelRef.current.edges = recomputedEdgeSet;
 
@@ -1349,38 +1334,33 @@ export default function ProjectPage() {
     });
   }, [graphDirection, viewMode, project, paintEdgeHighlight, paintPathHighlight, computeEdgesForMode, gridWidth, centerLikeButton, snapViewportToTopLeft]);
 
-  /* ------------------------ First-center ------------------------ */
-  useEffect(() => {
-    if (!nodesLoadedOnce) return;
-    const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
-    if (!inst) return;
-    setIsSwitchingLayout(true);
+  /* ------------------------ First-center ONLY once after initial load ------------------------ */
+  // --- First-center ONLY once after initial load (preserve default zoom, no fit) ---
+useEffect(() => {
+  if (!nodesLoadedOnce || !firstLoadRef.current) return;
 
-    const validNodes = nodes.filter((n) => typeof n.position?.x === "number" && typeof n.position?.y === "number");
-    if (validNodes.length > 0) {
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          if (viewMode === "grid") {
-            inst.setViewport({ x: 0, y: 0, zoom: GRID_ZOOM });
-            setViewport({ x: 0, y: 0, zoom: GRID_ZOOM });
-          } else {
-            inst.setViewport({ x: viewportRef.current.x, y: viewportRef.current.y, zoom: clampZoom(viewportRef.current.zoom) });
-          }
-          setTimeout(() => setIsSwitchingLayout(false), 60);
-        });
-      });
-    } else {
-      const z = viewMode === "grid" ? GRID_ZOOM : clampZoom(inst.getViewport().zoom);
-      inst.setViewport({ x: inst.getViewport().x, y: inst.getViewport().y, zoom: z });
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          const vp = inst.getViewport();
-          setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
-          setTimeout(() => setIsSwitchingLayout(false), 60);
-        });
-      });
+  const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
+  if (!inst) return;
+
+  let cancelled = false;
+
+  (async () => {
+    await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+    if (cancelled) return;
+
+    if (viewModeRef.current === "grid") {
+      inst.setViewport({ x: 0, y: 0, zoom: GRID_ZOOM });
+      setViewport({ x: 0, y: 0, zoom: GRID_ZOOM });
+    } else if (viewModeRef.current === "hierarchical") {
+      centerLikeButton(nodesRef.current, true, viewportRef.current.zoom);
     }
-  }, [nodesLoadedOnce, viewMode]);
+
+    firstLoadRef.current = false;
+  })();
+
+  return () => { cancelled = true; };
+}, [nodesLoadedOnce, centerLikeButton]);
+
 
   /* ============================================================
      Table helpers (unchanged)
@@ -1612,17 +1592,14 @@ export default function ProjectPage() {
       const px = event.clientX - bounds.left;
       const py = event.clientY - bounds.top;
 
-      // Project to RF coords for later placement
       const rfPoint = inst.project({ x: px, y: py });
       lastPaneRFPointRef.current = rfPoint;
 
-      // Clamp menu inside wrapper bounds to avoid overflow
       const MENU_W = 230;
       const MENU_H = 150;
       const clampedX = Math.max(0, Math.min(px, bounds.width - MENU_W));
       const clampedY = Math.max(0, Math.min(py, bounds.height - MENU_H));
 
-      // Show at pane-relative coordinates
       setContextMenu({ visible: true, x: clampedX, y: clampedY, nodeId: null });
     } else {
       lastPaneRFPointRef.current = null;
@@ -1674,7 +1651,6 @@ export default function ProjectPage() {
     try {
       const current = inst.getViewport();
       const desiredZoom = viewMode === "grid" ? GRID_ZOOM : clampZoom(viewportRef.current.zoom ?? current.zoom);
-      // In grid, always snap to (0,0) with fixed zoom
       if (viewMode === "grid") {
         inst.setViewport({ x: 0, y: 0, zoom: GRID_ZOOM });
         setViewport({ x: 0, y: 0, zoom: GRID_ZOOM });
@@ -1682,12 +1658,23 @@ export default function ProjectPage() {
         inst.setViewport({ x: current.x, y: current.y, zoom: desiredZoom });
         const vp = inst.getViewport();
         setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
+        if (firstLoadRef.current) {
+          const expected = nodesRef.current?.length ?? 0;
+          if (expected > 0) {
+            (async () => {
+              const ok = await waitForNodesReady(expected, 2000);
+              if (ok && firstLoadRef.current && viewModeRef.current === "hierarchical") {
+                centerLikeButton(nodesRef.current, false);
+                firstLoadRef.current = false;
+              }
+            })();
+          }
+        }
       }
     } catch { }
   }, [viewMode]);
 
   const handleOnMoveEnd = useCallback((_: any, vp: { x: number; y: number; zoom: number }) => {
-    // Even in grid we keep viewport state (zoom will always be GRID_ZOOM)
     setViewport(vp);
   }, []);
 
@@ -1855,7 +1842,7 @@ export default function ProjectPage() {
   /* ------------------------ Controls ------------------------ */
   const ZOOM_FACTOR = 1.2;
   const handleZoomIn = useCallback(() => {
-    if (viewMode === "grid") return; // disabled in grid
+    if (viewMode === "grid") return;
     const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
     if (!inst) return;
     const vp = inst.getViewport();
@@ -1865,7 +1852,7 @@ export default function ProjectPage() {
     setViewport({ x: newVp.x, y: newVp.y, zoom: newVp.zoom });
   }, [viewMode]);
   const handleZoomOut = useCallback(() => {
-    if (viewMode === "grid") return; // disabled in grid
+    if (viewMode === "grid") return;
     const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
     if (!inst) return;
     const vp = inst.getViewport();
@@ -1925,7 +1912,6 @@ export default function ProjectPage() {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.repeat) return;
 
-      // don't trigger shortcuts if dialogs are open or typing
       if (
         dlgRename.open ||
         confirm.open ||
@@ -1941,77 +1927,66 @@ export default function ProjectPage() {
       const ids = getSelectedIds();
       const selectedId = selectedIdRef.current;
 
-      // Space / Enter -> Edit (open protocol form)
       if ((e.key === " " || e.key === "Enter" || e.code === "Space" || e.key === " " || e.key === "Spacebar") && selectedId) {
         e.preventDefault();
         handleNodeDoubleClick({ id: selectedId });
         return;
       }
 
-      // Delete / Backspace -> Delete
       if ((e.key === "Delete" || e.key === "Backspace") && ids.length > 0) {
         e.preventDefault();
         openDelete(ids[0]);
         return;
       }
 
-      // F2 -> Rename
       if (e.key === "F2" && selectedId) {
         e.preventDefault();
         openRename(selectedId);
         return;
       }
 
-      // Ctrl/⌘ + D -> Duplicate
       if (modPressed(e) && !e.shiftKey && e.key.toLowerCase() === "d" && ids.length > 0) {
         e.preventDefault();
         duplicateNow(ids);
         return;
       }
 
-      // Ctrl/⌘ + B -> Browse
       if (modPressed(e) && !e.shiftKey && e.key.toLowerCase() === "b" && selectedId) {
         e.preventDefault();
         openBrowse(selectedId, project?.id, findNodeLabel(selectedId));
         return;
       }
 
-      // Ctrl/⌘ + Shift + R -> Restart all
       if (modPressed(e) && e.shiftKey && e.key.toLowerCase() === "r" && selectedId) {
         e.preventDefault();
         openRestartAll(selectedId);
         return;
       }
 
-      // Ctrl/⌘ + Shift + C -> Continue all
       if (modPressed(e) && e.shiftKey && e.key.toLowerCase() === "c" && selectedId) {
         e.preventDefault();
         openContinueAll(selectedId);
         return;
       }
 
-      // Ctrl/⌘ + Shift + F -> Reset from
       if (modPressed(e) && e.shiftKey && e.key.toLowerCase() === "f" && selectedId) {
         e.preventDefault();
         openResetFrom(selectedId);
         return;
       }
 
-      // Ctrl/⌘ + Shift + S -> Stop
       if (modPressed(e) && e.shiftKey && e.key.toLowerCase() === "s" && selectedId) {
         e.preventDefault();
         openStop(selectedId);
         return;
       }
 
-      // Alt + ArrowDown -> Select from
       if (!modPressed(e) && e.altKey && e.key === "ArrowDown" && selectedId) {
         e.preventDefault();
         handleSelectFrom(selectedId);
         return;
       }
 
-      // Alt + ArrowUp -> Select to
       if (!modPressed(e) && e.altKey && e.key === "ArrowUp" && selectedId) {
         e.preventDefault();
         handleSelectTo(selectedId);
@@ -2115,13 +2090,7 @@ export default function ProjectPage() {
 
       {/* Content wrapper */}
       <div className="flex-1 relative min-h-0 overflow-hidden" style={{ contain: "paint" }}>
-        {isSwitchingLayout && (
-          <div aria-hidden className="absolute inset-0 z-50 flex items-center justify-center" style={{ pointerEvents: "none" }}>
-            <div className="flex items-center gap-3">
-              <div className="w-6 h-6 border-2 border-gray-300 border-t-gray-500 rounded-full animate-spin" />
-            </div>
-          </div>
-        )}
+        {/* removed switching overlay to avoid flicker */}
 
         {isLoadingProject && (
           <div
@@ -2143,8 +2112,7 @@ export default function ProjectPage() {
         {/* TABLE */}
         <div
           ref={tableContainerRef}
-          className="absolute inset-0 overflow-auto border rounded shadow p-3 z-30 transition-opacity"
-          style={{ opacity: viewMode === "table" ? 1 : 0, pointerEvents: viewMode === "table" ? "auto" : "none" }}
+          className={`absolute inset-0 overflow-auto border rounded shadow p-3 z-30 ${viewMode === "table" ? "" : "hidden"}`}
           aria-hidden={viewMode !== "table"}
         >
           <div className="flex justify-end mb-4 mr-4">
@@ -2229,15 +2197,8 @@ export default function ProjectPage() {
         {/* ReactFlow */}
         <div
           ref={flowWrapperRef}
-          className="absolute inset-0 border transition-opacity"
-          data-view-mode={viewMode}  
-          style={{
-            width: "100%",
-            height: "100%",
-            opacity: viewMode !== "table" ? (hideGraphDuringCenter ? 0 : 1) : 0,
-            pointerEvents: viewMode !== "table" ? "auto" : "none",
-            zIndex: 20,
-          }}
+          className={`absolute inset-0 border ${viewMode !== "table" ? "" : "hidden"}`}
+          data-view-mode={viewMode}
           aria-hidden={viewMode === "table"}
           onContextMenu={(e) => e.preventDefault()}
         >
@@ -2320,7 +2281,6 @@ export default function ProjectPage() {
               onNodesChange={handleNodesChangeWithPersistence}
               onEdgesChange={onEdgesChange}
               nodeTypes={nodeTypes}
-              // Fixed zoom in grid: lock minZoom == maxZoom == GRID_ZOOM and disable zoom gestures
               minZoom={isGrid ? GRID_ZOOM : MIN_ZOOM}
               maxZoom={isGrid ? GRID_ZOOM : MAX_ZOOM}
               zoomOnScroll={!isGrid}
@@ -2348,8 +2308,8 @@ export default function ProjectPage() {
               selectionOnDrag
               style={{ width: "100%", height: "100%" }}
               proOptions={{ hideAttribution: true }}
-              nodesConnectable={viewMode !== "grid"}   // disable connecting in grid
-              connectOnClick={viewMode !== "grid"}     // disable click-to-connect in grid
+              nodesConnectable={viewMode !== "grid"}
+              connectOnClick={viewMode !== "grid"}
             >
               <Background />
             </ReactFlow>
@@ -2378,7 +2338,6 @@ export default function ProjectPage() {
                   handleRefreshRef.current?.();
                   setTimeout(() => handleRefreshRef.current?.(), 800);
 
-                  // Try to place the new node at click point
                   setTimeout(() => tryPlaceNewlyCreatedNode(), 50);
                   setTimeout(() => tryPlaceNewlyCreatedNode(), 400);
 
@@ -2405,7 +2364,7 @@ export default function ProjectPage() {
             <Input id="rename" value={dlgRename.value} onChange={(e) => setDlgRename((s) => ({ ...s, value: (e.target as any).value }))} placeholder="e.g. motioncorr_02" />
           </div>
           <DialogFooter>
-            <Button onClick={() => setDlgRename({ open: false, id: null, value: "" })} className="rounded-full px-4 py-2 min-w-[140px] font-medium bg-gray-200 hover:bg-gray-300 text-gray-800">
+            <Button onClick={() => setDlgRename({ open: false, id: null, value: "" })} className="rounded-full px-4 py-2 min-w=[140px] font-medium bg-gray-200 hover:bg-gray-300 text-gray-800">
               Cancel
             </Button>
             <Button onClick={submitRename} disabled={!dlgRename.value.trim()} className="rounded-full px-4 py-2 min-w-[140px] font-medium bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-60 disabled:cursor-not-allowed">
