@@ -28,11 +28,13 @@ import {
   Play,
   RotateCcw,
   ArrowUpRight,
-  ArrowDownLeft,
   Upload,
   Square,
   ArrowLeft,
   ArrowRight,
+  ArrowDown,
+  ArrowUp,
+  Scan,
 } from "lucide-react";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -77,7 +79,9 @@ type StatusNodeProps = {
     parents?: string[];
     children?: string[];
     __pathVer?: number;
+    projectId?: string | number;
   };
+
   selectedNodeId?: string;
   hoveredNodeId?: string;
   isHovered?: boolean;
@@ -97,9 +101,18 @@ type StatusNodeProps = {
   onResetFrom?: (id: string) => void;
   onSelectFrom?: (id: string) => void;
   onSelectTo?: (id: string) => void;
+  onStop?: (id: string) => void;
+  onBrowse?: (protocolId: string, projectId?: string | number, protocolLabel?: string) => void;
 
   inPathSelection?: boolean;
   pathSelectionActive?: boolean;
+
+  // Allow wrapper to pass through these without type errors
+  sourcePosition?: Position;
+  targetPosition?: Position;
+
+  // New flag to hide handles in grid mode
+  showHandles?: boolean;
 };
 
 const formatCpuTime = (seconds: number): string => {
@@ -117,7 +130,7 @@ export default function StatusNode({
   onClick,
   onDoubleClick,
   zoomLevel = 0.6,
-  compactThreshold = 0.3,
+  compactThreshold = 0.25,
   onEdit,
   onRename,
   onDuplicate,
@@ -127,8 +140,11 @@ export default function StatusNode({
   onResetFrom,
   onSelectFrom,
   onSelectTo,
+  onStop,
+  onBrowse,
   inPathSelection = false,
   pathSelectionActive = false,
+  showHandles = true,
 }: StatusNodeProps) {
   const [isHovered, setIsHovered] = useState(false);
   const [draggingIdx, setDraggingIdx] = useState<number | null>(null);
@@ -140,11 +156,11 @@ export default function StatusNode({
   const bgColor = STATUS_COLORS[data.status ?? "finished"] ?? STATUS_COLORS["root"];
   data.color = bgColor;
 
-  /* Base styling; outline is added when part of a selection set. */
   const classNames = [
     "status-node-card",
-    "rounded-2xl border transition-shadow transform",
-    isHovered ? "shadow-xl scale-[1.01]" : "shadow-md",
+    "rounded-2xl border transition-shadow",
+    "crisp-text",
+    isHovered ? "shadow-xl" : "shadow-md",
     isSelected
       ? "border-[3px] border-blue-600 shadow-[0_0_20px_rgba(59,130,246,0.5)]"
       : "border-gray-300",
@@ -154,7 +170,7 @@ export default function StatusNode({
   if (isSelected) {
     nodeStyle.borderColor = "#0070f3";
     nodeStyle.borderStyle = "solid";
-    nodeStyle.borderWidth = 5;
+    nodeStyle.borderWidth = 4;
   }
   if (inPathSelection) {
     nodeStyle.borderColor = "#cf0d2eff";
@@ -175,22 +191,25 @@ export default function StatusNode({
   const handleResetFrom = () => onResetFrom?.(data.id);
   const handleSelectFrom = () => { if (data.id !== "PROJECT") onSelectFrom?.(data.id); };
   const handleSelectTo = () => { if (data.id !== "PROJECT") onSelectTo?.(data.id); };
+  const handleStop = () => { if (data.id !== "PROJECT") onStop?.(data.id); };
+  const handleBrowse = () => {
+    if (data.id !== "PROJECT") onBrowse?.(data.id, data.projectId, data.label);
+  };
 
-  /* If a selection (path or multi) is active, reduce menu to destructive/export ops. */
   const reduceMenus = pathSelectionActive || inPathSelection;
 
-  // Choose icons based on graphDirection
-  const FromIcon = graphDirection === "TB" ? ArrowDownLeft : ArrowRight;
-  const ToIcon = graphDirection === "TB" ? ArrowUpRight : ArrowLeft;
+  const FromIcon = graphDirection === "TB" ? ArrowDown : ArrowRight;
+  const ToIcon = graphDirection === "TB" ? ArrowUp : ArrowLeft;
 
-  /**
-   * Forward a synthetic click (o ctrl-click) al wrapper de React Flow
-   * para que RF haga el toggle de selección aunque el target real sea un .nodrag.
-   */
   const forwardClickToRFNode = (e: React.MouseEvent) => {
+    const doc = (e.target as HTMLElement | null)?.ownerDocument || document;
+    const win = doc.defaultView || window;
+
     const nodeEl =
-      (e.currentTarget as HTMLElement).closest(".react-flow__node") ||
-      rootRef.current?.closest(".react-flow__node");
+      (e.currentTarget as HTMLElement)?.closest(".react-flow__node") ??
+      rootRef.current?.closest(".react-flow__node") ??
+      doc.querySelector(`.react-flow__node[data-id="${CSS.escape(String(data.id))}"]`);
+
     if (!nodeEl) return;
 
     const opts: MouseEventInit = {
@@ -201,13 +220,53 @@ export default function StatusNode({
       clientY: e.clientY,
       ctrlKey: e.ctrlKey,
       metaKey: e.metaKey,
+      view: win,
     };
 
-    // Reproducimos la secuencia típica para que RF lo procese como click
+    nodeEl.dispatchEvent(new MouseEvent("pointerdown", opts));
+    nodeEl.dispatchEvent(new MouseEvent("pointerup", opts));
     nodeEl.dispatchEvent(new MouseEvent("mousedown", opts));
     nodeEl.dispatchEvent(new MouseEvent("mouseup", opts));
     nodeEl.dispatchEvent(new MouseEvent("click", opts));
   };
+
+
+  const truncateLabel = (text: string = "", max: number = 120) =>
+    text.length > max ? `${text.slice(0, max)}…` : text;
+
+  const outputsArray = Array.isArray(data.outputs) ? data.outputs : [];
+  const hasOutputs = outputsArray.length > 0;
+
+  // --- Shortcut labels (mac vs win/linux) ---
+  const isMac =
+    typeof navigator !== "undefined" &&
+    /Mac|iPhone|iPad|iPod/.test(navigator.platform);
+
+  const mod = isMac ? "⌘" : "Ctrl";
+  const modShift = isMac ? "⌘⇧" : "Ctrl+Shift";
+
+  // Centralize strings so we re-use consistently in both menus
+  const s = {
+    edit: "Space / Db-Click",
+    browse: `${mod} + B`,
+    rename: "F2",
+    delete: "Del",
+    duplicate: `${mod} + D`,
+    restartAll: `${modShift} + R`,
+    continueAll: `${modShift} + C`,
+    resetFrom: `${modShift} + F`,
+    stop: `${modShift} + S`,
+    selectFrom: "Alt + ↓",
+    selectTo: "Alt + ↑",
+  } as const;
+
+  // Small helper for right-aligned shortcut hint
+  const ShortcutHint = ({ text }: { text?: string }) =>
+    text ? (
+      <span className="ml-6 text-xs text-gray-500 font-mono tabular-nums">
+        {text}
+      </span>
+    ) : null;
 
   return (
     <ContextMenu>
@@ -217,16 +276,16 @@ export default function StatusNode({
           className={classNames}
           style={nodeStyle}
           onClick={onClick}
-          onDoubleClick={(e) => { e.stopPropagation(); onDoubleClick?.(); }}
+          onDoubleClick={(e: React.MouseEvent) => { e.stopPropagation(); onDoubleClick?.(); }}
           onMouseEnter={() => setIsHovered(true)}
           onMouseLeave={() => setIsHovered(false)}
-          onContextMenu={(e) => e.stopPropagation()}
+          onContextMenu={(e: React.MouseEvent) => e.stopPropagation()}
         >
           {/* Header */}
           <div
             className={`node-card-header p-3 border-b flex ${data.id === "PROJECT" ? "flex-col items-center text-center" : "flex-row items-center justify-between"}`}
           >
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-2 header-left">
               {data.id !== "PROJECT" && (
                 <div
                   className={`node-id-badge ${data.status === "running" ? "glow-badge" : ""}`}
@@ -235,151 +294,305 @@ export default function StatusNode({
                   <span>{data.id}</span>
                 </div>
               )}
-              <div className={data.id === "PROJECT" ? "text-4xl text-black" : "node-label dark:text-black"} style={isCompactView ? { fontSize: "2.8rem" } : {}}>
-                <div className={`node-label dark:text-black ${isCompactView ? "compact" : ""}`} title={data.label}>
-                  {data.label}
+              <div
+                className={data.id === "PROJECT" ? "text-4xl text-black" : "node-label dark:text-black"}
+                style={isCompactView ? { fontSize: "2.8rem" } : {}}
+              >
+                <div
+                  className={`node-label dark:text-black ${isCompactView ? "compact" : ""}`}
+                  title={data.label}
+                >
+                  {truncateLabel(
+                    data.label,
+                    data.id === "PROJECT" ? 120 : 120
+                  )}
                 </div>
               </div>
             </div>
 
             {data.id !== "PROJECT" && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-200 ml-4" onClick={(e) => e.stopPropagation()}>
-                    <MoreHorizontal className="h-12 w-12 text-black dark:text-black" />
-                  </button>
-                </DropdownMenuTrigger>
+              <div className="flex items-center header-right">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-200 ml-4 nodrag"
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onMouseDown={(e) => e.stopPropagation()}
+                      onClick={(e) => e.stopPropagation()}
+                      onDoubleClick={(e) => e.stopPropagation()}
+                      onContextMenu={(e) => e.stopPropagation()}
+                      draggable={false}
+                      data-nodrag
+                      aria-label="Open node menu"
+                    >
+                      <MoreHorizontal className="h-12 w-12 ml-2 text-black dark:text-black pointer-events-none" />
+                    </button>
+                  </DropdownMenuTrigger>
 
-                <DropdownMenuContent className="w-56" onClick={(e) => e.stopPropagation()}>
-                  {!reduceMenus && (
-                    <>
-                      <DropdownMenuItem onClick={handleEdit}>
-                        <Pencil className="mr-2 h-4 w-4" /> Edit
-                      </DropdownMenuItem>
-                      <DropdownMenuItem>
-                        <FolderOpen className="mr-2 h-4 w-4" /> Browse
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={handleRename}>
-                        <Pencil className="mr-2 h-4 w-4" /> Rename
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem onClick={handleSelectFrom}>
-                        <FromIcon className="mr-2 h-4 w-4" /> Select from
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={handleSelectTo}>
-                        <ToIcon className="mr-2 h-4 w-4" /> Select to
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      {data.status === "running" && (
-                        <DropdownMenuItem>
-                          <Square className="mr-2 h-4 w-4" /> Stop
+                  <DropdownMenuContent
+                    className="w-56"
+                    onClick={(e: React.MouseEvent) => e.stopPropagation()}
+                  >
+                    {!reduceMenus && (
+                      <>
+                        <DropdownMenuItem onClick={handleEdit}>
+                          <div className="flex w-full items-center justify-between">
+                            <span className="flex items-center gap-2">
+                              <Pencil className="h-4 w-4" />
+                              <span>Edit</span>
+                            </span>
+                            <ShortcutHint text={s.edit} />
+                          </div>
                         </DropdownMenuItem>
-                      )}
-                      <DropdownMenuItem onClick={handleRestartAll}>
-                        <RefreshCw className="mr-2 h-4 w-4" /> Restart all
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={handleContinueAll}>
-                        <Play className="mr-2 h-4 w-4" /> Continue all
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={handleResetFrom}>
-                        <RotateCcw className="mr-2 h-4 w-4" /> Reset from
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                    </>
-                  )}
-                  {/* Always visible */}
-                  <DropdownMenuItem onClick={handleDelete}>
-                    <Trash2 className="mr-2 h-4 w-4" /> Delete
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={handleDuplicate}>
-                    <Copy className="mr-2 h-4 w-4" /> Duplicate
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem>
-                    <FileUp className="mr-2 h-4 w-4" /> Export
-                  </DropdownMenuItem>
-                  <DropdownMenuItem>
-                    <Upload className="mr-2 h-4 w-4" /> Export & upload
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+
+                        <DropdownMenuItem onClick={handleBrowse}>
+                          <div className="flex w-full items-center justify-between">
+                            <span className="flex items-center gap-2">
+                              <FolderOpen className="h-4 w-4" />
+                              <span>Browse</span>
+                            </span>
+                            <ShortcutHint text={s.browse} />
+                          </div>
+                        </DropdownMenuItem>
+
+                        <DropdownMenuItem onClick={handleRename}>
+                          <div className="flex w-full items-center justify-between">
+                            <span className="flex items-center gap-2">
+                              <Pencil className="h-4 w-4" />
+                              <span>Rename</span>
+                            </span>
+                            <ShortcutHint text={s.rename} />
+                          </div>
+                        </DropdownMenuItem>
+
+                        <DropdownMenuSeparator />
+
+                        <DropdownMenuItem onClick={handleSelectFrom}>
+                          <div className="flex w-full items-center justify-between">
+                            <span className="flex items-center gap-2">
+                              <FromIcon className="h-4 w-4" />
+                              <span>Select from</span>
+                            </span>
+                            <ShortcutHint text={s.selectFrom} />
+                          </div>
+                        </DropdownMenuItem>
+
+                        <DropdownMenuItem onClick={handleSelectTo}>
+                          <div className="flex w-full items-center justify-between">
+                            <span className="flex items-center gap-2">
+                              <ToIcon className="h-4 w-4" />
+                              <span>Select to</span>
+                            </span>
+                            <ShortcutHint text={s.selectTo} />
+                          </div>
+                        </DropdownMenuItem>
+
+                        <DropdownMenuSeparator />
+
+                        {(data.status === "running" || data.status === "launched" || data.status === "scheduled") && (
+                          <DropdownMenuItem onSelect={handleStop}>
+                            <div className="flex w-full items-center justify-between">
+                              <span className="flex items-center gap-2">
+                                <Square className="h-4 w-4" />
+                                <span>Stop</span>
+                              </span>
+                              <ShortcutHint text={s.stop} />
+                            </div>
+                          </DropdownMenuItem>
+                        )}
+
+                        <DropdownMenuItem onClick={handleRestartAll}>
+                          <div className="flex w-full items-center justify-between">
+                            <span className="flex items-center gap-2">
+                              <RefreshCw className="h-4 w-4" />
+                              <span>Restart all</span>
+                            </span>
+                            <ShortcutHint text={s.restartAll} />
+                          </div>
+                        </DropdownMenuItem>
+
+                        <DropdownMenuItem onClick={handleContinueAll}>
+                          <div className="flex w-full items-center justify-between">
+                            <span className="flex items-center gap-2">
+                              <Play className="h-4 w-4" />
+                              <span>Continue all</span>
+                            </span>
+                            <ShortcutHint text={s.continueAll} />
+                          </div>
+                        </DropdownMenuItem>
+
+                        <DropdownMenuItem onClick={handleResetFrom}>
+                          <div className="flex w-full items-center justify-between">
+                            <span className="flex items-center gap-2">
+                              <RotateCcw className="h-4 w-4" />
+                              <span>Reset from</span>
+                            </span>
+                            <ShortcutHint text={s.resetFrom} />
+                          </div>
+                        </DropdownMenuItem>
+
+                        <DropdownMenuSeparator />
+                      </>
+                    )}
+
+                    {reduceMenus && (data.status === "running" || data.status === "launched" || data.status === "scheduled") && (
+                      <>
+                        <DropdownMenuItem onSelect={handleStop}>
+                          <div className="flex w-full items-center justify-between">
+                            <span className="flex items-center gap-2">
+                              <Square className="h-4 w-4" />
+                              <span>Stop selection</span>
+                            </span>
+                            <ShortcutHint text={s.stop} />
+                          </div>
+                        </DropdownMenuItem>
+                      </>
+                    )}
+
+                    <DropdownMenuItem onClick={handleDelete}>
+                      <div className="flex w-full items-center justify-between">
+                        <span className="flex items-center gap-2">
+                          <Trash2 className="h-4 w-4" />
+                          <span>Delete</span>
+                        </span>
+                        <ShortcutHint text={s.delete} />
+                      </div>
+                    </DropdownMenuItem>
+
+                    <DropdownMenuItem onClick={handleDuplicate}>
+                      <div className="flex w-full items-center justify-between">
+                        <span className="flex items-center gap-2">
+                          <Copy className="h-4 w-4" />
+                          <span>Duplicate</span>
+                        </span>
+                        <ShortcutHint text={s.duplicate} />
+                      </div>
+                    </DropdownMenuItem>
+
+                    <DropdownMenuSeparator />
+
+                    <DropdownMenuItem>
+                      <div className="flex w-full items-center justify-between">
+                        <span className="flex items-center gap-2">
+                          <FileUp className="h-4 w-4" />
+                          <span>Export</span>
+                        </span>
+                        <ShortcutHint text={undefined} />
+                      </div>
+                    </DropdownMenuItem>
+
+                    <DropdownMenuItem>
+                      <div className="flex w-full items-center justify-between">
+                        <span className="flex items-center gap-2">
+                          <Upload className="h-4 w-4" />
+                          <span>Export & upload</span>
+                        </span>
+                        <ShortcutHint text={undefined} />
+                      </div>
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
+                <button
+                  type="button"
+                  className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-200 ml-4 nodrag"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={(e) => { e.stopPropagation(); handleEdit(); }}
+                  onDoubleClick={(e) => e.stopPropagation()}
+                  onContextMenu={(e) => e.stopPropagation()}
+                  draggable={false}
+                  data-nodrag
+                  aria-label="Edit protocol"
+                >
+                  <Scan className="h-11 w-11 text-black dark:text-black pointer-events-none" />
+                </button>
+              </div>
             )}
           </div>
 
-          {/* Content */}
-          <div className={`transition-all duration-300 ease-in-out overflow-hidden ${isCompactView ? "opacity-0 max-h-0" : "opacity-100 max-h-[2000px]"}`}>
+          {/* Content (reserved height for up to 3 outputs) */}
+          <div
+            className={`transition-[max-height] duration-300 ease-in-out overflow-hidden ${isCompactView ? "max-h-0" : "max-h-[2000px]"}`}
+            aria-hidden={isCompactView}
+          >
             {data.id !== "PROJECT" && (
-              <div className="node-card-content p-3 mt-4" style={{ minHeight: "120px", maxHeight: "300px", overflowY: "auto" }}>
-                {Array.isArray(data.outputs) && data.outputs.length > 0 && (
-                  <div className="outputs-list">
-                    <div className="section-header flex items-center px-2 py-1 bg-green-50 dark:bg-green-50 rounded-t-lg border-b border-green-800 dark:border-green-800">
-                      <span className="text-black dark:text-black font-normal text-3xl">Outputs</span>
-                    </div>
-                    <div className="section-content p-2 bg-green-100 dark:bg-green-200 rounded-b-lg space-y-2">
-                      {data.outputs.map((outputObj, idx) => {
-                        const [_, rawValue] = Object.entries(outputObj)[0];
-                        const value = rawValue as { info: string; _class: string; _objValue: string; _parentId: string };
-                        const isDragging = draggingIdx === idx;
+              <div className="node-card-content p-3 mt-4">
+                <div className="outputs-reserved">
+                  {hasOutputs ? (
+                    <div className="outputs-list">
+                      <div className="section-header flex items-center px-2 py-1 bg-green-50 dark:bg-green-50 rounded-t-lg border-b border-green-800 dark:border-green-800">
+                        <span className="text-black dark:text-black font-normal text-4xl">Outputs</span>
+                      </div>
 
-                        return (
-                          <div
-                            key={idx}
-                            className={`nodrag mt-3 group cursor-grab flex items-center px-3 py-1 rounded-full border border-gray-400 dark:border-gray-600 shadow-sm hover:shadow-md transition-transform ${isDragging ? "scale-100 opacity-70" : "bg-gradient-to-r from-gray-200 to-gray-300 dark:from-gray-200 dark:to-gray-300"}`}
-                            draggable
-                            onMouseDown={(e) => {
-                              // Si se hace Ctrl/Cmd+click sobre el pill, reenviamos el click al nodo de RF.
-                              if (e.ctrlKey || e.metaKey) {
+                      <div className="section-content">
+                        {outputsArray.map((outputObj, idx) => {
+                          const [, rawValue] = Object.entries(outputObj)[0];
+                          const value = rawValue as { info: string; _class: string; _objValue: string; _parentId: string };
+                          const isDragging = draggingIdx === idx;
+
+                          return (
+                            <div
+                              key={idx}
+                              className={`nodrag mt-3 group cursor-grab flex items-center px-3 py-1 rounded-full border border-gray-400 dark:border-gray-400 shadow-sm ${isDragging ? "scale-100 opacity-70" : "bg-gradient-to-r from-gray-200 to-gray-300 dark:from-gray-200 dark:to-gray-300"}`}
+                              draggable
+                              onMouseDown={(e: React.MouseEvent<HTMLDivElement>) => {
+                                if (e.ctrlKey || e.metaKey) {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  forwardClickToRFNode(e);
+                                }
+                              }}
+                              onClick={(e: React.MouseEvent<HTMLDivElement>) => {
                                 e.preventDefault();
                                 e.stopPropagation();
                                 forwardClickToRFNode(e);
-                              }
-                              // Si no, dejamos que actúe drag o el click normal (lo manejamos en onClick abajo)
-                            }}
-                            onClick={(e) => {
-                              // Click normal sobre el pill => queremos que cuente como click al nodo
-                              e.preventDefault();
-                              e.stopPropagation();
-                              forwardClickToRFNode(e);
-                            }}
-                            onDragStart={(e) => {
-                              e.stopPropagation();
-                              setDraggingIdx(idx);
-                              const output = {
-                                _class: value._class,
-                                _expectedClass: value._class,
-                                _objValue: value._objValue,
-                                info: value.info,
-                                _parentId: value._parentId,
-                              };
-                              setCurrentDraggedOutput(output);
-                              e.dataTransfer.setData("application/scipion-output", JSON.stringify(output));
-                              const ghost = document.createElement("div");
-                              ghost.style.position = "absolute";
-                              ghost.style.top = "-1000px";
-                              ghost.style.left = "-1000px";
-                              ghost.style.padding = "6px 12px";
-                              ghost.style.background = "white";
-                              ghost.style.border = "1px solid #ccc";
-                              ghost.style.color = "black";
-                              ghost.style.borderRadius = "0.5rem";
-                              ghost.innerText = `${value._class} (${value.info})`;
-                              document.body.appendChild(ghost);
-                              e.dataTransfer.setDragImage(ghost, 0, 15);
-                              setTimeout(() => document.body.removeChild(ghost), 0);
-                            }}
-                            onDragEnd={() => {
-                              setDraggingIdx(null);
-                              setCurrentDraggedOutput(null);
-                            }}
-                          >
-                            <ArrowUpRight className="h-6 w-6 mr-2 text-black-700 dark:text-black" />
-                            <span className="outputs dark:text-black">{value.info}</span>
-                          </div>
-                        );
-                      })}
+                              }}
+                              onDragStart={(e: React.DragEvent<HTMLDivElement>) => {
+                                e.stopPropagation();
+                                setDraggingIdx(idx);
+                                const output = {
+                                  _class: value._class,
+                                  _expectedClass: value._class,
+                                  _objValue: value._objValue,
+                                  info: value.info,
+                                  _parentId: value._parentId,
+                                };
+                                setCurrentDraggedOutput(output);
+                                e.dataTransfer.setData("application/scipion-output", JSON.stringify(output));
+                                const ghost = document.createElement("div");
+                                ghost.style.position = "absolute";
+                                ghost.style.top = "-1000px";
+                                ghost.style.left = "-1000px";
+                                ghost.style.padding = "6px 12px";
+                                ghost.style.background = "white";
+                                ghost.style.border = "1px solid #ccc";
+                                ghost.style.color = "black";
+                                ghost.style.borderRadius = "0.5rem";
+                                ghost.innerText = `${value._class} (${value.info})`;
+                                document.body.appendChild(ghost);
+                                e.dataTransfer.setDragImage(ghost, 0, 15);
+                                setTimeout(() => document.body.removeChild(ghost), 0);
+                              }}
+                              onDragEnd={() => {
+                                setDraggingIdx(null);
+                                setCurrentDraggedOutput(null);
+                              }}
+                            >
+                              <ArrowUpRight className="h-7 w-7 mr-2 text-black-700 dark:text-black" />
+                              <span className="outputs output-text text-gray-800 dark:text-black mt-1">
+                                {value.info}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  ) : (
+                    <div className="outputs-placeholder" aria-hidden="true" />
+                  )}
+                </div>
               </div>
             )}
 
@@ -392,15 +605,15 @@ export default function StatusNode({
                     backgroundColor: STATUS_BADGE_COLORS[data.status] || "#999",
                     color: "white",
                     minWidth: "120px",
-                    fontSize: "2rem",
+                    fontSize: "2.2rem",
                   }}
                 >
                   {data.status}
                   {(data.status === "running" || data.status === "failed" || data.status === "aborted") && (
-                    <div className="flex items-center gap-1 flex-1 ml-2 transition-all duration-300">
+                    <div className="flex items-center gap-1 flex-1 ml-2">
                       <div className="w-16 h-3 bg-white/30 rounded overflow-hidden">
                         <div
-                          className="h-3 bg-white transition-all duration-500"
+                          className="h-3 bg-white transition-[width] duration-500"
                           style={{ width: `${((data.stepsDone ?? 0) / (data.numberOfSteps ?? 1)) * 100}%` }}
                         />
                       </div>
@@ -422,70 +635,181 @@ export default function StatusNode({
           </div>
 
           {/* React Flow handles */}
-          <Handle
-            type="target"
-            position={graphDirection === "TB" ? Position.Top : Position.Left}
-            style={graphDirection === "TB" ? {} : { top: "50%", transform: "translateY(-50%)" }}
-          />
-          <Handle
-            type="source"
-            position={graphDirection === "TB" ? Position.Bottom : Position.Right}
-            style={graphDirection === "TB" ? {} : { top: "50%", transform: "translateY(-50%)" }}
-          />
+          {showHandles && (     
+            <>
+              <Handle
+                type="target"
+                position={graphDirection === "TB" ? Position.Top : Position.Left}
+                style={graphDirection === "TB" ? {} : { top: "50%", transform: "translateY(-50%)" }}
+              />
+              <Handle
+                type="source"
+                position={graphDirection === "TB" ? Position.Bottom : Position.Right}
+                style={graphDirection === "TB" ? {} : { top: "50%", transform: "translateY(-50%)" }}
+              />
+            </>
+          )}
         </div>
       </ContextMenuTrigger>
 
       {/* Node-specific context menu */}
-      <ContextMenuContent className="w-56" onClick={(e) => e.stopPropagation()}>
+      <ContextMenuContent className="w-56" onClick={(e: React.MouseEvent) => e.stopPropagation()}>
         {!reduceMenus && (
           <>
             <ContextMenuItem onClick={handleEdit}>
-              <Pencil className="mr-2 h-4 w-4" /> Edit
+              <div className="flex w-full items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <Pencil className="h-4 w-4" />
+                  <span>Edit</span>
+                </span>
+                <ShortcutHint text={s.edit} />
+              </div>
             </ContextMenuItem>
-            <ContextMenuItem>
-              <FolderOpen className="mr-2 h-4 w-4" /> Browse
+
+            <ContextMenuItem onClick={handleBrowse}>
+              <div className="flex w-full items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <FolderOpen className="h-4 w-4" />
+                  <span>Browse</span>
+                </span>
+                <ShortcutHint text={s.browse} />
+              </div>
             </ContextMenuItem>
+
             <ContextMenuItem onClick={handleRename}>
-              <Pencil className="mr-2 h-4 w-4" /> Rename
+              <div className="flex w-full items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <Pencil className="h-4 w-4" />
+                  <span>Rename</span>
+                </span>
+                <ShortcutHint text={s.rename} />
+              </div>
             </ContextMenuItem>
+
             <ContextMenuSeparator />
+
             <ContextMenuItem onClick={handleSelectFrom}>
-              <FromIcon className="mr-2 h-4 w-4" /> Select from
+              <div className="flex w-full items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <FromIcon className="h-4 w-4" />
+                  <span>Select from</span>
+                </span>
+                <ShortcutHint text={s.selectFrom} />
+              </div>
             </ContextMenuItem>
+
             <ContextMenuItem onClick={handleSelectTo}>
-              <ToIcon className="mr-2 h-4 w-4" /> Select to
+              <div className="flex w-full items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <ToIcon className="h-4 w-4" />
+                  <span>Select to</span>
+                </span>
+                <ShortcutHint text={s.selectTo} />
+              </div>
             </ContextMenuItem>
+
             <ContextMenuSeparator />
-            {data.status === "running" && (
-              <ContextMenuItem>
-                <Square className="mr-2 h-4 w-4" /> Stop
+
+            {(data.status === "running" || data.status === "launched" || data.status === "scheduled") && (
+              <ContextMenuItem onClick={handleStop}>
+                <div className="flex w-full items-center justify-between">
+                  <span className="flex items-center gap-2">
+                    <Square className="h-4 w-4" />
+                    <span>Stop</span>
+                  </span>
+                  <ShortcutHint text={s.stop} />
+                </div>
               </ContextMenuItem>
             )}
+
             <ContextMenuItem onClick={handleRestartAll}>
-              <RefreshCw className="mr-2 h-4 w-4" /> Restart all
+              <div className="flex w-full items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <RefreshCw className="h-4 w-4" />
+                  <span>Restart all</span>
+                </span>
+                <ShortcutHint text={s.restartAll} />
+              </div>
             </ContextMenuItem>
+
             <ContextMenuItem onClick={handleContinueAll}>
-              <Play className="mr-2 h-4 w-4" /> Continue all
+              <div className="flex w-full items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <Play className="h-4 w-4" />
+                  <span>Continue all</span>
+                </span>
+                <ShortcutHint text={s.continueAll} />
+              </div>
             </ContextMenuItem>
+
             <ContextMenuItem onClick={handleResetFrom}>
-              <RotateCcw className="mr-2 h-4 w-4" /> Reset from
+              <div className="flex w-full items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <RotateCcw className="h-4 w-4" />
+                  <span>Reset from</span>
+                </span>
+                <ShortcutHint text={s.resetFrom} />
+              </div>
             </ContextMenuItem>
+
             <ContextMenuSeparator />
           </>
         )}
-        {/* Always visible */}
+
+        {reduceMenus && (data.status === "running" || data.status === "launched" || data.status === "scheduled") && (
+          <>
+            <ContextMenuItem onClick={handleStop}>
+              <div className="flex w-full items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <Square className="h-4 w-4" />
+                  <span>Stop selection</span>
+                </span>
+                <ShortcutHint text={s.stop} />
+              </div>
+            </ContextMenuItem>
+          </>
+        )}
+
         <ContextMenuItem onClick={handleDelete}>
-          <Trash2 className="mr-2 h-4 w-4" /> Delete
+          <div className="flex w-full items-center justify-between">
+            <span className="flex items-center gap-2">
+              <Trash2 className="h-4 w-4" />
+              <span>Delete</span>
+            </span>
+            <ShortcutHint text={s.delete} />
+          </div>
         </ContextMenuItem>
+
         <ContextMenuItem onClick={handleDuplicate}>
-          <Copy className="mr-2 h-4 w-4" /> Duplicate
+          <div className="flex w-full items-center justify-between">
+            <span className="flex items-center gap-2">
+              <Copy className="h-4 w-4" />
+              <span>Duplicate</span>
+            </span>
+            <ShortcutHint text={s.duplicate} />
+          </div>
         </ContextMenuItem>
+
         <ContextMenuSeparator />
+
         <ContextMenuItem>
-          <FileUp className="mr-2 h-4 w-4" /> Export
+          <div className="flex w-full items-center justify-between">
+            <span className="flex items-center gap-2">
+              <FileUp className="h-4 w-4" />
+              <span>Export</span>
+            </span>
+            <ShortcutHint text={undefined} />
+          </div>
         </ContextMenuItem>
+
         <ContextMenuItem>
-          <Upload className="mr-2 h-4 w-4" /> Export & upload
+          <div className="flex w-full items-center justify-between">
+            <span className="flex items-center gap-2">
+              <Upload className="h-4 w-4" />
+              <span>Export & upload</span>
+            </span>
+            <ShortcutHint text={undefined} />
+          </div>
         </ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>

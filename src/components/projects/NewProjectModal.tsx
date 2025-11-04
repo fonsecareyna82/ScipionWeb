@@ -63,7 +63,7 @@ export default function NewProjectModal({ open, onClose, onCreate }: NewProjectM
         name: name.trim(),
         description: description.trim(),
       });
-      toast.success("Project created");
+      toast.success(`Project "${name}" created successfully`);
       onCreate?.(created);
       onClose();
     } catch (err: any) {

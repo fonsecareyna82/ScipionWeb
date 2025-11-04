@@ -50,11 +50,19 @@ export interface ProjectService<
     params: Record<string, unknown>
   ): Promise<TProtocol>;
 
+  /** Protocol actions */
   renameProtocol(projectId: Id, protocolId: Id, newName: string): Promise<TProtocol>
   duplicateProtocol(projectId: Id, items: { id: string; name?: string }[],): Promise<TProtocol>
   deleteProtocol(projectId: Id, ids: string[]): Promise<TProtocol>
   restartAll(projectId: Id, protocolId: Id): Promise<TProject>
   continueAll(projectId: Id, protocolId: Id): Promise<TProject>
   resetFrom(projectId: Id, protocolId: Id): Promise<TProject>
+  stopProtocol(projectId: Id, ids: string[]): Promise<TProject>
+  resolveProtocolStartPath(projectId: Id, pid: string): Promise<TProject>
+  listRemoteDirectory(projectId: Id, protocolId: Id, path: string): Promise<TProject>
+  previewProtocolText(projectId: Id, id: string, path: string): Promise<TProject>
+  buildProtocolDownloadUrl(projectId: string, protocolId: string, path: string, inline: boolean): string
+  fetchProtocolInlinePreviewBlob(projectId: string, protocolId: string, path: string): Promise<{ blob: Blob; meta: any }>
+  fetchOutputPreview(projectId: string, protocolId: string, path: string): Promise<any>
 }
 

@@ -1,12 +1,14 @@
 // vite.config.ts
 // Single config that builds one UMD bundle depending on --mode:
-//   - projects     -> dist/umd/projects-widget.js   (global: MyProjectsWidgetList)
-//   - projectpage  -> dist/umd/projectpage-widget.js (global: MyProjectsWidgetPage)
+//   - projects       -> dist/umd/projects-widget.js        (global: MyProjectsWidgetList)
+//   - projectpage    -> dist/umd/projectpage-widget.js     (global: MyProjectsWidgetPage)
+//   - protocoldetail -> dist/umd/protocoldetail-widget.js  (global: MyProjectsWidgetProtocolDetail)
 //
 // Run:
-//   npm run build:widget:list     -> vite build --mode projects
-//   npm run build:widget:page     -> vite build --mode projectpage
-//   npm run build:widgets         -> both in sequence
+//   npm run build:widget:list        -> vite build --mode projects
+//   npm run build:widget:page        -> vite build --mode projectpage
+//   npm run build:widget:protocoldetail -> vite build --mode protocoldetail
+//   npm run build:widgets            -> build the sequence you prefer
 
 import path from "path";
 import react from "@vitejs/plugin-react";
@@ -23,14 +25,26 @@ export default defineConfig((env: ConfigEnv): UserConfig => {
   const mode = env.mode || "projects";
   const isProjects = mode === "projects";
   const isProjectPage = mode === "projectpage";
-  const isUmd = isProjects || isProjectPage;
+  const isProtocolDetail = mode === "protocoldetail";
+  const isUmd = isProjects || isProjectPage || isProtocolDetail;
 
   const entry = isProjects
     ? path.resolve(__dirname, "src/entry-umd.tsx")
-    : path.resolve(__dirname, "src/entry-projectpage-umd.tsx");
+    : isProjectPage
+    ? path.resolve(__dirname, "src/entry-projectpage-umd.tsx")
+    : path.resolve(__dirname, "src/entry-protocoldetail-umd.tsx");
 
-  const globalName = isProjects ? "MyProjectsWidgetList" : "MyProjectsWidgetPage";
-  const fileName = isProjects ? "projects-widget.js" : "projectpage-widget.js";
+  const globalName = isProjects
+    ? "MyProjectsWidgetList"
+    : isProjectPage
+    ? "MyProjectsWidgetPage"
+    : "MyProjectsWidgetProtocolDetail";
+
+  const fileName = isProjects
+    ? "projects-widget.js"
+    : isProjectPage
+    ? "projectpage-widget.js"
+    : "protocoldetail-widget.js";
 
   const plugins = [react(), svgr(svgrOptions)];
 
@@ -62,15 +76,15 @@ export default defineConfig((env: ConfigEnv): UserConfig => {
     emptyOutDir: isProjects,
     lib: {
       entry,
-      name: globalName,      // Global variable name for UMD
+      name: globalName, // Global variable name for UMD
       formats: ["umd"],
       fileName: () => fileName,
     },
     rollupOptions: {
-      external: [],          // Pack everything (standalone UMD). Set ["react","react-dom"] if you want peer mode.
+      external: [], // Pack everything (standalone UMD). Set ["react","react-dom"] if you want peer mode.
       output: {
         exports: "named",
-        globals: {},         // Needed only if you externalize libs
+        globals: {}, // Needed only if you externalize libs
         chunkFileNames: "assets/[name].[hash].js",
         assetFileNames: (info) => {
           const n = info.name ?? "";
@@ -102,7 +116,6 @@ export default defineConfig((env: ConfigEnv): UserConfig => {
     resolve,
     build,
     server,
-    // Define must be at the root (not inside build)
     define: {
       "process.env.NODE_ENV": JSON.stringify(process.env.NODE_ENV ?? "production"),
     },

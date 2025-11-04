@@ -83,7 +83,10 @@ export default function App({ service }: AppProps) {
           <Route path="*" element={<NotFound />} />
         </Routes>
 
-        <Toaster position="top-right" containerStyle={{ zIndex: 999999 }} />
+        <Toaster position="bottom-left" containerStyle={{ zIndex: 999999 }} toastOptions={{
+          style: { width: "420px", maxWidth: "420px",  whiteSpace: "normal", background: "#f5f0eeff" }, 
+          duration: 5000, // 5 seconds
+        }} />
       </ProjectServiceProvider>
     </DragProvider>
   );

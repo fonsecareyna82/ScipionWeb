@@ -1,6 +1,6 @@
 // src/adapters/projectsAdapter.ts
 import * as api from "@/api/projects";
-import type { ProjectService, ProjectPayload } from "@/services/ProjectService";
+import type { ProjectService, ProjectPayload, Id } from "@/services/ProjectService";
 
 /**
  * Small helper to normalize IDs so callers can pass string or number interchangeably.
@@ -37,9 +37,9 @@ const defaultService: ProjectService = {
     // original signature was (projectId: number); normalize and keep backward-compat
     api.loadProtocols(Number(projectId)),
 
-  
+
   // --- Protocol actions
-    executeProtocol: (
+  executeProtocol: (
     protocolId: string | number,
     protocolClassName: string,
     params: Record<string, unknown>
@@ -82,7 +82,48 @@ const defaultService: ProjectService = {
     protocolId: string,
   ) => api.resetFrom(toId(projectId), toId(protocolId)),
 
+  stopProtocol: (
+    projectId: string,
+    ids: string[],
+  ) => api.stopProtocol(toId(projectId), ids),
+
+  resolveProtocolStartPath: (
+    projectId: Id,
+    protocolId: Id,
+  ) => api.resolveProtocolStartPath(toId(projectId), toId(protocolId)),
+
+  listRemoteDirectory: (
+    projectId: Id,
+    protocolId: Id,
+    path: string,
+  ) => api.listRemoteDirectory(toId(projectId), toId(protocolId), path),
+
+  previewProtocolText: (
+    projectId: Id,
+    protocolId: Id,
+    path: string
+  ) => api.previewProtocolText(toId(projectId), toId(protocolId), path),
+
+  buildProtocolDownloadUrl: (
+    projectId: Id,
+    protocolId: Id,
+    path: string,
+    inline: boolean
+  ) => api.buildProtocolDownloadUrl(toId(projectId), toId(protocolId), path, inline),
+
+  fetchProtocolInlinePreviewBlob: (
+    projectId: Id,
+    protocolId: Id,
+    path: string,
+  ) => api.fetchProtocolInlinePreviewBlob(toId(projectId), toId(protocolId), path),
+
+fetchOutputPreview: (
+    projectId: Id,
+    protocolId: Id,
+    path: string,
+  ) => api.fetchOutputPreview(toId(projectId), toId(protocolId), path),
 
 };
+
 
 export default defaultService;

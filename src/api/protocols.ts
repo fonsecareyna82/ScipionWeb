@@ -1,11 +1,11 @@
 // src/api/protocols.ts
 
 import { BASE_URL } from "@/config";
-import {fetchWithAuth} from "./auth";
+import { fetchWithAuth } from "./auth";
 
-/**
- * Interface for a protocol node
- */
+/* ============================================================
+ * Tipos base de protocolos
+ * ============================================================ */
 export interface ProtocolNode {
   id: string;
   parents: string[];
@@ -22,18 +22,18 @@ export interface ProtocolNode {
   projectId: string;
 }
 
-/**
- * Fetch detailed info of a protocol node by its id
- */
+/* ============================================================
+ * Endpoints de protocolos (lo que ya tenías)
+ * ============================================================ */
+
+/** Fetch detailed info of a protocol node by its id */
 export async function fetchProtocolDetails(protocolId: string): Promise<ProtocolNode> {
   const response = await fetchWithAuth(`${BASE_URL}/projects/protocols/${protocolId}`);
   if (!response.ok) throw new Error("Failed to fetch protocol details");
   return response.json();
 }
 
-/**
- * Update a protocol node's data
- */
+/** Update a protocol node's data */
 export async function updateNode(nodeId: string, data: any): Promise<ProtocolNode> {
   const response = await fetchWithAuth(`${BASE_URL}/protocols/node/${nodeId}`, {
     method: "PUT",
@@ -43,9 +43,7 @@ export async function updateNode(nodeId: string, data: any): Promise<ProtocolNod
   return response.json();
 }
 
-/**
- * Launch a protocol for a specific project by ID
- */
+/** Launch a protocol for a specific project by ID */
 export async function launchProtocol(projectId: string): Promise<any> {
   const response = await fetchWithAuth(`${BASE_URL}/protocols/launch?projectId=${projectId}`, {
     method: "POST",
@@ -54,9 +52,7 @@ export async function launchProtocol(projectId: string): Promise<any> {
   return response.json();
 }
 
-/**
- * Fetch the stdout log of a protocol
- */
+/** Fetch the stdout log of a protocol */
 export async function fetchProtocolLogsStream(
   projectId: string | number,
   protocolId: string | number,
