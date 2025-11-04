@@ -130,6 +130,15 @@ export default function RemoteFileDialog({
       ".tsv",
       ".xml",
       ".star",
+      ".coords",
+      ".cbox",
+      ".mdoc",
+      ".tomostar",
+      ".settings",
+      ".com",
+      ".tlt",
+      ".xf",
+      ".xtilt",
     ];
     return textExts.some((ext) => lowerName.endsWith(ext));
   };
@@ -349,7 +358,7 @@ export default function RemoteFileDialog({
         >
           <DialogTitle className="text-lg font-medium text-gray-700 dark:text-gray-100 dark:bg-gray-800 flex flex-col bg-gray-300">
             <span className="truncate">{title}</span>
-           
+
           </DialogTitle>
         </DialogHeader>
 
@@ -609,19 +618,19 @@ export default function RemoteFileDialog({
                               {(imgMeta.width !== undefined ||
                                 imgMeta.height !== undefined ||
                                 imgMeta.depth !== undefined) && (
-                                <div className="mt-2 flex flex-wrap gap-1">
-                                  <span className="font-medium">
-                                    Dimensions:
-                                  </span>
-                                  <span>
-                                    {imgMeta.width ?? "?"} ×{" "}
-                                    {imgMeta.height ?? "?"}
-                                    {imgMeta.depth !== undefined
-                                      ? ` × ${imgMeta.depth}`
-                                      : ""}
-                                  </span>
-                                </div>
-                              )}
+                                  <div className="mt-2 flex flex-wrap gap-1">
+                                    <span className="font-medium">
+                                      Dimensions:
+                                    </span>
+                                    <span>
+                                      {imgMeta.width ?? "?"} ×{" "}
+                                      {imgMeta.height ?? "?"}
+                                      {imgMeta.depth !== undefined
+                                        ? ` × ${imgMeta.depth}`
+                                        : ""}
+                                    </span>
+                                  </div>
+                                )}
 
                               {imgMeta.voxelSize && (
                                 <div className="mt-2 flex flex-wrap gap-1">
@@ -629,12 +638,12 @@ export default function RemoteFileDialog({
                                     Sampling rate:
                                   </span>
                                   <span>
-                                    {imgMeta.voxelSize[0].toFixed(1)} 
+                                    {imgMeta.voxelSize[0].toFixed(1)}
                                   </span>
                                 </div>
                               )}
 
-{/*
+                              {/*
                               {imgMeta.note && (
                                 <div className="mt-2 italic text-[11px] text-gray-500 dark:text-gray-400 break-words">
                                   {imgMeta.note}
