@@ -164,6 +164,27 @@ const defaultMockService: ProjectService = {
       String(protocolId)
     )}?path=${encodeURIComponent(path)}&inline=${inline ? 1 : 0}`;
   },
+
+  async fetchProtocolInlinePreviewBlob(_projectId, _protocolId, _relPath) {
+    // Mock a small text blob as a placeholder
+    const blob = new Blob([`Mock inline preview for ${_relPath}`], { type: "text/plain" });
+    const meta = {
+      mime: "text/plain",
+      width: undefined,
+      height: undefined,
+      depth: undefined,
+      sizeBytes: blob.size,
+      voxelSize: undefined,
+      note: "mock",
+    };
+    return { blob, meta };
+  },
+  async fetchOutputPreview(_projectId, _protocolId, outputName) {
+    // Just simulate success
+    return { success: true, outputName };
+  },
+
+
 };
 
 
