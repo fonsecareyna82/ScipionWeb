@@ -33,7 +33,6 @@ import ParamRow from "./ParamRow";
 import { fetchProtocolLogsStream } from "@/api/protocols";
 import OutputSelectorDialog from "./outputSelectorDialog";
 import { useProjectService } from "@/ProjectServiceContext";
-import { ArrowRight, DotIcon, FolderOutputIcon } from "lucide-react";
 
 type ProtocolFormProps = {
   data: any;

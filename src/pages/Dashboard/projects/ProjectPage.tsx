@@ -760,15 +760,6 @@ export default function ProjectPage() {
     });
   };
 
-  const shallowEqual = (a: any, b: any) => {
-    if (a === b) return true;
-    if (!a || !b) return false;
-    const aKeys = Object.keys(a);
-    const bKeys = Object.keys(b);
-    if (aKeys.length !== bKeys.length) return false;
-    for (const k of aKeys) if (a[k] !== b[k]) return false;
-    return false;
-  };
 
   const mergeEdges = (newEdges: Edge[]) => {
     const oldEdgesMap = new Map(edges.map((e) => [e.id, e]));

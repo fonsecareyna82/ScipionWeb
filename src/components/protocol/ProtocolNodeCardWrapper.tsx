@@ -37,7 +37,6 @@ export const createStatusNodeWrapper = (
     const graphDirection = getGraphDirection?.() ?? "TB";
 
     const viewMode = getViewMode?.() ?? "hierarchical";
-    const showHandles = viewMode !== "grid";
 
     const handleMouseEnter = () => setHoveredNodeId?.(String(id));
     const handleMouseLeave = () => setHoveredNodeId?.(null);
