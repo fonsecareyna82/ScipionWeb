@@ -195,7 +195,7 @@ export default function ProjectPage() {
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [graphDirection, setGraphDirection] = useState<"TB" | "LR">("TB");
 
-  const [hideGraphDuringCenter, setHideGraphDuringCenter] = useState(false);
+  const [_, setHideGraphDuringCenter] = useState(false);
   const [, startTransition] = useTransition();
   const disablePersistenceRef = useRef(false);
 
@@ -748,7 +748,9 @@ export default function ProjectPage() {
   const canOpenFileDialog = fileDialogOpen && fileDialogCtx.protocolId != null && project?.id != null;
   const pid = fileDialogCtx.protocolId as string | number;
   const projId = project?.id as string | number;
-  const plabel = '( ' + pid + ' ) ' + fileDialogCtx.protocolLabel || pid;
+  const plabel = fileDialogCtx.protocolLabel
+    ? `( ${pid} ) ${fileDialogCtx.protocolLabel}`
+    : String(pid);
 
   const openBrowse = useCallback((
     protocolId: string,
@@ -1291,7 +1293,7 @@ export default function ProjectPage() {
     const unifiedSelectedIds = getUnifiedSelectedIds();
     const nodesSeeded = nodesWithPositions.map((n) => ({ ...n, selected: unifiedSelectedIds.has(n.id) }));
     const recomputedEdgeSet = unifiedSelectedIds.size
-      ? computeEdgesForMode(unifiedSelectedIds, pathSelRef.current ? (pathSelRef.current as any) && (pathSelRef.current as any) && pathSelRef.current ? (pathSelRef.current as any) : 'all' : 'all') // (no tocar)
+      ? computeEdgesForMode(unifiedSelectedIds, pathEdgeModeRef.current)
       : new Set<string>();
     pathSelRef.current.edges = recomputedEdgeSet;
 
@@ -1335,31 +1337,30 @@ export default function ProjectPage() {
   }, [graphDirection, viewMode, project, paintEdgeHighlight, paintPathHighlight, computeEdgesForMode, gridWidth, centerLikeButton, snapViewportToTopLeft]);
 
   /* ------------------------ First-center ONLY once after initial load ------------------------ */
-  // --- First-center ONLY once after initial load (preserve default zoom, no fit) ---
-useEffect(() => {
-  if (!nodesLoadedOnce || !firstLoadRef.current) return;
+  useEffect(() => {
+    if (!nodesLoadedOnce || !firstLoadRef.current) return;
 
-  const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
-  if (!inst) return;
+    const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
+    if (!inst) return;
 
-  let cancelled = false;
+    let cancelled = false;
 
-  (async () => {
-    await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
-    if (cancelled) return;
+    (async () => {
+      await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+      if (cancelled) return;
 
-    if (viewModeRef.current === "grid") {
-      inst.setViewport({ x: 0, y: 0, zoom: GRID_ZOOM });
-      setViewport({ x: 0, y: 0, zoom: GRID_ZOOM });
-    } else if (viewModeRef.current === "hierarchical") {
-      centerLikeButton(nodesRef.current, true, viewportRef.current.zoom);
-    }
+      if (viewModeRef.current === "grid") {
+        inst.setViewport({ x: 0, y: 0, zoom: GRID_ZOOM });
+        setViewport({ x: 0, y: 0, zoom: GRID_ZOOM });
+      } else if (viewModeRef.current === "hierarchical") {
+        centerLikeButton(nodesRef.current, true, viewportRef.current.zoom);
+      }
 
-    firstLoadRef.current = false;
-  })();
+      firstLoadRef.current = false;
+    })();
 
-  return () => { cancelled = true; };
-}, [nodesLoadedOnce, centerLikeButton]);
+    return () => { cancelled = true; };
+  }, [nodesLoadedOnce, centerLikeButton]);
 
 
   /* ============================================================
@@ -1664,7 +1665,7 @@ useEffect(() => {
             (async () => {
               const ok = await waitForNodesReady(expected, 2000);
               if (ok && firstLoadRef.current && viewModeRef.current === "hierarchical") {
-                centerLikeButton(nodesRef.current, false);
+                centerLikeButton(nodesRef.current, true, viewportRef.current.zoom);
                 firstLoadRef.current = false;
               }
             })();
@@ -2068,7 +2069,7 @@ useEffect(() => {
               onClick={() => { setViewMode("hierarchical"); setGraphDirection("LR"); }}
               className={`px-3 py-1 rounded-lg text-xs flex items-center gap-1 ${viewMode === "hierarchical" && graphDirection === "LR" ? "bg-blue-500 text-white" : "bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300"}`}
             >
-              <TreeIcon className="w-4 h-4 transform rotate-270" />
+              <TreeIcon className="w-4 h-4 -rotate-90" />
             </button>
             <button
               title="Grid"
@@ -2121,7 +2122,7 @@ useEffect(() => {
             </button>
           </div>
 
-          <table className="cursor-pointer w-full text-sm border border-gray-300 dark-border-gray-700">
+          <table className="cursor-pointer w-full text-sm border border-gray-300 dark:border-gray-700">
             <thead className="bg-gray-300 dark:bg-gray-800 font-normal">
               <tr>
                 <th className="px-4 py-2 text-left font-normal">Id</th>
@@ -2364,7 +2365,7 @@ useEffect(() => {
             <Input id="rename" value={dlgRename.value} onChange={(e) => setDlgRename((s) => ({ ...s, value: (e.target as any).value }))} placeholder="e.g. motioncorr_02" />
           </div>
           <DialogFooter>
-            <Button onClick={() => setDlgRename({ open: false, id: null, value: "" })} className="rounded-full px-4 py-2 min-w=[140px] font-medium bg-gray-200 hover:bg-gray-300 text-gray-800">
+            <Button onClick={() => setDlgRename({ open: false, id: null, value: "" })} className="rounded-full px-4 py-2 min-w-[140px] font-medium bg-gray-200 hover:bg-gray-300 text-gray-800">
               Cancel
             </Button>
             <Button onClick={submitRename} disabled={!dlgRename.value.trim()} className="rounded-full px-4 py-2 min-w-[140px] font-medium bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-60 disabled:cursor-not-allowed">
