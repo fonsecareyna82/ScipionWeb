@@ -363,3 +363,7 @@
 .header-right {
   flex: 0 0 auto;
 }
+
+[data-view-mode="grid"] .react-flow__handle {
+  display: none !important;
+}

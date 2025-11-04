@@ -79,9 +79,9 @@ type StatusNodeProps = {
     parents?: string[];
     children?: string[];
     __pathVer?: number;
-    /** optional: if present in your data */
     projectId?: string | number;
   };
+
   selectedNodeId?: string;
   hoveredNodeId?: string;
   isHovered?: boolean;
@@ -106,6 +106,13 @@ type StatusNodeProps = {
 
   inPathSelection?: boolean;
   pathSelectionActive?: boolean;
+
+  // Allow wrapper to pass through these without type errors
+  sourcePosition?: Position;
+  targetPosition?: Position;
+
+  // New flag to hide handles in grid mode
+  showHandles?: boolean;
 };
 
 const formatCpuTime = (seconds: number): string => {
@@ -137,6 +144,7 @@ export default function StatusNode({
   onBrowse,
   inPathSelection = false,
   pathSelectionActive = false,
+  showHandles = true,
 }: StatusNodeProps) {
   const [isHovered, setIsHovered] = useState(false);
   const [draggingIdx, setDraggingIdx] = useState<number | null>(null);
@@ -212,7 +220,7 @@ export default function StatusNode({
       clientY: e.clientY,
       ctrlKey: e.ctrlKey,
       metaKey: e.metaKey,
-      view: win,                  
+      view: win,
     };
 
     nodeEl.dispatchEvent(new MouseEvent("pointerdown", opts));
@@ -627,16 +635,20 @@ export default function StatusNode({
           </div>
 
           {/* React Flow handles */}
-          <Handle
-            type="target"
-            position={graphDirection === "TB" ? Position.Top : Position.Left}
-            style={graphDirection === "TB" ? {} : { top: "50%", transform: "translateY(-50%)" }}
-          />
-          <Handle
-            type="source"
-            position={graphDirection === "TB" ? Position.Bottom : Position.Right}
-            style={graphDirection === "TB" ? {} : { top: "50%", transform: "translateY(-50%)" }}
-          />
+          {showHandles && (     
+            <>
+              <Handle
+                type="target"
+                position={graphDirection === "TB" ? Position.Top : Position.Left}
+                style={graphDirection === "TB" ? {} : { top: "50%", transform: "translateY(-50%)" }}
+              />
+              <Handle
+                type="source"
+                position={graphDirection === "TB" ? Position.Bottom : Position.Right}
+                style={graphDirection === "TB" ? {} : { top: "50%", transform: "translateY(-50%)" }}
+              />
+            </>
+          )}
         </div>
       </ContextMenuTrigger>
 

@@ -22,6 +22,7 @@ export const createStatusNodeWrapper = (
   getHoveredNodeId: () => string | undefined,
   setHoveredNodeId?: React.Dispatch<React.SetStateAction<string | null>>,
   getGraphDirection?: () => "TB" | "LR",
+  getViewMode?: () => "hierarchical" | "grid" | "table",
   getNodeActions?: () => NodeActions,
   getPathSelectionNodeIds?: () => Set<string>,
   onBrowse?: (protocolId: string, projectId?: string | number, protocolLabel?: string) => void
@@ -34,6 +35,9 @@ export const createStatusNodeWrapper = (
     const selectedNodeId = getSelectedNodeId?.();
     const hoveredNodeId = getHoveredNodeId?.();
     const graphDirection = getGraphDirection?.() ?? "TB";
+
+    const viewMode = getViewMode?.() ?? "hierarchical";
+    const showHandles = viewMode !== "grid";
 
     const handleMouseEnter = () => setHoveredNodeId?.(String(id));
     const handleMouseLeave = () => setHoveredNodeId?.(null);
@@ -73,6 +77,7 @@ export const createStatusNodeWrapper = (
           inPathSelection={inPathSelection}
           pathSelectionActive={pathSelectionActive}
           onBrowse={onBrowse}
+          showHandles={viewMode !== "grid"} 
         />
       </div>
     );

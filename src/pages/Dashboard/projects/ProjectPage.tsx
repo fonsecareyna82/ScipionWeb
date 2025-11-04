@@ -724,6 +724,7 @@ export default function ProjectPage() {
         () => hoveredIdRef.current ?? undefined,
         setHoveredNodeId,
         () => graphDirRef.current,
+        () => viewMode,
         () => nodeActionsRef.current,
         () => getSelectedPathIds(),
         (protocolId: string, projectId?: string | number, protocolLabel?: string) =>
@@ -1901,7 +1902,7 @@ export default function ProjectPage() {
 
       // Space / Enter -> Edit (open protocol form)
       if ((e.key === " " || e.key === "Enter" || e.code === "Space" || e.key === " " || e.key === "Spacebar") && selectedId) {
-        e.preventDefault(); 
+        e.preventDefault();
         handleNodeDoubleClick({ id: selectedId });
         return;
       }
@@ -2188,7 +2189,10 @@ export default function ProjectPage() {
         <div
           ref={flowWrapperRef}
           className="absolute inset-0 border transition-opacity"
-          style={{ width: '100%', height: '100%',
+          data-view-mode={viewMode}  
+          style={{
+            width: "100%",
+            height: "100%",
             opacity: viewMode !== "table" ? (hideGraphDuringCenter ? 0 : 1) : 0,
             pointerEvents: viewMode !== "table" ? "auto" : "none",
             zIndex: 20,
@@ -2303,6 +2307,8 @@ export default function ProjectPage() {
               selectionOnDrag
               style={{ width: "100%", height: "100%" }}
               proOptions={{ hideAttribution: true }}
+              nodesConnectable={viewMode !== "grid"}   // disable connecting in grid
+              connectOnClick={viewMode !== "grid"}     // disable click-to-connect in grid
             >
               <Background />
             </ReactFlow>
@@ -2337,7 +2343,8 @@ export default function ProjectPage() {
 
                   closeFormByKey(f.key);
                 }}
-                onExecuted={() => {scheduleDoubleRefresh(5000, true);
+                onExecuted={() => {
+                  scheduleDoubleRefresh(5000, true);
                 }}
               />
             </div>
