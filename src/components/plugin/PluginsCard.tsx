@@ -13,20 +13,20 @@ export default function PluginCard(plugin: Plugin) {
   };
 
   return (
-    
+
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4, ease: "easeOut" }}
+      transition={{ duration: 0.5, ease: "easeOut" }}
     >
       <Card
         onClick={handleNavigate}
         className={`
     group relative flex flex-col rounded-2xl cursor-pointer w-80
-    transition hover:scale-[1.02] hover:shadow-xl
+    transition hover:scale-[1.01] hover:shadow-xl
     bg-gradient-to-br from-gray-100 via-gray-200 to-gray-300 dark:from-gray-800 dark:via-gray-700 dark:to-gray-900
     border border-transparent hover:border-blue-400
-    ${plugin.installed && plugin.toUpdate ? "border-l-4 border-[#B22222]" : ""}
+    ${plugin.installed && plugin.toUpdate ? " border-[#B22222]" : ""}
   `}
       >
         {/* Header */}

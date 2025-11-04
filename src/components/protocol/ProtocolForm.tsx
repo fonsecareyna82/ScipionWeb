@@ -1,5 +1,5 @@
 // src/components/ProtocolForm.tsx
-import { useState, useEffect, useCallback, JSX, useRef } from "react";
+import { useState, useEffect, useCallback, JSX, useRef, useMemo } from "react";
 import {
   Tabs,
   Tab,
@@ -27,21 +27,30 @@ import {
   ExecuteIcon,
   SaveIcon,
 } from "../../icons";
-import { executeProtocol, saveProtocol } from "../../api/projects";
 import WrapWithDrop from "./WrapWithDrop";
 import MultiParamRow from "./MultiParamRow";
 import ParamRow from "./ParamRow";
 import { fetchProtocolLogsStream } from "@/api/protocols";
 import OutputSelectorDialog from "./outputSelectorDialog";
+import { useProjectService } from "@/ProjectServiceContext";
 
 type ProtocolFormProps = {
   data: any;
   projectProtocols: any;
   onClose: () => void;
   onExecuted?: () => void;
+  /** Presentation variant: "drawer" (default) slides in from the right; "docked" fills its parent panel. */
+  variant?: "drawer" | "docked";
 };
 
-export default function ProtocolForm({ data, projectProtocols = [], onClose, onExecuted, }: ProtocolFormProps) {
+export default function ProtocolForm({
+  data,
+  projectProtocols = [],
+  onClose,
+  onExecuted,
+  variant = "drawer",
+}: ProtocolFormProps) {
+  const svc = useProjectService();
   const [topTab, setTopTab] = useState(0);
   const [bottomTab, setBottomTab] = useState(0);
   const [sectionTab, setSectionTab] = useState(0);
@@ -85,9 +94,80 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose, onE
   // Tracks last committed label for inputType to detect user changes
   const prevSelectedInputTypeRef = useRef<string | null>(null);
 
-  // Call this instead of onClose() directly to play exit animation
+  // --------------------------------------------
+  // Outputs tab state
+  // --------------------------------------------
+  const [selectedOutputIdx, setSelectedOutputIdx] = useState<number | null>(null);
+
+  // Preview panel state
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [previewData, setPreviewData] = useState<any>(null);
+
+  // Normalize outputs from data.outputs
+  const normalizedOutputs = useMemo(() => {
+    const arr = Array.isArray(data?.outputs) ? data.outputs : [];
+    return arr.map((entry: any) => {
+      const [name, payload] = Object.entries(entry)[0] as [string, any];
+      const infoText = payload?.info ?? payload?._class ?? "";
+      return {
+        name,
+        infoText, // ej: "SetOfFSCs (5 items)"
+        raw: payload,
+      };
+    });
+  }, [data?.outputs]);
+
+  // Active Output
+  const activeOutput = useMemo(() => {
+    if (
+      selectedOutputIdx == null ||
+      selectedOutputIdx < 0 ||
+      selectedOutputIdx >= normalizedOutputs.length
+    ) {
+      return null;
+    }
+    return normalizedOutputs[selectedOutputIdx];
+  }, [selectedOutputIdx, normalizedOutputs]);
+
+  // Requests a preview from the backend when activeOutput changes
+  useEffect(() => {
+    if (!activeOutput) {
+      setPreviewData(null);
+      setPreviewError(null);
+      setPreviewLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setPreviewLoading(true);
+    setPreviewError(null);
+
+    (async () => {
+      try {
+        const res = await svc.fetchOutputPreview(data.projectId, data?.id, activeOutput.name);
+        if (cancelled) return;
+        setPreviewData(res ?? null);
+      } catch (err: any) {
+        if (cancelled) return;
+        setPreviewError(err?.message || "Failed to load preview");
+        setPreviewData(null);
+      } finally {
+        if (!cancelled) {
+          setPreviewLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeOutput, data?.id]);
+
+  // Use this instead of onClose() directly to play exit animation
   const requestClose = () => setIsClosing(true);
   const handleAnimationEnd = () => {
+    // Only propagate close to parent after the exit animation completes
     if (isClosing) onClose();
   };
 
@@ -131,7 +211,7 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose, onE
     return state.editableValue ?? "";
   };
 
-  // ---------- ExpertLevel helpers ----------
+  // ---------- Expert-level helpers ----------
   // Find the 'expertLevel' EnumParam (usually in "General" section)
   const findGeneralExpertLocator = useCallback(() => {
     if (!data?.expertLevel || !Array.isArray(data?.definition)) return null;
@@ -149,7 +229,7 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose, onE
     return null;
   }, [data]);
 
-  // Read current general expert level (0=Normal, 1=Advanced)
+  // 0 = Normal, 1 = Advanced
   const generalExpertLevel = (() => {
     const loc = findGeneralExpertLocator();
     if (!loc) return null;
@@ -157,7 +237,7 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose, onE
     return typeof v === "number" ? v : Number(v) || 0;
   })();
 
-  // Simple condition evaluator used to show/hide params
+  // Conditions for showing/hiding params
   const evalAtom = (sectionIdx: number, atom: string): boolean => {
     let a = atom.replace(/[()]/g, "").trim();
     let neg = false;
@@ -267,7 +347,7 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose, onE
   }
 
   // --------------------------------------------
-  // Load initial params and details (no side-effects on inputSets)
+  // Load initial parameters into protocolDetails
   // --------------------------------------------
   useEffect(() => {
     if (!data) {
@@ -333,120 +413,117 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose, onE
   // Incremental log polling 
   // --------------------------------------------
   useEffect(() => {
-  // Clear any previous interval before starting a new polling cycle
-  if (pollRef.current) {
-    clearInterval(pollRef.current);
-    pollRef.current = null;
-  }
-
-  // Minimal conditions to enable polling
-  if (topTab !== 4 || !data?.projectId || !data?.id) return;
-
-  let cancelled = false;
-  idleStreakRef.current = 0;
-
-  // 1) Initial load from offset 0 (stdout/stderr/schedule)
-  (async () => {
-    try {
-      const res: any = await fetchProtocolLogsStream(data.projectId, data.id, 0, 0, 0);
-      if (cancelled) return;
-
-      // Keep field names consistent: scheduleLog / scheduleOffset
-      setLogs(res.stdoutLog ?? "");
-      setErrorLogs(res.stderrLog ?? "");
-      setScheduleLogs(res.scheduleLog ?? "");
-
-      // Seed offsets: prefer server offsets; otherwise fallback to current chunk length
-      offsetRef.current = typeof res.stdoutOffset === "number"
-        ? res.stdoutOffset
-        : (typeof res.stdoutLog === "string" ? res.stdoutLog.length : 0);
-
-      errorOffsetRef.current = typeof res.stderrOffset === "number"
-        ? res.stderrOffset
-        : (typeof res.stderrLog === "string" ? res.stderrLog.length : 0);
-
-      scheduleOffsetRef.current = typeof res.scheduleOffset === "number"
-        ? res.scheduleOffset
-        : (typeof res.scheduleLog === "string" ? res.scheduleLog.length : 0);
-    } catch (err: any) {
-      if (!cancelled) setLogsError(err.message || "Failed to load logs");
-    }
-  })();
-
-  // 2) Incremental polling every 2s
-  pollRef.current = setInterval(async () => {
-    try {
-      const res: any = await fetchProtocolLogsStream(
-        data.projectId,
-        data.id,
-        offsetRef.current || 0,
-        errorOffsetRef.current || 0,
-        scheduleOffsetRef.current || 0
-      );
-      if (cancelled) return;
-
-      let gotNew = false;
-
-      // Consider "new data" only when string length > 0
-      const hasStdout = typeof res.stdoutLog === "string" && res.stdoutLog.length > 0;
-      const hasStderr = typeof res.stderrLog === "string" && res.stderrLog.length > 0;
-      const hasSched  = typeof res.scheduleLog === "string" && res.scheduleLog.length > 0;
-
-      // Advance offset only if server offset is a number and strictly increases
-      if (hasStdout && typeof res.stdoutOffset === "number" && res.stdoutOffset > offsetRef.current) {
-        setLogs((prev) => prev + res.stdoutLog);
-        offsetRef.current = res.stdoutOffset;
-        gotNew = true;
-      }
-
-      if (hasStderr && typeof res.stderrOffset === "number" && res.stderrOffset > errorOffsetRef.current) {
-        setErrorLogs((prev) => prev + res.stderrLog);
-        errorOffsetRef.current = res.stderrOffset;
-        gotNew = true;
-      }
-
-      if (hasSched && typeof res.scheduleOffset === "number" && res.scheduleOffset > scheduleOffsetRef.current) {
-        setScheduleLogs((prev) => prev + res.scheduleLog);
-        scheduleOffsetRef.current = res.scheduleOffset;
-        gotNew = true;
-      }
-
-      // Stop polling after 2 idle cycles if status is terminal
-      if (isTerminalStatus(protocolDetails.status)) {
-        idleStreakRef.current = gotNew ? 0 : idleStreakRef.current + 1;
-        if (idleStreakRef.current >= 2 && pollRef.current) {
-          clearInterval(pollRef.current);
-          pollRef.current = null;
-        }
-      } else {
-        // Non-terminal: keep polling; reset idle streak if we got something
-        if (gotNew) idleStreakRef.current = 0;
-      }
-    } catch (err: any) {
-      if (!cancelled) setLogsError(err.message || "Failed to load logs");
-    }
-  }, 2000);
-
-  // Cleanup on tab exit or unmount
-  return () => {
-    cancelled = true;
+    // Clear any previous interval before starting a new polling cycle
     if (pollRef.current) {
       clearInterval(pollRef.current);
       pollRef.current = null;
     }
-  };
-}, [topTab, data?.projectId, data?.id, protocolDetails.status]);
 
+    // Minimal conditions to enable polling
+    if (topTab !== 4 || !data?.projectId || !data?.id) return;
 
-  // --------------------------------------------
-  // Scroll on new logs
-  // --------------------------------------------
+    let cancelled = false;
+    idleStreakRef.current = 0;
+
+    // 1) Initial load from offset 0 (stdout/stderr/schedule)
+    (async () => {
+      try {
+        const res: any = await fetchProtocolLogsStream(data.projectId, data.id, 0, 0, 0);
+        if (cancelled) return;
+
+        // Keep field names consistent: scheduleLog / scheduleOffset
+        setLogs(res.stdoutLog ?? "");
+        setErrorLogs(res.stderrLog ?? "");
+        setScheduleLogs(res.scheduleLog ?? "");
+
+        // Seed offsets: prefer server offsets; otherwise fallback to current chunk length
+        offsetRef.current = typeof res.stdoutOffset === "number"
+          ? res.stdoutOffset
+          : (typeof res.stdoutLog === "string" ? res.stdoutLog.length : 0);
+
+        errorOffsetRef.current = typeof res.stderrOffset === "number"
+          ? res.stderrOffset
+          : (typeof res.stderrLog === "string" ? res.stderrLog.length : 0);
+
+        scheduleOffsetRef.current = typeof res.scheduleOffset === "number"
+          ? res.scheduleOffset
+          : (typeof res.scheduleLog === "string" ? res.scheduleLog.length : 0);
+      } catch (err: any) {
+        if (!cancelled) setLogsError(err.message || "Failed to load logs");
+      }
+    })();
+
+    // 2) Incremental polling every 2s
+    pollRef.current = setInterval(async () => {
+      try {
+        const res: any = await fetchProtocolLogsStream(
+          data.projectId,
+          data.id,
+          offsetRef.current || 0,
+          errorOffsetRef.current || 0,
+          scheduleOffsetRef.current || 0
+        );
+        if (cancelled) return;
+
+        let gotNew = false;
+
+        // Consider "new data" only when string length > 0
+        const hasStdout = typeof res.stdoutLog === "string" && res.stdoutLog.length > 0;
+        const hasStderr = typeof res.stderrLog === "string" && res.stderrLog.length > 0;
+        const hasSched = typeof res.scheduleLog === "string" && res.scheduleLog.length > 0;
+
+        // Advance offset only if server offset is a number and strictly increases
+        if (hasStdout && typeof res.stdoutOffset === "number" && res.stdoutOffset > offsetRef.current) {
+          setLogs((prev) => prev + res.stdoutLog);
+          offsetRef.current = res.stdoutOffset;
+          gotNew = true;
+        }
+
+        if (hasStderr && typeof res.stderrOffset === "number" && res.stderrOffset > errorOffsetRef.current) {
+          setErrorLogs((prev) => prev + res.stderrLog);
+          errorOffsetRef.current = res.stderrOffset;
+          gotNew = true;
+        }
+
+        if (hasSched && typeof res.scheduleOffset === "number" && res.scheduleOffset > scheduleOffsetRef.current) {
+          setScheduleLogs((prev) => prev + res.scheduleLog);
+          scheduleOffsetRef.current = res.scheduleOffset;
+          gotNew = true;
+        }
+
+        // Stop polling after 2 idle cycles if status is terminal
+        if (isTerminalStatus(protocolDetails.status)) {
+          idleStreakRef.current = gotNew ? 0 : idleStreakRef.current + 1;
+          if (idleStreakRef.current >= 2 && pollRef.current) {
+            clearInterval(pollRef.current);
+            pollRef.current = null;
+          }
+        } else {
+          // Non-terminal: keep polling; reset idle streak if we got something
+          if (gotNew) idleStreakRef.current = 0;
+        }
+      } catch (err: any) {
+        if (!cancelled) setLogsError(err.message || "Failed to load logs");
+      }
+    }, 2000);
+
+    // Cleanup on tab exit or unmount
+    return () => {
+      cancelled = true;
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+    };
+  }, [topTab, data?.projectId, data?.id, protocolDetails.status]);
+
+  // Autoscroll logs
   useEffect(() => {
     if (!containerRef.current) return;
     containerRef.current.scrollTop = containerRef.current.scrollHeight;
   }, [logs]);
 
-  // Autoscroll on new errores logs
+  // Autoscroll on new error logs
   useEffect(() => {
     if (!errorContainerRef.current) return;
     errorContainerRef.current.scrollTop = errorContainerRef.current.scrollHeight;
@@ -459,10 +536,7 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose, onE
   }, [scheduleLogs]);
 
   // --------------------------------------------
-  // Live expected-class reader: ignore param meta-classes; dedupe
-  // Returns:
-  //  - string/string[] when there is a class restriction
-  //  - null when there is NO restriction (e.g., All)
+  // Live expected-class reader
   // --------------------------------------------
   const getExpectedClass = (def: any): string | string[] | null => {
     if (!def) return null;
@@ -502,7 +576,7 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose, onE
     return filtered.length === 1 ? filtered[0] : filtered;
   };
 
-  // Gather all outputs across project protocols
+  // Recolecta outputs de todos los protocolos (para el selector de inputs)
   const gatherAllOutputs = useCallback((): {
     outputs: any[];
     dependencyMap: Record<string, string[]>;
@@ -628,18 +702,16 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose, onE
   }, [data?.protocolClassName, protocolDetails.params]);
 
   // --------------------------------------------
-  // Filter outputs for a given paramKey using LIVE constraints
-  //  - Always exclude current protocol and its descendants
-  //  - When expected === null (All) => return all SetOf* types
+  // Filter outputs for a given paramKey
   // --------------------------------------------
   const getFilteredOutputsForKey = (paramKey: string) => {
     const liveParam = protocolDetails.params?.[paramKey];
     const expected = getExpectedClass(liveParam);
 
     const { outputs, dependencyMap } = gatherAllOutputs();
-    const currentId = String(data.id);
+    const currentId = String(data?.id ?? "");
 
-    // Build exclusion set (self + descendants)
+    // bloques a excluir: este protocolo y descendientes
     const blocked = new Set<string>([currentId]);
     const stack = [currentId];
     while (stack.length > 0) {
@@ -681,7 +753,7 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose, onE
 
     Object.entries(protocolDetails.params || {}).forEach(([k, pRaw]: any) => {
       const keyParts = k.split("_");
-      keyParts.shift(); // remove section index
+      keyParts.shift();
       const newKey = keyParts.join("_");
 
       const p = pRaw ?? {};
@@ -772,9 +844,9 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose, onE
     setValidationErrors([]);
 
     try {
-      const protocolId = data.id ?? "";
+      const protocolId = data?.id ?? "";
       const serialized = getSerializedParams();
-      await executeProtocol(protocolId, data.protocolClassName, serialized);
+      await svc.executeProtocol(protocolId, data?.protocolClassName, serialized);
       onExecuted?.();
       requestClose();
     } catch (err: any) {
@@ -797,9 +869,9 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose, onE
     setExecLoading(true);
     setExecError(null);
     try {
-      const protocolId = data.id ?? "";
+      const protocolId = data?.id ?? "";
       const serialized = getSerializedParams();
-      await saveProtocol(protocolId, data.protocolClassName, serialized);
+      await svc.saveProtocol(protocolId, data?.protocolClassName, serialized);
       requestClose();
     } catch (err: any) {
       setExecError(err.message || "Error saving the protocol");
@@ -809,7 +881,7 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose, onE
   };
 
   // --------------------------------------------
-  // renderParam - build UI for each parameter
+  // renderParam - para cada parámetro
   // --------------------------------------------
   const renderParam = useCallback(
     (paramObj: any, sectionIdx: number, rowIndex = 0): JSX.Element | null => {
@@ -825,12 +897,12 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose, onE
         !!expertLocator && expertLocator.sectionIdx === sectionIdx && name === "expertLevel";
 
       if (
-        data?.expertLevel &&            // protocol supports expert mode
-        generalExpertLevel === 0 &&     // currently in Normal
-        def?.expertLevel === 1 &&       // param is Advanced
-        !isExpertSelector               // but don't hide the selector itself
+        data?.expertLevel &&
+        generalExpertLevel === 0 &&
+        def?.expertLevel === 1 &&
+        !isExpertSelector
       ) {
-        return null; // skip rendering advanced field/group in Normal
+        return null;
       }
 
       // Optional advanced indicator
@@ -866,7 +938,7 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose, onE
         </Box>
       );
 
-      // ============ MultiPointerParam ============
+      // MultiPointerParam
       if (def._class === "MultiPointerParam") {
         const items = Array.isArray(value) ? value : def.default ?? [];
 
@@ -896,7 +968,7 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose, onE
           const draggedClass = norm(dragged._class);
 
           const matches =
-            expected === null // null => "All" (no filter)
+            expected === null
               ? true
               : Array.isArray(expected)
                 ? expected.some((e) => norm(e) === draggedClass)
@@ -983,7 +1055,7 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose, onE
         );
       }
 
-      // ============ PointerParam ============
+      // PointerParam
       if (def._class === "PointerParam") {
         const onClear = () =>
           setProtocolDetails((prev: any) => ({
@@ -999,6 +1071,8 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose, onE
             <TextField
               size="small"
               value={value ?? def.default ?? ""}
+              InputProps={{ readOnly: true }}
+              onClick={() => handleOpenFind(key)}
               onChange={(e) =>
                 setProtocolDetails((prev: any) => ({
                   ...prev,
@@ -1012,7 +1086,17 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose, onE
                   },
                 }))
               }
-              sx={{ minWidth: 300, "& .MuiInputBase-input": { fontSize: "0.8rem" } }}
+              sx={{
+                minWidth: 300,
+                "& .MuiInputBase-input": {
+                  fontSize: "0.8rem",
+                  userSelect: "none",
+                  cursor: "pointer",
+                },
+                "& .MuiInputBase-input:active": {
+                  cursor: "grabbing",
+                },
+              }}
             />
           </Box>
         );
@@ -1052,7 +1136,7 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose, onE
         );
       }
 
-      // ============ EnumParam ============
+      // EnumParam
       if (def._class === "EnumParam" && Array.isArray(def.choices)) {
         let sel = value ?? def.default ?? "";
         if (typeof sel === "number") sel = def.choices[sel] ?? "";
@@ -1117,7 +1201,7 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose, onE
         );
       }
 
-      // ============ Group ============
+      // Group
       if (def._class === "Group" && Array.isArray(def.children)) {
         const groupKey = `${key}_group`;
         const expanded = expandedGroups[groupKey] ?? true;
@@ -1166,7 +1250,7 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose, onE
         );
       }
 
-      // ============ BooleanParam ============
+      // BooleanParam
       if (def._class === "BooleanParam") {
         const checked =
           value !== undefined
@@ -1204,7 +1288,7 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose, onE
         );
       }
 
-      // ============ Default TextField ============
+      // Default text param
       const defaultControl = (
         <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
           {advancedSlot}
@@ -1249,8 +1333,6 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose, onE
       findGeneralExpertLocator
     ]
   );
-
-  if (!data || !protocolDetails.params) return null;
 
   // --------------------------------------------
   // Global state for OutputSelectorDialog
@@ -1307,15 +1389,196 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose, onE
   };
 
   // --------------------------------------------
+  // Preview content renderer (right panel)
+  // --------------------------------------------
+  const previewContent = useMemo(() => {
+    if (!activeOutput) {
+      return (
+        <Typography
+          variant="body2"
+          sx={{
+            color: "#6b7280",
+            fontSize: "0.8rem",
+            textAlign: "center",
+            py: 4,
+          }}
+        >
+          Select an output on the left to preview it here.
+        </Typography>
+      );
+    }
+
+    if (previewLoading) {
+      return (
+        <Box
+          sx={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 1,
+          }}
+        >
+          <CircularProgress size={20} />
+          <Typography
+            variant="caption"
+            sx={{ fontSize: "0.75rem", color: "#4b5563" }}
+          >
+            Loading preview...
+          </Typography>
+        </Box>
+      );
+    }
+
+    if (previewError) {
+      return (
+        <Typography
+          variant="body2"
+          sx={{
+            color: "#dc2626",
+            fontSize: "0.75rem",
+            textAlign: "center",
+            whiteSpace: "pre-wrap",
+            wordBreak: "break-word",
+          }}
+        >
+          {previewError}
+        </Typography>
+      );
+    }
+
+    // If the API returned an image
+    if (previewData && previewData.imageUrl) {
+      return (
+        <Box
+          sx={{
+            maxWidth: "100%",
+            maxHeight: "100%",
+            borderRadius: 2,
+            overflow: "hidden",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
+            border: "1px solid #e5e7eb",
+            backgroundColor: "#fff",
+          }}
+        >
+          <img
+            src={previewData.imageUrl}
+            alt={activeOutput.name}
+            style={{
+              display: "block",
+              width: "100%",
+              height: "auto",
+              objectFit: "contain",
+            }}
+          />
+        </Box>
+      );
+    }
+
+    // If the API returned text
+    if (previewData && previewData.text) {
+      return (
+        <Box
+          sx={{
+            p: 2,
+            borderRadius: 2,
+            backgroundColor: "#fff",
+            border: "1px solid #e5e7eb",
+            boxShadow: "0 2px 4px rgba(0,0,0,0.05)",
+            maxWidth: "100%",
+            maxHeight: "100%",
+            overflowY: "auto",
+            whiteSpace: "pre-wrap",
+            wordBreak: "break-word",
+            fontSize: "0.75rem",
+            lineHeight: 1.4,
+            color: "#111827",
+          }}
+        >
+          {previewData.text}
+        </Box>
+      );
+    }
+
+    // Generic fallback if previewData exists but is not image/text
+    if (previewData) {
+      return (
+        <Box
+          sx={{
+            width: "100%",
+            maxHeight: "100%",
+            overflowY: "auto",
+            border: "2px dashed #e5e7eb",
+            borderRadius: 2,
+            backgroundColor: "#fff",
+            textAlign: "left",
+            p: 2,
+            fontSize: "0.7rem",
+            lineHeight: 1.4,
+            fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+            color: "#1f2937",
+            wordBreak: "break-word",
+            whiteSpace: "pre-wrap",
+          }}
+        >
+          {JSON.stringify(previewData, null, 2)}
+        </Box>
+      );
+    }
+
+    return (
+      <Box
+        sx={{
+          width: "100%",
+          minHeight: "100%",
+          maxHeight: "100%",
+          border: "2px dashed #e5e7eb",
+          borderRadius: 2,
+          backgroundColor: "#fff",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          textAlign: "center",
+          px: 2,
+          py: 3,
+          color: "#6b7280",
+          fontSize: "0.8rem",
+          lineHeight: 1.4,
+          wordBreak: "break-word",
+        }}
+      >
+        <Typography
+          variant="body2"
+          sx={{
+            color: "#4b5563",
+            fontSize: "0.75rem",
+            mb: 1,
+            lineHeight: 1.4,
+          }}
+        >
+          Preview for "{activeOutput.name}".
+        </Typography>
+      </Box>
+    );
+  }, [activeOutput, previewLoading, previewError, previewData]);
+
+  const safeDefinition = Array.isArray(data?.definition) ? data.definition : [];
+
+  // --------------------------------------------
   // JSX Layout
   // --------------------------------------------
+  const presentationClass = (variant === "docked" ? "as-docked" : "");
   return (
-    <div className={`protocol-form ${isClosing ? "slide-out-right" : "slide-in-right"}`} onAnimationEnd={handleAnimationEnd}>
+    <div
+      className={`protocol-form ${presentationClass} ${isClosing ? "slide-out-right" : "slide-in-right"}`}
+      onAnimationEnd={handleAnimationEnd}
+    >
       {/* HEADER */}
       <div className="form-header">
         <div className="form-title-wrapper">
           <Box className="inline-flex items-center justify-center rounded-full bg-green-500 text-black text-xs font-bold px-2 py-1">
-            {data.id}
+            {data?.id}
           </Box>
           <h2>{protocolDetails.label}</h2>
           <span className="node-status-pill" style={{ backgroundColor: protocolDetails.color, color: "black" }}>
@@ -1385,18 +1648,204 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose, onE
                     "& .MuiTab-root": { textTransform: "none", fontSize: "0.8rem", fontWeight: 500 },
                   }}
                 >
-                  {data.definition.map((section: any, idx: number) => (
+                  {safeDefinition.map((section: any, idx: number) => (
                     <Tab key={idx} label={section.name || `Section ${idx + 1}`} />
                   ))}
                 </Tabs>
                 <Box>
-                  {data.definition[sectionTab]?.params?.map((paramObj: any, idx: number) =>
+                  {safeDefinition[sectionTab]?.params?.map((paramObj: any, idx: number) =>
                     renderParam(paramObj, sectionTab, idx)
                   )}
                 </Box>
               </>
             )}
-            {topTab === 1 && <Typography variant="body1">Outputs content goes here.</Typography>}
+
+            {topTab === 1 && (
+              <Box
+                sx={{
+                  display: "flex",
+                  flexDirection: "row",
+                  gap: 2,
+                  minHeight: "480px",
+                }}
+              >
+                {/* Left Panel Outputs */}
+                <Box
+                  sx={{
+                    flex: "0 0 45%",
+                    maxWidth: "44%",
+                    minWidth: 0,
+                    backgroundColor: "#fff",
+                    borderRadius: 2,
+                    boxShadow: "0px 2px 6px rgba(0,0,0,0.1)",
+                    border: "1px solid #e5e7eb",
+                    display: "flex",
+                    flexDirection: "column",
+                    overflow: "hidden",
+                  }}
+                >
+                  <Box
+                    sx={{
+                      px: 1.5,
+                      py: 1,
+                      borderBottom: "1px solid #e5e7eb",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <Typography
+                      variant="subtitle2"
+                      sx={{ fontWeight: 600, fontSize: "0.8rem", color: "#111827" }}
+                    >
+                      Outputs
+                    </Typography>
+                    <Typography
+                      variant="caption"
+                      sx={{ color: "#6b7280", fontSize: "0.7rem" }}
+                    >
+                      {normalizedOutputs.length} items
+                    </Typography>
+                  </Box>
+
+                  <Box
+                    sx={{
+                      flex: 1,
+                      overflowY: "auto",
+                      maxHeight: "50vh",
+                      p: 1,
+                    }}
+                  >
+                    {normalizedOutputs.length === 0 ? (
+                      <Typography
+                        variant="body2"
+                        sx={{
+                          color: "#6b7280",
+                          fontSize: "0.8rem",
+                          textAlign: "center",
+                          py: 4,
+                        }}
+                      >
+                        No outputs for this protocol.
+                      </Typography>
+                    ) : (
+                      normalizedOutputs.map((o: any, idx: number) => (
+                        <Box
+                          key={idx}
+                          onClick={() => setSelectedOutputIdx(idx)}
+                          sx={{
+                            cursor: "pointer",
+                            userSelect: "none",
+                            borderRadius: 1.5,
+                            border: "1px solid transparent",
+                            px: 1,
+                            py: 1,
+                            mb: 1,
+                            backgroundColor:
+                              selectedOutputIdx === idx ? "#eef2ff" : "transparent",
+                            borderColor:
+                              selectedOutputIdx === idx ? "#6366f1" : "transparent",
+                            "&:hover": {
+                              backgroundColor:
+                                selectedOutputIdx === idx ? "#eef2ff" : "#f9fafb",
+                              borderColor:
+                                selectedOutputIdx === idx ? "#6366f1" : "#e5e7eb",
+                            },
+                          }}
+                        >
+                          <Typography
+                            variant="body2"
+                            sx={{
+                              color: "#111827",
+                              fontSize: "0.7rem",
+                              fontWeight: selectedOutputIdx === idx ? 600 : 500,
+                              lineHeight: 1.4,
+                              wordBreak: "break-word",
+                              whiteSpace: "pre-wrap",
+                            }}
+                          >
+                            {o.infoText}
+                          </Typography>
+                        </Box>
+                      ))
+                    )}
+                  </Box>
+                </Box>
+
+                {/* Right panel PREVIEW */}
+                <Box
+                  sx={{
+                    flex: "1 1 auto",
+                    minWidth: 0,
+                    backgroundColor: "#fff",
+                    borderRadius: 2,
+                    boxShadow: "0px 2px 6px rgba(0,0,0,0.1)",
+                    border: "1px solid #e5e7eb",
+                    display: "flex",
+                    flexDirection: "column",
+                    overflow: "hidden",
+                  }}
+                >
+                  <Box
+                    sx={{
+                      px: 1.5,
+                      py: 1,
+                      borderBottom: "1px solid #e5e7eb",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <Typography
+                      variant="subtitle2"
+                      sx={{ fontWeight: 600, fontSize: "0.8rem", color: "#111827" }}
+                    >
+                      Preview
+                    </Typography>
+                    {activeOutput ? (
+                      <Typography
+                        variant="caption"
+                        sx={{
+                          color: "#6b7280",
+                          fontSize: "0.7rem",
+                          textAlign: "right",
+                          maxWidth: "60%",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                        title={`${activeOutput.name}: ${activeOutput.infoText}`}
+                      >
+                        {activeOutput.name}: {activeOutput.infoText}
+                      </Typography>
+                    ) : (
+                      <Typography
+                        variant="caption"
+                        sx={{ color: "#6b7280", fontSize: "0.7rem" }}
+                      >
+                        No selection
+                      </Typography>
+                    )}
+                  </Box>
+
+                  <Box
+                    sx={{
+                      flex: 1,
+                      overflowY: "auto",
+                      maxHeight: "50vh",
+                      p: 2,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: "#f9fafb",
+                    }}
+                  >
+                    {previewContent}
+                  </Box>
+                </Box>
+              </Box>
+            )}
+
             {topTab === 2 && <Typography variant="body1">Summary content goes here.</Typography>}
             {topTab === 3 && <Typography variant="body1">Methods content goes here.</Typography>}
             {topTab === 4 && (
@@ -1420,11 +1869,13 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose, onE
                       sx={{
                         backgroundColor: "#f5f5f5",
                         color: "black",
+                        borderColor: "gray",
                         fontFamily: "monospace",
-                        fontSize: "0.85rem",
+                        fontSize: "0.80rem",
                         p: 2,
                         borderRadius: 1,
-                        maxHeight: "540px",
+                        maxHeight: "420px",
+                        height: "420px",
                         overflowY: "auto",
                         whiteSpace: "pre",
                       }}
@@ -1451,12 +1902,16 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose, onE
                       ref={errorContainerRef}
                       sx={{
                         backgroundColor: "#f5f5f5",
+                        color: "black",
+                        borderColor: "gray",
                         fontFamily: "monospace",
-                        fontSize: "0.85rem",
+                        fontSize: "0.80rem",
                         p: 2,
                         borderRadius: 1,
-                        maxHeight: "540px",
+                        maxHeight: "420px",
+                        height: "420px",
                         overflowY: "auto",
+                        whiteSpace: "pre",
                       }}
                     >
                       {errorLogs ? (
@@ -1480,12 +1935,16 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose, onE
                       ref={scheduleContainerRef}
                       sx={{
                         backgroundColor: "#f5f5f5",
+                        color: "black",
+                        borderColor: "gray",
                         fontFamily: "monospace",
-                        fontSize: "0.85rem",
+                        fontSize: "0.80rem",
                         p: 2,
                         borderRadius: 1,
-                        maxHeight: "540px",
+                        maxHeight: "420px",
+                        height: "420px",
                         overflowY: "auto",
+                        whiteSpace: "pre",
                       }}
                     >
                       {scheduleLogs ? (
@@ -1520,7 +1979,7 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose, onE
           variant="contained"
           startIcon={<SaveIcon />}
           onClick={handleSave}
-          disabled={execLoading || protocolDetails.status === "running"}
+          disabled={execLoading || protocolDetails.status === "running" || protocolDetails.status === "scheduled"}
           sx={{ textTransform: "none" }}
         >
           Save
@@ -1530,7 +1989,7 @@ export default function ProtocolForm({ data, projectProtocols = [], onClose, onE
           startIcon={execLoading ? <CircularProgress size={16} color="inherit" /> : <ExecuteIcon />}
           color="success"
           onClick={handleExecute}
-          disabled={execLoading || protocolDetails.status === "running"}
+          disabled={execLoading || protocolDetails.status === "running" || protocolDetails.status === "scheduled"}
           sx={{ textTransform: "none" }}
         >
           {execLoading ? "Executing..." : "Execute"}

@@ -1,3 +1,4 @@
+// src/components/protocol/ProtocolNodeCardWrapper.tsx
 import { NodeProps, useReactFlow } from "reactflow";
 import StatusNode from "./ProtocolNodeCard";
 
@@ -11,6 +12,7 @@ type NodeActions = {
   onResetFrom?: (id: string) => void;
   onSelectFrom?: (id: string) => void;
   onSelectTo?: (id: string) => void;
+  onStop?: (id: string) => void;
 };
 
 export const createStatusNodeWrapper = (
@@ -20,8 +22,10 @@ export const createStatusNodeWrapper = (
   getHoveredNodeId: () => string | undefined,
   setHoveredNodeId?: React.Dispatch<React.SetStateAction<string | null>>,
   getGraphDirection?: () => "TB" | "LR",
+  getViewMode?: () => "hierarchical" | "grid" | "table",
   getNodeActions?: () => NodeActions,
-  getPathSelectionNodeIds?: () => Set<string>
+  getPathSelectionNodeIds?: () => Set<string>,
+  onBrowse?: (protocolId: string, projectId?: string | number, protocolLabel?: string) => void
 ) => {
   return function StatusNodeWrapper(props: NodeProps) {
     const { data, id, ...rest } = props;
@@ -32,6 +36,8 @@ export const createStatusNodeWrapper = (
     const hoveredNodeId = getHoveredNodeId?.();
     const graphDirection = getGraphDirection?.() ?? "TB";
 
+    const viewMode = getViewMode?.() ?? "hierarchical";
+
     const handleMouseEnter = () => setHoveredNodeId?.(String(id));
     const handleMouseLeave = () => setHoveredNodeId?.(null);
     const isHovered =
@@ -40,7 +46,7 @@ export const createStatusNodeWrapper = (
     const actions = getNodeActions?.() ?? {};
     const pathSelectedSet = getPathSelectionNodeIds?.() ?? new Set<string>();
     const inPathSelection = pathSelectedSet.has(String(id));
-    const pathSelectionActive = pathSelectedSet.size > 0; // reduce menus globally while a selection (path or multi) is active
+    const pathSelectionActive = pathSelectedSet.size > 0;
 
     return (
       <div onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave} style={{ display: "inline-block" }}>
@@ -66,9 +72,11 @@ export const createStatusNodeWrapper = (
           onResetFrom={actions.onResetFrom}
           onSelectFrom={actions.onSelectFrom}
           onSelectTo={actions.onSelectTo}
-          // selection (path or multi)
+          onStop={actions.onStop}
           inPathSelection={inPathSelection}
           pathSelectionActive={pathSelectionActive}
+          onBrowse={onBrowse}
+          showHandles={viewMode !== "grid"} 
         />
       </div>
     );

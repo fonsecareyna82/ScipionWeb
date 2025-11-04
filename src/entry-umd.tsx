@@ -66,28 +66,106 @@ class WidgetErrorBoundary extends React.Component<
 }
 
 /** Minimal mock to keep the widget usable without a host service */
+/** Default mock service that satisfies the full ProjectService interface */
 const defaultMockService: ProjectService = {
+  // ---- projects ----
   async fetchList() {
-    // eslint-disable-next-line no-console
-    console.log("[mock] fetchList()");
     return [
-      { id: "demo-1", name: "Demo Project 1", description: "Example", createdAt: new Date().toISOString(), status: "idle" },
+      {
+        id: "demo-1",
+        name: "Demo Project 1",
+        description: "Example",
+        createdAt: new Date().toISOString(),
+        status: "idle",
+      },
     ];
   },
-  async fetchProject(projectId: string) {
-    // eslint-disable-next-line no-console
-    console.log("[mock] fetchProject()", projectId);
-    return { id: projectId, name: `Demo ${projectId}`, description: "", createdAt: new Date().toISOString(), status: "idle" } as any;
+  async fetchProject(projectId) {
+    return {
+      id: projectId,
+      name: `Demo ${projectId}`,
+      description: "",
+      createdAt: new Date().toISOString(),
+      status: "idle",
+    } as any;
   },
-  async fetchProtocolDetails() { return { id: "p1", params: {} } as any; },
-  async fetchNewProtocolDetails() { return { id: "new", params: {} } as any; },
-  async createProject(payload) { return { id: `mock-${Date.now()}`, name: payload.name, description: payload.description ?? "" } as any; },
-  async renameProject(id, name, description) { return { id, name, description } as any; },
-  async deleteProject(_id) { return { ok: true } as any; },
-  async loadProtocols() { return []; },
-  async executeProtocol() { return { ok: true } as any; },
-  async saveProtocol() { return { ok: true } as any; },
+  async createProject(payload) {
+    return {
+      id: `mock-${Date.now()}`,
+      name: payload.name,
+      description: payload.description ?? "",
+      createdAt: new Date().toISOString(),
+      status: "idle",
+    } as any;
+  },
+  async renameProject(id, newName, newDescription) {
+    return { id, name: newName, description: newDescription ?? "" } as any;
+  },
+  async deleteProject(_id) {
+    return { success: true } as any; // also valid to return void
+  },
+
+  // ---- protocols (core) ----
+  async fetchProtocolDetails(_projectId, protocolId) {
+    return { id: protocolId, protocolClassName: "DemoProtocol", params: {} } as any;
+  },
+  async fetchNewProtocolDetails(_projectId, protocolClass) {
+    return { id: "new", protocolClassName: protocolClass, params: {} } as any;
+  },
+  async loadProtocols(_projectId) {
+    return [] as any;
+  },
+  async executeProtocol(_protocolId, _protocolClassName, _params) {
+    return { success: true } as any;
+  },
+  async saveProtocol(_protocolId, _protocolClassName, _params) {
+    return { success: true } as any;
+  },
+
+  // ---- protocol actions ----
+  async renameProtocol(_projectId, protocolId, newName) {
+    return { id: protocolId, name: newName } as any;
+  },
+  async duplicateProtocol(_projectId, items) {
+    return { duplicated: items.map((i) => ({ ...i, id: `${i.id}-copy` })) } as any;
+  },
+  async deleteProtocol(_projectId, _ids) {
+    return { success: true } as any;
+  },
+  async restartAll(projectId, protocolId) {
+    return { id: projectId, action: "restartAll", from: protocolId } as any;
+  },
+  async continueAll(projectId, protocolId) {
+    return { id: projectId, action: "continueAll", from: protocolId } as any;
+  },
+  async resetFrom(projectId, protocolId) {
+    return { id: projectId, action: "resetFrom", from: protocolId } as any;
+  },
+  async stopProtocol(projectId, ids) {
+    return { id: projectId, action: "stopProtocol", stopped: ids } as any;
+  },
+  async resolveProtocolStartPath(projectId, pid) {
+    return { id: projectId, action: "resolveProtocolStartPath", startPid: pid } as any;
+  },
+  async listRemoteDirectory(projectId, protocolId, path) {
+    return { id: projectId, protocolId, path, entries: [] } as any;
+  },
+  async previewProtocolText(projectId, id, path) {
+    return {
+      id: projectId,
+      action: "previewProtocolText",
+      protocolId: id,
+      path,
+      content: "Mock preview...",
+    } as any;
+  },
+  buildProtocolDownloadUrl(projectId, protocolId, path, inline) {
+    return `/download/${encodeURIComponent(String(projectId))}/${encodeURIComponent(
+      String(protocolId)
+    )}?path=${encodeURIComponent(path)}&inline=${inline ? 1 : 0}`;
+  },
 };
+
 
 /** Light normalization (extend if you need aliasing) */
 function normalizeServiceAPI(srv?: ProjectService): ProjectService {
