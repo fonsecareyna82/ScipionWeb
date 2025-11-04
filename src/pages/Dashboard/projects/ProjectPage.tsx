@@ -284,8 +284,10 @@ export default function ProjectPage() {
   };
 
   const getSelectedPathIds = () => pathSelRef.current.nodes;
+
+  // Colors: keep them DIFFERENT so clearing node highlights doesn't wipe path highlights
   const SELECT_COLOR = "#0070f3";
-  const PATH_COLOR = "#0070f3";
+  const PATH_COLOR = "#0ea5e9";
 
   const setsEqual = (a: Set<string>, b: Set<string>) => {
     if (a.size !== b.size) return false;
@@ -344,6 +346,8 @@ export default function ProjectPage() {
     selectedIdRef.current = null;
     setPreviousNodeId(null);
     setHighlightedId(null);
+    // reset path edge mode to default after a hard clear
+    pathEdgeModeRef.current = 'all';
   }, [setNodes, setEdges]);
 
   /* --------------------- Edge painters --------------------- */
@@ -362,9 +366,8 @@ export default function ProjectPage() {
           const { style, ...rest } = e;
           const newStyle: any = { ...(style ?? {}) };
           if ((e as any).__path) {
-            if (newStyle.stroke === SELECT_COLOR) delete newStyle.stroke;
-            const sw = Number(newStyle.strokeWidth);
-            if (!Number.isNaN(sw) && sw === 4) delete newStyle.strokeWidth;
+            // When clearing node highlight, DO NOT touch the path stroke (it uses PATH_COLOR)
+            delete newStyle.strokeWidth; // remove the 4px width if it came from node highlight
           } else {
             delete newStyle.stroke;
             delete newStyle.strokeWidth;
@@ -395,7 +398,7 @@ export default function ProjectPage() {
         const { style, ...rest } = e;
         const newStyle: any = { ...(style ?? {}) };
         if ((e as any).__path) {
-          if (newStyle.stroke === SELECT_COLOR) delete newStyle.stroke;
+          // keep PATH_COLOR; only drop node-highlight width if present
           const sw = Number(newStyle.strokeWidth);
           if (!Number.isNaN(sw) && sw === 4) delete newStyle.strokeWidth;
         } else {
@@ -409,7 +412,7 @@ export default function ProjectPage() {
       return e;
     });
     return changed ? next : eds;
-  }, []);
+  }, [SELECT_COLOR]);
 
   const paintPathHighlight = useCallback((eds: Edge[], edgeIdsSet: Set<string>): Edge[] => {
     let changed = false;
@@ -434,6 +437,7 @@ export default function ProjectPage() {
       } else if (wasPath) {
         const styleCopy: any = { ...(e.style ?? {}) };
         if (isHL) {
+          // keep node highlight; drop only path dash if present
           if (styleCopy.stroke === PATH_COLOR) delete styleCopy.stroke;
           if (styleCopy.strokeDasharray === "6 3") delete styleCopy.strokeDasharray;
           changed = true;
@@ -454,7 +458,7 @@ export default function ProjectPage() {
       return e;
     });
     return changed ? next : eds;
-  }, []);
+  }, [PATH_COLOR]);
 
   /* --------------------- Edge set helpers --------------------- */
   const computeEdgesTouchingNodes = useCallback((nodeSet: Set<string>) => {
@@ -466,6 +470,35 @@ export default function ProjectPage() {
     }
     return new Set(edgeIds);
   }, []);
+
+  /* --------------------- Directional path edge mode + helpers --------------------- */
+  const pathEdgeModeRef = useRef<'all' | 'outgoing' | 'incoming'>('all');
+
+  const computeOutgoingEdgesFromSet = useCallback((nodeSet: Set<string>) => {
+    const edgeIds: string[] = [];
+    for (const e of edgesRef.current) {
+      if (nodeSet.has(String(e.source))) edgeIds.push(e.id);
+    }
+    return new Set(edgeIds);
+  }, []);
+
+  const computeIncomingEdgesToSet = useCallback((nodeSet: Set<string>) => {
+    const edgeIds: string[] = [];
+    for (const e of edgesRef.current) {
+      if (nodeSet.has(String(e.target))) edgeIds.push(e.id);
+    }
+    return new Set(edgeIds);
+  }, []);
+
+  const computeEdgesForMode = useCallback(
+    (nodeSet: Set<string>, mode: 'all' | 'outgoing' | 'incoming') => {
+      if (!nodeSet.size) return new Set<string>();
+      if (mode === 'outgoing') return computeOutgoingEdgesFromSet(nodeSet);
+      if (mode === 'incoming') return computeIncomingEdgesToSet(nodeSet);
+      return computeEdgesTouchingNodes(nodeSet);
+    },
+    [computeEdgesTouchingNodes, computeOutgoingEdgesFromSet, computeIncomingEdgesToSet]
+  );
 
   /* --------------------- Selection application --------------------- */
   const bumpNodesForPath = useCallback(() => {
@@ -486,8 +519,13 @@ export default function ProjectPage() {
 
     setNodes((prev) => prev.map((n) => ({ ...n, selected: nextNodes.has(n.id) })));
 
-    setEdges((eds) => paintPathHighlight(eds, nextEdges));
-    setEdges((eds) => paintEdgeHighlight(eds, null));
+    // IMPORTANT: single setEdges combining both painters so edges are highlighted immediately
+    setEdges((eds) => {
+      let out = paintEdgeHighlight(eds, null);       // clear node-edge highlights safely
+      out = paintPathHighlight(out, nextEdges);      // then paint path edges (dashed)
+      return out;
+    });
+
     bumpNodesForPath();
   }, [computeEdgesTouchingNodes, paintPathHighlight, paintEdgeHighlight, setNodes, setEdges, bumpNodesForPath]);
 
@@ -643,21 +681,25 @@ export default function ProjectPage() {
   }, [buildAdjacency]);
 
   const applyGenericSelectionFromSet = useCallback((ids: Set<string>) => {
+    pathEdgeModeRef.current = 'all'; // generic selection paints all touching edges
     applyPathSelection(Array.from(ids));
-    applyEdgeHighlight(null);
-  }, [applyPathSelection, applyEdgeHighlight]);
+  }, [applyPathSelection]);
 
   const handleSelectFrom = useCallback((id: string) => {
     const nodesSet = collectDescendants(id);
     if (id !== "PROJECT") nodesSet.add(String(id));
-    applyGenericSelectionFromSet(nodesSet);
-  }, [collectDescendants, applyGenericSelectionFromSet]);
+    pathEdgeModeRef.current = 'outgoing';
+    const edgeIds = Array.from(computeOutgoingEdgesFromSet(nodesSet));
+    applyPathSelection(Array.from(nodesSet), edgeIds);
+  }, [collectDescendants, computeOutgoingEdgesFromSet, applyPathSelection]);
 
   const handleSelectTo = useCallback((id: string) => {
     const nodesSet = collectAncestors(id);
     if (id !== "PROJECT") nodesSet.add(String(id));
-    applyGenericSelectionFromSet(nodesSet);
-  }, [collectAncestors, applyGenericSelectionFromSet]);
+    pathEdgeModeRef.current = 'incoming';
+    const edgeIds = Array.from(computeIncomingEdgesToSet(nodesSet));
+    applyPathSelection(Array.from(nodesSet), edgeIds);
+  }, [collectAncestors, computeIncomingEdgesToSet, applyPathSelection]);
 
   const handleAddProtocolFromDrawer = useCallback(
     async (protocolClass: string) => {
@@ -898,7 +940,9 @@ export default function ProjectPage() {
         const unifiedSelectedIds = getUnifiedSelectedIds();
         const seededNodes = nodesWithTick.map((n) => ({ ...n, selected: unifiedSelectedIds.has(n.id) }));
 
-        const recomputedEdgeSet = computeEdgesTouchingNodes(unifiedSelectedIds);
+        const recomputedEdgeSet = unifiedSelectedIds.size
+          ? computeEdgesForMode(unifiedSelectedIds, pathEdgeModeRef.current)
+          : new Set<string>();
         pathSelRef.current.edges = recomputedEdgeSet;
 
         startTransition(() => {
@@ -970,7 +1014,7 @@ export default function ProjectPage() {
       setIsRefreshing(false);
       setIsLoadingProject(false);
     }
-  }, [projectName, viewMode, graphDirection, centerLikeButton, svc, paintEdgeHighlight, paintPathHighlight, computeEdgesTouchingNodes, gridWidth]);
+  }, [projectName, viewMode, graphDirection, centerLikeButton, svc, paintEdgeHighlight, paintPathHighlight, computeEdgesForMode, gridWidth]);
 
   useEffect(() => {
     setIsLoadingProject(true);
@@ -1012,7 +1056,9 @@ export default function ProjectPage() {
             : { ...n, selected: unifiedSelectedIds.has(n.id) }
         );
 
-        const recomputedEdgeSet = computeEdgesTouchingNodes(unifiedSelectedIds);
+        const recomputedEdgeSet = unifiedSelectedIds.size
+          ? computeEdgesForMode(unifiedSelectedIds, pathEdgeModeRef.current)
+          : new Set<string>();
         pathSelRef.current.edges = recomputedEdgeSet;
 
         startTransition(() => {
@@ -1050,7 +1096,7 @@ export default function ProjectPage() {
         setTimeout(() => tryPlaceNewlyCreatedNode(), 1200);
       }
     }
-  }, [projectName, viewMode, graphDirection, nodeTicks, svc, paintEdgeHighlight, paintPathHighlight, computeEdgesTouchingNodes, gridWidth]);
+  }, [projectName, viewMode, graphDirection, nodeTicks, svc, paintEdgeHighlight, paintPathHighlight, computeEdgesForMode, gridWidth]);
 
   const handleRefreshRef = useRef(handleRefresh);
   useEffect(() => { handleRefreshRef.current = handleRefresh; }, [handleRefresh]);
@@ -1142,7 +1188,9 @@ export default function ProjectPage() {
 
         const unifiedSelectedIds = getUnifiedSelectedIds();
         const nodesSeeded = nodesWithPositions.map((n) => ({ ...n, selected: unifiedSelectedIds.has(n.id) }));
-        const recomputedEdgeSet = computeEdgesTouchingNodes(unifiedSelectedIds);
+        const recomputedEdgeSet = unifiedSelectedIds.size
+          ? computeEdgesForMode(unifiedSelectedIds, pathEdgeModeRef.current)
+          : new Set<string>();
         pathSelRef.current.edges = recomputedEdgeSet;
 
         startTransition(() => {
@@ -1183,7 +1231,7 @@ export default function ProjectPage() {
         setHideGraphDuringCenter(false);
       }
     },
-    [projectName, viewMode, graphDirection, centerLikeButton, svc, paintEdgeHighlight, paintPathHighlight, computeEdgesTouchingNodes, gridWidth]
+    [projectName, viewMode, graphDirection, centerLikeButton, svc, paintEdgeHighlight, paintPathHighlight, computeEdgesForMode, gridWidth]
   );
 
   /* ------------------------ Ticks updater ------------------------ */
@@ -1257,7 +1305,9 @@ export default function ProjectPage() {
 
     const unifiedSelectedIds = getUnifiedSelectedIds();
     const nodesSeeded = nodesWithPositions.map((n) => ({ ...n, selected: unifiedSelectedIds.has(n.id) }));
-    const recomputedEdgeSet = computeEdgesTouchingNodes(unifiedSelectedIds);
+    const recomputedEdgeSet = unifiedSelectedIds.size
+      ? computeEdgesForMode(unifiedSelectedIds, pathEdgeModeRef.current)
+      : new Set<string>();
     pathSelRef.current.edges = recomputedEdgeSet;
 
     disablePersistenceRef.current = true;
@@ -1297,7 +1347,7 @@ export default function ProjectPage() {
         });
       });
     });
-  }, [graphDirection, viewMode, project, paintEdgeHighlight, paintPathHighlight, computeEdgesTouchingNodes, gridWidth, centerLikeButton, snapViewportToTopLeft]);
+  }, [graphDirection, viewMode, project, paintEdgeHighlight, paintPathHighlight, computeEdgesForMode, gridWidth, centerLikeButton, snapViewportToTopLeft]);
 
   /* ------------------------ First-center ------------------------ */
   useEffect(() => {
@@ -1875,7 +1925,7 @@ export default function ProjectPage() {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.repeat) return;
 
-      // no dispare atajos si hay diálogos abiertos o si estamos escribiendo
+      // don't trigger shortcuts if dialogs are open or typing
       if (
         dlgRename.open ||
         confirm.open ||
