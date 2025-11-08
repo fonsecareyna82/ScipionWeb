@@ -61,8 +61,10 @@
 
 .form-body {
   flex: 1;
-  padding: 20px;
-  overflow-y: auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden; 
 }
 
 .form-status {
@@ -174,10 +176,10 @@
   display: flex;
   justify-content: flex-end;
   gap: 12px;
-  padding: 16px;
+  padding: 8px 16px;
   border-top: 1px solid #ddd;
   background-color: #f5f5f5;
-  position: sticky;
+  gap: 8px;
   bottom: 0;
   z-index: 10;
   flex-shrink: 0;

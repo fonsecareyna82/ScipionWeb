@@ -1493,7 +1493,6 @@ export default function ProtocolForm({
           <Box
             sx={{
               width: "100%",
-              flexShrink: 0,
               display: "flex",
               justifyContent: "center",
               alignItems: "flex-start",
@@ -1510,8 +1509,6 @@ export default function ProtocolForm({
             />
           </Box>
         );
-
-
 
       case "pdf":
         return (
@@ -1902,7 +1899,6 @@ export default function ProtocolForm({
                 </Box>
 
                 {/* Right panel PREVIEW */}
-                {/* Right panel PREVIEW */}
                 <Box
                   sx={{
                     flex: "1 1 0",
@@ -1959,7 +1955,6 @@ export default function ProtocolForm({
                     )}
                   </Box>
 
-                  {/* Scroll SOLO aquí */}
                   <Box
                     sx={{
                       flex: 1,
@@ -1967,7 +1962,7 @@ export default function ProtocolForm({
                       overflowY: "auto",
                       overflowX: "hidden",
                       p: 1,
-                      pb: 8,           // espacio extra (8 * 8px = 64px) para que el final de la imagen NO quede tras el footer
+                      pb: 6, // espacio para que el final de la imagen no quede pegado al footer
                       backgroundColor: "#f9fafb",
                       display: "flex",
                       justifyContent: "center",
@@ -1977,6 +1972,7 @@ export default function ProtocolForm({
                     {previewContent}
                   </Box>
                 </Box>
+
               </Box>
             )}
 
