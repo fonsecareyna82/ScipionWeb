@@ -1457,12 +1457,10 @@ export default function ProtocolForm({
         <Box
           sx={{
             width: "100%",
-            height: "100%",
+            flexShrink: 0,
             display: "flex",
-            alignItems: "center",
+            alignItems: "flex-start",
             justifyContent: "center",
-            overflow: "auto",
-            backgroundColor: "#f9fafb",
           }}
         >
           <img
@@ -1471,7 +1469,7 @@ export default function ProtocolForm({
             style={{
               display: "block",
               maxWidth: "100%",
-              maxHeight: "100%",
+              height: "auto",
               objectFit: "contain",
             }}
           />
@@ -1495,13 +1493,10 @@ export default function ProtocolForm({
           <Box
             sx={{
               width: "100%",
-              height: "100%",
+              flexShrink: 0,
               display: "flex",
-              alignItems: "flex-start",
               justifyContent: "center",
-              overflow: "auto",           
-              p: 1,
-              backgroundColor: "#f9fafb",
+              alignItems: "flex-start",
             }}
           >
             <img
@@ -1509,13 +1504,14 @@ export default function ProtocolForm({
               alt={activeOutput.name}
               style={{
                 display: "block",
-                maxWidth: "100%",          
-                height: "auto",            
-                imageRendering: "auto",    
+                maxWidth: "100%",
+                height: "auto",
               }}
             />
           </Box>
         );
+
+
 
       case "pdf":
         return (
@@ -1805,7 +1801,7 @@ export default function ProtocolForm({
                 <Box
                   sx={{
                     flex: "0 0 45%",
-                    maxWidth: "40%",
+                    maxWidth: "45%",
                     minWidth: 0,
                     minHeight: 0,
                     backgroundColor: "#fff",
@@ -1845,7 +1841,7 @@ export default function ProtocolForm({
                     sx={{
                       flex: 1,
                       minHeight: 0,
-                      overflowY: "auto", 
+                      overflowY: "auto",
                       p: 1,
                     }}
                   >
@@ -1906,6 +1902,7 @@ export default function ProtocolForm({
                 </Box>
 
                 {/* Right panel PREVIEW */}
+                {/* Right panel PREVIEW */}
                 <Box
                   sx={{
                     flex: "1 1 0",
@@ -1948,7 +1945,7 @@ export default function ProtocolForm({
                           textOverflow: "ellipsis",
                           whiteSpace: "nowrap",
                         }}
-                        title={`${activeOutput.infoText}`}
+                        title={activeOutput.infoText}
                       >
                         {activeOutput.infoText}
                       </Typography>
@@ -1962,17 +1959,19 @@ export default function ProtocolForm({
                     )}
                   </Box>
 
+                  {/* Scroll SOLO aquí */}
                   <Box
                     sx={{
                       flex: 1,
                       minHeight: 0,
-                      overflowY: "auto",      
+                      overflowY: "auto",
                       overflowX: "hidden",
-                      p: 0,
+                      p: 1,
+                      pb: 8,           // espacio extra (8 * 8px = 64px) para que el final de la imagen NO quede tras el footer
                       backgroundColor: "#f9fafb",
                       display: "flex",
-                      alignItems: "flex-start",
                       justifyContent: "center",
+                      alignItems: "flex-start",
                     }}
                   >
                     {previewContent}
