@@ -1462,7 +1462,6 @@ export default function ProtocolForm({
             alignItems: "center",
             justifyContent: "center",
             overflow: "auto",
-            p: 1,
             backgroundColor: "#f9fafb",
           }}
         >
@@ -1483,7 +1482,7 @@ export default function ProtocolForm({
 
     if (previewData?.text && !previewData?.kind) {
       return (
-        <Box sx={{ p: 2, borderRadius: 2, backgroundColor: "#fff", border: "1px solid #e5e7eb", boxShadow: "0 2px 4px rgba(0,0,0,0.05)", maxWidth: "100%", maxHeight: "100%", overflowY: "auto", whiteSpace: "pre-wrap", wordBreak: "break-word", fontSize: "0.75rem", lineHeight: 1.4, color: "#111827" }}>
+        <Box sx={{ p: 2, borderRadius: 2, backgroundColor: "#fff", border: "1px solid #e5e7eb", boxShadow: "0 2px 4px rgba(0,0,0,0.05)", maxWidth: "100%", maxHeight: "100%", overflowY: "auto", whiteSpace: "pre-wrap", wordBreak: "break-word", fontSize: ".75rem", lineHeight: 1.4, color: "#111827" }}>
           {previewData.text}
         </Box>
       );
@@ -1806,7 +1805,7 @@ export default function ProtocolForm({
                 <Box
                   sx={{
                     flex: "0 0 45%",
-                    maxWidth: "44%",
+                    maxWidth: "40%",
                     minWidth: 0,
                     minHeight: 0,
                     backgroundColor: "#fff",
@@ -1846,7 +1845,7 @@ export default function ProtocolForm({
                     sx={{
                       flex: 1,
                       minHeight: 0,
-                      overflowY: "auto", // scroll sólo aquí para la lista
+                      overflowY: "auto", 
                       p: 1,
                     }}
                   >
@@ -1967,9 +1966,9 @@ export default function ProtocolForm({
                     sx={{
                       flex: 1,
                       minHeight: 0,
-                      overflowY: "auto",      // <-- AQUÍ está ahora el scroll vertical
+                      overflowY: "auto",      
                       overflowX: "hidden",
-                      p: 2,
+                      p: 0,
                       backgroundColor: "#f9fafb",
                       display: "flex",
                       alignItems: "flex-start",
