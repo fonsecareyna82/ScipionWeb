@@ -121,7 +121,8 @@ fetchOutputPreview: (
     projectId: Id,
     protocolId: Id,
     path: string,
-  ) => api.fetchOutputPreview(toId(projectId), toId(protocolId), path),
+    opts?: { table?: string } 
+  ) => api.fetchOutputPreview(toId(projectId), toId(protocolId), path, opts),
 
 };
 

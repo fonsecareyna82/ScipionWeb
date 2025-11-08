@@ -130,12 +130,28 @@ export default function ProtocolForm({
     return normalizedOutputs[selectedOutputIdx];
   }, [selectedOutputIdx, normalizedOutputs]);
 
+  // NEW: SQLite table navigation + objectURL cleanup
+  const [sqliteTable, setSqliteTable] = useState<string | null>(null);
+  const previewUrlRef = useRef<string | null>(null);
+
+  // Revoke object URL on unmount
+  useEffect(() => {
+    return () => {
+      if (previewUrlRef.current) {
+        URL.revokeObjectURL(previewUrlRef.current);
+        previewUrlRef.current = null;
+      }
+    };
+  }, []);
+
+
   // Requests a preview from the backend when activeOutput changes
   useEffect(() => {
     if (!activeOutput) {
       setPreviewData(null);
       setPreviewError(null);
       setPreviewLoading(false);
+      setSqliteTable(null); // reset sqlite state on output change
       return;
     }
 
@@ -145,24 +161,35 @@ export default function ProtocolForm({
 
     (async () => {
       try {
-        const res = await svc.fetchOutputPreview(data.projectId, data?.id, activeOutput.name);
+        const res: any = await svc.fetchOutputPreview(
+          data.projectId,
+          data?.id,
+          activeOutput.name,
+          sqliteTable ? { table: sqliteTable } : undefined
+        );
         if (cancelled) return;
+
+        // Track object URLs (image/pdf/binary) to revoke later
+        if ((res?.kind === "image" || res?.kind === "pdf" || res?.kind === "binary") && res.url) {
+          if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+          previewUrlRef.current = res.url;
+        }
+
         setPreviewData(res ?? null);
       } catch (err: any) {
         if (cancelled) return;
         setPreviewError(err?.message || "Failed to load preview");
         setPreviewData(null);
       } finally {
-        if (!cancelled) {
-          setPreviewLoading(false);
-        }
+        if (!cancelled) setPreviewLoading(false);
       }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [activeOutput, data?.id]);
+  }, [activeOutput, data?.id, sqliteTable]);
+
 
   // Use this instead of onClose() directly to play exit animation
   const requestClose = () => setIsClosing(true);
@@ -1388,21 +1415,15 @@ export default function ProtocolForm({
     setOpenSelector(false);
   };
 
+
+
   // --------------------------------------------
   // Preview content renderer (right panel)
   // --------------------------------------------
   const previewContent = useMemo(() => {
     if (!activeOutput) {
       return (
-        <Typography
-          variant="body2"
-          sx={{
-            color: "#6b7280",
-            fontSize: "0.8rem",
-            textAlign: "center",
-            py: 4,
-          }}
-        >
+        <Typography variant="body2" sx={{ color: "#6b7280", fontSize: "0.8rem", textAlign: "center", py: 4 }}>
           Select an output on the left to preview it here.
         </Typography>
       );
@@ -1410,20 +1431,9 @@ export default function ProtocolForm({
 
     if (previewLoading) {
       return (
-        <Box
-          sx={{
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 1,
-          }}
-        >
+        <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 1 }}>
           <CircularProgress size={20} />
-          <Typography
-            variant="caption"
-            sx={{ fontSize: "0.75rem", color: "#4b5563" }}
-          >
+          <Typography variant="caption" sx={{ fontSize: "0.75rem", color: "#4b5563" }}>
             Loading preview...
           </Typography>
         </Box>
@@ -1434,134 +1444,177 @@ export default function ProtocolForm({
       return (
         <Typography
           variant="body2"
-          sx={{
-            color: "#dc2626",
-            fontSize: "0.75rem",
-            textAlign: "center",
-            whiteSpace: "pre-wrap",
-            wordBreak: "break-word",
-          }}
+          sx={{ color: "#dc2626", fontSize: "0.75rem", textAlign: "center", whiteSpace: "pre-wrap", wordBreak: "break-word" }}
         >
           {previewError}
         </Typography>
       );
     }
 
-    // If the API returned an image
-    if (previewData && previewData.imageUrl) {
+    // Back-compat for older shapes
+    if (previewData?.imageUrl) {
       return (
-        <Box
-          sx={{
-            maxWidth: "100%",
-            maxHeight: "100%",
-            borderRadius: 2,
-            overflow: "hidden",
-            boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
-            border: "1px solid #e5e7eb",
-            backgroundColor: "#fff",
-          }}
-        >
-          <img
-            src={previewData.imageUrl}
-            alt={activeOutput.name}
-            style={{
-              display: "block",
-              width: "100%",
-              height: "auto",
-              objectFit: "contain",
-            }}
-          />
+        <Box sx={{ maxWidth: "100%", maxHeight: "100%", borderRadius: 2, overflow: "hidden", boxShadow: "0 2px 8px rgba(0,0,0,0.15)", border: "1px solid #e5e7eb", backgroundColor: "#fff" }}>
+          <img src={previewData.imageUrl} alt={activeOutput.name} style={{ display: "block", width: "100%", height: "auto", objectFit: "contain" }} />
         </Box>
       );
     }
-
-    // If the API returned text
-    if (previewData && previewData.text) {
+    if (previewData?.text && !previewData?.kind) {
       return (
-        <Box
-          sx={{
-            p: 2,
-            borderRadius: 2,
-            backgroundColor: "#fff",
-            border: "1px solid #e5e7eb",
-            boxShadow: "0 2px 4px rgba(0,0,0,0.05)",
-            maxWidth: "100%",
-            maxHeight: "100%",
-            overflowY: "auto",
-            whiteSpace: "pre-wrap",
-            wordBreak: "break-word",
-            fontSize: "0.75rem",
-            lineHeight: 1.4,
-            color: "#111827",
-          }}
-        >
+        <Box sx={{ p: 2, borderRadius: 2, backgroundColor: "#fff", border: "1px solid #e5e7eb", boxShadow: "0 2px 4px rgba(0,0,0,0.05)", maxWidth: "100%", maxHeight: "100%", overflowY: "auto", whiteSpace: "pre-wrap", wordBreak: "break-word", fontSize: "0.75rem", lineHeight: 1.4, color: "#111827" }}>
           {previewData.text}
         </Box>
       );
     }
 
-    // Generic fallback if previewData exists but is not image/text
-    if (previewData) {
-      return (
-        <Box
-          sx={{
-            width: "100%",
-            maxHeight: "100%",
-            overflowY: "auto",
-            border: "2px dashed #e5e7eb",
-            borderRadius: 2,
-            backgroundColor: "#fff",
-            textAlign: "left",
-            p: 2,
-            fontSize: "0.7rem",
-            lineHeight: 1.4,
-            fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-            color: "#1f2937",
-            wordBreak: "break-word",
-            whiteSpace: "pre-wrap",
-          }}
-        >
-          {JSON.stringify(previewData, null, 2)}
-        </Box>
-      );
-    }
+    // New unified shape
+    switch (previewData?.kind) {
+      case "image":
+        return (
+          <Box sx={{ width: "100%", height: "100%", borderRadius: 2, overflow: "hidden", boxShadow: "0 2px 8px rgba(0,0,0,0.15)", border: "1px solid #e5e7eb", backgroundColor: "#fff" }}>
+            <img src={previewData.url} alt={activeOutput.name} style={{ display: "block", width: "100%", height: "100%", objectFit: "contain" }} />
+          </Box>
+        );
 
-    return (
-      <Box
-        sx={{
-          width: "100%",
-          minHeight: "100%",
-          maxHeight: "100%",
-          border: "2px dashed #e5e7eb",
-          borderRadius: 2,
-          backgroundColor: "#fff",
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          textAlign: "center",
-          px: 2,
-          py: 3,
-          color: "#6b7280",
-          fontSize: "0.8rem",
-          lineHeight: 1.4,
-          wordBreak: "break-word",
-        }}
-      >
-        <Typography
-          variant="body2"
-          sx={{
-            color: "#4b5563",
-            fontSize: "0.75rem",
-            mb: 1,
-            lineHeight: 1.4,
-          }}
-        >
-          Preview for "{activeOutput.name}".
-        </Typography>
-      </Box>
-    );
+      case "pdf":
+        return (
+          <Box sx={{ width: "100%", height: "100%", borderRadius: 2, overflow: "hidden", border: "1px solid #e5e7eb", backgroundColor: "#fff" }}>
+            <object data={previewData.url} type="application/pdf" width="100%" height="100%">
+              <Box sx={{ p: 2 }}>
+                <Typography variant="body2" sx={{ mb: 1 }}>PDF preview not supported by your browser.</Typography>
+                <a href={previewData.downloadUrl} target="_blank" rel="noreferrer">Open PDF</a>
+              </Box>
+            </object>
+          </Box>
+        );
+
+      case "table": {
+        const cols: string[] = previewData.data?.columns || [];
+        const rows: any[] = previewData.data?.rows || [];
+        return (
+          <Box sx={{ width: "100%", maxHeight: "100%", overflow: "auto", backgroundColor: "#fff", border: "1px solid #e5e7eb", borderRadius: 2 }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.75rem" }}>
+              <thead style={{ position: "sticky", top: 0, background: "#f3f4f6" }}>
+                <tr>{cols.map((c) => <th key={c} style={{ textAlign: "left", padding: "6px 8px", borderBottom: "1px solid #e5e7eb" }}>{c}</th>)}</tr>
+              </thead>
+              <tbody>
+                {rows.map((r, i) => (
+                  <tr key={i} style={{ borderBottom: "1px solid #f3f4f6" }}>
+                    {cols.map((c) => <td key={c} style={{ padding: "6px 8px", verticalAlign: "top", whiteSpace: "nowrap" }}>{String(r[c] ?? "")}</td>)}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </Box>
+        );
+      }
+
+      case "sqlite": {
+        const mode = previewData.meta?.mode;
+        if (mode === "tables") {
+          const tables: string[] = previewData.data?.tables || [];
+          return (
+            <Box sx={{ width: "100%", backgroundColor: "#fff", border: "1px solid #e5e7eb", borderRadius: 2, p: 1 }}>
+              <Typography variant="caption" sx={{ color: "#6b7280" }}>Tables</Typography>
+              <Box sx={{ mt: 1, display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(160px,1fr))", gap: 0.5 }}>
+                {tables.map((t) => (
+                  <Button key={t} size="small" variant="outlined" sx={{ textTransform: "none", justifyContent: "flex-start" }} onClick={() => setSqliteTable(t)}>
+                    {t}
+                  </Button>
+                ))}
+              </Box>
+            </Box>
+          );
+        }
+        const cols: string[] = previewData.data?.columns || previewData.meta?.columnsHeader?.split(",") || [];
+        const rows: any[] = previewData.data?.rows || [];
+        return (
+          <Box sx={{ width: "100%", maxHeight: "100%", overflow: "auto", backgroundColor: "#fff", border: "1px solid #e5e7eb", borderRadius: 2 }}>
+            <Box sx={{ p: 1, display: "flex", gap: 1, alignItems: "center", borderBottom: "1px solid #eee" }}>
+              <Button size="small" onClick={() => setSqliteTable(null)} sx={{ textTransform: "none" }}>Back to tables</Button>
+              <Typography variant="caption" sx={{ color: "#6b7280" }}>
+                {rows.length} rows {previewData.meta?.rowCount ? `(server: ${previewData.meta.rowCount})` : ""}
+              </Typography>
+            </Box>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.75rem" }}>
+              <thead style={{ position: "sticky", top: 0, background: "#f3f4f6" }}>
+                <tr>{cols.map((c) => <th key={c} style={{ textAlign: "left", padding: "6px 8px", borderBottom: "1px solid #e5e7eb" }}>{c}</th>)}</tr>
+              </thead>
+              <tbody>
+                {rows.map((r, i) => (
+                  <tr key={i} style={{ borderBottom: "1px solid #f3f4f6" }}>
+                    {cols.map((c) => <td key={c} style={{ padding: "6px 8px", verticalAlign: "top", whiteSpace: "nowrap" }}>{String(r[c] ?? "")}</td>)}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </Box>
+        );
+      }
+
+      case "archive": {
+        const entries: Array<{ name: string; isDir?: boolean; size?: number; compressedSize?: number }> =
+          previewData.data?.entries || [];
+        return (
+          <Box sx={{ width: "100%", backgroundColor: "#fff", border: "1px solid #e5e7eb", borderRadius: 2, p: 1 }}>
+            <Typography variant="caption" sx={{ color: "#6b7280" }}>Archive entries</Typography>
+            <Box sx={{ mt: 1, maxHeight: "100%", overflow: "auto" }}>
+              {entries.map((e, i) => (
+                <Box key={i} sx={{ display: "flex", gap: 1, py: 0.5, borderBottom: "1px dashed #f3f4f6" }}>
+                  <Typography variant="body2" sx={{ fontSize: "0.75rem", color: e.isDir ? "#111827" : "#374151" }}>
+                    {e.name}
+                  </Typography>
+                  {!e.isDir && (
+                    <Typography variant="caption" sx={{ color: "#6b7280" }}>
+                      {typeof e.size === "number" ? `• ${e.size} B` : ""}
+                      {typeof e.compressedSize === "number" ? ` (compressed ${e.compressedSize} B)` : ""}
+                    </Typography>
+                  )}
+                </Box>
+              ))}
+            </Box>
+          </Box>
+        );
+      }
+
+      case "text":
+        return (
+          <Box sx={{ p: 2, borderRadius: 2, backgroundColor: "#fff", border: "1px solid #e5e7eb", boxShadow: "0 2px 4px rgba(0,0,0,0.05)", maxWidth: "100%", maxHeight: "100%", overflowY: "auto", whiteSpace: "pre-wrap", wordBreak: "break-word", fontSize: "0.75rem", lineHeight: 1.4, color: "#111827" }}>
+            {previewData.text}
+          </Box>
+        );
+
+      case "binary":
+        return (
+          <Box sx={{ width: "100%", borderRadius: 2, backgroundColor: "#fff", border: "1px solid #e5e7eb", p: 2 }}>
+            <Typography variant="body2" sx={{ mb: 1 }}>Binary file preview is not available.</Typography>
+            <Typography variant="caption" sx={{ color: "#6b7280", display: "block", mb: 1 }}>
+              {previewData.meta?.mime || "application/octet-stream"} • {previewData.meta?.sizeBytes ?? "?"} bytes
+            </Typography>
+            <Button size="small" variant="outlined" href={previewData.downloadUrl} sx={{ textTransform: "none" }}>
+              Download
+            </Button>
+          </Box>
+        );
+
+      default:
+        if (previewData) {
+          return (
+            <Box sx={{ width: "100%", maxHeight: "100%", overflowY: "auto", border: "2px dashed #e5e7eb", borderRadius: 2, backgroundColor: "#fff", textAlign: "left", p: 2, fontSize: "0.7rem", lineHeight: 1.4, fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", color: "#1f2937", wordBreak: "break-word", whiteSpace: "pre-wrap" }}>
+              {JSON.stringify(previewData, null, 2)}
+            </Box>
+          );
+        }
+        return (
+          <Box sx={{ width: "100%", minHeight: "100%", maxHeight: "100%", border: "2px dashed #e5e7eb", borderRadius: 2, backgroundColor: "#fff", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", px: 2, py: 3, color: "#6b7280", fontSize: "0.8rem", lineHeight: 1.4, wordBreak: "break-word" }}>
+            <Typography variant="body2" sx={{ color: "#4b5563", fontSize: "0.75rem", mb: 1, lineHeight: 1.4 }}>
+              Preview for "{activeOutput.name}".
+            </Typography>
+          </Box>
+        );
+    }
   }, [activeOutput, previewLoading, previewError, previewData]);
+
 
   const safeDefinition = Array.isArray(data?.definition) ? data.definition : [];
 
@@ -1808,15 +1861,15 @@ export default function ProtocolForm({
                         sx={{
                           color: "#6b7280",
                           fontSize: "0.7rem",
-                          textAlign: "right",
+                          textAlign: "center",
                           maxWidth: "60%",
                           overflow: "hidden",
                           textOverflow: "ellipsis",
                           whiteSpace: "nowrap",
                         }}
-                        title={`${activeOutput.name}: ${activeOutput.infoText}`}
+                        title={`${activeOutput.infoText}`}
                       >
-                        {activeOutput.name}: {activeOutput.infoText}
+                        {activeOutput.infoText}
                       </Typography>
                     ) : (
                       <Typography
@@ -1831,12 +1884,12 @@ export default function ProtocolForm({
                   <Box
                     sx={{
                       flex: 1,
-                      overflowY: "auto",
-                      maxHeight: "50vh",
-                      p: 2,
+                      overflow: "hidden",
+                      height: "70vh",
+                      p: 0,
                       display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
+                      alignItems: "stretch",
+                      justifyContent: "stretch",
                       backgroundColor: "#f9fafb",
                     }}
                   >

@@ -368,9 +368,114 @@ export async function fetchProtocolInlinePreviewBlob(
   return { blob, meta };
 }
 
-export async function fetchOutputPreview(projectId: Id, protocolId: string | number, outputName: string): Promise<any> {
-  const response = await fetchWithAuth(`${BASE_URL}/projects/${projectId}/protocols/${protocolId}/outputpreview/${outputName}`, {
-    method: "GET"});
-  if (!response.ok) throw await toApiError(response, "Failed previewing the output");
+
+export type PreviewResult =
+  | { kind: "image"; url: string; meta: any; downloadUrl: string }
+  | { kind: "pdf"; url: string; meta: any; downloadUrl: string }
+  | { kind: "table"; data: { columns: string[]; rows: any[] }; meta: any; downloadUrl: string }
+  | { kind: "sqlite"; data: any; meta: any; downloadUrl: string }   // mode: "tables" | "rows"
+  | { kind: "archive"; data: any; meta: any; downloadUrl: string }
+  | { kind: "text"; text: string; meta: any; downloadUrl: string }
+  | { kind: "binary"; url: string; meta: any; downloadUrl: string };
+
+function parseMeta(h: Headers) {
+  const num = (v: string | null) => (v != null && v !== "" ? Number(v) : undefined);
+  const parseVoxel = (s: string | null) => (s ? s.split(",").map((x) => Number(x)) : undefined);
+  return {
+    mime: h.get("X-Preview-Mime") || h.get("Content-Type") || undefined,
+    width: num(h.get("X-Preview-Width")),
+    height: num(h.get("X-Preview-Height")),
+    depth: num(h.get("X-Preview-Depth")),
+    sizeBytes: num(h.get("X-Preview-SizeBytes")),
+    voxelSize: parseVoxel(h.get("X-Preview-VoxelSize")),
+    note: h.get("X-Preview-Note") || undefined,
+    type: h.get("X-Preview-Type") || undefined,    // "table" | "sqlite" | "archive" | ...
+    mode: h.get("X-Preview-Mode") || undefined,    // sqlite: "tables" | "rows"
+    columnsHeader: h.get("X-Preview-Columns") || undefined,
+    rowCount: num(h.get("X-Preview-RowCount")),
+  };
 }
+
+async function buildPreviewResult(res: Response, baseDownloadUrl: string): Promise<PreviewResult> {
+  const ct = (res.headers.get("Content-Type") || "").toLowerCase();
+  const meta = parseMeta(res.headers);
+  const downloadUrl = baseDownloadUrl;
+
+  if (!res.ok) {
+    try {
+      const asJson = await res.json();
+      throw new Error(asJson?.detail || JSON.stringify(asJson));
+    } catch {
+      throw new Error(`HTTP ${res.status}`);
+    }
+  }
+
+  // Images
+  if (ct.startsWith("image/")) {
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    return { kind: "image", url, meta, downloadUrl };
+  }
+
+  // PDF
+  if (ct.includes("application/pdf")) {
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    return { kind: "pdf", url, meta, downloadUrl };
+  }
+
+  // JSON payloads (tables/archives/sqlite/other)
+  if (ct.includes("application/json")) {
+    const data = await res.json();
+    if (meta.type === "table") {
+      const columns =
+        data.columns ||
+        (meta.columnsHeader ? meta.columnsHeader.split(",").filter(Boolean) : []);
+      return { kind: "table", data: { columns, rows: data.rows || [] }, meta, downloadUrl };
+    }
+    if (meta.type === "sqlite") {
+      return { kind: "sqlite", data, meta, downloadUrl };
+    }
+    if (meta.type === "archive") {
+      return { kind: "archive", data, meta, downloadUrl };
+    }
+    // Unknown JSON -> show as text
+    return { kind: "text", text: JSON.stringify(data, null, 2), meta, downloadUrl };
+  }
+
+  // Text
+  if (ct.startsWith("text/")) {
+    const text = await res.text();
+    return { kind: "text", text, meta, downloadUrl };
+  }
+
+  // Fallback binary
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  return { kind: "binary", url, meta, downloadUrl };
+}
+
+export async function fetchOutputPreview(
+  projectId: Id,
+  protocolId: string | number,
+  outputName: string,
+  opts?: { table?: string }
+): Promise<PreviewResult> {
+  const enc = encodeURIComponent;
+
+  // Usa inline=true para que el backend haga el modo preview;
+  // añade table=<name> para SQLite (cuando aplique)
+  const qp: string[] = ["inline=true"];
+  if (opts?.table) qp.push(`table=${enc(opts.table)}`);
+
+  const base = `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/outputpreview/${enc(outputName)}`;
+  const url = qp.length ? `${base}?${qp.join("&")}` : base;
+  const downloadUrl = `${base}?inline=false`;
+
+  const response = await fetchWithAuth(url, { method: "GET" });
+  if (!response.ok) throw await toApiError(response, "Failed previewing the output");
+
+  return buildPreviewResult(response, downloadUrl);
+}
+
 
