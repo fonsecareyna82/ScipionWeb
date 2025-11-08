@@ -1454,11 +1454,33 @@ export default function ProtocolForm({
     // Back-compat for older shapes
     if (previewData?.imageUrl) {
       return (
-        <Box sx={{ maxWidth: "100%", maxHeight: "100%", borderRadius: 2, overflow: "hidden", boxShadow: "0 2px 8px rgba(0,0,0,0.15)", border: "1px solid #e5e7eb", backgroundColor: "#fff" }}>
-          <img src={previewData.imageUrl} alt={activeOutput.name} style={{ display: "block", width: "100%", height: "auto", objectFit: "contain" }} />
+        <Box
+          sx={{
+            width: "100%",
+            height: "100%",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            overflow: "auto",
+            p: 1,
+            backgroundColor: "#f9fafb",
+          }}
+        >
+          <img
+            src={previewData.imageUrl}
+            alt={activeOutput.name}
+            style={{
+              display: "block",
+              maxWidth: "100%",
+              maxHeight: "100%",
+              objectFit: "contain",
+            }}
+          />
         </Box>
       );
     }
+
+
     if (previewData?.text && !previewData?.kind) {
       return (
         <Box sx={{ p: 2, borderRadius: 2, backgroundColor: "#fff", border: "1px solid #e5e7eb", boxShadow: "0 2px 4px rgba(0,0,0,0.05)", maxWidth: "100%", maxHeight: "100%", overflowY: "auto", whiteSpace: "pre-wrap", wordBreak: "break-word", fontSize: "0.75rem", lineHeight: 1.4, color: "#111827" }}>
@@ -1471,18 +1493,56 @@ export default function ProtocolForm({
     switch (previewData?.kind) {
       case "image":
         return (
-          <Box sx={{ width: "100%", height: "100%", borderRadius: 2, overflow: "hidden", boxShadow: "0 2px 8px rgba(0,0,0,0.15)", border: "1px solid #e5e7eb", backgroundColor: "#fff" }}>
-            <img src={previewData.url} alt={activeOutput.name} style={{ display: "block", width: "100%", height: "100%", objectFit: "contain" }} />
+          <Box
+            sx={{
+              width: "100%",
+              height: "100%",
+              display: "flex",
+              alignItems: "flex-start",
+              justifyContent: "center",
+              overflow: "auto",           
+              p: 1,
+              backgroundColor: "#f9fafb",
+            }}
+          >
+            <img
+              src={previewData.url}
+              alt={activeOutput.name}
+              style={{
+                display: "block",
+                maxWidth: "100%",          
+                height: "auto",            
+                imageRendering: "auto",    
+              }}
+            />
           </Box>
         );
 
       case "pdf":
         return (
-          <Box sx={{ width: "100%", height: "100%", borderRadius: 2, overflow: "hidden", border: "1px solid #e5e7eb", backgroundColor: "#fff" }}>
-            <object data={previewData.url} type="application/pdf" width="100%" height="100%">
+          <Box
+            sx={{
+              width: "100%",
+              height: "100%",
+              borderRadius: 2,
+              overflow: "hidden",
+              border: "1px solid #e5e7eb",
+              backgroundColor: "#fff",
+            }}
+          >
+            <object
+              data={previewData.url}
+              type="application/pdf"
+              width="100%"
+              height="100%"
+            >
               <Box sx={{ p: 2 }}>
-                <Typography variant="body2" sx={{ mb: 1 }}>PDF preview not supported by your browser.</Typography>
-                <a href={previewData.downloadUrl} target="_blank" rel="noreferrer">Open PDF</a>
+                <Typography variant="body2" sx={{ mb: 1 }}>
+                  PDF preview not supported by your browser.
+                </Typography>
+                <a href={previewData.downloadUrl} target="_blank" rel="noreferrer">
+                  Open PDF
+                </a>
               </Box>
             </object>
           </Box>
@@ -1650,11 +1710,21 @@ export default function ProtocolForm({
       )}
 
       {/* BODY */}
-      <div className="form-body" style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
+      <div
+        className="form-body"
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          flex: 1,
+          overflow: "hidden",
+        }}
+      >
         <Box
           sx={{
-            flexGrow: 7,
-            overflowY: "auto",
+            flex: 1,
+            display: "flex",
+            flexDirection: "column",
+            overflow: "hidden",
             backgroundColor: "#f9fafb",
             borderRadius: 2,
             boxShadow: "0px 2px 6px rgba(0,0,0,0.2)",
@@ -1687,7 +1757,16 @@ export default function ProtocolForm({
             <Tab label="Logs" />
           </Tabs>
 
-          <Box className="top-tab-content" sx={{ p: 1 }}>
+          <Box
+            className="top-tab-content"
+            sx={{
+              flex: 1,
+              minHeight: 0,
+              p: 1,
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
             {topTab === 0 && (
               <>
                 <Tabs
@@ -1719,7 +1798,8 @@ export default function ProtocolForm({
                   display: "flex",
                   flexDirection: "row",
                   gap: 2,
-                  minHeight: "480px",
+                  flex: 1,
+                  minHeight: 0,
                 }}
               >
                 {/* Left Panel Outputs */}
@@ -1728,6 +1808,7 @@ export default function ProtocolForm({
                     flex: "0 0 45%",
                     maxWidth: "44%",
                     minWidth: 0,
+                    minHeight: 0,
                     backgroundColor: "#fff",
                     borderRadius: 2,
                     boxShadow: "0px 2px 6px rgba(0,0,0,0.1)",
@@ -1764,8 +1845,8 @@ export default function ProtocolForm({
                   <Box
                     sx={{
                       flex: 1,
-                      overflowY: "auto",
-                      maxHeight: "50vh",
+                      minHeight: 0,
+                      overflowY: "auto", // scroll sólo aquí para la lista
                       p: 1,
                     }}
                   >
@@ -1828,8 +1909,9 @@ export default function ProtocolForm({
                 {/* Right panel PREVIEW */}
                 <Box
                   sx={{
-                    flex: "1 1 auto",
+                    flex: "1 1 0",
                     minWidth: 0,
+                    minHeight: 0,
                     backgroundColor: "#fff",
                     borderRadius: 2,
                     boxShadow: "0px 2px 6px rgba(0,0,0,0.1)",
@@ -1884,13 +1966,14 @@ export default function ProtocolForm({
                   <Box
                     sx={{
                       flex: 1,
-                      overflow: "hidden",
-                      height: "70vh",
-                      p: 0,
-                      display: "flex",
-                      alignItems: "stretch",
-                      justifyContent: "stretch",
+                      minHeight: 0,
+                      overflowY: "auto",      // <-- AQUÍ está ahora el scroll vertical
+                      overflowX: "hidden",
+                      p: 2,
                       backgroundColor: "#f9fafb",
+                      display: "flex",
+                      alignItems: "flex-start",
+                      justifyContent: "center",
                     }}
                   >
                     {previewContent}
