@@ -12,6 +12,7 @@ import {
   Button
 } from '@mui/material';
 import { CloseIcon, EyeIcon, FindIcon, HelpIcon, TrashBinIcon } from '../../icons';
+import { FolderOpen as FolderIcon } from 'lucide-react'; // <--- nuevo
 
 type ParamRowProps = {
   label: string;
@@ -21,9 +22,12 @@ type ParamRowProps = {
   onClear?: () => void;
   rowIndex?: number;
 
-  // NEW: optional callback to open the Finder from parent (ProtocolForm/…)
-  // If not provided, we fall back to local state (noop dialog) to keep behavior.
+  // PointerParam
   onOpenFind?: () => void;
+
+  // PathParam
+  isPathParam?: boolean;
+  onBrowsePath?: () => void;
 };
 
 const ParamRow = ({
@@ -33,10 +37,12 @@ const ParamRow = ({
   isPointerParam,
   onClear,
   rowIndex = 0,
-  onOpenFind, // <-- NEW prop
+  onOpenFind,
+  isPathParam,
+  onBrowsePath,
 }: ParamRowProps) => {
   const [openHelp, setOpenHelp] = useState(false);
-  const [openSelector, setOpenSelector] = useState(false); // kept as fallback
+  const [openSelector, setOpenSelector] = useState(false); // fallback
 
   return (
     <>
@@ -60,14 +66,26 @@ const ParamRow = ({
         <Box>{control}</Box>
 
         <Box sx={{ display: 'flex', gap: 0, alignItems: 'center' }}>
+          {/* PointerParam: lupa */}
           {isPointerParam && (
             <Tooltip title="Find">
               <IconButton
                 size="small"
-                // If parent provided a Finder handler, use it; otherwise keep local fallback
                 onClick={onOpenFind ? onOpenFind : () => setOpenSelector(true)}
               >
-                <FindIcon className='ml-0' fontSize="1.3rem" />
+                <FindIcon className="ml-0" fontSize="1.3rem" />
+              </IconButton>
+            </Tooltip>
+          )}
+
+          {/* PathParam: carpeta */}
+          {isPathParam && (
+            <Tooltip title="Browse files">
+              <IconButton
+                size="small"
+                onClick={onBrowsePath}
+              >
+                <FolderIcon className="ml-0" size={18} />
               </IconButton>
             </Tooltip>
           )}
@@ -75,7 +93,7 @@ const ParamRow = ({
           {onClear && (
             <Tooltip title="Clear">
               <IconButton size="small" onClick={onClear}>
-                <TrashBinIcon className='ml-0' fontSize="1.3rem" />
+                <TrashBinIcon className="ml-0" fontSize="1.3rem" />
               </IconButton>
             </Tooltip>
           )}
@@ -83,7 +101,7 @@ const ParamRow = ({
           {isPointerParam && (
             <Tooltip title="Visualize">
               <IconButton size="small" onClick={() => console.log('View')}>
-                <EyeIcon className='ml-0' fontSize="1.3rem" />
+                <EyeIcon className="ml-0" fontSize="1.3rem" />
               </IconButton>
             </Tooltip>
           )}
@@ -91,14 +109,14 @@ const ParamRow = ({
           {helpText && (
             <Tooltip title="Help">
               <IconButton size="small" onClick={() => setOpenHelp(true)}>
-                <HelpIcon className='ml-0' fontSize="1.3rem" />
+                <HelpIcon className="ml-0" fontSize="1.3rem" />
               </IconButton>
             </Tooltip>
           )}
         </Box>
       </Box>
 
-      {/* Help dialog (unchanged) */}
+      {/* Help dialog */}
       {helpText && (
         <Dialog open={openHelp} onClose={() => setOpenHelp(false)} maxWidth="sm" fullWidth>
           <DialogTitle className="form-header">Help</DialogTitle>
@@ -119,17 +137,20 @@ const ParamRow = ({
         </Dialog>
       )}
 
-      {/* Fallback selector dialog (kept hidden/unused unless you want it) */}
+      {/* Fallback selector info */}
       <Dialog open={openSelector} onClose={() => setOpenSelector(false)} maxWidth="sm" fullWidth>
         <DialogTitle className="form-header">Select output</DialogTitle>
         <DialogContent sx={{ p: 2 }}>
           <Typography variant="body2" sx={{ lineHeight: 1.6 }}>
-            {/* This is a placeholder. Parent should pass onOpenFind to handle the real Finder. */}
-            No selector implemented here. Use onOpenFind from the parent.
+            No selector implemented here. Use onOpenFind/onBrowsePath from the parent.
           </Typography>
         </DialogContent>
         <DialogActions sx={{ justifyContent: 'center' }}>
-          <Button variant="outlined" onClick={() => setOpenSelector(false)} startIcon={<CloseIcon />}>
+          <Button
+            variant="outlined"
+            onClick={() => setOpenSelector(false)}
+            startIcon={<CloseIcon />}
+          >
             Close
           </Button>
         </DialogActions>

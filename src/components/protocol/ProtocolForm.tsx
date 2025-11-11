@@ -33,6 +33,7 @@ import ParamRow from "./ParamRow";
 import { fetchProtocolLogsStream } from "@/api/protocols";
 import OutputSelectorDialog from "./outputSelectorDialog";
 import { useProjectService } from "@/ProjectServiceContext";
+import RemoteFileDialog from "@/components/files/RemoteFileDialog";
 
 type ProtocolFormProps = {
   data: any;
@@ -51,6 +52,10 @@ export default function ProtocolForm({
   variant = "drawer",
 }: ProtocolFormProps) {
   const svc = useProjectService();
+
+  const projectId = data?.projectId ?? data?.project?.id ?? null;
+  const protocolId = data?.id ?? null;
+
   const [topTab, setTopTab] = useState(0);
   const [bottomTab, setBottomTab] = useState(0);
   const [sectionTab, setSectionTab] = useState(0);
@@ -104,7 +109,15 @@ export default function ProtocolForm({
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [previewData, setPreviewData] = useState<any>(null);
 
-  // Normalize outputs from data.outputs
+  const [sqliteTable, setSqliteTable] = useState<string | null>(null);
+  const previewUrlRef = useRef<string | null>(null);
+
+  const [pathDialog, setPathDialog] = useState<{ open: boolean; paramKey: string | null }>({
+    open: false,
+    paramKey: null,
+  });
+
+  // Normalize outputs from data.outputs for the Outputs tab
   const normalizedOutputs = useMemo(() => {
     const arr = Array.isArray(data?.outputs) ? data.outputs : [];
     return arr.map((entry: any) => {
@@ -112,7 +125,7 @@ export default function ProtocolForm({
       const infoText = payload?.info ?? payload?._class ?? "";
       return {
         name,
-        infoText, // ej: "SetOfFSCs (5 items)"
+        infoText,
         raw: payload,
       };
     });
@@ -130,10 +143,6 @@ export default function ProtocolForm({
     return normalizedOutputs[selectedOutputIdx];
   }, [selectedOutputIdx, normalizedOutputs]);
 
-  // NEW: SQLite table navigation + objectURL cleanup
-  const [sqliteTable, setSqliteTable] = useState<string | null>(null);
-  const previewUrlRef = useRef<string | null>(null);
-
   // Revoke object URL on unmount
   useEffect(() => {
     return () => {
@@ -144,14 +153,13 @@ export default function ProtocolForm({
     };
   }, []);
 
-
-  // Requests a preview from the backend when activeOutput changes
+  // Request preview whenever activeOutput/sqliteTable changes
   useEffect(() => {
     if (!activeOutput) {
       setPreviewData(null);
       setPreviewError(null);
       setPreviewLoading(false);
-      setSqliteTable(null); // reset sqlite state on output change
+      setSqliteTable(null);
       return;
     }
 
@@ -188,7 +196,7 @@ export default function ProtocolForm({
     return () => {
       cancelled = true;
     };
-  }, [activeOutput, data?.id, sqliteTable]);
+  }, [activeOutput, data?.id, sqliteTable, svc, data?.projectId]);
 
 
   // Use this instead of onClose() directly to play exit animation
@@ -197,8 +205,6 @@ export default function ProtocolForm({
     // Only propagate close to parent after the exit animation completes
     if (isClosing) onClose();
   };
-
-  // ---------------- Utilities ----------------
 
   // Parse JSON envelopes like {"_objValue": "..."} if they appear as strings
   const parseFromJSONValue = (maybeJson: any) => {
@@ -238,8 +244,7 @@ export default function ProtocolForm({
     return state.editableValue ?? "";
   };
 
-  // ---------- Expert-level helpers ----------
-  // Find the 'expertLevel' EnumParam (usually in "General" section)
+  // Locate the global expertLevel EnumParam if present
   const findGeneralExpertLocator = useCallback(() => {
     if (!data?.expertLevel || !Array.isArray(data?.definition)) return null;
 
@@ -264,7 +269,7 @@ export default function ProtocolForm({
     return typeof v === "number" ? v : Number(v) || 0;
   })();
 
-  // Conditions for showing/hiding params
+  // Show/hide params with logical conditions
   const evalAtom = (sectionIdx: number, atom: string): boolean => {
     let a = atom.replace(/[()]/g, "").trim();
     let neg = false;
@@ -373,9 +378,7 @@ export default function ProtocolForm({
     return parts;
   }
 
-  // --------------------------------------------
   // Load initial parameters into protocolDetails
-  // --------------------------------------------
   useEffect(() => {
     if (!data) {
       setProtocolDetails({});
@@ -428,17 +431,12 @@ export default function ProtocolForm({
     }
   }, [data]);
 
-  // --------------------------------------------
-  // Helpers for Logs
-  // --------------------------------------------
   const isTerminalStatus = (s: any) =>
     ["finished", "success", "done", "failed", "error", "cancelled", "canceled", "stopped", "aborted"]
       .includes(String(s || "").toLowerCase());
   const idleStreakRef = useRef<number>(0);
 
-  // --------------------------------------------
-  // Incremental log polling 
-  // --------------------------------------------
+  // Incremental log polling
   useEffect(() => {
     // Clear any previous interval before starting a new polling cycle
     if (pollRef.current) {
@@ -452,7 +450,7 @@ export default function ProtocolForm({
     let cancelled = false;
     idleStreakRef.current = 0;
 
-    // 1) Initial load from offset 0 (stdout/stderr/schedule)
+    // Initial load
     (async () => {
       try {
         const res: any = await fetchProtocolLogsStream(data.projectId, data.id, 0, 0, 0);
@@ -463,7 +461,6 @@ export default function ProtocolForm({
         setErrorLogs(res.stderrLog ?? "");
         setScheduleLogs(res.scheduleLog ?? "");
 
-        // Seed offsets: prefer server offsets; otherwise fallback to current chunk length
         offsetRef.current = typeof res.stdoutOffset === "number"
           ? res.stdoutOffset
           : (typeof res.stdoutLog === "string" ? res.stdoutLog.length : 0);
@@ -494,12 +491,10 @@ export default function ProtocolForm({
 
         let gotNew = false;
 
-        // Consider "new data" only when string length > 0
         const hasStdout = typeof res.stdoutLog === "string" && res.stdoutLog.length > 0;
         const hasStderr = typeof res.stderrLog === "string" && res.stderrLog.length > 0;
         const hasSched = typeof res.scheduleLog === "string" && res.scheduleLog.length > 0;
 
-        // Advance offset only if server offset is a number and strictly increases
         if (hasStdout && typeof res.stdoutOffset === "number" && res.stdoutOffset > offsetRef.current) {
           setLogs((prev) => prev + res.stdoutLog);
           offsetRef.current = res.stdoutOffset;
@@ -526,7 +521,6 @@ export default function ProtocolForm({
             pollRef.current = null;
           }
         } else {
-          // Non-terminal: keep polling; reset idle streak if we got something
           if (gotNew) idleStreakRef.current = 0;
         }
       } catch (err: any) {
@@ -534,7 +528,6 @@ export default function ProtocolForm({
       }
     }, 2000);
 
-    // Cleanup on tab exit or unmount
     return () => {
       cancelled = true;
       if (pollRef.current) {
@@ -562,9 +555,7 @@ export default function ProtocolForm({
     scheduleContainerRef.current.scrollTop = scheduleContainerRef.current.scrollHeight;
   }, [scheduleLogs]);
 
-  // --------------------------------------------
-  // Live expected-class reader
-  // --------------------------------------------
+  // Live expected-class reader for pointer-like params
   const getExpectedClass = (def: any): string | string[] | null => {
     if (!def) return null;
     const candidates = [
@@ -595,15 +586,15 @@ export default function ProtocolForm({
       else push(c);
     }
 
-    // Drop parameter meta-classes so they never constrain filtering
-    const isParamMeta = (s: string) => /pointerparam$/i.test(s) || /multipointerparam$/i.test(s);
+    const isParamMeta = (s: string) =>
+      /pointerparam$/i.test(s) || /multipointerparam$/i.test(s);
     const filtered = flat.filter((s) => !isParamMeta(s));
 
     if (filtered.length === 0) return null;
     return filtered.length === 1 ? filtered[0] : filtered;
   };
 
-  // Recolecta outputs de todos los protocolos (para el selector de inputs)
+  // Collect outputs from all protocols (for the input selector)
   const gatherAllOutputs = useCallback((): {
     outputs: any[];
     dependencyMap: Record<string, string[]>;
@@ -642,12 +633,7 @@ export default function ProtocolForm({
     return { outputs, dependencyMap };
   }, [projectProtocols]);
 
-  // --------------------------------------------
-  // Sync inputSets constraints ONLY when user changes inputType
-  //  - First render: no-op (keeps existing items and constraints)
-  //  - Change to specific type: set SetOfType + clear items
-  //  - Change to "All": remove constraints + keep items
-  // --------------------------------------------
+  // Keep ProtUnionSet inputSets constraints in sync when inputType changes
   useEffect(() => {
     if (data?.protocolClassName !== "ProtUnionSet") return;
     const params = protocolDetails?.params;
@@ -689,7 +675,6 @@ export default function ProtocolForm({
     // No change: do nothing
     if (prev === selectedLabel) return;
 
-    // Commit new selection
     prevSelectedInputTypeRef.current = selectedLabel;
 
     // Apply constraints according to selection
@@ -701,7 +686,6 @@ export default function ProtocolForm({
       const target = { ...clone.params[inputSetsKey] };
 
       if (isAll) {
-        // Remove ALL class constraints; keep items
         delete target.pointerClass;
         delete target.pointerClassName;
         delete target.accept;
@@ -711,7 +695,6 @@ export default function ProtocolForm({
         delete target.objectClass;
         delete target.type;
       } else {
-        // Set SetOf<Type> on all aliases; clear items
         target.pointerClass = nextPointerClass!;
         target.pointerClassName = nextPointerClass!;
         target.accept = nextPointerClass!;
@@ -728,9 +711,7 @@ export default function ProtocolForm({
     });
   }, [data?.protocolClassName, protocolDetails.params]);
 
-  // --------------------------------------------
-  // Filter outputs for a given paramKey
-  // --------------------------------------------
+  // Filter outputs for a given paramKey, excluding self and descendants
   const getFilteredOutputsForKey = (paramKey: string) => {
     const liveParam = protocolDetails.params?.[paramKey];
     const expected = getExpectedClass(liveParam);
@@ -738,7 +719,6 @@ export default function ProtocolForm({
     const { outputs, dependencyMap } = gatherAllOutputs();
     const currentId = String(data?.id ?? "");
 
-    // bloques a excluir: este protocolo y descendientes
     const blocked = new Set<string>([currentId]);
     const stack = [currentId];
     while (stack.length > 0) {
@@ -752,18 +732,15 @@ export default function ProtocolForm({
       }
     }
 
-    // Exclude self + descendants
     const pool = outputs.filter((o) => !blocked.has(String(o._protocolId)));
 
     const norm = (s: any) =>
       typeof s === "string" ? s.replace(/\s+/g, "").toLowerCase() : "";
 
-    // All => allow any SetOf*
     if (expected === null) {
       return pool.filter((o) => /^setof/i.test(String(o._class || "")));
     }
 
-    // Specific class/es
     return pool.filter((o) => {
       const oc = norm(o._class);
       return Array.isArray(expected)
@@ -772,9 +749,7 @@ export default function ProtocolForm({
     });
   };
 
-  // --------------------------------------------
   // Serialize protocol parameters before save/execute
-  // --------------------------------------------
   const getSerializedParams = () => {
     const out: any = {};
 
@@ -786,7 +761,6 @@ export default function ProtocolForm({
       const p = pRaw ?? {};
       const cls = p._class;
 
-      // POINTER
       if (cls === "PointerParam") {
         const editable = p.editableValue ?? "";
         const normalized = {
@@ -809,7 +783,6 @@ export default function ProtocolForm({
         return;
       }
 
-      // MULTI POINTER
       if (cls === "MultiPointerParam" && Array.isArray(p.editableValue)) {
         const list = p.editableValue.map((item: any) => {
           if (typeof item === "string" || typeof item === "number" || typeof item === "boolean") {
@@ -832,7 +805,6 @@ export default function ProtocolForm({
         return;
       }
 
-      // REST (non-pointers)
       out[newKey] = {
         value: p.editableValue,
         _objValue: p._objValue,
@@ -844,7 +816,7 @@ export default function ProtocolForm({
     return out;
   };
 
-  // Extract validation messages from a detail string
+  // Extract validation messages from backend error detail
   function extractValidationErrors(detail: string): string[] {
     const singleQuoted = Array.from(detail.matchAll(/'([^']+)'/g), (m) => m[1].trim());
     if (singleQuoted.length) return singleQuoted;
@@ -862,18 +834,16 @@ export default function ProtocolForm({
     return [detail.replace(/^422:\s*/, "").trim()];
   }
 
-  // --------------------------------------------
-  // Execution & Save handlers
-  // --------------------------------------------
+  // Execute handler
   const handleExecute = async () => {
     setExecLoading(true);
     setExecError(null);
     setValidationErrors([]);
 
     try {
-      const protocolId = data?.id ?? "";
+      const pid = data?.id ?? "";
       const serialized = getSerializedParams();
-      await svc.executeProtocol(protocolId, data?.protocolClassName, serialized);
+      await svc.executeProtocol(pid, data?.protocolClassName, serialized);
       onExecuted?.();
       requestClose();
     } catch (err: any) {
@@ -892,13 +862,14 @@ export default function ProtocolForm({
     }
   };
 
+  // Save handler
   const handleSave = async () => {
     setExecLoading(true);
     setExecError(null);
     try {
-      const protocolId = data?.id ?? "";
+      const pid = data?.id ?? "";
       const serialized = getSerializedParams();
-      await svc.saveProtocol(protocolId, data?.protocolClassName, serialized);
+      await svc.saveProtocol(pid, data?.protocolClassName, serialized);
       requestClose();
     } catch (err: any) {
       setExecError(err.message || "Error saving the protocol");
@@ -907,18 +878,15 @@ export default function ProtocolForm({
     }
   };
 
-  // --------------------------------------------
-  // renderParam - para cada parámetro
-  // --------------------------------------------
+  // Render a single parameter row
   const renderParam = useCallback(
     (paramObj: any, sectionIdx: number, rowIndex = 0): JSX.Element | null => {
       const [name, def] = Object.entries(paramObj)[0] as [string, any];
       const key = `${sectionIdx}_${name}`;
       const value = protocolDetails.params?.[key]?.editableValue;
+
       if (def.condition && !evalExpr(sectionIdx, def.condition)) return null;
 
-      // Hide advanced params when general expertLevel is "Normal" (0).
-      // Keep the 'expertLevel' selector itself always visible.
       const expertLocator = findGeneralExpertLocator();
       const isExpertSelector =
         !!expertLocator && expertLocator.sectionIdx === sectionIdx && name === "expertLevel";
@@ -932,7 +900,6 @@ export default function ProtocolForm({
         return null;
       }
 
-      // Optional advanced indicator
       const advancedSlot = (
         <Box
           sx={{
@@ -987,7 +954,6 @@ export default function ProtocolForm({
         };
 
         const onRowDrop = (i: number, dragged: any) => {
-          // Use LIVE expected class from the current param state (not the static def)
           const liveParam = protocolDetails.params?.[key];
           const expected = getExpectedClass(liveParam);
           const norm = (s: any) =>
@@ -1024,15 +990,15 @@ export default function ProtocolForm({
           });
         };
 
-        const handlePickFromDialog = (rowIndex: number, picked: any) => {
+        const handlePickFromDialog = (rowIndexInner: number, picked: any) => {
           setProtocolDetails((prev: any) => {
             const list = Array.isArray(prev.params[key].editableValue)
               ? [...prev.params[key].editableValue]
               : [];
 
-            while (list.length <= rowIndex) list.push({ object: "", info: "" });
+            while (list.length <= rowIndexInner) list.push({ object: "", info: "" });
 
-            list[rowIndex] = {
+            list[rowIndexInner] = {
               object: picked._objValue ?? "",
               info: picked.info ?? "",
               _class: picked._class ?? "",
@@ -1050,7 +1016,6 @@ export default function ProtocolForm({
           });
         };
 
-        // Merge LIVE param state with static schema so picker sees updated pointerClass
         const liveDef = { ...def, ...(protocolDetails.params?.[key] || {}) };
 
         return (
@@ -1093,6 +1058,17 @@ export default function ProtocolForm({
             },
           }));
 
+        const handleOpenFind = (targetKey: string) => {
+          const liveParam = protocolDetails.params?.[targetKey];
+          const expected = getExpectedClass(liveParam);
+          setExpectedClass(expected);
+          setSelectorTarget({ key: targetKey, def: liveParam, expectedClass: expected });
+
+          const finalOutputs = getFilteredOutputsForKey(targetKey);
+          setAllOutputs(finalOutputs);
+          setOpenSelector(true);
+        };
+
         const control = (
           <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
             <TextField
@@ -1128,18 +1104,6 @@ export default function ProtocolForm({
           </Box>
         );
 
-        const handleOpenFind = (key: string) => {
-          // Read LIVE param state (includes pointerClass updates)
-          const liveParam = protocolDetails.params?.[key];
-          const expected = getExpectedClass(liveParam);
-          setExpectedClass(expected);
-          setSelectorTarget({ key, def: liveParam, expectedClass: expected });
-
-          const finalOutputs = getFilteredOutputsForKey(key);
-          setAllOutputs(finalOutputs);
-          setOpenSelector(true);
-        };
-
         return (
           <ParamRow
             key={key}
@@ -1163,6 +1127,83 @@ export default function ProtocolForm({
         );
       }
 
+      // PathParam
+      if (def._class === "PathParam") {
+        const current = protocolDetails.params?.[key] || {};
+        const textValue =
+          current.editableValue ??
+          current._objValue ??
+          def.value ??
+          def.default ??
+          "";
+
+        const handleBrowsePath = () => {
+          if (!projectId || !protocolId) {
+            console.warn("Missing projectId or protocolId for PathParam browse.");
+            return;
+          }
+          setPathDialog({ open: true, paramKey: key });
+        };
+
+        const handleClear = () => {
+          setProtocolDetails((prev: any) => {
+            if (!prev?.params?.[key]) return prev;
+            return {
+              ...prev,
+              params: {
+                ...prev.params,
+                [key]: {
+                  ...prev.params[key],
+                  editableValue: "",
+                  _objValue: "",
+                },
+              },
+            };
+          });
+        };
+
+        const control = (
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+            {advancedSlot}
+            <TextField
+              size="small"
+              name={key}
+              value={textValue}
+              onChange={(e) =>
+                setProtocolDetails((prev: any) => {
+                  if (!prev?.params?.[key]) return prev;
+                  return {
+                    ...prev,
+                    params: {
+                      ...prev.params,
+                      [key]: {
+                        ...prev.params[key],
+                        editableValue: e.target.value,
+                        _objValue: e.target.value,
+                      },
+                    },
+                  };
+                })
+              }
+              sx={{ minWidth: 300, "& .MuiInputBase-input": { fontSize: "0.8rem" } }}
+            />
+          </Box>
+        );
+
+        return (
+          <ParamRow
+            key={key}
+            label={def.label || name}
+            control={control}
+            helpText={def.help}
+            isPathParam
+            onBrowsePath={handleBrowsePath}
+            onClear={handleClear}
+            rowIndex={rowIndex}
+          />
+        );
+      }
+
       // EnumParam
       if (def._class === "EnumParam" && Array.isArray(def.choices)) {
         let sel = value ?? def.default ?? "";
@@ -1181,7 +1222,7 @@ export default function ProtocolForm({
               value={
                 def.choices?.includes(sel)
                   ? sel
-                  : def.choices?.[0] ?? ''
+                  : def.choices?.[0] ?? ""
               }
               onChange={(e) => onChange(e.target.value)}
             >
@@ -1191,7 +1232,7 @@ export default function ProtocolForm({
                   value={ch}
                   control={<Radio size="small" />}
                   label={ch}
-                  sx={{ '& .MuiFormControlLabel-label': { fontSize: 12, lineHeight: 1.2 } }}
+                  sx={{ "& .MuiFormControlLabel-label": { fontSize: 12, lineHeight: 1.2 } }}
                 />
               ))}
             </RadioGroup>
@@ -1357,13 +1398,16 @@ export default function ProtocolForm({
       expandedGroups,
       data,
       generalExpertLevel,
-      findGeneralExpertLocator
+      findGeneralExpertLocator,
+      getExpectedClass,
+      gatherAllOutputs,
+      getFilteredOutputsForKey,
+      projectId,
+      protocolId,
     ]
   );
 
-  // --------------------------------------------
-  // Global state for OutputSelectorDialog
-  // --------------------------------------------
+  // Handle selected output in OutputSelectorDialog
   const handleSelectOutput = (selected: any | any[]) => {
     if (!selectorTarget) return;
 
@@ -1373,7 +1417,6 @@ export default function ProtocolForm({
     setProtocolDetails((prev: any) => {
       const prevParam = prev.params[key];
 
-      // MULTI POINTER
       if (def?._class === "MultiPointerParam") {
         const newItems = picks.map((pick) => ({
           _objValue: pick?._objValue ?? "",
@@ -1394,7 +1437,6 @@ export default function ProtocolForm({
         };
       }
 
-      // POINTER
       const pick = picks[0];
       return {
         ...prev,
@@ -1415,15 +1457,19 @@ export default function ProtocolForm({
     setOpenSelector(false);
   };
 
-
-
-  // --------------------------------------------
-  // Preview content renderer (right panel)
-  // --------------------------------------------
+  // Preview content for Outputs tab
   const previewContent = useMemo(() => {
     if (!activeOutput) {
       return (
-        <Typography variant="body2" sx={{ color: "#6b7280", fontSize: "0.8rem", textAlign: "center", py: 4 }}>
+        <Typography
+          variant="body2"
+          sx={{
+            color: "#6b7280",
+            fontSize: "0.8rem",
+            textAlign: "center",
+            py: 4,
+          }}
+        >
           Select an output on the left to preview it here.
         </Typography>
       );
@@ -1431,9 +1477,20 @@ export default function ProtocolForm({
 
     if (previewLoading) {
       return (
-        <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 1 }}>
+        <Box
+          sx={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 1,
+          }}
+        >
           <CircularProgress size={20} />
-          <Typography variant="caption" sx={{ fontSize: "0.75rem", color: "#4b5563" }}>
+          <Typography
+            variant="caption"
+            sx={{ fontSize: "0.75rem", color: "#4b5563" }}
+          >
             Loading preview...
           </Typography>
         </Box>
@@ -1444,14 +1501,19 @@ export default function ProtocolForm({
       return (
         <Typography
           variant="body2"
-          sx={{ color: "#dc2626", fontSize: "0.75rem", textAlign: "center", whiteSpace: "pre-wrap", wordBreak: "break-word" }}
+          sx={{
+            color: "#dc2626",
+            fontSize: "0.75rem",
+            textAlign: "center",
+            whiteSpace: "pre-wrap",
+            wordBreak: "break-word",
+          }}
         >
           {previewError}
         </Typography>
       );
     }
 
-    // Back-compat for older shapes
     if (previewData?.imageUrl) {
       return (
         <Box
@@ -1477,16 +1539,30 @@ export default function ProtocolForm({
       );
     }
 
-
     if (previewData?.text && !previewData?.kind) {
       return (
-        <Box sx={{ p: 2, borderRadius: 2, backgroundColor: "#fff", border: "1px solid #e5e7eb", boxShadow: "0 2px 4px rgba(0,0,0,0.05)", maxWidth: "100%", maxHeight: "100%", overflowY: "auto", whiteSpace: "pre-wrap", wordBreak: "break-word", fontSize: ".75rem", lineHeight: 1.4, color: "#111827" }}>
+        <Box
+          sx={{
+            p: 2,
+            borderRadius: 2,
+            backgroundColor: "#fff",
+            border: "1px solid #e5e7eb",
+            boxShadow: "0 2px 4px rgba(0,0,0,0.05)",
+            maxWidth: "100%",
+            maxHeight: "100%",
+            overflowY: "auto",
+            whiteSpace: "pre-wrap",
+            wordBreak: "break-word",
+            fontSize: ".75rem",
+            lineHeight: 1.4,
+            color: "#111827",
+          }}
+        >
           {previewData.text}
         </Box>
       );
     }
 
-    // New unified shape
     switch (previewData?.kind) {
       case "image":
         return (
@@ -1544,15 +1620,63 @@ export default function ProtocolForm({
         const cols: string[] = previewData.data?.columns || [];
         const rows: any[] = previewData.data?.rows || [];
         return (
-          <Box sx={{ width: "100%", maxHeight: "100%", overflow: "auto", backgroundColor: "#fff", border: "1px solid #e5e7eb", borderRadius: 2 }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.75rem" }}>
-              <thead style={{ position: "sticky", top: 0, background: "#f3f4f6" }}>
-                <tr>{cols.map((c) => <th key={c} style={{ textAlign: "left", padding: "6px 8px", borderBottom: "1px solid #e5e7eb" }}>{c}</th>)}</tr>
+          <Box
+            sx={{
+              width: "100%",
+              maxHeight: "100%",
+              overflow: "auto",
+              backgroundColor: "#fff",
+              border: "1px solid #e5e7eb",
+              borderRadius: 2,
+            }}
+          >
+            <table
+              style={{
+                width: "100%",
+                borderCollapse: "collapse",
+                fontSize: "0.75rem",
+              }}
+            >
+              <thead
+                style={{
+                  position: "sticky",
+                  top: 0,
+                  background: "#f3f4f6",
+                }}
+              >
+                <tr>
+                  {cols.map((c) => (
+                    <th
+                      key={c}
+                      style={{
+                        textAlign: "left",
+                        padding: "6px 8px",
+                        borderBottom: "1px solid #e5e7eb",
+                      }}
+                    >
+                      {c}
+                    </th>
+                  ))}
+                </tr>
               </thead>
               <tbody>
                 {rows.map((r, i) => (
-                  <tr key={i} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                    {cols.map((c) => <td key={c} style={{ padding: "6px 8px", verticalAlign: "top", whiteSpace: "nowrap" }}>{String(r[c] ?? "")}</td>)}
+                  <tr
+                    key={i}
+                    style={{ borderBottom: "1px solid #f3f4f6" }}
+                  >
+                    {cols.map((c) => (
+                      <td
+                        key={c}
+                        style={{
+                          padding: "6px 8px",
+                          verticalAlign: "top",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {String(r[c] ?? "")}
+                      </td>
+                    ))}
                   </tr>
                 ))}
               </tbody>
@@ -1566,11 +1690,41 @@ export default function ProtocolForm({
         if (mode === "tables") {
           const tables: string[] = previewData.data?.tables || [];
           return (
-            <Box sx={{ width: "100%", backgroundColor: "#fff", border: "1px solid #e5e7eb", borderRadius: 2, p: 1 }}>
-              <Typography variant="caption" sx={{ color: "#6b7280" }}>Tables</Typography>
-              <Box sx={{ mt: 1, display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(160px,1fr))", gap: 0.5 }}>
+            <Box
+              sx={{
+                width: "100%",
+                backgroundColor: "#fff",
+                border: "1px solid #e5e7eb",
+                borderRadius: 2,
+                p: 1,
+              }}
+            >
+              <Typography
+                variant="caption"
+                sx={{ color: "#6b7280" }}
+              >
+                Tables
+              </Typography>
+              <Box
+                sx={{
+                  mt: 1,
+                  display: "grid",
+                  gridTemplateColumns:
+                    "repeat(auto-fill,minmax(160px,1fr))",
+                  gap: 0.5,
+                }}
+              >
                 {tables.map((t) => (
-                  <Button key={t} size="small" variant="outlined" sx={{ textTransform: "none", justifyContent: "flex-start" }} onClick={() => setSqliteTable(t)}>
+                  <Button
+                    key={t}
+                    size="small"
+                    variant="outlined"
+                    sx={{
+                      textTransform: "none",
+                      justifyContent: "flex-start",
+                    }}
+                    onClick={() => setSqliteTable(t)}
+                  >
                     {t}
                   </Button>
                 ))}
@@ -1578,24 +1732,95 @@ export default function ProtocolForm({
             </Box>
           );
         }
-        const cols: string[] = previewData.data?.columns || previewData.meta?.columnsHeader?.split(",") || [];
+        const cols: string[] =
+          previewData.data?.columns ||
+          previewData.meta?.columnsHeader?.split(",") ||
+          [];
         const rows: any[] = previewData.data?.rows || [];
         return (
-          <Box sx={{ width: "100%", maxHeight: "100%", overflow: "auto", backgroundColor: "#fff", border: "1px solid #e5e7eb", borderRadius: 2 }}>
-            <Box sx={{ p: 1, display: "flex", gap: 1, alignItems: "center", borderBottom: "1px solid #eee" }}>
-              <Button size="small" onClick={() => setSqliteTable(null)} sx={{ textTransform: "none" }}>Back to tables</Button>
-              <Typography variant="caption" sx={{ color: "#6b7280" }}>
-                {rows.length} rows {previewData.meta?.rowCount ? `(server: ${previewData.meta.rowCount})` : ""}
+          <Box
+            sx={{
+              width: "100%",
+              maxHeight: "100%",
+              overflow: "auto",
+              backgroundColor: "#fff",
+              border: "1px solid #e5e7eb",
+              borderRadius: 2,
+            }}
+          >
+            <Box
+              sx={{
+                p: 1,
+                display: "flex",
+                gap: 1,
+                alignItems: "center",
+                borderBottom: "1px solid #eee",
+              }}
+            >
+              <Button
+                size="small"
+                onClick={() => setSqliteTable(null)}
+                sx={{ textTransform: "none" }}
+              >
+                Back to tables
+              </Button>
+              <Typography
+                variant="caption"
+                sx={{ color: "#6b7280" }}
+              >
+                {rows.length} rows{" "}
+                {previewData.meta?.rowCount
+                  ? `(server: ${previewData.meta.rowCount})`
+                  : ""}
               </Typography>
             </Box>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.75rem" }}>
-              <thead style={{ position: "sticky", top: 0, background: "#f3f4f6" }}>
-                <tr>{cols.map((c) => <th key={c} style={{ textAlign: "left", padding: "6px 8px", borderBottom: "1px solid #e5e7eb" }}>{c}</th>)}</tr>
+            <table
+              style={{
+                width: "100%",
+                borderCollapse: "collapse",
+                fontSize: "0.75rem",
+              }}
+            >
+              <thead
+                style={{
+                  position: "sticky",
+                  top: 0,
+                  background: "#f3f4f6",
+                }}
+              >
+                <tr>
+                  {cols.map((c) => (
+                    <th
+                      key={c}
+                      style={{
+                        textAlign: "left",
+                        padding: "6px 8px",
+                        borderBottom: "1px solid #e5e7eb",
+                      }}
+                    >
+                      {c}
+                    </th>
+                  ))}
+                </tr>
               </thead>
               <tbody>
                 {rows.map((r, i) => (
-                  <tr key={i} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                    {cols.map((c) => <td key={c} style={{ padding: "6px 8px", verticalAlign: "top", whiteSpace: "nowrap" }}>{String(r[c] ?? "")}</td>)}
+                  <tr
+                    key={i}
+                    style={{ borderBottom: "1px solid #f3f4f6" }}
+                  >
+                    {cols.map((c) => (
+                      <td
+                        key={c}
+                        style={{
+                          padding: "6px 8px",
+                          verticalAlign: "top",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {String(r[c] ?? "")}
+                      </td>
+                    ))}
                   </tr>
                 ))}
               </tbody>
@@ -1605,21 +1830,69 @@ export default function ProtocolForm({
       }
 
       case "archive": {
-        const entries: Array<{ name: string; isDir?: boolean; size?: number; compressedSize?: number }> =
-          previewData.data?.entries || [];
+        const entries: Array<{
+          name: string;
+          isDir?: boolean;
+          size?: number;
+          compressedSize?: number;
+        }> = previewData.data?.entries || [];
         return (
-          <Box sx={{ width: "100%", backgroundColor: "#fff", border: "1px solid #e5e7eb", borderRadius: 2, p: 1 }}>
-            <Typography variant="caption" sx={{ color: "#6b7280" }}>Archive entries</Typography>
-            <Box sx={{ mt: 1, maxHeight: "100%", overflow: "auto" }}>
+          <Box
+            sx={{
+              width: "100%",
+              backgroundColor: "#fff",
+              border: "1px solid #e5e7eb",
+              borderRadius: 2,
+              p: 1,
+            }}
+          >
+            <Typography
+              variant="caption"
+              sx={{ color: "#6b7280" }}
+            >
+              Archive entries
+            </Typography>
+            <Box
+              sx={{
+                mt: 1,
+                maxHeight: "100%",
+                overflow: "auto",
+              }}
+            >
               {entries.map((e, i) => (
-                <Box key={i} sx={{ display: "flex", gap: 1, py: 0.5, borderBottom: "1px dashed #f3f4f6" }}>
-                  <Typography variant="body2" sx={{ fontSize: "0.75rem", color: e.isDir ? "#111827" : "#374151" }}>
+                <Box
+                  key={i}
+                  sx={{
+                    display: "flex",
+                    gap: 1,
+                    py: 0.5,
+                    borderBottom:
+                      "1px dashed #f3f4f6",
+                  }}
+                >
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      fontSize: "0.75rem",
+                      color: e.isDir
+                        ? "#111827"
+                        : "#374151",
+                    }}
+                  >
                     {e.name}
                   </Typography>
                   {!e.isDir && (
-                    <Typography variant="caption" sx={{ color: "#6b7280" }}>
-                      {typeof e.size === "number" ? `• ${e.size} B` : ""}
-                      {typeof e.compressedSize === "number" ? ` (compressed ${e.compressedSize} B)` : ""}
+                    <Typography
+                      variant="caption"
+                      sx={{ color: "#6b7280" }}
+                    >
+                      {typeof e.size === "number"
+                        ? `• ${e.size} B`
+                        : ""}
+                      {typeof e.compressedSize ===
+                      "number"
+                        ? ` (compressed ${e.compressedSize} B)`
+                        : ""}
                     </Typography>
                   )}
                 </Box>
@@ -1631,19 +1904,65 @@ export default function ProtocolForm({
 
       case "text":
         return (
-          <Box sx={{ p: 2, borderRadius: 2, backgroundColor: "#fff", border: "1px solid #e5e7eb", boxShadow: "0 2px 4px rgba(0,0,0,0.05)", maxWidth: "100%", maxHeight: "100%", overflowY: "auto", whiteSpace: "pre-wrap", wordBreak: "break-word", fontSize: "0.75rem", lineHeight: 1.4, color: "#111827" }}>
+          <Box
+            sx={{
+              p: 2,
+              borderRadius: 2,
+              backgroundColor: "#fff",
+              border: "1px solid #e5e7eb",
+              boxShadow:
+                "0 2px 4px rgba(0,0,0,0.05)",
+              maxWidth: "100%",
+              maxHeight: "100%",
+              overflowY: "auto",
+              whiteSpace: "pre-wrap",
+              wordBreak: "break-word",
+              fontSize: "0.75rem",
+              lineHeight: 1.4,
+              color: "#111827",
+            }}
+          >
             {previewData.text}
           </Box>
         );
 
       case "binary":
         return (
-          <Box sx={{ width: "100%", borderRadius: 2, backgroundColor: "#fff", border: "1px solid #e5e7eb", p: 2 }}>
-            <Typography variant="body2" sx={{ mb: 1 }}>Binary file preview is not available.</Typography>
-            <Typography variant="caption" sx={{ color: "#6b7280", display: "block", mb: 1 }}>
-              {previewData.meta?.mime || "application/octet-stream"} • {previewData.meta?.sizeBytes ?? "?"} bytes
+          <Box
+            sx={{
+              width: "100%",
+              borderRadius: 2,
+              backgroundColor: "#fff",
+              border: "1px solid #e5e7eb",
+              p: 2,
+            }}
+          >
+            <Typography
+              variant="body2"
+              sx={{ mb: 1 }}
+            >
+              Binary file preview is not available.
             </Typography>
-            <Button size="small" variant="outlined" href={previewData.downloadUrl} sx={{ textTransform: "none" }}>
+            <Typography
+              variant="caption"
+              sx={{
+                color: "#6b7280",
+                display: "block",
+                mb: 1,
+              }}
+            >
+              {previewData.meta?.mime ||
+                "application/octet-stream"}{" "}
+              • {previewData.meta?.sizeBytes ??
+                "?"}{" "}
+              bytes
+            </Typography>
+            <Button
+              size="small"
+              variant="outlined"
+              href={previewData.downloadUrl}
+              sx={{ textTransform: "none" }}
+            >
               Download
             </Button>
           </Box>
@@ -1652,31 +1971,82 @@ export default function ProtocolForm({
       default:
         if (previewData) {
           return (
-            <Box sx={{ width: "100%", maxHeight: "100%", overflowY: "auto", border: "2px dashed #e5e7eb", borderRadius: 2, backgroundColor: "#fff", textAlign: "left", p: 2, fontSize: "0.7rem", lineHeight: 1.4, fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", color: "#1f2937", wordBreak: "break-word", whiteSpace: "pre-wrap" }}>
-              {JSON.stringify(previewData, null, 2)}
+            <Box
+              sx={{
+                width: "100%",
+                maxHeight: "100%",
+                overflowY: "auto",
+                border:
+                  "2px dashed #e5e7eb",
+                borderRadius: 2,
+                backgroundColor: "#fff",
+                textAlign: "left",
+                p: 2,
+                fontSize: "0.7rem",
+                lineHeight: 1.4,
+                fontFamily:
+                  "ui-monospace, SFMono-Regular, Menlo, monospace",
+                color: "#1f2937",
+                wordBreak: "break-word",
+                whiteSpace: "pre-wrap",
+              }}
+            >
+              {JSON.stringify(
+                previewData,
+                null,
+                2
+              )}
             </Box>
           );
         }
         return (
-          <Box sx={{ width: "100%", minHeight: "100%", maxHeight: "100%", border: "2px dashed #e5e7eb", borderRadius: 2, backgroundColor: "#fff", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", px: 2, py: 3, color: "#6b7280", fontSize: "0.8rem", lineHeight: 1.4, wordBreak: "break-word" }}>
-            <Typography variant="body2" sx={{ color: "#4b5563", fontSize: "0.75rem", mb: 1, lineHeight: 1.4 }}>
+          <Box
+            sx={{
+              width: "100%",
+              minHeight: "100%",
+              maxHeight: "100%",
+              border:
+                "2px dashed #e5e7eb",
+              borderRadius: 2,
+              backgroundColor: "#fff",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              textAlign: "center",
+              px: 2,
+              py: 3,
+              color: "#6b7280",
+              fontSize: "0.8rem",
+              lineHeight: 1.4,
+              wordBreak: "break-word",
+            }}
+          >
+            <Typography
+              variant="body2"
+              sx={{
+                color: "#4b5563",
+                fontSize: "0.75rem",
+                mb: 1,
+                lineHeight: 1.4,
+              }}
+            >
               Preview for "{activeOutput.name}".
             </Typography>
           </Box>
         );
     }
-  }, [activeOutput, previewLoading, previewError, previewData]);
-
+  }, [activeOutput, previewLoading, previewError, previewData, setSqliteTable]);
 
   const safeDefinition = Array.isArray(data?.definition) ? data.definition : [];
 
-  // --------------------------------------------
-  // JSX Layout
-  // --------------------------------------------
-  const presentationClass = (variant === "docked" ? "as-docked" : "");
+  const presentationClass = variant === "docked" ? "as-docked" : "";
+
   return (
     <div
-      className={`protocol-form ${presentationClass} ${isClosing ? "slide-out-right" : "slide-in-right"}`}
+      className={`protocol-form ${presentationClass} ${
+        isClosing ? "slide-out-right" : "slide-in-right"
+      }`}
       onAnimationEnd={handleAnimationEnd}
     >
       {/* HEADER */}
@@ -1686,7 +2056,13 @@ export default function ProtocolForm({
             {data?.id}
           </Box>
           <h2>{protocolDetails.label}</h2>
-          <span className="node-status-pill" style={{ backgroundColor: protocolDetails.color, color: "black" }}>
+          <span
+            className="node-status-pill"
+            style={{
+              backgroundColor: protocolDetails.color,
+              color: "black",
+            }}
+          >
             {protocolDetails.status || "Unknown"}
           </span>
         </div>
@@ -1696,7 +2072,11 @@ export default function ProtocolForm({
       </div>
 
       {execError && (
-        <Typography color="error" variant="body2" sx={{ px: 2, py: 1 }}>
+        <Typography
+          color="error"
+          variant="body2"
+          sx={{ px: 2, py: 1 }}
+        >
           {execError}
         </Typography>
       )}
@@ -1776,9 +2156,17 @@ export default function ProtocolForm({
                     },
                   }}
                 >
-                  {safeDefinition.map((section: any, idx: number) => (
-                    <Tab key={idx} label={section.name || `Section ${idx + 1}`} />
-                  ))}
+                  {safeDefinition.map(
+                    (section: any, idx: number) => (
+                      <Tab
+                        key={idx}
+                        label={
+                          section.name ||
+                          `Section ${idx + 1}`
+                        }
+                      />
+                    )
+                  )}
                 </Tabs>
 
                 <Box
@@ -1791,13 +2179,17 @@ export default function ProtocolForm({
                     pb: 1,
                   }}
                 >
-                  {safeDefinition[sectionTab]?.params?.map((paramObj: any, idx: number) =>
-                    renderParam(paramObj, sectionTab, idx)
+                  {safeDefinition[sectionTab]?.params?.map(
+                    (paramObj: any, idx: number) =>
+                      renderParam(
+                        paramObj,
+                        sectionTab,
+                        idx
+                      )
                   )}
                 </Box>
               </>
             )}
-
 
             {topTab === 1 && (
               <Box
@@ -1818,8 +2210,10 @@ export default function ProtocolForm({
                     minHeight: 0,
                     backgroundColor: "#fff",
                     borderRadius: 2,
-                    boxShadow: "0px 2px 6px rgba(0,0,0,0.1)",
-                    border: "1px solid #e5e7eb",
+                    boxShadow:
+                      "0px 2px 6px rgba(0,0,0,0.1)",
+                    border:
+                      "1px solid #e5e7eb",
                     display: "flex",
                     flexDirection: "column",
                     overflow: "hidden",
@@ -1829,23 +2223,35 @@ export default function ProtocolForm({
                     sx={{
                       px: 1.5,
                       py: 1,
-                      borderBottom: "1px solid #e5e7eb",
+                      borderBottom:
+                        "1px solid #e5e7eb",
                       display: "flex",
                       alignItems: "center",
-                      justifyContent: "space-between",
+                      justifyContent:
+                        "space-between",
                     }}
                   >
                     <Typography
                       variant="subtitle2"
-                      sx={{ fontWeight: 600, fontSize: "0.8rem", color: "#111827" }}
+                      sx={{
+                        fontWeight: 600,
+                        fontSize: "0.8rem",
+                        color: "#111827",
+                      }}
                     >
                       Outputs
                     </Typography>
                     <Typography
                       variant="caption"
-                      sx={{ color: "#6b7280", fontSize: "0.7rem" }}
+                      sx={{
+                        color: "#6b7280",
+                        fontSize: "0.7rem",
+                      }}
                     >
-                      {normalizedOutputs.length} items
+                      {
+                        normalizedOutputs.length
+                      }{" "}
+                      items
                     </Typography>
                   </Box>
 
@@ -1857,63 +2263,103 @@ export default function ProtocolForm({
                       p: 1,
                     }}
                   >
-                    {normalizedOutputs.length === 0 ? (
+                    {normalizedOutputs.length ===
+                    0 ? (
                       <Typography
                         variant="body2"
                         sx={{
                           color: "#6b7280",
-                          fontSize: "0.8rem",
-                          textAlign: "center",
+                          fontSize:
+                            "0.8rem",
+                          textAlign:
+                            "center",
                           py: 4,
                         }}
                       >
-                        No outputs for this protocol.
+                        No outputs for this
+                        protocol.
                       </Typography>
                     ) : (
-                      normalizedOutputs.map((o: any, idx: number) => (
-                        <Box
-                          key={idx}
-                          onClick={() => setSelectedOutputIdx(idx)}
-                          sx={{
-                            cursor: "pointer",
-                            userSelect: "none",
-                            borderRadius: 1.5,
-                            border: "1px solid transparent",
-                            px: 1,
-                            py: 1,
-                            mb: 1,
-                            backgroundColor:
-                              selectedOutputIdx === idx ? "#eef2ff" : "transparent",
-                            borderColor:
-                              selectedOutputIdx === idx ? "#6366f1" : "transparent",
-                            "&:hover": {
-                              backgroundColor:
-                                selectedOutputIdx === idx ? "#eef2ff" : "#f9fafb",
-                              borderColor:
-                                selectedOutputIdx === idx ? "#6366f1" : "#e5e7eb",
-                            },
-                          }}
-                        >
-                          <Typography
-                            variant="body2"
+                      normalizedOutputs.map(
+                        (
+                          o: any,
+                          idx: number
+                        ) => (
+                          <Box
+                            key={idx}
+                            onClick={() =>
+                              setSelectedOutputIdx(
+                                idx
+                              )
+                            }
                             sx={{
-                              color: "#111827",
-                              fontSize: "0.7rem",
-                              fontWeight: selectedOutputIdx === idx ? 600 : 500,
-                              lineHeight: 1.4,
-                              wordBreak: "break-word",
-                              whiteSpace: "pre-wrap",
+                              cursor:
+                                "pointer",
+                              userSelect:
+                                "none",
+                              borderRadius:
+                                1.5,
+                              border:
+                                "1px solid transparent",
+                              px: 1,
+                              py: 1,
+                              mb: 1,
+                              backgroundColor:
+                                selectedOutputIdx ===
+                                idx
+                                  ? "#eef2ff"
+                                  : "transparent",
+                              borderColor:
+                                selectedOutputIdx ===
+                                idx
+                                  ? "#6366f1"
+                                  : "transparent",
+                              "&:hover": {
+                                backgroundColor:
+                                  selectedOutputIdx ===
+                                  idx
+                                    ? "#eef2ff"
+                                    : "#f9fafb",
+                                borderColor:
+                                  selectedOutputIdx ===
+                                  idx
+                                    ? "#6366f1"
+                                    : "#e5e7eb",
+                              },
                             }}
                           >
-                            {o.infoText}
-                          </Typography>
-                        </Box>
-                      ))
+                            <Typography
+                              variant="body2"
+                              sx={{
+                                color:
+                                  "#111827",
+                                fontSize:
+                                  "0.7rem",
+                                fontWeight:
+                                  selectedOutputIdx ===
+                                  idx
+                                    ? 600
+                                    : 500,
+                                lineHeight:
+                                  1.4,
+                                wordBreak:
+                                  "break-word",
+                                whiteSpace:
+                                  "pre-wrap",
+                              }}
+                            >
+                              {
+                                o.infoText
+                              }
+                            </Typography>
+                          </Box>
+                        )
+                      )
                     )}
                   </Box>
                 </Box>
 
-                {/* Right panel PREVIEW */}
+                {/* Right Panel Preview */}
                 <Box
                   sx={{
                     flex: "1 1 0",
@@ -1921,10 +2367,13 @@ export default function ProtocolForm({
                     minHeight: 0,
                     backgroundColor: "#fff",
                     borderRadius: 2,
-                    boxShadow: "0px 2px 6px rgba(0,0,0,0.1)",
-                    border: "1px solid #e5e7eb",
+                    boxShadow:
+                      "0px 2px 6px rgba(0,0,0,0.1)",
+                    border:
+                      "1px solid #e5e7eb",
                     display: "flex",
-                    flexDirection: "column",
+                    flexDirection:
+                      "column",
                     overflow: "hidden",
                   }}
                 >
@@ -1932,15 +2381,21 @@ export default function ProtocolForm({
                     sx={{
                       px: 1.5,
                       py: 1,
-                      borderBottom: "1px solid #e5e7eb",
+                      borderBottom:
+                        "1px solid #e5e7eb",
                       display: "flex",
                       alignItems: "center",
-                      justifyContent: "space-between",
+                      justifyContent:
+                        "space-between",
                     }}
                   >
                     <Typography
                       variant="subtitle2"
-                      sx={{ fontWeight: 600, fontSize: "0.8rem", color: "#111827" }}
+                      sx={{
+                        fontWeight: 600,
+                        fontSize: "0.8rem",
+                        color: "#111827",
+                      }}
                     >
                       Preview
                     </Typography>
@@ -1949,21 +2404,35 @@ export default function ProtocolForm({
                         variant="caption"
                         sx={{
                           color: "#6b7280",
-                          fontSize: "0.7rem",
-                          textAlign: "center",
-                          maxWidth: "60%",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
+                          fontSize:
+                            "0.7rem",
+                          textAlign:
+                            "center",
+                          maxWidth:
+                            "60%",
+                          overflow:
+                            "hidden",
+                          textOverflow:
+                            "ellipsis",
+                          whiteSpace:
+                            "nowrap",
                         }}
-                        title={activeOutput.infoText}
+                        title={
+                          activeOutput.infoText
+                        }
                       >
-                        {activeOutput.infoText}
+                        {
+                          activeOutput.infoText
+                        }
                       </Typography>
                     ) : (
                       <Typography
                         variant="caption"
-                        sx={{ color: "#6b7280", fontSize: "0.7rem" }}
+                        sx={{
+                          color: "#6b7280",
+                          fontSize:
+                            "0.7rem",
+                        }}
                       >
                         No selection
                       </Typography>
@@ -1977,65 +2446,147 @@ export default function ProtocolForm({
                       overflowY: "auto",
                       overflowX: "hidden",
                       p: 1,
-                      pb: 6, // espacio para que el final de la imagen no quede pegado al footer
-                      backgroundColor: "#f9fafb",
+                      pb: 6,
+                      backgroundColor:
+                        "#f9fafb",
                       display: "flex",
-                      justifyContent: "center",
-                      alignItems: "flex-start",
+                      justifyContent:
+                        "center",
+                      alignItems:
+                        "flex-start",
                     }}
                   >
                     {previewContent}
                   </Box>
                 </Box>
-
               </Box>
             )}
 
-            {topTab === 2 && <Typography variant="body1">Summary content goes here.</Typography>}
-            {topTab === 3 && <Typography variant="body1">Methods content goes here.</Typography>}
+            {topTab === 2 && (
+              <Typography variant="body1">
+                Summary content goes here.
+              </Typography>
+            )}
+
+            {topTab === 3 && (
+              <Typography variant="body1">
+                Methods content goes here.
+              </Typography>
+            )}
+
             {topTab === 4 && (
-              <Box sx={{ flexGrow: 3, overflowY: "auto" }}>
+              <Box
+                sx={{
+                  flexGrow: 3,
+                  overflowY: "auto",
+                }}
+              >
                 <Tabs
                   value={bottomTab}
-                  onChange={(_, val) => setBottomTab(val)}
+                  onChange={(_, val) =>
+                    setBottomTab(val)
+                  }
                   sx={{
                     mb: 0,
-                    "& .MuiTab-root": { textTransform: "none", fontSize: "0.8rem", fontWeight: 500 },
+                    "& .MuiTab-root": {
+                      textTransform:
+                        "none",
+                      fontSize:
+                        "0.8rem",
+                      fontWeight: 500,
+                    },
                   }}
                 >
-                  {["Output", "Errors", "Schedule"].map((label, index) => (
-                    <Tab key={index} label={label} />
-                  ))}
+                  {["Output", "Errors", "Schedule"].map(
+                    (label, index) => (
+                      <Tab
+                        key={index}
+                        label={label}
+                      />
+                    )
+                  )}
                 </Tabs>
-                <Box className="bottom-tab-content" sx={{ p: 2 }}>
+                <Box
+                  className="bottom-tab-content"
+                  sx={{ p: 2 }}
+                >
                   {bottomTab === 0 && (
                     <Box
                       ref={containerRef}
                       sx={{
-                        backgroundColor: "#f5f5f5",
+                        backgroundColor:
+                          "#f5f5f5",
                         color: "black",
-                        borderColor: "gray",
-                        fontFamily: "monospace",
-                        fontSize: "0.80rem",
+                        borderColor:
+                          "gray",
+                        fontFamily:
+                          "monospace",
+                        fontSize:
+                          "0.80rem",
                         p: 2,
                         borderRadius: 1,
-                        maxHeight: "100%",
-                        height: "100%",
-                        overflowY: "auto",
-                        whiteSpace: "pre",
+                        maxHeight:
+                          "100%",
+                        height:
+                          "100%",
+                        overflowY:
+                          "auto",
+                        whiteSpace:
+                          "pre",
                       }}
                     >
-                      {logs && logs.length > 0 ? (
-                        logs.split("\n").map((line, idx) => (
-                          <div key={idx} style={{ display: "flex" }}>
-                            <span style={{ color: "blue", userSelect: "none", marginRight: 8 }}>
-                              {String(idx + 1).padStart(5, "0")}:
-                            </span>
-                            <span>{parseAnsi(line)}</span>
-                          </div>
-                        ))
+                      {logs &&
+                      logs.length >
+                        0 ? (
+                        logs
+                          .split("\n")
+                          .map(
+                            (
+                              line,
+                              idx
+                            ) => (
+                              <div
+                                key={
+                                  idx
+                                }
+                                style={{
+                                  display:
+                                    "flex",
+                                }}
+                              >
+                                <span
+                                  style={{
+                                    color:
+                                      "blue",
+                                    userSelect:
+                                      "none",
+                                    marginRight: 8,
+                                  }}
+                                >
+                                  {String(
+                                    idx +
+                                      1
+                                  ).padStart(
+                                    5,
+                                    "0"
+                                  )}
+                                  :
+                                </span>
+                                <span>
+                                  {parseAnsi(
+                                    line
+                                  )}
+                                </span>
+                              </div>
+                            )
+                          )
                       ) : (
-                        <Typography variant="body2" sx={{ opacity: 0.7 }}>
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            opacity: 0.7,
+                          }}
+                        >
                           No logs yet.
                         </Typography>
                       )}
@@ -2044,66 +2595,167 @@ export default function ProtocolForm({
 
                   {bottomTab === 1 && (
                     <Box
-                      ref={errorContainerRef}
+                      ref={
+                        errorContainerRef
+                      }
                       sx={{
-                        backgroundColor: "#f5f5f5",
+                        backgroundColor:
+                          "#f5f5f5",
                         color: "black",
-                        borderColor: "gray",
-                        fontFamily: "monospace",
-                        fontSize: "0.80rem",
+                        borderColor:
+                          "gray",
+                        fontFamily:
+                          "monospace",
+                        fontSize:
+                          "0.80rem",
                         p: 2,
                         borderRadius: 1,
-                        maxHeight: "100%",
-                        height: "100%",
-                        overflowY: "auto",
-                        whiteSpace: "pre",
+                        maxHeight:
+                          "100%",
+                        height:
+                          "100%",
+                        overflowY:
+                          "auto",
+                        whiteSpace:
+                          "pre",
                       }}
                     >
                       {errorLogs ? (
-                        errorLogs.split("\n").map((line, idx) => (
-                          <div key={idx} style={{ display: "flex" }}>
-                            <span style={{ color: "red", userSelect: "none", marginRight: 8 }}>
-                              {String(idx + 1).padStart(5, "0")}:
-                            </span>
-                            <span>{parseAnsi(line)}</span>
-                          </div>
-                        ))
+                        errorLogs
+                          .split("\n")
+                          .map(
+                            (
+                              line,
+                              idx
+                            ) => (
+                              <div
+                                key={
+                                  idx
+                                }
+                                style={{
+                                  display:
+                                    "flex",
+                                }}
+                              >
+                                <span
+                                  style={{
+                                    color:
+                                      "red",
+                                    userSelect:
+                                      "none",
+                                    marginRight: 8,
+                                  }}
+                                >
+                                  {String(
+                                    idx +
+                                      1
+                                  ).padStart(
+                                    5,
+                                    "0"
+                                  )}
+                                  :
+                                </span>
+                                <span>
+                                  {parseAnsi(
+                                    line
+                                  )}
+                                </span>
+                              </div>
+                            )
+                          )
                       ) : (
-                        <Typography variant="body2" sx={{ opacity: 0.7 }}>
-                          No error logs.
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            opacity: 0.7,
+                          }}
+                        >
+                          No error
+                          logs.
                         </Typography>
                       )}
                     </Box>
                   )}
+
                   {bottomTab === 2 && (
                     <Box
-                      ref={scheduleContainerRef}
+                      ref={
+                        scheduleContainerRef
+                      }
                       sx={{
-                        backgroundColor: "#f5f5f5",
+                        backgroundColor:
+                          "#f5f5f5",
                         color: "black",
-                        borderColor: "gray",
-                        fontFamily: "monospace",
-                        fontSize: "0.80rem",
+                        borderColor:
+                          "gray",
+                        fontFamily:
+                          "monospace",
+                        fontSize:
+                          "0.80rem",
                         p: 2,
                         borderRadius: 1,
-                        maxHeight: "100%",
-                        height: "100%",
-                        overflowY: "auto",
-                        whiteSpace: "pre",
+                        maxHeight:
+                          "100%",
+                        height:
+                          "100%",
+                        overflowY:
+                          "auto",
+                        whiteSpace:
+                          "pre",
                       }}
                     >
                       {scheduleLogs ? (
-                        scheduleLogs.split("\n").map((line, idx) => (
-                          <div key={idx} style={{ display: "flex" }}>
-                            <span style={{ color: "red", userSelect: "none", marginRight: 8 }}>
-                              {String(idx + 1).padStart(5, "0")}:
-                            </span>
-                            <span>{parseAnsi(line)}</span>
-                          </div>
-                        ))
+                        scheduleLogs
+                          .split("\n")
+                          .map(
+                            (
+                              line,
+                              idx
+                            ) => (
+                              <div
+                                key={
+                                  idx
+                                }
+                                style={{
+                                  display:
+                                    "flex",
+                                }}
+                              >
+                                <span
+                                  style={{
+                                    color:
+                                      "red",
+                                    userSelect:
+                                      "none",
+                                    marginRight: 8,
+                                  }}
+                                >
+                                  {String(
+                                    idx +
+                                      1
+                                  ).padStart(
+                                    5,
+                                    "0"
+                                  )}
+                                  :
+                                </span>
+                                <span>
+                                  {parseAnsi(
+                                    line
+                                  )}
+                                </span>
+                              </div>
+                            )
+                          )
                       ) : (
-                        <Typography variant="body2" sx={{ opacity: 0.7 }}>
-                          No schedule logs.
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            opacity: 0.7,
+                          }}
+                        >
+                          No schedule
+                          logs.
                         </Typography>
                       )}
                     </Box>
@@ -2117,29 +2769,148 @@ export default function ProtocolForm({
 
       {/* FOOTER */}
       <div className="form-footer">
-        <Button variant="outlined" startIcon={<CloseIcon />} onClick={requestClose} sx={{ textTransform: "none" }}>
+        <Button
+          variant="outlined"
+          startIcon={<CloseIcon />}
+          onClick={requestClose}
+          sx={{ textTransform: "none" }}
+        >
           Close
         </Button>
         <Button
           variant="contained"
           startIcon={<SaveIcon />}
           onClick={handleSave}
-          disabled={execLoading || protocolDetails.status === "running" || protocolDetails.status === "scheduled"}
+          disabled={
+            execLoading ||
+            protocolDetails.status ===
+              "running" ||
+            protocolDetails.status ===
+              "scheduled"
+          }
           sx={{ textTransform: "none" }}
         >
           Save
         </Button>
         <Button
           variant="contained"
-          startIcon={execLoading ? <CircularProgress size={16} color="inherit" /> : <ExecuteIcon />}
+          startIcon={
+            execLoading ? (
+              <CircularProgress
+                size={16}
+                color="inherit"
+              />
+            ) : (
+              <ExecuteIcon />
+            )
+          }
           color="success"
           onClick={handleExecute}
-          disabled={execLoading || protocolDetails.status === "running" || protocolDetails.status === "scheduled"}
+          disabled={
+            execLoading ||
+            protocolDetails.status ===
+              "running" ||
+            protocolDetails.status ===
+              "scheduled"
+          }
           sx={{ textTransform: "none" }}
         >
-          {execLoading ? "Executing..." : "Execute"}
+          {execLoading
+            ? "Executing..."
+            : "Execute"}
         </Button>
       </div>
+
+      {/* PathParam RemoteFileDialog */}
+      {pathDialog.open &&
+        pathDialog.paramKey &&
+        projectId &&
+        protocolId && (
+          <RemoteFileDialog
+            open={pathDialog.open}
+            onClose={() =>
+              setPathDialog({
+                open: false,
+                paramKey: null,
+              })
+            }
+            title={`Select file for ${pathDialog.paramKey}`}
+            projectId={projectId}
+            protocolId={protocolId}
+            resolveStartPath={() =>
+              svc.resolveProtocolStartPath(
+                projectId,
+                String(protocolId)
+              )
+            }
+            listRemoteDirectory={(p) =>
+              svc.listRemoteDirectory(
+                projectId,
+                String(protocolId),
+                p
+              )
+            }
+            previewRemoteText={(p) =>
+              svc.previewProtocolText(
+                projectId,
+                String(protocolId),
+                p
+              )
+            }
+            buildDownloadUrl={(p, inline) =>
+              svc.buildProtocolDownloadUrl(
+                String(projectId),
+                String(protocolId),
+                p,
+                !!inline
+              )
+            }
+            fetchInlinePreviewBlob={(p) =>
+              svc.fetchProtocolInlinePreviewBlob(
+                String(projectId),
+                String(protocolId),
+                p
+              )
+            }
+            onPick={(relativePath) => {
+              const paramKey =
+                pathDialog.paramKey;
+              if (paramKey) {
+                setProtocolDetails(
+                  (prev: any) => {
+                    if (
+                      !prev?.params?.[
+                        paramKey
+                      ]
+                    ) {
+                      return prev;
+                    }
+                    return {
+                      ...prev,
+                      params: {
+                        ...prev.params,
+                        [paramKey]: {
+                          ...prev
+                            .params[
+                            paramKey
+                          ],
+                          editableValue:
+                            relativePath,
+                          _objValue:
+                            relativePath,
+                        },
+                      },
+                    };
+                  }
+                );
+              }
+              setPathDialog({
+                open: false,
+                paramKey: null,
+              });
+            }}
+          />
+        )}
 
       <OutputSelectorDialog
         open={openSelector}
@@ -2153,13 +2924,16 @@ export default function ProtocolForm({
       {showValidationDialog && (
         <Dialog
           open={showValidationDialog}
-          onClose={() => setShowValidationDialog(false)}
+          onClose={() =>
+            setShowValidationDialog(false)
+          }
           maxWidth="sm"
           fullWidth
           PaperProps={{
             sx: {
               borderRadius: 3,
-              boxShadow: "0px 10px 25px rgba(0, 0, 0, 0.25)",
+              boxShadow:
+                "0px 10px 25px rgba(0, 0, 0, 0.25)",
             },
           }}
         >
@@ -2170,8 +2944,10 @@ export default function ProtocolForm({
               gap: 1.5,
               fontWeight: "bold",
               color: "#d32f2f",
-              fontSize: "1.1rem",
-              borderBottom: "1px solid ",
+              fontSize:
+                "1.1rem",
+              borderBottom:
+                "1px solid ",
               pb: 1,
             }}
           >
@@ -2180,12 +2956,16 @@ export default function ProtocolForm({
                 width: 32,
                 height: 32,
                 borderRadius: "50%",
-                backgroundColor: "#f8d7da",
+                backgroundColor:
+                  "#f8d7da",
                 color: "#d32f2f",
                 display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontWeight: "bold",
+                alignItems:
+                  "center",
+                justifyContent:
+                  "center",
+                fontWeight:
+                  "bold",
               }}
             >
               !
@@ -2197,67 +2977,118 @@ export default function ProtocolForm({
             dividers
             sx={{
               maxHeight: "300px",
-              overflowY: "auto",
-              backgroundColor: "#fff8f8",
-              borderTop: "1px solid #f0f0f0",
-              borderBottom: "1px solid #f0f0f0",
+              overflowY:
+                "auto",
+              backgroundColor:
+                "#fff8f8",
+              borderTop:
+                "1px solid #f0f0f0",
+              borderBottom:
+                "1px solid #f0f0f0",
               p: 2.5,
             }}
           >
-            {validationErrors.length > 0 ? (
+            {validationErrors.length >
+            0 ? (
               <Box
                 component="ul"
                 sx={{
-                  listStyle: "none",
+                  listStyle:
+                    "none",
                   pl: 0,
                   m: 0,
-                  color: "#b00020",
-                  fontSize: "0.9rem",
+                  color:
+                    "#b00020",
+                  fontSize:
+                    "0.9rem",
                 }}
               >
-                {validationErrors.map((err, i) => {
-                  const parts = err.split(/(\*\*[^*]+\*\*)/g);
-                  return (
-                    <Box
-                      key={i}
-                      component="li"
-                      sx={{
-                        display: "flex",
-                        alignItems: "flex-start",
-                        mb: 1.2,
-                      }}
-                    >
+                {validationErrors.map(
+                  (err, i) => {
+                    const parts =
+                      err.split(
+                        /(\*\*[^*]+\*\*)/g
+                      );
+                    return (
                       <Box
-                        component="span"
+                        key={i}
+                        component="li"
                         sx={{
-                          color: "#d32f2f",
-                          fontWeight: "bold",
-                          mr: 1.2,
-                          fontSize: "1rem",
-                          lineHeight: "1rem",
+                          display:
+                            "flex",
+                          alignItems:
+                            "flex-start",
+                          mb: 1.2,
                         }}
                       >
-                        •
+                        <Box
+                          component="span"
+                          sx={{
+                            color:
+                              "#d32f2f",
+                            fontWeight:
+                              "bold",
+                            mr: 1.2,
+                            fontSize:
+                              "1rem",
+                            lineHeight:
+                              "1rem",
+                          }}
+                        >
+                          •
+                        </Box>
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            color:
+                              "#333",
+                            lineHeight:
+                              1.5,
+                            fontSize:
+                              "0.9rem",
+                          }}
+                        >
+                          {parts.map(
+                            (
+                              p,
+                              j
+                            ) =>
+                              p.startsWith(
+                                "**"
+                              ) &&
+                              p.endsWith(
+                                "**"
+                              ) ? (
+                                <strong
+                                  key={
+                                    j
+                                  }
+                                >
+                                  {p.slice(
+                                    2,
+                                    -2
+                                  )}
+                                </strong>
+                              ) : (
+                                p
+                              )
+                          )}
+                        </Typography>
                       </Box>
-                      <Typography
-                        variant="body2"
-                        sx={{
-                          color: "#333",
-                          lineHeight: 1.5,
-                          fontSize: "0.9rem",
-                        }}
-                      >
-                        {parts.map((p, j) =>
-                          p.startsWith("**") && p.endsWith("**") ? <strong key={j}>{p.slice(2, -2)}</strong> : p
-                        )}
-                      </Typography>
-                    </Box>
-                  );
-                })}
+                    );
+                  }
+                )}
               </Box>
             ) : (
-              <Typography variant="body2" sx={{ color: "#555" }}>
-                No validation details provided.
+              <Typography
+                variant="body2"
+                sx={{
+                  color: "#555",
+                }}
+              >
+                No validation
+                details
+                provided.
               </Typography>
             )}
           </DialogContent>
@@ -2265,22 +3096,35 @@ export default function ProtocolForm({
           <DialogActions
             sx={{
               p: 2,
-              justifyContent: "flex-end",
-              backgroundColor: "#fafafa",
-              borderTop: "1px solid #eee",
+              justifyContent:
+                "flex-end",
+              backgroundColor:
+                "#fafafa",
+              borderTop:
+                "1px solid #eee",
             }}
           >
             <Button
-              onClick={() => setShowValidationDialog(false)}
+              onClick={() =>
+                setShowValidationDialog(
+                  false
+                )
+              }
               variant="contained"
               color="error"
               sx={{
-                textTransform: "none",
+                textTransform:
+                  "none",
                 px: 3,
                 borderRadius: 2,
-                fontWeight: "bold",
-                boxShadow: "none",
-                "&:hover": { backgroundColor: "#c62828" },
+                fontWeight:
+                  "bold",
+                boxShadow:
+                  "none",
+                "&:hover": {
+                  backgroundColor:
+                    "#c62828",
+                },
               }}
             >
               Close
