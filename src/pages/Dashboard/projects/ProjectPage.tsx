@@ -2286,7 +2286,7 @@ export default function ProjectPage() {
               maxZoom={isGrid ? GRID_ZOOM : MAX_ZOOM}
               zoomOnScroll={!isGrid}
               zoomOnPinch={!isGrid}
-              zoomOnDoubleClick={!isGrid}
+              zoomOnDoubleClick={false}
               onInit={handleOnInit}
               onMoveEnd={handleOnMoveEnd}
               onPaneClick={() => {

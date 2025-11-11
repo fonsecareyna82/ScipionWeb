@@ -1768,21 +1768,36 @@ export default function ProtocolForm({
                   scrollButtons="auto"
                   allowScrollButtonsMobile
                   sx={{
-                    mb: 2,
-                    "& .MuiTab-root": { textTransform: "none", fontSize: "0.8rem", fontWeight: 500 },
+                    mb: 1,
+                    "& .MuiTab-root": {
+                      textTransform: "none",
+                      fontSize: "0.8rem",
+                      fontWeight: 500,
+                    },
                   }}
                 >
                   {safeDefinition.map((section: any, idx: number) => (
                     <Tab key={idx} label={section.name || `Section ${idx + 1}`} />
                   ))}
                 </Tabs>
-                <Box>
+
+                <Box
+                  sx={{
+                    flex: 1,
+                    minHeight: 0,
+                    overflowY: "auto",
+                    overflowX: "hidden",
+                    pr: 1,
+                    pb: 1,
+                  }}
+                >
                   {safeDefinition[sectionTab]?.params?.map((paramObj: any, idx: number) =>
                     renderParam(paramObj, sectionTab, idx)
                   )}
                 </Box>
               </>
             )}
+
 
             {topTab === 1 && (
               <Box
@@ -1984,7 +1999,7 @@ export default function ProtocolForm({
                   value={bottomTab}
                   onChange={(_, val) => setBottomTab(val)}
                   sx={{
-                    mb: 2,
+                    mb: 0,
                     "& .MuiTab-root": { textTransform: "none", fontSize: "0.8rem", fontWeight: 500 },
                   }}
                 >
@@ -2004,8 +2019,8 @@ export default function ProtocolForm({
                         fontSize: "0.80rem",
                         p: 2,
                         borderRadius: 1,
-                        maxHeight: "420px",
-                        height: "420px",
+                        maxHeight: "100%",
+                        height: "100%",
                         overflowY: "auto",
                         whiteSpace: "pre",
                       }}
@@ -2038,8 +2053,8 @@ export default function ProtocolForm({
                         fontSize: "0.80rem",
                         p: 2,
                         borderRadius: 1,
-                        maxHeight: "420px",
-                        height: "420px",
+                        maxHeight: "100%",
+                        height: "100%",
                         overflowY: "auto",
                         whiteSpace: "pre",
                       }}
@@ -2071,8 +2086,8 @@ export default function ProtocolForm({
                         fontSize: "0.80rem",
                         p: 2,
                         borderRadius: 1,
-                        maxHeight: "420px",
-                        height: "420px",
+                        maxHeight: "100%",
+                        height: "100%",
                         overflowY: "auto",
                         whiteSpace: "pre",
                       }}
