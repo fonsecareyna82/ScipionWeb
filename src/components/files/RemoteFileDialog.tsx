@@ -50,9 +50,9 @@ type RemoteFileDialogProps = {
   initialPath?: string;
   resolveStartPath?: () => Promise<string>;
 
-  // Should call backend list API and return either:
-  // - { cwd, items }, matching listProtocolDir
-  // - or (for backward compatibility) an array of RemoteEntry[]
+  // Backend should return:
+  // - { cwd, items } (preferred, matches listProtocolDir)
+  // - or an array of RemoteEntry[] (backward compatible)
   listRemoteDirectory: (
     absOrRelPath: string
   ) => Promise<RemoteListResult | RemoteEntry[]>;
@@ -80,34 +80,34 @@ export default function RemoteFileDialog({
   buildDownloadUrl,
   onPick,
 }: RemoteFileDialogProps) {
-  // directoryState
+  // Directory state
   const [cwd, setCwd] = useState<string>(initialPath);
   const [items, setItems] = useState<RemoteEntry[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
-  // protocolRootState (used by "Protocol folder" button)
+  // Protocol root (used by "Protocol folder" button)
   const [protocolRoot, setProtocolRoot] = useState<string>("");
 
-  // selectionState
+  // Selection state
   const [selected, setSelected] = useState<RemoteEntry | null>(null);
 
-  // textPreviewState
+  // Text preview state
   const [previewText, setPreviewText] = useState<string>("");
   const [previewLoading, setPreviewLoading] = useState<boolean>(false);
 
-  // imagePreviewState
+  // Image / volume preview state
   const [imgUrl, setImgUrl] = useState<string>("");        // blob URL
   const [imgMeta, setImgMeta] = useState<PreviewMeta>({}); // width/height/depth/etc
   const [imgLoading, setImgLoading] = useState<boolean>(false);
 
-  // fixedLayoutSizes
+  // Fixed layout sizes
   const dialogWidthClass = "w-[1300px] max-w-[1300px]";
   const dialogHeightClass = "h-[700px] max-h-[700px]";
   const browserHeightClass = "h-[420px]";
   const previewHeightClass = "h-[360px]";
 
-  // breadcrumbsFromCwd
+  // Build breadcrumbs from cwd
   const breadcrumbs = useMemo(() => {
     const normalizedCwd = (cwd || "").replace(/\\/g, "/");
 
@@ -135,7 +135,7 @@ export default function RemoteFileDialog({
     return crumbs;
   }, [cwd]);
 
-  // helperUtils
+  // Decide if an entry is text-like
   const looksTextLike = (entry: RemoteEntry): boolean => {
     if (entry.isDir) return false;
     const mimeLower = (entry.mime || "").toLowerCase();
@@ -176,6 +176,7 @@ export default function RemoteFileDialog({
   const isImageExt = (name: string | undefined) =>
     !!name && /\.(mrc|mrcs|map|em|stk)$/i.test(name);
 
+  // Decide if an entry is image/volume-like
   const looksImageLike = (entry: RemoteEntry): boolean => {
     if (entry.isDir) return false;
     if (entry.mime && entry.mime.startsWith("image/")) return true;
@@ -194,7 +195,40 @@ export default function RemoteFileDialog({
     return `${gb.toFixed(1)} GB`;
   };
 
-  // loadDirectory (harmonized with backend {cwd, items})
+  // Compute parent path for Up / ".."
+  // - For protocol-relative paths: stops at "" (protocol root).
+  // - For /home absolute paths: stops at "/home".
+  const getParentPath = (current: string): string | null => {
+    if (!current) {
+      // Already at protocol root
+      return null;
+    }
+
+    const normalized = current.replace(/\\/g, "/");
+
+    // Absolute paths: currently only /home and /home/... are allowed by backend.
+    if (normalized.startsWith("/home")) {
+      if (normalized === "/home") {
+        // Do not go above /home (backend restriction)
+        return null;
+      }
+      const parts = normalized.split("/").filter(Boolean);
+      if (parts.length <= 1) {
+        return null;
+      }
+      return "/" + parts.slice(0, -1).join("/");
+    }
+
+    // Relative path inside protocol root
+    const parts = normalized.split("/").filter(Boolean);
+    if (parts.length <= 1) {
+      // Parent is protocol root
+      return "";
+    }
+    return parts.slice(0, -1).join("/");
+  };
+
+  // Load directory from backend, harmonized with {cwd, items}
   const refresh = async (path: string) => {
     try {
       setLoading(true);
@@ -206,7 +240,7 @@ export default function RemoteFileDialog({
       let nextCwd = "";
 
       if (Array.isArray(listing)) {
-        // backwardCompatibleMode: listRemoteDirectory returns only items
+        // Backward compatible mode (only items)
         nextItems = listing;
         nextCwd = path || "";
       } else if (listing && Array.isArray((listing as RemoteListResult).items)) {
@@ -218,7 +252,7 @@ export default function RemoteFileDialog({
       setItems(nextItems);
       setCwd(nextCwd);
 
-      // resetSelectionAndPreviews
+      // Reset selection and previews on directory change
       setSelected(null);
       setPreviewText("");
       setPreviewLoading(false);
@@ -244,11 +278,9 @@ export default function RemoteFileDialog({
   };
 
   const goUp = () => {
-    if (!cwd) return;
-    const up = cwd.includes("/")
-      ? cwd.split("/").slice(0, -1).join("/")
-      : "";
-    void refresh(up);
+    const parent = getParentPath(cwd);
+    if (parent === null || parent === cwd) return;
+    void refresh(parent);
   };
 
   const goHome = () => {
@@ -256,10 +288,11 @@ export default function RemoteFileDialog({
   };
 
   const goProtocolRoot = () => {
+    // If protocolRoot was resolved (absolute), use it; otherwise use ""
     void refresh(protocolRoot || "");
   };
 
-  // textPreview
+  // Load text preview for selected entry
   const loadTextPreview = async (entry: RemoteEntry) => {
     if (!previewRemoteText) return;
     if (entry.isDir) return;
@@ -277,7 +310,7 @@ export default function RemoteFileDialog({
     }
   };
 
-  // imageOrVolumePreview
+  // Load image/volume preview for selected entry
   const loadImagePreview = async (entry: RemoteEntry) => {
     if (!looksImageLike(entry)) return;
     if (!fetchInlinePreviewBlob) {
@@ -308,7 +341,7 @@ export default function RemoteFileDialog({
   const handleSelectEntry = (entry: RemoteEntry) => {
     setSelected(entry);
 
-    // textBranch
+    // Text branch
     if (!entry.isDir && looksTextLike(entry) && previewRemoteText) {
       void loadTextPreview(entry);
     } else {
@@ -316,7 +349,7 @@ export default function RemoteFileDialog({
       setPreviewLoading(false);
     }
 
-    // imageBranch
+    // Image/volume branch
     if (!entry.isDir && looksImageLike(entry)) {
       void loadImagePreview(entry);
     } else {
@@ -340,18 +373,18 @@ export default function RemoteFileDialog({
     window.open(url, "_blank");
   };
 
-  // preventDialogClickPropagation
+  // Prevent clicks inside dialog from bubbling to underlying canvas
   const handleDialogClick: React.MouseEventHandler = (e) => {
     e.stopPropagation();
   };
 
-  // bootAndCleanup
+  // Boot and cleanup when dialog opens/closes
   useEffect(() => {
     let mounted = true;
 
     const boot = async () => {
       if (!open) {
-        // resetStateOnClose
+        // Reset state when closed
         setItems([]);
         setCwd(initialPath || "");
         setSelected(null);
@@ -370,6 +403,7 @@ export default function RemoteFileDialog({
 
       let startPath = initialPath || "";
 
+      // Resolve protocol root once (used by "Protocol folder")
       if (resolveStartPath) {
         try {
           const resolved = await resolveStartPath();
@@ -379,7 +413,7 @@ export default function RemoteFileDialog({
             setProtocolRoot(resolved);
           }
         } catch {
-          // ignoreResolveStartPathErrorAndFallback
+          // Ignore resolve errors and fallback to initialPath
         }
       }
 
@@ -393,6 +427,10 @@ export default function RemoteFileDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
+  const parentForCwd = getParentPath(cwd);
+  const showParentEntry =
+    parentForCwd !== null && parentForCwd !== cwd && !loading && !error;
+
   return (
     <Dialog
       open={open}
@@ -401,7 +439,7 @@ export default function RemoteFileDialog({
       }}
     >
       <DialogContent
-        // preventRadixAutoCloseOnOutsideClick
+        // Prevent close on outside click
         onInteractOutside={(e) => {
           e.preventDefault();
         }}
@@ -412,7 +450,7 @@ export default function RemoteFileDialog({
           "flex flex-col overflow-hidden",
         ].join(" ")}
       >
-        {/* headerSection */}
+        {/* Header */}
         <DialogHeader
           className={[
             "-mx-6 -mt-6 px-6 py-4 bg-gray-300 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 rounded-t-lg",
@@ -424,7 +462,7 @@ export default function RemoteFileDialog({
           </DialogTitle>
         </DialogHeader>
 
-        {/* toolbarSection */}
+        {/* Toolbar */}
         <div
           className={[
             "flex flex-wrap items-center gap-2 mt-4 bg-gray-100 dark:bg-gray-900/40 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-sm",
@@ -487,7 +525,7 @@ export default function RemoteFileDialog({
           </div>
         </div>
 
-        {/* bodyGrid: directory + preview */}
+        {/* Body: Directory + Preview */}
         <div
           className={[
             "grid grid-cols-2 gap-4 mt-4",
@@ -495,7 +533,7 @@ export default function RemoteFileDialog({
             "flex-none",
           ].join(" ")}
         >
-          {/* leftPane: directoryList */}
+          {/* Left: Directory list */}
           <div className="h-full border border-gray-200 dark:border-gray-700 rounded-2xl overflow-hidden flex flex-col bg-white dark:bg-gray-900">
             <div className="px-3 py-2 border-b border-gray-200 dark:border-gray-700 bg-gray-300 dark:bg-gray-800 text-[13px] font-medium text-gray-700 dark:text-gray-200 flex items-center justify-between flex-none">
               <span>Directory</span>
@@ -517,6 +555,21 @@ export default function RemoteFileDialog({
 
               {!error && (
                 <ul className="divide-y divide-gray-200 dark:divide-gray-700 text-sm text-gray-800 dark:text-gray-100">
+                  {showParentEntry && (
+                    <li key="..">
+                      <button
+                        className={[
+                          "w-full text-left px-3 py-2 flex items-center gap-2",
+                          "hover:bg-gray-100 dark:hover:bg-gray-800/70",
+                        ].join(" ")}
+                        onClick={goUp}
+                      >
+                        <FolderOpen className="h-4 w-4 flex-shrink-0 text-gray-600 dark:text-gray-300" />
+                        <span className="truncate">..</span>
+                      </button>
+                    </li>
+                  )}
+
                   {loading && (
                     <li className="p-3 flex items-center gap-2 text-gray-600 dark:text-gray-400">
                       <Loader2 className="h-4 w-4 animate-spin" />
@@ -563,36 +616,9 @@ export default function RemoteFileDialog({
             </div>
           </div>
 
-          {/* rightPane: previewPanel */}
+          {/* Right: Preview panel */}
           <div className="h-full border border-gray-200 dark:border-gray-700 rounded-2xl overflow-hidden flex flex-col bg-white dark:bg-gray-900">
-            <div className="px-3 py-2 border-b border-gray-200 dark:border-gray-700 bg-gray-300 dark:bg-gray-800 text-[13px] font-medium text-gray-700 dark:text-gray-200 flex items-center justify-between flex-none">
-              <span>Preview</span>
-              {/* Actions for selected file (optional) */}
-              {selected && !selected.isDir && (
-                <div className="flex items-center gap-2">
-                  {buildDownloadUrl && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={handleDownload}
-                      className="gap-2 h-7 text-[11px] leading-none"
-                    >
-                      Download
-                    </Button>
-                  )}
-                  <Button
-                    size="sm"
-                    onClick={handlePick}
-                    disabled={!selected || selected.isDir}
-                    className="gap-2 h-7 text-[11px] leading-none"
-                  >
-                    Select
-                  </Button>
-                </div>
-              )}
-            </div>
-
-            {/* previewViewport */}
+            {/* Preview viewport */}
             <div
               className={[
                 "flex-1 px-3 py-3 text-sm text-gray-800 dark:text-gray-100 overflow-hidden",
@@ -613,7 +639,7 @@ export default function RemoteFileDialog({
 
               {selected && !selected.isDir && (
                 <>
-                  {/* textPreviewBlock */}
+                  {/* Text preview */}
                   {looksTextLike(selected) && previewRemoteText && (
                     <div className="w-full h-full flex flex-col">
                       {previewLoading && (
@@ -637,7 +663,7 @@ export default function RemoteFileDialog({
                     </div>
                   )}
 
-                  {/* imageOrVolumePreviewBlock */}
+                  {/* Image / volume preview */}
                   {!looksTextLike(selected) && (
                     <div className="w-full h-full flex flex-col md:flex-row gap-4 overflow-hidden">
                       {(() => {
@@ -652,7 +678,7 @@ export default function RemoteFileDialog({
 
                         return (
                           <>
-                            {/* imageBlock */}
+                            {/* Image block */}
                             <div className="flex-shrink-0 flex flex-col items-center justify-center">
                               {imgLoading && (
                                 <div className="flex items-center gap-2 text-gray-600 dark:text-gray-300 text-[13px]">
@@ -678,7 +704,7 @@ export default function RemoteFileDialog({
                               )}
                             </div>
 
-                            {/* metadataBlock */}
+                            {/* Metadata block */}
                             <div className="flex-1 min-w-0 overflow-auto rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-3 text-[12px] leading-relaxed text-gray-700 dark:text-gray-300">
                               <div className="font-medium text-gray-900 dark:text-gray-100 break-words">
                                 {selected.name}
@@ -694,19 +720,19 @@ export default function RemoteFileDialog({
                               {(imgMeta.width !== undefined ||
                                 imgMeta.height !== undefined ||
                                 imgMeta.depth !== undefined) && (
-                                  <div className="mt-2 flex flex-wrap gap-1">
-                                    <span className="font-medium">
-                                      Dimensions:
-                                    </span>
-                                    <span>
-                                      {imgMeta.width ?? "?"} ×{" "}
-                                      {imgMeta.height ?? "?"}
-                                      {imgMeta.depth !== undefined
-                                        ? ` × ${imgMeta.depth}`
-                                        : ""}
-                                    </span>
-                                  </div>
-                                )}
+                                <div className="mt-2 flex flex-wrap gap-1">
+                                  <span className="font-medium">
+                                    Dimensions:
+                                  </span>
+                                  <span>
+                                    {imgMeta.width ?? "?"} ×{" "}
+                                    {imgMeta.height ?? "?"}
+                                    {imgMeta.depth !== undefined
+                                      ? ` × ${imgMeta.depth}`
+                                      : ""}
+                                  </span>
+                                </div>
+                              )}
 
                               {imgMeta.voxelSize && (
                                 <div className="mt-2 flex flex-wrap gap-1">
@@ -730,7 +756,7 @@ export default function RemoteFileDialog({
           </div>
         </div>
 
-        {/* footerActions */}
+        {/* Footer */}
         <div
           className={[
             "flex justify-end gap-2 mt-4",
