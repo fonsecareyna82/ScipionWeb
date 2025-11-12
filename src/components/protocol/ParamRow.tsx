@@ -12,7 +12,8 @@ import {
   Button
 } from '@mui/material';
 import { CloseIcon, EyeIcon, FindIcon, HelpIcon, TrashBinIcon } from '../../icons';
-import { FolderOpen as FolderIcon } from 'lucide-react'; // <--- nuevo
+import { FolderOpen as FolderIcon } from 'lucide-react'; 
+import "./ProtocolForm.css";
 
 type ParamRowProps = {
   label: string;
@@ -58,7 +59,8 @@ const ParamRow = ({
       >
         <Typography
           variant="body2"
-          sx={{ p: 0.5, pr: 2, fontSize: '0.8rem', fontWeight: 500, color: 'black' }}
+          className="param-row-label"
+          sx={{ p: 0.5, pr: 2, fontSize: '0.75rem', fontWeight: 300, color: 'black' }}
         >
           {label}
         </Typography>
