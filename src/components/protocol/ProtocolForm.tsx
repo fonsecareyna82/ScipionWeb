@@ -34,6 +34,7 @@ import { fetchProtocolLogsStream } from "@/api/protocols";
 import OutputSelectorDialog from "./outputSelectorDialog";
 import { useProjectService } from "@/ProjectServiceContext";
 import RemoteFileDialog from "@/components/files/RemoteFileDialog";
+import AnalyzeOutputDialog from "@/components/analyze/analyze-output-dialog";
 
 type ProtocolFormProps = {
   data: any;
@@ -95,6 +96,7 @@ export default function ProtocolForm({
   } | null>(null);
   const [expectedClass, setExpectedClass] = useState<string | string[] | null | undefined>(undefined);
   const [allOutputs, setAllOutputs] = useState<any[]>([]);
+  const [analyzeOpen, setAnalyzeOpen] = useState(false);
 
   // Tracks last committed label for inputType to detect user changes
   const prevSelectedInputTypeRef = useRef<string | null>(null);
@@ -1890,7 +1892,7 @@ export default function ProtocolForm({
                         ? `• ${e.size} B`
                         : ""}
                       {typeof e.compressedSize ===
-                      "number"
+                        "number"
                         ? ` (compressed ${e.compressedSize} B)`
                         : ""}
                     </Typography>
@@ -2044,9 +2046,8 @@ export default function ProtocolForm({
 
   return (
     <div
-      className={`protocol-form ${presentationClass} ${
-        isClosing ? "slide-out-right" : "slide-in-right"
-      }`}
+      className={`protocol-form ${presentationClass} ${isClosing ? "slide-out-right" : "slide-in-right"
+        }`}
       onAnimationEnd={handleAnimationEnd}
     >
       {/* HEADER */}
@@ -2264,7 +2265,7 @@ export default function ProtocolForm({
                     }}
                   >
                     {normalizedOutputs.length ===
-                    0 ? (
+                      0 ? (
                       <Typography
                         variant="body2"
                         sx={{
@@ -2306,23 +2307,23 @@ export default function ProtocolForm({
                               mb: 1,
                               backgroundColor:
                                 selectedOutputIdx ===
-                                idx
+                                  idx
                                   ? "#eef2ff"
                                   : "transparent",
                               borderColor:
                                 selectedOutputIdx ===
-                                idx
+                                  idx
                                   ? "#6366f1"
                                   : "transparent",
                               "&:hover": {
                                 backgroundColor:
                                   selectedOutputIdx ===
-                                  idx
+                                    idx
                                     ? "#eef2ff"
                                     : "#f9fafb",
                                 borderColor:
                                   selectedOutputIdx ===
-                                  idx
+                                    idx
                                     ? "#6366f1"
                                     : "#e5e7eb",
                               },
@@ -2337,7 +2338,7 @@ export default function ProtocolForm({
                                   "0.7rem",
                                 fontWeight:
                                   selectedOutputIdx ===
-                                  idx
+                                    idx
                                     ? 600
                                     : 500,
                                 lineHeight:
@@ -2381,62 +2382,28 @@ export default function ProtocolForm({
                     sx={{
                       px: 1.5,
                       py: 1,
-                      borderBottom:
-                        "1px solid #e5e7eb",
+                      borderBottom: "1px solid #e5e7eb",
                       display: "flex",
                       alignItems: "center",
-                      justifyContent:
-                        "space-between",
+                      justifyContent: "space-between",
+                      gap: 1,
                     }}
                   >
-                    <Typography
-                      variant="subtitle2"
-                      sx={{
-                        fontWeight: 600,
-                        fontSize: "0.8rem",
-                        color: "#111827",
-                      }}
-                    >
+                    <Typography variant="subtitle2" sx={{ fontWeight: 600, fontSize: "0.8rem", color: "#111827" }}>
                       Preview
                     </Typography>
-                    {activeOutput ? (
-                      <Typography
-                        variant="caption"
-                        sx={{
-                          color: "#6b7280",
-                          fontSize:
-                            "0.7rem",
-                          textAlign:
-                            "center",
-                          maxWidth:
-                            "60%",
-                          overflow:
-                            "hidden",
-                          textOverflow:
-                            "ellipsis",
-                          whiteSpace:
-                            "nowrap",
-                        }}
-                        title={
-                          activeOutput.infoText
-                        }
+
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        sx={{ textTransform: "none", ml: 1 }}
+                        disabled={!activeOutput}
+                        onClick={() => setAnalyzeOpen(true)}
                       >
-                        {
-                          activeOutput.infoText
-                        }
-                      </Typography>
-                    ) : (
-                      <Typography
-                        variant="caption"
-                        sx={{
-                          color: "#6b7280",
-                          fontSize:
-                            "0.7rem",
-                        }}
-                      >
-                        No selection
-                      </Typography>
-                    )}
+                        Analyze Result
+                      </Button>
+                    </Box>
                   </Box>
 
                   <Box
@@ -2536,7 +2503,7 @@ export default function ProtocolForm({
                       }}
                     >
                       {logs &&
-                      logs.length >
+                        logs.length >
                         0 ? (
                         logs
                           .split("\n")
@@ -2565,7 +2532,7 @@ export default function ProtocolForm({
                                 >
                                   {String(
                                     idx +
-                                      1
+                                    1
                                   ).padStart(
                                     5,
                                     "0"
@@ -2648,7 +2615,7 @@ export default function ProtocolForm({
                                 >
                                   {String(
                                     idx +
-                                      1
+                                    1
                                   ).padStart(
                                     5,
                                     "0"
@@ -2732,7 +2699,7 @@ export default function ProtocolForm({
                                 >
                                   {String(
                                     idx +
-                                      1
+                                    1
                                   ).padStart(
                                     5,
                                     "0"
@@ -2784,9 +2751,9 @@ export default function ProtocolForm({
           disabled={
             execLoading ||
             protocolDetails.status ===
-              "running" ||
+            "running" ||
             protocolDetails.status ===
-              "scheduled"
+            "scheduled"
           }
           sx={{ textTransform: "none" }}
         >
@@ -2809,9 +2776,9 @@ export default function ProtocolForm({
           disabled={
             execLoading ||
             protocolDetails.status ===
-              "running" ||
+            "running" ||
             protocolDetails.status ===
-              "scheduled"
+            "scheduled"
           }
           sx={{ textTransform: "none" }}
         >
@@ -2880,7 +2847,7 @@ export default function ProtocolForm({
                   (prev: any) => {
                     if (
                       !prev?.params?.[
-                        paramKey
+                      paramKey
                       ]
                     ) {
                       return prev;
@@ -2892,7 +2859,7 @@ export default function ProtocolForm({
                         [paramKey]: {
                           ...prev
                             .params[
-                            paramKey
+                          paramKey
                           ],
                           editableValue:
                             relativePath,
@@ -2989,7 +2956,7 @@ export default function ProtocolForm({
             }}
           >
             {validationErrors.length >
-            0 ? (
+              0 ? (
               <Box
                 component="ul"
                 sx={{
@@ -3056,9 +3023,9 @@ export default function ProtocolForm({
                               p.startsWith(
                                 "**"
                               ) &&
-                              p.endsWith(
-                                "**"
-                              ) ? (
+                                p.endsWith(
+                                  "**"
+                                ) ? (
                                 <strong
                                   key={
                                     j
@@ -3132,6 +3099,16 @@ export default function ProtocolForm({
           </DialogActions>
         </Dialog>
       )}
+
+      <AnalyzeOutputDialog
+        open={analyzeOpen}
+        onClose={() => setAnalyzeOpen(false)}
+        projectId={projectId}
+        protocolId={protocolId}
+        outputName={activeOutput?.name || ""}
+        outputRaw={activeOutput?.raw || {}}
+      />
+
     </div>
   );
 }

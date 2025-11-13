@@ -1,6 +1,7 @@
 // src/adapters/projectsAdapter.ts
+import { fetchWithAuth } from "@/api/auth";
 import * as api from "@/api/projects";
-import type { ProjectService, ProjectPayload, Id } from "@/services/ProjectService";
+import type { ProjectService, ProjectPayload, Id, VolumeSliceObjectUrl } from "@/services/ProjectService";
 
 /**
  * Small helper to normalize IDs so callers can pass string or number interchangeably.
@@ -37,8 +38,7 @@ const defaultService: ProjectService = {
     // original signature was (projectId: number); normalize and keep backward-compat
     api.loadProtocols(Number(projectId)),
 
-
-  // --- Protocol actions
+  // --- Protocol actions ---
   executeProtocol: (
     protocolId: string | number,
     protocolClassName: string,
@@ -52,38 +52,38 @@ const defaultService: ProjectService = {
   ) => api.saveProtocol(toId(protocolId), protocolClassName, params),
 
   renameProtocol: (
-    projectId: string,
-    protocolId: string,
+    projectId: string | number,
+    protocolId: string | number,
     newName: string
   ) => api.renameProtocol(toId(projectId), toId(protocolId), newName),
 
   duplicateProtocol: (
-    projectId: string,
+    projectId: string | number,
     items: { id: string; name?: string }[],
   ) => api.duplicateProtocol(toId(projectId), items),
 
   deleteProtocol: (
-    projectId: string,
+    projectId: string | number,
     ids: string[],
   ) => api.deleteProtocol(toId(projectId), ids),
 
   restartAll: (
-    projectId: string,
-    protocolId: string,
+    projectId: string | number,
+    protocolId: string | number,
   ) => api.restartAll(toId(projectId), toId(protocolId)),
 
   continueAll: (
-    projectId: string,
-    protocolId: string,
+    projectId: string | number,
+    protocolId: string | number,
   ) => api.continueAll(toId(projectId), toId(protocolId)),
 
   resetFrom: (
-    projectId: string,
-    protocolId: string,
+    projectId: string | number,
+    protocolId: string | number,
   ) => api.resetFrom(toId(projectId), toId(protocolId)),
 
   stopProtocol: (
-    projectId: string,
+    projectId: string | number,
     ids: string[],
   ) => api.stopProtocol(toId(projectId), ids),
 
@@ -117,12 +117,74 @@ const defaultService: ProjectService = {
     path: string,
   ) => api.fetchProtocolInlinePreviewBlob(toId(projectId), toId(protocolId), path),
 
-fetchOutputPreview: (
+  fetchOutputPreview: (
     projectId: Id,
     protocolId: Id,
     path: string,
-    opts?: { table?: string } 
+    opts?: { table?: string }
   ) => api.fetchOutputPreview(toId(projectId), toId(protocolId), path, opts),
+
+  // --- Analyze Results: Volumes (Volume / VolumeMask / SetOfVolumes) ---
+  listOutputVolumes: (
+    projectId: Id,
+    protocolId: Id,
+    outputName: string
+  ) => api.listOutputVolumes(toId(projectId), toId(protocolId), outputName),
+
+  getVolumeInfo: (
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    volumeId: Id
+  ) => api.getVolumeInfo(toId(projectId), toId(protocolId), outputName, toId(volumeId)),
+
+  buildVolumeSliceUrl: (
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    volumeId: Id,
+    sliceIndex: number,
+    opts?: { axis?: "z" | "y" | "x"; colormap?: string; normalize?: "minmax" | "zscore" | "none"; scale?: number }
+  ) => api.buildVolumeSliceUrl(
+    toId(projectId),
+    toId(protocolId),
+    outputName,
+    toId(volumeId),
+    sliceIndex,
+    opts
+  ),
+
+  fetchVolumeSliceObjectUrl: async (
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    volumeId: Id,
+    sliceIndex: number,
+    opts?: { axis?: "z" | "y" | "x"; cmap?: string; normalize?: "minmax" | "zscore" | "none"; scale?: number }
+  ): Promise<VolumeSliceObjectUrl> => {
+    const params = new URLSearchParams();
+    params.set("sliceIndex", String(sliceIndex));
+    if (opts?.axis) params.set("axis", opts.axis);
+    if (opts?.cmap) params.set("cmap", opts.cmap);           
+    if (opts?.normalize) params.set("normalize", opts.normalize);
+    if (opts?.scale != null) params.set("scale", String(opts.scale));
+    params.set("inline", "true");
+    const url = await defaultService.buildVolumeSliceUrl(
+      projectId, protocolId, outputName, volumeId, sliceIndex, opts
+    );
+    const res = await fetchWithAuth(url, { method: "GET" });
+    if (!res.ok) {
+      const txt = await res.text().catch(() => "");
+      throw new Error(txt || `Failed to fetch volume slice (HTTP ${res.status})`);
+    }
+
+    const blob = await res.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    const revoke = () => URL.revokeObjectURL(objectUrl);
+
+    return { url: objectUrl, revoke };
+  },
+
 
 };
 

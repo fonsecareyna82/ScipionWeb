@@ -463,8 +463,8 @@ export async function fetchOutputPreview(
 ): Promise<PreviewResult> {
   const enc = encodeURIComponent;
 
-  // Usa inline=true para que el backend haga el modo preview;
-  // añade table=<name> para SQLite (cuando aplique)
+  // Use inline=true so the backend returns preview payload/headers.
+  // Add table=<name> for SQLite (when applicable)
   const qp: string[] = ["inline=true"];
   if (opts?.table) qp.push(`table=${enc(opts.table)}`);
 
@@ -477,5 +477,132 @@ export async function fetchOutputPreview(
 
   return buildPreviewResult(response, downloadUrl);
 }
+
+/* ======================= Analyze Results: Volumes ======================= */
+
+/** List volumes for an output (Volume / VolumeMask -> single item; SetOfVolumes -> list). */
+export async function listOutputVolumes(
+  projectId: Id,
+  protocolId: Id,
+  outputName: string
+): Promise<any[]> {
+  const enc = encodeURIComponent;
+  const url = `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/outputs/${enc(outputName)}/volumes`;
+  const res = await fetchWithAuth(url, { method: "GET" });
+  if (!res.ok) throw await toApiError(res, "Failed to list output volumes");
+  return safeJson<any[]>(res);
+}
+
+/** Get metadata for a specific volume (dims, voxel size, stats, etc.). */
+export async function getVolumeInfo(
+  projectId: Id,
+  protocolId: Id,
+  outputName: string,
+  volumeId: Id
+): Promise<any> {
+  const enc = encodeURIComponent;
+  const url = `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/outputs/${enc(outputName)}/volumes/${enc(
+    String(volumeId))}/info`;
+  const res = await fetchWithAuth(url, { method: "GET" });
+  if (!res.ok) throw await toApiError(res, "Failed to fetch volume info");
+  return safeJson<any>(res);
+}
+
+/** Build a URL for fetching a PNG slice of a volume (server is expected to render the slice). */
+// Old signature returned a plain URL string (no auth).
+// New: uses fetchWithAuth to GET the slice and returns an authenticated ObjectURL.
+export async function buildVolumeSliceUrl(
+  projectId: Id,
+  protocolId: Id,
+  outputName: string,
+  volumeId: Id,
+  sliceIndex: number,
+  opts?: {
+    axis?: "z" | "y" | "x";
+    colormap?: string;
+    normalize?: "minmax" | "zscore" | "none";
+    scale?: number;
+  }
+): Promise<string> {
+  const enc = encodeURIComponent;
+  const base = `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/outputs/${enc(
+    outputName
+  )}/volumes/${enc(String(volumeId))}/slice`;
+
+  const qp: string[] = [`index=${sliceIndex}`];
+  if (opts?.axis) qp.push(`axis=${opts.axis}`);
+  if (opts?.colormap) qp.push(`colormap=${enc(opts.colormap)}`);
+  if (opts?.normalize) qp.push(`normalize=${opts.normalize}`);
+  if (typeof opts?.scale === "number") qp.push(`scale=${opts.scale}`);
+
+  const url = `${base}?${qp.join("&")}`;
+
+  // Important: use fetchWithAuth so Authorization header is included
+  const res = await fetchWithAuth(url, { method: "GET", cache: "no-store" });
+  if (!res.ok) throw await toApiError(res, "Failed to render volume slice");
+
+  const blob = await res.blob();
+  return URL.createObjectURL(blob);
+}
+
+// src/api/projects.ts
+export async function fetchVolumeSliceObjectUrl(
+  projectId: Id,
+  protocolId: Id,
+  outputName: string,
+  volumeId: Id,
+  sliceIndex: number,
+  opts?: {
+    axis?: "z" | "y" | "x";
+    cmap?: string;                         
+    normalize?: "minmax" | "zscore" | "none";
+    scale?: number;
+    // NEW:
+    format?: "png" | "webp" | "jpeg";
+    thumb?: number;
+    fast?: boolean;
+    quality?: number;
+    signal?: AbortSignal;
+  }
+): Promise<{ url: string; meta: any; revoke: () => void }> {
+  const enc = encodeURIComponent;
+  const base = `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/outputs/${enc(
+    outputName
+  )}/volumes/${enc(String(volumeId))}/slice`;
+
+  const qp: string[] = [`index=${sliceIndex}`];
+  if (opts?.axis) qp.push(`axis=${opts.axis}`);
+  if (opts?.cmap) qp.push(`cmap=${enc(opts.cmap)}`);
+  if (opts?.normalize) qp.push(`normalize=${opts.normalize}`);
+  if (typeof opts?.scale === "number") qp.push(`scale=${opts.scale}`);
+  if (opts?.format) qp.push(`format=${opts.format}`);
+  if (typeof opts?.thumb === "number") qp.push(`thumb=${opts.thumb}`);
+  if (typeof opts?.fast === "boolean") qp.push(`fast=${opts.fast ? "1" : "0"}`);
+  if (typeof opts?.quality === "number") qp.push(`quality=${opts.quality}`);
+
+  const url = `${base}?${qp.join("&")}`;
+
+  const res = await fetchWithAuth(url, { method: "GET", cache: "no-store", signal: opts?.signal });
+  if (!res.ok) throw await toApiError(res, "Failed to render volume slice");
+
+  const blob = await res.blob();
+  const objUrl = URL.createObjectURL(blob);
+
+  const meta = {
+    mime: res.headers.get("X-Preview-Mime") || res.headers.get("Content-Type"),
+    width: Number(res.headers.get("X-Preview-Width") || "") || undefined,
+    height: Number(res.headers.get("X-Preview-Height") || "") || undefined,
+    depth: Number(res.headers.get("X-Preview-Depth") || "") || undefined,
+    cmap: res.headers.get("X-Preview-Colormap") || undefined,
+    format: res.headers.get("X-Preview-Format") || undefined,
+    voxelSize: res.headers.get("X-Preview-VoxelSize")?.split(",").map(Number),
+    note: res.headers.get("X-Preview-Note") || undefined,
+  };
+
+  const revoke = () => URL.revokeObjectURL(objUrl);
+  return { url: objUrl, meta, revoke };
+}
+
+
 
 
