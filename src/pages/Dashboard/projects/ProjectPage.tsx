@@ -200,7 +200,7 @@ export default function ProjectPage() {
   const disablePersistenceRef = useRef(false);
 
   // Viewport state (used for hierarchical/table; grid uses fixed zoom)
-  const [viewport, setViewport] = useState<{ x: number; y: number; zoom: number }>({ x: 0, y: 0, zoom: 0.33 });
+  const [viewport, setViewport] = useState<{ x: number; y: number; zoom: number }>({ x: 0, y: 0, zoom: 0.3464 });
   const viewportRef = useRef(viewport);
   useEffect(() => { viewportRef.current = viewport; }, [viewport]);
 
@@ -231,11 +231,11 @@ export default function ProjectPage() {
   const firstLoadRef = useRef(true);
 
   // Zoom rules
-  const GRID_ZOOM = 0.32;
+  const GRID_ZOOM = 0.347;
   const MIN_ZOOM = 0.2;
   const MAX_ZOOM = 0.6;
   const clampZoom = (z: number | undefined | null) => {
-    const num = typeof z === "number" && !Number.isNaN(z) ? z : 0.32;
+    const num = typeof z === "number" && !Number.isNaN(z) ? z : 0.347;
     return Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, num));
   };
   const getEffectiveZoom = () => (viewMode === "grid" ? GRID_ZOOM : viewportRef.current.zoom);
@@ -1449,6 +1449,9 @@ export default function ProjectPage() {
       failed: "#F5CCCB",
       aborted: "#F5CCCB",
       interactive: "#f7f3bf",
+      root: "#D9F1FA",
+      scheduled: "#f7f3bf",
+      new: "#1E90FF",
     };
     return { backgroundColor: colorMap[status ?? ""] ?? "#eee", padding: "4px 8px", borderRadius: "6px", fontWeight: 300, color: "black" };
   };

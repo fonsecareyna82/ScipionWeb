@@ -35,11 +35,11 @@
 
 /* --- Global sizing for consistent node width/height --- */
 :root {
-  --node-width: 900px;                  /* node width */
+  --node-width: 950px;                  /* node width */
   --output-row-height: 40px;            /* row height for output pill */
   --output-visible-rows: 5;             /* visible rows before scroll */
   --outputs-list-max-height: calc(var(--output-row-height) * var(--output-visible-rows));
-  --node-horizontal-gutters: 140px;     /* reduce gutters to give more label width */
+  --node-horizontal-gutters: 180px;     /* reduce gutters to give more label width */
   --label-lines: 1;                     /* show up to 2 lines for label */
 }
 
@@ -87,7 +87,7 @@
   text-overflow: ellipsis;
   white-space: normal;
   line-height: 1.15;
-  max-height: calc(1.15 * 2.3rem * var(--label-lines));
+  max-height: calc(1.15 * 2.4rem * var(--label-lines));
   max-width: calc(var(--node-width) - var(--node-horizontal-gutters));
   margin-left: 1rem;
 }
