@@ -34,6 +34,7 @@ export type VolumeSliceOptions = {
   scale?: number;
   inline?: boolean;
   signal?: AbortSignal;
+  format?: string;
 };
 
 

@@ -3,190 +3,58 @@ import { fetchWithAuth } from "@/api/auth";
 import * as api from "@/api/projects";
 import type { ProjectService, ProjectPayload, Id, VolumeSliceObjectUrl } from "@/services/ProjectService";
 
-/**
- * Small helper to normalize IDs so callers can pass string or number interchangeably.
- */
 const toId = (id: string | number): string => String(id);
 
-/**
- * defaultService: adapts the current API layer (fetchProjects, fetchProject, ...)
- * to the ProjectService interface. If the underlying API changes, update ONLY here.
- */
 const defaultService: ProjectService = {
-  // --- Reads ---
   fetchList: () => api.fetchProjects(),
+  fetchProject: (id) => api.fetchProject(toId(id)),
+  fetchProtocolDetails: (projectId, protocolId) => api.fetchProtocolDetails(toId(projectId), toId(protocolId)),
+  fetchNewProtocolDetails: (projectId, protocolClass) => api.fetchNewProtocolDetails(toId(projectId), protocolClass),
 
-  fetchProject: (id: string | number) => api.fetchProject(toId(id)),
+  createProject: (payload: ProjectPayload) => api.createProject(payload.name, (payload.description ?? "").trim()),
+  renameProject: (id, newName, newDescription) => api.renameProject(toId(id), newName, (newDescription ?? "").trim()),
+  deleteProject: (id) => api.deleteProject(toId(id)),
+  loadProtocols: (projectId) => api.loadProtocols(Number(projectId)),
 
-  fetchProtocolDetails: (projectId: string | number, protocolId: string | number) =>
-    api.fetchProtocolDetails(toId(projectId), toId(protocolId)),
+  executeProtocol: (protocolId, protocolClassName, params) => api.executeProtocol(toId(protocolId), protocolClassName, params),
+  saveProtocol: (protocolId, protocolClassName, params) => api.saveProtocol(toId(protocolId), protocolClassName, params),
 
-  fetchNewProtocolDetails: (projectId: string | number, protocolClass: string) =>
-    api.fetchNewProtocolDetails(toId(projectId), protocolClass),
+  renameProtocol: (projectId, protocolId, newName) => api.renameProtocol(toId(projectId), toId(protocolId), newName),
+  duplicateProtocol: (projectId, items) => api.duplicateProtocol(toId(projectId), items),
+  deleteProtocol: (projectId, ids) => api.deleteProtocol(toId(projectId), ids),
+  restartAll: (projectId, protocolId) => api.restartAll(toId(projectId), toId(protocolId)),
+  continueAll: (projectId, protocolId) => api.continueAll(toId(projectId), toId(protocolId)),
+  resetFrom: (projectId, protocolId) => api.resetFrom(toId(projectId), toId(protocolId)),
+  stopProtocol: (projectId, ids) => api.stopProtocol(toId(projectId), ids),
 
-  // --- Mutations ---
-  createProject: (payload: ProjectPayload) =>
-    api.createProject(payload.name, (payload.description ?? "").trim()),
+  resolveProtocolStartPath: (projectId, protocolId) => api.resolveProtocolStartPath(toId(projectId), toId(protocolId)),
+  listRemoteDirectory: (projectId, protocolId, path) => api.listRemoteDirectory(toId(projectId), toId(protocolId), path),
+  previewProtocolText: (projectId, protocolId, path) => api.previewProtocolText(toId(projectId), toId(protocolId), path),
+  buildProtocolDownloadUrl: (projectId, protocolId, path, inline) => api.buildProtocolDownloadUrl(toId(projectId), toId(protocolId), path, inline),
+  fetchProtocolInlinePreviewBlob: (projectId, protocolId, path) => api.fetchProtocolInlinePreviewBlob(toId(projectId), toId(protocolId), path),
+  fetchOutputPreview: (projectId, protocolId, path, opts) => api.fetchOutputPreview(toId(projectId), toId(protocolId), path, opts),
 
-  renameProject: (id: string | number, newName: string, newDescription?: string) =>
-    api.renameProject(toId(id), newName, (newDescription ?? "").trim()),
+  // ── Analyze Results: Volumes ─────────────────────────────────────────
+  listOutputVolumes: (projectId, protocolId, outputName) =>
+    api.listOutputVolumes(toId(projectId), toId(protocolId), outputName),
 
-  deleteProject: (id: string | number) => api.deleteProject(toId(id)),
+  getVolumeInfo: (projectId, protocolId, outputName, volumeId) =>
+    api.getVolumeInfo(toId(projectId), toId(protocolId), outputName, toId(volumeId)),
 
-  // --- Protocol lifecycle ---
-  loadProtocols: (projectId: string | number) =>
-    // original signature was (projectId: number); normalize and keep backward-compat
-    api.loadProtocols(Number(projectId)),
+  buildVolumeSliceUrl: (projectId, protocolId, outputName, volumeId, sliceIndex, opts) =>
+    api.buildVolumeSliceUrl(toId(projectId), toId(protocolId), outputName, toId(volumeId), sliceIndex, opts),
 
-  // --- Protocol actions ---
-  executeProtocol: (
-    protocolId: string | number,
-    protocolClassName: string,
-    params: Record<string, unknown>
-  ) => api.executeProtocol(toId(protocolId), protocolClassName, params),
-
-  saveProtocol: (
-    protocolId: string | number,
-    protocolClassName: string,
-    params: Record<string, unknown>
-  ) => api.saveProtocol(toId(protocolId), protocolClassName, params),
-
-  renameProtocol: (
-    projectId: string | number,
-    protocolId: string | number,
-    newName: string
-  ) => api.renameProtocol(toId(projectId), toId(protocolId), newName),
-
-  duplicateProtocol: (
-    projectId: string | number,
-    items: { id: string; name?: string }[],
-  ) => api.duplicateProtocol(toId(projectId), items),
-
-  deleteProtocol: (
-    projectId: string | number,
-    ids: string[],
-  ) => api.deleteProtocol(toId(projectId), ids),
-
-  restartAll: (
-    projectId: string | number,
-    protocolId: string | number,
-  ) => api.restartAll(toId(projectId), toId(protocolId)),
-
-  continueAll: (
-    projectId: string | number,
-    protocolId: string | number,
-  ) => api.continueAll(toId(projectId), toId(protocolId)),
-
-  resetFrom: (
-    projectId: string | number,
-    protocolId: string | number,
-  ) => api.resetFrom(toId(projectId), toId(protocolId)),
-
-  stopProtocol: (
-    projectId: string | number,
-    ids: string[],
-  ) => api.stopProtocol(toId(projectId), ids),
-
-  resolveProtocolStartPath: (
-    projectId: Id,
-    protocolId: Id,
-  ) => api.resolveProtocolStartPath(toId(projectId), toId(protocolId)),
-
-  listRemoteDirectory: (
-    projectId: Id,
-    protocolId: Id,
-    path: string,
-  ) => api.listRemoteDirectory(toId(projectId), toId(protocolId), path),
-
-  previewProtocolText: (
-    projectId: Id,
-    protocolId: Id,
-    path: string
-  ) => api.previewProtocolText(toId(projectId), toId(protocolId), path),
-
-  buildProtocolDownloadUrl: (
-    projectId: Id,
-    protocolId: Id,
-    path: string,
-    inline: boolean
-  ) => api.buildProtocolDownloadUrl(toId(projectId), toId(protocolId), path, inline),
-
-  fetchProtocolInlinePreviewBlob: (
-    projectId: Id,
-    protocolId: Id,
-    path: string,
-  ) => api.fetchProtocolInlinePreviewBlob(toId(projectId), toId(protocolId), path),
-
-  fetchOutputPreview: (
-    projectId: Id,
-    protocolId: Id,
-    path: string,
-    opts?: { table?: string }
-  ) => api.fetchOutputPreview(toId(projectId), toId(protocolId), path, opts),
-
-  // --- Analyze Results: Volumes (Volume / VolumeMask / SetOfVolumes) ---
-  listOutputVolumes: (
-    projectId: Id,
-    protocolId: Id,
-    outputName: string
-  ) => api.listOutputVolumes(toId(projectId), toId(protocolId), outputName),
-
-  getVolumeInfo: (
-    projectId: Id,
-    protocolId: Id,
-    outputName: string,
-    volumeId: Id
-  ) => api.getVolumeInfo(toId(projectId), toId(protocolId), outputName, toId(volumeId)),
-
-  buildVolumeSliceUrl: (
-    projectId: Id,
-    protocolId: Id,
-    outputName: string,
-    volumeId: Id,
-    sliceIndex: number,
-    opts?: { axis?: "z" | "y" | "x"; colormap?: string; normalize?: "minmax" | "zscore" | "none"; scale?: number }
-  ) => api.buildVolumeSliceUrl(
-    toId(projectId),
-    toId(protocolId),
-    outputName,
-    toId(volumeId),
-    sliceIndex,
-    opts
-  ),
-
+  // IMPORTANT: delegate directly to the API helper that already uses ONLY `cmap=`
   fetchVolumeSliceObjectUrl: async (
-    projectId: Id,
-    protocolId: Id,
-    outputName: string,
-    volumeId: Id,
-    sliceIndex: number,
-    opts?: { axis?: "z" | "y" | "x"; cmap?: string; normalize?: "minmax" | "zscore" | "none"; scale?: number }
+    projectId: Id, protocolId: Id, outputName: string, volumeId: Id, sliceIndex: number,
+    opts?: { axis?: "z" | "y" | "x"; cmap?: string; normalize?: "minmax" | "zscore" | "none"; scale?: number; signal?: AbortSignal }
   ): Promise<VolumeSliceObjectUrl> => {
-    const params = new URLSearchParams();
-    params.set("sliceIndex", String(sliceIndex));
-    if (opts?.axis) params.set("axis", opts.axis);
-    if (opts?.cmap) params.set("cmap", opts.cmap);           
-    if (opts?.normalize) params.set("normalize", opts.normalize);
-    if (opts?.scale != null) params.set("scale", String(opts.scale));
-    params.set("inline", "true");
-    const url = await defaultService.buildVolumeSliceUrl(
-      projectId, protocolId, outputName, volumeId, sliceIndex, opts
+    const { url, revoke } = await api.fetchVolumeSliceObjectUrl(
+      toId(projectId), toId(protocolId), outputName, toId(volumeId), sliceIndex,
+      { axis: opts?.axis, cmap: opts?.cmap, normalize: opts?.normalize, scale: opts?.scale, signal: opts?.signal as any }
     );
-    const res = await fetchWithAuth(url, { method: "GET" });
-    if (!res.ok) {
-      const txt = await res.text().catch(() => "");
-      throw new Error(txt || `Failed to fetch volume slice (HTTP ${res.status})`);
-    }
-
-    const blob = await res.blob();
-    const objectUrl = URL.createObjectURL(blob);
-    const revoke = () => URL.revokeObjectURL(objectUrl);
-
-    return { url: objectUrl, revoke };
+    return { url, revoke };
   },
-
-
 };
-
 
 export default defaultService;
