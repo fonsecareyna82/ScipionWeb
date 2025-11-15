@@ -1,4 +1,4 @@
-// volume-viewer.tsx
+// src/components/analyze/volume-viewer.tsx
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Box, Typography, CircularProgress, List, ListItemButton, ListItemText,
@@ -8,17 +8,38 @@ import Slider from "@mui/material/Slider";
 import { styled } from "@mui/material/styles";
 import { useProjectService } from "@/ProjectServiceContext";
 
-type VolumeViewerProps = { projectId: string | number; protocolId: string | number; protocolLabel: string; outputName: string; };
+type VolumeViewerProps = {
+  projectId: string | number;
+  protocolId: string | number;
+  outputName: string;
+  protocolLabel?: string;
+};
 type VolumeLite = { id: string | number; label?: string; name?: string };
 
 const DEFAULT_AXIS: "z" | "y" | "x" = "z";
 const CMAP_OPTIONS = ["viridis", "gray", "magma", "plasma", "inferno", "cividis", "turbo"];
 
-/** Small debounce */
+/** Debounce tiny scrubs. */
 function useDebounced<T>(value: T, delay = 50): T {
   const [debounced, setDebounced] = useState(value);
   useEffect(() => { const id = setTimeout(() => setDebounced(value), delay); return () => clearTimeout(id); }, [value, delay]);
   return debounced;
+}
+
+/** Observe a DOM element size (content box). Accepts refs that may be null. */
+function useElementSize(ref: React.RefObject<HTMLElement | null>) {
+  const [size, setSize] = useState({ width: 0, height: 0 });
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      const r = entries[0]?.contentRect;
+      if (r) setSize({ width: r.width, height: r.height });
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [ref]);
+  return size;
 }
 
 type CacheEntry = { url: string; revoke: () => void };
@@ -77,9 +98,8 @@ export default function VolumeViewer({ projectId, protocolId, outputName }: Volu
   const [sliceIndex, setSliceIndex] = useState(0); // 0-based
   const [colormap, setColormap] = useState<string>("viridis");
 
-  // Images (double-buffered)
+  // Images
   const [frontUrl, setFrontUrl] = useState<string | null>(null);
-  const [backUrl, setBackUrl] = useState<string | null>(null);
   const [imgError, setImgError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [frontOpacity, setFrontOpacity] = useState(1);
@@ -89,7 +109,7 @@ export default function VolumeViewer({ projectId, protocolId, outputName }: Volu
   const cacheRef = useRef(new Lru(32));
   const abortRef = useRef<AbortController | null>(null);
 
-  // Load list
+  // ---------- Load list ----------
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -115,18 +135,17 @@ export default function VolumeViewer({ projectId, protocolId, outputName }: Volu
     return () => { cancelled = true; };
   }, [projectId, protocolId, outputName, svc]);
 
-  // Hard reset on volume/colormap change
+  // Hard reset on volume/colormap/axis change
   useEffect(() => {
     abortRef.current?.abort();
     abortRef.current = null;
     setImgError(null);
     setFrontUrl(null);
-    setBackUrl(null);
     setFrontOpacity(1);
     cacheRef.current.clear();
   }, [selectedId, colormap, axis]);
 
-  // Load meta
+  // ---------- Load meta ----------
   useEffect(() => {
     if (selectedId == null) { setMeta(null); return; }
     let cancelled = false;
@@ -147,7 +166,7 @@ export default function VolumeViewer({ projectId, protocolId, outputName }: Volu
   }, [selectedId, projectId, protocolId, outputName, svc]);
 
   // Dims (interpret backend dims = Z,Y,X)
-  const dims = useMemo(() => getDimsZYXtoXYZ(meta), [meta]);   // <= FIX principal
+  const dims = useMemo(() => getDimsZYXtoXYZ(meta), [meta]);
   const maxSlice = Math.max(0, dims[axis] - 1);
 
   // Recenter on axis/volume change
@@ -174,18 +193,14 @@ export default function VolumeViewer({ projectId, protocolId, outputName }: Volu
     } catch { /* ignore prefetch errors */ }
   };
 
-  // Fetch current slice (live while scrubbing, with abort)
-  // Fetch current slice (live while scrubbing, with abort)
+  // ---------- Fetch current slice (live while scrubbing, with abort) ----------
   useEffect(() => {
     if (!ready) { setImgError(null); return; }
 
-    // CLAMP: nunca salgas del rango [0, maxSlice]
     const idx = Math.max(0, Math.min(debouncedIndex, maxSlice));
-
     const k = keyFor(idx);
     const cached = cacheRef.current.get(k);
 
-    // Abortar cualquier request anterior
     abortRef.current?.abort();
     const myAbort = new AbortController();
     abortRef.current = myAbort;
@@ -194,7 +209,6 @@ export default function VolumeViewer({ projectId, protocolId, outputName }: Volu
     setImgError(null);
 
     const useImage = (url: string) => {
-      setBackUrl(frontUrl);
       setFrontOpacity(0);
       setFrontUrl(url);
       setTimeout(() => setFrontOpacity(1), 0);
@@ -228,16 +242,45 @@ export default function VolumeViewer({ projectId, protocolId, outputName }: Volu
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, debouncedIndex, axis, colormap, selectedId]);
 
+  // ---------- Fit-aware zoom ----------
+  // 100% == fit-to-viewport (no scrollbars). We cap at 100%.
+  const viewerRef = useRef<HTMLDivElement | null>(null);
+  const { width: vw, height: vh } = useElementSize(viewerRef);
 
-  // Zoom
-  const [zoom, setZoom] = useState(1);
+  const [naturalW, setNaturalW] = useState<number | null>(null);
+  const [naturalH, setNaturalH] = useState<number | null>(null);
+
+  // User zoom multiplier (relative to fit)
+  const [zoomMul, setZoomMul] = useState(1);
+  const MIN_MUL = 0.25;
+  const MAX_MUL = 1; // cap at 100%
+
+  // Compute the "fit scale" so image fits inside viewer without scrollbars.
+  const fitScale = useMemo(() => {
+    if (!naturalW || !naturalH || !vw || !vh) return 1;
+    const sx = vw / naturalW;
+    const sy = vh / naturalH;
+    return Math.min(sx, sy);
+  }, [naturalW, naturalH, vw, vh]);
+
+  // Effective rendered width in pixels.
+  const renderedWidth = useMemo(() => {
+    if (!naturalW) return undefined;
+    return naturalW * fitScale * zoomMul;
+  }, [naturalW, fitScale, zoomMul]);
+
   const onWheelZoom: React.WheelEventHandler<HTMLDivElement> = (e) => {
-    if (!frontUrl && !backUrl) return;
+    if (!frontUrl) return;
     e.preventDefault();
     const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
-    setZoom(z => Math.min(8, Math.max(0.25, z * factor)));
+    setZoomMul((z) => {
+      const next = Math.min(MAX_MUL, Math.max(MIN_MUL, z * factor));
+      return Number.isFinite(next) ? next : z;
+    });
   };
+  const resetZoom = () => setZoomMul(1);
 
+  // ---------- UI ----------
   return (
     <Box sx={{ display: "flex", minHeight: 700 }}>
       {/* Left: list */}
@@ -314,14 +357,28 @@ export default function VolumeViewer({ projectId, protocolId, outputName }: Volu
               {CMAP_OPTIONS.map(cm => <MenuItem key={cm} value={cm}>{cm}</MenuItem>)}
             </TextField>
 
-            <Typography variant="caption" color="text.secondary">Zoom: {Math.round(zoom * 100)}%</Typography>
+            {/* Zoom (100% == FIT; capped at 100%) */}
+            <Typography variant="caption" color="text.secondary">Zoom: {Math.round(zoomMul * 100)}%</Typography>
           </Box>
         </Paper>
 
-        {/* Canvas with crossfade */}
+        {/* Canvas (1.0 == fit; capped at 1.0) */}
         <Box
+          ref={viewerRef}
           onWheel={onWheelZoom}
-          sx={{ flex: 1, minHeight: 0, display: "flex", alignItems: "center", justifyContent: "center", p: 2, overflow: "auto", position: "relative" }}
+          onDoubleClick={resetZoom}
+          sx={{
+            flex: 1,
+            minHeight: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            p: 2,
+            overflow: "hidden",        // no scrolls since we cap at fit
+            position: "relative",
+            cursor: "default",
+          }}
+          title="Double-click to reset zoom"
         >
           {metaLoading ? (
             <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
@@ -334,25 +391,26 @@ export default function VolumeViewer({ projectId, protocolId, outputName }: Volu
             <Typography variant="body2" color="text.secondary">Select a volume</Typography>
           ) : imgError ? (
             <Typography variant="body2" color="error">{imgError}</Typography>
-          ) : (frontUrl || backUrl) ? (
-            <Box sx={{ position: "relative", maxWidth: "100%", maxHeight: "100%" }}>
-              {/* front image (fades in) */}
-              {frontUrl && (
-                <img
-                  src={frontUrl}
-                  alt="slice"
-                  style={{
-                    position: "relative",
-                    maxWidth: "100%", maxHeight: "100%", objectFit: "contain",
-                    transform: `scale(${zoom})`, transformOrigin: "center",
-                    transition: "opacity 140ms ease",
-                    opacity: frontOpacity,
-                  }}
-                />
-              )}
-              {/* tiny spinner overlay if cold cache */}
-
-            </Box>
+          ) : frontUrl ? (
+            <img
+              src={frontUrl}
+              alt="slice"
+              onLoad={(e) => {
+                const img = e.currentTarget;
+                if (img.naturalWidth && img.naturalHeight) {
+                  setNaturalW(img.naturalWidth);
+                  setNaturalH(img.naturalHeight);
+                }
+              }}
+              style={{
+                width: naturalW && renderedWidth ? `${renderedWidth}px` : undefined,
+                height: "auto",
+                display: "block",
+                transition: "opacity 140ms ease",
+                opacity: frontOpacity,
+                imageRendering: "auto",
+              }}
+            />
           ) : (
             loading ? (
               <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
@@ -394,7 +452,6 @@ function getDimsZYXtoXYZ(info: any): Record<"x" | "y" | "z", number> {
     z: Number(info?.depth ?? info?.slices ?? 0),
   };
 }
-
 function dimsToStringXYZ(d: Record<"x" | "y" | "z", number>) {
   return d.x && d.y && d.z ? `${d.x} × ${d.y} × ${d.z}` : "–";
 }
