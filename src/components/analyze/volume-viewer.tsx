@@ -8,13 +8,14 @@ import Slider from "@mui/material/Slider";
 import { styled } from "@mui/material/styles";
 import { useProjectService } from "@/ProjectServiceContext";
 
-type VolumeViewerProps = { projectId: string | number; protocolId: string | number; outputName: string; };
+type VolumeViewerProps = { projectId: string | number; protocolId: string | number; protocolLabel: string; outputName: string; };
 type VolumeLite = { id: string | number; label?: string; name?: string };
 
 const DEFAULT_AXIS: "z" | "y" | "x" = "z";
 const CMAP_OPTIONS = ["viridis", "gray", "magma", "plasma", "inferno", "cividis", "turbo"];
 
-function useDebounced<T>(value: T, delay = 80): T {
+/** Small debounce */
+function useDebounced<T>(value: T, delay = 50): T {
   const [debounced, setDebounced] = useState(value);
   useEffect(() => { const id = setTimeout(() => setDebounced(value), delay); return () => clearTimeout(id); }, [value, delay]);
   return debounced;
@@ -23,7 +24,7 @@ function useDebounced<T>(value: T, delay = 80): T {
 type CacheEntry = { url: string; revoke: () => void };
 class Lru {
   private max: number; private map = new Map<string, CacheEntry>();
-  constructor(max = 28) { this.max = max; }
+  constructor(max = 32) { this.max = max; }
   get(k: string) { const v = this.map.get(k); if (!v) return undefined; this.map.delete(k); this.map.set(k, v); return v; }
   set(k: string, v: CacheEntry) {
     if (this.map.has(k)) { this.map.get(k)!.revoke(); this.map.delete(k); }
@@ -37,16 +38,15 @@ const SliceSlider = styled(Slider)(({ theme }) => ({
   height: 4, paddingTop: 16, paddingBottom: 28,
   "& .MuiSlider-thumb": { width: 14, height: 14 },
   "& .MuiSlider-valueLabel": {
-    top: "unset", bottom: -28, transform: "none",
-    background: "transparent", color: theme.palette.text.secondary,
-    fontSize: "0.75rem", fontWeight: 500, "&:before": { display: "none" },
+    top: "unset", bottom: -28, transform: "none", background: "transparent",
+    color: theme.palette.text.secondary, fontSize: "0.75rem", fontWeight: 500, "&:before": { display: "none" },
   },
 }));
 
-export default function VolumeViewer({ projectId, protocolId, outputName }: VolumeViewerProps) {
+export default function VolumeViewer({ projectId, protocolId, protocolLabel, outputName }: VolumeViewerProps) {
   const svc = useProjectService();
 
-  // Left list
+  // List & selection
   const [loadingList, setLoadingList] = useState(true);
   const [listError, setListError] = useState<string | null>(null);
   const [volumes, setVolumes] = useState<VolumeLite[]>([]);
@@ -59,55 +59,36 @@ export default function VolumeViewer({ projectId, protocolId, outputName }: Volu
 
   // Controls
   const [axis, setAxis] = useState<"z" | "y" | "x">(DEFAULT_AXIS);
-  const [sliceIndex, setSliceIndex] = useState(0);
-  const [colormap, setColormap] = useState("viridis");
+  const [sliceIndex, setSliceIndex] = useState(0); // 0-based
+  const [colormap, setColormap] = useState<string>("viridis");
 
-  // Two-layer image cross-fade
-  const [currUrl, setCurrUrl] = useState<string | null>(null);
-  const [nextUrl, setNextUrl] = useState<string | null>(null);
-  const [currOpacity, setCurrOpacity] = useState(1);
-  const [nextOpacity, setNextOpacity] = useState(0);
-
+  // Images (double-buffered)
+  const [frontUrl, setFrontUrl] = useState<string | null>(null);
+  const [backUrl, setBackUrl] = useState<string | null>(null);
   const [imgError, setImgError] = useState<string | null>(null);
-  const [imgLoading, setImgLoading] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [frontOpacity, setFrontOpacity] = useState(1);
 
-  const [isScrubbing, setIsScrubbing] = useState(false);
-  const debouncedSliceIndex = useDebounced(sliceIndex, isScrubbing ? 40 : 90);
-
+  const debouncedIndex = useDebounced(sliceIndex, 40);
   const reqIdRef = useRef(0);
   const cacheRef = useRef(new Lru(32));
+  const abortRef = useRef<AbortController | null>(null);
 
-  // Spinner with deflicker and hard stop
-  const spinnerTimerRef = useRef<number | null>(null);
-  const spinnerHardStopRef = useRef<number | null>(null);
-  const startSpinner = () => {
-    if (spinnerTimerRef.current == null) {
-      spinnerTimerRef.current = window.setTimeout(() => { setImgLoading(true); spinnerTimerRef.current = null; }, isScrubbing ? 50 : 120);
-    }
-    if (spinnerHardStopRef.current == null) {
-      spinnerHardStopRef.current = window.setTimeout(() => { setImgLoading(false); spinnerHardStopRef.current = null; }, 6000);
-    }
-  };
-  const stopSpinner = () => {
-    if (spinnerTimerRef.current != null) { clearTimeout(spinnerTimerRef.current); spinnerTimerRef.current = null; }
-    if (spinnerHardStopRef.current != null) { clearTimeout(spinnerHardStopRef.current); spinnerHardStopRef.current = null; }
-    setImgLoading(false);
-  };
-
-  // Load volumes list
+  // Load list
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        setLoadingList(true); setListError(null);
-        const items: any[] = await svc.listOutputVolumes(projectId, protocolId, outputName);
+        setLoadingList(true);
+        setListError(null);
+        const items = await svc.listOutputVolumes(projectId, protocolId, outputName);
         if (cancelled) return;
         const mapped: VolumeLite[] = (items || []).map((v: any, i: number) => ({
           id: v?.id ?? i, label: v?.label ?? v?.name ?? `Volume ${v?.id ?? i}`, name: v?.name,
         }));
         setVolumes(mapped);
         setSelectedId(prev => {
-          const exists = mapped.find(m => String(m.id) === String(prev ?? -1));
+          const exists = mapped.find(m => String(m.id) === String(prev ?? -999));
           return exists ? (prev as any) : mapped[0]?.id ?? null;
         });
       } catch (e: any) {
@@ -119,26 +100,25 @@ export default function VolumeViewer({ projectId, protocolId, outputName }: Volu
     return () => { cancelled = true; };
   }, [projectId, protocolId, outputName, svc]);
 
-  // Hard reset on volume change
+  // Hard reset on volume/colormap change
   useEffect(() => {
-    stopSpinner();
-    setIsScrubbing(false);
+    abortRef.current?.abort();
+    abortRef.current = null;
     setImgError(null);
-    setCurrUrl(null);
-    setNextUrl(null);
-    setCurrOpacity(1);
-    setNextOpacity(0);
-    setZoom(1);
+    setFrontUrl(null);
+    setBackUrl(null);
+    setFrontOpacity(1);
     cacheRef.current.clear();
-  }, [selectedId]);
+  }, [selectedId, colormap, axis]);
 
-  // Fetch metadata
+  // Load meta
   useEffect(() => {
     if (selectedId == null) { setMeta(null); return; }
     let cancelled = false;
     (async () => {
       try {
-        setMetaLoading(true); setMetaError(null);
+        setMetaLoading(true);
+        setMetaError(null);
         const info = await svc.getVolumeInfo(projectId, protocolId, outputName, selectedId);
         if (cancelled) return;
         setMeta(info || null);
@@ -151,100 +131,93 @@ export default function VolumeViewer({ projectId, protocolId, outputName }: Volu
     return () => { cancelled = true; };
   }, [selectedId, projectId, protocolId, outputName, svc]);
 
-  // Dims with order awareness
-  const dims = useMemo(() => getDims(meta), [meta, axis]);
+  // Dims (interpret backend dims = Z,Y,X)
+  const dims = useMemo(() => getDimsZYXtoXYZ(meta), [meta]);   // <= FIX principal
   const maxSlice = Math.max(0, dims[axis] - 1);
 
-  // Center slice when axis/volume/dims change
+  // Recenter on axis/volume change
   useEffect(() => {
     const mid = Math.max(0, Math.floor(maxSlice / 2));
     setSliceIndex(mid);
   }, [selectedId, axis, maxSlice]);
 
-  const readyForSlice = selectedId != null && !!meta && dims[axis] > 0;
+  const ready = selectedId != null && !!meta && dims[axis] > 0;
   const keyFor = (idx: number) => `${selectedId}|${axis}|${idx}|${colormap}`;
 
   // Prefetch neighbors
-  const prefetchNeighbor = async (idx: number) => {
-    if (!readyForSlice || idx < 0 || idx > maxSlice) return;
+  const prefetch = async (idx: number) => {
+    if (!ready || idx < 0 || idx > maxSlice) return;
     const k = keyFor(idx);
     if (cacheRef.current.get(k)) return;
     try {
+      const ac = new AbortController();
       const { url, revoke } = await svc.fetchVolumeSliceObjectUrl(
-        projectId, protocolId, outputName, selectedId!, idx, { axis, cmap: colormap }
+        projectId, protocolId, outputName, selectedId!, idx,
+        { axis, cmap: colormap, signal: ac.signal }
       );
       cacheRef.current.set(k, { url, revoke });
     } catch { /* ignore prefetch errors */ }
   };
 
-  // Fetch current slice (ALWAYS, even while scrubbing; debounced)
+  // Fetch current slice (live while scrubbing, with abort)
+  // Fetch current slice (live while scrubbing, with abort)
   useEffect(() => {
-    if (!readyForSlice) { setImgError(null); return; }
-    const idx = Math.max(0, Math.min(debouncedSliceIndex, maxSlice));
+    if (!ready) { setImgError(null); return; }
+
+    // CLAMP: nunca salgas del rango [0, maxSlice]
+    const idx = Math.max(0, Math.min(debouncedIndex, maxSlice));
+
     const k = keyFor(idx);
     const cached = cacheRef.current.get(k);
 
+    // Abortar cualquier request anterior
+    abortRef.current?.abort();
+    const myAbort = new AbortController();
+    abortRef.current = myAbort;
+
     const myReq = ++reqIdRef.current;
-    const ac = new AbortController();
-
-    if (cached) {
-      setImgError(null);
-      // Cross-fade into cached
-      setNextUrl(cached.url);
-      setNextOpacity(0);
-      // trigger fade
-      requestAnimationFrame(() => setNextOpacity(1));
-      prefetchNeighbor(idx - 1);
-      prefetchNeighbor(idx + 1);
-      return () => { ac.abort(); stopSpinner(); };
-    }
-
     setImgError(null);
-    startSpinner();
-    setNextOpacity(0);
+
+    const useImage = (url: string) => {
+      setBackUrl(frontUrl);
+      setFrontOpacity(0);
+      setFrontUrl(url);
+      setTimeout(() => setFrontOpacity(1), 0);
+    };
 
     (async () => {
       try {
+        setLoading(!cached);
+        if (cached) {
+          useImage(cached.url);
+          prefetch(idx - 1); prefetch(idx + 1);
+          return;
+        }
         const { url, revoke } = await svc.fetchVolumeSliceObjectUrl(
-          projectId, protocolId, outputName, selectedId!, idx, { axis, cmap: colormap, signal: ac.signal as any }
+          projectId, protocolId, outputName, selectedId!, idx,
+          { axis, cmap: colormap, signal: myAbort.signal }
         );
         if (reqIdRef.current !== myReq) { revoke(); return; }
         cacheRef.current.set(k, { url, revoke });
-        setNextUrl(url);
-        requestAnimationFrame(() => setNextOpacity(1)); // start fade-in
-        prefetchNeighbor(idx - 1);
-        prefetchNeighbor(idx + 1);
+        useImage(url);
+        prefetch(idx - 1); prefetch(idx + 1);
       } catch (e: any) {
-        if (reqIdRef.current === myReq && e?.name !== "AbortError") {
-          setImgError(e?.message || "Failed to render slice");
-        }
+        if (e?.name === "AbortError") return;
+        if (reqIdRef.current === myReq) setImgError(e?.message || "Failed to render slice");
       } finally {
-        if (reqIdRef.current === myReq) stopSpinner();
+        if (reqIdRef.current === myReq) setLoading(false);
       }
     })();
 
-    return () => { ac.abort(); stopSpinner(); };
-  }, [
-    readyForSlice, svc, projectId, protocolId, outputName, selectedId,
-    debouncedSliceIndex, axis, colormap, maxSlice
-  ]);
+    return () => { myAbort.abort(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, debouncedIndex, axis, colormap, selectedId]);
 
-  // When next image finishes loading → swap to current and hide next
-  const onNextLoad = () => {
-    setCurrUrl(nextUrl);
-    setCurrOpacity(1);
-    setNextOpacity(0);
-  };
-
-  // Clear cache on key changes
-  useEffect(() => { cacheRef.current.clear(); }, [colormap, axis, selectedId]);
-  useEffect(() => () => cacheRef.current.clear(), []);
 
   // Zoom
   const [zoom, setZoom] = useState(1);
-  const imgWrapperRef = useRef<HTMLDivElement | null>(null);
   const onWheelZoom: React.WheelEventHandler<HTMLDivElement> = (e) => {
-    if (!currUrl && !nextUrl) return;
+    if (!frontUrl && !backUrl) return;
     e.preventDefault();
     const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
     setZoom(z => Math.min(8, Math.max(0.25, z * factor)));
@@ -252,12 +225,12 @@ export default function VolumeViewer({ projectId, protocolId, outputName }: Volu
 
   return (
     <Box sx={{ display: "flex", minHeight: 700 }}>
-      {/* Left list */}
+      {/* Left: list */}
       <Box sx={{ width: 280, borderRight: "1px solid #eee", display: "flex", flexDirection: "column" }}>
         <Box sx={{ p: 1.5 }}>
           <Typography variant="subtitle2">Volumes</Typography>
           <Typography variant="caption" color="text.secondary">
-            {loadingList ? "Loading…" : `${volumes.length} item(s)`}
+            {loadingList ? "" : `${volumes.length} item(s)`}
           </Typography>
         </Box>
         <Divider />
@@ -265,7 +238,7 @@ export default function VolumeViewer({ projectId, protocolId, outputName }: Volu
           {loadingList ? (
             <Box sx={{ p: 2, display: "flex", gap: 1, alignItems: "center" }}>
               <CircularProgress size={18} />
-              <Typography variant="body2">Loading list…</Typography>
+              <Typography variant="body2"></Typography>
             </Box>
           ) : listError ? (
             <Box sx={{ p: 2 }}><Typography variant="body2" color="error">{listError}</Typography></Box>
@@ -286,11 +259,12 @@ export default function VolumeViewer({ projectId, protocolId, outputName }: Volu
         </Box>
       </Box>
 
-      {/* Viewer */}
+      {/* Right: viewer */}
       <Box sx={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
         {/* Toolbar */}
         <Paper elevation={0} square sx={{ p: 1, borderBottom: "1px solid #eee" }}>
           <Box sx={{ display: "flex", gap: 2, alignItems: "center", flexWrap: "wrap" }}>
+            {/* Axis */}
             <Box>
               <Typography variant="caption" color="text.secondary">Axis</Typography>
               <ToggleButtonGroup size="small" value={axis} exclusive onChange={(_, v) => v && setAxis(v)} sx={{ ml: 1 }}>
@@ -311,14 +285,13 @@ export default function VolumeViewer({ projectId, protocolId, outputName }: Volu
                 valueLabelDisplay="auto"
                 valueLabelFormat={(v) => `${(v as number) + 1}`}
                 getAriaValueText={(v) => `slice ${(v as number) + 1} of ${maxSlice + 1}`}
-                onMouseDownCapture={() => setIsScrubbing(true)}
-                onTouchStartCapture={() => setIsScrubbing(true)}
                 onChange={(_, v) => setSliceIndex(v as number)}
-                onChangeCommitted={() => setIsScrubbing(false)}
-                disabled={!readyForSlice}
+                disabled={!ready}
                 aria-label="slice-index"
               />
-              <Typography variant="caption" color="text.secondary" sx={{ pl: 1, minWidth: 24, textAlign: "right" }}>{maxSlice + 1}</Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ pl: 1, minWidth: 24, textAlign: "right" }}>
+                {maxSlice + 1}
+              </Typography>
             </Box>
 
             {/* Colormap */}
@@ -330,9 +303,8 @@ export default function VolumeViewer({ projectId, protocolId, outputName }: Volu
           </Box>
         </Paper>
 
-        {/* Canvas with cross-fade */}
+        {/* Canvas with crossfade */}
         <Box
-          ref={imgWrapperRef}
           onWheel={onWheelZoom}
           sx={{ flex: 1, minHeight: 0, display: "flex", alignItems: "center", justifyContent: "center", p: 2, overflow: "auto", position: "relative" }}
         >
@@ -345,53 +317,43 @@ export default function VolumeViewer({ projectId, protocolId, outputName }: Volu
             <Typography variant="body2" color="error">{metaError}</Typography>
           ) : selectedId == null ? (
             <Typography variant="body2" color="text.secondary">Select a volume</Typography>
+          ) : imgError ? (
+            <Typography variant="body2" color="error">{imgError}</Typography>
+          ) : (frontUrl || backUrl) ? (
+            <Box sx={{ position: "relative", maxWidth: "100%", maxHeight: "100%" }}>
+              {/* front image (fades in) */}
+              {frontUrl && (
+                <img
+                  src={frontUrl}
+                  alt="slice"
+                  style={{
+                    position: "relative",
+                    maxWidth: "100%", maxHeight: "100%", objectFit: "contain",
+                    transform: `scale(${zoom})`, transformOrigin: "center",
+                    transition: "opacity 140ms ease",
+                    opacity: frontOpacity,
+                  }}
+                />
+              )}
+              {/* tiny spinner overlay if cold cache */}
+              
+            </Box>
           ) : (
-            <>
-              {/* Current image (below) */}
-              {currUrl && (
-                <img
-                  src={currUrl}
-                  alt="current-slice"
-                  style={{
-                    maxWidth: "100%", maxHeight: "100%", objectFit: "contain", display: "block",
-                    transform: `scale(${zoom})`, transformOrigin: "center center",
-                    position: "absolute", inset: 16, margin: "auto", opacity: currOpacity, transition: "opacity 160ms ease-in-out",
-                  }}
-                />
-              )}
-              {/* Incoming image (above) */}
-              {nextUrl && (
-                <img
-                  src={nextUrl}
-                  alt="next-slice"
-                  onLoad={onNextLoad}
-                  style={{
-                    maxWidth: "100%", maxHeight: "100%", objectFit: "contain", display: "block",
-                    transform: `scale(${zoom})`, transformOrigin: "center center",
-                    position: "absolute", inset: 16, margin: "auto", opacity: nextOpacity, transition: "opacity 160ms ease-in-out",
-                  }}
-                />
-              )}
-              {!currUrl && !nextUrl && (
-                imgLoading ? (
-                  <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
-                    <CircularProgress size={18} />
-                    <Typography variant="body2"></Typography>
-                  </Box>
-                ) : imgError ? (
-                  <Typography variant="body2" color="error">{imgError}</Typography>
-                ) : (
-                  <Typography variant="body2" color="text.secondary"></Typography>
-                )
-              )}
-            </>
+            loading ? (
+              <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
+                <CircularProgress size={18} />
+                <Typography variant="body2"></Typography>
+              </Box>
+            ) : (
+              <Typography variant="body2" color="text.secondary">No image</Typography>
+            )
           )}
         </Box>
 
-        {/* Meta footer */}
+        {/* Meta */}
         <Divider />
         <Box sx={{ p: 1.5, display: "flex", gap: 3, flexWrap: "wrap" }}>
-          <MetaItem label="Dims" value={dimsToString(meta)} />
+          <MetaItem label="Dims" value={dimsToStringXYZ(dims)} />
           {"min" in (meta || {}) && <MetaItem label="Min" value={num(meta?.min)} />}
           {"max" in (meta || {}) && <MetaItem label="Max" value={num(meta?.max)} />}
           {"mean" in (meta || {}) && <MetaItem label="Mean" value={num(meta?.mean)} />}
@@ -402,20 +364,25 @@ export default function VolumeViewer({ projectId, protocolId, outputName }: Volu
   );
 }
 
-// ----- dims helpers (respect dimsOrder) -----
-function getDims(info: any): Record<"x" | "y" | "z", number> {
-  const arr = (info?.dims || info?.shape || info?.size) as number[] | undefined;
-  const order = (info?.dimsOrder || "").toLowerCase(); // e.g., "zyx"
-  if (Array.isArray(arr) && arr.length >= 3) {
-    if (order === "zyx") { const [z, y, x] = arr as number[]; return { x, y, z }; }
-    if (order === "yzx") { const [y, z, x] = arr as number[]; return { x, y, z }; }
-    // default assume xyz
-    const [x, y, z] = arr as number[];
+/** Interpret backend dims as Z,Y,X and expose as {x,y,z} */
+function getDimsZYXtoXYZ(info: any): Record<"x" | "y" | "z", number> {
+  const raw = info?.dims || info?.shape || info?.size || [];
+  if (Array.isArray(raw) && raw.length >= 3) {
+    const z = Number(raw[0]) || 0;
+    const y = Number(raw[1]) || 0;
+    const x = Number(raw[2]) || 0;
     return { x, y, z };
   }
-  return { x: info?.width ?? 0, y: info?.height ?? 0, z: info?.depth ?? info?.slices ?? 0 };
+  return {
+    x: Number(info?.width ?? 0),
+    y: Number(info?.height ?? 0),
+    z: Number(info?.depth ?? info?.slices ?? 0),
+  };
 }
-function dimsToString(info: any) { const d = getDims(info); return d.x && d.y && d.z ? `${d.x} × ${d.y} × ${d.z}` : "–"; }
+
+function dimsToStringXYZ(d: Record<"x" | "y" | "z", number>) {
+  return d.x && d.y && d.z ? `${d.x} × ${d.y} × ${d.z}` : "–";
+}
 function num(n: any) { return Number.isFinite(n) ? Number(n).toFixed(3) : "–"; }
 function MetaItem({ label, value }: { label: string; value: string }) {
   return (

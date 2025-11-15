@@ -140,7 +140,7 @@ export const ProtocolsDrawer: React.FC<ProtocolsDrawerProps> = ({
         </div>
 
         {/* Header */}
-        <div className="flex flex-col p-3 bg-gradient-to-r from-gray-100 to-gray-500 dark:from-gray-700 dark:to-gray-800 border-b border-gray-300 shadow-sm mt-14">
+        <div className="flex flex-col p-3 bg-gradient-to-r text-gray-200  from-gray-800 to-gray-700 dark:from-gray-800 dark:to-gray-700 border-b border-gray-300 shadow-sm mt-14">
           <h2 className="text-lg">Protocols</h2>
         </div>
 

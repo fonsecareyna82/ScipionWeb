@@ -2056,7 +2056,7 @@ export default function ProtocolForm({
           <Box className="inline-flex items-center justify-center rounded-full bg-green-500 text-black text-xs font-bold px-2 py-1">
             {data?.id}
           </Box>
-          <h2>{protocolDetails.label}</h2>
+          <h2 className="text-white">{protocolDetails.label}</h2>
           <span
             className="node-status-pill"
             style={{
@@ -2396,14 +2396,20 @@ export default function ProtocolForm({
                     <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
                       <Button
                         size="small"
-                        variant="outlined"
-                        sx={{ textTransform: "none", ml: 1 }}
+                        variant="contained"
+                        sx={{
+                          textTransform: "none",
+                          ml: 1,
+                          backgroundColor: "Firebrick",
+                          "&:hover": { backgroundColor: "#a61d1d" },
+                        }}
                         disabled={!activeOutput}
                         onClick={() => setAnalyzeOpen(true)}
                       >
                         Analyze Result
                       </Button>
                     </Box>
+
                   </Box>
 
                   <Box
@@ -3105,6 +3111,7 @@ export default function ProtocolForm({
         onClose={() => setAnalyzeOpen(false)}
         projectId={projectId}
         protocolId={protocolId}
+        protocolLabel={protocolDetails.label}
         outputName={activeOutput?.name || ""}
         outputRaw={activeOutput?.raw || {}}
       />
