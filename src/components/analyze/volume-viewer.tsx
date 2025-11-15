@@ -35,10 +35,10 @@ class Lru {
 }
 
 const SliceSlider = styled(Slider)(({ theme }) => ({
-  height: 4, paddingTop: 16, paddingBottom: 28,
+  height: 4, paddingTop: 16, paddingBottom: 12,
   "& .MuiSlider-thumb": { width: 14, height: 14 },
   "& .MuiSlider-valueLabel": {
-    top: "unset", bottom: -28, transform: "none", background: "transparent",
+    top: "unset", bottom: 12, transform: "none", background: "transparent",
     color: theme.palette.text.secondary, fontSize: "0.75rem", fontWeight: 500, "&:before": { display: "none" },
   },
 }));
