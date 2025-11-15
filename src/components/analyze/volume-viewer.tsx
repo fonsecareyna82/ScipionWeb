@@ -35,15 +35,30 @@ class Lru {
 }
 
 const SliceSlider = styled(Slider)(({ theme }) => ({
-  height: 4, paddingTop: 16, paddingBottom: 12,
-  "& .MuiSlider-thumb": { width: 14, height: 14 },
+  height: 4,
+  paddingTop: 16,
+  paddingBottom: 36,
+
+  "& .MuiSlider-thumb": {
+    width: 14,
+    height: 14,
+  },
   "& .MuiSlider-valueLabel": {
-    top: "unset", bottom: 12, transform: "none", background: "transparent",
-    color: theme.palette.text.secondary, fontSize: "0.75rem", fontWeight: 500, "&:before": { display: "none" },
+    top: "unset",
+    bottom: -30,                     
+    transform: "translateY(0) scale(1)", 
+    background: "transparent",
+    color: theme.palette.text.secondary,
+    fontSize: "0.75rem",
+    fontWeight: 500,
+    "&:before": { display: "none" },
+  },
+  "& .MuiSlider-valueLabel.MuiSlider-valueLabelOpen": {
+    transform: "translateY(0) scale(1)",
   },
 }));
 
-export default function VolumeViewer({ projectId, protocolId, protocolLabel, outputName }: VolumeViewerProps) {
+export default function VolumeViewer({ projectId, protocolId, outputName }: VolumeViewerProps) {
   const svc = useProjectService();
 
   // List & selection
@@ -336,7 +351,7 @@ export default function VolumeViewer({ projectId, protocolId, protocolLabel, out
                 />
               )}
               {/* tiny spinner overlay if cold cache */}
-              
+
             </Box>
           ) : (
             loading ? (

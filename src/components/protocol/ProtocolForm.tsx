@@ -2406,7 +2406,7 @@ export default function ProtocolForm({
                         disabled={!activeOutput}
                         onClick={() => setAnalyzeOpen(true)}
                       >
-                        Analyze Result
+                        Analyze results
                       </Button>
                     </Box>
 
