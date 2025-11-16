@@ -110,16 +110,16 @@ export default function ProjectCard({
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, ease: "easeOut" }}
-        className="relative"
+        className="relative h-full mt-1"
       >
         <div
           onClick={onSelect}
           onDoubleClick={handleDoubleClick}
-          className={`relative cursor-pointer rounded-2xl border p-5 md:p-6
+          className={`relative h-full cursor-pointer rounded-2xl border p-5 md:p-6
                       transition-transform duration-200 subpixel-antialiased
                       ${isSelected ? "border-blue-700 shadow-blue-100" : "border-gray-200 dark:border-gray-800"}
                       bg-gray-100 dark:bg-gray-900
-                      hover:-translate-y-px hover:shadow-xl`}
+                      hover:-translate-y-px hover:shadow-xl flex flex-col`}
           style={{
             WebkitFontSmoothing: "auto",
             MozOsxFontSmoothing: "auto",
@@ -176,9 +176,7 @@ export default function ProjectCard({
                   <span
                     className="text-gray-700 dark:text-white truncate flex-grow"
                     title={label}
-                    style={{
-                    fontSize: "1.1rem",
-                  }}
+                    style={{ fontSize: "1.1rem" }}
                   >
                     {newLabel}
                   </span>
@@ -202,7 +200,7 @@ export default function ProjectCard({
           <div className="my-2 border-t border-gray-300 dark:border-gray-700" />
 
           {/* Body */}
-          <div className="mt-4 space-y-3 text-sm text-gray-700 dark:text-gray-100">
+          <div className="mt-4 space-y-3 text-sm text-gray-700 dark:text-gray-100 flex-1">
             {createdAt && (
               <div className="flex items-center gap-3">
                 <div className="flex h-12 w-12 items-center justify-center rounded-xl dark:bg-gray-800 bg-blue-50">

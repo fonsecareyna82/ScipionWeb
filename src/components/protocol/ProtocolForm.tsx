@@ -2400,8 +2400,8 @@ export default function ProtocolForm({
                         sx={{
                           textTransform: "none",
                           ml: 1,
-                          backgroundColor: "Firebrick",
-                          "&:hover": { backgroundColor: "#a61d1d" },
+                          backgroundColor: "#333d49",
+                          "&:hover": { backgroundColor: "#596472ff" },
                         }}
                         disabled={!activeOutput}
                         onClick={() => setAnalyzeOpen(true)}

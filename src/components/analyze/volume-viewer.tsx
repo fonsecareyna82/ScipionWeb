@@ -3,10 +3,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Box, Typography, CircularProgress, List, ListItemButton, ListItemText,
   Divider, ToggleButtonGroup, ToggleButton, TextField, MenuItem, Paper,
+  IconButton, Tooltip
 } from "@mui/material";
 import Slider from "@mui/material/Slider";
 import { styled } from "@mui/material/styles";
 import { useProjectService } from "@/ProjectServiceContext";
+import { FitViewIcon } from "@/icons";
 
 type VolumeViewerProps = {
   projectId: string | number;
@@ -26,8 +28,8 @@ function useDebounced<T>(value: T, delay = 50): T {
   return debounced;
 }
 
-/** Observe a DOM element size (content box). Accepts refs that may be null. */
-function useElementSize(ref: React.RefObject<HTMLElement | null>) {
+/** Observe a DOM element size (content box). Generic to accept any Element. */
+function useElementSize<T extends Element>(ref: React.RefObject<T | null>) {
   const [size, setSize] = useState({ width: 0, height: 0 });
   useEffect(() => {
     const el = ref.current;
@@ -59,15 +61,11 @@ const SliceSlider = styled(Slider)(({ theme }) => ({
   height: 4,
   paddingTop: 16,
   paddingBottom: 36,
-
-  "& .MuiSlider-thumb": {
-    width: 14,
-    height: 14,
-  },
+  "& .MuiSlider-thumb": { width: 14, height: 14 },
   "& .MuiSlider-valueLabel": {
     top: "unset",
-    bottom: -30,                     
-    transform: "translateY(0) scale(1)", 
+    bottom: -30,
+    transform: "translateY(0) scale(1)",
     background: "transparent",
     color: theme.palette.text.secondary,
     fontSize: "0.75rem",
@@ -82,23 +80,23 @@ const SliceSlider = styled(Slider)(({ theme }) => ({
 export default function VolumeViewer({ projectId, protocolId, outputName }: VolumeViewerProps) {
   const svc = useProjectService();
 
-  // List & selection
+  // ---------- List & selection ----------
   const [loadingList, setLoadingList] = useState(true);
   const [listError, setListError] = useState<string | null>(null);
   const [volumes, setVolumes] = useState<VolumeLite[]>([]);
   const [selectedId, setSelectedId] = useState<string | number | null>(null);
 
-  // Meta
+  // ---------- Meta ----------
   const [metaLoading, setMetaLoading] = useState(false);
   const [metaError, setMetaError] = useState<string | null>(null);
   const [meta, setMeta] = useState<any>(null);
 
-  // Controls
+  // ---------- Controls ----------
   const [axis, setAxis] = useState<"z" | "y" | "x">(DEFAULT_AXIS);
   const [sliceIndex, setSliceIndex] = useState(0); // 0-based
   const [colormap, setColormap] = useState<string>("viridis");
 
-  // Images
+  // ---------- Image ----------
   const [frontUrl, setFrontUrl] = useState<string | null>(null);
   const [imgError, setImgError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -109,7 +107,7 @@ export default function VolumeViewer({ projectId, protocolId, outputName }: Volu
   const cacheRef = useRef(new Lru(32));
   const abortRef = useRef<AbortController | null>(null);
 
-  // ---------- Load list ----------
+  // Load list
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -145,7 +143,7 @@ export default function VolumeViewer({ projectId, protocolId, outputName }: Volu
     cacheRef.current.clear();
   }, [selectedId, colormap, axis]);
 
-  // ---------- Load meta ----------
+  // Load meta
   useEffect(() => {
     if (selectedId == null) { setMeta(null); return; }
     let cancelled = false;
@@ -165,7 +163,7 @@ export default function VolumeViewer({ projectId, protocolId, outputName }: Volu
     return () => { cancelled = true; };
   }, [selectedId, projectId, protocolId, outputName, svc]);
 
-  // Dims (interpret backend dims = Z,Y,X)
+  // Dims (backend dims = Z,Y,X -> expose {x,y,z})
   const dims = useMemo(() => getDimsZYXtoXYZ(meta), [meta]);
   const maxSlice = Math.max(0, dims[axis] - 1);
 
@@ -190,10 +188,10 @@ export default function VolumeViewer({ projectId, protocolId, outputName }: Volu
         { axis, cmap: colormap, signal: ac.signal }
       );
       cacheRef.current.set(k, { url, revoke });
-    } catch { /* ignore prefetch errors */ }
+    } catch {}
   };
 
-  // ---------- Fetch current slice (live while scrubbing, with abort) ----------
+  // Fetch current slice (live while scrubbing, with abort)
   useEffect(() => {
     if (!ready) { setImgError(null); return; }
 
@@ -242,20 +240,18 @@ export default function VolumeViewer({ projectId, protocolId, outputName }: Volu
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, debouncedIndex, axis, colormap, selectedId]);
 
-  // ---------- Fit-aware zoom ----------
-  // 100% == fit-to-viewport (no scrollbars). We cap at 100%.
+  // ---------- Fit-aware zoom (100% == fit; cap at 100%) ----------
   const viewerRef = useRef<HTMLDivElement | null>(null);
   const { width: vw, height: vh } = useElementSize(viewerRef);
 
   const [naturalW, setNaturalW] = useState<number | null>(null);
   const [naturalH, setNaturalH] = useState<number | null>(null);
 
-  // User zoom multiplier (relative to fit)
+  // zoomMul relative to fit (cap at 1 == 100%)
   const [zoomMul, setZoomMul] = useState(1);
   const MIN_MUL = 0.25;
-  const MAX_MUL = 1; // cap at 100%
+  const MAX_MUL = 1;
 
-  // Compute the "fit scale" so image fits inside viewer without scrollbars.
   const fitScale = useMemo(() => {
     if (!naturalW || !naturalH || !vw || !vh) return 1;
     const sx = vw / naturalW;
@@ -263,22 +259,21 @@ export default function VolumeViewer({ projectId, protocolId, outputName }: Volu
     return Math.min(sx, sy);
   }, [naturalW, naturalH, vw, vh]);
 
-  // Effective rendered width in pixels.
   const renderedWidth = useMemo(() => {
     if (!naturalW) return undefined;
     return naturalW * fitScale * zoomMul;
   }, [naturalW, fitScale, zoomMul]);
 
+  const applyZoom = (mul: number) => setZoomMul(() => Math.min(MAX_MUL, Math.max(MIN_MUL, mul)));
+  const stepZoom = (factor: number) => applyZoom(zoomMul * factor);
+  const fitZoom = () => applyZoom(1);
+
   const onWheelZoom: React.WheelEventHandler<HTMLDivElement> = (e) => {
     if (!frontUrl) return;
     e.preventDefault();
     const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
-    setZoomMul((z) => {
-      const next = Math.min(MAX_MUL, Math.max(MIN_MUL, z * factor));
-      return Number.isFinite(next) ? next : z;
-    });
+    stepZoom(factor);
   };
-  const resetZoom = () => setZoomMul(1);
 
   // ---------- UI ----------
   return (
@@ -357,16 +352,25 @@ export default function VolumeViewer({ projectId, protocolId, outputName }: Volu
               {CMAP_OPTIONS.map(cm => <MenuItem key={cm} value={cm}>{cm}</MenuItem>)}
             </TextField>
 
-            {/* Zoom (100% == FIT; capped at 100%) */}
-            <Typography variant="caption" color="text.secondary">Zoom: {Math.round(zoomMul * 100)}%</Typography>
+            {/* Right side: Fit + Zoom label (minimal) */}
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1, ml: "auto" }}>
+              <Typography variant="caption" color="text.secondary">Zoom: {Math.round(zoomMul * 100)}%</Typography>
+              <Tooltip title="Fit to view (100%)">
+                <span>
+                  <IconButton size="small" onClick={fitZoom} disabled={!frontUrl} aria-label="fit-to-view">
+                    <FitViewIcon className="mb-1" fontSize="small" />
+                  </IconButton>
+                </span>
+              </Tooltip>
+            </Box>
           </Box>
         </Paper>
 
-        {/* Canvas (1.0 == fit; capped at 1.0) */}
+        {/* Canvas (fit; capped at 100%) */}
         <Box
           ref={viewerRef}
           onWheel={onWheelZoom}
-          onDoubleClick={resetZoom}
+          onDoubleClick={fitZoom}
           sx={{
             flex: 1,
             minHeight: 0,
@@ -374,11 +378,11 @@ export default function VolumeViewer({ projectId, protocolId, outputName }: Volu
             alignItems: "center",
             justifyContent: "center",
             p: 2,
-            overflow: "hidden",        // no scrolls since we cap at fit
+            overflow: "hidden",
             position: "relative",
             cursor: "default",
           }}
-          title="Double-click to reset zoom"
+          title="Double-click to fit"
         >
           {metaLoading ? (
             <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
