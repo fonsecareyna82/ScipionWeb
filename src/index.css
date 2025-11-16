@@ -925,6 +925,6 @@ html, body, #root {
 
 /* Use this class on your top-level page wrapper */
 .h-app {
-  height: calc(var(--app-vh) * 100);
-  min-height: calc(var(--app-vh) * 100);
+  height: calc(var(--app-vh) * 92);
+  min-height: calc(var(--app-vh) * 92);
 }
