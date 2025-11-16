@@ -247,26 +247,99 @@ export default function ProjectPage() {
 
   const isRunningNode = (n: Node) => (n as any).data?.status === "running";
 
+
+   /* ------------------------ Centering / viewport helpers ------------------------ */
+  const centerLikeButton = useCallback((nodesList?: Node[], preserveZoom = true, zoomOverride?: number) => {
+    const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
+    if (!inst) return;
+    const list = nodesList ?? nodesRef.current ?? [];
+    const validNodes = list.filter((n) => typeof n.position?.x === "number" && typeof n.position?.y === "number");
+    if (validNodes.length === 0) {
+      const vp = inst.getViewport();
+      inst.setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(vp.zoom) });
+      setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(vp.zoom) });
+      return;
+    }
+    try {
+      if (!preserveZoom) {
+        inst.fitView({ padding: 0.12, duration: 0 });
+        const vp = inst.getViewport();
+        setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
+        return;
+      }
+      const targetZoom = clampZoom(typeof zoomOverride === "number" ? zoomOverride : inst.getViewport().zoom);
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      for (const n of validNodes) {
+        const x = (n.position!.x ?? 0);
+        const y = (n.position!.y ?? 0);
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+      const centerX = (minX + maxX) / 2;
+      const centerY = (minY + maxY) / 2;
+      inst.setCenter(centerX, centerY, { zoom: targetZoom, duration: 0 });
+      const finalVp = inst.getViewport();
+      setViewport({ x: finalVp.x, y: finalVp.y, zoom: finalVp.zoom });
+    } catch {
+      const xSum = validNodes.reduce((s, n) => s + (n.position!.x ?? 0), 0);
+      const ySum = validNodes.reduce((s, n) => s + (n.position!.y ?? 0), 0);
+      const centerX = xSum / validNodes.length;
+      const centerY = ySum / validNodes.length;
+      const currentVp = inst.getViewport();
+      const zoom = clampZoom(currentVp.zoom);
+      inst.setCenter(centerX, centerY, { zoom, duration: 0 });
+      const vp = inst.getViewport();
+      setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
+    }
+  }, []);
+
+  const snapViewportToTopLeft = useCallback((zoomOverride?: number) => {
+    const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
+    if (!inst) return;
+    const current = inst.getViewport();
+    const zoom = typeof zoomOverride === "number" ? zoomOverride : clampZoom(current.zoom);
+    inst.setViewport({ x: 0, y: 0, zoom });
+    setViewport({ x: 0, y: 0, zoom });
+  }, []);
+
   /* --------------------- Grid container width observer --------------------- */
   const [gridWidth, setGridWidth] = useState<number>(0);
 
   useLayoutEffect(() => {
-    const el = flowWrapperRef.current;
-    if (!el) return;
+  const el = flowWrapperRef.current;
+  if (!el) return;
 
-    const ro = new ResizeObserver((entries) => {
-      const entry = entries[0];
-      const w = Math.max(0, Math.floor(entry.contentRect.width));
-      setGridWidth(w);
+  const ro = new ResizeObserver((entries) => {
+    const entry = entries[0];
+    const w = Math.max(0, Math.floor(entry.contentRect.width));
+    setGridWidth(w);
+
+    // Re-center/adjust viewport when the available space changes.
+    // Grid: pegamos arriba-izquierda; Hierarchical: centramos preservando zoom.
+    requestAnimationFrame(() => {
+      const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
+      if (!inst) return;
+
+      if (viewModeRef.current === "grid") {
+        snapViewportToTopLeft(GRID_ZOOM);
+      } else if (viewModeRef.current === "hierarchical") {
+        centerLikeButton(undefined, true, viewportRef.current.zoom);
+      }
     });
+  });
 
-    ro.observe(el);
-    setGridWidth(el.clientWidth || 0);
+  ro.observe(el);
 
-    return () => {
-      try { ro.disconnect(); } catch { }
-    };
-  }, []);
+  // Ensure initial measurement and correct height on mount
+  setGridWidth(el.clientWidth || 0);
+
+  return () => {
+    try { ro.disconnect(); } catch { /* ignore */ }
+  };
+}, [centerLikeButton, snapViewportToTopLeft]);
+
 
   /* --------------------- Keep latest layout params in refs to avoid refetch on view switch --------------------- */
   const viewModeRef = useRef(viewMode);
@@ -813,61 +886,7 @@ export default function ProjectPage() {
     return newEdges.map((e) => (oldEdgesMap.get(e.id) ? { ...oldEdgesMap.get(e.id)!, ...e } : e));
   };
 
-  /* ------------------------ Centering / viewport helpers ------------------------ */
-  const centerLikeButton = useCallback((nodesList?: Node[], preserveZoom = true, zoomOverride?: number) => {
-    const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
-    if (!inst) return;
-    const list = nodesList ?? nodesRef.current ?? [];
-    const validNodes = list.filter((n) => typeof n.position?.x === "number" && typeof n.position?.y === "number");
-    if (validNodes.length === 0) {
-      const vp = inst.getViewport();
-      inst.setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(vp.zoom) });
-      setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(vp.zoom) });
-      return;
-    }
-    try {
-      if (!preserveZoom) {
-        inst.fitView({ padding: 0.12, duration: 0 });
-        const vp = inst.getViewport();
-        setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
-        return;
-      }
-      const targetZoom = clampZoom(typeof zoomOverride === "number" ? zoomOverride : inst.getViewport().zoom);
-      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-      for (const n of validNodes) {
-        const x = (n.position!.x ?? 0);
-        const y = (n.position!.y ?? 0);
-        if (x < minX) minX = x;
-        if (x > maxX) maxX = x;
-        if (y < minY) minY = y;
-        if (y > maxY) maxY = y;
-      }
-      const centerX = (minX + maxX) / 2;
-      const centerY = (minY + maxY) / 2;
-      inst.setCenter(centerX, centerY, { zoom: targetZoom, duration: 0 });
-      const finalVp = inst.getViewport();
-      setViewport({ x: finalVp.x, y: finalVp.y, zoom: finalVp.zoom });
-    } catch {
-      const xSum = validNodes.reduce((s, n) => s + (n.position!.x ?? 0), 0);
-      const ySum = validNodes.reduce((s, n) => s + (n.position!.y ?? 0), 0);
-      const centerX = xSum / validNodes.length;
-      const centerY = ySum / validNodes.length;
-      const currentVp = inst.getViewport();
-      const zoom = clampZoom(currentVp.zoom);
-      inst.setCenter(centerX, centerY, { zoom, duration: 0 });
-      const vp = inst.getViewport();
-      setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
-    }
-  }, []);
-
-  const snapViewportToTopLeft = useCallback((zoomOverride?: number) => {
-    const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
-    if (!inst) return;
-    const current = inst.getViewport();
-    const zoom = typeof zoomOverride === "number" ? zoomOverride : clampZoom(current.zoom);
-    inst.setViewport({ x: 0, y: 0, zoom });
-    setViewport({ x: 0, y: 0, zoom });
-  }, []);
+ 
 
   /* ------------------------ Wait for nodes helper ------------------------ */
   const waitForNodesReady = async (expectedCount: number, timeoutMs = 2500): Promise<boolean> => {
@@ -2024,7 +2043,7 @@ export default function ProjectPage() {
   /* ------------------------ Render ------------------------ */
   const isGrid = viewMode === "grid";
   return (
-    <div className="h-full min-h-0 flex flex-col relative overflow-hidden">
+    <div className="h-app min-h-0 flex flex-col relative overflow-hidden">
       {/* Header */}
       <div className="flex justify-between items-center mb-1 ml-1">
         <div className="relative w-full max-w-sm">

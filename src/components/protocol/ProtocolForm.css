@@ -1,21 +1,23 @@
 .protocol-form {
   position: absolute;
-  top: 0%;
-  right: 0%;
-  bottom: 0%;
-  width: 38%;
+  top: 12px;
+  right: 12px;
+  bottom: 12px;
+  width: calc(38% - 12px);
   display: flex;
   flex-direction: column;
   background-color: #fff;
-  border-left: 1px solid #ddd;
-  box-shadow: -2px 0 8px rgba(0, 0, 0, 0.1);
+  border: 1px solid #ddd; /* full border so radius is visible everywhere */
+  box-shadow: -6px 6px 16px rgba(0, 0, 0, 0.12);
   font-family: 'Segoe UI', sans-serif;
   z-index: 100;
-  height: 100%;
-  max-height: 100vh;
-  /* Do not force GPU layer permanently to avoid fuzzy text */
+  height: auto;
+  max-height: calc(100vh - 24px);
   will-change: auto;
   backface-visibility: visible;
+
+  border-radius: 12px;
+  overflow: hidden; /* clip children */
 }
 
 
