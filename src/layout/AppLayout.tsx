@@ -18,7 +18,6 @@ const LayoutContent: React.FC = () => {
       : "lg:ml-[90px]";
 
   return (
-    // Altura real de viewport (100dvh) con fallback a 100vh
     <div
       className="min-h-screen w-full overflow-hidden xl:flex"
       style={{ height: "100dvh" }}
@@ -38,7 +37,6 @@ const LayoutContent: React.FC = () => {
       >
         <AppHeader />
 
-        {/* En ProjectPage NO queremos scroll en <main> */}
         <main
           className={[
             "flex-1 min-h-0",

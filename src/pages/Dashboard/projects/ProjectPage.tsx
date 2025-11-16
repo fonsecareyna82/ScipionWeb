@@ -248,7 +248,7 @@ export default function ProjectPage() {
   const isRunningNode = (n: Node) => (n as any).data?.status === "running";
 
 
-   /* ------------------------ Centering / viewport helpers ------------------------ */
+  /* ------------------------ Centering / viewport helpers ------------------------ */
   const centerLikeButton = useCallback((nodesList?: Node[], preserveZoom = true, zoomOverride?: number) => {
     const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
     if (!inst) return;
@@ -308,37 +308,37 @@ export default function ProjectPage() {
   const [gridWidth, setGridWidth] = useState<number>(0);
 
   useLayoutEffect(() => {
-  const el = flowWrapperRef.current;
-  if (!el) return;
+    const el = flowWrapperRef.current;
+    if (!el) return;
 
-  const ro = new ResizeObserver((entries) => {
-    const entry = entries[0];
-    const w = Math.max(0, Math.floor(entry.contentRect.width));
-    setGridWidth(w);
+    const ro = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      const w = Math.max(0, Math.floor(entry.contentRect.width));
+      setGridWidth(w);
 
-    // Re-center/adjust viewport when the available space changes.
-    // Grid: pegamos arriba-izquierda; Hierarchical: centramos preservando zoom.
-    requestAnimationFrame(() => {
-      const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
-      if (!inst) return;
+      // Re-center/adjust viewport when the available space changes.
+      // Grid: pegamos arriba-izquierda; Hierarchical: centramos preservando zoom.
+      requestAnimationFrame(() => {
+        const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
+        if (!inst) return;
 
-      if (viewModeRef.current === "grid") {
-        snapViewportToTopLeft(GRID_ZOOM);
-      } else if (viewModeRef.current === "hierarchical") {
-        centerLikeButton(undefined, true, viewportRef.current.zoom);
-      }
+        if (viewModeRef.current === "grid") {
+          snapViewportToTopLeft(GRID_ZOOM);
+        } else if (viewModeRef.current === "hierarchical") {
+          centerLikeButton(undefined, true, viewportRef.current.zoom);
+        }
+      });
     });
-  });
 
-  ro.observe(el);
+    ro.observe(el);
 
-  // Ensure initial measurement and correct height on mount
-  setGridWidth(el.clientWidth || 0);
+    // Ensure initial measurement and correct height on mount
+    setGridWidth(el.clientWidth || 0);
 
-  return () => {
-    try { ro.disconnect(); } catch { /* ignore */ }
-  };
-}, [centerLikeButton, snapViewportToTopLeft]);
+    return () => {
+      try { ro.disconnect(); } catch { /* ignore */ }
+    };
+  }, [centerLikeButton, snapViewportToTopLeft]);
 
 
   /* --------------------- Keep latest layout params in refs to avoid refetch on view switch --------------------- */
@@ -886,7 +886,7 @@ export default function ProjectPage() {
     return newEdges.map((e) => (oldEdgesMap.get(e.id) ? { ...oldEdgesMap.get(e.id)!, ...e } : e));
   };
 
- 
+
 
   /* ------------------------ Wait for nodes helper ------------------------ */
   const waitForNodesReady = async (expectedCount: number, timeoutMs = 2500): Promise<boolean> => {
@@ -2340,39 +2340,46 @@ export default function ProjectPage() {
         </div>
 
         {/* ===== Multi-Form Dock (right side) ===== */}
-        <div
-          aria-live="polite"
-          ref={dockRef}
-          className="pointer-events-none absolute inset-y-0 right-0 z-[60] flex gap-2 p-1"
-        >
-          {openForms.map((f) => (
-            <div
-              key={f.key}
-              role="dialog"
-              aria-label={`Protocol ${f.id}`}
-              data-dock-key={f.key}
-              className="dock-panel pointer-events-auto"
-            >
-              <ProtocolForm
-                data={f.details}
-                projectProtocols={project?.protocols ?? {}}
-                variant="docked"
-                onClose={() => {
-                  handleRefreshRef.current?.();
-                  setTimeout(() => handleRefreshRef.current?.(), 800);
+        <div className="absolute inset-y-0 right-0 z-[60] pointer-events-none flex">
+          <div
+            ref={dockRef}
+            className={
+              openForms.length
+                ? "dock-scroll"   // clases de arriba
+                : "hidden"
+            }
+          >
+            {openForms.map((f) => (
+              <div
+                key={f.key}
+                role="dialog"
+                aria-label={`Protocol ${f.id}`}
+                data-dock-key={f.key}
+                className="dock-panel"
+              >
+                <ProtocolForm
+                  data={f.details}
+                  projectProtocols={project?.protocols ?? {}}
+                  variant="docked"
+                  onClose={() => {
+                    handleRefreshRef.current?.();
+                    setTimeout(() => handleRefreshRef.current?.(), 800);
 
-                  setTimeout(() => tryPlaceNewlyCreatedNode(), 50);
-                  setTimeout(() => tryPlaceNewlyCreatedNode(), 400);
+                    setTimeout(() => tryPlaceNewlyCreatedNode(), 50);
+                    setTimeout(() => tryPlaceNewlyCreatedNode(), 400);
 
-                  closeFormByKey(f.key);
-                }}
-                onExecuted={() => {
-                  scheduleDoubleRefresh(5000, true);
-                }}
-              />
-            </div>
-          ))}
+                    closeFormByKey(f.key);
+                  }}
+                  onExecuted={() => {
+                    scheduleDoubleRefresh(5000, true);
+                  }}
+                />
+              </div>
+            ))}
+          </div>
+
         </div>
+
       </div>
 
       {/* --- Dialogs --- */}

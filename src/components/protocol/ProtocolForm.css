@@ -313,17 +313,80 @@
 }
 
 /* Each ProtocolForm lives inside a resizable panel */
+/* === Right rail (outer) ========================================= */
+/* Put this wrapper en tu TSX con pointer-events:none (te lo recuerdo abajo) */
+
+/* === Scroll area inside the rail ================================ */
+.dock-scroll {
+  /* This element SÍ recibe eventos; el resto del rail no */
+  pointer-events: auto;
+  height: 100%;
+  display: flex;
+  gap: 8px;
+  padding: 4px;
+  overflow-x: auto;        /* horizontal scroll when many panels */
+  overflow-y: hidden;
+  max-width: 95vw;         /* cap total occupied width */
+  /* keeps scrolling civilized on touchpads */
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+}
+
+/* Optional: slimmer scrollbar (Firefox + WebKit) */
+.dock-scroll {
+  scrollbar-width: thin;
+}
+.dock-scroll::-webkit-scrollbar { height: 10px; }
+.dock-scroll::-webkit-scrollbar-thumb { border-radius: 8px; }
+
+/* === Panel ====================================================== */
+/* REPLACE your current .dock-panel with this */
 .dock-panel {
   position: relative;
   height: 100%;
-  width: 38vw;            /* default width similar to your 40% */
-  max-width: 80vw;        /* don't let one panel cover everything */
+
+  /* Fixed-size flex item: do not shrink, do not grow */
+  flex: 0 0 auto;
+
+  /* Let the panel have a sensible width, but keep it resizable */
+  width: clamp(340px, 38vw, 720px);
+  min-width: 320px;
+  max-width: 85vw;
+
+  box-sizing: border-box;
   background: transparent;
-  border-left: 0px solid #ddd;
-  resize: horizontal;     /* allow horizontal resize via native handle */
-  overflow: hidden;       /* keep the inner form clipped */
-  pointer-events: auto;   /* re-enable interaction inside panels */
+  border-left: 0;
+  overflow: hidden;         /* clip inner form */
+  resize: horizontal;       /* native horizontal resize handle */
+  pointer-events: auto;     /* interactive inside the panel */
+
+  /* Optional aesthetics */
+  /* border-left: 1px solid #ddd; */
 }
+
+/* === Inner form INSIDE the docked panel ========================= */
+/* Your .protocol-form venía con absolute + top/right/bottom/width:38%,
+   eso rompe el dock. Aquí la “des-absoluteamos” cuando está dentro del dock. */
+.dock-panel .protocol-form {
+  position: static !important;   /* detach from absolute pinning */
+  top: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+  width: 100% !important;        /* fill panel width */
+
+  height: 100%;
+  max-height: 100%;
+  overflow: auto;
+
+  /* Rounded right corners (as pediste) */
+  border-top-right-radius: 12px;
+  border-bottom-right-radius: 12px;
+
+  /* Subtle separation from canvas */
+  box-shadow: -2px 0 8px rgba(0,0,0,0.08);
+  border-left: 1px solid #ddd;
+}
+
 
 /* When ProtocolForm renders as "docked", stretch to fill its panel */
 .protocol-form.as-docked {
