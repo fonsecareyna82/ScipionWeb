@@ -38,7 +38,6 @@ class WidgetErrorBoundary extends React.Component<
   }
 
   componentDidCatch(err: any, info: any) {
-    // Render-friendly error on host page + console diagnostic
     // eslint-disable-next-line no-console
     console.error("[ProjectsWidget] error:", err, info);
   }
@@ -65,7 +64,16 @@ class WidgetErrorBoundary extends React.Component<
   }
 }
 
-/** Minimal mock to keep the widget usable without a host service */
+/** Tiny helper to produce a mock data URL slice image (for Analyze Results) */
+const mockSliceDataUrl = (sliceIndex: number) => {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256">
+    <rect width="100%" height="100%" fill="#eeeeee"/>
+    <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle"
+          font-size="18" fill="#333333">Slice ${sliceIndex}</text>
+  </svg>`;
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+};
+
 /** Default mock service that satisfies the full ProjectService interface */
 const defaultMockService: ProjectService = {
   // ---- projects ----
@@ -127,7 +135,7 @@ const defaultMockService: ProjectService = {
     return { id: protocolId, name: newName } as any;
   },
   async duplicateProtocol(_projectId, items) {
-    return { duplicated: items.map((i) => ({ ...i, id: `${i.id}-copy` })) } as any;
+    return { duplicated: items.map((i: any) => ({ ...i, id: `${i.id}-copy` })) } as any;
   },
   async deleteProtocol(_projectId, _ids) {
     return { success: true } as any;
@@ -166,7 +174,6 @@ const defaultMockService: ProjectService = {
   },
 
   async fetchProtocolInlinePreviewBlob(_projectId, _protocolId, _relPath) {
-    // Mock a small text blob as a placeholder
     const blob = new Blob([`Mock inline preview for ${_relPath}`], { type: "text/plain" });
     const meta = {
       mime: "text/plain",
@@ -180,13 +187,24 @@ const defaultMockService: ProjectService = {
     return { blob, meta };
   },
   async fetchOutputPreview(_projectId, _protocolId, outputName) {
-    // Just simulate success
     return { success: true, outputName };
   },
 
-
+  // ───────── Analyze Results — Volumes (mock implementations) ─────────
+  async listOutputVolumes(_projectId, _protocolId, _outputName) {
+    return [{ id: "vol-1", name: "Demo volume" }];
+  },
+  async getVolumeInfo(_projectId, _protocolId, _outputName, _volumeId) {
+    return { slices: 64, shape: [64, 256, 256], voxelSize: [1, 1, 1], dtype: "float32" };
+  },
+  async buildVolumeSliceUrl(_projectId, _protocolId, _outputName, _volumeId, sliceIndex) {
+    return mockSliceDataUrl(Number(sliceIndex));
+  },
+  async fetchVolumeSliceObjectUrl(_projectId, _protocolId, _outputName, _volumeId, sliceIndex) {
+    const url = mockSliceDataUrl(Number(sliceIndex));
+    return { url, revoke: () => {} };
+  },
 };
-
 
 /** Light normalization (extend if you need aliasing) */
 function normalizeServiceAPI(srv?: ProjectService): ProjectService {
@@ -202,10 +220,11 @@ export type MountOptions = {
 
 /** Ensure common portal roots exist (safety net for overlays/toasts) */
 function ensureDomRoots() {
-  ["modal-root","drawer-root","toast-root","portal-root","app","root"].forEach((id) => {
+  ["modal-root", "drawer-root", "toast-root", "portal-root", "app", "root"].forEach((id) => {
     if (!document.getElementById(id)) {
       const d = document.createElement("div");
-      d.id = id; document.body.appendChild(d);
+      d.id = id;
+      document.body.appendChild(d);
     }
   });
 }
@@ -255,33 +274,28 @@ export function mount({ container, service, props }: MountOptions) {
   );
 
   return {
-    unmount() { root.unmount(); },
-    root,
+    unmount() {
+      root.unmount();
+    },
   };
 }
 
 /** Attach to window using the shared WidgetGlobal type */
-
-// Keep the global type consistent with your d.ts
 declare global {
-  interface Window { MyProjectsWidget?: WidgetGlobal }
+  interface Window {
+    MyProjectsWidget?: WidgetGlobal;
+  }
 }
 
 if (typeof window !== "undefined") {
-  // Get previous global (typed)
   const prev = (window as any).MyProjectsWidget as WidgetGlobal | undefined;
-
-  // Build next object by merging previous keys and adding the list mounts
   const next: WidgetGlobal = {
     ...(prev || {}),
     mount: mount,
     mountProjectsWidget: mount,
-    // do NOT touch mountProjectPageWidget here; preserve it if prev had it
+    // keep any previously-attached functions like mountProjectPageWidget
   };
-
   (window as any).MyProjectsWidget = next;
   // eslint-disable-next-line no-console
   console.log("ProjectsWidget: entry-umd ready — window.MyProjectsWidget");
 }
-
-

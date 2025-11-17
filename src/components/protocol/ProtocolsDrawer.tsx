@@ -124,9 +124,9 @@ export const ProtocolsDrawer: React.FC<ProtocolsDrawerProps> = ({
 
       {/* Drawer */}
       <div
-        className={`fixed top-0 right-0 h-full w-130 bg-white dark:bg-gray-800 shadow-xl transform transition-transform duration-300 ease-in-out z-50 ${
-          isOpen ? "translate-x-0" : "translate-x-full"
-        }`}
+        className={`fixed top-3 border bottom-0 right-4 w-130 bg-white dark:bg-gray-800 shadow-xl transform transition-transform duration-300 ease-in-out z-50
+    rounded-2xl overflow-hidden
+    ${isOpen ? "translate-x-0" : "translate-x-full"}`}
       >
         {/* Close */}
         <div className="relative">
@@ -140,7 +140,7 @@ export const ProtocolsDrawer: React.FC<ProtocolsDrawerProps> = ({
         </div>
 
         {/* Header */}
-        <div className="flex flex-col p-3 bg-gradient-to-r text-gray-200  from-gray-800 to-gray-700 dark:from-gray-800 dark:to-gray-700 border-b border-gray-300 shadow-sm mt-14">
+        <div className="flex flex-col p-3 rounded-lg bg-gradient-to-r text-gray-200  from-gray-800 to-gray-700 dark:from-gray-800 dark:to-gray-700 border-b border-gray-300 shadow-sm mt-14">
           <h2 className="text-lg">Protocols</h2>
         </div>
 
@@ -148,7 +148,7 @@ export const ProtocolsDrawer: React.FC<ProtocolsDrawerProps> = ({
         {protocols.length > 1 && (
           <div className="p-1 ml-3 border-b border-gray-200 dark:border-gray-700">
             <select
-              className="w-full p-2 border rounded bg-white dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-400"
+              className="w-full p-2 border rounded-lg bg-white dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-400"
               value={selectedRoot ? Math.max(0, protocols.indexOf(selectedRoot)) : 0}
               onChange={(e) => {
                 const idx = Number(e.target.value);
@@ -211,8 +211,8 @@ export const ProtocolsDrawer: React.FC<ProtocolsDrawerProps> = ({
               {loading
                 ? "Loading protocols…"
                 : projectId == null
-                ? "Select a project to view protocols"
-                : "No protocols found"}
+                  ? "Select a project to view protocols"
+                  : "No protocols found"}
             </div>
           )}
         </div>

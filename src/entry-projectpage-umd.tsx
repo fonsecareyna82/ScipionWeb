@@ -3,7 +3,6 @@ import "./index.css";
 
 import React from "react";
 import ReactDOM from "react-dom/client";
-// ⬇️ usamos MemoryRouter en vez de BrowserRouter
 import { MemoryRouter, Routes, Route, Navigate } from "react-router-dom";
 
 // React Query v5
@@ -41,12 +40,20 @@ class WidgetErrorBoundary extends React.Component<
   render() {
     if (!this.state.err) return this.props.children;
     return (
-      <pre style={{
-        color: "#b91c1c", background: "#fee2e2", padding: 12, borderRadius: 8,
-        whiteSpace: "pre-wrap", lineHeight: 1.35, fontSize: 13
-      }}>
+      <pre
+        style={{
+          color: "#b91c1c",
+          background: "#fee2e2",
+          padding: 12,
+          borderRadius: 8,
+          whiteSpace: "pre-wrap",
+          lineHeight: 1.35,
+          fontSize: 13,
+        }}
+      >
         ProjectPageWidget error:
-        {"\n"}{String(this.state.err?.stack || this.state.err)}
+        {"\n"}
+        {String(this.state.err?.stack || this.state.err)}
       </pre>
     );
   }
@@ -71,7 +78,9 @@ function forceFullHeight(target: HTMLElement) {
     target.style.flexDirection = "column";
     target.style.height = "100%";
     target.style.minHeight = "0";
-  } catch { }
+  } catch {
+    /* no-op */
+  }
 }
 
 /** Normalize external service into ProjectService contract */
@@ -80,6 +89,7 @@ function normalizeServiceAPI(srv: any): ProjectService {
     throw new Error("ProjectPageWidget: invalid service object");
   }
   const normalized: any = { ...srv };
+
   const mapFn = (to: string, ...cands: string[]) => {
     if (typeof normalized[to] === "function") return;
     for (const c of cands) {
@@ -92,23 +102,54 @@ function normalizeServiceAPI(srv: any): ProjectService {
       }
     }
   };
+
   // projects
   mapFn("fetchList", "listProjects", "list", "fetch");
   mapFn("fetchProject", "getProject", "fetchOne", "get");
   mapFn("createProject", "createProject", "create", "newProject");
   mapFn("renameProject", "renameProject", "rename", "updateProject");
   mapFn("deleteProject", "deleteProject", "delete", "remove", "removeProject");
+
   // protocols
   mapFn("fetchProtocolDetails", "getProtocol", "getProtocolDetails");
   mapFn("fetchNewProtocolDetails", "getNewProtocol", "newProtocol");
   mapFn("loadProtocols", "listProtocols", "fetchProtocols", "getProtocols");
   mapFn("executeProtocol", "runProtocol", "launchProtocol", "execute");
   mapFn("saveProtocol", "persistProtocol", "storeProtocol", "save");
+  mapFn("renameProtocol", "renameProtocol");
+  mapFn("duplicateProtocol", "duplicateProtocol");
+  mapFn("deleteProtocol", "deleteProtocol");
+  mapFn("restartAll", "restartAll");
+  mapFn("continueAll", "continueAll");
+  mapFn("resetFrom", "resetFrom");
+  mapFn("stopProtocol", "stopProtocol");
+
+  // file / previews
+  mapFn("resolveProtocolStartPath", "resolveProtocolStartPath");
+  mapFn("listRemoteDirectory", "listRemoteDirectory");
+  mapFn("previewProtocolText", "previewProtocolText");
+  mapFn("buildProtocolDownloadUrl", "buildProtocolDownloadUrl");
   mapFn("fetchProtocolInlinePreviewBlob", "previewInlineBlob", "getInlinePreviewBlob", "downloadInlinePreviewBlob");
   mapFn("fetchOutputPreview", "previewOutput", "getOutputPreview", "requestOutputPreview");
-  // optional file APIs are mapped en el ProjectPage mismo
+
+  // Analyze Results (Volumes)
+  mapFn("listOutputVolumes", "listOutputVolumes");
+  mapFn("getVolumeInfo", "getVolumeInfo");
+  mapFn("buildVolumeSliceUrl", "buildVolumeSliceUrl");
+  mapFn("fetchVolumeSliceObjectUrl", "fetchVolumeSliceObjectUrl");
+
   return normalized as ProjectService;
 }
+
+/** Tiny helper to produce a mock data URL slice image */
+const mockSliceDataUrl = (sliceIndex: number) => {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256">
+    <rect width="100%" height="100%" fill="#eeeeee"/>
+    <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle"
+          font-size="18" fill="#333333">Slice ${sliceIndex}</text>
+  </svg>`;
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+};
 
 /** Default minimal mock service (fallback) */
 const defaultMockService: ProjectService = {
@@ -116,7 +157,14 @@ const defaultMockService: ProjectService = {
     return [{ id: "demo", name: "Demo project", createdAt: new Date().toISOString(), status: "idle" }];
   },
   async fetchProject(id: string) {
-    return { id, name: `Demo Project ${id}`, shortName: `demo-${id}`, createdAt: new Date().toISOString(), status: "idle", protocols: [] } as any;
+    return {
+      id,
+      name: `Demo Project ${id}`,
+      shortName: `demo-${id}`,
+      createdAt: new Date().toISOString(),
+      status: "idle",
+      protocols: [],
+    } as any;
   },
   async createProject(payload) {
     return { id: "created", name: payload.name, description: payload.description ?? "", status: "idle" } as any;
@@ -124,33 +172,62 @@ const defaultMockService: ProjectService = {
   async renameProject(id: string | number, newName: string, newDescription?: string) {
     return { id, name: newName, description: newDescription ?? "" } as any;
   },
-  async deleteProject(_id: string | number) { return { success: true } as any; },
-
-  async loadProtocols(_projectId: string | number) { return [] as any; },
-  async executeProtocol(_protocolId: string | number, _className: string, _params: Record<string, unknown>) { return { success: true } as any; },
-  async saveProtocol(_protocolId: string | number, _className: string, _params: Record<string, unknown>) { return { success: true } as any; },
-  async fetchProtocolDetails(_projectId: string, protocolId: string) { return { id: protocolId, protocolClassName: "DemoProtocol", params: {} } as any; },
-  async fetchNewProtocolDetails(_projectId: string, protocolClass: string) { return { id: "new", protocolClassName: protocolClass, params: {} } as any; },
-
-  async renameProtocol(_projectId: string | number, protocolId: string | number, newName: string) { return { id: protocolId, name: newName } as any; },
-  async duplicateProtocol(_projectId: string | number, items: { id: string; name?: string }[]) {
-    return { duplicated: items.map(i => ({ ...i, id: `${i.id}-copy` })) } as any;
+  async deleteProject(_id: string | number) {
+    return { success: true } as any;
   },
-  async deleteProtocol(_projectId: string | number, _ids: string[]) { return { success: true } as any; },
-  async restartAll(projectId: string | number, protocolId: string | number) { return { id: projectId, action: "restartAll", from: protocolId } as any; },
-  async continueAll(projectId: string | number, protocolId: string | number) { return { id: projectId, action: "continueAll", from: protocolId } as any; },
-  async resetFrom(projectId: string | number, protocolId: string | number) { return { id: projectId, action: "resetFrom", from: protocolId } as any; },
-  async stopProtocol(projectId: string | number, ids: string[]) { return { id: projectId, action: "stopProtocol", stopped: ids } as any; },
-  async resolveProtocolStartPath(projectId: string | number, pid: string) { return { id: projectId, action: "resolveProtocolStartPath", startPid: pid } as any; },
-  async listRemoteDirectory(projectId: string | number, protocolId: string | number, path: string) { return { id: projectId, protocolId, path, entries: [] } as any; },
+
+  async loadProtocols(_projectId: string | number) {
+    return [] as any;
+  },
+  async executeProtocol(_protocolId: string | number, _className: string, _params: Record<string, unknown>) {
+    return { success: true } as any;
+  },
+  async saveProtocol(_protocolId: string | number, _className: string, _params: Record<string, unknown>) {
+    return { success: true } as any;
+  },
+  async fetchProtocolDetails(_projectId: string, protocolId: string) {
+    return { id: protocolId, protocolClassName: "DemoProtocol", params: {} } as any;
+  },
+  async fetchNewProtocolDetails(_projectId: string, protocolClass: string) {
+    return { id: "new", protocolClassName: protocolClass, params: {} } as any;
+  },
+
+  async renameProtocol(_projectId: string | number, protocolId: string | number, newName: string) {
+    return { id: protocolId, name: newName } as any;
+  },
+  async duplicateProtocol(_projectId: string | number, items: { id: string; name?: string }[]) {
+    return { duplicated: items.map((i) => ({ ...i, id: `${i.id}-copy` })) } as any;
+  },
+  async deleteProtocol(_projectId: string | number, _ids: string[]) {
+    return { success: true } as any;
+  },
+  async restartAll(projectId: string | number, protocolId: string | number) {
+    return { id: projectId, action: "restartAll", from: protocolId } as any;
+  },
+  async continueAll(projectId: string | number, protocolId: string | number) {
+    return { id: projectId, action: "continueAll", from: protocolId } as any;
+  },
+  async resetFrom(projectId: string | number, protocolId: string | number) {
+    return { id: projectId, action: "resetFrom", from: protocolId } as any;
+  },
+  async stopProtocol(projectId: string | number, ids: string[]) {
+    return { id: projectId, action: "stopProtocol", stopped: ids } as any;
+  },
+  async resolveProtocolStartPath(projectId: string | number, pid: string) {
+    return { id: projectId, action: "resolveProtocolStartPath", startPid: pid } as any;
+  },
+  async listRemoteDirectory(projectId: string | number, protocolId: string | number, path: string) {
+    return { id: projectId, protocolId, path, entries: [] } as any;
+  },
   async previewProtocolText(projectId: string | number, id: string, path: string) {
     return { id: projectId, action: "previewProtocolText", protocolId: id, path, content: "Mock preview..." } as any;
   },
   buildProtocolDownloadUrl(projectId: string, protocolId: string, path: string, inline: boolean) {
-    return `/download/${encodeURIComponent(projectId)}/${encodeURIComponent(protocolId)}?path=${encodeURIComponent(path)}&inline=${inline ? 1 : 0}`;
+    return `/download/${encodeURIComponent(projectId)}/${encodeURIComponent(protocolId)}?path=${encodeURIComponent(
+      path
+    )}&inline=${inline ? 1 : 0}`;
   },
   async fetchProtocolInlinePreviewBlob(_projectId, _protocolId, _relPath) {
-    // Mock a small text blob as a placeholder
     const blob = new Blob([`Mock inline preview for ${_relPath}`], { type: "text/plain" });
     const meta = {
       mime: "text/plain",
@@ -164,8 +241,22 @@ const defaultMockService: ProjectService = {
     return { blob, meta };
   },
   async fetchOutputPreview(_projectId, _protocolId, outputName) {
-    // Just simulate success
     return { success: true, outputName };
+  },
+
+  // ───────── Analyze Results — Volumes (mock implementations) ─────────
+  async listOutputVolumes(_projectId, _protocolId, _outputName) {
+    return [{ id: "vol-1", name: "Demo volume" }];
+  },
+  async getVolumeInfo(_projectId, _protocolId, _outputName, _volumeId) {
+    return { slices: 64, shape: [64, 256, 256], voxelSize: [1, 1, 1], dtype: "float32" };
+  },
+  async buildVolumeSliceUrl(_projectId, _protocolId, _outputName, _volumeId, sliceIndex) {
+    return mockSliceDataUrl(sliceIndex);
+  },
+  async fetchVolumeSliceObjectUrl(_projectId, _protocolId, _outputName, _volumeId, sliceIndex) {
+    const url = mockSliceDataUrl(sliceIndex);
+    return { url, revoke: () => {} };
   },
 };
 
@@ -185,7 +276,11 @@ export type ProjectPageMountOptions = {
 };
 
 /** Pre-seed caches and serve initial data once */
-function withInitialProjectOnce(service: ProjectService, props?: InitialProps, projectKey?: string): ProjectService {
+function withInitialProjectOnce(
+  service: ProjectService,
+  props?: InitialProps,
+  projectKey?: string
+): ProjectService {
   if (!props) return service;
   let servedProject = false;
   let servedProtocols = false;
@@ -247,7 +342,9 @@ export function mountProjectPageWidget({
 
   const base = normalizeServiceAPI(service ?? defaultMockService);
 
-  const qcV5 = new QueryClientV5({ defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } } });
+  const qcV5 = new QueryClientV5({
+    defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
+  });
   const qcV3 = new QueryClientV3();
 
   // Preload caches with aliases
@@ -256,9 +353,18 @@ export function mountProjectPageWidget({
   const nameKey = String(props?.cacheAliases?.byName ?? props?.initialProject?.name ?? "");
 
   const seed = (key: any[]) => {
-    try { qcV5.setQueryData(key, props?.initialProject); } catch { }
-    try { (qcV3 as any).setQueryData(key, props?.initialProject); } catch { }
+    try {
+      qcV5.setQueryData(key, props?.initialProject);
+    } catch {
+      /* ignore */
+    }
+    try {
+      (qcV3 as any).setQueryData(key, props?.initialProject);
+    } catch {
+      /* ignore */
+    }
   };
+
   if (props?.initialProject) {
     seed(["project", idKey]);
     if (shortKey) seed(["project", shortKey]);
@@ -266,8 +372,16 @@ export function mountProjectPageWidget({
   }
   if (props?.initialProtocols && Array.isArray(props.initialProtocols)) {
     const put = (key: any[]) => {
-      try { qcV5.setQueryData(key, props.initialProtocols); } catch { }
-      try { (qcV3 as any).setQueryData(key, props.initialProtocols); } catch { }
+      try {
+        qcV5.setQueryData(key, props.initialProtocols);
+      } catch {
+        /* ignore */
+      }
+      try {
+        (qcV3 as any).setQueryData(key, props.initialProtocols);
+      } catch {
+        /* ignore */
+      }
     };
     put(["protocols", idKey]);
     if (shortKey) put(["protocols", shortKey]);
@@ -279,7 +393,7 @@ export function mountProjectPageWidget({
   // Emotion cache renders styles into host <head>
   const emotionCache = createCache({ key: "mpw", container: document.head, prepend: false });
 
-  // IMPORTANT: decouple from host URL using MemoryRouter.
+  // Decouple from host URL using MemoryRouter.
   const initialPath = `/project/load/${encodeURIComponent(projectName)}`;
 
   const root = ReactDOM.createRoot(target as HTMLElement);
@@ -311,7 +425,9 @@ export function mountProjectPageWidget({
   );
 
   return {
-    unmount() { root.unmount(); },
+    unmount() {
+      root.unmount();
+    },
     root,
   };
 }
