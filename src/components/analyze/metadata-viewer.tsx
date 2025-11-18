@@ -92,7 +92,11 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
   const [windowOffset, setWindowOffset] = useState(0);
   const [windowLoading, setWindowLoading] = useState(false);
   const [windowError, setWindowError] = useState<string | null>(null);
+
+  // Request coordination for table window
   const lastRequestRef = useRef(0);
+  const pendingWindowRequestRef = useRef(false);
+  const queuedWindowOffsetRef = useRef<number | null>(null);
 
   // Gallery mode data
   const [galleryRows, setGalleryRows] = useState<MetadataRow[]>([]);
@@ -103,7 +107,7 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
 
   // Selection
   const [selectedImageCell, setSelectedImageCell] = useState<SelectedImageCell | null>(null);
-  const [selectedRowId, setSelectedRowId] = useState<number | string | null>(null);
+  const [selectedRowIndex, setSelectedRowIndex] = useState<number | null>(null);
 
   // Image cache
   const imageCacheRef = useRef<Map<string, { url: string; revoke: () => void }>>(new Map());
@@ -153,16 +157,25 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
     setSelectedTable(value);
     setSchema(null);
     setSchemaError(null);
+
+    // Reset table window
     setWindowRows([]);
     setWindowOffset(0);
     setWindowError(null);
+    pendingWindowRequestRef.current = false;
+    queuedWindowOffsetRef.current = null;
+
+    // Reset gallery
     setGalleryRows([]);
     setGalleryNextOffset(0);
     setGalleryError(null);
     setGalleryHasMore(false);
+
+    // Reset selection
     setSelectedImageCell(null);
-    setSelectedRowId(null);
-    // Clear image cache when switching table
+    setSelectedRowIndex(null);
+
+    // Clear image cache
     for (const [, entry] of imageCacheRef.current) entry.revoke();
     imageCacheRef.current.clear();
   };
@@ -222,14 +235,14 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
 
   const showSizeLabel = isClassTable && !!sizeColumn;
 
-  const rowHeight = hasImageColumns ? IMAGE_ROW_HEIGHT : NORMAL_ROW_HEIGHT;
-
-  // If current view is gallery but table has no images, force table view
+  // If current view is gallery but this table has no images, force table view
   useEffect(() => {
-    if (!hasImageColumns && viewMode === "gallery") {
+    if (viewMode === "gallery" && !hasImageColumns) {
       setViewMode("table");
     }
-  }, [hasImageColumns, viewMode]);
+  }, [viewMode, hasImageColumns]);
+
+  const rowHeight = hasImageColumns ? IMAGE_ROW_HEIGHT : NORMAL_ROW_HEIGHT;
 
   // Desired window size (rows that can be visible + buffer)
   const desiredWindowSize = useMemo(() => {
@@ -243,17 +256,26 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
     desiredWindowSizeRef.current = desiredWindowSize;
   }, [desiredWindowSize]);
 
-  const loadWindow = async (offset: number) => {
-    if (!selectedTable) return;
+  // Core loader for table window, with queueing to avoid flooding
+  const loadWindow = async (startOffset: number) => {
+    if (!selectedTable || totalRows === 0) return;
+
     const limit = desiredWindowSizeRef.current || 60;
-    const total = totalRows;
+    const maxOffset = totalRows > 0 ? Math.max(0, totalRows - limit) : 0;
+    const clampedOffset = totalRows > 0 ? Math.min(Math.max(0, startOffset), maxOffset) : 0;
 
-    const maxOffset = total > 0 ? Math.max(0, total - limit) : 0;
-    const clampedOffset = total > 0 ? Math.min(Math.max(0, offset), maxOffset) : Math.max(0, offset);
+    // If there is already a request in flight, queue this offset.
+    if (pendingWindowRequestRef.current) {
+      queuedWindowOffsetRef.current = clampedOffset;
+      return;
+    }
 
+    pendingWindowRequestRef.current = true;
+    queuedWindowOffsetRef.current = null;
     const reqId = ++lastRequestRef.current;
     setWindowLoading(true);
     setWindowError(null);
+
     try {
       const win = await (svc as any).fetchMetadataTableWindow(
         projectId,
@@ -262,44 +284,63 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
         selectedTable,
         { offset: clampedOffset, limit, selectionOnly: false },
       );
+
       if (lastRequestRef.current !== reqId) {
-        if (win && (win as any).rows) {
-          for (const [, entry] of imageCacheRef.current) entry.revoke();
-          imageCacheRef.current.clear();
-        }
         return;
       }
+
       const rows: MetadataRow[] = Array.isArray(win)
         ? (win as MetadataRow[])
         : ((win as any)?.rows as MetadataRow[]) || [];
+
       setWindowRows(rows);
       setWindowOffset(clampedOffset);
+
+      // Keep selection if still inside the new window
+      setSelectedRowIndex((prev) => {
+        if (prev == null) return prev;
+        if (prev < clampedOffset || prev >= clampedOffset + rows.length) {
+          return null;
+        }
+        return prev;
+      });
     } catch (e: any) {
       if (lastRequestRef.current === reqId) {
-        setWindowRows([]);
         setWindowError(e?.message || "Failed to load rows");
       }
     } finally {
       if (lastRequestRef.current === reqId) {
+        pendingWindowRequestRef.current = false;
         setWindowLoading(false);
+
+        const queuedOffset = queuedWindowOffsetRef.current;
+        if (queuedOffset != null && queuedOffset !== windowOffset) {
+          queuedWindowOffsetRef.current = null;
+          void loadWindow(queuedOffset);
+        }
       }
     }
   };
 
-  // Reset and load table window when schema/table changes
+  // Initial window load when schema and table info are ready
   useEffect(() => {
-    setWindowRows([]);
-    setWindowOffset(0);
     setWindowError(null);
-    setSelectedRowId(null);
-    if (!schema || !selectedTable || totalRows === 0) return;
+    pendingWindowRequestRef.current = false;
+    queuedWindowOffsetRef.current = null;
+
+    if (!schema || !selectedTable || totalRows === 0) {
+      setWindowRows([]);
+      setWindowOffset(0);
+      return;
+    }
+
     if (viewMode === "table") {
       void loadWindow(0);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [schema, selectedTable, totalRows, projectId, protocolId, outputName, svc]);
 
-  // When switching back to table view, ensure data is loaded but do not clear it
+  // When switching back to table view, ensure data is loaded
   useEffect(() => {
     if (
       viewMode === "table" &&
@@ -320,26 +361,27 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
 
     const el = e.currentTarget;
     const scrollTop = el.scrollTop;
-    const firstVisible = Math.floor(scrollTop / rowHeight);
 
-    const limit = desiredWindowSizeRef.current || windowRows.length || 60;
-    const buffer = Math.floor(limit / 3);
-    const total = totalRows;
-    const maxOffset = Math.max(0, total - limit);
+    const firstVisibleRow = Math.floor(scrollTop / rowHeight);
 
-    let targetOffset = firstVisible - buffer;
+    const pageSize = desiredWindowSizeRef.current || windowRows.length || 60;
+    const overscan = Math.max(10, Math.floor(pageSize / 3));
+
+    const maxOffset = Math.max(0, totalRows - pageSize);
+
+    let targetOffset = firstVisibleRow - overscan;
     if (targetOffset < 0) targetOffset = 0;
     if (targetOffset > maxOffset) targetOffset = maxOffset;
 
-    const distance = Math.abs(targetOffset - windowOffset);
-    if (distance < Math.max(5, Math.floor(buffer / 2))) {
+    // If we are still comfortably inside the current window, do not reload.
+    if (Math.abs(targetOffset - windowOffset) < overscan / 2) {
       return;
     }
 
     void loadWindow(targetOffset);
   };
 
-  // Gallery chunk loader
+  // Gallery chunk loader (infinite scroll style)
   const loadGalleryChunk = async (offset: number) => {
     if (!selectedTable || !schema || totalRows === 0) return;
     const remaining = totalRows - offset;
@@ -372,7 +414,7 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
     }
   };
 
-  // Reset gallery when schema/table changes and load if we are in gallery view
+  // Reset gallery when schema/table changes
   useEffect(() => {
     setGalleryRows([]);
     setGalleryNextOffset(0);
@@ -380,16 +422,17 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
     setGalleryHasMore(false);
 
     if (!schema || !selectedTable || totalRows === 0) return;
-    if (viewMode === "gallery") {
+    if (viewMode === "gallery" && hasImageColumns) {
       void loadGalleryChunk(0);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [schema, selectedTable, totalRows, projectId, protocolId, outputName, svc]);
 
-  // When switching to gallery view, ensure data is loaded but do not clear it
+  // When switching to gallery view, ensure data is loaded
   useEffect(() => {
     if (
       viewMode === "gallery" &&
+      hasImageColumns &&
       schema &&
       selectedTable &&
       totalRows > 0 &&
@@ -400,7 +443,7 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
       void loadGalleryChunk(0);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewMode]);
+  }, [viewMode, hasImageColumns]);
 
   const handleGalleryScroll: React.UIEventHandler<HTMLDivElement> = (e) => {
     if (!galleryHasMore || galleryLoading) return;
@@ -441,21 +484,17 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
 
   type MetadataImageCellProps = {
     tableName: string;
-    /** Global row index in the table (0..rowCount-1), used for the API. */
-    rowIndex: number;
-    /** Logical row id for selection/highlight. */
-    rowId: number | string;
+    rowIndexInTable: number;
     columnName: string;
     cell: { kind: "image"; path: string };
     size: number;
     isSelected?: boolean;
-    onClick?: React.MouseEventHandler<HTMLDivElement>;
+    onClick?: () => void;
   };
 
   const MetadataImageCell: React.FC<MetadataImageCellProps> = ({
     tableName,
-    rowIndex,
-    rowId: _rowId, // only used outside for selection, not here
+    rowIndexInTable,
     columnName,
     cell,
     size,
@@ -467,7 +506,8 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
-      const key = `${tableName}|${rowIndex}|${columnName}|${cell.path}|${size}`;
+      const rowIdNum = Number(rowIndexInTable);
+      const key = `${tableName}|${rowIdNum}|${columnName}|${cell.path}|${size}`;
       const cached = imageCacheRef.current.get(key);
       if (cached) {
         setThumbUrl(cached.url);
@@ -486,7 +526,7 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
             protocolId,
             outputName,
             tableName,
-            rowIndex,
+            rowIdNum,
             columnName,
             { size, applyTransform: false, inline: true, format: "png" },
           );
@@ -506,7 +546,7 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
       return () => {
         cancelled = true;
       };
-    }, [tableName, rowIndex, columnName, cell.path, size, projectId, protocolId, outputName, svc]);
+    }, [cell.path, columnName, projectId, protocolId, outputName, rowIndexInTable, size, svc, tableName]);
 
     const borderColor = isSelected ? "#2563eb" : "rgba(148,163,184,0.6)";
 
@@ -514,7 +554,7 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
       <Box
         onClick={onClick}
         sx={{
-          cursor: "pointer",
+          cursor: onClick ? "pointer" : "default",
           width: size,
           height: size,
           display: "flex",
@@ -523,7 +563,7 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
           borderRadius: 1,
           border: `1px solid ${borderColor}`,
           overflow: "hidden",
-          bgcolor: "#020617",
+          bgcolor: "#4b5563", // gris oscuro en lugar de negro puro
         }}
       >
         {loading ? (
@@ -553,10 +593,8 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
     textOverflow: "ellipsis" as const,
     overflow: "hidden" as const,
     borderBottom: "1px solid rgba(148,163,184,0.25)",
-    borderRight: "1px solid rgba(148,163,184,0.25)",
     fontSize: "0.75rem",
     lineHeight: 1.4,
-    backgroundColor: "background.paper",
   };
 
   const headerCellSx = {
@@ -571,19 +609,31 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
 
   const hasData = !!schema && totalRows > 0;
 
+  // Table row colors
+  const selectedRowBg = "rgba(219,234,254,0.9)";
+  const selectedRowBgHover = "rgba(191,219,254,0.95)";
+
   // Compute min width for the table so that all columns have enough space
   const tableMinWidth = useMemo(() => {
     if (!schema) return undefined;
     const imageCols = schema.columns.filter((c) => c.rendererType === "image").length;
     const textCols = schema.columns.length - imageCols;
     const total =
-      ROW_INDEX_COL_WIDTH +
-      textCols * MIN_TEXT_COL_WIDTH +
-      imageCols * IMAGE_COL_MIN_WIDTH;
+      ROW_INDEX_COL_WIDTH + textCols * MIN_TEXT_COL_WIDTH + imageCols * IMAGE_COL_MIN_WIDTH;
     return total;
   }, [schema]);
 
-  const galleryEnabled = hasImageColumns;
+  const handleRowClick = (displayRowIndex: number) => {
+    setSelectedRowIndex(displayRowIndex);
+    if (firstImageColumn) {
+      setSelectedImageCell({
+        rowId: displayRowIndex,
+        columnName: firstImageColumn.name,
+      });
+    } else {
+      setSelectedImageCell(null);
+    }
+  };
 
   return (
     <Box
@@ -608,23 +658,29 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
         {/* Left: view mode buttons */}
         <Box sx={{ display: "flex", alignItems: "center", gap: 1, minWidth: 96 }}>
           <Tooltip title="Table view">
-            <IconButton
-              size="small"
-              color={viewMode === "table" ? "primary" : "default"}
-              onClick={() => setViewMode("table")}
-            >
-              <TableIcon size={16} />
-            </IconButton>
+            <span>
+              <IconButton
+                size="small"
+                color={viewMode === "table" ? "primary" : "default"}
+                onClick={() => setViewMode("table")}
+              >
+                <TableIcon fontSize="small" />
+              </IconButton>
+            </span>
           </Tooltip>
-          <Tooltip title={galleryEnabled ? "Gallery view" : "Gallery requires image columns"}>
+          <Tooltip
+            title={
+              hasImageColumns ? "Gallery view" : "Gallery view (no image columns for this table)"
+            }
+          >
             <span>
               <IconButton
                 size="small"
                 color={viewMode === "gallery" ? "primary" : "default"}
-                disabled={!galleryEnabled}
-                onClick={() => galleryEnabled && setViewMode("gallery")}
+                disabled={!hasImageColumns}
+                onClick={() => hasImageColumns && setViewMode("gallery")}
               >
-                <LayoutGrid size={16} />
+                <LayoutGrid fontSize="small" />
               </IconButton>
             </span>
           </Tooltip>
@@ -652,7 +708,7 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
                 const label = t?.alias || t?.name || value;
                 return (
                   <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                    <TableIcon size={16} />
+                    <TableIcon fontSize="small" />
                     <span>{label}</span>
                   </Box>
                 );
@@ -663,7 +719,7 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
                 return (
                   <MenuItem key={t.name} value={t.name}>
                     <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                      <TableIcon size={16} />
+                      <TableIcon fontSize="small" />
                       <span>{label}</span>
                     </Box>
                   </MenuItem>
@@ -762,10 +818,21 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
                 sx={{
                   minWidth: tableMinWidth || 700,
                   tableLayout: "fixed",
+                  borderCollapse: "collapse",
+                  borderSpacing: 0,
                 }}
               >
                 <TableHead>
-                  <TableRow>
+                  <TableRow
+                    sx={{
+                      "& > th": {
+                        borderRight: "1px solid rgba(148,163,184,0.3)",
+                      },
+                      "& > th:last-of-type": {
+                        borderRight: "none",
+                      },
+                    }}
+                  >
                     {/* Row index column header */}
                     <TableCell
                       sx={{
@@ -814,34 +881,33 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
                   )}
 
                   {windowRows.map((row: MetadataRow, rowIndexInWindow: number) => {
-                    const globalRowIndex = windowOffset + rowIndexInWindow;
-
-                    const rowIsSelectedByImage =
-                      selectedImageCell &&
-                      String(selectedImageCell.rowId) === String(row.id);
-
-                    const rowIsSelectedByClick =
-                      selectedRowId !== null && String(selectedRowId) === String(row.id);
-
-                    const isHighlightedRow = rowIsSelectedByImage || rowIsSelectedByClick;
-
-                    const displayRowNumber = globalRowIndex + 1;
-                    const rowBaseBg = isHighlightedRow
-                      ? "rgba(219,234,254,0.7)"
-                      : "transparent";
+                    const displayRowIndex = windowOffset + rowIndexInWindow;
+                    const isHighlightedRow = selectedRowIndex === displayRowIndex;
 
                     return (
                       <TableRow
                         key={row.id ?? `${windowOffset}-${rowIndexInWindow}`}
-                        hover
-                        onClick={() => {
-                          setSelectedRowId(row.id);
-                        }}
+                        onClick={() => handleRowClick(displayRowIndex)}
                         sx={{
                           height: rowHeight,
-                          backgroundColor: rowBaseBg,
+                          backgroundColor: isHighlightedRow ? selectedRowBg : "background.paper",
+                          transition: "background-color 120ms ease-out",
                           "&:hover": {
-                            backgroundColor: rowBaseBg,
+                            backgroundColor: isHighlightedRow
+                              ? selectedRowBgHover
+                              : "rgba(248,250,252,1)",
+                          },
+                          "&:active": {
+                            backgroundColor: isHighlightedRow
+                              ? selectedRowBgHover
+                              : "rgba(241,245,249,1)",
+                          },
+                          "& > td": {
+                            borderRight: "1px solid rgba(148,163,184,0.25)",
+                            transition: "background-color 120ms ease-out",
+                          },
+                          "& > td:last-of-type": {
+                            borderRight: "none",
                           },
                         }}
                       >
@@ -859,19 +925,21 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
                             left: 0,
                             zIndex: 2,
                             borderRight: "1px solid rgba(148,163,184,0.3)",
-                            background: "linear-gradient(135deg, #d8dcdfff, #d8dcdfff)",
+                            backgroundColor: isHighlightedRow ? selectedRowBg : "background.paper",
+                            transition: "background-color 120ms ease-out",
                           }}
                         >
-                          {displayRowNumber}
+                          {displayRowIndex + 1}
                         </TableCell>
 
                         {schema.columns.map((col) => {
                           const v = row.values[col.index];
                           const isImageColumn = col.rendererType === "image";
+
                           const isSelectedImage =
                             isImageColumn &&
                             selectedImageCell &&
-                            selectedImageCell.rowId === row.id &&
+                            selectedImageCell.rowId === displayRowIndex &&
                             selectedImageCell.columnName === col.name;
 
                           const cellWidth =
@@ -896,26 +964,28 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
                                   width: cellWidth,
                                   minWidth: cellWidth,
                                   maxWidth: cellWidth,
+                                  backgroundColor: isHighlightedRow ? selectedRowBg : "background.paper",
+                                  transition: "background-color 120ms ease-out",
+                                }}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  setSelectedRowIndex(displayRowIndex);
+                                  setSelectedImageCell({
+                                    rowId: displayRowIndex,
+                                    columnName: col.name,
+                                  });
                                 }}
                               >
                                 <MetadataImageCell
                                   tableName={selectedTable}
-                                  rowIndex={globalRowIndex}
-                                  rowId={row.id}
+                                  rowIndexInTable={displayRowIndex}
                                   columnName={col.name}
                                   cell={cell}
                                   size={BASE_THUMB_SIZE}
                                   isSelected={!!isSelectedImage}
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    setSelectedRowId(row.id);
-                                    setSelectedImageCell({
-                                      rowId: row.id,
-                                      columnName: col.name,
-                                    });
-                                  }}
                                 />
                               </TableCell>
+
                             );
                           }
 
@@ -929,6 +999,8 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
                                 width: cellWidth,
                                 minWidth: cellWidth,
                                 maxWidth: cellWidth,
+                                backgroundColor: isHighlightedRow ? selectedRowBg : "background.paper",
+                                transition: "background-color 120ms ease-out",
                               }}
                               title={typeof v === "string" ? v : undefined}
                             >
@@ -1029,23 +1101,21 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
                   sx={{
                     p: 2,
                     display: "grid",
-                    gridTemplateColumns: "repeat(auto-fill, minmax(190px, 1fr))",
-                    gap: 1.5,
+                    gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
+                    gap: 2,
                   }}
                 >
                   {galleryRows.map((row, idx) => {
+                    const rowIndexInTable = idx;
                     const v = row.values[firstImageColumn.index];
                     const isImageCell =
                       v && typeof v === "object" && (v as any).kind === "image";
                     const cell = isImageCell ? (v as { kind: "image"; path: string }) : null;
 
-                    const isSelected = !!(
+                    const isSelected =
                       selectedImageCell &&
-                      String(selectedImageCell.rowId) === String(row.id) &&
-                      selectedImageCell.columnName === firstImageColumn.name
-                    );
-
-                    const globalRowIndex = idx;
+                      selectedImageCell.rowId === rowIndexInTable &&
+                      selectedImageCell.columnName === firstImageColumn.name;
 
                     let sizeLabel: string | null = null;
                     if (showSizeLabel && sizeColumn) {
@@ -1065,34 +1135,31 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
                           gap: 0.5,
                           p: 0.75,
                           borderRadius: 2,
-                          border: "1px solid rgba(148,163,184,0.6)",
-                          outline: isSelected ? "2px solid #2563eb" : "none",
-                          outlineOffset: 0,
+                          border: isSelected
+                            ? "2px solid #2563eb"
+                            : "1px solid rgba(148,163,184,0.6)",
                           background: isSelected
                             ? "linear-gradient(135deg, #e0f2fe, #eff6ff)"
                             : "radial-gradient(circle at top, #f9fafb, #e5e7eb)",
                           boxShadow: isSelected
-                            ? "0 0 0 1px rgba(37,99,235,0.25)"
+                            ? "0 0 0 1px rgba(37,99,235,0.3)"
                             : "none",
+                        }}
+                        onClick={() => {
+                          setSelectedImageCell({
+                            rowId: rowIndexInTable,
+                            columnName: firstImageColumn.name,
+                          });
                         }}
                       >
                         {cell ? (
                           <MetadataImageCell
                             tableName={selectedTable}
-                            rowIndex={globalRowIndex}
-                            rowId={row.id}
+                            rowIndexInTable={rowIndexInTable}
                             columnName={firstImageColumn.name}
                             cell={cell}
                             size={BASE_THUMB_SIZE}
-                            isSelected={isSelected}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              setSelectedRowId(row.id);
-                              setSelectedImageCell({
-                                rowId: row.id,
-                                columnName: firstImageColumn.name,
-                              });
-                            }}
+                            isSelected={!!isSelected}
                           />
                         ) : (
                           <Box
@@ -1100,7 +1167,7 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
                               width: BASE_THUMB_SIZE,
                               height: BASE_THUMB_SIZE,
                               borderRadius: 1,
-                              border: "1px dashed rgba(148,163,184,0.6)",
+                              border: "1px dashed rgba(104, 115, 129, 0.6)",
                               display: "flex",
                               alignItems: "center",
                               justifyContent: "center",
@@ -1112,12 +1179,13 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
                           </Box>
                         )}
 
-                        {/* Optional size label only for Class2D/Class3D with _size column */}
-                        {sizeLabel && (
-                          <Typography variant="caption" color="text.secondary">
-                            {sizeLabel}
-                          </Typography>
-                        )}
+                        <Box sx={{ minHeight: 18 }}>
+                          {sizeLabel && (
+                            <Typography variant="caption" color="text.secondary">
+                              {sizeLabel}
+                            </Typography>
+                          )}
+                        </Box>
                       </Box>
                     );
                   })}
@@ -1155,21 +1223,24 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
                 </Box>
               )}
 
-              {!galleryLoading && firstImageColumn && galleryRows.length === 0 && !galleryError && (
-                <Box
-                  sx={{
-                    py: 4,
-                    px: 3,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <Typography variant="body2" color="text.secondary">
-                    No images to display yet.
-                  </Typography>
-                </Box>
-              )}
+              {!galleryLoading &&
+                firstImageColumn &&
+                galleryRows.length === 0 &&
+                !galleryError && (
+                  <Box
+                    sx={{
+                      py: 4,
+                      px: 3,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <Typography variant="body2" color="text.secondary">
+                      No images to display yet.
+                    </Typography>
+                  </Box>
+                )}
             </Box>
           </Paper>
         </>
