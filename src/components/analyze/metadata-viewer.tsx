@@ -1,10 +1,5 @@
 // src/components/analyze/metadata-viewer.tsx
-import React, {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Box,
   CircularProgress,
@@ -14,67 +9,66 @@ import {
   Paper,
   Select,
   SelectChangeEvent,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
   Typography,
+  Slider,
 } from "@mui/material";
-
+import { useProjectService } from "@/ProjectServiceContext";
 import {
-  MetadataCell,
-  MetadataColumn,
-  MetadataRow,
-  MetadataTableInfo,
-  MetadataTableSchema,
-  fetchMetadataTablePage,
+    fetchMetadataImageCellObjectUrl,
+    fetchMetadataTablePage,
   fetchMetadataTableSchema,
   fetchOutputMetadataTables,
-  fetchMetadataImageCellObjectUrl,
+  type MetadataCell,
+  type MetadataColumn,
+  type MetadataPage,
+  type MetadataRow,
+  type MetadataTableInfo,
+  type MetadataTableSchema,
 } from "@/api/projects";
 
-type Id = string | number;
-
-export type MetadataViewerProps = {
-  projectId: Id;
-  protocolId: Id;
+export interface MetadataViewerProps {
+  projectId: number;
+  protocolId: number;
   outputName: string;
+}
+
+// Base thumbnail size for image cells (larger by default)
+const BASE_THUMB_SIZE = 200;
+const PAGE_SIZE = 200;
+
+type SelectedImageCell = {
+  tableName: string;
+  rowId: number;
+  columnName: string;
 };
 
-const ROW_HEIGHT = 32;        // slightly taller to fit thumbnails
-const VIEWPORT_HEIGHT = 480;
-const PAGE_SIZE = 200;
-const OVERSCAN = 20;
-const COLUMN_WIDTH = 160;     // fixed column width in px
-
 type ImageCacheEntry = { url: string; revoke: () => void };
-type ImageCache = Map<string, ImageCacheEntry>;
 
-function renderTextCellValue(
-  cell: MetadataCell | undefined,
-  column: MetadataColumn
-): string {
-  if (cell === undefined || cell === null) return "";
-  if (typeof cell === "number") {
-    if (column.rendererType === "float" && column.decimals != null) {
-      return cell.toFixed(column.decimals);
-    }
-    return String(cell);
-  }
-  if (typeof cell === "string") return cell;
-  if (typeof cell === "boolean") return cell ? "true" : "false";
+function isImageCell(value: MetadataCell): value is { kind: "image"; path: string } {
+  return typeof value === "object" && value !== null && (value as any).kind === "image";
+}
 
-  if (typeof cell === "object") {
-    if ((cell as any).kind === "image") return "[image]";
-    if ((cell as any).kind === "matrix") return "[matrix]";
-  }
-  return String(cell as any);
+function isMatrixCell(value: MetadataCell): value is { kind: "matrix"; value: any } {
+  return typeof value === "object" && value !== null && (value as any).kind === "matrix";
 }
 
 type MetadataImageCellProps = {
-  projectId: Id;
-  protocolId: Id;
+  projectId: number;
+  protocolId: number;
   outputName: string;
   tableName: string;
   rowId: number | string;
   columnName: string;
-  cacheRef: React.MutableRefObject<ImageCache>;
+  cacheRef: React.MutableRefObject<Map<string, ImageCacheEntry>>;
+  size: number;
+  isSelected?: boolean;
+  onClick?: () => void;
 };
 
 const MetadataImageCell: React.FC<MetadataImageCellProps> = ({
@@ -85,35 +79,34 @@ const MetadataImageCell: React.FC<MetadataImageCellProps> = ({
   rowId,
   columnName,
   cacheRef,
+  size,
+  isSelected,
+  onClick,
 }) => {
-  const cacheKey = `${tableName}|${columnName}|${rowId}`;
+  const svc = useProjectService();
   const [url, setUrl] = useState<string | null>(null);
-  const [loading, setLoading] = useState<boolean>(false);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const mountedRef = useRef(true);
+
+  const cacheKey = useMemo(
+    () =>
+      `${projectId}:${protocolId}:${outputName}:${tableName}:${rowId}:${columnName}:${size}`,
+    [projectId, protocolId, outputName, tableName, rowId, columnName, size],
+  );
 
   useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    const existing = cacheRef.current.get(cacheKey);
-    if (existing) {
-      setUrl(existing.url);
-      setLoading(false);
-      setError(null);
-      return;
-    }
-
     let cancelled = false;
-    (async () => {
+
+    async function loadImage() {
       try {
-        setLoading(true);
         setError(null);
-        const { url: objUrl, revoke } = await fetchMetadataImageCellObjectUrl(
+        const cached = cacheRef.current.get(cacheKey);
+        if (cached) {
+          setUrl(cached.url);
+          return;
+        }
+        setLoading(true);
+        const { url, revoke } = await fetchMetadataImageCellObjectUrl(
           projectId,
           protocolId,
           outputName,
@@ -121,99 +114,84 @@ const MetadataImageCell: React.FC<MetadataImageCellProps> = ({
           rowId,
           columnName,
           {
-            size: 64,
+            size,
             applyTransform: false,
             inline: true,
             format: "png",
-          }
+          },
         );
-        if (cancelled || !mountedRef.current) {
+        if (cancelled) {
           revoke();
           return;
         }
-        cacheRef.current.set(cacheKey, { url: objUrl, revoke });
-        setUrl(objUrl);
+        cacheRef.current.set(cacheKey, { url, revoke });
+        setUrl(url);
       } catch (e: any) {
-        if (!cancelled && mountedRef.current) {
-          setError(e?.message || "Image error");
+        if (!cancelled) {
+          setError(e?.message || "Failed to load image");
         }
       } finally {
-        if (!cancelled && mountedRef.current) {
+        if (!cancelled) {
           setLoading(false);
         }
       }
-    })();
+    }
 
+    loadImage();
     return () => {
       cancelled = true;
     };
   }, [
     cacheKey,
     cacheRef,
+    svc,
     projectId,
     protocolId,
     outputName,
     tableName,
     rowId,
     columnName,
+    size,
   ]);
-
-  if (loading && !url) {
-    return (
-      <Box
-        sx={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          height: "100%",
-        }}
-      >
-        <CircularProgress size={14} />
-      </Box>
-    );
-  }
-
-  if (error && !url) {
-    return (
-      <Box
-        sx={{
-          fontSize: "0.7rem",
-          color: "error.main",
-          whiteSpace: "nowrap",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-        }}
-        title={error}
-      >
-        {error}
-      </Box>
-    );
-  }
-
-  if (!url) {
-    return null;
-  }
 
   return (
     <Box
+      onClick={onClick}
       sx={{
+        width: size,
+        height: size,
+        borderRadius: 1,
+        border: isSelected ? "2px solid #1976d2" : "1px solid rgba(0,0,0,0.18)",
+        overflow: "hidden",
         display: "flex",
         alignItems: "center",
-        justifyContent: "flex-start",
-        height: "100%",
+        justifyContent: "center",
+        cursor: onClick ? "pointer" : "default",
+        backgroundColor: "#fafafa",
       }}
     >
-      <img
-        src={url}
-        alt="cell thumbnail"
-        style={{
-          width: 24,
-          height: 24,
-          objectFit: "cover",
-          borderRadius: 2,
-          display: "block",
-        }}
-      />
+      {loading && <CircularProgress size={20} />}
+      {!loading && error && (
+        <Typography
+          variant="caption"
+          color="error"
+          sx={{ p: 0.5, textAlign: "center" }}
+        >
+          img error
+        </Typography>
+      )}
+      {!loading && !error && url && (
+        <img
+          src={url}
+          alt={columnName}
+          style={{
+            width: "100%",
+            height: "100%",
+            objectFit: "contain",
+            display: "block",
+          }}
+        />
+      )}
     </Box>
   );
 };
@@ -223,95 +201,74 @@ export const MetadataViewer: React.FC<MetadataViewerProps> = ({
   protocolId,
   outputName,
 }) => {
-  const [tables, setTables] = useState<MetadataTableInfo[]>([]);
+  const svc = useProjectService();
+
+  const [tables, setTables] = useState<MetadataTableInfo[] | null>(null);
   const [tablesLoading, setTablesLoading] = useState(false);
   const [tablesError, setTablesError] = useState<string | null>(null);
-  const [selectedTable, setSelectedTable] = useState<string | null>(null);
+
+  const [selectedTable, setSelectedTable] = useState<string | "">("");
 
   const [schema, setSchema] = useState<MetadataTableSchema | null>(null);
   const [schemaLoading, setSchemaLoading] = useState(false);
   const [schemaError, setSchemaError] = useState<string | null>(null);
 
-  const [totalRows, setTotalRows] = useState<number>(0);
+  const [rows, setRows] = useState<MetadataRow[]>([]);
+  const [totalRows, setTotalRows] = useState<number | null>(null);
+  const [pageLoading, setPageLoading] = useState(false);
+  const [pageError, setPageError] = useState<string | null>(null);
+  const [nextPage, setNextPage] = useState<number | null>(null);
 
-  const pageCacheRef = useRef<Map<number, MetadataRow[]>>(new Map());
-  const loadingPagesRef = useRef<Set<number>>(new Set());
-  const [cacheVersion, setCacheVersion] = useState(0);
+  // Image selection and zoom
+  const [selectedImageCell, setSelectedImageCell] =
+    useState<SelectedImageCell | null>(null);
+  const [imageZoom, setImageZoom] = useState<number>(1);
 
-  const [scrollTop, setScrollTop] = useState(0);
+  // Cache for image URLs
+  const imageCacheRef = useRef<Map<string, ImageCacheEntry>>(new Map());
+
+  // Table scroll ref for infinite loading
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
-  const imageCacheRef = useRef<ImageCache>(new Map());
-
-  const numericProjectId = projectId;
-  const numericProtocolId = protocolId;
-
-  const visibleCount =
-    Math.ceil(VIEWPORT_HEIGHT / ROW_HEIGHT) + OVERSCAN * 2;
-  const startIndex = useMemo(
-    () => Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN),
-    [scrollTop]
-  );
-  const endIndex = useMemo(
-    () =>
-      totalRows > 0
-        ? Math.min(totalRows - 1, startIndex + visibleCount - 1)
-        : 0,
-    [startIndex, visibleCount, totalRows]
+  const hasImageColumns = useMemo(
+    () => schema?.columns.some((c) => c.rendererType === "image") ?? false,
+    [schema],
   );
 
-  const gridTemplateColumns = useMemo(
-    () =>
-      schema
-        ? `repeat(${schema.columns.length}, ${COLUMN_WIDTH}px)`
-        : undefined,
-    [schema]
-  );
-
-  // ---------------------------------------------------------------------------
-  // Clean image cache when table/output/protocol/project changes or unmount
-  // ---------------------------------------------------------------------------
+  // Cleanup image cache on unmount
   useEffect(() => {
     return () => {
-      const cache = imageCacheRef.current;
-      for (const entry of cache.values()) {
-        entry.revoke();
-      }
-      cache.clear();
+      imageCacheRef.current.forEach((entry) => entry.revoke());
+      imageCacheRef.current.clear();
     };
   }, []);
 
+  // Reset selection and zoom when table changes
   useEffect(() => {
-    const cache = imageCacheRef.current;
-    for (const entry of cache.values()) {
-      entry.revoke();
-    }
-    cache.clear();
-  }, [selectedTable, numericProjectId, numericProtocolId, outputName]);
+    setSelectedImageCell(null);
+    setImageZoom(1);
+  }, [selectedTable, projectId, protocolId, outputName]);
 
-  // ---------------------------------------------------------------------------
   // Load tables list
-  // ---------------------------------------------------------------------------
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
         setTablesLoading(true);
         setTablesError(null);
-        const items = await fetchOutputMetadataTables(
-          numericProjectId,
-          numericProtocolId,
-          outputName
+        const list = await fetchOutputMetadataTables(
+          projectId,
+          protocolId,
+          outputName,
         );
         if (cancelled) return;
-        setTables(items || []);
-        setSelectedTable((prev) => {
-          if (prev && items.some((t) => t.name === prev)) return prev;
-          return items[0]?.name ?? null;
-        });
-      } catch (err: any) {
+        setTables(list || []);
+        if (list && list.length > 0 && !selectedTable) {
+          setSelectedTable(list[0].name);
+        }
+      } catch (e: any) {
         if (!cancelled) {
-          setTablesError(err?.message || "Failed to load metadata tables");
+          setTablesError(e?.message || "Failed to load metadata tables");
         }
       } finally {
         if (!cancelled) setTablesLoading(false);
@@ -320,401 +277,494 @@ export const MetadataViewer: React.FC<MetadataViewerProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [numericProjectId, numericProtocolId, outputName]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, protocolId, outputName, svc]);
 
-  // ---------------------------------------------------------------------------
-  // Load schema + first page when selected table changes
-  // ---------------------------------------------------------------------------
+  // Load schema + first page when selectedTable changes
   useEffect(() => {
     if (!selectedTable) {
       setSchema(null);
-      setTotalRows(0);
-      pageCacheRef.current.clear();
-      setCacheVersion((v) => v + 1);
+      setRows([]);
+      setTotalRows(null);
+      setNextPage(null);
       return;
     }
 
     let cancelled = false;
 
-    pageCacheRef.current = new Map();
-    loadingPagesRef.current = new Set();
-    setScrollTop(0);
-    setTotalRows(0);
-    setSchema(null);
-    setSchemaError(null);
-    setSchemaLoading(true);
-    setCacheVersion((v) => v + 1);
-
-    // Schema
     (async () => {
       try {
-        const s = await fetchMetadataTableSchema(
-          numericProjectId,
-          numericProtocolId,
-          outputName,
-          selectedTable
-        );
-        if (cancelled) return;
-        setSchema(s);
-      } catch (err: any) {
-        if (!cancelled) {
-          setSchemaError(err?.message || "Failed to load schema");
-        }
-      } finally {
-        if (!cancelled) setSchemaLoading(false);
-      }
-    })();
+        setSchemaLoading(true);
+        setPageLoading(true);
+        setSchemaError(null);
+        setPageError(null);
 
-    // First page
-    (async () => {
-      try {
-        loadingPagesRef.current.add(1);
-        const page = await fetchMetadataTablePage(
-          numericProjectId,
-          numericProtocolId,
-          outputName,
-          selectedTable,
-          {
-            page: 1,
-            pageSize: PAGE_SIZE,
-            sortBy: "id",
-            asc: true,
-          }
-        );
+        const [schemaRes, pageRes]: [MetadataTableSchema, MetadataPage] =
+          await Promise.all([
+            fetchMetadataTableSchema(
+              projectId,
+              protocolId,
+              outputName,
+              selectedTable,
+            ),
+            fetchMetadataTablePage(
+              projectId,
+              protocolId,
+              outputName,
+              selectedTable,
+              {
+                page: 1,
+                pageSize: PAGE_SIZE,
+                sortBy: "id",
+                asc: true,
+                selectionOnly: false,
+              },
+            ),
+          ]);
+
         if (cancelled) return;
 
-        pageCacheRef.current.set(1, page.rows || []);
-        setTotalRows(
-          typeof page.totalRows === "number"
-            ? page.totalRows
-            : (page.rows?.length ?? 0)
-        );
-        setCacheVersion((v) => v + 1);
-      } catch (err: any) {
+        setSchema(schemaRes);
+        setRows(pageRes.rows || []);
+        setTotalRows(pageRes.totalRows ?? pageRes.rows.length);
+
+        const fetched = (pageRes.pageNumber || 1) * (pageRes.pageSize || PAGE_SIZE);
+        if (pageRes.totalRows && fetched < pageRes.totalRows) {
+          setNextPage((pageRes.pageNumber || 1) + 1);
+        } else {
+          setNextPage(null);
+        }
+      } catch (e: any) {
         if (!cancelled) {
-          setSchemaError(err?.message || "Failed to load rows");
+          const msg = e?.message || "Failed to load metadata";
+          setSchemaError(msg);
+          setPageError(msg);
+          setSchema(null);
+          setRows([]);
+          setTotalRows(null);
+          setNextPage(null);
         }
       } finally {
-        loadingPagesRef.current.delete(1);
+        if (!cancelled) {
+          setSchemaLoading(false);
+          setPageLoading(false);
+        }
       }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [numericProjectId, numericProtocolId, outputName, selectedTable]);
+  }, [selectedTable, projectId, protocolId, outputName, svc]);
 
-  // ---------------------------------------------------------------------------
-  // Load additional pages on scroll
-  // ---------------------------------------------------------------------------
-  useEffect(() => {
-    if (!selectedTable || !schema || totalRows <= 0) return;
+  const loadMoreRows = async () => {
+    if (!selectedTable || nextPage == null || pageLoading) return;
+    let cancelled = false;
+    try {
+      setPageLoading(true);
+      setPageError(null);
+      const pageRes = await fetchMetadataTablePage(
+        projectId,
+        protocolId,
+        outputName,
+        selectedTable,
+        {
+          page: nextPage,
+          pageSize: PAGE_SIZE,
+          sortBy: "id",
+          asc: true,
+          selectionOnly: false,
+        },
+      );
+      if (cancelled) return;
 
-    const firstNeededPage = Math.floor(startIndex / PAGE_SIZE) + 1;
-    const lastNeededPage = Math.floor(endIndex / PAGE_SIZE) + 1;
+      setRows((prev) => [...prev, ...(pageRes.rows || [])]);
+      setTotalRows(pageRes.totalRows ?? pageRes.rows.length);
 
-    for (let page = firstNeededPage; page <= lastNeededPage; page++) {
-      if (pageCacheRef.current.has(page)) continue;
-      if (loadingPagesRef.current.has(page)) continue;
-
-      loadingPagesRef.current.add(page);
-
-      (async () => {
-        try {
-          const resp = await fetchMetadataTablePage(
-            numericProjectId,
-            numericProtocolId,
-            outputName,
-            selectedTable,
-            {
-              page,
-              pageSize: PAGE_SIZE,
-              sortBy: "id",
-              asc: true,
-            }
-          );
-          pageCacheRef.current.set(page, resp.rows || []);
-          if (
-            typeof resp.totalRows === "number" &&
-            resp.totalRows !== totalRows
-          ) {
-            setTotalRows(resp.totalRows);
-          }
-          setCacheVersion((v) => v + 1);
-        } catch {
-          // ignore individual page errors for now
-        } finally {
-          loadingPagesRef.current.delete(page);
-        }
-      })();
+      const fetched = (pageRes.pageNumber || nextPage) * (pageRes.pageSize || PAGE_SIZE);
+      if (pageRes.totalRows && fetched < pageRes.totalRows) {
+        setNextPage((pageRes.pageNumber || nextPage) + 1);
+      } else {
+        setNextPage(null);
+      }
+    } catch (e: any) {
+      if (!cancelled) {
+        setPageError(e?.message || "Failed to load more rows");
+      }
+    } finally {
+      if (!cancelled) setPageLoading(false);
     }
-  }, [
-    startIndex,
-    endIndex,
-    selectedTable,
-    schema,
-    numericProjectId,
-    numericProtocolId,
-    outputName,
-    totalRows,
-  ]);
-
-  // ---------------------------------------------------------------------------
-  // Build visible rows slice from cached pages
-  // ---------------------------------------------------------------------------
-  const visibleRows = useMemo(
-    () => {
-      if (!schema || totalRows === 0) {
-        return [] as { index: number; row: MetadataRow | null }[];
-      }
-      const items: { index: number; row: MetadataRow | null }[] = [];
-      const end = Math.min(endIndex, totalRows - 1);
-      for (let i = startIndex; i <= end; i++) {
-        const page = Math.floor(i / PAGE_SIZE) + 1;
-        const indexInPage = i - (page - 1) * PAGE_SIZE;
-        const pageRows = pageCacheRef.current.get(page);
-        const row =
-          pageRows && pageRows[indexInPage] ? pageRows[indexInPage] : null;
-        items.push({ index: i, row });
-      }
-      return items;
-    },
-    [startIndex, endIndex, totalRows, schema, cacheVersion]
-  );
-
-  const handleTableChange = (evt: SelectChangeEvent<string>) => {
-    const value = evt.target.value || "";
-    setSelectedTable(value || null);
   };
 
-  const innerHeight = totalRows * ROW_HEIGHT;
-  const innerMinWidth =
-    schema && schema.columns.length > 0
-      ? schema.columns.length * COLUMN_WIDTH
-      : undefined;
+  // Infinite scroll: load more BEFORE reaching the bottom to make it smoother
+  const handleScroll: React.UIEventHandler<HTMLDivElement> = (e) => {
+    const el = e.currentTarget;
+    if (!nextPage || pageLoading) return;
+    const distanceToBottom = el.scrollHeight - (el.scrollTop + el.clientHeight);
+    const thresholdPx = el.clientHeight * 0.7; // start loading well before the end
+    if (distanceToBottom < thresholdPx) {
+      void loadMoreRows();
+    }
+  };
 
-  // ---------------------------------------------------------------------------
-  // Render
-  // ---------------------------------------------------------------------------
-  if (tablesLoading && !tables.length) {
-    return (
-      <Box sx={{ p: 2, display: "flex", gap: 1, alignItems: "center" }}>
-        <CircularProgress size={18} />
-        <Typography variant="body2">Loading metadata tables…</Typography>
-      </Box>
-    );
-  }
+  const handleTableChange = (event: SelectChangeEvent<string>) => {
+    const value = event.target.value;
+    setSelectedTable(value);
+  };
 
-  if (tablesError) {
-    return (
-      <Box sx={{ p: 2 }}>
-        <Typography variant="body2" color="error">
-          {tablesError}
-        </Typography>
-      </Box>
-    );
-  }
+  const displayedRowCount = rows.length;
+  const totalRowCount = totalRows ?? rows.length;
 
-  if (!tables.length) {
-    return (
-      <Box sx={{ p: 2 }}>
-        <Typography variant="body2" color="text.secondary">
-          This output does not expose metadata tables.
-        </Typography>
-      </Box>
-    );
-  }
+  const currentZoomLabel =
+    imageZoom === 1 ? "Zoom ×1" : `Zoom ×${imageZoom.toFixed(1)}`;
+
+  const canZoom = Boolean(
+    selectedImageCell && hasImageColumns && selectedTable,
+  );
 
   return (
-    <Box sx={{ p: 1.5, display: "flex", flexDirection: "column", gap: 1.5 }}>
-      {/* Toolbar: table selector + info */}
+    <Box sx={{ display: "flex", flexDirection: "column", minHeight: 480 }}>
+      {/* Header controls */}
       <Box
         sx={{
           display: "flex",
-          gap: 2,
           alignItems: "center",
+          gap: 2,
+          mb: 1.5,
           flexWrap: "wrap",
         }}
       >
-        <FormControl size="small" sx={{ minWidth: 240 }}>
-          <InputLabel id="metadata-table-label">Table</InputLabel>
+        <FormControl size="small" sx={{ minWidth: 220 }}>
+          <InputLabel id="metadata-table-select-label">Table</InputLabel>
           <Select
-            labelId="metadata-table-label"
+            labelId="metadata-table-select-label"
             label="Table"
-            value={selectedTable || ""}
+            value={selectedTable}
             onChange={handleTableChange}
+            disabled={tablesLoading || !!tablesError || !tables?.length}
           >
-            {tables.map((t) => (
-              <MenuItem key={t.name} value={t.name}>
-                {t.alias || t.name}
-                {typeof t.rowCount === "number"
-                  ? ` (${t.rowCount} rows)`
-                  : ""}
+            {tablesLoading && (
+              <MenuItem value="">
+                <em>Loading tables...</em>
               </MenuItem>
-            ))}
+            )}
+            {!tablesLoading && tablesError && (
+              <MenuItem value="">
+                <em>Error loading tables</em>
+              </MenuItem>
+            )}
+            {!tablesLoading &&
+              !tablesError &&
+              tables &&
+              tables.map((t) => (
+                <MenuItem key={t.name} value={t.name}>
+                  {t.alias || t.name}{" "}
+                  {typeof t.rowCount === "number"
+                    ? ` (${t.rowCount} rows)`
+                    : ""}
+                </MenuItem>
+              ))}
           </Select>
         </FormControl>
 
-        {schemaLoading ? (
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-            <CircularProgress size={16} />
-            <Typography variant="body2">Loading schema…</Typography>
-          </Box>
-        ) : schemaError ? (
+        <Box sx={{ display: "flex", flexDirection: "column", gap: 0.25 }}>
+          <Typography variant="caption" color="text.secondary">
+            Output: {outputName}
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            Rows: {displayedRowCount} / {totalRowCount}
+          </Typography>
+        </Box>
+
+        <Box sx={{ flex: 1 }} />
+
+        {/* Zoom control for image cells (slider/spinner-like) */}
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            gap: 1,
+            minWidth: 220,
+          }}
+        >
+          <Typography variant="caption" color="text.secondary">
+            Zoom
+          </Typography>
+          <Slider
+            size="small"
+            min={1}
+            max={3}
+            step={0.25}
+            value={imageZoom}
+            onChange={(_, value) => {
+              if (!canZoom) return;
+              const v = Array.isArray(value) ? value[0] : value;
+              setImageZoom(v as number);
+            }}
+            disabled={!canZoom}
+            valueLabelDisplay="auto"
+            valueLabelFormat={(v) =>
+              `×${(v as number)
+                .toFixed(2)
+                .replace(/\.00$/, "")
+                .replace(/(\.\d)0$/, "$1")}`
+            }
+            sx={{ width: 140 }}
+          />
+          <Typography
+            variant="caption"
+            color={canZoom ? "text.secondary" : "text.disabled"}
+            sx={{ minWidth: 70 }}
+          >
+            {canZoom ? currentZoomLabel : "Select image"}
+          </Typography>
+        </Box>
+      </Box>
+
+      {/* Content */}
+      {tablesError && (
+        <Box sx={{ p: 2 }}>
+          <Typography variant="body2" color="error">
+            {tablesError}
+          </Typography>
+        </Box>
+      )}
+
+      {!tablesError && !selectedTable && !tablesLoading && (
+        <Box sx={{ p: 2 }}>
+          <Typography variant="body2" color="text.secondary">
+            No metadata tables available for this output.
+          </Typography>
+        </Box>
+      )}
+
+      {(schemaLoading || pageLoading) && rows.length === 0 ? (
+        <Box sx={{ p: 2, display: "flex", gap: 1, alignItems: "center" }}>
+          <CircularProgress size={18} />
+          <Typography variant="body2">
+            Loading metadata for {outputName}...
+          </Typography>
+        </Box>
+      ) : schemaError && rows.length === 0 ? (
+        <Box sx={{ p: 2 }}>
           <Typography variant="body2" color="error">
             {schemaError}
           </Typography>
-        ) : (
-          schema && (
-            <Typography variant="caption" color="text.secondary">
-              Columns: {schema.columns.length}
-              {totalRows ? ` · Rows: ${totalRows}` : ""}
-            </Typography>
-          )
-        )}
-      </Box>
-
-      {/* Table body with vertical + horizontal scroll */}
-      <Paper
-        elevation={0}
-        sx={{
-          border: "1px solid #e5e7eb",
-          borderRadius: 1,
-          overflow: "hidden",
-          display: "flex",
-          flexDirection: "column",
-          backgroundColor: "#fff",
-        }}
-      >
-        {/* Header */}
-        {schema && (
-          <Box
+        </Box>
+      ) : schema && rows.length > 0 ? (
+        <TableContainer
+          component={Paper}
+          sx={{
+            flex: 1,
+            minHeight: 0,
+            maxHeight: 520,
+            borderRadius: 1,
+            overflow: "auto",
+          }}
+          ref={scrollRef}
+          onScroll={handleScroll}
+        >
+          <Table
+            stickyHeader
+            size="small"
             sx={{
-              display: "grid",
-              gridTemplateColumns,
-              borderBottom: "1px solid #e5e7eb",
-              backgroundColor: "#f9fafb",
+              tableLayout: "fixed",
+              minWidth: Math.max(800, schema.columns.length * 180),
             }}
           >
-            {schema.columns.map((col) => (
-              <Box
-                key={col.name}
-                sx={{
-                  px: 1,
-                  py: 0.5,
-                  fontSize: "0.75rem",
-                  fontWeight: 600,
-                  borderRight: "1px solid #f3f4f6",
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                }}
-              >
-                {col.alias || col.name}
-              </Box>
-            ))}
+            <TableHead>
+              <TableRow>
+                {schema.columns.map((col) => (
+                  <TableCell
+                    key={col.name}
+                    sx={{
+                      fontWeight: 600,
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      borderBottom: "1px solid rgba(0,0,0,0.12)",
+                      backgroundColor: "#fafafa",
+                    }}
+                  >
+                    {col.alias || col.name}
+                  </TableCell>
+                ))}
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {rows.map((row) => {
+                // Determine row height based on image zoom and selection
+                let rowHeight = 28;
+                if (hasImageColumns) {
+                  const isRowZoomed =
+                    Boolean(selectedImageCell) &&
+                    selectedImageCell!.tableName === selectedTable &&
+                    selectedImageCell!.rowId === row.id &&
+                    imageZoom > 1;
+                  const effectiveThumb = BASE_THUMB_SIZE * (isRowZoomed ? imageZoom : 1);
+                  rowHeight = effectiveThumb;
+                }
+
+                return (
+                  <TableRow
+                    key={row.id}
+                    hover
+                    sx={{
+                      height: rowHeight,
+                      "&:last-child td, &:last-child th": { borderBottom: 0 },
+                    }}
+                  >
+                    {schema.columns.map((col: MetadataColumn) => {
+                      const value: MetadataCell | undefined =
+                        row.values[col.index] ?? undefined;
+
+                      // Image cell
+                      if (col.rendererType === "image" && value && isImageCell(value)) {
+                        const isSelectedImage: boolean =
+                          !!selectedImageCell &&
+                          !!selectedTable &&
+                          selectedImageCell.tableName === selectedTable &&
+                          selectedImageCell.rowId === row.id &&
+                          selectedImageCell.columnName === col.name;
+
+                        const effectiveSize =
+                          imageZoom > 1 && isSelectedImage
+                            ? BASE_THUMB_SIZE * imageZoom
+                            : BASE_THUMB_SIZE;
+
+                        return (
+                          <TableCell
+                            key={col.name}
+                            sx={{
+                              verticalAlign: "middle",
+                              padding: 0.5,
+                            }}
+                          >
+                            <Box
+                              sx={{
+                                display: "flex",
+                                justifyContent: "center",
+                                alignItems: "center",
+                              }}
+                            >
+                              <MetadataImageCell
+                                projectId={projectId}
+                                protocolId={protocolId}
+                                outputName={outputName}
+                                tableName={selectedTable}
+                                rowId={row.id}
+                                columnName={col.name}
+                                cacheRef={imageCacheRef}
+                                size={effectiveSize}
+                                isSelected={isSelectedImage}
+                                onClick={() =>
+                                  setSelectedImageCell({
+                                    rowId: row.id,
+                                    columnName: col.name,
+                                    tableName: selectedTable,
+                                  })
+                                }
+                              />
+                            </Box>
+                          </TableCell>
+                        );
+                      }
+
+                      // Matrix cell: render small summary
+                      if (col.rendererType === "matrix" && value && isMatrixCell(value)) {
+                        const mat = value.value;
+                        let summary = "";
+                        if (Array.isArray(mat) && mat.length > 0) {
+                          const r = mat.length;
+                          const c = Array.isArray(mat[0]) ? mat[0].length : 0;
+                          summary = `Matrix ${r}×${c}`;
+                        } else {
+                          summary = "Matrix";
+                        }
+                        return (
+                          <TableCell
+                            key={col.name}
+                            sx={{
+                              whiteSpace: "nowrap",
+                              textOverflow: "ellipsis",
+                              overflow: "hidden",
+                              maxWidth: 210,
+                            }}
+                          >
+                            <Typography variant="body2" noWrap>
+                              {summary}
+                            </Typography>
+                          </TableCell>
+                        );
+                      }
+
+                      // Primitive values
+                      let displayValue: string = "";
+                      if (typeof value === "number") {
+                        if (col.decimals != null && Number.isFinite(value)) {
+                          displayValue = value.toFixed(col.decimals);
+                        } else {
+                          displayValue = String(value);
+                        }
+                      } else if (typeof value === "boolean") {
+                        displayValue = value ? "true" : "false";
+                      } else if (typeof value === "string") {
+                        displayValue = value;
+                      } else if (value == null) {
+                        displayValue = "";
+                      } else {
+                        displayValue = JSON.stringify(value);
+                      }
+
+                      return (
+                        <TableCell
+                          key={col.name}
+                          sx={{
+                            whiteSpace: "nowrap",
+                            textOverflow: "ellipsis",
+                            overflow: "hidden",
+                            maxWidth: 220,
+                          }}
+                          title={displayValue}
+                        >
+                          <Typography variant="body2" noWrap>
+                            {displayValue}
+                          </Typography>
+                        </TableCell>
+                      );
+                    })}
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      ) : (
+        !schemaLoading &&
+        !schemaError &&
+        selectedTable && (
+          <Box sx={{ p: 2 }}>
+            <Typography variant="body2" color="text.secondary">
+              No rows to display.
+            </Typography>
+          </Box>
+        )
+      )}
+
+      {/* Small footer with errors / loading more */}
+      <Box sx={{ mt: 1, display: "flex", alignItems: "center", gap: 2 }}>
+        {pageError && (
+          <Typography variant="caption" color="error">
+            {pageError}
+          </Typography>
+        )}
+        {pageLoading && rows.length > 0 && (
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+            <CircularProgress size={14} />
+            <Typography variant="caption">Loading more rows...</Typography>
           </Box>
         )}
-
-        {/* Body */}
-        <Box
-          ref={scrollRef}
-          sx={{
-            position: "relative",
-            height: VIEWPORT_HEIGHT,
-            overflowX: "auto",
-            overflowY: "auto",
-            backgroundColor: "#ffffff",
-          }}
-          onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
-        >
-          {schema && totalRows > 0 ? (
-            <Box
-              sx={{
-                position: "relative",
-                height: innerHeight,
-                minWidth: innerMinWidth,
-              }}
-            >
-              {visibleRows.map(({ index, row }) => (
-                <Box
-                  key={row ? row.id : `placeholder-${index}`}
-                  sx={{
-                    position: "absolute",
-                    top: index * ROW_HEIGHT,
-                    left: 0,
-                    display: "grid",
-                    gridTemplateColumns,
-                    height: ROW_HEIGHT,
-                    borderBottom: "1px solid #f3f4f6",
-                    fontSize: "0.75rem",
-                    alignItems: "center",
-                  }}
-                >
-                  {schema.columns.map((col, colIdx) => {
-                    const cell = row?.values?.[colIdx];
-                    const isImageCell =
-                      row &&
-                      col.rendererType === "image" &&
-                      cell &&
-                      typeof cell === "object" &&
-                      (cell as any).kind === "image";
-
-                    return (
-                      <Box
-                        key={col.name}
-                        sx={{
-                          px: 1,
-                          py: 0.5,
-                          borderRight: "1px solid #fafafa",
-                          whiteSpace: "nowrap",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          color: row ? "text.primary" : "text.disabled",
-                        }}
-                      >
-                        {!row ? (
-                          "Loading…"
-                        ) : isImageCell && selectedTable ? (
-                          <MetadataImageCell
-                            projectId={numericProjectId}
-                            protocolId={numericProtocolId}
-                            outputName={outputName}
-                            tableName={selectedTable}
-                            rowId={row.id}
-                            columnName={col.name}
-                            cacheRef={imageCacheRef}
-                          />
-                        ) : (
-                          renderTextCellValue(cell, col)
-                        )}
-                      </Box>
-                    );
-                  })}
-                </Box>
-              ))}
-            </Box>
-          ) : schemaLoading ? (
-            <Box
-              sx={{
-                p: 2,
-                display: "flex",
-                gap: 1,
-                alignItems: "center",
-              }}
-            >
-              <CircularProgress size={18} />
-              <Typography variant="body2">Loading rows…</Typography>
-            </Box>
-          ) : (
-            <Box sx={{ p: 2 }}>
-              <Typography variant="body2" color="text.secondary">
-                No rows.
-              </Typography>
-            </Box>
-          )}
-        </Box>
-      </Paper>
+      </Box>
     </Box>
   );
 };
