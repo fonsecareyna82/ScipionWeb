@@ -56,6 +56,9 @@ const IMAGE_COL_MIN_WIDTH = BASE_THUMB_SIZE + 24;
 // Gallery paging
 const GALLERY_PAGE_SIZE = 120;
 
+// Header background color (light gray)
+const HEADER_BG = "#f3f4f6";
+
 /** Observe a DOM element size (content box). */
 function useElementSize<T extends Element>(ref: React.RefObject<T | null>) {
   const [size, setSize] = useState({ width: 0, height: 0 });
@@ -602,7 +605,7 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
   const headerCellSx = {
     ...baseCellSx,
     fontWeight: 600,
-    background: "linear-gradient(135deg, #d8dcdfff, #d8dcdfff)",
+    background: HEADER_BG,
     color: "#0f172a",
     position: "sticky" as const,
     top: 0,
@@ -909,9 +912,7 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
                             left: 0,
                             zIndex: 2,
                             borderRight: "1px solid rgba(148,163,184,0.3)",
-                            backgroundColor: isHighlightedRow
-                              ? "rgba(219,234,254,0.9)"
-                              : "background.paper",
+                            backgroundColor: HEADER_BG
                           }}
                         >
                           {displayRowIndex + 1}
