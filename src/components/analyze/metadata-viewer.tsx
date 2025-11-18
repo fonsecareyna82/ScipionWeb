@@ -1,4 +1,3 @@
-
 // src/components/analyze/metadata-viewer.tsx
 import React, {
   useEffect,
@@ -37,10 +36,11 @@ export type MetadataViewerProps = {
   outputName: string;
 };
 
-const ROW_HEIGHT = 28; // px
-const VIEWPORT_HEIGHT = 480; // px
+const ROW_HEIGHT = 28;        // px
+const VIEWPORT_HEIGHT = 480;  // px
 const PAGE_SIZE = 200;
 const OVERSCAN = 20;
+const COLUMN_WIDTH = 160;     // px, ancho fijo de cada columna
 
 function renderCellValue(cell: MetadataCell | undefined, column: MetadataColumn): string {
   if (cell === undefined || cell === null) return "";
@@ -82,13 +82,11 @@ export const MetadataViewer: React.FC<MetadataViewerProps> = ({
   const [cacheVersion, setCacheVersion] = useState(0);
 
   const [scrollTop, setScrollTop] = useState(0);
-
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   const numericProjectId = projectId;
   const numericProtocolId = protocolId;
 
-  // Derived indices for virtual window
   const visibleCount = Math.ceil(VIEWPORT_HEIGHT / ROW_HEIGHT) + OVERSCAN * 2;
   const startIndex = useMemo(
     () => Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN),
@@ -100,6 +98,12 @@ export const MetadataViewer: React.FC<MetadataViewerProps> = ({
         ? Math.min(totalRows - 1, startIndex + visibleCount - 1)
         : 0,
     [startIndex, visibleCount, totalRows]
+  );
+
+  const gridTemplateColumns = useMemo(
+    () =>
+      schema ? `repeat(${schema.columns.length}, ${COLUMN_WIDTH}px)` : undefined,
+    [schema]
   );
 
   // ---------------------------------------------------------------------------
@@ -149,7 +153,6 @@ export const MetadataViewer: React.FC<MetadataViewerProps> = ({
 
     let cancelled = false;
 
-    // Reset cache and scroll
     pageCacheRef.current = new Map();
     loadingPagesRef.current = new Set();
     setScrollTop(0);
@@ -159,7 +162,7 @@ export const MetadataViewer: React.FC<MetadataViewerProps> = ({
     setSchemaLoading(true);
     setCacheVersion((v) => v + 1);
 
-    // Load schema
+    // Schema
     (async () => {
       try {
         const s = await fetchMetadataTableSchema(
@@ -179,7 +182,7 @@ export const MetadataViewer: React.FC<MetadataViewerProps> = ({
       }
     })();
 
-    // Load first page
+    // First page
     (async () => {
       try {
         loadingPagesRef.current.add(1);
@@ -219,7 +222,7 @@ export const MetadataViewer: React.FC<MetadataViewerProps> = ({
   }, [numericProjectId, numericProtocolId, outputName, selectedTable]);
 
   // ---------------------------------------------------------------------------
-  // Load additional pages on scroll (virtual window)
+  // Load additional pages on scroll
   // ---------------------------------------------------------------------------
   useEffect(() => {
     if (!selectedTable || !schema || totalRows <= 0) return;
@@ -255,8 +258,8 @@ export const MetadataViewer: React.FC<MetadataViewerProps> = ({
             setTotalRows(resp.totalRows);
           }
           setCacheVersion((v) => v + 1);
-        } catch (err) {
-          // You can log the error if needed
+        } catch {
+          // ignore individual page errors for now
         } finally {
           loadingPagesRef.current.delete(page);
         }
@@ -278,15 +281,17 @@ export const MetadataViewer: React.FC<MetadataViewerProps> = ({
   // ---------------------------------------------------------------------------
   const visibleRows = useMemo(
     () => {
-      if (!schema || totalRows === 0) return [] as { index: number; row: MetadataRow | null }[];
-
+      if (!schema || totalRows === 0) {
+        return [] as { index: number; row: MetadataRow | null }[];
+      }
       const items: { index: number; row: MetadataRow | null }[] = [];
       const end = Math.min(endIndex, totalRows - 1);
       for (let i = startIndex; i <= end; i++) {
         const page = Math.floor(i / PAGE_SIZE) + 1;
         const indexInPage = i - (page - 1) * PAGE_SIZE;
         const pageRows = pageCacheRef.current.get(page);
-        const row = pageRows && pageRows[indexInPage] ? pageRows[indexInPage] : null;
+        const row =
+          pageRows && pageRows[indexInPage] ? pageRows[indexInPage] : null;
         items.push({ index: i, row });
       }
       return items;
@@ -300,6 +305,10 @@ export const MetadataViewer: React.FC<MetadataViewerProps> = ({
   };
 
   const innerHeight = totalRows * ROW_HEIGHT;
+  const innerMinWidth =
+    schema && schema.columns.length > 0
+      ? schema.columns.length * COLUMN_WIDTH
+      : undefined;
 
   // ---------------------------------------------------------------------------
   // Render
@@ -336,7 +345,14 @@ export const MetadataViewer: React.FC<MetadataViewerProps> = ({
   return (
     <Box sx={{ p: 1.5, display: "flex", flexDirection: "column", gap: 1.5 }}>
       {/* Toolbar: table selector + info */}
-      <Box sx={{ display: "flex", gap: 2, alignItems: "center", flexWrap: "wrap" }}>
+      <Box
+        sx={{
+          display: "flex",
+          gap: 2,
+          alignItems: "center",
+          flexWrap: "wrap",
+        }}
+      >
         <FormControl size="small" sx={{ minWidth: 240 }}>
           <InputLabel id="metadata-table-label">Table</InputLabel>
           <Select
@@ -347,8 +363,10 @@ export const MetadataViewer: React.FC<MetadataViewerProps> = ({
           >
             {tables.map((t) => (
               <MenuItem key={t.name} value={t.name}>
-                {t.alias || t.name}{" "}
-                {typeof t.rowCount === "number" ? ` (${t.rowCount} rows)` : ""}
+                {t.alias || t.name}
+                {typeof t.rowCount === "number"
+                  ? ` (${t.rowCount} rows)`
+                  : ""}
               </MenuItem>
             ))}
           </Select>
@@ -373,7 +391,7 @@ export const MetadataViewer: React.FC<MetadataViewerProps> = ({
         )}
       </Box>
 
-      {/* Table body with virtual scroll */}
+      {/* Table body with vertical + horizontal scroll */}
       <Paper
         elevation={0}
         sx={{
@@ -389,17 +407,16 @@ export const MetadataViewer: React.FC<MetadataViewerProps> = ({
         {schema && (
           <Box
             sx={{
-              display: "flex",
+              display: "grid",
+              gridTemplateColumns,
               borderBottom: "1px solid #e5e7eb",
               backgroundColor: "#f9fafb",
-              minWidth: "max-content",
             }}
           >
             {schema.columns.map((col) => (
               <Box
                 key={col.name}
                 sx={{
-                  flex: 1,
                   px: 1,
                   py: 0.5,
                   fontSize: "0.75rem",
@@ -422,14 +439,20 @@ export const MetadataViewer: React.FC<MetadataViewerProps> = ({
           sx={{
             position: "relative",
             height: VIEWPORT_HEIGHT,
-            overflow: "auto",
-            minWidth: "max-content",
+            overflowX: "auto",
+            overflowY: "auto",
             backgroundColor: "#ffffff",
           }}
           onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
         >
           {schema && totalRows > 0 ? (
-            <Box sx={{ position: "relative", height: innerHeight }}>
+            <Box
+              sx={{
+                position: "relative",
+                height: innerHeight,
+                minWidth: innerMinWidth,
+              }}
+            >
               {visibleRows.map(({ index, row }) => (
                 <Box
                   key={row ? row.id : `placeholder-${index}`}
@@ -437,12 +460,12 @@ export const MetadataViewer: React.FC<MetadataViewerProps> = ({
                     position: "absolute",
                     top: index * ROW_HEIGHT,
                     left: 0,
-                    right: 0,
-                    display: "flex",
+                    display: "grid",
+                    gridTemplateColumns,
+                    height: ROW_HEIGHT,
                     borderBottom: "1px solid #f3f4f6",
-                    minHeight: ROW_HEIGHT,
-                    alignItems: "center",
                     fontSize: "0.75rem",
+                    alignItems: "center",
                   }}
                 >
                   {schema.columns.map((col, colIdx) => {
@@ -451,7 +474,6 @@ export const MetadataViewer: React.FC<MetadataViewerProps> = ({
                       <Box
                         key={col.name}
                         sx={{
-                          flex: 1,
                           px: 1,
                           py: 0.5,
                           borderRight: "1px solid #fafafa",
@@ -492,4 +514,3 @@ export const MetadataViewer: React.FC<MetadataViewerProps> = ({
     </Box>
   );
 };
-
