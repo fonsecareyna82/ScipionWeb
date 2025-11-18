@@ -26,6 +26,7 @@ import {
   fetchMetadataTablePage,
   fetchMetadataTableSchema,
   fetchOutputMetadataTables,
+  fetchMetadataImageCellObjectUrl,
 } from "@/api/projects";
 
 type Id = string | number;
@@ -36,13 +37,19 @@ export type MetadataViewerProps = {
   outputName: string;
 };
 
-const ROW_HEIGHT = 28;        // px
-const VIEWPORT_HEIGHT = 480;  // px
+const ROW_HEIGHT = 32;        // slightly taller to fit thumbnails
+const VIEWPORT_HEIGHT = 480;
 const PAGE_SIZE = 200;
 const OVERSCAN = 20;
-const COLUMN_WIDTH = 160;     // px, ancho fijo de cada columna
+const COLUMN_WIDTH = 160;     // fixed column width in px
 
-function renderCellValue(cell: MetadataCell | undefined, column: MetadataColumn): string {
+type ImageCacheEntry = { url: string; revoke: () => void };
+type ImageCache = Map<string, ImageCacheEntry>;
+
+function renderTextCellValue(
+  cell: MetadataCell | undefined,
+  column: MetadataColumn
+): string {
   if (cell === undefined || cell === null) return "";
   if (typeof cell === "number") {
     if (column.rendererType === "float" && column.decimals != null) {
@@ -60,6 +67,157 @@ function renderCellValue(cell: MetadataCell | undefined, column: MetadataColumn)
   return String(cell as any);
 }
 
+type MetadataImageCellProps = {
+  projectId: Id;
+  protocolId: Id;
+  outputName: string;
+  tableName: string;
+  rowId: number | string;
+  columnName: string;
+  cacheRef: React.MutableRefObject<ImageCache>;
+};
+
+const MetadataImageCell: React.FC<MetadataImageCellProps> = ({
+  projectId,
+  protocolId,
+  outputName,
+  tableName,
+  rowId,
+  columnName,
+  cacheRef,
+}) => {
+  const cacheKey = `${tableName}|${columnName}|${rowId}`;
+  const [url, setUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const existing = cacheRef.current.get(cacheKey);
+    if (existing) {
+      setUrl(existing.url);
+      setLoading(false);
+      setError(null);
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const { url: objUrl, revoke } = await fetchMetadataImageCellObjectUrl(
+          projectId,
+          protocolId,
+          outputName,
+          tableName,
+          rowId,
+          columnName,
+          {
+            size: 64,
+            applyTransform: false,
+            inline: true,
+            format: "png",
+          }
+        );
+        if (cancelled || !mountedRef.current) {
+          revoke();
+          return;
+        }
+        cacheRef.current.set(cacheKey, { url: objUrl, revoke });
+        setUrl(objUrl);
+      } catch (e: any) {
+        if (!cancelled && mountedRef.current) {
+          setError(e?.message || "Image error");
+        }
+      } finally {
+        if (!cancelled && mountedRef.current) {
+          setLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    cacheKey,
+    cacheRef,
+    projectId,
+    protocolId,
+    outputName,
+    tableName,
+    rowId,
+    columnName,
+  ]);
+
+  if (loading && !url) {
+    return (
+      <Box
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          height: "100%",
+        }}
+      >
+        <CircularProgress size={14} />
+      </Box>
+    );
+  }
+
+  if (error && !url) {
+    return (
+      <Box
+        sx={{
+          fontSize: "0.7rem",
+          color: "error.main",
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+        }}
+        title={error}
+      >
+        {error}
+      </Box>
+    );
+  }
+
+  if (!url) {
+    return null;
+  }
+
+  return (
+    <Box
+      sx={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "flex-start",
+        height: "100%",
+      }}
+    >
+      <img
+        src={url}
+        alt="cell thumbnail"
+        style={{
+          width: 24,
+          height: 24,
+          objectFit: "cover",
+          borderRadius: 2,
+          display: "block",
+        }}
+      />
+    </Box>
+  );
+};
+
 export const MetadataViewer: React.FC<MetadataViewerProps> = ({
   projectId,
   protocolId,
@@ -76,7 +234,6 @@ export const MetadataViewer: React.FC<MetadataViewerProps> = ({
 
   const [totalRows, setTotalRows] = useState<number>(0);
 
-  // Page cache: pageNumber -> rows
   const pageCacheRef = useRef<Map<number, MetadataRow[]>>(new Map());
   const loadingPagesRef = useRef<Set<number>>(new Set());
   const [cacheVersion, setCacheVersion] = useState(0);
@@ -84,10 +241,13 @@ export const MetadataViewer: React.FC<MetadataViewerProps> = ({
   const [scrollTop, setScrollTop] = useState(0);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
+  const imageCacheRef = useRef<ImageCache>(new Map());
+
   const numericProjectId = projectId;
   const numericProtocolId = protocolId;
 
-  const visibleCount = Math.ceil(VIEWPORT_HEIGHT / ROW_HEIGHT) + OVERSCAN * 2;
+  const visibleCount =
+    Math.ceil(VIEWPORT_HEIGHT / ROW_HEIGHT) + OVERSCAN * 2;
   const startIndex = useMemo(
     () => Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN),
     [scrollTop]
@@ -102,9 +262,32 @@ export const MetadataViewer: React.FC<MetadataViewerProps> = ({
 
   const gridTemplateColumns = useMemo(
     () =>
-      schema ? `repeat(${schema.columns.length}, ${COLUMN_WIDTH}px)` : undefined,
+      schema
+        ? `repeat(${schema.columns.length}, ${COLUMN_WIDTH}px)`
+        : undefined,
     [schema]
   );
+
+  // ---------------------------------------------------------------------------
+  // Clean image cache when table/output/protocol/project changes or unmount
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    return () => {
+      const cache = imageCacheRef.current;
+      for (const entry of cache.values()) {
+        entry.revoke();
+      }
+      cache.clear();
+    };
+  }, []);
+
+  useEffect(() => {
+    const cache = imageCacheRef.current;
+    for (const entry of cache.values()) {
+      entry.revoke();
+    }
+    cache.clear();
+  }, [selectedTable, numericProjectId, numericProtocolId, outputName]);
 
   // ---------------------------------------------------------------------------
   // Load tables list
@@ -470,6 +653,13 @@ export const MetadataViewer: React.FC<MetadataViewerProps> = ({
                 >
                   {schema.columns.map((col, colIdx) => {
                     const cell = row?.values?.[colIdx];
+                    const isImageCell =
+                      row &&
+                      col.rendererType === "image" &&
+                      cell &&
+                      typeof cell === "object" &&
+                      (cell as any).kind === "image";
+
                     return (
                       <Box
                         key={col.name}
@@ -483,7 +673,21 @@ export const MetadataViewer: React.FC<MetadataViewerProps> = ({
                           color: row ? "text.primary" : "text.disabled",
                         }}
                       >
-                        {row ? renderCellValue(cell, col) : "Loading…"}
+                        {!row ? (
+                          "Loading…"
+                        ) : isImageCell && selectedTable ? (
+                          <MetadataImageCell
+                            projectId={numericProjectId}
+                            protocolId={numericProtocolId}
+                            outputName={outputName}
+                            tableName={selectedTable}
+                            rowId={row.id}
+                            columnName={col.name}
+                            cacheRef={imageCacheRef}
+                          />
+                        ) : (
+                          renderTextCellValue(cell, col)
+                        )}
                       </Box>
                     );
                   })}
