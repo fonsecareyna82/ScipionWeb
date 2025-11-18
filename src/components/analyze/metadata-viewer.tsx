@@ -33,14 +33,19 @@ type MetadataViewerProps = {
 };
 
 type SelectedImageCell = {
-  rowIndex: number;
+  rowId: number | string;
   columnName: string;
 };
 
-const BASE_THUMB_SIZE = 160; // slightly larger thumbnails
+const BASE_THUMB_SIZE = 160;
 const NORMAL_ROW_HEIGHT = 32;
 const IMAGE_ROW_HEIGHT = BASE_THUMB_SIZE + 16;
 const EXTRA_BUFFER_ROWS = 10;
+
+// Widths for table layout
+const ROW_INDEX_COL_WIDTH = 52;
+const MIN_TEXT_COL_WIDTH = 140;
+const IMAGE_COL_MIN_WIDTH = BASE_THUMB_SIZE + 24;
 
 /** Observe a DOM element size (content box). */
 function useElementSize<T extends Element>(ref: React.RefObject<T | null>) {
@@ -83,6 +88,9 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
   const [selectedImageCell, setSelectedImageCell] = useState<SelectedImageCell | null>(null);
   const imageCacheRef = useRef<Map<string, { url: string; revoke: () => void }>>(new Map());
 
+  // Row selection (full row)
+  const [selectedRowId, setSelectedRowId] = useState<string | number | null>(null);
+
   // Scroll container ref and size
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const { height: viewportHeight } = useElementSize(scrollRef);
@@ -104,11 +112,7 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
       try {
         setTablesLoading(true);
         setTablesError(null);
-        const list = await (svc as any).fetchOutputMetadataTables(
-          projectId,
-          protocolId,
-          outputName,
-        );
+        const list = await svc.fetchOutputMetadataTables(projectId, protocolId, outputName);
         if (cancelled) return;
         setTables(list || []);
         if (!selectedTable && list && list.length > 0) {
@@ -135,7 +139,7 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
     setWindowOffset(0);
     setWindowError(null);
     setSelectedImageCell(null);
-    // Clear image cache when switching table
+    setSelectedRowId(null);
     for (const [, entry] of imageCacheRef.current) entry.revoke();
     imageCacheRef.current.clear();
   };
@@ -158,12 +162,7 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
       try {
         setSchemaLoading(true);
         setSchemaError(null);
-        const s = await (svc as any).fetchMetadataTableSchema(
-          projectId,
-          protocolId,
-          outputName,
-          selectedTable,
-        );
+        const s = await svc.fetchMetadataTableSchema(projectId, protocolId, outputName, selectedTable);
         if (cancelled) return;
         setSchema(s);
       } catch (e: any) {
@@ -188,11 +187,11 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
 
   const rowHeight = hasImageColumns ? IMAGE_ROW_HEIGHT : NORMAL_ROW_HEIGHT;
 
-  // Desired window size (only rows that can be visible + small buffer)
+  // Desired window size (rows that can be visible + buffer, a bit larger to reduce blanks)
   const desiredWindowSize = useMemo(() => {
     if (!rowHeight || viewportHeight <= 0) return 60;
     const approxVisible = Math.ceil(viewportHeight / rowHeight);
-    return approxVisible + EXTRA_BUFFER_ROWS;
+    return approxVisible * 2 + EXTRA_BUFFER_ROWS;
   }, [viewportHeight, rowHeight]);
 
   const desiredWindowSizeRef = useRef(desiredWindowSize);
@@ -206,8 +205,7 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
     const total = totalRows;
 
     const maxOffset = total > 0 ? Math.max(0, total - limit) : 0;
-    const clampedOffset =
-      total > 0 ? Math.min(Math.max(0, offset), maxOffset) : Math.max(0, offset);
+    const clampedOffset = total > 0 ? Math.min(Math.max(0, offset), maxOffset) : Math.max(0, offset);
 
     const reqId = ++lastRequestRef.current;
     setWindowLoading(true);
@@ -221,7 +219,6 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
         { offset: clampedOffset, limit, selectionOnly: false },
       );
       if (lastRequestRef.current !== reqId) {
-        // stale request
         if (win && win.rows) {
           for (const [, entry] of imageCacheRef.current) entry.revoke();
           imageCacheRef.current.clear();
@@ -257,12 +254,11 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
 
   const handleScroll: React.UIEventHandler<HTMLDivElement> = (e) => {
     if (!schema || !selectedTable || totalRows === 0 || rowHeight <= 0) return;
-    if (windowLoading) return;
 
     const el = e.currentTarget;
     const scrollTop = el.scrollTop;
-
     const firstVisible = Math.floor(scrollTop / rowHeight);
+
     const limit = desiredWindowSizeRef.current || windowRows.length || 60;
     const buffer = Math.floor(limit / 3);
     const total = totalRows;
@@ -273,20 +269,11 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
     if (targetOffset > maxOffset) targetOffset = maxOffset;
 
     const distance = Math.abs(targetOffset - windowOffset);
-    const viewportBottom = scrollTop + viewportHeight;
-    const totalHeight = total * rowHeight;
-    const nearBottom = total > 0 && viewportHeight > 0 && viewportBottom + rowHeight >= totalHeight;
-
-    if (nearBottom) {
-      targetOffset = maxOffset;
+    if (distance < Math.max(5, Math.floor(buffer / 2))) {
+      return;
     }
 
-    if (
-      distance >= Math.max(5, Math.floor(limit / 2)) ||
-      (nearBottom && windowOffset !== maxOffset)
-    ) {
-      void loadWindow(targetOffset);
-    }
+    void loadWindow(targetOffset);
   };
 
   const topSpacerHeight = totalRows > 0 ? windowOffset * rowHeight : 0;
@@ -320,7 +307,7 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
 
   type MetadataImageCellProps = {
     tableName: string;
-    rowIndex: number;
+    rowId: number | string;
     columnName: string;
     cell: { kind: "image"; path: string };
     size: number;
@@ -330,7 +317,7 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
 
   const MetadataImageCell: React.FC<MetadataImageCellProps> = ({
     tableName,
-    rowIndex,
+    rowId,
     columnName,
     cell,
     size,
@@ -342,7 +329,8 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
-      const key = `${tableName}|${rowIndex}|${columnName}|${cell.path}|${size}`;
+      const rowIdNum = Number(rowId);
+      const key = `${tableName}|${rowIdNum}|${columnName}|${cell.path}|${size}`;
       const cached = imageCacheRef.current.get(key);
       if (cached) {
         setThumbUrl(cached.url);
@@ -356,12 +344,12 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
 
       (async () => {
         try {
-          const { url, revoke } = await (svc as any).fetchMetadataImageCellObjectUrl(
+          const { url, revoke } = await svc.fetchMetadataImageCellObjectUrl(
             projectId,
             protocolId,
             outputName,
             tableName,
-            rowIndex,
+            rowIdNum,
             columnName,
             { size, applyTransform: false, inline: true, format: "png" },
           );
@@ -381,7 +369,7 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
       return () => {
         cancelled = true;
       };
-    }, [cell.path, columnName, projectId, protocolId, outputName, rowIndex, size, svc, tableName]);
+    }, [cell.path, columnName, projectId, protocolId, outputName, rowId, size, svc, tableName]);
 
     const borderColor = isSelected ? "#2563eb" : "rgba(148,163,184,0.6)";
 
@@ -398,7 +386,7 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
           borderRadius: 1,
           border: `1px solid ${borderColor}`,
           overflow: "hidden",
-          bgcolor: "background.paper",
+          bgcolor: "#020617",
         }}
       >
         {loading ? (
@@ -428,14 +416,17 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
     textOverflow: "ellipsis" as const,
     overflow: "hidden" as const,
     borderBottom: "1px solid rgba(148,163,184,0.25)",
+    borderRight: "1px solid rgba(148,163,184,0.25)",
     fontSize: "0.75rem",
     lineHeight: 1.4,
+    backgroundColor: "background.paper",
   };
 
   const headerCellSx = {
     ...baseCellSx,
     fontWeight: 600,
-    backgroundColor: "background.paper",
+    background: "linear-gradient(135deg, #d8dcdfff, #d8dcdfff)",
+    color: "#0f172a",
     position: "sticky" as const,
     top: 0,
     zIndex: 1,
@@ -443,8 +434,27 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
 
   const hasData = !!schema && totalRows > 0;
 
+  const tableMinWidth = useMemo(() => {
+    if (!schema) return undefined;
+    const imageCols = schema.columns.filter((c) => c.rendererType === "image").length;
+    const textCols = schema.columns.length - imageCols;
+    const total =
+      ROW_INDEX_COL_WIDTH +
+      textCols * MIN_TEXT_COL_WIDTH +
+      imageCols * IMAGE_COL_MIN_WIDTH;
+    return total;
+  }, [schema]);
+
   return (
-    <Box sx={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 400 }}>
+    <Box
+      sx={{
+        display: "flex",
+        flexDirection: "column",
+        height: "100%",
+        minHeight: 480,
+        mt: 2,
+      }}
+    >
       {/* Header: table selector + info */}
       <Box
         sx={{
@@ -528,11 +538,12 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
             mt: 1,
             flex: 1,
             minHeight: 320,
-            maxHeight: 520,
+            maxHeight: 660,
+            minWidth: 750,
             display: "flex",
             flexDirection: "column",
             borderColor: "rgba(148,163,184,0.4)",
-            backgroundColor: "background.default",
+            backgroundColor: "background.paper",
           }}
         >
           <TableContainer
@@ -547,18 +558,43 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
               size="small"
               stickyHeader
               sx={{
-                minWidth: schema.columns.length * 140,
+                minWidth: tableMinWidth || 700,
                 tableLayout: "fixed",
+                borderCollapse: "collapse",
               }}
             >
               <TableHead>
                 <TableRow>
+                  {/* Row index column header */}
+                  <TableCell
+                    sx={{
+                      ...headerCellSx,
+                      width: ROW_INDEX_COL_WIDTH,
+                      minWidth: ROW_INDEX_COL_WIDTH,
+                      maxWidth: ROW_INDEX_COL_WIDTH,
+                      textAlign: "right",
+                      pr: 1,
+                      left: 0,
+                      zIndex: 3,
+                      borderRight: "1px solid rgba(148,163,184,0.6)",
+                    }}
+                  >
+                    #
+                  </TableCell>
+
                   {schema.columns.map((col: MetadataColumn) => (
                     <TableCell
                       key={col.name}
                       sx={{
                         ...headerCellSx,
-                        minWidth: col.rendererType === "image" ? BASE_THUMB_SIZE + 24 : 140,
+                        minWidth:
+                          col.rendererType === "image"
+                            ? IMAGE_COL_MIN_WIDTH
+                            : MIN_TEXT_COL_WIDTH,
+                        width:
+                          col.rendererType === "image"
+                            ? IMAGE_COL_MIN_WIDTH
+                            : MIN_TEXT_COL_WIDTH,
                       }}
                     >
                       {col.alias || col.name}
@@ -570,37 +606,73 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
                 {topSpacerHeight > 0 && (
                   <TableRow style={{ height: topSpacerHeight }}>
                     <TableCell
-                      colSpan={schema.columns.length}
+                      colSpan={schema.columns.length + 1}
                       sx={{ padding: 0, borderBottom: "none" }}
                     />
                   </TableRow>
                 )}
 
-                {windowRows.map((row: MetadataRow, rowIdxInWindow: number) => {
-                  // Backend sets row.id = offset + localIndex (0-based global index)
-                  const globalIndex = windowOffset + rowIdxInWindow;
-                  const isHighlightedRow =
-                    selectedImageCell && selectedImageCell.rowIndex === globalIndex;
+                {windowRows.map((row: MetadataRow, rowIndexInWindow: number) => {
+                  const displayRowNumber = windowOffset + rowIndexInWindow + 1;
+                  const isSelectedRow =
+                    selectedRowId !== null &&
+                    String(selectedRowId) === String(row.id ?? displayRowNumber);
+                  const hasSelectedImageCell =
+                    selectedImageCell && String(selectedImageCell.rowId) === String(row.id);
+                  const isHighlightedRow = isSelectedRow || Boolean(hasSelectedImageCell);
 
                   return (
                     <TableRow
-                      key={globalIndex}
+                      key={row.id ?? `${windowOffset}-${rowIndexInWindow}`}
                       hover
+                      selected={isSelectedRow}
+                      onClick={() => {
+                        const idForSelection = row.id ?? displayRowNumber;
+                        setSelectedRowId(idForSelection);
+                      }}
                       sx={{
                         height: rowHeight,
+                        cursor: "pointer",
                         backgroundColor: isHighlightedRow
-                          ? "rgba(37,99,235,0.08)"
+                          ? "rgba(219,234,254,0.9)"
                           : "transparent",
                       }}
                     >
+                      {/* Row index sticky cell */}
+                      <TableCell
+                        sx={{
+                          ...baseCellSx,
+                          height: rowHeight,
+                          width: ROW_INDEX_COL_WIDTH,
+                          minWidth: ROW_INDEX_COL_WIDTH,
+                          maxWidth: ROW_INDEX_COL_WIDTH,
+                          textAlign: "right",
+                          pr: 1,
+                          position: "sticky",
+                          left: 0,
+                          zIndex: 2,
+                          borderRight: "1px solid rgba(148,163,184,0.3)",
+                          background: isHighlightedRow
+                            ? "linear-gradient(135deg, #c7d2fe, #e5e7eb)"
+                            : "linear-gradient(135deg, #d8dcdfff, #d8dcdfff)",
+                        }}
+                      >
+                        {displayRowNumber}
+                      </TableCell>
+
                       {schema.columns.map((col) => {
-                        const v = (row as any).values[col.index];
+                        const v = row.values[col.index];
                         const isImageColumn = col.rendererType === "image";
                         const isSelectedImage =
                           isImageColumn &&
                           selectedImageCell &&
-                          selectedImageCell.rowIndex === globalIndex &&
+                          selectedImageCell.rowId === row.id &&
                           selectedImageCell.columnName === col.name;
+
+                        const cellWidth =
+                          col.rendererType === "image"
+                            ? IMAGE_COL_MIN_WIDTH
+                            : MIN_TEXT_COL_WIDTH;
 
                         if (
                           isImageColumn &&
@@ -616,18 +688,21 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
                                 ...baseCellSx,
                                 height: rowHeight,
                                 verticalAlign: "middle",
+                                width: cellWidth,
+                                minWidth: cellWidth,
+                                maxWidth: cellWidth,
                               }}
                             >
                               <MetadataImageCell
                                 tableName={selectedTable}
-                                rowIndex={globalIndex}
+                                rowId={row.id ?? displayRowNumber}
                                 columnName={col.name}
                                 cell={cell}
                                 size={BASE_THUMB_SIZE}
                                 isSelected={Boolean(isSelectedImage)}
                                 onClick={() =>
                                   setSelectedImageCell({
-                                    rowIndex: globalIndex,
+                                    rowId: row.id ?? displayRowNumber,
                                     columnName: col.name,
                                   })
                                 }
@@ -643,6 +718,9 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
                               ...baseCellSx,
                               height: rowHeight,
                               verticalAlign: "middle",
+                              width: cellWidth,
+                              minWidth: cellWidth,
+                              maxWidth: cellWidth,
                             }}
                             title={typeof v === "string" ? v : undefined}
                           >
@@ -657,7 +735,7 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
                 {bottomSpacerHeight > 0 && (
                   <TableRow style={{ height: bottomSpacerHeight }}>
                     <TableCell
-                      colSpan={schema.columns.length}
+                      colSpan={schema.columns.length + 1}
                       sx={{ padding: 0, borderBottom: "none" }}
                     />
                   </TableRow>
