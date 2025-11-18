@@ -912,7 +912,7 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
                             left: 0,
                             zIndex: 2,
                             borderRight: "1px solid rgba(148,163,184,0.3)",
-                            backgroundColor: HEADER_BG
+                            backgroundColor: HEADER_BG,
                           }}
                         >
                           {displayRowIndex + 1}
