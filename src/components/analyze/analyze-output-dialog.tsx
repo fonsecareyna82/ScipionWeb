@@ -9,9 +9,9 @@ import {
   Typography,
   Chip,
 } from "@mui/material";
-import VolumeViewer from "./volume-viewer";
 import { CloseIcon } from "@/icons";
 import { MetadataViewer } from "./metadata-viewer";
+import VolumeViewer from "./volume-viewer";
 
 type AnalyzeOutputDialogProps = {
   open: boolean;

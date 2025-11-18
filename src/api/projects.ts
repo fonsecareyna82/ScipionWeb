@@ -474,7 +474,7 @@ export async function fetchMetadataImageCellObjectUrl(
   protocolId: Id,
   outputName: string,
   tableName: string,
-  rowId: number | string,
+  rowIndex: number | string,
   columnName: string,
   opts: {
     size?: number;
@@ -491,7 +491,7 @@ export async function fetchMetadataImageCellObjectUrl(
     Number(protocolId),
     outputName,
     tableName,
-    rowId,
+    rowIndex,
     columnName,
     { size, applyTransform, inline, format },
   );
@@ -513,7 +513,7 @@ export function getMetadataImageCellUrl(
   protocolId: number,
   outputName: string,
   tableName: string,
-  rowId: number | string,
+  rowIndex: number | string,
   columnName: string,
   opts: {
     size?: number;
@@ -525,7 +525,8 @@ export function getMetadataImageCellUrl(
   const { size = 256, applyTransform = false, inline = true, format = "png" } = opts;
 
   const params = new URLSearchParams();
-  params.set("rowId", String(rowId));
+  // 0-based index in the current table order
+  params.set("rowIndex", String(rowIndex));
   params.set("column", columnName);
   params.set("size", String(size));
   params.set("applyTransform", String(applyTransform));
@@ -536,3 +537,56 @@ export function getMetadataImageCellUrl(
     tableName,
   )}/image?${params.toString()}`;
 }
+
+
+export interface MetadataWindow {
+  offset?: number;
+  limit?: number;
+  rows: MetadataRow[];
+}
+
+export async function fetchMetadataTableWindow(
+  projectId: Id,
+  protocolId: Id,
+  outputName: string,
+  tableName: string,
+  opts: {
+    offset?: number;
+    limit?: number;
+    selectionOnly?: boolean;
+  } = {},
+): Promise<MetadataWindow> {
+  const { offset = 0, limit = 100, selectionOnly = false } = opts;
+
+  const params = new URLSearchParams();
+  params.set("offset", String(offset));
+  params.set("limit", String(limit));
+  params.set("selectionOnly", String(selectionOnly));
+
+  const enc = encodeURIComponent;
+  const base = `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/outputs/${enc(
+    outputName,
+  )}/metadata/tables/${enc(tableName)}/rows`;
+  const url = `${base}?${params.toString()}`;
+
+  const res = await fetchWithAuth(url, { method: "GET" });
+  if (!res.ok) throw await toApiError(res, "Failed to fetch metadata rows window");
+
+  const data = await safeJson<any>(res);
+
+  // Backend puede devolver directamente el array de rows
+  if (Array.isArray(data)) {
+    return { rows: data as MetadataRow[] };
+  }
+  // O un objeto { offset, limit, rows }
+  if (data && Array.isArray(data.rows)) {
+    return {
+      offset: typeof data.offset === "number" ? data.offset : offset,
+      limit: typeof data.limit === "number" ? data.limit : limit,
+      rows: data.rows as MetadataRow[],
+    };
+  }
+
+  throw new Error("Unexpected response format for metadata rows window");
+}
+

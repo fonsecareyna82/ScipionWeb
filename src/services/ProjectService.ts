@@ -37,13 +37,60 @@ export type VolumeSliceOptions = {
   format?: string;
 };
 
-
 export type VolumeSliceObjectUrl = {
   url: string;
   revoke: () => void;
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Metadata table basic types (en paralelo a los de api/projects.ts)
+// ─────────────────────────────────────────────────────────────────────────────
 
+export type MetadataRendererType = "int" | "float" | "bool" | "matrix" | "image" | "str";
+
+export interface MetadataColumn {
+  name: string;
+  alias: string;
+  index: number;
+  sortable: boolean;
+  visible: boolean;
+  rendererType: MetadataRendererType;
+  decimals: number | null;
+  hasTransformation: boolean;
+}
+
+export interface MetadataTableInfo {
+  name: string;
+  alias: string;
+  rowCount: number;
+  hasColumnId: boolean;
+}
+
+export interface MetadataTableSchema {
+  name: string;
+  alias: string;
+  hasColumnId: boolean;
+  columns: MetadataColumn[];
+}
+
+export type MetadataCell =
+  | number
+  | string
+  | boolean
+  | { kind: "image"; path: string }
+  | { kind: "matrix"; value: any };
+
+export interface MetadataRow {
+  id: number;
+  values: MetadataCell[];
+}
+
+export interface MetadataPage {
+  pageNumber: number;
+  pageSize: number;
+  totalRows: number;
+  rows: MetadataRow[];
+}
 
 /**
  * Optional generics to let consumers specify concrete return shapes.
@@ -51,7 +98,6 @@ export type VolumeSliceObjectUrl = {
  * - TProjectList: shape of the projects list (array or paginated object)
  * - TProtocol: shape of a single protocol / protocol details
  */
-
 export interface ProjectService<
   TProject = any,
   TProjectList = any,
@@ -99,40 +145,47 @@ export interface ProjectService<
   ): Promise<TProtocol>;
 
   /** Protocol actions */
-  renameProtocol(projectId: Id, protocolId: Id, newName: string): Promise<TProtocol>
-  duplicateProtocol(projectId: Id, items: { id: string; name?: string }[],): Promise<TProtocol>
-  deleteProtocol(projectId: Id, ids: string[]): Promise<TProtocol>
-  restartAll(projectId: Id, protocolId: Id): Promise<TProject>
-  continueAll(projectId: Id, protocolId: Id): Promise<TProject>
-  resetFrom(projectId: Id, protocolId: Id): Promise<TProject>
-  stopProtocol(projectId: Id, ids: string[]): Promise<TProject>
-  resolveProtocolStartPath(projectId: Id, pid: string): Promise<TProject>
-  listRemoteDirectory(projectId: Id, protocolId: Id, path: string): Promise<TProject>
-  previewProtocolText(projectId: Id, id: string, path: string): Promise<TProject>
-  buildProtocolDownloadUrl(projectId: string, protocolId: string, path: string, inline: boolean): string
-  fetchProtocolInlinePreviewBlob(projectId: string, protocolId: string, path: string): Promise<{ blob: Blob; meta: any }>
-  fetchOutputPreview(projectId: string, protocolId: string, path: string, opts?: { table?: string }): Promise<any>
+  renameProtocol(projectId: Id, protocolId: Id, newName: string): Promise<TProtocol>;
+  duplicateProtocol(
+    projectId: Id,
+    items: { id: string; name?: string }[],
+  ): Promise<TProtocol>;
+  deleteProtocol(projectId: Id, ids: string[]): Promise<TProtocol>;
+  restartAll(projectId: Id, protocolId: Id): Promise<TProject>;
+  continueAll(projectId: Id, protocolId: Id): Promise<TProject>;
+  resetFrom(projectId: Id, protocolId: Id): Promise<TProject>;
+  stopProtocol(projectId: Id, ids: string[]): Promise<TProject>;
+  resolveProtocolStartPath(projectId: Id, pid: string): Promise<TProject>;
+  listRemoteDirectory(projectId: Id, protocolId: Id, path: string): Promise<TProject>;
+  previewProtocolText(projectId: Id, id: string, path: string): Promise<TProject>;
+  buildProtocolDownloadUrl(
+    projectId: string,
+    protocolId: string,
+    path: string,
+    inline: boolean
+  ): string;
+  fetchProtocolInlinePreviewBlob(
+    projectId: string,
+    protocolId: string,
+    path: string
+  ): Promise<{ blob: Blob; meta: any }>;
+  fetchOutputPreview(
+    projectId: string,
+    protocolId: string,
+    path: string,
+    opts?: { table?: string }
+  ): Promise<any>;
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // Analyze Results (Volumes) — used by the upcoming "Analyze Results" button.
-  // Works for Volume, VolumeMask (single item) and SetOfVolumes (multiple).
+  // Analyze Results (Volumes) — used by the "Analyze Results" viewer.
   // ─────────────────────────────────────────────────────────────────────────────
 
-  /**
-   * List volumes contained in an output.
-   * - For Volume / VolumeMask: return a single item.
-   * - For SetOfVolumes: return one item per member.
-   */
   listOutputVolumes(
     projectId: Id,
     protocolId: Id,
     outputName: string
   ): Promise<VolumeListItem[]>;
 
-  /**
-   * Get basic info for a specific volume to initialize the slice viewer.
-   * UI expects "slices" to be the total count along the selected axis (default Z).
-   */
   getVolumeInfo(
     projectId: Id,
     protocolId: Id,
@@ -140,11 +193,6 @@ export interface ProjectService<
     volumeId: Id
   ): Promise<VolumeInfo>;
 
-  /**
-   * Build a URL to fetch a specific slice image for a given volume.
-   * This is synchronous because the caller only needs the URL string.
-   * The server should honor the 1-based "sliceIndex" from the UI.
-   */
   buildVolumeSliceUrl(
     projectId: Id,
     protocolId: Id,
@@ -162,4 +210,94 @@ export interface ProjectService<
     sliceIndex: number,
     opts?: VolumeSliceOptions
   ): Promise<VolumeSliceObjectUrl>;
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Analyze Results (Metadata tables + thumbnails)
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  fetchOutputMetadataTables(
+    projectId: Id,
+    protocolId: Id,
+    outputName: string
+  ): Promise<MetadataTableInfo[]>;
+
+  fetchMetadataTableSchema(
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    tableName: string
+  ): Promise<MetadataTableSchema>;
+
+  fetchMetadataTablePage(
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    tableName: string,
+    opts?: {
+      page?: number;
+      pageSize?: number;
+      sortBy?: string;
+      asc?: boolean;
+      selectionOnly?: boolean;
+    }
+  ): Promise<MetadataPage>;
+
+  exportMetadataTable(
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    tableName: string,
+    opts?: {
+      format?: "csv" | "xlsx";
+      selectionOnly?: boolean;
+      ids?: number[];
+    }
+  ): Promise<Blob>;
+
+  fetchMetadataTableWindow(
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    tableName: string,
+    opts?: {
+      offset?: number;
+      limit?: number;
+      selectionOnly?: boolean;
+    }
+  ): Promise<{
+    offset: number;
+    limit: number;
+    totalRows: number;
+    rows: MetadataRow[];
+  }>;
+
+  fetchMetadataImageCellObjectUrl(
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    tableName: string,
+    rowIndex: number,
+    columnName: string,
+    opts?: {
+      size?: number;
+      applyTransform?: boolean;
+      inline?: boolean;
+      format?: string;
+    }
+  ): Promise<{ url: string; revoke: () => void }>;
+
+  getMetadataImageCellUrl(
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    tableName: string,
+    rowIndex: number,
+    columnName: string,
+    opts?: {
+      size?: number;
+      applyTransform?: boolean;
+      inline?: boolean;
+      format?: string;
+    }
+  ): string;
 }

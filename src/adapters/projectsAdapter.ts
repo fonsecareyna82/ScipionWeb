@@ -1,6 +1,7 @@
 // src/adapters/projectsAdapter.ts
 import { fetchWithAuth } from "@/api/auth";
 import * as api from "@/api/projects";
+import { BASE_URL } from "@/config";
 import type {
   ProjectService,
   ProjectPayload,
@@ -36,11 +37,17 @@ const defaultService: ProjectService = {
   loadProtocols: (projectId: Id) => api.loadProtocols(Number(projectId)),
 
   // --- Protocol actions ---
-  executeProtocol: (protocolId: Id, protocolClassName: string, params: Record<string, unknown>) =>
-    api.executeProtocol(toId(protocolId), protocolClassName, params),
+  executeProtocol: (
+    protocolId: Id,
+    protocolClassName: string,
+    params: Record<string, unknown>,
+  ) => api.executeProtocol(toId(protocolId), protocolClassName, params),
 
-  saveProtocol: (protocolId: Id, protocolClassName: string, params: Record<string, unknown>) =>
-    api.saveProtocol(toId(protocolId), protocolClassName, params),
+  saveProtocol: (
+    protocolId: Id,
+    protocolClassName: string,
+    params: Record<string, unknown>,
+  ) => api.saveProtocol(toId(protocolId), protocolClassName, params),
 
   renameProtocol: (projectId: Id, protocolId: Id, newName: string) =>
     api.renameProtocol(toId(projectId), toId(protocolId), newName),
@@ -72,21 +79,39 @@ const defaultService: ProjectService = {
   previewProtocolText: (projectId: Id, protocolId: Id, path: string) =>
     api.previewProtocolText(toId(projectId), toId(protocolId), path),
 
-  buildProtocolDownloadUrl: (projectId: Id, protocolId: Id, path: string, inline: boolean) =>
-    api.buildProtocolDownloadUrl(toId(projectId), toId(protocolId), path, inline),
+  buildProtocolDownloadUrl: (
+    projectId: Id,
+    protocolId: Id,
+    path: string,
+    inline: boolean,
+  ) => api.buildProtocolDownloadUrl(toId(projectId), toId(protocolId), path, inline),
 
   fetchProtocolInlinePreviewBlob: (projectId: Id, protocolId: Id, path: string) =>
     api.fetchProtocolInlinePreviewBlob(toId(projectId), toId(protocolId), path),
 
-  fetchOutputPreview: (projectId: Id, protocolId: Id, path: string, opts?: { table?: string }) =>
-    api.fetchOutputPreview(toId(projectId), toId(protocolId), path, opts),
+  fetchOutputPreview: (
+    projectId: Id,
+    protocolId: Id,
+    path: string,
+    opts?: { table?: string },
+  ) => api.fetchOutputPreview(toId(projectId), toId(protocolId), path, opts),
 
   // ──────────────────────────── Analyze Results: Volumes ────────────────────────────
   listOutputVolumes: (projectId: Id, protocolId: Id, outputName: string) =>
     api.listOutputVolumes(toId(projectId), toId(protocolId), outputName),
 
-  getVolumeInfo: (projectId: Id, protocolId: Id, outputName: string, volumeId: Id) =>
-    api.getVolumeInfo(toId(projectId), toId(protocolId), outputName, toId(volumeId)),
+  getVolumeInfo: (
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    volumeId: Id,
+  ) =>
+    api.getVolumeInfo(
+      toId(projectId),
+      toId(protocolId),
+      outputName,
+      toId(volumeId),
+    ),
 
   buildVolumeSliceUrl: (
     projectId,
@@ -94,7 +119,7 @@ const defaultService: ProjectService = {
     outputName,
     volumeId,
     sliceIndex,
-    opts
+    opts,
   ) =>
     api.buildVolumeSliceUrl(
       toId(projectId),
@@ -102,18 +127,18 @@ const defaultService: ProjectService = {
       outputName,
       toId(volumeId),
       sliceIndex,
-      // esta función espera "colormap", el viewer le pasa "colormap" solo cuando lo uses explícito
-      opts as any
+      // API expects "cmap"; viewer is already sending the right option.
+      opts as any,
     ),
 
-  // IMPORTANT: Delegate to the API function that already adds `cmap` and supports AbortSignal.
+  // Delegate to the API function that already adds `cmap` and supports AbortSignal.
   fetchVolumeSliceObjectUrl: (
     projectId,
     protocolId,
     outputName,
     volumeId,
     sliceIndex,
-    opts
+    opts,
   ): Promise<VolumeSliceObjectUrl> =>
     api.fetchVolumeSliceObjectUrl(
       toId(projectId),
@@ -121,10 +146,127 @@ const defaultService: ProjectService = {
       outputName,
       toId(volumeId),
       sliceIndex,
-      // esta API usa { axis?, cmap?, normalize?, scale?, format?, thumb?, fast?, quality?, signal? }
-      opts as any
+      // API uses { axis?, cmap?, normalize?, scale?, format?, thumb?, fast?, quality?, signal? }
+      opts as any,
+    ),
+
+  // ──────────────────────────── Analyze Results: Metadata tables ────────────────────────────
+  fetchOutputMetadataTables: (projectId: Id, protocolId: Id, outputName: string) =>
+    api.fetchOutputMetadataTables(toId(projectId), toId(protocolId), outputName),
+
+  fetchMetadataTableSchema: (
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    tableName: string,
+  ) =>
+    api.fetchMetadataTableSchema(
+      toId(projectId),
+      toId(protocolId),
+      outputName,
+      tableName,
+    ),
+
+  fetchMetadataTablePage: (
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    tableName: string,
+    opts,
+  ) =>
+    api.fetchMetadataTablePage(
+      toId(projectId),
+      toId(protocolId),
+      outputName,
+      tableName,
+      opts,
+    ),
+
+  exportMetadataTable: (
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    tableName: string,
+    opts,
+  ) =>
+    api.exportMetadataTable(
+      toId(projectId),
+      toId(protocolId),
+      outputName,
+      tableName,
+      opts,
+    ),
+
+  // Ventana por offset + limit para scroll virtual
+  fetchMetadataTableWindow: async (
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    tableName: string,
+    opts = {},
+  ) => {
+    const { offset = 0, limit = 100, selectionOnly = false } = opts as {
+      offset?: number;
+      limit?: number;
+      selectionOnly?: boolean;
+    };
+
+    const params = new URLSearchParams();
+    params.set("offset", String(offset));
+    params.set("limit", String(limit));
+    params.set("selectionOnly", String(selectionOnly));
+
+    const enc = encodeURIComponent;
+    const base = `${BASE_URL}/projects/${toId(projectId)}/protocols/${toId(
+      protocolId,
+    )}/outputs/${enc(outputName)}/metadata/tables/${enc(tableName)}/rows`;
+    const url = `${base}?${params.toString()}`;
+
+    const res = await fetchWithAuth(url, { method: "GET" });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(text || "Failed to fetch metadata window");
+    }
+    return res.json();
+  },
+
+  fetchMetadataImageCellObjectUrl: (
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    tableName: string,
+    rowId: number | string,
+    columnName: string,
+    opts,
+  ) =>
+    api.fetchMetadataImageCellObjectUrl(
+      toId(projectId),
+      toId(protocolId),
+      outputName,
+      tableName,
+      rowId,
+      columnName,
+      opts,
+    ),
+
+  getMetadataImageCellUrl: (
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    tableName: string,
+    rowId: number | string,
+    columnName: string,
+    opts,
+  ) =>
+    api.getMetadataImageCellUrl(
+      Number(projectId),
+      Number(protocolId),
+      outputName,
+      tableName,
+      rowId,
+      columnName,
+      opts ?? {},
     ),
 };
-
 
 export default defaultService;
