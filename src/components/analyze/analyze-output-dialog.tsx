@@ -11,6 +11,7 @@ import {
 } from "@mui/material";
 import VolumeViewer from "./volume-viewer";
 import { CloseIcon } from "@/icons";
+import { MetadataViewer } from "./metadata-viewer";
 
 type AnalyzeOutputDialogProps = {
   open: boolean;
@@ -27,7 +28,22 @@ type AnalyzeOutputDialogProps = {
 function isVolumeKind(k?: string) {
   if (!k) return false;
   const s = k.replace(/\s+/g, "").toLowerCase();
-  return s === "volume" || s === "volumemask" || s === "setofvolumes" || s === "setoftomograms";
+  return (
+    s === "volume" ||
+    s === "volumemask" ||
+    s === "setofvolumes" ||
+    s === "setoftomograms"
+  );
+}
+
+// SetOf* but excluding the types we consider “volume-like”
+function isSetOfMetadataKind(k?: string) {
+  if (!k) return false;
+  const trimmed = k.replace(/\s+/g, "");
+  if (!/^SetOf/i.test(trimmed)) return false;
+  // If already volume/tomogram, handled by VolumeViewer
+  if (isVolumeKind(k)) return false;
+  return true;
 }
 
 const dialogPaperSx = {
@@ -101,22 +117,45 @@ export default function AnalyzeOutputDialog({
   outputRaw,
 }: AnalyzeOutputDialogProps) {
   const outputClass = useMemo(
-    () => (outputRaw?._class || outputRaw?.class || outputRaw?.type || "").toString(),
+    () =>
+      (
+        outputRaw?._class ||
+        outputRaw?.class ||
+        outputRaw?.type ||
+        ""
+      ).toString(),
     [outputRaw]
   );
 
+  // Normalize IDs to numbers before passing down
+  const projectIdNum = useMemo(() => Number(projectId), [projectId]);
+  const protocolIdNum = useMemo(() => Number(protocolId), [protocolId]);
+
   const body = useMemo(() => {
+    // 1) Volumes / tomograms → volume-viewer
     if (isVolumeKind(outputClass)) {
       return (
         <VolumeViewer
-          projectId={projectId}
-          protocolId={protocolId}
+          projectId={projectIdNum}
+          protocolId={protocolIdNum}
           protocolLabel={protocolLabel}
           outputName={outputName}
         />
       );
     }
 
+    // 2) Any SetOf* that is not volume-like → metadata-viewer
+    if (isSetOfMetadataKind(outputClass)) {
+      return (
+        <MetadataViewer
+          projectId={projectIdNum}
+          protocolId={protocolIdNum}
+          outputName={outputName}
+        />
+      );
+    }
+
+    // 3) Generic fallback
     return (
       <Box sx={{ p: 2 }}>
         <Typography variant="subtitle2" sx={{ mb: 1 }}>
@@ -129,7 +168,13 @@ export default function AnalyzeOutputDialog({
         </Typography>
       </Box>
     );
-  }, [outputClass, outputName, projectId, protocolId]);
+  }, [
+    outputClass,
+    outputName,
+    projectIdNum,
+    protocolIdNum,
+    protocolLabel,
+  ]);
 
   return (
     <Dialog
@@ -139,7 +184,7 @@ export default function AnalyzeOutputDialog({
       fullWidth
       PaperProps={{ sx: dialogPaperSx }}
     >
-      {/* Header pro */}
+      {/* Header */}
       <DialogTitle component="div" sx={headerSx}>
         <Box sx={titleWrapSx}>
           <Box sx={titleRowSx}>

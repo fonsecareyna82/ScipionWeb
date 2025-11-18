@@ -319,3 +319,220 @@ export async function fetchVolumeSliceObjectUrl(
   const revoke = () => URL.revokeObjectURL(objUrl);
   return { url: objUrl, meta, revoke };
 }
+
+// Metadata tables list
+export interface MetadataTableInfo {
+  name: string;
+  alias: string;
+  rowCount: number;
+  hasColumnId: boolean;
+}
+
+// Columns schema
+export type MetadataRendererType = "int" | "float" | "bool" | "matrix" | "image" | "str";
+
+export interface MetadataColumn {
+  name: string;
+  alias: string;
+  index: number;
+  sortable: boolean;
+  visible: boolean;
+  rendererType: MetadataRendererType;
+  decimals: number | null;
+  hasTransformation: boolean;
+}
+
+export interface MetadataTableSchema {
+  name: string;
+  alias: string;
+  hasColumnId: boolean;
+  columns: MetadataColumn[];
+}
+
+// Cells and rows
+export type MetadataCell =
+  | number
+  | string
+  | boolean
+  | {
+      kind: "image";
+      path: string;
+    }
+  | {
+      kind: "matrix";
+      value: any;
+    };
+
+export interface MetadataRow {
+  id: number;
+  values: MetadataCell[];
+}
+
+export interface MetadataPage {
+  pageNumber: number;
+  pageSize: number;
+  totalRows: number;
+  rows: MetadataRow[];
+}
+
+export async function fetchOutputMetadataTables(
+  projectId: Id,
+  protocolId: Id,
+  outputName: string,
+): Promise<MetadataTableInfo[]> {
+  const enc = encodeURIComponent;
+  const url = `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/outputs/${enc(
+    outputName,
+  )}/metadata/tables`;
+  const res = await fetchWithAuth(url, { method: "GET" });
+  if (!res.ok) throw await toApiError(res, "Failed to fetch metadata tables");
+  return safeJson<MetadataTableInfo[]>(res);
+}
+
+export async function fetchMetadataTableSchema(
+  projectId: Id,
+  protocolId: Id,
+  outputName: string,
+  tableName: string,
+): Promise<MetadataTableSchema> {
+  const enc = encodeURIComponent;
+  const url = `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/outputs/${enc(
+    outputName,
+  )}/metadata/tables/${enc(tableName)}/schema`;
+  const res = await fetchWithAuth(url, { method: "GET" });
+  if (!res.ok) throw await toApiError(res, "Failed to fetch metadata schema");
+  return safeJson<MetadataTableSchema>(res);
+}
+
+export async function fetchMetadataTablePage(
+  projectId: Id,
+  protocolId: Id,
+  outputName: string,
+  tableName: string,
+  opts: {
+    page?: number;
+    pageSize?: number;
+    sortBy?: string;
+    asc?: boolean;
+    selectionOnly?: boolean;
+  } = {},
+): Promise<MetadataPage> {
+  const { page = 1, pageSize = 100, sortBy = "id", asc = true, selectionOnly = false } = opts;
+
+  const params = new URLSearchParams();
+  params.set("page", String(page));
+  params.set("pageSize", String(pageSize));
+  params.set("sortBy", sortBy);
+  params.set("asc", String(asc));
+  params.set("selectionOnly", String(selectionOnly));
+
+  const enc = encodeURIComponent;
+  const base = `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/outputs/${enc(
+    outputName,
+  )}/metadata/tables/${enc(tableName)}/page`;
+  const url = `${base}?${params.toString()}`;
+
+  const res = await fetchWithAuth(url, { method: "GET" });
+  if (!res.ok) throw await toApiError(res, "Failed to fetch metadata page");
+  return safeJson<MetadataPage>(res);
+}
+
+// Export CSV/XLSX: returns a Blob so the caller can trigger download
+export async function exportMetadataTable(
+  projectId: Id,
+  protocolId: Id,
+  outputName: string,
+  tableName: string,
+  opts: {
+    format?: "csv" | "xlsx";
+    selectionOnly?: boolean;
+    ids?: number[];
+  } = {},
+): Promise<Blob> {
+  const { format = "csv", selectionOnly = false, ids } = opts;
+
+  const params = new URLSearchParams();
+  params.set("format", format);
+  params.set("selectionOnly", String(selectionOnly));
+  if (ids && ids.length > 0) {
+    params.set("ids", ids.join(","));
+  }
+
+  const enc = encodeURIComponent;
+  const base = `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/outputs/${enc(
+    outputName,
+  )}/metadata/tables/${enc(tableName)}/export`;
+  const url = `${base}?${params.toString()}`;
+
+  const res = await fetchWithAuth(url, { method: "GET" });
+  if (!res.ok) throw await toApiError(res, "Failed to export metadata table");
+  return res.blob();
+}
+
+export async function fetchMetadataImageCellObjectUrl(
+  projectId: Id,
+  protocolId: Id,
+  outputName: string,
+  tableName: string,
+  rowId: number | string,
+  columnName: string,
+  opts: {
+    size?: number;
+    applyTransform?: boolean;
+    inline?: boolean;
+    format?: string;
+  } = {},
+): Promise<{ url: string; revoke: () => void }> {
+  const { size = 256, applyTransform = false, inline = true, format = "png" } = opts;
+
+  // Reutilizamos la misma construcción de URL que getMetadataImageCellUrl
+  const baseUrl = getMetadataImageCellUrl(
+    Number(projectId),
+    Number(protocolId),
+    outputName,
+    tableName,
+    rowId,
+    columnName,
+    { size, applyTransform, inline, format },
+  );
+
+  const res = await fetchWithAuth(baseUrl, { method: "GET" });
+  if (!res.ok) {
+    throw await toApiError(res, "Failed to fetch metadata image cell");
+  }
+
+  const blob = await res.blob();
+  const objUrl = URL.createObjectURL(blob);
+  const revoke = () => URL.revokeObjectURL(objUrl);
+  return { url: objUrl, revoke };
+}
+
+// Builds the URL for an image cell (used directly as <img src="...">)
+export function getMetadataImageCellUrl(
+  projectId: number,
+  protocolId: number,
+  outputName: string,
+  tableName: string,
+  rowId: number | string,
+  columnName: string,
+  opts: {
+    size?: number;
+    applyTransform?: boolean;
+    inline?: boolean;
+    format?: string;
+  } = {},
+): string {
+  const { size = 256, applyTransform = false, inline = true, format = "png" } = opts;
+
+  const params = new URLSearchParams();
+  params.set("rowId", String(rowId));
+  params.set("column", columnName);
+  params.set("size", String(size));
+  params.set("applyTransform", String(applyTransform));
+  params.set("inline", String(inline));
+  params.set("fmt", format);
+
+  return `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/outputs/${outputName}/metadata/tables/${encodeURIComponent(
+    tableName,
+  )}/image?${params.toString()}`;
+}
