@@ -635,7 +635,7 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
       }}
     >
       {/* Header: view mode buttons + table selector + info */}
-      <Box 
+      <Box  className="ml-4 mr-4 p-1 border rounded-lg shadow-sm bg-white dark:bg-gray-800 flex items-center gap-1"
         sx={{
           display: "flex",
           alignItems: "center",
@@ -645,7 +645,8 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
         }}
       >
         {/* Left: view mode buttons */}
-        <Box sx={{ display: "flex", alignItems: "center", gap: 1, minWidth: 96 }}>
+        <Box className="ml-4 mr-4 p-0 border rounded-lg shadow-sm bg-white dark:bg-gray-800 flex items-center gap-1" 
+             sx={{ display: "flex", alignItems: "center", gap: 1, minWidth: 96 }}>
           <Tooltip title="Table view">
             <span>
               <IconButton
@@ -688,7 +689,7 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
             justifyContent: "center",
           }}
         >
-          <FormControl size="small" sx={{ minWidth: 220 }}>
+          <FormControl size="small" sx={{ minWidth: 240}}>
             <InputLabel id="metadata-table-select-label">Metadata table</InputLabel>
             <Select
               labelId="metadata-table-select-label"
@@ -713,7 +714,7 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
                 return (
                   <MenuItem key={t.name} value={t.name}>
                     <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                      <TableIcon fontSize="small" />
+                      <TableIcon className="text-2xs" />
                       <span>{label}</span>
                     </Box>
                   </MenuItem>
@@ -724,7 +725,7 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
         </Box>
 
         {/* Right: output info */}
-        <Box
+        <Box className="mr-4"
           sx={{
             display: "flex",
             gap: 2,
@@ -787,7 +788,7 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
           <Paper
             variant="outlined"
             sx={{
-              mt: 1,
+              mt: 0,
               minHeight: 660,
               maxHeight: 660,
               minWidth: 840,
