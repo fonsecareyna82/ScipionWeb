@@ -2759,10 +2759,11 @@ export default function ProtocolForm({
       {/* FOOTER */}
       <div className="form-footer">
         <Button
-          variant="outlined"
+          variant="contained"
           startIcon={<CloseIcon />}
           onClick={requestClose}
           sx={{ textTransform: "none" }}
+          color="error"
         >
           Close
         </Button>

@@ -12,6 +12,7 @@ import {
   FormControl,
   InputLabel,
   MenuItem,
+  Divider,   
   Paper,
   Select,
   SelectChangeEvent,
@@ -25,7 +26,7 @@ import {
   Tooltip,
   IconButton,
 } from "@mui/material";
-import { LayoutGrid, TableIcon, Columns3 } from "lucide-react";
+import { LayoutGrid, TableIcon, Columns3, SaveIcon, Check, ColumnsSettingsIcon } from "lucide-react";
 import { useProjectService } from "@/ProjectServiceContext";
 import type {
   MetadataCell,
@@ -34,6 +35,8 @@ import type {
   MetadataTableInfo,
   MetadataTableSchema,
 } from "@/api/projects";
+import { CloseIcon } from "@/icons";
+import { Separator } from "@radix-ui/react-dropdown-menu";
 
 type MetadataViewerProps = {
   projectId: number;
@@ -74,6 +77,53 @@ const GALLERY_PAGE_SIZE = 120;
 
 // Header background color (light gray)
 const HEADER_BG = "#f3f4f6";
+
+// Dialog styles (should match volume-viewer header look)
+const DIALOG_HEADER_BG = "#e5e7eb";      // ajusta si en volume-viewer usas otro tono
+const DIALOG_ROW_ODD_BG = "#f9fafb";     // odd rows
+const DIALOG_ROW_EVEN_BG = "#ffffff";    // even rows
+
+const baseCellSx = {
+  padding: "4px 8px",
+  whiteSpace: "nowrap" as const,
+  textOverflow: "ellipsis" as const,
+  overflow: "hidden" as const,
+  borderBottom: "1px solid rgba(148,163,184,0.25)",
+  fontSize: "0.75rem",
+  lineHeight: 1.4,
+};
+
+const headerCellSx = {
+  ...baseCellSx,
+  fontWeight: 600,
+  background: HEADER_BG,
+  color: "#0f172a",
+  position: "sticky" as const,
+  top: 0,
+  zIndex: 1,
+};
+
+const headerColumnDialogSx = {
+  px: 2,
+  py: 1.25,
+  display: "flex",
+  alignItems: "center",
+  gap: 1.5,
+  background: "linear-gradient(180deg, #0b1220 0%, #0a0f1e 100%)",
+  color: "#e5e7eb",
+  borderBottom: "1px solid rgba(255,255,255,0.06)",
+};
+
+const closeBtnSx = {
+  ml: "auto",
+  color: "#e5e7eb",
+  border: "1px solid rgba(255,255,255,0.18)",
+  background: "rgba(255,255,255,0.06)",
+  "&:hover": {
+    background: "rgba(255,255,255,0.12)",
+    borderColor: "rgba(255,255,255,0.28)",
+  },
+};
 
 /** Observe a DOM element size (content box). */
 function useElementSize<T extends Element>(ref: React.RefObject<T | null>) {
@@ -667,25 +717,7 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
     }
   };
 
-  const baseCellSx = {
-    padding: "4px 8px",
-    whiteSpace: "nowrap" as const,
-    textOverflow: "ellipsis" as const,
-    overflow: "hidden" as const,
-    borderBottom: "1px solid rgba(148,163,184,0.25)",
-    fontSize: "0.75rem",
-    lineHeight: 1.4,
-  };
 
-  const headerCellSx = {
-    ...baseCellSx,
-    fontWeight: 600,
-    background: HEADER_BG,
-    color: "#0f172a",
-    position: "sticky" as const,
-    top: 0,
-    zIndex: 1,
-  };
 
   const hasData = !!schema && totalRows > 0;
 
@@ -767,10 +799,24 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
       >
         {/* Left: view mode buttons + column manager */}
         <Box
-          className="ml-4 mr-4 p-0 border rounded-lg shadow-sm bg-white dark:bg-gray-800 flex items-center gap-1"
-          sx={{ display: "flex", alignItems: "center", gap: 1, minWidth: 96 }}
+          className="ml-0 mr-4 p-0 border rounded-lg shadow-sm bg-white dark:bg-gray-800 flex items-center"
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            gap: 0.5,
+            minWidth: 96,
+            px: 1,
+            py: 0.5,
+          }}
         >
-          <Tooltip title="Table view">
+          <Typography
+            variant="caption"
+            sx={{ mr: 0.5, color: "text.secondary", fontWeight: 500 }}
+          >
+            View mode:
+          </Typography>
+
+          <Tooltip title="Table">
             <span>
               <IconButton
                 size="small"
@@ -781,10 +827,11 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
               </IconButton>
             </span>
           </Tooltip>
+
           <Tooltip
             title={
               hasImageColumns
-                ? "Gallery view"
+                ? "Gallery"
                 : "Gallery view is only available when the table has image columns"
             }
           >
@@ -803,11 +850,29 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
             </span>
           </Tooltip>
 
+          <Divider
+            orientation="vertical"
+            flexItem
+            sx={{
+              mx: 1,
+              borderColor: "rgba(148,163,184,0.6)",
+            }}
+          />
+
           {viewMode === "table" && schema && (
             <Tooltip title="Manage columns">
               <span>
                 <IconButton size="small" onClick={openColumnsDialog}>
-                  <Columns3 fontSize="small" />
+                  <ColumnsSettingsIcon fontSize="small" />
+                </IconButton>
+              </span>
+            </Tooltip>
+          )}
+          {viewMode === "gallery" && schema && (
+            <Tooltip title="Manage columns">
+              <span>
+                <IconButton disabled={true} size="small">
+                  <ColumnsSettingsIcon fontSize="small"/>
                 </IconButton>
               </span>
             </Tooltip>
@@ -859,18 +924,18 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
 
         {/* Right: output info */}
         <Box
-          className="mr-4"
+          className="mr-2"
           sx={{
             display: "flex",
-            gap: 2,
+            gap: 1,
             alignItems: "center",
             flexWrap: "wrap",
             justifyContent: "flex-end",
-            minWidth: 220,
+            minWidth: 240,
           }}
         >
           <Typography variant="caption" color="text.secondary">
-            Output: <strong>{outputName}</strong>
+            Output: <strong >{outputName}</strong>
           </Typography>
           <Typography variant="caption" color="text.secondary">
             Rows: <strong>{totalRows}</strong>
@@ -1392,25 +1457,58 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
         onClose={closeColumnsDialog}
         maxWidth="sm"
         fullWidth
+        BackdropProps={{
+          sx: { backgroundColor: "transparent" }, 
+        }}
       >
-        <DialogTitle>Columns</DialogTitle>
+        <DialogTitle sx={headerColumnDialogSx}>Columns
+
+          <IconButton
+            onClick={closeColumnsDialog}
+            aria-label="Close analyze dialog"
+            size="small"
+            sx={closeBtnSx}
+          >
+            <CloseIcon fontSize="small" />
+          </IconButton>
+        </DialogTitle>
+
+
         <DialogContent dividers>
           <Table size="small">
             <TableHead>
-              <TableRow>
-                <TableCell>Label</TableCell>
-                <TableCell align="center">Visible</TableCell>
-                <TableCell align="center">Render</TableCell>
+              <TableRow
+                sx={{
+                  backgroundColor: DIALOG_HEADER_BG,
+                }}
+              >
+                <TableCell sx={{ fontWeight: 600, fontSize: "0.8rem" }}>
+                  Label
+                </TableCell>
+                <TableCell
+                  align="center"
+                  sx={{ fontWeight: 600, fontSize: "0.8rem" }}
+                >
+                  Visible
+                </TableCell>
+                <TableCell
+                  align="center"
+                  sx={{ fontWeight: 600, fontSize: "0.8rem" }}
+                >
+                  Render
+                </TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
-              {allColumns.map((col) => {
+              {allColumns.map((col, idx) => {
                 const draft = draftColumnSettings?.[col.name];
                 const settings = columnSettings[col.name];
+
                 const effectiveVisible =
                   draft?.visible ??
                   settings?.visible ??
                   (col.visible !== false);
+
                 const canRender = col.rendererType === "image";
                 const effectiveRenderAsImage =
                   draft?.renderAsImage ??
@@ -1418,8 +1516,16 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
                   (col.rendererType === "image");
 
                 return (
-                  <TableRow key={col.name}>
-                    <TableCell>{col.alias || col.name}</TableCell>
+                  <TableRow
+                    key={col.name}
+                    sx={{
+                      backgroundColor:
+                        idx % 2 === 0 ? DIALOG_ROW_EVEN_BG : DIALOG_ROW_ODD_BG,
+                    }}
+                  >
+                    <TableCell sx={{ fontSize: "0.8rem" }}>
+                      {col.alias || col.name}
+                    </TableCell>
                     <TableCell align="center">
                       <Checkbox
                         size="small"
@@ -1450,12 +1556,26 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
           </Table>
         </DialogContent>
         <DialogActions>
-          <Button onClick={closeColumnsDialog}>Close</Button>
-          <Button onClick={applyColumnsDialog} variant="contained">
-            OK
+          <Button
+            variant="contained"
+            startIcon={<CloseIcon />}
+            onClick={closeColumnsDialog}
+            sx={{ textTransform: "none" }}
+            color="error"
+          >
+            Close
+          </Button>
+          <Button
+            variant="contained"
+            startIcon={<Check />}
+            onClick={applyColumnsDialog}
+            sx={{ textTransform: "none" }}
+          >
+            Ok
           </Button>
         </DialogActions>
       </Dialog>
+
     </Box>
   );
 }
