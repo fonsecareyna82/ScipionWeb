@@ -1090,10 +1090,10 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
               {firstImageColumn && (
                 <Box
                   sx={{
-                    p: 2,
+                    p: 1,
                     display: "grid",
-                    gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
-                    gap: 2,
+                    gridTemplateColumns: "repeat(auto-fill, minmax(170px, 1fr))",
+                    gap: 0,
                   }}
                 >
                   {galleryRows.map((row, idx) => {

@@ -132,7 +132,7 @@ export const ProtocolsDrawer: React.FC<ProtocolsDrawerProps> = ({
         <div className="relative">
           <button
             onClick={() => setOpen(false)}
-            className="absolute top-18 right-4 z-50 text-gray-500 hover:text-gray-900 dark:hover:text-white bg-white dark:bg-gray-800 rounded-full w-6 h-6 shadow-lg"
+            className="absolute top-17 right-4 z-50 text-gray-500 hover:text-gray-900 dark:hover:text-white bg-gray-200 dark:bg-gray-800 rounded-full w-8 h-8 shadow-lg"
             aria-label="Close drawer"
           >
             ✕

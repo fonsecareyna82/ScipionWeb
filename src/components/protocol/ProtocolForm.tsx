@@ -119,6 +119,17 @@ export default function ProtocolForm({
     paramKey: null,
   });
 
+  const closeBtnSx = {
+    ml: "auto",
+    color: "#e5e7eb",
+    border: "1px solid rgba(255,255,255,0.18)",
+    background: "rgba(255,255,255,0.06)",
+    "&:hover": {
+      background: "rgba(255,255,255,0.12)",
+      borderColor: "rgba(255,255,255,0.28)",
+    },
+  };
+
   // Normalize outputs from data.outputs for the Outputs tab
   const normalizedOutputs = useMemo(() => {
     const arr = Array.isArray(data?.outputs) ? data.outputs : [];
@@ -2067,9 +2078,14 @@ export default function ProtocolForm({
             {protocolDetails.status || "Unknown"}
           </span>
         </div>
-        <button className="close-btn" onClick={requestClose}>
-          ×
-        </button>
+        <IconButton
+          onClick={requestClose}
+          aria-label="Close analyze dialog"
+          size="small"
+          sx={closeBtnSx}
+        >
+          <CloseIcon fontSize="small" />
+        </IconButton>
       </div>
 
       {execError && (
