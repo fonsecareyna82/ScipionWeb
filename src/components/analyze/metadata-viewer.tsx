@@ -2,7 +2,13 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Box,
+  Button,
+  Checkbox,
   CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   FormControl,
   InputLabel,
   MenuItem,
@@ -19,7 +25,7 @@ import {
   Tooltip,
   IconButton,
 } from "@mui/material";
-import { LayoutGrid, TableIcon } from "lucide-react";
+import { LayoutGrid, TableIcon, Columns3 } from "lucide-react";
 import { useProjectService } from "@/ProjectServiceContext";
 import type {
   MetadataCell,
@@ -46,6 +52,11 @@ type SelectedImageCell = {
 // Local extension to support column visibility flag
 type MetadataColumnWithVisibility = MetadataColumn & {
   visible?: boolean;
+};
+
+type ColumnSettings = {
+  visible: boolean;
+  renderAsImage: boolean;
 };
 
 const BASE_THUMB_SIZE = 160;
@@ -231,6 +242,16 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
   const [schemaLoading, setSchemaLoading] = useState(false);
   const [schemaError, setSchemaError] = useState<string | null>(null);
 
+  // Column settings (visibility + render-as-image)
+  const [columnSettings, setColumnSettings] = useState<Record<string, ColumnSettings>>(
+    {},
+  );
+
+  // Column settings dialog
+  const [columnsDialogOpen, setColumnsDialogOpen] = useState(false);
+  const [draftColumnSettings, setDraftColumnSettings] =
+    useState<Record<string, ColumnSettings> | null>(null);
+
   // Virtual window of rows for table mode
   const [windowRows, setWindowRows] = useState<MetadataRow[]>([]);
   const [windowOffset, setWindowOffset] = useState(0);
@@ -364,33 +385,67 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
     };
   }, [projectId, protocolId, outputName, selectedTable, svc]);
 
-  // Columns with visibility info
+  // Initialize or update columnSettings when schema changes
+  useEffect(() => {
+    if (!schema) {
+      setColumnSettings({});
+      return;
+    }
+    setColumnSettings((prev) => {
+      const next: Record<string, ColumnSettings> = {};
+      const cols = (schema.columns ?? []) as MetadataColumnWithVisibility[];
+      for (const col of cols) {
+        const prevEntry = prev[col.name];
+        const defaultVisible = col.visible !== false;
+        const defaultRender = col.rendererType === "image";
+        next[col.name] = {
+          visible: prevEntry?.visible ?? defaultVisible,
+          renderAsImage: prevEntry?.renderAsImage ?? defaultRender,
+        };
+      }
+      return next;
+    });
+  }, [schema, selectedTable]);
+
+  // All columns from schema
   const allColumns: MetadataColumnWithVisibility[] = useMemo(
     () => (schema?.columns ?? []) as MetadataColumnWithVisibility[],
     [schema],
   );
 
-  // Columns that should actually be rendered (visible !== false)
+  // Columns that should actually be rendered (by visibility flag)
   const visibleColumns: MetadataColumnWithVisibility[] = useMemo(
-    () => allColumns.filter((c) => c.visible !== false),
-    [allColumns],
+    () =>
+      allColumns.filter((c) => {
+        const settings = columnSettings[c.name];
+        if (settings) return settings.visible;
+        return c.visible !== false;
+      }),
+    [allColumns, columnSettings],
   );
 
+  // Image columns that are both visible and rendered as images
   const imageColumns = useMemo(
-    () => visibleColumns.filter((c) => c.rendererType === "image"),
-    [visibleColumns],
+    () =>
+      visibleColumns.filter((c) => {
+        if (c.rendererType !== "image") return false;
+        const settings = columnSettings[c.name];
+        return settings?.renderAsImage ?? true;
+      }),
+    [visibleColumns, columnSettings],
   );
   const hasImageColumns = imageColumns.length > 0;
   const firstImageColumn = imageColumns[0] ?? null;
 
   const sizeColumn = useMemo(() => {
     if (!allColumns.length) return null;
-    // You can decide if _size should respect visibility or not
-    const col = allColumns.find(
-      (c) => c.name === "_size" && c.visible !== false,
-    );
-    return col ?? null;
-  }, [allColumns]);
+    const col = allColumns.find((c) => c.name === "_size");
+    if (!col) return null;
+    const settings = columnSettings[col.name];
+    const visible = settings?.visible ?? (col.visible !== false);
+    if (!visible) return null;
+    return col;
+  }, [allColumns, columnSettings]);
 
   const isClassTable = useMemo(() => {
     if (!tableInfo) return false;
@@ -402,7 +457,7 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
 
   const rowHeight = hasImageColumns ? IMAGE_ROW_HEIGHT : NORMAL_ROW_HEIGHT;
 
-  // Force view back to table if current table has no images
+  // Force view back to table if current table has no renderable images
   useEffect(() => {
     if (viewMode === "gallery" && !hasImageColumns) {
       setViewMode("table");
@@ -644,6 +699,51 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
     return total;
   }, [schema, visibleColumns]);
 
+  // Column dialog helpers
+  const openColumnsDialog = () => {
+    if (!schema) return;
+    const cols = (schema.columns ?? []) as MetadataColumnWithVisibility[];
+    const draft: Record<string, ColumnSettings> = {};
+    for (const col of cols) {
+      const current =
+        columnSettings[col.name] ??
+        {
+          visible: col.visible !== false,
+          renderAsImage: col.rendererType === "image",
+        };
+      draft[col.name] = { ...current };
+    }
+    setDraftColumnSettings(draft);
+    setColumnsDialogOpen(true);
+  };
+
+  const closeColumnsDialog = () => {
+    setColumnsDialogOpen(false);
+    setDraftColumnSettings(null);
+  };
+
+  const applyColumnsDialog = () => {
+    if (draftColumnSettings) {
+      setColumnSettings(draftColumnSettings);
+    }
+    setColumnsDialogOpen(false);
+    setDraftColumnSettings(null);
+  };
+
+  const updateDraftColumnSettings = (colName: string, partial: Partial<ColumnSettings>) => {
+    setDraftColumnSettings((prev) => {
+      if (!prev) return prev;
+      const current = prev[colName] ?? { visible: true, renderAsImage: false };
+      return {
+        ...prev,
+        [colName]: {
+          ...current,
+          ...partial,
+        },
+      };
+    });
+  };
+
   return (
     <Box
       sx={{
@@ -665,7 +765,7 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
           flexWrap: "wrap",
         }}
       >
-        {/* Left: view mode buttons */}
+        {/* Left: view mode buttons + column manager */}
         <Box
           className="ml-4 mr-4 p-0 border rounded-lg shadow-sm bg-white dark:bg-gray-800 flex items-center gap-1"
           sx={{ display: "flex", alignItems: "center", gap: 1, minWidth: 96 }}
@@ -702,6 +802,16 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
               </IconButton>
             </span>
           </Tooltip>
+
+          {viewMode === "table" && schema && (
+            <Tooltip title="Manage columns">
+              <span>
+                <IconButton size="small" onClick={openColumnsDialog}>
+                  <Columns3 fontSize="small" />
+                </IconButton>
+              </span>
+            </Tooltip>
+          )}
         </Box>
 
         {/* Center: table selector */}
@@ -914,9 +1024,11 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
                               ? "rgba(191,219,254,0.95)"
                               : "rgba(248,250,252,1)",
                           },
+                          "&:hover td": {
+                            transition: "background-color 120ms ease-out",
+                          },
                           "& > td": {
                             borderRight: "1px solid rgba(148,163,184,0.25)",
-                            transition: "background-color 120ms ease-out",
                           },
                           "& > td:last-of-type": {
                             borderRight: "none",
@@ -946,9 +1058,13 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
                         {visibleColumns.map((col) => {
                           const v = row.values[col.index];
                           const isImageColumn = col.rendererType === "image";
+                          const renderAsImage =
+                            isImageColumn &&
+                            (columnSettings[col.name]?.renderAsImage ?? true);
                           const isSelectedImage =
                             !!selectedImageCell &&
                             isImageColumn &&
+                            renderAsImage &&
                             selectedImageCell.rowIndexInTable === displayRowIndex &&
                             selectedImageCell.columnName === col.name;
 
@@ -958,7 +1074,7 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
                               : MIN_TEXT_COL_WIDTH;
 
                           if (
-                            isImageColumn &&
+                            renderAsImage &&
                             v &&
                             typeof v === "object" &&
                             (v as any).kind === "image"
@@ -1121,7 +1237,7 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
                   }}
                 >
                   {galleryRows.map((row, idx) => {
-                    // galleryRows contains rows starting at index 0..N
+                    // galleryRows contains rows starting at index 0..N (global index since we always load from 0)
                     const globalRowIndex = idx;
 
                     const v = row.values[firstImageColumn.index];
@@ -1269,6 +1385,77 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
           </Paper>
         </>
       )}
+
+      {/* Columns dialog */}
+      <Dialog
+        open={columnsDialogOpen}
+        onClose={closeColumnsDialog}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Columns</DialogTitle>
+        <DialogContent dividers>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Label</TableCell>
+                <TableCell align="center">Visible</TableCell>
+                <TableCell align="center">Render</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {allColumns.map((col) => {
+                const draft = draftColumnSettings?.[col.name];
+                const settings = columnSettings[col.name];
+                const effectiveVisible =
+                  draft?.visible ??
+                  settings?.visible ??
+                  (col.visible !== false);
+                const canRender = col.rendererType === "image";
+                const effectiveRenderAsImage =
+                  draft?.renderAsImage ??
+                  settings?.renderAsImage ??
+                  (col.rendererType === "image");
+
+                return (
+                  <TableRow key={col.name}>
+                    <TableCell>{col.alias || col.name}</TableCell>
+                    <TableCell align="center">
+                      <Checkbox
+                        size="small"
+                        checked={effectiveVisible}
+                        onChange={(e) =>
+                          updateDraftColumnSettings(col.name, {
+                            visible: e.target.checked,
+                          })
+                        }
+                      />
+                    </TableCell>
+                    <TableCell align="center">
+                      <Checkbox
+                        size="small"
+                        checked={canRender && effectiveRenderAsImage}
+                        disabled={!canRender}
+                        onChange={(e) =>
+                          updateDraftColumnSettings(col.name, {
+                            renderAsImage: e.target.checked,
+                          })
+                        }
+                      />
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeColumnsDialog}>Close</Button>
+          <Button onClick={applyColumnsDialog} variant="contained">
+            OK
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }
