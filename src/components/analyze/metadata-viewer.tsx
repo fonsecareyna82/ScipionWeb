@@ -43,6 +43,11 @@ type SelectedImageCell = {
   columnName: string;
 };
 
+// Local extension to support column visibility flag
+type MetadataColumnWithVisibility = MetadataColumn & {
+  visible?: boolean;
+};
+
 const BASE_THUMB_SIZE = 160;
 const NORMAL_ROW_HEIGHT = 32;
 const IMAGE_ROW_HEIGHT = BASE_THUMB_SIZE + 16;
@@ -186,7 +191,6 @@ const MetadataImageCell: React.FC<MetadataImageCellProps> = ({
         borderRadius: 1,
         border: `1px solid ${borderColor}`,
         overflow: "hidden",
-        // Gray background so it looks like an image placeholder while loading
         bgcolor: "#d1d5db",
       }}
     >
@@ -360,17 +364,33 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
     };
   }, [projectId, protocolId, outputName, selectedTable, svc]);
 
-  const imageColumns = useMemo(
-    () => schema?.columns.filter((c) => c.rendererType === "image") ?? [],
+  // Columns with visibility info
+  const allColumns: MetadataColumnWithVisibility[] = useMemo(
+    () => (schema?.columns ?? []) as MetadataColumnWithVisibility[],
     [schema],
+  );
+
+  // Columns that should actually be rendered (visible !== false)
+  const visibleColumns: MetadataColumnWithVisibility[] = useMemo(
+    () => allColumns.filter((c) => c.visible !== false),
+    [allColumns],
+  );
+
+  const imageColumns = useMemo(
+    () => visibleColumns.filter((c) => c.rendererType === "image"),
+    [visibleColumns],
   );
   const hasImageColumns = imageColumns.length > 0;
   const firstImageColumn = imageColumns[0] ?? null;
 
-  const sizeColumn: MetadataColumn | null = useMemo(() => {
-    if (!schema) return null;
-    return schema.columns.find((c) => c.name === "_size") ?? null;
-  }, [schema]);
+  const sizeColumn = useMemo(() => {
+    if (!allColumns.length) return null;
+    // You can decide if _size should respect visibility or not
+    const col = allColumns.find(
+      (c) => c.name === "_size" && c.visible !== false,
+    );
+    return col ?? null;
+  }, [allColumns]);
 
   const isClassTable = useMemo(() => {
     if (!tableInfo) return false;
@@ -614,15 +634,15 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
 
   const hasData = !!schema && totalRows > 0;
 
-  // Compute min width for the table so that all columns have enough space
+  // Compute min width for the table so that all visible columns have enough space
   const tableMinWidth = useMemo(() => {
     if (!schema) return undefined;
-    const imageCols = schema.columns.filter((c) => c.rendererType === "image").length;
-    const textCols = schema.columns.length - imageCols;
+    const imageCols = visibleColumns.filter((c) => c.rendererType === "image").length;
+    const textCols = visibleColumns.length - imageCols;
     const total =
       ROW_INDEX_COL_WIDTH + textCols * MIN_TEXT_COL_WIDTH + imageCols * IMAGE_COL_MIN_WIDTH;
     return total;
-  }, [schema]);
+  }, [schema, visibleColumns]);
 
   return (
     <Box
@@ -635,7 +655,8 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
       }}
     >
       {/* Header: view mode buttons + table selector + info */}
-      <Box  className="ml-4 mr-4 p-1 border rounded-lg shadow-sm bg-white dark:bg-gray-800 flex items-center gap-1"
+      <Box
+        className="ml-4 mr-4 p-1 border rounded-lg shadow-sm bg-white dark:bg-gray-800 flex items-center gap-1"
         sx={{
           display: "flex",
           alignItems: "center",
@@ -645,8 +666,10 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
         }}
       >
         {/* Left: view mode buttons */}
-        <Box className="ml-4 mr-4 p-0 border rounded-lg shadow-sm bg-white dark:bg-gray-800 flex items-center gap-1" 
-             sx={{ display: "flex", alignItems: "center", gap: 1, minWidth: 96 }}>
+        <Box
+          className="ml-4 mr-4 p-0 border rounded-lg shadow-sm bg-white dark:bg-gray-800 flex items-center gap-1"
+          sx={{ display: "flex", alignItems: "center", gap: 1, minWidth: 96 }}
+        >
           <Tooltip title="Table view">
             <span>
               <IconButton
@@ -689,7 +712,7 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
             justifyContent: "center",
           }}
         >
-          <FormControl size="small" sx={{ minWidth: 240}}>
+          <FormControl size="small" sx={{ minWidth: 240 }}>
             <InputLabel id="metadata-table-select-label">Metadata table</InputLabel>
             <Select
               labelId="metadata-table-select-label"
@@ -725,7 +748,8 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
         </Box>
 
         {/* Right: output info */}
-        <Box className="mr-4"
+        <Box
+          className="mr-4"
           sx={{
             display: "flex",
             gap: 2,
@@ -836,7 +860,7 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
                       #
                     </TableCell>
 
-                    {schema.columns.map((col: MetadataColumn) => (
+                    {visibleColumns.map((col) => (
                       <TableCell
                         key={col.name}
                         sx={{
@@ -860,7 +884,7 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
                   {topSpacerHeight > 0 && (
                     <TableRow style={{ height: topSpacerHeight }}>
                       <TableCell
-                        colSpan={schema.columns.length + 1}
+                        colSpan={visibleColumns.length + 1}
                         sx={{ padding: 0, borderBottom: "none" }}
                       />
                     </TableRow>
@@ -913,13 +937,13 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
                             left: 0,
                             zIndex: 2,
                             borderRight: "1px solid rgba(148,163,184,0.3)",
-                            backgroundColor: HEADER_BG
+                            backgroundColor: HEADER_BG,
                           }}
                         >
                           {displayRowIndex + 1}
                         </TableCell>
 
-                        {schema.columns.map((col) => {
+                        {visibleColumns.map((col) => {
                           const v = row.values[col.index];
                           const isImageColumn = col.rendererType === "image";
                           const isSelectedImage =
@@ -1006,7 +1030,7 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
                   {bottomSpacerHeight > 0 && (
                     <TableRow style={{ height: bottomSpacerHeight }}>
                       <TableCell
-                        colSpan={schema.columns.length + 1}
+                        colSpan={visibleColumns.length + 1}
                         sx={{ padding: 0, borderBottom: "none" }}
                       />
                     </TableRow>
