@@ -635,7 +635,7 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
       }}
     >
       {/* Header: view mode buttons + table selector + info */}
-      <Box
+      <Box 
         sx={{
           display: "flex",
           alignItems: "center",
@@ -1027,7 +1027,7 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
               >
                 <CircularProgress size={14} />
                 <Typography variant="caption" color="text.secondary">
-                  Loading visible rows…
+                  Loading rows…
                 </Typography>
               </Box>
             )}
