@@ -1,14 +1,26 @@
 // src/components/analyze/volume-viewer.tsx
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Box, Typography, CircularProgress, List, ListItemButton, ListItemText,
-  Divider, ToggleButtonGroup, ToggleButton, TextField, MenuItem, Paper,
-  IconButton, Tooltip
+  Box,
+  Typography,
+  CircularProgress,
+  List,
+  ListItemButton,
+  ListItemText,
+  Divider,
+  ToggleButtonGroup,
+  ToggleButton,
+  TextField,
+  MenuItem,
+  Button,
+  Paper,
+  Tooltip,
 } from "@mui/material";
 import Slider from "@mui/material/Slider";
 import { styled } from "@mui/material/styles";
+import Plot from "react-plotly.js";
 import { useProjectService } from "@/ProjectServiceContext";
-import { FitViewIcon } from "@/icons";
+import { BarChart3, ZoomIn } from "lucide-react";
 
 type VolumeViewerProps = {
   projectId: string | number;
@@ -16,7 +28,13 @@ type VolumeViewerProps = {
   outputName: string;
   protocolLabel?: string;
 };
+
 type VolumeLite = { id: string | number; label?: string; name?: string };
+
+type HistogramData = {
+  binEdges: number[];
+  counts: number[];
+};
 
 const DEFAULT_AXIS: "z" | "y" | "x" = "z";
 const CMAP_OPTIONS = ["viridis", "gray", "magma", "plasma", "inferno", "cividis", "turbo"];
@@ -24,7 +42,10 @@ const CMAP_OPTIONS = ["viridis", "gray", "magma", "plasma", "inferno", "cividis"
 /** Debounce tiny scrubs. */
 function useDebounced<T>(value: T, delay = 50): T {
   const [debounced, setDebounced] = useState(value);
-  useEffect(() => { const id = setTimeout(() => setDebounced(value), delay); return () => clearTimeout(id); }, [value, delay]);
+  useEffect(() => {
+    const id = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(id);
+  }, [value, delay]);
   return debounced;
 }
 
@@ -46,15 +67,35 @@ function useElementSize<T extends Element>(ref: React.RefObject<T | null>) {
 
 type CacheEntry = { url: string; revoke: () => void };
 class Lru {
-  private max: number; private map = new Map<string, CacheEntry>();
-  constructor(max = 32) { this.max = max; }
-  get(k: string) { const v = this.map.get(k); if (!v) return undefined; this.map.delete(k); this.map.set(k, v); return v; }
-  set(k: string, v: CacheEntry) {
-    if (this.map.has(k)) { this.map.get(k)!.revoke(); this.map.delete(k); }
-    this.map.set(k, v);
-    if (this.map.size > this.max) { const fk = this.map.keys().next().value as string; const f = this.map.get(fk)!; f.revoke(); this.map.delete(fk); }
+  private max: number;
+  private map = new Map<string, CacheEntry>();
+  constructor(max = 32) {
+    this.max = max;
   }
-  clear() { for (const [, v] of this.map) v.revoke(); this.map.clear(); }
+  get(k: string) {
+    const v = this.map.get(k);
+    if (!v) return undefined;
+    this.map.delete(k);
+    this.map.set(k, v);
+    return v;
+  }
+  set(k: string, v: CacheEntry) {
+    if (this.map.has(k)) {
+      this.map.get(k)!.revoke();
+      this.map.delete(k);
+    }
+    this.map.set(k, v);
+    if (this.map.size > this.max) {
+      const fk = this.map.keys().next().value as string;
+      const f = this.map.get(fk)!;
+      f.revoke();
+      this.map.delete(fk);
+    }
+  }
+  clear() {
+    for (const [, v] of this.map) v.revoke();
+    this.map.clear();
+  }
 }
 
 const SliceSlider = styled(Slider)(({ theme }) => ({
@@ -77,7 +118,11 @@ const SliceSlider = styled(Slider)(({ theme }) => ({
   },
 }));
 
-export default function VolumeViewer({ projectId, protocolId, outputName }: VolumeViewerProps) {
+export default function VolumeViewer({
+  projectId,
+  protocolId,
+  outputName,
+}: VolumeViewerProps) {
   const svc = useProjectService();
 
   // ---------- List & selection ----------
@@ -90,6 +135,12 @@ export default function VolumeViewer({ projectId, protocolId, outputName }: Volu
   const [metaLoading, setMetaLoading] = useState(false);
   const [metaError, setMetaError] = useState<string | null>(null);
   const [meta, setMeta] = useState<any>(null);
+
+  // ---------- Histogram (volume-level intensity distribution) ----------
+  const [histogram, setHistogram] = useState<HistogramData | null>(null);
+  const [histLoading, setHistLoading] = useState(false);
+  const [histError, setHistError] = useState<string | null>(null);
+  const [showHistogram, setShowHistogram] = useState(false);
 
   // ---------- Controls ----------
   const [axis, setAxis] = useState<"z" | "y" | "x">(DEFAULT_AXIS);
@@ -117,11 +168,13 @@ export default function VolumeViewer({ projectId, protocolId, outputName }: Volu
         const items = await svc.listOutputVolumes(projectId, protocolId, outputName);
         if (cancelled) return;
         const mapped: VolumeLite[] = (items || []).map((v: any, i: number) => ({
-          id: v?.id ?? i, label: v?.label ?? v?.name ?? `Volume ${v?.id ?? i}`, name: v?.name,
+          id: v?.id ?? i,
+          label: v?.label ?? v?.name ?? `Volume ${v?.id ?? i}`,
+          name: v?.name,
         }));
         setVolumes(mapped);
-        setSelectedId(prev => {
-          const exists = mapped.find(m => String(m.id) === String(prev ?? -999));
+        setSelectedId((prev) => {
+          const exists = mapped.find((m) => String(m.id) === String(prev ?? -999));
           return exists ? (prev as any) : mapped[0]?.id ?? null;
         });
       } catch (e: any) {
@@ -130,7 +183,9 @@ export default function VolumeViewer({ projectId, protocolId, outputName }: Volu
         if (!cancelled) setLoadingList(false);
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [projectId, protocolId, outputName, svc]);
 
   // Hard reset on volume/colormap/axis change
@@ -145,13 +200,21 @@ export default function VolumeViewer({ projectId, protocolId, outputName }: Volu
 
   // Load meta
   useEffect(() => {
-    if (selectedId == null) { setMeta(null); return; }
+    if (selectedId == null) {
+      setMeta(null);
+      return;
+    }
     let cancelled = false;
     (async () => {
       try {
         setMetaLoading(true);
         setMetaError(null);
-        const info = await svc.getVolumeInfo(projectId, protocolId, outputName, selectedId);
+        const info = await svc.getVolumeInfo(
+          projectId,
+          protocolId,
+          outputName,
+          selectedId,
+        );
         if (cancelled) return;
         setMeta(info || null);
       } catch (e: any) {
@@ -160,8 +223,68 @@ export default function VolumeViewer({ projectId, protocolId, outputName }: Volu
         if (!cancelled) setMetaLoading(false);
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [selectedId, projectId, protocolId, outputName, svc]);
+
+  // Load histogram for the selected volume (only if panel is visible)
+  useEffect(() => {
+    if (!showHistogram || selectedId == null) {
+      setHistogram(null);
+      setHistError(null);
+      setHistLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        setHistLoading(true);
+        setHistError(null);
+
+        const h = await svc.getVolumeHistogram(
+          projectId,
+          protocolId,
+          outputName,
+          selectedId,
+        );
+        if (cancelled) return;
+
+        if (!h) {
+          setHistogram(null);
+          return;
+        }
+
+        const raw: any = h;
+        const binEdges: number[] =
+          raw.binEdges ??
+          raw.bin_edges ??
+          raw.bins ??
+          [];
+        const counts: number[] =
+          raw.counts ??
+          raw.values ??
+          [];
+
+        setHistogram({ binEdges, counts });
+      } catch (e: any) {
+        if (!cancelled) {
+          setHistError(e?.message || "Failed to load histogram");
+          setHistogram(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setHistLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [showHistogram, selectedId, projectId, protocolId, outputName, svc]);
 
   // Dims (backend dims = Z,Y,X -> expose {x,y,z})
   const dims = useMemo(() => getDimsZYXtoXYZ(meta), [meta]);
@@ -184,16 +307,25 @@ export default function VolumeViewer({ projectId, protocolId, outputName }: Volu
     try {
       const ac = new AbortController();
       const { url, revoke } = await svc.fetchVolumeSliceObjectUrl(
-        projectId, protocolId, outputName, selectedId!, idx,
-        { axis, cmap: colormap, signal: ac.signal }
+        projectId,
+        protocolId,
+        outputName,
+        selectedId!,
+        idx,
+        { axis, cmap: colormap, signal: ac.signal },
       );
       cacheRef.current.set(k, { url, revoke });
-    } catch {}
+    } catch {
+      // ignore
+    }
   };
 
   // Fetch current slice (live while scrubbing, with abort)
   useEffect(() => {
-    if (!ready) { setImgError(null); return; }
+    if (!ready) {
+      setImgError(null);
+      return;
+    }
 
     const idx = Math.max(0, Math.min(debouncedIndex, maxSlice));
     const k = keyFor(idx);
@@ -217,26 +349,39 @@ export default function VolumeViewer({ projectId, protocolId, outputName }: Volu
         setLoading(!cached);
         if (cached) {
           useImage(cached.url);
-          prefetch(idx - 1); prefetch(idx + 1);
+          prefetch(idx - 1);
+          prefetch(idx + 1);
           return;
         }
         const { url, revoke } = await svc.fetchVolumeSliceObjectUrl(
-          projectId, protocolId, outputName, selectedId!, idx,
-          { axis, cmap: colormap, signal: myAbort.signal }
+          projectId,
+          protocolId,
+          outputName,
+          selectedId!,
+          idx,
+          { axis, cmap: colormap, signal: myAbort.signal },
         );
-        if (reqIdRef.current !== myReq) { revoke(); return; }
+        if (reqIdRef.current !== myReq) {
+          revoke();
+          return;
+        }
         cacheRef.current.set(k, { url, revoke });
         useImage(url);
-        prefetch(idx - 1); prefetch(idx + 1);
+        prefetch(idx - 1);
+        prefetch(idx + 1);
       } catch (e: any) {
         if (e?.name === "AbortError") return;
-        if (reqIdRef.current === myReq) setImgError(e?.message || "Failed to render slice");
+        if (reqIdRef.current === myReq) {
+          setImgError(e?.message || "Failed to render slice");
+        }
       } finally {
         if (reqIdRef.current === myReq) setLoading(false);
       }
     })();
 
-    return () => { myAbort.abort(); };
+    return () => {
+      myAbort.abort();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, debouncedIndex, axis, colormap, selectedId]);
 
@@ -264,7 +409,8 @@ export default function VolumeViewer({ projectId, protocolId, outputName }: Volu
     return naturalW * fitScale * zoomMul;
   }, [naturalW, fitScale, zoomMul]);
 
-  const applyZoom = (mul: number) => setZoomMul(() => Math.min(MAX_MUL, Math.max(MIN_MUL, mul)));
+  const applyZoom = (mul: number) =>
+    setZoomMul(() => Math.min(MAX_MUL, Math.max(MIN_MUL, mul)));
   const stepZoom = (factor: number) => applyZoom(zoomMul * factor);
   const fitZoom = () => applyZoom(1);
 
@@ -277,9 +423,16 @@ export default function VolumeViewer({ projectId, protocolId, outputName }: Volu
 
   // ---------- UI ----------
   return (
-    <Box sx={{ display: "flex", minHeight: 700 }}>
+    <Box sx={{ display: "flex", minHeight: 650 }}>
       {/* Left: list */}
-      <Box sx={{ width: 280, borderRight: "1px solid #eee", display: "flex", flexDirection: "column" }}>
+      <Box
+        sx={{
+          width: 280,
+          borderRight: "1px solid #eee",
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
         <Box sx={{ p: 1.5 }}>
           <Typography variant="subtitle2">Volumes</Typography>
           <Typography variant="caption" color="text.secondary">
@@ -294,16 +447,32 @@ export default function VolumeViewer({ projectId, protocolId, outputName }: Volu
               <Typography variant="body2"></Typography>
             </Box>
           ) : listError ? (
-            <Box sx={{ p: 2 }}><Typography variant="body2" color="error">{listError}</Typography></Box>
+            <Box sx={{ p: 2 }}>
+              <Typography variant="body2" color="error">
+                {listError}
+              </Typography>
+            </Box>
           ) : volumes.length === 0 ? (
-            <Box sx={{ p: 2 }}><Typography variant="body2" color="text.secondary">No volumes in this output.</Typography></Box>
+            <Box sx={{ p: 2 }}>
+              <Typography variant="body2" color="text.secondary">
+                No volumes in this output.
+              </Typography>
+            </Box>
           ) : (
             <List dense disablePadding>
-              {volumes.map(v => {
+              {volumes.map((v) => {
                 const selected = String(selectedId) === String(v.id);
                 return (
-                  <ListItemButton key={String(v.id)} selected={selected} onClick={() => setSelectedId(v.id)} sx={{ px: 1.5, py: 1 }}>
-                    <ListItemText primaryTypographyProps={{ variant: "body2" }} primary={v.label || `Volume ${String(v.id)}`} />
+                  <ListItemButton
+                    key={String(v.id)}
+                    selected={selected}
+                    onClick={() => setSelectedId(v.id)}
+                    sx={{ px: 1.5, py: 1 }}
+                  >
+                    <ListItemText
+                      primaryTypographyProps={{ variant: "body2" }}
+                      primary={v.label || `Volume ${String(v.id)}`}
+                    />
                   </ListItemButton>
                 );
               })}
@@ -312,15 +481,30 @@ export default function VolumeViewer({ projectId, protocolId, outputName }: Volu
         </Box>
       </Box>
 
-      {/* Right: viewer */}
+      {/* Right: viewer + optional histogram panel */}
       <Box sx={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
         {/* Toolbar */}
         <Paper elevation={0} square sx={{ p: 1, borderBottom: "1px solid #eee" }}>
-          <Box sx={{ display: "flex", gap: 2, alignItems: "center", flexWrap: "wrap" }}>
+          <Box
+            sx={{
+              display: "flex",
+              gap: 2,
+              alignItems: "center",
+              flexWrap: "wrap",
+            }}
+          >
             {/* Axis */}
             <Box>
-              <Typography variant="caption" color="text.secondary">Axis</Typography>
-              <ToggleButtonGroup size="small" value={axis} exclusive onChange={(_, v) => v && setAxis(v)} sx={{ ml: 1 }}>
+              <Typography variant="caption" color="text.secondary">
+                Axis
+              </Typography>
+              <ToggleButtonGroup
+                size="small"
+                value={axis}
+                exclusive
+                onChange={(_, v) => v && setAxis(v)}
+                sx={{ ml: 1 }}
+              >
                 <ToggleButton value="z">Z</ToggleButton>
                 <ToggleButton value="y">Y</ToggleButton>
                 <ToggleButton value="x">X</ToggleButton>
@@ -328,8 +512,22 @@ export default function VolumeViewer({ projectId, protocolId, outputName }: Volu
             </Box>
 
             {/* Slider */}
-            <Box sx={{ minWidth: 320, display: "grid", gridTemplateColumns: "auto 1fr auto", alignItems: "center", columnGap: 1 }}>
-              <Typography variant="caption" color="text.secondary" sx={{ pr: 1, minWidth: 18, textAlign: "left" }}>1</Typography>
+            <Box
+              sx={{
+                minWidth: 320,
+                display: "grid",
+                gridTemplateColumns: "auto 1fr auto",
+                alignItems: "center",
+                columnGap: 1,
+              }}
+            >
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{ pr: 1, minWidth: 18, textAlign: "left" }}
+              >
+                1
+              </Typography>
               <SliceSlider
                 size="small"
                 value={Math.min(sliceIndex, maxSlice)}
@@ -337,104 +535,287 @@ export default function VolumeViewer({ projectId, protocolId, outputName }: Volu
                 max={maxSlice}
                 valueLabelDisplay="auto"
                 valueLabelFormat={(v) => `${(v as number) + 1}`}
-                getAriaValueText={(v) => `slice ${(v as number) + 1} of ${maxSlice + 1}`}
+                getAriaValueText={(v) =>
+                  `slice ${(v as number) + 1} of ${maxSlice + 1}`
+                }
                 onChange={(_, v) => setSliceIndex(v as number)}
                 disabled={!ready}
                 aria-label="slice-index"
               />
-              <Typography variant="caption" color="text.secondary" sx={{ pl: 1, minWidth: 24, textAlign: "right" }}>
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{ pl: 1, minWidth: 24, textAlign: "right" }}
+              >
                 {maxSlice + 1}
               </Typography>
             </Box>
 
             {/* Colormap */}
-            <TextField size="small" select label="Colormap" value={colormap} onChange={(e) => setColormap(e.target.value)} sx={{ width: 180 }}>
-              {CMAP_OPTIONS.map(cm => <MenuItem key={cm} value={cm}>{cm}</MenuItem>)}
+            <TextField
+              size="small"
+              select
+              label="Colormap"
+              value={colormap}
+              onChange={(e) => setColormap(e.target.value)}
+              sx={{ width: 180 }}
+            >
+              {CMAP_OPTIONS.map((cm) => (
+                <MenuItem key={cm} value={cm}>
+                  {cm}
+                </MenuItem>
+              ))}
             </TextField>
 
-            {/* Right side: Fit + Zoom label (minimal) */}
-            <Box sx={{ display: "flex", alignItems: "center", gap: 1, ml: "auto" }}>
-              <Typography variant="caption" color="text.secondary">Zoom: {Math.round(zoomMul * 100)}%</Typography>
-              <Tooltip title="Fit to view (100%)">
+            {/* Right side: histogram toggle + fit/zoom */}
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                gap: 1.5,
+                ml: "auto",
+              }}
+            >
+              <Tooltip
+                title={
+                  showHistogram
+                    ? "Hide intensity histogram"
+                    : "Show intensity histogram"
+                }
+              >
                 <span>
-                  <IconButton size="small" onClick={fitZoom} disabled={!frontUrl} aria-label="fit-to-view">
-                    <FitViewIcon className="mb-1" fontSize="small" />
-                  </IconButton>
+                  <Button
+                    size="small"
+                    variant={showHistogram ? "contained" : "outlined"}
+                    startIcon={<BarChart3 size={16} />}
+                    onClick={() => setShowHistogram((prev) => !prev)}
+                    disabled={selectedId == null}
+                    sx={{
+                      textTransform: "none",
+                      borderRadius: 999,
+                      px: 1.5,
+                      py: 0.25,
+                      minHeight: 0,
+                      marginRight: 2
+                    }}
+                  >
+                    Histogram
+                  </Button>
                 </span>
               </Tooltip>
+
+              {/* Zoom display, ancho fijo para que no “baile” */}
+              <Box
+                sx={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 0.5,
+                  cursor: "default",
+                }}
+              >
+                <ZoomIn size={14} style={{ opacity: 0.6 }} />
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{
+                    fontVariantNumeric: "tabular-nums",
+                    minWidth: "5ch",       
+                    textAlign: "right",
+                  }}
+                >
+                  {Math.round(zoomMul * 100)}%
+                </Typography>
+              </Box>
             </Box>
+
           </Box>
         </Paper>
 
-        {/* Canvas (fit; capped at 100%) */}
-        <Box
-          ref={viewerRef}
-          onWheel={onWheelZoom}
-          onDoubleClick={fitZoom}
-          sx={{
-            flex: 1,
-            minHeight: 0,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            p: 2,
-            overflow: "hidden",
-            position: "relative",
-            cursor: "default",
-          }}
-          title="Double-click to fit"
-        >
-          {metaLoading ? (
-            <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
-              <CircularProgress size={18} />
-              <Typography variant="body2"></Typography>
+        {/* Main content: viewer + optional side panel */}
+        <Box sx={{ flex: 1, display: "flex", minHeight: 0 }}>
+          {/* Viewer column */}
+          <Box
+            sx={{
+              flex: 1,
+              display: "flex",
+              flexDirection: "column",
+              minWidth: 0,
+            }}
+          >
+            {/* Canvas (fit; capped at 100%) */}
+            <Box
+              ref={viewerRef}
+              onWheel={onWheelZoom}
+              onDoubleClick={fitZoom}
+              sx={{
+                flex: 1,
+                minHeight: 0,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                p: 2,
+                overflow: "hidden",
+                position: "relative",
+                cursor: "default",
+              }}
+              title="Double-click to fit"
+            >
+              {metaLoading ? (
+                <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
+                  <CircularProgress size={18} />
+                  <Typography variant="body2"></Typography>
+                </Box>
+              ) : metaError ? (
+                <Typography variant="body2" color="error">
+                  {metaError}
+                </Typography>
+              ) : selectedId == null ? (
+                <Typography variant="body2" color="text.secondary">
+                  Select a volume
+                </Typography>
+              ) : imgError ? (
+                <Typography variant="body2" color="error">
+                  {imgError}
+                </Typography>
+              ) : frontUrl ? (
+                <img
+                  src={frontUrl}
+                  alt="slice"
+                  onLoad={(e) => {
+                    const img = e.currentTarget;
+                    if (img.naturalWidth && img.naturalHeight) {
+                      setNaturalW(img.naturalWidth);
+                      setNaturalH(img.naturalHeight);
+                    }
+                  }}
+                  style={{
+                    width:
+                      naturalW && renderedWidth ? `${renderedWidth}px` : undefined,
+                    height: "auto",
+                    display: "block",
+                    transition: "opacity 140ms ease",
+                    opacity: frontOpacity,
+                    imageRendering: "auto",
+                  }}
+                />
+              ) : loading ? (
+                <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
+                  <CircularProgress size={18} />
+                  <Typography variant="body2"></Typography>
+                </Box>
+              ) : (
+                <Typography variant="body2" color="text.secondary">
+                  No image
+                </Typography>
+              )}
             </Box>
-          ) : metaError ? (
-            <Typography variant="body2" color="error">{metaError}</Typography>
-          ) : selectedId == null ? (
-            <Typography variant="body2" color="text.secondary">Select a volume</Typography>
-          ) : imgError ? (
-            <Typography variant="body2" color="error">{imgError}</Typography>
-          ) : frontUrl ? (
-            <img
-              src={frontUrl}
-              alt="slice"
-              onLoad={(e) => {
-                const img = e.currentTarget;
-                if (img.naturalWidth && img.naturalHeight) {
-                  setNaturalW(img.naturalWidth);
-                  setNaturalH(img.naturalHeight);
-                }
-              }}
-              style={{
-                width: naturalW && renderedWidth ? `${renderedWidth}px` : undefined,
-                height: "auto",
-                display: "block",
-                transition: "opacity 140ms ease",
-                opacity: frontOpacity,
-                imageRendering: "auto",
-              }}
-            />
-          ) : (
-            loading ? (
-              <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
-                <CircularProgress size={18} />
-                <Typography variant="body2"></Typography>
-              </Box>
-            ) : (
-              <Typography variant="body2" color="text.secondary">No image</Typography>
-            )
-          )}
-        </Box>
 
-        {/* Meta */}
-        <Divider />
-        <Box sx={{ p: 1.5, display: "flex", gap: 3, flexWrap: "wrap" }}>
-          <MetaItem label="Dims" value={dimsToStringXYZ(dims)} />
-          {"min" in (meta || {}) && <MetaItem label="Min" value={num(meta?.min)} />}
-          {"max" in (meta || {}) && <MetaItem label="Max" value={num(meta?.max)} />}
-          {"mean" in (meta || {}) && <MetaItem label="Mean" value={num(meta?.mean)} />}
-          {"std" in (meta || {}) && <MetaItem label="Std" value={num(meta?.std)} />}
+            {/* Meta */}
+            <Divider />
+            <Box sx={{ p: 1.5, display: "flex", gap: 3, flexWrap: "wrap" }}>
+              <MetaItem label="Dims" value={dimsToStringXYZ(dims)} />
+              {"min" in (meta || {}) && (
+                <MetaItem label="Min" value={num(meta?.min)} />
+              )}
+              {"max" in (meta || {}) && (
+                <MetaItem label="Max" value={num(meta?.max)} />
+              )}
+              {"mean" in (meta || {}) && (
+                <MetaItem label="Mean" value={num(meta?.mean)} />
+              )}
+              {"std" in (meta || {}) && (
+                <MetaItem label="Std" value={num(meta?.std)} />
+              )}
+            </Box>
+          </Box>
+
+          {/* Histogram side panel */}
+          {showHistogram && (
+            <>
+              <Divider orientation="vertical" flexItem />
+              <Box
+                sx={{
+                  flexBasis: 420,
+                  flexShrink: 0,
+                  minWidth: 360,
+                  maxWidth: 520,
+                  p: 1.5,
+                  display: "flex",
+                  flexDirection: "column",
+                  bgcolor: "background.paper",
+                }}
+              >
+                <Typography variant="caption" color="text.secondary">
+                  Intensity histogram
+                </Typography>
+
+                {selectedId == null ? (
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    sx={{ mt: 1 }}
+                  >
+                    Select a volume to see the histogram.
+                  </Typography>
+                ) : histLoading ? (
+                  <Box
+                    sx={{
+                      display: "flex",
+                      gap: 1,
+                      alignItems: "center",
+                      mt: 1,
+                    }}
+                  >
+                    <CircularProgress size={16} />
+                    <Typography variant="caption">Loading histogram…</Typography>
+                  </Box>
+                ) : histError ? (
+                  <Typography
+                    variant="caption"
+                    color="error"
+                    sx={{ mt: 1 }}
+                  >
+                    {histError}
+                  </Typography>
+                ) : histogram && histogram.binEdges.length > 1 ? (
+                  <Box sx={{ mt: 1, flex: 1, minHeight: 0 }}>
+                    <Plot
+                      data={[
+                        {
+                          type: "bar",
+                          x: histogram.binEdges
+                            .slice(0, -1)
+                            .map(
+                              (b, i) =>
+                                0.5 * (b + histogram.binEdges[i + 1]),
+                            ),
+                          y: histogram.counts,
+                        },
+                      ]}
+                      layout={{
+                        margin: { l: 40, r: 10, t: 10, b: 30 },
+                        autosize: true,
+                        showlegend: false,
+                        xaxis: { title: "Intensity" },
+                        yaxis: { title: "Count" },
+                      }}
+                      style={{ width: "100%", height: "100%" }}
+                      useResizeHandler
+                      config={{ displaylogo: false, responsive: true }}
+                    />
+                  </Box>
+                ) : (
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    sx={{ mt: 1 }}
+                  >
+                    No histogram data.
+                  </Typography>
+                )}
+              </Box>
+            </>
+          )}
         </Box>
       </Box>
     </Box>
@@ -442,7 +823,9 @@ export default function VolumeViewer({ projectId, protocolId, outputName }: Volu
 }
 
 /** Interpret backend dims as Z,Y,X and expose as {x,y,z} */
-function getDimsZYXtoXYZ(info: any): Record<"x" | "y" | "z", number> {
+function getDimsZYXtoXYZ(
+  info: any,
+): Record<"x" | "y" | "z", number> {
   const raw = info?.dims || info?.shape || info?.size || [];
   if (Array.isArray(raw) && raw.length >= 3) {
     const z = Number(raw[0]) || 0;
@@ -456,14 +839,21 @@ function getDimsZYXtoXYZ(info: any): Record<"x" | "y" | "z", number> {
     z: Number(info?.depth ?? info?.slices ?? 0),
   };
 }
+
 function dimsToStringXYZ(d: Record<"x" | "y" | "z", number>) {
   return d.x && d.y && d.z ? `${d.x} × ${d.y} × ${d.z}` : "–";
 }
-function num(n: any) { return Number.isFinite(n) ? Number(n).toFixed(3) : "–"; }
+
+function num(n: any) {
+  return Number.isFinite(n) ? Number(n).toFixed(3) : "–";
+}
+
 function MetaItem({ label, value }: { label: string; value: string }) {
   return (
     <Box sx={{ display: "flex", gap: 1 }}>
-      <Typography variant="caption" color="text.secondary">{label}:</Typography>
+      <Typography variant="caption" color="text.secondary">
+        {label}:
+      </Typography>
       <Typography variant="caption">{value}</Typography>
     </Box>
   );

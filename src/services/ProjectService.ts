@@ -42,6 +42,31 @@ export type VolumeSliceObjectUrl = {
   revoke: () => void;
 };
 
+/** Histogram data for a volume, already aggregated in bins. */
+export type VolumeHistogram = {
+  // Normalized fields for the viewer
+  bins?: number[];
+  counts?: number[];
+
+  // Raw backend variants (keep them optional)
+  binEdges?: number[];
+  bin_edges?: number[];
+  values?: number[];
+
+  range?: [number, number];
+  totalVoxels?: number;
+};
+
+/** Optional parameters to control histogram generation in the backend. */
+export type VolumeHistogramOptions = {
+  /** Desired number of bins. Backend may clamp this value. */
+  bins?: number;
+  /** Optional minimum of the value range. */
+  rangeMin?: number;
+  /** Optional maximum of the value range. */
+  rangeMax?: number;
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Metadata table basic types (en paralelo a los de api/projects.ts)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -192,6 +217,18 @@ export interface ProjectService<
     outputName: string,
     volumeId: Id
   ): Promise<VolumeInfo>;
+
+ getVolumeHistogram(
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    volumeId: Id,
+    opts?: {
+      bins?: number;
+      rangeMin?: number;
+      rangeMax?: number;
+    }
+  ): Promise<VolumeHistogram>;
 
   buildVolumeSliceUrl(
     projectId: Id,

@@ -7,6 +7,8 @@ import type {
   ProjectPayload,
   Id,
   VolumeSliceObjectUrl,
+  VolumeHistogram,
+  VolumeHistogramOptions,
 } from "@/services/ProjectService";
 
 /** Normalize id */
@@ -111,6 +113,21 @@ const defaultService: ProjectService = {
       toId(protocolId),
       outputName,
       toId(volumeId),
+    ),
+
+  getVolumeHistogram: (
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    volumeId: Id,
+    opts = {},
+  ) =>
+    api.getVolumeHistogram(
+      toId(projectId),
+      toId(protocolId),
+      outputName,
+      toId(volumeId),
+      opts,
     ),
 
   buildVolumeSliceUrl: (

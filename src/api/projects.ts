@@ -258,9 +258,38 @@ export async function getVolumeInfo(projectId: Id, protocolId: Id, outputName: s
   const enc = encodeURIComponent;
   const url = `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/outputs/${enc(outputName)}/volumes/${enc(String(volumeId))}/info`;
   const res = await fetchWithAuth(url, { method: "GET" });
-  if (!res.ok) throw await toApiError(res, "Failed to fetch volume info");
+  if (!res.ok) throw await toApiError(res, "Failed to fetch volume histogram");
   return safeJson<any>(res);
 }
+
+export async function getVolumeHistogram(
+  projectId: Id,
+  protocolId: Id,
+  outputName: string,
+  volumeId: Id,
+  opts: {
+    bins?: number;
+    rangeMin?: number;
+    rangeMax?: number;
+  } = {},
+): Promise<any> {
+  const enc = encodeURIComponent;
+  const base = `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/outputs/${enc(
+    outputName,
+  )}/volumes/${enc(String(volumeId))}/histogram`;
+
+  const params = new URLSearchParams();
+  if (opts.bins != null) params.set("bins", String(opts.bins));
+  if (opts.rangeMin != null) params.set("min", String(opts.rangeMin));
+  if (opts.rangeMax != null) params.set("max", String(opts.rangeMax));
+
+  const url = params.toString() ? `${base}?${params.toString()}` : base;
+
+  const res = await fetchWithAuth(url, { method: "GET" });
+  if (!res.ok) throw await toApiError(res, "Failed to fetch volume histogram");
+  return safeJson<any>(res);
+}
+
 
 /** IMPORTANT: only 'cmap=' is sent. */
 export async function buildVolumeSliceUrl(
