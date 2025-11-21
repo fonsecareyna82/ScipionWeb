@@ -349,6 +349,35 @@ export async function fetchVolumeSliceObjectUrl(
   return { url: objUrl, meta, revoke };
 }
 
+export async function getVolumeData3d(
+  projectId: Id,
+  protocolId: Id,
+  outputName: string,
+  volumeId: Id,
+  opts: {
+    maxDim?: number;
+    method?: "binning" | "stride" | "none";
+  } = {},
+): Promise<any> {
+  const enc = encodeURIComponent;
+
+  const base = `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/outputs/${enc(
+    outputName,
+  )}/volumes/${enc(String(volumeId))}/data3d`;
+
+  const params = new URLSearchParams();
+  if (opts.maxDim != null) params.set("maxDim", String(opts.maxDim));
+  if (opts.method) params.set("method", opts.method);
+
+  const url = params.toString() ? `${base}?${params.toString()}` : base;
+
+  const res = await fetchWithAuth(url, { method: "GET", cache: "no-store" });
+  if (!res.ok) throw await toApiError(res, "Failed to fetch 3D volume data");
+
+  return safeJson<any>(res);
+}
+
+
 // Metadata tables list
 export interface MetadataTableInfo {
   name: string;

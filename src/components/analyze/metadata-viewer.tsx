@@ -1,5 +1,5 @@
 // src/components/analyze/metadata-viewer.tsx
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Box,
   Button,

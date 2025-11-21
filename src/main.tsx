@@ -8,6 +8,7 @@ import App from "./App";
 import { AppWrapper } from "./components/common/PageMeta";
 import { ThemeProvider } from "./context/ThemeContext";
 import { ProcessingProvider } from "@/hooks/useProcessingPlugins";
+import "./r3f-jsx";
 
 createRoot(document.getElementById("root")!).render(
   <ProcessingProvider>

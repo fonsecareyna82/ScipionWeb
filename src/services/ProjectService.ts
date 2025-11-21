@@ -67,6 +67,41 @@ export type VolumeHistogramOptions = {
   rangeMax?: number;
 };
 
+export type VolumeData3dOptions = {
+  /** Maximum size for the longest dimension after downsampling. */
+  maxDim?: number; // default backend: 160
+  /** Downsampling method. */
+  method?: "binning" | "stride" | "none"; // default backend: "binning"
+};
+
+/**
+ * Normalized 3D volume payload for Plotly.
+ * Backend is expected to return a downsampled cube and metadata.
+ * `data` is a flat array; `order` tells how to reshape.
+ */
+export type VolumeData3d = {
+  id: string | number;
+  name?: string;
+
+  /** Dimensions in (x, y, z). */
+  dims: [number, number, number];
+
+  /** Flattened voxel values. */
+  data: number[];
+
+  /** Ordering of the flattened array. */
+  order?: "zyx" | "xyz";
+
+  /** Optional voxel size tuple. */
+  voxelSize?: [number, number, number];
+
+  /** Optional stats. */
+  min?: number;
+  max?: number;
+  mean?: number;
+  std?: number;
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Metadata table basic types (en paralelo a los de api/projects.ts)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -247,6 +282,14 @@ export interface ProjectService<
     sliceIndex: number,
     opts?: VolumeSliceOptions
   ): Promise<VolumeSliceObjectUrl>;
+
+  getVolumeData3d(
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    volumeId: Id,
+    opts?: VolumeData3dOptions
+  ): Promise<VolumeData3d>;
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Analyze Results (Metadata tables + thumbnails)

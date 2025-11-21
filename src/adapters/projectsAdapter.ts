@@ -9,6 +9,8 @@ import type {
   VolumeSliceObjectUrl,
   VolumeHistogram,
   VolumeHistogramOptions,
+  VolumeData3d,
+  VolumeData3dOptions,
 } from "@/services/ProjectService";
 
 /** Normalize id */
@@ -165,6 +167,21 @@ const defaultService: ProjectService = {
       sliceIndex,
       // API uses { axis?, cmap?, normalize?, scale?, format?, thumb?, fast?, quality?, signal? }
       opts as any,
+    ),
+
+    getVolumeData3d: (
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    volumeId: Id,
+    opts: VolumeData3dOptions = {},
+  ): Promise<VolumeData3d> =>
+    api.getVolumeData3d(
+      toId(projectId),
+      toId(protocolId),
+      outputName,
+      toId(volumeId),
+      opts,
     ),
 
   // ──────────────────────────── Analyze Results: Metadata tables ────────────────────────────
