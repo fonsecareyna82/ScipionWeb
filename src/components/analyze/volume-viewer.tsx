@@ -1,5 +1,5 @@
 // src/components/analyze/volume-viewer.tsx
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import {
   Box,
   Typography,
@@ -17,11 +17,18 @@ import {
   Tooltip,
   Slider,
   IconButton,
+  Popover,
 } from "@mui/material";
 import { styled } from "@mui/material/styles";
 import Plot from "react-plotly.js";
 import { useProjectService } from "@/ProjectServiceContext";
-import { BarChart3, ZoomIn, Layers3 } from "lucide-react";
+import {
+  BarChart3,
+  ZoomIn,
+  Layers3,
+  HelpCircle,
+  SlidersHorizontal,
+} from "lucide-react";
 import GpuVolumeView from "./gpu-volume-view";
 
 type VolumeViewerProps = {
@@ -39,6 +46,7 @@ type HistogramData = {
 };
 
 type ViewMode = "slices" | "map3d";
+type ThrMode = "percentile" | "absolute";
 
 const DEFAULT_AXIS: "z" | "y" | "x" = "z";
 const CMAP_OPTIONS = [
@@ -51,14 +59,36 @@ const CMAP_OPTIONS = [
   "turbo",
 ];
 
+const HELP_TEXT: Record<string, string> = {
+  maxDim3d:
+    "Maximum dimension used for the downsampled 3D volume. Higher values look better but are slower.",
+  method3d:
+    "Downsampling method. Binning averages blocks. Stride skips voxels. None keeps original size (can be heavy).",
+  colormap3d: "Colormap applied to the rendered 3D volume.",
+  opacity3d:
+    "Opacity of the volume along the ray. Higher values make the map more solid.",
+  thrMode:
+    "Threshold mode. Percentile uses histogram percentiles; Absolute uses real intensity values.",
+  thrPct:
+    "Percentile threshold range (0–100). The map is rendered between these percentiles.",
+  thrAbs:
+    "Absolute intensity threshold range. Voxels outside this range are suppressed.",
+  surfaceCount:
+    "Number of isosurfaces in Plotly fallback. Does not affect GPU raycasting.",
+  axis: "Slice axis. Z/Y/X correspond to the 3D volume axes.",
+  sliceIndex: "Slice index along the selected axis.",
+  colormap2d: "Colormap used for 2D slice rendering.",
+  histogram: "Shows the intensity distribution of the selected volume.",
+};
+
 const SliceSlider = styled(Slider)(({ theme }) => ({
   height: 4,
-  paddingTop: 16,
-  paddingBottom: 36,
+  paddingTop: 14,
+  paddingBottom: 30,
   "& .MuiSlider-thumb": { width: 14, height: 14 },
   "& .MuiSlider-valueLabel": {
     top: "unset",
-    bottom: -30,
+    bottom: -26,
     transform: "translateY(0) scale(1)",
     background: "transparent",
     color: theme.palette.text.secondary,
@@ -135,8 +165,7 @@ export default function VolumeViewer({
   const [opacity3d, setOpacity3d] = useState(0.2);
   const [colormap3d, setColormap3d] = useState<string>("viridis");
 
-  // Thr two modes
-  const [thrMode, setThrMode] = useState<"pct" | "abs">("pct");
+  const [thrMode, setThrMode] = useState<ThrMode>("percentile");
   const [thrPct, setThrPct] = useState<[number, number]>([55, 98]);
   const [thrAbs, setThrAbs] = useState<[number, number]>([0, 1]);
 
@@ -145,6 +174,21 @@ export default function VolumeViewer({
     maxDim: number;
     method: "binning" | "stride" | "none";
   }>({ volumeId: null, maxDim: 96, method: "binning" });
+
+  const lastThrVolumeRef = useRef<string | number | null>(null);
+
+  // ---------- Help popover ----------
+  const [helpAnchor, setHelpAnchor] = useState<HTMLElement | null>(null);
+  const [helpKey, setHelpKey] = useState<string | null>(null);
+
+  const openHelp = (key: string) => (e: React.MouseEvent<HTMLElement>) => {
+    setHelpKey(key);
+    setHelpAnchor(e.currentTarget);
+  };
+  const closeHelp = () => {
+    setHelpAnchor(null);
+    setHelpKey(null);
+  };
 
   // Load list
   useEffect(() => {
@@ -338,7 +382,7 @@ export default function VolumeViewer({
   ]);
 
   // ---------- 3D data fetch (ONLY on Reload) ----------
-  const load3d = async () => {
+  const load3d = useCallback(async () => {
     if (selectedId == null) return;
     setMapLoading(true);
     setMapError(null);
@@ -367,9 +411,17 @@ export default function VolumeViewer({
     } finally {
       setMapLoading(false);
     }
-  };
+  }, [
+    selectedId,
+    svc,
+    projectId,
+    protocolId,
+    outputName,
+    maxDim3d,
+    method3d,
+  ]);
 
-  // When switching to Map3D, auto-load once per volume
+  // When switching to Map3D, auto-load ONCE if never loaded for this volume
   useEffect(() => {
     if (viewMode !== "map3d") return;
     if (selectedId == null) return;
@@ -378,8 +430,7 @@ export default function VolumeViewer({
     if (last.volumeId !== selectedId) {
       load3d();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewMode, selectedId]);
+  }, [viewMode, selectedId, load3d]);
 
   const dataDirty = useMemo(() => {
     const last = lastLoadedRef.current;
@@ -401,43 +452,52 @@ export default function VolumeViewer({
     return clean;
   }, [mapData]);
 
-  const robustRange = useMemo(() => {
-    if (!sortedValues || sortedValues.length === 0) return null;
-    const lo = percentileFromSorted(sortedValues, 0.5);
-    const hi = percentileFromSorted(sortedValues, 99.5);
-    return { lo, hi };
-  }, [sortedValues]);
-
-  useEffect(() => {
-    if (!sortedValues) return;
-    const isoMin0 = percentileFromSorted(sortedValues, thrPct[0]);
-    const isoMax0 = percentileFromSorted(sortedValues, thrPct[1]);
-    setThrAbs([isoMin0, isoMax0]);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sortedValues]);
-
   const stats3d = useMemo(() => {
     if (!sortedValues || sortedValues.length === 0) return null;
-
     const vmin = sortedValues[0];
     const vmax = sortedValues[sortedValues.length - 1];
+    return { min: vmin, max: vmax };
+  }, [sortedValues]);
 
-    let isoMin: number;
-    let isoMax: number;
+  // Initialize thresholds ONCE per volume load
+  useEffect(() => {
+    if (!sortedValues || selectedId == null) return;
+    if (lastThrVolumeRef.current === selectedId) return;
 
-    if (thrMode === "abs") {
-      isoMin = thrAbs[0];
-      isoMax = thrAbs[1];
-    } else {
-      isoMin = percentileFromSorted(sortedValues, thrPct[0]);
-      isoMax = percentileFromSorted(sortedValues, thrPct[1]);
+    const loAbs = percentileFromSorted(sortedValues, 55);
+    const hiAbs = percentileFromSorted(sortedValues, 98);
+
+    setThrPct([55, 98]);
+    setThrAbs([loAbs, hiAbs]);
+
+    lastThrVolumeRef.current = selectedId;
+  }, [sortedValues, selectedId]);
+
+  // Convert percentile to absolute when needed
+  const thrPctAbs = useMemo(() => {
+    if (!sortedValues) return null;
+    const lo = percentileFromSorted(sortedValues, thrPct[0]);
+    const hi = percentileFromSorted(sortedValues, thrPct[1]);
+    return [lo, hi] as [number, number];
+  }, [sortedValues, thrPct]);
+
+  const isoRange3d = useMemo(() => {
+    if (!stats3d) return null;
+    if (thrMode === "percentile") {
+      if (!thrPctAbs) return null;
+      return thrPctAbs;
     }
+    const lo = Math.min(thrAbs[0], thrAbs[1]);
+    const hi = Math.max(thrAbs[0], thrAbs[1]);
+    return [lo, hi] as [number, number];
+  }, [thrMode, thrPctAbs, thrAbs, stats3d]);
 
-    isoMin = Math.max(vmin, Math.min(vmax, isoMin));
-    isoMax = Math.max(isoMin, Math.min(vmax, isoMax));
-
-    return { min: vmin, max: vmax, isoMin, isoMax };
-  }, [sortedValues, thrPct, thrAbs, thrMode]);
+  // ---------- Preserve Plotly camera ----------
+  const plotlyCameraRef = useRef<any>(null);
+  const handleRelayout = useCallback((ev: any) => {
+    const cam = ev?.["scene.camera"] ?? ev?.scene?.camera;
+    if (cam) plotlyCameraRef.current = cam;
+  }, []);
 
   // ---------- Fit-aware zoom (slices) ----------
   const viewerRef = useRef<HTMLDivElement | null>(null);
@@ -466,7 +526,7 @@ export default function VolumeViewer({
   const stepZoom = (factor: number) => applyZoom(zoomMul * factor);
   const fitZoom = () => applyZoom(1);
 
-  // Native wheel listener to avoid passive warning
+  // Use native wheel listener (non-passive) to avoid warnings
   useEffect(() => {
     const el = viewerRef.current;
     if (!el) return;
@@ -483,12 +543,14 @@ export default function VolumeViewer({
   }, [viewMode, frontUrl, zoomMul]);
 
   // ---------- UI ----------
+  const showRightPanel = showHistogram || viewMode === "map3d";
+
   return (
     <Box sx={{ display: "flex", minHeight: 650 }}>
       {/* Left: list */}
       <Box
         sx={{
-          width: 280,
+          width: 270,
           borderRight: "1px solid #eee",
           display: "flex",
           flexDirection: "column",
@@ -542,29 +604,21 @@ export default function VolumeViewer({
         </Box>
       </Box>
 
-      {/* Right: viewer + optional histogram panel */}
+      {/* Right: viewer + optional side panel */}
       <Box sx={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
-        {/* Toolbar */}
-        <Paper
-          elevation={0}
-          square
-          sx={{
-            p: 0.75,
-            borderBottom: "1px solid #eee",
-            zIndex: (theme) => theme.zIndex.appBar,
-          }}
-        >
+        {/* Toolbar (short) */}
+        <Paper elevation={0} square sx={{ p: 0.75, borderBottom: "1px solid #eee" }}>
           <Box
             sx={{
               display: "grid",
-              gridTemplateColumns: "1fr auto 1fr",
+              gridTemplateColumns: "1fr auto",
               alignItems: "center",
               columnGap: 1.5,
               rowGap: 0.75,
             }}
           >
             {/* Left slot */}
-            <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, flexWrap: "wrap" }}>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1.25, flexWrap: "wrap" }}>
               <ToggleButtonGroup
                 size="small"
                 exclusive
@@ -582,6 +636,7 @@ export default function VolumeViewer({
 
               {viewMode === "slices" && (
                 <>
+                  <ParamLabel label="Axis" helpKey="axis" onHelp={openHelp} />
                   <ToggleButtonGroup
                     size="small"
                     value={axis}
@@ -595,7 +650,7 @@ export default function VolumeViewer({
 
                   <Box
                     sx={{
-                      minWidth: 300,
+                      minWidth: 290,
                       display: "grid",
                       gridTemplateColumns: "auto 1fr auto",
                       alignItems: "center",
@@ -626,10 +681,8 @@ export default function VolumeViewer({
                     label="Colormap"
                     value={colormap}
                     onChange={(e) => setColormap(e.target.value)}
-                    sx={{ width: 160 }}
-                    SelectProps={{
-                      MenuProps: { disablePortal: true },
-                    }}
+                    sx={{ width: 155 }}
+                    SelectProps={{ MenuProps: { disablePortal: true } }}
                   >
                     {CMAP_OPTIONS.map((cm) => (
                       <MenuItem key={cm} value={cm}>
@@ -637,247 +690,53 @@ export default function VolumeViewer({
                       </MenuItem>
                     ))}
                   </TextField>
+                  <IconButton size="small" onClick={openHelp("colormap2d")}>
+                    <HelpCircle size={14} />
+                  </IconButton>
                 </>
               )}
 
-              {viewMode === "map3d" && (
-                <>
-                  {/* Data params */}
-                  <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.75 }}>
-                    <TextField
-                      size="small"
-                      label="maxDim"
-                      type="number"
-                      value={maxDim3d}
-                      onChange={(e) => setMaxDim3d(clampInt(e.target.value, 48, 256))}
-                      sx={{ width: 110 }}
-                      inputProps={{ min: 48, max: 256, step: 8 }}
-                    />
-                    <HelpMini title="maxDim">
-                      Maximum dimension for downsampled 3D data. Higher = better quality but slower.
-                    </HelpMini>
-                  </Box>
-
-                  <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.75 }}>
-                    <TextField
-                      size="small"
-                      select
-                      label="Method"
-                      value={method3d}
-                      onChange={(e) => setMethod3d(e.target.value as any)}
-                      sx={{ width: 120 }}
-                      SelectProps={{
-                        MenuProps: { disablePortal: true },
-                      }}
-                    >
-                      <MenuItem value="binning">binning</MenuItem>
-                      <MenuItem value="stride">stride</MenuItem>
-                      <MenuItem value="none">none</MenuItem>
-                    </TextField>
-                    <HelpMini title="Method">
-                      Downsampling method. Binning averages voxels; stride skips voxels; none uses full data.
-                    </HelpMini>
-                  </Box>
-
-                  <Button
-                    size="small"
-                    variant={dataDirty ? "contained" : "outlined"}
-                    onClick={load3d}
-                    disabled={selectedId == null || mapLoading}
-                    sx={{ textTransform: "none", borderRadius: 999, px: 1.5 }}
-                  >
-                    Reload
-                  </Button>
-
-                  {/* Appearance params */}
-                  <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.75 }}>
-                    <TextField
-                      size="small"
-                      select
-                      label="Colormap"
-                      value={colormap3d}
-                      onChange={(e) => setColormap3d(e.target.value)}
-                      sx={{ width: 140 }}
-                      SelectProps={{
-                        MenuProps: { disablePortal: true },
-                      }}
-                    >
-                      {CMAP_OPTIONS.map((cm) => (
-                        <MenuItem key={cm} value={cm}>
-                          {cm}
-                        </MenuItem>
-                      ))}
-                    </TextField>
-                    <HelpMini title="Colormap">
-                      Color palette for the 3D rendering.
-                    </HelpMini>
-                  </Box>
-
-                  <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.75 }}>
-                    <TextField
-                      size="small"
-                      label="Surfaces"
-                      type="number"
-                      value={surfaceCount}
-                      onChange={(e) => setSurfaceCount(clampInt(e.target.value, 1, 8))}
-                      sx={{ width: 100 }}
-                      inputProps={{ min: 1, max: 8, step: 1 }}
-                    />
-                    <HelpMini title="Surfaces">
-                      Number of iso-surfaces for Plotly fallback. GPU view ignores this.
-                    </HelpMini>
-                  </Box>
-
-                  <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.75 }}>
-                    <TextField
-                      size="small"
-                      label="Opacity"
-                      type="number"
-                      value={opacity3d}
-                      onChange={(e) => setOpacity3d(clampFloat(e.target.value, 0.05, 1))}
-                      sx={{ width: 100 }}
-                      inputProps={{ min: 0.05, max: 1, step: 0.05 }}
-                    />
-                    <HelpMini title="Opacity">
-                      Overall transparency of the 3D volume.
-                    </HelpMini>
-                  </Box>
-
-                  {/* Thr block */}
-                  <Box sx={{ minWidth: 260 }}>
-                    <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 0.5 }}>
-                      <Typography variant="caption" color="text.secondary">
-                        Thr
-                      </Typography>
-
-                      <ToggleButtonGroup
-                        size="small"
-                        exclusive
-                        value={thrMode}
-                        onChange={(_, v) => v && setThrMode(v)}
-                      >
-                        <ToggleButton value="pct">Percentile</ToggleButton>
-                        <ToggleButton value="abs">Absolute</ToggleButton>
-                      </ToggleButtonGroup>
-
-                      <HelpMini title="Thr">
-                        Percentile selects iso range from histogram percentiles (robust).
-                        Absolute sets iso range in density units, like CryoSPARC.
-                      </HelpMini>
-                    </Box>
-
-                    {thrMode === "pct" ? (
-                      <>
-                        <Slider
-                          size="small"
-                          value={thrPct}
-                          min={0}
-                          max={100}
-                          onChange={(_, v) => {
-                            const [lo, hi] = v as number[];
-                            setThrPct([Math.min(lo, hi - 1), hi]);
-                          }}
-                          valueLabelDisplay="auto"
-                          disabled={!sortedValues}
-                        />
-                        {stats3d && (
-                          <Typography variant="caption" color="text.secondary">
-                            isoMin={stats3d.isoMin.toFixed(3)} / isoMax={stats3d.isoMax.toFixed(3)}
-                          </Typography>
-                        )}
-                      </>
-                    ) : (
-                      <>
-                        <Slider
-                          size="small"
-                          value={thrAbs}
-                          min={robustRange?.lo ?? stats3d?.min ?? 0}
-                          max={robustRange?.hi ?? stats3d?.max ?? 1}
-                          step={
-                            robustRange
-                              ? (robustRange.hi - robustRange.lo) / 200
-                              : undefined
-                          }
-                          onChange={(_, v) => {
-                            const [lo, hi] = v as number[];
-                            setThrAbs([Math.min(lo, hi), Math.max(lo, hi)]);
-                          }}
-                          valueLabelDisplay="auto"
-                          disabled={!sortedValues}
-                        />
-
-                        <Box sx={{ display: "flex", gap: 1, mt: 0.5 }}>
-                          <TextField
-                            size="small"
-                            label="isoMin"
-                            type="number"
-                            value={thrAbs[0]}
-                            onChange={(e) => {
-                              const v = Number(e.target.value);
-                              if (Number.isFinite(v)) {
-                                setThrAbs(([_, hi]) => [v, Math.max(v, hi)]);
-                              }
-                            }}
-                            sx={{ width: 120 }}
-                          />
-                          <TextField
-                            size="small"
-                            label="isoMax"
-                            type="number"
-                            value={thrAbs[1]}
-                            onChange={(e) => {
-                              const v = Number(e.target.value);
-                              if (Number.isFinite(v)) {
-                                setThrAbs(([lo, _]) => [Math.min(lo, v), v]);
-                              }
-                            }}
-                            sx={{ width: 120 }}
-                          />
-                        </Box>
-                      </>
-                    )}
-                  </Box>
-                </>
-              )}
+              
             </Box>
-
-            <Box />
 
             {/* Right slot */}
             <Box
               sx={{
                 display: "flex",
                 alignItems: "center",
-                gap: 1.5,
+                gap: 1.25,
                 justifyContent: "flex-end",
               }}
             >
-              <Tooltip
-                title={
-                  showHistogram
-                    ? "Hide intensity histogram"
-                    : "Show intensity histogram"
-                }
-              >
-                <span>
-                  <Button
-                    size="small"
-                    variant={showHistogram ? "contained" : "outlined"}
-                    startIcon={<BarChart3 size={16} />}
-                    onClick={() => setShowHistogram((prev) => !prev)}
-                    disabled={selectedId == null}
-                    sx={{
-                      textTransform: "none",
-                      borderRadius: 999,
-                      px: 1.5,
-                      py: 0.25,
-                      minHeight: 0,
-                    }}
-                  >
-                    Histogram
-                  </Button>
-                </span>
-              </Tooltip>
+              {/* Hide this button in map3d (hist toggle is inside right panel) */}
+              {viewMode === "slices" && (
+                <Tooltip
+                  title={
+                    showHistogram
+                      ? "Hide intensity histogram"
+                      : "Show intensity histogram"
+                  }
+                >
+                  <span>
+                    <Button
+                      size="small"
+                      variant={showHistogram ? "contained" : "outlined"}
+                      startIcon={<BarChart3 size={16} />}
+                      onClick={() => setShowHistogram((prev) => !prev)}
+                      disabled={selectedId == null}
+                      sx={{
+                        textTransform: "none",
+                        borderRadius: 999,
+                        px: 1.5,
+                        py: 0.25,
+                        minHeight: 0,
+                      }}
+                    >
+                      Histogram
+                    </Button>
+                  </span>
+                </Tooltip>
+              )}
 
               <Box
                 sx={{
@@ -919,7 +778,7 @@ export default function VolumeViewer({
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                p: 1.5,
+                p: 1.25,
                 overflow: "hidden",
                 position: "relative",
                 cursor: "default",
@@ -976,7 +835,7 @@ export default function VolumeViewer({
                   </Typography>
                 )
               ) : (
-                // --- 3D view ---
+                // 3D view
                 mapLoading ? (
                   <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
                     <CircularProgress size={18} />
@@ -986,7 +845,7 @@ export default function VolumeViewer({
                   <Typography variant="body2" color="error">
                     {mapError}
                   </Typography>
-                ) : mapData && stats3d && !gpuError ? (
+                ) : mapData && stats3d && isoRange3d && !gpuError ? (
                   <GpuVolumeView
                     values={mapData.values}
                     dims={mapData.dims}
@@ -994,52 +853,57 @@ export default function VolumeViewer({
                     spacing={meta?.spacing}
                     rangeMin={stats3d.min}
                     rangeMax={stats3d.max}
-                    isoMin={stats3d.isoMin}
-                    isoMax={stats3d.isoMax}
+                    isoMin={isoRange3d[0]}
+                    isoMax={isoRange3d[1]}
                     opacity={opacity3d}
                     colormap={colormap3d}
                     onError={(msg) => setGpuError(msg)}
                   />
-                ) : mapData && stats3d ? (
+                ) : mapData && stats3d && isoRange3d ? (
                   // Fallback to Plotly if GPU fails
                   <Box sx={{ width: "100%", height: "100%" }}>
-                    <Plot
-                      data={[
-                        {
-                          type: "isosurface",
-                          value: mapData.values,
-                          isomin: stats3d.isoMin,
-                          isomax: stats3d.isoMax,
-                          surface: { count: surfaceCount },
-                          caps: {
-                            x: { show: false },
-                            y: { show: false },
-                            z: { show: false },
+                    {(() => {
+                      const plotProps: any = {
+                        data: [
+                          {
+                            type: "isosurface",
+                            value: mapData.values,
+                            isomin: isoRange3d[0],
+                            isomax: isoRange3d[1],
+                            surface: { count: surfaceCount },
+                            caps: {
+                              x: { show: false },
+                              y: { show: false },
+                              z: { show: false },
+                            },
+                            opacity: opacity3d,
+                            colorscale: toPlotlyColorscale(colormap3d),
+                            showscale: false,
                           },
-                          opacity: opacity3d,
-                          colorscale: toPlotlyColorscale(colormap3d),
-                          showscale: false,
-                        } as any,
-                      ]}
-                      layout={{
-                        autosize: true,
-                        margin: { l: 0, r: 0, t: 0, b: 0 },
-                        scene: {
-                          aspectmode: "data",
-                          xaxis: { visible: false },
-                          yaxis: { visible: false },
-                          zaxis: { visible: false },
+                        ],
+                        layout: {
+                          autosize: true,
+                          margin: { l: 0, r: 0, t: 0, b: 0 },
+                          scene: {
+                            aspectmode: "data",
+                            xaxis: { visible: false },
+                            yaxis: { visible: false },
+                            zaxis: { visible: false },
+                            camera: plotlyCameraRef.current ?? undefined,
+                          },
+                          showlegend: false,
                         },
-                        showlegend: false,
-                      }}
-                      style={{ width: "100%", height: "100%" }}
-                      useResizeHandler
-                      config={{
-                        displaylogo: false,
-                        responsive: true,
-                        scrollZoom: true,
-                      }}
-                    />
+                        style: { width: "100%", height: "100%" },
+                        useResizeHandler: true,
+                        config: {
+                          displaylogo: false,
+                          responsive: true,
+                          scrollZoom: true,
+                        },
+                        onRelayout: handleRelayout,
+                      };
+                      return <Plot {...plotProps} />;
+                    })()}
                   </Box>
                 ) : (
                   <Typography variant="body2" color="text.secondary">
@@ -1051,7 +915,7 @@ export default function VolumeViewer({
 
             {/* Meta */}
             <Divider />
-            <Box sx={{ p: 1.25, display: "flex", gap: 3, flexWrap: "wrap" }}>
+            <Box sx={{ p: 1.0, display: "flex", gap: 3, flexWrap: "wrap" }}>
               <MetaItem label="Dims" value={dimsToStringXYZ(dims)} />
               {"min" in (meta || {}) && <MetaItem label="Min" value={num(meta?.min)} />}
               {"max" in (meta || {}) && <MetaItem label="Max" value={num(meta?.max)} />}
@@ -1066,131 +930,413 @@ export default function VolumeViewer({
             </Box>
           </Box>
 
-          {/* Histogram side panel */}
-          {showHistogram && (
+          {/* Right panel */}
+          {showRightPanel && (
             <>
               <Divider orientation="vertical" flexItem />
               <Box
                 sx={{
-                  flexBasis: 360,
+                  flexBasis: 340,
                   flexShrink: 0,
-                  minWidth: 320,
-                  maxWidth: 480,
+                  minWidth: 300,
+                  maxWidth: 420,
                   p: 1.25,
                   display: "flex",
                   flexDirection: "column",
                   bgcolor: "background.paper",
+                  gap: 1,
                 }}
               >
-                <Typography variant="caption" color="text.secondary">
-                  Intensity histogram
-                </Typography>
-
-                {selectedId == null ? (
-                  <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
-                    Select a volume to see the histogram.
-                  </Typography>
-                ) : histLoading ? (
-                  <Box sx={{ display: "flex", gap: 1, alignItems: "center", mt: 1 }}>
-                    <CircularProgress size={16} />
-                    <Typography variant="caption">Loading histogram…</Typography>
-                  </Box>
-                ) : histError ? (
-                  <Typography variant="caption" color="error" sx={{ mt: 1 }}>
-                    {histError}
-                  </Typography>
-                ) : histogram && histogram.binEdges.length > 1 ? (
-                  <Box sx={{ mt: 1, flex: 1, minHeight: 0 }}>
-                    <Plot
-                      data={[
-                        {
-                          type: "bar",
-                          x: histogram.binEdges
-                            .slice(0, -1)
-                            .map((b, i) => 0.5 * (b + histogram.binEdges[i + 1])),
-                          y: histogram.counts,
-                        },
-                      ]}
-                      layout={{
-                        margin: { l: 40, r: 10, t: 10, b: 30 },
-                        autosize: true,
-                        showlegend: false,
-                        xaxis: { title: "Intensity" },
-                        yaxis: { title: "Count" },
+                {/* Panel header */}
+                <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                  {viewMode === "map3d" && (
+                    <ToggleButtonGroup
+                      size="small"
+                      exclusive
+                      value={showHistogram ? "hist" : "ctrl"}
+                      onChange={(_, v) => {
+                        if (v === "hist") setShowHistogram(true);
+                        if (v === "ctrl") setShowHistogram(false);
                       }}
-                      style={{ width: "100%", height: "100%" }}
-                      useResizeHandler
-                      config={{ displaylogo: false, responsive: true }}
+                    >
+                      <ToggleButton value="ctrl">Controls</ToggleButton>
+                      <ToggleButton value="hist">Histogram</ToggleButton>
+                    </ToggleButtonGroup>
+                  )}
+                  {viewMode !== "map3d" && (
+                    <Typography variant="subtitle2">Histogram</Typography>
+                  )}
+                </Box>
+
+                {/* Controls (map3d only, when hist off) */}
+                {viewMode === "map3d" && !showHistogram && (
+                  <Box sx={{ display: "flex", flexDirection: "column", gap: 1.25 }}>
+                    <SectionTitle title="Data" />
+                    <ParamRow
+                      label="maxDim"
+                      helpKey="maxDim3d"
+                      onHelp={openHelp}
+                      control={
+                        <TextField
+                          size="small"
+                          type="number"
+                          value={maxDim3d}
+                          onChange={(e) =>
+                            setMaxDim3d(clampInt(e.target.value, 48, 256))
+                          }
+                          inputProps={{ min: 48, max: 256, step: 8 }}
+                        />
+                      }
                     />
+                    <ParamRow
+                      label="Method"
+                      helpKey="method3d"
+                      onHelp={openHelp}
+                      control={
+                        <TextField
+                          size="small"
+                          select
+                          value={method3d}
+                          onChange={(e) => setMethod3d(e.target.value as any)}
+                          SelectProps={{ MenuProps: { disablePortal: true } }}
+                        >
+                          <MenuItem value="binning">binning</MenuItem>
+                          <MenuItem value="stride">stride</MenuItem>
+                          <MenuItem value="none">none</MenuItem>
+                        </TextField>
+                      }
+                    />
+                    <Button
+                      size="small"
+                      variant={dataDirty ? "contained" : "outlined"}
+                      onClick={load3d}
+                      disabled={selectedId == null || mapLoading}
+                      sx={{ textTransform: "none", borderRadius: 1.5 }}
+                    >
+                      Reload data
+                    </Button>
+
+                    <Divider />
+
+                    <SectionTitle title="Appearance" />
+                    <ParamRow
+                      label="Colormap"
+                      helpKey="colormap3d"
+                      onHelp={openHelp}
+                      control={
+                        <TextField
+                          size="small"
+                          select
+                          value={colormap3d}
+                          onChange={(e) => setColormap3d(e.target.value)}
+                          SelectProps={{ MenuProps: { disablePortal: true } }}
+                        >
+                          {CMAP_OPTIONS.map((cm) => (
+                            <MenuItem key={cm} value={cm}>
+                              {cm}
+                            </MenuItem>
+                          ))}
+                        </TextField>
+                      }
+                    />
+
+                    <ParamRow
+                      label="Opacity"
+                      helpKey="opacity3d"
+                      onHelp={openHelp}
+                      control={
+                        <TextField
+                          size="small"
+                          type="number"
+                          value={opacity3d}
+                          onChange={(e) =>
+                            setOpacity3d(clampFloat(e.target.value, 0.05, 1))
+                          }
+                          inputProps={{ min: 0.05, max: 1, step: 0.05 }}
+                        />
+                      }
+                    />
+
+                    <ParamRow
+                      label="Surfaces"
+                      helpKey="surfaceCount"
+                      onHelp={openHelp}
+                      control={
+                        <TextField
+                          size="small"
+                          type="number"
+                          value={surfaceCount}
+                          onChange={(e) =>
+                            setSurfaceCount(clampInt(e.target.value, 1, 8))
+                          }
+                          inputProps={{ min: 1, max: 8, step: 1 }}
+                        />
+                      }
+                    />
+
+                    <Box sx={{ mt: 0.5 }}>
+                      <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                        <Typography variant="caption" color="text.secondary">
+                          Threshold
+                        </Typography>
+                        <IconButton size="small" onClick={openHelp("thrMode")}>
+                          <HelpCircle size={14} />
+                        </IconButton>
+                      </Box>
+
+                      <ToggleButtonGroup
+                        size="small"
+                        exclusive
+                        value={thrMode}
+                        onChange={(_, v) => v && setThrMode(v)}
+                        sx={{ mb: 0.75 }}
+                      >
+                        <ToggleButton value="percentile">Percentile</ToggleButton>
+                        <ToggleButton value="absolute">Absolute</ToggleButton>
+                      </ToggleButtonGroup>
+
+                      {thrMode === "percentile" && (
+                        <>
+                          <Slider
+                            size="small"
+                            value={thrPct}
+                            min={0}
+                            max={100}
+                            step={1}
+                            onChange={(_, v) => {
+                              const arr = v as number[];
+                              const lo = Math.min(arr[0], arr[1]);
+                              const hi = Math.max(arr[0], arr[1]);
+                              const hiAdj = Math.max(lo + 1, hi);
+                              setThrPct([lo, hiAdj] as [number, number]);
+                            }}
+                            valueLabelDisplay="auto"
+                            disabled={!sortedValues}
+                          />
+                          <Box sx={{ display: "flex", justifyContent: "space-between" }}>
+                            <Typography variant="caption" color="text.secondary">
+                              {thrPct[0]}%
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              {thrPct[1]}%
+                            </Typography>
+                          </Box>
+                          {thrPctAbs && (
+                            <Typography variant="caption" color="text.secondary">
+                              ≈ {formatSci(thrPctAbs[0])} – {formatSci(thrPctAbs[1])}
+                            </Typography>
+                          )}
+                        </>
+                      )}
+
+                      {thrMode === "absolute" && (
+                        <>
+                          <Slider
+                            size="small"
+                            value={thrAbs}
+                            min={stats3d?.min ?? 0}
+                            max={stats3d?.max ?? 1}
+                            step={
+                              stats3d
+                                ? (stats3d.max - stats3d.min) / 400
+                                : 0.001
+                            }
+                            onChange={(_, v) => {
+                              const [lo, hi] = v as number[];
+                              const lo2 = Math.min(lo, hi);
+                              const hi2 = Math.max(lo, hi);
+                              setThrAbs([lo2, hi2] as [number, number]);
+                            }}
+                            valueLabelDisplay="auto"
+                            valueLabelFormat={(v) => formatSci(v as number)}
+                            disabled={!stats3d}
+                          />
+                          {stats3d && (
+                            <Typography variant="caption" color="text.secondary">
+                              {formatSci(thrAbs[0])} – {formatSci(thrAbs[1])}
+                            </Typography>
+                          )}
+                        </>
+                      )}
+                    </Box>
                   </Box>
-                ) : (
-                  <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
-                    No histogram data.
-                  </Typography>
+                )}
+
+                {/* Histogram */}
+                {(showHistogram || viewMode !== "map3d") && (
+                  <Box
+                    sx={{
+                      display: "flex",
+                      flexDirection: "column",
+                      minHeight: 0,
+                      flex: 1,
+                    }}
+                  >
+                    <Typography variant="caption" color="text.secondary">
+                      Intensity histogram
+                    </Typography>
+
+                    {selectedId == null ? (
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        sx={{ mt: 1 }}
+                      >
+                        Select a volume to see the histogram.
+                      </Typography>
+                    ) : histLoading ? (
+                      <Box
+                        sx={{
+                          display: "flex",
+                          gap: 1,
+                          alignItems: "center",
+                          mt: 1,
+                        }}
+                      >
+                        <CircularProgress size={16} />
+                        <Typography variant="caption">
+                          Loading histogram…
+                        </Typography>
+                      </Box>
+                    ) : histError ? (
+                      <Typography
+                        variant="caption"
+                        color="error"
+                        sx={{ mt: 1 }}
+                      >
+                        {histError}
+                      </Typography>
+                    ) : histogram && histogram.binEdges.length > 1 ? (
+                      <Box sx={{ mt: 1, flex: 1, minHeight: 0 }}>
+                        <Plot
+                          data={[
+                            {
+                              type: "bar",
+                              x: histogram.binEdges
+                                .slice(0, -1)
+                                .map(
+                                  (b, i) =>
+                                    0.5 * (b + histogram.binEdges[i + 1]),
+                                ),
+                              y: histogram.counts,
+                            },
+                          ]}
+                          layout={{
+                            margin: { l: 40, r: 10, t: 10, b: 30 },
+                            autosize: true,
+                            showlegend: false,
+                            xaxis: { title: "Intensity" },
+                            yaxis: { title: "Count" },
+                          }}
+                          style={{ width: "100%", height: "100%" }}
+                          useResizeHandler
+                          config={{ displaylogo: false, responsive: true }}
+                        />
+                      </Box>
+                    ) : (
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        sx={{ mt: 1 }}
+                      >
+                        No histogram data.
+                      </Typography>
+                    )}
+                  </Box>
                 )}
               </Box>
             </>
           )}
         </Box>
       </Box>
+
+      {/* Help popover */}
+      <Popover
+        open={Boolean(helpAnchor && helpKey)}
+        anchorEl={helpAnchor}
+        onClose={closeHelp}
+        anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
+        transformOrigin={{ vertical: "top", horizontal: "left" }}
+        disableRestoreFocus
+        PaperProps={{ sx: { p: 1.25, maxWidth: 320 } }}
+      >
+        <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
+          {helpKey}
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          {helpKey ? HELP_TEXT[helpKey] ?? "No help available." : ""}
+        </Typography>
+      </Popover>
     </Box>
   );
 }
 
-/** Help button as local tooltip (no parent rerender). */
-function HelpMini({
-  title,
-  children,
+/** Small label with optional help icon for toolbar. */
+function ParamLabel({
+  label,
+  helpKey,
+  onHelp,
 }: {
-  title?: string;
-  children: React.ReactNode;
+  label: string;
+  helpKey?: string;
+  onHelp: (key: string) => (e: React.MouseEvent<HTMLElement>) => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const anchorRef = useRef<HTMLButtonElement | null>(null);
-
   return (
-    <>
-      <IconButton
-        ref={anchorRef}
-        size="small"
-        onClick={(e) => {
-          e.stopPropagation();
-          setOpen((v) => !v);
-        }}
-        sx={{
-          width: 20,
-          height: 20,
-          fontSize: 12,
-          border: "1px solid",
-          borderColor: "divider",
-        }}
-      >
-        ?
-      </IconButton>
+    <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
+      <Typography variant="caption" color="text.secondary">
+        {label}
+      </Typography>
+      {helpKey && (
+        <IconButton size="small" onClick={onHelp(helpKey)}>
+          <HelpCircle size={14} />
+        </IconButton>
+      )}
+    </Box>
+  );
+}
 
-      <Tooltip
-        open={open}
-        onClose={() => setOpen(false)}
-        title={
-          <Box sx={{ p: 0.5, maxWidth: 280 }}>
-            {title && (
-              <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
-                {title}
-              </Typography>
-            )}
-            <Typography variant="body2">{children}</Typography>
-          </Box>
-        }
-        placement="bottom-start"
-        arrow
-        PopperProps={{
-          anchorEl: anchorRef.current,
-          disablePortal: false,
-        }}
-      >
-        <span />
-      </Tooltip>
-    </>
+function SectionTitle({ title }: { title: string }) {
+  return (
+    <Typography
+      variant="caption"
+      color="text.secondary"
+      sx={{ fontWeight: 700 }}
+    >
+      {title}
+    </Typography>
+  );
+}
+
+function ParamRow({
+  label,
+  helpKey,
+  onHelp,
+  control,
+}: {
+  label: string;
+  helpKey: string;
+  onHelp: (key: string) => (e: React.MouseEvent<HTMLElement>) => void;
+  control: React.ReactNode;
+}) {
+  return (
+    <Box
+      sx={{
+        display: "grid",
+        gridTemplateColumns: "1fr 1.2fr",
+        gap: 1,
+        alignItems: "center",
+      }}
+    >
+      <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
+        <Typography variant="caption" color="text.secondary">
+          {label}
+        </Typography>
+        <IconButton size="small" onClick={onHelp(helpKey)}>
+          <HelpCircle size={14} />
+        </IconButton>
+      </Box>
+      {control}
+    </Box>
   );
 }
 
@@ -1256,7 +1402,9 @@ function normalize3dPayload(raw: any): {
   const dimsRaw = raw?.dims;
   const shapeRaw = raw?.shape ?? raw?.size;
 
-  let x = 0, y = 0, z = 0;
+  let x = 0,
+    y = 0,
+    z = 0;
 
   if (Array.isArray(dimsRaw) && dimsRaw.length >= 3) {
     x = Number(dimsRaw[0]) || 0;
@@ -1327,6 +1475,13 @@ function clampFloat(v: any, lo: number, hi: number) {
   const n = Number.parseFloat(String(v));
   if (!Number.isFinite(n)) return lo;
   return Math.max(lo, Math.min(hi, n));
+}
+
+function formatSci(v: number) {
+  if (!Number.isFinite(v)) return "–";
+  const av = Math.abs(v);
+  if (av >= 1000 || (av > 0 && av < 0.001)) return v.toExponential(2);
+  return v.toFixed(3);
 }
 
 /** Map internal names to Plotly colorscales. */
