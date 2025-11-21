@@ -22,13 +22,7 @@ import {
 import { styled } from "@mui/material/styles";
 import Plot from "react-plotly.js";
 import { useProjectService } from "@/ProjectServiceContext";
-import {
-  BarChart3,
-  ZoomIn,
-  Layers3,
-  HelpCircle,
-  SlidersHorizontal,
-} from "lucide-react";
+import { BarChart3, ZoomIn, Layers3, HelpCircle } from "lucide-react";
 import GpuVolumeView from "./gpu-volume-view";
 
 type VolumeViewerProps = {
@@ -79,6 +73,12 @@ const HELP_TEXT: Record<string, string> = {
   sliceIndex: "Slice index along the selected axis.",
   colormap2d: "Colormap used for 2D slice rendering.",
   histogram: "Shows the intensity distribution of the selected volume.",
+  contrast2d:
+    "Contrast boost for the slice view. Useful for low SNR maps.",
+  brightness2d:
+    "Brightness multiplier for the slice view.",
+  gamma2d:
+    "Gamma correction for the slice view (values >1 darken midtones, <1 brighten midtones).",
 };
 
 const SliceSlider = styled(Slider)(({ theme }) => ({
@@ -142,6 +142,15 @@ export default function VolumeViewer({
   const reqIdRef = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
 
+  // ---------- 2D appearance (client-side) ----------
+  const [contrast2d, setContrast2d] = useState(1.15);
+  const [brightness2d, setBrightness2d] = useState(1.0);
+  const [gamma2d, setGamma2d] = useState(1.0);
+
+  // Canvas-based renderer refs
+  const sliceCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const sliceImageRef = useRef<HTMLImageElement | null>(null);
+
   // ---------- 3D data ----------
   const [mapLoading, setMapLoading] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
@@ -162,7 +171,7 @@ export default function VolumeViewer({
 
   // 3D controls (appearance-only)
   const [surfaceCount, setSurfaceCount] = useState(3);
-  const [opacity3d, setOpacity3d] = useState(0.2);
+  const [opacity3d, setOpacity3d] = useState(1);
   const [colormap3d, setColormap3d] = useState<string>("viridis");
 
   const [thrMode, setThrMode] = useState<ThrMode>("percentile");
@@ -516,10 +525,11 @@ export default function VolumeViewer({
     return Math.min(sx, sy);
   }, [naturalW, naturalH, vw, vh]);
 
-  const renderedWidth = useMemo(() => {
-    if (!naturalW) return undefined;
-    return naturalW * fitScale * zoomMul;
-  }, [naturalW, fitScale, zoomMul]);
+  const renderedSize2d = useMemo(() => {
+    if (!naturalW || !naturalH) return null;
+    const s = fitScale * zoomMul;
+    return { w: naturalW * s, h: naturalH * s };
+  }, [naturalW, naturalH, fitScale, zoomMul]);
 
   const applyZoom = (mul: number) =>
     setZoomMul(() => Math.min(MAX_MUL, Math.max(MIN_MUL, mul)));
@@ -541,6 +551,123 @@ export default function VolumeViewer({
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
   }, [viewMode, frontUrl, zoomMul]);
+
+  // ---------- Canvas rendering for slices ----------
+  const drawSliceCanvas = useCallback(() => {
+    if (viewMode !== "slices") return;
+    const canvas = sliceCanvasRef.current;
+    const img = sliceImageRef.current;
+    if (!canvas || !img || !naturalW || !naturalH || !renderedSize2d) return;
+
+    const dpr = window.devicePixelRatio || 1;
+    const cssW = Math.max(1, renderedSize2d.w);
+    const cssH = Math.max(1, renderedSize2d.h);
+
+    canvas.style.width = `${cssW}px`;
+    canvas.style.height = `${cssH}px`;
+    canvas.width = Math.floor(cssW * dpr);
+    canvas.height = Math.floor(cssH * dpr);
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, cssW, cssH);
+
+    ctx.imageSmoothingEnabled = true;
+    try {
+      // Not supported in all browsers, but safe
+      (ctx as any).imageSmoothingQuality = "high";
+    } catch {}
+
+    // Draw to an offscreen canvas at target CSS size
+    const off = document.createElement("canvas");
+    off.width = Math.floor(cssW);
+    off.height = Math.floor(cssH);
+    const offCtx = off.getContext("2d");
+    if (!offCtx) return;
+    offCtx.imageSmoothingEnabled = true;
+    try {
+      (offCtx as any).imageSmoothingQuality = "high";
+    } catch {}
+
+    offCtx.drawImage(img, 0, 0, cssW, cssH);
+
+    // Apply simple brightness/contrast/gamma in RGB space
+    const imgData = offCtx.getImageData(0, 0, off.width, off.height);
+    const data = imgData.data;
+
+    const c = contrast2d;
+    const b = brightness2d;
+    const gInv = gamma2d > 0 ? 1 / gamma2d : 1;
+
+    for (let i = 0; i < data.length; i += 4) {
+      let r = data[i] / 255;
+      let gg = data[i + 1] / 255;
+      let bl = data[i + 2] / 255;
+
+      // contrast around 0.5
+      r = (r - 0.5) * c + 0.5;
+      gg = (gg - 0.5) * c + 0.5;
+      bl = (bl - 0.5) * c + 0.5;
+
+      // brightness
+      r *= b;
+      gg *= b;
+      bl *= b;
+
+      // gamma
+      r = Math.pow(clamp01(r), gInv);
+      gg = Math.pow(clamp01(gg), gInv);
+      bl = Math.pow(clamp01(bl), gInv);
+
+      data[i] = Math.round(r * 255);
+      data[i + 1] = Math.round(gg * 255);
+      data[i + 2] = Math.round(bl * 255);
+      // alpha stays
+    }
+
+    offCtx.putImageData(imgData, 0, 0);
+    ctx.drawImage(off, 0, 0);
+  }, [
+    viewMode,
+    naturalW,
+    naturalH,
+    renderedSize2d,
+    contrast2d,
+    brightness2d,
+    gamma2d,
+  ]);
+
+  // Load slice image into memory when URL changes (but render on canvas)
+  useEffect(() => {
+    if (viewMode !== "slices" || !frontUrl) {
+      sliceImageRef.current = null;
+      return;
+    }
+
+    const img = new Image();
+    img.onload = () => {
+      sliceImageRef.current = img;
+      setNaturalW(img.naturalWidth || null);
+      setNaturalH(img.naturalHeight || null);
+      drawSliceCanvas();
+    };
+    img.onerror = () => {
+      sliceImageRef.current = null;
+    };
+    img.src = frontUrl;
+
+    return () => {
+      img.onload = null;
+      img.onerror = null;
+    };
+  }, [frontUrl, viewMode, drawSliceCanvas]);
+
+  // Re-draw when zoom/fit/appearance changes
+  useEffect(() => {
+    drawSliceCanvas();
+  }, [drawSliceCanvas]);
 
   // ---------- UI ----------
   const showRightPanel = showHistogram || viewMode === "map3d";
@@ -695,8 +822,6 @@ export default function VolumeViewer({
                   </IconButton>
                 </>
               )}
-
-              
             </Box>
 
             {/* Right slot */}
@@ -804,24 +929,13 @@ export default function VolumeViewer({
                     {imgError}
                   </Typography>
                 ) : frontUrl ? (
-                  <img
-                    src={frontUrl}
-                    alt="slice"
-                    onLoad={(e) => {
-                      const img = e.currentTarget;
-                      if (img.naturalWidth && img.naturalHeight) {
-                        setNaturalW(img.naturalWidth);
-                        setNaturalH(img.naturalHeight);
-                      }
-                    }}
+                  <canvas
+                    ref={sliceCanvasRef}
                     style={{
-                      width:
-                        naturalW && renderedWidth ? `${renderedWidth}px` : undefined,
-                      height: "auto",
                       display: "block",
-                      transition: "opacity 140ms ease",
                       opacity: frontOpacity,
-                      imageRendering: "auto",
+                      transition: "opacity 140ms ease",
+                      background: "transparent",
                     }}
                   />
                 ) : loadingSlice ? (
@@ -967,6 +1081,79 @@ export default function VolumeViewer({
                     <Typography variant="subtitle2">Histogram</Typography>
                   )}
                 </Box>
+
+                {/* Slices appearance controls (only in slices mode) */}
+                {viewMode === "slices" && (
+                  <Box sx={{ display: "flex", flexDirection: "column", gap: 1.25 }}>
+                    <SectionTitle title="Slices appearance" />
+
+                    <ParamRow
+                      label="Contrast"
+                      helpKey="contrast2d"
+                      onHelp={openHelp}
+                      control={
+                        <Slider
+                          size="small"
+                          value={contrast2d}
+                          min={0.5}
+                          max={2.5}
+                          step={0.05}
+                          onChange={(_, v) => setContrast2d(v as number)}
+                          valueLabelDisplay="auto"
+                        />
+                      }
+                    />
+
+                    <ParamRow
+                      label="Brightness"
+                      helpKey="brightness2d"
+                      onHelp={openHelp}
+                      control={
+                        <Slider
+                          size="small"
+                          value={brightness2d}
+                          min={0.5}
+                          max={2.0}
+                          step={0.05}
+                          onChange={(_, v) => setBrightness2d(v as number)}
+                          valueLabelDisplay="auto"
+                        />
+                      }
+                    />
+
+                    <ParamRow
+                      label="Gamma"
+                      helpKey="gamma2d"
+                      onHelp={openHelp}
+                      control={
+                        <Slider
+                          size="small"
+                          value={gamma2d}
+                          min={0.5}
+                          max={2.2}
+                          step={0.05}
+                          onChange={(_, v) => setGamma2d(v as number)}
+                          valueLabelDisplay="auto"
+                        />
+                      }
+                    />
+
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={() => {
+                        setContrast2d(1.15);
+                        setBrightness2d(1.0);
+                        setGamma2d(1.0);
+                      }}
+                      sx={{ textTransform: "none", borderRadius: 1.5 }}
+                    >
+                      Reset slices
+                    </Button>
+
+                    <Divider />
+                  </Box>
+                )}
 
                 {/* Controls (map3d only, when hist off) */}
                 {viewMode === "map3d" && !showHistogram && (
@@ -1475,6 +1662,10 @@ function clampFloat(v: any, lo: number, hi: number) {
   const n = Number.parseFloat(String(v));
   if (!Number.isFinite(n)) return lo;
   return Math.max(lo, Math.min(hi, n));
+}
+
+function clamp01(v: number) {
+  return Math.max(0, Math.min(1, v));
 }
 
 function formatSci(v: number) {
