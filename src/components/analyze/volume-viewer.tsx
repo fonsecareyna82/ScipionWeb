@@ -21,8 +21,9 @@ import {
 import { styled } from "@mui/material/styles";
 import Plot from "react-plotly.js";
 import { useProjectService } from "@/ProjectServiceContext";
-import { ZoomIn, Layers3, HelpCircle } from "lucide-react";
+import { ZoomIn, Layers3, HelpCircle, BoxIcon } from "lucide-react";
 import GpuVolumeView from "./gpu-volume-view";
+import { BoxCubeIcon } from "@/icons";
 
 type VolumeViewerProps = {
   projectId: string | number;
@@ -699,10 +700,13 @@ export default function VolumeViewer({
                 value={viewMode}
                 onChange={(_, v) => v && setViewMode(v)}
               >
-                <ToggleButton value="slices">Slices</ToggleButton>
+                <ToggleButton value="slices"> <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
+                    <Layers3 size={14} />
+                    Slices
+                  </Box></ToggleButton>
                 <ToggleButton value="map3d">
                   <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
-                    <Layers3 size={14} />
+                    <BoxIcon size={14} />
                     3D Map
                   </Box>
                 </ToggleButton>
