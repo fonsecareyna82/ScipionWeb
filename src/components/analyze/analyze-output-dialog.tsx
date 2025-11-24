@@ -19,9 +19,7 @@ type AnalyzeOutputDialogProps = {
   projectId: string | number;
   protocolId: string | number;
   protocolLabel: string;
-  /** Output name as appears in data.outputs (e.g., "outputVolume", "outputMask"…) */
   outputName: string;
-  /** Raw payload of the selected output (the object behind the output key) */
   outputRaw: any;
 };
 
@@ -36,12 +34,10 @@ function isVolumeKind(k?: string) {
   );
 }
 
-// SetOf* but excluding the types we consider “volume-like”
 function isSetOfMetadataKind(k?: string) {
   if (!k) return false;
   const trimmed = k.replace(/\s+/g, "");
   if (!/^SetOf/i.test(trimmed)) return false;
-  // If already volume/tomogram, handled by VolumeViewer
   if (isVolumeKind(k)) return false;
   return true;
 }
@@ -52,6 +48,12 @@ const dialogPaperSx = {
   border: "1px solid rgba(0,0,0,0.08)",
   boxShadow:
     "0 10px 20px rgba(0,0,0,0.15), 0 6px 10px rgba(0,0,0,0.08)",
+
+  display: "flex",
+  flexDirection: "column",
+  height: "96vh",
+  maxHeight: "96vh",
+  minHeight: 650,
 };
 
 const headerSx = {
@@ -63,6 +65,9 @@ const headerSx = {
   background: "linear-gradient(180deg, #0b1220 0%, #0a0f1e 100%)",
   color: "#e5e7eb",
   borderBottom: "1px solid rgba(255,255,255,0.06)",
+
+  // ---- IMPORTANT: header should not shrink
+  flexShrink: 0,
 };
 
 const titleWrapSx = {
@@ -127,12 +132,10 @@ export default function AnalyzeOutputDialog({
     [outputRaw]
   );
 
-  // Normalize IDs to numbers before passing down
   const projectIdNum = useMemo(() => Number(projectId), [projectId]);
   const protocolIdNum = useMemo(() => Number(protocolId), [protocolId]);
 
   const body = useMemo(() => {
-    // 1) Volumes / tomograms → volume-viewer
     if (isVolumeKind(outputClass)) {
       return (
         <VolumeViewer
@@ -144,7 +147,6 @@ export default function AnalyzeOutputDialog({
       );
     }
 
-    // 2) Any SetOf* that is not volume-like → metadata-viewer
     if (isSetOfMetadataKind(outputClass)) {
       return (
         <MetadataViewer
@@ -155,7 +157,6 @@ export default function AnalyzeOutputDialog({
       );
     }
 
-    // 3) Generic fallback
     return (
       <Box sx={{ p: 2 }}>
         <Typography variant="subtitle2" sx={{ mb: 1 }}>
@@ -180,11 +181,10 @@ export default function AnalyzeOutputDialog({
     <Dialog
       open={open}
       onClose={onClose}
-      maxWidth="lg"
+      maxWidth="xl"
       fullWidth
       PaperProps={{ sx: dialogPaperSx }}
     >
-      {/* Header */}
       <DialogTitle component="div" sx={headerSx}>
         <Box sx={titleWrapSx}>
           <Box sx={titleRowSx}>
@@ -220,9 +220,22 @@ export default function AnalyzeOutputDialog({
         </IconButton>
       </DialogTitle>
 
-      {/* Body */}
-      <DialogContent dividers={false} sx={{ p: 0 }}>
-        {body}
+      {/* ---- IMPORTANT: content fills remaining height and hides global overflow */}
+      <DialogContent
+        dividers={false}
+        sx={{
+          p: 0,
+          display: "flex",
+          flex: 1,
+          minHeight: 0,
+          minWidth: 0,
+          overflow: "hidden",
+        }}
+      >
+        {/* ---- IMPORTANT: body container provides 100% height for viewers */}
+        <Box sx={{ flex: 1, minHeight: 0, minWidth: 0, overflow: "hidden" }}>
+          {body}
+        </Box>
       </DialogContent>
     </Dialog>
   );

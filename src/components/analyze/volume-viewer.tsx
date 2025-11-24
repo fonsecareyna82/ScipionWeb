@@ -23,7 +23,6 @@ import Plot from "react-plotly.js";
 import { useProjectService } from "@/ProjectServiceContext";
 import { ZoomIn, Layers3, HelpCircle, BoxIcon } from "lucide-react";
 import GpuVolumeView from "./gpu-volume-view";
-import { BoxCubeIcon } from "@/icons";
 
 type VolumeViewerProps = {
   projectId: string | number;
@@ -43,6 +42,7 @@ type ViewMode = "slices" | "map3d";
 type ThrMode = "percentile" | "absolute";
 type RightTab = "ctrl" | "hist";
 type Interp2d = "nearest" | "linear" | "high";
+type RenderMode3d = "surface" | "volume";
 
 const DEFAULT_AXIS: "z" | "y" | "x" = "z";
 const CMAP_OPTIONS = [
@@ -71,6 +71,10 @@ const HELP_TEXT: Record<string, string> = {
     "Absolute intensity threshold range. Voxels outside this range are suppressed.",
   surfaceCount:
     "Number of isosurfaces in Plotly fallback. Does not affect GPU raycasting.",
+  isoRenderMode3d:
+    "How the iso band is visualized in GPU mode. Surface mimics ChimeraX-like solid shells; Volume renders the full band.",
+  surfaceThickness3d:
+    "Thickness of the surface shell as a fraction of the iso band width.",
   axis: "Slice axis. Z/Y/X correspond to the 3D volume axes.",
   sliceIndex: "Slice index along the selected axis.",
   colormap2d: "Colormap used for 2D slice rendering.",
@@ -185,6 +189,10 @@ export default function VolumeViewer({
   const [thrMode, setThrMode] = useState<ThrMode>("percentile");
   const [thrPct, setThrPct] = useState<[number, number]>([55, 98]);
   const [thrAbs, setThrAbs] = useState<[number, number]>([0, 1]);
+
+  const [renderMode3d, setRenderMode3d] =
+    useState<RenderMode3d>("surface");
+  const [surfaceThickness3d, setSurfaceThickness3d] = useState(0.12);
 
   const lastLoadedRef = useRef<{
     volumeId: string | number | null;
@@ -380,10 +388,9 @@ export default function VolumeViewer({
           return;
         }
 
-        // Swap without fading to zero (avoids blank flashes)
         setFrontUrl((prev) => {
           if (prev && prev !== url) {
-            // Optional: let browser cache pixels; revoke old later if needed
+            // keep old pixels visible until new url is ready
           }
           return url;
         });
@@ -617,12 +624,20 @@ export default function VolumeViewer({
     };
   }, [viewMode, frontUrl]);
 
-  // ---------- UI ----------
-  const showRightPanel = true;
-  const panelBasis = viewMode === "slices" ? 320 : 340;
+  // ---------- UI layout (no global scroll, stable size) ----------
+  const panelBasis = 340; // fixed width to avoid resizing on view change
 
   return (
-    <Box sx={{ display: "flex", minHeight: 650 }}>
+    <Box
+      sx={{
+        display: "flex",
+        height: "100%",
+        width: "100%",
+        minHeight: 0,
+        minWidth: 0,
+        overflow: "hidden", // never create page scrollbars
+      }}
+    >
       {/* Left list */}
       <Box
         sx={{
@@ -630,16 +645,18 @@ export default function VolumeViewer({
           borderRight: "1px solid #eee",
           display: "flex",
           flexDirection: "column",
+          minHeight: 0,
+          overflow: "hidden",
         }}
       >
-        <Box sx={{ p: 1.5 }}>
+        <Box sx={{ p: 1.5, flexShrink: 0 }}>
           <Typography variant="subtitle2">Volumes</Typography>
           <Typography variant="caption" color="text.secondary">
             {loadingList ? "" : `${volumes.length} item(s)`}
           </Typography>
         </Box>
         <Divider />
-        <Box sx={{ flex: 1, overflow: "auto" }}>
+        <Box sx={{ flex: 1, minHeight: 0, overflow: "auto" }}>
           {loadingList ? (
             <Box sx={{ p: 2, display: "flex", gap: 1, alignItems: "center" }}>
               <CircularProgress size={18} />
@@ -669,7 +686,10 @@ export default function VolumeViewer({
                     sx={{ px: 1.5, py: 1 }}
                   >
                     <ListItemText
-                      primaryTypographyProps={{ variant: "body2" }}
+                      primaryTypographyProps={{
+                        variant: "body2",
+                        noWrap: true,
+                      }}
                       primary={v.label || `Volume ${String(v.id)}`}
                     />
                   </ListItemButton>
@@ -681,9 +701,18 @@ export default function VolumeViewer({
       </Box>
 
       {/* Right */}
-      <Box sx={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
-        {/* Toolbar */}
-        <Paper elevation={0} square sx={{ p: 0.75, borderBottom: "1px solid #eee" }}>
+      <Box
+        sx={{
+          flex: 1,
+          display: "flex",
+          flexDirection: "column",
+          minWidth: 0,
+          minHeight: 0,
+          overflow: "hidden",
+        }}
+      >
+        {/* Toolbar (fixed height) */}
+        <Paper elevation={0} square sx={{ p: 0.75, borderBottom: "1px solid #eee", flexShrink: 0 }}>
           <Box
             sx={{
               display: "grid",
@@ -700,10 +729,12 @@ export default function VolumeViewer({
                 value={viewMode}
                 onChange={(_, v) => v && setViewMode(v)}
               >
-                <ToggleButton value="slices"> <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
+                <ToggleButton value="slices">
+                  <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
                     <Layers3 size={14} />
                     Slices
-                  </Box></ToggleButton>
+                  </Box>
+                </ToggleButton>
                 <ToggleButton value="map3d">
                   <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
                     <BoxIcon size={14} />
@@ -736,10 +767,11 @@ export default function VolumeViewer({
           </Box>
         </Paper>
 
-        {/* Main */}
-        <Box sx={{ flex: 1, display: "flex", minHeight: 0 }}>
-          {/* Viewer */}
-          <Box sx={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
+        {/* Main (fills remaining space, no overflow outside) */}
+        <Box sx={{ flex: 1, display: "flex", minHeight: 0, minWidth: 0, overflow: "hidden" }}>
+          {/* Viewer column */}
+          <Box sx={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0, overflow: "hidden" }}>
+            {/* Viewer (fills) */}
             <Box
               ref={viewerRef}
               onDoubleClick={fitZoom}
@@ -835,6 +867,8 @@ export default function VolumeViewer({
                     isoMax={isoRange3d[1]}
                     opacity={opacity3d}
                     colormap={colormap3d}
+                    renderMode={renderMode3d}
+                    shell={surfaceThickness3d}
                     onError={(msg) => setGpuError(msg)}
                   />
                 ) : mapData && stats3d && isoRange3d ? (
@@ -852,7 +886,7 @@ export default function VolumeViewer({
                             opacity: opacity3d,
                             colorscale: toPlotlyColorscale(colormap3d),
                             showscale: false,
-                          },
+                          } as any,
                         ],
                         layout: {
                           autosize: true,
@@ -882,9 +916,9 @@ export default function VolumeViewer({
               )}
             </Box>
 
-            {/* Meta */}
+            {/* Meta bar (fixed height, never pushes layout) */}
             <Divider />
-            <Box sx={{ p: 1.0, display: "flex", gap: 3, flexWrap: "wrap" }}>
+            <Box sx={{ p: 1.0, display: "flex", gap: 3, flexWrap: "wrap", flexShrink: 0 }}>
               <MetaItem label="Dims" value={dimsToStringXYZ(dims)} />
               {"min" in (meta || {}) && <MetaItem label="Min" value={num(meta?.min)} />}
               {"max" in (meta || {}) && <MetaItem label="Max" value={num(meta?.max)} />}
@@ -899,20 +933,22 @@ export default function VolumeViewer({
             </Box>
           </Box>
 
-          {/* Right panel */}
+          {/* Right panel (fixed width, internal scroll) */}
           <>
             <Divider orientation="vertical" flexItem />
             <Box
               sx={{
                 flexBasis: panelBasis,
                 flexShrink: 0,
-                minWidth: 280,
-                maxWidth: 420,
+                minWidth: panelBasis,
+                maxWidth: panelBasis,
                 p: 1.25,
                 display: "flex",
                 flexDirection: "column",
                 bgcolor: "background.paper",
                 gap: 1,
+                minHeight: 0,
+                overflow: "hidden",
               }}
             >
               <ToggleButtonGroup
@@ -924,398 +960,446 @@ export default function VolumeViewer({
                   setRightTab(v);
                   setShowHistogram(v === "hist");
                 }}
+                sx={{ flexShrink: 0}}
               >
-                <ToggleButton value="ctrl">Controls</ToggleButton>
+                <ToggleButton value="ctrl" >Controls</ToggleButton>
                 <ToggleButton value="hist">Histogram</ToggleButton>
               </ToggleButtonGroup>
 
-              {rightTab === "ctrl" && viewMode === "slices" && (
-                <Box sx={{ display: "flex", flexDirection: "column", gap: 1.25 }}>
-                  <SectionTitle title="Slices" />
+              {/* Content area scrolls internally only */}
+              <Box sx={{ flex: 1, minHeight: 0, overflow: "auto", pr: 0.5, marginTop: "8px" }}>
+                {rightTab === "ctrl" && viewMode === "slices" && (
+                  <Box sx={{ display: "flex", flexDirection: "column", gap: 1.25 }}>
+                    <SectionTitle title="Slices" />
 
-                  <ParamRow
-                    label="Axis"
-                    helpKey="axis"
-                    onHelp={openHelp}
-                    control={
-                      <ToggleButtonGroup
-                        size="small"
-                        value={axis}
-                        exclusive
-                        onChange={(_, v) => v && setAxis(v)}
-                      >
-                        <ToggleButton value="z">Z</ToggleButton>
-                        <ToggleButton value="y">Y</ToggleButton>
-                        <ToggleButton value="x">X</ToggleButton>
-                      </ToggleButtonGroup>
-                    }
-                  />
-
-                  <Box sx={{ mt: 0.5 }}>
-                    <Box sx={{ display: "inline-flex", gap: 0.5, alignItems: "center" }}>
-                      <Typography variant="caption" color="text.secondary">
-                        Slice
-                      </Typography>
-                      <IconButton size="small" onClick={openHelp("sliceIndex")}>
-                        <HelpCircle size={14} />
-                      </IconButton>
-                    </Box>
-
-                    <SliceSlider
-                      size="small"
-                      value={Math.min(sliceIndex, maxSlice)}
-                      min={0}
-                      max={maxSlice}
-                      step={1}
-                      onChange={(_, v) => setSliceIndex(v as number)}
-                      disabled={!readySlices}
-                      valueLabelDisplay="auto"
-                      valueLabelFormat={(v) => `${(v as number) + 1}`}
+                    <ParamRow
+                      label="Axis"
+                      helpKey="axis"
+                      onHelp={openHelp}
+                      control={
+                        <ToggleButtonGroup
+                          size="small"
+                          value={axis}
+                          exclusive
+                          onChange={(_, v) => v && setAxis(v)}
+                        >
+                          <ToggleButton value="z">Z</ToggleButton>
+                          <ToggleButton value="y">Y</ToggleButton>
+                          <ToggleButton value="x">X</ToggleButton>
+                        </ToggleButtonGroup>
+                      }
                     />
-                    <Box sx={{ display: "flex", justifyContent: "space-between" }}>
-                      <Typography variant="caption" color="text.secondary">1</Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        {maxSlice + 1}
-                      </Typography>
+
+                    <Box sx={{ mt: 0.5 }}>
+                      <Box sx={{ display: "inline-flex", gap: 0.5, alignItems: "center" }}>
+                        <Typography variant="caption" color="text.secondary">
+                          Slice
+                        </Typography>
+                        <IconButton size="small" onClick={openHelp("sliceIndex")}>
+                          <HelpCircle size={14} />
+                        </IconButton>
+                      </Box>
+
+                      <SliceSlider
+                        size="small"
+                        value={Math.min(sliceIndex, maxSlice)}
+                        min={0}
+                        max={maxSlice}
+                        step={1}
+                        onChange={(_, v) => setSliceIndex(v as number)}
+                        disabled={!readySlices}
+                        valueLabelDisplay="auto"
+                        valueLabelFormat={(v) => `${(v as number) + 1}`}
+                      />
+                      <Box sx={{ display: "flex", justifyContent: "space-between" }}>
+                        <Typography variant="caption" color="text.secondary">1</Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {maxSlice + 1}
+                        </Typography>
+                      </Box>
                     </Box>
-                  </Box>
 
-                  <ParamRow
-                    label="Colormap"
-                    helpKey="colormap2d"
-                    onHelp={openHelp}
-                    control={
-                      <TextField
-                        size="small"
-                        select
-                        value={colormap}
-                        onChange={(e) => setColormap(e.target.value)}
-                        SelectProps={{ MenuProps: { disablePortal: true } }}
-                      >
-                        {CMAP_OPTIONS.map((cm) => (
-                          <MenuItem key={cm} value={cm}>{cm}</MenuItem>
-                        ))}
-                      </TextField>
-                    }
-                  />
-
-                  <ParamRow
-                    label="Interpolation"
-                    helpKey="interp2d"
-                    onHelp={openHelp}
-                    control={
-                      <TextField
-                        size="small"
-                        select
-                        value={interp2d}
-                        onChange={(e) => setInterp2d(e.target.value as Interp2d)}
-                        SelectProps={{ MenuProps: { disablePortal: true } }}
-                      >
-                        <MenuItem value="nearest">nearest</MenuItem>
-                        <MenuItem value="linear">linear</MenuItem>
-                        <MenuItem value="high">high</MenuItem>
-                      </TextField>
-                    }
-                  />
-
-                  <ParamRow
-                    label="Sharpen"
-                    helpKey="sharpen2d"
-                    onHelp={openHelp}
-                    control={
-                      <ToggleButtonGroup
-                        size="small"
-                        exclusive
-                        value={sharpen2d ? "on" : "off"}
-                        onChange={(_, v) => {
-                          if (v === "on") setSharpen2d(true);
-                          if (v === "off") setSharpen2d(false);
-                        }}
-                      >
-                        <ToggleButton value="off">off</ToggleButton>
-                        <ToggleButton value="on">on</ToggleButton>
-                      </ToggleButtonGroup>
-                    }
-                  />
-
-                  <Divider />
-
-                  <SectionTitle title="Display" />
-
-                  <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
-                    <Box sx={{ display: "inline-flex", gap: 0.5, alignItems: "center" }}>
-                      <Typography variant="caption" color="text.secondary">
-                        Brightness
-                      </Typography>
-                      <IconButton size="small" onClick={openHelp("brightness2d")}>
-                        <HelpCircle size={14} />
-                      </IconButton>
-                    </Box>
-                    <Slider
-                      size="small"
-                      value={brightness2d}
-                      min={-1}
-                      max={1}
-                      step={0.02}
-                      onChange={(_, v) => setBrightness2d(v as number)}
-                      valueLabelDisplay="auto"
-                      valueLabelFormat={(v) => (v as number).toFixed(2)}
+                    <ParamRow
+                      label="Colormap"
+                      helpKey="colormap2d"
+                      onHelp={openHelp}
+                      control={
+                        <TextField
+                          size="small"
+                          select
+                          value={colormap}
+                          onChange={(e) => setColormap(e.target.value)}
+                          SelectProps={{ MenuProps: { disablePortal: true } }}
+                        >
+                          {CMAP_OPTIONS.map((cm) => (
+                            <MenuItem key={cm} value={cm}>{cm}</MenuItem>
+                          ))}
+                        </TextField>
+                      }
                     />
-                  </Box>
 
-                  <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
-                    <Box sx={{ display: "inline-flex", gap: 0.5, alignItems: "center" }}>
-                      <Typography variant="caption" color="text.secondary">
-                        Contrast
-                      </Typography>
-                      <IconButton size="small" onClick={openHelp("contrast2d")}>
-                        <HelpCircle size={14} />
-                      </IconButton>
-                    </Box>
-                    <Slider
-                      size="small"
-                      value={contrast2d}
-                      min={0.5}
-                      max={2}
-                      step={0.02}
-                      onChange={(_, v) => setContrast2d(v as number)}
-                      valueLabelDisplay="auto"
-                      valueLabelFormat={(v) => (v as number).toFixed(2)}
+                    <ParamRow
+                      label="Interpolation"
+                      helpKey="interp2d"
+                      onHelp={openHelp}
+                      control={
+                        <TextField
+                          size="small"
+                          select
+                          value={interp2d}
+                          onChange={(e) => setInterp2d(e.target.value as Interp2d)}
+                          SelectProps={{ MenuProps: { disablePortal: true } }}
+                        >
+                          <MenuItem value="nearest">nearest</MenuItem>
+                          <MenuItem value="linear">linear</MenuItem>
+                          <MenuItem value="high">high</MenuItem>
+                        </TextField>
+                      }
                     />
-                  </Box>
 
-                  <Divider />
+                    <ParamRow
+                      label="Sharpen"
+                      helpKey="sharpen2d"
+                      onHelp={openHelp}
+                      control={
+                        <ToggleButtonGroup
+                          size="small"
+                          exclusive
+                          value={sharpen2d ? "on" : "off"}
+                          onChange={(_, v) => {
+                            if (v === "on") setSharpen2d(true);
+                            if (v === "off") setSharpen2d(false);
+                          }}
+                        >
+                          <ToggleButton value="off">off</ToggleButton>
+                          <ToggleButton value="on">on</ToggleButton>
+                        </ToggleButtonGroup>
+                      }
+                    />
 
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    onClick={fitZoom}
-                    sx={{ textTransform: "none" }}
-                  >
-                    Fit + reset pan
-                  </Button>
+                    <Divider />
 
-                  <Typography variant="caption" color="text.secondary">
-                    Pan: Ctrl+drag or middle mouse
-                  </Typography>
-                </Box>
-              )}
+                    <SectionTitle title="Display" />
 
-              {rightTab === "ctrl" && viewMode === "map3d" && (
-                <Box sx={{ display: "flex", flexDirection: "column", gap: 1.25 }}>
-                  <SectionTitle title="Data" />
-                  <ParamRow
-                    label="maxDim"
-                    helpKey="maxDim3d"
-                    onHelp={openHelp}
-                    control={
-                      <TextField
+                    <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
+                      <Box sx={{ display: "inline-flex", gap: 0.5, alignItems: "center" }}>
+                        <Typography variant="caption" color="text.secondary">
+                          Brightness
+                        </Typography>
+                        <IconButton size="small" onClick={openHelp("brightness2d")}>
+                          <HelpCircle size={14} />
+                        </IconButton>
+                      </Box>
+                      <Slider
                         size="small"
-                        type="number"
-                        value={maxDim3d}
-                        onChange={(e) => setMaxDim3d(clampInt(e.target.value, 48, 256))}
-                        inputProps={{ min: 48, max: 256, step: 8 }}
+                        value={brightness2d}
+                        min={-1}
+                        max={1}
+                        step={0.02}
+                        onChange={(_, v) => setBrightness2d(v as number)}
+                        valueLabelDisplay="auto"
+                        valueLabelFormat={(v) => (v as number).toFixed(2)}
                       />
-                    }
-                  />
-                  <ParamRow
-                    label="Method"
-                    helpKey="method3d"
-                    onHelp={openHelp}
-                    control={
-                      <TextField
-                        size="small"
-                        select
-                        value={method3d}
-                        onChange={(e) => setMethod3d(e.target.value as any)}
-                        SelectProps={{ MenuProps: { disablePortal: true } }}
-                      >
-                        <MenuItem value="binning">binning</MenuItem>
-                        <MenuItem value="stride">stride</MenuItem>
-                        <MenuItem value="none">none</MenuItem>
-                      </TextField>
-                    }
-                  />
-                  <Button
-                    size="small"
-                    variant={dataDirty ? "contained" : "outlined"}
-                    onClick={load3d}
-                    disabled={selectedId == null || mapLoading}
-                    sx={{ textTransform: "none", borderRadius: 1.5 }}
-                  >
-                    Reload data
-                  </Button>
-
-                  <Divider />
-
-                  <SectionTitle title="Appearance" />
-                  <ParamRow
-                    label="Colormap"
-                    helpKey="colormap3d"
-                    onHelp={openHelp}
-                    control={
-                      <TextField
-                        size="small"
-                        select
-                        value={colormap3d}
-                        onChange={(e) => setColormap3d(e.target.value)}
-                        SelectProps={{ MenuProps: { disablePortal: true } }}
-                      >
-                        {CMAP_OPTIONS.map((cm) => (
-                          <MenuItem key={cm} value={cm}>{cm}</MenuItem>
-                        ))}
-                      </TextField>
-                    }
-                  />
-
-                  <ParamRow
-                    label="Opacity"
-                    helpKey="opacity3d"
-                    onHelp={openHelp}
-                    control={
-                      <TextField
-                        size="small"
-                        type="number"
-                        value={opacity3d}
-                        onChange={(e) => setOpacity3d(clampFloat(e.target.value, 0.05, 1))}
-                        inputProps={{ min: 0.05, max: 1, step: 0.05 }}
-                      />
-                    }
-                  />
-
-                  <ParamRow
-                    label="Surfaces"
-                    helpKey="surfaceCount"
-                    onHelp={openHelp}
-                    control={
-                      <TextField
-                        size="small"
-                        type="number"
-                        value={surfaceCount}
-                        onChange={(e) => setSurfaceCount(clampInt(e.target.value, 1, 8))}
-                        inputProps={{ min: 1, max: 8, step: 1 }}
-                      />
-                    }
-                  />
-
-                  <Box sx={{ mt: 0.5 }}>
-                    <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-                      <Typography variant="caption" color="text.secondary">
-                        Threshold
-                      </Typography>
-                      <IconButton size="small" onClick={openHelp("thrMode")}>
-                        <HelpCircle size={14} />
-                      </IconButton>
                     </Box>
 
-                    <ToggleButtonGroup
+                    <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
+                      <Box sx={{ display: "inline-flex", gap: 0.5, alignItems: "center" }}>
+                        <Typography variant="caption" color="text.secondary">
+                          Contrast
+                        </Typography>
+                        <IconButton size="small" onClick={openHelp("contrast2d")}>
+                          <HelpCircle size={14} />
+                        </IconButton>
+                      </Box>
+                      <Slider
+                        size="small"
+                        value={contrast2d}
+                        min={0.5}
+                        max={2}
+                        step={0.02}
+                        onChange={(_, v) => setContrast2d(v as number)}
+                        valueLabelDisplay="auto"
+                        valueLabelFormat={(v) => (v as number).toFixed(2)}
+                      />
+                    </Box>
+
+                    <Divider />
+
+                    <Button
                       size="small"
-                      exclusive
-                      value={thrMode}
-                      onChange={(_, v) => v && setThrMode(v)}
-                      sx={{ mb: 0.75 }}
+                      variant="outlined"
+                      onClick={fitZoom}
+                      sx={{ textTransform: "none" }}
                     >
-                      <ToggleButton value="percentile">Percentile</ToggleButton>
-                      <ToggleButton value="absolute">Absolute</ToggleButton>
-                    </ToggleButtonGroup>
+                      Fit + reset pan
+                    </Button>
 
-                    {thrMode === "percentile" && (
-                      <>
+                    <Typography variant="caption" color="text.secondary">
+                      Pan: Ctrl+drag or middle mouse
+                    </Typography>
+                  </Box>
+                )}
+
+                {rightTab === "ctrl" && viewMode === "map3d" && (
+                  <Box sx={{ display: "flex", flexDirection: "column", gap: 1.25, marginRight: "12px" }}>
+                    <SectionTitle title="Data" />
+                    <ParamRow
+                      label="maxDim"
+                      helpKey="maxDim3d"
+                      onHelp={openHelp}
+                      control={
+                        <TextField
+                          size="small"
+                          type="number"
+                          value={maxDim3d}
+                          onChange={(e) => setMaxDim3d(clampInt(e.target.value, 48, 256))}
+                          inputProps={{ min: 48, max: 256, step: 8 }}
+                        />
+                      }
+                    />
+                    <ParamRow
+                      label="Method"
+                      helpKey="method3d"
+                      onHelp={openHelp}
+                      control={
+                        <TextField
+                          size="small"
+                          select
+                          value={method3d}
+                          onChange={(e) => setMethod3d(e.target.value as any)}
+                          SelectProps={{ MenuProps: { disablePortal: true } }}
+                        >
+                          <MenuItem value="binning">binning</MenuItem>
+                          <MenuItem value="stride">stride</MenuItem>
+                          <MenuItem value="none">none</MenuItem>
+                        </TextField>
+                      }
+                    />
+                    <Button
+                      size="small"
+                      variant={dataDirty ? "contained" : "outlined"}
+                      onClick={load3d}
+                      disabled={selectedId == null || mapLoading}
+                      sx={{ textTransform: "none", borderRadius: 1.5 }}
+                    >
+                      Reload data
+                    </Button>
+
+                    <Divider />
+
+                    <SectionTitle title="Appearance" />
+                    <ParamRow
+                      label="Colormap"
+                      helpKey="colormap3d"
+                      onHelp={openHelp}
+                      control={
+                        <TextField
+                          size="small"
+                          select
+                          value={colormap3d}
+                          onChange={(e) => setColormap3d(e.target.value)}
+                          SelectProps={{ MenuProps: { disablePortal: true } }}
+                        >
+                          {CMAP_OPTIONS.map((cm) => (
+                            <MenuItem key={cm} value={cm}>{cm}</MenuItem>
+                          ))}
+                        </TextField>
+                      }
+                    />
+
+                    <ParamRow
+                      label="Opacity"
+                      helpKey="opacity3d"
+                      onHelp={openHelp}
+                      control={
+                        <TextField
+                          size="small"
+                          type="number"
+                          value={opacity3d}
+                          onChange={(e) => setOpacity3d(clampFloat(e.target.value, 0.05, 1))}
+                          inputProps={{ min: 0.05, max: 1, step: 0.05 }}
+                        />
+                      }
+                    />
+
+                    <ParamRow
+                      label="Surfaces"
+                      helpKey="surfaceCount"
+                      onHelp={openHelp}
+                      control={
+                        <TextField
+                          size="small"
+                          type="number"
+                          value={surfaceCount}
+                          onChange={(e) => setSurfaceCount(clampInt(e.target.value, 1, 8))}
+                          inputProps={{ min: 1, max: 8, step: 1 }}
+                        />
+                      }
+                    />
+
+                    <Divider />
+
+                    <SectionTitle title="Iso rendering" />
+                    <ParamRow
+                      label="Iso mode"
+                      helpKey="isoRenderMode3d"
+                      onHelp={openHelp}
+                      control={
+                        <ToggleButtonGroup
+                          size="small"
+                          exclusive
+                          value={renderMode3d}
+                          onChange={(_, v) => v && setRenderMode3d(v)}
+                        >
+                          <ToggleButton value="surface">surface</ToggleButton>
+                          <ToggleButton value="volume">volume</ToggleButton>
+                        </ToggleButtonGroup>
+                      }
+                    />
+
+                    {renderMode3d === "surface" && (
+                      <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
+                        <Box sx={{ display: "inline-flex", gap: 0.5, alignItems: "center" }}>
+                          <Typography variant="caption" color="text.secondary">
+                            Surface thickness
+                          </Typography>
+                          <IconButton size="small" onClick={openHelp("surfaceThickness3d")}>
+                            <HelpCircle size={14} />
+                          </IconButton>
+                        </Box>
                         <Slider
                           size="small"
-                          value={thrPct}
-                          min={0}
-                          max={100}
-                          step={1}
-                          onChange={(_, v) => {
-                            const arr = v as number[];
-                            const lo = Math.min(arr[0], arr[1]);
-                            const hi = Math.max(arr[0], arr[1]);
-                            setThrPct([lo, Math.max(lo + 1, hi)] as [number, number]);
-                          }}
+                          value={surfaceThickness3d}
+                          min={0.02}
+                          max={0.6}
+                          step={0.01}
+                          onChange={(_, v) => setSurfaceThickness3d(v as number)}
                           valueLabelDisplay="auto"
-                          disabled={!sortedValues}
+                          valueLabelFormat={(v) => (v as number).toFixed(2)}
                         />
-                        {thrPctAbs && (
-                          <Typography variant="caption" color="text.secondary">
-                            ≈ {formatSci(thrPctAbs[0])} – {formatSci(thrPctAbs[1])}
-                          </Typography>
-                        )}
-                      </>
+                      </Box>
                     )}
 
-                    {thrMode === "absolute" && (
-                      <>
-                        <Slider
-                          size="small"
-                          value={thrAbs}
-                          min={stats3d?.min ?? 0}
-                          max={stats3d?.max ?? 1}
-                          step={stats3d ? (stats3d.max - stats3d.min) / 400 : 0.001}
-                          onChange={(_, v) => {
-                            const [lo, hi] = v as number[];
-                            setThrAbs([Math.min(lo, hi), Math.max(lo, hi)] as [number, number]);
+                    <Box sx={{ mt: 0.5 }}>
+                      <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                        <Typography variant="caption" color="text.secondary">
+                          Threshold
+                        </Typography>
+                        <IconButton size="small" onClick={openHelp("thrMode")}>
+                          <HelpCircle size={14} />
+                        </IconButton>
+                      </Box>
+
+                      <ToggleButtonGroup
+                        size="small"
+                        exclusive
+                        value={thrMode}
+                        onChange={(_, v) => v && setThrMode(v)}
+                        sx={{ mb: 0.75 }}
+                      >
+                        <ToggleButton value="percentile">Percentile</ToggleButton>
+                        <ToggleButton value="absolute">Absolute</ToggleButton>
+                      </ToggleButtonGroup>
+
+                      {thrMode === "percentile" && (
+                        <>
+                          <Slider
+                            size="small"
+                            value={thrPct}
+                            min={0}
+                            max={100}
+                            step={1}
+                            onChange={(_, v) => {
+                              const arr = v as number[];
+                              const lo = Math.min(arr[0], arr[1]);
+                              const hi = Math.max(arr[0], arr[1]);
+                              setThrPct([lo, Math.max(lo + 1, hi)] as [number, number]);
+                            }}
+                            valueLabelDisplay="auto"
+                            disabled={!sortedValues}
+                          />
+                          {thrPctAbs && (
+                            <Typography variant="caption" color="text.secondary">
+                              ≈ {formatSci(thrPctAbs[0])} – {formatSci(thrPctAbs[1])}
+                            </Typography>
+                          )}
+                        </>
+                      )}
+
+                      {thrMode === "absolute" && (
+                        <>
+                          <Slider
+                            size="small"
+                            value={thrAbs}
+                            min={stats3d?.min ?? 0}
+                            max={stats3d?.max ?? 1}
+                            step={stats3d ? (stats3d.max - stats3d.min) / 400 : 0.001}
+                            onChange={(_, v) => {
+                              const [lo, hi] = v as number[];
+                              setThrAbs([Math.min(lo, hi), Math.max(lo, hi)] as [number, number]);
+                            }}
+                            valueLabelDisplay="auto"
+                            valueLabelFormat={(v) => formatSci(v as number)}
+                            disabled={!stats3d}
+                            className="mr-4"
+                          />
+                        </>
+                      )}
+                    </Box>
+                  </Box>
+                )}
+
+                {rightTab === "hist" && (
+                  <Box sx={{ display: "flex", flexDirection: "column", minHeight: 0, flex: 1 }}>
+                    <Typography variant="caption" color="text.secondary">
+                      Intensity histogram
+                    </Typography>
+
+                    {selectedId == null ? (
+                      <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
+                        Select a volume to see the histogram.
+                      </Typography>
+                    ) : histLoading ? (
+                      <Box sx={{ display: "flex", gap: 1, alignItems: "center", mt: 1 }}>
+                        <CircularProgress size={16} />
+                        <Typography variant="caption">Loading histogram…</Typography>
+                      </Box>
+                    ) : histError ? (
+                      <Typography variant="caption" color="error" sx={{ mt: 1 }}>
+                        {histError}
+                      </Typography>
+                    ) : histogram && histogram.binEdges.length > 1 ? (
+                      <Box sx={{ mt: 1, flex: 1, minHeight: 240 }}>
+                        <Plot
+                          data={[
+                            {
+                              type: "bar",
+                              x: histogram.binEdges
+                                .slice(0, -1)
+                                .map((b, i) => 0.5 * (b + histogram.binEdges[i + 1])),
+                              y: histogram.counts,
+                            },
+                          ]}
+                          layout={{
+                            margin: { l: 40, r: 10, t: 10, b: 30 },
+                            autosize: true,
+                            showlegend: false,
+                            xaxis: { title: "Intensity" },
+                            yaxis: { title: "Count" },
                           }}
-                          valueLabelDisplay="auto"
-                          valueLabelFormat={(v) => formatSci(v as number)}
-                          disabled={!stats3d}
+                          style={{ width: "100%", height: "100%" }}
+                          useResizeHandler
+                          config={{ displaylogo: false, responsive: true }}
                         />
-                      </>
+                      </Box>
+                    ) : (
+                      <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
+                        No histogram data.
+                      </Typography>
                     )}
                   </Box>
-                </Box>
-              )}
-
-              {rightTab === "hist" && (
-                <Box sx={{ display: "flex", flexDirection: "column", minHeight: 0, flex: 1 }}>
-                  <Typography variant="caption" color="text.secondary">
-                    Intensity histogram
-                  </Typography>
-
-                  {selectedId == null ? (
-                    <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
-                      Select a volume to see the histogram.
-                    </Typography>
-                  ) : histLoading ? (
-                    <Box sx={{ display: "flex", gap: 1, alignItems: "center", mt: 1 }}>
-                      <CircularProgress size={16} />
-                      <Typography variant="caption">Loading histogram…</Typography>
-                    </Box>
-                  ) : histError ? (
-                    <Typography variant="caption" color="error" sx={{ mt: 1 }}>
-                      {histError}
-                    </Typography>
-                  ) : histogram && histogram.binEdges.length > 1 ? (
-                    <Box sx={{ mt: 1, flex: 1, minHeight: 0 }}>
-                      <Plot
-                        data={[
-                          {
-                            type: "bar",
-                            x: histogram.binEdges
-                              .slice(0, -1)
-                              .map((b, i) => 0.5 * (b + histogram.binEdges[i + 1])),
-                            y: histogram.counts,
-                          },
-                        ]}
-                        layout={{
-                          margin: { l: 40, r: 10, t: 10, b: 30 },
-                          autosize: true,
-                          showlegend: false,
-                          xaxis: { title: "Intensity" },
-                          yaxis: { title: "Count" },
-                        }}
-                        style={{ width: "100%", height: "100%" }}
-                        useResizeHandler
-                        config={{ displaylogo: false, responsive: true }}
-                      />
-                    </Box>
-                  ) : (
-                    <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
-                      No histogram data.
-                    </Typography>
-                  )}
-                </Box>
-              )}
+                )}
+              </Box>
             </Box>
           </>
         </Box>
@@ -1375,7 +1459,6 @@ function SlicesCanvas({
     const img = new Image();
     img.crossOrigin = "anonymous";
     img.onload = () => {
-      // keep old image visible until new one is ready
       imgRef.current = img;
       onNaturalSize(img.naturalWidth, img.naturalHeight);
       prepareProcessed(img, sharpen, processedRef);

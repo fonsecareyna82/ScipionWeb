@@ -1,19 +1,22 @@
+// src/components/analyze/gpu-volume-view.tsx
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
 export type GpuVolumeViewProps = {
-    values: number[];
-    dims: { x: number; y: number; z: number };
-    order?: "zyx" | "xyz";
-    spacing?: [number, number, number];
-    rangeMin: number;
-    rangeMax: number;
-    isoMin: number;
-    isoMax: number;
-    opacity: number;
-    colormap: string; // renamed
-    onError?: (msg: string) => void;
+  values: number[];
+  dims: { x: number; y: number; z: number };
+  order?: "zyx" | "xyz";
+  spacing?: [number, number, number];
+  rangeMin: number;
+  rangeMax: number;
+  isoMin: number;
+  isoMax: number;
+  opacity: number;
+  colormap: string;
+  shell?: number; // thickness fraction for surface mode
+  renderMode?: "volume" | "surface"; // "volume" restores old iso-band behavior
+  onError?: (msg: string) => void;
 };
 
 const VERT = `
@@ -37,11 +40,20 @@ const FRAG = `
   varying vec3 vCamLocal;
 
   uniform sampler3D uTex;
+  uniform vec3 uTexSize;
+
   uniform float uIsoMin;
   uniform float uIsoMax;
   uniform float uOpacity;
+  uniform float uShell;     // surface thickness fraction of iso band
+  uniform int uIsoMode;     // 0 = volume, 1 = surface
   uniform int uSteps;
   uniform int uCmap;
+  uniform vec3 uLightDir;
+
+  float sampleD(vec3 uvw) {
+    return texture(uTex, uvw).r;
+  }
 
   vec3 palette5(float t, vec3 c0, vec3 c1, vec3 c2, vec3 c3, vec3 c4) {
     float x = clamp(t, 0.0, 1.0) * 4.0;
@@ -151,6 +163,8 @@ const FRAG = `
     vec4 acc = vec4(0.0);
 
     float denom = max(1e-5, (uIsoMax - uIsoMin));
+    vec3 texStep = 1.0 / max(uTexSize, vec3(1.0));
+    vec3 lightDir = normalize(uLightDir);
 
     for (int i = 0; i < 512; i++) {
       if (i >= uSteps) break;
@@ -159,21 +173,61 @@ const FRAG = `
       vec3 p = ro + rd * tRay;
       vec3 uvw = p + 0.5;
 
-      float d = texture(uTex, uvw).r;
+      float d = sampleD(uvw);
       float tnorm = clamp((d - uIsoMin) / denom, 0.0, 1.0);
 
-      float inside = smoothstep(0.0, 0.03, tnorm) *
-                     (1.0 - smoothstep(0.97, 1.0, tnorm));
+      if (uIsoMode == 0) {
+        // Volume iso band mode (old behavior)
+        float inside = smoothstep(0.0, 0.03, tnorm) *
+                       (1.0 - smoothstep(0.97, 1.0, tnorm));
 
-      if (inside > 0.0) {
-        vec3 col = cmap(tnorm);
-        float a = inside * uOpacity * dt * 30.0;
-        a = clamp(a, 0.0, 1.0);
+        if (inside > 0.0) {
+          vec3 col = cmap(tnorm);
+          float a = inside * uOpacity * dt * 30.0;
+          a = clamp(a, 0.0, 1.0);
 
-        acc.rgb += (1.0 - acc.a) * col * a;
-        acc.a   += (1.0 - acc.a) * a;
+          acc.rgb += (1.0 - acc.a) * col * a;
+          acc.a   += (1.0 - acc.a) * a;
 
-        if (acc.a > 0.98) break;
+          if (acc.a > 0.98) break;
+        }
+      } else {
+        // Surface/shell mode (ChimeraX-like)
+        float center = 0.5 * (uIsoMin + uIsoMax);
+        float shellFrac = clamp(uShell, 0.02, 1.0);
+        float shellHalf = 0.5 * denom * shellFrac;
+
+        float distToCenter = abs(d - center);
+        float shell = 1.0 - smoothstep(shellHalf, shellHalf * 1.3, distToCenter);
+
+        if (shell > 0.0) {
+          float dx = sampleD(uvw + vec3(texStep.x, 0.0, 0.0)) - sampleD(uvw - vec3(texStep.x, 0.0, 0.0));
+          float dy = sampleD(uvw + vec3(0.0, texStep.y, 0.0)) - sampleD(uvw - vec3(0.0, texStep.y, 0.0));
+          float dz = sampleD(uvw + vec3(0.0, 0.0, texStep.z)) - sampleD(uvw - vec3(0.0, 0.0, texStep.z));
+          vec3 grad = vec3(dx, dy, dz);
+
+          float gradMag = length(grad);
+          vec3 nrm = gradMag > 1e-6 ? normalize(grad) : vec3(0.0, 0.0, 1.0);
+
+          float edge = smoothstep(0.01, 0.08, gradMag);
+
+          vec3 col = cmap(tnorm);
+
+          float ambient = 0.25;
+          float diff = max(dot(nrm, lightDir), 0.0);
+          vec3 halfV = normalize(lightDir - rd);
+          float spec = pow(max(dot(nrm, halfV), 0.0), 24.0);
+
+          col = col * (ambient + (1.0 - ambient) * diff) + spec * 0.35;
+
+          float a = shell * edge * uOpacity * dt * 35.0;
+          a = clamp(a, 0.0, 1.0);
+
+          acc.rgb += (1.0 - acc.a) * col * a;
+          acc.a   += (1.0 - acc.a) * a;
+
+          if (acc.a > 0.98) break;
+        }
       }
     }
 
@@ -183,302 +237,311 @@ const FRAG = `
 `;
 
 function cmapToId(name: string) {
-    const n = (name || "viridis").toLowerCase();
-    if (n === "gray" || n === "grey") return 1;
-    if (n === "magma") return 2;
-    if (n === "inferno") return 3;
-    if (n === "plasma") return 4;
-    if (n === "cividis") return 5;
-    if (n === "turbo") return 6;
-    return 0; // viridis default
+  const n = (name || "viridis").toLowerCase();
+  if (n === "gray" || n === "grey") return 1;
+  if (n === "magma") return 2;
+  if (n === "inferno") return 3;
+  if (n === "plasma") return 4;
+  if (n === "cividis") return 5;
+  if (n === "turbo") return 6;
+  return 0;
 }
 
 function buildUint8Texture(
-    values: number[],
-    dims: { x: number; y: number; z: number },
-    vmin: number,
-    vmax: number,
+  values: number[],
+  dims: { x: number; y: number; z: number },
+  vmin: number,
+  vmax: number,
 ) {
-    const { x, y, z } = dims;
-    const n = x * y * z;
-    const out = new Uint8Array(n);
+  const { x, y, z } = dims;
+  const n = x * y * z;
+  const out = new Uint8Array(n);
 
-    const scale = vmax > vmin ? 255.0 / (vmax - vmin) : 1.0;
-    for (let i = 0; i < n; i++) {
-        const v = values[i] ?? vmin;
-        out[i] = Math.max(0, Math.min(255, (v - vmin) * scale));
-    }
+  const scale = vmax > vmin ? 255.0 / (vmax - vmin) : 1.0;
+  for (let i = 0; i < n; i++) {
+    const v = values[i] ?? vmin;
+    out[i] = Math.max(0, Math.min(255, (v - vmin) * scale));
+  }
 
-    const Tex3D = (THREE as any).Data3DTexture || (THREE as any).DataTexture3D;
-    const tex = new Tex3D(out, x, y, z);
+  const Tex3D = (THREE as any).Data3DTexture || (THREE as any).DataTexture3D;
+  const tex = new Tex3D(out, x, y, z);
 
-    tex.format = (THREE as any).RedFormat ?? THREE.RGBFormat;
-    tex.type = THREE.UnsignedByteType;
-    tex.minFilter = THREE.LinearFilter;
-    tex.magFilter = THREE.LinearFilter;
-    tex.wrapS = THREE.ClampToEdgeWrapping;
-    tex.wrapT = THREE.ClampToEdgeWrapping;
-    tex.wrapR = THREE.ClampToEdgeWrapping;
-    tex.unpackAlignment = 1;
-    tex.needsUpdate = true;
+  tex.format = (THREE as any).RedFormat ?? THREE.RGBAFormat;
+  tex.type = THREE.UnsignedByteType;
+  tex.minFilter = THREE.LinearFilter;
+  tex.magFilter = THREE.LinearFilter;
+  tex.wrapS = THREE.ClampToEdgeWrapping;
+  tex.wrapT = THREE.ClampToEdgeWrapping;
+  tex.wrapR = THREE.ClampToEdgeWrapping;
+  tex.unpackAlignment = 1;
+  tex.needsUpdate = true;
 
-    if ((tex as any).isData3DTexture) {
-        (tex as any).internalFormat = "R8";
-    }
+  if ((tex as any).isData3DTexture) {
+    (tex as any).internalFormat = "R8";
+  }
 
-    return tex as THREE.Data3DTexture;
+  return tex as THREE.Data3DTexture;
 }
 
 export default function GpuVolumeView({
-    values,
-    dims,
-    spacing,
-    rangeMin,
-    rangeMax,
-    isoMin,
-    isoMax,
-    opacity,
-    colormap,
-    onError,
+  values,
+  dims,
+  spacing,
+  rangeMin,
+  rangeMax,
+  isoMin,
+  isoMax,
+  opacity,
+  colormap,
+  shell = 0.12,
+  renderMode = "surface",
+  onError,
 }: GpuVolumeViewProps) {
-    const mountRef = useRef<HTMLDivElement | null>(null);
+  const mountRef = useRef<HTMLDivElement | null>(null);
 
-    const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
-    const sceneRef = useRef<THREE.Scene | null>(null);
-    const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
-    const controlsRef = useRef<OrbitControls | null>(null);
-    const meshRef = useRef<THREE.Mesh | null>(null);
-    const materialRef = useRef<THREE.ShaderMaterial | null>(null);
-    const uInvModelRef = useRef<THREE.Matrix4 | null>(null);
-    const rafRef = useRef<number | null>(null);
-    const cleanupRef = useRef<(() => void) | null>(null);
+  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
+  const sceneRef = useRef<THREE.Scene | null>(null);
+  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+  const controlsRef = useRef<OrbitControls | null>(null);
+  const meshRef = useRef<THREE.Mesh | null>(null);
+  const materialRef = useRef<THREE.ShaderMaterial | null>(null);
+  const uInvModelRef = useRef<THREE.Matrix4 | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const cleanupRef = useRef<(() => void) | null>(null);
 
-    const [webgl2Ok, setWebgl2Ok] = useState(true);
+  const [webgl2Ok, setWebgl2Ok] = useState(true);
 
-    const scaleVec = useMemo(() => {
-        const sp = spacing ?? [1, 1, 1];
-        const dx = dims.x * sp[0];
-        const dy = dims.y * sp[1];
-        const dz = dims.z * sp[2];
-        const m = Math.max(dx, dy, dz) || 1;
-        return new THREE.Vector3(dx / m, dy / m, dz / m);
-    }, [dims, spacing]);
+  const scaleVec = useMemo(() => {
+    const sp = spacing ?? [1, 1, 1];
+    const dx = dims.x * sp[0];
+    const dy = dims.y * sp[1];
+    const dz = dims.z * sp[2];
+    const m = Math.max(dx, dy, dz) || 1;
+    return new THREE.Vector3(dx / m, dy / m, dz / m);
+  }, [dims, spacing]);
 
-    const tex = useMemo(() => {
-        if (!values?.length) return null;
-        return buildUint8Texture(values, dims, rangeMin, rangeMax);
-    }, [values, dims, rangeMin, rangeMax]);
+  const tex = useMemo(() => {
+    if (!values?.length) return null;
+    return buildUint8Texture(values, dims, rangeMin, rangeMax);
+  }, [values, dims, rangeMin, rangeMax]);
 
-    const isoMinNorm = useMemo(() => {
-        return rangeMax > rangeMin
-            ? (isoMin - rangeMin) / (rangeMax - rangeMin)
-            : 0.0;
-    }, [isoMin, rangeMin, rangeMax]);
+  const isoMinNorm = useMemo(() => {
+    return rangeMax > rangeMin
+      ? (isoMin - rangeMin) / (rangeMax - rangeMin)
+      : 0.0;
+  }, [isoMin, rangeMin, rangeMax]);
 
-    const isoMaxNorm = useMemo(() => {
-        return rangeMax > rangeMin
-            ? (isoMax - rangeMin) / (rangeMax - rangeMin)
-            : 1.0;
-    }, [isoMax, rangeMin, rangeMax]);
+  const isoMaxNorm = useMemo(() => {
+    return rangeMax > rangeMin
+      ? (isoMax - rangeMin) / (rangeMax - rangeMin)
+      : 1.0;
+  }, [isoMax, rangeMin, rangeMax]);
 
-    const cmapId = useMemo(() => cmapToId(colormap), [colormap]);
+  const cmapId = useMemo(() => cmapToId(colormap), [colormap]);
 
-    // Init scene ONCE when texture first appears.
-    useEffect(() => {
-        if (!tex || !mountRef.current || rendererRef.current) return;
+  const shellClamped = useMemo(
+    () => Math.max(0.02, Math.min(1, shell)),
+    [shell],
+  );
 
-        const mount = mountRef.current;
+  // Init scene ONCE when texture first appears.
+  useEffect(() => {
+    if (!tex || !mountRef.current || rendererRef.current) return;
 
-        const scene = new THREE.Scene();
-        sceneRef.current = scene;
+    const mount = mountRef.current;
 
-        const camera = new THREE.PerspectiveCamera(45, 1, 0.01, 50);
-        camera.position.set(1.8, 1.2, 1.8);
-        cameraRef.current = camera;
+    const scene = new THREE.Scene();
+    sceneRef.current = scene;
 
-        const renderer = new THREE.WebGLRenderer({
-            antialias: true,
-            alpha: true,
-            powerPreference: "high-performance",
-        });
-        renderer.setClearColor(0x000000, 0);
-        rendererRef.current = renderer;
-        mount.appendChild(renderer.domElement);
+    const camera = new THREE.PerspectiveCamera(45, 1, 0.01, 50);
+    camera.position.set(1.8, 1.2, 1.8);
+    cameraRef.current = camera;
 
-        const isWebgl2 = (renderer.capabilities as any).isWebGL2;
-        setWebgl2Ok(isWebgl2);
-        if (!isWebgl2) {
-            onError?.("WebGL2 is required for GPU volume rendering.");
-            return;
-        }
+    const renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      alpha: true,
+      powerPreference: "high-performance",
+    });
+    renderer.setClearColor(0x000000, 0);
+    rendererRef.current = renderer;
+    mount.appendChild(renderer.domElement);
 
-        const controls = new OrbitControls(camera, renderer.domElement);
-        controls.enableDamping = true;
-        controls.dampingFactor = 0.08;
-        controls.rotateSpeed = 0.6;
-        controls.zoomSpeed = 0.8;
+    const isWebgl2 = (renderer.capabilities as any).isWebGL2;
+    setWebgl2Ok(isWebgl2);
+    if (!isWebgl2) {
+      onError?.("WebGL2 is required for GPU volume rendering.");
+      return;
+    }
 
-        // Disable OrbitControls wheel listener to avoid passive preventDefault warnings.
-        // Disable OrbitControls wheel listener to avoid passive preventDefault warnings.
-        controls.enableZoom = false;
-        controlsRef.current = controls;
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.08;
+    controls.rotateSpeed = 0.6;
+    controls.zoomSpeed = 0.8;
 
-        const onWheel = (e: WheelEvent) => {
-            e.preventDefault();
+    // Disable OrbitControls wheel listener to avoid passive preventDefault warnings.
+    controls.enableZoom = false;
+    controlsRef.current = controls;
 
-            const camera = cameraRef.current;
-            const ctrls = controlsRef.current;
-            if (!camera || !ctrls) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
 
-            const zoomFactor = 1.1;
-            const scale = e.deltaY < 0 ? 1 / zoomFactor : zoomFactor;
+      const cam = cameraRef.current;
+      const ctrls = controlsRef.current;
+      if (!cam || !ctrls) return;
 
-            // Vector from target to camera
-            const dir = new THREE.Vector3()
-                .subVectors(camera.position, ctrls.target);
+      const zoomFactor = 1.1;
+      const scale = e.deltaY < 0 ? 1 / zoomFactor : zoomFactor;
 
-            const dist = dir.length();
-            const newDist = Math.max(0.05, dist * scale);
+      const dir = new THREE.Vector3().subVectors(cam.position, ctrls.target);
+      const dist = dir.length();
+      const newDist = Math.max(0.05, dist * scale);
 
-            dir.setLength(newDist);
-            camera.position.copy(ctrls.target).add(dir);
-            camera.updateProjectionMatrix();
+      dir.setLength(newDist);
+      cam.position.copy(ctrls.target).add(dir);
+      cam.updateProjectionMatrix();
+      ctrls.update();
+    };
 
-            ctrls.update();
-        };
+    renderer.domElement.addEventListener("wheel", onWheel, { passive: false });
 
-        renderer.domElement.addEventListener("wheel", onWheel, { passive: false });
+    const geometry = new THREE.BoxGeometry(1, 1, 1);
 
+    const uInvModel = new THREE.Matrix4();
+    uInvModelRef.current = uInvModel;
 
-        const geometry = new THREE.BoxGeometry(1, 1, 1);
+    const material = new THREE.ShaderMaterial({
+      vertexShader: VERT,
+      fragmentShader: FRAG,
+      uniforms: {
+        uTex: { value: tex },
+        uTexSize: { value: new THREE.Vector3(dims.x, dims.y, dims.z) },
+        uIsoMin: { value: isoMinNorm },
+        uIsoMax: { value: isoMaxNorm },
+        uOpacity: { value: opacity },
+        uShell: { value: shellClamped },
+        uIsoMode: { value: renderMode === "volume" ? 0 : 1 },
+        uSteps: { value: 256 },
+        uCmap: { value: cmapId },
+        uInvModel: { value: uInvModel },
+        uLightDir: { value: new THREE.Vector3(1, 1, 1).normalize() },
+      },
+      side: THREE.BackSide,
+      transparent: true,
+      depthWrite: false,
+    });
+    materialRef.current = material;
 
-        const uInvModel = new THREE.Matrix4();
-        uInvModelRef.current = uInvModel;
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.scale.copy(scaleVec);
+    meshRef.current = mesh;
+    scene.add(mesh);
 
-        const material = new THREE.ShaderMaterial({
-            vertexShader: VERT,
-            fragmentShader: FRAG,
-            uniforms: {
-                uTex: { value: tex },
-                uIsoMin: { value: isoMinNorm },
-                uIsoMax: { value: isoMaxNorm },
-                uOpacity: { value: opacity },
-                uSteps: { value: 256 },
-                uCmap: { value: cmapId },
-                uInvModel: { value: uInvModel },
-            },
-            side: THREE.BackSide,
-            transparent: true,
-            depthWrite: false,
-        });
-        materialRef.current = material;
+    const resize = () => {
+      const w = mount.clientWidth;
+      const h = mount.clientHeight;
+      if (w <= 0 || h <= 0) return;
+      renderer.setSize(w, h, false);
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+    };
 
-        const mesh = new THREE.Mesh(geometry, material);
-        mesh.scale.copy(scaleVec);
-        meshRef.current = mesh;
-        scene.add(mesh);
+    resize();
+    const ro = new ResizeObserver(resize);
+    ro.observe(mount);
 
-        const resize = () => {
-            const w = mount.clientWidth;
-            const h = mount.clientHeight;
-            if (w <= 0 || h <= 0) return;
-            renderer.setSize(w, h, false);
-            camera.aspect = w / h;
-            camera.updateProjectionMatrix();
-        };
+    const animate = () => {
+      if (!rendererRef.current || !sceneRef.current || !cameraRef.current) return;
+      if (meshRef.current && uInvModelRef.current) {
+        meshRef.current.updateMatrixWorld();
+        uInvModelRef.current.copy(meshRef.current.matrixWorld).invert();
+      }
+      controls.update();
+      renderer.render(scene, camera);
+      rafRef.current = requestAnimationFrame(animate);
+    };
+    animate();
 
-        resize();
-        const ro = new ResizeObserver(resize);
-        ro.observe(mount);
+    cleanupRef.current = () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      ro.disconnect();
+      renderer.domElement.removeEventListener("wheel", onWheel);
+      controls.dispose();
+      geometry.dispose();
+      material.dispose();
+      tex.dispose();
+      scene.clear();
+      mount.removeChild(renderer.domElement);
+      renderer.dispose();
 
-        const animate = () => {
-            if (!rendererRef.current || !sceneRef.current || !cameraRef.current) return;
-            if (meshRef.current && uInvModelRef.current) {
-                meshRef.current.updateMatrixWorld();
-                uInvModelRef.current.copy(meshRef.current.matrixWorld).invert();
-            }
-            controls.update();
-            renderer.render(scene, camera);
-            rafRef.current = requestAnimationFrame(animate);
-        };
-        animate();
+      rendererRef.current = null;
+      sceneRef.current = null;
+      cameraRef.current = null;
+      controlsRef.current = null;
+      meshRef.current = null;
+      materialRef.current = null;
+      uInvModelRef.current = null;
+      rafRef.current = null;
+    };
+  }, [tex, scaleVec, dims, onError, renderMode, shellClamped, isoMinNorm, isoMaxNorm, opacity, cmapId]);
 
-        cleanupRef.current = () => {
-            if (rafRef.current) cancelAnimationFrame(rafRef.current);
-            ro.disconnect();
-            renderer.domElement.removeEventListener("wheel", onWheel);
-            controls.dispose();
-            geometry.dispose();
-            material.dispose();
-            tex.dispose();
-            scene.clear();
-            mount.removeChild(renderer.domElement);
-            renderer.dispose();
+  // Dispose everything on unmount only.
+  useEffect(() => {
+    return () => cleanupRef.current?.();
+  }, []);
 
-            rendererRef.current = null;
-            sceneRef.current = null;
-            cameraRef.current = null;
-            controlsRef.current = null;
-            meshRef.current = null;
-            materialRef.current = null;
-            uInvModelRef.current = null;
-            rafRef.current = null;
-        };
-    }, [tex, isoMinNorm, isoMaxNorm, opacity, cmapId, scaleVec, onError]);
+  // Swap texture on reload WITHOUT resetting camera/controls.
+  const prevTexRef = useRef<THREE.Data3DTexture | null>(null);
+  useEffect(() => {
+    const mat = materialRef.current;
+    if (!tex || !mat) return;
+    if (prevTexRef.current === tex) return;
 
-    // Dispose everything on unmount only.
-    useEffect(() => {
-        return () => cleanupRef.current?.();
-    }, []);
+    mat.uniforms.uTex.value = tex;
+    mat.uniforms.uTexSize.value.set(dims.x, dims.y, dims.z);
 
-    // Swap texture on reload WITHOUT resetting camera/controls.
-    const prevTexRef = useRef<THREE.Data3DTexture | null>(null);
-    useEffect(() => {
-        const mat = materialRef.current;
-        if (!tex || !mat) return;
-        if (prevTexRef.current === tex) return;
+    prevTexRef.current?.dispose();
+    prevTexRef.current = tex;
+  }, [tex, dims]);
 
-        mat.uniforms.uTex.value = tex;
-        prevTexRef.current?.dispose();
-        prevTexRef.current = tex;
-    }, [tex]);
+  // Update uniforms live (appearance-only).
+  useEffect(() => {
+    const mat = materialRef.current;
+    if (!mat) return;
+    mat.uniforms.uIsoMin.value = isoMinNorm;
+    mat.uniforms.uIsoMax.value = isoMaxNorm;
+    mat.uniforms.uOpacity.value = opacity;
+    mat.uniforms.uShell.value = shellClamped;
+    mat.uniforms.uCmap.value = cmapId;
+    mat.uniforms.uIsoMode.value = renderMode === "volume" ? 0 : 1;
+  }, [isoMinNorm, isoMaxNorm, opacity, shellClamped, cmapId, renderMode]);
 
-    // Update uniforms live (appearance-only).
-    useEffect(() => {
-        const mat = materialRef.current;
-        if (!mat) return;
-        mat.uniforms.uIsoMin.value = isoMinNorm;
-        mat.uniforms.uIsoMax.value = isoMaxNorm;
-        mat.uniforms.uOpacity.value = opacity;
-        mat.uniforms.uCmap.value = cmapId;
-    }, [isoMinNorm, isoMaxNorm, opacity, cmapId]);
+  // Update scale live.
+  useEffect(() => {
+    meshRef.current?.scale.copy(scaleVec);
+  }, [scaleVec]);
 
-    // Update scale live.
-    useEffect(() => {
-        meshRef.current?.scale.copy(scaleVec);
-    }, [scaleVec]);
+  if (!tex) return <div style={{ width: "100%", height: "100%" }} />;
 
-    if (!tex) return <div style={{ width: "100%", height: "100%" }} />;
-
-    return (
-        <div style={{ width: "100%", height: "100%", position: "relative" }}>
-            {!webgl2Ok && (
-                <div
-                    style={{
-                        position: "absolute",
-                        inset: 0,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        background: "rgba(255,255,255,0.92)",
-                        zIndex: 2,
-                        fontSize: 14,
-                    }}
-                >
-                    WebGL2 is required for GPU volume rendering.
-                </div>
-            )}
-            <div ref={mountRef} style={{ width: "100%", height: "100%" }} />
+  return (
+    <div style={{ width: "100%", height: "100%", position: "relative" }}>
+      {!webgl2Ok && (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: "rgba(255,255,255,0.92)",
+            zIndex: 2,
+            fontSize: 14,
+          }}
+        >
+          WebGL2 is required for GPU volume rendering.
         </div>
-    );
+      )}
+      <div ref={mountRef} style={{ width: "100%", height: "100%" }} />
+    </div>
+  );
 }
