@@ -165,10 +165,14 @@ const FRAG = `
     vec3 texStep = 1.0 / max(uTexSize, vec3(1.0));
     vec3 lightDir = normalize(uLightDir);
 
+    // Step 3: per-pixel jitter to reduce banding.
+    float jitter = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453);
+    float tJit = (jitter - 0.5) * dt;
+
     for (int i = 0; i < 512; i++) {
       if (i >= uSteps) break;
 
-      float tRay = t0 + dt * (float(i) + 0.5);
+      float tRay = t0 + dt * (float(i) + 0.5) + tJit;
       vec3 p = ro + rd * tRay;
       vec3 uvw = p + 0.5;
 
@@ -176,15 +180,33 @@ const FRAG = `
       float tnorm = clamp((d - uIsoMin) / denom, 0.0, 1.0);
 
       if (uIsoMode == 0) {
-        // Volume iso band mode with density-weighted opacity.
+        // Volume iso band mode with density-weighted opacity and soft shading.
         float band = smoothstep(0.0, 0.02, tnorm) *
                      (1.0 - smoothstep(0.90, 1.0, tnorm));
 
         if (band > 0.0) {
           vec3 col = cmap(tnorm);
 
-          // Step 2: make higher densities contribute more.
+          // Density ramp (Step 2 behavior).
           float ramp = pow(tnorm, 1.6);
+
+          // Step 3: light shading using gradient.
+          vec3 h = texStep * 2.0;
+          float dx = sampleD(uvw + vec3(h.x, 0.0, 0.0)) - sampleD(uvw - vec3(h.x, 0.0, 0.0));
+          float dy = sampleD(uvw + vec3(0.0, h.y, 0.0)) - sampleD(uvw - vec3(0.0, h.y, 0.0));
+          float dz = sampleD(uvw + vec3(0.0, 0.0, h.z)) - sampleD(uvw - vec3(0.0, 0.0, h.z));
+          vec3 grad = vec3(dx, dy, dz);
+
+          float gradMag = length(grad);
+          vec3 nrm = gradMag > 1e-6 ? normalize(grad) : vec3(0.0, 0.0, 1.0);
+
+          float ambient = 0.30;
+          float diff = max(dot(nrm, lightDir), 0.0);
+          vec3 viewDir = normalize(-rd);
+          vec3 halfV = normalize(lightDir + viewDir);
+          float spec = pow(max(dot(nrm, halfV), 0.0), 32.0);
+
+          col = col * (ambient + (1.0 - ambient) * diff) + spec * 0.15;
 
           float a = band * ramp * uOpacity * dt * 40.0;
           a = clamp(a, 0.0, 1.0);
@@ -195,7 +217,7 @@ const FRAG = `
           if (acc.a > 0.90) break;
         }
       } else {
-        // Surface/shell mode (solid surface)
+        // Surface/shell mode.
         float isoLevel = uIsoMax;
         float shellFrac = clamp(uShell, 0.02, 1.0);
 
