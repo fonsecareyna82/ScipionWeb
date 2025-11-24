@@ -1,4 +1,3 @@
-// src/components/analyze/gpu-volume-view.tsx
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
@@ -45,8 +44,8 @@ const FRAG = `
   uniform float uIsoMin;
   uniform float uIsoMax;
   uniform float uOpacity;
-  uniform float uShell;     // surface thickness fraction of iso band
-  uniform int uIsoMode;     // 0 = volume, 1 = surface
+  uniform float uShell;
+  uniform int uIsoMode;
   uniform int uSteps;
   uniform int uCmap;
   uniform vec3 uLightDir;
@@ -128,13 +127,13 @@ const FRAG = `
   }
 
   vec3 cmap(float t) {
-    if (uCmap == 1) return vec3(t);      // gray
+    if (uCmap == 1) return vec3(t);
     if (uCmap == 2) return magma(t);
     if (uCmap == 3) return inferno(t);
     if (uCmap == 4) return plasma(t);
     if (uCmap == 5) return cividis(t);
     if (uCmap == 6) return turbo(t);
-    return viridis(t);                  // default
+    return viridis(t);
   }
 
   bool intersectBox(vec3 ro, vec3 rd, out float t0, out float t1) {
@@ -177,56 +176,64 @@ const FRAG = `
       float tnorm = clamp((d - uIsoMin) / denom, 0.0, 1.0);
 
       if (uIsoMode == 0) {
-        // Volume iso band mode (old behavior)
-        float inside = smoothstep(0.0, 0.03, tnorm) *
-                       (1.0 - smoothstep(0.97, 1.0, tnorm));
+        // Volume iso band mode with density-weighted opacity.
+        float band = smoothstep(0.0, 0.02, tnorm) *
+                     (1.0 - smoothstep(0.90, 1.0, tnorm));
 
-        if (inside > 0.0) {
+        if (band > 0.0) {
           vec3 col = cmap(tnorm);
-          float a = inside * uOpacity * dt * 30.0;
+
+          // Step 2: make higher densities contribute more.
+          float ramp = pow(tnorm, 1.6);
+
+          float a = band * ramp * uOpacity * dt * 40.0;
           a = clamp(a, 0.0, 1.0);
 
           acc.rgb += (1.0 - acc.a) * col * a;
           acc.a   += (1.0 - acc.a) * a;
 
-          if (acc.a > 0.98) break;
+          if (acc.a > 0.90) break;
         }
       } else {
-        // Surface/shell mode (ChimeraX-like)
-        float center = 0.5 * (uIsoMin + uIsoMax);
+        // Surface/shell mode (solid surface)
+        float isoLevel = uIsoMax;
         float shellFrac = clamp(uShell, 0.02, 1.0);
-        float shellHalf = 0.5 * denom * shellFrac;
 
-        float distToCenter = abs(d - center);
-        float shell = 1.0 - smoothstep(shellHalf, shellHalf * 1.3, distToCenter);
+        float bandClamped = clamp(denom, 0.02, 0.25);
+        float shellHalf = 0.5 * bandClamped * shellFrac;
+
+        float distToIso = abs(d - isoLevel);
+        float shell = 1.0 - smoothstep(shellHalf, shellHalf * 1.6, distToIso);
 
         if (shell > 0.0) {
-          float dx = sampleD(uvw + vec3(texStep.x, 0.0, 0.0)) - sampleD(uvw - vec3(texStep.x, 0.0, 0.0));
-          float dy = sampleD(uvw + vec3(0.0, texStep.y, 0.0)) - sampleD(uvw - vec3(0.0, texStep.y, 0.0));
-          float dz = sampleD(uvw + vec3(0.0, 0.0, texStep.z)) - sampleD(uvw - vec3(0.0, 0.0, texStep.z));
+          vec3 h = texStep * 2.0;
+          float dx = sampleD(uvw + vec3(h.x, 0.0, 0.0)) - sampleD(uvw - vec3(h.x, 0.0, 0.0));
+          float dy = sampleD(uvw + vec3(0.0, h.y, 0.0)) - sampleD(uvw - vec3(0.0, h.y, 0.0));
+          float dz = sampleD(uvw + vec3(0.0, 0.0, h.z)) - sampleD(uvw - vec3(0.0, 0.0, h.z));
           vec3 grad = vec3(dx, dy, dz);
 
           float gradMag = length(grad);
           vec3 nrm = gradMag > 1e-6 ? normalize(grad) : vec3(0.0, 0.0, 1.0);
 
-          float edge = smoothstep(0.01, 0.08, gradMag);
+          float edge = smoothstep(0.002, 0.03, gradMag);
 
           vec3 col = cmap(tnorm);
 
-          float ambient = 0.25;
+          float ambient = 0.35;
           float diff = max(dot(nrm, lightDir), 0.0);
-          vec3 halfV = normalize(lightDir - rd);
-          float spec = pow(max(dot(nrm, halfV), 0.0), 24.0);
+          vec3 viewDir = normalize(-rd);
+          vec3 halfV = normalize(lightDir + viewDir);
+          float spec = pow(max(dot(nrm, halfV), 0.0), 48.0);
 
-          col = col * (ambient + (1.0 - ambient) * diff) + spec * 0.35;
+          col = col * (ambient + (1.0 - ambient) * diff) + spec * 0.2;
 
-          float a = shell * edge * uOpacity * dt * 35.0;
+          float a = shell * edge * uOpacity * dt * 30.0;
           a = clamp(a, 0.0, 1.0);
 
           acc.rgb += (1.0 - acc.a) * col * a;
           acc.a   += (1.0 - acc.a) * a;
 
-          if (acc.a > 0.98) break;
+          if (acc.a > 0.85) break;
         }
       }
     }
@@ -260,7 +267,7 @@ function buildUint8Texture(
   const scale = vmax > vmin ? 255.0 / (vmax - vmin) : 1.0;
   for (let i = 0; i < n; i++) {
     const v = values[i] ?? vmin;
-    out[i] = Math.max(0, Math.min(255, (v - vmin) * scale));
+    out[i] = Math.max(0, Math.min(255, Math.round((v - vmin) * scale)));
   }
 
   const Tex3D = (THREE as any).Data3DTexture || (THREE as any).DataTexture3D;
@@ -344,7 +351,6 @@ export default function GpuVolumeView({
     [shell],
   );
 
-  // Init scene ONCE when texture first appears.
   useEffect(() => {
     if (!tex || !mountRef.current || rendererRef.current) return;
 
@@ -378,8 +384,6 @@ export default function GpuVolumeView({
     controls.dampingFactor = 0.08;
     controls.rotateSpeed = 0.6;
     controls.zoomSpeed = 0.8;
-
-    // Disable OrbitControls wheel listener to avoid passive preventDefault warnings.
     controls.enableZoom = false;
     controlsRef.current = controls;
 
@@ -485,12 +489,10 @@ export default function GpuVolumeView({
     };
   }, [tex, scaleVec, dims, onError, renderMode, shellClamped, isoMinNorm, isoMaxNorm, opacity, cmapId]);
 
-  // Dispose everything on unmount only.
   useEffect(() => {
     return () => cleanupRef.current?.();
   }, []);
 
-  // Swap texture on reload WITHOUT resetting camera/controls.
   const prevTexRef = useRef<THREE.Data3DTexture | null>(null);
   useEffect(() => {
     const mat = materialRef.current;
@@ -504,7 +506,6 @@ export default function GpuVolumeView({
     prevTexRef.current = tex;
   }, [tex, dims]);
 
-  // Update uniforms live (appearance-only).
   useEffect(() => {
     const mat = materialRef.current;
     if (!mat) return;
@@ -516,7 +517,6 @@ export default function GpuVolumeView({
     mat.uniforms.uIsoMode.value = renderMode === "volume" ? 0 : 1;
   }, [isoMinNorm, isoMaxNorm, opacity, shellClamped, cmapId, renderMode]);
 
-  // Update scale live.
   useEffect(() => {
     meshRef.current?.scale.copy(scaleVec);
   }, [scaleVec]);

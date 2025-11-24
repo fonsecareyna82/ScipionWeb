@@ -1,4 +1,3 @@
-// src/components/analyze/volume-viewer.tsx
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import {
   Box,
@@ -120,28 +119,23 @@ export default function VolumeViewer({
 }: VolumeViewerProps) {
   const svc = useProjectService();
 
-  // ---------- List & selection ----------
   const [loadingList, setLoadingList] = useState(true);
   const [listError, setListError] = useState<string | null>(null);
   const [volumes, setVolumes] = useState<VolumeLite[]>([]);
   const [selectedId, setSelectedId] = useState<string | number | null>(null);
 
-  // ---------- Meta ----------
   const [metaLoading, setMetaLoading] = useState(false);
   const [metaError, setMetaError] = useState<string | null>(null);
   const [meta, setMeta] = useState<any>(null);
 
-  // ---------- Histogram ----------
   const [histogram, setHistogram] = useState<HistogramData | null>(null);
   const [histLoading, setHistLoading] = useState(false);
   const [histError, setHistError] = useState<string | null>(null);
   const [showHistogram, setShowHistogram] = useState(false);
 
-  // ---------- View mode ----------
   const [viewMode, setViewMode] = useState<ViewMode>("slices");
   const [rightTab, setRightTab] = useState<RightTab>("ctrl");
 
-  // ---------- Slices controls ----------
   const [axis, setAxis] = useState<"z" | "y" | "x">(DEFAULT_AXIS);
   const [sliceIndex, setSliceIndex] = useState(0);
   const [colormap, setColormap] = useState<string>("viridis");
@@ -152,7 +146,6 @@ export default function VolumeViewer({
 
   const [pan2d, setPan2d] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
 
-  // ---------- Slices image ----------
   const [frontUrl, setFrontUrl] = useState<string | null>(null);
   const [imgError, setImgError] = useState<string | null>(null);
   const [loadingSlice, setLoadingSlice] = useState(false);
@@ -165,7 +158,6 @@ export default function VolumeViewer({
     setSliceReloadNonce((n) => n + 1);
   }, []);
 
-  // ---------- 3D data ----------
   const [mapLoading, setMapLoading] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
   const [gpuError, setGpuError] = useState<string | null>(null);
@@ -202,7 +194,6 @@ export default function VolumeViewer({
 
   const lastThrVolumeRef = useRef<string | number | null>(null);
 
-  // ---------- Help popover ----------
   const [helpAnchor, setHelpAnchor] = useState<HTMLElement | null>(null);
   const [helpKey, setHelpKey] = useState<string | null>(null);
 
@@ -220,7 +211,6 @@ export default function VolumeViewer({
     setShowHistogram(false);
   }, [viewMode]);
 
-  // Load list
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -256,7 +246,6 @@ export default function VolumeViewer({
     };
   }, [projectId, protocolId, outputName, svc]);
 
-  // Load meta
   useEffect(() => {
     if (selectedId == null) {
       setMeta(null);
@@ -287,7 +276,6 @@ export default function VolumeViewer({
     };
   }, [selectedId, projectId, protocolId, outputName, svc]);
 
-  // Load histogram (only if tab visible)
   useEffect(() => {
     if (!showHistogram || selectedId == null) {
       setHistogram(null);
@@ -332,11 +320,9 @@ export default function VolumeViewer({
     };
   }, [showHistogram, selectedId, projectId, protocolId, outputName, svc]);
 
-  // Dims
   const dims = useMemo(() => getDimsZYXtoXYZ(meta), [meta]);
   const maxSlice = Math.max(0, dims[axis] - 1);
 
-  // Recenter slice on axis/volume change
   useEffect(() => {
     const mid = Math.max(0, Math.floor(maxSlice / 2));
     setSliceIndex(mid);
@@ -344,18 +330,15 @@ export default function VolumeViewer({
 
   const readySlices = selectedId != null && !!meta && dims[axis] > 0;
 
-  // Force slice reload when entering slices AND ready
   useEffect(() => {
     if (viewMode === "slices" && readySlices) bumpSliceReload();
   }, [viewMode, readySlices, bumpSliceReload]);
 
-  // Reset zoom/pan on new volume or axis
   useEffect(() => {
     setZoomMul(1);
     setPan2d({ x: 0, y: 0 });
   }, [selectedId, axis]);
 
-  // Fetch current slice (NO fade-out, never clears old until new is ready)
   useEffect(() => {
     if (!readySlices || viewMode !== "slices") {
       setImgError(null);
@@ -390,7 +373,6 @@ export default function VolumeViewer({
 
         setFrontUrl((prev) => {
           if (prev && prev !== url) {
-            // keep old pixels visible until new url is ready
           }
           return url;
         });
@@ -422,7 +404,6 @@ export default function VolumeViewer({
     sliceReloadNonce,
   ]);
 
-  // ---------- 3D data fetch (ONLY on Reload) ----------
   const load3d = useCallback(async () => {
     if (selectedId == null) return;
     setMapLoading(true);
@@ -481,7 +462,6 @@ export default function VolumeViewer({
     );
   }, [viewMode, selectedId, maxDim3d, method3d]);
 
-  // ---------- 3D stats ----------
   const sortedValues = useMemo(() => {
     if (!mapData?.values?.length) return null;
     const clean = mapData.values.filter((n) => Number.isFinite(n));
@@ -522,14 +502,12 @@ export default function VolumeViewer({
     return [lo, hi] as [number, number];
   }, [thrMode, thrPctAbs, thrAbs, stats3d]);
 
-  // ---------- Preserve Plotly camera ----------
   const plotlyCameraRef = useRef<any>(null);
   const handleRelayout = useCallback((ev: any) => {
     const cam = ev?.["scene.camera"] ?? ev?.scene?.camera;
     if (cam) plotlyCameraRef.current = cam;
   }, []);
 
-  // ---------- Fit-aware zoom (slices) ----------
   const viewerRef = useRef<HTMLDivElement | null>(null);
   const [naturalW, setNaturalW] = useState<number | null>(null);
   const [naturalH, setNaturalH] = useState<number | null>(null);
@@ -556,7 +534,6 @@ export default function VolumeViewer({
     setPan2d({ x: 0, y: 0 });
   };
 
-  // Wheel in slices: ONLY zoom
   useEffect(() => {
     const el = viewerRef.current;
     if (!el) return;
@@ -572,7 +549,6 @@ export default function VolumeViewer({
     return () => el.removeEventListener("wheel", onWheel);
   }, [viewMode, frontUrl, zoomMul]);
 
-  // Ctrl+drag / middle pan
   useEffect(() => {
     const el = viewerRef.current;
     if (!el) return;
@@ -624,8 +600,7 @@ export default function VolumeViewer({
     };
   }, [viewMode, frontUrl]);
 
-  // ---------- UI layout (no global scroll, stable size) ----------
-  const panelBasis = 340; // fixed width to avoid resizing on view change
+  const panelBasis = 340;
 
   return (
     <Box
@@ -635,10 +610,9 @@ export default function VolumeViewer({
         width: "100%",
         minHeight: 0,
         minWidth: 0,
-        overflow: "hidden", // never create page scrollbars
+        overflow: "hidden",
       }}
     >
-      {/* Left list */}
       <Box
         sx={{
           width: 270,
@@ -700,7 +674,6 @@ export default function VolumeViewer({
         </Box>
       </Box>
 
-      {/* Right */}
       <Box
         sx={{
           flex: 1,
@@ -711,7 +684,6 @@ export default function VolumeViewer({
           overflow: "hidden",
         }}
       >
-        {/* Toolbar (fixed height) */}
         <Paper elevation={0} square sx={{ p: 0.75, borderBottom: "1px solid #eee", flexShrink: 0 }}>
           <Box
             sx={{
@@ -767,11 +739,8 @@ export default function VolumeViewer({
           </Box>
         </Paper>
 
-        {/* Main (fills remaining space, no overflow outside) */}
         <Box sx={{ flex: 1, display: "flex", minHeight: 0, minWidth: 0, overflow: "hidden" }}>
-          {/* Viewer column */}
           <Box sx={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0, overflow: "hidden" }}>
-            {/* Viewer (fills) */}
             <Box
               ref={viewerRef}
               onDoubleClick={fitZoom}
@@ -916,7 +885,6 @@ export default function VolumeViewer({
               )}
             </Box>
 
-            {/* Meta bar (fixed height, never pushes layout) */}
             <Divider />
             <Box sx={{ p: 1.0, display: "flex", gap: 3, flexWrap: "wrap", flexShrink: 0 }}>
               <MetaItem label="Dims" value={dimsToStringXYZ(dims)} />
@@ -933,7 +901,6 @@ export default function VolumeViewer({
             </Box>
           </Box>
 
-          {/* Right panel (fixed width, internal scroll) */}
           <>
             <Divider orientation="vertical" flexItem />
             <Box
@@ -966,8 +933,18 @@ export default function VolumeViewer({
                 <ToggleButton value="hist">Histogram</ToggleButton>
               </ToggleButtonGroup>
 
-              {/* Content area scrolls internally only */}
-              <Box sx={{ flex: 1, minHeight: 0, overflow: "auto", pr: 0.5, marginTop: "8px" }}>
+              {/* Fix: no horizontal scrollbar when slider labels overflow */}
+              <Box
+                sx={{
+                  flex: 1,
+                  minHeight: 0,
+                  overflowY: "auto",
+                  overflowX: "hidden",
+                  pr: 1,
+                  pb: 2,
+                  mt: 1,
+                }}
+              >
                 {rightTab === "ctrl" && viewMode === "slices" && (
                   <Box sx={{ display: "flex", flexDirection: "column", gap: 1.25 }}>
                     <SectionTitle title="Slices" />
@@ -1327,23 +1304,20 @@ export default function VolumeViewer({
                       )}
 
                       {thrMode === "absolute" && (
-                        <>
-                          <Slider
-                            size="small"
-                            value={thrAbs}
-                            min={stats3d?.min ?? 0}
-                            max={stats3d?.max ?? 1}
-                            step={stats3d ? (stats3d.max - stats3d.min) / 400 : 0.001}
-                            onChange={(_, v) => {
-                              const [lo, hi] = v as number[];
-                              setThrAbs([Math.min(lo, hi), Math.max(lo, hi)] as [number, number]);
-                            }}
-                            valueLabelDisplay="auto"
-                            valueLabelFormat={(v) => formatSci(v as number)}
-                            disabled={!stats3d}
-                            className="mr-4"
-                          />
-                        </>
+                        <Slider
+                          size="small"
+                          value={thrAbs}
+                          min={stats3d?.min ?? 0}
+                          max={stats3d?.max ?? 1}
+                          step={stats3d ? (stats3d.max - stats3d.min) / 400 : 0.001}
+                          onChange={(_, v) => {
+                            const [lo, hi] = v as number[];
+                            setThrAbs([Math.min(lo, hi), Math.max(lo, hi)] as [number, number]);
+                          }}
+                          valueLabelDisplay="auto"
+                          valueLabelFormat={(v) => formatSci(v as number)}
+                          disabled={!stats3d}
+                        />
                       )}
                     </Box>
                   </Box>
@@ -1405,7 +1379,6 @@ export default function VolumeViewer({
         </Box>
       </Box>
 
-      {/* Help popover */}
       <Popover
         open={Boolean(helpAnchor && helpKey)}
         anchorEl={helpAnchor}
@@ -1426,7 +1399,6 @@ export default function VolumeViewer({
   );
 }
 
-/** Canvas slice rendering */
 function SlicesCanvas({
   url,
   containerW,
@@ -1465,7 +1437,6 @@ function SlicesCanvas({
       scheduleDraw();
     };
     img.src = url;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [url]);
 
   useEffect(() => {
@@ -1473,12 +1444,10 @@ function SlicesCanvas({
     if (!img) return;
     prepareProcessed(img, sharpen, processedRef);
     scheduleDraw();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sharpen]);
 
   useEffect(() => {
     scheduleDraw();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [containerW, containerH, scale, pan.x, pan.y, interp, brightness, contrast]);
 
   const scheduleDraw = () => {

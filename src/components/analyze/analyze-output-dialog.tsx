@@ -51,8 +51,8 @@ const dialogPaperSx = {
 
   display: "flex",
   flexDirection: "column",
-  height: "96vh",
-  maxHeight: "96vh",
+  height: "97vh",
+  maxHeight: "97vh",
   minHeight: 650,
 };
 
