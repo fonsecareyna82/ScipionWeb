@@ -17,9 +17,14 @@ import {
   ToggleButton,
   ToggleButtonGroup,
   Typography,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions,
+  Button,
 } from "@mui/material";
 import { HelpCircle, Layers as Layers3, Box as BoxIcon } from "lucide-react";
-import Plot from "react-plotly.js";
 import { useProjectService } from "@/ProjectServiceContext";
 import type {
   Id,
@@ -45,9 +50,20 @@ type TomogramItem = {
   nCoords?: number;
 };
 
-type ViewMode = "slice" | "scatter3d" | "table";
+type ViewMode = "slice" | "map3d";
 
 const MAX_POINTS_DEFAULT = 50000;
+
+const HELP_TEXT: Record<string, string> = {
+  sliceIndex:
+    "Select the tomogram slice along Z. The slider runs from 1 to the total number of slices reported for this tomogram.",
+  classFilter:
+    "Filter coordinates by their assigned class. Use 'All' to show all classes together.",
+  scoreFilter:
+    "Filter coordinates by their numeric score or confidence. Points without a score are always included.",
+  maxPoints:
+    "Limit the number of points sent to the viewer. If there are more points, a strided downsampling is applied to keep interactivity.",
+};
 
 export default function Coords3dViewer({
   projectId,
@@ -74,6 +90,7 @@ export default function Coords3dViewer({
   const [scoreRange, setScoreRange] = useState<[number, number] | null>(null);
 
   const [helpKey, setHelpKey] = useState<string | null>(null);
+  const [helpOpen, setHelpOpen] = useState(false);
 
   // Slice view state
   const [sliceIndex, setSliceIndex] = useState<number | null>(null);
@@ -82,6 +99,14 @@ export default function Coords3dViewer({
   const [sliceLoading, setSliceLoading] = useState(false);
   const sliceAbortRef = useRef<AbortController | null>(null);
   const sliceReqIdRef = useRef(0);
+
+  const openHelp = (key: string) => {
+    setHelpKey(key);
+    setHelpOpen(true);
+  };
+  const closeHelp = () => {
+    setHelpOpen(false);
+  };
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Load tomogram list for this SetOfCoordinates3D output
@@ -194,6 +219,11 @@ export default function Coords3dViewer({
                 ? p.prob
                 : undefined;
 
+            const radius =
+              typeof p.radius === "number" && Number.isFinite(p.radius)
+                ? p.radius
+                : undefined;
+
             return {
               id: p.id ?? idx,
               x,
@@ -201,9 +231,10 @@ export default function Coords3dViewer({
               z,
               classId: p.classId ?? p.class ?? p.class_id,
               score: scoreVal,
-            } as Coords3dPoint;
+              radius,
+            } as Coords3dPoint & { radius?: number };
           })
-          .filter((p): p is Coords3dPoint => p !== null);
+          .filter((p): p is Coords3dPoint & { radius?: number } => p !== null);
 
         const normalized: Coordinates3dTomogramPoints = {
           tomoId: tomoIdOut,
@@ -213,8 +244,8 @@ export default function Coords3dViewer({
         setPointsData(normalized);
 
         const scores = (normalized.coords || [])
-          .map((p) => p.score)
-          .filter((v): v is number => typeof v === "number" && Number.isFinite(v));
+          .map((p: any) => p.score)
+          .filter((v: any): v is number => typeof v === "number" && Number.isFinite(v));
         if (scores.length > 0) {
           const min = Math.min(...scores);
           const max = Math.max(...scores);
@@ -244,7 +275,7 @@ export default function Coords3dViewer({
   const classes = useMemo(() => {
     if (!pointsData?.coords?.length) return [];
     const set = new Set<string>();
-    for (const p of pointsData.coords) {
+    for (const p of pointsData.coords as any[]) {
       const key =
         p.classId === null || p.classId === undefined
           ? "unclassified"
@@ -258,7 +289,7 @@ export default function Coords3dViewer({
 
   const scoreMinMax = useMemo(() => {
     if (!pointsData?.coords?.length) return null;
-    const scores = pointsData.coords
+    const scores = (pointsData.coords as any[])
       .map((p) => p.score)
       .filter((v): v is number => typeof v === "number" && Number.isFinite(v));
     if (scores.length === 0) return null;
@@ -269,21 +300,21 @@ export default function Coords3dViewer({
 
   const filteredPoints = useMemo(() => {
     if (!pointsData?.coords) return [];
-    let pts = pointsData.coords as Coords3dPoint[];
+    let pts = pointsData.coords as (Coords3dPoint & { radius?: number })[];
 
     if (selectedClass !== "all") {
       pts = pts.filter((p) => {
         const key =
-          p.classId === null || p.classId === undefined
+          (p as any).classId === null || (p as any).classId === undefined
             ? "unclassified"
-            : String(p.classId);
+            : String((p as any).classId);
         return key === selectedClass;
       });
     }
 
     if (scoreRange && scoreMinMax) {
       const [lo, hi] = scoreRange;
-      pts = pts.filter((p) => {
+      pts = pts.filter((p: any) => {
         if (typeof p.score !== "number" || !Number.isFinite(p.score)) {
           return true;
         }
@@ -294,7 +325,7 @@ export default function Coords3dViewer({
     if (pts.length <= maxPoints || maxPoints <= 0) return pts;
 
     const step = Math.ceil(pts.length / maxPoints);
-    const down: Coords3dPoint[] = [];
+    const down: (Coords3dPoint & { radius?: number })[] = [];
     for (let i = 0; i < pts.length; i += step) {
       down.push(pts[i]);
     }
@@ -304,7 +335,7 @@ export default function Coords3dViewer({
   const classesWithCounts = useMemo(() => {
     if (!pointsData?.coords?.length) return [];
     const map = new Map<string, number>();
-    for (const p of pointsData.coords) {
+    for (const p of pointsData.coords as any[]) {
       const key =
         p.classId === null || p.classId === undefined
           ? "unclassified"
@@ -362,70 +393,53 @@ export default function Coords3dViewer({
   const slicePoints = useMemo(() => {
     if (!filteredPoints.length || sliceIndex == null) return [];
     const target = sliceIndex;
-    return filteredPoints.filter((p) => {
+    return filteredPoints.filter((p: any) => {
       if (typeof p.z !== "number" || !Number.isFinite(p.z)) return false;
       const zInt = Math.round(p.z);
       return zInt === target;
     });
   }, [filteredPoints, sliceIndex]);
 
-  const slicePointsSvg = useMemo(
-    () =>
-      slicePoints.map((p, idx) => ({
-        key: String(p.id ?? `${idx}-${p.x}-${p.y}-${p.z}`),
-        x: p.x,
-        y: p.y,
-        classId: p.classId,
-        score: p.score,
-      })),
-    [slicePoints],
-  );
+  // Points mapped to SVG, adapting radius to tomo dimensions
+  const slicePointsSvg = useMemo(() => {
+    if (!slicePoints.length) return [];
 
-  // ─────────────────────────────────────────────────────────────────────────────
-  // 3D scatter data
-  // ─────────────────────────────────────────────────────────────────────────────
-  const scatterData = useMemo(() => {
-    if (!filteredPoints.length) return null;
+    const maxDim = Math.max(tomoDimsX ?? 0, tomoDimsY ?? 0);
+    // Base radius as a small fraction of the tomogram size
+    const baseR = maxDim > 0 ? Math.max(1, maxDim * 0.003) : 2;
 
-    const xs = filteredPoints.map((p) => p.x);
-    const ys = filteredPoints.map((p) => p.y);
-    const zs = filteredPoints.map((p) => p.z);
+    const radiiRaw = slicePoints
+      .map((p: any) => Number(p.radius))
+      .filter((v) => Number.isFinite(v) && v > 0);
 
-    const classMap = new Map<string, number>();
-    let nextColor = 0;
-    const colors: number[] = [];
-
-    for (const p of filteredPoints) {
-      const key =
-        p.classId === null || p.classId === undefined
-          ? "unclassified"
-          : String(p.classId);
-      if (!classMap.has(key)) {
-        classMap.set(key, nextColor++);
-      }
-      colors.push(classMap.get(key)!);
+    let minR = 0;
+    let maxR = 0;
+    if (radiiRaw.length > 0) {
+      minR = Math.min(...radiiRaw);
+      maxR = Math.max(...radiiRaw);
     }
+    const hasVar =
+      radiiRaw.length > 0 && maxR > minR && Number.isFinite(maxR) && Number.isFinite(minR);
 
-    const hoverText = filteredPoints.map((p) => {
-      const cls =
-        p.classId === null || p.classId === undefined ? "unclassified" : p.classId;
-      const scoreText =
-        typeof p.score === "number" && Number.isFinite(p.score)
-          ? `score=${p.score.toFixed(3)}`
-          : "";
-      return `id=${p.id ?? ""}<br>class=${cls}${
-        scoreText ? `<br>${scoreText}` : ""
-      }`;
-    });
-
-    return {
-      xs,
-      ys,
-      zs,
-      colors,
-      hoverText,
+    const mapRadius = (raw?: number) => {
+      if (!hasVar || raw === undefined || !Number.isFinite(raw) || raw <= 0) {
+        return baseR;
+      }
+      const t = (raw - minR) / (maxR - minR);
+      const tClamped = Math.max(0, Math.min(1, t));
+      // Map into [0.7, 2.0] * baseR
+      return baseR * (0.7 + 1.3 * tClamped);
     };
-  }, [filteredPoints]);
+
+    return slicePoints.map((p: any, idx: number) => ({
+      key: String(p.id ?? `${idx}-${p.x}-${p.y}-${p.z}`),
+      x: p.x,
+      y: p.y,
+      classId: p.classId,
+      score: p.score,
+      radius: mapRadius(p.radius),
+    }));
+  }, [slicePoints, tomoDimsX, tomoDimsY]);
 
   const totalCoords = pointsData?.coords?.length ?? 0;
 
@@ -480,7 +494,7 @@ export default function Coords3dViewer({
             try {
               result.revoke();
             } catch {
-              // ignore revoke errors
+              // ignore
             }
           }
           return;
@@ -517,588 +531,126 @@ export default function Coords3dViewer({
   // Render
   // ─────────────────────────────────────────────────────────────────────────────
   return (
-    <Box
-      sx={{
-        display: "flex",
-        height: "100%",
-        width: "100%",
-        minHeight: 0,
-        minWidth: 0,
-        overflow: "hidden",
-      }}
-    >
-      {/* Left: tomograms list */}
+    <>
       <Box
         sx={{
-          width: 270,
-          borderRight: "1px solid #e5e7eb",
           display: "flex",
-          flexDirection: "column",
+          height: "100%",
+          width: "100%",
           minHeight: 0,
-          overflow: "hidden",
-        }}
-      >
-        <Box sx={{ p: 1.5, flexShrink: 0 }}>
-          <Typography variant="subtitle2">Tomograms</Typography>
-          <Typography variant="caption" color="text.secondary">
-            {tomosLoading ? "" : `${tomos.length} item(s)`}
-          </Typography>
-        </Box>
-        <Divider />
-        <Box sx={{ flex: 1, minHeight: 0, overflow: "auto" }}>
-          {tomosLoading ? (
-            <Box sx={{ p: 2, display: "flex", gap: 1, alignItems: "center" }}>
-              <CircularProgress size={18} />
-              <Typography variant="body2">Loading tomograms…</Typography>
-            </Box>
-          ) : tomosError ? (
-            <Box sx={{ p: 2 }}>
-              <Typography variant="body2" color="error">
-                {tomosError}
-              </Typography>
-            </Box>
-          ) : tomos.length === 0 ? (
-            <Box sx={{ p: 2 }}>
-              <Typography variant="body2" color="text.secondary">
-                No tomograms for this coordinates set.
-              </Typography>
-            </Box>
-          ) : (
-            <List dense disablePadding>
-              {tomos.map((t) => {
-                const selected =
-                  selectedTomoId != null &&
-                  String(selectedTomoId) === String(t.tomoId);
-                const secondary =
-                  t.nCoords != null ? `${t.nCoords} coords` : undefined;
-                return (
-                  <ListItemButton
-                    key={String(t.tomoId)}
-                    selected={selected}
-                    onClick={() => setSelectedTomoId(t.tomoId)}
-                    sx={{ px: 1.5, py: 1 }}
-                  >
-                    <ListItemText
-                      primaryTypographyProps={{
-                        variant: "body2",
-                        noWrap: true,
-                      }}
-                      secondaryTypographyProps={{
-                        variant: "caption",
-                        color: "text.secondary",
-                        noWrap: true,
-                      }}
-                      primary={t.label}
-                      secondary={secondary}
-                    />
-                  </ListItemButton>
-                );
-              })}
-            </List>
-          )}
-        </Box>
-      </Box>
-
-      {/* Right: viewer + controls */}
-      <Box
-        sx={{
-          flex: 1,
-          display: "flex",
-          flexDirection: "column",
           minWidth: 0,
-          minHeight: 0,
           overflow: "hidden",
         }}
       >
-        <Paper
-          elevation={0}
-          square
+        {/* Left: tomograms list */}
+        <Box
           sx={{
-            p: 0.75,
-            borderBottom: "1px solid #e5e7eb",
-            flexShrink: 0,
+            width: 270,
+            borderRight: "1px solid #e5e7eb",
+            display: "flex",
+            flexDirection: "column",
+            minHeight: 0,
+            overflow: "hidden",
           }}
         >
-          <Box
-            sx={{
-              display: "grid",
-              gridTemplateColumns: "1fr auto",
-              alignItems: "center",
-              columnGap: 1.5,
-              rowGap: 0.75,
-            }}
-          >
-            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-              <ToggleButtonGroup
-                size="small"
-                exclusive
-                value={viewMode}
-                onChange={(_, v) => v && setViewMode(v)}
-              >
-                <ToggleButton value="slice">
-                  <Box
-                    sx={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 0.5,
-                    }}
-                  >
-                    <Layers3 size={14} />
-                    Slice
-                  </Box>
-                </ToggleButton>
-                <ToggleButton value="scatter3d">
-                  <Box
-                    sx={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 0.5,
-                    }}
-                  >
-                    <BoxIcon size={14} />
-                    3D scatter
-                  </Box>
-                </ToggleButton>
-                <ToggleButton value="table">
-                  <Box
-                    sx={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 0.5,
-                    }}
-                  >
-                    Summary
-                  </Box>
-                </ToggleButton>
-              </ToggleButtonGroup>
-            </Box>
-
-            <Box
-              sx={{
-                display: "flex",
-                alignItems: "center",
-                gap: 1,
-                justifyContent: "flex-end",
-              }}
-            >
-              <Typography
-                variant="caption"
-                color="text.secondary"
-                sx={{ fontVariantNumeric: "tabular-nums" }}
-              >
-                Points:{" "}
-                <strong>
-                  {totalCoords.toLocaleString("en-US", { maximumFractionDigits: 0 })}
-                </strong>
-              </Typography>
-              {filteredPoints.length !== totalCoords && (
-                <Typography
-                  variant="caption"
-                  color="text.secondary"
-                  sx={{ fontVariantNumeric: "tabular-nums" }}
-                >
-                  Showing:{" "}
-                  <strong>
-                    {filteredPoints.length.toLocaleString("en-US", {
-                      maximumFractionDigits: 0,
-                    })}
-                  </strong>
-                </Typography>
-              )}
-            </Box>
+          <Box sx={{ p: 1.5, flexShrink: 0 }}>
+            <Typography variant="subtitle2">Tomograms</Typography>
+            <Typography variant="caption" color="text.secondary">
+              {tomosLoading ? "" : `${tomos.length} item(s)`}
+            </Typography>
           </Box>
-        </Paper>
+          <Divider />
+          <Box sx={{ flex: 1, minHeight: 0, overflow: "auto" }}>
+            {tomosLoading ? (
+              <Box sx={{ p: 2, display: "flex", gap: 1, alignItems: "center" }}>
+                <CircularProgress size={18} />
+                <Typography variant="body2">Loading tomograms…</Typography>
+              </Box>
+            ) : tomosError ? (
+              <Box sx={{ p: 2 }}>
+                <Typography variant="body2" color="error">
+                  {tomosError}
+                </Typography>
+              </Box>
+            ) : tomos.length === 0 ? (
+              <Box sx={{ p: 2 }}>
+                <Typography variant="body2" color="text.secondary">
+                  No tomograms for this coordinates set.
+                </Typography>
+              </Box>
+            ) : (
+              <List dense disablePadding>
+                {tomos.map((t) => {
+                  const selected =
+                    selectedTomoId != null &&
+                    String(selectedTomoId) === String(t.tomoId);
+                  const secondary =
+                    t.nCoords != null ? `${t.nCoords} coords` : undefined;
+                  return (
+                    <ListItemButton
+                      key={String(t.tomoId)}
+                      selected={selected}
+                      onClick={() => setSelectedTomoId(t.tomoId)}
+                      sx={{ px: 1.5, py: 1 }}
+                    >
+                      <ListItemText
+                        primaryTypographyProps={{
+                          variant: "body2",
+                          noWrap: true,
+                        }}
+                        secondaryTypographyProps={{
+                          variant: "caption",
+                          color: "text.secondary",
+                          noWrap: true,
+                        }}
+                        primary={t.label}
+                        secondary={secondary}
+                      />
+                    </ListItemButton>
+                  );
+                })}
+              </List>
+            )}
+          </Box>
+        </Box>
 
+        {/* Right: viewer + controls */}
         <Box
           sx={{
             flex: 1,
             display: "flex",
-            minHeight: 0,
+            flexDirection: "column",
             minWidth: 0,
+            minHeight: 0,
             overflow: "hidden",
           }}
         >
-          {/* Main viewer */}
-          <Box
+          <Paper
+            elevation={0}
+            square
             sx={{
-              flex: 1,
-              display: "flex",
-              flexDirection: "column",
-              minHeight: 0,
-              minWidth: 0,
-              overflow: "hidden",
+              p: 0.75,
+              borderBottom: "1px solid #e5e7eb",
+              flexShrink: 0,
             }}
           >
             <Box
               sx={{
-                flex: 1,
-                minHeight: 0,
-                display: "flex",
-                alignItems: "stretch",
-                justifyContent: "stretch",
-                p: 1,
-                bgcolor: "background.default",
-              }}
-            >
-              {pointsLoading ? (
-                <Box
-                  sx={{
-                    m: "auto",
-                    display: "flex",
-                    gap: 1,
-                    alignItems: "center",
-                  }}
-                >
-                  <CircularProgress size={18} />
-                  <Typography variant="body2">Loading coordinates…</Typography>
-                </Box>
-              ) : pointsError ? (
-                <Box sx={{ m: "auto" }}>
-                  <Typography variant="body2" color="error">
-                    {pointsError}
-                  </Typography>
-                </Box>
-              ) : selectedTomoId == null ? (
-                <Box sx={{ m: "auto" }}>
-                  <Typography variant="body2" color="text.secondary">
-                    Select a tomogram to view its coordinates.
-                  </Typography>
-                </Box>
-              ) : !pointsData || totalCoords === 0 ? (
-                <Box sx={{ m: "auto" }}>
-                  <Typography variant="body2" color="text.secondary">
-                    No coordinates for this tomogram.
-                  </Typography>
-                </Box>
-              ) : viewMode === "scatter3d" ? (
-                scatterData ? (
-                  <Plot
-                    data={[
-                      {
-                        type: "scatter3d",
-                        mode: "markers",
-                        x: scatterData.xs,
-                        y: scatterData.ys,
-                        z: scatterData.zs,
-                        text: scatterData.hoverText,
-                        hoverinfo: "text",
-                        marker: {
-                          size: 2,
-                          opacity: 0.9,
-                          color: scatterData.colors,
-                          colorscale: "Viridis",
-                          showscale: true,
-                          colorbar: {
-                            title: "Class",
-                          },
-                        },
-                      } as any,
-                    ]}
-                    layout={{
-                      autosize: true,
-                      margin: { l: 0, r: 0, t: 0, b: 0 },
-                      showlegend: false,
-                      scene: {
-                        aspectmode: "data",
-                        xaxis: { title: "x", showgrid: true, zeroline: false },
-                        yaxis: { title: "y", showgrid: true, zeroline: false },
-                        zaxis: { title: "z", showgrid: true, zeroline: false },
-                      },
-                    }}
-                    style={{ width: "100%", height: "100%" }}
-                    useResizeHandler
-                    config={{ displaylogo: false, responsive: true, scrollZoom: true }}
-                  />
-                ) : (
-                  <Box sx={{ m: "auto" }}>
-                    <Typography variant="body2" color="text.secondary">
-                      No points to display after filtering.
-                    </Typography>
-                  </Box>
-                )
-              ) : viewMode === "table" ? (
-                <Box
-                  sx={{
-                    p: 1,
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 1,
-                    width: "100%",
-                    height: "100%",
-                    overflow: "auto",
-                  }}
-                >
-                  <Typography variant="subtitle2">Summary</Typography>
-                  {tomoMeta && (
-                    <Box sx={{ display: "flex", flexWrap: "wrap", gap: 2 }}>
-                      <MetaItem
-                        label="Tomogram"
-                        value={tomoMeta.label ?? String(selectedTomoId)}
-                      />
-                      {tomoMeta.dims && (
-                        <MetaItem
-                          label="Dims"
-                          value={`${tomoMeta.dims[0]} × ${tomoMeta.dims[1]} × ${tomoMeta.dims[2]}`}
-                        />
-                      )}
-                      {tomoMeta.voxelSize && (
-                        <MetaItem
-                          label="Voxel size"
-                          value={`${tomoMeta.voxelSize[0]} × ${tomoMeta.voxelSize[1]} × ${tomoMeta.voxelSize[2]}`}
-                        />
-                      )}
-                      <MetaItem
-                        label="Total coords"
-                        value={totalCoords.toLocaleString("en-US")}
-                      />
-                    </Box>
-                  )}
-
-                  <Divider sx={{ my: 1 }} />
-
-                  <Typography variant="subtitle2">Classes</Typography>
-                  {classesWithCounts.length === 0 ? (
-                    <Typography variant="body2" color="text.secondary">
-                      No class information available.
-                    </Typography>
-                  ) : (
-                    <Box
-                      component="table"
-                      sx={{
-                        borderCollapse: "collapse",
-                        width: "100%",
-                        maxWidth: 420,
-                        "& th, & td": {
-                          border: "1px solid rgba(148,163,184,0.6)",
-                          padding: "4px 8px",
-                          fontSize: "0.8rem",
-                        },
-                        "& th": {
-                          backgroundColor: "#f3f4f6",
-                          textAlign: "left",
-                        },
-                      }}
-                    >
-                      <thead>
-                        <tr>
-                          <th>Class</th>
-                          <th>Count</th>
-                          <th>Fraction</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {classesWithCounts.map((c) => (
-                          <tr key={c.key}>
-                            <td>{c.key}</td>
-                            <td>
-                              {c.count.toLocaleString("en-US", {
-                                maximumFractionDigits: 0,
-                              })}
-                            </td>
-                            <td>
-                              {totalCoords > 0
-                                ? ((100 * c.count) / totalCoords).toFixed(2) + " %"
-                                : "–"}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </Box>
-                  )}
-                </Box>
-              ) : (
-                // Slice view: SVG with image + points in the same coordinate system
-                <Box
-                  sx={{
-                    flex: 1,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    minHeight: 0,
-                    minWidth: 0,
-                  }}
-                >
-                  {sliceLoading && !sliceImageUrl ? (
-                    <Box
-                      sx={{
-                        display: "flex",
-                        gap: 1,
-                        alignItems: "center",
-                      }}
-                    >
-                      <CircularProgress size={18} />
-                      <Typography variant="body2">
-                        Loading tomogram slice…
-                      </Typography>
-                    </Box>
-                  ) : sliceError ? (
-                    <Typography variant="body2" color="error">
-                      {sliceError}
-                    </Typography>
-                  ) : maxSlice == null ||
-                    sliceIndex == null ||
-                    !tomoDimsX ||
-                    !tomoDimsY ? (
-                    <Typography variant="body2" color="text.secondary">
-                      Tomogram dimensions are not available. Make sure dims are provided
-                      as [X, Y, Z].
-                    </Typography>
-                  ) : !sliceImageUrl ? (
-                    <Typography variant="body2" color="text.secondary">
-                      No slice image.
-                    </Typography>
-                  ) : (
-                    <Box
-                      sx={{
-                        width: "100%",
-                        height: "100%",
-                        maxWidth: "100%",
-                        maxHeight: "100%",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                      }}
-                    >
-                      <svg
-                        viewBox={`0 0 ${tomoDimsX} ${tomoDimsY}`}
-                        preserveAspectRatio="xMidYMid meet"
-                        style={{
-                          width: "100%",
-                          height: "100%",
-                          display: "block",
-                          backgroundColor: "black",
-                        }}
-                      >
-                        <image
-                          href={sliceImageUrl}
-                          x={0}
-                          y={0}
-                          width={tomoDimsX}
-                          height={tomoDimsY}
-                          preserveAspectRatio="none"
-                        />
-                        {slicePointsSvg.map((p) => {
-                          const cx = p.x;
-                          const cy = p.y; // no flip: coords already in image space
-                          const r = Math.max(
-                            1,
-                            Math.max(tomoDimsX, tomoDimsY) * 0.004,
-                          );
-                          return (
-                            <circle
-                              key={p.key}
-                              cx={cx}
-                              cy={cy}
-                              r={r}
-                              fill="rgba(255,0,0,0.9)"
-                              stroke="white"
-                              strokeWidth={0.5}
-                            />
-                          );
-                        })}
-                      </svg>
-                    </Box>
-                  )}
-                </Box>
-              )}
-            </Box>
-
-            <Divider />
-            <Box
-              sx={{
-                p: 1,
-                display: "flex",
-                gap: 2,
-                flexWrap: "wrap",
+                display: "grid",
+                gridTemplateColumns: "1fr auto",
                 alignItems: "center",
-                flexShrink: 0,
+                columnGap: 1.5,
+                rowGap: 0.75,
               }}
             >
-              {tomoMeta && (
-                <MetaItem
-                  label="Tomogram"
-                  value={tomoMeta.label ?? String(selectedTomoId)}
-                />
-              )}
-              {tomoDims && (
-                <MetaItem
-                  label="Dims"
-                  value={`${tomoDims[0]} × ${tomoDims[1]} × ${tomoDims[2]}`}
-                />
-              )}
-              <MetaItem
-                label="Points"
-                value={totalCoords.toLocaleString("en-US", {
-                  maximumFractionDigits: 0,
-                })}
-              />
-              {filteredPoints.length !== totalCoords && (
-                <MetaItem
-                  label="Shown"
-                  value={filteredPoints.length.toLocaleString("en-US", {
-                    maximumFractionDigits: 0,
-                  })}
-                />
-              )}
-              {viewMode === "slice" && sliceIndex != null && maxSlice != null && (
-                <MetaItem
-                  label="Slice (Z)"
-                  value={`${sliceIndex + 1} / ${maxSlice + 1}`}
-                />
-              )}
-              {viewMode === "slice" && slicePoints.length > 0 && (
-                <MetaItem
-                  label="Slice points"
-                  value={slicePoints.length.toLocaleString("en-US", {
-                    maximumFractionDigits: 0,
-                  })}
-                />
-              )}
-            </Box>
-          </Box>
-
-          {/* Right panel: filters */}
-          <>
-            <Divider orientation="vertical" flexItem />
-            <Box
-              sx={{
-                flexBasis: 320,
-                flexShrink: 0,
-                minWidth: 320,
-                maxWidth: 320,
-                p: 1.25,
-                display: "flex",
-                flexDirection: "column",
-                bgcolor: "background.paper",
-                gap: 1,
-                minHeight: 0,
-                overflow: "hidden",
-              }}
-            >
-              <Typography variant="subtitle2">Filters</Typography>
-
-              <Box
-                sx={{
-                  flex: 1,
-                  minHeight: 0,
-                  overflowY: "auto",
-                  overflowX: "hidden",
-                  pr: 1,
-                  pb: 2,
-                  mt: 0.5,
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 1.5,
-                }}
-              >
-                {viewMode === "slice" && (
-                  <Box
-                    sx={{
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: 0.5,
-                    }}
-                  >
+              <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                <ToggleButtonGroup
+                  size="small"
+                  exclusive
+                  value={viewMode}
+                  onChange={(_, v) => v && setViewMode(v)}
+                >
+                  <ToggleButton value="slice">
                     <Box
                       sx={{
                         display: "inline-flex",
@@ -1106,236 +658,513 @@ export default function Coords3dViewer({
                         gap: 0.5,
                       }}
                     >
-                      <Typography variant="caption" color="text.secondary">
-                        Slice (Z)
-                      </Typography>
-                      <IconButton
-                        size="small"
-                        onClick={() => setHelpKey("sliceIndex")}
-                      >
-                        <HelpCircle size={14} />
-                      </IconButton>
+                      <Layers3 size={14} />
+                      Slices
                     </Box>
-                    {maxSlice != null && sliceIndex != null ? (
-                      <>
-                        <Slider
-                          size="small"
-                          value={Math.min(sliceIndex, maxSlice)}
-                          min={0}
-                          max={maxSlice}
-                          step={1}
-                          onChange={(_, v) => setSliceIndex(v as number)}
-                          valueLabelDisplay="auto"
-                          valueLabelFormat={(v) => String((v as number) + 1)}
-                        />
-                        <Box
-                          sx={{
-                            display: "flex",
-                            justifyContent: "space-between",
-                          }}
-                        >
-                          <Typography
-                            variant="caption"
-                            color="text.secondary"
-                          >
-                            1
-                          </Typography>
-                          <Typography
-                            variant="caption"
-                            color="text.secondary"
-                          >
-                            {maxSlice + 1}
-                          </Typography>
-                        </Box>
-                      </>
-                    ) : (
-                      <Typography
-                        variant="caption"
-                        color="text.secondary"
-                      >
-                        Slice range not available. Tomogram dims are missing.
-                      </Typography>
-                    )}
-                  </Box>
-                )}
+                  </ToggleButton>
+                  <ToggleButton value="map3d">
+                    <Box
+                      sx={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 0.5,
+                      }}
+                    >
+                      <BoxIcon size={14} />
+                      3D Map
+                    </Box>
+                  </ToggleButton>
+                </ToggleButtonGroup>
+              </Box>
 
-                <Box
-                  sx={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 1.4fr",
-                    gap: 1,
-                  }}
+              <Box
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 1,
+                  justifyContent: "flex-end",
+                }}
+              >
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ fontVariantNumeric: "tabular-nums" }}
                 >
-                  <Box
-                    sx={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 0.5,
-                    }}
+                  Coordinates:{" "}
+                  <strong>
+                    {totalCoords.toLocaleString("en-US", {
+                      maximumFractionDigits: 0,
+                    })}
+                  </strong>
+                </Typography>
+                {filteredPoints.length !== totalCoords && (
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    sx={{ fontVariantNumeric: "tabular-nums" }}
                   >
-                    <Typography variant="caption" color="text.secondary">
-                      Class
-                    </Typography>
-                    <IconButton
-                      size="small"
-                      onClick={() => setHelpKey("classFilter")}
-                    >
-                      <HelpCircle size={14} />
-                    </IconButton>
-                  </Box>
-                  <FormControl size="small" fullWidth>
-                    <InputLabel id="coords3d-class-filter-label">Class</InputLabel>
-                    <Select
-                      labelId="coords3d-class-filter-label"
-                      label="Class"
-                      value={selectedClass}
-                      onChange={(e) => setSelectedClass(e.target.value)}
-                    >
-                      <MenuItem value="all">All</MenuItem>
-                      {classes.map((c) => (
-                        <MenuItem key={c} value={c}>
-                          {c}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                </Box>
-
-                <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
-                  <Box
-                    sx={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 0.5,
-                    }}
-                  >
-                    <Typography variant="caption" color="text.secondary">
-                      Score range
-                    </Typography>
-                    <IconButton
-                      size="small"
-                      onClick={() => setHelpKey("scoreFilter")}
-                    >
-                      <HelpCircle size={14} />
-                    </IconButton>
-                  </Box>
-
-                  {scoreMinMax ? (
-                    <>
-                      <Slider
-                        size="small"
-                        value={scoreRange ?? [scoreMinMax[0], scoreMinMax[1]]}
-                        min={scoreMinMax[0]}
-                        max={scoreMinMax[1]}
-                        step={(scoreMinMax[1] - scoreMinMax[0]) / 200}
-                        onChange={(_, v) => setScoreRange(v as [number, number])}
-                        valueLabelDisplay="auto"
-                        valueLabelFormat={(v) => (v as number).toFixed(3)}
-                      />
-                      <Box
-                        sx={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                        }}
-                      >
-                        <Typography
-                          variant="caption"
-                          color="text.secondary"
-                        >
-                          {scoreMinMax[0].toFixed(3)}
-                        </Typography>
-                        <Typography
-                          variant="caption"
-                          color="text.secondary"
-                        >
-                          {scoreMinMax[1].toFixed(3)}
-                        </Typography>
-                      </Box>
-                    </>
-                  ) : (
-                    <Typography variant="caption" color="text.secondary">
-                      No numeric scores available.
-                    </Typography>
-                  )}
-                </Box>
-
-                <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
-                  <Box
-                    sx={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 0.5,
-                    }}
-                  >
-                    <Typography variant="caption" color="text.secondary">
-                      Max points
-                    </Typography>
-                    <IconButton
-                      size="small"
-                      onClick={() => setHelpKey("maxPoints")}
-                    >
-                      <HelpCircle size={14} />
-                    </IconButton>
-                  </Box>
-                  <Slider
-                    size="small"
-                    value={maxPoints}
-                    min={1000}
-                    max={200000}
-                    step={1000}
-                    onChange={(_, v) => setMaxPoints(v as number)}
-                    valueLabelDisplay="auto"
-                    valueLabelFormat={(v) =>
-                      (v as number).toLocaleString("en-US", {
+                    Showing:{" "}
+                    <strong>
+                      {filteredPoints.length.toLocaleString("en-US", {
                         maximumFractionDigits: 0,
-                      })
-                    }
-                  />
-                  <Typography variant="caption" color="text.secondary">
-                    Downsampling by stride if the total number of filtered points
-                    exceeds this limit.
+                      })}
+                    </strong>
                   </Typography>
-                </Box>
-
-                {helpKey && (
-                  <Box
-                    sx={{
-                      mt: 1,
-                      p: 1,
-                      borderRadius: 1,
-                      border: "1px solid rgba(148,163,184,0.7)",
-                      bgcolor: "#f9fafb",
-                    }}
-                  >
-                    <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
-                      {helpKey === "classFilter"
-                        ? "Class filter"
-                        : helpKey === "scoreFilter"
-                        ? "Score range"
-                        : helpKey === "maxPoints"
-                        ? "Max points"
-                        : helpKey === "sliceIndex"
-                        ? "Slice index"
-                        : helpKey}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      {helpKey === "classFilter" &&
-                        "Filter coordinates by their assigned class. Use 'All' to show all classes together."}
-                      {helpKey === "scoreFilter" &&
-                        "Filter coordinates by their numeric score or confidence. Points without a score are always included."}
-                      {helpKey === "maxPoints" &&
-                        "Limit the number of points sent to the 3D viewer. If there are more points, a strided downsampling is applied to keep interactivity."}
-                      {helpKey === "sliceIndex" &&
-                        "Select the tomogram slice along Z. The slider runs from 1 to the total number of slices reported for this tomogram."}
-                    </Typography>
-                  </Box>
                 )}
               </Box>
             </Box>
-          </>
+          </Paper>
+
+          <Box
+            sx={{
+              flex: 1,
+              display: "flex",
+              minHeight: 0,
+              minWidth: 0,
+              overflow: "hidden",
+            }}
+          >
+            {/* Main viewer */}
+            <Box
+              sx={{
+                flex: 1,
+                display: "flex",
+                flexDirection: "column",
+                minHeight: 0,
+                minWidth: 0,
+                overflow: "hidden",
+              }}
+            >
+              <Box
+                sx={{
+                  flex: 1,
+                  minHeight: 0,
+                  display: "flex",
+                  alignItems: "stretch",
+                  justifyContent: "stretch",
+                  p: 1,
+                  bgcolor: "background.default",
+                }}
+              >
+                {pointsLoading ? (
+                  <Box
+                    sx={{
+                      m: "auto",
+                      display: "flex",
+                      gap: 1,
+                      alignItems: "center",
+                    }}
+                  >
+                    <CircularProgress size={18} />
+                    <Typography variant="body2">Loading coordinates…</Typography>
+                  </Box>
+                ) : pointsError ? (
+                  <Box sx={{ m: "auto" }}>
+                    <Typography variant="body2" color="error">
+                      {pointsError}
+                    </Typography>
+                  </Box>
+                ) : selectedTomoId == null ? (
+                  <Box sx={{ m: "auto" }}>
+                    <Typography variant="body2" color="text.secondary">
+                      Select a tomogram to view its coordinates.
+                    </Typography>
+                  </Box>
+                ) : !pointsData || totalCoords === 0 ? (
+                  <Box sx={{ m: "auto" }}>
+                    <Typography variant="body2" color="text.secondary">
+                      No coordinates for this tomogram.
+                    </Typography>
+                  </Box>
+                ) : viewMode === "map3d" ? (
+                  <Box sx={{ m: "auto" }}>
+                    <Typography variant="body2" color="text.secondary">
+                      3D map view is not implemented yet.
+                    </Typography>
+                  </Box>
+                ) : (
+                  // Slice view
+                  <Box
+                    sx={{
+                      flex: 1,
+                      minHeight: 0,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    {sliceLoading && !sliceImageUrl ? (
+                      <Box
+                        sx={{
+                          display: "flex",
+                          gap: 1,
+                          alignItems: "center",
+                        }}
+                      >
+                        <CircularProgress size={18} />
+                        <Typography variant="body2">
+                          Loading tomogram slice…
+                        </Typography>
+                      </Box>
+                    ) : sliceError ? (
+                      <Typography variant="body2" color="error">
+                        {sliceError}
+                      </Typography>
+                    ) : maxSlice == null ||
+                      sliceIndex == null ||
+                      !tomoDimsX ||
+                      !tomoDimsY ? (
+                      <Typography variant="body2" color="text.secondary">
+                        Tomogram dimensions are not available. Make sure dims are
+                        provided as [X, Y, Z].
+                      </Typography>
+                    ) : !sliceImageUrl ? (
+                      <Typography variant="body2" color="text.secondary">
+                        No slice image.
+                      </Typography>
+                    ) : (
+                      <Box
+                        sx={{
+                          width: "100%",
+                          height: "100%",
+                          maxWidth: "100%",
+                          maxHeight: "100%",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        <svg
+                          viewBox={`0 0 ${tomoDimsX} ${tomoDimsY}`}
+                          preserveAspectRatio="xMidYMid meet"
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                            display: "block",
+                            backgroundColor: "black",
+                          }}
+                        >
+                          <image
+                            href={sliceImageUrl}
+                            x={0}
+                            y={0}
+                            width={tomoDimsX}
+                            height={tomoDimsY}
+                            preserveAspectRatio="none"
+                          />
+                          {slicePointsSvg.map((p) => (
+                            <circle
+                              key={p.key}
+                              cx={p.x}
+                              cy={p.y}
+                              r={p.radius * 2.2}
+                              fill="none"
+                              stroke="red"
+                              strokeWidth={1.2}
+                            />
+                          ))}
+                        </svg>
+                      </Box>
+                    )}
+                  </Box>
+                )}
+              </Box>
+
+              <Divider />
+              <Box
+                sx={{
+                  p: 1,
+                  display: "flex",
+                  gap: 2,
+                  flexWrap: "wrap",
+                  alignItems: "center",
+                  flexShrink: 0,
+                }}
+              >
+                {tomoMeta && (
+                  <MetaItem
+                    label="Tomogram"
+                    value={tomoMeta.label ?? String(selectedTomoId)}
+                  />
+                )}
+                {tomoDims && (
+                  <MetaItem
+                    label="Dims"
+                    value={`${tomoDims[0]} × ${tomoDims[1]} × ${tomoDims[2]}`}
+                  />
+                )}
+                <MetaItem
+                  label="Points"
+                  value={totalCoords.toLocaleString("en-US", {
+                    maximumFractionDigits: 0,
+                  })}
+                />
+                {filteredPoints.length !== totalCoords && (
+                  <MetaItem
+                    label="Shown"
+                    value={filteredPoints.length.toLocaleString("en-US", {
+                      maximumFractionDigits: 0,
+                    })}
+                  />
+                )}
+                {viewMode === "slice" && sliceIndex != null && maxSlice != null && (
+                  <MetaItem
+                    label="Slice (Z)"
+                    value={`${sliceIndex + 1} / ${maxSlice + 1}`}
+                  />
+                )}
+                {viewMode === "slice" && slicePoints.length > 0 && (
+                  <MetaItem
+                    label="Slice points"
+                    value={slicePoints.length.toLocaleString("en-US", {
+                      maximumFractionDigits: 0,
+                    })}
+                  />
+                )}
+              </Box>
+            </Box>
+
+            {/* Right panel: summary + filters */}
+            <>
+              <Divider orientation="vertical" flexItem />
+              <Box
+                sx={{
+                  flexBasis: 320,
+                  flexShrink: 0,
+                  minWidth: 320,
+                  maxWidth: 320,
+                  p: 1.25,
+                  display: "flex",
+                  flexDirection: "column",
+                  bgcolor: "background.paper",
+                  gap: 1,
+                  minHeight: 0,
+                  overflow: "hidden",
+                }}
+              >
+                <Box
+                  sx={{
+                    flex: 1,
+                    minHeight: 0,
+                    overflowY: "auto",
+                    overflowX: "hidden",
+                    pr: 1,
+                    pb: 2,
+                    mt: 0.5,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 1.5,
+                  }}
+                >
+                  <Divider />
+                  {/* Filters */}
+                  <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 , marginLeft: 1}}>
+                    <Typography variant="subtitle2">Filters</Typography>
+
+                    {viewMode === "slice" && (
+                      <Box
+                        sx={{
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: 0.5,
+                        }}
+                      >
+                        <Box
+                          sx={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 0.5,
+                          }}
+                        >
+                          <Typography variant="caption" color="text.secondary">
+                            Slice (Z)
+                          </Typography>
+                          <IconButton
+                            size="small"
+                            onClick={() => openHelp("sliceIndex")}
+                          >
+                            <HelpCircle size={14} />
+                          </IconButton>
+                        </Box>
+                        {maxSlice != null && sliceIndex != null ? (
+                          <>
+                            <Slider
+                              size="small"
+                              value={Math.min(sliceIndex, maxSlice)}
+                              min={0}
+                              max={maxSlice}
+                              step={1}
+                              onChange={(_, v) => setSliceIndex(v as number)}
+                              valueLabelDisplay="auto"
+                              valueLabelFormat={(v) => String((v as number) + 1)}
+                            />
+                            <Box
+                              sx={{
+                                display: "flex",
+                                justifyContent: "space-between",
+                              }}
+                            >
+                              <Typography
+                                variant="caption"
+                                color="text.secondary"
+                              >
+                                1
+                              </Typography>
+                              <Typography
+                                variant="caption"
+                                color="text.secondary"
+                              >
+                                {maxSlice + 1}
+                              </Typography>
+                            </Box>
+                          </>
+                        ) : (
+                          <Typography
+                            variant="caption"
+                            color="text.secondary"
+                          >
+                            Slice range not available. Tomogram dims are missing.
+                          </Typography>
+                        )}
+                      </Box>
+                    )}
+
+                    
+
+                    <Box
+                      sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}
+                    >
+                      <Box
+                        sx={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 0.5,
+                        }}
+                      >
+                        <Typography variant="caption" color="text.secondary">
+                          Score range
+                        </Typography>
+                        <IconButton
+                          size="small"
+                          onClick={() => openHelp("scoreFilter")}
+                        >
+                          <HelpCircle size={14} />
+                        </IconButton>
+                      </Box>
+
+                      {scoreMinMax ? (
+                        <>
+                          <Slider
+                            size="small"
+                            value={scoreRange ?? [scoreMinMax[0], scoreMinMax[1]]}
+                            min={scoreMinMax[0]}
+                            max={scoreMinMax[1]}
+                            step={(scoreMinMax[1] - scoreMinMax[0]) / 200}
+                            onChange={(_, v) =>
+                              setScoreRange(v as [number, number])
+                            }
+                            valueLabelDisplay="auto"
+                            valueLabelFormat={(v) => (v as number).toFixed(3)}
+                          />
+                          <Box
+                            sx={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                            }}
+                          >
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                            >
+                              {scoreMinMax[0].toFixed(3)}
+                            </Typography>
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                            >
+                              {scoreMinMax[1].toFixed(3)}
+                            </Typography>
+                          </Box>
+                        </>
+                      ) : (
+                        <Typography variant="caption" color="text.secondary">
+                          No numeric scores available.
+                        </Typography>
+                      )}
+                    </Box>
+
+                    <Box
+                      sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}
+                    >
+                      <Box
+                        sx={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 0.5,
+                        }}
+                      >
+                        <Typography variant="caption" color="text.secondary">
+                          Max points
+                        </Typography>
+                        <IconButton
+                          size="small"
+                          onClick={() => openHelp("maxPoints")}
+                        >
+                          <HelpCircle size={14} />
+                        </IconButton>
+                      </Box>
+                      <Slider
+                        size="small"
+                        value={maxPoints}
+                        min={1000}
+                        max={200000}
+                        step={1000}
+                        onChange={(_, v) => setMaxPoints(v as number)}
+                        valueLabelDisplay="auto"
+                        valueLabelFormat={(v) =>
+                          (v as number).toLocaleString("en-US", {
+                            maximumFractionDigits: 0,
+                          })
+                        }
+                      />
+                      <Typography variant="caption" color="text.secondary">
+                        Downsampling by stride if the total number of filtered
+                        points exceeds this limit.
+                      </Typography>
+                    </Box>
+                  </Box>
+                </Box>
+              </Box>
+            </>
+          </Box>
         </Box>
       </Box>
-    </Box>
+
+      {/* Help dialog */}
+      <Dialog open={helpOpen} onClose={closeHelp} maxWidth="xs" fullWidth>
+        <DialogTitle>
+          {helpKey === "sliceIndex"
+            ? "Slice index"
+            : helpKey === "classFilter"
+            ? "Class filter"
+            : helpKey === "scoreFilter"
+            ? "Score range"
+            : helpKey === "maxPoints"
+            ? "Max points"
+            : "Help"}
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            {helpKey ? HELP_TEXT[helpKey] ?? "No help available." : ""}
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeHelp} autoFocus>
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </>
   );
 }
 
