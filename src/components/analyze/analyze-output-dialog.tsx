@@ -12,6 +12,7 @@ import {
 import { CloseIcon } from "@/icons";
 import { MetadataViewer } from "./metadata-viewer";
 import VolumeViewer from "./volume-viewer";
+import Coords3dViewer from "./coords3d-viewer";
 
 type AnalyzeOutputDialogProps = {
   open: boolean;
@@ -34,11 +35,19 @@ function isVolumeKind(k?: string) {
   );
 }
 
+function isCoords3dKind(k?: string) {
+  if (!k) return false;
+  const s = k.replace(/\s+/g, "").toLowerCase();
+  // Match típico: "SetOfCoordinates3D"
+  return s.includes("setofcoordinates3d");
+}
+
 function isSetOfMetadataKind(k?: string) {
   if (!k) return false;
   const trimmed = k.replace(/\s+/g, "");
   if (!/^SetOf/i.test(trimmed)) return false;
   if (isVolumeKind(k)) return false;
+  if (isCoords3dKind(k)) return false;
   return true;
 }
 
@@ -65,8 +74,6 @@ const headerSx = {
   background: "linear-gradient(180deg, #0b1220 0%, #0a0f1e 100%)",
   color: "#e5e7eb",
   borderBottom: "1px solid rgba(255,255,255,0.06)",
-
-  // ---- IMPORTANT: header should not shrink
   flexShrink: 0,
 };
 
@@ -139,6 +146,17 @@ export default function AnalyzeOutputDialog({
     if (isVolumeKind(outputClass)) {
       return (
         <VolumeViewer
+          projectId={projectIdNum}
+          protocolId={protocolIdNum}
+          protocolLabel={protocolLabel}
+          outputName={outputName}
+        />
+      );
+    }
+
+    if (isCoords3dKind(outputClass)) {
+      return (
+        <Coords3dViewer
           projectId={projectIdNum}
           protocolId={protocolIdNum}
           protocolLabel={protocolLabel}
@@ -220,7 +238,6 @@ export default function AnalyzeOutputDialog({
         </IconButton>
       </DialogTitle>
 
-      {/* ---- IMPORTANT: content fills remaining height and hides global overflow */}
       <DialogContent
         dividers={false}
         sx={{
@@ -232,7 +249,6 @@ export default function AnalyzeOutputDialog({
           overflow: "hidden",
         }}
       >
-        {/* ---- IMPORTANT: body container provides 100% height for viewers */}
         <Box sx={{ flex: 1, minHeight: 0, minWidth: 0, overflow: "hidden" }}>
           {body}
         </Box>

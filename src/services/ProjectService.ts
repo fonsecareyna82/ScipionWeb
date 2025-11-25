@@ -103,6 +103,62 @@ export type VolumeData3d = {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Coordinates3D + linked tomograms (SetOfCoordinates3D support)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Single 3D coordinate in tomogram space.
+ * Extra fields (label, score, etc.) can be attached by the backend.
+ */
+export type Coordinates3dPoint = {
+  x: number;
+  y: number;
+  z: number;
+  id?: number | string;
+  label?: number | string;
+  score?: number;
+  [key: string]: unknown;
+};
+
+/**
+ * One tomogram entry associated with a SetOfCoordinates3D.
+ * It can optionally reference the tomogram volume output so the UI can
+ * jump into a slice/3D viewer for the same volume.
+ */
+export type Coordinates3dTomogram = {
+  /** Tomogram identifier (index, db id, etc.). */
+  id: Id;
+  /** Human-friendly label for the tomogram. */
+  label?: string;
+
+  /** Optional output name where the tomogram volume lives. */
+  tomogramOutputName?: string;
+  /** Optional volume id within the tomogram output. */
+  tomogramVolumeId?: Id;
+
+  /** Optional tomogram dimensions [X, Y, Z]. */
+  dims?: [number, number, number];
+  /** Optional voxel size [sx, sy, sz]. Units depend on backend. */
+  voxelSize?: [number, number, number];
+
+  /** Optional count of coordinates for quick overview. */
+  count?: number;
+};
+
+/**
+ * Coordinates payload for a single tomogram.
+ */
+export type Coordinates3dTomogramPoints = {
+  tomoId: Id;
+  /** Optional tomogram dimensions [X, Y, Z]. */
+  dims?: [number, number, number];
+  /** Optional voxel size [sx, sy, sz]. */
+  voxelSize?: [number, number, number];
+  /** List of coordinates in tomogram space. */
+  coords: Coordinates3dPoint[];
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Metadata table basic types (en paralelo a los de api/projects.ts)
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -253,16 +309,12 @@ export interface ProjectService<
     volumeId: Id
   ): Promise<VolumeInfo>;
 
- getVolumeHistogram(
+  getVolumeHistogram(
     projectId: Id,
     protocolId: Id,
     outputName: string,
     volumeId: Id,
-    opts?: {
-      bins?: number;
-      rangeMin?: number;
-      rangeMax?: number;
-    }
+    opts?: VolumeHistogramOptions
   ): Promise<VolumeHistogram>;
 
   buildVolumeSliceUrl(
@@ -290,6 +342,53 @@ export interface ProjectService<
     volumeId: Id,
     opts?: VolumeData3dOptions
   ): Promise<VolumeData3d>;
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Analyze Results (Coordinates 3D + linked tomograms)
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /**
+   * List tomograms associated with a SetOfCoordinates3D output.
+   * Each entry can optionally point to the underlying tomogram volume.
+   */
+  listCoords3dTomograms(
+    projectId: Id,
+    protocolId: Id,
+    coordsOutputName: string
+  ): Promise<Coordinates3dTomogram[]>;
+
+  /**
+   * Fetch all 3D coordinates for a given tomogram within a SetOfCoordinates3D.
+   */
+  fetchCoords3dForTomogram(
+    projectId: Id,
+    protocolId: Id,
+    coordsOutputName: string,
+    tomoId: Id
+  ): Promise<Coordinates3dTomogramPoints>;
+
+  /**
+   * Fetch a tomogram slice (image) associated with a SetOfCoordinates3D tomogram.
+   * This mirrors the volume slice API but targeted to tomograms linked to coords.
+   */
+  fetchCoords3dTomogramSliceObjectUrl(
+    projectId: Id,
+    protocolId: Id,
+    coordsOutputName: string,
+    tomoId: Id,
+    sliceIndex: number,
+    opts?: {
+      axis?: "z" | "y" | "x";
+      cmap?: string;
+      normalize?: "minmax" | "zscore" | "none";
+      scale?: number;
+      format?: "png" | "webp" | "jpeg";
+      thumb?: number;
+      fast?: boolean;
+      quality?: number;
+      signal?: AbortSignal;
+    }
+  ): Promise<VolumeSliceObjectUrl>;
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Analyze Results (Metadata tables + thumbnails)

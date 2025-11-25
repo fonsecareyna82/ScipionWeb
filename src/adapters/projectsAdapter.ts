@@ -101,6 +101,7 @@ const defaultService: ProjectService = {
   ) => api.fetchOutputPreview(toId(projectId), toId(protocolId), path, opts),
 
   // ──────────────────────────── Analyze Results: Volumes ────────────────────────────
+
   listOutputVolumes: (projectId: Id, protocolId: Id, outputName: string) =>
     api.listOutputVolumes(toId(projectId), toId(protocolId), outputName),
 
@@ -122,8 +123,8 @@ const defaultService: ProjectService = {
     protocolId: Id,
     outputName: string,
     volumeId: Id,
-    opts = {},
-  ) =>
+    opts: VolumeHistogramOptions = {},
+  ): Promise<VolumeHistogram> =>
     api.getVolumeHistogram(
       toId(projectId),
       toId(protocolId),
@@ -146,7 +147,7 @@ const defaultService: ProjectService = {
       outputName,
       toId(volumeId),
       sliceIndex,
-      // API expects "cmap"; viewer is already sending the right option.
+      // API expects colormap-related options; viewer is already sending them.
       opts as any,
     ),
 
@@ -169,7 +170,7 @@ const defaultService: ProjectService = {
       opts as any,
     ),
 
-    getVolumeData3d: (
+  getVolumeData3d: (
     projectId: Id,
     protocolId: Id,
     outputName: string,
@@ -184,7 +185,78 @@ const defaultService: ProjectService = {
       opts,
     ),
 
+  // ──────────────────────────── Analyze Results: Coordinates3D ────────────────────────────
+
+  listCoords3dTomograms: (
+    projectId: Id,
+    protocolId: Id,
+    coordsOutputName: string,
+  ) =>
+    api.listCoords3dTomograms(
+      toId(projectId),
+      toId(protocolId),
+      coordsOutputName,
+    ),
+
+  fetchCoords3dForTomogram: (
+    projectId,
+    protocolId,
+    coordsOutputName,
+    tomoId,
+  ) =>
+    api
+      .fetchCoords3dForTomogram(
+        toId(projectId),
+        toId(protocolId),
+        coordsOutputName,
+        toId(tomoId),
+      )
+      .then((raw) => ({
+        // Normalized shape for the viewer (Coordinates3dTomogramPoints)
+        tomoId: raw.tomoId ?? (raw as any).tomogramId ?? (raw as any).id ?? tomoId,
+        tomogramLabel:
+          raw.tomogramLabel ??
+          (raw as any).label ??
+          (raw as any).name ??
+          String(raw.tomoId ?? (raw as any).tomogramId ?? tomoId),
+        n:
+          typeof raw.n === "number"
+            ? raw.n
+            : Array.isArray(raw.coords)
+            ? raw.coords.length
+            : 0,
+        coords: raw.coords ?? [],
+      })),
+
+  fetchCoords3dTomogramSliceObjectUrl: (
+    projectId: Id,
+    protocolId: Id,
+    coordsOutputName: string,
+    tomoId: Id,
+    sliceIndex: number,
+    opts?: {
+      axis?: "z" | "y" | "x";
+      cmap?: string;
+      normalize?: "minmax" | "zscore" | "none";
+      scale?: number;
+      format?: "png" | "webp" | "jpeg";
+      thumb?: number;
+      fast?: boolean;
+      quality?: number;
+      signal?: AbortSignal;
+    },
+  ) =>
+    api.fetchCoords3dTomogramSliceObjectUrl(
+      toId(projectId),
+      toId(protocolId),
+      coordsOutputName,
+      toId(tomoId),
+      sliceIndex,
+      opts,
+    ),
+
   // ──────────────────────────── Analyze Results: Metadata tables ────────────────────────────
+
   fetchOutputMetadataTables: (projectId: Id, protocolId: Id, outputName: string) =>
     api.fetchOutputMetadataTables(toId(projectId), toId(protocolId), outputName),
 
@@ -231,7 +303,7 @@ const defaultService: ProjectService = {
       opts,
     ),
 
-  // Ventana por offset + limit para scroll virtual
+  // Window by offset + limit for virtual scroll
   fetchMetadataTableWindow: async (
     projectId: Id,
     protocolId: Id,
