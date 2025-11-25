@@ -405,7 +405,6 @@ export default function Coords3dViewer({
     if (!slicePoints.length) return [];
 
     const maxDim = Math.max(tomoDimsX ?? 0, tomoDimsY ?? 0);
-    // Base radius as a small fraction of the tomogram size
     const baseR = maxDim > 0 ? Math.max(1, maxDim * 0.003) : 2;
 
     const radiiRaw = slicePoints
@@ -427,7 +426,6 @@ export default function Coords3dViewer({
       }
       const t = (raw - minR) / (maxR - minR);
       const tClamped = Math.max(0, Math.min(1, t));
-      // Map into [0.7, 2.0] * baseR
       return baseR * (0.7 + 1.3 * tClamped);
     };
 
@@ -841,7 +839,7 @@ export default function Coords3dViewer({
                             width: "100%",
                             height: "100%",
                             display: "block",
-                            backgroundColor: "black",
+                            backgroundColor: "transparent",
                           }}
                         >
                           <image
@@ -958,7 +956,14 @@ export default function Coords3dViewer({
                 >
                   <Divider />
                   {/* Filters */}
-                  <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 , marginLeft: 1}}>
+                  <Box
+                    sx={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 1.5,
+                      marginLeft: 1,
+                    }}
+                  >
                     <Typography variant="subtitle2">Filters</Typography>
 
                     {viewMode === "slice" && (
@@ -1028,8 +1033,6 @@ export default function Coords3dViewer({
                         )}
                       </Box>
                     )}
-
-                    
 
                     <Box
                       sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}
