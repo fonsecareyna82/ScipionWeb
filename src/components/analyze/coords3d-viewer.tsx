@@ -4,15 +4,11 @@ import {
   Box,
   CircularProgress,
   Divider,
-  FormControl,
   IconButton,
-  InputLabel,
   List,
   ListItemButton,
   ListItemText,
-  MenuItem,
   Paper,
-  Select,
   Slider,
   ToggleButton,
   ToggleButtonGroup,
@@ -271,24 +267,6 @@ export default function Coords3dViewer({
     };
   }, [selectedTomoId, projectId, protocolId, outputName, svc]);
 
-  // ─────────────────────────────────────────────────────────────────────────────
-  // Derived data: classes, score ranges, filtered points, etc
-  // ─────────────────────────────────────────────────────────────────────────────
-  const classes = useMemo(() => {
-    if (!pointsData?.coords?.length) return [];
-    const set = new Set<string>();
-    for (const p of pointsData.coords as any[]) {
-      const key =
-        p.classId === null || p.classId === undefined
-          ? "unclassified"
-          : String(p.classId);
-      set.add(key);
-    }
-    return Array.from(set).sort((a, b) =>
-      a.localeCompare(b, undefined, { numeric: true }),
-    );
-  }, [pointsData]);
-
   const scoreMinMax = useMemo(() => {
     if (!pointsData?.coords?.length) return null;
     const scores = (pointsData.coords as any[])
@@ -333,21 +311,6 @@ export default function Coords3dViewer({
     }
     return down;
   }, [pointsData, selectedClass, scoreRange, scoreMinMax, maxPoints]);
-
-  const classesWithCounts = useMemo(() => {
-    if (!pointsData?.coords?.length) return [];
-    const map = new Map<string, number>();
-    for (const p of pointsData.coords as any[]) {
-      const key =
-        p.classId === null || p.classId === undefined
-          ? "unclassified"
-          : String(p.classId);
-      map.set(key, (map.get(key) ?? 0) + 1);
-    }
-    return Array.from(map.entries())
-      .map(([key, count]) => ({ key, count }))
-      .sort((a, b) => a.key.localeCompare(b.key, undefined, { numeric: true }));
-  }, [pointsData]);
 
   const tomoMeta = useMemo(() => {
     if (!selectedTomoId) return null;

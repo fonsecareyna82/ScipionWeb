@@ -148,7 +148,7 @@ export default function VolumeViewer({
 
   const [frontUrl, setFrontUrl] = useState<string | null>(null);
   const [imgError, setImgError] = useState<string | null>(null);
-  const [loadingSlice, setLoadingSlice] = useState(false);
+  const [_, setLoadingSlice] = useState(false);
 
   const reqIdRef = useRef(0);
   const abortRef = useRef<AbortController | null>(null);

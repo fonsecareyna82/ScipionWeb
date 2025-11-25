@@ -26,7 +26,7 @@ import {
   Tooltip,
   IconButton,
 } from "@mui/material";
-import { LayoutGrid, TableIcon, Columns3, SaveIcon, Check, ColumnsSettingsIcon } from "lucide-react";
+import { LayoutGrid, TableIcon, Check, ColumnsSettingsIcon } from "lucide-react";
 import { useProjectService } from "@/ProjectServiceContext";
 import type {
   MetadataCell,
@@ -36,7 +36,6 @@ import type {
   MetadataTableSchema,
 } from "@/api/projects";
 import { CloseIcon } from "@/icons";
-import { Separator } from "@radix-ui/react-dropdown-menu";
 
 type MetadataViewerProps = {
   projectId: number;
