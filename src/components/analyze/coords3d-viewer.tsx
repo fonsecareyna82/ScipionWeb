@@ -53,6 +53,8 @@ type TomogramItem = {
 type ViewMode = "slice" | "map3d";
 
 const MAX_POINTS_DEFAULT = 50000;
+const NEARBY_SLICE_RANGE = 10; // slices above/below current slice to show
+const MIN_NEARBY_SLICE_FACTOR = 0.25; // minimal radius/opacity factor for far slices
 
 const HELP_TEXT: Record<string, string> = {
   sliceIndex:
@@ -389,7 +391,7 @@ export default function Coords3dViewer({
     setSliceIndex(mid);
   }, [selectedTomoId, maxSlice]);
 
-  // Points that lie in the current Z slice
+  // Points that lie in the current Z slice (exact slice)
   const slicePoints = useMemo(() => {
     if (!filteredPoints.length || sliceIndex == null) return [];
     const target = sliceIndex;
@@ -400,14 +402,21 @@ export default function Coords3dViewer({
     });
   }, [filteredPoints, sliceIndex]);
 
-  // Points mapped to SVG, adapting radius to tomo dimensions
+  // Points mapped to SVG with Napari-like behavior across nearby slices
   const slicePointsSvg = useMemo(() => {
-    if (!slicePoints.length) return [];
+    if (
+      !filteredPoints.length ||
+      sliceIndex == null ||
+      tomoDimsX == null ||
+      tomoDimsY == null
+    ) {
+      return [];
+    }
 
-    const maxDim = Math.max(tomoDimsX ?? 0, tomoDimsY ?? 0);
+    const maxDim = Math.max(tomoDimsX, tomoDimsY);
     const baseR = maxDim > 0 ? Math.max(1, maxDim * 0.003) : 2;
 
-    const radiiRaw = slicePoints
+    const radiiRaw = filteredPoints
       .map((p: any) => Number(p.radius))
       .filter((v) => Number.isFinite(v) && v > 0);
 
@@ -418,7 +427,10 @@ export default function Coords3dViewer({
       maxR = Math.max(...radiiRaw);
     }
     const hasVar =
-      radiiRaw.length > 0 && maxR > minR && Number.isFinite(maxR) && Number.isFinite(minR);
+      radiiRaw.length > 0 &&
+      maxR > minR &&
+      Number.isFinite(maxR) &&
+      Number.isFinite(minR);
 
     const mapRadius = (raw?: number) => {
       if (!hasVar || raw === undefined || !Number.isFinite(raw) || raw <= 0) {
@@ -429,15 +441,52 @@ export default function Coords3dViewer({
       return baseR * (0.7 + 1.3 * tClamped);
     };
 
-    return slicePoints.map((p: any, idx: number) => ({
-      key: String(p.id ?? `${idx}-${p.x}-${p.y}-${p.z}`),
-      x: p.x,
-      y: p.y,
-      classId: p.classId,
-      score: p.score,
-      radius: mapRadius(p.radius),
-    }));
-  }, [slicePoints, tomoDimsX, tomoDimsY]);
+    const neighbors: {
+      key: string;
+      x: number;
+      y: number;
+      radius: number;
+      opacity: number;
+      strokeWidth: number;
+      dz: number;
+    }[] = [];
+
+    for (let idx = 0; idx < filteredPoints.length; idx++) {
+      const p: any = filteredPoints[idx];
+      const zVal = Number(p.z);
+      if (!Number.isFinite(zVal)) continue;
+
+      const zInt = Math.round(zVal);
+      const dz = Math.abs(zInt - sliceIndex);
+      if (dz > NEARBY_SLICE_RANGE) continue;
+
+      const zNorm = 1 - dz / (NEARBY_SLICE_RANGE + 1); // 1 for dz=0, ~0 near the limit
+      const factor =
+        MIN_NEARBY_SLICE_FACTOR +
+        zNorm * (1 - MIN_NEARBY_SLICE_FACTOR); // between MIN_NEARBY_SLICE_FACTOR and 1
+
+      const rBase = mapRadius(p.radius);
+      const rFinal = rBase * factor;
+
+      const opacity = 0.3 + zNorm * 0.7; // 0.3..1
+      const strokeWidth = 0.6 + zNorm * 1.4; // thinner for far slices
+
+      neighbors.push({
+        key: String(p.id ?? `${idx}-${p.x}-${p.y}-${p.z}`),
+        x: p.x,
+        y: p.y,
+        radius: rFinal,
+        opacity,
+        strokeWidth,
+        dz,
+      });
+    }
+
+    // Draw farther slices first so points in the current slice appear on top
+    neighbors.sort((a, b) => b.dz - a.dz);
+
+    return neighbors;
+  }, [filteredPoints, sliceIndex, tomoDimsX, tomoDimsY]);
 
   const totalCoords = pointsData?.coords?.length ?? 0;
 
@@ -858,7 +907,8 @@ export default function Coords3dViewer({
                               r={p.radius * 2.2}
                               fill="none"
                               stroke="red"
-                              strokeWidth={1.2}
+                              strokeWidth={p.strokeWidth}
+                              opacity={p.opacity}
                             />
                           ))}
                         </svg>
