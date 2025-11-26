@@ -83,9 +83,9 @@ const HELP_TEXT: Record<string, string> = {
   sharpen2d:
     "Applies a light 3×3 sharpening filter to the current slice (frontend only).",
   brightness2d:
-    "Adjust brightness for slice display only. Does not refetch the slice.",
+    "Adjust brightness for slice display only (percentage around 100% neutral). Does not refetch the slice.",
   contrast2d:
-    "Adjust contrast for slice display only. Does not refetch the slice.",
+    "Adjust contrast for slice display only (percentage around 100% neutral). Does not refetch the slice.",
   pan2d:
     "Pan slices with Ctrl+drag or middle mouse. Reset with Fit.",
   zoom2d:
@@ -141,6 +141,7 @@ export default function VolumeViewer({
   const [colormap, setColormap] = useState<string>("viridis");
   const [interp2d, setInterp2d] = useState<Interp2d>("linear");
   const [sharpen2d, setSharpen2d] = useState(false);
+  // brightness2d is an offset around 0 (0 = 100%), contrast2d is a factor (1 = 100%)
   const [brightness2d, setBrightness2d] = useState(0);
   const [contrast2d, setContrast2d] = useState(1);
 
@@ -927,9 +928,9 @@ export default function VolumeViewer({
                   setRightTab(v);
                   setShowHistogram(v === "hist");
                 }}
-                sx={{ flexShrink: 0}}
+                sx={{ flexShrink: 0 }}
               >
-                <ToggleButton value="ctrl" >Controls</ToggleButton>
+                <ToggleButton value="ctrl">Controls</ToggleButton>
                 <ToggleButton value="hist">Histogram</ToggleButton>
               </ToggleButtonGroup>
 
@@ -946,7 +947,7 @@ export default function VolumeViewer({
                 }}
               >
                 {rightTab === "ctrl" && viewMode === "slices" && (
-                  <Box sx={{ display: "flex", flexDirection: "column", gap: 1.25 }}>
+                  <Box sx={{ display: "flex", flexDirection: "column", gap: 1.25, ml: 1 }}>
                     <SectionTitle title="Slices" />
 
                     <ParamRow
@@ -1058,6 +1059,29 @@ export default function VolumeViewer({
 
                     <SectionTitle title="Display" />
 
+                    {/* Intensity group with Reset, like in coords3d viewer */}
+                    <Box
+                      sx={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        mt: 0.5,
+                      }}
+                    >
+                      <Typography variant="caption" color="text.secondary">
+                        Intensity
+                      </Typography>
+                      <Button
+                        size="small"
+                        onClick={() => {
+                          setBrightness2d(0);
+                          setContrast2d(1);
+                        }}
+                      >
+                        Reset
+                      </Button>
+                    </Box>
+
                     <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
                       <Box sx={{ display: "inline-flex", gap: 0.5, alignItems: "center" }}>
                         <Typography variant="caption" color="text.secondary">
@@ -1075,7 +1099,9 @@ export default function VolumeViewer({
                         step={0.02}
                         onChange={(_, v) => setBrightness2d(v as number)}
                         valueLabelDisplay="auto"
-                        valueLabelFormat={(v) => (v as number).toFixed(2)}
+                        valueLabelFormat={(v) =>
+                          `${Math.round((1 + (v as number)) * 100)}%`
+                        }
                       />
                     </Box>
 
@@ -1096,7 +1122,9 @@ export default function VolumeViewer({
                         step={0.02}
                         onChange={(_, v) => setContrast2d(v as number)}
                         valueLabelDisplay="auto"
-                        valueLabelFormat={(v) => (v as number).toFixed(2)}
+                        valueLabelFormat={(v) =>
+                          `${Math.round((v as number) * 100)}%`
+                        }
                       />
                     </Box>
 
@@ -1418,8 +1446,8 @@ function SlicesCanvas({
   pan: { x: number; y: number };
   interp: Interp2d;
   sharpen: boolean;
-  brightness: number;
-  contrast: number;
+  brightness: number; // offset, 0 = neutral
+  contrast: number;   // factor, 1 = neutral
   onNaturalSize: (w: number, h: number) => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -1492,6 +1520,7 @@ function SlicesCanvas({
     const x0 = cx - drawW / 2;
     const y0 = cy - drawH / 2;
 
+    // brightness is offset [-1,1], contrast is factor
     const b = 1 + brightness;
     const c = contrast;
 
@@ -1596,9 +1625,12 @@ function SlicesStatusBar({
   colormap: string;
   interp: Interp2d;
   sharpen: boolean;
-  brightness: number;
-  contrast: number;
+  brightness: number; // offset
+  contrast: number;   // factor
 }) {
+  const bPct = Math.round((1 + brightness) * 100);
+  const cPct = Math.round(contrast * 100);
+
   return (
     <Box
       sx={{
@@ -1637,10 +1669,10 @@ function SlicesStatusBar({
         </Typography>
       )}
       <Typography variant="caption" sx={{ color: "inherit" }}>
-        b {brightness.toFixed(2)}
+        b {bPct}%
       </Typography>
       <Typography variant="caption" sx={{ color: "inherit" }}>
-        c {contrast.toFixed(2)}
+        c {cPct}%
       </Typography>
     </Box>
   );

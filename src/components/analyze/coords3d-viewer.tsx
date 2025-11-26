@@ -61,6 +61,10 @@ const HELP_TEXT: Record<string, string> = {
     "Filter coordinates by their numeric score or confidence. Points without a score are always included.",
   maxPoints:
     "Limit the number of points sent to the viewer. If there are more points, a strided downsampling is applied to keep interactivity.",
+  brightness:
+    "Adjust the brightness of the tomogram slice. This is applied client-side and does not modify the underlying data.",
+  contrast:
+    "Adjust the contrast of the tomogram slice. This is applied client-side and does not modify the underlying data.",
 };
 
 export default function Coords3dViewer({
@@ -87,6 +91,10 @@ export default function Coords3dViewer({
   const [selectedClass, setSelectedClass] = useState<string>("all");
   const [scoreRange, setScoreRange] = useState<[number, number] | null>(null);
 
+  // New: brightness / contrast for slice view
+  const [brightness, setBrightness] = useState<number>(1.0); // 1.0 = neutral
+  const [contrast, setContrast] = useState<number>(1.0); // 1.0 = neutral
+
   const [helpKey, setHelpKey] = useState<string | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
 
@@ -105,6 +113,12 @@ export default function Coords3dViewer({
   const closeHelp = () => {
     setHelpOpen(false);
   };
+
+  // Optional: reset brightness/contrast when cambiamos de tomo o de modo
+  useEffect(() => {
+    setBrightness(1.0);
+    setContrast(1.0);
+  }, [selectedTomoId, viewMode]);
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Load tomogram list for this SetOfCoordinates3D output
@@ -861,6 +875,10 @@ export default function Coords3dViewer({
                             width={tomoDimsX}
                             height={tomoDimsY}
                             preserveAspectRatio="none"
+                            style={{
+                              // CSS filters applied client-side
+                              filter: `brightness(${brightness}) contrast(${contrast})`,
+                            }}
                           />
                           {slicePointsSvg.map((p) => (
                             <circle
@@ -1148,6 +1166,121 @@ export default function Coords3dViewer({
                         points exceeds this limit.
                       </Typography>
                     </Box>
+
+                    {/* Brightness / Contrast (slice view only) */}
+                    {viewMode === "slice" && (
+                      <Box
+                        sx={{
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: 1,
+                          mt: 0.5,
+                        }}
+                      >
+                        <Box
+                          sx={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                          }}
+                        >
+                          <Typography variant="caption" color="text.secondary">
+                            Intensity
+                          </Typography>
+                          <Button
+                            size="small"
+                            onClick={() => {
+                              setBrightness(1.0);
+                              setContrast(1.0);
+                            }}
+                          >
+                            Reset
+                          </Button>
+                        </Box>
+
+                        <Box
+                          sx={{
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 0.5,
+                          }}
+                        >
+                          <Box
+                            sx={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 0.5,
+                            }}
+                          >
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                            >
+                              Brightness
+                            </Typography>
+                            <IconButton
+                              size="small"
+                              onClick={() => openHelp("brightness")}
+                            >
+                              <HelpCircle size={14} />
+                            </IconButton>
+                          </Box>
+                          <Slider
+                            size="small"
+                            value={brightness}
+                            min={0.3}
+                            max={2.5}
+                            step={0.05}
+                            onChange={(_, v) => setBrightness(v as number)}
+                            valueLabelDisplay="auto"
+                            valueLabelFormat={(v) =>
+                              `${Math.round((v as number) * 100)}%`
+                            }
+                          />
+                        </Box>
+
+                        <Box
+                          sx={{
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 0.5,
+                          }}
+                        >
+                          <Box
+                            sx={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 0.5,
+                            }}
+                          >
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                            >
+                              Contrast
+                            </Typography>
+                            <IconButton
+                              size="small"
+                              onClick={() => openHelp("contrast")}
+                            >
+                              <HelpCircle size={14} />
+                            </IconButton>
+                          </Box>
+                          <Slider
+                            size="small"
+                            value={contrast}
+                            min={0.3}
+                            max={2.5}
+                            step={0.05}
+                            onChange={(_, v) => setContrast(v as number)}
+                            valueLabelDisplay="auto"
+                            valueLabelFormat={(v) =>
+                              `${Math.round((v as number) * 100)}%`
+                            }
+                          />
+                        </Box>
+                      </Box>
+                    )}
                   </Box>
                 </Box>
               </Box>
@@ -1167,6 +1300,10 @@ export default function Coords3dViewer({
             ? "Score range"
             : helpKey === "maxPoints"
             ? "Max points"
+            : helpKey === "brightness"
+            ? "Brightness"
+            : helpKey === "contrast"
+            ? "Contrast"
             : "Help"}
         </DialogTitle>
         <DialogContent>
