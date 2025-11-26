@@ -106,6 +106,9 @@ export default function Coords3dViewer({
   const sliceAbortRef = useRef<AbortController | null>(null);
   const sliceReqIdRef = useRef(0);
 
+  // Throttled slice index: reduce backend calls while dragging slider
+  const throttledSliceIndex = useThrottledValue(sliceIndex, 200);
+
   const openHelp = (key: string) => {
     setHelpKey(key);
     setHelpOpen(true);
@@ -477,7 +480,7 @@ export default function Coords3dViewer({
 
     if (
       selectedTomoId == null ||
-      sliceIndex == null ||
+      throttledSliceIndex == null ||
       maxSlice == null ||
       maxSlice < 0
     ) {
@@ -486,7 +489,7 @@ export default function Coords3dViewer({
       return;
     }
 
-    const clamped = Math.max(0, Math.min(sliceIndex, maxSlice));
+    const clamped = Math.max(0, Math.min(throttledSliceIndex, maxSlice));
 
     sliceAbortRef.current?.abort();
     const controller = new AbortController();
@@ -543,7 +546,7 @@ export default function Coords3dViewer({
   }, [
     viewMode,
     selectedTomoId,
-    sliceIndex,
+    throttledSliceIndex,
     maxSlice,
     projectId,
     protocolId,
@@ -1330,4 +1333,47 @@ function MetaItem({ label, value }: { label: string; value: string }) {
       <Typography variant="caption">{value}</Typography>
     </Box>
   );
+}
+
+// Generic throttle hook reused from volume viewer
+function useThrottledValue<T>(value: T, delayMs: number): T {
+  const [throttled, setThrottled] = useState<T>(value);
+  const lastExecutedRef = useRef<number>(0);
+  const timeoutRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const now = performance.now();
+    const elapsed = now - lastExecutedRef.current;
+
+    const runNow = () => {
+      lastExecutedRef.current = performance.now();
+      setThrottled(value);
+    };
+
+    if (elapsed >= delayMs) {
+      runNow();
+      if (timeoutRef.current != null) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+    } else {
+      if (timeoutRef.current != null) {
+        clearTimeout(timeoutRef.current);
+      }
+      const remaining = delayMs - elapsed;
+      timeoutRef.current = window.setTimeout(() => {
+        runNow();
+        timeoutRef.current = null;
+      }, remaining);
+    }
+
+    return () => {
+      if (timeoutRef.current != null) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+    };
+  }, [value, delayMs]);
+
+  return throttled;
 }

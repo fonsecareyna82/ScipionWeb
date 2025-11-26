@@ -138,6 +138,9 @@ export default function VolumeViewer({
 
   const [axis, setAxis] = useState<"z" | "y" | "x">(DEFAULT_AXIS);
   const [sliceIndex, setSliceIndex] = useState(0);
+  // Throttled slice index used for backend fetches: updates at most every 50ms
+  const throttledSliceIndex = useThrottledValue(sliceIndex, 200);
+
   const [colormap, setColormap] = useState<string>("viridis");
   const [interp2d, setInterp2d] = useState<Interp2d>("linear");
   const [sharpen2d, setSharpen2d] = useState(false);
@@ -346,7 +349,7 @@ export default function VolumeViewer({
       return;
     }
 
-    const idx = Math.max(0, Math.min(sliceIndex, maxSlice));
+    const idx = Math.max(0, Math.min(throttledSliceIndex, maxSlice));
 
     abortRef.current?.abort();
     const myAbort = new AbortController();
@@ -374,6 +377,7 @@ export default function VolumeViewer({
 
         setFrontUrl((prev) => {
           if (prev && prev !== url) {
+            // Previous URL can be revoked by the service if needed.
           }
           return url;
         });
@@ -393,7 +397,7 @@ export default function VolumeViewer({
   }, [
     readySlices,
     viewMode,
-    sliceIndex,
+    throttledSliceIndex,
     axis,
     colormap,
     selectedId,
@@ -1425,6 +1429,50 @@ export default function VolumeViewer({
       </Popover>
     </Box>
   );
+}
+
+/**
+ * Throttle a value so it only updates at most once every `intervalMs` milliseconds.
+ * Unlike debounce, this still updates while the user is moving the slider.
+ */
+function useThrottledValue<T>(value: T, intervalMs: number): T {
+  const [throttled, setThrottled] = useState<T>(value);
+  const lastExecutedRef = useRef<number>(0);
+  const timeoutRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const now = Date.now();
+    const elapsed = now - lastExecutedRef.current;
+
+    if (elapsed >= intervalMs) {
+      // Enough time passed: update immediately.
+      lastExecutedRef.current = now;
+      setThrottled(value);
+      if (timeoutRef.current != null) {
+        window.clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+    } else {
+      // Not enough time: schedule a trailing update.
+      const remaining = intervalMs - elapsed;
+      if (timeoutRef.current != null) {
+        window.clearTimeout(timeoutRef.current);
+      }
+      timeoutRef.current = window.setTimeout(() => {
+        lastExecutedRef.current = Date.now();
+        setThrottled(value);
+        timeoutRef.current = null;
+      }, remaining);
+    }
+
+    return () => {
+      if (timeoutRef.current != null) {
+        window.clearTimeout(timeoutRef.current);
+      }
+    };
+  }, [value, intervalMs]);
+
+  return throttled;
 }
 
 function SlicesCanvas({
