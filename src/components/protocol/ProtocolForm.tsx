@@ -2067,7 +2067,7 @@ export default function ProtocolForm({
           <Box className="inline-flex items-center justify-center rounded-full bg-green-500 text-black text-xs font-bold px-2 py-1">
             {data?.id}
           </Box>
-          <h2 className="text-white">{protocolDetails.label}</h2>
+          <span className="text-white">{protocolDetails.label}</span>
           <span
             className="node-status-pill"
             style={{
