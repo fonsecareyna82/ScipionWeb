@@ -124,9 +124,15 @@ export const ProtocolsDrawer: React.FC<ProtocolsDrawerProps> = ({
 
       {/* Drawer */}
       <div
-        className={`fixed top-3 border bottom-0 right-4 w-130 bg-white dark:bg-gray-800 shadow-xl transform transition-transform duration-300 ease-in-out z-50
+        className={`
+    fixed top-3 border bottom-0 right-2 w-130
+    bg-white dark:bg-gray-800 shadow-xl
     rounded-2xl overflow-hidden
-    ${isOpen ? "translate-x-0" : "translate-x-full"}`}
+    transform transition-all duration-300 ease-in-out z-50
+    ${isOpen
+            ? "translate-x-0 opacity-100 pointer-events-auto"
+            : "translate-x-full opacity-0 pointer-events-none"}
+  `}
       >
         {/* Close */}
         <div className="relative">
