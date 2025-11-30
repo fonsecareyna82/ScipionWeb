@@ -12,7 +12,7 @@ import {
   FormControl,
   InputLabel,
   MenuItem,
-  Divider,   
+  Divider,
   Paper,
   Select,
   SelectChangeEvent,
@@ -27,13 +27,18 @@ import {
   IconButton,
 } from "@mui/material";
 import { LayoutGrid, TableIcon, Check, ColumnsSettingsIcon } from "lucide-react";
-import { useProjectService } from "@/ProjectServiceContext";
 import type {
   MetadataCell,
   MetadataColumn,
   MetadataRow,
   MetadataTableInfo,
   MetadataTableSchema,
+} from "@/api/projects";
+import {
+  fetchOutputMetadataTables,
+  fetchMetadataTableSchema,
+  fetchMetadataTableWindow,
+  fetchMetadataImageCellObjectUrl,
 } from "@/api/projects";
 import { CloseIcon } from "@/icons";
 
@@ -66,6 +71,9 @@ const NORMAL_ROW_HEIGHT = 32;
 const IMAGE_ROW_HEIGHT = BASE_THUMB_SIZE + 16;
 const EXTRA_BUFFER_ROWS = 10;
 
+// To avoid Chrome/Chromium scroll height limit (~33.5M px), cap virtual height below that.
+const MAX_VIRTUAL_SCROLL_HEIGHT = 30_000_000;
+
 // Widths for table layout
 const ROW_INDEX_COL_WIDTH = 52;
 const MIN_TEXT_COL_WIDTH = 140;
@@ -74,13 +82,16 @@ const IMAGE_COL_MIN_WIDTH = BASE_THUMB_SIZE + 24;
 // Gallery paging
 const GALLERY_PAGE_SIZE = 120;
 
+// Limit concurrent image requests to avoid killing the API
+const MAX_CONCURRENT_IMAGE_REQUESTS = 4;
+
 // Header background color (light gray)
 const HEADER_BG = "#f3f4f6";
 
 // Dialog styles (should match volume-viewer header look)
-const DIALOG_HEADER_BG = "#e5e7eb";      // ajusta si en volume-viewer usas otro tono
-const DIALOG_ROW_ODD_BG = "#f9fafb";     // odd rows
-const DIALOG_ROW_EVEN_BG = "#ffffff";    // even rows
+const DIALOG_HEADER_BG = "#e5e7eb"; // adjust if you use another tone in volume-viewer
+const DIALOG_ROW_ODD_BG = "#f9fafb"; // odd rows
+const DIALOG_ROW_EVEN_BG = "#ffffff"; // even rows
 
 const baseCellSx = {
   padding: "4px 8px",
@@ -140,11 +151,66 @@ function useElementSize<T extends Element>(ref: React.RefObject<T | null>) {
   return size;
 }
 
+/* ======================= Global image request queue ======================= */
+
+type ImageJobResult = { url: string; revoke: () => void };
+
+interface ImageJob {
+  run: () => Promise<ImageJobResult>;
+  onSuccess: (result: ImageJobResult) => void;
+  onError: (error: any) => void;
+  isCancelled: () => boolean;
+}
+
+const imageJobQueue: ImageJob[] = [];
+let activeImageJobs = 0;
+
+/** Schedule next image job, respecting max concurrency and skipping cancelled jobs. */
+function scheduleNextImageJob() {
+  if (activeImageJobs >= MAX_CONCURRENT_IMAGE_REQUESTS) {
+    return;
+  }
+  const job = imageJobQueue.shift();
+  if (!job) return;
+
+  // If this job is already cancelled before starting the network call, skip it.
+  if (job.isCancelled()) {
+    scheduleNextImageJob();
+    return;
+  }
+
+  activeImageJobs += 1;
+
+  (async () => {
+    try {
+      const result = await job.run();
+      if (!job.isCancelled()) {
+        job.onSuccess(result);
+      } else {
+        // Component was cancelled after the fetch: immediately revoke the object URL.
+        result.revoke();
+      }
+    } catch (err) {
+      if (!job.isCancelled()) {
+        job.onError(err);
+      }
+    } finally {
+      activeImageJobs -= 1;
+      scheduleNextImageJob();
+    }
+  })();
+}
+
+/** Enqueue an image job to be processed with global concurrency limit. */
+function enqueueImageJob(job: ImageJob) {
+  imageJobQueue.push(job);
+  scheduleNextImageJob();
+}
+
 type MetadataImageCellProps = {
   projectId: number;
   protocolId: number;
   outputName: string;
-  svc: ReturnType<typeof useProjectService>;
   tableName: string;
   /** Global row index in the table (0-based) */
   rowIndexInTable: number;
@@ -160,7 +226,6 @@ const MetadataImageCell: React.FC<MetadataImageCellProps> = ({
   projectId,
   protocolId,
   outputName,
-  svc,
   tableName,
   rowIndexInTable,
   columnName,
@@ -191,31 +256,36 @@ const MetadataImageCell: React.FC<MetadataImageCellProps> = ({
     setLoading(true);
     setError(null);
 
-    (async () => {
-      try {
-        const { url, revoke } = await svc.fetchMetadataImageCellObjectUrl(
+    const job: ImageJob = {
+      isCancelled: () => cancelled,
+      run: () =>
+        fetchMetadataImageCellObjectUrl(
           projectId,
           protocolId,
           outputName,
           tableName,
-          rowIndexInTable, // IMPORTANT: global row index, not row.id
+          rowIndexInTable, // global row index in table order
           columnName,
           { size, applyTransform: false, inline: true, format: "png" },
-        );
-        if (cancelled) {
-          revoke();
-          return;
-        }
+        ),
+      onSuccess: ({ url, revoke }) => {
+        // Only update state and cache if this cell is still alive.
         imageCacheRef.current.set(key, { url, revoke });
         setThumbUrl(url);
-      } catch (e: any) {
-        if (!cancelled) setError(e?.message || "Failed to load image");
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
+        setError(null);
+        setLoading(false);
+      },
+      onError: (err: any) => {
+        setError(err?.message || "Failed to load image");
+        setLoading(false);
+      },
+    };
+
+    enqueueImageJob(job);
 
     return () => {
+      // Mark job as cancelled; if it has not started yet, it will be skipped.
+      // If it is already finished, onSuccess/onError will check this flag.
       cancelled = true;
     };
   }, [
@@ -227,7 +297,6 @@ const MetadataImageCell: React.FC<MetadataImageCellProps> = ({
     protocolId,
     rowIndexInTable,
     size,
-    svc,
     tableName,
   ]);
 
@@ -276,8 +345,6 @@ const MetadataImageCell: React.FC<MetadataImageCellProps> = ({
 };
 
 export function MetadataViewer({ projectId, protocolId, outputName }: MetadataViewerProps) {
-  const svc = useProjectService();
-
   const [viewMode, setViewMode] = useState<ViewMode>("table");
 
   // Tables list
@@ -306,7 +373,10 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
   const [windowOffset, setWindowOffset] = useState(0);
   const [windowLoading, setWindowLoading] = useState(false);
   const [windowError, setWindowError] = useState<string | null>(null);
-  const lastRequestRef = useRef(0);
+
+  // Single in-flight request and pending offset to avoid API overload
+  const windowRequestInFlightRef = useRef(false);
+  const pendingWindowOffsetRef = useRef<number | null>(null);
 
   // Gallery mode data
   const [galleryRows, setGalleryRows] = useState<MetadataRow[]>([]);
@@ -314,6 +384,7 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
   const [galleryLoading, setGalleryLoading] = useState(false);
   const [galleryError, setGalleryError] = useState<string | null>(null);
   const [galleryHasMore, setGalleryHasMore] = useState(false);
+  const galleryRequestInFlightRef = useRef(false);
 
   // Selection
   const [selectedRowIndex, setSelectedRowIndex] = useState<number | null>(null);
@@ -341,14 +412,14 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
   const galleryScrollRef = useRef<HTMLDivElement | null>(null);
   const { height: viewportHeight } = useElementSize(scrollRef);
 
-  // Load tables list
+  // Load tables list using the API client (new metadata endpoints)
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
         setTablesLoading(true);
         setTablesError(null);
-        const list = await svc.fetchOutputMetadataTables(projectId, protocolId, outputName);
+        const list = await fetchOutputMetadataTables(projectId, protocolId, outputName);
         if (cancelled) return;
         setTables(list || []);
         if (!selectedTable && list && list.length > 0) {
@@ -363,8 +434,7 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, protocolId, outputName, svc]);
+  }, [projectId, protocolId, outputName, selectedTable]);
 
   const handleTableChange = (ev: SelectChangeEvent<string>) => {
     const value = ev.target.value;
@@ -376,12 +446,15 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
     setWindowRows([]);
     setWindowOffset(0);
     setWindowError(null);
+    windowRequestInFlightRef.current = false;
+    pendingWindowOffsetRef.current = null;
 
     // Reset gallery
     setGalleryRows([]);
     setGalleryNextOffset(0);
     setGalleryError(null);
     setGalleryHasMore(false);
+    galleryRequestInFlightRef.current = false;
 
     // Reset selection
     setSelectedRowIndex(null);
@@ -412,7 +485,7 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
       try {
         setSchemaLoading(true);
         setSchemaError(null);
-        const s = await svc.fetchMetadataTableSchema(
+        const s = await fetchMetadataTableSchema(
           projectId,
           protocolId,
           outputName,
@@ -432,7 +505,7 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
     return () => {
       cancelled = true;
     };
-  }, [projectId, protocolId, outputName, selectedTable, svc]);
+  }, [projectId, protocolId, outputName, selectedTable]);
 
   // Initialize or update columnSettings when schema changes
   useEffect(() => {
@@ -506,6 +579,26 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
 
   const rowHeight = hasImageColumns ? IMAGE_ROW_HEIGHT : NORMAL_ROW_HEIGHT;
 
+  // Virtual scroll: cap total scrollable height to avoid Chrome scroll limit
+  const virtualContentHeight = useMemo(() => {
+    if (!totalRows || !rowHeight) return 0;
+    const fullHeight = totalRows * rowHeight;
+    return fullHeight > MAX_VIRTUAL_SCROLL_HEIGHT
+      ? MAX_VIRTUAL_SCROLL_HEIGHT
+      : fullHeight;
+  }, [totalRows, rowHeight]);
+
+  const pixelsPerRow = useMemo(() => {
+    if (!totalRows || !rowHeight) return rowHeight || NORMAL_ROW_HEIGHT;
+    if (!virtualContentHeight) return rowHeight;
+    return virtualContentHeight / totalRows;
+  }, [virtualContentHeight, totalRows, rowHeight]);
+
+  const rowSizeForScroll = useMemo(
+    () => pixelsPerRow || rowHeight || NORMAL_ROW_HEIGHT,
+    [pixelsPerRow, rowHeight],
+  );
+
   // Force view back to table if current table has no renderable images
   useEffect(() => {
     if (viewMode === "gallery" && !hasImageColumns) {
@@ -526,40 +619,55 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
   }, [desiredWindowSize]);
 
   const loadWindow = async (offset: number) => {
-    if (!selectedTable) return;
+    if (!selectedTable || totalRows <= 0) return;
+
     const limit = desiredWindowSizeRef.current || 60;
     const total = totalRows;
-
     const maxOffset = total > 0 ? Math.max(0, total - limit) : 0;
     const clampedOffset = total > 0 ? Math.min(Math.max(0, offset), maxOffset) : 0;
 
-    const reqId = ++lastRequestRef.current;
+    // If there is already a request in flight, remember the latest offset we want
+    if (windowRequestInFlightRef.current) {
+      pendingWindowOffsetRef.current = clampedOffset;
+      return;
+    }
+
+    windowRequestInFlightRef.current = true;
     setWindowLoading(true);
     setWindowError(null);
+
     try {
-      const win = await (svc as any).fetchMetadataTableWindow(
+      const win = await fetchMetadataTableWindow(
         projectId,
         protocolId,
         outputName,
         selectedTable,
         { offset: clampedOffset, limit, selectionOnly: false },
       );
-      if (lastRequestRef.current !== reqId) {
-        return;
-      }
+
       const rows: MetadataRow[] = Array.isArray(win)
         ? (win as MetadataRow[])
         : ((win as any)?.rows as MetadataRow[]) || [];
+
       setWindowRows(rows);
-      setWindowOffset(clampedOffset);
-    } catch (e: any) {
-      if (lastRequestRef.current === reqId) {
-        setWindowRows([]);
-        setWindowError(e?.message || "Failed to load rows");
+
+      if (win && !Array.isArray(win) && typeof (win as any).offset === "number") {
+        setWindowOffset((win as any).offset as number);
+      } else {
+        setWindowOffset(clampedOffset);
       }
+    } catch (e: any) {
+      setWindowRows([]);
+      setWindowError(e?.message || "Failed to load rows");
     } finally {
-      if (lastRequestRef.current === reqId) {
-        setWindowLoading(false);
+      setWindowLoading(false);
+      windowRequestInFlightRef.current = false;
+
+      // If there was a new offset requested while this one was loading, load it now.
+      const pending = pendingWindowOffsetRef.current;
+      pendingWindowOffsetRef.current = null;
+      if (pending != null && totalRows > 0) {
+        void loadWindow(pending);
       }
     }
   };
@@ -569,12 +677,15 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
     setWindowRows([]);
     setWindowOffset(0);
     setWindowError(null);
+    windowRequestInFlightRef.current = false;
+    pendingWindowOffsetRef.current = null;
+
     if (!schema || !selectedTable || totalRows === 0) return;
     if (viewMode === "table") {
       void loadWindow(0);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [schema, selectedTable, totalRows, projectId, protocolId, outputName, svc]);
+  }, [schema, selectedTable, totalRows, projectId, protocolId, outputName]);
 
   // Ensure data loaded when switching back to table view
   useEffect(() => {
@@ -592,12 +703,59 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewMode]);
 
+  // Self-recovery: if there are rows in the table but we somehow end up with an empty window,
+  // try loading the correct window based on current scroll position.
+  useEffect(() => {
+    if (
+      viewMode !== "table" ||
+      !schema ||
+      !selectedTable ||
+      totalRows <= 0 ||
+      windowRows.length > 0 ||
+      windowLoading ||
+      windowError
+    ) {
+      return;
+    }
+
+    const container = scrollRef.current;
+    const scrollTop = container?.scrollTop ?? 0;
+    const rowSize = rowSizeForScroll || rowHeight || NORMAL_ROW_HEIGHT;
+    const firstVisible = Math.floor(scrollTop / rowSize);
+
+    const limit = desiredWindowSizeRef.current || 60;
+    const buffer = Math.floor(limit / 3);
+    const total = totalRows;
+    const maxOffset = Math.max(0, total - limit);
+
+    let targetOffset = firstVisible - buffer;
+    if (targetOffset < 0) targetOffset = 0;
+    if (targetOffset > maxOffset) targetOffset = maxOffset;
+
+    void loadWindow(targetOffset);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    viewMode,
+    schema,
+    selectedTable,
+    totalRows,
+    windowRows.length,
+    windowLoading,
+    windowError,
+    rowSizeForScroll,
+  ]);
+
   const handleScroll: React.UIEventHandler<HTMLDivElement> = (e) => {
-    if (!schema || !selectedTable || totalRows === 0 || rowHeight <= 0) return;
+    if (!schema || !selectedTable || totalRows === 0) return;
+
+    const rowSize = rowSizeForScroll || rowHeight || NORMAL_ROW_HEIGHT;
+    if (rowSize <= 0) return;
 
     const el = e.currentTarget;
     const scrollTop = el.scrollTop;
-    const firstVisible = Math.floor(scrollTop / rowHeight);
+
+    // Map scrollTop to the first visible row using the virtual row size
+    const firstVisible = Math.floor(scrollTop / rowSize);
 
     const limit = desiredWindowSizeRef.current || windowRows.length || 60;
     const buffer = Math.floor(limit / 3);
@@ -619,16 +777,22 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
   // Gallery chunk loader
   const loadGalleryChunk = async (offset: number) => {
     if (!selectedTable || !schema || totalRows === 0) return;
+
+    // Avoid concurrent gallery requests
+    if (galleryRequestInFlightRef.current) return;
+
     const remaining = totalRows - offset;
     if (remaining <= 0) {
       setGalleryHasMore(false);
       return;
     }
     const limit = Math.min(GALLERY_PAGE_SIZE, remaining);
+
+    galleryRequestInFlightRef.current = true;
     setGalleryLoading(true);
     setGalleryError(null);
     try {
-      const win = await (svc as any).fetchMetadataTableWindow(
+      const win = await fetchMetadataTableWindow(
         projectId,
         protocolId,
         outputName,
@@ -646,6 +810,7 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
       setGalleryError(e?.message || "Failed to load gallery images");
     } finally {
       setGalleryLoading(false);
+      galleryRequestInFlightRef.current = false;
     }
   };
 
@@ -655,13 +820,14 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
     setGalleryNextOffset(0);
     setGalleryError(null);
     setGalleryHasMore(false);
+    galleryRequestInFlightRef.current = false;
 
     if (!schema || !selectedTable || totalRows === 0) return;
     if (viewMode === "gallery") {
       void loadGalleryChunk(0);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [schema, selectedTable, totalRows, projectId, protocolId, outputName, svc]);
+  }, [schema, selectedTable, totalRows, projectId, protocolId, outputName]);
 
   // Ensure gallery data loaded when switching to gallery view
   useEffect(() => {
@@ -687,9 +853,17 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
     }
   };
 
-  const topSpacerHeight = totalRows > 0 ? windowOffset * rowHeight : 0;
+  // Spacers use the virtual row size to keep total scroll height within limits
+  const topSpacerHeight =
+    totalRows > 0 ? windowOffset * rowSizeForScroll : 0;
+
   const bottomSpacerHeight =
-    totalRows > 0 ? Math.max(0, (totalRows - windowOffset - windowRows.length) * rowHeight) : 0;
+    totalRows > 0
+      ? Math.max(
+          0,
+          (totalRows - windowOffset - windowRows.length) * rowSizeForScroll,
+        )
+      : 0;
 
   // Helper for non-image cells
   const formatCellValue = (value: MetadataCell): React.ReactNode => {
@@ -715,8 +889,6 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
       return String(value);
     }
   };
-
-
 
   const hasData = !!schema && totalRows > 0;
 
@@ -870,8 +1042,8 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
           {viewMode === "gallery" && schema && (
             <Tooltip title="Manage columns">
               <span>
-                <IconButton disabled={true} size="small">
-                  <ColumnsSettingsIcon fontSize="small"/>
+                <IconButton disabled size="small">
+                  <ColumnsSettingsIcon fontSize="small" />
                 </IconButton>
               </span>
             </Tooltip>
@@ -934,7 +1106,7 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
           }}
         >
           <Typography variant="caption" color="text.secondary">
-            Output: <strong >{outputName}</strong>
+            Output: <strong>{outputName}</strong>
           </Typography>
           <Typography variant="caption" color="text.secondary">
             Rows: <strong>{totalRows}</strong>
@@ -1089,7 +1261,7 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
                               : "rgba(248,250,252,1)",
                           },
                           "&:hover td": {
-                            transition: "background-color 120ms ease-out",
+                            transition: "background-color 120ms.ease-out",
                           },
                           "& > td": {
                             borderRight: "1px solid rgba(148,163,184,0.25)",
@@ -1163,7 +1335,6 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
                                   projectId={projectId}
                                   protocolId={protocolId}
                                   outputName={outputName}
-                                  svc={svc}
                                   tableName={selectedTable}
                                   rowIndexInTable={displayRowIndex}
                                   columnName={col.name}
@@ -1301,7 +1472,7 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
                   }}
                 >
                   {galleryRows.map((row, idx) => {
-                    // galleryRows contains rows starting at index 0..N (global index since we always load from 0)
+                    // galleryRows always hold rows from index 0..N in table order
                     const globalRowIndex = idx;
 
                     const v = row.values[firstImageColumn.index];
@@ -1355,7 +1526,6 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
                             projectId={projectId}
                             protocolId={protocolId}
                             outputName={outputName}
-                            svc={svc}
                             tableName={selectedTable}
                             rowIndexInTable={globalRowIndex}
                             columnName={firstImageColumn.name}
@@ -1457,11 +1627,11 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
         maxWidth="sm"
         fullWidth
         BackdropProps={{
-          sx: { backgroundColor: "transparent" }, 
+          sx: { backgroundColor: "transparent" },
         }}
       >
-        <DialogTitle sx={headerColumnDialogSx}>Columns
-
+        <DialogTitle sx={headerColumnDialogSx}>
+          Columns
           <IconButton
             onClick={closeColumnsDialog}
             aria-label="Close analyze dialog"
@@ -1471,7 +1641,6 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
             <CloseIcon fontSize="small" />
           </IconButton>
         </DialogTitle>
-
 
         <DialogContent dividers>
           <Table size="small">
@@ -1574,7 +1743,6 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
           </Button>
         </DialogActions>
       </Dialog>
-
     </Box>
   );
 }

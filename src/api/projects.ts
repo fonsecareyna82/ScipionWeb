@@ -1062,6 +1062,7 @@ export function getMetadataImageCellUrl(
 export interface MetadataWindow {
   offset?: number;
   limit?: number;
+  totalRows?: number; 
   rows: MetadataRow[];
 }
 
@@ -1095,15 +1096,20 @@ export async function fetchMetadataTableWindow(
 
   const data = await safeJson<any>(res);
 
-  // Backend puede devolver directamente el array de rows
   if (Array.isArray(data)) {
-    return { rows: data as MetadataRow[] };
+    return {
+      offset,
+      limit,
+      rows: data as MetadataRow[],
+    };
   }
-  // O un objeto { offset, limit, rows }
+
   if (data && Array.isArray(data.rows)) {
     return {
       offset: typeof data.offset === "number" ? data.offset : offset,
       limit: typeof data.limit === "number" ? data.limit : limit,
+      totalRows:
+        typeof data.totalRows === "number" ? data.totalRows : undefined,
       rows: data.rows as MetadataRow[],
     };
   }
