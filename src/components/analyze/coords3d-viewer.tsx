@@ -48,13 +48,25 @@ type TomogramItem = {
 
 type ViewMode = "slice" | "map3d";
 
+type SliceAxis = "x" | "y" | "z";
+
+type SliceCircle = {
+  key: string;
+  x: number;
+  y: number;
+  radius: number;
+  opacity: number;
+  strokeWidth: number;
+  dz: number;
+};
+
 const MAX_POINTS_DEFAULT = 50000;
 const NEARBY_SLICE_RANGE = 10; // slices above/below current slice to show
 const MIN_NEARBY_SLICE_FACTOR = 0.25; // minimal radius/opacity factor for far slices
 
 const HELP_TEXT: Record<string, string> = {
   sliceIndex:
-    "Select the tomogram slice along Z. The slider runs from 1 to the total number of slices reported for this tomogram.",
+    "Select the tomogram slice index along this axis. The slider runs from 1 to the total number of slices reported for this tomogram on that axis.",
   classFilter:
     "Filter coordinates by their assigned class. Use 'All' to show all classes together.",
   scoreFilter:
@@ -66,6 +78,133 @@ const HELP_TEXT: Record<string, string> = {
   contrast:
     "Adjust the contrast of the tomogram slice. This is applied client-side and does not modify the underlying data.",
 };
+
+function getSlicePlaneDims(
+  dims: [number, number, number] | null,
+  axis: SliceAxis,
+): [number, number] | null {
+  if (!dims) return null;
+  const [dimX, dimY, dimZ] = dims;
+  if (dimX <= 0 || dimY <= 0 || dimZ <= 0) return null;
+
+  if (axis === "z") {
+    // XY plane
+    return [dimX, dimY];
+  }
+  if (axis === "x") {
+    // YZ plane (transposed to make the view more vertical: width = Z, height = Y)
+    return [dimZ, dimY];
+  }
+  // axis === "y" -> XZ plane
+  return [dimX, dimZ];
+}
+
+
+function computeSlicePointsSvg(
+  points: (Coords3dPoint & { radius?: number })[],
+  axis: SliceAxis,
+  sliceIndex: number | null,
+  dims: [number, number, number] | null,
+): SliceCircle[] {
+  if (!points.length || sliceIndex == null || !dims) {
+    return [];
+  }
+
+  const planeDims = getSlicePlaneDims(dims, axis);
+  if (!planeDims) {
+    return [];
+  }
+
+  const [width, height] = planeDims;
+  const maxDim = Math.max(width, height);
+  const baseR = maxDim > 0 ? Math.max(1, maxDim * 0.003) : 2;
+
+  const radiiRaw = points
+    .map((p) => Number((p as any).radius))
+    .filter((v) => Number.isFinite(v) && v > 0);
+
+  let minR = 0;
+  let maxR = 0;
+  if (radiiRaw.length > 0) {
+    minR = Math.min(...radiiRaw);
+    maxR = Math.max(...radiiRaw);
+  }
+
+  const hasVar =
+    radiiRaw.length > 0 &&
+    maxR > minR &&
+    Number.isFinite(maxR) &&
+    Number.isFinite(minR);
+
+  const mapRadius = (raw?: number) => {
+    if (!hasVar || raw === undefined || !Number.isFinite(raw) || raw <= 0) {
+      return baseR;
+    }
+    const t = (raw - minR) / (maxR - minR);
+    const tClamped = Math.max(0, Math.min(1, t));
+    return baseR * (0.7 + 1.3 * tClamped);
+  };
+
+  const neighbors: SliceCircle[] = [];
+
+  for (let idx = 0; idx < points.length; idx++) {
+    const p: any = points[idx];
+    const coordVal =
+      axis === "x" ? Number(p.x) : axis === "y" ? Number(p.y) : Number(p.z);
+    if (!Number.isFinite(coordVal)) {
+      continue;
+    }
+
+    const coordInt = Math.round(coordVal);
+    const dz = Math.abs(coordInt - sliceIndex);
+    if (dz > NEARBY_SLICE_RANGE) {
+      continue;
+    }
+
+    const zNorm = 1 - dz / (NEARBY_SLICE_RANGE + 1); // 1 for dz=0, ~0 near the limit
+    const factor =
+      MIN_NEARBY_SLICE_FACTOR +
+      zNorm * (1 - MIN_NEARBY_SLICE_FACTOR); // between MIN_NEARBY_SLICE_FACTOR and 1
+
+    const rBase = mapRadius(p.radius);
+    const rFinal = rBase * factor;
+
+    const opacity = 0.3 + zNorm * 0.7; // 0.3..1
+    const strokeWidth = 0.6 + zNorm * 1.4; // thinner for far slices
+
+    let cx = 0;
+    let cy = 0;
+    if (axis === "z") {
+      // XY plane
+      cx = p.x;
+      cy = p.y;
+    } else if (axis === "x") {
+      // YZ plane (transposed so Z is horizontal and Y is vertical)
+      cx = p.z;
+      cy = p.y;
+    } else {
+      // axis === "y" -> XZ plane
+      cx = p.x;
+      cy = p.z;
+    }
+
+
+    neighbors.push({
+      key: String(p.id ?? `${idx}-${p.x}-${p.y}-${p.z}`),
+      x: cx,
+      y: cy,
+      radius: rFinal,
+      opacity,
+      strokeWidth,
+      dz,
+    });
+  }
+
+  // Draw farther slices first so points in the current slice appear on top
+  neighbors.sort((a, b) => b.dz - a.dz);
+
+  return neighbors;
+}
 
 export default function Coords3dViewer({
   projectId,
@@ -86,19 +225,20 @@ export default function Coords3dViewer({
   const [pointsError, setPointsError] = useState<string | null>(null);
 
   const [viewMode, setViewMode] = useState<ViewMode>("slice");
+  const [multiViewMode, setMultiViewMode] = useState<"single" | "triple">("single");
 
   const [maxPoints, setMaxPoints] = useState<number>(MAX_POINTS_DEFAULT);
   const [selectedClass, setSelectedClass] = useState<string>("all");
   const [scoreRange, setScoreRange] = useState<[number, number] | null>(null);
 
-  // New: brightness / contrast for slice view
+  // Brightness / contrast for slice view
   const [brightness, setBrightness] = useState<number>(1.0); // 1.0 = neutral
   const [contrast, setContrast] = useState<number>(1.0); // 1.0 = neutral
 
   const [helpKey, setHelpKey] = useState<string | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
 
-  // Slice view state
+  // Slice view state (Z axis)
   const [sliceIndex, setSliceIndex] = useState<number | null>(null);
   const [sliceImageUrl, setSliceImageUrl] = useState<string | null>(null);
   const [sliceError, setSliceError] = useState<string | null>(null);
@@ -106,8 +246,24 @@ export default function Coords3dViewer({
   const sliceAbortRef = useRef<AbortController | null>(null);
   const sliceReqIdRef = useRef(0);
 
-  // Throttled slice index: reduce backend calls while dragging slider
+  // Orthogonal slice state (X and Y axes)
+  const [sliceIndexX, setSliceIndexX] = useState<number | null>(null);
+  const [sliceIndexY, setSliceIndexY] = useState<number | null>(null);
+  const [sliceXImageUrl, setSliceXImageUrl] = useState<string | null>(null);
+  const [sliceYImageUrl, setSliceYImageUrl] = useState<string | null>(null);
+  const [sliceXError, setSliceXError] = useState<string | null>(null);
+  const [sliceYError, setSliceYError] = useState<string | null>(null);
+  const [sliceXLoading, setSliceXLoading] = useState(false);
+  const [sliceYLoading, setSliceYLoading] = useState(false);
+  const sliceXAbortRef = useRef<AbortController | null>(null);
+  const sliceYAbortRef = useRef<AbortController | null>(null);
+  const sliceXReqIdRef = useRef(0);
+  const sliceYReqIdRef = useRef(0);
+
+  // Throttled slice indices: reduce backend calls while dragging slider
   const throttledSliceIndex = useThrottledValue(sliceIndex, 200);
+  const throttledSliceIndexX = useThrottledValue(sliceIndexX, 200);
+  const throttledSliceIndexY = useThrottledValue(sliceIndexY, 200);
 
   const openHelp = (key: string) => {
     setHelpKey(key);
@@ -117,7 +273,7 @@ export default function Coords3dViewer({
     setHelpOpen(false);
   };
 
-  // Optional: reset brightness/contrast when cambiamos de tomo o de modo
+  // Optional: reset brightness/contrast when tomogram or view mode changes
   useEffect(() => {
     setBrightness(1.0);
     setContrast(1.0);
@@ -229,10 +385,10 @@ export default function Coords3dViewer({
               typeof p.score === "number" && Number.isFinite(p.score)
                 ? p.score
                 : typeof p.weight === "number" && Number.isFinite(p.weight)
-                ? p.weight
-                : typeof p.prob === "number" && Number.isFinite(p.prob)
-                ? p.prob
-                : undefined;
+                  ? p.weight
+                  : typeof p.prob === "number" && Number.isFinite(p.prob)
+                    ? p.prob
+                    : undefined;
 
             const radius =
               typeof p.radius === "number" && Number.isFinite(p.radius)
@@ -249,7 +405,9 @@ export default function Coords3dViewer({
               radius,
             } as Coords3dPoint & { radius?: number };
           })
-          .filter((p): p is Coords3dPoint & { radius?: number } => p !== null);
+          .filter(
+            (p): p is Coords3dPoint & { radius?: number } => p !== null,
+          );
 
         const normalized: Coordinates3dTomogramPoints = {
           tomoId: tomoIdOut,
@@ -295,7 +453,9 @@ export default function Coords3dViewer({
     return [min, max] as [number, number];
   }, [pointsData]);
 
-  const filteredPoints = useMemo(() => {
+  const filteredPoints = useMemo<
+    (Coords3dPoint & { radius?: number })[]
+  >(() => {
     if (!pointsData?.coords) return [];
     let pts = pointsData.coords as (Coords3dPoint & { radius?: number })[];
 
@@ -335,7 +495,7 @@ export default function Coords3dViewer({
   }, [tomos, selectedTomoId]);
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // Tomogram dims + slice range (dims as [X, Y, Z])
+  // Tomogram dims + slice ranges (dims as [X, Y, Z])
   // ─────────────────────────────────────────────────────────────────────────────
   const tomoDims = useMemo<[number, number, number] | null>(() => {
     const t = tomos.find((tt) => String(tt.tomoId) === String(selectedTomoId));
@@ -354,22 +514,54 @@ export default function Coords3dViewer({
   const tomoDimsY = tomoDims ? tomoDims[1] : null;
   const tomoDimsZ = tomoDims ? tomoDims[2] : null;
 
-  const maxSlice = useMemo(() => {
+  const maxSliceZ = useMemo(() => {
     if (tomoDimsZ == null) return null;
     const zInt = Math.floor(Number(tomoDimsZ));
     if (!Number.isFinite(zInt) || zInt <= 0) return null;
     return Math.max(0, zInt - 1);
   }, [tomoDimsZ]);
 
-  // Initialize sliceIndex whenever a new tomogram or dims arrive
+  const maxSliceX = useMemo(() => {
+    if (tomoDimsX == null) return null;
+    const xInt = Math.floor(Number(tomoDimsX));
+    if (!Number.isFinite(xInt) || xInt <= 0) return null;
+    return Math.max(0, xInt - 1);
+  }, [tomoDimsX]);
+
+  const maxSliceY = useMemo(() => {
+    if (tomoDimsY == null) return null;
+    const yInt = Math.floor(Number(tomoDimsY));
+    if (!Number.isFinite(yInt) || yInt <= 0) return null;
+    return Math.max(0, yInt - 1);
+  }, [tomoDimsY]);
+
+  // Initialize slice indices whenever a new tomogram or dims arrive
   useEffect(() => {
-    if (maxSlice == null) {
+    if (maxSliceZ == null) {
       setSliceIndex(null);
       return;
     }
-    const mid = Math.round(maxSlice / 2);
+    const mid = Math.round(maxSliceZ / 2);
     setSliceIndex(mid);
-  }, [selectedTomoId, maxSlice]);
+  }, [selectedTomoId, maxSliceZ]);
+
+  useEffect(() => {
+    if (maxSliceX == null) {
+      setSliceIndexX(null);
+      return;
+    }
+    const mid = Math.round(maxSliceX / 2);
+    setSliceIndexX(mid);
+  }, [selectedTomoId, maxSliceX]);
+
+  useEffect(() => {
+    if (maxSliceY == null) {
+      setSliceIndexY(null);
+      return;
+    }
+    const mid = Math.round(maxSliceY / 2);
+    setSliceIndexY(mid);
+  }, [selectedTomoId, maxSliceY]);
 
   // Points that lie in the current Z slice (exact slice)
   const slicePoints = useMemo(() => {
@@ -383,95 +575,25 @@ export default function Coords3dViewer({
   }, [filteredPoints, sliceIndex]);
 
   // Points mapped to SVG with Napari-like behavior across nearby slices
-  const slicePointsSvg = useMemo(() => {
-    if (
-      !filteredPoints.length ||
-      sliceIndex == null ||
-      tomoDimsX == null ||
-      tomoDimsY == null
-    ) {
-      return [];
-    }
+  const slicePointsSvgZ = useMemo(
+    () => computeSlicePointsSvg(filteredPoints, "z", sliceIndex, tomoDims),
+    [filteredPoints, sliceIndex, tomoDims],
+  );
 
-    const maxDim = Math.max(tomoDimsX, tomoDimsY);
-    const baseR = maxDim > 0 ? Math.max(1, maxDim * 0.003) : 2;
+  const slicePointsSvgX = useMemo(
+    () => computeSlicePointsSvg(filteredPoints, "x", sliceIndexX, tomoDims),
+    [filteredPoints, sliceIndexX, tomoDims],
+  );
 
-    const radiiRaw = filteredPoints
-      .map((p: any) => Number(p.radius))
-      .filter((v) => Number.isFinite(v) && v > 0);
-
-    let minR = 0;
-    let maxR = 0;
-    if (radiiRaw.length > 0) {
-      minR = Math.min(...radiiRaw);
-      maxR = Math.max(...radiiRaw);
-    }
-    const hasVar =
-      radiiRaw.length > 0 &&
-      maxR > minR &&
-      Number.isFinite(maxR) &&
-      Number.isFinite(minR);
-
-    const mapRadius = (raw?: number) => {
-      if (!hasVar || raw === undefined || !Number.isFinite(raw) || raw <= 0) {
-        return baseR;
-      }
-      const t = (raw - minR) / (maxR - minR);
-      const tClamped = Math.max(0, Math.min(1, t));
-      return baseR * (0.7 + 1.3 * tClamped);
-    };
-
-    const neighbors: {
-      key: string;
-      x: number;
-      y: number;
-      radius: number;
-      opacity: number;
-      strokeWidth: number;
-      dz: number;
-    }[] = [];
-
-    for (let idx = 0; idx < filteredPoints.length; idx++) {
-      const p: any = filteredPoints[idx];
-      const zVal = Number(p.z);
-      if (!Number.isFinite(zVal)) continue;
-
-      const zInt = Math.round(zVal);
-      const dz = Math.abs(zInt - sliceIndex);
-      if (dz > NEARBY_SLICE_RANGE) continue;
-
-      const zNorm = 1 - dz / (NEARBY_SLICE_RANGE + 1); // 1 for dz=0, ~0 near the limit
-      const factor =
-        MIN_NEARBY_SLICE_FACTOR +
-        zNorm * (1 - MIN_NEARBY_SLICE_FACTOR); // between MIN_NEARBY_SLICE_FACTOR and 1
-
-      const rBase = mapRadius(p.radius);
-      const rFinal = rBase * factor;
-
-      const opacity = 0.3 + zNorm * 0.7; // 0.3..1
-      const strokeWidth = 0.6 + zNorm * 1.4; // thinner for far slices
-
-      neighbors.push({
-        key: String(p.id ?? `${idx}-${p.x}-${p.y}-${p.z}`),
-        x: p.x,
-        y: p.y,
-        radius: rFinal,
-        opacity,
-        strokeWidth,
-        dz,
-      });
-    }
-
-    // Draw farther slices first so points in the current slice appear on top
-    neighbors.sort((a, b) => b.dz - a.dz);
-
-    return neighbors;
-  }, [filteredPoints, sliceIndex, tomoDimsX, tomoDimsY]);
+  const slicePointsSvgY = useMemo(
+    () => computeSlicePointsSvg(filteredPoints, "y", sliceIndexY, tomoDims),
+    [filteredPoints, sliceIndexY, tomoDims],
+  );
 
   const totalCoords = pointsData?.coords?.length ?? 0;
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // Fetch slice image for slice view (keep previous image to avoid flicker)
+  // Fetch Z-axis slice image for slice view (keep previous image to avoid flicker)
   // ─────────────────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (viewMode !== "slice") {
@@ -481,15 +603,15 @@ export default function Coords3dViewer({
     if (
       selectedTomoId == null ||
       throttledSliceIndex == null ||
-      maxSlice == null ||
-      maxSlice < 0
+      maxSliceZ == null ||
+      maxSliceZ < 0
     ) {
       setSliceError(null);
       setSliceLoading(false);
       return;
     }
 
-    const clamped = Math.max(0, Math.min(throttledSliceIndex, maxSlice));
+    const clamped = Math.max(0, Math.min(throttledSliceIndex, maxSliceZ));
 
     sliceAbortRef.current?.abort();
     const controller = new AbortController();
@@ -547,7 +669,177 @@ export default function Coords3dViewer({
     viewMode,
     selectedTomoId,
     throttledSliceIndex,
-    maxSlice,
+    maxSliceZ,
+    projectId,
+    protocolId,
+    outputName,
+    svc,
+  ]);
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Fetch X-axis slice image for orthogonal view
+  // ─────────────────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (viewMode !== "slice" || multiViewMode !== "triple") {
+      return;
+    }
+
+    if (
+      selectedTomoId == null ||
+      throttledSliceIndexX == null ||
+      maxSliceX == null ||
+      maxSliceX < 0
+    ) {
+      setSliceXError(null);
+      setSliceXLoading(false);
+      return;
+    }
+
+    const clamped = Math.max(0, Math.min(throttledSliceIndexX, maxSliceX));
+
+    sliceXAbortRef.current?.abort();
+    const controller = new AbortController();
+    sliceXAbortRef.current = controller;
+    const reqId = ++sliceXReqIdRef.current;
+
+    (async () => {
+      try {
+        setSliceXLoading(true);
+        setSliceXError(null);
+
+        const result = await (svc as any).fetchCoords3dTomogramSliceObjectUrl(
+          projectId,
+          protocolId,
+          outputName,
+          selectedTomoId,
+          clamped,
+          {
+            axis: "x",
+            format: "webp",
+            normalize: "minmax",
+            scale: 1,
+            signal: controller.signal,
+          },
+        );
+
+        if (controller.signal.aborted || sliceXReqIdRef.current !== reqId) {
+          if (result?.revoke) {
+            try {
+              result.revoke();
+            } catch {
+              // ignore
+            }
+          }
+          return;
+        }
+
+        setSliceXImageUrl(result?.url ?? null);
+      } catch (e: any) {
+        if (controller.signal.aborted || sliceXReqIdRef.current !== reqId) {
+          return;
+        }
+        setSliceXError(e?.message || "Failed to load tomogram slice (X)");
+      } finally {
+        if (sliceXReqIdRef.current === reqId) {
+          setSliceXLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      controller.abort();
+    };
+  }, [
+    viewMode,
+    multiViewMode,
+    selectedTomoId,
+    throttledSliceIndexX,
+    maxSliceX,
+    projectId,
+    protocolId,
+    outputName,
+    svc,
+  ]);
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Fetch Y-axis slice image for orthogonal view
+  // ─────────────────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (viewMode !== "slice" || multiViewMode !== "triple") {
+      return;
+    }
+
+    if (
+      selectedTomoId == null ||
+      throttledSliceIndexY == null ||
+      maxSliceY == null ||
+      maxSliceY < 0
+    ) {
+      setSliceYError(null);
+      setSliceYLoading(false);
+      return;
+    }
+
+    const clamped = Math.max(0, Math.min(throttledSliceIndexY, maxSliceY));
+
+    sliceYAbortRef.current?.abort();
+    const controller = new AbortController();
+    sliceYAbortRef.current = controller;
+    const reqId = ++sliceYReqIdRef.current;
+
+    (async () => {
+      try {
+        setSliceYLoading(true);
+        setSliceYError(null);
+
+        const result = await (svc as any).fetchCoords3dTomogramSliceObjectUrl(
+          projectId,
+          protocolId,
+          outputName,
+          selectedTomoId,
+          clamped,
+          {
+            axis: "y",
+            format: "webp",
+            normalize: "minmax",
+            scale: 1,
+            signal: controller.signal,
+          },
+        );
+
+        if (controller.signal.aborted || sliceYReqIdRef.current !== reqId) {
+          if (result?.revoke) {
+            try {
+              result.revoke();
+            } catch {
+              // ignore
+            }
+          }
+          return;
+        }
+
+        setSliceYImageUrl(result?.url ?? null);
+      } catch (e: any) {
+        if (controller.signal.aborted || sliceYReqIdRef.current !== reqId) {
+          return;
+        }
+        setSliceYError(e?.message || "Failed to load tomogram slice (Y)");
+      } finally {
+        if (sliceYReqIdRef.current === reqId) {
+          setSliceYLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      controller.abort();
+    };
+  }, [
+    viewMode,
+    multiViewMode,
+    selectedTomoId,
+    throttledSliceIndexY,
+    maxSliceY,
     projectId,
     protocolId,
     outputName,
@@ -809,8 +1101,295 @@ export default function Coords3dViewer({
                       3D map view is not implemented yet.
                     </Typography>
                   </Box>
+                ) : multiViewMode === "triple" ? (
+                  // Orthogonal 3-view layout: Z big (bottom-left), Y top (horizontal), X right (vertical)
+                  !tomoDims ||
+                    maxSliceZ == null ||
+                    maxSliceX == null ||
+                    maxSliceY == null ||
+                    sliceIndex == null ||
+                    sliceIndexX == null ||
+                    sliceIndexY == null ? (
+                    <Box sx={{ m: "auto" }}>
+                      <Typography variant="body2" color="text.secondary">
+                        Tomogram dimensions are not available for orthogonal views.
+                        Make sure dims are provided as [X, Y, Z].
+                      </Typography>
+                    </Box>
+                  ) : (
+                    <Box
+                      sx={{
+                        width: "100%",
+                        height: "100%",
+                        display: "flex",
+                        gap: 1,
+                        alignItems: "stretch",
+                        justifyContent: "center",
+                      }}
+                    >
+                      {/* Left column: Y on top (XZ), Z below (XY, big) */}
+                      <Box
+                        sx={{
+                          flex: 3,
+                          minWidth: 0,
+                          minHeight: 0,
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: 1,
+                        }}
+                      >
+                        {/* Y view (XZ plane) - TOP, horizontal */}
+                        <Box
+                          sx={{
+                            flex: 0.8,
+                            minWidth: 0,
+                            minHeight: 0,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            position: "relative",
+                          }}
+                        >
+                          <Box
+                            sx={{
+                              position: "absolute",
+                              top: 4,
+                              left: 6,
+                              px: 0.5,
+                              py: 0.25,
+                              borderRadius: 0.5,
+                              bgcolor: "rgba(0,0,0,0.45)",
+                            }}
+                          >
+                            <Typography variant="caption" sx={{ color: "common.white" }}>
+                              Y (XZ)
+                            </Typography>
+                          </Box>
+                          {sliceYLoading && !sliceYImageUrl ? (
+                            <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
+                              <CircularProgress size={18} />
+                              <Typography variant="body2">Loading Y slice…</Typography>
+                            </Box>
+                          ) : sliceYError ? (
+                            <Typography variant="body2" color="error">
+                              {sliceYError}
+                            </Typography>
+                          ) : !tomoDimsX || !tomoDimsZ ? (
+                            <Typography variant="body2" color="text.secondary">
+                              XZ plane dimensions are not available.
+                            </Typography>
+                          ) : !sliceYImageUrl ? (
+                            <Typography variant="body2" color="text.secondary">
+                              No Y slice image.
+                            </Typography>
+                          ) : (
+                            <svg
+                              viewBox={`0 0 ${tomoDimsX} ${tomoDimsZ}`}
+                              preserveAspectRatio="xMidYMid meet"
+                              style={{
+                                width: "100%",
+                                height: "80%",
+                                display: "block",
+                                backgroundColor: "transparent",
+                              }}
+                            >
+                              <image
+                                href={sliceYImageUrl}
+                                x={0}
+                                y={0}
+                                width={tomoDimsX}
+                                height={tomoDimsZ}
+                                preserveAspectRatio="none"
+                                style={{
+                                  filter: `brightness(${brightness}) contrast(${contrast})`,
+                                }}
+                              />
+                              {slicePointsSvgY.map((p) => (
+                                <circle
+                                  key={p.key}
+                                  cx={p.x}
+                                  cy={p.y}
+                                  r={p.radius * 2.2}
+                                  fill="none"
+                                  stroke="red"
+                                  strokeWidth={p.strokeWidth}
+                                  opacity={p.opacity}
+                                />
+                              ))}
+                            </svg>
+                          )}
+                        </Box>
+
+                        {/* Z view (XY plane) - BOTTOM, big */}
+                        <Box
+                          sx={{
+                            flex: 3.2,
+                            minWidth: 0,
+                            minHeight: 0,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            position: "relative",
+                          }}
+                        >
+                          <Box
+                            sx={{
+                              position: "absolute",
+                              top: 4,
+                              left: 6,
+                              px: 0.5,
+                              py: 0.25,
+                              borderRadius: 0.5,
+                              bgcolor: "rgba(0,0,0,0.45)",
+                            }}
+                          >
+                            <Typography variant="caption" sx={{ color: "common.white" }}>
+                              Z (XY)
+                            </Typography>
+                          </Box>
+                          {sliceLoading && !sliceImageUrl ? (
+                            <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
+                              <CircularProgress size={18} />
+                              <Typography variant="body2">Loading Z slice…</Typography>
+                            </Box>
+                          ) : sliceError ? (
+                            <Typography variant="body2" color="error">
+                              {sliceError}
+                            </Typography>
+                          ) : !tomoDimsX || !tomoDimsY ? (
+                            <Typography variant="body2" color="text.secondary">
+                              XY plane dimensions are not available.
+                            </Typography>
+                          ) : !sliceImageUrl ? (
+                            <Typography variant="body2" color="text.secondary">
+                              No Z slice image.
+                            </Typography>
+                          ) : (
+                            <svg
+                              viewBox={`0 0 ${tomoDimsX} ${tomoDimsY}`}
+                              preserveAspectRatio="xMidYMid meet"
+                              style={{
+                                width: "100%",
+                                height: "100%",
+                                display: "block",
+                                backgroundColor: "transparent",
+                              }}
+                            >
+                              <image
+                                href={sliceImageUrl}
+                                x={0}
+                                y={0}
+                                width={tomoDimsX}
+                                height={tomoDimsY}
+                                preserveAspectRatio="none"
+                                style={{
+                                  filter: `brightness(${brightness}) contrast(${contrast})`,
+                                }}
+                              />
+                              {slicePointsSvgZ.map((p) => (
+                                <circle
+                                  key={p.key}
+                                  cx={p.x}
+                                  cy={p.y}
+                                  r={p.radius * 2.2}
+                                  fill="none"
+                                  stroke="red"
+                                  strokeWidth={p.strokeWidth}
+                                  opacity={p.opacity}
+                                />
+                              ))}
+                            </svg>
+                          )}
+                        </Box>
+                      </Box>
+
+                      {/* Right column: X view (YZ plane), vertical */}
+                      <Box
+                        sx={{
+                          flex: 1,
+                          minWidth: 0,
+                          minHeight: 0,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          position: "relative",
+                        }}
+                      >
+                        <Box
+                          sx={{
+                            position: "absolute",
+                            top: 4,
+                            left: 6,
+                            px: 0.5,
+                            py: 0.25,
+                            borderRadius: 0.5,
+                            bgcolor: "rgba(0,0,0,0.45)",
+                          }}
+                        >
+                          <Typography variant="caption" sx={{ color: "common.white" }}>
+                            X (YZ)
+                          </Typography>
+                        </Box>
+                        {sliceXLoading && !sliceXImageUrl ? (
+                          <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
+                            <CircularProgress size={18} />
+                            <Typography variant="body2">Loading X slice…</Typography>
+                          </Box>
+                        ) : sliceXError ? (
+                          <Typography variant="body2" color="error">
+                            {sliceXError}
+                          </Typography>
+                        ) : !tomoDimsY || !tomoDimsZ ? (
+                          <Typography variant="body2" color="text.secondary">
+                            YZ plane dimensions are not available.
+                          </Typography>
+                        ) : !sliceXImageUrl ? (
+                          <Typography variant="body2" color="text.secondary">
+                            No X slice image.
+                          </Typography>
+                        ) : (
+                          <svg
+                            viewBox={`0 0 ${tomoDimsZ} ${tomoDimsY}`}
+                            preserveAspectRatio="xMidYMid meet"
+                            style={{
+                              width: "100%",
+                              height: "70%",
+                              display: "block",
+                              backgroundColor: "transparent",
+                            }}
+                          >
+                            <image
+                              href={sliceXImageUrl}
+                              x={0}
+                              y={0}
+                              width={tomoDimsZ}
+                              height={tomoDimsY}
+                              preserveAspectRatio="none"
+                              style={{
+                                filter: `brightness(${brightness}) contrast(${contrast})`,
+                              }}
+                            />
+                            {slicePointsSvgX.map((p) => (
+                              <circle
+                                key={p.key}
+                                cx={p.x}
+                                cy={p.y}
+                                r={p.radius * 2.2}
+                                fill="none"
+                                stroke="red"
+                                strokeWidth={p.strokeWidth}
+                                opacity={p.opacity}
+                              />
+                            ))}
+                          </svg>
+
+                        )}
+                      </Box>
+                    </Box>
+                  )
                 ) : (
-                  // Slice view
+
+                  // Single-slice Z view
                   <Box
                     sx={{
                       flex: 1,
@@ -837,7 +1416,7 @@ export default function Coords3dViewer({
                       <Typography variant="body2" color="error">
                         {sliceError}
                       </Typography>
-                    ) : maxSlice == null ||
+                    ) : maxSliceZ == null ||
                       sliceIndex == null ||
                       !tomoDimsX ||
                       !tomoDimsY ? (
@@ -883,7 +1462,7 @@ export default function Coords3dViewer({
                               filter: `brightness(${brightness}) contrast(${contrast})`,
                             }}
                           />
-                          {slicePointsSvg.map((p) => (
+                          {slicePointsSvgZ.map((p) => (
                             <circle
                               key={p.key}
                               cx={p.x}
@@ -939,12 +1518,14 @@ export default function Coords3dViewer({
                     })}
                   />
                 )}
-                {viewMode === "slice" && sliceIndex != null && maxSlice != null && (
-                  <MetaItem
-                    label="Slice (Z)"
-                    value={`${sliceIndex + 1} / ${maxSlice + 1}`}
-                  />
-                )}
+                {viewMode === "slice" &&
+                  sliceIndex != null &&
+                  maxSliceZ != null && (
+                    <MetaItem
+                      label="Slice (Z)"
+                      value={`${sliceIndex + 1} / ${maxSliceZ + 1}`}
+                    />
+                  )}
                 {viewMode === "slice" && slicePoints.length > 0 && (
                   <MetaItem
                     label="Slice points"
@@ -1005,65 +1586,272 @@ export default function Coords3dViewer({
                         sx={{
                           display: "flex",
                           flexDirection: "column",
-                          gap: 0.5,
+                          gap: 1,
                         }}
                       >
+                        {/* Single vs 3 views */}
                         <Box
                           sx={{
-                            display: "inline-flex",
-                            alignItems: "center",
+                            display: "flex",
+                            flexDirection: "column",
                             gap: 0.5,
                           }}
                         >
-                          <Typography variant="caption" color="text.secondary">
-                            Slice (Z)
-                          </Typography>
-                          <IconButton
-                            size="small"
-                            onClick={() => openHelp("sliceIndex")}
-                          >
-                            <HelpCircle size={14} />
-                          </IconButton>
-                        </Box>
-                        {maxSlice != null && sliceIndex != null ? (
-                          <>
-                            <Slider
-                              size="small"
-                              value={Math.min(sliceIndex, maxSlice)}
-                              min={0}
-                              max={maxSlice}
-                              step={1}
-                              onChange={(_, v) => setSliceIndex(v as number)}
-                              valueLabelDisplay="auto"
-                              valueLabelFormat={(v) => String((v as number) + 1)}
-                            />
-                            <Box
-                              sx={{
-                                display: "flex",
-                                justifyContent: "space-between",
-                              }}
-                            >
-                              <Typography
-                                variant="caption"
-                                color="text.secondary"
-                              >
-                                1
-                              </Typography>
-                              <Typography
-                                variant="caption"
-                                color="text.secondary"
-                              >
-                                {maxSlice + 1}
-                              </Typography>
-                            </Box>
-                          </>
-                        ) : (
                           <Typography
                             variant="caption"
                             color="text.secondary"
                           >
-                            Slice range not available. Tomogram dims are missing.
+                            Slice layout
                           </Typography>
+                          <ToggleButtonGroup
+                            size="small"
+                            exclusive
+                            value={multiViewMode}
+                            onChange={(_, v) => v && setMultiViewMode(v)}
+                          >
+                            <ToggleButton value="single">
+                              Single
+                            </ToggleButton>
+                            <ToggleButton value="triple">
+                              3 views
+                            </ToggleButton>
+                          </ToggleButtonGroup>
+                        </Box>
+
+                        {/* Z slider */}
+                        <Box
+                          sx={{
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 0.5,
+                          }}
+                        >
+                          <Box
+                            sx={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 0.5,
+                            }}
+                          >
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                            >
+                              Slice (Z)
+                            </Typography>
+                            <IconButton
+                              size="small"
+                              onClick={() => openHelp("sliceIndex")}
+                            >
+                              <HelpCircle size={14} />
+                            </IconButton>
+                          </Box>
+                          {maxSliceZ != null && sliceIndex != null ? (
+                            <>
+                              <Slider
+                                size="small"
+                                value={Math.min(sliceIndex, maxSliceZ)}
+                                min={0}
+                                max={maxSliceZ}
+                                step={1}
+                                onChange={(_, v) =>
+                                  setSliceIndex(v as number)
+                                }
+                                valueLabelDisplay="auto"
+                                valueLabelFormat={(v) =>
+                                  String((v as number) + 1)
+                                }
+                              />
+                              <Box
+                                sx={{
+                                  display: "flex",
+                                  justifyContent: "space-between",
+                                }}
+                              >
+                                <Typography
+                                  variant="caption"
+                                  color="text.secondary"
+                                >
+                                  1
+                                </Typography>
+                                <Typography
+                                  variant="caption"
+                                  color="text.secondary"
+                                >
+                                  {maxSliceZ + 1}
+                                </Typography>
+                              </Box>
+                            </>
+                          ) : (
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                            >
+                              Slice range not available. Tomogram dims are
+                              missing.
+                            </Typography>
+                          )}
+                        </Box>
+
+                        {/* X & Y sliders only in 3 views mode */}
+                        {multiViewMode === "triple" && (
+                          <>
+                            {/* X slider */}
+                            <Box
+                              sx={{
+                                display: "flex",
+                                flexDirection: "column",
+                                gap: 0.5,
+                              }}
+                            >
+                              <Box
+                                sx={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: 0.5,
+                                }}
+                              >
+                                <Typography
+                                  variant="caption"
+                                  color="text.secondary"
+                                >
+                                  Slice (X)
+                                </Typography>
+                                <IconButton
+                                  size="small"
+                                  onClick={() => openHelp("sliceIndex")}
+                                >
+                                  <HelpCircle size={14} />
+                                </IconButton>
+                              </Box>
+                              {maxSliceX != null && sliceIndexX != null ? (
+                                <>
+                                  <Slider
+                                    size="small"
+                                    value={Math.min(
+                                      sliceIndexX,
+                                      maxSliceX,
+                                    )}
+                                    min={0}
+                                    max={maxSliceX}
+                                    step={1}
+                                    onChange={(_, v) =>
+                                      setSliceIndexX(v as number)
+                                    }
+                                    valueLabelDisplay="auto"
+                                    valueLabelFormat={(v) =>
+                                      String((v as number) + 1)
+                                    }
+                                  />
+                                  <Box
+                                    sx={{
+                                      display: "flex",
+                                      justifyContent: "space-between",
+                                    }}
+                                  >
+                                    <Typography
+                                      variant="caption"
+                                      color="text.secondary"
+                                    >
+                                      1
+                                    </Typography>
+                                    <Typography
+                                      variant="caption"
+                                      color="text.secondary"
+                                    >
+                                      {maxSliceX + 1}
+                                    </Typography>
+                                  </Box>
+                                </>
+                              ) : (
+                                <Typography
+                                  variant="caption"
+                                  color="text.secondary"
+                                >
+                                  Slice range not available for X axis. Tomogram
+                                  dims are missing.
+                                </Typography>
+                              )}
+                            </Box>
+
+                            {/* Y slider */}
+                            <Box
+                              sx={{
+                                display: "flex",
+                                flexDirection: "column",
+                                gap: 0.5,
+                              }}
+                            >
+                              <Box
+                                sx={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: 0.5,
+                                }}
+                              >
+                                <Typography
+                                  variant="caption"
+                                  color="text.secondary"
+                                >
+                                  Slice (Y)
+                                </Typography>
+                                <IconButton
+                                  size="small"
+                                  onClick={() => openHelp("sliceIndex")}
+                                >
+                                  <HelpCircle size={14} />
+                                </IconButton>
+                              </Box>
+                              {maxSliceY != null && sliceIndexY != null ? (
+                                <>
+                                  <Slider
+                                    size="small"
+                                    value={Math.min(
+                                      sliceIndexY,
+                                      maxSliceY,
+                                    )}
+                                    min={0}
+                                    max={maxSliceY}
+                                    step={1}
+                                    onChange={(_, v) =>
+                                      setSliceIndexY(v as number)
+                                    }
+                                    valueLabelDisplay="auto"
+                                    valueLabelFormat={(v) =>
+                                      String((v as number) + 1)
+                                    }
+                                  />
+                                  <Box
+                                    sx={{
+                                      display: "flex",
+                                      justifyContent: "space-between",
+                                    }}
+                                  >
+                                    <Typography
+                                      variant="caption"
+                                      color="text.secondary"
+                                    >
+                                      1
+                                    </Typography>
+                                    <Typography
+                                      variant="caption"
+                                      color="text.secondary"
+                                    >
+                                      {maxSliceY + 1}
+                                    </Typography>
+                                  </Box>
+                                </>
+                              ) : (
+                                <Typography
+                                  variant="caption"
+                                  color="text.secondary"
+                                >
+                                  Slice range not available for Y axis. Tomogram
+                                  dims are missing.
+                                </Typography>
+                              )}
+                            </Box>
+                          </>
                         )}
                       </Box>
                     )}
@@ -1096,7 +1884,9 @@ export default function Coords3dViewer({
                             value={scoreRange ?? [scoreMinMax[0], scoreMinMax[1]]}
                             min={scoreMinMax[0]}
                             max={scoreMinMax[1]}
-                            step={(scoreMinMax[1] - scoreMinMax[0]) / 200}
+                            step={
+                              (scoreMinMax[1] - scoreMinMax[0]) / 200 || 0.001
+                            }
                             onChange={(_, v) =>
                               setScoreRange(v as [number, number])
                             }
@@ -1298,16 +2088,16 @@ export default function Coords3dViewer({
           {helpKey === "sliceIndex"
             ? "Slice index"
             : helpKey === "classFilter"
-            ? "Class filter"
-            : helpKey === "scoreFilter"
-            ? "Score range"
-            : helpKey === "maxPoints"
-            ? "Max points"
-            : helpKey === "brightness"
-            ? "Brightness"
-            : helpKey === "contrast"
-            ? "Contrast"
-            : "Help"}
+              ? "Class filter"
+              : helpKey === "scoreFilter"
+                ? "Score range"
+                : helpKey === "maxPoints"
+                  ? "Max points"
+                  : helpKey === "brightness"
+                    ? "Brightness"
+                    : helpKey === "contrast"
+                      ? "Contrast"
+                      : "Help"}
         </DialogTitle>
         <DialogContent>
           <DialogContentText>
@@ -1353,12 +2143,12 @@ function useThrottledValue<T>(value: T, delayMs: number): T {
     if (elapsed >= delayMs) {
       runNow();
       if (timeoutRef.current != null) {
-        clearTimeout(timeoutRef.current);
+        window.clearTimeout(timeoutRef.current);
         timeoutRef.current = null;
       }
     } else {
       if (timeoutRef.current != null) {
-        clearTimeout(timeoutRef.current);
+        window.clearTimeout(timeoutRef.current);
       }
       const remaining = delayMs - elapsed;
       timeoutRef.current = window.setTimeout(() => {
@@ -1369,7 +2159,7 @@ function useThrottledValue<T>(value: T, delayMs: number): T {
 
     return () => {
       if (timeoutRef.current != null) {
-        clearTimeout(timeoutRef.current);
+        window.clearTimeout(timeoutRef.current);
         timeoutRef.current = null;
       }
     };
@@ -1377,3 +2167,5 @@ function useThrottledValue<T>(value: T, delayMs: number): T {
 
   return throttled;
 }
+
+
