@@ -1,5 +1,5 @@
 // src/components/analyze/coords3d-viewer.tsx
-import { useEffect, useMemo, useRef, useState } from "react";
+import {useEffect, useMemo, useRef, useState, type ReactElement,} from "react";
 import {
   Box,
   CircularProgress,
@@ -62,6 +62,9 @@ type SliceCircle = {
 const MAX_POINTS_DEFAULT = 50000;
 const NEARBY_SLICE_RANGE = 10; // slices above/below current slice to show
 const MIN_NEARBY_SLICE_FACTOR = 0.25; // minimal radius/opacity factor for far slices
+
+// Set this to true to debug geometry using a synthetic grid instead of real slice images
+const DEBUG_SYNTHETIC_GRID = false;
 
 const HELP_TEXT: Record<string, string> = {
   sliceIndex:
@@ -577,7 +580,7 @@ export default function Coords3dViewer({
 
   // Fetch Z slice
   useEffect(() => {
-    if (viewMode !== "slice") {
+    if (viewMode !== "slice" || DEBUG_SYNTHETIC_GRID) {
       sliceAbortRef.current?.abort();
       setSliceLoading(false);
       return;
@@ -661,7 +664,7 @@ export default function Coords3dViewer({
 
   // Fetch X slice
   useEffect(() => {
-    if (viewMode !== "slice" || multiViewMode !== "triple") {
+    if (viewMode !== "slice" || multiViewMode !== "triple" || DEBUG_SYNTHETIC_GRID) {
       sliceXAbortRef.current?.abort();
       setSliceXLoading(false);
       return;
@@ -746,7 +749,7 @@ export default function Coords3dViewer({
 
   // Fetch Y slice
   useEffect(() => {
-    if (viewMode !== "slice" || multiViewMode !== "triple") {
+    if (viewMode !== "slice" || multiViewMode !== "triple" || DEBUG_SYNTHETIC_GRID) {
       sliceYAbortRef.current?.abort();
       setSliceYLoading(false);
       return;
@@ -1083,13 +1086,6 @@ export default function Coords3dViewer({
                   </Box>
                 ) : multiViewMode === "triple" ? (
                   // Orthogonal 3-view layout using tomogram dims:
-                  // Grid:
-                  //   rows    ~ [Z, Y]
-                  //   columns ~ [X, Z]
-                  // So:
-                  //   - Y (XZ) top-left, thinner band
-                  //   - Z (XY) bottom-left, main large view
-                  //   - X (YZ) bottom-right, same height as Z
                   !tomoDims ||
                     maxSliceZ == null ||
                     maxSliceX == null ||
@@ -1107,25 +1103,29 @@ export default function Coords3dViewer({
                     <Box
                       sx={{
                         width: "100%",
-                        height: "100%",
+                        maxHeight: "100%",
+                        ...(tomoDimsX != null &&
+                          tomoDimsY != null &&
+                          tomoDimsZ != null && {
+                          aspectRatio: (tomoDimsX + tomoDimsZ) /
+                            (tomoDimsZ + tomoDimsY),
+                        }),
                         display: "grid",
-                        // Column widths proportional to [X, Z]
                         gridTemplateColumns:
                           tomoDimsX != null && tomoDimsZ != null
                             ? `${tomoDimsX}fr ${tomoDimsZ}fr`
                             : "3fr 1fr",
-                        // Row heights proportional to [Z, Y]
                         gridTemplateRows:
                           tomoDimsY != null && tomoDimsZ != null
                             ? `${tomoDimsZ}fr ${tomoDimsY}fr`
                             : "1fr 2fr",
-                        columnGap: 0, // small separation, almost "pegado"
-                        rowGap: 0.25,
+                        columnGap: 0,
+                        rowGap: 0,
                         minWidth: 0,
                         minHeight: 0,
                       }}
                     >
-                      {/* Y view (XZ) - top-left, same column as Z */}
+                      {/* Y view (XZ) - top-left */}
                       <Box
                         sx={{
                           gridColumn: "1 / 2",
@@ -1154,7 +1154,7 @@ export default function Coords3dViewer({
                             Y (XZ)
                           </Typography>
                         </Box>
-                        {sliceYLoading && !sliceYImageUrl ? (
+                        {sliceYLoading && !sliceYImageUrl && !DEBUG_SYNTHETIC_GRID ? (
                           <Box
                             sx={{
                               m: "auto",
@@ -1166,7 +1166,7 @@ export default function Coords3dViewer({
                             <CircularProgress size={18} />
                             <Typography variant="body2">Loading Y slice…</Typography>
                           </Box>
-                        ) : sliceYError ? (
+                        ) : sliceYError && !DEBUG_SYNTHETIC_GRID ? (
                           <Box sx={{ m: "auto" }}>
                             <Typography variant="body2" color="error">
                               {sliceYError}
@@ -1178,7 +1178,7 @@ export default function Coords3dViewer({
                               XZ plane dimensions are not available.
                             </Typography>
                           </Box>
-                        ) : !sliceYImageUrl ? (
+                        ) : !sliceYImageUrl && !DEBUG_SYNTHETIC_GRID ? (
                           <Box sx={{ m: "auto" }}>
                             <Typography variant="body2" color="text.secondary">
                               No Y slice image.
@@ -1195,18 +1195,21 @@ export default function Coords3dViewer({
                               backgroundColor: "transparent",
                             }}
                           >
-                            <image
-                              href={sliceYImageUrl}
-                              x={0}
-                              y={0}
-                              width={tomoDimsX}
-                              height={tomoDimsZ}
-                              preserveAspectRatio="none"
-                              style={{
-                                filter: `brightness(${brightness}) contrast(${contrast})`,
-                              }}
-                            />
-                            {/* Guides from X and Z slices */}
+                            {DEBUG_SYNTHETIC_GRID ? (
+                              <SyntheticGrid width={tomoDimsX} height={tomoDimsZ} />
+                            ) : (
+                              <image
+                                href={sliceYImageUrl ?? undefined}
+                                x={0}
+                                y={0}
+                                width={tomoDimsX}
+                                height={tomoDimsZ}
+                                preserveAspectRatio="none"
+                                style={{
+                                  filter: `brightness(${brightness}) contrast(${contrast})`,
+                                }}
+                              />
+                            )}
                             {sliceIndexX != null && (
                               <line
                                 x1={sliceIndexX}
@@ -1245,7 +1248,7 @@ export default function Coords3dViewer({
                         )}
                       </Box>
 
-                      {/* Z view (XY) - bottom-left, main view */}
+                      {/* Z view (XY) - bottom-left */}
                       <Box
                         sx={{
                           gridColumn: "1 / 2",
@@ -1274,7 +1277,7 @@ export default function Coords3dViewer({
                             Z (XY)
                           </Typography>
                         </Box>
-                        {sliceLoading && !sliceImageUrl ? (
+                        {sliceLoading && !sliceImageUrl && !DEBUG_SYNTHETIC_GRID ? (
                           <Box
                             sx={{
                               m: "auto",
@@ -1286,7 +1289,7 @@ export default function Coords3dViewer({
                             <CircularProgress size={18} />
                             <Typography variant="body2">Loading Z slice…</Typography>
                           </Box>
-                        ) : sliceError ? (
+                        ) : sliceError && !DEBUG_SYNTHETIC_GRID ? (
                           <Box sx={{ m: "auto" }}>
                             <Typography variant="body2" color="error">
                               {sliceError}
@@ -1298,7 +1301,7 @@ export default function Coords3dViewer({
                               XY plane dimensions are not available.
                             </Typography>
                           </Box>
-                        ) : !sliceImageUrl ? (
+                        ) : !sliceImageUrl && !DEBUG_SYNTHETIC_GRID ? (
                           <Box sx={{ m: "auto" }}>
                             <Typography variant="body2" color="text.secondary">
                               No Z slice image.
@@ -1315,18 +1318,21 @@ export default function Coords3dViewer({
                               backgroundColor: "transparent",
                             }}
                           >
-                            <image
-                              href={sliceImageUrl}
-                              x={0}
-                              y={0}
-                              width={tomoDimsX}
-                              height={tomoDimsY}
-                              preserveAspectRatio="none"
-                              style={{
-                                filter: `brightness(${brightness}) contrast(${contrast})`,
-                              }}
-                            />
-                            {/* Guides from X and Y slices */}
+                            {DEBUG_SYNTHETIC_GRID ? (
+                              <SyntheticGrid width={tomoDimsX} height={tomoDimsY} />
+                            ) : (
+                              <image
+                                href={sliceImageUrl ?? undefined}
+                                x={0}
+                                y={0}
+                                width={tomoDimsX}
+                                height={tomoDimsY}
+                                preserveAspectRatio="none"
+                                style={{
+                                  filter: `brightness(${brightness}) contrast(${contrast})`,
+                                }}
+                              />
+                            )}
                             {sliceIndexX != null && (
                               <line
                                 x1={sliceIndexX}
@@ -1365,7 +1371,7 @@ export default function Coords3dViewer({
                         )}
                       </Box>
 
-                      {/* X view (YZ) - bottom-right, same height as Z */}
+                      {/* X view (YZ) - bottom-right */}
                       <Box
                         sx={{
                           gridColumn: "2 / 3",
@@ -1394,7 +1400,7 @@ export default function Coords3dViewer({
                             X (YZ)
                           </Typography>
                         </Box>
-                        {sliceXLoading && !sliceXImageUrl ? (
+                        {sliceXLoading && !sliceXImageUrl && !DEBUG_SYNTHETIC_GRID ? (
                           <Box
                             sx={{
                               m: "auto",
@@ -1406,7 +1412,7 @@ export default function Coords3dViewer({
                             <CircularProgress size={18} />
                             <Typography variant="body2">Loading X slice…</Typography>
                           </Box>
-                        ) : sliceXError ? (
+                        ) : sliceXError && !DEBUG_SYNTHETIC_GRID ? (
                           <Box sx={{ m: "auto" }}>
                             <Typography variant="body2" color="error">
                               {sliceXError}
@@ -1418,7 +1424,7 @@ export default function Coords3dViewer({
                               YZ plane dimensions are not available.
                             </Typography>
                           </Box>
-                        ) : !sliceXImageUrl ? (
+                        ) : !sliceXImageUrl && !DEBUG_SYNTHETIC_GRID ? (
                           <Box sx={{ m: "auto" }}>
                             <Typography variant="body2" color="text.secondary">
                               No X slice image.
@@ -1433,22 +1439,25 @@ export default function Coords3dViewer({
                               height: "100%",
                               display: "block",
                               backgroundColor: "transparent",
-                              // Shift a bit to the left so X visually touches Z
-                              transform: "translateX(-113%)",
+                              alignItems: "start",
+                              alignContent: "start",
                             }}
                           >
-                            <image
-                              href={sliceXImageUrl}
-                              x={0}
-                              y={0}
-                              width={tomoDimsZ}
-                              height={tomoDimsY}
-                              preserveAspectRatio="none"
-                              style={{
-                                filter: `brightness(${brightness}) contrast(${contrast})`,
-                              }}
-                            />
-                            {/* Guides from Z and Y slices */}
+                            {DEBUG_SYNTHETIC_GRID ? (
+                              <SyntheticGrid width={tomoDimsZ} height={tomoDimsY} />
+                            ) : (
+                              <image
+                                href={sliceXImageUrl ?? undefined}
+                                x={0}
+                                y={0}
+                                width={tomoDimsZ}
+                                height={tomoDimsY}
+                                preserveAspectRatio="none"
+                                style={{
+                                  filter: `brightness(${brightness}) contrast(${contrast})`,
+                                }}
+                              />
+                            )}
                             {sliceIndex != null && (
                               <line
                                 x1={sliceIndex}
@@ -1487,7 +1496,7 @@ export default function Coords3dViewer({
                         )}
                       </Box>
 
-                      {/* Empty top-right cell (like IMOD cross) */}
+                      {/* Empty top-right cell */}
                       <Box
                         sx={{
                           gridColumn: "2 / 3",
@@ -1498,7 +1507,6 @@ export default function Coords3dViewer({
                       />
                     </Box>
                   )
-
                 ) : (
                   // Single Z view
                   <Box
@@ -1510,7 +1518,7 @@ export default function Coords3dViewer({
                       justifyContent: "center",
                     }}
                   >
-                    {sliceLoading && !sliceImageUrl ? (
+                    {sliceLoading && !sliceImageUrl && !DEBUG_SYNTHETIC_GRID ? (
                       <Box
                         sx={{
                           display: "flex",
@@ -1523,7 +1531,7 @@ export default function Coords3dViewer({
                           Loading tomogram slice…
                         </Typography>
                       </Box>
-                    ) : sliceError ? (
+                    ) : sliceError && !DEBUG_SYNTHETIC_GRID ? (
                       <Typography variant="body2" color="error">
                         {sliceError}
                       </Typography>
@@ -1535,7 +1543,7 @@ export default function Coords3dViewer({
                         Tomogram dimensions are not available. Make sure dims are
                         provided as [X, Y, Z].
                       </Typography>
-                    ) : !sliceImageUrl ? (
+                    ) : !sliceImageUrl && !DEBUG_SYNTHETIC_GRID ? (
                       <Typography variant="body2" color="text.secondary">
                         No slice image.
                       </Typography>
@@ -1561,17 +1569,21 @@ export default function Coords3dViewer({
                             backgroundColor: "transparent",
                           }}
                         >
-                          <image
-                            href={sliceImageUrl}
-                            x={0}
-                            y={0}
-                            width={tomoDimsX}
-                            height={tomoDimsY}
-                            preserveAspectRatio="none"
-                            style={{
-                              filter: `brightness(${brightness}) contrast(${contrast})`,
-                            }}
-                          />
+                          {DEBUG_SYNTHETIC_GRID ? (
+                            <SyntheticGrid width={tomoDimsX} height={tomoDimsY} />
+                          ) : (
+                            <image
+                              href={sliceImageUrl ?? undefined}
+                              x={0}
+                              y={0}
+                              width={tomoDimsX}
+                              height={tomoDimsY}
+                              preserveAspectRatio="none"
+                              style={{
+                                filter: `brightness(${brightness}) contrast(${contrast})`,
+                              }}
+                            />
+                          )}
                           {slicePointsSvgZ.map((p) => (
                             <circle
                               key={p.key}
@@ -2247,6 +2259,67 @@ function MetaItem({ label, value }: { label: string; value: string }) {
     </Box>
   );
 }
+
+type SyntheticGridProps = {
+  width: number;
+  height: number;
+};
+
+function SyntheticGrid({ width, height }: SyntheticGridProps) {
+  const maxLines = 12;
+  const stepX = width > 0 ? Math.max(1, Math.floor(width / maxLines)) : 1;
+  const stepY = height > 0 ? Math.max(1, Math.floor(height / maxLines)) : 1;
+
+  const elements: ReactElement[] = [];
+
+  for (let x = 0; x <= width; x += stepX) {
+    elements.push(
+      <line
+        key={`v-${x}`}
+        x1={x}
+        y1={0}
+        x2={x}
+        y2={height}
+        stroke="#9ca3af"
+        strokeWidth={0.4}
+        opacity={0.6}
+      />,
+    );
+  }
+
+  for (let y = 0; y <= height; y += stepY) {
+    elements.push(
+      <line
+        key={`h-${y}`}
+        x1={0}
+        y1={y}
+        x2={width}
+        y2={y}
+        stroke="#9ca3af"
+        strokeWidth={0.4}
+        opacity={0.6}
+      />,
+    );
+  }
+
+  const r = Math.max(width, height) * 0.015;
+  elements.push(
+    <circle key="origin" cx={0} cy={0} r={r} fill="#ef4444" opacity={0.9} />,
+  );
+  elements.push(
+    <circle
+      key="corner"
+      cx={width}
+      cy={height}
+      r={r}
+      fill="#22c55e"
+      opacity={0.9}
+    />,
+  );
+
+  return <>{elements}</>;
+}
+
 
 function useThrottledValue<T>(value: T, delayMs: number): T {
   const [throttled, setThrottled] = useState<T>(value);
