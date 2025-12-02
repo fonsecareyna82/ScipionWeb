@@ -65,6 +65,19 @@ const MAX_POINTS_DEFAULT = 50000;
 const NEARBY_SLICE_RANGE = 10; // slices above/below current slice to show
 const MIN_NEARBY_SLICE_FACTOR = 0.25; // minimal radius/opacity factor for far slices
 
+// Default value for debug synthetic grid
+const DEBUG_SYNTHETIC_GRID = false;
+
+// Simple palette for point color selection
+const POINT_COLOR_PALETTE: { label: string; value: string }[] = [
+  { label: "Red", value: "#ef4444" },
+  { label: "Green", value: "#22c55e" },
+  { label: "Blue", value: "#3b82f6" },
+  { label: "Yellow", value: "#eab308" },
+  { label: "Cyan", value: "#06b6d4" },
+  { label: "Magenta", value: "#ec4899" },
+];
+
 const HELP_TEXT: Record<string, string> = {
   sliceIndex:
     "Select the tomogram slice index along this axis. The slider runs from 1 to the total number of slices reported for this tomogram on that axis.",
@@ -231,7 +244,10 @@ export default function Coords3dViewer({
   const [brightness, setBrightness] = useState<number>(1.0);
   const [contrast, setContrast] = useState<number>(1.0);
 
-  const [debugGrid, setDebugGrid] = useState<boolean>(false);
+  const [debugGrid, setDebugGrid] = useState<boolean>(DEBUG_SYNTHETIC_GRID);
+
+  // Point color for SVG circles
+  const [pointColor, setPointColor] = useState<string>("#ef4444");
 
   const [helpKey, setHelpKey] = useState<string | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
@@ -322,7 +338,7 @@ export default function Coords3dViewer({
     };
   }, [projectId, protocolId, outputName, svc]);
 
-  // Load coordinates for selected tomogram
+  // Load coordinates for selected tomogram (with safe tomoId handling)
   useEffect(() => {
     if (selectedTomoId == null) {
       setPointsData(null);
@@ -346,19 +362,34 @@ export default function Coords3dViewer({
 
         if (cancelled) return;
 
-        let tomoIdOut: Id = selectedTomoId;
+        let tomoIdOut: Id = selectedTomoId as Id;
         let rawPoints: any[] = [];
 
         if (Array.isArray(data)) {
           rawPoints = data;
-          if (data.length > 0 && data[0].tomoId != null) {
-            tomoIdOut = data[0].tomoId;
+          if (data.length > 0) {
+            const c = (data[0] as any).tomoId;
+            if (typeof c === "string" || typeof c === "number") {
+              tomoIdOut = c;
+            }
           }
         } else if (data && typeof data === "object") {
           const d: any = data;
-          if (d.tomoId != null || d.tomogramId != null) {
-            tomoIdOut = d.tomoId ?? d.tomogramId;
+
+          let candidate: any = undefined;
+          if (typeof d.tomoId === "string" || typeof d.tomoId === "number") {
+            candidate = d.tomoId;
+          } else if (
+            typeof d.tomogramId === "string" ||
+            typeof d.tomogramId === "number"
+          ) {
+            candidate = d.tomogramId;
           }
+
+          if (candidate !== undefined) {
+            tomoIdOut = candidate;
+          }
+
           if (Array.isArray(d.coords)) {
             rawPoints = d.coords;
           } else if (Array.isArray(d.points)) {
@@ -579,6 +610,30 @@ export default function Coords3dViewer({
 
   const totalCoords = pointsData?.coords?.length ?? 0;
 
+ // Effective tomogram id: prefer id coming from coordinates payload if available,
+  // otherwise fall back to the selected tomogram id.
+  const effectiveTomoId: Id | null = useMemo(() => {
+    const coordsTomoId = pointsData?.tomoId;
+
+    if (
+      coordsTomoId !== undefined &&
+      coordsTomoId !== null &&
+      (typeof coordsTomoId === "string" || typeof coordsTomoId === "number")
+    ) {
+      return coordsTomoId as Id;
+    }
+
+    if (
+      selectedTomoId !== undefined &&
+      selectedTomoId !== null &&
+      (typeof selectedTomoId === "string" || typeof selectedTomoId === "number")
+    ) {
+      return selectedTomoId as Id;
+    }
+
+    return null;
+  }, [pointsData, selectedTomoId]);
+
   // Fetch Z slice
   useEffect(() => {
     if (viewMode !== "slice" || debugGrid) {
@@ -588,7 +643,8 @@ export default function Coords3dViewer({
     }
 
     if (
-      selectedTomoId == null ||
+      !pointsData ||
+      effectiveTomoId == null ||
       throttledSliceIndex == null ||
       maxSliceZ == null ||
       maxSliceZ < 0
@@ -614,7 +670,7 @@ export default function Coords3dViewer({
           projectId,
           protocolId,
           outputName,
-          selectedTomoId,
+          effectiveTomoId,
           clamped,
           {
             axis: "z",
@@ -655,7 +711,7 @@ export default function Coords3dViewer({
   }, [
     viewMode,
     debugGrid,
-    selectedTomoId,
+    effectiveTomoId,
     throttledSliceIndex,
     maxSliceZ,
     projectId,
@@ -673,7 +729,8 @@ export default function Coords3dViewer({
     }
 
     if (
-      selectedTomoId == null ||
+      !pointsData ||
+      effectiveTomoId == null ||
       throttledSliceIndexX == null ||
       maxSliceX == null ||
       maxSliceX < 0
@@ -699,7 +756,7 @@ export default function Coords3dViewer({
           projectId,
           protocolId,
           outputName,
-          selectedTomoId,
+          effectiveTomoId,
           clamped,
           {
             axis: "x",
@@ -741,7 +798,7 @@ export default function Coords3dViewer({
     viewMode,
     multiViewMode,
     debugGrid,
-    selectedTomoId,
+    effectiveTomoId,
     throttledSliceIndexX,
     maxSliceX,
     projectId,
@@ -759,7 +816,8 @@ export default function Coords3dViewer({
     }
 
     if (
-      selectedTomoId == null ||
+      !pointsData ||
+      effectiveTomoId == null ||
       throttledSliceIndexY == null ||
       maxSliceY == null ||
       maxSliceY < 0
@@ -785,7 +843,7 @@ export default function Coords3dViewer({
           projectId,
           protocolId,
           outputName,
-          selectedTomoId,
+          effectiveTomoId,
           clamped,
           {
             axis: "y",
@@ -827,7 +885,7 @@ export default function Coords3dViewer({
     viewMode,
     multiViewMode,
     debugGrid,
-    selectedTomoId,
+    effectiveTomoId,
     throttledSliceIndexY,
     maxSliceY,
     projectId,
@@ -1220,7 +1278,7 @@ export default function Coords3dViewer({
                                 x2={sliceIndexX}
                                 y2={tomoDimsZ}
                                 stroke="#ef4444"
-                                strokeWidth={0.8}
+                                strokeWidth={1.3}
                                 opacity={0.9}
                               />
                             )}
@@ -1231,7 +1289,7 @@ export default function Coords3dViewer({
                                 x2={tomoDimsX}
                                 y2={sliceIndex}
                                 stroke="#3b82f6"
-                                strokeWidth={0.8}
+                                strokeWidth={1.3}
                                 opacity={0.9}
                               />
                             )}
@@ -1242,7 +1300,7 @@ export default function Coords3dViewer({
                                 cy={p.y}
                                 r={p.radius * 2.2}
                                 fill="none"
-                                stroke="red"
+                                stroke={pointColor}
                                 strokeWidth={p.strokeWidth}
                                 opacity={p.opacity}
                               />
@@ -1343,7 +1401,7 @@ export default function Coords3dViewer({
                                 x2={sliceIndexX}
                                 y2={tomoDimsY}
                                 stroke="#ef4444"
-                                strokeWidth={0.8}
+                                strokeWidth={1.3}
                                 opacity={0.9}
                               />
                             )}
@@ -1354,7 +1412,7 @@ export default function Coords3dViewer({
                                 x2={tomoDimsX}
                                 y2={sliceIndexY}
                                 stroke="#22c55e"
-                                strokeWidth={0.8}
+                                strokeWidth={1.3}
                                 opacity={0.9}
                               />
                             )}
@@ -1365,7 +1423,7 @@ export default function Coords3dViewer({
                                 cy={p.y}
                                 r={p.radius * 2.2}
                                 fill="none"
-                                stroke="red"
+                                stroke={pointColor}
                                 strokeWidth={p.strokeWidth}
                                 opacity={p.opacity}
                               />
@@ -1470,7 +1528,7 @@ export default function Coords3dViewer({
                                   x2={sliceIndexY}
                                   y2={tomoDimsZ}
                                   stroke="#22c55e"
-                                  strokeWidth={0.8}
+                                  strokeWidth={1.3}
                                   opacity={0.9}
                                 />
                               )}
@@ -1482,7 +1540,7 @@ export default function Coords3dViewer({
                                   x2={tomoDimsY}
                                   y2={sliceIndex}
                                   stroke="#3b82f6"
-                                  strokeWidth={0.8}
+                                  strokeWidth={1.3}
                                   opacity={0.9}
                                 />
                               )}
@@ -1493,7 +1551,7 @@ export default function Coords3dViewer({
                                   cy={p.y}
                                   r={p.radius * 2.2}
                                   fill="none"
-                                  stroke="red"
+                                  stroke={pointColor}
                                   strokeWidth={p.strokeWidth}
                                   opacity={p.opacity}
                                 />
@@ -1598,7 +1656,7 @@ export default function Coords3dViewer({
                               cy={p.y}
                               r={p.radius * 2.2}
                               fill="none"
-                              stroke="red"
+                              stroke={pointColor}
                               strokeWidth={p.strokeWidth}
                               opacity={p.opacity}
                             />
@@ -1771,7 +1829,8 @@ export default function Coords3dViewer({
                           }
                           label="Debug synthetic grid"
                           sx={{
-                            mt: 0.5,
+                            mt: 1,
+                            mb: 1,
                             "& .MuiFormControlLabel-label": {
                               fontSize: "0.75rem",
                             },
@@ -2120,6 +2179,49 @@ export default function Coords3dViewer({
                       </Typography>
                     </Box>
 
+                    {/* Point color */}
+                    <Box
+                      sx={{
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 0.5,
+                        mt: 0.5,
+                      }}
+                    >
+                      <Typography variant="caption" color="text.secondary">
+                        Point color
+                      </Typography>
+                      <Box
+                        sx={{
+                          display: "flex",
+                          flexWrap: "wrap",
+                          gap: 0.75,
+                        }}
+                      >
+                        {POINT_COLOR_PALETTE.map((c) => {
+                          const isSelected = c.value === pointColor;
+                          return (
+                            <Box
+                              key={c.value}
+                              onClick={() => setPointColor(c.value)}
+                              sx={{
+                                width: 20,
+                                height: 20,
+                                borderRadius: "50%",
+                                cursor: "pointer",
+                                border: isSelected
+                                  ? "2px solid #111827"
+                                  : "1px solid #d1d5db",
+                                boxShadow: isSelected ? 1 : "none",
+                                backgroundColor: c.value,
+                              }}
+                              title={c.label}
+                            />
+                          );
+                        })}
+                      </Box>
+                    </Box>
+
                     {/* Brightness / contrast */}
                     {viewMode === "slice" && (
                       <Box
@@ -2306,7 +2408,7 @@ function SyntheticGrid({ width, height }: SyntheticGridProps) {
         x2={x}
         y2={height}
         stroke="#9ca3af"
-        strokeWidth={0.4}
+        strokeWidth={0.5}
         opacity={0.6}
       />,
     );
@@ -2321,7 +2423,7 @@ function SyntheticGrid({ width, height }: SyntheticGridProps) {
         x2={width}
         y2={y}
         stroke="#9ca3af"
-        strokeWidth={0.4}
+        strokeWidth={0.5}
         opacity={0.6}
       />,
     );
