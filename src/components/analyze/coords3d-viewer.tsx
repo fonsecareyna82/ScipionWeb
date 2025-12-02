@@ -47,7 +47,6 @@ type TomogramItem = {
 };
 
 type ViewMode = "slice" | "map3d";
-
 type SliceAxis = "x" | "y" | "z";
 
 type SliceCircle = {
@@ -92,13 +91,12 @@ function getSlicePlaneDims(
     return [dimX, dimY];
   }
   if (axis === "x") {
-    // YZ plane (transposed to make the view more vertical: width = Z, height = Y)
+    // YZ plane, transposed: width = Z, height = Y to make it more vertical
     return [dimZ, dimY];
   }
   // axis === "y" -> XZ plane
   return [dimX, dimZ];
 }
-
 
 function computeSlicePointsSvg(
   points: (Coords3dPoint & { radius?: number })[],
@@ -179,7 +177,7 @@ function computeSlicePointsSvg(
       cx = p.x;
       cy = p.y;
     } else if (axis === "x") {
-      // YZ plane (transposed so Z is horizontal and Y is vertical)
+      // YZ plane, transposed: X axis is Z, Y axis is Y
       cx = p.z;
       cy = p.y;
     } else {
@@ -187,7 +185,6 @@ function computeSlicePointsSvg(
       cx = p.x;
       cy = p.z;
     }
-
 
     neighbors.push({
       key: String(p.id ?? `${idx}-${p.x}-${p.y}-${p.z}`),
@@ -200,9 +197,7 @@ function computeSlicePointsSvg(
     });
   }
 
-  // Draw farther slices first so points in the current slice appear on top
   neighbors.sort((a, b) => b.dz - a.dz);
-
   return neighbors;
 }
 
@@ -231,14 +226,13 @@ export default function Coords3dViewer({
   const [selectedClass, setSelectedClass] = useState<string>("all");
   const [scoreRange, setScoreRange] = useState<[number, number] | null>(null);
 
-  // Brightness / contrast for slice view
-  const [brightness, setBrightness] = useState<number>(1.0); // 1.0 = neutral
-  const [contrast, setContrast] = useState<number>(1.0); // 1.0 = neutral
+  const [brightness, setBrightness] = useState<number>(1.0);
+  const [contrast, setContrast] = useState<number>(1.0);
 
   const [helpKey, setHelpKey] = useState<string | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
 
-  // Slice view state (Z axis)
+  // Z axis
   const [sliceIndex, setSliceIndex] = useState<number | null>(null);
   const [sliceImageUrl, setSliceImageUrl] = useState<string | null>(null);
   const [sliceError, setSliceError] = useState<string | null>(null);
@@ -246,7 +240,7 @@ export default function Coords3dViewer({
   const sliceAbortRef = useRef<AbortController | null>(null);
   const sliceReqIdRef = useRef(0);
 
-  // Orthogonal slice state (X and Y axes)
+  // X and Y axes
   const [sliceIndexX, setSliceIndexX] = useState<number | null>(null);
   const [sliceIndexY, setSliceIndexY] = useState<number | null>(null);
   const [sliceXImageUrl, setSliceXImageUrl] = useState<string | null>(null);
@@ -260,7 +254,7 @@ export default function Coords3dViewer({
   const sliceXReqIdRef = useRef(0);
   const sliceYReqIdRef = useRef(0);
 
-  // Throttled slice indices: reduce backend calls while dragging slider
+  // Throttled slice indices
   const throttledSliceIndex = useThrottledValue(sliceIndex, 200);
   const throttledSliceIndexX = useThrottledValue(sliceIndexX, 200);
   const throttledSliceIndexY = useThrottledValue(sliceIndexY, 200);
@@ -273,15 +267,12 @@ export default function Coords3dViewer({
     setHelpOpen(false);
   };
 
-  // Optional: reset brightness/contrast when tomogram or view mode changes
   useEffect(() => {
     setBrightness(1.0);
     setContrast(1.0);
   }, [selectedTomoId, viewMode]);
 
-  // ─────────────────────────────────────────────────────────────────────────────
-  // Load tomogram list for this SetOfCoordinates3D output
-  // ─────────────────────────────────────────────────────────────────────────────
+  // Load tomograms
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -327,9 +318,7 @@ export default function Coords3dViewer({
     };
   }, [projectId, protocolId, outputName, svc]);
 
-  // ─────────────────────────────────────────────────────────────────────────────
   // Load coordinates for selected tomogram
-  // ─────────────────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (selectedTomoId == null) {
       setPointsData(null);
@@ -494,9 +483,6 @@ export default function Coords3dViewer({
     return tomos.find((t) => String(t.tomoId) === String(selectedTomoId)) || null;
   }, [tomos, selectedTomoId]);
 
-  // ─────────────────────────────────────────────────────────────────────────────
-  // Tomogram dims + slice ranges (dims as [X, Y, Z])
-  // ─────────────────────────────────────────────────────────────────────────────
   const tomoDims = useMemo<[number, number, number] | null>(() => {
     const t = tomos.find((tt) => String(tt.tomoId) === String(selectedTomoId));
     if (t?.dims && Array.isArray(t.dims) && t.dims.length >= 3) {
@@ -535,7 +521,6 @@ export default function Coords3dViewer({
     return Math.max(0, yInt - 1);
   }, [tomoDimsY]);
 
-  // Initialize slice indices whenever a new tomogram or dims arrive
   useEffect(() => {
     if (maxSliceZ == null) {
       setSliceIndex(null);
@@ -563,7 +548,6 @@ export default function Coords3dViewer({
     setSliceIndexY(mid);
   }, [selectedTomoId, maxSliceY]);
 
-  // Points that lie in the current Z slice (exact slice)
   const slicePoints = useMemo(() => {
     if (!filteredPoints.length || sliceIndex == null) return [];
     const target = sliceIndex;
@@ -574,7 +558,6 @@ export default function Coords3dViewer({
     });
   }, [filteredPoints, sliceIndex]);
 
-  // Points mapped to SVG with Napari-like behavior across nearby slices
   const slicePointsSvgZ = useMemo(
     () => computeSlicePointsSvg(filteredPoints, "z", sliceIndex, tomoDims),
     [filteredPoints, sliceIndex, tomoDims],
@@ -592,11 +575,11 @@ export default function Coords3dViewer({
 
   const totalCoords = pointsData?.coords?.length ?? 0;
 
-  // ─────────────────────────────────────────────────────────────────────────────
-  // Fetch Z-axis slice image for slice view (keep previous image to avoid flicker)
-  // ─────────────────────────────────────────────────────────────────────────────
+  // Fetch Z slice
   useEffect(() => {
     if (viewMode !== "slice") {
+      sliceAbortRef.current?.abort();
+      setSliceLoading(false);
       return;
     }
 
@@ -676,11 +659,11 @@ export default function Coords3dViewer({
     svc,
   ]);
 
-  // ─────────────────────────────────────────────────────────────────────────────
-  // Fetch X-axis slice image for orthogonal view
-  // ─────────────────────────────────────────────────────────────────────────────
+  // Fetch X slice
   useEffect(() => {
     if (viewMode !== "slice" || multiViewMode !== "triple") {
+      sliceXAbortRef.current?.abort();
+      setSliceXLoading(false);
       return;
     }
 
@@ -761,11 +744,11 @@ export default function Coords3dViewer({
     svc,
   ]);
 
-  // ─────────────────────────────────────────────────────────────────────────────
-  // Fetch Y-axis slice image for orthogonal view
-  // ─────────────────────────────────────────────────────────────────────────────
+  // Fetch Y slice
   useEffect(() => {
     if (viewMode !== "slice" || multiViewMode !== "triple") {
+      sliceYAbortRef.current?.abort();
+      setSliceYLoading(false);
       return;
     }
 
@@ -846,9 +829,6 @@ export default function Coords3dViewer({
     svc,
   ]);
 
-  // ─────────────────────────────────────────────────────────────────────────────
-  // Render
-  // ─────────────────────────────────────────────────────────────────────────────
   return (
     <>
       <Box
@@ -861,7 +841,7 @@ export default function Coords3dViewer({
           overflow: "hidden",
         }}
       >
-        {/* Left: tomograms list */}
+        {/* Left list */}
         <Box
           sx={{
             width: 270,
@@ -933,7 +913,7 @@ export default function Coords3dViewer({
           </Box>
         </Box>
 
-        {/* Right: viewer + controls */}
+        {/* Right viewer */}
         <Box
           sx={{
             flex: 1,
@@ -1043,7 +1023,7 @@ export default function Coords3dViewer({
               overflow: "hidden",
             }}
           >
-            {/* Main viewer */}
+            {/* Main viewer area */}
             <Box
               sx={{
                 flex: 1,
@@ -1102,7 +1082,14 @@ export default function Coords3dViewer({
                     </Typography>
                   </Box>
                 ) : multiViewMode === "triple" ? (
-                  // Orthogonal 3-view layout: Z big (bottom-left), Y top (horizontal), X right (vertical)
+                  // Orthogonal 3-view layout using tomogram dims:
+                  // Grid:
+                  //   rows    ~ [Z, Y]
+                  //   columns ~ [X, Z]
+                  // So:
+                  //   - Y (XZ) top-left, thinner band
+                  //   - Z (XY) bottom-left, main large view
+                  //   - X (YZ) bottom-right, same height as Z
                   !tomoDims ||
                     maxSliceZ == null ||
                     maxSliceX == null ||
@@ -1121,197 +1108,33 @@ export default function Coords3dViewer({
                       sx={{
                         width: "100%",
                         height: "100%",
-                        display: "flex",
-                        gap: 1,
-                        alignItems: "stretch",
-                        justifyContent: "center",
+                        display: "grid",
+                        // Column widths proportional to [X, Z]
+                        gridTemplateColumns:
+                          tomoDimsX != null && tomoDimsZ != null
+                            ? `${tomoDimsX}fr ${tomoDimsZ}fr`
+                            : "3fr 1fr",
+                        // Row heights proportional to [Z, Y]
+                        gridTemplateRows:
+                          tomoDimsY != null && tomoDimsZ != null
+                            ? `${tomoDimsZ}fr ${tomoDimsY}fr`
+                            : "1fr 2fr",
+                        columnGap: 0, // small separation, almost "pegado"
+                        rowGap: 0.25,
+                        minWidth: 0,
+                        minHeight: 0,
                       }}
                     >
-                      {/* Left column: Y on top (XZ), Z below (XY, big) */}
+                      {/* Y view (XZ) - top-left, same column as Z */}
                       <Box
                         sx={{
-                          flex: 3,
+                          gridColumn: "1 / 2",
+                          gridRow: "1 / 2",
                           minWidth: 0,
                           minHeight: 0,
                           display: "flex",
-                          flexDirection: "column",
-                          gap: 1,
-                        }}
-                      >
-                        {/* Y view (XZ plane) - TOP, horizontal */}
-                        <Box
-                          sx={{
-                            flex: 0.8,
-                            minWidth: 0,
-                            minHeight: 0,
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            position: "relative",
-                          }}
-                        >
-                          <Box
-                            sx={{
-                              position: "absolute",
-                              top: 4,
-                              left: 6,
-                              px: 0.5,
-                              py: 0.25,
-                              borderRadius: 0.5,
-                              bgcolor: "rgba(0,0,0,0.45)",
-                            }}
-                          >
-                            <Typography variant="caption" sx={{ color: "common.white" }}>
-                              Y (XZ)
-                            </Typography>
-                          </Box>
-                          {sliceYLoading && !sliceYImageUrl ? (
-                            <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
-                              <CircularProgress size={18} />
-                              <Typography variant="body2">Loading Y slice…</Typography>
-                            </Box>
-                          ) : sliceYError ? (
-                            <Typography variant="body2" color="error">
-                              {sliceYError}
-                            </Typography>
-                          ) : !tomoDimsX || !tomoDimsZ ? (
-                            <Typography variant="body2" color="text.secondary">
-                              XZ plane dimensions are not available.
-                            </Typography>
-                          ) : !sliceYImageUrl ? (
-                            <Typography variant="body2" color="text.secondary">
-                              No Y slice image.
-                            </Typography>
-                          ) : (
-                            <svg
-                              viewBox={`0 0 ${tomoDimsX} ${tomoDimsZ}`}
-                              preserveAspectRatio="xMidYMid meet"
-                              style={{
-                                width: "100%",
-                                height: "80%",
-                                display: "block",
-                                backgroundColor: "transparent",
-                              }}
-                            >
-                              <image
-                                href={sliceYImageUrl}
-                                x={0}
-                                y={0}
-                                width={tomoDimsX}
-                                height={tomoDimsZ}
-                                preserveAspectRatio="none"
-                                style={{
-                                  filter: `brightness(${brightness}) contrast(${contrast})`,
-                                }}
-                              />
-                              {slicePointsSvgY.map((p) => (
-                                <circle
-                                  key={p.key}
-                                  cx={p.x}
-                                  cy={p.y}
-                                  r={p.radius * 2.2}
-                                  fill="none"
-                                  stroke="red"
-                                  strokeWidth={p.strokeWidth}
-                                  opacity={p.opacity}
-                                />
-                              ))}
-                            </svg>
-                          )}
-                        </Box>
-
-                        {/* Z view (XY plane) - BOTTOM, big */}
-                        <Box
-                          sx={{
-                            flex: 3.2,
-                            minWidth: 0,
-                            minHeight: 0,
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            position: "relative",
-                          }}
-                        >
-                          <Box
-                            sx={{
-                              position: "absolute",
-                              top: 4,
-                              left: 6,
-                              px: 0.5,
-                              py: 0.25,
-                              borderRadius: 0.5,
-                              bgcolor: "rgba(0,0,0,0.45)",
-                            }}
-                          >
-                            <Typography variant="caption" sx={{ color: "common.white" }}>
-                              Z (XY)
-                            </Typography>
-                          </Box>
-                          {sliceLoading && !sliceImageUrl ? (
-                            <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
-                              <CircularProgress size={18} />
-                              <Typography variant="body2">Loading Z slice…</Typography>
-                            </Box>
-                          ) : sliceError ? (
-                            <Typography variant="body2" color="error">
-                              {sliceError}
-                            </Typography>
-                          ) : !tomoDimsX || !tomoDimsY ? (
-                            <Typography variant="body2" color="text.secondary">
-                              XY plane dimensions are not available.
-                            </Typography>
-                          ) : !sliceImageUrl ? (
-                            <Typography variant="body2" color="text.secondary">
-                              No Z slice image.
-                            </Typography>
-                          ) : (
-                            <svg
-                              viewBox={`0 0 ${tomoDimsX} ${tomoDimsY}`}
-                              preserveAspectRatio="xMidYMid meet"
-                              style={{
-                                width: "100%",
-                                height: "100%",
-                                display: "block",
-                                backgroundColor: "transparent",
-                              }}
-                            >
-                              <image
-                                href={sliceImageUrl}
-                                x={0}
-                                y={0}
-                                width={tomoDimsX}
-                                height={tomoDimsY}
-                                preserveAspectRatio="none"
-                                style={{
-                                  filter: `brightness(${brightness}) contrast(${contrast})`,
-                                }}
-                              />
-                              {slicePointsSvgZ.map((p) => (
-                                <circle
-                                  key={p.key}
-                                  cx={p.x}
-                                  cy={p.y}
-                                  r={p.radius * 2.2}
-                                  fill="none"
-                                  stroke="red"
-                                  strokeWidth={p.strokeWidth}
-                                  opacity={p.opacity}
-                                />
-                              ))}
-                            </svg>
-                          )}
-                        </Box>
-                      </Box>
-
-                      {/* Right column: X view (YZ plane), vertical */}
-                      <Box
-                        sx={{
-                          flex: 1,
-                          minWidth: 0,
-                          minHeight: 0,
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
+                          alignItems: "stretch",
+                          justifyContent: "stretch",
                           position: "relative",
                         }}
                       >
@@ -1324,6 +1147,247 @@ export default function Coords3dViewer({
                             py: 0.25,
                             borderRadius: 0.5,
                             bgcolor: "rgba(0,0,0,0.45)",
+                            zIndex: 1,
+                          }}
+                        >
+                          <Typography variant="caption" sx={{ color: "common.white" }}>
+                            Y (XZ)
+                          </Typography>
+                        </Box>
+                        {sliceYLoading && !sliceYImageUrl ? (
+                          <Box
+                            sx={{
+                              m: "auto",
+                              display: "flex",
+                              gap: 1,
+                              alignItems: "center",
+                            }}
+                          >
+                            <CircularProgress size={18} />
+                            <Typography variant="body2">Loading Y slice…</Typography>
+                          </Box>
+                        ) : sliceYError ? (
+                          <Box sx={{ m: "auto" }}>
+                            <Typography variant="body2" color="error">
+                              {sliceYError}
+                            </Typography>
+                          </Box>
+                        ) : !tomoDimsX || !tomoDimsZ ? (
+                          <Box sx={{ m: "auto" }}>
+                            <Typography variant="body2" color="text.secondary">
+                              XZ plane dimensions are not available.
+                            </Typography>
+                          </Box>
+                        ) : !sliceYImageUrl ? (
+                          <Box sx={{ m: "auto" }}>
+                            <Typography variant="body2" color="text.secondary">
+                              No Y slice image.
+                            </Typography>
+                          </Box>
+                        ) : (
+                          <svg
+                            viewBox={`0 0 ${tomoDimsX} ${tomoDimsZ}`}
+                            preserveAspectRatio="xMidYMid meet"
+                            style={{
+                              width: "100%",
+                              height: "100%",
+                              display: "block",
+                              backgroundColor: "transparent",
+                            }}
+                          >
+                            <image
+                              href={sliceYImageUrl}
+                              x={0}
+                              y={0}
+                              width={tomoDimsX}
+                              height={tomoDimsZ}
+                              preserveAspectRatio="none"
+                              style={{
+                                filter: `brightness(${brightness}) contrast(${contrast})`,
+                              }}
+                            />
+                            {/* Guides from X and Z slices */}
+                            {sliceIndexX != null && (
+                              <line
+                                x1={sliceIndexX}
+                                y1={0}
+                                x2={sliceIndexX}
+                                y2={tomoDimsZ}
+                                stroke="#ef4444"
+                                strokeWidth={0.8}
+                                opacity={0.9}
+                              />
+                            )}
+                            {sliceIndex != null && (
+                              <line
+                                x1={0}
+                                y1={sliceIndex}
+                                x2={tomoDimsX}
+                                y2={sliceIndex}
+                                stroke="#3b82f6"
+                                strokeWidth={0.8}
+                                opacity={0.9}
+                              />
+                            )}
+                            {slicePointsSvgY.map((p) => (
+                              <circle
+                                key={p.key}
+                                cx={p.x}
+                                cy={p.y}
+                                r={p.radius * 2.2}
+                                fill="none"
+                                stroke="red"
+                                strokeWidth={p.strokeWidth}
+                                opacity={p.opacity}
+                              />
+                            ))}
+                          </svg>
+                        )}
+                      </Box>
+
+                      {/* Z view (XY) - bottom-left, main view */}
+                      <Box
+                        sx={{
+                          gridColumn: "1 / 2",
+                          gridRow: "2 / 3",
+                          minWidth: 0,
+                          minHeight: 0,
+                          display: "flex",
+                          alignItems: "stretch",
+                          justifyContent: "stretch",
+                          position: "relative",
+                        }}
+                      >
+                        <Box
+                          sx={{
+                            position: "absolute",
+                            top: 4,
+                            left: 6,
+                            px: 0.5,
+                            py: 0.25,
+                            borderRadius: 0.5,
+                            bgcolor: "rgba(0,0,0,0.45)",
+                            zIndex: 1,
+                          }}
+                        >
+                          <Typography variant="caption" sx={{ color: "common.white" }}>
+                            Z (XY)
+                          </Typography>
+                        </Box>
+                        {sliceLoading && !sliceImageUrl ? (
+                          <Box
+                            sx={{
+                              m: "auto",
+                              display: "flex",
+                              gap: 1,
+                              alignItems: "center",
+                            }}
+                          >
+                            <CircularProgress size={18} />
+                            <Typography variant="body2">Loading Z slice…</Typography>
+                          </Box>
+                        ) : sliceError ? (
+                          <Box sx={{ m: "auto" }}>
+                            <Typography variant="body2" color="error">
+                              {sliceError}
+                            </Typography>
+                          </Box>
+                        ) : !tomoDimsX || !tomoDimsY ? (
+                          <Box sx={{ m: "auto" }}>
+                            <Typography variant="body2" color="text.secondary">
+                              XY plane dimensions are not available.
+                            </Typography>
+                          </Box>
+                        ) : !sliceImageUrl ? (
+                          <Box sx={{ m: "auto" }}>
+                            <Typography variant="body2" color="text.secondary">
+                              No Z slice image.
+                            </Typography>
+                          </Box>
+                        ) : (
+                          <svg
+                            viewBox={`0 0 ${tomoDimsX} ${tomoDimsY}`}
+                            preserveAspectRatio="xMidYMid meet"
+                            style={{
+                              width: "100%",
+                              height: "100%",
+                              display: "block",
+                              backgroundColor: "transparent",
+                            }}
+                          >
+                            <image
+                              href={sliceImageUrl}
+                              x={0}
+                              y={0}
+                              width={tomoDimsX}
+                              height={tomoDimsY}
+                              preserveAspectRatio="none"
+                              style={{
+                                filter: `brightness(${brightness}) contrast(${contrast})`,
+                              }}
+                            />
+                            {/* Guides from X and Y slices */}
+                            {sliceIndexX != null && (
+                              <line
+                                x1={sliceIndexX}
+                                y1={0}
+                                x2={sliceIndexX}
+                                y2={tomoDimsY}
+                                stroke="#ef4444"
+                                strokeWidth={0.8}
+                                opacity={0.9}
+                              />
+                            )}
+                            {sliceIndexY != null && (
+                              <line
+                                x1={0}
+                                y1={sliceIndexY}
+                                x2={tomoDimsX}
+                                y2={sliceIndexY}
+                                stroke="#22c55e"
+                                strokeWidth={0.8}
+                                opacity={0.9}
+                              />
+                            )}
+                            {slicePointsSvgZ.map((p) => (
+                              <circle
+                                key={p.key}
+                                cx={p.x}
+                                cy={p.y}
+                                r={p.radius * 2.2}
+                                fill="none"
+                                stroke="red"
+                                strokeWidth={p.strokeWidth}
+                                opacity={p.opacity}
+                              />
+                            ))}
+                          </svg>
+                        )}
+                      </Box>
+
+                      {/* X view (YZ) - bottom-right, same height as Z */}
+                      <Box
+                        sx={{
+                          gridColumn: "2 / 3",
+                          gridRow: "2 / 3",
+                          minWidth: 0,
+                          minHeight: 0,
+                          display: "flex",
+                          alignItems: "stretch",
+                          justifyContent: "stretch",
+                          position: "relative",
+                        }}
+                      >
+                        <Box
+                          sx={{
+                            position: "absolute",
+                            top: 4,
+                            left: 6,
+                            px: 0.5,
+                            py: 0.25,
+                            borderRadius: 0.5,
+                            bgcolor: "rgba(0,0,0,0.45)",
+                            zIndex: 1,
                           }}
                         >
                           <Typography variant="caption" sx={{ color: "common.white" }}>
@@ -1331,31 +1395,46 @@ export default function Coords3dViewer({
                           </Typography>
                         </Box>
                         {sliceXLoading && !sliceXImageUrl ? (
-                          <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
+                          <Box
+                            sx={{
+                              m: "auto",
+                              display: "flex",
+                              gap: 1,
+                              alignItems: "center",
+                            }}
+                          >
                             <CircularProgress size={18} />
                             <Typography variant="body2">Loading X slice…</Typography>
                           </Box>
                         ) : sliceXError ? (
-                          <Typography variant="body2" color="error">
-                            {sliceXError}
-                          </Typography>
+                          <Box sx={{ m: "auto" }}>
+                            <Typography variant="body2" color="error">
+                              {sliceXError}
+                            </Typography>
+                          </Box>
                         ) : !tomoDimsY || !tomoDimsZ ? (
-                          <Typography variant="body2" color="text.secondary">
-                            YZ plane dimensions are not available.
-                          </Typography>
+                          <Box sx={{ m: "auto" }}>
+                            <Typography variant="body2" color="text.secondary">
+                              YZ plane dimensions are not available.
+                            </Typography>
+                          </Box>
                         ) : !sliceXImageUrl ? (
-                          <Typography variant="body2" color="text.secondary">
-                            No X slice image.
-                          </Typography>
+                          <Box sx={{ m: "auto" }}>
+                            <Typography variant="body2" color="text.secondary">
+                              No X slice image.
+                            </Typography>
+                          </Box>
                         ) : (
                           <svg
                             viewBox={`0 0 ${tomoDimsZ} ${tomoDimsY}`}
                             preserveAspectRatio="xMidYMid meet"
                             style={{
                               width: "100%",
-                              height: "70%",
+                              height: "100%",
                               display: "block",
                               backgroundColor: "transparent",
+                              // Shift a bit to the left so X visually touches Z
+                              transform: "translateX(-113%)",
                             }}
                           >
                             <image
@@ -1369,6 +1448,29 @@ export default function Coords3dViewer({
                                 filter: `brightness(${brightness}) contrast(${contrast})`,
                               }}
                             />
+                            {/* Guides from Z and Y slices */}
+                            {sliceIndex != null && (
+                              <line
+                                x1={sliceIndex}
+                                y1={0}
+                                x2={sliceIndex}
+                                y2={tomoDimsY}
+                                stroke="#3b82f6"
+                                strokeWidth={0.8}
+                                opacity={0.9}
+                              />
+                            )}
+                            {sliceIndexY != null && (
+                              <line
+                                x1={0}
+                                y1={sliceIndexY}
+                                x2={tomoDimsZ}
+                                y2={sliceIndexY}
+                                stroke="#22c55e"
+                                strokeWidth={0.8}
+                                opacity={0.9}
+                              />
+                            )}
                             {slicePointsSvgX.map((p) => (
                               <circle
                                 key={p.key}
@@ -1382,14 +1484,23 @@ export default function Coords3dViewer({
                               />
                             ))}
                           </svg>
-
                         )}
                       </Box>
+
+                      {/* Empty top-right cell (like IMOD cross) */}
+                      <Box
+                        sx={{
+                          gridColumn: "2 / 3",
+                          gridRow: "1 / 2",
+                          minWidth: 0,
+                          minHeight: 0,
+                        }}
+                      />
                     </Box>
                   )
-                ) : (
 
-                  // Single-slice Z view
+                ) : (
+                  // Single Z view
                   <Box
                     sx={{
                       flex: 1,
@@ -1458,7 +1569,6 @@ export default function Coords3dViewer({
                             height={tomoDimsY}
                             preserveAspectRatio="none"
                             style={{
-                              // CSS filters applied client-side
                               filter: `brightness(${brightness}) contrast(${contrast})`,
                             }}
                           />
@@ -1526,6 +1636,24 @@ export default function Coords3dViewer({
                       value={`${sliceIndex + 1} / ${maxSliceZ + 1}`}
                     />
                   )}
+                {viewMode === "slice" &&
+                  multiViewMode === "triple" &&
+                  sliceIndexX != null &&
+                  maxSliceX != null && (
+                    <MetaItem
+                      label="Slice (X)"
+                      value={`${sliceIndexX + 1} / ${maxSliceX + 1}`}
+                    />
+                  )}
+                {viewMode === "slice" &&
+                  multiViewMode === "triple" &&
+                  sliceIndexY != null &&
+                  maxSliceY != null && (
+                    <MetaItem
+                      label="Slice (Y)"
+                      value={`${sliceIndexY + 1} / ${maxSliceY + 1}`}
+                    />
+                  )}
                 {viewMode === "slice" && slicePoints.length > 0 && (
                   <MetaItem
                     label="Slice points"
@@ -1537,7 +1665,7 @@ export default function Coords3dViewer({
               </Box>
             </Box>
 
-            {/* Right panel: summary + filters */}
+            {/* Right panel */}
             <>
               <Divider orientation="vertical" flexItem />
               <Box
@@ -1570,7 +1698,6 @@ export default function Coords3dViewer({
                   }}
                 >
                   <Divider />
-                  {/* Filters */}
                   <Box
                     sx={{
                       display: "flex",
@@ -1589,7 +1716,7 @@ export default function Coords3dViewer({
                           gap: 1,
                         }}
                       >
-                        {/* Single vs 3 views */}
+                        {/* Layout toggle */}
                         <Box
                           sx={{
                             display: "flex",
@@ -1609,12 +1736,8 @@ export default function Coords3dViewer({
                             value={multiViewMode}
                             onChange={(_, v) => v && setMultiViewMode(v)}
                           >
-                            <ToggleButton value="single">
-                              Single
-                            </ToggleButton>
-                            <ToggleButton value="triple">
-                              3 views
-                            </ToggleButton>
+                            <ToggleButton value="single">Single</ToggleButton>
+                            <ToggleButton value="triple">3 views</ToggleButton>
                           </ToggleButtonGroup>
                         </Box>
 
@@ -1693,10 +1816,9 @@ export default function Coords3dViewer({
                           )}
                         </Box>
 
-                        {/* X & Y sliders only in 3 views mode */}
+                        {/* X & Y sliders */}
                         {multiViewMode === "triple" && (
                           <>
-                            {/* X slider */}
                             <Box
                               sx={{
                                 display: "flex",
@@ -1774,7 +1896,6 @@ export default function Coords3dViewer({
                               )}
                             </Box>
 
-                            {/* Y slider */}
                             <Box
                               sx={{
                                 display: "flex",
@@ -1856,6 +1977,7 @@ export default function Coords3dViewer({
                       </Box>
                     )}
 
+                    {/* Score range */}
                     <Box
                       sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}
                     >
@@ -1920,6 +2042,7 @@ export default function Coords3dViewer({
                       )}
                     </Box>
 
+                    {/* Max points */}
                     <Box
                       sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}
                     >
@@ -1960,7 +2083,7 @@ export default function Coords3dViewer({
                       </Typography>
                     </Box>
 
-                    {/* Brightness / Contrast (slice view only) */}
+                    {/* Brightness / contrast */}
                     {viewMode === "slice" && (
                       <Box
                         sx={{
@@ -2125,7 +2248,6 @@ function MetaItem({ label, value }: { label: string; value: string }) {
   );
 }
 
-// Generic throttle hook reused from volume viewer
 function useThrottledValue<T>(value: T, delayMs: number): T {
   const [throttled, setThrottled] = useState<T>(value);
   const lastExecutedRef = useRef<number>(0);
@@ -2167,5 +2289,3 @@ function useThrottledValue<T>(value: T, delayMs: number): T {
 
   return throttled;
 }
-
-
