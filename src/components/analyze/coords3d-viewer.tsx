@@ -21,6 +21,8 @@ import {
   Button,
   Switch,
   FormControlLabel,
+  Tabs,
+  Tab,
 } from "@mui/material";
 import { HelpCircle, Layers as Layers3, Box as BoxIcon } from "lucide-react";
 import { useProjectService } from "@/ProjectServiceContext";
@@ -91,6 +93,10 @@ const HELP_TEXT: Record<string, string> = {
     "Adjust the brightness of the tomogram slice. This is applied client-side and does not modify the underlying data.",
   contrast:
     "Adjust the contrast of the tomogram slice. This is applied client-side and does not modify the underlying data.",
+  pointColor:
+    "Choose the color used to draw the coordinate markers on the tomogram slices. This only affects the overlay, not the underlying image.",
+  pointSize:
+    "Scale the size of the coordinate circles. Use smaller values to reduce clutter when there are many points, or larger values to highlight individual coordinates.",
 };
 
 function getSlicePlaneDims(
@@ -248,6 +254,13 @@ export default function Coords3dViewer({
 
   // Point color for SVG circles
   const [pointColor, setPointColor] = useState<string>("#ef4444");
+  // Global multiplier for point radius
+  const [pointSizeFactor, setPointSizeFactor] = useState<number>(1.0);
+
+  // Right panel tabs
+  const [rightPanelTab, setRightPanelTab] = useState<"filters" | "appearance">(
+    "filters",
+  );
 
   const [helpKey, setHelpKey] = useState<string | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
@@ -610,19 +623,15 @@ export default function Coords3dViewer({
 
   const totalCoords = pointsData?.coords?.length ?? 0;
 
- // Effective tomogram id: prefer id coming from coordinates payload if available,
-  // otherwise fall back to the selected tomogram id.
+  // Ensure that coordinates belong to the currently selected tomogram.
+  const coordsReadyForSelectedTomo = useMemo(() => {
+    if (!pointsData || selectedTomoId == null) return false;
+    if (pointsData.tomoId == null) return true;
+    return String(pointsData.tomoId) === String(selectedTomoId);
+  }, [pointsData, selectedTomoId]);
+
+  // Always use the tomogram id coming from the tomogram list for slices.
   const effectiveTomoId: Id | null = useMemo(() => {
-    const coordsTomoId = pointsData?.tomoId;
-
-    if (
-      coordsTomoId !== undefined &&
-      coordsTomoId !== null &&
-      (typeof coordsTomoId === "string" || typeof coordsTomoId === "number")
-    ) {
-      return coordsTomoId as Id;
-    }
-
     if (
       selectedTomoId !== undefined &&
       selectedTomoId !== null &&
@@ -630,9 +639,8 @@ export default function Coords3dViewer({
     ) {
       return selectedTomoId as Id;
     }
-
     return null;
-  }, [pointsData, selectedTomoId]);
+  }, [selectedTomoId]);
 
   // Fetch Z slice
   useEffect(() => {
@@ -644,6 +652,7 @@ export default function Coords3dViewer({
 
     if (
       !pointsData ||
+      !coordsReadyForSelectedTomo ||
       effectiveTomoId == null ||
       throttledSliceIndex == null ||
       maxSliceZ == null ||
@@ -711,6 +720,8 @@ export default function Coords3dViewer({
   }, [
     viewMode,
     debugGrid,
+    pointsData,
+    coordsReadyForSelectedTomo,
     effectiveTomoId,
     throttledSliceIndex,
     maxSliceZ,
@@ -730,6 +741,7 @@ export default function Coords3dViewer({
 
     if (
       !pointsData ||
+      !coordsReadyForSelectedTomo ||
       effectiveTomoId == null ||
       throttledSliceIndexX == null ||
       maxSliceX == null ||
@@ -798,6 +810,8 @@ export default function Coords3dViewer({
     viewMode,
     multiViewMode,
     debugGrid,
+    pointsData,
+    coordsReadyForSelectedTomo,
     effectiveTomoId,
     throttledSliceIndexX,
     maxSliceX,
@@ -817,6 +831,7 @@ export default function Coords3dViewer({
 
     if (
       !pointsData ||
+      !coordsReadyForSelectedTomo ||
       effectiveTomoId == null ||
       throttledSliceIndexY == null ||
       maxSliceY == null ||
@@ -885,6 +900,8 @@ export default function Coords3dViewer({
     viewMode,
     multiViewMode,
     debugGrid,
+    pointsData,
+    coordsReadyForSelectedTomo,
     effectiveTomoId,
     throttledSliceIndexY,
     maxSliceY,
@@ -1298,7 +1315,7 @@ export default function Coords3dViewer({
                                 key={p.key}
                                 cx={p.x}
                                 cy={p.y}
-                                r={p.radius * 2.2}
+                                r={p.radius * 2.2 * pointSizeFactor}
                                 fill="none"
                                 stroke={pointColor}
                                 strokeWidth={p.strokeWidth}
@@ -1421,7 +1438,7 @@ export default function Coords3dViewer({
                                 key={p.key}
                                 cx={p.x}
                                 cy={p.y}
-                                r={p.radius * 2.2}
+                                r={p.radius * 2.2 * pointSizeFactor}
                                 fill="none"
                                 stroke={pointColor}
                                 strokeWidth={p.strokeWidth}
@@ -1549,7 +1566,7 @@ export default function Coords3dViewer({
                                   key={p.key}
                                   cx={p.x}
                                   cy={p.y}
-                                  r={p.radius * 2.2}
+                                  r={p.radius * 2.2 * pointSizeFactor}
                                   fill="none"
                                   stroke={pointColor}
                                   strokeWidth={p.strokeWidth}
@@ -1654,7 +1671,7 @@ export default function Coords3dViewer({
                               key={p.key}
                               cx={p.x}
                               cy={p.y}
-                              r={p.radius * 2.2}
+                              r={p.radius * 2.2 * pointSizeFactor}
                               fill="none"
                               stroke={pointColor}
                               strokeWidth={p.strokeWidth}
@@ -1760,6 +1777,26 @@ export default function Coords3dViewer({
                   overflow: "hidden",
                 }}
               >
+                <Tabs
+                  value={rightPanelTab}
+                  onChange={(_, v) =>
+                    setRightPanelTab(v as "filters" | "appearance")
+                  }
+                  variant="fullWidth"
+                  sx={{ minHeight: 36 }}
+                >
+                  <Tab
+                    value="filters"
+                    label="Filters"
+                    sx={{ fontSize: "0.75rem", minHeight: 36, py: 0.5 }}
+                  />
+                  <Tab
+                    value="appearance"
+                    label="Appearance"
+                    sx={{ fontSize: "0.75rem", minHeight: 36, py: 0.5 }}
+                  />
+                </Tabs>
+
                 <Box
                   sx={{
                     flex: 1,
@@ -1775,29 +1812,550 @@ export default function Coords3dViewer({
                   }}
                 >
                   <Divider />
-                  <Box
-                    sx={{
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: 1.5,
-                      marginLeft: 1,
-                    }}
-                  >
-                    <Typography variant="subtitle2">Filters</Typography>
+                  {rightPanelTab === "filters" ? (
+                    <Box
+                      sx={{
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 1.5,
+                        marginLeft: 1,
+                      }}
+                    >
+                      <Typography variant="subtitle2">Filters</Typography>
 
-                    {viewMode === "slice" && (
-                      <Box
-                        sx={{
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: 1,
-                        }}
-                      >
-                        {/* Layout toggle */}
+                      {viewMode === "slice" && (
                         <Box
                           sx={{
                             display: "flex",
                             flexDirection: "column",
+                            gap: 1,
+                          }}
+                        >
+                          {/* Layout toggle */}
+                          <Box
+                            sx={{
+                              display: "flex",
+                              flexDirection: "column",
+                              gap: 0.5,
+                            }}
+                          >
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                            >
+                              Slice layout
+                            </Typography>
+                            <ToggleButtonGroup
+                              size="small"
+                              exclusive
+                              value={multiViewMode}
+                              onChange={(_, v) => v && setMultiViewMode(v)}
+                            >
+                              <ToggleButton value="single">Single</ToggleButton>
+                              <ToggleButton value="triple">3 views</ToggleButton>
+                            </ToggleButtonGroup>
+                          </Box>
+
+                          {/* Debug grid toggle */}
+                          <FormControlLabel
+                            control={
+                              <Switch
+                                size="small"
+                                checked={debugGrid}
+                                onChange={(_, checked) => setDebugGrid(checked)}
+                              />
+                            }
+                            label="Debug synthetic grid"
+                            sx={{
+                              mt: 1,
+                              mb: 1,
+                              "& .MuiFormControlLabel-label": {
+                                fontSize: "0.75rem",
+                              },
+                            }}
+                          />
+
+                          {/* Z slider */}
+                          <Box
+                            sx={{
+                              display: "flex",
+                              flexDirection: "column",
+                              gap: 0.5,
+                            }}
+                          >
+                            <Box
+                              sx={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: 0.5,
+                              }}
+                            >
+                              <Typography
+                                variant="caption"
+                                color="text.secondary"
+                              >
+                                Slice (Z)
+                              </Typography>
+                              <IconButton
+                                size="small"
+                                onClick={() => openHelp("sliceIndex")}
+                              >
+                                <HelpCircle size={14} />
+                              </IconButton>
+                            </Box>
+                            {maxSliceZ != null && sliceIndex != null ? (
+                              <>
+                                <Slider
+                                  size="small"
+                                  value={Math.min(sliceIndex, maxSliceZ)}
+                                  min={0}
+                                  max={maxSliceZ}
+                                  step={1}
+                                  onChange={(_, v) =>
+                                    setSliceIndex(v as number)
+                                  }
+                                  valueLabelDisplay="auto"
+                                  valueLabelFormat={(v) =>
+                                    String((v as number) + 1)
+                                  }
+                                />
+                                <Box
+                                  sx={{
+                                    display: "flex",
+                                    justifyContent: "space-between",
+                                  }}
+                                >
+                                  <Typography
+                                    variant="caption"
+                                    color="text.secondary"
+                                  >
+                                    1
+                                  </Typography>
+                                  <Typography
+                                    variant="caption"
+                                    color="text.secondary"
+                                  >
+                                    {maxSliceZ + 1}
+                                  </Typography>
+                                </Box>
+                              </>
+                            ) : (
+                              <Typography
+                                variant="caption"
+                                color="text.secondary"
+                              >
+                                Slice range not available. Tomogram dims are
+                                missing.
+                              </Typography>
+                            )}
+                          </Box>
+
+                          {/* X & Y sliders */}
+                          {multiViewMode === "triple" && (
+                            <>
+                              <Box
+                                sx={{
+                                  display: "flex",
+                                  flexDirection: "column",
+                                  gap: 0.5,
+                                }}
+                              >
+                                <Box
+                                  sx={{
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: 0.5,
+                                  }}
+                                >
+                                  <Typography
+                                    variant="caption"
+                                    color="text.secondary"
+                                  >
+                                    Slice (X)
+                                  </Typography>
+                                  <IconButton
+                                    size="small"
+                                    onClick={() => openHelp("sliceIndex")}
+                                  >
+                                    <HelpCircle size={14} />
+                                  </IconButton>
+                                </Box>
+                                {maxSliceX != null && sliceIndexX != null ? (
+                                  <>
+                                    <Slider
+                                      size="small"
+                                      value={Math.min(
+                                        sliceIndexX,
+                                        maxSliceX,
+                                      )}
+                                      min={0}
+                                      max={maxSliceX}
+                                      step={1}
+                                      onChange={(_, v) =>
+                                        setSliceIndexX(v as number)
+                                      }
+                                      valueLabelDisplay="auto"
+                                      valueLabelFormat={(v) =>
+                                        String((v as number) + 1)
+                                      }
+                                    />
+                                    <Box
+                                      sx={{
+                                        display: "flex",
+                                        justifyContent: "space-between",
+                                      }}
+                                    >
+                                      <Typography
+                                        variant="caption"
+                                        color="text.secondary"
+                                      >
+                                        1
+                                      </Typography>
+                                      <Typography
+                                        variant="caption"
+                                        color="text.secondary"
+                                      >
+                                        {maxSliceX + 1}
+                                      </Typography>
+                                    </Box>
+                                  </>
+                                ) : (
+                                  <Typography
+                                    variant="caption"
+                                    color="text.secondary"
+                                  >
+                                    Slice range not available for X axis. Tomogram
+                                    dims are missing.
+                                  </Typography>
+                                )}
+                              </Box>
+
+                              <Box
+                                sx={{
+                                  display: "flex",
+                                  flexDirection: "column",
+                                  gap: 0.5,
+                                }}
+                              >
+                                <Box
+                                  sx={{
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: 0.5,
+                                  }}
+                                >
+                                  <Typography
+                                    variant="caption"
+                                    color="text.secondary"
+                                  >
+                                    Slice (Y)
+                                  </Typography>
+                                  <IconButton
+                                    size="small"
+                                    onClick={() => openHelp("sliceIndex")}
+                                  >
+                                    <HelpCircle size={14} />
+                                  </IconButton>
+                                </Box>
+                                {maxSliceY != null && sliceIndexY != null ? (
+                                  <>
+                                    <Slider
+                                      size="small"
+                                      value={Math.min(
+                                        sliceIndexY,
+                                        maxSliceY,
+                                      )}
+                                      min={0}
+                                      max={maxSliceY}
+                                      step={1}
+                                      onChange={(_, v) =>
+                                        setSliceIndexY(v as number)
+                                      }
+                                      valueLabelDisplay="auto"
+                                      valueLabelFormat={(v) =>
+                                        String((v as number) + 1)
+                                      }
+                                    />
+                                    <Box
+                                      sx={{
+                                        display: "flex",
+                                        justifyContent: "space-between",
+                                      }}
+                                    >
+                                      <Typography
+                                        variant="caption"
+                                        color="text.secondary"
+                                      >
+                                        1
+                                      </Typography>
+                                      <Typography
+                                        variant="caption"
+                                        color="text.secondary"
+                                      >
+                                        {maxSliceY + 1}
+                                      </Typography>
+                                    </Box>
+                                  </>
+                                ) : (
+                                  <Typography
+                                    variant="caption"
+                                    color="text.secondary"
+                                  >
+                                    Slice range not available for Y axis. Tomogram
+                                    dims are missing.
+                                  </Typography>
+                                )}
+                              </Box>
+                            </>
+                          )}
+                        </Box>
+                      )}
+
+                      {/* Score range */}
+                      <Box
+                        sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}
+                      >
+                        <Box
+                          sx={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 0.5,
+                          }}
+                        >
+                          <Typography variant="caption" color="text.secondary">
+                            Score range
+                          </Typography>
+                          <IconButton
+                            size="small"
+                            onClick={() => openHelp("scoreFilter")}
+                          >
+                            <HelpCircle size={14} />
+                          </IconButton>
+                        </Box>
+
+                        {scoreMinMax ? (
+                          <>
+                            <Slider
+                              size="small"
+                              value={scoreRange ?? [scoreMinMax[0], scoreMinMax[1]]}
+                              min={scoreMinMax[0]}
+                              max={scoreMinMax[1]}
+                              step={
+                                (scoreMinMax[1] - scoreMinMax[0]) / 200 || 0.001
+                              }
+                              onChange={(_, v) =>
+                                setScoreRange(v as [number, number])
+                              }
+                              valueLabelDisplay="auto"
+                              valueLabelFormat={(v) => (v as number).toFixed(3)}
+                            />
+                            <Box
+                              sx={{
+                                display: "flex",
+                                justifyContent: "space-between",
+                              }}
+                            >
+                              <Typography
+                                variant="caption"
+                                color="text.secondary"
+                              >
+                                {scoreMinMax[0].toFixed(3)}
+                              </Typography>
+                              <Typography
+                                variant="caption"
+                                color="text.secondary"
+                              >
+                                {scoreMinMax[1].toFixed(3)}
+                              </Typography>
+                            </Box>
+                          </>
+                        ) : (
+                          <Typography variant="caption" color="text.secondary">
+                            No numeric scores available.
+                          </Typography>
+                        )}
+                      </Box>
+
+                      {/* Max points */}
+                      <Box
+                        sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}
+                      >
+                        <Box
+                          sx={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 0.5,
+                          }}
+                        >
+                          <Typography variant="caption" color="text.secondary">
+                            Max points
+                          </Typography>
+                          <IconButton
+                            size="small"
+                            onClick={() => openHelp("maxPoints")}
+                          >
+                            <HelpCircle size={14} />
+                          </IconButton>
+                        </Box>
+                        <Slider
+                          size="small"
+                          value={maxPoints}
+                          min={1000}
+                          max={200000}
+                          step={1000}
+                          onChange={(_, v) => setMaxPoints(v as number)}
+                          valueLabelDisplay="auto"
+                          valueLabelFormat={(v) =>
+                            (v as number).toLocaleString("en-US", {
+                              maximumFractionDigits: 0,
+                            })
+                          }
+                        />
+                        <Typography variant="caption" color="text.secondary">
+                          Downsampling by stride if the total number of filtered
+                          points exceeds this limit.
+                        </Typography>
+                      </Box>
+
+                      {/* Brightness / contrast */}
+                      {viewMode === "slice" && (
+                        <Box
+                          sx={{
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 1,
+                            mt: 0.5,
+                          }}
+                        >
+                          <Box
+                            sx={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "center",
+                            }}
+                          >
+                            <Typography variant="caption" color="text.secondary">
+                              Intensity
+                            </Typography>
+                            <Button
+                              size="small"
+                              onClick={() => {
+                                setBrightness(1.0);
+                                setContrast(1.0);
+                              }}
+                            >
+                              Reset
+                            </Button>
+                          </Box>
+
+                          <Box
+                            sx={{
+                              display: "flex",
+                              flexDirection: "column",
+                              gap: 0.5,
+                            }}
+                          >
+                            <Box
+                              sx={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: 0.5,
+                              }}
+                            >
+                              <Typography
+                                variant="caption"
+                                color="text.secondary"
+                              >
+                                Brightness
+                              </Typography>
+                              <IconButton
+                                size="small"
+                                onClick={() => openHelp("brightness")}
+                              >
+                                <HelpCircle size={14} />
+                              </IconButton>
+                            </Box>
+                            <Slider
+                              size="small"
+                              value={brightness}
+                              min={0.3}
+                              max={2.5}
+                              step={0.05}
+                              onChange={(_, v) => setBrightness(v as number)}
+                              valueLabelDisplay="auto"
+                              valueLabelFormat={(v) =>
+                                `${Math.round((v as number) * 100)}%`
+                              }
+                            />
+                          </Box>
+
+                          <Box
+                            sx={{
+                              display: "flex",
+                              flexDirection: "column",
+                              gap: 0.5,
+                            }}
+                          >
+                            <Box
+                              sx={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: 0.5,
+                              }}
+                            >
+                              <Typography
+                                variant="caption"
+                                color="text.secondary"
+                              >
+                                Contrast
+                              </Typography>
+                              <IconButton
+                                size="small"
+                                onClick={() => openHelp("contrast")}
+                              >
+                                <HelpCircle size={14} />
+                              </IconButton>
+                            </Box>
+                            <Slider
+                              size="small"
+                              value={contrast}
+                              min={0.3}
+                              max={2.5}
+                              step={0.05}
+                              onChange={(_, v) => setContrast(v as number)}
+                              valueLabelDisplay="auto"
+                              valueLabelFormat={(v) =>
+                                `${Math.round((v as number) * 100)}%`
+                              }
+                            />
+                          </Box>
+                        </Box>
+                      )}
+                    </Box>
+                  ) : (
+                    <Box
+                      sx={{
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 1.5,
+                        marginLeft: 1,
+                      }}
+                    >
+                      <Typography variant="subtitle2">Appearance</Typography>
+
+                      {/* Point color */}
+                      <Box
+                        sx={{
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: 0.5,
+                          mt: 0.5,
+                        }}
+                      >
+                        <Box
+                          sx={{
+                            display: "inline-flex",
+                            alignItems: "center",
                             gap: 0.5,
                           }}
                         >
@@ -1805,538 +2363,89 @@ export default function Coords3dViewer({
                             variant="caption"
                             color="text.secondary"
                           >
-                            Slice layout
+                            Point color
                           </Typography>
-                          <ToggleButtonGroup
+                          <IconButton
                             size="small"
-                            exclusive
-                            value={multiViewMode}
-                            onChange={(_, v) => v && setMultiViewMode(v)}
+                            onClick={() => openHelp("pointColor")}
                           >
-                            <ToggleButton value="single">Single</ToggleButton>
-                            <ToggleButton value="triple">3 views</ToggleButton>
-                          </ToggleButtonGroup>
+                            <HelpCircle size={14} />
+                          </IconButton>
                         </Box>
-
-                        {/* Debug grid toggle */}
-                        <FormControlLabel
-                          control={
-                            <Switch
-                              size="small"
-                              checked={debugGrid}
-                              onChange={(_, checked) => setDebugGrid(checked)}
-                            />
-                          }
-                          label="Debug synthetic grid"
-                          sx={{
-                            mt: 1,
-                            mb: 1,
-                            "& .MuiFormControlLabel-label": {
-                              fontSize: "0.75rem",
-                            },
-                          }}
-                        />
-
-                        {/* Z slider */}
                         <Box
                           sx={{
                             display: "flex",
-                            flexDirection: "column",
-                            gap: 0.5,
+                            flexWrap: "wrap",
+                            gap: 0.75,
                           }}
                         >
-                          <Box
-                            sx={{
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: 0.5,
-                            }}
-                          >
-                            <Typography
-                              variant="caption"
-                              color="text.secondary"
-                            >
-                              Slice (Z)
-                            </Typography>
-                            <IconButton
-                              size="small"
-                              onClick={() => openHelp("sliceIndex")}
-                            >
-                              <HelpCircle size={14} />
-                            </IconButton>
-                          </Box>
-                          {maxSliceZ != null && sliceIndex != null ? (
-                            <>
-                              <Slider
-                                size="small"
-                                value={Math.min(sliceIndex, maxSliceZ)}
-                                min={0}
-                                max={maxSliceZ}
-                                step={1}
-                                onChange={(_, v) =>
-                                  setSliceIndex(v as number)
-                                }
-                                valueLabelDisplay="auto"
-                                valueLabelFormat={(v) =>
-                                  String((v as number) + 1)
-                                }
+                          {POINT_COLOR_PALETTE.map((c) => {
+                            const isSelected = c.value === pointColor;
+                            return (
+                              <Box
+                                key={c.value}
+                                onClick={() => setPointColor(c.value)}
+                                sx={{
+                                  width: 20,
+                                  height: 20,
+                                  borderRadius: "50%",
+                                  cursor: "pointer",
+                                  border: isSelected
+                                    ? "2px solid #111827"
+                                    : "1px solid #d1d5db",
+                                  boxShadow: isSelected ? 1 : "none",
+                                  backgroundColor: c.value,
+                                }}
+                                title={c.label}
                               />
-                              <Box
-                                sx={{
-                                  display: "flex",
-                                  justifyContent: "space-between",
-                                }}
-                              >
-                                <Typography
-                                  variant="caption"
-                                  color="text.secondary"
-                                >
-                                  1
-                                </Typography>
-                                <Typography
-                                  variant="caption"
-                                  color="text.secondary"
-                                >
-                                  {maxSliceZ + 1}
-                                </Typography>
-                              </Box>
-                            </>
-                          ) : (
-                            <Typography
-                              variant="caption"
-                              color="text.secondary"
-                            >
-                              Slice range not available. Tomogram dims are
-                              missing.
-                            </Typography>
-                          )}
+                            );
+                          })}
                         </Box>
-
-                        {/* X & Y sliders */}
-                        {multiViewMode === "triple" && (
-                          <>
-                            <Box
-                              sx={{
-                                display: "flex",
-                                flexDirection: "column",
-                                gap: 0.5,
-                              }}
-                            >
-                              <Box
-                                sx={{
-                                  display: "inline-flex",
-                                  alignItems: "center",
-                                  gap: 0.5,
-                                }}
-                              >
-                                <Typography
-                                  variant="caption"
-                                  color="text.secondary"
-                                >
-                                  Slice (X)
-                                </Typography>
-                                <IconButton
-                                  size="small"
-                                  onClick={() => openHelp("sliceIndex")}
-                                >
-                                  <HelpCircle size={14} />
-                                </IconButton>
-                              </Box>
-                              {maxSliceX != null && sliceIndexX != null ? (
-                                <>
-                                  <Slider
-                                    size="small"
-                                    value={Math.min(
-                                      sliceIndexX,
-                                      maxSliceX,
-                                    )}
-                                    min={0}
-                                    max={maxSliceX}
-                                    step={1}
-                                    onChange={(_, v) =>
-                                      setSliceIndexX(v as number)
-                                    }
-                                    valueLabelDisplay="auto"
-                                    valueLabelFormat={(v) =>
-                                      String((v as number) + 1)
-                                    }
-                                  />
-                                  <Box
-                                    sx={{
-                                      display: "flex",
-                                      justifyContent: "space-between",
-                                    }}
-                                  >
-                                    <Typography
-                                      variant="caption"
-                                      color="text.secondary"
-                                    >
-                                      1
-                                    </Typography>
-                                    <Typography
-                                      variant="caption"
-                                      color="text.secondary"
-                                    >
-                                      {maxSliceX + 1}
-                                    </Typography>
-                                  </Box>
-                                </>
-                              ) : (
-                                <Typography
-                                  variant="caption"
-                                  color="text.secondary"
-                                >
-                                  Slice range not available for X axis. Tomogram
-                                  dims are missing.
-                                </Typography>
-                              )}
-                            </Box>
-
-                            <Box
-                              sx={{
-                                display: "flex",
-                                flexDirection: "column",
-                                gap: 0.5,
-                              }}
-                            >
-                              <Box
-                                sx={{
-                                  display: "inline-flex",
-                                  alignItems: "center",
-                                  gap: 0.5,
-                                }}
-                              >
-                                <Typography
-                                  variant="caption"
-                                  color="text.secondary"
-                                >
-                                  Slice (Y)
-                                </Typography>
-                                <IconButton
-                                  size="small"
-                                  onClick={() => openHelp("sliceIndex")}
-                                >
-                                  <HelpCircle size={14} />
-                                </IconButton>
-                              </Box>
-                              {maxSliceY != null && sliceIndexY != null ? (
-                                <>
-                                  <Slider
-                                    size="small"
-                                    value={Math.min(
-                                      sliceIndexY,
-                                      maxSliceY,
-                                    )}
-                                    min={0}
-                                    max={maxSliceY}
-                                    step={1}
-                                    onChange={(_, v) =>
-                                      setSliceIndexY(v as number)
-                                    }
-                                    valueLabelDisplay="auto"
-                                    valueLabelFormat={(v) =>
-                                      String((v as number) + 1)
-                                    }
-                                  />
-                                  <Box
-                                    sx={{
-                                      display: "flex",
-                                      justifyContent: "space-between",
-                                    }}
-                                  >
-                                    <Typography
-                                      variant="caption"
-                                      color="text.secondary"
-                                    >
-                                      1
-                                    </Typography>
-                                    <Typography
-                                      variant="caption"
-                                      color="text.secondary"
-                                    >
-                                      {maxSliceY + 1}
-                                    </Typography>
-                                  </Box>
-                                </>
-                              ) : (
-                                <Typography
-                                  variant="caption"
-                                  color="text.secondary"
-                                >
-                                  Slice range not available for Y axis. Tomogram
-                                  dims are missing.
-                                </Typography>
-                              )}
-                            </Box>
-                          </>
-                        )}
-                      </Box>
-                    )}
-
-                    {/* Score range */}
-                    <Box
-                      sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}
-                    >
-                      <Box
-                        sx={{
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: 0.5,
-                        }}
-                      >
-                        <Typography variant="caption" color="text.secondary">
-                          Score range
-                        </Typography>
-                        <IconButton
-                          size="small"
-                          onClick={() => openHelp("scoreFilter")}
-                        >
-                          <HelpCircle size={14} />
-                        </IconButton>
                       </Box>
 
-                      {scoreMinMax ? (
-                        <>
-                          <Slider
-                            size="small"
-                            value={scoreRange ?? [scoreMinMax[0], scoreMinMax[1]]}
-                            min={scoreMinMax[0]}
-                            max={scoreMinMax[1]}
-                            step={
-                              (scoreMinMax[1] - scoreMinMax[0]) / 200 || 0.001
-                            }
-                            onChange={(_, v) =>
-                              setScoreRange(v as [number, number])
-                            }
-                            valueLabelDisplay="auto"
-                            valueLabelFormat={(v) => (v as number).toFixed(3)}
-                          />
-                          <Box
-                            sx={{
-                              display: "flex",
-                              justifyContent: "space-between",
-                            }}
-                          >
-                            <Typography
-                              variant="caption"
-                              color="text.secondary"
-                            >
-                              {scoreMinMax[0].toFixed(3)}
-                            </Typography>
-                            <Typography
-                              variant="caption"
-                              color="text.secondary"
-                            >
-                              {scoreMinMax[1].toFixed(3)}
-                            </Typography>
-                          </Box>
-                        </>
-                      ) : (
-                        <Typography variant="caption" color="text.secondary">
-                          No numeric scores available.
-                        </Typography>
-                      )}
-                    </Box>
-
-                    {/* Max points */}
-                    <Box
-                      sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}
-                    >
-                      <Box
-                        sx={{
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: 0.5,
-                        }}
-                      >
-                        <Typography variant="caption" color="text.secondary">
-                          Max points
-                        </Typography>
-                        <IconButton
-                          size="small"
-                          onClick={() => openHelp("maxPoints")}
-                        >
-                          <HelpCircle size={14} />
-                        </IconButton>
-                      </Box>
-                      <Slider
-                        size="small"
-                        value={maxPoints}
-                        min={1000}
-                        max={200000}
-                        step={1000}
-                        onChange={(_, v) => setMaxPoints(v as number)}
-                        valueLabelDisplay="auto"
-                        valueLabelFormat={(v) =>
-                          (v as number).toLocaleString("en-US", {
-                            maximumFractionDigits: 0,
-                          })
-                        }
-                      />
-                      <Typography variant="caption" color="text.secondary">
-                        Downsampling by stride if the total number of filtered
-                        points exceeds this limit.
-                      </Typography>
-                    </Box>
-
-                    {/* Point color */}
-                    <Box
-                      sx={{
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: 0.5,
-                        mt: 0.5,
-                      }}
-                    >
-                      <Typography variant="caption" color="text.secondary">
-                        Point color
-                      </Typography>
-                      <Box
-                        sx={{
-                          display: "flex",
-                          flexWrap: "wrap",
-                          gap: 0.75,
-                        }}
-                      >
-                        {POINT_COLOR_PALETTE.map((c) => {
-                          const isSelected = c.value === pointColor;
-                          return (
-                            <Box
-                              key={c.value}
-                              onClick={() => setPointColor(c.value)}
-                              sx={{
-                                width: 20,
-                                height: 20,
-                                borderRadius: "50%",
-                                cursor: "pointer",
-                                border: isSelected
-                                  ? "2px solid #111827"
-                                  : "1px solid #d1d5db",
-                                boxShadow: isSelected ? 1 : "none",
-                                backgroundColor: c.value,
-                              }}
-                              title={c.label}
-                            />
-                          );
-                        })}
-                      </Box>
-                    </Box>
-
-                    {/* Brightness / contrast */}
-                    {viewMode === "slice" && (
+                      {/* Point size */}
                       <Box
                         sx={{
                           display: "flex",
                           flexDirection: "column",
-                          gap: 1,
-                          mt: 0.5,
+                          gap: 0.5,
                         }}
                       >
                         <Box
                           sx={{
-                            display: "flex",
-                            justifyContent: "space-between",
+                            display: "inline-flex",
                             alignItems: "center",
+                            gap: 0.5,
                           }}
                         >
-                          <Typography variant="caption" color="text.secondary">
-                            Intensity
+                          <Typography
+                            variant="caption"
+                            color="text.secondary"
+                          >
+                            Point size
                           </Typography>
-                          <Button
+                          <IconButton
                             size="small"
-                            onClick={() => {
-                              setBrightness(1.0);
-                              setContrast(1.0);
-                            }}
+                            onClick={() => openHelp("pointSize")}
                           >
-                            Reset
-                          </Button>
+                            <HelpCircle size={14} />
+                          </IconButton>
                         </Box>
-
-                        <Box
-                          sx={{
-                            display: "flex",
-                            flexDirection: "column",
-                            gap: 0.5,
-                          }}
-                        >
-                          <Box
-                            sx={{
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: 0.5,
-                            }}
-                          >
-                            <Typography
-                              variant="caption"
-                              color="text.secondary"
-                            >
-                              Brightness
-                            </Typography>
-                            <IconButton
-                              size="small"
-                              onClick={() => openHelp("brightness")}
-                            >
-                              <HelpCircle size={14} />
-                            </IconButton>
-                          </Box>
-                          <Slider
-                            size="small"
-                            value={brightness}
-                            min={0.3}
-                            max={2.5}
-                            step={0.05}
-                            onChange={(_, v) => setBrightness(v as number)}
-                            valueLabelDisplay="auto"
-                            valueLabelFormat={(v) =>
-                              `${Math.round((v as number) * 100)}%`
-                            }
-                          />
-                        </Box>
-
-                        <Box
-                          sx={{
-                            display: "flex",
-                            flexDirection: "column",
-                            gap: 0.5,
-                          }}
-                        >
-                          <Box
-                            sx={{
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: 0.5,
-                            }}
-                          >
-                            <Typography
-                              variant="caption"
-                              color="text.secondary"
-                            >
-                              Contrast
-                            </Typography>
-                            <IconButton
-                              size="small"
-                              onClick={() => openHelp("contrast")}
-                            >
-                              <HelpCircle size={14} />
-                            </IconButton>
-                          </Box>
-                          <Slider
-                            size="small"
-                            value={contrast}
-                            min={0.3}
-                            max={2.5}
-                            step={0.05}
-                            onChange={(_, v) => setContrast(v as number)}
-                            valueLabelDisplay="auto"
-                            valueLabelFormat={(v) =>
-                              `${Math.round((v as number) * 100)}%`
-                            }
-                          />
-                        </Box>
+                        <Slider
+                          size="small"
+                          value={pointSizeFactor}
+                          min={0.3}
+                          max={3}
+                          step={0.05}
+                          onChange={(_, v) => setPointSizeFactor(v as number)}
+                          valueLabelDisplay="auto"
+                          valueLabelFormat={(v) =>
+                            `${(v as number).toFixed(2)}×`
+                          }
+                        />
                       </Box>
-                    )}
-                  </Box>
+                    </Box>
+                  )}
                 </Box>
               </Box>
             </>
@@ -2359,7 +2468,11 @@ export default function Coords3dViewer({
                     ? "Brightness"
                     : helpKey === "contrast"
                       ? "Contrast"
-                      : "Help"}
+                      : helpKey === "pointColor"
+                        ? "Point color"
+                        : helpKey === "pointSize"
+                          ? "Point size"
+                          : "Help"}
         </DialogTitle>
         <DialogContent>
           <DialogContentText>
