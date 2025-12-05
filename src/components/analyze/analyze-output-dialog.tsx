@@ -45,7 +45,7 @@ function isCoords3dKind(k?: string) {
 function isSetOfMetadataKind(k?: string) {
   if (!k) return false;
   const trimmed = k.replace(/\s+/g, "");
-  if (!/^SetOf/i.test(trimmed)) return false;
+  if ((!/^SetOf/i.test(trimmed)) && (!/^RelionSetOf/i.test(trimmed))) return false;
   if (isVolumeKind(k)) return false;
   if (isCoords3dKind(k)) return false;
   return true;
