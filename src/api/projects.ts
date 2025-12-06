@@ -108,11 +108,12 @@ export async function fetchNewProtocolDetails(
 
 /* ======================= EXEC/SAVE ======================= */
 export async function executeProtocol(
+  projectId: Id,
   protocolId: Id,
   protocolClassName: string,
   params: Record<string, any>,
 ): Promise<any> {
-  const response = await fetchWithAuth(`${BASE_URL}/projects/${ACTION_LAUNCH}`, {
+  const response = await fetchWithAuth(`${BASE_URL}/projects/${projectId}/${ACTION_LAUNCH}`, {
     method: "POST",
     body: JSON.stringify({ protocolId, protocolClassName, params }),
   });
@@ -120,11 +121,12 @@ export async function executeProtocol(
   return safeJson<any>(response);
 }
 export async function saveProtocol(
+  projectId: Id,
   protocolId: Id,
   protocolClassName: string,
   params: Record<string, any>,
 ): Promise<any> {
-  const response = await fetchWithAuth(`${BASE_URL}/projects/${ACTION_SAVE}`, {
+  const response = await fetchWithAuth(`${BASE_URL}/projects/${projectId}/${ACTION_SAVE}`, {
     method: "POST",
     body: JSON.stringify({ protocolId, protocolClassName, params }),
   });

@@ -248,6 +248,7 @@ export interface ProjectService<
 
   /** Execute a protocol with given params. */
   executeProtocol(
+    projectId: Id,
     protocolId: Id,
     protocolClassName: string,
     params: Record<string, unknown>
@@ -255,6 +256,7 @@ export interface ProjectService<
 
   /** Save protocol parameters without executing. */
   saveProtocol(
+    projectId: Id,
     protocolId: Id,
     protocolClassName: string,
     params: Record<string, unknown>

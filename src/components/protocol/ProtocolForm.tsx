@@ -854,9 +854,10 @@ export default function ProtocolForm({
     setValidationErrors([]);
 
     try {
+      const projectId = data?.projectId
       const pid = data?.id ?? "";
       const serialized = getSerializedParams();
-      await svc.executeProtocol(pid, data?.protocolClassName, serialized);
+      await svc.executeProtocol(projectId, pid, data?.protocolClassName, serialized);
       onExecuted?.();
       requestClose();
     } catch (err: any) {
@@ -880,9 +881,10 @@ export default function ProtocolForm({
     setExecLoading(true);
     setExecError(null);
     try {
+      const projectId = data?.projectId
       const pid = data?.id ?? "";
       const serialized = getSerializedParams();
-      await svc.saveProtocol(pid, data?.protocolClassName, serialized);
+      await svc.saveProtocol(projectId, pid, data?.protocolClassName, serialized);
       requestClose();
     } catch (err: any) {
       setExecError(err.message || "Error saving the protocol");
