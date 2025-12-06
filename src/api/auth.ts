@@ -210,36 +210,24 @@ export async function updateUserProfile(data: Partial<UserProfile>) {
 /**
  * Wrapper for fetch that automatically refreshes tokens on 401
  */
-export async function fetchWithAuth(input: RequestInfo, init?: RequestInit): Promise<Response> {
-  let token = getAccessToken();
+export async function fetchWithAuth(input: RequestInfo, init: RequestInit = {}): Promise<Response> {
+  const token = getAccessToken();
+  const headers = new Headers(init.headers || {});
+  const method = (init.method || "GET").toUpperCase();
+  const hasBody = !!init.body && method !== "GET" && method !== "HEAD";
 
-  const response = await fetch(input, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers || {}),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-  });
+  if (token && !headers.has("Authorization")) headers.set("Authorization", `Bearer ${token}`);
+  if (hasBody && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+  if (!headers.has("Accept")) headers.set("Accept", "*/*");
 
-  if (response.status === 401) {
-    // try refresh
+  const req: RequestInit = { ...init, headers, credentials: "include", mode: "cors", cache: "no-store", redirect: "follow" };
+
+  let res = await fetch(input, req);
+  if (res.status === 401) {
     const newToken = await refreshAccessToken();
-    if (!newToken) {
-      logout();
-      throw new Error("Session expired. Please login again.");
-    }
-
-    // retry request with new token
-    return fetch(input, {
-      ...init,
-      headers: {
-        "Content-Type": "application/json",
-        ...(init?.headers || {}),
-        Authorization: `Bearer ${newToken}`,
-      },
-    });
+    if (!newToken) { logout(); throw new Error("Session expired. Please login again."); }
+    headers.set("Authorization", `Bearer ${newToken}`);
+    res = await fetch(input, { ...req, headers });
   }
-
-  return response;
+  return res;
 }

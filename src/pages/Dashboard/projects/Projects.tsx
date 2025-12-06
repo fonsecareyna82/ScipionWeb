@@ -10,15 +10,12 @@ import type { ProjectService } from "@/services/ProjectService";
 import { Project } from "@/types/project";
 import { CloudDownload, Download, PlusCircle } from "lucide-react";
 
-/**
- * normalizeProject:
- * Takes any "project-like" object coming from the backend and converts it
- * into our internal Project shape.
- * This is used for initial loading AND for newly created projects.
- */
+/** Tweak this if your header/breadcrumb/top paddings differ */
+const GRID_VPORT_OFFSET_PX = 220;
+
+/** Normalize any backend project shape into our internal Project type. */
 function normalizeProject(raw: any): Project {
   const p = raw ?? {};
-
   const createdRaw = p.createdAt ?? p.created_at;
   const updatedRaw = p.updatedAt ?? p.updated_at;
 
@@ -44,14 +41,11 @@ function normalizeProject(raw: any): Project {
 }
 
 interface ProjectsPageProps {
-  // Optional injection of a ProjectService (useful for tests/mocks).
   service?: ProjectService;
-  // Optional injection of a custom fetchList() (also for tests/mocks).
   fetchList?: () => Promise<Project[]>;
 }
 
 export default function Projects({ service, fetchList }: ProjectsPageProps) {
-  // Prefer the injected service if provided; otherwise take it from context.
   const svcFromCtx = useProjectService();
   const svc = service ?? svcFromCtx;
 
@@ -65,15 +59,10 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  /**
-   * Close the dropdown menu if the user clicks outside of it.
-   */
+  // Close dropdown on outside click
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (
-        dropdownRef.current &&
-        !dropdownRef.current.contains(event.target as Node)
-      ) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setShowDropdown(false);
       }
     };
@@ -81,34 +70,18 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  /**
-   * Fetch project list on mount.
-   * We accept several possible response shapes:
-   *   - [ {...}, {...} ]
-   *   - { results: [ {...}, {...} ] }
-   *   - { someId: {...}, otherId: {...} }  (dictionary-like)
-   *
-   * Everything is normalized via normalizeProject() before storing.
-   */
+  // Fetch projects on mount
   useEffect(() => {
     (async () => {
       setLoading(true);
       setLoadError(null);
       try {
         const raw = await (fetchList ? fetchList() : svc.fetchList());
-
         let list: any[] = [];
-        if (Array.isArray(raw)) {
-          list = raw;
-        } else if (raw && Array.isArray((raw as any).results)) {
-          list = (raw as any).results;
-        } else if (raw && typeof raw === "object") {
-          // Fallback: assume it's an object whose values are project objects
-          list = Object.values(raw);
-        }
-
-        const normalized = list.map(normalizeProject);
-        setProjects(normalized);
+        if (Array.isArray(raw)) list = raw;
+        else if (raw && Array.isArray((raw as any).results)) list = (raw as any).results;
+        else if (raw && typeof raw === "object") list = Object.values(raw);
+        setProjects(list.map(normalizeProject));
       } catch (err: any) {
         console.error("[Projects] failed to load projects:", err);
         setLoadError(err?.message ?? String(err));
@@ -119,10 +92,7 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
     })();
   }, [fetchList, svc]);
 
-  /**
-   * Local search filter.
-   * Matches either by project name or project id.
-   */
+  // Local search
   const filteredProjects = projects.filter((p) => {
     const term = search.toLowerCase();
     return (
@@ -131,61 +101,23 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
     );
   });
 
-  /**
-   * Handler to delete a project in local state.
-   * This assumes the backend deletion succeeded somewhere else
-   * (ProjectCard calls onDelete after its own API call).
-   */
+  // Local removal after backend deletion
   const handleDeleteProject = useCallback((id: number | string) => {
     setProjects((prev) => prev.filter((p) => String(p.id) !== String(id)));
   }, []);
 
-  /**
-   * Handler to update project name/description after rename.
-   * Again, assumes backend rename was successful first.
-   */
-  const handleRenameProject = useCallback(
-    (id: number | string, newName: string, newDescription: string) => {
-      setProjects((prev) =>
-        prev.map((p) =>
-          String(p.id) === String(id)
-            ? { ...p, name: newName, description: newDescription }
-            : p
-        )
-      );
-    },
-    []
-  );
+  // Local rename after backend rename
+  const handleRenameProject = useCallback((id: number | string, newName: string, newDescription: string) => {
+    setProjects((prev) =>
+      prev.map((p) => (String(p.id) === String(id) ? { ...p, name: newName, description: newDescription } : p))
+    );
+  }, []);
 
-  /**
-   * handleCreateProject:
-   *
-   * IMPORTANT:
-   * The modal (NewProjectModal) already calls svc.createProject(...) itself.
-   * Then it calls onCreate(...) with whatever the backend returned.
-   *
-   * So here we MUST NOT call svc.createProject again.
-   *
-   * We only:
-   *   1. unwrap the response (some backends return {project:{...}} / {data:{...}} / {result:{...}})
-   *   2. normalize it
-   *   3. prepend it to "projects"
-   *   4. clear the search box so the newly created project is visible
-   */
+  // After modal created a project successfully (modal already calls svc.createProject)
   const handleCreateProject = useCallback((rawCreated: any) => {
-    // Unwrap common backend shapes
-    const unwrapped =
-      (rawCreated &&
-        (rawCreated.project ||
-          rawCreated.data ||
-          rawCreated.result)) ??
-      rawCreated;
-
+    const unwrapped = (rawCreated && (rawCreated.project || rawCreated.data || rawCreated.result)) ?? rawCreated;
     const normalized = normalizeProject(unwrapped);
-
     setProjects((prev) => [normalized, ...prev]);
-
-    // Clear any active search filter, so the new project is not hidden
     setSearch("");
   }, []);
 
@@ -194,10 +126,10 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
       <PageMeta title="Scipion | Projects" description="Projects page" />
       <PageBreadcrumb pageTitle="Projects" />
 
-      <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] lg:p-6">
-        {/* Top bar: search input + dropdown button */}
-        <div className="flex items-center justify-between mb-6 w-full">
-          {/* Search input */}
+      <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] lg:p-6 ">
+        {/* Top bar */}
+        <div className="flex items-center justify-between mb-4 w-full">
+          {/* Search */}
           <div className="relative w-full max-w-md">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
               <svg
@@ -208,11 +140,7 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
                 stroke="currentColor"
                 strokeWidth={2}
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
             </div>
             <input
@@ -224,7 +152,7 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
             />
           </div>
 
-          {/* Dropdown trigger (New project / Import / etc.) */}
+          {/* Dropdown */}
           <div className="relative ml-4" ref={dropdownRef}>
             <button
               onClick={() => setShowDropdown((prev) => !prev)}
@@ -256,7 +184,6 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
                     onClick={() => {
                       setShowDropdown(false);
                       console.log("Import Project");
-                      // TODO: implement import project flow
                     }}
                   >
                     <div className="flex items-center gap-2">
@@ -269,14 +196,11 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
                     onClick={() => {
                       setShowDropdown(false);
                       console.log("Import Workflow");
-                      // TODO: implement import workflow flow
                     }}
                   >
                     <div className="flex items-center gap-2">
                       <CloudDownload className="shrink-0 w-4 h-4 text-gray-500 dark:text-white" />
-                      <span className="whitespace-nowrap">
-                        Import workflow
-                      </span>
+                      <span className="whitespace-nowrap">Import workflow</span>
                     </div>
                   </li>
                 </ul>
@@ -285,71 +209,66 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
           </div>
         </div>
 
-        {/* Projects grid */}
-        <div className="flex flex-wrap gap-6 items-stretch">
-          {/* Loading state */}
-          {loading && (
-            <p className="w-full text-center text-gray-500">
-              Loading projects...
-            </p>
-          )}
+        {/* Scroll container: always vertical scroll available on mobile */}
+        <div
+          className="overscroll-contain"
+          style={{
+            height: `calc(100vh - ${GRID_VPORT_OFFSET_PX}px)`,
+            overflowY: "auto",
+            WebkitOverflowScrolling: "touch",
+            paddingRight: 4, // keep content from touching the scrollbar
+          }}
+        >
+          {/* Projects grid — left aligned, responsive columns */}
+          <div
+            className="
+              grid gap-6
+              grid-cols-1 sm:grid-cols-2 lg:grid-cols-3
+              items-start
+            "
+            aria-label="Projects list"
+          >
+            {loading && (
+              <p className="col-span-full text-center text-gray-500">Loading projects...</p>
+            )}
 
-          {/* Error state */}
-          {!loading && loadError && (
-            <p className="w-full text-center text-red-500">
-              Error loading projects: {loadError}
-            </p>
-          )}
+            {!loading && loadError && (
+              <p className="col-span-full text-center text-red-500">
+                Error loading projects: {loadError}
+              </p>
+            )}
 
-          {/* Empty state (after filtering) */}
-          {!loading && !loadError && filteredProjects.length === 0 && (
-            <p className="w-full text-center text-gray-500">
-              No projects found.
-            </p>
-          )}
+            {!loading && !loadError && filteredProjects.length === 0 && (
+              <p className="col-span-full text-center text-gray-500">No projects found.</p>
+            )}
 
-          {/* Normal state */}
-          {!loading &&
-            !loadError &&
-            filteredProjects.map((project) => (
-              <div key={String(project.id)} className="w-full sm:w-[550px]">
-                <ProjectCard
-                  id={project.id}
-                  label={project.name}
-                  value={project.protocolsCount ?? "0"}
-                  createdAt={
-                    project.createdAt ? String(project.createdAt) : undefined
-                  }
-                  diskUsage={project.diskUsage?.toString()}
-                  isSelected={selectedLabel === project.name}
-                  onSelect={() => setSelectedLabel(project.name)}
-                  isExpanded={expandedLabel === project.name}
-                  description={
-                    project.description ?? "No description available."
-                  }
-                  onToggleExpand={() =>
-                    setExpandedLabel((prev) =>
-                      prev === project.name ? null : project.name
-                    )
-                  }
-                  onDelete={handleDeleteProject}
-                  onRename={handleRenameProject}
-                />
-              </div>
-            ))}
+            {!loading &&
+              !loadError &&
+              filteredProjects.map((project) => (
+                <div key={String(project.id)} className="h-full">
+                  <ProjectCard
+                    id={project.id}
+                    label={project.name}
+                    value={project.protocolsCount ?? "0"}
+                    createdAt={project.createdAt ? String(project.createdAt) : undefined}
+                    diskUsage={project.diskUsage?.toString()}
+                    isSelected={selectedLabel === project.name}
+                    onSelect={() => setSelectedLabel(project.name)}
+                    isExpanded={expandedLabel === project.name}
+                    description={project.description ?? "No description available."}
+                    onToggleExpand={() =>
+                      setExpandedLabel((prev) => (prev === project.name ? null : project.name))
+                    }
+                    onDelete={handleDeleteProject}
+                    onRename={handleRenameProject}
+                  />
+                </div>
+              ))}
+          </div>
         </div>
       </div>
 
-      {/* New project modal:
-         - It talks to the backend itself (svc.createProject).
-         - After backend success it calls onCreate(...) with the result.
-         - We then add that project to local state in handleCreateProject.
-      */}
-      <NewProjectModal
-        open={showCreate}
-        onClose={() => setShowCreate(false)}
-        onCreate={handleCreateProject}
-      />
+      <NewProjectModal open={showCreate} onClose={() => setShowCreate(false)} onCreate={handleCreateProject} />
     </>
   );
 }

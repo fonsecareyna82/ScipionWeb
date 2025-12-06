@@ -3,7 +3,7 @@ import "./index.css";
 
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { MemoryRouter, Routes, Route, Navigate } from "react-router-dom";
 
 // React Query v5
 import {
@@ -33,10 +33,7 @@ class WidgetErrorBoundary extends React.Component<
   { err: any }
 > {
   state = { err: null as any };
-
-  static getDerivedStateFromError(err: any) {
-    return { err };
-  }
+  static getDerivedStateFromError(err: any) { return { err }; }
   componentDidCatch(err: any, info: any) {
     console.error("[ProjectPageWidget] error:", err, info);
   }
@@ -81,7 +78,9 @@ function forceFullHeight(target: HTMLElement) {
     target.style.flexDirection = "column";
     target.style.height = "100%";
     target.style.minHeight = "0";
-  } catch {}
+  } catch {
+    /* no-op */
+  }
 }
 
 /** Normalize external service into ProjectService contract */
@@ -90,6 +89,7 @@ function normalizeServiceAPI(srv: any): ProjectService {
     throw new Error("ProjectPageWidget: invalid service object");
   }
   const normalized: any = { ...srv };
+
   const mapFn = (to: string, ...cands: string[]) => {
     if (typeof normalized[to] === "function") return;
     for (const c of cands) {
@@ -102,24 +102,57 @@ function normalizeServiceAPI(srv: any): ProjectService {
       }
     }
   };
+
   // projects
   mapFn("fetchList", "listProjects", "list", "fetch");
   mapFn("fetchProject", "getProject", "fetchOne", "get");
-  mapFn("createProject", "create", "newProject");
-  mapFn("renameProject", "rename", "updateProject");
-  mapFn("deleteProject", "delete", "remove", "removeProject");
+  mapFn("createProject", "createProject", "create", "newProject");
+  mapFn("renameProject", "renameProject", "rename", "updateProject");
+  mapFn("deleteProject", "deleteProject", "delete", "remove", "removeProject");
+
   // protocols
   mapFn("fetchProtocolDetails", "getProtocol", "getProtocolDetails");
   mapFn("fetchNewProtocolDetails", "getNewProtocol", "newProtocol");
   mapFn("loadProtocols", "listProtocols", "fetchProtocols", "getProtocols");
   mapFn("executeProtocol", "runProtocol", "launchProtocol", "execute");
   mapFn("saveProtocol", "persistProtocol", "storeProtocol", "save");
+  mapFn("renameProtocol", "renameProtocol");
+  mapFn("duplicateProtocol", "duplicateProtocol");
+  mapFn("deleteProtocol", "deleteProtocol");
+  mapFn("restartAll", "restartAll");
+  mapFn("continueAll", "continueAll");
+  mapFn("resetFrom", "resetFrom");
+  mapFn("stopProtocol", "stopProtocol");
+
+  // file / previews
+  mapFn("resolveProtocolStartPath", "resolveProtocolStartPath");
+  mapFn("listRemoteDirectory", "listRemoteDirectory");
+  mapFn("previewProtocolText", "previewProtocolText");
+  mapFn("buildProtocolDownloadUrl", "buildProtocolDownloadUrl");
+  mapFn("fetchProtocolInlinePreviewBlob", "previewInlineBlob", "getInlinePreviewBlob", "downloadInlinePreviewBlob");
+  mapFn("fetchOutputPreview", "previewOutput", "getOutputPreview", "requestOutputPreview");
+
+  // Analyze Results (Volumes)
+  mapFn("listOutputVolumes", "listOutputVolumes");
+  mapFn("getVolumeInfo", "getVolumeInfo");
+  mapFn("buildVolumeSliceUrl", "buildVolumeSliceUrl");
+  mapFn("fetchVolumeSliceObjectUrl", "fetchVolumeSliceObjectUrl");
+
   return normalized as ProjectService;
 }
 
+/** Tiny helper to produce a mock data URL slice image */
+const mockSliceDataUrl = (sliceIndex: number) => {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256">
+    <rect width="100%" height="100%" fill="#eeeeee"/>
+    <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle"
+          font-size="18" fill="#333333">Slice ${sliceIndex}</text>
+  </svg>`;
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+};
+
 /** Default minimal mock service (fallback) */
 const defaultMockService: ProjectService = {
-  // ----- projects -----
   async fetchList() {
     return [{ id: "demo", name: "Demo project", createdAt: new Date().toISOString(), status: "idle" }];
   },
@@ -140,10 +173,9 @@ const defaultMockService: ProjectService = {
     return { id, name: newName, description: newDescription ?? "" } as any;
   },
   async deleteProject(_id: string | number) {
-    return { success: true } as any; // interface allows void | { success: boolean }
+    return { success: true } as any;
   },
 
-  // ----- protocols (load/save/exec/details) -----
   async loadProtocols(_projectId: string | number) {
     return [] as any;
   },
@@ -160,12 +192,11 @@ const defaultMockService: ProjectService = {
     return { id: "new", protocolClassName: protocolClass, params: {} } as any;
   },
 
-  // ----- protocol actions (required by interface) -----
   async renameProtocol(_projectId: string | number, protocolId: string | number, newName: string) {
     return { id: protocolId, name: newName } as any;
   },
   async duplicateProtocol(_projectId: string | number, items: { id: string; name?: string }[]) {
-    return { duplicated: items.map(i => ({ ...i, id: `${i.id}-copy` })) } as any;
+    return { duplicated: items.map((i) => ({ ...i, id: `${i.id}-copy` })) } as any;
   },
   async deleteProtocol(_projectId: string | number, _ids: string[]) {
     return { success: true } as any;
@@ -196,9 +227,39 @@ const defaultMockService: ProjectService = {
       path
     )}&inline=${inline ? 1 : 0}`;
   },
+  async fetchProtocolInlinePreviewBlob(_projectId, _protocolId, _relPath) {
+    const blob = new Blob([`Mock inline preview for ${_relPath}`], { type: "text/plain" });
+    const meta = {
+      mime: "text/plain",
+      width: undefined,
+      height: undefined,
+      depth: undefined,
+      sizeBytes: blob.size,
+      voxelSize: undefined,
+      note: "mock",
+    };
+    return { blob, meta };
+  },
+  async fetchOutputPreview(_projectId, _protocolId, outputName) {
+    return { success: true, outputName };
+  },
+
+  // ───────── Analyze Results — Volumes (mock implementations) ─────────
+  async listOutputVolumes(_projectId, _protocolId, _outputName) {
+    return [{ id: "vol-1", name: "Demo volume" }];
+  },
+  async getVolumeInfo(_projectId, _protocolId, _outputName, _volumeId) {
+    return { slices: 64, shape: [64, 256, 256], voxelSize: [1, 1, 1], dtype: "float32" };
+  },
+  async buildVolumeSliceUrl(_projectId, _protocolId, _outputName, _volumeId, sliceIndex) {
+    return mockSliceDataUrl(sliceIndex);
+  },
+  async fetchVolumeSliceObjectUrl(_projectId, _protocolId, _outputName, _volumeId, sliceIndex) {
+    const url = mockSliceDataUrl(sliceIndex);
+    return { url, revoke: () => {} };
+  },
 };
 
-/** Optional initial props passed by the host page (e.g., Flask) */
 export type InitialProps = {
   initialProject?: any;
   initialProtocols?: any[];
@@ -214,8 +275,12 @@ export type ProjectPageMountOptions = {
   props?: InitialProps;
 };
 
-/** Wrap service to serve initial project/protocols once, then delegate */
-function withInitialProjectOnce(service: ProjectService, props?: InitialProps, projectKey?: string): ProjectService {
+/** Pre-seed caches and serve initial data once */
+function withInitialProjectOnce(
+  service: ProjectService,
+  props?: InitialProps,
+  projectKey?: string
+): ProjectService {
   if (!props) return service;
   let servedProject = false;
   let servedProtocols = false;
@@ -273,24 +338,33 @@ export function mountProjectPageWidget({
   if (!target) throw new Error(`ProjectPageWidget: container '${container}' not found`);
 
   ensureDomRoots();
-  forceFullHeight(target as HTMLElement); // ⬅️ fuerza el contenedor del host a 100% alto
+  forceFullHeight(target as HTMLElement);
 
-  // normalize & wrap the service
   const base = normalizeServiceAPI(service ?? defaultMockService);
 
-  // React Query clients
-  const qcV5 = new QueryClientV5({ defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } } });
+  const qcV5 = new QueryClientV5({
+    defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
+  });
   const qcV3 = new QueryClientV3();
 
-  // Preload caches using multiple alias keys so the Page finds them
+  // Preload caches with aliases
   const idKey = String(props?.cacheAliases?.byId ?? props?.initialProject?.id ?? projectName);
   const shortKey = String(props?.cacheAliases?.byShortName ?? props?.initialProject?.shortName ?? "");
   const nameKey = String(props?.cacheAliases?.byName ?? props?.initialProject?.name ?? "");
 
   const seed = (key: any[]) => {
-    try { qcV5.setQueryData(key, props?.initialProject); } catch {}
-    try { (qcV3 as any).setQueryData(key, props?.initialProject); } catch {}
+    try {
+      qcV5.setQueryData(key, props?.initialProject);
+    } catch {
+      /* ignore */
+    }
+    try {
+      (qcV3 as any).setQueryData(key, props?.initialProject);
+    } catch {
+      /* ignore */
+    }
   };
+
   if (props?.initialProject) {
     seed(["project", idKey]);
     if (shortKey) seed(["project", shortKey]);
@@ -298,8 +372,16 @@ export function mountProjectPageWidget({
   }
   if (props?.initialProtocols && Array.isArray(props.initialProtocols)) {
     const put = (key: any[]) => {
-      try { qcV5.setQueryData(key, props.initialProtocols); } catch {}
-      try { (qcV3 as any).setQueryData(key, props.initialProtocols); } catch {}
+      try {
+        qcV5.setQueryData(key, props.initialProtocols);
+      } catch {
+        /* ignore */
+      }
+      try {
+        (qcV3 as any).setQueryData(key, props.initialProtocols);
+      } catch {
+        /* ignore */
+      }
     };
     put(["protocols", idKey]);
     if (shortKey) put(["protocols", shortKey]);
@@ -311,15 +393,8 @@ export function mountProjectPageWidget({
   // Emotion cache renders styles into host <head>
   const emotionCache = createCache({ key: "mpw", container: document.head, prepend: false });
 
-  // Align URL to the route ProjectPage uses and render with <Routes>
-  try {
-    const desired = `/project/load/${encodeURIComponent(projectName)}`;
-    if (typeof window !== "undefined" && window.location && window.history) {
-      if (window.location.pathname !== desired) {
-        window.history.replaceState(null, "", desired);
-      }
-    }
-  } catch {}
+  // Decouple from host URL using MemoryRouter.
+  const initialPath = `/project/load/${encodeURIComponent(projectName)}`;
 
   const root = ReactDOM.createRoot(target as HTMLElement);
   root.render(
@@ -327,28 +402,21 @@ export function mountProjectPageWidget({
       <QueryClientProviderV3 client={qcV3}>
         <QueryClientProviderV5 client={qcV5}>
           <CacheProvider value={emotionCache}>
-            {/* Wrapper que ocupa 100% del alto del host */}
             <div style={{ height: "100%", minHeight: 0, display: "flex", flexDirection: "column" }}>
-              <BrowserRouter>
+              <MemoryRouter initialEntries={[initialPath]}>
                 <HelmetProvider>
                   <WidgetErrorBoundary>
                     <DragProvider>
-                      {/* El contenedor de rutas también se estira y permite que su hijo crezca */}
                       <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
                         <Routes>
-                          {/* exact route expected by ProjectPage (so useParams() works) */}
                           <Route path="/project/load/:projectName" element={<ProjectPage />} />
-                          {/* on first paint, ensure we are on the expected URL */}
-                          <Route
-                            path="*"
-                            element={<Navigate to={`/project/load/${encodeURIComponent(projectName)}`} replace />}
-                          />
+                          <Route path="*" element={<Navigate to={initialPath} replace />} />
                         </Routes>
                       </div>
                     </DragProvider>
                   </WidgetErrorBoundary>
                 </HelmetProvider>
-              </BrowserRouter>
+              </MemoryRouter>
             </div>
           </CacheProvider>
         </QueryClientProviderV5>
@@ -367,10 +435,6 @@ export function mountProjectPageWidget({
 /** Attach to window for UMD usage (no default export) */
 if (typeof window !== "undefined") {
   const prev = (window as any).MyProjectsWidget as WidgetGlobal | undefined;
-  (window as any).MyProjectsWidget = {
-    ...(prev || {}),
-    mountProjectPageWidget,
-  };
-  // eslint-disable-next-line no-console
+  (window as any).MyProjectsWidget = { ...(prev || {}), mountProjectPageWidget };
   console.log("ProjectPageWidget: ready under window.MyProjectsWidget");
 }

@@ -1,17 +1,25 @@
 .protocol-form {
   position: absolute;
-  top: 0%;
-  right: 0%;
-  bottom: 0%;
-  width: 38%;
+  top: 12px;
+  right: 12px;
+  bottom: 12px;
+  width: calc(38% - 12px);
   display: flex;
   flex-direction: column;
   background-color: #fff;
-  border-left: 1px solid #ddd;
-  box-shadow: -2px 0 8px rgba(0, 0, 0, 0.1);
+  border: 1px solid #ddd; /* full border so radius is visible everywhere */
+  box-shadow: -6px 6px 16px rgba(0, 0, 0, 0.12);
   font-family: 'Segoe UI', sans-serif;
   z-index: 100;
+  height: auto;
+  max-height: calc(100vh - 24px);
+  will-change: auto;
+  backface-visibility: visible;
+
+  border-radius: 12px;
+  overflow: hidden; /* clip children */
 }
+
 
 .form-title-wrapper {
   display: flex;
@@ -32,6 +40,7 @@
 
 .form-header {
   display: flex;
+  flex-shrink: 0;
   justify-content: space-between;
   align-items: center;
   background-color: #333d49;
@@ -58,8 +67,10 @@
 
 .form-body {
   flex: 1;
-  padding: 20px;
-  overflow-y: auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden; 
 }
 
 .form-status {
@@ -131,7 +142,7 @@
 }
 
 .top-tab-content {
-  padding: 16px 0;
+  padding: 0;
 }
 
 .spacer {
@@ -171,12 +182,13 @@
   display: flex;
   justify-content: flex-end;
   gap: 12px;
-  padding: 16px;
+  padding: 8px 16px;
   border-top: 1px solid #ddd;
   background-color: #f5f5f5;
-  position: sticky;
+  gap: 8px;
   bottom: 0;
   z-index: 10;
+  flex-shrink: 0;
 }
 
 .footer-btn {
@@ -241,11 +253,15 @@
 /* Enter: slides in from right to left */
 .protocol-form.slide-in-right {
   animation: slideInFromRight 420ms ease-out both;
+  will-change: transform, opacity;
+  backface-visibility: hidden;
 }
 
 /* Exit: slides out from left to right (towards the right side) */
 .protocol-form.slide-out-right {
   animation: slideOutToRight 420ms ease-in both;
+  will-change: transform, opacity;
+  backface-visibility: hidden;
 }
 
 @keyframes slideInFromRight {
@@ -270,6 +286,11 @@
   }
 }
 
+.param-row-label {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
 /* Optional: improve perf & avoid jank */
 .protocol-form {
   will-change: transform, opacity;
@@ -292,17 +313,80 @@
 }
 
 /* Each ProtocolForm lives inside a resizable panel */
+/* === Right rail (outer) ========================================= */
+/* Put this wrapper en tu TSX con pointer-events:none (te lo recuerdo abajo) */
+
+/* === Scroll area inside the rail ================================ */
+.dock-scroll {
+  /* This element SÍ recibe eventos; el resto del rail no */
+  pointer-events: auto;
+  height: 100%;
+  display: flex;
+  gap: 8px;
+  padding: 4px;
+  overflow-x: auto;        /* horizontal scroll when many panels */
+  overflow-y: hidden;
+  max-width: 95vw;         /* cap total occupied width */
+  /* keeps scrolling civilized on touchpads */
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+}
+
+/* Optional: slimmer scrollbar (Firefox + WebKit) */
+.dock-scroll {
+  scrollbar-width: thin;
+}
+.dock-scroll::-webkit-scrollbar { height: 10px; }
+.dock-scroll::-webkit-scrollbar-thumb { border-radius: 8px; }
+
+/* === Panel ====================================================== */
+/* REPLACE your current .dock-panel with this */
 .dock-panel {
   position: relative;
   height: 100%;
-  width: 38vw;            /* default width similar to your 40% */
-  max-width: 80vw;        /* don't let one panel cover everything */
+
+  /* Fixed-size flex item: do not shrink, do not grow */
+  flex: 0 0 auto;
+
+  /* Let the panel have a sensible width, but keep it resizable */
+  width: clamp(340px, 38vw, 720px);
+  min-width: 320px;
+  max-width: 85vw;
+
+  box-sizing: border-box;
   background: transparent;
-  border-left: 0px solid #ddd;
-  resize: horizontal;     /* allow horizontal resize via native handle */
-  overflow: hidden;       /* keep the inner form clipped */
-  pointer-events: auto;   /* re-enable interaction inside panels */
+  border-left: 0;
+  overflow: hidden;         /* clip inner form */
+  resize: horizontal;       /* native horizontal resize handle */
+  pointer-events: auto;     /* interactive inside the panel */
+
+  /* Optional aesthetics */
+  /* border-left: 1px solid #ddd; */
 }
+
+/* === Inner form INSIDE the docked panel ========================= */
+/* Your .protocol-form venía con absolute + top/right/bottom/width:38%,
+   eso rompe el dock. Aquí la “des-absoluteamos” cuando está dentro del dock. */
+.dock-panel .protocol-form {
+  position: static !important;   /* detach from absolute pinning */
+  top: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+  width: 100% !important;        /* fill panel width */
+
+  height: 100%;
+  max-height: 100%;
+  overflow: auto;
+
+  /* Rounded right corners (as pediste) */
+  border-top-right-radius: 12px;
+  border-bottom-right-radius: 12px;
+
+  /* Subtle separation from canvas */
+  box-shadow: -2px 0 8px rgba(0,0,0,0.08);
+  border-left: 1px solid #ddd;
+}
+
 
 /* When ProtocolForm renders as "docked", stretch to fill its panel */
 .protocol-form.as-docked {

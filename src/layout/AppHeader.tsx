@@ -1,5 +1,5 @@
+// src/layout/AppHeader.tsx
 import { useEffect, useRef, useState } from "react";
-
 import { Link } from "react-router";
 import { useSidebar } from "../context/SidebarContext";
 import { ThemeToggleButton } from "../components/common/ThemeToggleButton";
@@ -7,9 +7,9 @@ import UserDropdown from "../components/header/UserDropdown";
 
 const AppHeader: React.FC = () => {
   const [isApplicationMenuOpen, setApplicationMenuOpen] = useState(false);
-
   const { isMobileOpen, toggleSidebar, toggleMobileSidebar } = useSidebar();
 
+  // Desktop toggles the rail; mobile opens the overlay drawer
   const handleToggle = () => {
     if (window.innerWidth >= 1024) {
       toggleSidebar();
@@ -18,44 +18,37 @@ const AppHeader: React.FC = () => {
     }
   };
 
-  const toggleApplicationMenu = () => {
-    setApplicationMenuOpen(!isApplicationMenuOpen);
-  };
+  const toggleApplicationMenu = () => setApplicationMenuOpen((v) => !v);
 
+  // Optional Ctrl/Cmd+K focus hook (kept as in your version)
   const inputRef = useRef<HTMLInputElement>(null);
-
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key === "k") {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
         inputRef.current?.focus();
       }
     };
-
     document.addEventListener("keydown", handleKeyDown);
-
-    return () => {
-      document.removeEventListener("keydown", handleKeyDown);
-    };
+    return () => document.removeEventListener("keydown", handleKeyDown);
   }, []);
 
   return (
-    <header className="sticky top-0 flex w-full bg-white border-gray-200 z-99999 dark:border-gray-800 dark:bg-gray-900 lg:border-b h-15">
-      <div className="flex flex-col items-center justify-between grow lg:flex-row lg:px-3">
-        <div className="flex items-center justify-between w-full gap-2 px-2 py-0 border-b border-gray-200 dark:border-gray-800 sm:gap-3 lg:justify-normal lg:border-b-0 lg:px-0 lg:py-0 h-15">
+    // Sticky header above the scrollable <main>. Keep z lower than mobile Sidebar/Backdrop.
+    <header className="sticky top-0 z-[60] w-full bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800">
+      {/* Fixed height line to avoid layout shifts; inner content uses min-h to match */}
+      <div className="flex items-center min-h-14 md:min-h-16 px-2 lg:px-3">
+        {/* Left: burger + logo (on mobile) */}
+        <div className="flex items-center gap-2 sm:gap-3">
           <button
-            className="items-center justify-center w-8 h-8 text-gray-500 border-gray-200 rounded-md z-99999 dark:border-gray-800 lg:flex dark:text-gray-400 lg:h-10 lg:w-10 lg:border"
+            type="button"
             onClick={handleToggle}
-            aria-label="Toggle Sidebar"
+            aria-label="Toggle sidebar"
+            className="inline-flex items-center justify-center w-9 h-9 lg:w-10 lg:h-10 rounded-md border border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
           >
             {isMobileOpen ? (
-              <svg
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                xmlns="http://www.w3.org/2000/svg"
-              >
+              // Close icon
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
                 <path
                   fillRule="evenodd"
                   clipRule="evenodd"
@@ -64,13 +57,8 @@ const AppHeader: React.FC = () => {
                 />
               </svg>
             ) : (
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 16 12"
-                fill="none"
-                xmlns="http://www.w3.org/2000/svg"
-              >
+              // Burger icon
+              <svg width="18" height="18" viewBox="0 0 16 12" fill="none">
                 <path
                   fillRule="evenodd"
                   clipRule="evenodd"
@@ -81,30 +69,20 @@ const AppHeader: React.FC = () => {
             )}
           </button>
 
-          <Link to="/" className="lg:hidden">
-            <img
-              className="dark:hidden max-h-6"
-              src="./images/logo/logo.svg"
-              alt="Logo"
-            />
-            <img
-              className="hidden dark:block max-h-6"
-              src="./images/logo/logo-dark.svg"
-              alt="Logo"
-            />
+          {/* Logo only on mobile (desktop lo tienes en el sidebar) */}
+          <Link to="/" className="lg:hidden" aria-label="Home">
+            <img className="dark:hidden max-h-6" src="./images/logo/logo.svg" alt="Logo" />
+            <img className="hidden dark:block max-h-6" src="./images/logo/logo-dark.svg" alt="Logo" />
           </Link>
 
+          {/* Mobile “apps” button */}
           <button
+            type="button"
             onClick={toggleApplicationMenu}
-            className="flex items-center justify-center w-8 h-8 text-gray-700 rounded-md z-99999 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800 lg:hidden"
+            aria-label="Open application menu"
+            className="lg:hidden inline-flex items-center justify-center w-9 h-9 rounded-md text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
           >
-            <svg
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-            >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
               <path
                 fillRule="evenodd"
                 clipRule="evenodd"
@@ -113,17 +91,21 @@ const AppHeader: React.FC = () => {
               />
             </svg>
           </button>
-
-          <div className="hidden lg:block"></div>
         </div>
+
+        {/* Right side actions */}
         <div
-          className={`${
-            isApplicationMenuOpen ? "flex" : "hidden"
-          } items-center justify-between w-full gap-3 px-3 py-1 lg:flex shadow-theme-md lg:justify-end lg:px-0 lg:shadow-none h-15`}
+          className={[
+            "ml-auto flex items-center gap-3 md:gap-4",
+            // On mobile this row can collapse/toggle
+            isApplicationMenuOpen ? "flex" : "hidden",
+            "lg:flex",
+          ].join(" ")}
         >
-          <div className="flex items-center gap-2 2xsm:gap-2">
-            <ThemeToggleButton />
-          </div>
+          {/* Theme switch */}
+          <ThemeToggleButton />
+
+          {/* User menu */}
           <UserDropdown />
         </div>
       </div>

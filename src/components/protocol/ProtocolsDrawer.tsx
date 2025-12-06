@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { ProtocolsTree, ProtocolNode } from "./ProtocolTree";
 import { loadProtocols } from "@/api/projects";
 import { BoxCubeIcon } from "@/icons";
@@ -124,15 +124,21 @@ export const ProtocolsDrawer: React.FC<ProtocolsDrawerProps> = ({
 
       {/* Drawer */}
       <div
-        className={`fixed top-0 right-0 h-full w-130 bg-white dark:bg-gray-800 shadow-xl transform transition-transform duration-300 ease-in-out z-50 ${
-          isOpen ? "translate-x-0" : "translate-x-full"
-        }`}
+        className={`
+    fixed top-3 border bottom-0 right-2 w-130
+    bg-white dark:bg-gray-800 shadow-xl
+    rounded-2xl overflow-hidden
+    transform transition-all duration-300 ease-in-out z-50
+    ${isOpen
+            ? "translate-x-0 opacity-100 pointer-events-auto"
+            : "translate-x-full opacity-0 pointer-events-none"}
+  `}
       >
         {/* Close */}
         <div className="relative">
           <button
             onClick={() => setOpen(false)}
-            className="absolute top-18 right-4 z-50 text-gray-500 hover:text-gray-900 dark:hover:text-white bg-white dark:bg-gray-800 rounded-full w-6 h-6 shadow-lg"
+            className="absolute top-17 right-4 z-50 text-gray-500 hover:text-gray-900 dark:hover:text-white bg-gray-200 dark:bg-gray-800 rounded-full w-8 h-8 shadow-lg"
             aria-label="Close drawer"
           >
             ✕
@@ -140,7 +146,7 @@ export const ProtocolsDrawer: React.FC<ProtocolsDrawerProps> = ({
         </div>
 
         {/* Header */}
-        <div className="flex flex-col p-3 bg-gradient-to-r from-gray-100 to-gray-500 dark:from-gray-700 dark:to-gray-800 border-b border-gray-300 shadow-sm mt-14">
+        <div className="flex flex-col p-3 rounded-lg bg-gradient-to-r text-gray-200  from-gray-800 to-gray-700 dark:from-gray-800 dark:to-gray-700 border-b border-gray-300 shadow-sm mt-14">
           <h2 className="text-lg">Protocols</h2>
         </div>
 
@@ -148,7 +154,7 @@ export const ProtocolsDrawer: React.FC<ProtocolsDrawerProps> = ({
         {protocols.length > 1 && (
           <div className="p-1 ml-3 border-b border-gray-200 dark:border-gray-700">
             <select
-              className="w-full p-2 border rounded bg-white dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-400"
+              className="w-full p-2 border rounded-lg bg-white dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-400"
               value={selectedRoot ? Math.max(0, protocols.indexOf(selectedRoot)) : 0}
               onChange={(e) => {
                 const idx = Number(e.target.value);
@@ -211,8 +217,8 @@ export const ProtocolsDrawer: React.FC<ProtocolsDrawerProps> = ({
               {loading
                 ? "Loading protocols…"
                 : projectId == null
-                ? "Select a project to view protocols"
-                : "No protocols found"}
+                  ? "Select a project to view protocols"
+                  : "No protocols found"}
             </div>
           )}
         </div>

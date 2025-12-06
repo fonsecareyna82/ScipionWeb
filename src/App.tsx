@@ -40,53 +40,66 @@ export default function App({ service }: AppProps) {
     // NOTE: BrowserRouter is provided in src/main.tsx. Do NOT mount another Router here.
     <DragProvider>
       <ProjectServiceProvider service={service}>
-        {/* Needs to be inside a Router (provided by main.tsx) */}
-        <ScrollToTop />
+        {/* Top-level height wrapper: makes the whole app use real viewport height */}
+        <div className="h-app min-h-0 flex flex-col">
+          {/* Needs to be inside a Router (provided by main.tsx) */}
+          <ScrollToTop />
 
-        <Routes>
-          {/* Public routes */}
-          <Route path="/" element={<SignIn />} />
-          <Route path="/signin" element={<SignIn />} />
-          <Route path="/signup" element={<SignUp />} />
+          {/* Content area must be able to shrink: min-h-0 avoids flex children forcing overflow */}
+          <div className="flex-1 min-h-0 flex flex-col">
+            <Routes>
+              {/* Public routes */}
+              <Route path="/" element={<SignIn />} />
+              <Route path="/signin" element={<SignIn />} />
+              <Route path="/signup" element={<SignUp />} />
 
-          {/* Protected routes inside layout */}
-          <Route
-            element={
-              <ProtectedRoute>
-                <SessionManager />
-                <AppLayout />
-              </ProtectedRoute>
-            }
-          >
-            <Route index path="/home" element={<Home />} />
-            <Route path="/projects" element={<Projects />} />
-            <Route path="/project/load/:projectName" element={<ProjectPage />} />
-            <Route path="/plugins" element={<Plugins />} />
-            <Route path="/plugins/:pipName" element={<PluginPage />} />
-            <Route path="/profile" element={<UserProfiles />} />
-            <Route path="/calendar" element={<Calendar />} />
-            <Route path="/blank" element={<Blank />} />
-            <Route path="/form-elements" element={<FormElements />} />
-            <Route path="/basic-tables" element={<BasicTables />} />
-            <Route path="/alerts" element={<Alerts />} />
-            <Route path="/avatars" element={<Avatars />} />
-            <Route path="/badge" element={<Badges />} />
-            <Route path="/buttons" element={<Buttons />} />
-            <Route path="/images" element={<Images />} />
-            <Route path="/videos" element={<Videos />} />
-            <Route path="/line-chart" element={<LineChart />} />
-            <Route path="/bar-chart" element={<BarChart />} />
-            <Route path="/verify-email" element={<VerifyEmailForm />} />
-          </Route>
+              {/* Protected routes inside layout */}
+              <Route
+                element={
+                  <ProtectedRoute>
+                    <SessionManager />
+                    {/* App shell: ensure it can expand and shrink */}
+                    <div className="flex-1 min-h-0 flex">
+                      <AppLayout />
+                    </div>
+                  </ProtectedRoute>
+                }
+              >
+                <Route index path="/home" element={<Home />} />
+                <Route path="/projects" element={<Projects />} />
+                <Route path="/project/load/:projectName" element={<ProjectPage />} />
+                <Route path="/plugins" element={<Plugins />} />
+                <Route path="/plugins/:pipName" element={<PluginPage />} />
+                <Route path="/profile" element={<UserProfiles />} />
+                <Route path="/calendar" element={<Calendar />} />
+                <Route path="/blank" element={<Blank />} />
+                <Route path="/form-elements" element={<FormElements />} />
+                <Route path="/basic-tables" element={<BasicTables />} />
+                <Route path="/alerts" element={<Alerts />} />
+                <Route path="/avatars" element={<Avatars />} />
+                <Route path="/badge" element={<Badges />} />
+                <Route path="/buttons" element={<Buttons />} />
+                <Route path="/images" element={<Images />} />
+                <Route path="/videos" element={<Videos />} />
+                <Route path="/line-chart" element={<LineChart />} />
+                <Route path="/bar-chart" element={<BarChart />} />
+                <Route path="/verify-email" element={<VerifyEmailForm />} />
+              </Route>
 
-          {/* Page not found */}
-          <Route path="*" element={<NotFound />} />
-        </Routes>
+              {/* Page not found */}
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </div>
 
-        <Toaster position="bottom-left" containerStyle={{ zIndex: 999999 }} toastOptions={{
-          style: { width: "420px", maxWidth: "420px",  whiteSpace: "normal", background: "#f5f0eeff" }, 
-          duration: 5000, // 5 seconds
-        }} />
+          <Toaster
+            position="bottom-left"
+            containerStyle={{ zIndex: 999999 }}
+            toastOptions={{
+              style: { width: "420px", maxWidth: "420px", whiteSpace: "normal", background: "#f5f0eeff" },
+              duration: 5000,
+            }}
+          />
+        </div>
       </ProjectServiceProvider>
     </DragProvider>
   );

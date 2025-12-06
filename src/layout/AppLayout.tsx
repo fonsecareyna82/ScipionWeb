@@ -1,14 +1,15 @@
 // src/layout/AppLayout.tsx
 import { SidebarProvider, useSidebar } from "../context/SidebarContext";
-import { Outlet } from "react-router";
+import { Outlet, useLocation } from "react-router";
 import AppHeader from "./AppHeader";
 import Backdrop from "./Backdrop";
 import AppSidebar from "./AppSidebar";
 
 const LayoutContent: React.FC = () => {
   const { isExpanded, isHovered, isMobileOpen } = useSidebar();
+  const location = useLocation();
+  const isProjectPage = location.pathname.startsWith("/project/");
 
-  // Compute the left margin to compensate for the fixed sidebar width.
   const marginClass =
     isMobileOpen
       ? "ml-0"
@@ -17,28 +18,32 @@ const LayoutContent: React.FC = () => {
       : "lg:ml-[90px]";
 
   return (
-    // Make the layout fill the viewport and prevent page-level scroll.
-    <div className="h-screen w-full overflow-hidden xl:flex">
-      {/* Sidebar + overlay/backdrop (likely fixed/absolute inside) */}
+    <div
+      className="min-h-screen w-full overflow-hidden xl:flex"
+      style={{ height: "100dvh" }}
+    >
       <div>
         <AppSidebar />
         <Backdrop />
       </div>
 
-      {/* Right column: header (no scroll) + content (scrolls) */}
       <div
         className={[
           "flex-1 min-w-0",
-          "flex flex-col min-h-0", // allow the content area to shrink and enable child overflow
+          "flex flex-col min-h-0",
           "transition-all duration-300 ease-in-out",
           marginClass,
         ].join(" ")}
       >
-        {/* Header should not scroll */}
         <AppHeader />
 
-        {/* Content area: the ONLY scroller in the page */}
-        <main className="flex-1 min-h-0 overflow-auto p-2 md:p-2">
+        <main
+          className={[
+            "flex-1 min-h-0",
+            isProjectPage ? "overflow-hidden" : "overflow-auto",
+            "p-2 md:p-2",
+          ].join(" ")}
+        >
           <Outlet />
         </main>
       </div>
@@ -46,12 +51,10 @@ const LayoutContent: React.FC = () => {
   );
 };
 
-const AppLayout: React.FC = () => {
-  return (
-    <SidebarProvider>
-      <LayoutContent />
-    </SidebarProvider>
-  );
-};
+const AppLayout: React.FC = () => (
+  <SidebarProvider>
+    <LayoutContent />
+  </SidebarProvider>
+);
 
 export default AppLayout;

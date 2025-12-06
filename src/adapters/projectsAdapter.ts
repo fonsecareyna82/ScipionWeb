@@ -1,129 +1,380 @@
 // src/adapters/projectsAdapter.ts
+import { fetchWithAuth } from "@/api/auth";
 import * as api from "@/api/projects";
-import type { ProjectService, ProjectPayload, Id } from "@/services/ProjectService";
+import { BASE_URL } from "@/config";
+import type {
+  ProjectService,
+  ProjectPayload,
+  Id,
+  VolumeSliceObjectUrl,
+  VolumeHistogram,
+  VolumeHistogramOptions,
+  VolumeData3d,
+  VolumeData3dOptions,
+} from "@/services/ProjectService";
 
-/**
- * Small helper to normalize IDs so callers can pass string or number interchangeably.
- */
+/** Normalize id */
 const toId = (id: string | number): string => String(id);
 
-/**
- * defaultService: adapts the current API layer (fetchProjects, fetchProject, ...)
- * to the ProjectService interface. If the underlying API changes, update ONLY here.
- */
 const defaultService: ProjectService = {
   // --- Reads ---
   fetchList: () => api.fetchProjects(),
 
-  fetchProject: (id: string | number) => api.fetchProject(toId(id)),
+  fetchProject: (id: Id) => api.fetchProject(toId(id)),
 
-  fetchProtocolDetails: (projectId: string | number, protocolId: string | number) =>
+  fetchProtocolDetails: (projectId: Id, protocolId: Id) =>
     api.fetchProtocolDetails(toId(projectId), toId(protocolId)),
 
-  fetchNewProtocolDetails: (projectId: string | number, protocolClass: string) =>
+  fetchNewProtocolDetails: (projectId: Id, protocolClass: string) =>
     api.fetchNewProtocolDetails(toId(projectId), protocolClass),
 
   // --- Mutations ---
   createProject: (payload: ProjectPayload) =>
     api.createProject(payload.name, (payload.description ?? "").trim()),
 
-  renameProject: (id: string | number, newName: string, newDescription?: string) =>
+  renameProject: (id: Id, newName: string, newDescription?: string) =>
     api.renameProject(toId(id), newName, (newDescription ?? "").trim()),
 
-  deleteProject: (id: string | number) => api.deleteProject(toId(id)),
+  deleteProject: (id: Id) => api.deleteProject(toId(id)),
 
   // --- Protocol lifecycle ---
-  loadProtocols: (projectId: string | number) =>
-    // original signature was (projectId: number); normalize and keep backward-compat
-    api.loadProtocols(Number(projectId)),
+  loadProtocols: (projectId: Id) => api.loadProtocols(Number(projectId)),
 
-
-  // --- Protocol actions
+  // --- Protocol actions ---
   executeProtocol: (
-    protocolId: string | number,
+    projectId: Id,
+    protocolId: Id,
     protocolClassName: string,
-    params: Record<string, unknown>
-  ) => api.executeProtocol(toId(protocolId), protocolClassName, params),
+    params: Record<string, unknown>,
+  ) => api.executeProtocol(toId(projectId), toId(protocolId), protocolClassName, params),
 
   saveProtocol: (
-    protocolId: string | number,
+    projectId: Id,
+    protocolId: Id,
     protocolClassName: string,
-    params: Record<string, unknown>
-  ) => api.saveProtocol(toId(protocolId), protocolClassName, params),
+    params: Record<string, unknown>,
+  ) => api.saveProtocol(toId(projectId), toId(protocolId), protocolClassName, params),
 
-  renameProtocol: (
-    projectId: string,
-    protocolId: string,
-    newName: string
-  ) => api.renameProtocol(toId(projectId), toId(protocolId), newName),
+  renameProtocol: (projectId: Id, protocolId: Id, newName: string) =>
+    api.renameProtocol(toId(projectId), toId(protocolId), newName),
 
-  duplicateProtocol: (
-    projectId: string,
-    items: { id: string; name?: string }[],
-  ) => api.duplicateProtocol(toId(projectId), items),
+  duplicateProtocol: (projectId: Id, items: { id: string; name?: string }[]) =>
+    api.duplicateProtocol(toId(projectId), items),
 
-  deleteProtocol: (
-    projectId: string,
-    ids: string[],
-  ) => api.deleteProtocol(toId(projectId), ids),
+  deleteProtocol: (projectId: Id, ids: string[]) =>
+    api.deleteProtocol(toId(projectId), ids),
 
-  restartAll: (
-    projectId: string,
-    protocolId: string,
-  ) => api.restartAll(toId(projectId), toId(protocolId)),
+  restartAll: (projectId: Id, protocolId: Id) =>
+    api.restartAll(toId(projectId), toId(protocolId)),
 
-  continueAll: (
-    projectId: string,
-    protocolId: string,
-  ) => api.continueAll(toId(projectId), toId(protocolId)),
+  continueAll: (projectId: Id, protocolId: Id) =>
+    api.continueAll(toId(projectId), toId(protocolId)),
 
-  resetFrom: (
-    projectId: string,
-    protocolId: string,
-  ) => api.resetFrom(toId(projectId), toId(protocolId)),
+  resetFrom: (projectId: Id, protocolId: Id) =>
+    api.resetFrom(toId(projectId), toId(protocolId)),
 
-  stopProtocol: (
-    projectId: string,
-    ids: string[],
-  ) => api.stopProtocol(toId(projectId), ids),
+  stopProtocol: (projectId: Id, ids: string[]) =>
+    api.stopProtocol(toId(projectId), ids),
 
-  resolveProtocolStartPath: (
-    projectId: Id,
-    protocolId: Id,
-  ) => api.resolveProtocolStartPath(toId(projectId), toId(protocolId)),
+  resolveProtocolStartPath: (projectId: Id, protocolId: Id) =>
+    api.resolveProtocolStartPath(toId(projectId), toId(protocolId)),
 
-  listRemoteDirectory: (
-    projectId: Id,
-    protocolId: Id,
-    path: string,
-  ) => api.listRemoteDirectory(toId(projectId), toId(protocolId), path),
+  listRemoteDirectory: (projectId: Id, protocolId: Id, path: string) =>
+    api.listRemoteDirectory(toId(projectId), toId(protocolId), path),
 
-  previewProtocolText: (
-    projectId: Id,
-    protocolId: Id,
-    path: string
-  ) => api.previewProtocolText(toId(projectId), toId(protocolId), path),
+  previewProtocolText: (projectId: Id, protocolId: Id, path: string) =>
+    api.previewProtocolText(toId(projectId), toId(protocolId), path),
 
   buildProtocolDownloadUrl: (
     projectId: Id,
     protocolId: Id,
     path: string,
-    inline: boolean
+    inline: boolean,
   ) => api.buildProtocolDownloadUrl(toId(projectId), toId(protocolId), path, inline),
 
-  fetchProtocolInlinePreviewBlob: (
+  fetchProtocolInlinePreviewBlob: (projectId: Id, protocolId: Id, path: string) =>
+    api.fetchProtocolInlinePreviewBlob(toId(projectId), toId(protocolId), path),
+
+  fetchOutputPreview: (
     projectId: Id,
     protocolId: Id,
     path: string,
-  ) => api.fetchProtocolInlinePreviewBlob(toId(projectId), toId(protocolId), path),
+    opts?: { table?: string },
+  ) => api.fetchOutputPreview(toId(projectId), toId(protocolId), path, opts),
 
-fetchOutputPreview: (
+  // ──────────────────────────── Analyze Results: Volumes ────────────────────────────
+
+  listOutputVolumes: (projectId: Id, protocolId: Id, outputName: string) =>
+    api.listOutputVolumes(toId(projectId), toId(protocolId), outputName),
+
+  getVolumeInfo: (
     projectId: Id,
     protocolId: Id,
-    path: string,
-  ) => api.fetchOutputPreview(toId(projectId), toId(protocolId), path),
+    outputName: string,
+    volumeId: Id,
+  ) =>
+    api.getVolumeInfo(
+      toId(projectId),
+      toId(protocolId),
+      outputName,
+      toId(volumeId),
+    ),
 
+  getVolumeHistogram: (
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    volumeId: Id,
+    opts: VolumeHistogramOptions = {},
+  ): Promise<VolumeHistogram> =>
+    api.getVolumeHistogram(
+      toId(projectId),
+      toId(protocolId),
+      outputName,
+      toId(volumeId),
+      opts,
+    ),
+
+  buildVolumeSliceUrl: (
+    projectId,
+    protocolId,
+    outputName,
+    volumeId,
+    sliceIndex,
+    opts,
+  ) =>
+    api.buildVolumeSliceUrl(
+      toId(projectId),
+      toId(protocolId),
+      outputName,
+      toId(volumeId),
+      sliceIndex,
+      // API expects colormap-related options; viewer is already sending them.
+      opts as any,
+    ),
+
+  // Delegate to the API function that already adds `cmap` and supports AbortSignal.
+  fetchVolumeSliceObjectUrl: (
+    projectId,
+    protocolId,
+    outputName,
+    volumeId,
+    sliceIndex,
+    opts,
+  ): Promise<VolumeSliceObjectUrl> =>
+    api.fetchVolumeSliceObjectUrl(
+      toId(projectId),
+      toId(protocolId),
+      outputName,
+      toId(volumeId),
+      sliceIndex,
+      // API uses { axis?, cmap?, normalize?, scale?, format?, thumb?, fast?, quality?, signal? }
+      opts as any,
+    ),
+
+  getVolumeData3d: (
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    volumeId: Id,
+    opts: VolumeData3dOptions = {},
+  ): Promise<VolumeData3d> =>
+    api.getVolumeData3d(
+      toId(projectId),
+      toId(protocolId),
+      outputName,
+      toId(volumeId),
+      opts,
+    ),
+
+  // ──────────────────────────── Analyze Results: Coordinates3D ────────────────────────────
+
+  listCoords3dTomograms: (
+    projectId: Id,
+    protocolId: Id,
+    coordsOutputName: string,
+  ) =>
+    api.listCoords3dTomograms(
+      toId(projectId),
+      toId(protocolId),
+      coordsOutputName,
+    ),
+
+  fetchCoords3dForTomogram: (
+    projectId,
+    protocolId,
+    coordsOutputName,
+    tomoId,
+  ) =>
+    api
+      .fetchCoords3dForTomogram(
+        toId(projectId),
+        toId(protocolId),
+        coordsOutputName,
+        toId(tomoId),
+      )
+      .then((raw) => ({
+        // Normalized shape for the viewer (Coordinates3dTomogramPoints)
+        tomoId: raw.tomoId ?? (raw as any).tomogramId ?? (raw as any).id ?? tomoId,
+        tomogramLabel:
+          raw.tomogramLabel ??
+          (raw as any).label ??
+          (raw as any).name ??
+          String(raw.tomoId ?? (raw as any).tomogramId ?? tomoId),
+        n:
+          typeof raw.n === "number"
+            ? raw.n
+            : Array.isArray(raw.coords)
+            ? raw.coords.length
+            : 0,
+        coords: raw.coords ?? [],
+      })),
+
+  fetchCoords3dTomogramSliceObjectUrl: (
+    projectId: Id,
+    protocolId: Id,
+    coordsOutputName: string,
+    tomoId: Id,
+    sliceIndex: number,
+    opts?: {
+      axis?: "z" | "y" | "x";
+      cmap?: string;
+      normalize?: "minmax" | "zscore" | "none";
+      scale?: number;
+      format?: "png" | "webp" | "jpeg";
+      thumb?: number;
+      fast?: boolean;
+      quality?: number;
+      signal?: AbortSignal;
+    },
+  ) =>
+    api.fetchCoords3dTomogramSliceObjectUrl(
+      toId(projectId),
+      toId(protocolId),
+      coordsOutputName,
+      toId(tomoId),
+      sliceIndex,
+      opts,
+    ),
+
+  // ──────────────────────────── Analyze Results: Metadata tables ────────────────────────────
+
+  fetchOutputMetadataTables: (projectId: Id, protocolId: Id, outputName: string) =>
+    api.fetchOutputMetadataTables(toId(projectId), toId(protocolId), outputName),
+
+  fetchMetadataTableSchema: (
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    tableName: string,
+  ) =>
+    api.fetchMetadataTableSchema(
+      toId(projectId),
+      toId(protocolId),
+      outputName,
+      tableName,
+    ),
+
+  fetchMetadataTablePage: (
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    tableName: string,
+    opts,
+  ) =>
+    api.fetchMetadataTablePage(
+      toId(projectId),
+      toId(protocolId),
+      outputName,
+      tableName,
+      opts,
+    ),
+
+  exportMetadataTable: (
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    tableName: string,
+    opts,
+  ) =>
+    api.exportMetadataTable(
+      toId(projectId),
+      toId(protocolId),
+      outputName,
+      tableName,
+      opts,
+    ),
+
+  // Window by offset + limit for virtual scroll
+  fetchMetadataTableWindow: async (
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    tableName: string,
+    opts = {},
+  ) => {
+    const { offset = 0, limit = 100, selectionOnly = false } = opts as {
+      offset?: number;
+      limit?: number;
+      selectionOnly?: boolean;
+    };
+
+    const params = new URLSearchParams();
+    params.set("offset", String(offset));
+    params.set("limit", String(limit));
+    params.set("selectionOnly", String(selectionOnly));
+
+    const enc = encodeURIComponent;
+    const base = `${BASE_URL}/projects/${toId(projectId)}/protocols/${toId(
+      protocolId,
+    )}/outputs/${enc(outputName)}/metadata/tables/${enc(tableName)}/rows`;
+    const url = `${base}?${params.toString()}`;
+
+    const res = await fetchWithAuth(url, { method: "GET" });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(text || "Failed to fetch metadata window");
+    }
+    return res.json();
+  },
+
+  fetchMetadataImageCellObjectUrl: (
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    tableName: string,
+    rowId: number | string,
+    columnName: string,
+    opts,
+  ) =>
+    api.fetchMetadataImageCellObjectUrl(
+      toId(projectId),
+      toId(protocolId),
+      outputName,
+      tableName,
+      rowId,
+      columnName,
+      opts,
+    ),
+
+  getMetadataImageCellUrl: (
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    tableName: string,
+    rowId: number | string,
+    columnName: string,
+    opts,
+  ) =>
+    api.getMetadataImageCellUrl(
+      Number(projectId),
+      Number(protocolId),
+      outputName,
+      tableName,
+      rowId,
+      columnName,
+      opts ?? {},
+    ),
 };
-
 
 export default defaultService;

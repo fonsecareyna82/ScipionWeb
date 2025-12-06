@@ -1,5 +1,6 @@
 // src/ProjectServiceContext.tsx
-import React, { createContext, useContext, useMemo } from "react";
+import { createContext, useContext, useMemo } from "react";
+import type { ReactNode, FC } from "react";
 import type { ProjectService } from "./services/ProjectService";
 import defaultService from "./adapters/projectsAdapter";
 
@@ -26,10 +27,10 @@ let warnedFallbackOnce = false;
 type ProviderProps = {
   /** You can pass a full service or a partial override (merged over defaultService). */
   service?: ProjectService | DeepPartial<ProjectService>;
-  children: React.ReactNode;
+  children: ReactNode;
 };
 
-export const ProjectServiceProvider: React.FC<ProviderProps> = ({ service, children }) => {
+export const ProjectServiceProvider: FC<ProviderProps> = ({ service, children }) => {
   // If a partial service is provided, merge it over the default one.
   const svc = useMemo<ProjectService>(() => {
     // If it "looks" like a full service (has fetchList), accept as-is; otherwise merge.
@@ -39,7 +40,11 @@ export const ProjectServiceProvider: React.FC<ProviderProps> = ({ service, child
       : mergeServices(defaultService, service as DeepPartial<ProjectService>);
   }, [service]);
 
-  return <ProjectServiceContext.Provider value={svc}>{children}</ProjectServiceContext.Provider>;
+  return (
+    <ProjectServiceContext.Provider value={svc}>
+      {children}
+    </ProjectServiceContext.Provider>
+  );
 };
 
 /**
@@ -54,16 +59,27 @@ export function useProjectService<
   TProjectList = any,
   TProtocol = any
 >(): ProjectService<TProject, TProjectList, TProtocol> {
-  const ctx = useContext(ProjectServiceContext) as ProjectService<TProject, TProjectList, TProtocol> | null;
+  const ctx = useContext(ProjectServiceContext) as
+    | ProjectService<TProject, TProjectList, TProtocol>
+    | null;
+
   if (!ctx) {
-    if (process.env.NODE_ENV !== "production" && !warnedFallbackOnce) {
+    // Vite-style dev check (replaces process.env.NODE_ENV)
+    if (import.meta.env.DEV && !warnedFallbackOnce) {
       // Warn once in dev if provider is missing
       // eslint-disable-next-line no-console
-      console.warn("[ProjectServiceContext] No provider found. Falling back to defaultService.");
+      console.warn(
+        "[ProjectServiceContext] No provider found. Falling back to defaultService.",
+      );
       warnedFallbackOnce = true;
     }
-    return defaultService as unknown as ProjectService<TProject, TProjectList, TProtocol>;
+    return defaultService as unknown as ProjectService<
+      TProject,
+      TProjectList,
+      TProtocol
+    >;
   }
+
   return ctx;
 }
 
@@ -73,7 +89,7 @@ export function useProjectService<
  *   const rename = useProjectServiceSelector(s => s.renameProject);
  */
 export function useProjectServiceSelector<T>(
-  selector: (svc: ProjectService) => T
+  selector: (svc: ProjectService) => T,
 ): T {
   const svc = useProjectService();
   // Service instance is stable via Provider/useMemo; selector runs on render

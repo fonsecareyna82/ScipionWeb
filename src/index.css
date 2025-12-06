@@ -911,4 +911,20 @@ span.flatpickr-weekday,
   }
 }
 
-html, body, #root { height: 100%; }
+/* Ensure 100% height chain and a reliable viewport-height utility */
+html, body, #root {
+  height: 100%;
+  min-height: 100%;
+}
+
+/* Dynamic viewport height utility: works better than 100vh */
+:root { --app-vh: 1dvh; }
+@supports not (height: 100dvh) {
+  :root { --app-vh: 1vh; }
+}
+
+/* Use this class on your top-level page wrapper */
+.h-app {
+  height: calc(var(--app-vh) * 92);
+  min-height: calc(var(--app-vh) * 92);
+}

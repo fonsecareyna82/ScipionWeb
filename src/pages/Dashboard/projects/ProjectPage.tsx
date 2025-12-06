@@ -195,12 +195,12 @@ export default function ProjectPage() {
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [graphDirection, setGraphDirection] = useState<"TB" | "LR">("TB");
 
-  const [hideGraphDuringCenter, setHideGraphDuringCenter] = useState(false);
+  const [_, setHideGraphDuringCenter] = useState(false);
   const [, startTransition] = useTransition();
   const disablePersistenceRef = useRef(false);
 
   // Viewport state (used for hierarchical/table; grid uses fixed zoom)
-  const [viewport, setViewport] = useState<{ x: number; y: number; zoom: number }>({ x: 0, y: 0, zoom: 0.32 });
+  const [viewport, setViewport] = useState<{ x: number; y: number; zoom: number }>({ x: 0, y: 0, zoom: 0.3464 });
   const viewportRef = useRef(viewport);
   useEffect(() => { viewportRef.current = viewport; }, [viewport]);
 
@@ -231,11 +231,11 @@ export default function ProjectPage() {
   const firstLoadRef = useRef(true);
 
   // Zoom rules
-  const GRID_ZOOM = 0.32;
+  const GRID_ZOOM = 0.347;
   const MIN_ZOOM = 0.2;
   const MAX_ZOOM = 0.6;
   const clampZoom = (z: number | undefined | null) => {
-    const num = typeof z === "number" && !Number.isNaN(z) ? z : 0.32;
+    const num = typeof z === "number" && !Number.isNaN(z) ? z : 0.347;
     return Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, num));
   };
   const getEffectiveZoom = () => (viewMode === "grid" ? GRID_ZOOM : viewportRef.current.zoom);
@@ -246,6 +246,63 @@ export default function ProjectPage() {
   useEffect(() => { edgesRef.current = edges; }, [edges]);
 
   const isRunningNode = (n: Node) => (n as any).data?.status === "running";
+
+
+  /* ------------------------ Centering / viewport helpers ------------------------ */
+  const centerLikeButton = useCallback((nodesList?: Node[], preserveZoom = true, zoomOverride?: number) => {
+    const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
+    if (!inst) return;
+    const list = nodesList ?? nodesRef.current ?? [];
+    const validNodes = list.filter((n) => typeof n.position?.x === "number" && typeof n.position?.y === "number");
+    if (validNodes.length === 0) {
+      const vp = inst.getViewport();
+      inst.setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(vp.zoom) });
+      setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(vp.zoom) });
+      return;
+    }
+    try {
+      if (!preserveZoom) {
+        inst.fitView({ padding: 0.12, duration: 0 });
+        const vp = inst.getViewport();
+        setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
+        return;
+      }
+      const targetZoom = clampZoom(typeof zoomOverride === "number" ? zoomOverride : inst.getViewport().zoom);
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      for (const n of validNodes) {
+        const x = (n.position!.x ?? 0);
+        const y = (n.position!.y ?? 0);
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+      const centerX = (minX + maxX) / 2;
+      const centerY = (minY + maxY) / 2;
+      inst.setCenter(centerX, centerY, { zoom: targetZoom, duration: 0 });
+      const finalVp = inst.getViewport();
+      setViewport({ x: finalVp.x, y: finalVp.y, zoom: finalVp.zoom });
+    } catch {
+      const xSum = validNodes.reduce((s, n) => s + (n.position!.x ?? 0), 0);
+      const ySum = validNodes.reduce((s, n) => s + (n.position!.y ?? 0), 0);
+      const centerX = xSum / validNodes.length;
+      const centerY = ySum / validNodes.length;
+      const currentVp = inst.getViewport();
+      const zoom = clampZoom(currentVp.zoom);
+      inst.setCenter(centerX, centerY, { zoom, duration: 0 });
+      const vp = inst.getViewport();
+      setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
+    }
+  }, []);
+
+  const snapViewportToTopLeft = useCallback((zoomOverride?: number) => {
+    const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
+    if (!inst) return;
+    const current = inst.getViewport();
+    const zoom = typeof zoomOverride === "number" ? zoomOverride : clampZoom(current.zoom);
+    inst.setViewport({ x: 0, y: 0, zoom });
+    setViewport({ x: 0, y: 0, zoom });
+  }, []);
 
   /* --------------------- Grid container width observer --------------------- */
   const [gridWidth, setGridWidth] = useState<number>(0);
@@ -258,15 +315,41 @@ export default function ProjectPage() {
       const entry = entries[0];
       const w = Math.max(0, Math.floor(entry.contentRect.width));
       setGridWidth(w);
+
+      // Re-center/adjust viewport when the available space changes.
+      // Grid: pegamos arriba-izquierda; Hierarchical: centramos preservando zoom.
+      requestAnimationFrame(() => {
+        const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
+        if (!inst) return;
+
+        if (viewModeRef.current === "grid") {
+          snapViewportToTopLeft(GRID_ZOOM);
+        } else if (viewModeRef.current === "hierarchical") {
+          centerLikeButton(undefined, true, viewportRef.current.zoom);
+        }
+      });
     });
 
     ro.observe(el);
+
+    // Ensure initial measurement and correct height on mount
     setGridWidth(el.clientWidth || 0);
 
     return () => {
-      try { ro.disconnect(); } catch { }
+      try { ro.disconnect(); } catch { /* ignore */ }
     };
-  }, []);
+  }, [centerLikeButton, snapViewportToTopLeft]);
+
+
+  /* --------------------- Keep latest layout params in refs to avoid refetch on view switch --------------------- */
+  const viewModeRef = useRef(viewMode);
+  useEffect(() => { viewModeRef.current = viewMode; }, [viewMode]);
+
+  const graphDirectionRef2 = useRef(graphDirection);
+  useEffect(() => { graphDirectionRef2.current = graphDirection; }, [graphDirection]);
+
+  const gridWidthRef = useRef(gridWidth);
+  useEffect(() => { gridWidthRef.current = gridWidth; }, [gridWidth]);
 
   /* --------------------- Selection state --------------------- */
   const [, setPathNodeIds] = useState<string[]>([]);
@@ -284,8 +367,10 @@ export default function ProjectPage() {
   };
 
   const getSelectedPathIds = () => pathSelRef.current.nodes;
+
+  // Colors
   const SELECT_COLOR = "#0070f3";
-  const PATH_COLOR = "#0070f3";
+  const PATH_COLOR = "#0ea5e9";
 
   const setsEqual = (a: Set<string>, b: Set<string>) => {
     if (a.size !== b.size) return false;
@@ -344,6 +429,7 @@ export default function ProjectPage() {
     selectedIdRef.current = null;
     setPreviousNodeId(null);
     setHighlightedId(null);
+    pathEdgeModeRef.current = 'all';
   }, [setNodes, setEdges]);
 
   /* --------------------- Edge painters --------------------- */
@@ -362,9 +448,7 @@ export default function ProjectPage() {
           const { style, ...rest } = e;
           const newStyle: any = { ...(style ?? {}) };
           if ((e as any).__path) {
-            if (newStyle.stroke === SELECT_COLOR) delete newStyle.stroke;
-            const sw = Number(newStyle.strokeWidth);
-            if (!Number.isNaN(sw) && sw === 4) delete newStyle.strokeWidth;
+            delete newStyle.strokeWidth;
           } else {
             delete newStyle.stroke;
             delete newStyle.strokeWidth;
@@ -395,7 +479,6 @@ export default function ProjectPage() {
         const { style, ...rest } = e;
         const newStyle: any = { ...(style ?? {}) };
         if ((e as any).__path) {
-          if (newStyle.stroke === SELECT_COLOR) delete newStyle.stroke;
           const sw = Number(newStyle.strokeWidth);
           if (!Number.isNaN(sw) && sw === 4) delete newStyle.strokeWidth;
         } else {
@@ -409,7 +492,7 @@ export default function ProjectPage() {
       return e;
     });
     return changed ? next : eds;
-  }, []);
+  }, [SELECT_COLOR]);
 
   const paintPathHighlight = useCallback((eds: Edge[], edgeIdsSet: Set<string>): Edge[] => {
     let changed = false;
@@ -454,7 +537,7 @@ export default function ProjectPage() {
       return e;
     });
     return changed ? next : eds;
-  }, []);
+  }, [PATH_COLOR]);
 
   /* --------------------- Edge set helpers --------------------- */
   const computeEdgesTouchingNodes = useCallback((nodeSet: Set<string>) => {
@@ -466,6 +549,35 @@ export default function ProjectPage() {
     }
     return new Set(edgeIds);
   }, []);
+
+  /* --------------------- Directional path edge mode + helpers --------------------- */
+  const pathEdgeModeRef = useRef<'all' | 'outgoing' | 'incoming'>('all');
+
+  const computeOutgoingEdgesFromSet = useCallback((nodeSet: Set<string>) => {
+    const edgeIds: string[] = [];
+    for (const e of edgesRef.current) {
+      if (nodeSet.has(String(e.source))) edgeIds.push(e.id);
+    }
+    return new Set(edgeIds);
+  }, []);
+
+  const computeIncomingEdgesToSet = useCallback((nodeSet: Set<string>) => {
+    const edgeIds: string[] = [];
+    for (const e of edgesRef.current) {
+      if (nodeSet.has(String(e.target))) edgeIds.push(e.id);
+    }
+    return new Set(edgeIds);
+  }, []);
+
+  const computeEdgesForMode = useCallback(
+    (nodeSet: Set<string>, mode: 'all' | 'outgoing' | 'incoming') => {
+      if (!nodeSet.size) return new Set<string>();
+      if (mode === 'outgoing') return computeOutgoingEdgesFromSet(nodeSet);
+      if (mode === 'incoming') return computeIncomingEdgesToSet(nodeSet);
+      return computeEdgesTouchingNodes(nodeSet);
+    },
+    [computeEdgesTouchingNodes, computeOutgoingEdgesFromSet, computeIncomingEdgesToSet]
+  );
 
   /* --------------------- Selection application --------------------- */
   const bumpNodesForPath = useCallback(() => {
@@ -486,8 +598,12 @@ export default function ProjectPage() {
 
     setNodes((prev) => prev.map((n) => ({ ...n, selected: nextNodes.has(n.id) })));
 
-    setEdges((eds) => paintPathHighlight(eds, nextEdges));
-    setEdges((eds) => paintEdgeHighlight(eds, null));
+    setEdges((eds) => {
+      let out = paintEdgeHighlight(eds, null);
+      out = paintPathHighlight(out, nextEdges);
+      return out;
+    });
+
     bumpNodesForPath();
   }, [computeEdgesTouchingNodes, paintPathHighlight, paintEdgeHighlight, setNodes, setEdges, bumpNodesForPath]);
 
@@ -643,30 +759,32 @@ export default function ProjectPage() {
   }, [buildAdjacency]);
 
   const applyGenericSelectionFromSet = useCallback((ids: Set<string>) => {
+    pathEdgeModeRef.current = 'all';
     applyPathSelection(Array.from(ids));
-    applyEdgeHighlight(null);
-  }, [applyPathSelection, applyEdgeHighlight]);
+  }, [applyPathSelection]);
 
   const handleSelectFrom = useCallback((id: string) => {
     const nodesSet = collectDescendants(id);
     if (id !== "PROJECT") nodesSet.add(String(id));
-    applyGenericSelectionFromSet(nodesSet);
-  }, [collectDescendants, applyGenericSelectionFromSet]);
+    pathEdgeModeRef.current = 'outgoing';
+    const edgeIds = Array.from(computeOutgoingEdgesFromSet(nodesSet));
+    applyPathSelection(Array.from(nodesSet), edgeIds);
+  }, [collectDescendants, computeOutgoingEdgesFromSet, applyPathSelection]);
 
   const handleSelectTo = useCallback((id: string) => {
     const nodesSet = collectAncestors(id);
     if (id !== "PROJECT") nodesSet.add(String(id));
-    applyGenericSelectionFromSet(nodesSet);
-  }, [collectAncestors, applyGenericSelectionFromSet]);
+    pathEdgeModeRef.current = 'incoming';
+    const edgeIds = Array.from(computeIncomingEdgesToSet(nodesSet));
+    applyPathSelection(Array.from(nodesSet), edgeIds);
+  }, [collectAncestors, computeIncomingEdgesToSet, applyPathSelection]);
 
   const handleAddProtocolFromDrawer = useCallback(
     async (protocolClass: string) => {
       if (!projectName) return;
 
-      // Close drawer so the form is in focus
       setDrawerOpen(false);
 
-      // Open the "new protocol" form for this class
       await openFormForNode(String(protocolClass), () =>
         svc.fetchNewProtocolDetails(projectName, protocolClass)
       );
@@ -703,7 +821,9 @@ export default function ProjectPage() {
   const canOpenFileDialog = fileDialogOpen && fileDialogCtx.protocolId != null && project?.id != null;
   const pid = fileDialogCtx.protocolId as string | number;
   const projId = project?.id as string | number;
-  const plabel = '( ' + pid + ' ) ' + fileDialogCtx.protocolLabel || pid;
+  const plabel = fileDialogCtx.protocolLabel
+    ? `( ${pid} ) ${fileDialogCtx.protocolLabel}`
+    : String(pid);
 
   const openBrowse = useCallback((
     protocolId: string,
@@ -766,61 +886,7 @@ export default function ProjectPage() {
     return newEdges.map((e) => (oldEdgesMap.get(e.id) ? { ...oldEdgesMap.get(e.id)!, ...e } : e));
   };
 
-  /* ------------------------ Centering / viewport helpers ------------------------ */
-  const centerLikeButton = useCallback((nodesList?: Node[], preserveZoom = true, zoomOverride?: number) => {
-    const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
-    if (!inst) return;
-    const list = nodesList ?? nodesRef.current ?? [];
-    const validNodes = list.filter((n) => typeof n.position?.x === "number" && typeof n.position?.y === "number");
-    if (validNodes.length === 0) {
-      const vp = inst.getViewport();
-      inst.setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(vp.zoom) });
-      setViewport({ x: vp.x, y: vp.y, zoom: clampZoom(vp.zoom) });
-      return;
-    }
-    try {
-      if (!preserveZoom) {
-        inst.fitView({ padding: 0.12, duration: 0 });
-        const vp = inst.getViewport();
-        setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
-        return;
-      }
-      const targetZoom = clampZoom(typeof zoomOverride === "number" ? zoomOverride : inst.getViewport().zoom);
-      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-      for (const n of validNodes) {
-        const x = (n.position!.x ?? 0);
-        const y = (n.position!.y ?? 0);
-        if (x < minX) minX = x;
-        if (x > maxX) maxX = x;
-        if (y < minY) minY = y;
-        if (y > maxY) maxY = y;
-      }
-      const centerX = (minX + maxX) / 2;
-      const centerY = (minY + maxY) / 2;
-      inst.setCenter(centerX, centerY, { zoom: targetZoom, duration: 0 });
-      const finalVp = inst.getViewport();
-      setViewport({ x: finalVp.x, y: finalVp.y, zoom: finalVp.zoom });
-    } catch {
-      const xSum = validNodes.reduce((s, n) => s + (n.position!.x ?? 0), 0);
-      const ySum = validNodes.reduce((s, n) => s + (n.position!.y ?? 0), 0);
-      const centerX = xSum / validNodes.length;
-      const centerY = ySum / validNodes.length;
-      const currentVp = inst.getViewport();
-      const zoom = clampZoom(currentVp.zoom);
-      inst.setCenter(centerX, centerY, { zoom, duration: 0 });
-      const vp = inst.getViewport();
-      setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
-    }
-  }, []);
 
-  const snapViewportToTopLeft = useCallback((zoomOverride?: number) => {
-    const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
-    if (!inst) return;
-    const current = inst.getViewport();
-    const zoom = typeof zoomOverride === "number" ? zoomOverride : clampZoom(current.zoom);
-    inst.setViewport({ x: 0, y: 0, zoom });
-    setViewport({ x: 0, y: 0, zoom });
-  }, []);
 
   /* ------------------------ Wait for nodes helper ------------------------ */
   const waitForNodesReady = async (expectedCount: number, timeoutMs = 2500): Promise<boolean> => {
@@ -856,7 +922,7 @@ export default function ProjectPage() {
     });
   };
 
-  /* ------------------------ Fetch & load ------------------------ */
+  /* ------------------------ Fetch & load (NO refetch on view change) ------------------------ */
   const fetchAndLoadProject = useCallback(async () => {
     if (!projectName) return;
     setIsRefreshing(true);
@@ -865,13 +931,16 @@ export default function ProjectPage() {
       setProject(data);
 
       if (data.protocols) {
+        const mode = viewModeRef.current;
+        const dir = graphDirectionRef2.current;
+        const width = gridWidthRef.current || flowWrapperRef.current?.clientWidth;
+        const effectiveZoom = mode === "grid" ? GRID_ZOOM : viewportRef.current.zoom;
+
         const { nodes: loadedNodes, edges: loadedEdges, table } = buildGraphElements(
-          data.shortName, data.protocols, viewMode, graphDirection,
-          gridWidth || flowWrapperRef.current?.clientWidth,
-          getEffectiveZoom()
+          data.shortName, data.protocols, mode, dir, width, effectiveZoom
         );
 
-        if (viewMode === "table") {
+        if (mode === "table") {
           startTransition(() => setTableData(table ?? []));
           setIsLoadingProject(false);
           setIsRefreshing(false);
@@ -879,16 +948,17 @@ export default function ProjectPage() {
         }
 
         const nodesWithPositions =
-          viewMode === "hierarchical"
+          mode === "hierarchical"
             ? loadNodesWithPositions(loadedNodes)
             : loadedNodes;
 
         const initialTicks: Record<string, number> = {};
         nodesWithPositions.forEach((n) => {
-          if ((n as any).data?.status === "running") {
-            initialTicks[n.id] = Number((n as any).data.elapsedTime) ?? 0;
+          if (isRunningNode(n)) {
+            initialTicks[n.id] = Number((n as any).data?.elapsedTime) ?? 0;
           }
         });
+
         const nodesWithTick = nodesWithPositions.map((n) =>
           isRunningNode(n)
             ? { ...n, data: { ...(n as any).data, tick: initialTicks[n.id] ?? Number((n as any).data?.elapsedTime) ?? 0 } }
@@ -896,15 +966,15 @@ export default function ProjectPage() {
         );
 
         const unifiedSelectedIds = getUnifiedSelectedIds();
-        const seededNodes = nodesWithTick.map((n) => ({ ...n, selected: unifiedSelectedIds.has(n.id) }));
-
-        const recomputedEdgeSet = computeEdgesTouchingNodes(unifiedSelectedIds);
+        const recomputedEdgeSet = unifiedSelectedIds.size
+          ? computeEdgesForMode(unifiedSelectedIds, pathEdgeModeRef.current)
+          : new Set<string>();
         pathSelRef.current.edges = recomputedEdgeSet;
 
         startTransition(() => {
-          setNodes(seededNodes);
+          setNodes(nodesWithTick.map((n) => ({ ...n, selected: unifiedSelectedIds.has(n.id) })));
           setEdges((_) => {
-            let base = viewMode === "grid" ? [] : loadedEdges;
+            let base = mode === "grid" ? [] : loadedEdges;
             base = paintEdgeHighlight(base, selectedIdRef.current ?? null);
             if (recomputedEdgeSet.size) base = paintPathHighlight(base, recomputedEdgeSet);
             return base;
@@ -915,53 +985,8 @@ export default function ProjectPage() {
         setNodeTicks(initialTicks);
         setNodesLoadedOnce(true);
 
-        if (viewMode === "grid") {
+        if (mode === "grid") {
           requestAnimationFrame(() => snapViewportToTopLeft(GRID_ZOOM));
-        } else if (firstLoadRef.current && viewMode === "hierarchical") {
-          const desiredCount = Math.max(1, nodesWithPositions.length);
-          let observer: MutationObserver | null = null;
-          let fallbackTimer: any = null;
-          let centered = false;
-
-          const doCenter = () => {
-            if (centered) return;
-            centered = true;
-            try { centerLikeButton(nodesWithPositions, true, viewportRef.current.zoom); }
-            finally {
-              firstLoadRef.current = false;
-              if (observer) { try { observer.disconnect(); } catch { } observer = null; }
-              if (fallbackTimer) { clearTimeout(fallbackTimer); fallbackTimer = null; }
-            }
-          };
-
-          try {
-            const nodesContainer = document.querySelector(".react-flow__nodes");
-            if (nodesContainer) {
-              const initialNodeEls = nodesContainer.querySelectorAll(".react-flow__node");
-              if (initialNodeEls.length >= desiredCount) {
-                requestAnimationFrame(() => requestAnimationFrame(doCenter));
-              } else {
-                observer = new MutationObserver(() => {
-                  const els = nodesContainer.querySelectorAll(".react-flow__node");
-                  if (els.length >= desiredCount) {
-                    requestAnimationFrame(() => requestAnimationFrame(doCenter));
-                  }
-                });
-                observer.observe(nodesContainer, { childList: true, subtree: true });
-                fallbackTimer = setTimeout(async () => {
-                  if (observer) { try { observer.disconnect(); } catch { } observer = null; }
-                  await waitForNodesReady(nodesWithPositions.length, 2000);
-                  doCenter();
-                }, 3000);
-              }
-            } else {
-              const ready = await waitForNodesReady(nodesWithPositions.length, 2500);
-              if (ready) doCenter(); else firstLoadRef.current = false;
-            }
-          } catch {
-            const ready = await waitForNodesReady(nodesWithPositions.length, 2000);
-            if (ready) doCenter(); else firstLoadRef.current = false;
-          }
         }
       }
     } catch (err) {
@@ -970,12 +995,16 @@ export default function ProjectPage() {
       setIsRefreshing(false);
       setIsLoadingProject(false);
     }
-  }, [projectName, viewMode, graphDirection, centerLikeButton, svc, paintEdgeHighlight, paintPathHighlight, computeEdgesTouchingNodes, gridWidth]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectName, svc, paintEdgeHighlight, paintPathHighlight, computeEdgesForMode, snapViewportToTopLeft]);
 
   useEffect(() => {
     setIsLoadingProject(true);
+    // eslint-disable-next-line @typescript-eslint/no-floating-promises
     fetchAndLoadProject();
-  }, [projectName, fetchAndLoadProject]);
+    // only reload when changing project
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectName]);
 
   /* ------------------------ Refresh ------------------------ */
   const handleRefresh = useCallback(async () => {
@@ -1012,7 +1041,9 @@ export default function ProjectPage() {
             : { ...n, selected: unifiedSelectedIds.has(n.id) }
         );
 
-        const recomputedEdgeSet = computeEdgesTouchingNodes(unifiedSelectedIds);
+        const recomputedEdgeSet = unifiedSelectedIds.size
+          ? computeEdgesForMode(unifiedSelectedIds, pathEdgeModeRef.current)
+          : new Set<string>();
         pathSelRef.current.edges = recomputedEdgeSet;
 
         startTransition(() => {
@@ -1050,7 +1081,7 @@ export default function ProjectPage() {
         setTimeout(() => tryPlaceNewlyCreatedNode(), 1200);
       }
     }
-  }, [projectName, viewMode, graphDirection, nodeTicks, svc, paintEdgeHighlight, paintPathHighlight, computeEdgesTouchingNodes, gridWidth]);
+  }, [projectName, viewMode, graphDirection, nodeTicks, svc, paintEdgeHighlight, paintPathHighlight, computeEdgesForMode, gridWidth]);
 
   const handleRefreshRef = useRef(handleRefresh);
   useEffect(() => { handleRefreshRef.current = handleRefresh; }, [handleRefresh]);
@@ -1101,7 +1132,6 @@ export default function ProjectPage() {
     setNodes(seeded);
     setEdges([]); // grid has no edges
 
-    // Always top-left in grid after width changes with fixed zoom
     requestAnimationFrame(() => snapViewportToTopLeft(GRID_ZOOM));
   }, [gridWidth, viewMode, project, graphDirection, snapViewportToTopLeft]);
 
@@ -1142,7 +1172,9 @@ export default function ProjectPage() {
 
         const unifiedSelectedIds = getUnifiedSelectedIds();
         const nodesSeeded = nodesWithPositions.map((n) => ({ ...n, selected: unifiedSelectedIds.has(n.id) }));
-        const recomputedEdgeSet = computeEdgesTouchingNodes(unifiedSelectedIds);
+        const recomputedEdgeSet = unifiedSelectedIds.size
+          ? computeEdgesForMode(unifiedSelectedIds, pathEdgeModeRef.current)
+          : new Set<string>();
         pathSelRef.current.edges = recomputedEdgeSet;
 
         startTransition(() => {
@@ -1171,7 +1203,6 @@ export default function ProjectPage() {
             const preserve = opts?.preserveZoom ?? true;
             centerLikeButton(nodesWithPositions, preserve, viewportRef.current.zoom);
           } else if (inst) {
-            // In grid always snap to top-left with fixed zoom
             snapViewportToTopLeft(GRID_ZOOM);
           }
           disablePersistenceRef.current = false;
@@ -1183,7 +1214,7 @@ export default function ProjectPage() {
         setHideGraphDuringCenter(false);
       }
     },
-    [projectName, viewMode, graphDirection, centerLikeButton, svc, paintEdgeHighlight, paintPathHighlight, computeEdgesTouchingNodes, gridWidth]
+    [projectName, viewMode, graphDirection, centerLikeButton, svc, paintEdgeHighlight, paintPathHighlight, computeEdgesForMode, gridWidth]
   );
 
   /* ------------------------ Ticks updater ------------------------ */
@@ -1229,18 +1260,41 @@ export default function ProjectPage() {
       prevLayout.current.viewMode !== viewMode ||
       prevLayout.current.graphDirection !== graphDirection;
     if (!layoutChanged) return;
-    if (!project?.protocols) { prevLayout.current = { viewMode, graphDirection }; return; }
+    if (!project?.protocols) {
+      prevLayout.current = { viewMode, graphDirection };
+      return;
+    }
 
     if (viewMode === "table") {
+      const { table } = buildGraphElements(
+        project.shortName,
+        project.protocols,
+        "table",
+        graphDirection,
+        gridWidth || flowWrapperRef.current?.clientWidth,
+        getEffectiveZoom()
+      );
+
+      startTransition(() => setTableData(table ?? []));
       setIsSwitchingLayout(true);
-      requestAnimationFrame(() => setTimeout(() => setIsSwitchingLayout(false), 60));
-      if (pathSelRef.current.nodes.size === 0) setHighlightedId(selectedIdRef.current ?? null);
+
+      requestAnimationFrame(() => {
+        setTimeout(() => setIsSwitchingLayout(false), 60);
+      });
+
+      if (pathSelRef.current.nodes.size === 0) {
+        setHighlightedId(selectedIdRef.current ?? null);
+      }
+
       prevLayout.current = { viewMode, graphDirection };
       return;
     }
 
     const instance = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
-    if (!instance) { prevLayout.current = { viewMode, graphDirection }; return; }
+    if (!instance) {
+      prevLayout.current = { viewMode, graphDirection };
+      return;
+    }
 
     const { nodes: loadedNodes, edges: loadedEdges } =
       buildGraphElements(
@@ -1257,7 +1311,9 @@ export default function ProjectPage() {
 
     const unifiedSelectedIds = getUnifiedSelectedIds();
     const nodesSeeded = nodesWithPositions.map((n) => ({ ...n, selected: unifiedSelectedIds.has(n.id) }));
-    const recomputedEdgeSet = computeEdgesTouchingNodes(unifiedSelectedIds);
+    const recomputedEdgeSet = unifiedSelectedIds.size
+      ? computeEdgesForMode(unifiedSelectedIds, pathEdgeModeRef.current)
+      : new Set<string>();
     pathSelRef.current.edges = recomputedEdgeSet;
 
     disablePersistenceRef.current = true;
@@ -1297,40 +1353,34 @@ export default function ProjectPage() {
         });
       });
     });
-  }, [graphDirection, viewMode, project, paintEdgeHighlight, paintPathHighlight, computeEdgesTouchingNodes, gridWidth, centerLikeButton, snapViewportToTopLeft]);
+  }, [graphDirection, viewMode, project, paintEdgeHighlight, paintPathHighlight, computeEdgesForMode, gridWidth, centerLikeButton, snapViewportToTopLeft]);
 
-  /* ------------------------ First-center ------------------------ */
+  /* ------------------------ First-center ONLY once after initial load ------------------------ */
   useEffect(() => {
-    if (!nodesLoadedOnce) return;
+    if (!nodesLoadedOnce || !firstLoadRef.current) return;
+
     const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
     if (!inst) return;
-    setIsSwitchingLayout(true);
 
-    const validNodes = nodes.filter((n) => typeof n.position?.x === "number" && typeof n.position?.y === "number");
-    if (validNodes.length > 0) {
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          if (viewMode === "grid") {
-            inst.setViewport({ x: 0, y: 0, zoom: GRID_ZOOM });
-            setViewport({ x: 0, y: 0, zoom: GRID_ZOOM });
-          } else {
-            inst.setViewport({ x: viewportRef.current.x, y: viewportRef.current.y, zoom: clampZoom(viewportRef.current.zoom) });
-          }
-          setTimeout(() => setIsSwitchingLayout(false), 60);
-        });
-      });
-    } else {
-      const z = viewMode === "grid" ? GRID_ZOOM : clampZoom(inst.getViewport().zoom);
-      inst.setViewport({ x: inst.getViewport().x, y: inst.getViewport().y, zoom: z });
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          const vp = inst.getViewport();
-          setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
-          setTimeout(() => setIsSwitchingLayout(false), 60);
-        });
-      });
-    }
-  }, [nodesLoadedOnce, viewMode]);
+    let cancelled = false;
+
+    (async () => {
+      await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+      if (cancelled) return;
+
+      if (viewModeRef.current === "grid") {
+        inst.setViewport({ x: 0, y: 0, zoom: GRID_ZOOM });
+        setViewport({ x: 0, y: 0, zoom: GRID_ZOOM });
+      } else if (viewModeRef.current === "hierarchical") {
+        centerLikeButton(nodesRef.current, true, viewportRef.current.zoom);
+      }
+
+      firstLoadRef.current = false;
+    })();
+
+    return () => { cancelled = true; };
+  }, [nodesLoadedOnce, centerLikeButton]);
+
 
   /* ============================================================
      Table helpers (unchanged)
@@ -1418,6 +1468,9 @@ export default function ProjectPage() {
       failed: "#F5CCCB",
       aborted: "#F5CCCB",
       interactive: "#f7f3bf",
+      root: "#D9F1FA",
+      scheduled: "#f7f3bf",
+      new: "#1E90FF",
     };
     return { backgroundColor: colorMap[status ?? ""] ?? "#eee", padding: "4px 8px", borderRadius: "6px", fontWeight: 300, color: "black" };
   };
@@ -1562,17 +1615,14 @@ export default function ProjectPage() {
       const px = event.clientX - bounds.left;
       const py = event.clientY - bounds.top;
 
-      // Project to RF coords for later placement
       const rfPoint = inst.project({ x: px, y: py });
       lastPaneRFPointRef.current = rfPoint;
 
-      // Clamp menu inside wrapper bounds to avoid overflow
       const MENU_W = 230;
       const MENU_H = 150;
       const clampedX = Math.max(0, Math.min(px, bounds.width - MENU_W));
       const clampedY = Math.max(0, Math.min(py, bounds.height - MENU_H));
 
-      // Show at pane-relative coordinates
       setContextMenu({ visible: true, x: clampedX, y: clampedY, nodeId: null });
     } else {
       lastPaneRFPointRef.current = null;
@@ -1624,7 +1674,6 @@ export default function ProjectPage() {
     try {
       const current = inst.getViewport();
       const desiredZoom = viewMode === "grid" ? GRID_ZOOM : clampZoom(viewportRef.current.zoom ?? current.zoom);
-      // In grid, always snap to (0,0) with fixed zoom
       if (viewMode === "grid") {
         inst.setViewport({ x: 0, y: 0, zoom: GRID_ZOOM });
         setViewport({ x: 0, y: 0, zoom: GRID_ZOOM });
@@ -1632,12 +1681,23 @@ export default function ProjectPage() {
         inst.setViewport({ x: current.x, y: current.y, zoom: desiredZoom });
         const vp = inst.getViewport();
         setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
+        if (firstLoadRef.current) {
+          const expected = nodesRef.current?.length ?? 0;
+          if (expected > 0) {
+            (async () => {
+              const ok = await waitForNodesReady(expected, 2000);
+              if (ok && firstLoadRef.current && viewModeRef.current === "hierarchical") {
+                centerLikeButton(nodesRef.current, true, viewportRef.current.zoom);
+                firstLoadRef.current = false;
+              }
+            })();
+          }
+        }
       }
     } catch { }
   }, [viewMode]);
 
   const handleOnMoveEnd = useCallback((_: any, vp: { x: number; y: number; zoom: number }) => {
-    // Even in grid we keep viewport state (zoom will always be GRID_ZOOM)
     setViewport(vp);
   }, []);
 
@@ -1805,7 +1865,7 @@ export default function ProjectPage() {
   /* ------------------------ Controls ------------------------ */
   const ZOOM_FACTOR = 1.2;
   const handleZoomIn = useCallback(() => {
-    if (viewMode === "grid") return; // disabled in grid
+    if (viewMode === "grid") return;
     const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
     if (!inst) return;
     const vp = inst.getViewport();
@@ -1815,7 +1875,7 @@ export default function ProjectPage() {
     setViewport({ x: newVp.x, y: newVp.y, zoom: newVp.zoom });
   }, [viewMode]);
   const handleZoomOut = useCallback(() => {
-    if (viewMode === "grid") return; // disabled in grid
+    if (viewMode === "grid") return;
     const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
     if (!inst) return;
     const vp = inst.getViewport();
@@ -1875,7 +1935,6 @@ export default function ProjectPage() {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.repeat) return;
 
-      // no dispare atajos si hay diálogos abiertos o si estamos escribiendo
       if (
         dlgRename.open ||
         confirm.open ||
@@ -1891,77 +1950,66 @@ export default function ProjectPage() {
       const ids = getSelectedIds();
       const selectedId = selectedIdRef.current;
 
-      // Space / Enter -> Edit (open protocol form)
       if ((e.key === " " || e.key === "Enter" || e.code === "Space" || e.key === " " || e.key === "Spacebar") && selectedId) {
         e.preventDefault();
         handleNodeDoubleClick({ id: selectedId });
         return;
       }
 
-      // Delete / Backspace -> Delete
       if ((e.key === "Delete" || e.key === "Backspace") && ids.length > 0) {
         e.preventDefault();
         openDelete(ids[0]);
         return;
       }
 
-      // F2 -> Rename
       if (e.key === "F2" && selectedId) {
         e.preventDefault();
         openRename(selectedId);
         return;
       }
 
-      // Ctrl/⌘ + D -> Duplicate
       if (modPressed(e) && !e.shiftKey && e.key.toLowerCase() === "d" && ids.length > 0) {
         e.preventDefault();
         duplicateNow(ids);
         return;
       }
 
-      // Ctrl/⌘ + B -> Browse
       if (modPressed(e) && !e.shiftKey && e.key.toLowerCase() === "b" && selectedId) {
         e.preventDefault();
         openBrowse(selectedId, project?.id, findNodeLabel(selectedId));
         return;
       }
 
-      // Ctrl/⌘ + Shift + R -> Restart all
       if (modPressed(e) && e.shiftKey && e.key.toLowerCase() === "r" && selectedId) {
         e.preventDefault();
         openRestartAll(selectedId);
         return;
       }
 
-      // Ctrl/⌘ + Shift + C -> Continue all
       if (modPressed(e) && e.shiftKey && e.key.toLowerCase() === "c" && selectedId) {
         e.preventDefault();
         openContinueAll(selectedId);
         return;
       }
 
-      // Ctrl/⌘ + Shift + F -> Reset from
       if (modPressed(e) && e.shiftKey && e.key.toLowerCase() === "f" && selectedId) {
         e.preventDefault();
         openResetFrom(selectedId);
         return;
       }
 
-      // Ctrl/⌘ + Shift + S -> Stop
       if (modPressed(e) && e.shiftKey && e.key.toLowerCase() === "s" && selectedId) {
         e.preventDefault();
         openStop(selectedId);
         return;
       }
 
-      // Alt + ArrowDown -> Select from
       if (!modPressed(e) && e.altKey && e.key === "ArrowDown" && selectedId) {
         e.preventDefault();
         handleSelectFrom(selectedId);
         return;
       }
 
-      // Alt + ArrowUp -> Select to
       if (!modPressed(e) && e.altKey && e.key === "ArrowUp" && selectedId) {
         e.preventDefault();
         handleSelectTo(selectedId);
@@ -1995,20 +2043,32 @@ export default function ProjectPage() {
   /* ------------------------ Render ------------------------ */
   const isGrid = viewMode === "grid";
   return (
-    <div className="h-full min-h-0 flex flex-col relative overflow-hidden">
+    <div className="h-app min-h-0 flex flex-col relative overflow-hidden">
       {/* Header */}
       <div className="flex justify-between items-center mb-1 ml-1">
         <div className="relative w-full max-w-sm">
           <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-400 dark:text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="h-5 w-5 text-gray-400 dark:text-gray-500"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+              />
             </svg>
           </div>
           <input
             type="text"
             placeholder="Search protocol..."
             onChange={(e) => handleSearch(e.target.value)}
-            className="w-full px-3 py-2 pl-10 pr-3 text-sm text-gray-800 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+            className="w-full px-3 py-2 pr-3 text-sm text-gray-800 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+            style={{ paddingLeft: "2.5rem" }}
           />
         </div>
 
@@ -2043,7 +2103,7 @@ export default function ProjectPage() {
               onClick={() => { setViewMode("hierarchical"); setGraphDirection("LR"); }}
               className={`px-3 py-1 rounded-lg text-xs flex items-center gap-1 ${viewMode === "hierarchical" && graphDirection === "LR" ? "bg-blue-500 text-white" : "bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300"}`}
             >
-              <TreeIcon className="w-4 h-4 transform rotate-270" />
+              <TreeIcon className="w-4 h-4 -rotate-90" />
             </button>
             <button
               title="Grid"
@@ -2065,13 +2125,7 @@ export default function ProjectPage() {
 
       {/* Content wrapper */}
       <div className="flex-1 relative min-h-0 overflow-hidden" style={{ contain: "paint" }}>
-        {isSwitchingLayout && (
-          <div aria-hidden className="absolute inset-0 z-50 flex items-center justify-center" style={{ pointerEvents: "none" }}>
-            <div className="flex items-center gap-3">
-              <div className="w-6 h-6 border-2 border-gray-300 border-t-gray-500 rounded-full animate-spin" />
-            </div>
-          </div>
-        )}
+        {/* removed switching overlay to avoid flicker */}
 
         {isLoadingProject && (
           <div
@@ -2093,8 +2147,7 @@ export default function ProjectPage() {
         {/* TABLE */}
         <div
           ref={tableContainerRef}
-          className="absolute inset-0 overflow-auto border rounded shadow p-3 z-30 transition-opacity"
-          style={{ opacity: viewMode === "table" ? 1 : 0, pointerEvents: viewMode === "table" ? "auto" : "none" }}
+          className={`absolute inset-0 overflow-auto border rounded shadow p-3 z-30 ${viewMode === "table" ? "" : "hidden"}`}
           aria-hidden={viewMode !== "table"}
         >
           <div className="flex justify-end mb-4 mr-4">
@@ -2103,7 +2156,7 @@ export default function ProjectPage() {
             </button>
           </div>
 
-          <table className="cursor-pointer w-full text-sm border border-gray-300 dark-border-gray-700">
+          <table className="cursor-pointer w-full text-sm border border-gray-300 dark:border-gray-700">
             <thead className="bg-gray-300 dark:bg-gray-800 font-normal">
               <tr>
                 <th className="px-4 py-2 text-left font-normal">Id</th>
@@ -2179,15 +2232,8 @@ export default function ProjectPage() {
         {/* ReactFlow */}
         <div
           ref={flowWrapperRef}
-          className="absolute inset-0 border transition-opacity"
-          data-view-mode={viewMode}  
-          style={{
-            width: "100%",
-            height: "100%",
-            opacity: viewMode !== "table" ? (hideGraphDuringCenter ? 0 : 1) : 0,
-            pointerEvents: viewMode !== "table" ? "auto" : "none",
-            zIndex: 20,
-          }}
+          className={`absolute inset-0 border ${viewMode !== "table" ? "" : "hidden"}`}
+          data-view-mode={viewMode}
           aria-hidden={viewMode === "table"}
           onContextMenu={(e) => e.preventDefault()}
         >
@@ -2270,12 +2316,11 @@ export default function ProjectPage() {
               onNodesChange={handleNodesChangeWithPersistence}
               onEdgesChange={onEdgesChange}
               nodeTypes={nodeTypes}
-              // Fixed zoom in grid: lock minZoom == maxZoom == GRID_ZOOM and disable zoom gestures
               minZoom={isGrid ? GRID_ZOOM : MIN_ZOOM}
               maxZoom={isGrid ? GRID_ZOOM : MAX_ZOOM}
               zoomOnScroll={!isGrid}
               zoomOnPinch={!isGrid}
-              zoomOnDoubleClick={!isGrid}
+              zoomOnDoubleClick={false}
               onInit={handleOnInit}
               onMoveEnd={handleOnMoveEnd}
               onPaneClick={() => {
@@ -2298,8 +2343,8 @@ export default function ProjectPage() {
               selectionOnDrag
               style={{ width: "100%", height: "100%" }}
               proOptions={{ hideAttribution: true }}
-              nodesConnectable={viewMode !== "grid"}   // disable connecting in grid
-              connectOnClick={viewMode !== "grid"}     // disable click-to-connect in grid
+              nodesConnectable={viewMode !== "grid"}
+              connectOnClick={viewMode !== "grid"}
             >
               <Background />
             </ReactFlow>
@@ -2307,40 +2352,46 @@ export default function ProjectPage() {
         </div>
 
         {/* ===== Multi-Form Dock (right side) ===== */}
-        <div
-          aria-live="polite"
-          ref={dockRef}
-          className="pointer-events-none absolute inset-y-0 right-0 z-[60] flex gap-2 p-1"
-        >
-          {openForms.map((f) => (
-            <div
-              key={f.key}
-              role="dialog"
-              aria-label={`Protocol ${f.id}`}
-              data-dock-key={f.key}
-              className="dock-panel pointer-events-auto"
-            >
-              <ProtocolForm
-                data={f.details}
-                projectProtocols={project?.protocols ?? {}}
-                variant="docked"
-                onClose={() => {
-                  handleRefreshRef.current?.();
-                  setTimeout(() => handleRefreshRef.current?.(), 800);
+        <div className="absolute inset-y-0 right-0 z-[60] pointer-events-none flex">
+          <div
+            ref={dockRef}
+            className={
+              openForms.length
+                ? "dock-scroll"   // clases de arriba
+                : "hidden"
+            }
+          >
+            {openForms.map((f) => (
+              <div
+                key={f.key}
+                role="dialog"
+                aria-label={`Protocol ${f.id}`}
+                data-dock-key={f.key}
+                className="dock-panel"
+              >
+                <ProtocolForm
+                  data={f.details}
+                  projectProtocols={project?.protocols ?? {}}
+                  variant="docked"
+                  onClose={() => {
+                    handleRefreshRef.current?.();
+                    setTimeout(() => handleRefreshRef.current?.(), 800);
 
-                  // Try to place the new node at click point
-                  setTimeout(() => tryPlaceNewlyCreatedNode(), 50);
-                  setTimeout(() => tryPlaceNewlyCreatedNode(), 400);
+                    setTimeout(() => tryPlaceNewlyCreatedNode(), 50);
+                    setTimeout(() => tryPlaceNewlyCreatedNode(), 400);
 
-                  closeFormByKey(f.key);
-                }}
-                onExecuted={() => {
-                  scheduleDoubleRefresh(5000, true);
-                }}
-              />
-            </div>
-          ))}
+                    closeFormByKey(f.key);
+                  }}
+                  onExecuted={() => {
+                    scheduleDoubleRefresh(5000, true);
+                  }}
+                />
+              </div>
+            ))}
+          </div>
+
         </div>
+
       </div>
 
       {/* --- Dialogs --- */}
