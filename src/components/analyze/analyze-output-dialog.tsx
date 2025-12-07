@@ -13,6 +13,7 @@ import { CloseIcon } from "@/icons";
 import { MetadataViewer } from "./metadata-viewer";
 import VolumeViewer from "./volume-viewer";
 import Coords3dViewer from "./coords3d-viewer";
+import TiltSeriesViewer from "./tiltseries-viewer";
 
 type AnalyzeOutputDialogProps = {
   open: boolean;
@@ -38,7 +39,7 @@ function isVolumeKind(k?: string) {
 function isCoords3dKind(k?: string) {
   if (!k) return false;
   const s = k.replace(/\s+/g, "").toLowerCase();
-  // Match típico: "SetOfCoordinates3D"
+  // Match: "SetOfCoordinates3D"
   return s.includes("setofcoordinates3d");
 }
 
@@ -50,6 +51,14 @@ function isSetOfMetadataKind(k?: string) {
   if (isCoords3dKind(k)) return false;
   return true;
 }
+
+function isTiltSeriesKind(k?: string) {
+  if (!k) return false;
+  const s = k.replace(/\s+/g, "").toLowerCase();
+  // Match: "SetOfTiltseries"
+  return s.includes("setoftiltseries");
+}
+
 
 const dialogPaperSx = {
   borderRadius: 2,
@@ -165,6 +174,17 @@ export default function AnalyzeOutputDialog({
       );
     }
 
+      if (isTiltSeriesKind(outputClass)) {
+      return (
+        <TiltSeriesViewer
+          projectId={projectIdNum}
+          protocolId={protocolIdNum}
+          outputName={outputName}
+        // opcionalmente tableName="TiltSeries" imageColumn="stack"
+        />
+      );
+    }
+
     if (isSetOfMetadataKind(outputClass)) {
       return (
         <MetadataViewer
@@ -174,6 +194,8 @@ export default function AnalyzeOutputDialog({
         />
       );
     }
+
+  
 
     return (
       <Box sx={{ p: 2 }}>

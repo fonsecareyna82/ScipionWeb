@@ -208,6 +208,70 @@ export interface MetadataPage {
   rows: MetadataRow[];
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Analyze Results (Tilt series)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Basic item for a tilt series in a SetOfTiltSeries output. */
+export type TiltSeriesListItem = {
+  /** Tilt series identifier (index, db id, etc.). */
+  id: Id;
+  /** Human-friendly label to display in the list. */
+  label: string;
+  /** Optional number of tilt images in this series. */
+  nTilts?: number;
+  /** Optional image dimensions [width, height] in pixels. */
+  dims?: [number, number];
+  /** Optional pixel size (for example Å/px). */
+  pixelSize?: number;
+};
+
+/** Extra options when requesting a single tilt image. */
+export type TiltImageOptions = {
+  /** Target size in pixels for the longest side. */
+  size?: number;
+  /** Output format for the rendered image. */
+  format?: "png" | "webp" | "jpeg";
+  /** Whether to apply alignment or contrast corrections in backend. */
+  applyTransform?: boolean;
+  /** AbortSignal to cancel in-flight HTTP requests. */
+  signal?: AbortSignal;
+};
+
+// Shared object-url result type used by image viewers
+export type ObjectUrlResult = {
+  url: string;
+  revoke: () => void;
+};
+
+// Generic options for fetching 2D image slices / previews from the API
+export type FetchImageSliceOptions = {
+  // Common sampling / slicing options
+  index?: number; // slice index along the chosen axis
+  axis?: "x" | "y" | "z";
+
+  // Color / normalization
+  cmap?: string;
+  colormap?: string;
+  format?: "png" | "webp" | "jpeg";
+  fmt?: string;
+  normalize?: string; // e.g. "minmax", "zscore", etc.
+
+  // Geometry / scaling
+  scale?: number;
+  thumb?: number;
+  fast?: boolean;
+  quality?: number;
+
+  // Tilt / metadata specific
+  size?: number;
+  applyTransform?: boolean;
+
+  // Abort support for fetch
+  signal?: AbortSignal;
+};
+
+
 /**
  * Optional generics to let consumers specify concrete return shapes.
  * - TProject: shape of a single project
@@ -481,4 +545,38 @@ export interface ProjectService<
       format?: string;
     }
   ): string;
+
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Analyze Results (Tilt series)
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /**
+   * List tilt series for a SetOfTiltSeries output.
+   */
+  listOutputTiltSeries(
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+  ): Promise<any[]>;
+
+  // Tilt series: fetch all views/frames for one tilt series
+  fetchTiltSeriesFrames(
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    tiltSeriesId: Id,
+  ): Promise<any>;
+
+  // Tilt series: fetch image object URL for a single view
+  fetchTiltSeriesViewImageObjectUrl(
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    tiltSeriesId: Id,
+    viewIndex: number,
+    opts?: FetchImageSliceOptions,
+  ): Promise<ObjectUrlResult>;
+
+
 }

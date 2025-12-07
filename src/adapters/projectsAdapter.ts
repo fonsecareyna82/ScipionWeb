@@ -11,6 +11,8 @@ import type {
   VolumeHistogramOptions,
   VolumeData3d,
   VolumeData3dOptions,
+  TiltSeriesListItem,
+  TiltImageOptions,
 } from "@/services/ProjectService";
 
 /** Normalize id */
@@ -375,6 +377,45 @@ const defaultService: ProjectService = {
       columnName,
       opts ?? {},
     ),
+
+  // ──────────────────────────── Analyze Results: Tilt series ────────────────────────────
+
+  listOutputTiltSeries: (
+      projectId,
+      protocolId,
+      outputName,
+    ) => api.listOutputTiltSeries(projectId, protocolId, outputName),
+
+    fetchTiltSeriesFrames: (
+      projectId,
+      protocolId,
+      outputName,
+      tiltSeriesId,
+    ) =>
+      api.fetchTiltSeriesFrames(
+        projectId,
+        protocolId,
+        outputName,
+        tiltSeriesId,
+      ),
+
+    fetchTiltSeriesViewImageObjectUrl: (
+      projectId,
+      protocolId,
+      outputName,
+      tiltSeriesId,
+      viewId,
+      options,
+    ) =>
+      api.fetchTiltSeriesViewImageObjectUrl(
+        projectId,
+        protocolId,
+        outputName,
+        tiltSeriesId,
+        viewId,
+        options,
+      ),
+
 };
 
 export default defaultService;

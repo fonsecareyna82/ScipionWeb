@@ -3,6 +3,7 @@ import { ProtocolNode } from "./protocols";
 import { BASE_URL } from "@/config";
 import { Project } from "@/types/project";
 import { fetchWithAuth } from "./auth";
+import { FetchImageSliceOptions, ObjectUrlResult } from "@/services/ProjectService";
 
 const ACTION_LAUNCH = "launch";
 const ACTION_SAVE = "save";
@@ -1118,3 +1119,114 @@ export async function fetchMetadataTableWindow(
 
   throw new Error("Unexpected response format for metadata rows window");
 }
+
+
+/* ======================= Analyze Results: Tilt series ======================= */
+
+export interface TiltSeriesListItem {
+  id: Id;
+  name?: string;
+  label?: string;
+  /** Optional number of tilt images in this series. */
+  nTilts?: number;
+  /** Legacy aliases from backend: n or count. */
+  n?: number;
+  count?: number;
+  /** Optional image dimensions [width, height] in pixels. */
+  dims?: [number, number];
+  /** Optional pixel size (for example Å/px). */
+  pixelSize?: number;
+}
+
+
+export async function listOutputTiltSeries(
+  projectId: Id,
+  protocolId: Id,
+  outputName: string,
+): Promise<TiltSeriesListItem[]> {
+  const enc = encodeURIComponent;
+  const url = `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/outputs/${enc(
+    outputName,
+  )}/tiltseries`;
+
+  const res = await fetchWithAuth(url, { method: "GET" });
+  if (!res.ok) {
+    throw await toApiError(res, "Failed to list output tilt series");
+  }
+
+  const data = await safeJson<any>(res);
+  if (!Array.isArray(data)) {
+    return [];
+  }
+
+  return data as TiltSeriesListItem[];
+}
+
+
+export async function fetchTiltSeriesViewImageObjectUrl(
+  projectId: Id,
+  protocolId: Id,
+  outputName: string,
+  tiltSeriesId: Id,
+  viewIndex: number,
+  opts: FetchImageSliceOptions = {},
+): Promise<ObjectUrlResult> {
+  const {
+    size = 512,
+    format = "png",
+    applyTransform = false,
+    signal,
+  } = opts;
+
+  const enc = encodeURIComponent;
+  const base = `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/outputs/${enc(
+    outputName,
+  )}/tiltseries/${enc(String(tiltSeriesId))}/tilt`;
+
+  const params = new URLSearchParams();
+  params.set("index", String(viewIndex));
+  params.set("size", String(size));
+  params.set("fmt", format);
+  params.set("applyTransform", String(applyTransform));
+
+  const url = `${base}?${params.toString()}`;
+
+  const res = await fetchWithAuth(url, {
+    method: "GET",
+    cache: "no-store",
+    signal,
+  });
+  if (!res.ok) {
+    throw await toApiError(res, "Failed to render tilt-series image");
+  }
+
+  const blob = await res.blob();
+  const objUrl = URL.createObjectURL(blob);
+  const revoke = () => URL.revokeObjectURL(objUrl);
+
+  return { url: objUrl, revoke };
+}
+
+
+
+export async function fetchTiltSeriesFrames(
+  projectId: Id,
+  protocolId: Id,
+  outputName: string,
+  tiltSeriesId: Id,
+): Promise<any> {
+  const enc = encodeURIComponent;
+  const url = `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/outputs/${enc(
+    outputName,
+  )}/tiltseries/${enc(String(tiltSeriesId))}/frames`;
+
+  const res = await fetchWithAuth(url, { method: "GET" });
+  if (!res.ok) {
+    throw await toApiError(res, "Failed to fetch tilt-series frames");
+  }
+
+  return safeJson<any>(res);
+}
+
+
+
