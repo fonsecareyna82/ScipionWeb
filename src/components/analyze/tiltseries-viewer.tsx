@@ -30,6 +30,7 @@ import {
   Stop as StopIcon,
   ExpandMore,
   ChevronRight,
+  Transform as TransformIcon,
 } from "@mui/icons-material";
 import { useProjectService } from "@/ProjectServiceContext";
 import type { Id } from "@/services/ProjectService";
@@ -126,6 +127,9 @@ export default function TiltSeriesViewer({
 
   const [displayedUrl, setDisplayedUrl] = useState<string | null>(null);
   const [transitionUrl, setTransitionUrl] = useState<string | null>(null);
+
+  // Apply alignments toggle
+  const [applyTransform, setApplyTransform] = useState<boolean>(true);
 
   // Column widths as percentages to avoid horizontal scroll
   const columnWidths = {
@@ -487,6 +491,15 @@ export default function TiltSeriesViewer({
         setPreviewLoading(true);
         setPreviewError(null);
 
+        const options: any = {
+          size: 1024,
+          normalize: "minmax",
+          signal: controller.signal,
+        };
+        if (applyTransform) {
+          options.applyTransform = true;
+        }
+
         const result: ObjectUrlResult | null =
           await (svc as any).fetchTiltSeriesViewImageObjectUrl(
             projectId,
@@ -494,12 +507,7 @@ export default function TiltSeriesViewer({
             outputName,
             selectedSeriesId,
             frameIndex,
-            {
-              size: 1024,
-              normalize: "minmax",
-              applyTransform: true,
-              signal: controller.signal,
-            },
+            options,
           );
 
         if (controller.signal.aborted || previewReqIdRef.current !== reqId) {
@@ -550,6 +558,7 @@ export default function TiltSeriesViewer({
     outputName,
     svc,
     previewReloadToken,
+    applyTransform,
   ]);
 
   // Manage displayedUrl vs transitionUrl for smooth crossfade
@@ -1262,6 +1271,39 @@ export default function TiltSeriesViewer({
                 </IconButton>
               </span>
             </Tooltip>
+
+            <Tooltip
+              title={
+                applyTransform
+                  ? "Disable alignments"
+                  : "Apply alignments"
+              }
+            >
+              <span>
+                <IconButton
+                  size="small"
+                  onClick={() =>
+                    setApplyTransform((prev) => !prev)
+                  }
+                  sx={{
+                    color: applyTransform
+                      ? "primary.main"
+                      : "text.primary",
+                    bgcolor: applyTransform
+                      ? "rgba(59,130,246,0.12)"
+                      : "transparent",
+                    "&:hover": {
+                      bgcolor: applyTransform
+                        ? "rgba(59,130,246,0.20)"
+                        : "action.hover",
+                    },
+                  }}
+                >
+                  <TransformIcon fontSize="small" />
+                </IconButton>
+              </span>
+            </Tooltip>
+
             <Tooltip title="Play (auto navigate)">
               <span>
                 <IconButton
