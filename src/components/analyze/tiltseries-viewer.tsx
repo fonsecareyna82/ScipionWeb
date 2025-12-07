@@ -1,5 +1,11 @@
 // src/components/analyze/tiltseries-viewer.tsx
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  Fragment,
+} from "react";
 import {
   Box,
   CircularProgress,
@@ -13,10 +19,6 @@ import {
   Typography,
   TextField,
   Checkbox,
-  Select,
-  MenuItem,
-  FormControl,
-  InputLabel,
   Tooltip,
   Slider,
 } from "@mui/material";
@@ -26,10 +28,12 @@ import {
   Refresh as RefreshIcon,
   PlayArrow,
   Stop as StopIcon,
-  Block as BlockIcon,
+  ExpandMore,
+  ChevronRight,
 } from "@mui/icons-material";
 import { useProjectService } from "@/ProjectServiceContext";
 import type { Id } from "@/services/ProjectService";
+import { CloseIcon } from "@/icons";
 
 type TiltSeriesViewerProps = {
   projectId: Id;
@@ -45,10 +49,12 @@ type TiltSeriesSummary = {
   tiltAxisAngle?: number | null;
   pixelSize?: number | null;
   dims?: [number, number] | [number, number, number];
+  excluded?: boolean;
 };
 
 type TiltViewRow = {
   viewId: Id;
+  index?: number | null;
   order?: number | null;
   tiltAngle?: number | null;
   excluded?: boolean;
@@ -71,6 +77,15 @@ type ObjectUrlResult = {
   revoke?: () => void;
 };
 
+// Helper to truncate path in the middle: /home/.../img.mrc
+function truncatePathMiddle(path: string, maxLength = 40): string {
+  if (path.length <= maxLength) return path;
+  const half = Math.floor((maxLength - 3) / 2);
+  const start = path.slice(0, half);
+  const end = path.slice(-half);
+  return `${start}...${end}`;
+}
+
 export default function TiltSeriesViewer({
   projectId,
   protocolId,
@@ -82,6 +97,7 @@ export default function TiltSeriesViewer({
   const [seriesLoading, setSeriesLoading] = useState(false);
   const [seriesError, setSeriesError] = useState<string | null>(null);
   const [selectedSeriesId, setSelectedSeriesId] = useState<Id | null>(null);
+  const [expandedSeriesId, setExpandedSeriesId] = useState<Id | null>(null);
 
   const [framesData, setFramesData] = useState<FramesPayload | null>(null);
   const [framesLoading, setFramesLoading] = useState(false);
@@ -103,8 +119,6 @@ export default function TiltSeriesViewer({
 
   const [isPlaying, setIsPlaying] = useState(false);
   const autoplayRef = useRef<number | null>(null);
-
-  // 1 means forward (increasing index), -1 means backward (decreasing index)
   const playDirectionRef = useRef<1 | -1>(1);
 
   const [brightness, setBrightness] = useState<number>(100);
@@ -112,6 +126,19 @@ export default function TiltSeriesViewer({
 
   const [displayedUrl, setDisplayedUrl] = useState<string | null>(null);
   const [transitionUrl, setTransitionUrl] = useState<string | null>(null);
+
+  // Column widths as percentages to avoid horizontal scroll
+  const columnWidths = {
+    series: { width: "16%" },
+    order: { width: "7%" },
+    angle: { width: "9%" },
+    excluded: { width: "6%" },
+    dose: { width: "7%" },
+    path: { width: "27%" },
+    rot: { width: "7%" },
+    shiftX: { width: "7%" },
+    shiftY: { width: "7%" },
+  } as const;
 
   const imageFilterCss = useMemo(() => {
     const parts: string[] = [];
@@ -143,6 +170,7 @@ export default function TiltSeriesViewer({
         setSeriesError(null);
         setSeries([]);
         setSelectedSeriesId(null);
+        setExpandedSeriesId(null);
         setFramesData(null);
         setFramesError(null);
         setSelectedRowIndex(null);
@@ -199,7 +227,9 @@ export default function TiltSeriesViewer({
 
         setSeries(items);
         if (items.length > 0) {
-          setSelectedSeriesId(items[0].tiltSeriesId);
+          const firstId = items[0].tiltSeriesId;
+          setSelectedSeriesId(firstId);
+          setExpandedSeriesId(firstId);
         }
       } catch (e: any) {
         if (!cancelled) {
@@ -307,6 +337,7 @@ export default function TiltSeriesViewer({
     };
   }, [selectedSeriesId, projectId, protocolId, outputName, svc]);
 
+  // Derived filtered frames (for current selected series)
   const filteredFrames: TiltViewRow[] = useMemo(() => {
     if (!framesData?.frames) return [];
     if (!filterText.trim()) return framesData.frames;
@@ -315,14 +346,17 @@ export default function TiltSeriesViewer({
       const path = f.path ?? "";
       const angle = f.tiltAngle != null ? String(f.tiltAngle) : "";
       const order = f.order != null ? String(f.order) : "";
+      const index = f.index != null ? String(f.index) : "";
       return (
         path.toLowerCase().includes(q) ||
         angle.toLowerCase().includes(q) ||
-        order.toLowerCase().includes(q)
+        order.toLowerCase().includes(q) ||
+        index.toLowerCase().includes(q)
       );
     });
   }, [framesData, filterText]);
 
+  // Map selectedRowIndex to the same index in filtered list
   const selectedFilteredIndex = useMemo(() => {
     if (
       selectedRowIndex == null ||
@@ -339,7 +373,7 @@ export default function TiltSeriesViewer({
     return idx >= 0 ? idx : null;
   }, [selectedRowIndex, framesData, filteredFrames]);
 
-  // Toggle excluded flag by global index
+  // Toggle exclude at frame index and sync series excluded flag
   const toggleExcludeAtIndex = (frameIndex: number) => {
     setFramesData((prev) => {
       if (!prev) return prev;
@@ -349,11 +383,22 @@ export default function TiltSeriesViewer({
       ) {
         return prev;
       }
+
       const nextFrames = prev.frames.map((f, idx) =>
         idx === frameIndex ? { ...f, excluded: !f.excluded } : f,
       );
 
-      // Here you can call backend API to persist exclusion if needed.
+      const allExcluded =
+        nextFrames.length > 0 &&
+        nextFrames.every((f) => f.excluded);
+
+      setSeries((prevSeries) =>
+        prevSeries.map((s) =>
+          String(s.tiltSeriesId) === String(prev.tiltSeriesId)
+            ? { ...s, excluded: allExcluded }
+            : s,
+        ),
+      );
 
       return { ...prev, frames: nextFrames };
     });
@@ -373,6 +418,45 @@ export default function TiltSeriesViewer({
     );
     if (idx >= 0) {
       toggleExcludeAtIndex(idx);
+    }
+  };
+
+  // Toggle exclude for whole tilt series (and its frames if loaded)
+  const handleToggleExcludeSeries = (seriesId: Id) => {
+    let updatedByFrames = false;
+
+    setFramesData((prev) => {
+      if (!prev || String(prev.tiltSeriesId) !== String(seriesId)) {
+        return prev;
+      }
+      updatedByFrames = true;
+
+      const anyIncluded = prev.frames.some((f) => !f.excluded);
+      const newExcluded = anyIncluded;
+      const nextFrames = prev.frames.map((f) => ({
+        ...f,
+        excluded: newExcluded,
+      }));
+
+      setSeries((prevSeries) =>
+        prevSeries.map((s) =>
+          String(s.tiltSeriesId) === String(seriesId)
+            ? { ...s, excluded: newExcluded }
+            : s,
+        ),
+      );
+
+      return { ...prev, frames: nextFrames };
+    });
+
+    if (!updatedByFrames) {
+      setSeries((prevSeries) =>
+        prevSeries.map((s) =>
+          String(s.tiltSeriesId) === String(seriesId)
+            ? { ...s, excluded: !s.excluded }
+            : s,
+        ),
+      );
     }
   };
 
@@ -486,7 +570,7 @@ export default function TiltSeriesViewer({
     setTransitionUrl(previewUrl);
   }, [previewUrl, displayedUrl]);
 
-  // Cleanup object URL on unmount
+  // Cleanup object URL and autoplay on unmount
   useEffect(() => {
     return () => {
       if (lastPreviewRevokeRef.current) {
@@ -495,6 +579,9 @@ export default function TiltSeriesViewer({
         } catch {
           // ignore
         }
+      }
+      if (autoplayRef.current != null) {
+        window.clearInterval(autoplayRef.current);
       }
     };
   }, []);
@@ -531,6 +618,11 @@ export default function TiltSeriesViewer({
     }
   };
 
+  const handleSeriesRowClick = (seriesId: Id) => {
+    setSelectedSeriesId(seriesId);
+    setExpandedSeriesId(seriesId);
+  };
+
   const handleRefreshPreview = () => {
     if (selectedRowIndex == null) return;
     setPreviewUrl(null);
@@ -556,18 +648,15 @@ export default function TiltSeriesViewer({
         if (!total) return prev;
 
         if (prev == null) {
-          // If there was no selection, start at first frame
           return 0;
         }
 
         let next = prev + playDirectionRef.current;
 
-        // If we move past the last index, reverse direction and step back
         if (next >= total) {
           playDirectionRef.current = -1;
           next = total - 2 >= 0 ? total - 2 : 0;
         } else if (next < 0) {
-          // If we move before the first index, reverse direction and step forward
           playDirectionRef.current = 1;
           next = total > 1 ? 1 : 0;
         }
@@ -586,15 +675,6 @@ export default function TiltSeriesViewer({
     };
   }, [isPlaying, framesData?.frames?.length]);
 
-  // Cleanup autoplay timer on unmount
-  useEffect(() => {
-    return () => {
-      if (autoplayRef.current != null) {
-        window.clearInterval(autoplayRef.current);
-      }
-    };
-  }, []);
-
   return (
     <Box
       sx={{
@@ -606,7 +686,7 @@ export default function TiltSeriesViewer({
         overflow: "hidden",
       }}
     >
-      {/* Left side: series selector + table */}
+      {/* Left side: tilt series tree + tilt views */}
       <Box
         sx={{
           flex: 1.4,
@@ -620,69 +700,19 @@ export default function TiltSeriesViewer({
           square
           elevation={0}
           sx={{
-            p: 1,
-            borderBottom: "1px solid #e5e7eb",
-            display: "flex",
-            alignItems: "center",
-            gap: 2,
-          }}
-        >
-          <FormControl size="small" sx={{ minWidth: 220 }}>
-            <InputLabel id="tiltseries-select-label">
-              Tilt series (id)
-            </InputLabel>
-            <Select
-              labelId="tiltseries-select-label"
-              label="Tilt series (id)"
-              value={
-                selectedSeriesId != null ? String(selectedSeriesId) : ""
-              }
-              onChange={(e) => {
-                const value = e.target.value as string;
-                setSelectedSeriesId(value);
-              }}
-              disabled={seriesLoading || !series.length}
-            >
-              {series.map((s) => (
-                <MenuItem
-                  key={String(s.tiltSeriesId)}
-                  value={String(s.tiltSeriesId)}
-                  title={s.label}
-                >
-                  {String(s.tiltSeriesId)}
-                  {s.nViews != null ? ` (${s.nViews} views)` : ""}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-
-          {seriesLoading && (
-            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-              <CircularProgress size={16} />
-              <Typography variant="caption">
-                Loading tilt series…
-              </Typography>
-            </Box>
-          )}
-
-          {seriesError && !seriesLoading && (
-            <Typography variant="caption" color="error">
-              {seriesError}
-            </Typography>
-          )}
-        </Paper>
-
-        <Box
-          sx={{
-            p: 1,
+            p: 0.75,
             borderBottom: "1px solid #e5e7eb",
             display: "flex",
             alignItems: "center",
             gap: 1,
           }}
         >
-          <Typography variant="caption" color="text.secondary">
-            Filter
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{ fontSize: "0.75rem", whiteSpace: "nowrap" }}
+          >
+            Filter (selected series)
           </Typography>
           <TextField
             size="small"
@@ -690,12 +720,48 @@ export default function TiltSeriesViewer({
             value={filterText}
             onChange={(e) => setFilterText(e.target.value)}
             placeholder="Filter by angle, order or path"
-            fullWidth
+            sx={{
+              maxWidth: 260,
+              "& .MuiInputBase-input": {
+                fontSize: "0.75rem",
+                paddingY: 0.5,
+              },
+              "& input::placeholder": {
+                fontSize: "0.7rem",
+              },
+            }}
           />
-        </Box>
+          {seriesLoading && (
+            <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+              <CircularProgress size={14} />
+              <Typography
+                variant="caption"
+                sx={{ fontSize: "0.7rem" }}
+              >
+                Loading tilt series…
+              </Typography>
+            </Box>
+          )}
+          {seriesError && !seriesLoading && (
+            <Typography
+              variant="caption"
+              color="error"
+              sx={{ fontSize: "0.7rem" }}
+            >
+              {seriesError}
+            </Typography>
+          )}
+        </Paper>
 
-        <Box sx={{ flex: 1, minHeight: 0, overflow: "auto" }}>
-          {framesLoading ? (
+        <Box
+          sx={{
+            flex: 1,
+            minHeight: 0,
+            overflowY: "auto",
+            overflowX: "hidden",
+          }}
+        >
+          {framesLoading && !framesData ? (
             <Box
               sx={{
                 p: 2,
@@ -709,16 +775,16 @@ export default function TiltSeriesViewer({
                 Loading tilt views…
               </Typography>
             </Box>
-          ) : framesError ? (
+          ) : framesError && !framesData ? (
             <Box sx={{ p: 2 }}>
               <Typography variant="body2" color="error">
                 {framesError}
               </Typography>
             </Box>
-          ) : !framesData || !framesData.frames.length ? (
+          ) : !series.length ? (
             <Box sx={{ p: 2 }}>
               <Typography variant="body2" color="text.secondary">
-                No tilt views available for this series.
+                No tilt series available for this output.
               </Typography>
             </Box>
           ) : (
@@ -726,91 +792,284 @@ export default function TiltSeriesViewer({
               size="small"
               stickyHeader
               sx={{
-                minWidth: 650,
-                "& th": { whiteSpace: "nowrap" },
+                tableLayout: "fixed",
+                width: "100%",
+                "& th": {
+                  whiteSpace: "nowrap",
+                  fontSize: "0.75rem",
+                  paddingTop: 0.5,
+                  paddingBottom: 0.5,
+                },
+                "& td": {
+                  fontSize: "0.75rem",
+                  paddingTop: 0.25,
+                  paddingBottom: 0.25,
+                },
               }}
             >
               <TableHead>
                 <TableRow>
-                  <TableCell align="right">Order</TableCell>
-                  <TableCell align="right">Tilt angle</TableCell>
-                  <TableCell align="center">Excluded</TableCell>
-                  <TableCell align="right">Dose</TableCell>
-                  <TableCell>Path</TableCell>
-                  <TableCell align="right">Rot</TableCell>
-                  <TableCell align="right">ShiftX</TableCell>
-                  <TableCell align="right">ShiftY</TableCell>
+                  <TableCell sx={columnWidths.series}>
+                    Tilt series
+                  </TableCell>
+                  <TableCell sx={columnWidths.order}>
+                    Order
+                  </TableCell>
+                  <TableCell sx={columnWidths.angle}>
+                    Tilt angle
+                  </TableCell>
+                  <TableCell sx={columnWidths.excluded}>
+                    Excl.
+                  </TableCell>
+                  <TableCell sx={columnWidths.dose}>
+                    Dose
+                  </TableCell>
+                  <TableCell sx={columnWidths.path}>
+                    Path
+                  </TableCell>
+                  <TableCell sx={columnWidths.rot}>
+                    Rot
+                  </TableCell>
+                  <TableCell sx={columnWidths.shiftX}>
+                    ShiftX
+                  </TableCell>
+                  <TableCell sx={columnWidths.shiftY}>
+                    ShiftY
+                  </TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
-                {filteredFrames.map((row, idx) => {
-                  const isSelected = idx === selectedFilteredIndex;
+                {series.map((s) => {
+                  const isExpanded =
+                    expandedSeriesId != null &&
+                    String(expandedSeriesId) ===
+                      String(s.tiltSeriesId);
+                  const isSelectedSeries =
+                    selectedSeriesId != null &&
+                    String(selectedSeriesId) ===
+                      String(s.tiltSeriesId);
+
+                  const showFramesForThisSeries =
+                    isExpanded &&
+                    framesData &&
+                    String(framesData.tiltSeriesId) ===
+                      String(s.tiltSeriesId);
+
+                  const seriesFrames = showFramesForThisSeries
+                    ? filteredFrames
+                    : [];
+
                   return (
-                    <TableRow
-                      key={String(row.viewId)}
-                      hover
-                      selected={isSelected}
-                      onClick={() => handleRowClick(row)}
-                      sx={{
-                        cursor: "pointer",
-                        ...(row.excluded && {
-                          backgroundColor: "rgba(248,113,113,0.16)",
-                          "&:hover": {
-                            backgroundColor: "rgba(248,113,113,0.24)",
-                          },
-                          "&.Mui-selected": {
-                            backgroundColor: "rgba(248,113,113,0.30)",
-                          },
-                          "&.Mui-selected:hover": {
-                            backgroundColor: "rgba(248,113,113,0.36)",
-                          },
-                        }),
-                      }}
-                    >
-                      <TableCell align="right">
-                        {row.order ?? ""}
-                      </TableCell>
-                      <TableCell align="right">
-                        {row.tiltAngle != null
-                          ? row.tiltAngle.toFixed(2)
-                          : ""}
-                      </TableCell>
-                      <TableCell align="center">
-                        <Checkbox
-                          size="small"
-                          checked={Boolean(row.excluded)}
-                          onClick={(e) => e.stopPropagation()}
-                          onChange={() => handleToggleExcludeRow(row)}
-                        />
-                      </TableCell>
-                      <TableCell align="right">
-                        {row.dose != null ? row.dose.toFixed(2) : ""}
-                      </TableCell>
-                      <TableCell
+                    <Fragment key={String(s.tiltSeriesId)}>
+                      {/* Series row */}
+                      <TableRow
+                        hover
+                        selected={isSelectedSeries}
+                        onClick={() =>
+                          handleSeriesRowClick(s.tiltSeriesId)
+                        }
                         sx={{
-                          maxWidth: 320,
-                          whiteSpace: "nowrap",
-                          textOverflow: "ellipsis",
-                          overflow: "hidden",
+                          cursor: "pointer",
+                          ...(s.excluded && {
+                            backgroundColor:
+                              "rgba(248,113,113,0.16)",
+                            "&:hover": {
+                              backgroundColor:
+                                "rgba(248,113,113,0.24)",
+                            },
+                            "&.Mui-selected": {
+                              backgroundColor:
+                                "rgba(248,113,113,0.30)",
+                            },
+                            "&.Mui-selected:hover": {
+                              backgroundColor:
+                                "rgba(248,113,113,0.36)",
+                            },
+                          }),
                         }}
-                        title={row.path ?? undefined}
                       >
-                        {row.path}
-                      </TableCell>
-                      <TableCell align="right">
-                        {row.rot != null ? row.rot.toFixed(2) : ""}
-                      </TableCell>
-                      <TableCell align="right">
-                        {row.shiftX != null
-                          ? row.shiftX.toFixed(2)
-                          : ""}
-                      </TableCell>
-                      <TableCell align="right">
-                        {row.shiftY != null
-                          ? row.shiftY.toFixed(2)
-                          : ""}
-                      </TableCell>
-                    </TableRow>
+                        <TableCell sx={columnWidths.series}>
+                          <Box
+                            sx={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 0.25,
+                            }}
+                          >
+                            <IconButton
+                              size="small"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const nextExpanded = isExpanded
+                                  ? null
+                                  : s.tiltSeriesId;
+                                setExpandedSeriesId(nextExpanded);
+                                if (nextExpanded) {
+                                  setSelectedSeriesId(
+                                    s.tiltSeriesId,
+                                  );
+                                }
+                              }}
+                              sx={{ mr: 0.25 }}
+                            >
+                              {isExpanded ? (
+                                <ExpandMore fontSize="small" />
+                              ) : (
+                                <ChevronRight fontSize="small" />
+                              )}
+                            </IconButton>
+                            <Checkbox
+                              size="small"
+                              checked={Boolean(s.excluded)}
+                              onClick={(e) => e.stopPropagation()}
+                              onChange={() =>
+                                handleToggleExcludeSeries(
+                                  s.tiltSeriesId,
+                                )
+                              }
+                              sx={{
+                                padding: 0.25,
+                              }}
+                            />
+                            <Typography
+                              variant="body2"
+                              noWrap
+                              title={s.label}
+                              sx={{ fontSize: "0.75rem" }}
+                            >
+                              {String(s.tiltSeriesId)}
+                            </Typography>
+                          </Box>
+                        </TableCell>
+                        {/* Order column for series row (empty) */}
+                        <TableCell sx={columnWidths.order} />
+                        {/* Empty cells to align with header */}
+                        <TableCell sx={columnWidths.angle} />
+                        <TableCell sx={columnWidths.excluded} />
+                        <TableCell sx={columnWidths.dose} />
+                        <TableCell sx={columnWidths.path} />
+                        <TableCell sx={columnWidths.rot} />
+                        <TableCell sx={columnWidths.shiftX} />
+                        <TableCell sx={columnWidths.shiftY} />
+                      </TableRow>
+
+                      {/* Frame rows for this series */}
+                      {showFramesForThisSeries &&
+                        seriesFrames.map((row, idx) => {
+                          const isSelectedRow =
+                            idx === selectedFilteredIndex &&
+                            isSelectedSeries;
+                          return (
+                            <TableRow
+                              key={`${String(
+                                s.tiltSeriesId,
+                              )}-${String(row.viewId)}`}
+                              hover
+                              selected={isSelectedRow}
+                              onClick={() =>
+                                handleRowClick(row)
+                              }
+                              sx={{
+                                cursor: "pointer",
+                                ...(row.excluded && {
+                                  backgroundColor:
+                                    "rgba(248,113,113,0.16)",
+                                  "&:hover": {
+                                    backgroundColor:
+                                      "rgba(248,113,113,0.24)",
+                                  },
+                                  "&.Mui-selected": {
+                                    backgroundColor:
+                                      "rgba(248,113,113,0.30)",
+                                  },
+                                  "&.Mui-selected:hover": {
+                                    backgroundColor:
+                                      "rgba(248,113,113,0.36)",
+                                  },
+                                }),
+                              }}
+                            >
+                              {/* First column: indent + index (tree) */}
+                              <TableCell sx={columnWidths.series}>
+                                <Box
+                                  sx={{
+                                    pl: 6,
+                                    display: "flex",
+                                    alignItems: "center",
+                                  }}
+                                >
+                                  <Typography
+                                    variant="body2"
+                                    sx={{ fontSize: "0.75rem" }}
+                                  >
+                                    {row.index != null
+                                      ? row.index
+                                      : ""}
+                                  </Typography>
+                                </Box>
+                              </TableCell>
+                              {/* Order column */}
+                              <TableCell sx={columnWidths.order}>
+                                {row.order != null
+                                  ? row.order
+                                  : ""}
+                              </TableCell>
+                              <TableCell sx={columnWidths.angle}>
+                                {row.tiltAngle != null
+                                  ? row.tiltAngle.toFixed(2)
+                                  : ""}
+                              </TableCell>
+                              <TableCell sx={columnWidths.excluded}>
+                                <Checkbox
+                                  size="small"
+                                  checked={Boolean(row.excluded)}
+                                  onClick={(e) =>
+                                    e.stopPropagation()
+                                  }
+                                  onChange={() =>
+                                    handleToggleExcludeRow(row)
+                                  }
+                                  sx={{
+                                    padding: 0.25,
+                                  }}
+                                />
+                              </TableCell>
+                              <TableCell sx={columnWidths.dose}>
+                                {row.dose != null
+                                  ? row.dose.toFixed(2)
+                                  : ""}
+                              </TableCell>
+                              <TableCell
+                                sx={{
+                                  ...columnWidths.path,
+                                  whiteSpace: "nowrap",
+                                  overflow: "hidden",
+                                }}
+                                title={row.path ?? undefined}
+                              >
+                                {row.path
+                                  ? truncatePathMiddle(row.path)
+                                  : ""}
+                              </TableCell>
+                              <TableCell sx={columnWidths.rot}>
+                                {row.rot != null
+                                  ? row.rot.toFixed(2)
+                                  : ""}
+                              </TableCell>
+                              <TableCell sx={columnWidths.shiftX}>
+                                {row.shiftX != null
+                                  ? row.shiftX.toFixed(2)
+                                  : ""}
+                              </TableCell>
+                              <TableCell sx={columnWidths.shiftY}>
+                                {row.shiftY != null
+                                  ? row.shiftY.toFixed(2)
+                                  : ""}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                    </Fragment>
                   );
                 })}
               </TableBody>
@@ -832,7 +1091,7 @@ export default function TiltSeriesViewer({
           square
           elevation={0}
           sx={{
-            p: 1,
+            p: 0.75,
             borderBottom: "1px solid #e5e7eb",
             display: "flex",
             alignItems: "center",
@@ -840,11 +1099,18 @@ export default function TiltSeriesViewer({
             gap: 1,
           }}
         >
-          <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
-            <Typography variant="subtitle2">
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 0.25 }}>
+            <Typography
+              variant="subtitle2"
+              sx={{ fontSize: "0.8rem" }}
+            >
               Tilt view preview
             </Typography>
-            <Typography variant="caption" color="text.secondary">
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ fontSize: "0.7rem" }}
+            >
               {selectedRowIndex != null && totalFrames > 0
                 ? `View ${selectedRowIndex + 1} of ${totalFrames}`
                 : "No view selected"}
@@ -868,7 +1134,7 @@ export default function TiltSeriesViewer({
             sx={{
               display: "flex",
               alignItems: "center",
-              gap: 1,
+              gap: 0.75,
               flex: 1,
               minWidth: 0,
             }}
@@ -876,7 +1142,7 @@ export default function TiltSeriesViewer({
             <Typography
               variant="caption"
               color="text.secondary"
-              sx={{ whiteSpace: "nowrap" }}
+              sx={{ whiteSpace: "nowrap", fontSize: "0.7rem" }}
             >
               Brightness
             </Typography>
@@ -892,7 +1158,7 @@ export default function TiltSeriesViewer({
             sx={{
               display: "flex",
               alignItems: "center",
-              gap: 1,
+              gap: 0.75,
               flex: 1,
               minWidth: 0,
             }}
@@ -900,7 +1166,7 @@ export default function TiltSeriesViewer({
             <Typography
               variant="caption"
               color="text.secondary"
-              sx={{ whiteSpace: "nowrap" }}
+              sx={{ whiteSpace: "nowrap", fontSize: "0.7rem" }}
             >
               Contrast
             </Typography>
@@ -927,7 +1193,7 @@ export default function TiltSeriesViewer({
           }}
           onDoubleClick={() => setInvertPreview((prev) => !prev)}
         >
-          {/* Overlay controls centered on top of the image, with lighter background */}
+          {/* Overlay controls centered on top of the image */}
           <Box
             sx={{
               position: "absolute",
@@ -936,7 +1202,7 @@ export default function TiltSeriesViewer({
               transform: "translateX(-50%)",
               display: "flex",
               alignItems: "center",
-              gap: 0.5,
+              gap: 0.25,
               bgcolor: "rgba(248,250,252,0.9)",
               borderRadius: 9999,
               px: 0.75,
@@ -992,7 +1258,7 @@ export default function TiltSeriesViewer({
                   }
                   sx={{ color: "text.primary" }}
                 >
-                  <BlockIcon fontSize="small" />
+                  <CloseIcon fontSize="small" />
                 </IconButton>
               </span>
             </Tooltip>
@@ -1002,7 +1268,6 @@ export default function TiltSeriesViewer({
                   size="small"
                   onClick={() => {
                     if (totalFrames > 0) {
-                      // Reset direction to forward when starting autoplay
                       playDirectionRef.current = 1;
                       setIsPlaying(true);
                     }
@@ -1033,7 +1298,11 @@ export default function TiltSeriesViewer({
               {previewError}
             </Typography>
           ) : !displayedUrl && !transitionUrl && !previewLoading ? (
-            <Typography variant="body2" color="text.secondary">
+            <Typography
+              variant="body2"
+              color="text.secondary"
+              sx={{ fontSize: "0.8rem" }}
+            >
               No preview available.
             </Typography>
           ) : (
@@ -1099,7 +1368,7 @@ export default function TiltSeriesViewer({
 
         <Box
           sx={{
-            p: 1,
+            p: 0.75,
             borderTop: "1px solid #e5e7eb",
             display: "flex",
             justifyContent: "space-between",
@@ -1107,14 +1376,22 @@ export default function TiltSeriesViewer({
             bgcolor: "background.paper",
           }}
         >
-          <Typography variant="caption" color="text.secondary">
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{ fontSize: "0.7rem" }}
+          >
             {tiltAxisAngle != null
               ? `Tilt axis angle: ${tiltAxisAngle.toFixed(2)}`
               : "Tilt axis angle: not available"}
           </Typography>
 
           {activeSeries?.dims && (
-            <Typography variant="caption" color="text.secondary">
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ fontSize: "0.7rem" }}
+            >
               Size: {activeSeries.dims[0]} × {activeSeries.dims[1]}
               {typeof activeSeries.dims[2] === "number" &&
               activeSeries.dims[2]
@@ -1138,9 +1415,22 @@ function normalizeFrames(raw: any[]): TiltViewRow[] {
       const n = Number(v);
       return Number.isFinite(n) ? n : null;
     };
+
+    const indexValue = toNumber(
+      f.index ?? f.viewIndex ?? idx,
+    );
+
+    let orderValue: number | null = null;
+    if (f.order != null || f.viewIndex != null) {
+      orderValue = toNumber(f.order ?? f.viewIndex);
+    } else {
+      orderValue = indexValue;
+    }
+
     return {
       viewId,
-      order: toNumber(f.order ?? f.index ?? f.viewIndex),
+      index: indexValue,
+      order: orderValue,
       tiltAngle: toNumber(
         f.tiltAngle ?? f.tilt_angle ?? f.angle ?? f.alpha,
       ),
