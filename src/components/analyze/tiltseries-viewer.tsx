@@ -377,6 +377,18 @@ export default function TiltSeriesViewer({
     return idx >= 0 ? idx : null;
   }, [selectedRowIndex, framesData, filteredFrames]);
 
+  // Selected frame object for current series/index
+  const selectedFrame: TiltViewRow | null = useMemo(() => {
+    if (
+      selectedRowIndex == null ||
+      !framesData?.frames ||
+      !framesData.frames.length
+    ) {
+      return null;
+    }
+    return framesData.frames[selectedRowIndex] ?? null;
+  }, [framesData, selectedRowIndex]);
+
   // Toggle exclude at frame index and sync series excluded flag
   const toggleExcludeAtIndex = (frameIndex: number) => {
     setFramesData((prev) => {
@@ -464,13 +476,12 @@ export default function TiltSeriesViewer({
     }
   };
 
-  // Preview image for selected view
+  // Preview image for selected view (only when frames are already loaded)
   useEffect(() => {
     if (
       selectedSeriesId == null ||
       selectedRowIndex == null ||
-      !framesData?.frames ||
-      !framesData.frames[selectedRowIndex]
+      !selectedFrame
     ) {
       previewAbortRef.current?.abort();
       setPreviewUrl(null);
@@ -479,7 +490,10 @@ export default function TiltSeriesViewer({
       return;
     }
 
-    const frameIndex = selectedRowIndex;
+    const frameIndex =
+      selectedFrame.index != null
+        ? Number(selectedFrame.index)
+        : selectedRowIndex;
 
     previewAbortRef.current?.abort();
     const controller = new AbortController();
@@ -552,7 +566,7 @@ export default function TiltSeriesViewer({
   }, [
     selectedSeriesId,
     selectedRowIndex,
-    framesData,
+    selectedFrame,
     projectId,
     protocolId,
     outputName,
@@ -628,8 +642,10 @@ export default function TiltSeriesViewer({
   };
 
   const handleSeriesRowClick = (seriesId: Id) => {
-    setSelectedSeriesId(seriesId);
     setExpandedSeriesId(seriesId);
+    setSelectedSeriesId((prev) =>
+      prev != null && String(prev) === String(seriesId) ? prev : seriesId,
+    );
   };
 
   const handleRefreshPreview = () => {
@@ -914,8 +930,12 @@ export default function TiltSeriesViewer({
                                   : s.tiltSeriesId;
                                 setExpandedSeriesId(nextExpanded);
                                 if (nextExpanded) {
-                                  setSelectedSeriesId(
-                                    s.tiltSeriesId,
+                                  setSelectedSeriesId((prev) =>
+                                    prev != null &&
+                                    String(prev) ===
+                                      String(s.tiltSeriesId)
+                                      ? prev
+                                      : s.tiltSeriesId,
                                   );
                                 }
                               }}
