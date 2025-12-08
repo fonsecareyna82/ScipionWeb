@@ -56,9 +56,8 @@ function isTiltSeriesKind(k?: string) {
   if (!k) return false;
   const s = k.replace(/\s+/g, "").toLowerCase();
   // Match: "SetOfTiltseries and not SetOfTiltseriesM "
-  return (s.includes("setoftiltseries") && s !== "setoftiltseriesm") ;
+  return (s.includes("setoftiltseries") && s !== "setoftiltseriesm");
 }
-
 
 const dialogPaperSx = {
   borderRadius: 2,
@@ -66,7 +65,6 @@ const dialogPaperSx = {
   border: "1px solid rgba(0,0,0,0.08)",
   boxShadow:
     "0 10px 20px rgba(0,0,0,0.15), 0 6px 10px rgba(0,0,0,0.08)",
-
   display: "flex",
   flexDirection: "column",
   height: "97vh",
@@ -174,13 +172,13 @@ export default function AnalyzeOutputDialog({
       );
     }
 
-      if (isTiltSeriesKind(outputClass)) {
+    if (isTiltSeriesKind(outputClass)) {
       return (
         <TiltSeriesViewer
           projectId={projectIdNum}
           protocolId={protocolIdNum}
           outputName={outputName}
-        // opcionalmente tableName="TiltSeries" imageColumn="stack"
+          // optionally tableName="TiltSeries" imageColumn="stack"
         />
       );
     }
@@ -194,8 +192,6 @@ export default function AnalyzeOutputDialog({
         />
       );
     }
-
-  
 
     return (
       <Box sx={{ p: 2 }}>
@@ -217,10 +213,21 @@ export default function AnalyzeOutputDialog({
     protocolLabel,
   ]);
 
+  // prevent close on backdrop click, but allow ESC and close button
+  const handleDialogClose = (
+    _event: object,
+    reason: "backdropClick" | "escapeKeyDown"
+  ) => {
+    if (reason === "backdropClick") {
+      return;
+    }
+    onClose();
+  };
+
   return (
     <Dialog
       open={open}
-      onClose={onClose}
+      onClose={handleDialogClose}
       maxWidth="xl"
       fullWidth
       PaperProps={{ sx: dialogPaperSx }}
