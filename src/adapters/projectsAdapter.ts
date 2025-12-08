@@ -11,8 +11,6 @@ import type {
   VolumeHistogramOptions,
   VolumeData3d,
   VolumeData3dOptions,
-  TiltSeriesListItem,
-  TiltImageOptions,
 } from "@/services/ProjectService";
 
 /** Normalize id */
