@@ -55,8 +55,8 @@ function isSetOfMetadataKind(k?: string) {
 function isTiltSeriesKind(k?: string) {
   if (!k) return false;
   const s = k.replace(/\s+/g, "").toLowerCase();
-  // Match: "SetOfTiltseries"
-  return s.includes("setoftiltseries");
+  // Match: "SetOfTiltseries and not SetOfTiltseriesM "
+  return (s.includes("setoftiltseries") && s !== "setoftiltseriesm") ;
 }
 
 

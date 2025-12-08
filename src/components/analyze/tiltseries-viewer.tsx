@@ -21,6 +21,12 @@ import {
   Checkbox,
   Tooltip,
   Slider,
+  Button,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions,
 } from "@mui/material";
 import {
   ArrowUpward,
@@ -78,6 +84,14 @@ type ObjectUrlResult = {
   revoke?: () => void;
 };
 
+type TiltExclusionsMap = Record<
+  string,
+  {
+    excluded: boolean;
+    tiltimages: number[];
+  }
+>;
+
 // Helper to truncate path in the middle: /home/.../img.mrc
 function truncatePathMiddle(path: string, maxLength = 40): string {
   if (path.length <= maxLength) return path;
@@ -130,6 +144,10 @@ export default function TiltSeriesViewer({
 
   // Apply alignments toggle
   const [applyTransform, setApplyTransform] = useState<boolean>(true);
+
+  // Exclusions summary and dialog state
+  const exclusionsRef = useRef<TiltExclusionsMap | null>(null);
+  const [saveDialogOpen, setSaveDialogOpen] = useState(false);
 
   // Column widths as percentages to avoid horizontal scroll
   const columnWidths = {
@@ -657,6 +675,65 @@ export default function TiltSeriesViewer({
     setPreviewReloadToken((t) => t + 1);
   };
 
+  // Build exclusions summary map from current series and framesData
+  const buildExclusionsSummary = (): TiltExclusionsMap => {
+    const summary: TiltExclusionsMap = {};
+
+    series.forEach((s) => {
+      const key = String(s.tiltSeriesId);
+      const entry = {
+        excluded: Boolean(s.excluded),
+        tiltimages: [] as number[],
+      };
+
+      if (framesData && String(framesData.tiltSeriesId) === key) {
+        const indices = framesData.frames
+          .filter((f) => f.excluded)
+          .map((f) =>
+            f.index != null ? Number(f.index) : NaN,
+          )
+          .filter((v) => Number.isFinite(v)) as number[];
+
+        entry.tiltimages = indices;
+
+        if (
+          !entry.excluded &&
+          framesData.frames.length > 0 &&
+          indices.length === framesData.frames.length
+        ) {
+          entry.excluded = true;
+        }
+      }
+
+      summary[key] = entry;
+    });
+
+    return summary;
+  };
+
+  const handleSaveClick = () => {
+    const summary = buildExclusionsSummary();
+    exclusionsRef.current = summary;
+    console.log("Tilt series exclusion summary", summary);
+    setSaveDialogOpen(true);
+  };
+
+  const handleSaveCancel = () => {
+    setSaveDialogOpen(false);
+  };
+
+  const handleSaveYes = () => {
+    const summary = exclusionsRef.current;
+    console.log("Save action: Yes", summary);
+    setSaveDialogOpen(false);
+  };
+
+  const handleSaveRestack = () => {
+    const summary = exclusionsRef.current;
+    console.log("Save action: Re-stack", summary);
+    setSaveDialogOpen(false);
+  };
+
   // Autoplay: ping-pong between first and last tilt
   useEffect(() => {
     if (!isPlaying || !framesData?.frames?.length) {
@@ -701,772 +778,928 @@ export default function TiltSeriesViewer({
   }, [isPlaying, framesData?.frames?.length]);
 
   return (
-    <Box
-      sx={{
-        display: "flex",
-        height: "100%",
-        width: "100%",
-        minHeight: 0,
-        minWidth: 0,
-        overflow: "hidden",
-      }}
-    >
-      {/* Left side: tilt series tree + tilt views */}
+    <>
       <Box
         sx={{
-          flex: 1.4,
-          minWidth: 0,
           display: "flex",
-          flexDirection: "column",
-          borderRight: "1px solid #e5e7eb",
+          height: "100%",
+          width: "100%",
+          minHeight: 0,
+          minWidth: 0,
+          overflow: "hidden",
         }}
       >
-        <Paper
-          square
-          elevation={0}
+        {/* Left side: tilt series tree + tilt views */}
+        <Box
           sx={{
-            p: 0.75,
-            borderBottom: "1px solid #e5e7eb",
+            flex: 1.4,
+            minWidth: 0,
             display: "flex",
-            alignItems: "center",
-            gap: 1,
+            flexDirection: "column",
+            borderRight: "1px solid #e5e7eb",
           }}
         >
-          <Typography
-            variant="caption"
-            color="text.secondary"
-            sx={{ fontSize: "0.75rem", whiteSpace: "nowrap" }}
-          >
-            Filter (selected series)
-          </Typography>
-          <TextField
-            size="small"
-            variant="outlined"
-            value={filterText}
-            onChange={(e) => setFilterText(e.target.value)}
-            placeholder="Filter by angle, order or path"
+          <Paper
+            square
+            elevation={0}
             sx={{
-              maxWidth: 260,
-              "& .MuiInputBase-input": {
-                fontSize: "0.75rem",
-                paddingY: 0.5,
-              },
-              "& input::placeholder": {
-                fontSize: "0.7rem",
-              },
+              p: 0.75,
+              borderBottom: "1px solid #e5e7eb",
+              display: "flex",
+              alignItems: "center",
+              gap: 1,
             }}
-          />
-          {seriesLoading && (
-            <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-              <CircularProgress size={14} />
+          >
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ fontSize: "0.75rem", whiteSpace: "nowrap" }}
+            >
+              Filter (selected series)
+            </Typography>
+            <TextField
+              size="small"
+              variant="outlined"
+              value={filterText}
+              onChange={(e) => setFilterText(e.target.value)}
+              placeholder="Filter by angle, order or path"
+              sx={{
+                maxWidth: 260,
+                "& .MuiInputBase-input": {
+                  fontSize: "0.75rem",
+                  paddingY: 0.5,
+                },
+                "& input::placeholder": {
+                  fontSize: "0.7rem",
+                },
+              }}
+            />
+            <Button
+              size="small"
+              variant="outlined"
+              onClick={handleSaveClick}
+              disabled={!series.length}
+              sx={{
+                textTransform: "none",
+                fontSize: "0.7rem",
+                paddingX: 1.5,
+                paddingY: 0.25,
+              }}
+            >
+              Save
+            </Button>
+            {seriesLoading && (
+              <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                <CircularProgress size={14} />
+                <Typography
+                  variant="caption"
+                  sx={{ fontSize: "0.7rem" }}
+                >
+                  Loading tilt series…
+                </Typography>
+              </Box>
+            )}
+            {seriesError && !seriesLoading && (
               <Typography
                 variant="caption"
+                color="error"
                 sx={{ fontSize: "0.7rem" }}
               >
-                Loading tilt series…
+                {seriesError}
               </Typography>
-            </Box>
-          )}
-          {seriesError && !seriesLoading && (
-            <Typography
-              variant="caption"
-              color="error"
-              sx={{ fontSize: "0.7rem" }}
-            >
-              {seriesError}
-            </Typography>
-          )}
-        </Paper>
+            )}
+          </Paper>
 
+          <Box
+            sx={{
+              flex: 1,
+              minHeight: 0,
+              overflowY: "auto",
+              overflowX: "hidden",
+            }}
+          >
+            {framesLoading && !framesData ? (
+              <Box
+                sx={{
+                  p: 2,
+                  display: "flex",
+                  gap: 1,
+                  alignItems: "center",
+                }}
+              >
+                <CircularProgress size={18} />
+                <Typography variant="body2">
+                  Loading tilt views…
+                </Typography>
+              </Box>
+            ) : framesError && !framesData ? (
+              <Box sx={{ p: 2 }}>
+                <Typography variant="body2" color="error">
+                  {framesError}
+                </Typography>
+              </Box>
+            ) : !series.length ? (
+              <Box sx={{ p: 2 }}>
+                <Typography variant="body2" color="text.secondary">
+                  No tilt series available for this output.
+                </Typography>
+              </Box>
+            ) : (
+              <Table
+                size="small"
+                stickyHeader
+                sx={{
+                  tableLayout: "fixed",
+                  width: "100%",
+                  "& th": {
+                    whiteSpace: "nowrap",
+                    fontSize: "0.75rem",
+                    paddingTop: 0.5,
+                    paddingBottom: 0.5,
+                  },
+                  "& td": {
+                    fontSize: "0.75rem",
+                    paddingTop: 0.25,
+                    paddingBottom: 0.25,
+                  },
+                }}
+              >
+                <TableHead>
+                  <TableRow>
+                    <TableCell sx={columnWidths.series}>
+                      Tilt series
+                    </TableCell>
+                    <TableCell sx={columnWidths.order}>
+                      Order
+                    </TableCell>
+                    <TableCell sx={columnWidths.angle}>
+                      Tilt angle
+                    </TableCell>
+                    <TableCell sx={columnWidths.excluded}>
+                      Excl.
+                    </TableCell>
+                    <TableCell sx={columnWidths.dose}>
+                      Dose
+                    </TableCell>
+                    <TableCell sx={columnWidths.path}>
+                      Path
+                    </TableCell>
+                    <TableCell sx={columnWidths.rot}>
+                      Rot
+                    </TableCell>
+                    <TableCell sx={columnWidths.shiftX}>
+                      ShiftX
+                    </TableCell>
+                    <TableCell sx={columnWidths.shiftY}>
+                      ShiftY
+                    </TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {series.map((s) => {
+                    const isExpanded =
+                      expandedSeriesId != null &&
+                      String(expandedSeriesId) ===
+                        String(s.tiltSeriesId);
+                    const isSelectedSeries =
+                      selectedSeriesId != null &&
+                      String(selectedSeriesId) ===
+                        String(s.tiltSeriesId);
+
+                    const showFramesForThisSeries =
+                      isExpanded &&
+                      framesData &&
+                      String(framesData.tiltSeriesId) ===
+                        String(s.tiltSeriesId);
+
+                    const seriesFrames = showFramesForThisSeries
+                      ? filteredFrames
+                      : [];
+
+                    return (
+                      <Fragment key={String(s.tiltSeriesId)}>
+                        {/* Series row */}
+                        <TableRow
+                          hover
+                          selected={isSelectedSeries}
+                          onClick={() =>
+                            handleSeriesRowClick(s.tiltSeriesId)
+                          }
+                          sx={{
+                            cursor: "pointer",
+                            ...(s.excluded && {
+                              backgroundColor:
+                                "rgba(248,113,113,0.16)",
+                              "&:hover": {
+                                backgroundColor:
+                                  "rgba(248,113,113,0.24)",
+                              },
+                              "&.Mui-selected": {
+                                backgroundColor:
+                                  "rgba(248,113,113,0.30)",
+                              },
+                              "&.Mui-selected:hover": {
+                                backgroundColor:
+                                  "rgba(248,113,113,0.36)",
+                              },
+                            }),
+                          }}
+                        >
+                          <TableCell sx={columnWidths.series}>
+                            <Box
+                              sx={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 0.25,
+                              }}
+                            >
+                              <IconButton
+                                size="small"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const nextExpanded = isExpanded
+                                    ? null
+                                    : s.tiltSeriesId;
+                                  setExpandedSeriesId(nextExpanded);
+                                  if (nextExpanded) {
+                                    setSelectedSeriesId((prev) =>
+                                      prev != null &&
+                                      String(prev) ===
+                                        String(s.tiltSeriesId)
+                                        ? prev
+                                        : s.tiltSeriesId,
+                                    );
+                                  }
+                                }}
+                                sx={{ mr: 0.25 }}
+                              >
+                                {isExpanded ? (
+                                  <ExpandMore fontSize="small" />
+                                ) : (
+                                  <ChevronRight fontSize="small" />
+                                )}
+                              </IconButton>
+                              <Checkbox
+                                size="small"
+                                checked={Boolean(s.excluded)}
+                                onClick={(e) => e.stopPropagation()}
+                                onChange={() =>
+                                  handleToggleExcludeSeries(
+                                    s.tiltSeriesId,
+                                  )
+                                }
+                                sx={{
+                                  padding: 0.25,
+                                }}
+                              />
+                              <Typography
+                                variant="body2"
+                                noWrap
+                                title={s.label}
+                                sx={{ fontSize: "0.75rem" }}
+                              >
+                                {String(s.tiltSeriesId)}
+                              </Typography>
+                            </Box>
+                          </TableCell>
+                          {/* Order column for series row (empty) */}
+                          <TableCell sx={columnWidths.order} />
+                          {/* Empty cells to align with header */}
+                          <TableCell sx={columnWidths.angle} />
+                          <TableCell sx={columnWidths.excluded} />
+                          <TableCell sx={columnWidths.dose} />
+                          <TableCell sx={columnWidths.path} />
+                          <TableCell sx={columnWidths.rot} />
+                          <TableCell sx={columnWidths.shiftX} />
+                          <TableCell sx={columnWidths.shiftY} />
+                        </TableRow>
+
+                        {/* Frame rows for this series */}
+                        {showFramesForThisSeries &&
+                          seriesFrames.map((row, idx) => {
+                            const isSelectedRow =
+                              idx === selectedFilteredIndex &&
+                              isSelectedSeries;
+                            return (
+                              <TableRow
+                                key={`${String(
+                                  s.tiltSeriesId,
+                                )}-${String(row.viewId)}`}
+                                hover
+                                selected={isSelectedRow}
+                                onClick={() =>
+                                  handleRowClick(row)
+                                }
+                                sx={{
+                                  cursor: "pointer",
+                                  ...(row.excluded && {
+                                    backgroundColor:
+                                      "rgba(248,113,113,0.16)",
+                                    "&:hover": {
+                                      backgroundColor:
+                                        "rgba(248,113,113,0.24)",
+                                    },
+                                    "&.Mui-selected": {
+                                      backgroundColor:
+                                        "rgba(248,113,113,0.30)",
+                                    },
+                                    "&.Mui-selected:hover": {
+                                      backgroundColor:
+                                        "rgba(248,113,113,0.36)",
+                                    },
+                                  }),
+                                }}
+                              >
+                                {/* First column: indent + index (tree) */}
+                                <TableCell sx={columnWidths.series}>
+                                  <Box
+                                    sx={{
+                                      pl: 6,
+                                      display: "flex",
+                                      alignItems: "center",
+                                    }}
+                                  >
+                                    <Typography
+                                      variant="body2"
+                                      sx={{ fontSize: "0.75rem" }}
+                                    >
+                                      {row.index != null
+                                        ? row.index
+                                        : ""}
+                                    </Typography>
+                                  </Box>
+                                </TableCell>
+                                {/* Order column */}
+                                <TableCell sx={columnWidths.order}>
+                                  {row.order != null
+                                    ? row.order
+                                    : ""}
+                                </TableCell>
+                                <TableCell
+                                  sx={columnWidths.angle}
+                                >
+                                  {row.tiltAngle != null
+                                    ? row.tiltAngle.toFixed(2)
+                                    : ""}
+                                </TableCell>
+                                <TableCell
+                                  sx={columnWidths.excluded}
+                                >
+                                  <Checkbox
+                                    size="small"
+                                    checked={Boolean(
+                                      row.excluded,
+                                    )}
+                                    onClick={(e) =>
+                                      e.stopPropagation()
+                                    }
+                                    onChange={() =>
+                                      handleToggleExcludeRow(
+                                        row,
+                                      )
+                                    }
+                                    sx={{
+                                      padding: 0.25,
+                                    }}
+                                  />
+                                </TableCell>
+                                <TableCell sx={columnWidths.dose}>
+                                  {row.dose != null
+                                    ? row.dose.toFixed(2)
+                                    : ""}
+                                </TableCell>
+                                <TableCell
+                                  sx={{
+                                    ...columnWidths.path,
+                                    whiteSpace: "nowrap",
+                                    overflow: "hidden",
+                                  }}
+                                  title={row.path ?? undefined}
+                                >
+                                  {row.path
+                                    ? truncatePathMiddle(
+                                        row.path,
+                                      )
+                                    : ""}
+                                </TableCell>
+                                <TableCell sx={columnWidths.rot}>
+                                  {row.rot != null
+                                    ? row.rot.toFixed(2)
+                                    : ""}
+                                </TableCell>
+                                <TableCell
+                                  sx={columnWidths.shiftX}
+                                >
+                                  {row.shiftX != null
+                                    ? row.shiftX.toFixed(2)
+                                    : ""}
+                                </TableCell>
+                                <TableCell
+                                  sx={columnWidths.shiftY}
+                                >
+                                  {row.shiftY != null
+                                    ? row.shiftY.toFixed(2)
+                                    : ""}
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                      </Fragment>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            )}
+          </Box>
+        </Box>
+
+        {/* Right side: image preview and controls */}
         <Box
           sx={{
             flex: 1,
-            minHeight: 0,
-            overflowY: "auto",
-            overflowX: "hidden",
+            minWidth: 0,
+            display: "flex",
+            flexDirection: "column",
           }}
         >
-          {framesLoading && !framesData ? (
+          <Paper
+            square
+            elevation={0}
+            sx={{
+              p: 0.75,
+              borderBottom: "1px solid #e5e7eb",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 1,
+            }}
+          >
             <Box
               sx={{
-                p: 2,
                 display: "flex",
-                gap: 1,
-                alignItems: "center",
+                flexDirection: "column",
+                gap: 0.25,
               }}
             >
-              <CircularProgress size={18} />
-              <Typography variant="body2">
-                Loading tilt views…
+              <Typography
+                variant="subtitle2"
+                sx={{ fontSize: "0.8rem" }}
+              >
+                Tilt view preview
+              </Typography>
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{ fontSize: "0.7rem" }}
+              >
+                {selectedRowIndex != null && totalFrames > 0
+                  ? `View ${selectedRowIndex + 1} of ${totalFrames}`
+                  : "No view selected"}
               </Typography>
             </Box>
-          ) : framesError && !framesData ? (
-            <Box sx={{ p: 2 }}>
-              <Typography variant="body2" color="error">
-                {framesError}
-              </Typography>
-            </Box>
-          ) : !series.length ? (
-            <Box sx={{ p: 2 }}>
-              <Typography variant="body2" color="text.secondary">
-                No tilt series available for this output.
-              </Typography>
-            </Box>
-          ) : (
-            <Table
-              size="small"
-              stickyHeader
+          </Paper>
+
+          {/* Smaller brightness/contrast panel */}
+          <Box
+            sx={{
+              px: 1.5,
+              py: 0.5,
+              borderBottom: "1px solid #e5e7eb",
+              bgcolor: "background.paper",
+              display: "flex",
+              alignItems: "center",
+              gap: 2,
+            }}
+          >
+            <Box
               sx={{
-                tableLayout: "fixed",
-                width: "100%",
-                "& th": {
-                  whiteSpace: "nowrap",
-                  fontSize: "0.75rem",
-                  paddingTop: 0.5,
-                  paddingBottom: 0.5,
-                },
-                "& td": {
-                  fontSize: "0.75rem",
-                  paddingTop: 0.25,
-                  paddingBottom: 0.25,
-                },
+                display: "flex",
+                alignItems: "center",
+                gap: 0.75,
+                flex: 1,
+                minWidth: 0,
               }}
             >
-              <TableHead>
-                <TableRow>
-                  <TableCell sx={columnWidths.series}>
-                    Tilt series
-                  </TableCell>
-                  <TableCell sx={columnWidths.order}>
-                    Order
-                  </TableCell>
-                  <TableCell sx={columnWidths.angle}>
-                    Tilt angle
-                  </TableCell>
-                  <TableCell sx={columnWidths.excluded}>
-                    Excl.
-                  </TableCell>
-                  <TableCell sx={columnWidths.dose}>
-                    Dose
-                  </TableCell>
-                  <TableCell sx={columnWidths.path}>
-                    Path
-                  </TableCell>
-                  <TableCell sx={columnWidths.rot}>
-                    Rot
-                  </TableCell>
-                  <TableCell sx={columnWidths.shiftX}>
-                    ShiftX
-                  </TableCell>
-                  <TableCell sx={columnWidths.shiftY}>
-                    ShiftY
-                  </TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {series.map((s) => {
-                  const isExpanded =
-                    expandedSeriesId != null &&
-                    String(expandedSeriesId) ===
-                      String(s.tiltSeriesId);
-                  const isSelectedSeries =
-                    selectedSeriesId != null &&
-                    String(selectedSeriesId) ===
-                      String(s.tiltSeriesId);
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{
+                  whiteSpace: "nowrap",
+                  fontSize: "0.7rem",
+                }}
+              >
+                Brightness
+              </Typography>
+              <Slider
+                size="small"
+                value={brightness}
+                min={50}
+                max={200}
+                onChange={(_, value) =>
+                  setBrightness(value as number)
+                }
+              />
+            </Box>
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                gap: 0.75,
+                flex: 1,
+                minWidth: 0,
+              }}
+            >
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{
+                  whiteSpace: "nowrap",
+                  fontSize: "0.7rem",
+                }}
+              >
+                Contrast
+              </Typography>
+              <Slider
+                size="small"
+                value={contrast}
+                min={50}
+                max={200}
+                onChange={(_, value) =>
+                  setContrast(value as number)
+                }
+              />
+            </Box>
+          </Box>
 
-                  const showFramesForThisSeries =
-                    isExpanded &&
-                    framesData &&
-                    String(framesData.tiltSeriesId) ===
-                      String(s.tiltSeriesId);
+          {/* Image + overlay controls */}
+          <Box
+            sx={{
+              flex: 1,
+              minHeight: 0,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              bgcolor: "background.default",
+              position: "relative",
+            }}
+            onDoubleClick={() =>
+              setInvertPreview((prev) => !prev)
+            }
+          >
+            {/* Overlay controls centered on top of the image */}
+            <Box
+              sx={{
+                position: "absolute",
+                top: 8,
+                left: "50%",
+                transform: "translateX(-50%)",
+                display: "flex",
+                alignItems: "center",
+                gap: 0.25,
+                bgcolor: "rgba(248,250,252,0.9)",
+                borderRadius: 9999,
+                px: 0.75,
+                py: 0.25,
+                zIndex: 2,
+                boxShadow: 1,
+              }}
+            >
+              <Tooltip title="Previous tilt">
+                <span>
+                  <IconButton
+                    size="small"
+                    onClick={handlePrev}
+                    disabled={!canGoPrev}
+                    sx={{ color: "text.primary" }}
+                  >
+                    <ArrowUpward fontSize="small" />
+                  </IconButton>
+                </span>
+              </Tooltip>
+              <Tooltip title="Next tilt">
+                <span>
+                  <IconButton
+                    size="small"
+                    onClick={handleNext}
+                    disabled={!canGoNext}
+                    sx={{ color: "text.primary" }}
+                  >
+                    <ArrowDownward fontSize="small" />
+                  </IconButton>
+                </span>
+              </Tooltip>
+              <Tooltip title="Refresh preview">
+                <span>
+                  <IconButton
+                    size="small"
+                    onClick={handleRefreshPreview}
+                    disabled={selectedRowIndex == null}
+                    sx={{ color: "text.primary" }}
+                  >
+                    <RefreshIcon fontSize="small" />
+                  </IconButton>
+                </span>
+              </Tooltip>
+              <Tooltip title="Toggle exclude current tilt">
+                <span>
+                  <IconButton
+                    size="small"
+                    onClick={handleToggleExcludeCurrent}
+                    disabled={
+                      selectedRowIndex == null ||
+                      !framesData?.frames?.length
+                    }
+                    sx={{ color: "text.primary" }}
+                  >
+                    <CloseIcon fontSize="small" />
+                  </IconButton>
+                </span>
+              </Tooltip>
 
-                  const seriesFrames = showFramesForThisSeries
-                    ? filteredFrames
-                    : [];
+              <Tooltip
+                title={
+                  applyTransform
+                    ? "Disable alignments"
+                    : "Apply alignments"
+                }
+              >
+                <span>
+                  <IconButton
+                    size="small"
+                    onClick={() =>
+                      setApplyTransform((prev) => !prev)
+                    }
+                    sx={{
+                      color: applyTransform
+                        ? "primary.main"
+                        : "text.primary",
+                      bgcolor: applyTransform
+                        ? "rgba(59,130,246,0.12)"
+                        : "transparent",
+                      "&:hover": {
+                        bgcolor: applyTransform
+                          ? "rgba(59,130,246,0.20)"
+                          : "action.hover",
+                      },
+                    }}
+                  >
+                    <TransformIcon fontSize="small" />
+                  </IconButton>
+                </span>
+              </Tooltip>
 
-                  return (
-                    <Fragment key={String(s.tiltSeriesId)}>
-                      {/* Series row */}
-                      <TableRow
-                        hover
-                        selected={isSelectedSeries}
-                        onClick={() =>
-                          handleSeriesRowClick(s.tiltSeriesId)
-                        }
-                        sx={{
-                          cursor: "pointer",
-                          ...(s.excluded && {
-                            backgroundColor:
-                              "rgba(248,113,113,0.16)",
-                            "&:hover": {
-                              backgroundColor:
-                                "rgba(248,113,113,0.24)",
-                            },
-                            "&.Mui-selected": {
-                              backgroundColor:
-                                "rgba(248,113,113,0.30)",
-                            },
-                            "&.Mui-selected:hover": {
-                              backgroundColor:
-                                "rgba(248,113,113,0.36)",
-                            },
-                          }),
+              <Tooltip title="Play (auto navigate)">
+                <span>
+                  <IconButton
+                    size="small"
+                    onClick={() => {
+                      if (totalFrames > 0) {
+                        playDirectionRef.current = 1;
+                        setIsPlaying(true);
+                      }
+                    }}
+                    disabled={totalFrames <= 1}
+                    sx={{ color: "text.primary" }}
+                  >
+                    <PlayArrow fontSize="small" />
+                  </IconButton>
+                </span>
+              </Tooltip>
+              <Tooltip title="Stop autoplay">
+                <span>
+                  <IconButton
+                    size="small"
+                    onClick={() => setIsPlaying(false)}
+                    disabled={!isPlaying}
+                    sx={{ color: "text.primary" }}
+                  >
+                    <StopIcon fontSize="small" />
+                  </IconButton>
+                </span>
+              </Tooltip>
+            </Box>
+
+            {previewError ? (
+              <Typography variant="body2" color="error">
+                {previewError}
+              </Typography>
+            ) : !displayedUrl &&
+              !transitionUrl &&
+              !previewLoading ? (
+              <Typography
+                variant="body2"
+                color="text.secondary"
+                sx={{ fontSize: "0.8rem" }}
+              >
+                No preview available.
+              </Typography>
+            ) : (
+              <>
+                {previewLoading && (
+                  <Box
+                    sx={{
+                      position: "absolute",
+                      inset: 0,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      zIndex: 3,
+                      pointerEvents: "none",
+                    }}
+                  >
+                    <CircularProgress size={22} />
+                  </Box>
+                )}
+                {(displayedUrl || transitionUrl) && (
+                  <Box
+                    sx={{
+                      position: "relative",
+                      width: "100%",
+                      height: "100%",
+                    }}
+                  >
+                    {displayedUrl && (
+                      <Box
+                        component="img"
+                        src={displayedUrl}
+                        alt="Tilt view"
+                        sx={imageBaseSx}
+                      />
+                    )}
+                    {transitionUrl && (
+                      <Box
+                        component="img"
+                        src={transitionUrl}
+                        alt="Tilt view"
+                        onAnimationEnd={() => {
+                          setDisplayedUrl(transitionUrl);
+                          setTransitionUrl(null);
                         }}
-                      >
-                        <TableCell sx={columnWidths.series}>
-                          <Box
-                            sx={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 0.25,
-                            }}
-                          >
-                            <IconButton
-                              size="small"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                const nextExpanded = isExpanded
-                                  ? null
-                                  : s.tiltSeriesId;
-                                setExpandedSeriesId(nextExpanded);
-                                if (nextExpanded) {
-                                  setSelectedSeriesId((prev) =>
-                                    prev != null &&
-                                    String(prev) ===
-                                      String(s.tiltSeriesId)
-                                      ? prev
-                                      : s.tiltSeriesId,
-                                  );
-                                }
-                              }}
-                              sx={{ mr: 0.25 }}
-                            >
-                              {isExpanded ? (
-                                <ExpandMore fontSize="small" />
-                              ) : (
-                                <ChevronRight fontSize="small" />
-                              )}
-                            </IconButton>
-                            <Checkbox
-                              size="small"
-                              checked={Boolean(s.excluded)}
-                              onClick={(e) => e.stopPropagation()}
-                              onChange={() =>
-                                handleToggleExcludeSeries(
-                                  s.tiltSeriesId,
-                                )
-                              }
-                              sx={{
-                                padding: 0.25,
-                              }}
-                            />
-                            <Typography
-                              variant="body2"
-                              noWrap
-                              title={s.label}
-                              sx={{ fontSize: "0.75rem" }}
-                            >
-                              {String(s.tiltSeriesId)}
-                            </Typography>
-                          </Box>
-                        </TableCell>
-                        {/* Order column for series row (empty) */}
-                        <TableCell sx={columnWidths.order} />
-                        {/* Empty cells to align with header */}
-                        <TableCell sx={columnWidths.angle} />
-                        <TableCell sx={columnWidths.excluded} />
-                        <TableCell sx={columnWidths.dose} />
-                        <TableCell sx={columnWidths.path} />
-                        <TableCell sx={columnWidths.rot} />
-                        <TableCell sx={columnWidths.shiftX} />
-                        <TableCell sx={columnWidths.shiftY} />
-                      </TableRow>
+                        sx={{
+                          ...imageBaseSx,
+                          position: "absolute",
+                          top: 0,
+                          left: 0,
+                          animation: "tiltFadeIn 220ms ease-out",
+                          "@keyframes tiltFadeIn": {
+                            from: { opacity: 0 },
+                            to: { opacity: 1 },
+                          },
+                        }}
+                      />
+                    )}
+                  </Box>
+                )}
+              </>
+            )}
+          </Box>
 
-                      {/* Frame rows for this series */}
-                      {showFramesForThisSeries &&
-                        seriesFrames.map((row, idx) => {
-                          const isSelectedRow =
-                            idx === selectedFilteredIndex &&
-                            isSelectedSeries;
-                          return (
-                            <TableRow
-                              key={`${String(
-                                s.tiltSeriesId,
-                              )}-${String(row.viewId)}`}
-                              hover
-                              selected={isSelectedRow}
-                              onClick={() =>
-                                handleRowClick(row)
-                              }
-                              sx={{
-                                cursor: "pointer",
-                                ...(row.excluded && {
-                                  backgroundColor:
-                                    "rgba(248,113,113,0.16)",
-                                  "&:hover": {
-                                    backgroundColor:
-                                      "rgba(248,113,113,0.24)",
-                                  },
-                                  "&.Mui-selected": {
-                                    backgroundColor:
-                                      "rgba(248,113,113,0.30)",
-                                  },
-                                  "&.Mui-selected:hover": {
-                                    backgroundColor:
-                                      "rgba(248,113,113,0.36)",
-                                  },
-                                }),
-                              }}
-                            >
-                              {/* First column: indent + index (tree) */}
-                              <TableCell sx={columnWidths.series}>
-                                <Box
-                                  sx={{
-                                    pl: 6,
-                                    display: "flex",
-                                    alignItems: "center",
-                                  }}
-                                >
-                                  <Typography
-                                    variant="body2"
-                                    sx={{ fontSize: "0.75rem" }}
-                                  >
-                                    {row.index != null
-                                      ? row.index
-                                      : ""}
-                                  </Typography>
-                                </Box>
-                              </TableCell>
-                              {/* Order column */}
-                              <TableCell sx={columnWidths.order}>
-                                {row.order != null
-                                  ? row.order
-                                  : ""}
-                              </TableCell>
-                              <TableCell sx={columnWidths.angle}>
-                                {row.tiltAngle != null
-                                  ? row.tiltAngle.toFixed(2)
-                                  : ""}
-                              </TableCell>
-                              <TableCell sx={columnWidths.excluded}>
-                                <Checkbox
-                                  size="small"
-                                  checked={Boolean(row.excluded)}
-                                  onClick={(e) =>
-                                    e.stopPropagation()
-                                  }
-                                  onChange={() =>
-                                    handleToggleExcludeRow(row)
-                                  }
-                                  sx={{
-                                    padding: 0.25,
-                                  }}
-                                />
-                              </TableCell>
-                              <TableCell sx={columnWidths.dose}>
-                                {row.dose != null
-                                  ? row.dose.toFixed(2)
-                                  : ""}
-                              </TableCell>
-                              <TableCell
-                                sx={{
-                                  ...columnWidths.path,
-                                  whiteSpace: "nowrap",
-                                  overflow: "hidden",
-                                }}
-                                title={row.path ?? undefined}
-                              >
-                                {row.path
-                                  ? truncatePathMiddle(row.path)
-                                  : ""}
-                              </TableCell>
-                              <TableCell sx={columnWidths.rot}>
-                                {row.rot != null
-                                  ? row.rot.toFixed(2)
-                                  : ""}
-                              </TableCell>
-                              <TableCell sx={columnWidths.shiftX}>
-                                {row.shiftX != null
-                                  ? row.shiftX.toFixed(2)
-                                  : ""}
-                              </TableCell>
-                              <TableCell sx={columnWidths.shiftY}>
-                                {row.shiftY != null
-                                  ? row.shiftY.toFixed(2)
-                                  : ""}
-                              </TableCell>
-                            </TableRow>
-                          );
-                        })}
-                    </Fragment>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          )}
+          <Box
+            sx={{
+              p: 0.75,
+              borderTop: "1px solid #e5e7eb",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              bgcolor: "background.paper",
+            }}
+          >
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ fontSize: "0.7rem" }}
+            >
+              {tiltAxisAngle != null
+                ? `Tilt axis angle: ${tiltAxisAngle.toFixed(2)}`
+                : "Tilt axis angle: not available"}
+            </Typography>
+
+            {activeSeries?.dims && (
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{ fontSize: "0.7rem" }}
+              >
+                Size: {activeSeries.dims[0]} × {activeSeries.dims[1]}
+                {typeof activeSeries.dims[2] === "number" &&
+                activeSeries.dims[2]
+                  ? ` × ${activeSeries.dims[2]}`
+                  : ""}
+                {activeSeries.pixelSize
+                  ? `, ${activeSeries.pixelSize.toFixed(2)} Å/px`
+                  : ""}
+              </Typography>
+            )}
+          </Box>
         </Box>
       </Box>
 
-      {/* Right side: image preview and controls */}
-      <Box
-        sx={{
-          flex: 1,
-          minWidth: 0,
-          display: "flex",
-          flexDirection: "column",
+            {/* Save dialog */}
+      <Dialog
+        open={saveDialogOpen}
+        onClose={handleSaveCancel}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 3, // softer corners for the dialog
+            overflow: "hidden",
+          },
         }}
       >
-        <Paper
-          square
-          elevation={0}
+        <DialogTitle
           sx={{
-            p: 0.75,
-            borderBottom: "1px solid #e5e7eb",
+            fontSize: "0.95rem",
+            fontWeight: 600,
+            pb: 0.5,
+          }}
+        >
+          Create a new set
+        </DialogTitle>
+
+        <DialogContent dividers sx={{ pt: 1.5, pb: 1.5 }}>
+          <DialogContentText
+            sx={{
+              fontSize: "0.85rem",
+              mb: 1.5,
+            }}
+          >
+            Are you going to create a new set of tiltseries without the excluded views?
+          </DialogContentText>
+
+          <Box
+            component="ul"
+            sx={{
+              m: 0,
+              pl: 2.5,
+              fontSize: "0.82rem",
+              color: "text.secondary",
+            }}
+          >
+            <li>
+              <strong>Yes</strong>: The set will be created without the excluded
+              views.
+            </li>
+            <li>
+              <strong>Re-stack</strong>: Delete excluded views and create a new
+              TS stack.
+            </li>
+          </Box>
+        </DialogContent>
+
+        <DialogActions
+          sx={{
+            px: 2.5,
+            py: 1.25,
             display: "flex",
-            alignItems: "center",
             justifyContent: "space-between",
-            gap: 1,
           }}
         >
-          <Box sx={{ display: "flex", flexDirection: "column", gap: 0.25 }}>
-            <Typography
-              variant="subtitle2"
-              sx={{ fontSize: "0.8rem" }}
-            >
-              Tilt view preview
-            </Typography>
-            <Typography
-              variant="caption"
-              color="text.secondary"
-              sx={{ fontSize: "0.7rem" }}
-            >
-              {selectedRowIndex != null && totalFrames > 0
-                ? `View ${selectedRowIndex + 1} of ${totalFrames}`
-                : "No view selected"}
-            </Typography>
-          </Box>
-        </Paper>
-
-        {/* Smaller brightness/contrast panel */}
-        <Box
-          sx={{
-            px: 1.5,
-            py: 0.5,
-            borderBottom: "1px solid #e5e7eb",
-            bgcolor: "background.paper",
-            display: "flex",
-            alignItems: "center",
-            gap: 2,
-          }}
-        >
-          <Box
+          <Button
+            onClick={handleSaveCancel}
+            size="small"
             sx={{
-              display: "flex",
-              alignItems: "center",
-              gap: 0.75,
-              flex: 1,
-              minWidth: 0,
-            }}
-          >
-            <Typography
-              variant="caption"
-              color="text.secondary"
-              sx={{ whiteSpace: "nowrap", fontSize: "0.7rem" }}
-            >
-              Brightness
-            </Typography>
-            <Slider
-              size="small"
-              value={brightness}
-              min={50}
-              max={200}
-              onChange={(_, value) => setBrightness(value as number)}
-            />
-          </Box>
-          <Box
-            sx={{
-              display: "flex",
-              alignItems: "center",
-              gap: 0.75,
-              flex: 1,
-              minWidth: 0,
-            }}
-          >
-            <Typography
-              variant="caption"
-              color="text.secondary"
-              sx={{ whiteSpace: "nowrap", fontSize: "0.7rem" }}
-            >
-              Contrast
-            </Typography>
-            <Slider
-              size="small"
-              value={contrast}
-              min={50}
-              max={200}
-              onChange={(_, value) => setContrast(value as number)}
-            />
-          </Box>
-        </Box>
-
-        {/* Image + overlay controls */}
-        <Box
-          sx={{
-            flex: 1,
-            minHeight: 0,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            bgcolor: "background.default",
-            position: "relative",
-          }}
-          onDoubleClick={() => setInvertPreview((prev) => !prev)}
-        >
-          {/* Overlay controls centered on top of the image */}
-          <Box
-            sx={{
-              position: "absolute",
-              top: 8,
-              left: "50%",
-              transform: "translateX(-50%)",
-              display: "flex",
-              alignItems: "center",
-              gap: 0.25,
-              bgcolor: "rgba(248,250,252,0.9)",
               borderRadius: 9999,
-              px: 0.75,
-              py: 0.25,
-              zIndex: 2,
-              boxShadow: 1,
+              textTransform: "none",
+              px: 2.5,
+              py: 0.5,
             }}
           >
-            <Tooltip title="Previous tilt">
-              <span>
-                <IconButton
-                  size="small"
-                  onClick={handlePrev}
-                  disabled={!canGoPrev}
-                  sx={{ color: "text.primary" }}
-                >
-                  <ArrowUpward fontSize="small" />
-                </IconButton>
-              </span>
-            </Tooltip>
-            <Tooltip title="Next tilt">
-              <span>
-                <IconButton
-                  size="small"
-                  onClick={handleNext}
-                  disabled={!canGoNext}
-                  sx={{ color: "text.primary" }}
-                >
-                  <ArrowDownward fontSize="small" />
-                </IconButton>
-              </span>
-            </Tooltip>
-            <Tooltip title="Refresh preview">
-              <span>
-                <IconButton
-                  size="small"
-                  onClick={handleRefreshPreview}
-                  disabled={selectedRowIndex == null}
-                  sx={{ color: "text.primary" }}
-                >
-                  <RefreshIcon fontSize="small" />
-                </IconButton>
-              </span>
-            </Tooltip>
-            <Tooltip title="Toggle exclude current tilt">
-              <span>
-                <IconButton
-                  size="small"
-                  onClick={handleToggleExcludeCurrent}
-                  disabled={
-                    selectedRowIndex == null ||
-                    !framesData?.frames?.length
-                  }
-                  sx={{ color: "text.primary" }}
-                >
-                  <CloseIcon fontSize="small" />
-                </IconButton>
-              </span>
-            </Tooltip>
-
-            <Tooltip
-              title={
-                applyTransform
-                  ? "Disable alignments"
-                  : "Apply alignments"
-              }
+            Cancel
+          </Button>
+          <Box sx={{ display: "flex", gap: 1 }}>
+            <Button
+              onClick={handleSaveYes}
+              size="small"
+              variant="outlined"
+              sx={{
+                borderRadius: 9999,
+                textTransform: "none",
+                px: 2.5,
+                py: 0.5,
+              }}
             >
-              <span>
-                <IconButton
-                  size="small"
-                  onClick={() =>
-                    setApplyTransform((prev) => !prev)
-                  }
-                  sx={{
-                    color: applyTransform
-                      ? "primary.main"
-                      : "text.primary",
-                    bgcolor: applyTransform
-                      ? "rgba(59,130,246,0.12)"
-                      : "transparent",
-                    "&:hover": {
-                      bgcolor: applyTransform
-                        ? "rgba(59,130,246,0.20)"
-                        : "action.hover",
-                    },
-                  }}
-                >
-                  <TransformIcon fontSize="small" />
-                </IconButton>
-              </span>
-            </Tooltip>
-
-            <Tooltip title="Play (auto navigate)">
-              <span>
-                <IconButton
-                  size="small"
-                  onClick={() => {
-                    if (totalFrames > 0) {
-                      playDirectionRef.current = 1;
-                      setIsPlaying(true);
-                    }
-                  }}
-                  disabled={totalFrames <= 1}
-                  sx={{ color: "text.primary" }}
-                >
-                  <PlayArrow fontSize="small" />
-                </IconButton>
-              </span>
-            </Tooltip>
-            <Tooltip title="Stop autoplay">
-              <span>
-                <IconButton
-                  size="small"
-                  onClick={() => setIsPlaying(false)}
-                  disabled={!isPlaying}
-                  sx={{ color: "text.primary" }}
-                >
-                  <StopIcon fontSize="small" />
-                </IconButton>
-              </span>
-            </Tooltip>
+              Yes
+            </Button>
+            <Button
+              onClick={handleSaveRestack}
+              size="small"
+              variant="contained"
+              color="primary"
+              sx={{
+                borderRadius: 9999,
+                textTransform: "none",
+                px: 2.5,
+                py: 0.5,
+              }}
+            >
+              Re-stack
+            </Button>
           </Box>
+        </DialogActions>
+      </Dialog>
 
-          {previewError ? (
-            <Typography variant="body2" color="error">
-              {previewError}
-            </Typography>
-          ) : !displayedUrl && !transitionUrl && !previewLoading ? (
-            <Typography
-              variant="body2"
-              color="text.secondary"
-              sx={{ fontSize: "0.8rem" }}
-            >
-              No preview available.
-            </Typography>
-          ) : (
-            <>
-              {previewLoading && (
-                <Box
-                  sx={{
-                    position: "absolute",
-                    inset: 0,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    zIndex: 3,
-                    pointerEvents: "none",
-                  }}
-                >
-                  <CircularProgress size={22} />
-                </Box>
-              )}
-              {(displayedUrl || transitionUrl) && (
-                <Box
-                  sx={{
-                    position: "relative",
-                    width: "100%",
-                    height: "100%",
-                  }}
-                >
-                  {displayedUrl && (
-                    <Box
-                      component="img"
-                      src={displayedUrl}
-                      alt="Tilt view"
-                      sx={imageBaseSx}
-                    />
-                  )}
-                  {transitionUrl && (
-                    <Box
-                      component="img"
-                      src={transitionUrl}
-                      alt="Tilt view"
-                      onAnimationEnd={() => {
-                        setDisplayedUrl(transitionUrl);
-                        setTransitionUrl(null);
-                      }}
-                      sx={{
-                        ...imageBaseSx,
-                        position: "absolute",
-                        top: 0,
-                        left: 0,
-                        animation: "tiltFadeIn 220ms ease-out",
-                        "@keyframes tiltFadeIn": {
-                          from: { opacity: 0 },
-                          to: { opacity: 1 },
-                        },
-                      }}
-                    />
-                  )}
-                </Box>
-              )}
-            </>
-          )}
-        </Box>
-
-        <Box
-          sx={{
-            p: 0.75,
-            borderTop: "1px solid #e5e7eb",
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            bgcolor: "background.paper",
-          }}
-        >
-          <Typography
-            variant="caption"
-            color="text.secondary"
-            sx={{ fontSize: "0.7rem" }}
-          >
-            {tiltAxisAngle != null
-              ? `Tilt axis angle: ${tiltAxisAngle.toFixed(2)}`
-              : "Tilt axis angle: not available"}
-          </Typography>
-
-          {activeSeries?.dims && (
-            <Typography
-              variant="caption"
-              color="text.secondary"
-              sx={{ fontSize: "0.7rem" }}
-            >
-              Size: {activeSeries.dims[0]} × {activeSeries.dims[1]}
-              {typeof activeSeries.dims[2] === "number" &&
-              activeSeries.dims[2]
-                ? ` × ${activeSeries.dims[2]}`
-                : ""}
-              {activeSeries.pixelSize
-                ? `, ${activeSeries.pixelSize.toFixed(2)} Å/px`
-                : ""}
-            </Typography>
-          )}
-        </Box>
-      </Box>
-    </Box>
+    </>
   );
 }
 
