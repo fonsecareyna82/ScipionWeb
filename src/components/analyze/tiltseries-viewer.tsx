@@ -131,6 +131,8 @@ export default function TiltSeriesViewer({
   const previewAbortRef = useRef<AbortController | null>(null);
   const previewReqIdRef = useRef(0);
   const lastPreviewRevokeRef = useRef<(() => void) | null>(null);
+  // Track preview loading state in a ref to use it safely inside intervals
+  const previewLoadingRef = useRef(false);
 
   const [isPlaying, setIsPlaying] = useState(false);
   const autoplayRef = useRef<number | null>(null);
@@ -182,6 +184,11 @@ export default function TiltSeriesViewer({
     }),
     [imageFilterCss],
   );
+
+  // Sync loading state into ref for use in autoplay interval
+  useEffect(() => {
+    previewLoadingRef.current = previewLoading;
+  }, [previewLoading]);
 
   // Load list of tilt series for this output
   useEffect(() => {
@@ -523,8 +530,11 @@ export default function TiltSeriesViewer({
         setPreviewLoading(true);
         setPreviewError(null);
 
+        // Use smaller preview size when autoplay is active to reduce load
+        const baseSize = isPlaying ? 512 : 1024;
+
         const options: any = {
-          size: 1024,
+          size: baseSize,
           normalize: "minmax",
           signal: controller.signal,
         };
@@ -591,6 +601,7 @@ export default function TiltSeriesViewer({
     svc,
     previewReloadToken,
     applyTransform,
+    isPlaying,
   ]);
 
   // Manage displayedUrl vs transitionUrl for smooth crossfade
@@ -748,6 +759,11 @@ export default function TiltSeriesViewer({
       setSelectedRowIndex((prev) => {
         const total = framesData?.frames?.length ?? 0;
         if (!total) return prev;
+
+        // Do not advance while the current preview is still loading
+        if (previewLoadingRef.current) {
+          return prev;
+        }
 
         if (prev == null) {
           return 0;
@@ -1594,7 +1610,7 @@ export default function TiltSeriesViewer({
         </Box>
       </Box>
 
-            {/* Save dialog */}
+      {/* Save dialog */}
       <Dialog
         open={saveDialogOpen}
         onClose={handleSaveCancel}
@@ -1602,7 +1618,7 @@ export default function TiltSeriesViewer({
         fullWidth
         PaperProps={{
           sx: {
-            borderRadius: 3, // softer corners for the dialog
+            borderRadius: 3,
             overflow: "hidden",
           },
         }}
@@ -1698,7 +1714,6 @@ export default function TiltSeriesViewer({
           </Box>
         </DialogActions>
       </Dialog>
-
     </>
   );
 }
