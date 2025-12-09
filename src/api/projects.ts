@@ -3,7 +3,11 @@ import { ProtocolNode } from "./protocols";
 import { BASE_URL } from "@/config";
 import { Project } from "@/types/project";
 import { fetchWithAuth } from "./auth";
-import { FetchImageSliceOptions, ObjectUrlResult } from "@/services/ProjectService";
+import {
+  FetchImageSliceOptions,
+  ObjectUrlResult,
+  TiltExclusionsPayload,
+} from "@/services/ProjectService";
 
 const ACTION_LAUNCH = "launch";
 const ACTION_SAVE = "save";
@@ -736,7 +740,7 @@ export async function fetchCoords3dForTomogram(
         : typeof p.prob === "number" && Number.isFinite(p.prob)
         ? p.prob
         : undefined,
-    ...p, // conservamos radius, tomoId, etc. por si quieres usarlos luego
+    ...p,
   }));
 
   const baseTomoId =
@@ -1229,4 +1233,32 @@ export async function fetchTiltSeriesFrames(
 }
 
 
+/**
+ * Create a new tilt-series set based on the current exclusions.
+ * Backend will interpret `exclusions` and `restack` to build the new output.
+ */
+export async function createNewSetOfTiltSeries(
+  projectId: Id,
+  protocolId: Id,
+  outputName: string,
+  exclusions: TiltExclusionsPayload,
+  restack: boolean,
+): Promise<any> {
+  const enc = encodeURIComponent;
 
+  const url = `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/outputs/${enc(
+    outputName,
+  )}/tiltseries/new-set`;
+
+  const res = await fetchWithAuth(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ exclusions, restack }),
+  });
+
+  if (!res.ok) {
+    throw await toApiError(res, "Failed to create new set of tilt series");
+  }
+
+  return safeJson<any>(res);
+}

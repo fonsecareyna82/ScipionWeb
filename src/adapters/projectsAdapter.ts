@@ -11,6 +11,7 @@ import type {
   VolumeHistogramOptions,
   VolumeData3d,
   VolumeData3dOptions,
+  TiltExclusionsPayload,
 } from "@/services/ProjectService";
 
 /** Normalize id */
@@ -379,41 +380,60 @@ const defaultService: ProjectService = {
   // ──────────────────────────── Analyze Results: Tilt series ────────────────────────────
 
   listOutputTiltSeries: (
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+  ) =>
+    api.listOutputTiltSeries(
       projectId,
       protocolId,
       outputName,
-    ) => api.listOutputTiltSeries(projectId, protocolId, outputName),
+    ),
 
-    fetchTiltSeriesFrames: (
+  fetchTiltSeriesFrames: (
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    tiltSeriesId: Id,
+  ) =>
+    api.fetchTiltSeriesFrames(
       projectId,
       protocolId,
       outputName,
       tiltSeriesId,
-    ) =>
-      api.fetchTiltSeriesFrames(
-        projectId,
-        protocolId,
-        outputName,
-        tiltSeriesId,
-      ),
+    ),
 
-    fetchTiltSeriesViewImageObjectUrl: (
+  fetchTiltSeriesViewImageObjectUrl: (
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    tiltSeriesId: Id,
+    viewIndex: number,
+    options?: any,
+  ) =>
+    api.fetchTiltSeriesViewImageObjectUrl(
       projectId,
       protocolId,
       outputName,
       tiltSeriesId,
-      viewId,
+      viewIndex,
       options,
-    ) =>
-      api.fetchTiltSeriesViewImageObjectUrl(
-        projectId,
-        protocolId,
-        outputName,
-        tiltSeriesId,
-        viewId,
-        options,
-      ),
+    ),
 
+  createNewSetOfTiltSeries: (
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    exclusions: TiltExclusionsPayload,
+    restack: boolean,
+  ) =>
+    api.createNewSetOfTiltSeries(
+      projectId,
+      protocolId,
+      outputName,
+      exclusions,
+      restack,
+    ),
 };
 
 export default defaultService;

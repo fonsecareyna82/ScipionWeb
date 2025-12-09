@@ -150,6 +150,7 @@ export default function TiltSeriesViewer({
   // Exclusions summary and dialog state
   const exclusionsRef = useRef<TiltExclusionsMap | null>(null);
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
+  const [saveBusy, setSaveBusy] = useState(false);
 
   // Column widths as percentages to avoid horizontal scroll
   const columnWidths = {
@@ -686,6 +687,18 @@ export default function TiltSeriesViewer({
     setPreviewReloadToken((t) => t + 1);
   };
 
+  // When toggling applyTransform, avoid crossfade between misaligned images
+  const handleToggleApplyTransform = () => {
+    // Abort current image request so we do not show outdated response
+    previewAbortRef.current?.abort();
+    // Clear current preview to avoid crossfade artifacts for alignment changes
+    setPreviewUrl(null);
+    setPreviewError(null);
+    setDisplayedUrl(null);
+    setTransitionUrl(null);
+    setApplyTransform((prev) => !prev);
+  };
+
   // Build exclusions summary map from current series and framesData
   const buildExclusionsSummary = (): TiltExclusionsMap => {
     const summary: TiltExclusionsMap = {};
@@ -725,24 +738,62 @@ export default function TiltSeriesViewer({
   const handleSaveClick = () => {
     const summary = buildExclusionsSummary();
     exclusionsRef.current = summary;
+    setSaveBusy(false);
     console.log("Tilt series exclusion summary", summary);
     setSaveDialogOpen(true);
   };
 
   const handleSaveCancel = () => {
+    if (saveBusy) return;
     setSaveDialogOpen(false);
   };
 
-  const handleSaveYes = () => {
+  const handleSaveYes = async () => {
     const summary = exclusionsRef.current;
-    console.log("Save action: Yes", summary);
-    setSaveDialogOpen(false);
+    if (!summary) {
+      setSaveDialogOpen(false);
+      return;
+    }
+
+    try {
+      setSaveBusy(true);
+      await (svc as any).createNewSetOfTiltSeries(
+        projectId,
+        protocolId,
+        outputName,
+        summary,
+        false, // restack = false
+      );
+      setSaveDialogOpen(false);
+    } catch (e) {
+      console.error("Failed to create new set of tiltseries", e);
+    } finally {
+      setSaveBusy(false);
+    }
   };
 
-  const handleSaveRestack = () => {
+  const handleSaveRestack = async () => {
     const summary = exclusionsRef.current;
-    console.log("Save action: Re-stack", summary);
-    setSaveDialogOpen(false);
+    if (!summary) {
+      setSaveDialogOpen(false);
+      return;
+    }
+
+    try {
+      setSaveBusy(true);
+      await (svc as any).createNewSetOfTiltSeries(
+        projectId,
+        protocolId,
+        outputName,
+        summary,
+        true, // restack = true
+      );
+      setSaveDialogOpen(false);
+    } catch (e) {
+      console.error("Failed to create new set of tiltseries (restack)", e);
+    } finally {
+      setSaveBusy(false);
+    }
   };
 
   // Autoplay: ping-pong between first and last tilt
@@ -854,7 +905,7 @@ export default function TiltSeriesViewer({
               size="small"
               variant="outlined"
               onClick={handleSaveClick}
-              disabled={!series.length}
+              disabled={!series.length || saveBusy}
               sx={{
                 textTransform: "none",
                 fontSize: "0.7rem",
@@ -1442,9 +1493,7 @@ export default function TiltSeriesViewer({
                 <span>
                   <IconButton
                     size="small"
-                    onClick={() =>
-                      setApplyTransform((prev) => !prev)
-                    }
+                    onClick={handleToggleApplyTransform}
                     sx={{
                       color: applyTransform
                         ? "primary.main"
@@ -1602,7 +1651,7 @@ export default function TiltSeriesViewer({
                   ? ` × ${activeSeries.dims[2]}`
                   : ""}
                 {activeSeries.pixelSize
-                  ? `, ${activeSeries.pixelSize.toFixed(2)} Å/px`
+                  ? `, {activeSeries.pixelSize.toFixed(2)} Å/px`
                   : ""}
               </Typography>
             )}
@@ -1674,6 +1723,7 @@ export default function TiltSeriesViewer({
           <Button
             onClick={handleSaveCancel}
             size="small"
+            disabled={saveBusy}
             sx={{
               borderRadius: 9999,
               textTransform: "none",
@@ -1688,6 +1738,7 @@ export default function TiltSeriesViewer({
               onClick={handleSaveYes}
               size="small"
               variant="outlined"
+              disabled={saveBusy}
               sx={{
                 borderRadius: 9999,
                 textTransform: "none",
@@ -1702,6 +1753,7 @@ export default function TiltSeriesViewer({
               size="small"
               variant="contained"
               color="primary"
+              disabled={saveBusy}
               sx={{
                 borderRadius: 9999,
                 textTransform: "none",

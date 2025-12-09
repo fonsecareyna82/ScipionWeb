@@ -238,6 +238,14 @@ export type TiltImageOptions = {
   signal?: AbortSignal;
 };
 
+export type TiltExclusionsPayload = Record<
+  string,
+  {
+    excluded: boolean;
+    tiltimages: number[];
+  }
+>;
+
 // Shared object-url result type used by image viewers
 export type ObjectUrlResult = {
   url: string;
@@ -577,6 +585,16 @@ export interface ProjectService<
     viewIndex: number,
     opts?: FetchImageSliceOptions,
   ): Promise<ObjectUrlResult>;
+
+  // Tilt series: create a new SetOfTiltSeries based on current exclusions
+  createNewSetOfTiltSeries(
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    exclusions: TiltExclusionsPayload,
+    restack: boolean,
+  ): Promise<void>;
+
 
 
 }
