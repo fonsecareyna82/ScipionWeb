@@ -22,11 +22,6 @@ import {
   Tooltip,
   Slider,
   Button,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogContentText,
-  DialogActions,
 } from "@mui/material";
 import {
   ArrowUpward,
@@ -41,6 +36,7 @@ import {
 import { useProjectService } from "@/ProjectServiceContext";
 import type { Id } from "@/services/ProjectService";
 import { CloseIcon } from "@/icons";
+import toast from "react-hot-toast";
 
 type TiltSeriesViewerProps = {
   projectId: Id;
@@ -191,6 +187,19 @@ export default function TiltSeriesViewer({
     previewLoadingRef.current = previewLoading;
   }, [previewLoading]);
 
+  // Helper to format API errors similar to ProjectPage
+  const getErrorMsg = (e: any): string => {
+    if (e && typeof e === "object") {
+      const status = (e as any).status;
+      const data = (e as any).data;
+      if (status === 500) {
+        return (data?.detail as string) || (e as any).message || "Server error";
+      }
+      return (data?.message as string) || (e as any).message || "Operation failed";
+    }
+    return "Operation failed";
+  };
+
   // Load list of tilt series for this output
   useEffect(() => {
     let cancelled = false;
@@ -240,14 +249,14 @@ export default function TiltSeriesViewer({
               typeof ts.tiltAxisAngle === "number"
                 ? ts.tiltAxisAngle
                 : typeof ts.tilt_axis_angle === "number"
-                ? ts.tilt_axis_angle
-                : ts.axisAngle,
+                  ? ts.tilt_axis_angle
+                  : ts.axisAngle,
             pixelSize:
               typeof ts.pixelSize === "number"
                 ? ts.pixelSize
                 : typeof ts.samplingRate === "number"
-                ? ts.samplingRate
-                : undefined,
+                  ? ts.samplingRate
+                  : undefined,
             dims:
               Array.isArray(dims) && dims.length >= 2
                 ? [Number(dims[0]), Number(dims[1]), Number(dims[2] ?? 0)]
@@ -338,8 +347,8 @@ export default function TiltSeriesViewer({
               typeof obj.tiltAxisAngle === "number"
                 ? obj.tiltAxisAngle
                 : typeof obj.tilt_axis_angle === "number"
-                ? obj.tilt_axis_angle
-                : obj.axisAngle,
+                  ? obj.tilt_axis_angle
+                  : obj.axisAngle,
             frames: normalizeFrames(framesRaw),
           };
         }
@@ -739,6 +748,7 @@ export default function TiltSeriesViewer({
     const summary = buildExclusionsSummary();
     exclusionsRef.current = summary;
     setSaveBusy(false);
+    // eslint-disable-next-line no-console
     console.log("Tilt series exclusion summary", summary);
     setSaveDialogOpen(true);
   };
@@ -755,8 +765,10 @@ export default function TiltSeriesViewer({
       return;
     }
 
+    setSaveDialogOpen(false);
+    setSaveBusy(true);
+
     try {
-      setSaveBusy(true);
       await (svc as any).createNewSetOfTiltSeries(
         projectId,
         protocolId,
@@ -764,9 +776,12 @@ export default function TiltSeriesViewer({
         summary,
         false, // restack = false
       );
-      setSaveDialogOpen(false);
-    } catch (e) {
+
+      toast.success("New tilt series set created successfully.");
+    } catch (e: any) {
+      // eslint-disable-next-line no-console
       console.error("Failed to create new set of tiltseries", e);
+      toast.error(getErrorMsg(e));
     } finally {
       setSaveBusy(false);
     }
@@ -779,8 +794,10 @@ export default function TiltSeriesViewer({
       return;
     }
 
+    setSaveDialogOpen(false);
+    setSaveBusy(true);
+
     try {
-      setSaveBusy(true);
       await (svc as any).createNewSetOfTiltSeries(
         projectId,
         protocolId,
@@ -788,9 +805,12 @@ export default function TiltSeriesViewer({
         summary,
         true, // restack = true
       );
-      setSaveDialogOpen(false);
-    } catch (e) {
+
+      toast.success("New re-stacked tilt series set created successfully.");
+    } catch (e: any) {
+      // eslint-disable-next-line no-console
       console.error("Failed to create new set of tiltseries (restack)", e);
+      toast.error(getErrorMsg(e));
     } finally {
       setSaveBusy(false);
     }
@@ -1027,17 +1047,17 @@ export default function TiltSeriesViewer({
                     const isExpanded =
                       expandedSeriesId != null &&
                       String(expandedSeriesId) ===
-                        String(s.tiltSeriesId);
+                      String(s.tiltSeriesId);
                     const isSelectedSeries =
                       selectedSeriesId != null &&
                       String(selectedSeriesId) ===
-                        String(s.tiltSeriesId);
+                      String(s.tiltSeriesId);
 
                     const showFramesForThisSeries =
                       isExpanded &&
                       framesData &&
                       String(framesData.tiltSeriesId) ===
-                        String(s.tiltSeriesId);
+                      String(s.tiltSeriesId);
 
                     const seriesFrames = showFramesForThisSeries
                       ? filteredFrames
@@ -1091,7 +1111,7 @@ export default function TiltSeriesViewer({
                                   if (nextExpanded) {
                                     setSelectedSeriesId((prev) =>
                                       prev != null &&
-                                      String(prev) ===
+                                        String(prev) ===
                                         String(s.tiltSeriesId)
                                         ? prev
                                         : s.tiltSeriesId,
@@ -1245,8 +1265,8 @@ export default function TiltSeriesViewer({
                                 >
                                   {row.path
                                     ? truncatePathMiddle(
-                                        row.path,
-                                      )
+                                      row.path,
+                                    )
                                     : ""}
                                 </TableCell>
                                 <TableCell sx={columnWidths.rot}>
@@ -1647,11 +1667,11 @@ export default function TiltSeriesViewer({
               >
                 Size: {activeSeries.dims[0]} × {activeSeries.dims[1]}
                 {typeof activeSeries.dims[2] === "number" &&
-                activeSeries.dims[2]
+                  activeSeries.dims[2]
                   ? ` × ${activeSeries.dims[2]}`
                   : ""}
                 {activeSeries.pixelSize
-                  ? `, {activeSeries.pixelSize.toFixed(2)} Å/px`
+                  ? `, ${activeSeries.pixelSize.toFixed(2)} Å/px`
                   : ""}
               </Typography>
             )}
@@ -1659,113 +1679,87 @@ export default function TiltSeriesViewer({
         </Box>
       </Box>
 
-      {/* Save dialog */}
-      <Dialog
-        open={saveDialogOpen}
-        onClose={handleSaveCancel}
-        maxWidth="sm"
-        fullWidth
-        PaperProps={{
-          sx: {
-            borderRadius: 3,
-            overflow: "hidden",
-          },
-        }}
-      >
-        <DialogTitle
-          sx={{
-            fontSize: "0.95rem",
-            fontWeight: 600,
-            pb: 0.5,
-          }}
+      {/* Processing overlay while creating new set */}
+      {saveBusy && !saveDialogOpen && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed inset-0 z-[120] pointer-events-auto flex items-center justify-center"
         >
-          Create a new set
-        </DialogTitle>
-
-        <DialogContent dividers sx={{ pt: 1.5, pb: 1.5 }}>
-          <DialogContentText
-            sx={{
-              fontSize: "0.85rem",
-              mb: 1.5,
-            }}
+          {/* Floating processing card (centered) */}
+          <div
+            className="rounded-xl border bg-gray-200 dark:bg-gray-900/95 shadow-lg px-4 py-3 flex items-center gap-3 pointer-events-auto"
           >
-            Are you going to create a new set of tiltseries without the excluded views?
-          </DialogContentText>
+            <div className="relative">
+              <div className="w-5 h-5 rounded-full border-2 border-gray-300" />
+              <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-gray-700 animate-spin" />
+            </div>
+            <div className="flex flex-col">
+              <span className="text-xs font-medium text-gray-800 dark:text-gray-100">
+                Processing tilt series…
+              </span>
+              <span className="text-[11px] text-gray-700 dark:text-gray-400">
+                Creating new tilt series set. Please wait until the process finishes.
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
 
-          <Box
-            component="ul"
-            sx={{
-              m: 0,
-              pl: 2.5,
-              fontSize: "0.82rem",
-              color: "text.secondary",
-            }}
-          >
-            <li>
-              <strong>Yes</strong>: The set will be created without the excluded
-              views.
-            </li>
-            <li>
-              <strong>Re-stack</strong>: Delete excluded views and create a new
-              TS stack.
-            </li>
-          </Box>
-        </DialogContent>
+      {/* Save overlay dialog (custom, similar style to ProjectPage) */}
+      {saveDialogOpen && (
+        <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/40">
+          <div className="bg-white dark:bg-gray-950 rounded-xl shadow-lg w-full max-w-lg p-6">
+            <h2 className="text-lg font-semibold mb-3">
+              Create a new set
+            </h2>
 
-        <DialogActions
-          sx={{
-            px: 2.5,
-            py: 1.25,
-            display: "flex",
-            justifyContent: "space-between",
-          }}
-        >
-          <Button
-            onClick={handleSaveCancel}
-            size="small"
-            disabled={saveBusy}
-            sx={{
-              borderRadius: 9999,
-              textTransform: "none",
-              px: 2.5,
-              py: 0.5,
-            }}
-          >
-            Cancel
-          </Button>
-          <Box sx={{ display: "flex", gap: 1 }}>
-            <Button
-              onClick={handleSaveYes}
-              size="small"
-              variant="outlined"
-              disabled={saveBusy}
-              sx={{
-                borderRadius: 9999,
-                textTransform: "none",
-                px: 2.5,
-                py: 0.5,
-              }}
-            >
-              Yes
-            </Button>
-            <Button
-              onClick={handleSaveRestack}
-              size="small"
-              variant="contained"
-              color="primary"
-              disabled={saveBusy}
-              sx={{
-                borderRadius: 9999,
-                textTransform: "none",
-                px: 2.5,
-                py: 0.5,
-              }}
-            >
-              Re-stack
-            </Button>
-          </Box>
-        </DialogActions>
-      </Dialog>
+            <p className="mb-3 text-sm text-muted-foreground">
+              Are you going to create a new set of tiltseries without the excluded views?
+            </p>
+
+            <ul className="mb-4 list-disc pl-5 text-sm text-muted-foreground space-y-1">
+              <li>
+                <span className="font-semibold">Yes</span>: The set will be
+                created without the excluded views.
+              </li>
+              <li>
+                <span className="font-semibold">Re-stack</span>: Delete excluded
+                views and create a new TS stack.
+              </li>
+            </ul>
+
+            <div className="mt-4 flex flex-col-reverse gap-3 sm:flex-row sm:flex-wrap sm:justify-end">
+              <button
+                type="button"
+                onClick={handleSaveCancel}
+                disabled={saveBusy}
+                className="rounded-full px-4 py-2 min-w-[120px] font-medium bg-gray-200 hover:bg-gray-300 text-gray-800 disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={handleSaveYes}
+                disabled={saveBusy || !series.length}
+                className="rounded-full px-4 py-2 min-w-[120px] font-medium border border-gray-300 bg-white hover:bg-gray-50 text-gray-900 disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                Yes
+              </button>
+
+              <button
+                type="button"
+                onClick={handleSaveRestack}
+                disabled={saveBusy || !series.length}
+                className="rounded-full px-4 py-2 min-w-[120px] font-medium bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                Re-stack
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
@@ -1800,8 +1794,8 @@ function normalizeFrames(raw: any[]): TiltViewRow[] {
         typeof f.excluded === "boolean"
           ? f.excluded
           : typeof f.isExcluded === "boolean"
-          ? f.isExcluded
-          : Boolean(f.skip),
+            ? f.isExcluded
+            : Boolean(f.skip),
       dose: toNumber(f.dose ?? f.cumulativeDose),
       path:
         f.path ??
