@@ -1688,17 +1688,17 @@ export default function TiltSeriesViewer({
         >
           {/* Floating processing card (centered) */}
           <div
-            className="rounded-xl border bg-gray-200 dark:bg-gray-900/95 shadow-lg px-4 py-3 flex items-center gap-3 pointer-events-auto"
+            className="rounded-xl border bg-gray-600 dark:bg-gray-900/95 shadow-lg px-4 py-3 flex items-center gap-3 pointer-events-auto"
           >
             <div className="relative">
               <div className="w-5 h-5 rounded-full border-2 border-gray-300" />
               <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-gray-700 animate-spin" />
             </div>
             <div className="flex flex-col">
-              <span className="text-xs font-medium text-gray-800 dark:text-gray-100">
+              <span className="text-xs font-medium text-white dark:text-gray-100">
                 Processing tilt series…
               </span>
-              <span className="text-[11px] text-gray-700 dark:text-gray-400">
+              <span className="text-[11px] text-white dark:text-gray-400">
                 Creating new tilt series set. Please wait until the process finishes.
               </span>
             </div>
@@ -1710,7 +1710,7 @@ export default function TiltSeriesViewer({
       {saveDialogOpen && (
         <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/40">
           <div className="bg-white dark:bg-gray-950 rounded-xl shadow-lg w-full max-w-lg p-6">
-            <h2 className="text-lg font-semibold mb-3">
+            <h2 className="text-lg font-semibold mb-3 dark:text-white">
               Create a new set
             </h2>
 
