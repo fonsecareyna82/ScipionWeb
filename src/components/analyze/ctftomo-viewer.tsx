@@ -20,6 +20,8 @@ import {
   TextField,
   Checkbox,
   Button,
+  Tabs,
+  Tab,
 } from "@mui/material";
 import {
   ExpandMore,
@@ -80,10 +82,128 @@ type CTFExclusionsMap = Record<
   }
 >;
 
-// Helper to format numbers with two decimals when defined
-function formatNumber(value: number | null | undefined, decimals = 2): string {
+// Minimal tooltip payload type to avoid TS issues with Recharts types
+type CtfTooltipEntry = {
+  dataKey?: string | number;
+  color?: string;
+  value?: number;
+  name?: string;
+};
+
+// Custom tooltip props type
+type CtfTooltipProps = {
+  active?: boolean;
+  payload?: CtfTooltipEntry[];
+  label?: number | string;
+};
+
+// Helper to format numbers with N decimals when defined
+function formatNumber(
+  value: number | null | undefined,
+  decimals = 2,
+): string {
   if (value == null || !Number.isFinite(value)) return "";
   return value.toFixed(decimals);
+}
+
+// Helper to format axis ticks with two decimals
+function formatAxisNumber(value: number | string): string {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "";
+  return n.toFixed(2);
+}
+
+// Custom tooltip for the CTF chart, with colored lines matching each curve
+function CtfChartTooltip(props: CtfTooltipProps) {
+  const { active, payload, label } = props;
+  if (!active || !payload || payload.length === 0) {
+    return null;
+  }
+
+  const tiltAngleVal =
+    typeof label === "number" ? label : Number(label);
+
+  const defocusUEntry = payload.find(
+    (p) => p.dataKey === "defocusU",
+  );
+  const defocusVEntry = payload.find(
+    (p) => p.dataKey === "defocusV",
+  );
+  const resolutionEntry = payload.find(
+    (p) => p.dataKey === "resolution",
+  );
+
+  const defocusU =
+    defocusUEntry && typeof defocusUEntry.value === "number"
+      ? defocusUEntry.value
+      : null;
+  const defocusV =
+    defocusVEntry && typeof defocusVEntry.value === "number"
+      ? defocusVEntry.value
+      : null;
+  const resolution =
+    resolutionEntry &&
+    typeof resolutionEntry.value === "number"
+      ? resolutionEntry.value
+      : null;
+
+  const colorU = defocusUEntry?.color ?? "#ef4444";
+  const colorV = defocusVEntry?.color ?? "#3b82f6";
+  const colorRes = resolutionEntry?.color ?? "#22c55e";
+
+  return (
+    <Paper
+      elevation={3}
+      sx={{ p: 0.75 }}
+    >
+      <Typography
+        variant="caption"
+        sx={{ fontSize: "0.7rem", display: "block" }}
+      >
+        Tilt angle:{" "}
+        {Number.isFinite(tiltAngleVal)
+          ? `${tiltAngleVal.toFixed(2)}°`
+          : "-"}
+      </Typography>
+      {defocusU != null && Number.isFinite(defocusU) && (
+        <Typography
+          variant="caption"
+          sx={{
+            fontSize: "0.7rem",
+            display: "block",
+            color: colorU,
+          }}
+        >
+          DefocusU: {formatAxisNumber(defocusU)} Å
+        </Typography>
+      )}
+      {defocusV != null && Number.isFinite(defocusV) && (
+        <Typography
+          variant="caption"
+          sx={{
+            fontSize: "0.7rem",
+            display: "block",
+            color: colorV,
+          }}
+        >
+          DefocusV: {formatAxisNumber(defocusV)} Å
+        </Typography>
+      )}
+      {resolution != null &&
+        Number.isFinite(resolution) && (
+          <Typography
+            variant="caption"
+            sx={{
+              fontSize: "0.7rem",
+              display: "block",
+              color: colorRes,
+            }}
+          >
+            Resolution: {formatAxisNumber(resolution)} Å
+          </Typography>
+        )}
+    </Paper>
+  );
 }
 
 export default function CTFTomoViewer({
@@ -106,7 +226,9 @@ export default function CTFTomoViewer({
   const [selectedRowIndex, setSelectedRowIndex] = useState<number | null>(null);
   const [filterText, setFilterText] = useState<string>("");
 
-  const [viewMode, setViewMode] = useState<"seriesChart" | "psdView">("seriesChart");
+  const [viewMode, setViewMode] = useState<"seriesChart" | "psdView">(
+    "seriesChart",
+  );
   const [psdError, setPsdError] = useState<string | null>(null);
   const [psdLoading, setPsdLoading] = useState(false);
   const [psdImageUrl, setPsdImageUrl] = useState<string | null>(null);
@@ -114,6 +236,8 @@ export default function CTFTomoViewer({
   const exclusionsRef = useRef<CTFExclusionsMap | null>(null);
   const [generateDialogOpen, setGenerateDialogOpen] = useState(false);
   const [generateBusy, setGenerateBusy] = useState(false);
+
+  const [helpDialogOpen, setHelpDialogOpen] = useState(false);
 
   // Column widths as percentages to avoid horizontal scroll
   const columnWidths = {
@@ -141,7 +265,6 @@ export default function CTFTomoViewer({
     return "Operation failed";
   };
 
-  // Helper to dispose previous ObjectURL
   const disposePsdImageUrl = () => {
     if (psdImageUrl) {
       URL.revokeObjectURL(psdImageUrl);
@@ -174,7 +297,6 @@ export default function CTFTomoViewer({
         setPsdError(null);
         disposePsdImageUrl();
 
-        // Service method for listing CTFTomoSeries (adjust if needed)
         const raw = await (svc as any).listOutputCTFTomoSeries(
           projectId,
           protocolId,
@@ -216,7 +338,6 @@ export default function CTFTomoViewer({
         setSeries(items);
         if (items.length > 0) {
           const firstId = items[0].ctfSeriesId;
-          // Default selection: first series row (TS_1) in chart mode
           setSelectedSeriesId(firstId);
           setExpandedSeriesId(firstId);
           setViewMode("seriesChart");
@@ -271,7 +392,6 @@ export default function CTFTomoViewer({
         setPsdError(null);
         disposePsdImageUrl();
 
-        // Service method for fetching CTF views (adjust if needed)
         const raw = await (svc as any).fetchCTFTomoSeriesViews(
           projectId,
           protocolId,
@@ -307,9 +427,6 @@ export default function CTFTomoViewer({
         }
 
         setFramesData(payload);
-
-        // Important: do not auto-select first view row.
-        // We keep only the series row selected so viewer opens on seriesChart.
         setSelectedRowIndex(null);
         setViewMode("seriesChart");
       } catch (e: any) {
@@ -384,17 +501,21 @@ export default function CTFTomoViewer({
     if (!framesData?.frames?.length) return [];
     return framesData.frames
       .filter((f) => f.tiltAngle != null)
-      .map((f) => ({
-        tiltAngle: f.tiltAngle as number,
-        defocusU: f.defocusU ?? null,
-        defocusV: f.defocusV ?? null,
-        resolution: f.resolution ?? null,
-        excluded: Boolean(f.excluded),
-      }))
+      .map((f) => {
+        const res = f.resolution ?? null;
+        return {
+          tiltAngle: f.tiltAngle as number,
+          defocusU: f.defocusU ?? null,
+          defocusV: f.defocusV ?? null,
+          // Resolution 0 is treated as no value
+          resolution: res === 0 ? null : res,
+          excluded: Boolean(f.excluded),
+        };
+      })
       .sort((a, b) => a.tiltAngle - b.tiltAngle);
   }, [framesData]);
 
-  // Domains for Y axes to make curves occupy more vertical space
+  // Domains for Y axes (Defocus domain uses raw defocusU/V values)
   const defocusDomain = useMemo<[number, number]>(() => {
     if (!chartData.length) return [0, 1];
     let min = Infinity;
@@ -451,13 +572,10 @@ export default function CTFTomoViewer({
   }, [chartData]);
 
   const totalFrames = framesData?.frames.length ?? 0;
-
   const isPsdMode = viewMode === "psdView";
 
-  // Load PSD image from backend given psdFile path
   const loadPsdForRow = async (row: CTFViewRow) => {
     if (!row.psdFile) {
-      // No PSD path available, fallback to chart
       setViewMode("seriesChart");
       setPsdError(null);
       disposePsdImageUrl();
@@ -469,8 +587,6 @@ export default function CTFTomoViewer({
       setPsdError(null);
       disposePsdImageUrl();
 
-      // Replace this call with your real service method.
-      // It should return a Blob with the image data (png/jpg).
       const blob: Blob = await (svc as any).fetchCTFPsdImage(
         projectId,
         protocolId,
@@ -486,7 +602,7 @@ export default function CTFTomoViewer({
       console.error("Failed to load PSD image", e);
       setPsdError(
         getErrorMsg(e) ||
-          "Failed to load PSD image for the selected view.",
+        "Failed to load PSD image for the selected view.",
       );
       setViewMode("seriesChart");
       disposePsdImageUrl();
@@ -502,7 +618,6 @@ export default function CTFTomoViewer({
     );
     if (idx >= 0) {
       setSelectedRowIndex(idx);
-      // When clicking a view row, try to show PSD if available
       if (row.psdFile) {
         loadPsdForRow(row);
       } else {
@@ -518,13 +633,21 @@ export default function CTFTomoViewer({
     setSelectedSeriesId((prev) =>
       prev != null && String(prev) === String(seriesId) ? prev : seriesId,
     );
-    // When clicking a series row (TS_1, TS_2...), show chart
     setViewMode("seriesChart");
     setPsdError(null);
     disposePsdImageUrl();
   };
 
-  // Toggle exclude flag at frame index and sync series excluded flag
+  const handleChartTabChange = (
+    _event: any,
+    value: "seriesChart" | "psdView",
+  ) => {
+    setViewMode(value);
+    if (value === "seriesChart") {
+      setPsdError(null);
+    }
+  };
+
   const toggleExcludeAtIndex = (frameIndex: number) => {
     setFramesData((prev) => {
       if (!prev) return prev;
@@ -569,7 +692,6 @@ export default function CTFTomoViewer({
     toggleExcludeAtIndex(selectedRowIndex);
   };
 
-  // Toggle exclude for entire CTF series (and its frames if loaded)
   const handleToggleExcludeSeries = (seriesId: Id) => {
     let updatedByFrames = false;
 
@@ -608,7 +730,6 @@ export default function CTFTomoViewer({
     }
   };
 
-  // Build exclusions summary map from current series and framesData
   const buildExclusionsSummary = (): CTFExclusionsMap => {
     const summary: CTFExclusionsMap = {};
 
@@ -669,7 +790,6 @@ export default function CTFTomoViewer({
     setGenerateBusy(true);
 
     try {
-      // Service method for creating a new set of CTFTomoSeries (adjust if needed)
       await (svc as any).createNewSetOfCTFTomoSeries(
         projectId,
         protocolId,
@@ -746,17 +866,47 @@ export default function CTFTomoViewer({
             />
             <Button
               size="small"
-              variant="outlined"
+              variant="contained"
+              color="primary"
               onClick={handleGenerateClick}
               disabled={!series.length || generateBusy}
               sx={{
                 textTransform: "none",
                 fontSize: "0.7rem",
-                paddingX: 1.5,
-                paddingY: 0.25,
+                paddingX: 1.8,
+                paddingY: 0.4,
+                borderRadius: "999px",
+                boxShadow: "none",
+                bgcolor: "primary.main",
+                "&:hover": {
+                  bgcolor: "primary.dark",
+                  boxShadow: "none",
+                },
               }}
             >
               Generate subsets
+            </Button>
+            <Button
+              size="small"
+              variant="contained"
+              color="inherit"
+              onClick={() => setHelpDialogOpen(true)}
+              sx={{
+                textTransform: "none",
+                fontSize: "0.7rem",
+                paddingX: 1.4,
+                paddingY: 0.4,
+                borderRadius: "999px",
+                boxShadow: "none",
+                bgcolor: "grey.100",
+                color: "text.primary",
+                "&:hover": {
+                  bgcolor: "grey.200",
+                  boxShadow: "none",
+                },
+              }}
+            >
+              Help
             </Button>
             {seriesLoading && (
               <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
@@ -869,18 +1019,15 @@ export default function CTFTomoViewer({
                   {series.map((s) => {
                     const isExpanded =
                       expandedSeriesId != null &&
-                      String(expandedSeriesId) ===
-                        String(s.ctfSeriesId);
+                      String(expandedSeriesId) === String(s.ctfSeriesId);
                     const isSelectedSeries =
                       selectedSeriesId != null &&
-                      String(selectedSeriesId) ===
-                        String(s.ctfSeriesId);
+                      String(selectedSeriesId) === String(s.ctfSeriesId);
 
                     const showFramesForThisSeries =
                       isExpanded &&
                       framesData &&
-                      String(framesData.ctfSeriesId) ===
-                        String(s.ctfSeriesId);
+                      String(framesData.ctfSeriesId) === String(s.ctfSeriesId);
 
                     const seriesFrames = showFramesForThisSeries
                       ? filteredFrames
@@ -898,19 +1045,15 @@ export default function CTFTomoViewer({
                           sx={{
                             cursor: "pointer",
                             ...(s.excluded && {
-                              backgroundColor:
-                                "rgba(248,113,113,0.16)",
+                              backgroundColor: "rgba(248,113,113,0.16)",
                               "&:hover": {
-                                backgroundColor:
-                                  "rgba(248,113,113,0.24)",
+                                backgroundColor: "rgba(248,113,113,0.24)",
                               },
                               "&.Mui-selected": {
-                                backgroundColor:
-                                  "rgba(248,113,113,0.30)",
+                                backgroundColor: "rgba(248,113,113,0.30)",
                               },
                               "&.Mui-selected:hover": {
-                                backgroundColor:
-                                  "rgba(248,113,113,0.36)",
+                                backgroundColor: "rgba(248,113,113,0.36)",
                               },
                             }),
                           }}
@@ -934,8 +1077,7 @@ export default function CTFTomoViewer({
                                   if (nextExpanded) {
                                     setSelectedSeriesId((prev) =>
                                       prev != null &&
-                                      String(prev) ===
-                                        String(s.ctfSeriesId)
+                                      String(prev) === String(s.ctfSeriesId)
                                         ? prev
                                         : s.ctfSeriesId,
                                     );
@@ -975,7 +1117,6 @@ export default function CTFTomoViewer({
                               </Typography>
                             </Box>
                           </TableCell>
-                          {/* Empty cells for series row alignment */}
                           <TableCell sx={columnWidths.order} />
                           <TableCell sx={columnWidths.angle} />
                           <TableCell sx={columnWidths.excluded} />
@@ -1022,7 +1163,6 @@ export default function CTFTomoViewer({
                                   }),
                                 }}
                               >
-                                {/* First column: indent + index */}
                                 <TableCell sx={columnWidths.series}>
                                   <Box
                                     sx={{
@@ -1097,7 +1237,7 @@ export default function CTFTomoViewer({
           </Box>
         </Box>
 
-        {/* Right side: CTF chart or PSD image */}
+        {/* Right side: header + tabs + chart/PSD */}
         <Box
           sx={{
             flex: 1,
@@ -1106,6 +1246,7 @@ export default function CTFTomoViewer({
             flexDirection: "column",
           }}
         >
+          {/* Header with series info and selected tilt */}
           <Paper
             square
             elevation={0}
@@ -1151,6 +1292,38 @@ export default function CTFTomoViewer({
             )}
           </Paper>
 
+          {/* Tabs bar for CTF chart vs PSD view */}
+          <Box
+            sx={{
+              borderBottom: "1px solid #e5e7eb",
+              px: 1,
+            }}
+          >
+            <Tabs
+              value={viewMode}
+              onChange={(
+                e,
+                value: "seriesChart" | "psdView",
+              ) => handleChartTabChange(e, value)}
+              textColor="primary"
+              indicatorColor="primary"
+              sx={{
+                minHeight: 32,
+                "& .MuiTab-root": {
+                  minHeight: 32,
+                  fontSize: "0.75rem",
+                  textTransform: "none",
+                  paddingX: 1.5,
+                  paddingY: 0,
+                },
+              }}
+            >
+              <Tab label="CTF chart" value="seriesChart" />
+              <Tab label="PSD view" value="psdView" />
+            </Tabs>
+          </Box>
+
+          {/* Chart / PSD content */}
           <Box
             sx={{
               flex: 1,
@@ -1213,37 +1386,48 @@ export default function CTFTomoViewer({
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart
                   data={chartData}
-                  margin={{ top: 8, right: 24, bottom: 28, left: 24 }}
+                  margin={{ top: 20, right: 48, bottom: 32, left: 48 }}
                 >
                   <XAxis
                     dataKey="tiltAngle"
+                    tickFormatter={formatAxisNumber}
                     label={{
                       value: "Tilt angle (deg)",
                       position: "insideBottom",
-                      offset: -8,
+                      offset: -10,
                     }}
                   />
                   <YAxis
                     yAxisId="defocus"
                     domain={defocusDomain}
+                    tickFormatter={formatAxisNumber}
+                    tickMargin={8}
+                    width={70}
                     label={{
                       value: "Defocus (Å)",
                       angle: -90,
-                      position: "insideLeft",
+                      position: "left",
                     }}
                   />
                   <YAxis
                     yAxisId="resolution"
                     orientation="right"
                     domain={resolutionDomain}
+                    tickFormatter={formatAxisNumber}
+                    tickMargin={8}
+                    width={80}
                     label={{
                       value: "Resolution (Å)",
                       angle: -90,
-                      position: "insideRight",
+                      position: "right",
                     }}
                   />
-                  <RechartsTooltip />
-                  <Legend />
+                  <RechartsTooltip content={<CtfChartTooltip />} />
+                  <Legend
+                    verticalAlign="top"
+                    align="center"
+                    wrapperStyle={{ fontSize: "0.75rem" }}
+                  />
                   <Line
                     type="monotone"
                     yAxisId="defocus"
@@ -1279,6 +1463,7 @@ export default function CTFTomoViewer({
             )}
           </Box>
 
+          {/* Footer info */}
           <Box
             sx={{
               p: 0.75,
@@ -1312,6 +1497,37 @@ export default function CTFTomoViewer({
           </Box>
         </Box>
       </Box>
+
+      {/* Help overlay dialog (same style as Generate subsets) */}
+      {helpDialogOpen && (
+        <div className="fixed inset-0 z-[125] flex items-center justify-center bg-black/40">
+          <div className="bg-white dark:bg-gray-950 rounded-xl shadow-lg w-full max-w-lg p-6">
+            <h2 className="text-lg font-semibold mb-3 dark:text-white">
+              CTF tomo viewer help
+            </h2>
+
+            <p className="mb-3 text-sm text-muted-foreground">
+              This viewer allows you to create two subsets of CTFTomoSeries which
+              are called good and bad respectively.
+            </p>
+
+            <p className="mb-4 text-sm text-muted-foreground">
+              Note: The items that are excluded (checked) are the ones that
+              represent the bad CTFTomoSeries.
+            </p>
+
+            <div className="mt-4 flex flex-col-reverse gap-3 sm:flex-row sm:flex-wrap sm:justify-end">
+              <button
+                type="button"
+                onClick={() => setHelpDialogOpen(false)}
+                className="rounded-full px-4 py-2 min-w-[120px] font-medium bg-gray-200 hover:bg-gray-300 text-gray-800"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Processing overlay while creating new set */}
       {generateBusy && !generateDialogOpen && (
