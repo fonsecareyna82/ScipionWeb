@@ -4,6 +4,7 @@ import { BASE_URL } from "@/config";
 import { Project } from "@/types/project";
 import { fetchWithAuth } from "./auth";
 import {
+  CTFTomoExclusionsPayload,
   FetchImageSliceOptions,
   ObjectUrlResult,
   TiltExclusionsPayload,
@@ -1258,6 +1259,95 @@ export async function createNewSetOfTiltSeries(
 
   if (!res.ok) {
     throw await toApiError(res, "Failed to create new set of tilt series");
+  }
+
+  return safeJson<any>(res);
+}
+
+
+/* ======================= Analyze Results: CTF tomography (SetOfCTFTomoSeries) ======================= */
+
+/**
+ * List CTF tomo series for a SetOfCTFTomoSeries output.
+ * If backend returns a dataset { series, rows }, this helper extracts only `series`.
+ */
+export async function listOutputCTFTomoSeries(
+  projectId: Id,
+  protocolId: Id,
+  outputName: string,
+): Promise<any[]> {
+  const enc = encodeURIComponent;
+  const url = `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/outputs/${enc(
+    outputName,
+  )}/ctftomo`;
+
+  const res = await fetchWithAuth(url, { method: "GET" });
+  if (!res.ok) {
+    throw await toApiError(res, "Failed to list output CTF tomo series");
+  }
+
+  const data = await safeJson<any>(res);
+
+  // Backend already returns a plain list
+  if (Array.isArray(data)) {
+    return data;
+  }
+
+  // Backend returns a dataset { series, rows }
+  if (data && Array.isArray((data as any).series)) {
+    return (data as any).series;
+  }
+
+  return [];
+}
+
+/**
+ * Fetch all CTF estimation views for a given CTF tomo series.
+ * Shape is defined by the backend; the viewer will normalize it.
+ */
+export async function fetchCTFTomoSeriesViews(
+  projectId: Id,
+  protocolId: Id,
+  outputName: string,
+  ctfSeriesId: Id,
+): Promise<any> {
+  const enc = encodeURIComponent;
+  const url = `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/outputs/${enc(
+    outputName,
+  )}/ctftomo/${enc(String(ctfSeriesId))}/views`;
+
+  const res = await fetchWithAuth(url, { method: "GET" });
+  if (!res.ok) {
+    throw await toApiError(res, "Failed to fetch CTF tomo views");
+  }
+
+  return safeJson<any>(res);
+}
+
+/**
+ * Create a new SetOfCTFTomoSeries based on current exclusions.
+ * Uses the same exclusions payload shape as SetOfTiltSeries.
+ */
+export async function createNewSetOfCTFTomoSeries(
+  projectId: Id,
+  protocolId: Id,
+  outputName: string,
+  exclusions: CTFTomoExclusionsPayload,
+): Promise<any> {
+  const enc = encodeURIComponent;
+
+  const url = `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/outputs/${enc(
+    outputName,
+  )}/ctftomo/new-set`;
+
+  const res = await fetchWithAuth(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ exclusions }),
+  });
+
+  if (!res.ok) {
+    throw await toApiError(res, "Failed to create new set of CTF tomo series");
   }
 
   return safeJson<any>(res);

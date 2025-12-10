@@ -246,6 +246,8 @@ export type TiltExclusionsPayload = Record<
   }
 >;
 
+export type CTFTomoExclusionsPayload = TiltExclusionsPayload;
+
 // Shared object-url result type used by image viewers
 export type ObjectUrlResult = {
   url: string;
@@ -278,6 +280,7 @@ export type FetchImageSliceOptions = {
   // Abort support for fetch
   signal?: AbortSignal;
 };
+
 
 
 /**
@@ -593,6 +596,42 @@ export interface ProjectService<
     outputName: string,
     exclusions: TiltExclusionsPayload,
     restack: boolean,
+  ): Promise<void>;
+
+    // ─────────────────────────────────────────────────────────────────────────────
+  // Analyze Results (CTF tomography / CTF tilt series)
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /**
+   * List CTF tomo series for a SetOfCTFTomoSeries output.
+   * The concrete payload shape is left to the backend; viewers will normalize it.
+   */
+  listOutputCTFTomoSeries(
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+  ): Promise<any[]>;
+
+  /**
+   * Fetch all CTF estimation views for a single CTF tomo series.
+   * This should return one entry per tilt with defocus, resolution, etc.
+   */
+  fetchCTFTomoSeriesViews(
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    ctfSeriesId: Id,
+  ): Promise<any>;
+
+  /**
+   * Create a new SetOfCTFTomoSeries based on the current exclusions.
+   * The payload uses the same exclusion structure as SetOfTiltSeries.
+   */
+  createNewSetOfCTFTomoSeries(
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    exclusions: CTFTomoExclusionsPayload,
   ): Promise<void>;
 
 

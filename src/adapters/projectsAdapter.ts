@@ -12,6 +12,7 @@ import type {
   VolumeData3d,
   VolumeData3dOptions,
   TiltExclusionsPayload,
+  CTFTomoExclusionsPayload,
 } from "@/services/ProjectService";
 
 /** Normalize id */
@@ -433,6 +434,45 @@ const defaultService: ProjectService = {
       outputName,
       exclusions,
       restack,
+    ),
+
+  // ──────────────────────────── Analyze Results: CTF tomography ────────────────────────────
+
+  listOutputCTFTomoSeries: (
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+  ) =>
+    api.listOutputCTFTomoSeries(
+      projectId,
+      protocolId,
+      outputName,
+    ),
+
+  fetchCTFTomoSeriesViews: (
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    ctfSeriesId: Id,
+  ) =>
+    api.fetchCTFTomoSeriesViews(
+      projectId,
+      protocolId,
+      outputName,
+      ctfSeriesId,
+    ),
+
+  createNewSetOfCTFTomoSeries: (
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    exclusions: CTFTomoExclusionsPayload,
+  ) =>
+    api.createNewSetOfCTFTomoSeries(
+      projectId,
+      protocolId,
+      outputName,
+      exclusions,
     ),
 };
 

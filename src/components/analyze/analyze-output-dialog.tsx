@@ -14,6 +14,8 @@ import { MetadataViewer } from "./metadata-viewer";
 import VolumeViewer from "./volume-viewer";
 import Coords3dViewer from "./coords3d-viewer";
 import TiltSeriesViewer from "./tiltseries-viewer";
+import CtftomoViewer from "./ctftomo-viewer";
+import CTFTomoViewer from "./ctftomo-viewer";
 
 type AnalyzeOutputDialogProps = {
   open: boolean;
@@ -57,6 +59,13 @@ function isTiltSeriesKind(k?: string) {
   const s = k.replace(/\s+/g, "").toLowerCase();
   // Match: "SetOfTiltseries and not SetOfTiltseriesM "
   return (s.includes("setoftiltseries") && s !== "setoftiltseriesm");
+}
+
+function isCTFTomoSeriesKind(k?: string) {
+  if (!k) return false;
+  const s = k.replace(/\s+/g, "").toLowerCase();
+  // Match: "SetOfCTFTomoseries"
+  return s.includes("setofctftomoseries");
 }
 
 const dialogPaperSx = {
@@ -175,6 +184,17 @@ export default function AnalyzeOutputDialog({
     if (isTiltSeriesKind(outputClass)) {
       return (
         <TiltSeriesViewer
+          projectId={projectIdNum}
+          protocolId={protocolIdNum}
+          outputName={outputName}
+          // optionally tableName="TiltSeries" imageColumn="stack"
+        />
+      );
+    }
+
+    if (isCTFTomoSeriesKind(outputClass)) {
+      return (
+        <CTFTomoViewer
           projectId={projectIdNum}
           protocolId={protocolIdNum}
           outputName={outputName}
