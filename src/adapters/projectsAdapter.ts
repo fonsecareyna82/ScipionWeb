@@ -474,6 +474,19 @@ const defaultService: ProjectService = {
       outputName,
       exclusions,
     ),
+  
+  fetchCTFPsdImage: (
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    psdPath: string,
+  ) =>
+    api.fetchCTFPsdImage(
+      projectId,
+      protocolId,
+      outputName,
+      psdPath,
+    ),
 };
 
 export default defaultService;

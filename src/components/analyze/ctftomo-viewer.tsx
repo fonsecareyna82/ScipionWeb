@@ -20,7 +20,6 @@ import {
   TextField,
   Checkbox,
   Button,
-  Tooltip as MuiTooltip,
 } from "@mui/material";
 import {
   ExpandMore,
@@ -64,6 +63,7 @@ type CTFViewRow = {
   astigmatism?: number | null;
   resolution?: number | null;
   ccValue?: number | null;
+  psdFile?: string | null;
 };
 
 type CTFFramesPayload = {
@@ -106,6 +106,11 @@ export default function CTFTomoViewer({
   const [selectedRowIndex, setSelectedRowIndex] = useState<number | null>(null);
   const [filterText, setFilterText] = useState<string>("");
 
+  const [viewMode, setViewMode] = useState<"seriesChart" | "psdView">("seriesChart");
+  const [psdError, setPsdError] = useState<string | null>(null);
+  const [psdLoading, setPsdLoading] = useState(false);
+  const [psdImageUrl, setPsdImageUrl] = useState<string | null>(null);
+
   const exclusionsRef = useRef<CTFExclusionsMap | null>(null);
   const [generateDialogOpen, setGenerateDialogOpen] = useState(false);
   const [generateBusy, setGenerateBusy] = useState(false);
@@ -136,6 +141,21 @@ export default function CTFTomoViewer({
     return "Operation failed";
   };
 
+  // Helper to dispose previous ObjectURL
+  const disposePsdImageUrl = () => {
+    if (psdImageUrl) {
+      URL.revokeObjectURL(psdImageUrl);
+    }
+    setPsdImageUrl(null);
+  };
+
+  useEffect(() => {
+    return () => {
+      disposePsdImageUrl();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Load list of CTF tomo series for this output
   useEffect(() => {
     let cancelled = false;
@@ -150,6 +170,9 @@ export default function CTFTomoViewer({
         setFramesData(null);
         setFramesError(null);
         setSelectedRowIndex(null);
+        setViewMode("seriesChart");
+        setPsdError(null);
+        disposePsdImageUrl();
 
         // Service method for listing CTFTomoSeries (adjust if needed)
         const raw = await (svc as any).listOutputCTFTomoSeries(
@@ -193,8 +216,10 @@ export default function CTFTomoViewer({
         setSeries(items);
         if (items.length > 0) {
           const firstId = items[0].ctfSeriesId;
+          // Default selection: first series row (TS_1) in chart mode
           setSelectedSeriesId(firstId);
           setExpandedSeriesId(firstId);
+          setViewMode("seriesChart");
         }
       } catch (e: any) {
         if (!cancelled) {
@@ -210,6 +235,7 @@ export default function CTFTomoViewer({
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, protocolId, outputName, svc]);
 
   const activeSeries: CTFTomoSeriesSummary | null = useMemo(() => {
@@ -227,6 +253,9 @@ export default function CTFTomoViewer({
       setFramesData(null);
       setFramesError(null);
       setSelectedRowIndex(null);
+      setViewMode("seriesChart");
+      setPsdError(null);
+      disposePsdImageUrl();
       return;
     }
 
@@ -238,6 +267,9 @@ export default function CTFTomoViewer({
         setFramesError(null);
         setFramesData(null);
         setSelectedRowIndex(null);
+        setViewMode("seriesChart");
+        setPsdError(null);
+        disposePsdImageUrl();
 
         // Service method for fetching CTF views (adjust if needed)
         const raw = await (svc as any).fetchCTFTomoSeriesViews(
@@ -275,14 +307,11 @@ export default function CTFTomoViewer({
         }
 
         setFramesData(payload);
-        if (payload.frames.length > 0) {
-          const firstIncluded = payload.frames.findIndex(
-            (f) => !f.excluded,
-          );
-          setSelectedRowIndex(
-            firstIncluded >= 0 ? firstIncluded : 0,
-          );
-        }
+
+        // Important: do not auto-select first view row.
+        // We keep only the series row selected so viewer opens on seriesChart.
+        setSelectedRowIndex(null);
+        setViewMode("seriesChart");
       } catch (e: any) {
         if (!cancelled) {
           setFramesError(e?.message || "Failed to load CTF tomo views");
@@ -295,6 +324,7 @@ export default function CTFTomoViewer({
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedSeriesId, projectId, protocolId, outputName, svc]);
 
   // Derived filtered frames for the current series
@@ -364,7 +394,106 @@ export default function CTFTomoViewer({
       .sort((a, b) => a.tiltAngle - b.tiltAngle);
   }, [framesData]);
 
+  // Domains for Y axes to make curves occupy more vertical space
+  const defocusDomain = useMemo<[number, number]>(() => {
+    if (!chartData.length) return [0, 1];
+    let min = Infinity;
+    let max = -Infinity;
+
+    chartData.forEach((d) => {
+      const vals: number[] = [];
+      if (d.defocusU != null && Number.isFinite(d.defocusU)) {
+        vals.push(d.defocusU as number);
+      }
+      if (d.defocusV != null && Number.isFinite(d.defocusV)) {
+        vals.push(d.defocusV as number);
+      }
+      vals.forEach((v) => {
+        if (v < min) min = v;
+        if (v > max) max = v;
+      });
+    });
+
+    if (!Number.isFinite(min) || !Number.isFinite(max)) {
+      return [0, 1];
+    }
+    if (min === max) {
+      const pad = Math.abs(min) * 0.1 || 1;
+      return [min - pad, min + pad];
+    }
+    const span = max - min;
+    const pad = span * 0.1;
+    return [min - pad, max + pad];
+  }, [chartData]);
+
+  const resolutionDomain = useMemo<[number, number]>(() => {
+    if (!chartData.length) return [0, 1];
+    let min = Infinity;
+    let max = -Infinity;
+
+    chartData.forEach((d) => {
+      const v = d.resolution;
+      if (v == null || !Number.isFinite(v)) return;
+      if (v < min) min = v;
+      if (v > max) max = v;
+    });
+
+    if (!Number.isFinite(min) || !Number.isFinite(max)) {
+      return [0, 1];
+    }
+    if (min === max) {
+      const pad = min * 0.1 || 0.1;
+      return [min - pad, min + pad];
+    }
+    const span = max - min;
+    const pad = span * 0.1;
+    return [min - pad, max + pad];
+  }, [chartData]);
+
   const totalFrames = framesData?.frames.length ?? 0;
+
+  const isPsdMode = viewMode === "psdView";
+
+  // Load PSD image from backend given psdFile path
+  const loadPsdForRow = async (row: CTFViewRow) => {
+    if (!row.psdFile) {
+      // No PSD path available, fallback to chart
+      setViewMode("seriesChart");
+      setPsdError(null);
+      disposePsdImageUrl();
+      return;
+    }
+
+    try {
+      setPsdLoading(true);
+      setPsdError(null);
+      disposePsdImageUrl();
+
+      // Replace this call with your real service method.
+      // It should return a Blob with the image data (png/jpg).
+      const blob: Blob = await (svc as any).fetchCTFPsdImage(
+        projectId,
+        protocolId,
+        outputName,
+        row.psdFile,
+      );
+
+      const url = URL.createObjectURL(blob);
+      setPsdImageUrl(url);
+      setViewMode("psdView");
+    } catch (e: any) {
+      // eslint-disable-next-line no-console
+      console.error("Failed to load PSD image", e);
+      setPsdError(
+        getErrorMsg(e) ||
+          "Failed to load PSD image for the selected view.",
+      );
+      setViewMode("seriesChart");
+      disposePsdImageUrl();
+    } finally {
+      setPsdLoading(false);
+    }
+  };
 
   const handleRowClick = (row: CTFViewRow) => {
     if (!framesData?.frames) return;
@@ -373,6 +502,14 @@ export default function CTFTomoViewer({
     );
     if (idx >= 0) {
       setSelectedRowIndex(idx);
+      // When clicking a view row, try to show PSD if available
+      if (row.psdFile) {
+        loadPsdForRow(row);
+      } else {
+        setViewMode("seriesChart");
+        setPsdError(null);
+        disposePsdImageUrl();
+      }
     }
   };
 
@@ -381,6 +518,10 @@ export default function CTFTomoViewer({
     setSelectedSeriesId((prev) =>
       prev != null && String(prev) === String(seriesId) ? prev : seriesId,
     );
+    // When clicking a series row (TS_1, TS_2...), show chart
+    setViewMode("seriesChart");
+    setPsdError(null);
+    disposePsdImageUrl();
   };
 
   // Toggle exclude flag at frame index and sync series excluded flag
@@ -798,6 +939,9 @@ export default function CTFTomoViewer({
                                         ? prev
                                         : s.ctfSeriesId,
                                     );
+                                    setViewMode("seriesChart");
+                                    setPsdError(null);
+                                    disposePsdImageUrl();
                                   }
                                 }}
                                 sx={{ mr: 0.25 }}
@@ -953,7 +1097,7 @@ export default function CTFTomoViewer({
           </Box>
         </Box>
 
-        {/* Right side: CTF chart */}
+        {/* Right side: CTF chart or PSD image */}
         <Box
           sx={{
             flex: 1,
@@ -979,7 +1123,7 @@ export default function CTFTomoViewer({
                 variant="subtitle2"
                 sx={{ fontSize: "0.8rem" }}
               >
-                CTF estimation
+                {isPsdMode ? "PSD preview" : "CTF estimation"}
               </Typography>
               <Typography
                 variant="caption"
@@ -1018,7 +1162,46 @@ export default function CTFTomoViewer({
               p: 1,
             }}
           >
-            {!chartData.length ? (
+            {isPsdMode ? (
+              psdLoading ? (
+                <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                  <CircularProgress size={18} />
+                  <Typography
+                    variant="body2"
+                    sx={{ fontSize: "0.8rem" }}
+                  >
+                    Loading PSD image…
+                  </Typography>
+                </Box>
+              ) : psdError ? (
+                <Typography
+                  variant="body2"
+                  color="error"
+                  sx={{ fontSize: "0.8rem" }}
+                >
+                  {psdError}
+                </Typography>
+              ) : psdImageUrl ? (
+                <Box
+                  component="img"
+                  src={psdImageUrl}
+                  alt="PSD view"
+                  sx={{
+                    maxWidth: "100%",
+                    maxHeight: "100%",
+                    objectFit: "contain",
+                  }}
+                />
+              ) : (
+                <Typography
+                  variant="body2"
+                  color="text.secondary"
+                  sx={{ fontSize: "0.8rem" }}
+                >
+                  No PSD image available for the selected view.
+                </Typography>
+              )
+            ) : !chartData.length ? (
               <Typography
                 variant="body2"
                 color="text.secondary"
@@ -1030,7 +1213,7 @@ export default function CTFTomoViewer({
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart
                   data={chartData}
-                  margin={{ top: 16, right: 32, bottom: 32, left: 32 }}
+                  margin={{ top: 8, right: 24, bottom: 28, left: 24 }}
                 >
                   <XAxis
                     dataKey="tiltAngle"
@@ -1042,6 +1225,7 @@ export default function CTFTomoViewer({
                   />
                   <YAxis
                     yAxisId="defocus"
+                    domain={defocusDomain}
                     label={{
                       value: "Defocus (Å)",
                       angle: -90,
@@ -1051,6 +1235,7 @@ export default function CTFTomoViewer({
                   <YAxis
                     yAxisId="resolution"
                     orientation="right"
+                    domain={resolutionDomain}
                     label={{
                       value: "Resolution (Å)",
                       angle: -90,
@@ -1246,6 +1431,12 @@ function normalizeCtfViews(raw: any[]): CTFViewRow[] {
       ccValue: toNumber(
         f.ccValue ?? f.cc ?? f.correlation,
       ),
+      psdFile:
+        f.psdFile ??
+        f.psd_path ??
+        f.psd ??
+        f.psdImage ??
+        null,
     } as CTFViewRow;
   });
 }

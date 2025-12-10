@@ -634,6 +634,11 @@ export interface ProjectService<
     exclusions: CTFTomoExclusionsPayload,
   ): Promise<void>;
 
-
+fetchCTFPsdImage(
+  projectId: Id,
+  protocolId: Id,
+  outputName: string,
+  psdPath: string,
+): Promise<any> 
 
 }

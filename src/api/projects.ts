@@ -356,6 +356,58 @@ export async function fetchProtocolInlinePreviewBlob(
   return { blob, meta };
 }
 
+// projects.ts
+
+/**
+ * Fetch PSD image for a CTF tomo view given its stack spec (for example "3@/path/TS_1.mrc").
+ * The spec string is sent as-is so the backend can interpret slice@index semantics.
+ */
+export async function fetchCTFPsdImage(
+  projectId: Id,
+  protocolId: Id,
+  outputName: string,
+  spec: string,
+  opts: FetchImageSliceOptions = {},
+): Promise<Blob> {
+  const {
+    size = 512,
+    format = "png",
+    applyTransform = false,
+    signal,
+  } = opts;
+
+  const enc = encodeURIComponent;
+  const base = `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/outputs/${enc(
+    outputName,
+  )}/ctftomo/psd`;
+
+  const params = new URLSearchParams();
+  // IMPORTANT: we send the spec string as-is so the backend receives "3@/path/to/file.mrc"
+  params.set("spec", spec);
+  params.set("size", String(size));
+  params.set("fmt", format);
+  params.set("applyTransform", String(applyTransform));
+
+  const url = `${base}?${params.toString()}`;
+
+  const res = await fetchWithAuth(url, {
+    method: "GET",
+    cache: "no-store",
+    signal,
+  });
+
+  if (!res.ok) {
+    throw await toApiError(res, "Failed to render CTF PSD image");
+  }
+
+  // Return the raw Blob so the viewer can manage its own ObjectURL
+  const blob = await res.blob();
+  return blob;
+}
+
+
+
+
 /* ======================= Output preview (tables/pdfs/etc.) ======================= */
 export type PreviewResult =
   | { kind: "image"; url: string; meta: any; downloadUrl: string }
