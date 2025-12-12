@@ -212,6 +212,36 @@ export async function shareProject(
   }
 }
 
+/**
+ * Revoke project share for a specific user.
+ * Backend endpoint: DELETE /projects/{projectId}/share/{userId}
+ */
+export async function revokeProjectShare(
+  projectId: Id,
+  userId: Id,
+): Promise<void | { success: boolean }> {
+  const response = await fetchWithAuth(
+    `${BASE_URL}/projects/${projectId}/share/${userId}`,
+    {
+      method: "DELETE",
+    },
+  );
+
+  if (!response.ok) {
+    throw await toApiError(response, "Failed to revoke project share");
+  }
+
+  const text = await response.text();
+  if (!text) {
+    return;
+  }
+  try {
+    return JSON.parse(text) as { success: boolean };
+  } catch {
+    return;
+  }
+}
+
 export async function listProjectShares(projectId: Id): Promise<any[]> {
   const response = await fetchWithAuth(
     `${BASE_URL}/projects/${projectId}/shares`,

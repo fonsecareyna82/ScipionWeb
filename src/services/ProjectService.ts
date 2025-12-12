@@ -674,4 +674,9 @@ fetchCTFPsdImage(
   listProjectShares(
     projectId: Id,
   ): Promise<ShareableUser[] | any>;
+
+  revokeProjectShare(
+    projectId: Id,
+    userId: Id,
+  ): Promise<void | { success: boolean }>;
 }

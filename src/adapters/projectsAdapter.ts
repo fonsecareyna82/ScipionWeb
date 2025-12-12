@@ -505,7 +505,9 @@ const defaultService: ProjectService = {
 
   listProjectShares: (projectId: Id,) => api.listProjectShares(projectId),
 
-};
+  revokeProjectShare: (projectId: Id, userId: Id) =>
+    api.revokeProjectShare(toId(projectId), userId),
 
+};
 
 export default defaultService;
