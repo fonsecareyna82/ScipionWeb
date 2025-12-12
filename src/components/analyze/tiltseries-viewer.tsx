@@ -928,9 +928,10 @@ export default function TiltSeriesViewer({
               disabled={!series.length || saveBusy}
               sx={{
                 textTransform: "none",
-                fontSize: "0.7rem",
+                fontSize: "0.8rem",
                 paddingX: 1.5,
                 paddingY: 0.25,
+                borderRadius: "6px",
               }}
             >
               Save

@@ -872,10 +872,10 @@ export default function CTFTomoViewer({
               disabled={!series.length || generateBusy}
               sx={{
                 textTransform: "none",
-                fontSize: "0.7rem",
+                fontSize: "0.8rem",
                 paddingX: 1.8,
                 paddingY: 0.4,
-                borderRadius: "999px",
+                borderRadius: "6px",
                 boxShadow: "none",
                 bgcolor: "primary.main",
                 "&:hover": {
@@ -893,12 +893,12 @@ export default function CTFTomoViewer({
               onClick={() => setHelpDialogOpen(true)}
               sx={{
                 textTransform: "none",
-                fontSize: "0.7rem",
+                fontSize: "0.8rem",
                 paddingX: 1.4,
                 paddingY: 0.4,
-                borderRadius: "999px",
+                borderRadius: "6px",
                 boxShadow: "none",
-                bgcolor: "grey.100",
+                bgcolor: "grey.400",
                 color: "text.primary",
                 "&:hover": {
                   bgcolor: "grey.200",
@@ -1266,15 +1266,6 @@ export default function CTFTomoViewer({
               >
                 {isPsdMode ? "PSD preview" : "CTF estimation"}
               </Typography>
-              <Typography
-                variant="caption"
-                color="text.secondary"
-                sx={{ fontSize: "0.7rem" }}
-              >
-                {activeSeries
-                  ? `${activeSeries.label} (${activeSeries.nViews ?? "-"} views)`
-                  : "No series selected"}
-              </Typography>
             </Box>
             {selectedFrame && (
               <Box sx={{ textAlign: "right" }}>
@@ -1507,13 +1498,11 @@ export default function CTFTomoViewer({
             </h2>
 
             <p className="mb-3 text-sm text-muted-foreground">
-              This viewer allows you to create two subsets of CTFTomoSeries which
-              are called good and bad respectively.
+              This viewer allows you to create two subsets of CTFTomoSeries.
             </p>
 
             <p className="mb-4 text-sm text-muted-foreground">
-              Note: The items that are excluded (checked) are the ones that
-              represent the bad CTFTomoSeries.
+              Note: The items that are excluded (checked) will be in the new set.
             </p>
 
             <div className="mt-4 flex flex-col-reverse gap-3 sm:flex-row sm:flex-wrap sm:justify-end">
@@ -1564,13 +1553,13 @@ export default function CTFTomoViewer({
             </h2>
 
             <p className="mb-3 text-sm text-muted-foreground">
-              Are you going to create a new set of CTF tomo series without the excluded views?
+              Are you going to create a new set of CTF tomo series with the excluded views?
             </p>
 
             <ul className="mb-4 list-disc pl-5 text-sm text-muted-foreground space-y-1">
               <li>
                 <span className="font-semibold">Generate subsets</span>: The new set
-                will contain only the views that are not marked as excluded.
+                will contain all views including those that are marked as excluded.
               </li>
             </ul>
 
