@@ -359,14 +359,6 @@ export default function CTFTomoViewer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, protocolId, outputName, svc]);
 
-  const activeSeries: CTFTomoSeriesSummary | null = useMemo(() => {
-    if (selectedSeriesId == null) return null;
-    return (
-      series.find(
-        (s) => String(s.ctfSeriesId) === String(selectedSeriesId),
-      ) ?? null
-    );
-  }, [series, selectedSeriesId]);
 
   // Load CTF views for selected series
   useEffect(() => {
@@ -683,13 +675,6 @@ export default function CTFTomoViewer({
     if (idx >= 0) {
       toggleExcludeAtIndex(idx);
     }
-  };
-
-  const handleToggleExcludeCurrent = () => {
-    if (selectedRowIndex == null || !framesData?.frames?.length) {
-      return;
-    }
-    toggleExcludeAtIndex(selectedRowIndex);
   };
 
   const handleToggleExcludeSeries = (seriesId: Id) => {

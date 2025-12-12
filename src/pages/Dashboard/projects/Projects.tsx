@@ -9,6 +9,7 @@ import { useProjectService } from "@/ProjectServiceContext";
 import type { ProjectService } from "@/services/ProjectService";
 import { Project } from "@/types/project";
 import { CloudDownload, Download, PlusCircle } from "lucide-react";
+import ShareProjectModal from "@/components/projects/ShareProjectModal";
 
 /** Tweak this if your header/breadcrumb/top paddings differ */
 const GRID_VPORT_OFFSET_PX = 220;
@@ -18,6 +19,13 @@ function normalizeProject(raw: any): Project {
   const p = raw ?? {};
   const createdRaw = p.createdAt ?? p.created_at;
   const updatedRaw = p.updatedAt ?? p.updated_at;
+
+  // Normalize flags from backend
+  const isSharedFlag = Boolean(p.isShared);
+  const isOwnerFlag =
+    p.isOwner !== undefined && p.isOwner !== null
+      ? Boolean(p.isOwner)
+      : !isSharedFlag; // fallback: si no hay isOwner, asumimos que no compartido => owner
 
   return {
     id: p.id ?? p.pk ?? p._id ?? p.name ?? "",
@@ -37,8 +45,13 @@ function normalizeProject(raw: any): Project {
       (Array.isArray(p.protocols) ? p.protocols.length : 0),
     diskUsage: p.diskUsage ?? p.disk_usage ?? p.storage ?? undefined,
     protocols: p.protocols ?? p.protocolsMap ?? undefined,
+    isShared: isSharedFlag,
+    isOwner: isOwnerFlag,
+    permission: p.permission ?? "full",
+    projectOwnerId: p.projectOwnerId ?? p.ownerId ?? p.owner_id ?? null,
   } as Project;
 }
+
 
 interface ProjectsPageProps {
   service?: ProjectService;
@@ -58,6 +71,12 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
   const [showCreate, setShowCreate] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+
+  const [shareProject, setShareProject] = useState<{
+    id: string | number;
+    name: string;
+    projectOwnerId: string | number;
+  } | null>(null);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -119,6 +138,10 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
     const normalized = normalizeProject(unwrapped);
     setProjects((prev) => [normalized, ...prev]);
     setSearch("");
+  }, []);
+
+  const handleShareProject = useCallback((id: number | string, name: string, projectOwnerId: number | string,) => {
+    setShareProject({ id, name, projectOwnerId });
   }, []);
 
   return (
@@ -261,6 +284,11 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
                     }
                     onDelete={handleDeleteProject}
                     onRename={handleRenameProject}
+                    onShare={(id) => handleShareProject(id, project.name, project.projectOwnerId)}
+                    isShared={project.isShared}
+                    isOwner={project.isOwner}
+                    permission={project.permission?.toString()}
+                    projectOwnerId={project.projectOwnerId}
                   />
                 </div>
               ))}
@@ -269,6 +297,14 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
       </div>
 
       <NewProjectModal open={showCreate} onClose={() => setShowCreate(false)} onCreate={handleCreateProject} />
+
+      <ShareProjectModal
+        open={!!shareProject}
+        projectId={shareProject?.id ?? null}
+        projectName={shareProject?.name}
+        projectOwnerId={shareProject?.projectOwnerId}
+        onClose={() => setShareProject(null)}
+      />
     </>
   );
 }

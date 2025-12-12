@@ -282,6 +282,17 @@ export type FetchImageSliceOptions = {
 };
 
 
+// ─────────────────────────────────────────────────────────────────────────────
+// User (sharing / collaboration)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type ShareableUser = {
+  id: Id;
+  name: string;
+  email?: string;
+};
+
+
 
 /**
  * Optional generics to let consumers specify concrete return shapes.
@@ -641,4 +652,26 @@ fetchCTFPsdImage(
   psdPath: string,
 ): Promise<any> 
 
+// ─────────────────────────────────────────────────────────────────────────────
+  // Project sharing / collaboration
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /**
+   * List users that can be used as targets for project sharing.
+   * The concrete payload shape is left to the backend; callers can normalize it.
+   */
+  listUsers(): Promise<ShareableUser[] | any>;
+
+  /**
+   * Share a project with one or more users.
+   * Backend decides whether this overwrites or appends to existing shares.
+   */
+  shareProject(
+    projectId: Id,
+    userIds: Id[],
+  ): Promise<void | { success: boolean }>;
+
+  listProjectShares(
+    projectId: Id,
+  ): Promise<ShareableUser[] | any>;
 }

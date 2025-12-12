@@ -19,7 +19,7 @@ const ACTION_RESET_FROM = "reset-from";
 
 type Id = string | number;
 
-type ApiErrorShape = { message?: string; detail?: unknown; [k: string]: unknown };
+type ApiErrorShape = { message?: string; detail?: unknown;[k: string]: unknown };
 
 class ApiError extends Error {
   status?: number;
@@ -51,7 +51,7 @@ async function toApiError(response: Response, fallback: string): Promise<ApiErro
   let payload: ApiErrorShape | string | undefined;
   try {
     payload = await safeJson<ApiErrorShape | string>(response);
-  } catch {}
+  } catch { }
   const message =
     (typeof payload === "object" && (payload.message as string)) ||
     (typeof payload === "object" && (payload.detail as string)) ||
@@ -158,6 +158,86 @@ export async function deleteProject(id: Id): Promise<void> {
     method: "DELETE",
   });
   if (!response.ok) throw await toApiError(response, "Failed to delete project");
+}
+
+/* ======================= PROJECT SHARING ======================= */
+
+/**
+ * List users available for project sharing.
+ * Backend endpoint: GET /users
+ */
+export async function listUsers(): Promise<any[]> {
+  const response = await fetchWithAuth(`${BASE_URL}/users`, {
+    method: "GET",
+  });
+  if (!response.ok) {
+    throw await toApiError(response, "Failed to fetch users");
+  }
+  const data = await safeJson<any>(response);
+  // If backend returns a non-array shape, normalize to empty array
+  return Array.isArray(data) ? data : [];
+}
+
+/**
+ * Share a project with one or more users.
+ * Backend endpoint: POST /projects/{projectId}/share
+ * Body: { userIds: [...] }
+ */
+export async function shareProject(
+  projectId: Id,
+  userIds: (string | number)[],
+): Promise<void | { success: boolean }> {
+  const response = await fetchWithAuth(
+    `${BASE_URL}/projects/${projectId}/share`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userIds }),
+    },
+  );
+
+  if (!response.ok) {
+    throw await toApiError(response, "Failed to share project");
+  }
+
+  // Backend puede responder 204 vacío o un JSON con { success: true }
+  const text = await response.text();
+  if (!text) {
+    return;
+  }
+  try {
+    return JSON.parse(text) as { success: boolean };
+  } catch {
+    return;
+  }
+}
+
+export async function listProjectShares(projectId: Id): Promise<any[]> {
+  const response = await fetchWithAuth(
+    `${BASE_URL}/projects/${projectId}/shares`,
+    {
+      method: "GET",
+    },
+  );
+
+  if (!response.ok) {
+    throw await toApiError(response, "Failed to fetch project shares");
+  }
+
+  const data = await safeJson<any>(response);
+
+  if (Array.isArray(data)) {
+    return data;
+  }
+  if (data && Array.isArray((data as any).shares)) {
+    return (data as any).shares;
+  }
+  if (data && Array.isArray((data as any).results)) {
+    return (data as any).results;
+  }
+
+  // Fallback if backend returns an unexpected structure
+  return [];
 }
 
 /* ======================= LOAD PROTOCOLS ======================= */
@@ -789,10 +869,10 @@ export async function fetchCoords3dForTomogram(
       typeof p.score === "number" && Number.isFinite(p.score)
         ? p.score
         : typeof p.weight === "number" && Number.isFinite(p.weight)
-        ? p.weight
-        : typeof p.prob === "number" && Number.isFinite(p.prob)
-        ? p.prob
-        : undefined,
+          ? p.weight
+          : typeof p.prob === "number" && Number.isFinite(p.prob)
+            ? p.prob
+            : undefined,
     ...p,
   }));
 
@@ -925,13 +1005,13 @@ export type MetadataCell =
   | string
   | boolean
   | {
-      kind: "image";
-      path: string;
-    }
+    kind: "image";
+    path: string;
+  }
   | {
-      kind: "matrix";
-      value: any;
-    };
+    kind: "matrix";
+    value: any;
+  };
 
 export interface MetadataRow {
   id: number;
@@ -1122,7 +1202,7 @@ export function getMetadataImageCellUrl(
 export interface MetadataWindow {
   offset?: number;
   limit?: number;
-  totalRows?: number; 
+  totalRows?: number;
   rows: MetadataRow[];
 }
 

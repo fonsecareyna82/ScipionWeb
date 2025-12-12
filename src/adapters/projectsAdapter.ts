@@ -487,6 +487,25 @@ const defaultService: ProjectService = {
       outputName,
       psdPath,
     ),
+
+  // ──────────────────────────── Project sharing ────────────────────────────
+
+  /**
+   * List all users that can be selected for project sharing.
+   * We delegate to an API function that you will define in api/projects.ts
+   */
+  listUsers: () => api.listUsers(),
+
+  /**
+   * Share a project with one or more users.
+   * userIds must be array of string/number → convert to string.
+   */
+  shareProject: (projectId: Id, userIds: Id[]) =>
+    api.shareProject(toId(projectId), userIds.map(toId)),
+
+  listProjectShares: (projectId: Id,) => api.listProjectShares(projectId),
+
 };
+
 
 export default defaultService;

@@ -1,6 +1,7 @@
 // src/components/projects/ProjectActions.tsx
 import React, { useCallback, useEffect, useId, useRef, useState } from "react";
 import { OpenFolderIcon, RenameIcon, TrashBinIcon, HorizontaLDots } from "@/icons";
+import { UserPlus2 } from "lucide-react";
 
 interface Props {
   icon?: React.ReactNode;
@@ -8,19 +9,31 @@ interface Props {
   onOpen?: () => void;
   onRename?: () => void;
   onRemove?: () => void;
+  onShare?: () => void;
   className?: string;
 }
 
-const ProjectAction: React.FC<Props> = ({ onOpen, onRename, onRemove, className }) => {
+const ProjectAction: React.FC<Props> = ({
+  onOpen,
+  onRename,
+  onRemove,
+  onShare,
+  className,
+}) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const itemRefs = useRef<Array<HTMLLIElement | null>>([]);
   const menuId = useId();
 
+  const openDisabled = !onOpen;
+  const renameDisabled = !onRename;
+  const shareDisabled = !onShare;
+  const removeDisabled = !onRemove;
+
   const closeMenu = useCallback(() => {
     setIsMenuOpen(false);
-    // return focus to trigger after close
+    // Return focus to trigger after close
     queueMicrotask(() => triggerRef.current?.focus());
   }, []);
 
@@ -50,10 +63,16 @@ const ProjectAction: React.FC<Props> = ({ onOpen, onRename, onRemove, className 
     };
   }, [isMenuOpen, closeMenu]);
 
-  // Focus first item on open
+  // Focus first enabled item on open
   useEffect(() => {
     if (isMenuOpen) {
-      queueMicrotask(() => itemRefs.current[0]?.focus());
+      queueMicrotask(() => {
+        const items = itemRefs.current.filter(Boolean) as HTMLLIElement[];
+        const firstEnabled = items.find(
+          (el) => el.dataset.disabled !== "true"
+        );
+        firstEnabled?.focus();
+      });
     }
   }, [isMenuOpen]);
 
@@ -67,7 +86,12 @@ const ProjectAction: React.FC<Props> = ({ onOpen, onRename, onRemove, className 
 
   const handleTriggerKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLButtonElement>) => {
-      if (e.key === "Enter" || e.key === " " || e.key === "F10" || e.key === "ArrowDown") {
+      if (
+        e.key === "Enter" ||
+        e.key === " " ||
+        e.key === "F10" ||
+        e.key === "ArrowDown"
+      ) {
         e.preventDefault();
         e.stopPropagation();
         setIsMenuOpen(true);
@@ -76,41 +100,68 @@ const ProjectAction: React.FC<Props> = ({ onOpen, onRename, onRemove, className 
     []
   );
 
-  // Keyboard navigation within the menu
-  const onMenuKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
-    const items = itemRefs.current.filter(Boolean) as HTMLLIElement[];
-    if (!items.length) return;
+  // Keyboard navigation within the menu (skipping disabled items)
+  const onMenuKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      const items = itemRefs.current.filter(Boolean) as HTMLLIElement[];
+      if (!items.length) return;
 
-    const currentIndex = items.findIndex((el) => el === document.activeElement);
-    const focusByIndex = (idx: number) => items[idx]?.focus();
+      const isDisabled = (el: HTMLLIElement | null) =>
+        el?.dataset.disabled === "true";
 
-    switch (e.key) {
-      case "ArrowDown":
-        e.preventDefault();
-        focusByIndex((currentIndex + 1) % items.length);
-        break;
-      case "ArrowUp":
-        e.preventDefault();
-        focusByIndex((currentIndex - 1 + items.length) % items.length);
-        break;
-      case "Home":
-        e.preventDefault();
-        focusByIndex(0);
-        break;
-      case "End":
-        e.preventDefault();
-        focusByIndex(items.length - 1);
-        break;
-      case "Tab":
-        // close on tab to move focus out naturally
-        setIsMenuOpen(false);
-        break;
-      case "Escape":
-        e.preventDefault();
-        closeMenu();
-        break;
-    }
-  }, [closeMenu]);
+      const currentIndex = items.findIndex(
+        (el) => el === document.activeElement
+      );
+
+      const moveFocus = (direction: 1 | -1) => {
+        if (!items.length) return;
+        let idx = currentIndex;
+        for (let i = 0; i < items.length; i++) {
+          idx = (idx + direction + items.length) % items.length;
+          if (!isDisabled(items[idx])) {
+            items[idx].focus();
+            break;
+          }
+        }
+      };
+
+      switch (e.key) {
+        case "ArrowDown":
+          e.preventDefault();
+          moveFocus(1);
+          break;
+        case "ArrowUp":
+          e.preventDefault();
+          moveFocus(-1);
+          break;
+        case "Home": {
+          e.preventDefault();
+          const first = items.find((el) => !isDisabled(el));
+          first?.focus();
+          break;
+        }
+        case "End": {
+          e.preventDefault();
+          for (let i = items.length - 1; i >= 0; i--) {
+            if (!isDisabled(items[i])) {
+              items[i].focus();
+              break;
+            }
+          }
+          break;
+        }
+        case "Tab":
+          // Close on tab to move focus out naturally
+          setIsMenuOpen(false);
+          break;
+        case "Escape":
+          e.preventDefault();
+          closeMenu();
+          break;
+      }
+    },
+    [closeMenu]
+  );
 
   const handleItemClick =
     (fn?: () => void) =>
@@ -124,8 +175,19 @@ const ProjectAction: React.FC<Props> = ({ onOpen, onRename, onRemove, className 
     itemRefs.current[idx] = el;
   };
 
+  const baseItemClass =
+    "px-4 py-2 outline-none flex items-center gap-2";
+  const enabledItemClass =
+    "cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 focus:bg-gray-100 dark:focus:bg-gray-700";
+  const disabledItemClass =
+    "cursor-not-allowed opacity-50 text-gray-400 dark:text-gray-500";
+
   return (
-    <div className={`relative flex items-center justify-between px-0 py-0 rounded-lg ${className || ""}`}>
+    <div
+      className={`relative flex items-center justify-between px-0 py-0 rounded-lg ${
+        className || ""
+      }`}
+    >
       <div className="relative" ref={menuRef}>
         <button
           ref={triggerRef}
@@ -148,64 +210,142 @@ const ProjectAction: React.FC<Props> = ({ onOpen, onRename, onRemove, className 
             className="absolute right-0 mt-2 w-44 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded shadow-lg z-50"
           >
             <ul className="text-sm text-gray-700 dark:text-gray-200">
+              {/* Open */}
               <li
                 ref={setItemRef(0)}
                 tabIndex={-1}
                 role="menuitem"
-                className="px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer focus:bg-gray-100 dark:focus:bg-gray-700 outline-none"
-                onClick={handleItemClick(onOpen)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    onOpen?.();
-                    setIsMenuOpen(false);
-                  }
-                }}
+                aria-disabled={openDisabled}
+                data-disabled={openDisabled ? "true" : "false"}
+                className={`${baseItemClass} ${
+                  openDisabled ? disabledItemClass : enabledItemClass
+                }`}
+                onClick={openDisabled ? undefined : handleItemClick(onOpen)}
+                onKeyDown={
+                  openDisabled
+                    ? undefined
+                    : (e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          onOpen?.();
+                          setIsMenuOpen(false);
+                        }
+                      }
+                }
               >
-                <div className="flex items-center gap-2">
-                  <OpenFolderIcon className="w-5 h-5 text-gray-500 dark:text-white" />
-                  <span>Open</span>
-                </div>
+                <OpenFolderIcon
+                  className={`w-5 h-5 ${
+                    openDisabled
+                      ? "text-gray-400 dark:text-gray-500"
+                      : "text-gray-500 dark:text-white"
+                  }`}
+                />
+                <span>Open</span>
               </li>
 
+              {/* Rename */}
               <li
                 ref={setItemRef(1)}
                 tabIndex={-1}
                 role="menuitem"
-                className="px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer focus:bg-gray-100 dark:focus:bg-gray-700 outline-none"
-                onClick={handleItemClick(onRename)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    onRename?.();
-                    setIsMenuOpen(false);
-                  }
-                }}
+                aria-disabled={renameDisabled}
+                data-disabled={renameDisabled ? "true" : "false"}
+                className={`${baseItemClass} ${
+                  renameDisabled ? disabledItemClass : enabledItemClass
+                }`}
+                onClick={
+                  renameDisabled ? undefined : handleItemClick(onRename)
+                }
+                onKeyDown={
+                  renameDisabled
+                    ? undefined
+                    : (e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          onRename?.();
+                          setIsMenuOpen(false);
+                        }
+                      }
+                }
               >
-                <div className="flex items-center gap-2">
-                  <RenameIcon className="w-5 h-5 text-gray-500 dark:text-white" />
-                  <span>Rename</span>
-                </div>
+                <RenameIcon
+                  className={`w-5 h-5 ${
+                    renameDisabled
+                      ? "text-gray-400 dark:text-gray-500"
+                      : "text-gray-500 dark:text-white"
+                  }`}
+                />
+                <span>Rename</span>
               </li>
 
+              {/* Share */}
               <li
                 ref={setItemRef(2)}
                 tabIndex={-1}
                 role="menuitem"
-                className="px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer focus:bg-gray-100 dark:focus:bg-gray-700 outline-none"
-                onClick={handleItemClick(onRemove)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    onRemove?.();
-                    setIsMenuOpen(false);
-                  }
-                }}
+                aria-disabled={shareDisabled}
+                data-disabled={shareDisabled ? "true" : "false"}
+                className={`${baseItemClass} ${
+                  shareDisabled ? disabledItemClass : enabledItemClass
+                }`}
+                onClick={
+                  shareDisabled ? undefined : handleItemClick(onShare)
+                }
+                onKeyDown={
+                  shareDisabled
+                    ? undefined
+                    : (e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          onShare?.();
+                          setIsMenuOpen(false);
+                        }
+                      }
+                }
               >
-                <div className="flex items-center gap-2">
-                  <TrashBinIcon className="w-5 h-5 text-gray-500 dark:text-white" />
-                  <span>Remove</span>
-                </div>
+                <UserPlus2
+                  className={`w-4 h-4 ${
+                    shareDisabled
+                      ? "text-gray-400 dark:text-gray-500"
+                      : "text-gray-500 dark:text-white"
+                  }`}
+                />
+                <span>Share</span>
+              </li>
+
+              {/* Remove */}
+              <li
+                ref={setItemRef(3)}
+                tabIndex={-1}
+                role="menuitem"
+                aria-disabled={removeDisabled}
+                data-disabled={removeDisabled ? "true" : "false"}
+                className={`${baseItemClass} ${
+                  removeDisabled ? disabledItemClass : enabledItemClass
+                }`}
+                onClick={
+                  removeDisabled ? undefined : handleItemClick(onRemove)
+                }
+                onKeyDown={
+                  removeDisabled
+                    ? undefined
+                    : (e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          onRemove?.();
+                          setIsMenuOpen(false);
+                        }
+                      }
+                }
+              >
+                <TrashBinIcon
+                  className={`w-5 h-5 ${
+                    removeDisabled
+                      ? "text-gray-400 dark:text-gray-500"
+                      : "text-gray-500 dark:text-white"
+                  }`}
+                />
+                <span>Remove</span>
               </li>
             </ul>
           </div>

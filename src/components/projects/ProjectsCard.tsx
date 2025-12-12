@@ -1,3 +1,4 @@
+// src/components/projects/ProjectsCard.tsx
 import { useNavigate } from "react-router-dom";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -23,6 +24,21 @@ interface ProjectCardProps {
   status?: string;
   onDelete?: (id: number | string) => void;
   onRename?: (id: number | string, newLabel: string, newDescription: string) => void;
+  onShare?: (id: number | string) => void;
+  projectOwnerId: string | number;
+  isShared?: boolean | string | number;
+  isOwner?: boolean | string | number;
+  permission?: string;
+}
+
+function normalizeBooleanFlag(value: boolean | string | number | undefined | null): boolean {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value === 1;
+  if (typeof value === "string") {
+    const v = value.trim().toLowerCase();
+    return v === "true" || v === "1" || v === "owner" || v === "yes";
+  }
+  return false;
 }
 
 export default function ProjectCard({
@@ -37,6 +53,11 @@ export default function ProjectCard({
   icon = <FolderIcon className="w-5 h-5 text-gray-900 dark:text-white" />,
   onDelete,
   onRename,
+  onShare,
+  projectOwnerId,
+  isShared,
+  isOwner,
+  permission,
 }: ProjectCardProps) {
   const navigate = useNavigate();
   const cardRef = useRef<HTMLDivElement>(null);
@@ -48,6 +69,13 @@ export default function ProjectCard({
   const [errorMessage, setErrorMessage] = useState("");
 
   const svc = useProjectService();
+
+  // Normalize flags so "false", 0, "0" etc. do not behave as true
+  const normalizedIsOwner = normalizeBooleanFlag(isOwner);
+  const normalizedIsShared = normalizeBooleanFlag(isShared);
+
+  // Only owners can share, rename, remove the project
+  const canModify = normalizedIsOwner;
 
   const handleOpen = useCallback(async () => {
     if (!isRenaming) navigate(`/project/load/${id}`);
@@ -67,6 +95,13 @@ export default function ProjectCard({
   const handleRemove = useCallback(() => {
     setShowDeleteModal(true);
   }, []);
+
+  const handleShare = useCallback(() => {
+    if (!canModify) {
+      return;
+    }
+    onShare?.(id);
+  }, [onShare, id, canModify]);
 
   const confirmRemove = useCallback(async () => {
     try {
@@ -105,6 +140,8 @@ export default function ProjectCard({
     setNewDescription(description || "");
   }, [label, description]);
 
+  const showGuestBadge = Boolean(normalizedIsShared && !normalizedIsOwner);
+
   return (
     <>
       <motion.div
@@ -126,6 +163,38 @@ export default function ProjectCard({
             textRendering: "optimizeLegibility",
           }}
         >
+          {/* Guest badge for invited projects */}
+          {showGuestBadge && (
+            <div
+              className="absolute bottom-3 right-3 flex items-center gap-1.5
+               rounded-full border border-slate-200/80 dark:border-slate-700
+               bg-white/90 dark:bg-slate-900/90
+               px-2.5 py-1 text-[0.7rem] font-medium
+               text-slate-700 dark:text-slate-100
+               shadow-md shadow-slate-900/10 backdrop-blur-sm"
+            >
+              <span
+                className="inline-flex h-4 w-4 items-center justify-center
+                 rounded-full border border-indigo-200/80 dark:border-indigo-500/60
+                 bg-indigo-50 dark:bg-indigo-950/60
+                 text-indigo-600 dark:text-indigo-300"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-3 w-3"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M12 12c2.209 0 4-1.791 4-4s-1.791-4-4-4-4 1.791-4 4 1.791 4 4 4zm0 2c-3.337 0-6 1.791-6 4v1h12v-1c0-2.209-2.663-4-6-4z"
+                    fill="currentColor"
+                  />
+                </svg>
+              </span>
+              <span>Guest</span>
+            </div>
+          )}
+
+
           {/* Header */}
           <div className="mb-2 rounded-xl bg-gradient-to-r from-green-50 via-white to-blue-50 dark:from-gray-900 dark:via-gray-900 dark:to-gray-900 px-4 py-2 border transition-all duration-200">
             <div className="flex justify-between items-center">
@@ -134,7 +203,7 @@ export default function ProjectCard({
                   {icon}
                 </div>
 
-                {/* Title (readonly; overlay aporta el formulario) */}
+                {/* Title */}
                 <span
                   className="text-gray-700 dark:text-white truncate flex-grow"
                   title={label}
@@ -150,8 +219,10 @@ export default function ProjectCard({
                   icon={null}
                   label=""
                   onOpen={handleOpen}
-                  onRename={handleRename}
-                  onRemove={handleRemove}
+                  onRename={canModify ? handleRename : undefined}
+                  onRemove={canModify ? handleRemove : undefined}
+                  // Only owners can share; for non-owners this will be undefined
+                  onShare={canModify ? handleShare : undefined}
                 />
               </div>
             </div>
@@ -215,7 +286,7 @@ export default function ProjectCard({
                   }
                 }}
               >
-                {/* Header clonado (mismo look & feel) */}
+                {/* Header clone */}
                 <div className="px-4 py-2 border-b rounded-t-2xl bg-gradient-to-r from-green-50 via-white to-blue-50 dark:from-gray-900 dark:via-gray-900 dark:to-gray-900">
                   <div className="flex items-center gap-3 min-w-0">
                     <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/70 dark:bg-gray-800">
@@ -227,7 +298,7 @@ export default function ProjectCard({
                   </div>
                 </div>
 
-                {/* Body del overlay (form) */}
+                {/* Body (form) */}
                 <div className="p-5 md:p-6">
                   <div className="flex flex-col gap-3">
                     <input
