@@ -7,6 +7,7 @@ import {
   CTFTomoExclusionsPayload,
   FetchImageSliceOptions,
   ObjectUrlResult,
+  ProjectWorkflowDescriptor,
   TiltExclusionsPayload,
 } from "@/services/ProjectService";
 
@@ -278,6 +279,44 @@ export async function loadProtocols(projectId: number): Promise<any> {
   if (!response.ok) throw await toApiError(response, "Failed to fetch protocols");
   return safeJson<any>(response);
 }
+
+/* ======================= PROJECT WORKFLOWS ======================= */
+
+/**
+ * Fetch predefined workflows / pipelines for a given project.
+ * Backend endpoint: GET /projects/{projectId}/workflows
+ */
+export async function fetchProjectWorkflows(
+  projectId: Id,
+): Promise<ProjectWorkflowDescriptor[]> {
+  const response = await fetchWithAuth(
+    `${BASE_URL}/projects/${projectId}/workflows`,
+    { method: "GET" },
+  );
+
+  if (!response.ok) {
+    throw await toApiError(response, "Failed to fetch project workflows");
+  }
+
+  const data = await safeJson<any>(response);
+
+  // Plain list from backend
+  if (Array.isArray(data)) {
+    return data as ProjectWorkflowDescriptor[];
+  }
+
+  // Common wrappers: { workflows: [...] } or { results: [...] }
+  if (data && Array.isArray((data as any).workflows)) {
+    return (data as any).workflows as ProjectWorkflowDescriptor[];
+  }
+  if (data && Array.isArray((data as any).results)) {
+    return (data as any).results as ProjectWorkflowDescriptor[];
+  }
+
+  // Fallback if backend returns unexpected structure
+  return [];
+}
+
 
 /* ======================= PROTOCOL ACTIONS ======================= */
 export async function renameProtocol(

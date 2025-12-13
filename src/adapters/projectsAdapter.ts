@@ -42,6 +42,12 @@ const defaultService: ProjectService = {
   // --- Protocol lifecycle ---
   loadProtocols: (projectId: Id) => api.loadProtocols(Number(projectId)),
 
+  /**
+   * Fetch predefined workflows / pipelines for a given project.
+   */
+  fetchProjectWorkflows: (projectId: Id) =>
+    api.fetchProjectWorkflows(toId(projectId)),
+
   // --- Protocol actions ---
   executeProtocol: (
     projectId: Id,

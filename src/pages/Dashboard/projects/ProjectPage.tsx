@@ -27,6 +27,7 @@ import ReactFlow, {
 import "reactflow/dist/style.css";
 import { createStatusNodeWrapper } from "../../../components/protocol/ProtocolNodeCardWrapper";
 import { ProtocolsDrawer } from "@/components/protocol/ProtocolsDrawer";
+import { ProjectWorkflowsPanel, ProjectWorkflow } from "@/components/projects/workflows-panel";
 
 import {
   Dialog,
@@ -93,12 +94,19 @@ type NodeActions = {
 
 type OpenForm = { key: string; id: string; details: any };
 
+
 export default function ProjectPage() {
   const { projectName } = useParams<{ projectName: string }>();
   const svc = useProjectService();
 
   const [project, setProject] = useState<Project | undefined>(undefined);
   const [isLoadingProject, setIsLoadingProject] = useState(true);
+
+  // Workflows loaded from API (lazy)
+  const [workflows, setWorkflows] = useState<ProjectWorkflow[]>([]);
+  const [workflowsLoading, setWorkflowsLoading] = useState(false);
+  const [workflowsError, setWorkflowsError] = useState<string | null>(null);
+  const [workflowsLoadedOnce, setWorkflowsLoadedOnce] = useState(false);
 
   // Multi-form dock state
   const [openForms, setOpenForms] = useState<OpenForm[]>([]);
@@ -246,6 +254,48 @@ export default function ProjectPage() {
   useEffect(() => { edgesRef.current = edges; }, [edges]);
 
   const isRunningNode = (n: Node) => (n as any).data?.status === "running";
+
+  // Workflows
+  const [workflowsOpen, setWorkflowsOpen] = useState(false);
+
+  const handleOpenWorkflows = useCallback(async () => {
+    if (!projectName) return;
+
+    // Always open panel when user clicks
+    setWorkflowsOpen(true);
+
+    // Avoid refetch if already loaded or currently loading
+    if (workflowsLoading || workflowsLoadedOnce) {
+      return;
+    }
+
+    try {
+      setWorkflowsLoading(true);
+      setWorkflowsError(null);
+
+      const data = await svc.fetchProjectWorkflows(projectName);
+
+      const normalized: ProjectWorkflow[] = Array.isArray(data)
+        ? data.map((wf: any, idx: number) => ({
+          id: String(wf.id ?? wf.name ?? `wf-${idx}`),
+          name: wf.name ?? String(wf.id ?? `Workflow ${idx + 1}`),
+          description: wf.description ?? "",
+        }))
+        : [];
+
+      setWorkflows(normalized);
+      setWorkflowsLoadedOnce(true);
+    } catch (err: any) {
+      console.error("fetchProjectWorkflows error:", err);
+      setWorkflows([]);
+      const msg = err?.message || "Failed to load workflows.";
+      setWorkflowsError(msg);
+      toast.error(msg);
+    } finally {
+      setWorkflowsLoading(false);
+    }
+  }, [projectName, svc, workflowsLoading, workflowsLoadedOnce]);
+
 
 
   /* ------------------------ Centering / viewport helpers ------------------------ */
@@ -2080,12 +2130,17 @@ export default function ProjectPage() {
             onProtocolDoubleClick={handleAddProtocolFromDrawer}
           />
           <button
-            onClick={() => console.log("Workflow clicked")}
-            className="px-3 py-1 rounded-lg text-xs flex items-center gap-1 bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300"
+            onClick={handleOpenWorkflows}
+            disabled={workflowsLoading || !projectName}
+            className={`px-3 py-1 rounded-lg text-xs flex items-center gap-1 ${workflowsLoading
+                ? "bg-gray-200/80 text-gray-400 dark:bg-gray-800 dark:text-gray-500 cursor-wait"
+                : "bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300"
+              }`}
           >
             <TreeIcon className="w-4 h-4" />
-            Workflows
+            {workflowsLoading ? "Loading..." : "Workflows"}
           </button>
+
         </div>
 
         <div className="ml-4 mr-4 p-2 border rounded-lg shadow-sm bg-white dark:bg-gray-800 flex items-center gap-4">
@@ -2391,6 +2446,15 @@ export default function ProjectPage() {
           </div>
 
         </div>
+
+        <ProjectWorkflowsPanel
+          open={workflowsOpen}
+          onClose={() => setWorkflowsOpen(false)}
+          workflows={workflows}
+          loading={workflowsLoading}
+          errorMessage={workflowsError}
+          onRetry={handleOpenWorkflows}
+        />
 
       </div>
 

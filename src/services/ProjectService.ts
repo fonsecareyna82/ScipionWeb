@@ -293,6 +293,19 @@ export type ShareableUser = {
 };
 
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Project workflows / templates (predefined pipelines)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type ProjectWorkflowDescriptor = {
+  /** Workflow identifier (index, db id, or slug). */
+  id: Id;
+  /** Human-friendly workflow name to display in the UI. */
+  name: string;
+  /** Short description explaining what this workflow does. */
+  description?: string;
+};
+
 
 /**
  * Optional generics to let consumers specify concrete return shapes.
@@ -331,6 +344,15 @@ export interface ProjectService<
 
   /** Load all protocols for a project. */
   loadProtocols(projectId: Id): Promise<TProtocol[] | any>;
+
+   /**
+   * List predefined workflows / pipelines available for a project.
+   * Backend may filter them by project type, owner, or permissions.
+   */
+  fetchProjectWorkflows(
+    projectId: Id,
+  ): Promise<ProjectWorkflowDescriptor[] | any>;
+
 
   /** Execute a protocol with given params. */
   executeProtocol(
@@ -679,4 +701,7 @@ fetchCTFPsdImage(
     projectId: Id,
     userId: Id,
   ): Promise<void | { success: boolean }>;
+
+
+
 }
