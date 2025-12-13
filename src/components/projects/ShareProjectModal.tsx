@@ -160,18 +160,6 @@ export default function ShareProjectModal({
     );
   }, []);
 
-  const handleOverlayClick = useCallback(
-    (e: React.MouseEvent<HTMLDivElement>) => {
-      if (
-        dialogRef.current &&
-        !dialogRef.current.contains(e.target as Node)
-      ) {
-        onClose();
-      }
-    },
-    [onClose],
-  );
-
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLDivElement>) => {
       if (e.key === "Escape") {
@@ -268,7 +256,6 @@ export default function ShareProjectModal({
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-transparent"
-      onMouseDown={handleOverlayClick}
       onKeyDown={handleKeyDown}
       role="dialog"
       aria-modal="true"
@@ -278,7 +265,6 @@ export default function ShareProjectModal({
       <div
         ref={dialogRef}
         className="relative w-full max-w-xl rounded-2xl border border-gray-200/70 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900 flex flex-col max-h-[82vh] text-[0.95rem]"
-        onMouseDown={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div className="flex items-start justify-between border-b border-gray-200/80 dark:border-gray-800 px-5 pt-4 pb-3">
@@ -469,7 +455,6 @@ export default function ShareProjectModal({
         {revokeTarget && (
           <div
             className="absolute inset-0 z-20 flex items-center justify-center bg-transparent"
-            onMouseDown={(e) => e.stopPropagation()}
           >
             <div className="w-full max-w-sm rounded-xl border border-red-200/70 bg-white shadow-xl dark:border-red-800/70 dark:bg-gray-900 px-5 py-4 text-sm">
               <div className="flex items-start gap-3">
