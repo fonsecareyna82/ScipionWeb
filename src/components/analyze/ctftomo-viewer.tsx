@@ -1553,7 +1553,7 @@ export default function CTFTomoViewer({
                 type="button"
                 onClick={handleGenerateCancel}
                 disabled={generateBusy}
-                className="rounded-full px-4 py-2 min-w-[120px] font-medium bg-gray-200 hover:bg-gray-300 text-gray-800 disabled:opacity-60 disabled:cursor-not-allowed"
+                className="px-5 py-2 rounded-md text-sm min-w-[100px] bg-gray-200 hover:bg-gray-300 text-gray-800 disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 Cancel
               </button>
@@ -1562,7 +1562,7 @@ export default function CTFTomoViewer({
                 type="button"
                 onClick={handleGenerateConfirm}
                 disabled={generateBusy || !series.length}
-                className="rounded-full px-4 py-2 min-w-[120px] font-medium bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-60 disabled:cursor-not-allowed"
+                className="px-5 py-2 rounded-md text-sm min-w-[100px] bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 Generate subsets
               </button>

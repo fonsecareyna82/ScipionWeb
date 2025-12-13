@@ -325,18 +325,19 @@ export default function ProjectCard({
                     <div className="flex justify-end gap-2">
                       <button
                         type="button"
-                        onClick={handleRenameSubmit}
-                        className="px-3 py-1.5 rounded-md bg-blue-600 text-white hover:bg-blue-700 transition"
-                      >
-                        Save
-                      </button>
-                      <button
-                        type="button"
                         onClick={() => setIsRenaming(false)}
-                        className="px-3 py-1.5 rounded-md bg-gray-300 dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-400 dark:hover:bg-gray-600 transition"
+                        className="px-5 py-2 rounded-md text-sm min-w-[100px] bg-gray-300 dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-400 dark:hover:bg-gray-600 transition"
                       >
                         Cancel
                       </button>
+                      <button
+                        type="button"
+                        onClick={handleRenameSubmit}
+                        className="px-5 py-2 rounded-md text-sm min-w-[100px] bg-blue-600 text-white hover:bg-blue-700 transition"
+                      >
+                        Save
+                      </button>
+                      
                     </div>
                   </div>
                 </div>
@@ -377,14 +378,14 @@ export default function ProjectCard({
                 <button
                   type="button"
                   onClick={() => setShowDeleteModal(false)}
-                  className="px-4 py-2 rounded-md bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-300 dark:hover:bg-gray-600 transition"
+                  className="px-5 py-2 rounded-md text-sm min-w-[100px] bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-300 dark:hover:bg-gray-600 transition"
                 >
                   Cancel
                 </button>
                 <button
                   type="button"
                   onClick={confirmRemove}
-                  className="px-4 py-2 rounded-md bg-red-600 text-white hover:bg-red-700 transition"
+                  className="px-5 py-2 rounded-md text-sm min-w-[100px] bg-red-600 text-white hover:bg-red-700 transition"
                 >
                   Delete
                 </button>

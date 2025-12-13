@@ -401,7 +401,7 @@ export default function ShareProjectModal({
                           type="button"
                           onClick={() => openRevokeDialog(u)}
                           disabled={submitting}
-                          className="ml-3 shrink-0 rounded-md border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100 hover:border-red-300 dark:border-red-700 dark:bg-red-900/40 dark:text-red-100 dark:hover:bg-red-900/70 transition disabled:opacity-60"
+                          className="ml-3 shrink-0 rounded-md border border-red-200 bg-red-50 px-5 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100 hover:border-red-300 dark:border-red-700 dark:bg-red-900/40 dark:text-red-100 dark:hover:bg-red-900/70 transition disabled:opacity-60"
                         >
                           Remove
                         </button>
@@ -432,7 +432,7 @@ export default function ShareProjectModal({
               type="button"
               onClick={onClose}
               disabled={submitting}
-              className="px-3 py-2 rounded-md bg-gray-200 text-gray-800 text-sm hover:bg-gray-300 transition disabled:opacity-60 dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600"
+              className="px-5 py-2 rounded-md bg-gray-200 text-gray-800 text-sm hover:bg-gray-300 transition disabled:opacity-60 dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600"
             >
               Cancel
             </button>
@@ -440,7 +440,7 @@ export default function ShareProjectModal({
               type="button"
               onClick={handleSubmit}
               disabled={submitting || selectedCount === 0}
-              className="px-3 py-2 rounded-md bg-blue-600 text-white text-sm hover:bg-blue-700 transition disabled:opacity-60"
+              className="px-5 py-2 rounded-md bg-blue-600 text-white text-sm hover:bg-blue-700 transition disabled:opacity-60"
             >
               {submitting
                 ? "Sharing..."
@@ -491,7 +491,7 @@ export default function ShareProjectModal({
                   type="button"
                   onClick={cancelRevoke}
                   disabled={submitting}
-                  className="px-3 py-2 rounded-md bg-gray-100 text-gray-800 text-sm hover:bg-gray-200 transition disabled:opacity-60 dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700"
+                  className="px-5 py-2 rounded-md bg-gray-100 text-gray-800 text-sm hover:bg-gray-200 transition disabled:opacity-60 dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700"
                 >
                   Cancel
                 </button>
@@ -499,7 +499,7 @@ export default function ShareProjectModal({
                   type="button"
                   onClick={confirmRevokeAccess}
                   disabled={submitting}
-                  className="px-3 py-2 rounded-md bg-red-600 text-white text-sm hover:bg-red-700 transition disabled:opacity-60"
+                  className="px-5 py-2 rounded-md bg-red-600 text-white text-sm hover:bg-red-700 transition disabled:opacity-60"
                 >
                   {submitting ? "Removing..." : "Remove access"}
                 </button>

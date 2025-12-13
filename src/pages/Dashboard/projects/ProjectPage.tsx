@@ -2470,10 +2470,10 @@ export default function ProjectPage() {
             <Input id="rename" value={dlgRename.value} onChange={(e) => setDlgRename((s) => ({ ...s, value: (e.target as any).value }))} placeholder="e.g. motioncorr_02" />
           </div>
           <DialogFooter>
-            <Button onClick={() => setDlgRename({ open: false, id: null, value: "" })} className="rounded-full px-4 py-2 min-w-[140px] font-medium bg-gray-200 hover:bg-gray-300 text-gray-800">
+            <Button onClick={() => setDlgRename({ open: false, id: null, value: "" })} className="px-3 py-2 rounded-md text-sm bg-gray-200 hover:bg-gray-300 text-gray-800">
               Cancel
             </Button>
-            <Button onClick={submitRename} disabled={!dlgRename.value.trim()} className="rounded-full px-4 py-2 min-w-[140px] font-medium bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-60 disabled:cursor-not-allowed">
+            <Button onClick={submitRename} disabled={!dlgRename.value.trim()} className="px-3 py-2 rounded-md text-sm bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-60 disabled:cursor-not-allowed">
               Rename
             </Button>
           </DialogFooter>
@@ -2514,7 +2514,7 @@ export default function ProjectPage() {
               onClick={() =>
                 setConfirm({ open: false, id: null, ids: null, kind: null })
               }
-              className="rounded-full px-4 py-2 min-w-[140px] font-medium bg-gray-200 hover:bg-gray-300 text-gray-800"
+              className="px-5 py-2 rounded-md text-sm min-w-[100px] bg-gray-200 hover:bg-gray-300 text-gray-800"
             >
               Cancel
             </button>
@@ -2559,7 +2559,7 @@ export default function ProjectPage() {
                   toast.error(getErrorMsg(e));
                 }
               }}
-              className="rounded-full px-4 py-2 min-w-[140px] font-medium bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-60 disabled:cursor-not-allowed"
+              className="px-5 py-2 rounded-md text-sm min-w-[100px] bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {confirm.kind === "delete"
                 ? "Delete"
@@ -2580,7 +2580,7 @@ export default function ProjectPage() {
             <DialogDescription>Downstream steps may be invalidated. You can re-run them later.</DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button onClick={() => setDlgResetFrom({ open: false, id: null })} className="rounded-full px-4 py-2 min-w-[140px] font-medium bg-gray-200 hover:bg-gray-300 text-gray-800">
+            <Button onClick={() => setDlgResetFrom({ open: false, id: null })} className="px-5 py-2 rounded-md text-sm min-w-[100px] bg-gray-200 hover:bg-gray-300 text-gray-800">
               Cancel
             </Button>
             <Button
@@ -2596,7 +2596,7 @@ export default function ProjectPage() {
                   toast.error(getErrorMsg(e));
                 }
               }}
-              className="rounded-full px-4 py-2 min-w-[140px] font-medium bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-60 disabled:cursor-not-allowed"
+              className="px-5 py-2 rounded-md text-sm min-w-[100px] bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-60 disabled:cursor-not-allowed"
             >
               Reset from here
             </Button>

@@ -766,14 +766,14 @@ export default function RemoteFileDialog({
           <Button
             variant="outline"
             onClick={onClose}
-            className="rounded-full px-4 py-2 min-w-[140px] font-medium bg-gray-200 hover:bg-gray-300 text-gray-800 dark:text-gray-300"
+            className="px-5 py-2 rounded-md text-sm min-w-[100px] bg-gray-200 hover:bg-gray-300 text-gray-800 dark:text-gray-300"
           >
             Close
           </Button>
           <Button
             onClick={handlePick}
             disabled={!selected || !!selected?.isDir}
-            className="rounded-full px-4 py-2 min-w-[140px] font-medium bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-60 disabled:cursor-not-allowed"
+            className="px-5 py-2 rounded-md text-sm min-w-[100px] bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-60 disabled:cursor-not-allowed"
           >
             Select
           </Button>

@@ -1,4 +1,3 @@
-import React from "react";
 import { X, RefreshCw } from "lucide-react";
 
 export interface ProjectWorkflow {
@@ -44,7 +43,7 @@ export function ProjectWorkflowsPanel({
       >
         <div className="flex h-full flex-col bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-2xl shadow-2xl overflow-hidden">
           {/* Header */}
-          <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r text-gray-200  from-gray-800 to-gray-700 dark:from-gray-800 dark:to-gray-700 border-b border-gray-300 shadow-sm">
+          <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r text-gray-200 from-gray-800 to-gray-700 dark:from-gray-800 dark:to-gray-700 border-b border-gray-300 shadow-sm">
             <div className="flex flex-col">
               <span className="text-[18px] text-gray-200 mb-2">
                 Workflows
@@ -55,7 +54,7 @@ export function ProjectWorkflowsPanel({
               onClick={onClose}
               className="absolute top-4 right-4 z-50 text-gray-500 hover:text-gray-900 dark:hover:text-white bg-gray-200 dark:bg-gray-800 rounded-full w-8 h-8 shadow-lg"
             >
-              <X className="ml-1"/>
+              <X className="ml-1" />
             </button>
           </div>
 
@@ -65,7 +64,7 @@ export function ProjectWorkflowsPanel({
               <div className="flex flex-col gap-2 text-[12px] text-gray-600 dark:text-gray-300">
                 <div className="inline-flex items-center gap-2 rounded-full border border-gray-200 dark:border-gray-700 px-3 py-1.5">
                   <span className="h-2 w-2 rounded-full bg-blue-500 animate-ping" />
-                  <span>Loading workflows for this project…</span>
+                  <span>Loading workflows…</span>
                 </div>
                 <p className="text-[11px] text-gray-500 dark:text-gray-400">
                   This may take a few seconds the first time.
@@ -96,30 +95,35 @@ export function ProjectWorkflowsPanel({
               </p>
             ) : (
               <div className="space-y-3">
-                {/* Header row */}
-                <div className="grid grid-cols-[minmax(140px,1.1fr)_minmax(220px,1.9fr)] gap-x-3 text-[11px] font-semibold text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700 pb-1">
-                  <span>Workflow</span>
-                  <span>Description</span>
-                </div>
+                <div className="border border-gray-200 dark:border-gray-700 rounded-md overflow-hidden bg-white/80 dark:bg-slate-950/60">
+                  {/* Header row */}
+                  <div className="grid grid-cols-[minmax(140px,1.1fr)_minmax(220px,1.9fr)] gap-x-3 text-[11px] font-semibold text-gray-600 dark:text-gray-300 bg-gray-200 dark:bg-slate-900 border-b border-gray-200 dark:border-gray-700 px-3 py-2">
+                    <span>Workflow</span>
+                    <span>Description</span>
+                  </div>
 
-                {/* Rows */}
-                <div className="space-y-2 text-[12px]">
-                  {workflows.map((wf) => (
-                    <button
-                      key={wf.id}
-                      type="button"
-                      onClick={() => onWorkflowClick?.(wf)}
-                      onDoubleClick={() => onWorkflowDoubleClick?.(wf)}
-                      className="grid grid-cols-[minmax(140px,1.1fr)_minmax(220px,1.9fr)] gap-x-3 gap-y-1 rounded-lg px-3 py-2 text-left cursor-pointer transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-slate-500 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-950"
-                    >
-                      <div className="font-medium text-gray-900 dark:text-gray-50 text-[13px] truncate">
-                        {wf.name}
-                      </div>
-                      <div className="text-gray-600 dark:text-gray-300 text-[12px] leading-snug whitespace-pre-line">
-                        {wf.description}
-                      </div>
-                    </button>
-                  ))}
+                  {/* Rows */}
+                  <div className="divide-y divide-gray-200 dark:divide-gray-800 text-[12px]">
+                    {workflows.map((wf) => (
+                      <button
+                        key={wf.id}
+                        type="button"
+                        onClick={() => onWorkflowClick?.(wf)}
+                        onDoubleClick={() => onWorkflowDoubleClick?.(wf)}
+                        className="w-full grid grid-cols-[minmax(140px,1.1fr)_minmax(220px,1.9fr)] gap-x-3 gap-y-1 px-3 py-2 text-left cursor-pointer transition-colors hover:bg-slate-100 dark:hover:bg-slate-800/80 active:bg-slate-200 dark:active:bg-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-slate-500 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-950 h-[112px]"
+                      >
+                        <div
+                          className="font-medium text-gray-900 dark:text-gray-50 text-[13px] truncate"
+                          title={wf.name}
+                        >
+                          {wf.name}
+                        </div>
+                        <div className="text-gray-600 dark:text-gray-300 text-[12px] leading-snug whitespace-pre-line h-[80px] overflow-y-auto pr-1">
+                          {wf.description}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
             )}
