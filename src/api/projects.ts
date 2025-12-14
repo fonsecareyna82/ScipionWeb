@@ -284,39 +284,30 @@ export async function loadProtocols(projectId: number): Promise<any> {
 
 /**
  * Fetch predefined workflows / pipelines for a given project.
- * Backend endpoint: GET /projects/{projectId}/workflows
+ * Backend endpoint: GET /projects/workflows
  */
-export async function fetchProjectWorkflows(
-  projectId: Id,
-): Promise<ProjectWorkflowDescriptor[]> {
-  const response = await fetchWithAuth(
-    `${BASE_URL}/projects/${projectId}/workflows`,
-    { method: "GET" },
-  );
+export async function fetchProjectWorkflows(): Promise<ProjectWorkflowDescriptor[]> {
+  const url = `${BASE_URL}/projects/workflows`;
+  console.log("[fetchProjectWorkflows] about to call:", url);
+
+  const response = await fetchWithAuth(url, { method: "GET" });
+
+  console.log("[fetchProjectWorkflows] status:", response.status);
 
   if (!response.ok) {
+    console.error("[fetchProjectWorkflows] error response", response);
     throw await toApiError(response, "Failed to fetch project workflows");
   }
 
   const data = await safeJson<any>(response);
+  console.log("[fetchProjectWorkflows] data:", data);
 
-  // Plain list from backend
-  if (Array.isArray(data)) {
-    return data as ProjectWorkflowDescriptor[];
-  }
+  if (Array.isArray(data)) return data as ProjectWorkflowDescriptor[];
+  if (data && Array.isArray((data as any).workflows)) return (data as any).workflows as ProjectWorkflowDescriptor[];
+  if (data && Array.isArray((data as any).results)) return (data as any).results as ProjectWorkflowDescriptor[];
 
-  // Common wrappers: { workflows: [...] } or { results: [...] }
-  if (data && Array.isArray((data as any).workflows)) {
-    return (data as any).workflows as ProjectWorkflowDescriptor[];
-  }
-  if (data && Array.isArray((data as any).results)) {
-    return (data as any).results as ProjectWorkflowDescriptor[];
-  }
-
-  // Fallback if backend returns unexpected structure
   return [];
 }
-
 
 /* ======================= PROTOCOL ACTIONS ======================= */
 export async function renameProtocol(

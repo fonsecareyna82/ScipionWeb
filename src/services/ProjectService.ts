@@ -349,9 +349,7 @@ export interface ProjectService<
    * List predefined workflows / pipelines available for a project.
    * Backend may filter them by project type, owner, or permissions.
    */
-  fetchProjectWorkflows(
-    projectId: Id,
-  ): Promise<ProjectWorkflowDescriptor[] | any>;
+  fetchProjectWorkflows(): Promise<ProjectWorkflowDescriptor[] | any>;
 
 
   /** Execute a protocol with given params. */

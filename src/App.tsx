@@ -30,6 +30,7 @@ import { Toaster } from "react-hot-toast";
 import { DragProvider } from "./components/protocol/DragContext";
 import { ProjectService } from "./services/ProjectService";
 import { ProjectServiceProvider } from "./ProjectServiceContext";
+import WorkflowsPage from "./pages/Dashboard/workflows/WorkflowsPage";
 
 interface AppProps {
   service?: ProjectService;
@@ -69,6 +70,7 @@ export default function App({ service }: AppProps) {
                 <Route path="/projects" element={<Projects />} />
                 <Route path="/project/load/:projectName" element={<ProjectPage />} />
                 <Route path="/plugins" element={<Plugins />} />
+                <Route path="/workflows" element={<WorkflowsPage />} />
                 <Route path="/plugins/:pipName" element={<PluginPage />} />
                 <Route path="/profile" element={<UserProfiles />} />
                 <Route path="/calendar" element={<Calendar />} />

@@ -273,7 +273,7 @@ export default function ProjectPage() {
       setWorkflowsLoading(true);
       setWorkflowsError(null);
 
-      const data = await svc.fetchProjectWorkflows(projectName);
+      const data = await svc.fetchProjectWorkflows();
 
       const normalized: ProjectWorkflow[] = Array.isArray(data)
         ? data.map((wf: any, idx: number) => ({
