@@ -1,5 +1,7 @@
 // src/services/ProjectService.ts
 
+import { ApplyWorkflowToProjectPayload } from "@/api/projects";
+
 /** Common ID type to accept either string or number seamlessly. */
 export type Id = string | number;
 
@@ -350,6 +352,11 @@ export interface ProjectService<
    * Backend may filter them by project type, owner, or permissions.
    */
   fetchProjectWorkflows(): Promise<ProjectWorkflowDescriptor[] | any>;
+
+  applyWorkflowToProject(
+    projectId: string | number,
+    payload: ApplyWorkflowToProjectPayload,
+  ): Promise<any>;
 
 
   /** Execute a protocol with given params. */

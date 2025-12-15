@@ -1,10 +1,6 @@
-import {
-  useCallback,
-  useEffect,
-  useState,
-  type MouseEvent,
-} from "react";
-import { RefreshCw, ArrowRightCircle, X } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { RefreshCw, X, Search } from "lucide-react";
+import toast from "react-hot-toast";
 
 import { useProjectService } from "@/ProjectServiceContext";
 import type { ProjectWorkflow } from "@/components/projects/workflows-panel";
@@ -19,6 +15,8 @@ export default function WorkflowsPage() {
   const [selectedWorkflow, setSelectedWorkflow] =
     useState<ProjectWorkflow | null>(null);
   const [applyDialogOpen, setApplyDialogOpen] = useState(false);
+
+  const [searchTerm, setSearchTerm] = useState("");
 
   const loadWorkflows = useCallback(async () => {
     // loadWorkflowsHandler
@@ -61,19 +59,37 @@ export default function WorkflowsPage() {
     setApplyDialogOpen(true);
   };
 
-  const hasWorkflows = workflows.length > 0;
+  const normalizedSearch = searchTerm.trim().toLowerCase();
+  const filteredWorkflows =
+    normalizedSearch === ""
+      ? workflows
+      : workflows.filter((wf) =>
+          wf.name.toLowerCase().includes(normalizedSearch),
+        );
+
+  const hasAnyWorkflows = workflows.length > 0;
+  const hasFilteredWorkflows = filteredWorkflows.length > 0;
 
   return (
     <div className="h-app min-h-0 flex flex-col px-2 py-1">
       {/* headerSection */}
-      <div className="flex items-center justify-between mb-4">
-        <div>
+      <div className="flex items-start justify-between mb-4 gap-4">
+        <div className="flex-1">
           <h1 className="text-xl text-gray-900 dark:text-gray-50">
             Workflows
           </h1>
-          <p className="mt-1 text-base text-gray-600 dark:text-gray-400">
-            Predefined pipelines available in this Scipion instance.
-          </p>
+          <div className="mt-2 flex items-center gap-2">
+            <div className="relative w-80 max-w-full">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Search workflow..."
+                className="w-full rounded-sm border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 pl-8 pr-3 py-1.5 text-sm text-gray-800 dark:text-gray-100 shadow-sm focus:outline-none focus:ring-2 focus:ring-slate-500 focus:border-slate-500"
+              />
+            </div>
+          </div>
         </div>
 
         <button
@@ -110,7 +126,7 @@ export default function WorkflowsPage() {
               </div>
             )}
 
-            {!loading && !errorMessage && !hasWorkflows && (
+            {!loading && !errorMessage && !hasAnyWorkflows && (
               <div className="px-4 py-4 text-base text-gray-500 dark:text-gray-400">
                 No workflows defined yet.
               </div>
@@ -118,8 +134,17 @@ export default function WorkflowsPage() {
 
             {!loading &&
               !errorMessage &&
-              hasWorkflows &&
-              workflows.map((wf) => (
+              hasAnyWorkflows &&
+              !hasFilteredWorkflows && (
+                <div className="px-4 py-4 text-base text-gray-500 dark:text-gray-400">
+                  No workflows found matching your search.
+                </div>
+              )}
+
+            {!loading &&
+              !errorMessage &&
+              hasFilteredWorkflows &&
+              filteredWorkflows.map((wf) => (
                 <button
                   key={wf.id}
                   type="button"
@@ -177,12 +202,16 @@ function ApplyWorkflowDialog({
   const [projectsError, setProjectsError] = useState<string | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<string>("");
 
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
   useEffect(() => {
     if (open && workflow) {
       setMode("create");
       setNewProjectTitle(workflow.name ?? "");
       setNewProjectDescription(workflow.description ?? "");
       setSelectedProjectId("");
+      setSubmitError(null);
     }
   }, [open, workflow]);
 
@@ -231,56 +260,84 @@ function ApplyWorkflowDialog({
     };
   }, [open, svc]);
 
-  const handleBackdropClick = (event: MouseEvent<HTMLDivElement>) => {
-    // closeOnBackdropClick
-    if (event.target === event.currentTarget) {
-      onClose();
-    }
-  };
-
-  const handleApply = () => {
+  const handleApply = async () => {
     if (!workflow) {
       onClose();
       return;
     }
 
-    if (mode === "create") {
-      console.log("[ApplyWorkflowDialog] apply workflow creating project", {
-        workflowId: workflow.id,
-        title: newProjectTitle,
-        description: newProjectDescription,
-      });
-    } else {
-      console.log("[ApplyWorkflowDialog] apply workflow to existing project", {
-        workflowId: workflow.id,
-        projectId: selectedProjectId || null,
-      });
-    }
+    setSubmitError(null);
+    setSubmitting(true);
 
-    onClose();
+    try {
+      let targetProjectId: string | number | undefined;
+      let targetProjectName: string | undefined;
+
+      if (mode === "create") {
+        const payload = {
+          name: newProjectTitle.trim(),
+          description: newProjectDescription.trim() || undefined,
+        };
+
+        const createdProject: any = await svc.createProject(payload);
+
+        targetProjectId =
+          createdProject?.id ??
+          createdProject?.projectId ??
+          createdProject?.project?.id ??
+          createdProject?.data?.id;
+
+        targetProjectName =
+          createdProject?.name ??
+          createdProject?.project?.name ??
+          payload.name;
+
+        if (!targetProjectId) {
+          throw new Error("Project id not returned by backend.");
+        }
+      } else {
+        if (!selectedProjectId) {
+          throw new Error("No project selected.");
+        }
+        targetProjectId = selectedProjectId;
+
+        const match = projectOptions.find(
+          (p) => String(p.id) === String(selectedProjectId),
+        );
+        targetProjectName = match?.name ?? selectedProjectId;
+      }
+
+      await svc.applyWorkflowToProject(targetProjectId, {
+        workflowId: String(workflow.id),
+      });
+
+      toast.success(
+        `Workflow "${workflow.name}" applied to project "${targetProjectName}".`,
+      );
+
+      onClose();
+    } catch (err: any) {
+      console.error("[ApplyWorkflowDialog] handleApply error:", err);
+      setSubmitError(
+        err?.message || "Failed to apply workflow. Please try again.",
+      );
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   if (!open || !workflow) return null;
 
   const applyDisabled =
-    mode === "create"
+    submitting ||
+    (mode === "create"
       ? !newProjectTitle.trim()
-      : !selectedProjectId || projectsLoading || !!projectsError;
+      : !selectedProjectId || projectsLoading || !!projectsError);
 
   return (
-    <div
-      className="fixed inset-0 z-[90] flex items-center justify-center"
-      onClick={handleBackdropClick}
-    >
+    <div className="fixed inset-0 z-[90] flex items-center justify-center">
       {/* dialogCard */}
       <div className="relative z-10 w-full max-w-md min-h-[510px] max-h-[90vh] rounded-2xl bg-white dark:bg-slate-950 shadow-2xl border border-slate-200 dark:border-slate-800 px-6 pt-10 pb-5 flex flex-col">
-        {/* topIcon */}
-        <div className="absolute -top-7 left-1/2 -translate-x-1/2">
-          <div className="h-12 w-12 rounded-full bg-violet-100 dark:bg-violet-900/40 border border-violet-200 dark:border-violet-700 flex items-center justify-center shadow-md">
-            <ArrowRightCircle className="h-6 w-6 text-violet-600 dark:text-violet-300" />
-          </div>
-        </div>
-
         {/* closeButton */}
         <button
           type="button"
@@ -408,6 +465,10 @@ function ApplyWorkflowDialog({
                   </div>
                 </>
               )}
+
+              {submitError && (
+                <div className="pt-1 text-xs text-red-500">{submitError}</div>
+              )}
             </div>
           </div>
         </div>
@@ -417,7 +478,8 @@ function ApplyWorkflowDialog({
           <button
             type="button"
             onClick={onClose}
-            className="inline-flex min-w-[96px] items-center justify-center rounded-md border border-red-500 px-4 py-2 text-sm font-medium text-red-600 bg-white hover:bg-red-50 dark:bg-slate-950 dark:hover:bg-slate-900"
+            disabled={submitting}
+            className="inline-flex min-w-[96px] items-center justify-center rounded-md border border-red-500 px-4 py-2 text-sm font-medium text-red-600 bg-white hover:bg-red-50 dark:bg-slate-950 dark:hover:bg-slate-900 disabled:opacity-60"
           >
             Cancel
           </button>
@@ -427,7 +489,7 @@ function ApplyWorkflowDialog({
             disabled={applyDisabled}
             className="inline-flex min-w-[96px] items-center justify-center rounded-md px-4 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed shadow-sm"
           >
-            Apply
+            {submitting ? "Applying…" : "Apply"}
           </button>
         </div>
       </div>

@@ -309,6 +309,36 @@ export async function fetchProjectWorkflows(): Promise<ProjectWorkflowDescriptor
   return [];
 }
 
+
+export interface ApplyWorkflowToProjectPayload {
+  workflowId: string;
+}
+
+/**
+ * Apply a predefined workflow to an existing project.
+ * Backend endpoint: POST /projects/{projectId}/workflows/apply
+ */
+export async function applyWorkflowToProject(
+  projectId: string | number,
+  payload: ApplyWorkflowToProjectPayload,
+): Promise<any> {
+  const url = `${BASE_URL}/projects/${encodeURIComponent(
+    String(projectId),
+  )}/workflows/apply`;
+
+  const response = await fetchWithAuth(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    throw await toApiError(response, "Failed to apply workflow to project");
+  }
+
+  return safeJson<any>(response);
+}
+
 /* ======================= PROTOCOL ACTIONS ======================= */
 export async function renameProtocol(
   projectId: Id,

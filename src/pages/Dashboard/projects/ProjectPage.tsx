@@ -2453,6 +2453,7 @@ export default function ProjectPage() {
           workflows={workflows}
           loading={workflowsLoading}
           errorMessage={workflowsError}
+          projectId={Number(project?.id)}
           onRetry={handleOpenWorkflows}
         />
 

@@ -47,6 +47,9 @@ const defaultService: ProjectService = {
    */
   fetchProjectWorkflows: () => api.fetchProjectWorkflows(),
 
+  applyWorkflowToProject: (projectId, payload) =>
+    api.applyWorkflowToProject(projectId, payload),
+
   // --- Protocol actions ---
   executeProtocol: (
     projectId: Id,
