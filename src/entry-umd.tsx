@@ -5,13 +5,13 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 
-// React Query v5 (@tanstack)
+// reactQueryV5Provider
 import {
   QueryClient as QueryClientV5,
   QueryClientProvider as QueryClientProviderV5,
 } from "@tanstack/react-query";
 
-// React Query v3 (react-query)
+// reactQueryV3Provider
 import {
   QueryClient as QueryClientV3,
   QueryClientProvider as QueryClientProviderV3,
@@ -23,10 +23,34 @@ import { HelmetProvider } from "react-helmet-async";
 
 import Projects from "./pages/Dashboard/projects/Projects";
 import { ProjectServiceProvider } from "./ProjectServiceContext";
-import type { ProjectService } from "./services/ProjectService";
+import type {
+  ProjectService,
+  Id,
+  ProjectPayload,
+  VolumeListItem,
+  VolumeInfo,
+  VolumeHistogram,
+  VolumeHistogramOptions,
+  VolumeSliceOptions,
+  VolumeSliceObjectUrl,
+  VolumeData3d,
+  VolumeData3dOptions,
+  Coordinates3dTomogram,
+  Coordinates3dTomogramPoints,
+  MetadataTableInfo,
+  MetadataTableSchema,
+  MetadataPage,
+  MetadataRow,
+  ObjectUrlResult,
+  TiltExclusionsPayload,
+  CTFTomoExclusionsPayload,
+  ShareableUser,
+  ProjectWorkflowDescriptor,
+} from "./services/ProjectService";
 import type { WidgetGlobal } from "./types/global-widget";
+import type { ApplyWorkflowToProjectPayload } from "@/api/projects";
 
-/** Error boundary so we can see readable errors inside the host page */
+/** widgetErrorBoundaryReadableErrorsInsideHost */
 class WidgetErrorBoundary extends React.Component<
   { children: React.ReactNode },
   { err: any }
@@ -64,7 +88,31 @@ class WidgetErrorBoundary extends React.Component<
   }
 }
 
-/** Tiny helper to produce a mock data URL slice image (for Analyze Results) */
+/** ensureDomRootsSafetyNetForPortals */
+function ensureDomRoots() {
+  const ids = ["modal-root", "drawer-root", "toast-root", "portal-root", "app", "root"];
+  ids.forEach((id) => {
+    if (!document.getElementById(id)) {
+      const d = document.createElement("div");
+      d.id = id;
+      document.body.appendChild(d);
+    }
+  });
+}
+
+/** forceHostContainerFullHeightFlex */
+function forceFullHeight(target: HTMLElement) {
+  try {
+    target.style.display = "flex";
+    target.style.flexDirection = "column";
+    target.style.height = "100%";
+    target.style.minHeight = "0";
+  } catch {
+    // noOp
+  }
+}
+
+/** mockSliceDataUrlForAnalyzeResults */
 const mockSliceDataUrl = (sliceIndex: number) => {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256">
     <rect width="100%" height="100%" fill="#eeeeee"/>
@@ -74,9 +122,8 @@ const mockSliceDataUrl = (sliceIndex: number) => {
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 };
 
-/** Default mock service that satisfies the full ProjectService interface */
+/** defaultMockServiceImplementsFullProjectService */
 const defaultMockService: ProjectService = {
-  // ---- projects ----
   async fetchList() {
     return [
       {
@@ -86,18 +133,30 @@ const defaultMockService: ProjectService = {
         createdAt: new Date().toISOString(),
         status: "idle",
       },
-    ];
+    ] as any;
   },
-  async fetchProject(projectId) {
+
+  async fetchProject(projectId: Id) {
     return {
       id: projectId,
-      name: `Demo ${projectId}`,
+      name: `Demo ${String(projectId)}`,
       description: "",
       createdAt: new Date().toISOString(),
       status: "idle",
+      shortName: String(projectId),
+      protocols: [],
     } as any;
   },
-  async createProject(payload) {
+
+  async fetchProtocolDetails(_projectId: Id, protocolId: Id) {
+    return { id: protocolId, protocolClassName: "DemoProtocol", params: {} } as any;
+  },
+
+  async fetchNewProtocolDetails(_projectId: Id, protocolClass: string) {
+    return { id: "new", protocolClassName: protocolClass, params: {} } as any;
+  },
+
+  async createProject(payload: ProjectPayload) {
     return {
       id: `mock-${Date.now()}`,
       name: payload.name,
@@ -106,75 +165,93 @@ const defaultMockService: ProjectService = {
       status: "idle",
     } as any;
   },
-  async renameProject(id, newName, newDescription) {
+
+  async renameProject(id: Id, newName: string, newDescription?: string) {
     return { id, name: newName, description: newDescription ?? "" } as any;
   },
-  async deleteProject(_id) {
-    return { success: true } as any; // also valid to return void
+
+  async deleteProject(_id: Id) {
+    return { success: true } as any;
   },
 
-  // ---- protocols (core) ----
-  async fetchProtocolDetails(_projectId, protocolId) {
-    return { id: protocolId, protocolClassName: "DemoProtocol", params: {} } as any;
-  },
-  async fetchNewProtocolDetails(_projectId, protocolClass) {
-    return { id: "new", protocolClassName: protocolClass, params: {} } as any;
-  },
-  async loadProtocols(_projectId) {
+  async loadProtocols(_projectId: Id) {
     return [] as any;
   },
-  async executeProtocol(_protocolId, _protocolClassName, _params) {
-    return { success: true } as any;
+
+  async fetchProjectWorkflows() {
+    return [] as ProjectWorkflowDescriptor[];
   },
-  async saveProtocol(_protocolId, _protocolClassName, _params) {
+
+  async applyWorkflowToProject(_projectId: string | number, _payload: ApplyWorkflowToProjectPayload) {
     return { success: true } as any;
   },
 
-  // ---- protocol actions ----
-  async renameProtocol(_projectId, protocolId, newName) {
-    return { id: protocolId, name: newName } as any;
-  },
-  async duplicateProtocol(_projectId, items) {
-    return { duplicated: items.map((i: any) => ({ ...i, id: `${i.id}-copy` })) } as any;
-  },
-  async deleteProtocol(_projectId, _ids) {
+  async executeProtocol(
+    _projectId: Id,
+    _protocolId: Id,
+    _protocolClassName: string,
+    _params: Record<string, unknown>
+  ) {
     return { success: true } as any;
   },
-  async restartAll(projectId, protocolId) {
+
+  async saveProtocol(
+    _projectId: Id,
+    _protocolId: Id,
+    _protocolClassName: string,
+    _params: Record<string, unknown>
+  ) {
+    return { success: true } as any;
+  },
+
+  async renameProtocol(_projectId: Id, protocolId: Id, newName: string) {
+    return { id: protocolId, name: newName } as any;
+  },
+
+  async duplicateProtocol(_projectId: Id, items: { id: string; name?: string }[]) {
+    return { duplicated: items.map((i) => ({ ...i, id: `${i.id}-copy` })) } as any;
+  },
+
+  async deleteProtocol(_projectId: Id, _ids: string[]) {
+    return { success: true } as any;
+  },
+
+  async restartAll(projectId: Id, protocolId: Id) {
     return { id: projectId, action: "restartAll", from: protocolId } as any;
   },
-  async continueAll(projectId, protocolId) {
+
+  async continueAll(projectId: Id, protocolId: Id) {
     return { id: projectId, action: "continueAll", from: protocolId } as any;
   },
-  async resetFrom(projectId, protocolId) {
+
+  async resetFrom(projectId: Id, protocolId: Id) {
     return { id: projectId, action: "resetFrom", from: protocolId } as any;
   },
-  async stopProtocol(projectId, ids) {
+
+  async stopProtocol(projectId: Id, ids: string[]) {
     return { id: projectId, action: "stopProtocol", stopped: ids } as any;
   },
-  async resolveProtocolStartPath(projectId, pid) {
+
+  async resolveProtocolStartPath(projectId: Id, pid: string) {
     return { id: projectId, action: "resolveProtocolStartPath", startPid: pid } as any;
   },
-  async listRemoteDirectory(projectId, protocolId, path) {
+
+  async listRemoteDirectory(projectId: Id, protocolId: Id, path: string) {
     return { id: projectId, protocolId, path, entries: [] } as any;
   },
-  async previewProtocolText(projectId, id, path) {
-    return {
-      id: projectId,
-      action: "previewProtocolText",
-      protocolId: id,
-      path,
-      content: "Mock preview...",
-    } as any;
+
+  async previewProtocolText(projectId: Id, id: string, path: string) {
+    return { id: projectId, action: "previewProtocolText", protocolId: id, path, content: "Mock preview..." } as any;
   },
-  buildProtocolDownloadUrl(projectId, protocolId, path, inline) {
+
+  buildProtocolDownloadUrl(projectId: string, protocolId: string, path: string, inline: boolean) {
     return `/download/${encodeURIComponent(String(projectId))}/${encodeURIComponent(
       String(protocolId)
     )}?path=${encodeURIComponent(path)}&inline=${inline ? 1 : 0}`;
   },
 
-  async fetchProtocolInlinePreviewBlob(_projectId, _protocolId, _relPath) {
-    const blob = new Blob([`Mock inline preview for ${_relPath}`], { type: "text/plain" });
+  async fetchProtocolInlinePreviewBlob(_projectId: string, _protocolId: string, relPath: string) {
+    const blob = new Blob([`Mock inline preview for ${relPath}`], { type: "text/plain" });
     const meta = {
       mime: "text/plain",
       width: undefined,
@@ -186,65 +263,349 @@ const defaultMockService: ProjectService = {
     };
     return { blob, meta };
   },
-  async fetchOutputPreview(_projectId, _protocolId, outputName) {
-    return { success: true, outputName };
+
+  async fetchOutputPreview(_projectId: Id, _protocolId: Id, outputName: string) {
+    return { success: true, outputName } as any;
   },
 
-  // ───────── Analyze Results — Volumes (mock implementations) ─────────
-  async listOutputVolumes(_projectId, _protocolId, _outputName) {
+  async listOutputVolumes(_projectId: Id, _protocolId: Id, _outputName: string): Promise<VolumeListItem[]> {
     return [{ id: "vol-1", name: "Demo volume" }];
   },
-  async getVolumeInfo(_projectId, _protocolId, _outputName, _volumeId) {
+
+  async getVolumeInfo(_projectId: Id, _protocolId: Id, _outputName: string, _volumeId: Id): Promise<VolumeInfo> {
     return { slices: 64, shape: [64, 256, 256], voxelSize: [1, 1, 1], dtype: "float32" };
   },
-  async buildVolumeSliceUrl(_projectId, _protocolId, _outputName, _volumeId, sliceIndex) {
+
+  async getVolumeHistogram(
+    _projectId: Id,
+    _protocolId: Id,
+    _outputName: string,
+    _volumeId: Id,
+    _opts?: VolumeHistogramOptions
+  ): Promise<VolumeHistogram> {
+    return { bins: [], counts: [], range: [0, 0], totalVoxels: 0 };
+  },
+
+  async buildVolumeSliceUrl(
+    _projectId: Id,
+    _protocolId: Id,
+    _outputName: string,
+    _volumeId: Id,
+    sliceIndex: number,
+    _opts?: VolumeSliceOptions
+  ) {
     return mockSliceDataUrl(Number(sliceIndex));
   },
-  async fetchVolumeSliceObjectUrl(_projectId, _protocolId, _outputName, _volumeId, sliceIndex) {
+
+  async fetchVolumeSliceObjectUrl(
+    _projectId: Id,
+    _protocolId: Id,
+    _outputName: string,
+    _volumeId: Id,
+    sliceIndex: number,
+    _opts?: VolumeSliceOptions
+  ): Promise<VolumeSliceObjectUrl> {
     const url = mockSliceDataUrl(Number(sliceIndex));
     return { url, revoke: () => {} };
   },
+
+  async getVolumeData3d(
+    _projectId: Id,
+    _protocolId: Id,
+    _outputName: string,
+    _volumeId: Id,
+    _opts?: VolumeData3dOptions
+  ): Promise<VolumeData3d> {
+    return { id: String(_volumeId), dims: [1, 1, 1], data: [0], order: "xyz", min: 0, max: 0, mean: 0, std: 0 };
+  },
+
+  async listCoords3dTomograms(_projectId: Id, _protocolId: Id, _coordsOutputName: string): Promise<Coordinates3dTomogram[]> {
+    return [];
+  },
+
+  async fetchCoords3dForTomogram(
+    _projectId: Id,
+    _protocolId: Id,
+    _coordsOutputName: string,
+    tomoId: Id
+  ): Promise<Coordinates3dTomogramPoints> {
+    return { tomoId, coords: [] };
+  },
+
+  async fetchCoords3dTomogramSliceObjectUrl(
+    _projectId: Id,
+    _protocolId: Id,
+    _coordsOutputName: string,
+    _tomoId: Id,
+    sliceIndex: number
+  ): Promise<VolumeSliceObjectUrl> {
+    const url = mockSliceDataUrl(Number(sliceIndex));
+    return { url, revoke: () => {} };
+  },
+
+  async fetchOutputMetadataTables(_projectId: Id, _protocolId: Id, _outputName: string): Promise<MetadataTableInfo[]> {
+    return [];
+  },
+
+  async fetchMetadataTableSchema(
+    _projectId: Id,
+    _protocolId: Id,
+    _outputName: string,
+    tableName: string
+  ): Promise<MetadataTableSchema> {
+    return { name: tableName, alias: tableName, hasColumnId: true, columns: [] };
+  },
+
+  async fetchMetadataTablePage(
+    _projectId: Id,
+    _protocolId: Id,
+    _outputName: string,
+    _tableName: string
+  ): Promise<MetadataPage> {
+    return { pageNumber: 1, pageSize: 50, totalRows: 0, rows: [] };
+  },
+
+  async exportMetadataTable(): Promise<Blob> {
+    return new Blob([""], { type: "text/csv" });
+  },
+
+  async fetchMetadataTableWindow(): Promise<{ offset: number; limit: number; totalRows: number; rows: MetadataRow[] }> {
+    return { offset: 0, limit: 0, totalRows: 0, rows: [] };
+  },
+
+  async fetchMetadataImageCellObjectUrl(): Promise<{ url: string; revoke: () => void }> {
+    return { url: mockSliceDataUrl(0), revoke: () => {} };
+  },
+
+  getMetadataImageCellUrl(): string {
+    return mockSliceDataUrl(0);
+  },
+
+  async listOutputTiltSeries(): Promise<any[]> {
+    return [];
+  },
+
+  async fetchTiltSeriesFrames(): Promise<any> {
+    return { frames: [] };
+  },
+
+  async fetchTiltSeriesViewImageObjectUrl(
+    _projectId: Id,
+    _protocolId: Id,
+    _outputName: string,
+    _tiltSeriesId: Id
+  ): Promise<ObjectUrlResult> {
+    return { url: mockSliceDataUrl(0), revoke: () => {} };
+  },
+
+  async createNewSetOfTiltSeries(
+    _projectId: Id,
+    _protocolId: Id,
+    _outputName: string,
+    _exclusions: TiltExclusionsPayload,
+    _restack: boolean
+  ): Promise<void> {
+    return;
+  },
+
+  async listOutputCTFTomoSeries(): Promise<any[]> {
+    return [];
+  },
+
+  async fetchCTFTomoSeriesViews(): Promise<any> {
+    return { views: [] };
+  },
+
+  async createNewSetOfCTFTomoSeries(
+    _projectId: Id,
+    _protocolId: Id,
+    _outputName: string,
+    _exclusions: CTFTomoExclusionsPayload
+  ): Promise<void> {
+    return;
+  },
+
+  async fetchCTFPsdImage(): Promise<any> {
+    return { url: mockSliceDataUrl(0) };
+  },
+
+  async listUsers(): Promise<ShareableUser[]> {
+    return [];
+  },
+
+  async shareProject(): Promise<void | { success: boolean }> {
+    return { success: true };
+  },
+
+  async listProjectShares(): Promise<ShareableUser[]> {
+    return [];
+  },
+
+  async revokeProjectShare(): Promise<void | { success: boolean }> {
+    return { success: true };
+  },
 };
 
-/** Light normalization (extend if you need aliasing) */
-function normalizeServiceAPI(srv?: ProjectService): ProjectService {
-  return srv ?? defaultMockService;
+/** normalizeServiceApiAliasMappingAndSignatureAdapters */
+function normalizeServiceAPI(srv?: any): ProjectService {
+  const source = srv ?? defaultMockService;
+
+  if (!source || typeof source !== "object") {
+    throw new Error("ProjectsWidget: invalid service object");
+  }
+
+  const normalized: any = { ...source };
+  const meta: Record<string, { from: string; len: number }> = {};
+
+  const mapFn = (to: string, ...cands: string[]) => {
+    if (typeof normalized[to] === "function") return;
+
+    for (const c of cands) {
+      const fn = (source as any)[c] ?? normalized[c];
+      if (typeof fn === "function") {
+        meta[to] = { from: c, len: fn.length };
+        normalized[to] = fn.bind(source);
+        if (process.env.NODE_ENV !== "production") {
+          // eslint-disable-next-line no-console
+          console.log(`normalizeServiceAPI: mapped ${c} -> ${to}`);
+        }
+        return;
+      }
+    }
+  };
+
+  // projectsApiAliases
+  mapFn("fetchList", "listProjects", "list", "fetch");
+  mapFn("fetchProject", "getProject", "fetchOne", "get");
+  mapFn("createProject", "create", "newProject");
+  mapFn("renameProject", "rename", "updateProject");
+  mapFn("deleteProject", "delete", "remove", "removeProject");
+
+  // workflowsApiAliases
+  mapFn("fetchProjectWorkflows", "listProjectWorkflows", "getProjectWorkflows", "workflows");
+  mapFn("applyWorkflowToProject", "applyWorkflow", "applyWorkflowTemplate", "applyProjectWorkflow");
+
+  // protocolsApiAliases
+  mapFn("fetchProtocolDetails", "getProtocol", "getProtocolDetails");
+  mapFn("fetchNewProtocolDetails", "getNewProtocol", "newProtocol");
+  mapFn("loadProtocols", "listProtocols", "fetchProtocols", "getProtocols");
+
+  mapFn("executeProtocol", "runProtocol", "launchProtocol", "execute");
+  mapFn("saveProtocol", "persistProtocol", "storeProtocol", "save");
+
+  mapFn("renameProtocol", "renameProtocol");
+  mapFn("duplicateProtocol", "duplicateProtocol");
+  mapFn("deleteProtocol", "deleteProtocol");
+  mapFn("restartAll", "restartAll");
+  mapFn("continueAll", "continueAll");
+  mapFn("resetFrom", "resetFrom");
+  mapFn("stopProtocol", "stopProtocol");
+
+  // fileAndPreviewApiAliases
+  mapFn("resolveProtocolStartPath", "resolveProtocolStartPath");
+  mapFn("listRemoteDirectory", "listRemoteDirectory");
+  mapFn("previewProtocolText", "previewProtocolText");
+  mapFn("buildProtocolDownloadUrl", "buildProtocolDownloadUrl");
+  mapFn("fetchProtocolInlinePreviewBlob", "previewInlineBlob", "getInlinePreviewBlob", "downloadInlinePreviewBlob");
+  mapFn("fetchOutputPreview", "previewOutput", "getOutputPreview", "requestOutputPreview");
+
+  // analyzeVolumesApiAliases
+  mapFn("listOutputVolumes", "listOutputVolumes");
+  mapFn("getVolumeInfo", "getVolumeInfo");
+  mapFn("getVolumeHistogram", "getVolumeHistogram");
+  mapFn("buildVolumeSliceUrl", "buildVolumeSliceUrl");
+  mapFn("fetchVolumeSliceObjectUrl", "fetchVolumeSliceObjectUrl");
+  mapFn("getVolumeData3d", "getVolumeData3d");
+
+  // analyzeCoords3dApiAliases
+  mapFn("listCoords3dTomograms", "listCoords3dTomograms");
+  mapFn("fetchCoords3dForTomogram", "fetchCoords3dForTomogram");
+  mapFn("fetchCoords3dTomogramSliceObjectUrl", "fetchCoords3dTomogramSliceObjectUrl");
+
+  // analyzeMetadataApiAliases
+  mapFn("fetchOutputMetadataTables", "fetchOutputMetadataTables");
+  mapFn("fetchMetadataTableSchema", "fetchMetadataTableSchema");
+  mapFn("fetchMetadataTablePage", "fetchMetadataTablePage");
+  mapFn("exportMetadataTable", "exportMetadataTable");
+  mapFn("fetchMetadataTableWindow", "fetchMetadataTableWindow");
+  mapFn("fetchMetadataImageCellObjectUrl", "fetchMetadataImageCellObjectUrl");
+  mapFn("getMetadataImageCellUrl", "getMetadataImageCellUrl");
+
+  // analyzeTiltSeriesApiAliases
+  mapFn("listOutputTiltSeries", "listOutputTiltSeries");
+  mapFn("fetchTiltSeriesFrames", "fetchTiltSeriesFrames");
+  mapFn("fetchTiltSeriesViewImageObjectUrl", "fetchTiltSeriesViewImageObjectUrl");
+  mapFn("createNewSetOfTiltSeries", "createNewSetOfTiltSeries");
+
+  // analyzeCtfTomoApiAliases
+  mapFn("listOutputCTFTomoSeries", "listOutputCTFTomoSeries");
+  mapFn("fetchCTFTomoSeriesViews", "fetchCTFTomoSeriesViews");
+  mapFn("createNewSetOfCTFTomoSeries", "createNewSetOfCTFTomoSeries");
+  mapFn("fetchCTFPsdImage", "fetchCTFPsdImage");
+
+  // sharingApiAliases
+  mapFn("listUsers", "listUsers");
+  mapFn("shareProject", "shareProject");
+  mapFn("listProjectShares", "listProjectShares");
+  mapFn("revokeProjectShare", "revokeProjectShare");
+
+  // executeProtocolSignatureAdapter
+  if (typeof normalized.executeProtocol === "function") {
+    const baseExec = normalized.executeProtocol;
+    const execLen = meta.executeProtocol?.len ?? 4;
+
+    normalized.executeProtocol = async (
+      projectId: Id,
+      protocolId: Id,
+      protocolClassName: string,
+      params: Record<string, unknown>
+    ) => {
+      if (execLen >= 4) return baseExec(projectId, protocolId, protocolClassName, params);
+      return baseExec(protocolId, protocolClassName, params);
+    };
+  }
+
+  // saveProtocolSignatureAdapter
+  if (typeof normalized.saveProtocol === "function") {
+    const baseSave = normalized.saveProtocol;
+    const saveLen = meta.saveProtocol?.len ?? 4;
+
+    normalized.saveProtocol = async (
+      projectId: Id,
+      protocolId: Id,
+      protocolClassName: string,
+      params: Record<string, unknown>
+    ) => {
+      if (saveLen >= 4) return baseSave(projectId, protocolId, protocolClassName, params);
+      return baseSave(protocolId, protocolClassName, params);
+    };
+  }
+
+  return normalized as ProjectService;
 }
 
-/** Public mount options for the list widget */
+/** publicMountOptionsForProjectsListWidget */
 export type MountOptions = {
   container: string | HTMLElement;
   service?: ProjectService;
   props?: Record<string, any>;
 };
 
-/** Ensure common portal roots exist (safety net for overlays/toasts) */
-function ensureDomRoots() {
-  ["modal-root", "drawer-root", "toast-root", "portal-root", "app", "root"].forEach((id) => {
-    if (!document.getElementById(id)) {
-      const d = document.createElement("div");
-      d.id = id;
-      document.body.appendChild(d);
-    }
-  });
-}
-
-/** Public mount (projects list widget) */
+/** mountProjectsWidget */
 export function mount({ container, service, props }: MountOptions) {
   const target = typeof container === "string" ? document.querySelector(container) : container;
   if (!target) throw new Error(`ProjectsWidget: container '${container}' not found`);
 
   ensureDomRoots();
+  forceFullHeight(target as HTMLElement);
 
   const resolvedService = normalizeServiceAPI(service);
 
-  // React Query clients
   const queryClientV5 = new QueryClientV5({
     defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
   });
   const queryClientV3 = new QueryClientV3();
 
-  // Emotion cache for styles
   const emotionCache = createCache({ key: "mpw", container: document.head, prepend: false });
 
   if (process.env.NODE_ENV !== "production") {
@@ -258,8 +619,7 @@ export function mount({ container, service, props }: MountOptions) {
       <QueryClientProviderV3 client={queryClientV3}>
         <QueryClientProviderV5 client={queryClientV5}>
           <CacheProvider value={emotionCache}>
-            {/* IMPORTANT: Use BrowserRouter so navigate('/project/load/:id') updates the real URL.
-               The host page can observe path changes and mount the ProjectPage widget. */}
+            {/* importantUseBrowserRouterSoNavigateUpdatesRealUrlHostCanObserveAndMountProjectPageWidget */}
             <BrowserRouter>
               <HelmetProvider>
                 <WidgetErrorBoundary>
@@ -280,7 +640,7 @@ export function mount({ container, service, props }: MountOptions) {
   };
 }
 
-/** Attach to window using the shared WidgetGlobal type */
+/** attachToWindowMyProjectsWidgetGlobal */
 declare global {
   interface Window {
     MyProjectsWidget?: WidgetGlobal;
@@ -291,9 +651,8 @@ if (typeof window !== "undefined") {
   const prev = (window as any).MyProjectsWidget as WidgetGlobal | undefined;
   const next: WidgetGlobal = {
     ...(prev || {}),
-    mount: mount,
+    mount,
     mountProjectsWidget: mount,
-    // keep any previously-attached functions like mountProjectPageWidget
   };
   (window as any).MyProjectsWidget = next;
   // eslint-disable-next-line no-console

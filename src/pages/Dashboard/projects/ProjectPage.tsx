@@ -1,3 +1,4 @@
+import "./ProjectPage.css";
 import { useParams } from "react-router-dom";
 import React, {
   useCallback,
@@ -714,13 +715,15 @@ export default function ProjectPage() {
 
       let alreadyOpen = false;
       setOpenForms((prev) => {
-        const hit = prev.find((f) => f.id === String(nodeId));
-        if (hit) {
+        const hitIndex = prev.findIndex((f) => f.id === String(nodeId));
+        if (hitIndex >= 0) {
           alreadyOpen = true;
-          return [...prev.filter((f) => f.id !== String(nodeId)), hit];
+          const hit = prev[hitIndex];
+          return [hit, ...prev.filter((_, i) => i !== hitIndex)];
         }
         return prev;
       });
+
 
       if (alreadyOpen) return;
 
@@ -730,8 +733,8 @@ export default function ProjectPage() {
         pendingFlipRef.current = true;
 
         setOpenForms((prev) => [
-          ...prev,
           { key: `${nodeId}-${Date.now()}`, id: String(nodeId), details },
+          ...prev,
         ]);
       } catch (err) {
         console.error("openFormForNode failed", err);
@@ -2093,536 +2096,535 @@ export default function ProjectPage() {
   /* ------------------------ Render ------------------------ */
   const isGrid = viewMode === "grid";
   return (
-    <div className="h-app min-h-0 flex flex-col relative overflow-hidden">
-      {/* Header */}
-      <div className="flex justify-between items-center mb-1 ml-1">
-        <div className="relative w-full max-w-sm">
-          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-5 w-5 text-gray-400 dark:text-gray-500"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={2}
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-              />
-            </svg>
+    <div className="projectpage-widget-root">
+      <div className="h-app min-h-0 flex flex-col relative overflow-hidden">
+        {/* Header */}
+        <div className="flex justify-between items-center mb-1 ml-1">
+          <div className="relative w-full max-w-sm">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-5 w-5 text-gray-400 dark:text-gray-500"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                />
+              </svg>
+            </div>
+            <input
+              type="text"
+              placeholder="Search protocol..."
+              onChange={(e) => handleSearch(e.target.value)}
+              className="w-full px-3 py-2 pr-3 text-sm text-gray-800 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+              style={{ paddingLeft: "2.5rem" }}
+            />
           </div>
-          <input
-            type="text"
-            placeholder="Search protocol..."
-            onChange={(e) => handleSearch(e.target.value)}
-            className="w-full px-3 py-2 pr-3 text-sm text-gray-800 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:border-gray-700 dark:text-white"
-            style={{ paddingLeft: "2.5rem" }}
-          />
-        </div>
 
-        <div className="ml-4 mr-4 p-2 border rounded-lg shadow-sm bg-white dark:bg-gray-800 flex items-center gap-4">
-          <ProtocolsDrawer
-            projectId={project?.id ? Number(project.id) : null}
-            open={drawerOpen}
-            onOpenChange={setDrawerOpen}
-            onProtocolDoubleClick={handleAddProtocolFromDrawer}
-          />
-          <button
-            onClick={handleOpenWorkflows}
-            disabled={workflowsLoading || !projectName}
-            className={`px-3 py-1 rounded-lg text-xs flex items-center gap-1 ${workflowsLoading
+          <div className="ml-4 mr-4 p-2 border rounded-lg shadow-sm bg-white dark:bg-gray-800 flex items-center gap-4">
+            <ProtocolsDrawer
+              projectId={project?.id ? Number(project.id) : null}
+              open={drawerOpen}
+              onOpenChange={setDrawerOpen}
+              onProtocolDoubleClick={handleAddProtocolFromDrawer}
+            />
+            <button
+              onClick={handleOpenWorkflows}
+              disabled={workflowsLoading || !projectName}
+              className={`px-3 py-1 rounded-lg text-xs flex items-center gap-1 ${workflowsLoading
                 ? "bg-gray-200/80 text-gray-400 dark:bg-gray-800 dark:text-gray-500 cursor-wait"
                 : "bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300"
-              }`}
-          >
-            <TreeIcon className="w-4 h-4" />
-            {workflowsLoading ? "Loading..." : "Workflows"}
-          </button>
-
-        </div>
-
-        <div className="ml-4 mr-4 p-2 border rounded-lg shadow-sm bg-white dark:bg-gray-800 flex items-center gap-4">
-          <span className="font-small text-xs">View mode:</span>
-          <div className="flex gap-2">
-            <button
-              onClick={() => { setViewMode("hierarchical"); setGraphDirection("TB"); }}
-              title="Tree TB"
-              className={`px-3 py-1 rounded-lg text-xs flex items-center gap-1 ${viewMode === "hierarchical" && graphDirection === "TB" ? "bg-blue-500 text-white" : "bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300"}`}
+                }`}
             >
               <TreeIcon className="w-4 h-4" />
+              {workflowsLoading ? "Loading..." : "Workflows"}
             </button>
-            <button
-              title="Tree LR"
-              onClick={() => { setViewMode("hierarchical"); setGraphDirection("LR"); }}
-              className={`px-3 py-1 rounded-lg text-xs flex items-center gap-1 ${viewMode === "hierarchical" && graphDirection === "LR" ? "bg-blue-500 text-white" : "bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300"}`}
-            >
-              <TreeIcon className="w-4 h-4 -rotate-90" />
-            </button>
-            <button
-              title="Grid"
-              onClick={() => setViewMode("grid")}
-              className={`px-3 py-1 rounded-lg text-xs flex items-center gap-1 ${viewMode === "grid" ? "bg-blue-500 text-white" : "bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300"}`}
-            >
-              <LayoutGrid className="w-4 h-4" />
-            </button>
-            <button
-              title="Table"
-              onClick={() => setViewMode("table")}
-              className={`px-3 py-1 rounded-lg text-xs flex items-center gap-1 ${viewMode === "table" ? "bg-blue-500 text-white" : "bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300"}`}
-            >
-              <TableIcon className="w-4 h-4" />
-            </button>
+
           </div>
-        </div>
-      </div>
 
-      {/* Content wrapper */}
-      <div className="flex-1 relative min-h-0 overflow-hidden" style={{ contain: "paint" }}>
-        {/* removed switching overlay to avoid flicker */}
-
-        {isLoadingProject && (
-          <div
-            role="status"
-            aria-live="polite"
-            className="absolute inset-0 z-[80] flex flex-col items-center justify-center bg-white/75 dark:bg-gray-900/75 backdrop-blur-[2px]"
-            style={{ pointerEvents: "auto" }}
-          >
-            <div className="relative">
-              <div className="w-8 h-8 rounded-full border-2 border-gray-300" />
-              <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-gray-700 animate-spin" />
+          <div className="ml-4 mr-4 p-2 border rounded-lg shadow-sm bg-white dark:bg-gray-800 flex items-center gap-4">
+            <span className="font-small text-xs">View mode:</span>
+            <div className="flex gap-2">
+              <button
+                onClick={() => { setViewMode("hierarchical"); setGraphDirection("TB"); }}
+                title="Tree TB"
+                className={`px-3 py-1 rounded-lg text-xs flex items-center gap-1 ${viewMode === "hierarchical" && graphDirection === "TB" ? "bg-blue-500 text-white" : "bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300"}`}
+              >
+                <TreeIcon className="w-4 h-4" />
+              </button>
+              <button
+                title="Tree LR"
+                onClick={() => { setViewMode("hierarchical"); setGraphDirection("LR"); }}
+                className={`px-3 py-1 rounded-lg text-xs flex items-center gap-1 ${viewMode === "hierarchical" && graphDirection === "LR" ? "bg-blue-500 text-white" : "bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300"}`}
+              >
+                <TreeIcon className="w-4 h-4 -rotate-90" />
+              </button>
+              <button
+                title="Grid"
+                onClick={() => setViewMode("grid")}
+                className={`px-3 py-1 rounded-lg text-xs flex items-center gap-1 ${viewMode === "grid" ? "bg-blue-500 text-white" : "bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300"}`}
+              >
+                <LayoutGrid className="w-4 h-4" />
+              </button>
+              <button
+                title="Table"
+                onClick={() => setViewMode("table")}
+                className={`px-3 py-1 rounded-lg text-xs flex items-center gap-1 ${viewMode === "table" ? "bg-blue-500 text-white" : "bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300"}`}
+              >
+                <TableIcon className="w-4 h-4" />
+              </button>
             </div>
-            <p className="mt-3 text-xs tracking-wide text-gray-700 dark:text-gray-200">
-              Loading <span className="font-medium">Project</span>…
-            </p>
           </div>
-        )}
-
-        {/* TABLE */}
-        <div
-          ref={tableContainerRef}
-          className={`absolute inset-0 overflow-auto border rounded shadow p-3 z-30 ${viewMode === "table" ? "" : "hidden"}`}
-          aria-hidden={viewMode !== "table"}
-        >
-          <div className="flex justify-end mb-4 mr-4">
-            <button className="refresh-btn" title="Refresh project" onClick={handleRefresh} disabled={isRefreshing}>
-              <RefreshCw className={`w-4 h-4 ${isRefreshing ? "animate-spin" : ""}`} />
-            </button>
-          </div>
-
-          <table className="cursor-pointer w-full text-sm border border-gray-300 dark:border-gray-700">
-            <thead className="bg-gray-300 dark:bg-gray-800 font-normal">
-              <tr>
-                <th className="px-4 py-2 text-left font-normal">Id</th>
-                <th className="px-4 py-2 text-left font-normal">Protocol</th>
-                <th className="px-4 py-2 text-left font-normal">State</th>
-                <th className="px-4 py-2 text-left font-normal">Elapsed</th>
-                <th className="px-4 py-2 text-left font-normal">Dependent</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sortedTableData.map((row) => (
-                <tr
-                  key={row.id}
-                  ref={(el) => { rowRefs.current[row.id] = el; }}
-                  onClick={(e) => {
-                    const target = e.target as HTMLElement;
-                    if (target.closest("button,a")) return;
-
-                    if (pathSelRef.current.nodes.size || pathSelRef.current.edges.size) {
-                      clearPathSelection();
-                    }
-
-                    suppressOneFrame();
-                    setNodes((prev) =>
-                      prev.map((n) =>
-                        n.id === row.id
-                          ? (n.selected ? n : { ...n, selected: true })
-                          : (n.selected ? { ...n, selected: false } : n)
-                      )
-                    );
-                    selectedIdRef.current = row.id;
-                    setPreviousNodeId(row.id);
-                    setHighlightedId(row.id);
-                    applyEdgeHighlight(row.id);
-                  }}
-                  onDoubleClick={() => handleRowDoubleClick(row.id)}
-                  className={`border-t border-gray-200 dark:border-gray-700 ${highlightedId === row.id ? "bg-yellow-100 dark:bg-yellow-900" : ""}`}
-                >
-                  <td className="ml-2 mt-2 px-3 py-1 inline-flex items-center justify-center rounded-full bg-gray-200 text-black text-xs">{row.id}</td>
-                  <td className="px-4 py-2">{row.label}</td>
-                  <td className="px-4 py-2">
-                    <div className="flex items-center justify-between">
-                      <span className={`${row.status === "running" ? "pulsing-table" : ""}`} style={getStatusStyle(row.status)}>{row.status ?? "—"}</span>
-                      {(row.status === "running" || row.status === "failed" || row.status === "aborted") && (
-                        <div className="flex items-center gap-2 ml-4 flex-1">
-                          <div className="w-16 h-3 bg-gray-300 dark:bg-gray-700 rounded overflow-hidden">
-                            <div
-                              className={`h-3 ${row.status === "running" ? "bg-yellow-400" : row.status === "failed" || row.status === "aborted" ? "bg-red-500" : "bg-gray-400"} transition-all duration-300`}
-                              style={{ width: `${((row.stepsDone ?? 0) / (row.numberOfSteps ?? 1)) * 100}%` }}
-                            />
-                          </div>
-                          <span className="text-sm opacity-80">{row.stepsDone}/{row.numberOfSteps}</span>
-                        </div>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-4 py-2 font-mono">
-                    {formatCpuTime(row.tick ?? Number(row.elapsedTime) ?? 0)}
-                  </td>
-                  <td className="px-4 py-2 space-x-2">
-                    {row.children?.map((childId: string) => (
-                      <button key={childId} onClick={() => scrollToProtocol(childId)} className="text-blue-600 dark:text-blue-400 underline hover:text-blue-800">
-                        {childId}
-                      </button>
-                    ))}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
         </div>
 
-        {/* ReactFlow */}
-        <div
-          ref={flowWrapperRef}
-          className={`absolute inset-0 border ${viewMode !== "table" ? "" : "hidden"}`}
-          data-view-mode={viewMode}
-          aria-hidden={viewMode === "table"}
-          onContextMenu={(e) => e.preventDefault()}
-        >
-          {/* === Canvas context menu === */}
-          {contextMenu.visible && (
+        {/* Content wrapper */}
+        <div className="flex-1 relative min-h-0 overflow-hidden" style={{ contain: "paint" }}>
+          {/* removed switching overlay to avoid flicker */}
+
+          {isLoadingProject && (
             <div
-              id="canvas-context-menu"
-              className="fixed z-[100] min-w-[220px] overflow-hidden rounded-md border bg-white shadow-md"
-              style={{ top: contextMenu.y, left: contextMenu.x }}
-              onContextMenu={(e) => e.preventDefault()}
+              role="status"
+              aria-live="polite"
+              className="absolute inset-0 z-[80] flex flex-col items-center justify-center bg-white/75 dark:bg-gray-900/75 backdrop-blur-[2px]"
+              style={{ pointerEvents: "auto" }}
             >
-              <div className="py-1">
-                <button
-                  className="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-                  onClick={handleAddProtocolFromContext}
-                >
-                  <PlusIcon className="w-4 h-4" />
-                  Add protocol
-                </button>
-
-                <div className="h-px my-1 bg-gray-200" />
-
-                <button
-                  className="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-                  onClick={() => { handleRefresh(); handleCloseMenu(); }}
-                >
-                  <RefreshCw className="w-4 h-4" />
-                  Refresh graph
-                </button>
-
-                <button
-                  className="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-                  onClick={() => { clearAllSelectionHard(); applyEdgeHighlight(null); handleCloseMenu(); }}
-                >
-                  <XCircle className="w-4 h-4" />
-                  Clear selection
-                </button>
+              <div className="relative">
+                <div className="w-8 h-8 rounded-full border-2 border-gray-300" />
+                <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-gray-700 animate-spin" />
               </div>
+              <p className="mt-3 text-xs tracking-wide text-gray-700 dark:text-gray-200">
+                Loading <span className="font-medium">Project</span>…
+              </p>
             </div>
           )}
 
-          <div className="absolute top-4 right-4 z-50">
-            <div className="flex flex-col gap-1 p-1 bg-white/90 rounded shadow">
-              <button
-                title={isGrid ? "Zoom disabled in Grid" : "Zoom in"}
-                onClick={handleZoomIn}
-                disabled={isGrid}
-                className={`p-1 rounded hover:bg-gray-100 dark:text-black ${isGrid ? "opacity-50 cursor-not-allowed" : ""}`}
-              >
-                <PlusIcon className="w-4 h-4" />
-              </button>
-              <button
-                title={isGrid ? "Zoom disabled in Grid" : "Zoom out"}
-                onClick={handleZoomOut}
-                disabled={isGrid}
-                className={`p-1 rounded hover:bg-gray-100 dark:text-black ${isGrid ? "opacity-50 cursor-not-allowed" : ""}`}
-              >
-                <MinusIcon className="w-4 h-4" />
-              </button>
-              <button
-                title={isGrid ? "Fixed zoom (Grid)" : "Fit view (preserve zoom)"}
-                onClick={handleFitView}
-                className="p-1 rounded hover:bg-gray-100 dark:text-black"
-              >
-                <FitViewIcon className="w-4 h-4" />
-              </button>
-              <button title="Reorganize project" onClick={() => handleReorganize({ preserveZoom: true })} className="p-1 rounded hover:bg-gray-100 dark:text-black">
-                <TreeIcon className="w-4 h-4" />
-              </button>
-              <button title="Refresh project" onClick={handleRefresh} className="p-1 rounded hover:bg-gray-100 dark:text-black">
+          {/* TABLE */}
+          <div
+            ref={tableContainerRef}
+            className={`absolute inset-0 overflow-auto border rounded shadow p-3 z-30 ${viewMode === "table" ? "" : "hidden"}`}
+            aria-hidden={viewMode !== "table"}
+          >
+            <div className="flex justify-end mb-4 mr-4">
+              <button className="refresh-btn" title="Refresh project" onClick={handleRefresh} disabled={isRefreshing}>
                 <RefreshCw className={`w-4 h-4 ${isRefreshing ? "animate-spin" : ""}`} />
               </button>
             </div>
+
+            <table className="cursor-pointer w-full text-sm border border-gray-300 dark:border-gray-700">
+              <thead className="bg-gray-300 dark:bg-gray-800 font-normal">
+                <tr>
+                  <th className="px-4 py-2 text-left font-normal">Id</th>
+                  <th className="px-4 py-2 text-left font-normal">Protocol</th>
+                  <th className="px-4 py-2 text-left font-normal">State</th>
+                  <th className="px-4 py-2 text-left font-normal">Elapsed</th>
+                  <th className="px-4 py-2 text-left font-normal">Dependent</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sortedTableData.map((row) => (
+                  <tr
+                    key={row.id}
+                    ref={(el) => { rowRefs.current[row.id] = el; }}
+                    onClick={(e) => {
+                      const target = e.target as HTMLElement;
+                      if (target.closest("button,a")) return;
+
+                      if (pathSelRef.current.nodes.size || pathSelRef.current.edges.size) {
+                        clearPathSelection();
+                      }
+
+                      suppressOneFrame();
+                      setNodes((prev) =>
+                        prev.map((n) =>
+                          n.id === row.id
+                            ? (n.selected ? n : { ...n, selected: true })
+                            : (n.selected ? { ...n, selected: false } : n)
+                        )
+                      );
+                      selectedIdRef.current = row.id;
+                      setPreviousNodeId(row.id);
+                      setHighlightedId(row.id);
+                      applyEdgeHighlight(row.id);
+                    }}
+                    onDoubleClick={() => handleRowDoubleClick(row.id)}
+                    className={`border-t border-gray-200 dark:border-gray-700 ${highlightedId === row.id ? "bg-yellow-100 dark:bg-yellow-900" : ""}`}
+                  >
+                    <td className="ml-2 mt-2 px-3 py-1 inline-flex items-center justify-center rounded-full bg-gray-200 text-black text-xs">{row.id}</td>
+                    <td className="px-4 py-2">{row.label}</td>
+                    <td className="px-4 py-2">
+                      <div className="flex items-center justify-between">
+                        <span className={`${row.status === "running" ? "pulsing-table" : ""}`} style={getStatusStyle(row.status)}>{row.status ?? "—"}</span>
+                        {(row.status === "running" || row.status === "failed" || row.status === "aborted") && (
+                          <div className="flex items-center gap-2 ml-4 flex-1">
+                            <div className="w-16 h-3 bg-gray-300 dark:bg-gray-700 rounded overflow-hidden">
+                              <div
+                                className={`h-3 ${row.status === "running" ? "bg-yellow-400" : row.status === "failed" || row.status === "aborted" ? "bg-red-500" : "bg-gray-400"} transition-all duration-300`}
+                                style={{ width: `${((row.stepsDone ?? 0) / (row.numberOfSteps ?? 1)) * 100}%` }}
+                              />
+                            </div>
+                            <span className="text-sm opacity-80">{row.stepsDone}/{row.numberOfSteps}</span>
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-4 py-2 font-mono">
+                      {formatCpuTime(row.tick ?? Number(row.elapsedTime) ?? 0)}
+                    </td>
+                    <td className="px-4 py-2 space-x-2">
+                      {row.children?.map((childId: string) => (
+                        <button key={childId} onClick={() => scrollToProtocol(childId)} className="text-blue-600 dark:text-blue-400 underline hover:text-blue-800">
+                          {childId}
+                        </button>
+                      ))}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
 
-          <ReactFlowProvider>
-            <ReactFlow
-              nodes={nodes}
-              edges={edges}
-              onNodesChange={handleNodesChangeWithPersistence}
-              onEdgesChange={onEdgesChange}
-              nodeTypes={nodeTypes}
-              minZoom={isGrid ? GRID_ZOOM : MIN_ZOOM}
-              maxZoom={isGrid ? GRID_ZOOM : MAX_ZOOM}
-              zoomOnScroll={!isGrid}
-              zoomOnPinch={!isGrid}
-              zoomOnDoubleClick={false}
-              onInit={handleOnInit}
-              onMoveEnd={handleOnMoveEnd}
-              onPaneClick={() => {
-                handleCloseMenu();
-                clearAllSelectionHard();
-                applyEdgeHighlight(null);
-              }}
-              onSelectionChange={onSelectionChange}
-              onPaneContextMenu={handleContextMenu}
-              defaultViewport={viewport}
-              defaultEdgeOptions={{
-                type: "default",
-                style: { stroke: "#999", strokeWidth: 2 },
-                markerEnd: { type: MarkerType.ArrowClosed },
-              }}
-              onNodeDoubleClick={(_, node) => handleNodeDoubleClick(node)}
-              onNodeClick={(evt, node) => handleNodeClick(node, evt)}
-              multiSelectionKeyCode="Control"
-              selectionKeyCode="Shift"
-              selectionOnDrag
-              style={{ width: "100%", height: "100%" }}
-              proOptions={{ hideAttribution: true }}
-              nodesConnectable={viewMode !== "grid"}
-              connectOnClick={viewMode !== "grid"}
-            >
-              <Background />
-            </ReactFlow>
-          </ReactFlowProvider>
-        </div>
-
-        {/* ===== Multi-Form Dock (right side) ===== */}
-        <div className="absolute inset-y-0 right-0 z-[60] pointer-events-none flex">
+          {/* ReactFlow */}
           <div
-            ref={dockRef}
-            className={
-              openForms.length
-                ? "dock-scroll"   // clases de arriba
-                : "hidden"
-            }
+            ref={flowWrapperRef}
+            className={`absolute inset-0 border ${viewMode !== "table" ? "" : "hidden"}`}
+            data-view-mode={viewMode}
+            aria-hidden={viewMode === "table"}
+            onContextMenu={(e) => e.preventDefault()}
           >
-            {openForms.map((f) => (
+            {/* === Canvas context menu === */}
+            {contextMenu.visible && (
               <div
-                key={f.key}
-                role="dialog"
-                aria-label={`Protocol ${f.id}`}
-                data-dock-key={f.key}
-                className="dock-panel"
+                id="canvas-context-menu"
+                className="fixed z-[100] min-w-[220px] overflow-hidden rounded-md border bg-white shadow-md"
+                style={{ top: contextMenu.y, left: contextMenu.x }}
+                onContextMenu={(e) => e.preventDefault()}
               >
-                <ProtocolForm
-                  data={f.details}
-                  projectProtocols={project?.protocols ?? {}}
-                  variant="docked"
-                  onClose={() => {
-                    handleRefreshRef.current?.();
-                    setTimeout(() => handleRefreshRef.current?.(), 800);
+                <div className="py-1">
+                  <button
+                    className="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                    onClick={handleAddProtocolFromContext}
+                  >
+                    <PlusIcon className="w-4 h-4" />
+                    Add protocol
+                  </button>
 
-                    setTimeout(() => tryPlaceNewlyCreatedNode(), 50);
-                    setTimeout(() => tryPlaceNewlyCreatedNode(), 400);
+                  <div className="h-px my-1 bg-gray-200" />
 
-                    closeFormByKey(f.key);
-                  }}
-                  onExecuted={() => {
-                    scheduleDoubleRefresh(5000, true);
-                  }}
-                />
+                  <button
+                    className="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                    onClick={() => { handleRefresh(); handleCloseMenu(); }}
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                    Refresh graph
+                  </button>
+
+                  <button
+                    className="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                    onClick={() => { clearAllSelectionHard(); applyEdgeHighlight(null); handleCloseMenu(); }}
+                  >
+                    <XCircle className="w-4 h-4" />
+                    Clear selection
+                  </button>
+                </div>
               </div>
-            ))}
+            )}
+
+            <div className="absolute top-4 right-4 z-50">
+              <div className="flex flex-col gap-1 p-1 bg-white/90 rounded shadow">
+                <button
+                  title={isGrid ? "Zoom disabled in Grid" : "Zoom in"}
+                  onClick={handleZoomIn}
+                  disabled={isGrid}
+                  className={`p-1 rounded hover:bg-gray-100 dark:text-black ${isGrid ? "opacity-50 cursor-not-allowed" : ""}`}
+                >
+                  <PlusIcon className="w-4 h-4" />
+                </button>
+                <button
+                  title={isGrid ? "Zoom disabled in Grid" : "Zoom out"}
+                  onClick={handleZoomOut}
+                  disabled={isGrid}
+                  className={`p-1 rounded hover:bg-gray-100 dark:text-black ${isGrid ? "opacity-50 cursor-not-allowed" : ""}`}
+                >
+                  <MinusIcon className="w-4 h-4" />
+                </button>
+                <button
+                  title={isGrid ? "Fixed zoom (Grid)" : "Fit view (preserve zoom)"}
+                  onClick={handleFitView}
+                  className="p-1 rounded hover:bg-gray-100 dark:text-black"
+                >
+                  <FitViewIcon className="w-4 h-4" />
+                </button>
+                <button title="Reorganize project" onClick={() => handleReorganize({ preserveZoom: true })} className="p-1 rounded hover:bg-gray-100 dark:text-black">
+                  <TreeIcon className="w-4 h-4" />
+                </button>
+                <button title="Refresh project" onClick={handleRefresh} className="p-1 rounded hover:bg-gray-100 dark:text-black">
+                  <RefreshCw className={`w-4 h-4 ${isRefreshing ? "animate-spin" : ""}`} />
+                </button>
+              </div>
+            </div>
+
+            <ReactFlowProvider>
+              <ReactFlow
+                nodes={nodes}
+                edges={edges}
+                onNodesChange={handleNodesChangeWithPersistence}
+                onEdgesChange={onEdgesChange}
+                nodeTypes={nodeTypes}
+                minZoom={isGrid ? GRID_ZOOM : MIN_ZOOM}
+                maxZoom={isGrid ? GRID_ZOOM : MAX_ZOOM}
+                zoomOnScroll={!isGrid}
+                zoomOnPinch={!isGrid}
+                zoomOnDoubleClick={false}
+                onInit={handleOnInit}
+                onMoveEnd={handleOnMoveEnd}
+                onPaneClick={() => {
+                  handleCloseMenu();
+                  clearAllSelectionHard();
+                  applyEdgeHighlight(null);
+                }}
+                onSelectionChange={onSelectionChange}
+                onPaneContextMenu={handleContextMenu}
+                defaultViewport={viewport}
+                defaultEdgeOptions={{
+                  type: "default",
+                  style: { stroke: "#999", strokeWidth: 2 },
+                  markerEnd: { type: MarkerType.ArrowClosed },
+                }}
+                onNodeDoubleClick={(_, node) => handleNodeDoubleClick(node)}
+                onNodeClick={(evt, node) => handleNodeClick(node, evt)}
+                multiSelectionKeyCode="Control"
+                selectionKeyCode="Shift"
+                selectionOnDrag
+                style={{ width: "100%", height: "100%" }}
+                proOptions={{ hideAttribution: true }}
+                nodesConnectable={viewMode !== "grid"}
+                connectOnClick={viewMode !== "grid"}
+              >
+                <Background />
+              </ReactFlow>
+            </ReactFlowProvider>
           </div>
+
+          {/* ===== Multi-Form Dock (right side) ===== */}
+          <div className="dock-wrapper" style={{ zIndex: 60 }}>
+
+            <div
+              ref={dockRef}
+              className={openForms.length ? "dock-scroll custom-scrollbar" : "hidden"}
+            >
+              {openForms.map((f) => (
+                <div
+                  key={f.key}
+                  role="dialog"
+                  aria-label={`Protocol ${f.id}`}
+                  data-dock-key={f.key}
+                  className="dock-panel"
+                >
+                  <ProtocolForm
+                    data={f.details}
+                    projectProtocols={project?.protocols ?? {}}
+                    variant="docked"
+                    onClose={() => {
+                      handleRefreshRef.current?.();
+                      setTimeout(() => handleRefreshRef.current?.(), 800);
+
+                      setTimeout(() => tryPlaceNewlyCreatedNode(), 50);
+                      setTimeout(() => tryPlaceNewlyCreatedNode(), 400);
+
+                      closeFormByKey(f.key);
+                    }}
+                    onExecuted={() => {
+                      scheduleDoubleRefresh(5000, true);
+                    }}
+                  />
+                </div>
+              ))}
+            </div>
+
+          </div>
+
+          <ProjectWorkflowsPanel
+            open={workflowsOpen}
+            onClose={() => setWorkflowsOpen(false)}
+            workflows={workflows}
+            loading={workflowsLoading}
+            errorMessage={workflowsError}
+            projectId={Number(project?.id)}
+            onRetry={handleOpenWorkflows}
+          />
 
         </div>
 
-        <ProjectWorkflowsPanel
-          open={workflowsOpen}
-          onClose={() => setWorkflowsOpen(false)}
-          workflows={workflows}
-          loading={workflowsLoading}
-          errorMessage={workflowsError}
-          projectId={Number(project?.id)}
-          onRetry={handleOpenWorkflows}
-        />
+        {/* --- Dialogs --- */}
+        <Dialog open={dlgRename.open} onOpenChange={(open: boolean) => { if (!open) setDlgRename({ open: false, id: null, value: "" }); }}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Rename protocol</DialogTitle>
+              <DialogDescription>Set a new name for this protocol.</DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-3 py-2">
+              <Label htmlFor="rename">New name</Label>
+              <Input id="rename" value={dlgRename.value} onChange={(e) => setDlgRename((s) => ({ ...s, value: (e.target as any).value }))} placeholder="e.g. motioncorr_02" />
+            </div>
+            <DialogFooter>
+              <Button onClick={() => setDlgRename({ open: false, id: null, value: "" })} className="px-3 py-2 rounded-md text-sm bg-gray-200 hover:bg-gray-300 text-gray-800">
+                Cancel
+              </Button>
+              <Button onClick={submitRename} disabled={!dlgRename.value.trim()} className="px-3 py-2 rounded-md text-sm bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-60 disabled:cursor-not-allowed">
+                Rename
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
-      </div>
-
-      {/* --- Dialogs --- */}
-      <Dialog open={dlgRename.open} onOpenChange={(open: boolean) => { if (!open) setDlgRename({ open: false, id: null, value: "" }); }}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Rename protocol</DialogTitle>
-            <DialogDescription>Set a new name for this protocol.</DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-3 py-2">
-            <Label htmlFor="rename">New name</Label>
-            <Input id="rename" value={dlgRename.value} onChange={(e) => setDlgRename((s) => ({ ...s, value: (e.target as any).value }))} placeholder="e.g. motioncorr_02" />
-          </div>
-          <DialogFooter>
-            <Button onClick={() => setDlgRename({ open: false, id: null, value: "" })} className="px-3 py-2 rounded-md text-sm bg-gray-200 hover:bg-gray-300 text-gray-800">
-              Cancel
-            </Button>
-            <Button onClick={submitRename} disabled={!dlgRename.value.trim()} className="px-3 py-2 rounded-md text-sm bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-60 disabled:cursor-not-allowed">
-              Rename
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
-        open={confirm.open}
-        onOpenChange={(open: boolean) => {
-          if (!open) {
-            setConfirm({ open: false, id: null, ids: null, kind: null });
-          }
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="mb-6">
-              {confirm.kind === "delete" && "Delete protocol(s)?"}
-              {confirm.kind === "restartAll" && "Restart all steps?"}
-              {confirm.kind === "continueAll" && "Continue all steps?"}
-              {confirm.kind === "stop" && "Stop protocol(s)?"}
-            </DialogTitle>
-            <DialogDescription className="mb-5 text-sm text-muted-foreground">
-              {confirm.kind === "delete" &&
-                "This action cannot be undone. This will permanently remove the selected protocol(s) and outputs not used elsewhere."}
-              {confirm.kind === "restartAll" &&
-                "All protocols will be restarted from this protocol, so the previous results will be deleted"}
-              {confirm.kind === "continueAll" &&
-                "All protocols will continue for this protocol, so the previous results will be affected"}
-              {confirm.kind === "stop" &&
-                "This will attempt to gracefully stop the selected protocol(s). Running work may be interrupted."}
-            </DialogDescription>
-          </DialogHeader>
-
-          {/* Footer */}
-          <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-            <button
-              onClick={() =>
-                setConfirm({ open: false, id: null, ids: null, kind: null })
-              }
-              className="px-5 py-2 rounded-md text-sm min-w-[100px] bg-gray-200 hover:bg-gray-300 text-gray-800"
-            >
-              Cancel
-            </button>
-
-            <button
-              onClick={async () => {
-                if (!projectName || !confirm.kind) return;
-                const kind = confirm.kind;
-                try {
-                  if (confirm.kind === "delete") {
-                    const ids = confirm.ids ?? (confirm.id ? [confirm.id] : []);
-                    if (ids.length === 0) return;
-                    await svc.deleteProtocol(projectName, ids);
-
-                    clearAllSelectionHard();
-
-                    toast.success(
-                      ids.length > 1
-                        ? "Protocols deleted successfully."
-                        : "Protocol deleted successfully.",
-                    );
-                  } else if (confirm.kind === "restartAll" && confirm.id) {
-                    await svc.restartAll(projectName, confirm.id);
-                    toast.success("Restart started.");
-                    scheduleDoubleRefresh(5000, true);
-                  } else if (confirm.kind === "continueAll" && confirm.id) {
-                    await svc.continueAll(projectName, confirm.id);
-                    toast.success("Continue started.");
-                  } else if (confirm.kind === "stop") {
-                    const ids = confirm.ids ?? (confirm.id ? [confirm.id] : []);
-                    if (ids.length === 0) return;
-                    await stopProtocolNow(ids);
-                  }
-
-                  setConfirm({ open: false, id: null, ids: null, kind: null });
-
-                  if (kind !== "stop" && kind !== "restartAll") {
-                    await handleRefresh();
-                  }
-                } catch (e) {
-                  console.error(e);
-                  toast.error(getErrorMsg(e));
-                }
-              }}
-              className="px-5 py-2 rounded-md text-sm min-w-[100px] bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              {confirm.kind === "delete"
-                ? "Delete"
-                : confirm.kind === "restartAll"
-                  ? "Restart"
-                  : confirm.kind === "continueAll"
-                    ? "Continue"
-                    : "Stop"}
-            </button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={dlgResetFrom.open} onOpenChange={(open: boolean) => { if (!open) setDlgResetFrom({ open: false, id: null }); }}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Reset from this protocol?</DialogTitle>
-            <DialogDescription>Downstream steps may be invalidated. You can re-run them later.</DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button onClick={() => setDlgResetFrom({ open: false, id: null })} className="px-5 py-2 rounded-md text-sm min-w-[100px] bg-gray-200 hover:bg-gray-300 text-gray-800">
-              Cancel
-            </Button>
-            <Button
-              onClick={async () => {
-                if (!projectName || !dlgResetFrom.id) return;
-                try {
-                  await svc.resetFrom(projectName, dlgResetFrom.id);
-                  setDlgResetFrom({ open: false, id: null });
-                  toast.success("Reset completed.");
-                  await handleRefresh();
-                } catch (e) {
-                  console.error(e);
-                  toast.error(getErrorMsg(e));
-                }
-              }}
-              className="px-5 py-2 rounded-md text-sm min-w-[100px] bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              Reset from here
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* ================= RemoteFileDialog ================= */}
-      {canOpenFileDialog && (
-        <RemoteFileDialog
-          open={fileDialogOpen}
-          onClose={() => setFileDialogOpen(false)}
-          title={`Browsing — ${plabel}`}
-          projectId={projId}
-          protocolId={pid}
-          resolveStartPath={() => svc.resolveProtocolStartPath(projId, pid.toString())}
-          listRemoteDirectory={(p) => svc.listRemoteDirectory(projId, pid.toString(), p)}
-          previewRemoteText={(p) => svc.previewProtocolText(projId, pid.toString(), p)}
-          buildDownloadUrl={(p, inline) => svc.buildProtocolDownloadUrl(projId.toString(), pid.toString(), p, !!inline)}
-          fetchInlinePreviewBlob={(p) => svc.fetchProtocolInlinePreviewBlob(projId.toString(), pid.toString(), p)}
-          onPick={(relativePath) => {
-            setFileDialogOpen(false);
+        <Dialog
+          open={confirm.open}
+          onOpenChange={(open: boolean) => {
+            if (!open) {
+              setConfirm({ open: false, id: null, ids: null, kind: null });
+            }
           }}
-        />
-      )}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle className="mb-6">
+                {confirm.kind === "delete" && "Delete protocol(s)?"}
+                {confirm.kind === "restartAll" && "Restart all steps?"}
+                {confirm.kind === "continueAll" && "Continue all steps?"}
+                {confirm.kind === "stop" && "Stop protocol(s)?"}
+              </DialogTitle>
+              <DialogDescription className="mb-5 text-sm text-muted-foreground">
+                {confirm.kind === "delete" &&
+                  "This action cannot be undone. This will permanently remove the selected protocol(s) and outputs not used elsewhere."}
+                {confirm.kind === "restartAll" &&
+                  "All protocols will be restarted from this protocol, so the previous results will be deleted"}
+                {confirm.kind === "continueAll" &&
+                  "All protocols will continue for this protocol, so the previous results will be affected"}
+                {confirm.kind === "stop" &&
+                  "This will attempt to gracefully stop the selected protocol(s). Running work may be interrupted."}
+              </DialogDescription>
+            </DialogHeader>
+
+            {/* Footer */}
+            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <button
+                onClick={() =>
+                  setConfirm({ open: false, id: null, ids: null, kind: null })
+                }
+                className="px-5 py-2 rounded-md text-sm min-w-[100px] bg-gray-200 hover:bg-gray-300 text-gray-800"
+              >
+                Cancel
+              </button>
+
+              <button
+                onClick={async () => {
+                  if (!projectName || !confirm.kind) return;
+                  const kind = confirm.kind;
+                  try {
+                    if (confirm.kind === "delete") {
+                      const ids = confirm.ids ?? (confirm.id ? [confirm.id] : []);
+                      if (ids.length === 0) return;
+                      await svc.deleteProtocol(projectName, ids);
+
+                      clearAllSelectionHard();
+
+                      toast.success(
+                        ids.length > 1
+                          ? "Protocols deleted successfully."
+                          : "Protocol deleted successfully.",
+                      );
+                    } else if (confirm.kind === "restartAll" && confirm.id) {
+                      await svc.restartAll(projectName, confirm.id);
+                      toast.success("Restart started.");
+                      scheduleDoubleRefresh(5000, true);
+                    } else if (confirm.kind === "continueAll" && confirm.id) {
+                      await svc.continueAll(projectName, confirm.id);
+                      toast.success("Continue started.");
+                    } else if (confirm.kind === "stop") {
+                      const ids = confirm.ids ?? (confirm.id ? [confirm.id] : []);
+                      if (ids.length === 0) return;
+                      await stopProtocolNow(ids);
+                    }
+
+                    setConfirm({ open: false, id: null, ids: null, kind: null });
+
+                    if (kind !== "stop" && kind !== "restartAll") {
+                      await handleRefresh();
+                    }
+                  } catch (e) {
+                    console.error(e);
+                    toast.error(getErrorMsg(e));
+                  }
+                }}
+                className="px-5 py-2 rounded-md text-sm min-w-[100px] bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {confirm.kind === "delete"
+                  ? "Delete"
+                  : confirm.kind === "restartAll"
+                    ? "Restart"
+                    : confirm.kind === "continueAll"
+                      ? "Continue"
+                      : "Stop"}
+              </button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={dlgResetFrom.open} onOpenChange={(open: boolean) => { if (!open) setDlgResetFrom({ open: false, id: null }); }}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Reset from this protocol?</DialogTitle>
+              <DialogDescription>Downstream steps may be invalidated. You can re-run them later.</DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button onClick={() => setDlgResetFrom({ open: false, id: null })} className="px-5 py-2 rounded-md text-sm min-w-[100px] bg-gray-200 hover:bg-gray-300 text-gray-800">
+                Cancel
+              </Button>
+              <Button
+                onClick={async () => {
+                  if (!projectName || !dlgResetFrom.id) return;
+                  try {
+                    await svc.resetFrom(projectName, dlgResetFrom.id);
+                    setDlgResetFrom({ open: false, id: null });
+                    toast.success("Reset completed.");
+                    await handleRefresh();
+                  } catch (e) {
+                    console.error(e);
+                    toast.error(getErrorMsg(e));
+                  }
+                }}
+                className="px-5 py-2 rounded-md text-sm min-w-[100px] bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                Reset from here
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* ================= RemoteFileDialog ================= */}
+        {canOpenFileDialog && (
+          <RemoteFileDialog
+            open={fileDialogOpen}
+            onClose={() => setFileDialogOpen(false)}
+            title={`Browsing — ${plabel}`}
+            projectId={projId}
+            protocolId={pid}
+            resolveStartPath={() => svc.resolveProtocolStartPath(projId, pid.toString())}
+            listRemoteDirectory={(p) => svc.listRemoteDirectory(projId, pid.toString(), p)}
+            previewRemoteText={(p) => svc.previewProtocolText(projId, pid.toString(), p)}
+            buildDownloadUrl={(p, inline) => svc.buildProtocolDownloadUrl(projId.toString(), pid.toString(), p, !!inline)}
+            fetchInlinePreviewBlob={(p) => svc.fetchProtocolInlinePreviewBlob(projId.toString(), pid.toString(), p)}
+            onPick={(relativePath) => {
+              setFileDialogOpen(false);
+            }}
+          />
+        )}
+      </div>
     </div>
   );
 }

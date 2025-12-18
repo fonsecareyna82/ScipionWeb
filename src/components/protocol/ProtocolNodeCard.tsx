@@ -263,7 +263,7 @@ export default function StatusNode({
   // Small helper for right-aligned shortcut hint
   const ShortcutHint = ({ text }: { text?: string }) =>
     text ? (
-      <span className="ml-6 text-xs text-gray-500 font-mono tabular-nums">
+      <span className="ml-6 text-[12px] text-gray-500 tabular-nums">
         {text}
       </span>
     ) : null;
