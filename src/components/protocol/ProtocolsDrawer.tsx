@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { ProtocolsTree, ProtocolNode } from "./ProtocolTree";
 import { loadProtocols } from "@/api/projects";
 import { BoxCubeIcon } from "@/icons";
+import { X } from "lucide-react";
 
 interface ProtocolsDrawerProps {
   projectId: number | null;
@@ -141,7 +142,7 @@ export const ProtocolsDrawer: React.FC<ProtocolsDrawerProps> = ({
             className="absolute top-17 right-4 z-50 text-gray-500 hover:text-gray-900 dark:hover:text-white bg-gray-200 dark:bg-gray-800 rounded-full w-8 h-8 shadow-lg"
             aria-label="Close drawer"
           >
-            ✕
+            <X className="ml-1"/>
           </button>
         </div>
 

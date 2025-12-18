@@ -11,6 +11,8 @@ import type {
   VolumeHistogramOptions,
   VolumeData3d,
   VolumeData3dOptions,
+  TiltExclusionsPayload,
+  CTFTomoExclusionsPayload,
 } from "@/services/ProjectService";
 
 /** Normalize id */
@@ -39,6 +41,14 @@ const defaultService: ProjectService = {
 
   // --- Protocol lifecycle ---
   loadProtocols: (projectId: Id) => api.loadProtocols(Number(projectId)),
+
+  /**
+   * Fetch predefined workflows / pipelines for a given project.
+   */
+  fetchProjectWorkflows: () => api.fetchProjectWorkflows(),
+
+  applyWorkflowToProject: (projectId, payload) =>
+    api.applyWorkflowToProject(projectId, payload),
 
   // --- Protocol actions ---
   executeProtocol: (
@@ -375,6 +385,137 @@ const defaultService: ProjectService = {
       columnName,
       opts ?? {},
     ),
+
+  // ──────────────────────────── Analyze Results: Tilt series ────────────────────────────
+
+  listOutputTiltSeries: (
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+  ) =>
+    api.listOutputTiltSeries(
+      projectId,
+      protocolId,
+      outputName,
+    ),
+
+  fetchTiltSeriesFrames: (
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    tiltSeriesId: Id,
+  ) =>
+    api.fetchTiltSeriesFrames(
+      projectId,
+      protocolId,
+      outputName,
+      tiltSeriesId,
+    ),
+
+  fetchTiltSeriesViewImageObjectUrl: (
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    tiltSeriesId: Id,
+    viewIndex: number,
+    options?: any,
+  ) =>
+    api.fetchTiltSeriesViewImageObjectUrl(
+      projectId,
+      protocolId,
+      outputName,
+      tiltSeriesId,
+      viewIndex,
+      options,
+    ),
+
+  createNewSetOfTiltSeries: (
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    exclusions: TiltExclusionsPayload,
+    restack: boolean,
+  ) =>
+    api.createNewSetOfTiltSeries(
+      projectId,
+      protocolId,
+      outputName,
+      exclusions,
+      restack,
+    ),
+
+  // ──────────────────────────── Analyze Results: CTF tomography ────────────────────────────
+
+  listOutputCTFTomoSeries: (
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+  ) =>
+    api.listOutputCTFTomoSeries(
+      projectId,
+      protocolId,
+      outputName,
+    ),
+
+  fetchCTFTomoSeriesViews: (
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    ctfSeriesId: Id,
+  ) =>
+    api.fetchCTFTomoSeriesViews(
+      projectId,
+      protocolId,
+      outputName,
+      ctfSeriesId,
+    ),
+
+  createNewSetOfCTFTomoSeries: (
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    exclusions: CTFTomoExclusionsPayload,
+  ) =>
+    api.createNewSetOfCTFTomoSeries(
+      projectId,
+      protocolId,
+      outputName,
+      exclusions,
+    ),
+  
+  fetchCTFPsdImage: (
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    psdPath: string,
+  ) =>
+    api.fetchCTFPsdImage(
+      projectId,
+      protocolId,
+      outputName,
+      psdPath,
+    ),
+
+  // ──────────────────────────── Project sharing ────────────────────────────
+
+  /**
+   * List all users that can be selected for project sharing.
+   * We delegate to an API function that you will define in api/projects.ts
+   */
+  listUsers: () => api.listUsers(),
+
+  /**
+   * Share a project with one or more users.
+   * userIds must be array of string/number → convert to string.
+   */
+  shareProject: (projectId: Id, userIds: Id[]) =>
+    api.shareProject(toId(projectId), userIds.map(toId)),
+
+  listProjectShares: (projectId: Id,) => api.listProjectShares(projectId),
+
+  revokeProjectShare: (projectId: Id, userId: Id) =>
+    api.revokeProjectShare(toId(projectId), userId),
+
 };
 
 export default defaultService;

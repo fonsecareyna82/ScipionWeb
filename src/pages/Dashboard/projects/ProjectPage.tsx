@@ -27,6 +27,7 @@ import ReactFlow, {
 import "reactflow/dist/style.css";
 import { createStatusNodeWrapper } from "../../../components/protocol/ProtocolNodeCardWrapper";
 import { ProtocolsDrawer } from "@/components/protocol/ProtocolsDrawer";
+import { ProjectWorkflowsPanel, ProjectWorkflow } from "@/components/projects/workflows-panel";
 
 import {
   Dialog,
@@ -93,12 +94,19 @@ type NodeActions = {
 
 type OpenForm = { key: string; id: string; details: any };
 
+
 export default function ProjectPage() {
   const { projectName } = useParams<{ projectName: string }>();
   const svc = useProjectService();
 
   const [project, setProject] = useState<Project | undefined>(undefined);
   const [isLoadingProject, setIsLoadingProject] = useState(true);
+
+  // Workflows loaded from API (lazy)
+  const [workflows, setWorkflows] = useState<ProjectWorkflow[]>([]);
+  const [workflowsLoading, setWorkflowsLoading] = useState(false);
+  const [workflowsError, setWorkflowsError] = useState<string | null>(null);
+  const [workflowsLoadedOnce, setWorkflowsLoadedOnce] = useState(false);
 
   // Multi-form dock state
   const [openForms, setOpenForms] = useState<OpenForm[]>([]);
@@ -246,6 +254,48 @@ export default function ProjectPage() {
   useEffect(() => { edgesRef.current = edges; }, [edges]);
 
   const isRunningNode = (n: Node) => (n as any).data?.status === "running";
+
+  // Workflows
+  const [workflowsOpen, setWorkflowsOpen] = useState(false);
+
+  const handleOpenWorkflows = useCallback(async () => {
+    if (!projectName) return;
+
+    // Always open panel when user clicks
+    setWorkflowsOpen(true);
+
+    // Avoid refetch if already loaded or currently loading
+    if (workflowsLoading || workflowsLoadedOnce) {
+      return;
+    }
+
+    try {
+      setWorkflowsLoading(true);
+      setWorkflowsError(null);
+
+      const data = await svc.fetchProjectWorkflows();
+
+      const normalized: ProjectWorkflow[] = Array.isArray(data)
+        ? data.map((wf: any, idx: number) => ({
+          id: String(wf.id ?? wf.name ?? `wf-${idx}`),
+          name: wf.name ?? String(wf.id ?? `Workflow ${idx + 1}`),
+          description: wf.description ?? "",
+        }))
+        : [];
+
+      setWorkflows(normalized);
+      setWorkflowsLoadedOnce(true);
+    } catch (err: any) {
+      console.error("fetchProjectWorkflows error:", err);
+      setWorkflows([]);
+      const msg = err?.message || "Failed to load workflows.";
+      setWorkflowsError(msg);
+      toast.error(msg);
+    } finally {
+      setWorkflowsLoading(false);
+    }
+  }, [projectName, svc, workflowsLoading, workflowsLoadedOnce]);
+
 
 
   /* ------------------------ Centering / viewport helpers ------------------------ */
@@ -2080,12 +2130,17 @@ export default function ProjectPage() {
             onProtocolDoubleClick={handleAddProtocolFromDrawer}
           />
           <button
-            onClick={() => console.log("Workflow clicked")}
-            className="px-3 py-1 rounded-lg text-xs flex items-center gap-1 bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300"
+            onClick={handleOpenWorkflows}
+            disabled={workflowsLoading || !projectName}
+            className={`px-3 py-1 rounded-lg text-xs flex items-center gap-1 ${workflowsLoading
+                ? "bg-gray-200/80 text-gray-400 dark:bg-gray-800 dark:text-gray-500 cursor-wait"
+                : "bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300"
+              }`}
           >
             <TreeIcon className="w-4 h-4" />
-            Workflows
+            {workflowsLoading ? "Loading..." : "Workflows"}
           </button>
+
         </div>
 
         <div className="ml-4 mr-4 p-2 border rounded-lg shadow-sm bg-white dark:bg-gray-800 flex items-center gap-4">
@@ -2392,6 +2447,16 @@ export default function ProjectPage() {
 
         </div>
 
+        <ProjectWorkflowsPanel
+          open={workflowsOpen}
+          onClose={() => setWorkflowsOpen(false)}
+          workflows={workflows}
+          loading={workflowsLoading}
+          errorMessage={workflowsError}
+          projectId={Number(project?.id)}
+          onRetry={handleOpenWorkflows}
+        />
+
       </div>
 
       {/* --- Dialogs --- */}
@@ -2406,10 +2471,10 @@ export default function ProjectPage() {
             <Input id="rename" value={dlgRename.value} onChange={(e) => setDlgRename((s) => ({ ...s, value: (e.target as any).value }))} placeholder="e.g. motioncorr_02" />
           </div>
           <DialogFooter>
-            <Button onClick={() => setDlgRename({ open: false, id: null, value: "" })} className="rounded-full px-4 py-2 min-w-[140px] font-medium bg-gray-200 hover:bg-gray-300 text-gray-800">
+            <Button onClick={() => setDlgRename({ open: false, id: null, value: "" })} className="px-3 py-2 rounded-md text-sm bg-gray-200 hover:bg-gray-300 text-gray-800">
               Cancel
             </Button>
-            <Button onClick={submitRename} disabled={!dlgRename.value.trim()} className="rounded-full px-4 py-2 min-w-[140px] font-medium bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-60 disabled:cursor-not-allowed">
+            <Button onClick={submitRename} disabled={!dlgRename.value.trim()} className="px-3 py-2 rounded-md text-sm bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-60 disabled:cursor-not-allowed">
               Rename
             </Button>
           </DialogFooter>
@@ -2450,7 +2515,7 @@ export default function ProjectPage() {
               onClick={() =>
                 setConfirm({ open: false, id: null, ids: null, kind: null })
               }
-              className="rounded-full px-4 py-2 min-w-[140px] font-medium bg-gray-200 hover:bg-gray-300 text-gray-800"
+              className="px-5 py-2 rounded-md text-sm min-w-[100px] bg-gray-200 hover:bg-gray-300 text-gray-800"
             >
               Cancel
             </button>
@@ -2495,7 +2560,7 @@ export default function ProjectPage() {
                   toast.error(getErrorMsg(e));
                 }
               }}
-              className="rounded-full px-4 py-2 min-w-[140px] font-medium bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-60 disabled:cursor-not-allowed"
+              className="px-5 py-2 rounded-md text-sm min-w-[100px] bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {confirm.kind === "delete"
                 ? "Delete"
@@ -2516,7 +2581,7 @@ export default function ProjectPage() {
             <DialogDescription>Downstream steps may be invalidated. You can re-run them later.</DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button onClick={() => setDlgResetFrom({ open: false, id: null })} className="rounded-full px-4 py-2 min-w-[140px] font-medium bg-gray-200 hover:bg-gray-300 text-gray-800">
+            <Button onClick={() => setDlgResetFrom({ open: false, id: null })} className="px-5 py-2 rounded-md text-sm min-w-[100px] bg-gray-200 hover:bg-gray-300 text-gray-800">
               Cancel
             </Button>
             <Button
@@ -2532,7 +2597,7 @@ export default function ProjectPage() {
                   toast.error(getErrorMsg(e));
                 }
               }}
-              className="rounded-full px-4 py-2 min-w-[140px] font-medium bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-60 disabled:cursor-not-allowed"
+              className="px-5 py-2 rounded-md text-sm min-w-[100px] bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-60 disabled:cursor-not-allowed"
             >
               Reset from here
             </Button>

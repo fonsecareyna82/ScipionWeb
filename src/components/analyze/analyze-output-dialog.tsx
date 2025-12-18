@@ -13,6 +13,9 @@ import { CloseIcon } from "@/icons";
 import { MetadataViewer } from "./metadata-viewer";
 import VolumeViewer from "./volume-viewer";
 import Coords3dViewer from "./coords3d-viewer";
+import TiltSeriesViewer from "./tiltseries-viewer";
+import CtftomoViewer from "./ctftomo-viewer";
+import CTFTomoViewer from "./ctftomo-viewer";
 
 type AnalyzeOutputDialogProps = {
   open: boolean;
@@ -38,7 +41,7 @@ function isVolumeKind(k?: string) {
 function isCoords3dKind(k?: string) {
   if (!k) return false;
   const s = k.replace(/\s+/g, "").toLowerCase();
-  // Match típico: "SetOfCoordinates3D"
+  // Match: "SetOfCoordinates3D"
   return s.includes("setofcoordinates3d");
 }
 
@@ -51,13 +54,26 @@ function isSetOfMetadataKind(k?: string) {
   return true;
 }
 
+function isTiltSeriesKind(k?: string) {
+  if (!k) return false;
+  const s = k.replace(/\s+/g, "").toLowerCase();
+  // Match: "SetOfTiltseries and not SetOfTiltseriesM "
+  return (s.includes("setoftiltseries") && s !== "setoftiltseriesm");
+}
+
+function isCTFTomoSeriesKind(k?: string) {
+  if (!k) return false;
+  const s = k.replace(/\s+/g, "").toLowerCase();
+  // Match: "SetOfCTFTomoseries"
+  return s.includes("setofctftomoseries");
+}
+
 const dialogPaperSx = {
   borderRadius: 2,
   overflow: "hidden",
   border: "1px solid rgba(0,0,0,0.08)",
   boxShadow:
     "0 10px 20px rgba(0,0,0,0.15), 0 6px 10px rgba(0,0,0,0.08)",
-
   display: "flex",
   flexDirection: "column",
   height: "97vh",
@@ -165,6 +181,28 @@ export default function AnalyzeOutputDialog({
       );
     }
 
+    if (isTiltSeriesKind(outputClass)) {
+      return (
+        <TiltSeriesViewer
+          projectId={projectIdNum}
+          protocolId={protocolIdNum}
+          outputName={outputName}
+          // optionally tableName="TiltSeries" imageColumn="stack"
+        />
+      );
+    }
+
+    if (isCTFTomoSeriesKind(outputClass)) {
+      return (
+        <CTFTomoViewer
+          projectId={projectIdNum}
+          protocolId={protocolIdNum}
+          outputName={outputName}
+          // optionally tableName="TiltSeries" imageColumn="stack"
+        />
+      );
+    }
+
     if (isSetOfMetadataKind(outputClass)) {
       return (
         <MetadataViewer
@@ -195,10 +233,21 @@ export default function AnalyzeOutputDialog({
     protocolLabel,
   ]);
 
+  // prevent close on backdrop click, but allow ESC and close button
+  const handleDialogClose = (
+    _event: object,
+    reason: "backdropClick" | "escapeKeyDown"
+  ) => {
+    if (reason === "backdropClick") {
+      return;
+    }
+    onClose();
+  };
+
   return (
     <Dialog
       open={open}
-      onClose={onClose}
+      onClose={handleDialogClose}
       maxWidth="xl"
       fullWidth
       PaperProps={{ sx: dialogPaperSx }}

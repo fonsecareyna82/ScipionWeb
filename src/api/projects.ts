@@ -3,6 +3,13 @@ import { ProtocolNode } from "./protocols";
 import { BASE_URL } from "@/config";
 import { Project } from "@/types/project";
 import { fetchWithAuth } from "./auth";
+import {
+  CTFTomoExclusionsPayload,
+  FetchImageSliceOptions,
+  ObjectUrlResult,
+  ProjectWorkflowDescriptor,
+  TiltExclusionsPayload,
+} from "@/services/ProjectService";
 
 const ACTION_LAUNCH = "launch";
 const ACTION_SAVE = "save";
@@ -13,7 +20,7 @@ const ACTION_RESET_FROM = "reset-from";
 
 type Id = string | number;
 
-type ApiErrorShape = { message?: string; detail?: unknown; [k: string]: unknown };
+type ApiErrorShape = { message?: string; detail?: unknown;[k: string]: unknown };
 
 class ApiError extends Error {
   status?: number;
@@ -45,7 +52,7 @@ async function toApiError(response: Response, fallback: string): Promise<ApiErro
   let payload: ApiErrorShape | string | undefined;
   try {
     payload = await safeJson<ApiErrorShape | string>(response);
-  } catch {}
+  } catch { }
   const message =
     (typeof payload === "object" && (payload.message as string)) ||
     (typeof payload === "object" && (payload.detail as string)) ||
@@ -154,12 +161,181 @@ export async function deleteProject(id: Id): Promise<void> {
   if (!response.ok) throw await toApiError(response, "Failed to delete project");
 }
 
+/* ======================= PROJECT SHARING ======================= */
+
+/**
+ * List users available for project sharing.
+ * Backend endpoint: GET /users
+ */
+export async function listUsers(): Promise<any[]> {
+  const response = await fetchWithAuth(`${BASE_URL}/users`, {
+    method: "GET",
+  });
+  if (!response.ok) {
+    throw await toApiError(response, "Failed to fetch users");
+  }
+  const data = await safeJson<any>(response);
+  // If backend returns a non-array shape, normalize to empty array
+  return Array.isArray(data) ? data : [];
+}
+
+/**
+ * Share a project with one or more users.
+ * Backend endpoint: POST /projects/{projectId}/share
+ * Body: { userIds: [...] }
+ */
+export async function shareProject(
+  projectId: Id,
+  userIds: (string | number)[],
+): Promise<void | { success: boolean }> {
+  const response = await fetchWithAuth(
+    `${BASE_URL}/projects/${projectId}/share`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userIds }),
+    },
+  );
+
+  if (!response.ok) {
+    throw await toApiError(response, "Failed to share project");
+  }
+
+  // Backend puede responder 204 vacío o un JSON con { success: true }
+  const text = await response.text();
+  if (!text) {
+    return;
+  }
+  try {
+    return JSON.parse(text) as { success: boolean };
+  } catch {
+    return;
+  }
+}
+
+/**
+ * Revoke project share for a specific user.
+ * Backend endpoint: DELETE /projects/{projectId}/share/{userId}
+ */
+export async function revokeProjectShare(
+  projectId: Id,
+  userId: Id,
+): Promise<void | { success: boolean }> {
+  const response = await fetchWithAuth(
+    `${BASE_URL}/projects/${projectId}/share/${userId}`,
+    {
+      method: "DELETE",
+    },
+  );
+
+  if (!response.ok) {
+    throw await toApiError(response, "Failed to revoke project share");
+  }
+
+  const text = await response.text();
+  if (!text) {
+    return;
+  }
+  try {
+    return JSON.parse(text) as { success: boolean };
+  } catch {
+    return;
+  }
+}
+
+export async function listProjectShares(projectId: Id): Promise<any[]> {
+  const response = await fetchWithAuth(
+    `${BASE_URL}/projects/${projectId}/shares`,
+    {
+      method: "GET",
+    },
+  );
+
+  if (!response.ok) {
+    throw await toApiError(response, "Failed to fetch project shares");
+  }
+
+  const data = await safeJson<any>(response);
+
+  if (Array.isArray(data)) {
+    return data;
+  }
+  if (data && Array.isArray((data as any).shares)) {
+    return (data as any).shares;
+  }
+  if (data && Array.isArray((data as any).results)) {
+    return (data as any).results;
+  }
+
+  // Fallback if backend returns an unexpected structure
+  return [];
+}
+
 /* ======================= LOAD PROTOCOLS ======================= */
 export async function loadProtocols(projectId: number): Promise<any> {
   const response = await fetchWithAuth(
     `${BASE_URL}/projects/${projectId}/protocols`,
   );
   if (!response.ok) throw await toApiError(response, "Failed to fetch protocols");
+  return safeJson<any>(response);
+}
+
+/* ======================= PROJECT WORKFLOWS ======================= */
+
+/**
+ * Fetch predefined workflows / pipelines for a given project.
+ * Backend endpoint: GET /projects/workflows
+ */
+export async function fetchProjectWorkflows(): Promise<ProjectWorkflowDescriptor[]> {
+  const url = `${BASE_URL}/projects/workflows`;
+  console.log("[fetchProjectWorkflows] about to call:", url);
+
+  const response = await fetchWithAuth(url, { method: "GET" });
+
+  console.log("[fetchProjectWorkflows] status:", response.status);
+
+  if (!response.ok) {
+    console.error("[fetchProjectWorkflows] error response", response);
+    throw await toApiError(response, "Failed to fetch project workflows");
+  }
+
+  const data = await safeJson<any>(response);
+  console.log("[fetchProjectWorkflows] data:", data);
+
+  if (Array.isArray(data)) return data as ProjectWorkflowDescriptor[];
+  if (data && Array.isArray((data as any).workflows)) return (data as any).workflows as ProjectWorkflowDescriptor[];
+  if (data && Array.isArray((data as any).results)) return (data as any).results as ProjectWorkflowDescriptor[];
+
+  return [];
+}
+
+
+export interface ApplyWorkflowToProjectPayload {
+  workflowId: string;
+}
+
+/**
+ * Apply a predefined workflow to an existing project.
+ * Backend endpoint: POST /projects/{projectId}/workflows/apply
+ */
+export async function applyWorkflowToProject(
+  projectId: string | number,
+  payload: ApplyWorkflowToProjectPayload,
+): Promise<any> {
+  const url = `${BASE_URL}/projects/${encodeURIComponent(
+    String(projectId),
+  )}/workflows/apply`;
+
+  const response = await fetchWithAuth(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    throw await toApiError(response, "Failed to apply workflow to project");
+  }
+
   return safeJson<any>(response);
 }
 
@@ -349,6 +525,58 @@ export async function fetchProtocolInlinePreviewBlob(
   };
   return { blob, meta };
 }
+
+// projects.ts
+
+/**
+ * Fetch PSD image for a CTF tomo view given its stack spec (for example "3@/path/TS_1.mrc").
+ * The spec string is sent as-is so the backend can interpret slice@index semantics.
+ */
+export async function fetchCTFPsdImage(
+  projectId: Id,
+  protocolId: Id,
+  outputName: string,
+  spec: string,
+  opts: FetchImageSliceOptions = {},
+): Promise<Blob> {
+  const {
+    size = 512,
+    format = "png",
+    applyTransform = false,
+    signal,
+  } = opts;
+
+  const enc = encodeURIComponent;
+  const base = `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/outputs/${enc(
+    outputName,
+  )}/ctftomo/psd`;
+
+  const params = new URLSearchParams();
+  // IMPORTANT: we send the spec string as-is so the backend receives "3@/path/to/file.mrc"
+  params.set("spec", spec);
+  params.set("size", String(size));
+  params.set("fmt", format);
+  params.set("applyTransform", String(applyTransform));
+
+  const url = `${base}?${params.toString()}`;
+
+  const res = await fetchWithAuth(url, {
+    method: "GET",
+    cache: "no-store",
+    signal,
+  });
+
+  if (!res.ok) {
+    throw await toApiError(res, "Failed to render CTF PSD image");
+  }
+
+  // Return the raw Blob so the viewer can manage its own ObjectURL
+  const blob = await res.blob();
+  return blob;
+}
+
+
+
 
 /* ======================= Output preview (tables/pdfs/etc.) ======================= */
 export type PreviewResult =
@@ -731,11 +959,11 @@ export async function fetchCoords3dForTomogram(
       typeof p.score === "number" && Number.isFinite(p.score)
         ? p.score
         : typeof p.weight === "number" && Number.isFinite(p.weight)
-        ? p.weight
-        : typeof p.prob === "number" && Number.isFinite(p.prob)
-        ? p.prob
-        : undefined,
-    ...p, // conservamos radius, tomoId, etc. por si quieres usarlos luego
+          ? p.weight
+          : typeof p.prob === "number" && Number.isFinite(p.prob)
+            ? p.prob
+            : undefined,
+    ...p,
   }));
 
   const baseTomoId =
@@ -867,13 +1095,13 @@ export type MetadataCell =
   | string
   | boolean
   | {
-      kind: "image";
-      path: string;
-    }
+    kind: "image";
+    path: string;
+  }
   | {
-      kind: "matrix";
-      value: any;
-    };
+    kind: "matrix";
+    value: any;
+  };
 
 export interface MetadataRow {
   id: number;
@@ -1064,7 +1292,7 @@ export function getMetadataImageCellUrl(
 export interface MetadataWindow {
   offset?: number;
   limit?: number;
-  totalRows?: number; 
+  totalRows?: number;
   rows: MetadataRow[];
 }
 
@@ -1117,4 +1345,232 @@ export async function fetchMetadataTableWindow(
   }
 
   throw new Error("Unexpected response format for metadata rows window");
+}
+
+
+/* ======================= Analyze Results: Tilt series ======================= */
+
+export interface TiltSeriesListItem {
+  id: Id;
+  name?: string;
+  label?: string;
+  /** Optional number of tilt images in this series. */
+  nTilts?: number;
+  /** Legacy aliases from backend: n or count. */
+  n?: number;
+  count?: number;
+  /** Optional image dimensions [width, height] in pixels. */
+  dims?: [number, number];
+  /** Optional pixel size (for example Å/px). */
+  pixelSize?: number;
+}
+
+
+export async function listOutputTiltSeries(
+  projectId: Id,
+  protocolId: Id,
+  outputName: string,
+): Promise<TiltSeriesListItem[]> {
+  const enc = encodeURIComponent;
+  const url = `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/outputs/${enc(
+    outputName,
+  )}/tiltseries`;
+
+  const res = await fetchWithAuth(url, { method: "GET" });
+  if (!res.ok) {
+    throw await toApiError(res, "Failed to list output tilt series");
+  }
+
+  const data = await safeJson<any>(res);
+  if (!Array.isArray(data)) {
+    return [];
+  }
+
+  return data as TiltSeriesListItem[];
+}
+
+
+export async function fetchTiltSeriesViewImageObjectUrl(
+  projectId: Id,
+  protocolId: Id,
+  outputName: string,
+  tiltSeriesId: Id,
+  viewIndex: number,
+  opts: FetchImageSliceOptions = {},
+): Promise<ObjectUrlResult> {
+  const {
+    size = 512,
+    format = "png",
+    applyTransform = false,
+    signal,
+  } = opts;
+
+  const enc = encodeURIComponent;
+  const base = `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/outputs/${enc(
+    outputName,
+  )}/tiltseries/${enc(String(tiltSeriesId))}/tilt`;
+
+  const params = new URLSearchParams();
+  params.set("index", String(viewIndex));
+  params.set("size", String(size));
+  params.set("fmt", format);
+  params.set("applyTransform", String(applyTransform));
+
+  const url = `${base}?${params.toString()}`;
+
+  const res = await fetchWithAuth(url, {
+    method: "GET",
+    cache: "no-store",
+    signal,
+  });
+  if (!res.ok) {
+    throw await toApiError(res, "Failed to render tilt-series image");
+  }
+
+  const blob = await res.blob();
+  const objUrl = URL.createObjectURL(blob);
+  const revoke = () => URL.revokeObjectURL(objUrl);
+
+  return { url: objUrl, revoke };
+}
+
+
+
+export async function fetchTiltSeriesFrames(
+  projectId: Id,
+  protocolId: Id,
+  outputName: string,
+  tiltSeriesId: Id,
+): Promise<any> {
+  const enc = encodeURIComponent;
+  const url = `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/outputs/${enc(
+    outputName,
+  )}/tiltseries/${enc(String(tiltSeriesId))}/frames`;
+
+  const res = await fetchWithAuth(url, { method: "GET" });
+  if (!res.ok) {
+    throw await toApiError(res, "Failed to fetch tilt-series frames");
+  }
+
+  return safeJson<any>(res);
+}
+
+
+/**
+ * Create a new tilt-series set based on the current exclusions.
+ * Backend will interpret `exclusions` and `restack` to build the new output.
+ */
+export async function createNewSetOfTiltSeries(
+  projectId: Id,
+  protocolId: Id,
+  outputName: string,
+  exclusions: TiltExclusionsPayload,
+  restack: boolean,
+): Promise<any> {
+  const enc = encodeURIComponent;
+
+  const url = `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/outputs/${enc(
+    outputName,
+  )}/tiltseries/new-set`;
+
+  const res = await fetchWithAuth(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ exclusions, restack }),
+  });
+
+  if (!res.ok) {
+    throw await toApiError(res, "Failed to create new set of tilt series");
+  }
+
+  return safeJson<any>(res);
+}
+
+
+/* ======================= Analyze Results: CTF tomography (SetOfCTFTomoSeries) ======================= */
+
+/**
+ * List CTF tomo series for a SetOfCTFTomoSeries output.
+ * If backend returns a dataset { series, rows }, this helper extracts only `series`.
+ */
+export async function listOutputCTFTomoSeries(
+  projectId: Id,
+  protocolId: Id,
+  outputName: string,
+): Promise<any[]> {
+  const enc = encodeURIComponent;
+  const url = `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/outputs/${enc(
+    outputName,
+  )}/ctftomo`;
+
+  const res = await fetchWithAuth(url, { method: "GET" });
+  if (!res.ok) {
+    throw await toApiError(res, "Failed to list output CTF tomo series");
+  }
+
+  const data = await safeJson<any>(res);
+
+  // Backend already returns a plain list
+  if (Array.isArray(data)) {
+    return data;
+  }
+
+  // Backend returns a dataset { series, rows }
+  if (data && Array.isArray((data as any).series)) {
+    return (data as any).series;
+  }
+
+  return [];
+}
+
+/**
+ * Fetch all CTF estimation views for a given CTF tomo series.
+ * Shape is defined by the backend; the viewer will normalize it.
+ */
+export async function fetchCTFTomoSeriesViews(
+  projectId: Id,
+  protocolId: Id,
+  outputName: string,
+  ctfSeriesId: Id,
+): Promise<any> {
+  const enc = encodeURIComponent;
+  const url = `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/outputs/${enc(
+    outputName,
+  )}/ctftomo/${enc(String(ctfSeriesId))}/views`;
+
+  const res = await fetchWithAuth(url, { method: "GET" });
+  if (!res.ok) {
+    throw await toApiError(res, "Failed to fetch CTF tomo views");
+  }
+
+  return safeJson<any>(res);
+}
+
+/**
+ * Create a new SetOfCTFTomoSeries based on current exclusions.
+ * Uses the same exclusions payload shape as SetOfTiltSeries.
+ */
+export async function createNewSetOfCTFTomoSeries(
+  projectId: Id,
+  protocolId: Id,
+  outputName: string,
+  exclusions: CTFTomoExclusionsPayload,
+): Promise<any> {
+  const enc = encodeURIComponent;
+
+  const url = `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/outputs/${enc(
+    outputName,
+  )}/ctftomo/new-set`;
+
+  const res = await fetchWithAuth(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ exclusions }),
+  });
+
+  if (!res.ok) {
+    throw await toApiError(res, "Failed to create new set of CTF tomo series");
+  }
+
+  return safeJson<any>(res);
 }

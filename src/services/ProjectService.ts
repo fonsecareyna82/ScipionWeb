@@ -1,5 +1,7 @@
 // src/services/ProjectService.ts
 
+import { ApplyWorkflowToProjectPayload } from "@/api/projects";
+
 /** Common ID type to accept either string or number seamlessly. */
 export type Id = string | number;
 
@@ -208,6 +210,105 @@ export interface MetadataPage {
   rows: MetadataRow[];
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Analyze Results (Tilt series)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Basic item for a tilt series in a SetOfTiltSeries output. */
+export type TiltSeriesListItem = {
+  /** Tilt series identifier (index, db id, etc.). */
+  id: Id;
+  /** Human-friendly label to display in the list. */
+  label: string;
+  /** Optional number of tilt images in this series. */
+  nTilts?: number;
+  /** Optional image dimensions [width, height] in pixels. */
+  dims?: [number, number];
+  /** Optional pixel size (for example Å/px). */
+  pixelSize?: number;
+};
+
+/** Extra options when requesting a single tilt image. */
+export type TiltImageOptions = {
+  /** Target size in pixels for the longest side. */
+  size?: number;
+  /** Output format for the rendered image. */
+  format?: "png" | "webp" | "jpeg";
+  /** Whether to apply alignment or contrast corrections in backend. */
+  applyTransform?: boolean;
+  /** AbortSignal to cancel in-flight HTTP requests. */
+  signal?: AbortSignal;
+};
+
+export type TiltExclusionsPayload = Record<
+  string,
+  {
+    excluded: boolean;
+    tiltimages: number[];
+  }
+>;
+
+export type CTFTomoExclusionsPayload = TiltExclusionsPayload;
+
+// Shared object-url result type used by image viewers
+export type ObjectUrlResult = {
+  url: string;
+  revoke: () => void;
+};
+
+// Generic options for fetching 2D image slices / previews from the API
+export type FetchImageSliceOptions = {
+  // Common sampling / slicing options
+  index?: number; // slice index along the chosen axis
+  axis?: "x" | "y" | "z";
+
+  // Color / normalization
+  cmap?: string;
+  colormap?: string;
+  format?: "png" | "webp" | "jpeg";
+  fmt?: string;
+  normalize?: string; // e.g. "minmax", "zscore", etc.
+
+  // Geometry / scaling
+  scale?: number;
+  thumb?: number;
+  fast?: boolean;
+  quality?: number;
+
+  // Tilt / metadata specific
+  size?: number;
+  applyTransform?: boolean;
+
+  // Abort support for fetch
+  signal?: AbortSignal;
+};
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// User (sharing / collaboration)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type ShareableUser = {
+  id: Id;
+  name: string;
+  email?: string;
+};
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Project workflows / templates (predefined pipelines)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type ProjectWorkflowDescriptor = {
+  /** Workflow identifier (index, db id, or slug). */
+  id: Id;
+  /** Human-friendly workflow name to display in the UI. */
+  name: string;
+  /** Short description explaining what this workflow does. */
+  description?: string;
+};
+
+
 /**
  * Optional generics to let consumers specify concrete return shapes.
  * - TProject: shape of a single project
@@ -245,6 +346,18 @@ export interface ProjectService<
 
   /** Load all protocols for a project. */
   loadProtocols(projectId: Id): Promise<TProtocol[] | any>;
+
+   /**
+   * List predefined workflows / pipelines available for a project.
+   * Backend may filter them by project type, owner, or permissions.
+   */
+  fetchProjectWorkflows(): Promise<ProjectWorkflowDescriptor[] | any>;
+
+  applyWorkflowToProject(
+    projectId: string | number,
+    payload: ApplyWorkflowToProjectPayload,
+  ): Promise<any>;
+
 
   /** Execute a protocol with given params. */
   executeProtocol(
@@ -481,4 +594,119 @@ export interface ProjectService<
       format?: string;
     }
   ): string;
+
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Analyze Results (Tilt series)
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /**
+   * List tilt series for a SetOfTiltSeries output.
+   */
+  listOutputTiltSeries(
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+  ): Promise<any[]>;
+
+  // Tilt series: fetch all views/frames for one tilt series
+  fetchTiltSeriesFrames(
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    tiltSeriesId: Id,
+  ): Promise<any>;
+
+  // Tilt series: fetch image object URL for a single view
+  fetchTiltSeriesViewImageObjectUrl(
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    tiltSeriesId: Id,
+    viewIndex: number,
+    opts?: FetchImageSliceOptions,
+  ): Promise<ObjectUrlResult>;
+
+  // Tilt series: create a new SetOfTiltSeries based on current exclusions
+  createNewSetOfTiltSeries(
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    exclusions: TiltExclusionsPayload,
+    restack: boolean,
+  ): Promise<void>;
+
+    // ─────────────────────────────────────────────────────────────────────────────
+  // Analyze Results (CTF tomography / CTF tilt series)
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /**
+   * List CTF tomo series for a SetOfCTFTomoSeries output.
+   * The concrete payload shape is left to the backend; viewers will normalize it.
+   */
+  listOutputCTFTomoSeries(
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+  ): Promise<any[]>;
+
+  /**
+   * Fetch all CTF estimation views for a single CTF tomo series.
+   * This should return one entry per tilt with defocus, resolution, etc.
+   */
+  fetchCTFTomoSeriesViews(
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    ctfSeriesId: Id,
+  ): Promise<any>;
+
+  /**
+   * Create a new SetOfCTFTomoSeries based on the current exclusions.
+   * The payload uses the same exclusion structure as SetOfTiltSeries.
+   */
+  createNewSetOfCTFTomoSeries(
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    exclusions: CTFTomoExclusionsPayload,
+  ): Promise<void>;
+
+fetchCTFPsdImage(
+  projectId: Id,
+  protocolId: Id,
+  outputName: string,
+  psdPath: string,
+): Promise<any> 
+
+// ─────────────────────────────────────────────────────────────────────────────
+  // Project sharing / collaboration
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /**
+   * List users that can be used as targets for project sharing.
+   * The concrete payload shape is left to the backend; callers can normalize it.
+   */
+  listUsers(): Promise<ShareableUser[] | any>;
+
+  /**
+   * Share a project with one or more users.
+   * Backend decides whether this overwrites or appends to existing shares.
+   */
+  shareProject(
+    projectId: Id,
+    userIds: Id[],
+  ): Promise<void | { success: boolean }>;
+
+  listProjectShares(
+    projectId: Id,
+  ): Promise<ShareableUser[] | any>;
+
+  revokeProjectShare(
+    projectId: Id,
+    userId: Id,
+  ): Promise<void | { success: boolean }>;
+
+
+
 }

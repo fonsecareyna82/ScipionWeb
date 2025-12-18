@@ -11,4 +11,9 @@ export interface Project {
     protocolsCount?: string;
     diskUsage?: string;
     protocols?: Record<string, ProtocolNode>;
+    isShared: boolean,
+    isOwner: boolean,
+    permission: string,
+    projectOwnerId: string | number;
+
   }

@@ -11,13 +11,14 @@ import {
   PieChartIcon,
   PlugInIcon,
   TableIcon,
+  TreeIcon,
   UserCircleIcon,
 } from "../icons";
 import { useSidebar } from "../context/SidebarContext";
 import SidebarWidget from "./SidebarWidget";
 import * as React from "react";
 import * as TooltipPrimitive from "@radix-ui/react-tooltip";
-import { LucideSettings2} from "lucide-react";
+import { LucideSettings2, TreesIcon} from "lucide-react";
 
 export const TooltipProvider = TooltipPrimitive.Provider;
 export const Tooltip = TooltipPrimitive.Root;
@@ -35,6 +36,7 @@ type NavItem = {
 const navItems: NavItem[] = [
   { icon: <GridIcon />, name: "Home", path: "/home" },
   { icon: <FolderIcon />, name: "Projects", path: "/projects" },
+  { icon: <TreeIcon />, name: "Workflows", path: "/workflows" },
   { icon: <PlugInIcon />, name: "Plugins", path: "/plugins" },
   { separator: true },
   { icon: <UserCircleIcon />, name: "User profile", path: "/profile"},
@@ -279,7 +281,7 @@ const AppSidebar: React.FC = () => {
 
   return (
     <aside
-      className={`fixed mt-16 flex flex-col lg:mt-0 top-0 px-5 left-0 bg-white dark:bg-gray-900 
+      className={`fixed mt-16 flex flex-col lg:mt-0 top-0 px-4 left-0 bg-white dark:bg-gray-900 
                   dark:border-gray-800 text-gray-900 h-screen transition-all duration-300 ease-in-out 
                   z-50 border-r border-gray-200 
         ${isExpanded || isMobileOpen ? "w-[280px]" : "w-[80px]"}
