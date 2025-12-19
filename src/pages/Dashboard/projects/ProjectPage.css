@@ -1,7 +1,7 @@
+@import "reactflow/dist/style.css";
 @import url("https://fonts.googleapis.com/css2?family=Outfit:wght@100..900&display=swap");
-
-/* Tailwind v4 utilities for the widget (no global preflight) */
-@import "tailwindcss" layer(utilities);
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
 
 /* ─────────────────────────────────────────────
    Theme tokens scoped to the widget root
@@ -92,7 +92,7 @@
 /* dark mode variant only inside the widget
    (use .projectpage-widget-root.dark if you need it) */
 .projectpage-widget-root.dark {
-  --background: oklch(0.145 0 0);
+  --background: #111827;
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.205 0 0);
   --card-foreground: oklch(0.985 0 0);

@@ -5,15 +5,14 @@
   "type": "module",
   "scripts": {
     "dev": "node ./node_modules/vite/bin/vite.js",
-    "build:widget:list": "vite build --mode projects",
-    "build:widget:page": "vite build --mode projectpage",
-    "build:widget:protocoldetail": "vite build --mode protocoldetail",
+    "build:widget:list": "WIDGET_BUILD=1 vite build --mode projects && node src/scripts/rename-css.mjs projects",
+    "build:widget:page": "WIDGET_BUILD=1 vite build --mode projectpage && node src/scripts/rename-css.mjs projectpage",
+    "build:widget:protocoldetail": "WIDGET_BUILD=1 vite build --mode protocoldetail && node src/scripts/rename-css.mjs protocoldetail",
     "build:widgets": "npm run build:widget:list && npm run build:widget:page && npm run build:widget:protocoldetail"
   },
   "engines": {
     "node": ">=20.18.0 <21"
   },
-  "clean": "rm -rf dist && rm -rf node_modules/.vite",
   "dependencies": {
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
@@ -91,12 +90,14 @@
     "@types/react-plotly.js": "^2.6.3",
     "@vitejs/plugin-react": "^4.3.4",
     "babel-jest": "^30.0.5",
+    "cross-env": "^7.0.3",
     "eslint": "^9.19.0",
     "eslint-plugin-react-hooks": "^5.0.0",
     "eslint-plugin-react-refresh": "^0.4.18",
     "globals": "^15.14.0",
     "jest": "^30.0.5",
     "postcss": "^8.5.2",
+    "postcss-prefix-selector": "^2.1.1",
     "process": "^0.11.10",
     "rollup": "^4.52.3",
     "rollup-plugin-esbuild": "^6.2.1",

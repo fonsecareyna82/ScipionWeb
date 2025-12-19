@@ -13,8 +13,8 @@ export type GpuVolumeViewProps = {
   isoMax: number;
   opacity: number;
   colormap: string;
-  shell?: number; // thickness fraction for surface mode
-  renderMode?: "volume" | "surface"; // "volume" restores old iso-band behavior
+  shell?: number;
+  renderMode?: "volume" | "surface";
   onError?: (msg: string) => void;
 };
 
@@ -165,7 +165,6 @@ const FRAG = `
     vec3 texStep = 1.0 / max(uTexSize, vec3(1.0));
     vec3 lightDir = normalize(uLightDir);
 
-    // Step 3: per-pixel jitter to reduce banding.
     float jitter = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453);
     float tJit = (jitter - 0.5) * dt;
 
@@ -180,17 +179,14 @@ const FRAG = `
       float tnorm = clamp((d - uIsoMin) / denom, 0.0, 1.0);
 
       if (uIsoMode == 0) {
-        // Volume iso band mode with density-weighted opacity and soft shading.
         float band = smoothstep(0.0, 0.02, tnorm) *
                      (1.0 - smoothstep(0.90, 1.0, tnorm));
 
         if (band > 0.0) {
           vec3 col = cmap(tnorm);
 
-          // Density ramp (Step 2 behavior).
           float ramp = pow(tnorm, 1.6);
 
-          // Step 3: light shading using gradient.
           vec3 h = texStep * 2.0;
           float dx = sampleD(uvw + vec3(h.x, 0.0, 0.0)) - sampleD(uvw - vec3(h.x, 0.0, 0.0));
           float dy = sampleD(uvw + vec3(0.0, h.y, 0.0)) - sampleD(uvw - vec3(0.0, h.y, 0.0));
@@ -217,7 +213,6 @@ const FRAG = `
           if (acc.a > 0.90) break;
         }
       } else {
-        // Surface/shell mode.
         float isoLevel = uIsoMax;
         float shellFrac = clamp(uShell, 0.02, 1.0);
 
@@ -292,10 +287,18 @@ function buildUint8Texture(
     out[i] = Math.max(0, Math.min(255, Math.round((v - vmin) * scale)));
   }
 
-  const Tex3D = (THREE as any).Data3DTexture || (THREE as any).DataTexture3D;
+  // three@0.160 exports Data3DTexture (not DataTexture3D).
+  const Tex3D = (THREE as any).Data3DTexture as
+    | (new (data: Uint8Array, width: number, height: number, depth: number) => THREE.Data3DTexture)
+    | undefined;
+
+  if (!Tex3D) {
+    throw new Error("Data3DTexture is not available in this Three.js build.");
+  }
+
   const tex = new Tex3D(out, x, y, z);
 
-  tex.format = (THREE as any).RedFormat ?? THREE.RGBAFormat;
+  tex.format = THREE.RedFormat;
   tex.type = THREE.UnsignedByteType;
   tex.minFilter = THREE.LinearFilter;
   tex.magFilter = THREE.LinearFilter;
@@ -305,11 +308,10 @@ function buildUint8Texture(
   tex.unpackAlignment = 1;
   tex.needsUpdate = true;
 
-  if ((tex as any).isData3DTexture) {
-    (tex as any).internalFormat = "R8";
-  }
+  // Force a single-channel 8-bit internal format for WebGL2.
+  (tex as any).internalFormat = "R8";
 
-  return tex as THREE.Data3DTexture;
+  return tex;
 }
 
 export default function GpuVolumeView({
@@ -355,23 +357,16 @@ export default function GpuVolumeView({
   }, [values, dims, rangeMin, rangeMax]);
 
   const isoMinNorm = useMemo(() => {
-    return rangeMax > rangeMin
-      ? (isoMin - rangeMin) / (rangeMax - rangeMin)
-      : 0.0;
+    return rangeMax > rangeMin ? (isoMin - rangeMin) / (rangeMax - rangeMin) : 0.0;
   }, [isoMin, rangeMin, rangeMax]);
 
   const isoMaxNorm = useMemo(() => {
-    return rangeMax > rangeMin
-      ? (isoMax - rangeMin) / (rangeMax - rangeMin)
-      : 1.0;
+    return rangeMax > rangeMin ? (isoMax - rangeMin) / (rangeMax - rangeMin) : 1.0;
   }, [isoMax, rangeMin, rangeMax]);
 
   const cmapId = useMemo(() => cmapToId(colormap), [colormap]);
 
-  const shellClamped = useMemo(
-    () => Math.max(0.02, Math.min(1, shell)),
-    [shell],
-  );
+  const shellClamped = useMemo(() => Math.max(0.02, Math.min(1, shell)), [shell]);
 
   useEffect(() => {
     if (!tex || !mountRef.current || rendererRef.current) return;

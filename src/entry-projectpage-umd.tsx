@@ -1,5 +1,5 @@
 // src/entry-projectpage-umd.tsx
-import "./projectpage.css";
+import "./pages/Dashboard/projects/ProjectPage.css";
 
 import React from "react";
 import ReactDOM from "react-dom/client";
@@ -25,6 +25,7 @@ import type { ProjectService } from "./services/ProjectService";
 import type { WidgetGlobal } from "./types/global-widget";
 import ProjectPage from "./pages/Dashboard/projects/ProjectPage";
 
+/** Error boundary to render readable errors inside the host page */
 class WidgetErrorBoundary extends React.Component<
   { children: React.ReactNode },
   { err: any }
@@ -62,6 +63,29 @@ class WidgetErrorBoundary extends React.Component<
   }
 }
 
+/** Returns whether the host document is currently in dark mode */
+function getHostIsDark(): boolean {
+  return document.documentElement.classList.contains("dark");
+}
+
+/** Keeps widget shell's dark class in sync with the host document */
+function syncShellDarkMode(shell: HTMLElement) {
+  const apply = () => {
+    shell.classList.toggle("dark", getHostIsDark());
+  };
+
+  apply();
+
+  const observer = new MutationObserver(() => apply());
+  observer.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ["class"],
+  });
+
+  return () => observer.disconnect();
+}
+
+/** Creates an isolated widget shell with a scoped root class */
 function createWidgetShell(target: HTMLElement) {
   const shell = document.createElement("div");
   shell.className = "projectpage-widget-root";
@@ -74,6 +98,7 @@ function createWidgetShell(target: HTMLElement) {
   portals.style.display = "contents";
 
   const ensurePortal = (id: string) => {
+    // If the host already provides a portal root, do not duplicate it.
     if (document.getElementById(id)) return;
     const el = document.createElement("div");
     el.id = id;
@@ -111,10 +136,12 @@ const mockSliceDataUrl = (sliceIndex: number) => {
 };
 
 function createMissingServiceMethodError(methodName: string) {
-  return new Error(`ProjectPageWidget: service is missing required method '${methodName}'`);
+  return new Error(
+    `ProjectPageWidget: service is missing required method '${methodName}'`,
+  );
 }
 
-// normalizeServiceAPI: keepYourExistingImplementationHere
+/** Normalize external service into ProjectService contract */
 function normalizeServiceAPI(srv: any): ProjectService {
   if (!srv || typeof srv !== "object") {
     throw new Error("ProjectPageWidget: invalid service object");
@@ -138,15 +165,28 @@ function normalizeServiceAPI(srv: any): ProjectService {
     }
   };
 
+  // projects
   mapFn("fetchList", "listProjects", "list", "fetch");
   mapFn("fetchProject", "getProject", "fetchOne", "get");
   mapFn("createProject", "createProject", "create", "newProject");
   mapFn("renameProject", "renameProject", "rename", "updateProject");
   mapFn("deleteProject", "deleteProject", "delete", "remove", "removeProject");
 
-  mapFn("fetchProjectWorkflows", "listProjectWorkflows", "listWorkflows", "fetchWorkflows");
-  mapFn("applyWorkflowToProject", "applyWorkflow", "applyTemplateToProject", "runWorkflowOnProject");
+  // workflows
+  mapFn(
+    "fetchProjectWorkflows",
+    "listProjectWorkflows",
+    "listWorkflows",
+    "fetchWorkflows",
+  );
+  mapFn(
+    "applyWorkflowToProject",
+    "applyWorkflow",
+    "applyTemplateToProject",
+    "runWorkflowOnProject",
+  );
 
+  // protocols
   mapFn("fetchProtocolDetails", "getProtocol", "getProtocolDetails");
   mapFn("fetchNewProtocolDetails", "getNewProtocol", "newProtocol");
   mapFn("loadProtocols", "listProtocols", "fetchProtocols", "getProtocols");
@@ -162,57 +202,110 @@ function normalizeServiceAPI(srv: any): ProjectService {
   mapFn("resetFrom", "resetFrom");
   mapFn("stopProtocol", "stopProtocol");
 
+  // file / previews
   mapFn("resolveProtocolStartPath", "resolveProtocolStartPath");
   mapFn("listRemoteDirectory", "listRemoteDirectory");
   mapFn("previewProtocolText", "previewProtocolText");
   mapFn("buildProtocolDownloadUrl", "buildProtocolDownloadUrl");
-  mapFn("fetchProtocolInlinePreviewBlob", "previewInlineBlob", "getInlinePreviewBlob");
-
+  mapFn(
+    "fetchProtocolInlinePreviewBlob",
+    "previewInlineBlob",
+    "getInlinePreviewBlob",
+  );
   mapFn("fetchOutputPreview", "previewOutput", "getOutputPreview");
 
-  const rawExecute = typeof normalized.executeProtocol === "function" ? normalized.executeProtocol : null;
-  const rawSave = typeof normalized.saveProtocol === "function" ? normalized.saveProtocol : null;
+  const rawExecute =
+    typeof normalized.executeProtocol === "function"
+      ? normalized.executeProtocol
+      : null;
+  const rawSave =
+    typeof normalized.saveProtocol === "function"
+      ? normalized.saveProtocol
+      : null;
 
   ensureFn("executeProtocol", async () => {
     throw createMissingServiceMethodError("executeProtocol");
   });
+
   ensureFn("saveProtocol", async () => {
     throw createMissingServiceMethodError("saveProtocol");
   });
 
-  normalized.executeProtocol = async (projectId: any, protocolId: any, protocolClassName: string, params: any) => {
+  // Support both standard and legacy execute signatures
+  normalized.executeProtocol = async (
+    projectId: any,
+    protocolId: any,
+    protocolClassName: string,
+    params: any,
+  ) => {
     const fn = rawExecute ?? normalized.executeProtocol;
     try {
-      return await fn.call(normalized, projectId, protocolId, protocolClassName, params);
+      return await fn.call(
+        normalized,
+        projectId,
+        protocolId,
+        protocolClassName,
+        params,
+      );
     } catch (err) {
       return await fn.call(normalized, protocolId, protocolClassName, params);
     }
   };
 
-  normalized.saveProtocol = async (projectId: any, protocolId: any, protocolClassName: string, params: any) => {
+  // Support both standard and legacy save signatures
+  normalized.saveProtocol = async (
+    projectId: any,
+    protocolId: any,
+    protocolClassName: string,
+    params: any,
+  ) => {
     const fn = rawSave ?? normalized.saveProtocol;
     try {
-      return await fn.call(normalized, projectId, protocolId, protocolClassName, params);
+      return await fn.call(
+        normalized,
+        projectId,
+        protocolId,
+        protocolClassName,
+        params,
+      );
     } catch (err) {
       return await fn.call(normalized, protocolId, protocolClassName, params);
     }
   };
 
-  // safeDefaultsForNonCoreFeatures
+  // Safe defaults for non-core features (avoid hard crashes in embedded contexts)
   ensureFn("fetchProjectWorkflows", async () => []);
   ensureFn("applyWorkflowToProject", async () => ({ success: true }));
-  ensureFn("fetchCoords3dTomogramSliceObjectUrl", async (_p: any, _pid: any, _o: any, _t: any, sliceIndex: number) => ({
-    url: mockSliceDataUrl(sliceIndex),
-    revoke: () => {},
-  }));
+  ensureFn(
+    "fetchCoords3dTomogramSliceObjectUrl",
+    async (
+      _p: any,
+      _pid: any,
+      _o: any,
+      _t: any,
+      sliceIndex: number,
+    ) => ({
+      url: mockSliceDataUrl(sliceIndex),
+      revoke: () => {},
+    }),
+  );
 
   return normalized as ProjectService;
 }
 
+/** Default minimal mock service (fallback) */
 const defaultMockService: ProjectService = {
   async fetchList() {
-    return [{ id: "demo", name: "Demo project", createdAt: new Date().toISOString(), status: "idle" }] as any;
+    return [
+      {
+        id: "demo",
+        name: "Demo project",
+        createdAt: new Date().toISOString(),
+        status: "idle",
+      },
+    ] as any;
   },
+
   async fetchProject(id: any) {
     return {
       id,
@@ -223,9 +316,11 @@ const defaultMockService: ProjectService = {
       protocols: [],
     } as any;
   },
+
   async fetchProtocolDetails(_projectId: any, protocolId: any) {
     return { id: protocolId, protocolClassName: "DemoProtocol", params: {} } as any;
   },
+
   async fetchNewProtocolDetails(_projectId: any, protocolClass: string) {
     return { id: "new", protocolClassName: protocolClass, params: {} } as any;
   },
@@ -246,11 +341,21 @@ export type ProjectPageMountOptions = {
   props?: InitialProps;
 };
 
-export function mountProjectPageWidget({ container, service, projectName }: ProjectPageMountOptions) {
-  const target = typeof container === "string" ? document.querySelector(container) : container;
-  if (!target) throw new Error(`ProjectPageWidget: container '${container}' not found`);
+/** Public mount function */
+export function mountProjectPageWidget({
+  container,
+  service,
+  projectName,
+}: ProjectPageMountOptions) {
+  const target =
+    typeof container === "string" ? document.querySelector(container) : container;
 
-  const { mountPoint } = createWidgetShell(target as HTMLElement);
+  if (!target) {
+    throw new Error(`ProjectPageWidget: container '${container}' not found`);
+  }
+
+  const { shell, mountPoint } = createWidgetShell(target as HTMLElement);
+  const stopSyncDarkMode = syncShellDarkMode(shell);
 
   const svc = normalizeServiceAPI(service ?? defaultMockService);
 
@@ -259,8 +364,14 @@ export function mountProjectPageWidget({ container, service, projectName }: Proj
   });
   const qcV3 = new QueryClientV3();
 
-  const emotionCache = createCache({ key: "mpw", container: document.head, prepend: false });
+  // Render Emotion styles inside the widget shell to reduce host interference
+  const emotionCache = createCache({
+    key: "mpw",
+    container: shell,
+    prepend: false,
+  });
 
+  // Decouple from host URL using MemoryRouter
   const initialPath = `/project/load/${encodeURIComponent(projectName)}`;
 
   const root = ReactDOM.createRoot(mountPoint);
@@ -274,8 +385,14 @@ export function mountProjectPageWidget({ container, service, projectName }: Proj
                 <WidgetErrorBoundary>
                   <DragProvider>
                     <Routes>
-                      <Route path="/project/load/:projectName" element={<ProjectPage />} />
-                      <Route path="*" element={<Navigate to={initialPath} replace />} />
+                      <Route
+                        path="/project/load/:projectName"
+                        element={<ProjectPage />}
+                      />
+                      <Route
+                        path="*"
+                        element={<Navigate to={initialPath} replace />}
+                      />
                     </Routes>
                   </DragProvider>
                 </WidgetErrorBoundary>
@@ -290,8 +407,15 @@ export function mountProjectPageWidget({ container, service, projectName }: Proj
   return {
     unmount() {
       root.unmount();
+
       try {
-        (target as HTMLElement).removeChild(mountPoint.parentElement as HTMLElement);
+        stopSyncDarkMode();
+      } catch {
+        // noOp
+      }
+
+      try {
+        (target as HTMLElement).removeChild(shell);
       } catch {
         // noOp
       }
@@ -300,6 +424,7 @@ export function mountProjectPageWidget({ container, service, projectName }: Proj
   };
 }
 
+/** Attach to window for UMD usage (no default export) */
 if (typeof window !== "undefined") {
   const prev = (window as any).MyProjectsWidget as WidgetGlobal | undefined;
   (window as any).MyProjectsWidget = { ...(prev || {}), mountProjectPageWidget };

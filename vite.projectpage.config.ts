@@ -27,20 +27,15 @@ export default defineConfig({
       fileName: () => "projectpage-widget.js",
     },
     target: "es2018",
-    cssCodeSplit: true,
+    cssCodeSplit: false,
     emptyOutDir: false,
     rollupOptions: {
       external: [],
       output: {
-        exports: "named",
-        globals: {},
-        chunkFileNames: "assets/[name].[hash].js",
-        assetFileNames: (info) => {
-          const n = info.name ?? "";
-          if (/\.(png|jpe?g|svg|gif|webp)$/.test(n)) return "images/[name].[hash][extname]";
-          if (/\.css$/.test(n)) return "styles/[name].[hash][extname]";
-          return "assets/[name].[hash][extname]";
-        },
+        assetFileNames: (assetInfo) => {
+        if (assetInfo.name?.endsWith(".css")) return "projectpage-widget.css";
+        return "assets/[name]-[hash][extname]";
+      },
       },
       plugins: [inject({ process: "process" })],
     },

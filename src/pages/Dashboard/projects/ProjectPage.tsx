@@ -97,6 +97,7 @@ type OpenForm = { key: string; id: string; details: any };
 
 
 export default function ProjectPage() {
+  const hostIsDark = useHostDarkMode();
   const { projectName } = useParams<{ projectName: string }>();
   const svc = useProjectService();
 
@@ -2091,13 +2092,57 @@ export default function ProjectPage() {
     handleSelectTo,
   ]);
 
+  function getHostIsDark() {
+  const html = document.documentElement;
+  const body = document.body;
+
+  const htmlDark = html.classList.contains("dark") || html.getAttribute("data-theme") === "dark";
+  const bodyDark = body?.classList.contains("dark") || body?.getAttribute("data-theme") === "dark";
+
+  return Boolean(htmlDark || bodyDark);
+}
+
+function useHostDarkMode() {
+  const [isDark, setIsDark] = useState<boolean>(() => {
+    if (typeof document === "undefined") return false;
+    return getHostIsDark();
+  });
+
+  useEffect(() => {
+    // syncThemeFromHost
+    const sync = () => setIsDark(getHostIsDark());
+    sync();
+
+    const obs = new MutationObserver(() => sync());
+
+    try {
+      obs.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ["class", "data-theme"],
+      });
+      if (document.body) {
+        obs.observe(document.body, {
+          attributes: true,
+          attributeFilter: ["class", "data-theme"],
+        });
+      }
+    } catch {
+      // noOp
+    }
+
+    return () => obs.disconnect();
+  }, []);
+
+  return isDark;
+}
 
 
   /* ------------------------ Render ------------------------ */
   const isGrid = viewMode === "grid";
   return (
-    <div className="projectpage-widget-root">
-      <div className="h-app min-h-0 flex flex-col relative overflow-hidden">
+    <div className={`projectpage-widget-root ${hostIsDark ? "dark" : ""}`}>
+      <div className="h-app min-h-0 flex flex-col relative overflow-hidden bg-background text-foreground">
+       
         {/* Header */}
         <div className="flex justify-between items-center mb-1 ml-1">
           <div className="relative w-full max-w-sm">
@@ -2147,7 +2192,7 @@ export default function ProjectPage() {
 
           </div>
 
-          <div className="ml-4 mr-4 p-2 border rounded-lg shadow-sm bg-white dark:bg-gray-800 flex items-center gap-4">
+          <div className="ml-4 mr-4 p-2 border rounded-lg shadow-sm bg-white dark:bg-gray-800 flex items-center gap-4 dark:text-gray-200">
             <span className="font-small text-xs">View mode:</span>
             <div className="flex gap-2">
               <button

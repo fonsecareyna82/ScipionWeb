@@ -1,4 +1,6 @@
 /** @type {import('tailwindcss').Config} */
+const isWidgetBuild = process.env.WIDGET_BUILD === "1";
+
 module.exports = {
   content: [
     "./index.html",
