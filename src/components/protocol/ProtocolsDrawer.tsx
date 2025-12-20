@@ -117,9 +117,9 @@ export const ProtocolsDrawer: React.FC<ProtocolsDrawerProps> = ({
       <button
         onClick={handleButtonOpen}
         disabled={loading || projectId == null}
-        className="px-3 py-1 rounded-lg text-xs flex items-center gap-1 bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300"
+        className="pp-chipBtn"
       >
-        <BoxCubeIcon className="w-4 h-4" />
+        <BoxCubeIcon className="pp-btnIcon" />
         {loading ? "Loading…" : "Protocols"}
       </button>
 

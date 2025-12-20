@@ -210,10 +210,6 @@
   pointer-events: none;
 }
 
-.menuContent {
-  width: 14rem;
-}
-
 .menuRow {
   display: flex;
   width: 100%;
@@ -470,4 +466,24 @@
 
 .card :global(.react-flow__handle:hover) {
   filter: brightness(1.15);
+}
+
+.menuContent {
+  width: 15rem;
+   background-color: var(--color-popover, #fff);
+  color: var(--color-popover-foreground, #111827);
+  border: 1px solid var(--color-border, #e5e7eb);
+  border-radius: 0.5rem;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+  padding: 0.25rem;
+}
+/* Radix state for hovered/focused items */
+.menuContent [data-highlighted] {
+  background-color: var(--color-accent, #f3f4f6);
+  color: var(--color-accent-foreground, #111827);
+  outline: none;
+}
+
+.menuContent [data-highlighted] svg {
+  opacity: 0.95;
 }

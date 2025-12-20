@@ -1526,7 +1526,7 @@ export default function ProjectPage() {
       scheduled: "#f7f3bf",
       new: "#1E90FF",
     };
-    return { backgroundColor: colorMap[status ?? ""] ?? "#eee", padding: "4px 8px", borderRadius: "6px", fontWeight: 300, color: "black" };
+    return { backgroundColor: colorMap[status ?? ""] ?? "#eee" };
   };
 
   const formatCpuTime = (seconds: number): string => {
@@ -2093,48 +2093,48 @@ export default function ProjectPage() {
   ]);
 
   function getHostIsDark() {
-  const html = document.documentElement;
-  const body = document.body;
+    const html = document.documentElement;
+    const body = document.body;
 
-  const htmlDark = html.classList.contains("dark") || html.getAttribute("data-theme") === "dark";
-  const bodyDark = body?.classList.contains("dark") || body?.getAttribute("data-theme") === "dark";
+    const htmlDark = html.classList.contains("dark") || html.getAttribute("data-theme") === "dark";
+    const bodyDark = body?.classList.contains("dark") || body?.getAttribute("data-theme") === "dark";
 
-  return Boolean(htmlDark || bodyDark);
-}
+    return Boolean(htmlDark || bodyDark);
+  }
 
-function useHostDarkMode() {
-  const [isDark, setIsDark] = useState<boolean>(() => {
-    if (typeof document === "undefined") return false;
-    return getHostIsDark();
-  });
+  function useHostDarkMode() {
+    const [isDark, setIsDark] = useState<boolean>(() => {
+      if (typeof document === "undefined") return false;
+      return getHostIsDark();
+    });
 
-  useEffect(() => {
-    // syncThemeFromHost
-    const sync = () => setIsDark(getHostIsDark());
-    sync();
+    useEffect(() => {
+      // syncThemeFromHost
+      const sync = () => setIsDark(getHostIsDark());
+      sync();
 
-    const obs = new MutationObserver(() => sync());
+      const obs = new MutationObserver(() => sync());
 
-    try {
-      obs.observe(document.documentElement, {
-        attributes: true,
-        attributeFilter: ["class", "data-theme"],
-      });
-      if (document.body) {
-        obs.observe(document.body, {
+      try {
+        obs.observe(document.documentElement, {
           attributes: true,
           attributeFilter: ["class", "data-theme"],
         });
+        if (document.body) {
+          obs.observe(document.body, {
+            attributes: true,
+            attributeFilter: ["class", "data-theme"],
+          });
+        }
+      } catch {
+        // noOp
       }
-    } catch {
-      // noOp
-    }
 
-    return () => obs.disconnect();
-  }, []);
+      return () => obs.disconnect();
+    }, []);
 
-  return isDark;
-}
+    return isDark;
+  }
 
 
   /* ------------------------ Render ------------------------ */
@@ -2142,14 +2142,14 @@ function useHostDarkMode() {
   return (
     <div className={`projectpage-widget-root ${hostIsDark ? "dark" : ""}`}>
       <div className="h-app min-h-0 flex flex-col relative overflow-hidden bg-background text-foreground">
-       
+
         {/* Header */}
-        <div className="flex justify-between items-center mb-1 ml-1">
-          <div className="relative w-full max-w-sm">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+        <div className="pp-headerRow">
+          <div className="pp-searchBox">
+            <div className="pp-searchIconWrap" aria-hidden="true">
               <svg
                 xmlns="http://www.w3.org/2000/svg"
-                className="h-5 w-5 text-gray-400 dark:text-gray-500"
+                className="pp-searchIcon"
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
@@ -2162,70 +2162,93 @@ function useHostDarkMode() {
                 />
               </svg>
             </div>
+
             <input
               type="text"
               placeholder="Search protocol..."
               onChange={(e) => handleSearch(e.target.value)}
-              className="w-full px-3 py-2 pr-3 text-sm text-gray-800 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:border-gray-700 dark:text-white"
-              style={{ paddingLeft: "2.5rem" }}
+              className="pp-searchInput"
             />
           </div>
 
-          <div className="ml-4 mr-4 p-2 border rounded-lg shadow-sm bg-white dark:bg-gray-800 flex items-center gap-4">
-            <ProtocolsDrawer
-              projectId={project?.id ? Number(project.id) : null}
-              open={drawerOpen}
-              onOpenChange={setDrawerOpen}
-              onProtocolDoubleClick={handleAddProtocolFromDrawer}
-            />
+          <div className="pp-headerCard pp-actionsCard">
+            <div className="pp-protocolsTrigger">
+              <ProtocolsDrawer
+                projectId={project?.id ? Number(project.id) : null}
+                open={drawerOpen}
+                onOpenChange={setDrawerOpen}
+                onProtocolDoubleClick={handleAddProtocolFromDrawer}
+              />
+            </div>
+
             <button
+              type="button"
               onClick={handleOpenWorkflows}
               disabled={workflowsLoading || !projectName}
-              className={`px-3 py-1 rounded-lg text-xs flex items-center gap-1 ${workflowsLoading
-                ? "bg-gray-200/80 text-gray-400 dark:bg-gray-800 dark:text-gray-500 cursor-wait"
-                : "bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300"
-                }`}
+              className="pp-chipBtn"
             >
-              <TreeIcon className="w-4 h-4" />
-              {workflowsLoading ? "Loading..." : "Workflows"}
+              <TreeIcon className="pp-btnIcon" />
+              <span>{workflowsLoading ? "Loading..." : "Workflows"}</span>
             </button>
-
           </div>
 
-          <div className="ml-4 mr-4 p-2 border rounded-lg shadow-sm bg-white dark:bg-gray-800 flex items-center gap-4 dark:text-gray-200">
-            <span className="font-small text-xs">View mode:</span>
-            <div className="flex gap-2">
+          <div className="pp-headerCard pp-viewCard">
+            <span className="pp-viewLabel">View modes</span>
+
+            <div className="pp-toggleGroup" role="group" aria-label="View mode">
               <button
-                onClick={() => { setViewMode("hierarchical"); setGraphDirection("TB"); }}
+                type="button"
+                onClick={() => {
+                  setViewMode("hierarchical");
+                  setGraphDirection("TB");
+                }}
+                aria-pressed={viewMode === "hierarchical" && graphDirection === "TB"}
+                data-active={viewMode === "hierarchical" && graphDirection === "TB"}
+                className="pp-toggleBtn"
                 title="Tree TB"
-                className={`px-3 py-1 rounded-lg text-xs flex items-center gap-1 ${viewMode === "hierarchical" && graphDirection === "TB" ? "bg-blue-500 text-white" : "bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300"}`}
               >
-                <TreeIcon className="w-4 h-4" />
+                <TreeIcon className="pp-btnIcon" />
               </button>
+
               <button
+                type="button"
+                onClick={() => {
+                  setViewMode("hierarchical");
+                  setGraphDirection("LR");
+                }}
+                aria-pressed={viewMode === "hierarchical" && graphDirection === "LR"}
+                data-active={viewMode === "hierarchical" && graphDirection === "LR"}
+                className="pp-toggleBtn"
                 title="Tree LR"
-                onClick={() => { setViewMode("hierarchical"); setGraphDirection("LR"); }}
-                className={`px-3 py-1 rounded-lg text-xs flex items-center gap-1 ${viewMode === "hierarchical" && graphDirection === "LR" ? "bg-blue-500 text-white" : "bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300"}`}
               >
-                <TreeIcon className="w-4 h-4 -rotate-90" />
+                <TreeIcon className="pp-btnIcon pp-rotateLeft" />
               </button>
+
               <button
-                title="Grid"
+                type="button"
                 onClick={() => setViewMode("grid")}
-                className={`px-3 py-1 rounded-lg text-xs flex items-center gap-1 ${viewMode === "grid" ? "bg-blue-500 text-white" : "bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300"}`}
+                aria-pressed={viewMode === "grid"}
+                data-active={viewMode === "grid"}
+                className="pp-toggleBtn"
+                title="Grid"
               >
-                <LayoutGrid className="w-4 h-4" />
+                <LayoutGrid className="pp-btnIcon" />
               </button>
+
               <button
-                title="Table"
+                type="button"
                 onClick={() => setViewMode("table")}
-                className={`px-3 py-1 rounded-lg text-xs flex items-center gap-1 ${viewMode === "table" ? "bg-blue-500 text-white" : "bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300"}`}
+                aria-pressed={viewMode === "table"}
+                data-active={viewMode === "table"}
+                className="pp-toggleBtn"
+                title="Table"
               >
-                <TableIcon className="w-4 h-4" />
+                <TableIcon className="pp-btnIcon" />
               </button>
             </div>
           </div>
         </div>
+
 
         {/* Content wrapper */}
         <div className="flex-1 relative min-h-0 overflow-hidden" style={{ contain: "paint" }}>
@@ -2249,89 +2272,147 @@ function useHostDarkMode() {
           )}
 
           {/* TABLE */}
+          {/* TABLE */}
           <div
             ref={tableContainerRef}
-            className={`absolute inset-0 overflow-auto border rounded shadow p-3 z-30 ${viewMode === "table" ? "" : "hidden"}`}
+            className={viewMode === "table" ? "pp-tableShell" : "pp-tableShell pp-hidden"}
             aria-hidden={viewMode !== "table"}
           >
-            <div className="flex justify-end mb-4 mr-4">
-              <button className="refresh-btn" title="Refresh project" onClick={handleRefresh} disabled={isRefreshing}>
-                <RefreshCw className={`w-4 h-4 ${isRefreshing ? "animate-spin" : ""}`} />
+            <div className="pp-tableToolbar">
+              <button
+                type="button"
+                className="pp-iconBtn"
+                title="Refresh project"
+                onClick={handleRefresh}
+                disabled={isRefreshing}
+              >
+                <RefreshCw className={`pp-icon ${isRefreshing ? "pp-spin" : ""}`} />
               </button>
             </div>
 
-            <table className="cursor-pointer w-full text-sm border border-gray-300 dark:border-gray-700">
-              <thead className="bg-gray-300 dark:bg-gray-800 font-normal">
-                <tr>
-                  <th className="px-4 py-2 text-left font-normal">Id</th>
-                  <th className="px-4 py-2 text-left font-normal">Protocol</th>
-                  <th className="px-4 py-2 text-left font-normal">State</th>
-                  <th className="px-4 py-2 text-left font-normal">Elapsed</th>
-                  <th className="px-4 py-2 text-left font-normal">Dependent</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sortedTableData.map((row) => (
-                  <tr
-                    key={row.id}
-                    ref={(el) => { rowRefs.current[row.id] = el; }}
-                    onClick={(e) => {
-                      const target = e.target as HTMLElement;
-                      if (target.closest("button,a")) return;
-
-                      if (pathSelRef.current.nodes.size || pathSelRef.current.edges.size) {
-                        clearPathSelection();
-                      }
-
-                      suppressOneFrame();
-                      setNodes((prev) =>
-                        prev.map((n) =>
-                          n.id === row.id
-                            ? (n.selected ? n : { ...n, selected: true })
-                            : (n.selected ? { ...n, selected: false } : n)
-                        )
-                      );
-                      selectedIdRef.current = row.id;
-                      setPreviousNodeId(row.id);
-                      setHighlightedId(row.id);
-                      applyEdgeHighlight(row.id);
-                    }}
-                    onDoubleClick={() => handleRowDoubleClick(row.id)}
-                    className={`border-t border-gray-200 dark:border-gray-700 ${highlightedId === row.id ? "bg-yellow-100 dark:bg-yellow-900" : ""}`}
-                  >
-                    <td className="ml-2 mt-2 px-3 py-1 inline-flex items-center justify-center rounded-full bg-gray-200 text-black text-xs">{row.id}</td>
-                    <td className="px-4 py-2">{row.label}</td>
-                    <td className="px-4 py-2">
-                      <div className="flex items-center justify-between">
-                        <span className={`${row.status === "running" ? "pulsing-table" : ""}`} style={getStatusStyle(row.status)}>{row.status ?? "—"}</span>
-                        {(row.status === "running" || row.status === "failed" || row.status === "aborted") && (
-                          <div className="flex items-center gap-2 ml-4 flex-1">
-                            <div className="w-16 h-3 bg-gray-300 dark:bg-gray-700 rounded overflow-hidden">
-                              <div
-                                className={`h-3 ${row.status === "running" ? "bg-yellow-400" : row.status === "failed" || row.status === "aborted" ? "bg-red-500" : "bg-gray-400"} transition-all duration-300`}
-                                style={{ width: `${((row.stepsDone ?? 0) / (row.numberOfSteps ?? 1)) * 100}%` }}
-                              />
-                            </div>
-                            <span className="text-sm opacity-80">{row.stepsDone}/{row.numberOfSteps}</span>
-                          </div>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-4 py-2">
-                      {formatCpuTime(row.tick ?? Number(row.elapsedTime) ?? 0)}
-                    </td>
-                    <td className="px-4 py-2 space-x-2">
-                      {row.children?.map((childId: string) => (
-                        <button key={childId} onClick={() => scrollToProtocol(childId)} className="text-blue-600 dark:text-blue-400 underline hover:text-blue-800">
-                          {childId}
-                        </button>
-                      ))}
-                    </td>
+            <div className="pp-tableCard">
+              <table className="pp-table" role="grid">
+                <thead className="pp-thead">
+                  <tr className="pp-trHead">
+                    <th className="pp-th">Id</th>
+                    <th className="pp-th">Protocol</th>
+                    <th className="pp-th">State</th>
+                    <th className="pp-th">Elapsed</th>
+                    <th className="pp-th">Dependent</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+
+                <tbody className="pp-tbody">
+                  {sortedTableData.map((row) => (
+                    <tr
+                      key={row.id}
+                      ref={(el) => {
+                        rowRefs.current[row.id] = el;
+                      }}
+                      onClick={(e) => {
+                        const target = e.target as HTMLElement;
+                        if (target.closest("button,a")) return;
+
+                        if (pathSelRef.current.nodes.size || pathSelRef.current.edges.size) {
+                          clearPathSelection();
+                        }
+
+                        suppressOneFrame();
+                        setNodes((prev) =>
+                          prev.map((n) =>
+                            n.id === row.id
+                              ? n.selected
+                                ? n
+                                : { ...n, selected: true }
+                              : n.selected
+                                ? { ...n, selected: false }
+                                : n
+                          )
+                        );
+
+                        selectedIdRef.current = row.id;
+                        setPreviousNodeId(row.id);
+                        setHighlightedId(row.id);
+                        applyEdgeHighlight(row.id);
+                      }}
+                      onDoubleClick={() => handleRowDoubleClick(row.id)}
+                      className={[
+                        "pp-tr",
+                        highlightedId === row.id ? "pp-trHighlighted" : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" ")}
+                    >
+                      <td className="pp-td">
+                        <div className="pp-idPill">{row.id}</div>
+                      </td>
+
+                      <td className="pp-td">
+                        <div className="pp-protocolCell">{row.label}</div>
+                      </td>
+
+                      <td className="pp-td">
+                        <div className="pp-stateCell">
+                          <span
+                            className={[
+                              "pp-statusBadge",
+                              row.status === "running" ? "pp-statusPulse" : "",
+                            ]
+                              .filter(Boolean)
+                              .join(" ")}
+                            style={getStatusStyle(row.status)}
+                          >
+                            {row.status ?? "—"}
+                          </span>
+
+                          {(row.status === "running" ||
+                            row.status === "failed" ||
+                            row.status === "aborted") && (
+                              <div className="pp-progressWrap" data-status={row.status}>
+                                <div className="pp-progressTrack">
+                                  <div
+                                    className="pp-progressFill"
+                                    style={{
+                                      width: `${((row.stepsDone ?? 0) / (row.numberOfSteps ?? 1)) * 100}%`,
+                                    }}
+                                  />
+                                </div>
+                                <span className="pp-progressText">
+                                  {row.stepsDone}/{row.numberOfSteps}
+                                </span>
+                              </div>
+                            )}
+                        </div>
+                      </td>
+
+                      <td className="pp-td">
+                        <span className="pp-elapsedText">
+                          {formatCpuTime(row.tick ?? Number(row.elapsedTime) ?? 0)}
+                        </span>
+                      </td>
+
+                      <td className="pp-td">
+                        <div className="pp-deps">
+                          {row.children?.map((childId: string) => (
+                            <button
+                              key={childId}
+                              type="button"
+                              className="pp-linkBtn"
+                              onClick={() => scrollToProtocol(childId)}
+                              title={`Go to ${childId}`}
+                            >
+                              {childId}
+                            </button>
+                          ))}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
+
 
           {/* ReactFlow */}
           <div
@@ -2379,39 +2460,57 @@ function useHostDarkMode() {
               </div>
             )}
 
-            <div className="absolute top-4 right-4 z-50">
-              <div className="flex flex-col gap-1 p-1 bg-white/90 rounded shadow">
+            <div className="pp-flowControlsWrap">
+              <div className="pp-flowControls">
                 <button
+                  type="button"
                   title={isGrid ? "Zoom disabled in Grid" : "Zoom in"}
                   onClick={handleZoomIn}
                   disabled={isGrid}
-                  className={`p-1 rounded hover:bg-gray-100 dark:text-black ${isGrid ? "opacity-50 cursor-not-allowed" : ""}`}
+                  className="pp-flowControlBtn"
                 >
-                  <PlusIcon className="w-4 h-4" />
+                  <PlusIcon className="pp-btnIcon" />
                 </button>
+
                 <button
+                  type="button"
                   title={isGrid ? "Zoom disabled in Grid" : "Zoom out"}
                   onClick={handleZoomOut}
                   disabled={isGrid}
-                  className={`p-1 rounded hover:bg-gray-100 dark:text-black ${isGrid ? "opacity-50 cursor-not-allowed" : ""}`}
+                  className="pp-flowControlBtn"
                 >
-                  <MinusIcon className="w-4 h-4" />
+                  <MinusIcon className="pp-btnIcon" />
                 </button>
+
                 <button
+                  type="button"
                   title={isGrid ? "Fixed zoom (Grid)" : "Fit view (preserve zoom)"}
                   onClick={handleFitView}
-                  className="p-1 rounded hover:bg-gray-100 dark:text-black"
+                  className="pp-flowControlBtn"
                 >
-                  <FitViewIcon className="w-4 h-4" />
+                  <FitViewIcon className="pp-btnIcon" />
                 </button>
-                <button title="Reorganize project" onClick={() => handleReorganize({ preserveZoom: true })} className="p-1 rounded hover:bg-gray-100 dark:text-black">
-                  <TreeIcon className="w-4 h-4" />
+
+                <button
+                  type="button"
+                  title="Reorganize project"
+                  onClick={() => handleReorganize({ preserveZoom: true })}
+                  className="pp-flowControlBtn"
+                >
+                  <TreeIcon className="pp-btnIcon" />
                 </button>
-                <button title="Refresh project" onClick={handleRefresh} className="p-1 rounded hover:bg-gray-100 dark:text-black">
-                  <RefreshCw className={`w-4 h-4 ${isRefreshing ? "animate-spin" : ""}`} />
+
+                <button
+                  type="button"
+                  title="Refresh project"
+                  onClick={handleRefresh}
+                  className="pp-flowControlBtn"
+                >
+                  <RefreshCw className={`pp-btnIcon ${isRefreshing ? "animate-spin" : ""}`} />
                 </button>
               </div>
             </div>
+
 
             <ReactFlowProvider>
               <ReactFlow

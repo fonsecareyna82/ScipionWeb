@@ -337,3 +337,649 @@
     filter: drop-shadow(0 0 0 rgba(252, 206, 98, 0.0));
   }
 }
+
+.projectpage-widget-root {
+  --ppBrand: #3b82f6;
+  --ppBrandHover: #2563eb;
+  --ppRing: rgba(59, 130, 246, 0.35);
+  --ppShadowSm: 0 1px 2px rgba(15, 23, 42, 0.10);
+  --ppShadowMd: 0 10px 26px rgba(15, 23, 42, 0.18);
+
+  /* strongGrayInk */
+  --ppInk: #374151;        /* gray-700 (clearly gray, not black) */
+  --ppInkMuted: #4b5563;   /* gray-600 */
+
+  /* flowControlSizing */
+  --ppFlowBtnSize: 28px;
+  --ppFlowIconSize: 14px;
+}
+
+.projectpage-widget-root.dark {
+  --ppShadowSm: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --ppShadowMd: 0 12px 30px rgba(0, 0, 0, 0.45);
+
+  --ppInk: #d1d5db;       /* gray-300 */
+  --ppInkMuted: #9ca3af;  /* gray-400 */
+}
+
+/* headerLayout */
+.projectpage-widget-root .pp-headerRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.25rem;
+}
+
+/* search */
+.projectpage-widget-root .pp-searchBox {
+  position: relative;
+  flex: 1 1 auto;
+  max-width: 420px;
+  min-width: 260px;
+}
+
+.projectpage-widget-root .pp-searchIconWrap {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  padding-inline-start: 0.75rem;
+  display: flex;
+  align-items: center;
+  pointer-events: none;
+  color: var(--ppInkMuted);
+}
+
+.projectpage-widget-root .pp-searchIcon {
+  width: 18px;
+  height: 18px;
+  color: currentColor;
+  stroke: currentColor;
+}
+
+.projectpage-widget-root .pp-searchInput {
+  width: 100%;
+  height: 38px;
+  padding: 0 0.75rem 0 2.5rem;
+  border-radius: 0.625rem;
+  border: 1px solid var(--color-border, #e5e7eb);
+  background-color: var(--card) !important;
+  color: var(--ppInk) !important;
+  box-shadow: var(--ppShadowSm);
+  outline: none;
+  font-size: 0.875rem;
+  line-height: 1.2;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.projectpage-widget-root .pp-searchInput::placeholder {
+  color: rgba(75, 85, 99, 0.78);
+}
+
+.projectpage-widget-root.dark .pp-searchInput::placeholder {
+  color: rgba(156, 163, 175, 0.80);
+}
+
+.projectpage-widget-root .pp-searchInput:focus {
+  border-color: var(--ppBrand);
+  box-shadow: 0 0 0 3px var(--ppRing), var(--ppShadowSm);
+}
+
+/* headerCards */
+.projectpage-widget-root .pp-headerCard {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid var(--color-border, #e5e7eb);
+  border-radius: 0.75rem;
+  background-color: var(--card) !important;
+  box-shadow: var(--ppShadowSm);
+  color: var(--ppInk) !important;
+}
+
+/* viewModeLabel */
+.projectpage-widget-root .pp-viewLabel {
+  font-size: 0.8rem;
+  opacity: 1;
+  color: var(--ppInk) !important;
+  white-space: nowrap;
+}
+
+/* buttonsBase (no hover grow) */
+.projectpage-widget-root .pp-chipBtn,
+.projectpage-widget-root .pp-toggleBtn,
+.projectpage-widget-root .pp-flowControlBtn,
+.projectpage-widget-root .pp-protocolsTrigger :where(button, [role="button"]) {
+  -webkit-appearance: none;
+  appearance: none;
+  font: inherit;
+  line-height: 1.1;
+  border: 1px solid var(--color-border, #e5e7eb);
+  border-radius: 0.625rem;
+  background-color: rgba(148, 163, 184, 0.14) !important;
+  color: var(--ppInk) !important;
+  box-shadow: none;
+  transition: background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.projectpage-widget-root.dark .pp-chipBtn,
+.projectpage-widget-root.dark .pp-toggleBtn,
+.projectpage-widget-root.dark .pp-flowControlBtn,
+.projectpage-widget-root.dark .pp-protocolsTrigger :where(button, [role="button"]) {
+  background-color: rgba(148, 163, 184, 0.16) !important;
+}
+
+.projectpage-widget-root .pp-chipBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.projectpage-widget-root .pp-toggleGroup {
+  display: inline-flex;
+  gap: 0.35rem;
+}
+
+.projectpage-widget-root .pp-toggleBtn {
+  width: 34px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  color: var(--ppInk) !important;
+}
+
+/* iconColorFollowsText */
+.projectpage-widget-root .pp-chipBtn svg,
+.projectpage-widget-root .pp-toggleBtn svg,
+.projectpage-widget-root .pp-flowControlBtn svg,
+.projectpage-widget-root .pp-btnIcon {
+  color: currentColor;
+  stroke: currentColor;
+}
+
+/* activeToggle */
+.projectpage-widget-root .pp-toggleBtn[data-active="true"] {
+  background-color: var(--ppBrand) !important;
+  border-color: var(--ppBrandHover) !important;
+  color: #ffffff !important;
+  box-shadow: none;
+}
+
+.projectpage-widget-root .pp-chipBtn:hover:not(:disabled),
+.projectpage-widget-root .pp-flowControlBtn:hover:not(:disabled),
+.projectpage-widget-root .pp-protocolsTrigger :where(button, [role="button"]):hover:not(:disabled) {
+  border-color: rgba(59, 130, 246, 0.35) !important;
+  box-shadow: none;
+}
+
+/* inactiveToggleHoverOnlyBorder */
+.projectpage-widget-root .pp-toggleBtn:hover:not(:disabled):not([data-active="true"]) {
+  border-color: rgba(59, 130, 246, 0.45) !important;
+  background-color: rgba(148, 163, 184, 0.14) !important;
+  color: var(--ppInk) !important;
+  box-shadow: none;
+}
+
+/* activeToggleHoverKeepBlueLighter */
+.projectpage-widget-root .pp-toggleBtn[data-active="true"]:hover:not(:disabled) {
+  background-color: #60a5fa !important;
+  border-color: #3b82f6 !important;
+  color: #ffffff !important;
+  box-shadow: none;
+}
+
+.projectpage-widget-root .pp-chipBtn:disabled,
+.projectpage-widget-root .pp-toggleBtn:disabled,
+.projectpage-widget-root .pp-flowControlBtn:disabled,
+.projectpage-widget-root .pp-protocolsTrigger :where(button, [role="button"]):disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.projectpage-widget-root .pp-btnIcon {
+  width: 16px;
+  height: 16px;
+}
+
+.projectpage-widget-root .pp-rotateLeft {
+  transform: rotate(-90deg);
+}
+
+/* reactFlowControlsContainer */
+.projectpage-widget-root .pp-flowControlsWrap {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  z-index: 50;
+}
+
+.projectpage-widget-root .pp-flowControls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.35rem;
+  border-radius: 0.85rem;
+  border: 1px solid var(--color-border, #e5e7eb);
+  background-color: var(--card) !important;
+  box-shadow: var(--ppShadowMd);
+}
+
+/* flowControlButtonsSmaller */
+.projectpage-widget-root .pp-flowControlBtn {
+  width: var(--ppFlowBtnSize);
+  height: var(--ppFlowBtnSize);
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ppInk) !important;
+}
+
+.projectpage-widget-root .pp-flowControlBtn svg {
+  width: var(--ppFlowIconSize);
+  height: var(--ppFlowIconSize);
+}
+
+/* tableViewShell */
+.projectpage-widget-root .pp-hidden {
+  display: none !important;
+}
+
+.projectpage-widget-root .pp-tableShell {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  overflow: auto;
+  padding: 0.75rem;
+  background: transparent;
+}
+
+/* tableToolbar */
+.projectpage-widget-root .pp-tableToolbar {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  margin: 0 0 0.75rem 0;
+  padding-right: 0.25rem;
+}
+
+/* iconButton */
+.projectpage-widget-root .pp-iconBtn {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 9999px;
+  border: 1px solid var(--color-border, #e5e7eb);
+  background: var(--card);
+  color: var(--ppInk); /* gray ink (not black) */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--ppShadowSm, 0 1px 2px rgba(15, 23, 42, 0.10));
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.projectpage-widget-root.dark .pp-iconBtn {
+  color: var(--ppInk);
+}
+
+.projectpage-widget-root .pp-iconBtn:hover:not(:disabled) {
+  border-color: rgba(59, 130, 246, 0.35);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.10), var(--ppShadowSm, 0 1px 2px rgba(15, 23, 42, 0.10));
+}
+
+.projectpage-widget-root .pp-iconBtn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.projectpage-widget-root .pp-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.projectpage-widget-root .pp-spin {
+  animation: ppSpin 900ms linear infinite;
+}
+
+@keyframes ppSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* tableCard */
+.projectpage-widget-root .pp-tableCard {
+  border: 1px solid var(--color-border, #e5e7eb);
+  border-radius: 0.85rem;
+  background: var(--card);
+  box-shadow: var(--ppShadowMd, 0 10px 26px rgba(15, 23, 42, 0.18));
+  overflow: hidden;
+}
+
+
+/*-------------------*/
+/* tableBase */
+/*-------------------*/
+.projectpage-widget-root .pp-table {
+  width: 100%;
+  border-collapse: separate !important;
+  border-spacing: 0 !important;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  color: var(--ppInk);
+}
+
+.projectpage-widget-root.dark .pp-table {
+  color: var(--ppInk);
+}
+
+/* tableCellBgReset (prevents host/Bootstrap hover from painting cells) */
+.projectpage-widget-root .pp-table .pp-td,
+.projectpage-widget-root .pp-table .pp-th {
+  background-color: transparent !important;
+}
+
+/* head */
+.projectpage-widget-root .pp-thead {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #e5e7eb;
+}
+
+.projectpage-widget-root.dark .pp-thead {
+  background: #111827;
+}
+
+.projectpage-widget-root .pp-trHead {
+  background: transparent;
+}
+
+.projectpage-widget-root .pp-th {
+  text-align: left;
+  font-weight: 500;
+  padding: 0.7rem 0.9rem;
+  border-bottom: 1px solid var(--color-border, #e5e7eb);
+  color: var(--ppInk);
+  white-space: nowrap;
+}
+
+.projectpage-widget-root.dark .pp-th {
+  color: var(--ppInk);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+/* bodyRows */
+.projectpage-widget-root .pp-tr {
+  background: transparent !important;
+}
+
+.projectpage-widget-root .pp-tr + .pp-tr .pp-td {
+  border-top: 1px solid var(--color-border, #e5e7eb);
+}
+
+.projectpage-widget-root.dark .pp-tr + .pp-tr .pp-td {
+  border-top: 1px solid rgba(255, 255, 255, 0.10);
+}
+
+/* optionalHover: keep it very subtle to avoid "weird" effects */
+/* applyToRowAndCells so the highlight does not require "moving the mouse" */
+.projectpage-widget-root .pp-tr:hover,
+.projectpage-widget-root .pp-tr:hover > .pp-td,
+.projectpage-widget-root .pp-tr:hover > * {
+  background: rgba(59, 130, 246, 0.05) !important;
+}
+
+.projectpage-widget-root.dark .pp-tr:hover,
+.projectpage-widget-root.dark .pp-tr:hover > .pp-td,
+.projectpage-widget-root.dark .pp-tr:hover > * {
+  background: rgba(59, 130, 246, 0.10) !important;
+}
+
+/* highlightedRow: must win over host cell-hover rules */
+.projectpage-widget-root .pp-trHighlighted,
+.projectpage-widget-root .pp-trHighlighted > .pp-td,
+.projectpage-widget-root .pp-trHighlighted > *,
+.projectpage-widget-root .pp-trHighlighted:hover,
+.projectpage-widget-root .pp-trHighlighted:hover > .pp-td,
+.projectpage-widget-root .pp-trHighlighted:hover > * {
+  background: rgba(252, 206, 98, 0.25) !important;
+}
+
+.projectpage-widget-root.dark .pp-trHighlighted,
+.projectpage-widget-root.dark .pp-trHighlighted > .pp-td,
+.projectpage-widget-root.dark .pp-trHighlighted > *,
+.projectpage-widget-root.dark .pp-trHighlighted:hover,
+.projectpage-widget-root.dark .pp-trHighlighted:hover > .pp-td,
+.projectpage-widget-root.dark .pp-trHighlighted:hover > * {
+  background: rgba(252, 206, 98, 0.18) !important;
+}
+
+/* cells */
+.projectpage-widget-root .pp-td {
+  padding: 0.7rem 0.9rem;
+  vertical-align: middle;
+}
+
+.projectpage-widget-root .pp-protocolCell {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 520px;
+}
+
+/* idPill */
+.projectpage-widget-root .pp-idPill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 9999px;
+  background: rgba(148, 163, 184, 0.22);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  color: var(--ppInk);
+  font-size: 0.75rem;
+}
+
+.projectpage-widget-root.dark .pp-idPill {
+  color: var(--ppInk);
+  background: rgba(148, 163, 184, 0.16);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+}
+
+/* stateCell */
+.projectpage-widget-root .pp-stateCell {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+/* statusBadge */
+.projectpage-widget-root .pp-statusBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem 0.55rem;
+  border-radius: 0.55rem;
+  border: 1px solid rgba(15, 23, 42, 0.10);
+  color: #1f2937; /* gray-800 (intentional for contrast with status bg colors) */
+  white-space: nowrap;
+}
+
+.projectpage-widget-root.dark .pp-statusBadge {
+  color: #111827;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+}
+
+/* statusPulse */
+.projectpage-widget-root .pp-statusPulse {
+  position: relative;
+  isolation: isolate;
+  transform: translateZ(0);
+  will-change: transform;
+}
+
+.projectpage-widget-root .pp-statusPulse::before {
+  content: "";
+  position: absolute;
+  inset: -6px;
+  border-radius: calc(0.55rem + 6px);
+  background: radial-gradient(
+    closest-side,
+    rgba(252, 206, 98, 0.38),
+    rgba(252, 206, 98, 0.18) 55%,
+    rgba(252, 206, 98, 0.00) 78%
+  );
+  opacity: 0.85;
+  z-index: -2;
+  filter: blur(0.2px);
+  animation: ppRunningHalo 1400ms cubic-bezier(0.22, 1, 0.36, 1) infinite;
+}
+
+.projectpage-widget-root .pp-statusPulse::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 0.55rem;
+  background: linear-gradient(
+    120deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.35) 28%,
+    rgba(255, 255, 255, 0.00) 56%
+  );
+  opacity: 0.55;
+  z-index: -1;
+  transform: translateX(-70%);
+  animation: ppRunningSheen 1800ms ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes ppRunningHalo {
+  0% {
+    transform: scale(0.98);
+    opacity: 0.55;
+  }
+  45% {
+    transform: scale(1.05);
+    opacity: 0.95;
+  }
+  100% {
+    transform: scale(0.98);
+    opacity: 0.55;
+  }
+}
+
+@keyframes ppRunningSheen {
+  0% {
+    transform: translateX(-70%);
+    opacity: 0.00;
+  }
+  35% {
+    opacity: 0.55;
+  }
+  70% {
+    transform: translateX(70%);
+    opacity: 0.00;
+  }
+  100% {
+    transform: translateX(70%);
+    opacity: 0.00;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .projectpage-widget-root .pp-statusPulse::before,
+  .projectpage-widget-root .pp-statusPulse::after {
+    animation: none !important;
+  }
+}
+
+
+/* progress */
+.projectpage-widget-root .pp-progressWrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 140px;
+}
+
+.projectpage-widget-root .pp-progressTrack {
+  width: 72px;
+  height: 10px;
+  border-radius: 9999px;
+  background: rgba(148, 163, 184, 0.35);
+  overflow: hidden;
+}
+
+.projectpage-widget-root .pp-progressFill {
+  height: 100%;
+  width: 0%;
+  border-radius: 9999px;
+  transition: width 220ms ease;
+  background: rgba(156, 163, 175, 0.9);
+}
+
+.projectpage-widget-root .pp-progressWrap[data-status="running"] .pp-progressFill {
+  background: rgba(252, 206, 98, 0.95);
+}
+
+.projectpage-widget-root .pp-progressWrap[data-status="failed"] .pp-progressFill,
+.projectpage-widget-root .pp-progressWrap[data-status="aborted"] .pp-progressFill {
+  background: rgba(239, 68, 68, 0.92);
+}
+
+.projectpage-widget-root .pp-progressText {
+  font-size: 0.8rem;
+  opacity: 0.85;
+  color: var(--ppInk);
+}
+
+.projectpage-widget-root.dark .pp-progressText {
+  color: var(--ppInk);
+}
+
+/* elapsed */
+.projectpage-widget-root .pp-elapsedText {
+  opacity: 0.9;
+}
+
+/* dependencies */
+.projectpage-widget-root .pp-deps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.5rem;
+}
+
+.projectpage-widget-root .pp-linkBtn {
+  -webkit-appearance: none;
+  appearance: none;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #2563eb;
+  font: inherit;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.projectpage-widget-root .pp-linkBtn:hover {
+  border-color: rgba(37, 99, 235, 0.25);
+  text-decoration-thickness: 2px;
+}
+
+.projectpage-widget-root.dark .pp-linkBtn {
+  color: #60a5fa;
+}
+
