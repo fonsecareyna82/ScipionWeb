@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, type FC } from "react";
 import {
   DocsIcon,
   FolderIcon,
@@ -6,9 +6,10 @@ import {
   ChevronDownIcon,
   ChevronUpIcon,
 } from "@/icons";
+import styles from "./protocoltree.module.css";
 
 // --- Icon components ---
-export const BetaIcon: React.FC<{ className?: string }> = ({ className }) => (
+export const BetaIcon: FC<{ className?: string }> = ({ className }) => (
   <svg
     width="72"
     height="72"
@@ -32,7 +33,7 @@ export const BetaIcon: React.FC<{ className?: string }> = ({ className }) => (
   </svg>
 );
 
-export const NewIcon: React.FC<{ className?: string }> = ({ className }) => (
+export const NewIcon: FC<{ className?: string }> = ({ className }) => (
   <svg
     width="72"
     height="72"
@@ -56,7 +57,7 @@ export const NewIcon: React.FC<{ className?: string }> = ({ className }) => (
   </svg>
 );
 
-export const UpdatedIcon: React.FC<{ className?: string }> = ({ className }) => (
+export const UpdatedIcon: FC<{ className?: string }> = ({ className }) => (
   <svg
     width="72"
     height="72"
@@ -80,7 +81,7 @@ export const UpdatedIcon: React.FC<{ className?: string }> = ({ className }) => 
   </svg>
 );
 
-export const ProtocolIcons: Record<string, React.FC<{ className?: string }>> = {
+export const ProtocolIcons: Record<string, FC<{ className?: string }>> = {
   beta: BetaIcon,
   new: NewIcon,
   updated: UpdatedIcon,
@@ -109,6 +110,7 @@ interface ProtocolsTreeProps {
   data: ProtocolNode[];
   searchText?: string;
   onNodeDoubleClick?: (protocolId: string) => void;
+  isDark?: boolean;
 }
 
 // --- Recursive search ---
@@ -117,9 +119,7 @@ const filterTree = (nodes: ProtocolNode[], search: string): ProtocolNode[] => {
   return nodes
     .map((node) => {
       const matches = node.text.toLowerCase().includes(lowerSearch);
-      const filteredChildren = node.childs
-        ? filterTree(node.childs, search)
-        : undefined;
+      const filteredChildren = node.childs ? filterTree(node.childs, search) : undefined;
       if (matches || (filteredChildren && filteredChildren.length > 0)) {
         return { ...node, childs: filteredChildren };
       }
@@ -131,16 +131,17 @@ const filterTree = (nodes: ProtocolNode[], search: string): ProtocolNode[] => {
 // --- Highlight function ---
 const highlightText = (text: string, search: string) => {
   if (!search) return text;
-  const regex = new RegExp(`(${search})`, "gi");
+
+  // escapeSearchForRegex
+  const escaped = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const regex = new RegExp(`(${escaped})`, "gi");
   const parts = text.split(regex);
+
   return parts.map((part, idx) =>
     regex.test(part) ? (
-      <span
-        key={idx}
-        className="bg-yellow-300 dark:bg-yellow-600 font-bold"
-      >
+      <mark key={idx} className={styles.highlight}>
         {part}
-      </span>
+      </mark>
     ) : (
       part
     )
@@ -148,16 +149,17 @@ const highlightText = (text: string, search: string) => {
 };
 
 // --- Main tree ---
-export const ProtocolsTree: React.FC<ProtocolsTreeProps> = ({
+export const ProtocolsTree: FC<ProtocolsTreeProps> = ({
   data,
   searchText = "",
   onNodeDoubleClick,
+  isDark = false,
 }) => {
   const filteredData = searchText ? filterTree(data, searchText) : data;
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex-1 overflow-y-auto p-2">
+    <div className={[styles.treeRoot, isDark ? styles.dark : ""].filter(Boolean).join(" ")}>
+      <div className={styles.treeScroll}>
         {filteredData.map((node, idx) => (
           <ProtocolNodeItem
             key={idx}
@@ -173,19 +175,18 @@ export const ProtocolsTree: React.FC<ProtocolsTreeProps> = ({
 };
 
 // --- Recursive node component ---
-const ProtocolNodeItem: React.FC<{
+const ProtocolNodeItem: FC<{
   node: ProtocolNode;
   searchText?: string;
   isRoot?: boolean;
   onNodeDoubleClick?: (protocolId: string) => void;
 }> = ({ node, searchText, isRoot = false, onNodeDoubleClick }) => {
-  const hasChildren = node.childs && node.childs.length > 0;
+  const hasChildren = !!(node.childs && node.childs.length > 0);
 
   const [expanded, setExpanded] = useState<boolean>(
     !!(node.openItem === true || node.openItem === "True")
   );
 
-  // Expand automatically si es root o durante búsqueda
   useEffect(() => {
     if (searchText && searchText.length > 0) {
       setExpanded(
@@ -204,22 +205,21 @@ const ProtocolNodeItem: React.FC<{
       const key = node.icon.name.split(".")[0];
       const IconComponent = ProtocolIcons[key];
       return IconComponent ? (
-        <IconComponent className="w-12 h-5" />
+        <IconComponent className={styles.iconWideBadge} />
       ) : (
-        <DocsIcon className="w-12 h-6" />
+        <DocsIcon className={styles.iconDoc} />
       );
     }
-    switch (node.tag) {
-      case "protocol_group":
-      case "section":
-        return expanded ? (
-          <OpenFolderIcon className="w-6 h-6" />
-        ) : (
-          <FolderIcon className="w-6 h-6" />
-        );
-      default:
-        return null;
+
+    if (node.tag === "protocol_group" || node.tag === "section") {
+      return expanded ? (
+        <OpenFolderIcon className={styles.iconFolder} />
+      ) : (
+        <FolderIcon className={styles.iconFolder} />
+      );
     }
+
+    return null;
   };
 
   const handleDoubleClick = () => {
@@ -229,30 +229,39 @@ const ProtocolNodeItem: React.FC<{
   };
 
   return (
-    <div className="flex flex-col mb-0">
+    <div className={styles.nodeItem}>
       <div
-        className="flex items-center gap-2 cursor-pointer select-none p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700"
-        onClick={() => hasChildren && setExpanded(!expanded)}
+        className={styles.nodeRow}
+        onClick={() => {
+          if (hasChildren) setExpanded((v) => !v);
+        }}
         onDoubleClick={handleDoubleClick}
       >
         {hasChildren && (
-          <span className="flex items-center">
+          <span className={styles.chevronWrap} aria-hidden="true">
             {expanded ? (
-              <ChevronUpIcon className="w-4 h-4" />
+              <ChevronUpIcon className={styles.chevronIcon} />
             ) : (
-              <ChevronDownIcon className="w-4 h-4" />
+              <ChevronDownIcon className={styles.chevronIcon} />
             )}
           </span>
         )}
+
+        {!hasChildren && <span className={styles.chevronWrap} aria-hidden="true" />}
+
         {tagIcon()}
-        <span>{highlightText(node.text, searchText || "")}</span>
+
+        <span className={styles.nodeText}>
+          {highlightText(node.text, searchText || "")}
+        </span>
       </div>
 
       {hasChildren && (
         <div
-          className={`pl-5 border-l border-gray-300 dark:border-gray-600 ${
-            expanded ? "block" : "hidden"
-          }`}
+          className={[
+            styles.children,
+            expanded ? styles.childrenOpen : styles.childrenClosed,
+          ].join(" ")}
         >
           {node.childs!.map((child, idx) => (
             <ProtocolNodeItem
