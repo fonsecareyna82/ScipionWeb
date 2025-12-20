@@ -2317,7 +2317,7 @@ function useHostDarkMode() {
                         )}
                       </div>
                     </td>
-                    <td className="px-4 py-2 font-mono">
+                    <td className="px-4 py-2">
                       {formatCpuTime(row.tick ?? Number(row.elapsedTime) ?? 0)}
                     </td>
                     <td className="px-4 py-2 space-x-2">
@@ -2345,7 +2345,7 @@ function useHostDarkMode() {
             {contextMenu.visible && (
               <div
                 id="canvas-context-menu"
-                className="fixed z-[100] min-w-[220px] overflow-hidden rounded-md border bg-white shadow-md"
+                className="absolute z-[100] min-w-[220px] overflow-hidden rounded-md border bg-white shadow-md"
                 style={{ top: contextMenu.y, left: contextMenu.x }}
                 onContextMenu={(e) => e.preventDefault()}
               >

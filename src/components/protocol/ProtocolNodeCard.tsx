@@ -1,7 +1,16 @@
 import { useRef, useState } from "react";
+import type {
+  Dispatch,
+  DragEvent as ReactDragEvent,
+  MouseEvent as ReactMouseEvent,
+  SetStateAction,
+} from "react";
+
 import { Handle, Position } from "reactflow";
-import "./ProtocolNodeCard.css";
+import styles from "./ProtocolNodeCard.module.css";
+
 import { useDrag } from "./DragContext";
+
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -9,6 +18,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
+
 import {
   ContextMenu,
   ContextMenuContent,
@@ -37,7 +47,7 @@ import {
   Scan,
 } from "lucide-react";
 
-const STATUS_COLORS: Record<string, string> = {
+const statusColors: Record<string, string> = {
   running: "#FCCE62",
   saved: "#D9F1FA",
   launched: "#D9F1FA",
@@ -50,7 +60,7 @@ const STATUS_COLORS: Record<string, string> = {
   new: "#1E90FF",
 };
 
-const STATUS_BADGE_COLORS: Record<string, string> = {
+const statusBadgeColors: Record<string, string> = {
   running: "#918516",
   saved: "#1E90FF",
   launched: "#1E90FF",
@@ -85,9 +95,9 @@ type StatusNodeProps = {
   selectedNodeId?: string;
   hoveredNodeId?: string;
   isHovered?: boolean;
-  setHoveredNodeId?: React.Dispatch<React.SetStateAction<string | null>>;
+  setHoveredNodeId?: Dispatch<SetStateAction<string | null>>;
   graphDirection?: "TB" | "LR";
-  onClick?: (evt?: React.MouseEvent) => void;
+  onClick?: (evt?: ReactMouseEvent) => void;
   onDoubleClick?: () => void;
   zoomLevel?: number;
   compactThreshold?: number;
@@ -107,11 +117,9 @@ type StatusNodeProps = {
   inPathSelection?: boolean;
   pathSelectionActive?: boolean;
 
-  // Allow wrapper to pass through these without type errors
   sourcePosition?: Position;
   targetPosition?: Position;
 
-  // New flag to hide handles in grid mode
   showHandles?: boolean;
 };
 
@@ -123,7 +131,7 @@ const formatCpuTime = (seconds: number): string => {
   return `${pad(hours)}h:${pad(minutes)}m:${pad(secs)}s`;
 };
 
-export default function StatusNode({
+export default function ProtocolNodeCard({
   data,
   selectedNodeId,
   graphDirection = "TB",
@@ -149,38 +157,29 @@ export default function StatusNode({
   const [isHovered, setIsHovered] = useState(false);
   const [draggingIdx, setDraggingIdx] = useState<number | null>(null);
   const isSelected = selectedNodeId === data.id;
-  const { setCurrentDraggedOutput } = useDrag();
 
+  const { setCurrentDraggedOutput } = useDrag();
   const rootRef = useRef<HTMLDivElement | null>(null);
 
-  const bgColor = STATUS_COLORS[data.status ?? "finished"] ?? STATUS_COLORS["root"];
+  const isProjectNode = data.id === "PROJECT";
+  const isCompactView = zoomLevel <= compactThreshold;
+
+  const bgColor = statusColors[data.status ?? "finished"] ?? statusColors.root;
   data.color = bgColor;
 
+  const nodeStyle: React.CSSProperties = {
+    backgroundColor: bgColor,
+  };
+
   const classNames = [
-    "status-node-card",
-    "rounded-2xl border transition-shadow",
-    "crisp-text",
-    isHovered ? "shadow-xl" : "shadow-md",
-    isSelected
-      ? "border-[3px] border-blue-600 shadow-[0_0_20px_rgba(59,130,246,0.5)]"
-      : "border-gray-300",
-  ].join(" ");
-
-  const nodeStyle: React.CSSProperties = { backgroundColor: bgColor };
-  if (isSelected) {
-    nodeStyle.borderColor = "#0070f3";
-    nodeStyle.borderStyle = "solid";
-    nodeStyle.borderWidth = 4;
-  }
-  if (inPathSelection) {
-    nodeStyle.borderColor = "#cf0d2eff";
-    nodeStyle.borderStyle = "solid";
-    nodeStyle.borderWidth = 5;
-    nodeStyle.outline = "4px #0070f3";
-    nodeStyle.outlineOffset = "2px";
-  }
-
-  const isCompactView = zoomLevel <= compactThreshold;
+    styles.card,
+    styles.crispText,
+    isHovered ? styles.hovered : "",
+    isSelected ? styles.selected : "",
+    inPathSelection ? styles.inPathSelection : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   const handleEdit = () => onEdit?.(data.id);
   const handleRename = () => onRename?.(data.id);
@@ -189,11 +188,21 @@ export default function StatusNode({
   const handleRestartAll = () => onRestartAll?.(data.id);
   const handleContinueAll = () => onContinueAll?.(data.id);
   const handleResetFrom = () => onResetFrom?.(data.id);
-  const handleSelectFrom = () => { if (data.id !== "PROJECT") onSelectFrom?.(data.id); };
-  const handleSelectTo = () => { if (data.id !== "PROJECT") onSelectTo?.(data.id); };
-  const handleStop = () => { if (data.id !== "PROJECT") onStop?.(data.id); };
+
+  const handleSelectFrom = () => {
+    if (!isProjectNode) onSelectFrom?.(data.id);
+  };
+
+  const handleSelectTo = () => {
+    if (!isProjectNode) onSelectTo?.(data.id);
+  };
+
+  const handleStop = () => {
+    if (!isProjectNode) onStop?.(data.id);
+  };
+
   const handleBrowse = () => {
-    if (data.id !== "PROJECT") onBrowse?.(data.id, data.projectId, data.label);
+    if (!isProjectNode) onBrowse?.(data.id, data.projectId, data.label);
   };
 
   const reduceMenus = pathSelectionActive || inPathSelection;
@@ -201,14 +210,16 @@ export default function StatusNode({
   const FromIcon = graphDirection === "TB" ? ArrowDown : ArrowRight;
   const ToIcon = graphDirection === "TB" ? ArrowUp : ArrowLeft;
 
-  const forwardClickToRFNode = (e: React.MouseEvent) => {
+  const forwardClickToRFNode = (e: ReactMouseEvent) => {
     const doc = (e.target as HTMLElement | null)?.ownerDocument || document;
     const win = doc.defaultView || window;
 
     const nodeEl =
       (e.currentTarget as HTMLElement)?.closest(".react-flow__node") ??
       rootRef.current?.closest(".react-flow__node") ??
-      doc.querySelector(`.react-flow__node[data-id="${CSS.escape(String(data.id))}"]`);
+      doc.querySelector(
+        `.react-flow__node[data-id="${CSS.escape(String(data.id))}"]`
+      );
 
     if (!nodeEl) return;
 
@@ -230,14 +241,12 @@ export default function StatusNode({
     nodeEl.dispatchEvent(new MouseEvent("click", opts));
   };
 
-
   const truncateLabel = (text: string = "", max: number = 120) =>
     text.length > max ? `${text.slice(0, max)}…` : text;
 
   const outputsArray = Array.isArray(data.outputs) ? data.outputs : [];
   const hasOutputs = outputsArray.length > 0;
 
-  // --- Shortcut labels (mac vs win/linux) ---
   const isMac =
     typeof navigator !== "undefined" &&
     /Mac|iPhone|iPad|iPod/.test(navigator.platform);
@@ -245,8 +254,7 @@ export default function StatusNode({
   const mod = isMac ? "⌘" : "Ctrl";
   const modShift = isMac ? "⌘⇧" : "Ctrl+Shift";
 
-  // Centralize strings so we re-use consistently in both menus
-  const s = {
+  const shortcuts = {
     edit: "Space / Db-Click",
     browse: `${mod} + B`,
     rename: "F2",
@@ -260,13 +268,26 @@ export default function StatusNode({
     selectTo: "Alt + ↑",
   } as const;
 
-  // Small helper for right-aligned shortcut hint
   const ShortcutHint = ({ text }: { text?: string }) =>
-    text ? (
-      <span className="ml-6 text-[12px] text-gray-500 tabular-nums">
-        {text}
-      </span>
-    ) : null;
+    text ? <span className={styles.shortcutHint}>{text}</span> : null;
+
+  // projectNodeAlwaysHeaderOnly
+  const shouldRenderProtocolBody = !isProjectNode;
+
+  // keepMountedForSmoothCollapse
+  const isContentExpanded = !isCompactView;
+
+  const contentClassName = [
+    styles.content,
+    isContentExpanded ? styles.contentExpanded : styles.contentCollapsed,
+  ].join(" ");
+
+  const contentStyle: React.CSSProperties = {
+    opacity: isContentExpanded ? 1 : 0,
+    transition:
+      "max-height 520ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 260ms ease-in-out",
+    willChange: "max-height, opacity",
+  };
 
   return (
     <ContextMenu>
@@ -276,159 +297,178 @@ export default function StatusNode({
           className={classNames}
           style={nodeStyle}
           onClick={onClick}
-          onDoubleClick={(e: React.MouseEvent) => { e.stopPropagation(); onDoubleClick?.(); }}
+          onDoubleClick={(e: ReactMouseEvent) => {
+            e.stopPropagation();
+            onDoubleClick?.();
+          }}
           onMouseEnter={() => setIsHovered(true)}
           onMouseLeave={() => setIsHovered(false)}
-          onContextMenu={(e: React.MouseEvent) => e.stopPropagation()}
         >
-          {/* Header */}
           <div
-            className={`node-card-header p-3 border-b flex ${data.id === "PROJECT" ? "flex-col items-center text-center" : "flex-row items-center justify-between"}`}
+            className={[
+              styles.header,
+              isProjectNode ? styles.headerProject : styles.headerProtocol,
+            ].join(" ")}
           >
-            <div className="flex items-center space-x-2 header-left">
-              {data.id !== "PROJECT" && (
+            <div className={styles.headerLeft}>
+              {!isProjectNode && (
                 <div
-                  className={`node-id-badge ${data.status === "running" ? "glow-badge" : ""}`}
-                  style={isCompactView ? { fontSize: "2.4rem" } : { fontSize: "2.3rem" }}
+                  className={[
+                    styles.nodeIdBadge,
+                    data.status === "running" ? styles.glowBadge : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
+                  style={
+                    isCompactView ? { fontSize: "2.4rem" } : { fontSize: "2.3rem" }
+                  }
                 >
                   <span>{data.id}</span>
                 </div>
               )}
-              <div
-                className={data.id === "PROJECT" ? "text-4xl text-black" : "node-label dark:text-black"}
-                style={isCompactView ? { fontSize: "2.8rem" } : {}}
-              >
+
+              {isProjectNode ? (
                 <div
-                  className={`node-label dark:text-black ${isCompactView ? "compact" : ""}`}
+                  className={styles.projectLabelWrapper}
+                  style={isCompactView ? { fontSize: "2.8rem" } : {}}
+                >
+                  <div title={data.label}>{truncateLabel(data.label, 120)}</div>
+                </div>
+              ) : (
+                <div
+                  className={[
+                    styles.label,
+                    isCompactView ? styles.labelCompact : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
                   title={data.label}
                 >
-                  {truncateLabel(
-                    data.label,
-                    data.id === "PROJECT" ? 120 : 120
-                  )}
+                  {truncateLabel(data.label, 120)}
                 </div>
-              </div>
+              )}
             </div>
 
-            {data.id !== "PROJECT" && (
-              <div className="flex items-center header-right">
+            {!isProjectNode && (
+              <div className={styles.headerRight}>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <button
                       type="button"
-                      className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-200 ml-4 nodrag"
+                      className={`${styles.iconButton} nodrag`}
                       onPointerDown={(e) => e.stopPropagation()}
                       onMouseDown={(e) => e.stopPropagation()}
                       onClick={(e) => e.stopPropagation()}
                       onDoubleClick={(e) => e.stopPropagation()}
-                      onContextMenu={(e) => e.stopPropagation()}
                       draggable={false}
                       data-nodrag
                       aria-label="Open node menu"
                     >
-                      <MoreHorizontal className="h-12 w-12 ml-2 text-black dark:text-black pointer-events-none" />
+                      <MoreHorizontal className={styles.menuIcon} />
                     </button>
                   </DropdownMenuTrigger>
 
                   <DropdownMenuContent
-                    className="w-56"
-                    onClick={(e: React.MouseEvent) => e.stopPropagation()}
+                    className={styles.menuContent}
+                    onClick={(e) => e.stopPropagation()}
                   >
                     {!reduceMenus && (
                       <>
                         <DropdownMenuItem onClick={handleEdit}>
-                          <div className="flex w-full items-center justify-between">
-                            <span className="flex items-center gap-2">
-                              <Pencil className="h-4 w-4" />
+                          <div className={styles.menuRow}>
+                            <span className={styles.menuLeft}>
+                              <Pencil className={styles.menuItemIcon} />
                               <span>Edit</span>
                             </span>
-                            <ShortcutHint text={s.edit} />
+                            <ShortcutHint text={shortcuts.edit} />
                           </div>
                         </DropdownMenuItem>
 
                         <DropdownMenuItem onClick={handleBrowse}>
-                          <div className="flex w-full items-center justify-between">
-                            <span className="flex items-center gap-2">
-                              <FolderOpen className="h-4 w-4" />
+                          <div className={styles.menuRow}>
+                            <span className={styles.menuLeft}>
+                              <FolderOpen className={styles.menuItemIcon} />
                               <span>Browse</span>
                             </span>
-                            <ShortcutHint text={s.browse} />
+                            <ShortcutHint text={shortcuts.browse} />
                           </div>
                         </DropdownMenuItem>
 
                         <DropdownMenuItem onClick={handleRename}>
-                          <div className="flex w-full items-center justify-between">
-                            <span className="flex items-center gap-2">
-                              <Pencil className="h-4 w-4" />
+                          <div className={styles.menuRow}>
+                            <span className={styles.menuLeft}>
+                              <Pencil className={styles.menuItemIcon} />
                               <span>Rename</span>
                             </span>
-                            <ShortcutHint text={s.rename} />
+                            <ShortcutHint text={shortcuts.rename} />
                           </div>
                         </DropdownMenuItem>
 
                         <DropdownMenuSeparator />
 
                         <DropdownMenuItem onClick={handleSelectFrom}>
-                          <div className="flex w-full items-center justify-between">
-                            <span className="flex items-center gap-2">
-                              <FromIcon className="h-4 w-4" />
+                          <div className={styles.menuRow}>
+                            <span className={styles.menuLeft}>
+                              <FromIcon className={styles.menuItemIcon} />
                               <span>Select from</span>
                             </span>
-                            <ShortcutHint text={s.selectFrom} />
+                            <ShortcutHint text={shortcuts.selectFrom} />
                           </div>
                         </DropdownMenuItem>
 
                         <DropdownMenuItem onClick={handleSelectTo}>
-                          <div className="flex w-full items-center justify-between">
-                            <span className="flex items-center gap-2">
-                              <ToIcon className="h-4 w-4" />
+                          <div className={styles.menuRow}>
+                            <span className={styles.menuLeft}>
+                              <ToIcon className={styles.menuItemIcon} />
                               <span>Select to</span>
                             </span>
-                            <ShortcutHint text={s.selectTo} />
+                            <ShortcutHint text={shortcuts.selectTo} />
                           </div>
                         </DropdownMenuItem>
 
                         <DropdownMenuSeparator />
 
-                        {(data.status === "running" || data.status === "launched" || data.status === "scheduled") && (
-                          <DropdownMenuItem onSelect={handleStop}>
-                            <div className="flex w-full items-center justify-between">
-                              <span className="flex items-center gap-2">
-                                <Square className="h-4 w-4" />
+                        {(data.status === "running" ||
+                          data.status === "launched" ||
+                          data.status === "scheduled") && (
+                          <DropdownMenuItem onClick={handleStop}>
+                            <div className={styles.menuRow}>
+                              <span className={styles.menuLeft}>
+                                <Square className={styles.menuItemIcon} />
                                 <span>Stop</span>
                               </span>
-                              <ShortcutHint text={s.stop} />
+                              <ShortcutHint text={shortcuts.stop} />
                             </div>
                           </DropdownMenuItem>
                         )}
 
                         <DropdownMenuItem onClick={handleRestartAll}>
-                          <div className="flex w-full items-center justify-between">
-                            <span className="flex items-center gap-2">
-                              <RefreshCw className="h-4 w-4" />
+                          <div className={styles.menuRow}>
+                            <span className={styles.menuLeft}>
+                              <RefreshCw className={styles.menuItemIcon} />
                               <span>Restart all</span>
                             </span>
-                            <ShortcutHint text={s.restartAll} />
+                            <ShortcutHint text={shortcuts.restartAll} />
                           </div>
                         </DropdownMenuItem>
 
                         <DropdownMenuItem onClick={handleContinueAll}>
-                          <div className="flex w-full items-center justify-between">
-                            <span className="flex items-center gap-2">
-                              <Play className="h-4 w-4" />
+                          <div className={styles.menuRow}>
+                            <span className={styles.menuLeft}>
+                              <Play className={styles.menuItemIcon} />
                               <span>Continue all</span>
                             </span>
-                            <ShortcutHint text={s.continueAll} />
+                            <ShortcutHint text={shortcuts.continueAll} />
                           </div>
                         </DropdownMenuItem>
 
                         <DropdownMenuItem onClick={handleResetFrom}>
-                          <div className="flex w-full items-center justify-between">
-                            <span className="flex items-center gap-2">
-                              <RotateCcw className="h-4 w-4" />
+                          <div className={styles.menuRow}>
+                            <span className={styles.menuLeft}>
+                              <RotateCcw className={styles.menuItemIcon} />
                               <span>Reset from</span>
                             </span>
-                            <ShortcutHint text={s.resetFrom} />
+                            <ShortcutHint text={shortcuts.resetFrom} />
                           </div>
                         </DropdownMenuItem>
 
@@ -436,59 +476,58 @@ export default function StatusNode({
                       </>
                     )}
 
-                    {reduceMenus && (data.status === "running" || data.status === "launched" || data.status === "scheduled") && (
-                      <>
-                        <DropdownMenuItem onSelect={handleStop}>
-                          <div className="flex w-full items-center justify-between">
-                            <span className="flex items-center gap-2">
-                              <Square className="h-4 w-4" />
+                    {reduceMenus &&
+                      (data.status === "running" ||
+                        data.status === "launched" ||
+                        data.status === "scheduled") && (
+                        <DropdownMenuItem onClick={handleStop}>
+                          <div className={styles.menuRow}>
+                            <span className={styles.menuLeft}>
+                              <Square className={styles.menuItemIcon} />
                               <span>Stop selection</span>
                             </span>
-                            <ShortcutHint text={s.stop} />
+                            <ShortcutHint text={shortcuts.stop} />
                           </div>
                         </DropdownMenuItem>
-                      </>
-                    )}
+                      )}
 
                     <DropdownMenuItem onClick={handleDelete}>
-                      <div className="flex w-full items-center justify-between">
-                        <span className="flex items-center gap-2">
-                          <Trash2 className="h-4 w-4" />
+                      <div className={styles.menuRow}>
+                        <span className={styles.menuLeft}>
+                          <Trash2 className={styles.menuItemIcon} />
                           <span>Delete</span>
                         </span>
-                        <ShortcutHint text={s.delete} />
+                        <ShortcutHint text={shortcuts.delete} />
                       </div>
                     </DropdownMenuItem>
 
                     <DropdownMenuItem onClick={handleDuplicate}>
-                      <div className="flex w-full items-center justify-between">
-                        <span className="flex items-center gap-2">
-                          <Copy className="h-4 w-4" />
+                      <div className={styles.menuRow}>
+                        <span className={styles.menuLeft}>
+                          <Copy className={styles.menuItemIcon} />
                           <span>Duplicate</span>
                         </span>
-                        <ShortcutHint text={s.duplicate} />
+                        <ShortcutHint text={shortcuts.duplicate} />
                       </div>
                     </DropdownMenuItem>
 
                     <DropdownMenuSeparator />
 
                     <DropdownMenuItem>
-                      <div className="flex w-full items-center justify-between">
-                        <span className="flex items-center gap-2">
-                          <FileUp className="h-4 w-4" />
+                      <div className={styles.menuRow}>
+                        <span className={styles.menuLeft}>
+                          <FileUp className={styles.menuItemIcon} />
                           <span>Export</span>
                         </span>
-                        <ShortcutHint text={undefined} />
                       </div>
                     </DropdownMenuItem>
 
                     <DropdownMenuItem>
-                      <div className="flex w-full items-center justify-between">
-                        <span className="flex items-center gap-2">
-                          <Upload className="h-4 w-4" />
+                      <div className={styles.menuRow}>
+                        <span className={styles.menuLeft}>
+                          <Upload className={styles.menuItemIcon} />
                           <span>Export & upload</span>
                         </span>
-                        <ShortcutHint text={undefined} />
                       </div>
                     </DropdownMenuItem>
                   </DropdownMenuContent>
@@ -496,62 +535,77 @@ export default function StatusNode({
 
                 <button
                   type="button"
-                  className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-200 ml-4 nodrag"
+                  className={`${styles.iconButton} nodrag`}
                   onPointerDown={(e) => e.stopPropagation()}
                   onMouseDown={(e) => e.stopPropagation()}
-                  onClick={(e) => { e.stopPropagation(); handleEdit(); }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleEdit();
+                  }}
                   onDoubleClick={(e) => e.stopPropagation()}
-                  onContextMenu={(e) => e.stopPropagation()}
                   draggable={false}
                   data-nodrag
                   aria-label="Edit protocol"
                 >
-                  <Scan className="h-11 w-11 text-black dark:text-black pointer-events-none" />
+                  <Scan className={styles.scanIcon} />
                 </button>
               </div>
             )}
           </div>
 
-          {/* Content (reserved height for up to 3 outputs) */}
-          <div
-            className={`transition-[max-height] duration-300 ease-in-out overflow-hidden ${isCompactView ? "max-h-0" : "max-h-[2000px]"}`}
-            aria-hidden={isCompactView}
-          >
-            {data.id !== "PROJECT" && (
-              <div className="node-card-content p-3 mt-4">
-                <div className="outputs-reserved">
+          {shouldRenderProtocolBody && (
+            <div
+              className={contentClassName}
+              style={contentStyle}
+              aria-hidden={!isContentExpanded}
+            >
+              <div className={styles.cardContent}>
+                <div className={styles.outputsReserved}>
                   {hasOutputs ? (
-                    <div className="outputs-list">
-                      <div className="section-header flex items-center px-2 py-1 bg-green-50 dark:bg-green-50 rounded-t-lg border-b border-green-800 dark:border-green-800">
-                        <span className="text-black dark:text-black font-normal text-4xl">Outputs</span>
+                    <div className={styles.outputsList}>
+                      <div className={styles.sectionHeader}>
+                        <span className={styles.sectionTitle}>Outputs</span>
                       </div>
 
-                      <div className="section-content">
+                      <div className={styles.sectionContent} data-has-scroll>
                         {outputsArray.map((outputObj, idx) => {
                           const [, rawValue] = Object.entries(outputObj)[0];
-                          const value = rawValue as { info: string; _class: string; _objValue: string; _parentId: string };
+                          const value = rawValue as {
+                            info: string;
+                            _class: string;
+                            _objValue: string;
+                            _parentId: string;
+                          };
+
                           const isDragging = draggingIdx === idx;
 
                           return (
                             <div
                               key={idx}
-                              className={`nodrag mt-3 group cursor-grab flex items-center px-3 py-1 rounded-full border border-gray-400 dark:border-gray-400 shadow-sm ${isDragging ? "scale-100 opacity-70" : "bg-gradient-to-r from-gray-200 to-gray-300 dark:from-gray-200 dark:to-gray-300"}`}
+                              className={[
+                                styles.outputPill,
+                                isDragging ? styles.outputPillDragging : "",
+                                "nodrag",
+                              ]
+                                .filter(Boolean)
+                                .join(" ")}
                               draggable
-                              onMouseDown={(e: React.MouseEvent<HTMLDivElement>) => {
+                              onMouseDown={(e: ReactMouseEvent<HTMLDivElement>) => {
                                 if (e.ctrlKey || e.metaKey) {
                                   e.preventDefault();
                                   e.stopPropagation();
                                   forwardClickToRFNode(e);
                                 }
                               }}
-                              onClick={(e: React.MouseEvent<HTMLDivElement>) => {
+                              onClick={(e: ReactMouseEvent<HTMLDivElement>) => {
                                 e.preventDefault();
                                 e.stopPropagation();
                                 forwardClickToRFNode(e);
                               }}
-                              onDragStart={(e: React.DragEvent<HTMLDivElement>) => {
+                              onDragStart={(e: ReactDragEvent<HTMLDivElement>) => {
                                 e.stopPropagation();
                                 setDraggingIdx(idx);
+
                                 const output = {
                                   _class: value._class,
                                   _expectedClass: value._class,
@@ -559,8 +613,13 @@ export default function StatusNode({
                                   info: value.info,
                                   _parentId: value._parentId,
                                 };
+
                                 setCurrentDraggedOutput(output);
-                                e.dataTransfer.setData("application/scipion-output", JSON.stringify(output));
+                                e.dataTransfer.setData(
+                                  "application/scipion-output",
+                                  JSON.stringify(output)
+                                );
+
                                 const ghost = document.createElement("div");
                                 ghost.style.position = "absolute";
                                 ghost.style.top = "-1000px";
@@ -580,175 +639,196 @@ export default function StatusNode({
                                 setCurrentDraggedOutput(null);
                               }}
                             >
-                              <ArrowUpRight className="h-7 w-7 mr-2 text-black-700 dark:text-black" />
-                              <span className="outputs output-text text-gray-800 dark:text-black mt-1">
-                                {value.info}
-                              </span>
+                              <ArrowUpRight className={styles.outputIcon} />
+                              <span className={styles.outputText}>{value.info}</span>
                             </div>
                           );
                         })}
                       </div>
                     </div>
                   ) : (
-                    <div className="outputs-placeholder" aria-hidden="true" />
+                    <div className={styles.outputsPlaceholder} aria-hidden="true" />
                   )}
                 </div>
               </div>
-            )}
 
-            {/* Footer / Status + Progress */}
-            {data.status && (
-              <div className="node-card-footer p-3 border-t flex items-center justify-between">
-                <span
-                  className="node-status-badge px-2 py-1 rounded text-sm flex items-center gap-2"
-                  style={{
-                    backgroundColor: STATUS_BADGE_COLORS[data.status] || "#999",
-                    color: "white",
-                    minWidth: "120px",
-                    fontSize: "2.2rem",
-                  }}
-                >
-                  {data.status}
-                  {(data.status === "running" || data.status === "failed" || data.status === "aborted") && (
-                    <div className="flex items-center gap-1 flex-1 ml-2">
-                      <div className="w-16 h-3 bg-white/30 rounded overflow-hidden">
-                        <div
-                          className="h-3 bg-white transition-[width] duration-500"
-                          style={{ width: `${((data.stepsDone ?? 0) / (data.numberOfSteps ?? 1)) * 100}%` }}
-                        />
-                      </div>
-                      <span className="text-3xl opacity-80 ml-4">
-                        {data.stepsDone}/{data.numberOfSteps}
+              {data.status && (
+                <div className={styles.footer}>
+                  <span
+                    className={styles.statusBadge}
+                    style={{
+                      backgroundColor: statusBadgeColors[data.status] || "#999",
+                    }}
+                  >
+                    {data.status}
+
+                    {(data.status === "running" ||
+                      data.status === "failed" ||
+                      data.status === "aborted") && (
+                      <span className={styles.progress}>
+                        <span className={styles.progressTrack}>
+                          <span
+                            className={styles.progressFill}
+                            style={{
+                              width: `${((data.stepsDone ?? 0) / (data.numberOfSteps ?? 1)) * 100}%`,
+                            }}
+                          />
+                        </span>
+                        <span className={styles.progressText}>
+                          {data.stepsDone}/{data.numberOfSteps}
+                        </span>
                       </span>
-                    </div>
-                  )}
-                </span>
+                    )}
+                  </span>
 
-                <span className="flex items-center space-x-1 ml-6 text-3xl dark:text-black">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-gray-500 dark:text-gray-400 mr-2" fill="none" viewBox="0 0 22 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <span>{formatCpuTime(data.tick ?? Number(data.elapsedTime) ?? 0)}</span>
-                </span>
-              </div>
-            )}
-          </div>
+                  <span className={styles.timeRow}>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      className={styles.timeIcon}
+                      fill="none"
+                      viewBox="0 0 22 24"
+                      stroke="currentColor"
+                      strokeWidth={2}
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
+                    </svg>
+                    <span>{formatCpuTime(data.tick ?? Number(data.elapsedTime) ?? 0)}</span>
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
 
-          {/* React Flow handles */}
-          {showHandles && (     
+          {showHandles && (
             <>
               <Handle
                 type="target"
                 position={graphDirection === "TB" ? Position.Top : Position.Left}
-                style={graphDirection === "TB" ? {} : { top: "50%", transform: "translateY(-50%)" }}
+                style={
+                  graphDirection === "TB"
+                    ? {}
+                    : { top: "50%", transform: "translateY(-50%)" }
+                }
               />
               <Handle
                 type="source"
                 position={graphDirection === "TB" ? Position.Bottom : Position.Right}
-                style={graphDirection === "TB" ? {} : { top: "50%", transform: "translateY(-50%)" }}
+                style={
+                  graphDirection === "TB"
+                    ? {}
+                    : { top: "50%", transform: "translateY(-50%)" }
+                }
               />
             </>
           )}
         </div>
       </ContextMenuTrigger>
 
-      {/* Node-specific context menu */}
-      <ContextMenuContent className="w-56" onClick={(e: React.MouseEvent) => e.stopPropagation()}>
+      <ContextMenuContent
+        className={styles.menuContent}
+        onClick={(e) => e.stopPropagation()}
+      >
         {!reduceMenus && (
           <>
             <ContextMenuItem onClick={handleEdit}>
-              <div className="flex w-full items-center justify-between">
-                <span className="flex items-center gap-2">
-                  <Pencil className="h-4 w-4" />
+              <div className={styles.menuRow}>
+                <span className={styles.menuLeft}>
+                  <Pencil className={styles.menuItemIcon} />
                   <span>Edit</span>
                 </span>
-                <ShortcutHint text={s.edit} />
+                <ShortcutHint text={shortcuts.edit} />
               </div>
             </ContextMenuItem>
 
             <ContextMenuItem onClick={handleBrowse}>
-              <div className="flex w-full items-center justify-between">
-                <span className="flex items-center gap-2">
-                  <FolderOpen className="h-4 w-4" />
+              <div className={styles.menuRow}>
+                <span className={styles.menuLeft}>
+                  <FolderOpen className={styles.menuItemIcon} />
                   <span>Browse</span>
                 </span>
-                <ShortcutHint text={s.browse} />
+                <ShortcutHint text={shortcuts.browse} />
               </div>
             </ContextMenuItem>
 
             <ContextMenuItem onClick={handleRename}>
-              <div className="flex w-full items-center justify-between">
-                <span className="flex items-center gap-2">
-                  <Pencil className="h-4 w-4" />
+              <div className={styles.menuRow}>
+                <span className={styles.menuLeft}>
+                  <Pencil className={styles.menuItemIcon} />
                   <span>Rename</span>
                 </span>
-                <ShortcutHint text={s.rename} />
+                <ShortcutHint text={shortcuts.rename} />
               </div>
             </ContextMenuItem>
 
             <ContextMenuSeparator />
 
             <ContextMenuItem onClick={handleSelectFrom}>
-              <div className="flex w-full items-center justify-between">
-                <span className="flex items-center gap-2">
-                  <FromIcon className="h-4 w-4" />
+              <div className={styles.menuRow}>
+                <span className={styles.menuLeft}>
+                  <FromIcon className={styles.menuItemIcon} />
                   <span>Select from</span>
                 </span>
-                <ShortcutHint text={s.selectFrom} />
+                <ShortcutHint text={shortcuts.selectFrom} />
               </div>
             </ContextMenuItem>
 
             <ContextMenuItem onClick={handleSelectTo}>
-              <div className="flex w-full items-center justify-between">
-                <span className="flex items-center gap-2">
-                  <ToIcon className="h-4 w-4" />
+              <div className={styles.menuRow}>
+                <span className={styles.menuLeft}>
+                  <ToIcon className={styles.menuItemIcon} />
                   <span>Select to</span>
                 </span>
-                <ShortcutHint text={s.selectTo} />
+                <ShortcutHint text={shortcuts.selectTo} />
               </div>
             </ContextMenuItem>
 
             <ContextMenuSeparator />
 
-            {(data.status === "running" || data.status === "launched" || data.status === "scheduled") && (
+            {(data.status === "running" ||
+              data.status === "launched" ||
+              data.status === "scheduled") && (
               <ContextMenuItem onClick={handleStop}>
-                <div className="flex w-full items-center justify-between">
-                  <span className="flex items-center gap-2">
-                    <Square className="h-4 w-4" />
+                <div className={styles.menuRow}>
+                  <span className={styles.menuLeft}>
+                    <Square className={styles.menuItemIcon} />
                     <span>Stop</span>
                   </span>
-                  <ShortcutHint text={s.stop} />
+                  <ShortcutHint text={shortcuts.stop} />
                 </div>
               </ContextMenuItem>
             )}
 
             <ContextMenuItem onClick={handleRestartAll}>
-              <div className="flex w-full items-center justify-between">
-                <span className="flex items-center gap-2">
-                  <RefreshCw className="h-4 w-4" />
+              <div className={styles.menuRow}>
+                <span className={styles.menuLeft}>
+                  <RefreshCw className={styles.menuItemIcon} />
                   <span>Restart all</span>
                 </span>
-                <ShortcutHint text={s.restartAll} />
+                <ShortcutHint text={shortcuts.restartAll} />
               </div>
             </ContextMenuItem>
 
             <ContextMenuItem onClick={handleContinueAll}>
-              <div className="flex w-full items-center justify-between">
-                <span className="flex items-center gap-2">
-                  <Play className="h-4 w-4" />
+              <div className={styles.menuRow}>
+                <span className={styles.menuLeft}>
+                  <Play className={styles.menuItemIcon} />
                   <span>Continue all</span>
                 </span>
-                <ShortcutHint text={s.continueAll} />
+                <ShortcutHint text={shortcuts.continueAll} />
               </div>
             </ContextMenuItem>
 
             <ContextMenuItem onClick={handleResetFrom}>
-              <div className="flex w-full items-center justify-between">
-                <span className="flex items-center gap-2">
-                  <RotateCcw className="h-4 w-4" />
+              <div className={styles.menuRow}>
+                <span className={styles.menuLeft}>
+                  <RotateCcw className={styles.menuItemIcon} />
                   <span>Reset from</span>
                 </span>
-                <ShortcutHint text={s.resetFrom} />
+                <ShortcutHint text={shortcuts.resetFrom} />
               </div>
             </ContextMenuItem>
 
@@ -756,59 +836,58 @@ export default function StatusNode({
           </>
         )}
 
-        {reduceMenus && (data.status === "running" || data.status === "launched" || data.status === "scheduled") && (
-          <>
+        {reduceMenus &&
+          (data.status === "running" ||
+            data.status === "launched" ||
+            data.status === "scheduled") && (
             <ContextMenuItem onClick={handleStop}>
-              <div className="flex w-full items-center justify-between">
-                <span className="flex items-center gap-2">
-                  <Square className="h-4 w-4" />
+              <div className={styles.menuRow}>
+                <span className={styles.menuLeft}>
+                  <Square className={styles.menuItemIcon} />
                   <span>Stop selection</span>
                 </span>
-                <ShortcutHint text={s.stop} />
+                <ShortcutHint text={shortcuts.stop} />
               </div>
             </ContextMenuItem>
-          </>
-        )}
+          )}
 
         <ContextMenuItem onClick={handleDelete}>
-          <div className="flex w-full items-center justify-between">
-            <span className="flex items-center gap-2">
-              <Trash2 className="h-4 w-4" />
+          <div className={styles.menuRow}>
+            <span className={styles.menuLeft}>
+              <Trash2 className={styles.menuItemIcon} />
               <span>Delete</span>
             </span>
-            <ShortcutHint text={s.delete} />
+            <ShortcutHint text={shortcuts.delete} />
           </div>
         </ContextMenuItem>
 
         <ContextMenuItem onClick={handleDuplicate}>
-          <div className="flex w-full items-center justify-between">
-            <span className="flex items-center gap-2">
-              <Copy className="h-4 w-4" />
+          <div className={styles.menuRow}>
+            <span className={styles.menuLeft}>
+              <Copy className={styles.menuItemIcon} />
               <span>Duplicate</span>
             </span>
-            <ShortcutHint text={s.duplicate} />
+            <ShortcutHint text={shortcuts.duplicate} />
           </div>
         </ContextMenuItem>
 
         <ContextMenuSeparator />
 
         <ContextMenuItem>
-          <div className="flex w-full items-center justify-between">
-            <span className="flex items-center gap-2">
-              <FileUp className="h-4 w-4" />
+          <div className={styles.menuRow}>
+            <span className={styles.menuLeft}>
+              <FileUp className={styles.menuItemIcon} />
               <span>Export</span>
             </span>
-            <ShortcutHint text={undefined} />
           </div>
         </ContextMenuItem>
 
         <ContextMenuItem>
-          <div className="flex w-full items-center justify-between">
-            <span className="flex items-center gap-2">
-              <Upload className="h-4 w-4" />
+          <div className={styles.menuRow}>
+            <span className={styles.menuLeft}>
+              <Upload className={styles.menuItemIcon} />
               <span>Export & upload</span>
             </span>
-            <ShortcutHint text={undefined} />
           </div>
         </ContextMenuItem>
       </ContextMenuContent>
