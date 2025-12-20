@@ -34,7 +34,7 @@ export default defineConfig({
       output: {
         assetFileNames: (assetInfo) => {
         if (assetInfo.name?.endsWith(".css")) return "projectpage-widget.css";
-        return "assets/[name]-[hash][extname]";
+        return "assets/[name][extname]";
       },
       },
       plugins: [inject({ process: "process" })],

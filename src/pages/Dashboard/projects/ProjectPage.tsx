@@ -172,6 +172,13 @@ export default function ProjectPage() {
     lastPositionsRef.current = {};
   };
 
+  const portalRootRef = useRef<HTMLDivElement | null>(null);
+  const [dialogContainer, setDialogContainer] = useState<HTMLElement | null>(null);
+
+  useEffect(() => {
+    setDialogContainer(portalRootRef.current);
+  }, []);
+
   useLayoutEffect(() => {
     if (!pendingFlipRef.current) return;
     pendingFlipRef.current = false;
@@ -2426,39 +2433,35 @@ export default function ProjectPage() {
             {contextMenu.visible && (
               <div
                 id="canvas-context-menu"
-                className="absolute z-[100] min-w-[220px] overflow-hidden rounded-md border bg-white shadow-md"
+                className="pp-canvasMenu"
                 style={{ top: contextMenu.y, left: contextMenu.x }}
                 onContextMenu={(e) => e.preventDefault()}
               >
-                <div className="py-1">
-                  <button
-                    className="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-                    onClick={handleAddProtocolFromContext}
-                  >
-                    <PlusIcon className="w-4 h-4" />
-                    Add protocol
-                  </button>
+                <button className="pp-canvasMenuItem" onClick={handleAddProtocolFromContext}>
+                  <PlusIcon className="pp-canvasMenuIcon" />
+                  <span>Add protocol</span>
+                </button>
 
-                  <div className="h-px my-1 bg-gray-200" />
+                <div className="pp-canvasMenuSep" />
 
-                  <button
-                    className="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-                    onClick={() => { handleRefresh(); handleCloseMenu(); }}
-                  >
-                    <RefreshCw className="w-4 h-4" />
-                    Refresh graph
-                  </button>
+                <button
+                  className="pp-canvasMenuItem"
+                  onClick={() => { handleRefresh(); handleCloseMenu(); }}
+                >
+                  <RefreshCw className="pp-canvasMenuIcon" />
+                  <span>Refresh graph</span>
+                </button>
 
-                  <button
-                    className="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-                    onClick={() => { clearAllSelectionHard(); applyEdgeHighlight(null); handleCloseMenu(); }}
-                  >
-                    <XCircle className="w-4 h-4" />
-                    Clear selection
-                  </button>
-                </div>
+                <button
+                  className="pp-canvasMenuItem"
+                  onClick={() => { clearAllSelectionHard(); applyEdgeHighlight(null); handleCloseMenu(); }}
+                >
+                  <XCircle className="pp-canvasMenuIcon" />
+                  <span>Clear selection</span>
+                </button>
               </div>
             )}
+
 
             <div className="pp-flowControlsWrap">
               <div className="pp-flowControls">
@@ -2606,7 +2609,7 @@ export default function ProjectPage() {
 
         {/* --- Dialogs --- */}
         <Dialog open={dlgRename.open} onOpenChange={(open: boolean) => { if (!open) setDlgRename({ open: false, id: null, value: "" }); }}>
-          <DialogContent className="sm:max-w-md">
+          <DialogContent container={dialogContainer} className="sm:max-w-md">
             <DialogHeader>
               <DialogTitle>Rename protocol</DialogTitle>
               <DialogDescription>Set a new name for this protocol.</DialogDescription>
@@ -2616,10 +2619,10 @@ export default function ProjectPage() {
               <Input id="rename" value={dlgRename.value} onChange={(e) => setDlgRename((s) => ({ ...s, value: (e.target as any).value }))} placeholder="e.g. motioncorr_02" />
             </div>
             <DialogFooter>
-              <Button onClick={() => setDlgRename({ open: false, id: null, value: "" })} className="px-3 py-2 rounded-md text-sm bg-gray-200 hover:bg-gray-300 text-gray-800">
+              <Button onClick={() => setDlgRename({ open: false, id: null, value: "" })} className="pp-dialogBtn">
                 Cancel
               </Button>
-              <Button onClick={submitRename} disabled={!dlgRename.value.trim()} className="px-3 py-2 rounded-md text-sm bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-60 disabled:cursor-not-allowed">
+              <Button onClick={submitRename} disabled={!dlgRename.value.trim()} className="pp-dialogBtn pp-dialogBtnPrimary">
                 Rename
               </Button>
             </DialogFooter>
@@ -2634,7 +2637,7 @@ export default function ProjectPage() {
             }
           }}
         >
-          <DialogContent>
+          <DialogContent container={dialogContainer}>
             <DialogHeader>
               <DialogTitle className="mb-6">
                 {confirm.kind === "delete" && "Delete protocol(s)?"}
@@ -2660,7 +2663,7 @@ export default function ProjectPage() {
                 onClick={() =>
                   setConfirm({ open: false, id: null, ids: null, kind: null })
                 }
-                className="px-5 py-2 rounded-md text-sm min-w-[100px] bg-gray-200 hover:bg-gray-300 text-gray-800"
+                className="pp-dialogBtn"
               >
                 Cancel
               </button>
@@ -2705,7 +2708,7 @@ export default function ProjectPage() {
                     toast.error(getErrorMsg(e));
                   }
                 }}
-                className="px-5 py-2 rounded-md text-sm min-w-[100px] bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-60 disabled:cursor-not-allowed"
+                className="pp-dialogBtn pp-dialogBtnPrimary"
               >
                 {confirm.kind === "delete"
                   ? "Delete"
@@ -2720,16 +2723,17 @@ export default function ProjectPage() {
         </Dialog>
 
         <Dialog open={dlgResetFrom.open} onOpenChange={(open: boolean) => { if (!open) setDlgResetFrom({ open: false, id: null }); }}>
-          <DialogContent className="sm:max-w-md">
+          <DialogContent container={dialogContainer} className="sm:max-w-md">
             <DialogHeader>
               <DialogTitle>Reset from this protocol?</DialogTitle>
               <DialogDescription>Downstream steps may be invalidated. You can re-run them later.</DialogDescription>
             </DialogHeader>
             <DialogFooter>
-              <Button onClick={() => setDlgResetFrom({ open: false, id: null })} className="px-5 py-2 rounded-md text-sm min-w-[100px] bg-gray-200 hover:bg-gray-300 text-gray-800">
+              <button onClick={() => setDlgResetFrom({ open: false, id: null })}
+                className="pp-dialogBtn">
                 Cancel
-              </Button>
-              <Button
+              </button>
+              <button
                 onClick={async () => {
                   if (!projectName || !dlgResetFrom.id) return;
                   try {
@@ -2742,10 +2746,10 @@ export default function ProjectPage() {
                     toast.error(getErrorMsg(e));
                   }
                 }}
-                className="px-5 py-2 rounded-md text-sm min-w-[100px] bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-60 disabled:cursor-not-allowed"
+                className="pp-dialogBtn pp-dialogBtnPrimary"
               >
                 Reset from here
-              </Button>
+              </button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
@@ -2769,6 +2773,8 @@ export default function ProjectPage() {
           />
         )}
       </div>
+      {/* portalRootInsideWidgetSoDialogsInheritWidgetStyles */}
+      <div ref={portalRootRef} className="pp-portalRoot" />
     </div>
   );
 }

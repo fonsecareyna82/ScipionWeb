@@ -34,12 +34,12 @@ export default defineConfig({
       output: {
         exports: "named",
         globals: {},
-        chunkFileNames: "assets/[name].[hash].js",
+        chunkFileNames: "assets/[name].js",
         assetFileNames: (info) => {
           const n = info.name ?? "";
-          if (/\.(png|jpe?g|svg|gif|webp)$/.test(n)) return "images/[name].[hash][extname]";
-          if (/\.css$/.test(n)) return "styles/[name].[hash][extname]";
-          return "assets/[name].[hash][extname]";
+          if (/\.(png|jpe?g|svg|gif|webp)$/.test(n)) return "images/[name][extname]";
+          if (/\.css$/.test(n)) return "styles/[name][extname]";
+          return "assets/[name][extname]";
         },
       },
       plugins: [inject({ process: "process" })],
