@@ -3,14 +3,24 @@ import { ProtocolNode } from "@/types/protocolNode";
 import { Node, Edge, Position } from "reactflow";
 
 /**
- * Estimate the width of a label using canvas.
+ * Estimate the width of a label deterministically (no canvas).
+ * This avoids host-dependent font metrics differences (e.g., Flask embedding).
  */
-function estimateLabelWidth(label: string, fontSize = 20, fontFamily = "Arial"): number {
-  const canvas = document.createElement("canvas");
-  const context = canvas.getContext("2d");
-  if (!context) return 100;
-  context.font = `${fontSize}px ${fontFamily}`;
-  return context.measureText(label).width + 480; // extra padding for node/card
+function estimateLabelWidth(label: string, fontSize = 20): number {
+  const text = String(label ?? "");
+
+  // avgCharWidthFactor tuned to be close to typical UI fonts at 20px
+  const avgCharWidth = fontSize * 0.58;
+
+  // fixedPaddingForNodeCard must reflect the non-text parts of the node/card
+  const fixedPaddingForNodeCard = 480;
+
+  // clampBounds keep spacing stable even for very short/long labels
+  const minNodeWidth = 620;
+  const maxNodeWidth = 980;
+
+  const estimated = Math.ceil(text.length * avgCharWidth + fixedPaddingForNodeCard);
+  return Math.max(minNodeWidth, Math.min(maxNodeWidth, estimated));
 }
 
 /**
@@ -42,7 +52,7 @@ export function buildGraphElements(
   containerWidth?: number | null,
   viewportZoom?: number | null
 ) {
-  const spacingX = direction === "TB" ? 330 : 1150;
+  const spacingX = direction === "TB" ? 430 : 1150;
   const spacingY = direction === "TB" ? 580 : 380;
 
   const nodes: Node[] = [];
@@ -73,16 +83,16 @@ export function buildGraphElements(
   // GRID view -> rows and columns from top-left, no edges
   if (viewMode === "grid") {
     const items = Object.entries(protocols)
-    .filter(([id]) => id !== "PROJECT")
-    // DESC: numeric ids first; fallback to lexicographic desc
-    .sort(([idA, _a], [idB, _b]) => {
-      const a = parseInt(idA, 10);
-      const b = parseInt(idB, 10);
-      const aNum = !Number.isNaN(a);
-      const bNum = !Number.isNaN(b);
-      if (aNum && bNum) return b - a;                      // numeric descending
-      return String(idB).localeCompare(String(idA));       // string descending
-    });
+      .filter(([id]) => id !== "PROJECT")
+      // DESC: numeric ids first; fallback to lexicographic desc
+      .sort(([idA], [idB]) => {
+        const a = parseInt(idA, 10);
+        const b = parseInt(idB, 10);
+        const aNum = !Number.isNaN(a);
+        const bNum = !Number.isNaN(b);
+        if (aNum && bNum) return b - a; // numeric descending
+        return String(idB).localeCompare(String(idA)); // string descending
+      });
 
     const total = items.length;
     if (total === 0) return { nodes: [], edges: [] };
@@ -93,7 +103,7 @@ export function buildGraphElements(
         : 1600;
 
     const zoom = typeof viewportZoom === "number" && viewportZoom > 0 ? viewportZoom : 1;
-    const screenWidthPx = Math.max(600, (containerWidth ?? fallbackW));
+    const screenWidthPx = Math.max(600, containerWidth ?? fallbackW);
     const wrapWorldWidth = screenWidthPx / zoom;
 
     const estWidths = items.map(([, prot]) => estimateLabelWidth(prot?.label || ""));
@@ -111,33 +121,41 @@ export function buildGraphElements(
     const baseW = Math.min(680, Math.max(440, avgSoftW));
     const baseH =
       estHeights.length > 0
-        ? Math.min(520, Math.max(320, Math.round((estHeights.reduce((a, b) => a + b, 0) / estHeights.length) * 0.9)))
+        ? Math.min(
+            520,
+            Math.max(
+              320,
+              Math.round((estHeights.reduce((a, b) => a + b, 0) / estHeights.length) * 0.9)
+            )
+          )
         : 380;
 
     const cellW = baseW + gapX;
     const cellH = baseH + gapY;
 
-    const cols = Math.max(
-      1,
-      Math.min(
-        total,
-        Math.floor((wrapWorldWidth - gapX) / Math.max(320, cellW))
-      ) + 1
-    );
+    const cols =
+      Math.max(
+        1,
+        Math.min(
+          total,
+          Math.floor((wrapWorldWidth - gapX) / Math.max(320, cellW))
+        ) + 1
+      ) || 1;
 
     const sourcePosition: Position = direction === "LR" ? Position.Right : Position.Bottom;
-    const targetPosition: Position = direction === "LR" ? Position.Left  : Position.Top;
+    const targetPosition: Position = direction === "LR" ? Position.Left : Position.Top;
 
     // Start at (0,0) top-left
     const offsetX = 100;
-    const offSetY = 100;
+    const offsetY = 100;
+
     for (let i = 0; i < total; i++) {
       const [id, prot] = items[i];
       const row = Math.floor(i / cols);
       const col = i % cols;
 
       const x = col * cellW + offsetX;
-      const y = row * cellH + offSetY;
+      const y = row * cellH + offsetY;
 
       nodes.push({
         id,
@@ -208,16 +226,39 @@ export function buildGraphElements(
 
   traverse("PROJECT", 0);
 
-  Object.entries(levelBuckets).forEach(([levelStr, ids]) => {
-    const level = parseInt(levelStr, 10);
+  // Ensure stable ordering of levels and ids across hosts
+  const sortedLevels = Object.keys(levelBuckets)
+    .map((k) => parseInt(k, 10))
+    .filter((n) => !Number.isNaN(n))
+    .sort((a, b) => a - b);
+
+  for (const level of sortedLevels) {
+    const idsRaw = levelBuckets[level] ?? [];
+
+    // stableOrderingAcrossHosts
+    const ids = [...idsRaw].sort((a, b) => {
+      if (a === "PROJECT") return -1;
+      if (b === "PROJECT") return 1;
+
+      const na = parseInt(a, 10);
+      const nb = parseInt(b, 10);
+      const aNum = !Number.isNaN(na);
+      const bNum = !Number.isNaN(nb);
+
+      if (aNum && bNum) return na - nb;
+      return String(a).localeCompare(String(b));
+    });
+
     const sizes = ids.map((id) => estimateLabelWidth(protocols[id]?.label || id));
     const heights = ids.map((id) => estimateNodeHeight(protocols[id]?.label || id));
 
     const spacing = direction === "TB" ? spacingX : spacingY;
+
+    // computeTotalSizeWithoutTrailingSpacing
     const totalSize =
       direction === "TB"
-        ? sizes.reduce((sum, s) => sum + s + spacing, 0)
-        : heights.reduce((sum, h) => sum + h + spacing, 0);
+        ? sizes.reduce((sum, s) => sum + s, 0) + Math.max(0, ids.length - 1) * spacing
+        : heights.reduce((sum, h) => sum + h, 0) + Math.max(0, ids.length - 1) * spacing;
 
     let secondary = -totalSize / 2;
 
@@ -225,6 +266,7 @@ export function buildGraphElements(
       const prot = protocols[id];
       const label = prot?.label || id;
       const status = prot?.status;
+
       const nodeWidth = sizes[index];
       const nodeHeight = heights[index];
 
@@ -234,7 +276,7 @@ export function buildGraphElements(
           : { x: level * spacingX, y: secondary + nodeHeight / 2 };
 
       const sourcePosition: Position = direction === "LR" ? Position.Right : Position.Bottom;
-      const targetPosition: Position = direction === "LR" ? Position.Left  : Position.Top;
+      const targetPosition: Position = direction === "LR" ? Position.Left : Position.Top;
 
       nodes.push({
         id,
@@ -260,7 +302,7 @@ export function buildGraphElements(
 
       secondary += direction === "TB" ? nodeWidth + spacing : nodeHeight + spacing;
     });
-  });
+  }
 
   return { nodes, edges };
 }
