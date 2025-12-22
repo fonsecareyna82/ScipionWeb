@@ -1,0 +1,270 @@
+/* src/components/protocolform.module.css */
+
+.protocolForm {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  bottom: 12px;
+
+  width: calc(38% - 12px);
+
+  display: flex;
+  flex-direction: column;
+
+  background-color: #fff;
+  border: 1px solid #ddd;
+  box-shadow: -6px 6px 16px rgba(0, 0, 0, 0.12);
+  font-family: "Segoe UI", sans-serif;
+
+  z-index: 100;
+  height: auto;
+  max-height: calc(100vh - 24px);
+
+  border-radius: 12px;
+  overflow: hidden;
+
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+}
+
+.formHeader {
+  display: flex;
+  flex-shrink: 0;
+  justify-content: space-between;
+  align-items: center;
+
+  background-color: #333d49;
+  color: white;
+
+  padding: 16px;
+  height: 60px;
+  box-sizing: border-box;
+}
+
+.formTitleWrapper {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.nodeStatusPill {
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: black;
+  white-space: nowrap;
+}
+
+.formBody {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.topTabContent {
+  padding: 0;
+}
+
+.bottomTabContent {
+  padding: 16px 0;
+}
+
+.formFooter {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+
+  padding: 8px 16px;
+  border-top: 1px solid #ddd;
+  background-color: #f5f5f5;
+
+  bottom: 0;
+  z-index: 10;
+  flex-shrink: 0;
+}
+
+/* Enter / Exit animations (scoped) */
+.protocolForm.slideInRight {
+  animation: slideInFromRight 420ms ease-out both;
+}
+
+.protocolForm.slideOutRight {
+  animation: slideOutToRight 420ms ease-in both;
+}
+
+@keyframes slideInFromRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0.001;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideOutToRight {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(100%);
+    opacity: 0.001;
+  }
+}
+
+/* Docked variant (fills parent panel) */
+.asDocked {
+  position: absolute;
+  inset: 0;
+  width: auto;
+}
+
+.asDocked.slideInRight {
+  animation: slideInFromRight 320ms ease-out both;
+}
+
+.asDocked.slideOutRight {
+  animation: slideOutToRight 320ms ease-in both;
+}
+
+/* ------------------------------------------------------------------
+   Global legacy selectors kept as global on purpose (to avoid regressions)
+   These existed in ProtocolForm.css and may be used by sibling components.
+------------------------------------------------------------------- */
+
+:global(.param-row-label) {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Multi-Form Dock container (right side) */
+:global(.form-dock) {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+
+  display: flex;
+  flex-direction: row;
+  gap: 8px;
+
+  padding-left: 8px;
+  z-index: 70;
+  pointer-events: none;
+}
+
+:global(.dock-scroll) {
+  pointer-events: auto;
+  height: 100%;
+  display: flex;
+  gap: 8px;
+  padding: 4px;
+
+  overflow-x: auto;
+  overflow-y: hidden;
+
+  max-width: 95vw;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+
+  scrollbar-width: thin;
+}
+
+:global(.dock-scroll::-webkit-scrollbar) {
+  height: 10px;
+}
+
+:global(.dock-scroll::-webkit-scrollbar-thumb) {
+  border-radius: 8px;
+}
+
+:global(.dock-panel) {
+  position: relative;
+  height: 100%;
+
+  flex: 0 0 auto;
+
+  width: clamp(340px, 38vw, 720px);
+  min-width: 320px;
+  max-width: 85vw;
+
+  box-sizing: border-box;
+  background: transparent;
+
+  overflow: hidden;
+  resize: horizontal;
+  pointer-events: auto;
+}
+
+/* When a ProtocolForm is placed inside a global .dock-panel, detach absolute layout */
+:global(.dock-panel) .protocolForm {
+  position: static !important;
+  top: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+  width: 100% !important;
+
+  height: 100%;
+  max-height: 100%;
+  overflow: auto;
+
+  border-top-right-radius: 12px;
+  border-bottom-right-radius: 12px;
+
+  box-shadow: -2px 0 8px rgba(0, 0, 0, 0.08);
+  border-left: 1px solid #ddd;
+}
+
+/* Optional legacy styles kept global */
+:global(.node-tabs) {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+:global(.node-tab) {
+  padding: 8px 14px;
+  background-color: #e0e0e0;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: background-color 0.3s;
+}
+
+:global(.node-tab:hover) {
+  background-color: #d0d0d0;
+}
+
+:global(.node-tab.active) {
+  background-color: #0078d4;
+  color: white;
+}
+
+:global(.status-running) {
+  background-color: #fcce62;
+}
+
+:global(.status-saved) {
+  background-color: #d9f1fa;
+}
+
+:global(.status-failed) {
+  background-color: #f5cccb;
+}
+
+:global(.status-finished) {
+  background-color: #d2f5cb;
+}
+
+:global(.status-unknown) {
+  background-color: #ccc;
+  color: #333;
+}

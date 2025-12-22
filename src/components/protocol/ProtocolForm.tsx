@@ -19,7 +19,7 @@ import {
   DialogContent,
   DialogActions,
 } from "@mui/material";
-import "./ProtocolForm.css";
+import styles from "./protocolform.module.css";
 import {
   ChevronDownIcon,
   ChevronUpIcon,
@@ -2055,23 +2055,27 @@ export default function ProtocolForm({
 
   const safeDefinition = Array.isArray(data?.definition) ? data.definition : [];
 
-  const presentationClass = variant === "docked" ? "as-docked" : "";
+  const isDocked = variant === "docked";
 
   return (
     <div
-      className={`protocol-form ${presentationClass} ${isClosing ? "slide-out-right" : "slide-in-right"
-        }`}
+      className={[
+       styles.protocolForm,
+      isDocked ? styles.asDocked : "",
+       isClosing ? styles.slideOutRight : styles.slideInRight,
+     ]
+       .filter(Boolean)
+       .join(" ")}
       onAnimationEnd={handleAnimationEnd}
     >
       {/* HEADER */}
-      <div className="form-header">
-        <div className="form-title-wrapper">
+      <div className={styles.formHeader}>
+        <div className={styles.formTitleWrapper}>
           <Box className="inline-flex items-center justify-center rounded-full bg-green-500 text-black text-xs font-bold px-2 py-1">
             {data?.id}
           </Box>
           <span className="text-white">{protocolDetails.label}</span>
-          <span
-            className="node-status-pill"
+          <span className={styles.nodeStatusPill}
             style={{
               backgroundColor: protocolDetails.color,
               color: "black",
@@ -2101,8 +2105,7 @@ export default function ProtocolForm({
       )}
 
       {/* BODY */}
-      <div
-        className="form-body"
+      <div className={styles.formBody}
         style={{
           display: "flex",
           flexDirection: "column",
@@ -2149,7 +2152,7 @@ export default function ProtocolForm({
           </Tabs>
 
           <Box
-            className="top-tab-content"
+            className={styles.topTabContent}
             sx={{
               flex: 1,
               minHeight: 0,
@@ -2498,7 +2501,7 @@ export default function ProtocolForm({
                   )}
                 </Tabs>
                 <Box
-                  className="bottom-tab-content"
+                  className={styles.bottomTabContent}
                   sx={{ p: 2 }}
                 >
                   {bottomTab === 0 && (
@@ -2759,7 +2762,7 @@ export default function ProtocolForm({
       </div>
 
       {/* FOOTER */}
-      <div className="form-footer">
+      <div className={styles.formFooter}>
         <Button
           variant="contained"
           startIcon={<CloseIcon />}

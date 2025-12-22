@@ -24,6 +24,7 @@ import ReactFlow, {
   Node,
   ReactFlowInstance,
   MarkerType,
+  MiniMap,
 } from "reactflow";
 import "reactflow/dist/style.css";
 import { createStatusNodeWrapper } from "../../../components/protocol/ProtocolNodeCardWrapper";
@@ -47,6 +48,7 @@ import {
   RefreshCw,
   XCircle,
   LayoutGrid,
+  MapIcon,
 } from "lucide-react";
 import { FitViewIcon, TableIcon, TreeIcon } from "../../../icons";
 
@@ -109,6 +111,7 @@ export default function ProjectPage() {
   const [workflowsLoading, setWorkflowsLoading] = useState(false);
   const [workflowsError, setWorkflowsError] = useState<string | null>(null);
   const [workflowsLoadedOnce, setWorkflowsLoadedOnce] = useState(false);
+  const [miniMapEnabled, setMiniMapEnabled] = useState(true);
 
   // Multi-form dock state
   const [openForms, setOpenForms] = useState<OpenForm[]>([]);
@@ -235,9 +238,9 @@ export default function ProjectPage() {
   const [drawerPortalContainer, setDrawerPortalContainer] = useState<HTMLElement | null>(null);
 
   useLayoutEffect(() => {
-  // syncDrawerPortalContainer
-  setDrawerPortalContainer(contentPortalRef.current);
-}, []);
+    // syncDrawerPortalContainer
+    setDrawerPortalContainer(contentPortalRef.current);
+  }, []);
 
 
   // Last RF point for context menu placement
@@ -1546,6 +1549,51 @@ export default function ProjectPage() {
     return { backgroundColor: colorMap[status ?? ""] ?? "#eee" };
   };
 
+  const statusColorMap: Record<string, string> = {
+    running: "#FCCE62",
+    saved: "#D9F1FA",
+    launched: "#D9F1FA",
+    finished: "#D2F5CB",
+    failed: "#F5CCCB",
+    aborted: "#F5CCCB",
+    interactive: "#f7f3bf",
+    root: "#D9F1FA",
+    scheduled: "#f7f3bf",
+    new: "#1E90FF",
+  };
+
+  const getMiniMapNodeColor = useCallback(
+    (node: Node<StatusNodeData>) => {
+      const dataAny: any = (node as any).data ?? {};
+      const nodeStyleAny: any = (node as any).style ?? {};
+
+      const dataColor = typeof dataAny.color === "string" ? dataAny.color.trim() : "";
+      if (dataColor) return dataColor;
+
+      const styleBg =
+        (typeof nodeStyleAny.background === "string" && nodeStyleAny.background.trim()) ||
+        (typeof nodeStyleAny.backgroundColor === "string" && nodeStyleAny.backgroundColor.trim()) ||
+        "";
+      if (styleBg) return styleBg;
+
+      const status = String(dataAny.status ?? "").toLowerCase();
+      const byStatus = statusColorMap[status];
+      if (byStatus) return byStatus;
+
+      return hostIsDark ? "#1f2937" : "#e5e7eb";
+    },
+    [hostIsDark]
+  );
+
+  const getMiniMapNodeStroke = useCallback(
+    (node: Node<StatusNodeData>) => {
+      if ((node as any).selected) return "#0070f3";
+      return hostIsDark ? "rgba(148,163,184,0.55)" : "rgba(15,23,42,0.35)";
+    },
+    [hostIsDark]
+  );
+
+
   const formatCpuTime = (seconds: number): string => {
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
@@ -2522,6 +2570,18 @@ export default function ProjectPage() {
                 >
                   <RefreshCw className={`pp-btnIcon ${isRefreshing ? "animate-spin" : ""}`} />
                 </button>
+
+                <button
+                  type="button"
+                  title={miniMapEnabled ? "Hide minimap" : "Show minimap"}
+                  onClick={() => setMiniMapEnabled((v) => !v)}
+                  className="pp-flowControlBtn"
+                  aria-pressed={miniMapEnabled}
+                >
+                  <MapIcon className="pp-btnIcon" />
+                </button>
+
+
               </div>
             </div>
 
@@ -2563,6 +2623,24 @@ export default function ProjectPage() {
                 nodesConnectable={viewMode !== "grid"}
                 connectOnClick={viewMode !== "grid"}
               >
+                {miniMapEnabled && (
+                  <MiniMap
+                    position="bottom-left"
+                    nodeColor={getMiniMapNodeColor}
+                    nodeStrokeColor={getMiniMapNodeStroke}
+                    nodeStrokeWidth={2}
+                    pannable
+                    zoomable
+                    zoomStep={1.2}
+                    maskColor={hostIsDark ? "rgba(15,23,42,0.55)" : "rgba(0,0,0,0.18)"}
+                    style={{
+                      background: hostIsDark ? "rgba(2,6,23,0.85)" : "rgba(255,255,255,0.92)",
+                      border: hostIsDark ? "1px solid rgba(148,163,184,0.22)" : "1px solid rgba(0,0,0,0.12)",
+                      borderRadius: 10,
+                      boxShadow: hostIsDark ? "0 10px 26px rgba(0,0,0,0.45)" : "0 10px 26px rgba(0,0,0,0.16)",
+                    }}
+                  />
+                )}
                 <Background />
               </ReactFlow>
             </ReactFlowProvider>
