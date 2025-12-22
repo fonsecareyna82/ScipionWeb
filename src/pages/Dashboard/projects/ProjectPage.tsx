@@ -49,6 +49,7 @@ import {
   XCircle,
   LayoutGrid,
   MapIcon,
+  FocusIcon,
 } from "lucide-react";
 import { FitViewIcon, TableIcon, TreeIcon } from "../../../icons";
 
@@ -58,6 +59,7 @@ import Label from "@/components/form/Label";
 import { Input } from "@mui/material";
 import toast from "react-hot-toast";
 import RemoteFileDialog from "@/components/files/RemoteFileDialog";
+import { HideImage } from "@mui/icons-material";
 
 /* --------------------- Types --------------------- */
 interface StatusNodeData {
@@ -96,7 +98,7 @@ type NodeActions = {
 };
 
 type OpenForm = { key: string; id: string; details: any };
-
+type SearchResult = { id: string; label: string; status?: string };
 
 export default function ProjectPage() {
   const hostIsDark = useHostDarkMode();
@@ -112,6 +114,45 @@ export default function ProjectPage() {
   const [workflowsError, setWorkflowsError] = useState<string | null>(null);
   const [workflowsLoadedOnce, setWorkflowsLoadedOnce] = useState(false);
   const [miniMapEnabled, setMiniMapEnabled] = useState(true);
+
+  // focusModeState
+  const [focusModeEnabled, setFocusModeEnabled] = useState(false);
+
+  useEffect(() => {
+    // loadFocusModeFromStorage
+    if (!projectName) return;
+    try {
+      const raw = localStorage.getItem(`project-${projectName}-focus-mode`);
+      if (raw == null) return;
+      setFocusModeEnabled(Boolean(JSON.parse(raw)));
+    } catch {
+      // noOp
+    }
+  }, [projectName]);
+
+  useEffect(() => {
+    // persistFocusModeToStorage
+    if (!projectName) return;
+    try {
+      localStorage.setItem(
+        `project-${projectName}-focus-mode`,
+        JSON.stringify(focusModeEnabled)
+      );
+    } catch {
+      // noOp
+    }
+  }, [projectName, focusModeEnabled]);
+
+  // unifiedSelectionState
+  const [unifiedSelectedIdsState, setUnifiedSelectedIdsState] = useState<Set<string>>(
+    () => new Set<string>()
+  );
+
+  const syncUnifiedSelectedIds = useCallback(() => {
+    // syncUnifiedSelectedIds
+    setUnifiedSelectedIdsState(new Set(getUnifiedSelectedIds()));
+  }, []);
+
 
   // Multi-form dock state
   const [openForms, setOpenForms] = useState<OpenForm[]>([]);
@@ -502,6 +543,7 @@ export default function ProjectPage() {
     setPreviousNodeId(null);
     setHighlightedId(null);
     pathEdgeModeRef.current = 'all';
+    syncUnifiedSelectedIds();
   }, [setNodes, setEdges]);
 
   /* --------------------- Edge painters --------------------- */
@@ -677,6 +719,7 @@ export default function ProjectPage() {
     });
 
     bumpNodesForPath();
+    syncUnifiedSelectedIds();
   }, [computeEdgesTouchingNodes, paintPathHighlight, paintEdgeHighlight, setNodes, setEdges, bumpNodesForPath]);
 
   const clearPathSelection = useCallback(() => {
@@ -686,6 +729,7 @@ export default function ProjectPage() {
     setPathEdgeIds([]);
     setEdges((eds) => paintPathHighlight(eds, new Set()));
     bumpNodesForPath();
+    syncUnifiedSelectedIds();
   }, [paintPathHighlight, bumpNodesForPath]);
 
   const applyEdgeHighlight = useCallback((selectedId: string | null) => {
@@ -719,6 +763,7 @@ export default function ProjectPage() {
         n.id === id ? (n.selected ? n : { ...n, selected: true }) : (n.selected ? { ...n, selected: false } : n)
       )
     );
+    syncUnifiedSelectedIds();
   };
 
   // Open or focus a form for a node; fetch details only when needed
@@ -727,6 +772,7 @@ export default function ProjectPage() {
       if (!projectName) return;
 
       selectedIdRef.current = String(nodeId);
+      syncUnifiedSelectedIds();
       setPreviousNodeId(String(nodeId));
       setHighlightedId(String(nodeId));
       applyEdgeHighlight(String(nodeId));
@@ -1664,6 +1710,208 @@ export default function ProjectPage() {
     }
   };
 
+
+  // searchUiState
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchActiveIndex, setSearchActiveIndex] = useState(0);
+  const searchBoxRef = useRef<HTMLDivElement | null>(null);
+
+  const searchResults = useMemo<SearchResult[]>(() => {
+    // buildSearchResults
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return [];
+
+    const limit = 12;
+    const results: Array<{ item: SearchResult; score: number; numId: number }> = [];
+
+    const pushIfMatch = (idRaw: any, labelRaw: any, statusRaw?: any) => {
+      const id = String(idRaw ?? "");
+      if (!id || id === "PROJECT") return;
+
+      const label = String(labelRaw ?? id);
+      const status = statusRaw != null ? String(statusRaw) : undefined;
+
+      const idL = id.toLowerCase();
+      const labelL = label.toLowerCase();
+
+      const idExact = idL === q;
+      const idStarts = idL.startsWith(q);
+      const labelStarts = labelL.startsWith(q);
+      const idIncludes = idL.includes(q);
+      const labelIncludes = labelL.includes(q);
+
+      if (!(idIncludes || labelIncludes)) return;
+
+      let score = 0;
+      if (idExact) score = 100;
+      else if (idStarts) score = 90;
+      else if (labelStarts) score = 80;
+      else if (idIncludes) score = 70;
+      else score = 60;
+
+      const numId = Number.parseInt(id, 10);
+      results.push({
+        item: { id, label, status },
+        score,
+        numId: Number.isNaN(numId) ? Number.NEGATIVE_INFINITY : numId,
+      });
+    };
+
+    if (viewMode === "table") {
+      for (const row of sortedTableData) {
+        pushIfMatch(row?.id, row?.label, row?.status);
+      }
+    } else {
+      for (const n of nodes) {
+        const d: any = (n as any).data ?? {};
+        pushIfMatch(n.id, d.label ?? n.id, d.status);
+      }
+    }
+
+    results.sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      if (b.numId !== a.numId) return b.numId - a.numId;
+      return a.item.id.localeCompare(b.item.id);
+    });
+
+    return results.slice(0, limit).map((x) => x.item);
+  }, [searchQuery, viewMode, sortedTableData, nodes]);
+
+  const jumpToSearchResult = useCallback(
+    async (res: SearchResult, opts?: { openForm?: boolean }) => {
+      // jumpToSearchResult
+      const id = String(res.id);
+      if (!id) return;
+
+      setSearchOpen(false);
+
+      if (viewMode === "table") {
+        scrollToProtocol(id);
+
+        selectedIdRef.current = id;
+        setPreviousNodeId(id);
+        setHighlightedId(id);
+        applyEdgeHighlight(id);
+
+        suppressOneFrame();
+        setNodes((prev) => prev.map((n) => ({ ...n, selected: n.id === id })));
+        syncUnifiedSelectedIds();
+        return;
+      }
+
+      const match = nodesRef.current.find((n) => String(n.id) === id);
+      if (!match) return;
+
+      selectedIdRef.current = id;
+      setPreviousNodeId(id);
+      setHighlightedId(id);
+      applyEdgeHighlight(id);
+
+      suppressOneFrame();
+      setNodes((prev) => prev.map((n) => ({ ...n, selected: n.id === id })));
+
+      const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
+      if (inst) {
+        const zoom = viewMode === "grid" ? GRID_ZOOM : clampZoom(inst.getViewport().zoom);
+        inst.setCenter((match as any).position.x, (match as any).position.y, { zoom, duration: 350 });
+        const vp = inst.getViewport();
+        setViewport({ x: vp.x, y: vp.y, zoom: vp.zoom });
+      }
+
+      syncUnifiedSelectedIds();
+
+      if (opts?.openForm && projectName) {
+        await openFormForNode(id, () => svc.fetchProtocolDetails(projectName, id));
+      }
+    },
+    [
+      viewMode,
+      GRID_ZOOM,
+      projectName,
+      svc,
+      applyEdgeHighlight,
+      openFormForNode,
+      scrollToProtocol,
+      suppressOneFrame,
+      setNodes,
+      syncUnifiedSelectedIds,
+    ]
+  );
+
+  const handleSearchInputChange = useCallback(
+    (value: string) => {
+      // handleSearchInputChange
+      setSearchQuery(value);
+      const trimmed = value.trim();
+
+      if (!trimmed) {
+        setSearchOpen(false);
+        setSearchActiveIndex(0);
+        handleSearch("");
+        return;
+      }
+
+      setSearchOpen(true);
+      setSearchActiveIndex(0);
+    },
+    [handleSearch]
+  );
+
+  const handleSearchKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      // handleSearchKeyDown
+      if (!searchOpen) {
+        if (e.key === "Enter" && searchResults.length > 0) {
+          e.preventDefault();
+          void jumpToSearchResult(searchResults[0], { openForm: e.altKey });
+        }
+        return;
+      }
+
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setSearchOpen(false);
+        return;
+      }
+
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setSearchActiveIndex((i) => Math.min(i + 1, Math.max(0, searchResults.length - 1)));
+        return;
+      }
+
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setSearchActiveIndex((i) => Math.max(0, i - 1));
+        return;
+      }
+
+      if (e.key === "Enter") {
+        e.preventDefault();
+        const hit = searchResults[searchActiveIndex] ?? searchResults[0];
+        if (hit) void jumpToSearchResult(hit, { openForm: e.altKey });
+        return;
+      }
+    },
+    [searchOpen, searchResults, searchActiveIndex, jumpToSearchResult]
+  );
+
+  useEffect(() => {
+    // closeSearchOnOutsideClick
+    const onDown = (ev: MouseEvent) => {
+      const target = ev.target as HTMLElement | null;
+      if (!target) return;
+      if (searchBoxRef.current && !searchBoxRef.current.contains(target)) {
+        setSearchOpen(false);
+      }
+    };
+    window.addEventListener("mousedown", onDown);
+    return () => window.removeEventListener("mousedown", onDown);
+  }, []);
+
+
+
   const handleRowDoubleClick = async (id: string) => {
     if (!projectName) return;
     await openFormForNode(String(id), () => svc.fetchProtocolDetails(projectName, id));
@@ -1831,6 +2079,7 @@ export default function ProjectPage() {
     if (ids.size > 1) {
       if (setsEqual(ids, pathSelRef.current.nodes)) return;
       applyGenericSelectionFromSet(ids);
+      syncUnifiedSelectedIds();
       return;
     }
 
@@ -1844,6 +2093,7 @@ export default function ProjectPage() {
       setHighlightedId(id);
       applyEdgeHighlight(id);
       setNodes((prev) => prev.map((n) => ({ ...n, selected: n.id === id })));
+      syncUnifiedSelectedIds();
       return;
     }
 
@@ -1853,6 +2103,7 @@ export default function ProjectPage() {
     clearPathSelection();
     applyEdgeHighlight(null);
     setNodes((prev) => (prev.some((n) => n.selected) ? prev.map((n) => ({ ...n, selected: false })) : prev));
+    syncUnifiedSelectedIds();
   }, [setNodes, applyGenericSelectionFromSet, clearPathSelection, applyEdgeHighlight]);
 
   /* ------------------------ Dialogs + API ------------------------ */
@@ -2202,6 +2453,82 @@ export default function ProjectPage() {
   }
 
 
+  // focusModeDerivedGraph
+  const focusActive =
+    focusModeEnabled &&
+    unifiedSelectedIdsState.size > 0 &&
+    viewMode !== "table";
+
+  const renderNodes = useMemo(() => {
+    // deriveRenderNodes
+    if (!focusActive) return nodes;
+
+    const dimOpacity = 0.18;
+
+    return nodes.map((n) => {
+      const inFocus = unifiedSelectedIdsState.has(String(n.id));
+      const baseStyle: any = (n as any).style ?? {};
+      const desiredOpacity = inFocus ? 1 : dimOpacity;
+
+      const currentOpacity =
+        typeof baseStyle.opacity === "number" ? baseStyle.opacity : 1;
+
+      if (currentOpacity === desiredOpacity) return n;
+
+      return {
+        ...n,
+        style: {
+          ...baseStyle,
+          opacity: desiredOpacity,
+          zIndex: inFocus ? 10 : 0,
+        },
+      };
+    });
+  }, [nodes, focusActive, unifiedSelectedIdsState]);
+
+  const renderEdges = useMemo(() => {
+    // deriveRenderEdges
+    if (!focusActive) return edges;
+
+    const dimOpacity = 0.1;
+
+    // keepContextEdges
+    const focusEdgeIds = new Set<string>();
+    const hasPathEdges = pathSelRef.current.edges.size > 0;
+
+    if (hasPathEdges) {
+      for (const id of pathSelRef.current.edges) focusEdgeIds.add(String(id));
+    } else {
+      for (const e of edges) {
+        const s = String(e.source);
+        const t = String(e.target);
+        if (unifiedSelectedIdsState.has(s) || unifiedSelectedIdsState.has(t)) {
+          focusEdgeIds.add(String(e.id));
+        }
+      }
+    }
+
+    return edges.map((e) => {
+      const inFocus = focusEdgeIds.has(String(e.id));
+      const baseStyle: any = (e as any).style ?? {};
+      const desiredOpacity = inFocus ? 1 : dimOpacity;
+
+      const currentOpacity =
+        typeof baseStyle.opacity === "number" ? baseStyle.opacity : 1;
+
+      if (currentOpacity === desiredOpacity) return e;
+
+      return {
+        ...e,
+        style: {
+          ...baseStyle,
+          opacity: desiredOpacity,
+        },
+      };
+    });
+  }, [edges, focusActive, unifiedSelectedIdsState]);
+
+
   /* ------------------------ Render ------------------------ */
   const isGrid = viewMode === "grid";
   return (
@@ -2210,7 +2537,7 @@ export default function ProjectPage() {
 
         {/* Header */}
         <div className="pp-headerRow">
-          <div className="pp-searchBox">
+          <div ref={searchBoxRef} className="pp-searchBox">
             <div className="pp-searchIconWrap" aria-hidden="true">
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -2231,10 +2558,60 @@ export default function ProjectPage() {
             <input
               type="text"
               placeholder="Search protocol..."
-              onChange={(e) => handleSearch(e.target.value)}
+              value={searchQuery}
+              onChange={(e) => handleSearchInputChange(e.target.value)}
+              onKeyDown={handleSearchKeyDown}
+              onFocus={() => {
+                if (searchQuery.trim()) setSearchOpen(true);
+              }}
               className="pp-searchInput"
             />
+
+            {searchOpen && searchQuery.trim() && (
+              <div className="pp-searchDropdown" role="listbox" aria-label="Search results">
+                {searchResults.length === 0 ? (
+                  <div className="pp-searchEmpty" role="status">
+                    No matches
+                  </div>
+                ) : (
+                  searchResults.map((r, idx) => (
+                    <button
+                      key={r.id}
+                      type="button"
+                      role="option"
+                      aria-selected={idx === searchActiveIndex}
+                      className={[
+                        "pp-searchItem",
+                        idx === searchActiveIndex ? "is-active" : "",
+                      ].join(" ")}
+                      onMouseDown={(ev) => {
+                        // preventInputBlurBeforeClick
+                        ev.preventDefault();
+                      }}
+                      onMouseEnter={() => setSearchActiveIndex(idx)}
+                      onClick={() => {
+                        void jumpToSearchResult(r);
+                      }}
+                      title={`${r.id} — ${r.label}`}
+                    >
+                      <div className="pp-searchItemMain">
+                        <span className="pp-searchItemId">{r.id}</span>
+                        <span className="pp-searchItemLabel">{r.label}</span>
+                      </div>
+
+                      <span
+                        className="pp-searchItemStatus"
+                        style={getStatusStyle(r.status)}
+                      >
+                        {r.status ?? "—"}
+                      </span>
+                    </button>
+                  ))
+                )}
+              </div>
+            )}
           </div>
+
 
           <div className="pp-headerCard pp-actionsCard">
             <div className="pp-protocolsTrigger">
@@ -2581,6 +2958,15 @@ export default function ProjectPage() {
                   <MapIcon className="pp-btnIcon" />
                 </button>
 
+                <button
+                  type="button"
+                  onClick={() => setFocusModeEnabled((v) => !v)}
+                  aria-pressed={focusModeEnabled}
+                  className="pp-flowControlBtn"
+                  title={focusModeEnabled ? "Focus: Off" : "Focus: On"}
+                >
+                  <FocusIcon className="pp-btnIcon" />
+                </button>
 
               </div>
             </div>
@@ -2588,8 +2974,8 @@ export default function ProjectPage() {
 
             <ReactFlowProvider>
               <ReactFlow
-                nodes={nodes}
-                edges={edges}
+                nodes={renderNodes}
+                edges={renderEdges}
                 onNodesChange={handleNodesChangeWithPersistence}
                 onEdgesChange={onEdgesChange}
                 nodeTypes={nodeTypes}
