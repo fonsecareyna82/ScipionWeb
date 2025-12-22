@@ -1,9 +1,10 @@
-import { useState, useCallback, useEffect, useRef, type FC } from "react";
+import React, { useState, useCallback, useEffect, useMemo, useRef, type FC } from "react";
 import { createPortal } from "react-dom";
+import { X } from "lucide-react";
+
 import { ProtocolsTree, type ProtocolNode } from "./ProtocolTree";
 import { loadProtocols } from "@/api/projects";
 import { BoxCubeIcon } from "@/icons";
-import { X } from "lucide-react";
 import styles from "./protocolsdrawer.module.css";
 
 interface ProtocolsDrawerProps {
@@ -14,7 +15,13 @@ interface ProtocolsDrawerProps {
   onOpenChange?: (open: boolean) => void;
 
   autoLoadOnOpen?: boolean;
+
+  // Optional: used only as an anchor/bounds reference (not as a portal target)
+  // to keep the drawer visually inside the widget/grafo.
+  portalContainer?: HTMLElement | null;
 }
+
+type Insets = { top: number; right: number; bottom: number; left: number };
 
 const getHostIsDarkFromElement = (el: HTMLElement | null): boolean => {
   if (!el || typeof document === "undefined") return false;
@@ -34,8 +41,20 @@ const getHostIsDarkFromElement = (el: HTMLElement | null): boolean => {
     html.classList.contains("dark") ||
       html.getAttribute("data-theme") === "dark" ||
       body?.classList.contains("dark") ||
-      body?.getAttribute("data-theme") === "dark"
+      body?.getAttribute("data-theme") === "dark",
   );
+};
+
+const computeInsetsFromRect = (rect: DOMRect): Insets => {
+  const vw = typeof window !== "undefined" ? window.innerWidth : 0;
+  const vh = typeof window !== "undefined" ? window.innerHeight : 0;
+
+  const top = Math.max(0, Math.round(rect.top));
+  const left = Math.max(0, Math.round(rect.left));
+  const right = Math.max(0, Math.round(vw - rect.right));
+  const bottom = Math.max(0, Math.round(vh - rect.bottom));
+
+  return { top, right, bottom, left };
 };
 
 export const ProtocolsDrawer: FC<ProtocolsDrawerProps> = ({
@@ -44,8 +63,10 @@ export const ProtocolsDrawer: FC<ProtocolsDrawerProps> = ({
   open: openProp,
   onOpenChange,
   autoLoadOnOpen = true,
+  portalContainer,
 }) => {
   const hostRef = useRef<HTMLDivElement | null>(null);
+
   const [hostIsDark, setHostIsDark] = useState(false);
 
   useEffect(() => {
@@ -147,6 +168,59 @@ export const ProtocolsDrawer: FC<ProtocolsDrawerProps> = ({
     }
   }, [projectId, isOpen]);
 
+  // ===================== Bounds (keep visually inside the widget) =====================
+  const [insets, setInsets] = useState<Insets>({ top: 0, right: 0, bottom: 0, left: 0 });
+
+  const computeBoundsTarget = useCallback((): HTMLElement | null => {
+    // Prefer explicit portalContainer as a bounds reference
+    if (portalContainer) return portalContainer;
+
+    // Fallback: widget root
+    const widgetRoot = hostRef.current?.closest(".projectpage-widget-root") as HTMLElement | null;
+    if (widgetRoot) return widgetRoot;
+
+    // Final fallback: the trigger host itself
+    return hostRef.current;
+  }, [portalContainer]);
+
+  const refreshInsets = useCallback(() => {
+    const target = computeBoundsTarget();
+    if (!target || typeof window === "undefined") {
+      setInsets({ top: 0, right: 0, bottom: 0, left: 0 });
+      return;
+    }
+
+    const rect = target.getBoundingClientRect();
+    setInsets(computeInsetsFromRect(rect));
+  }, [computeBoundsTarget]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    refreshInsets();
+
+    const onResize = () => refreshInsets();
+    const onScroll = () => refreshInsets();
+
+    window.addEventListener("resize", onResize);
+    // capture=true to react to scroll inside containers too
+    window.addEventListener("scroll", onScroll, true);
+
+    return () => {
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("scroll", onScroll, true);
+    };
+  }, [isOpen, refreshInsets]);
+
+  const portalVarsStyle = useMemo<React.CSSProperties>(() => {
+    return {
+      ["--pdInsetTop" as any]: `${insets.top}px`,
+      ["--pdInsetRight" as any]: `${insets.right}px`,
+      ["--pdInsetBottom" as any]: `${insets.bottom}px`,
+      ["--pdInsetLeft" as any]: `${insets.left}px`,
+    };
+  }, [insets]);
+
   const drawerEl = (
     <div
       className={[
@@ -156,7 +230,7 @@ export const ProtocolsDrawer: FC<ProtocolsDrawerProps> = ({
         isOpen ? styles.drawerOpen : styles.drawerClosed,
       ]
         .filter(Boolean)
-        .join(" ")}
+    .join(" ")}
       role="dialog"
       aria-label="Protocols drawer"
       aria-hidden={!isOpen}
@@ -248,6 +322,12 @@ export const ProtocolsDrawer: FC<ProtocolsDrawerProps> = ({
     </div>
   );
 
+  const portalLayer = (
+    <div className={styles.portalLayer} style={portalVarsStyle} aria-hidden={!isOpen}>
+      {drawerEl}
+    </div>
+  );
+
   return (
     <div ref={hostRef} className={styles.drawerRoot}>
       <button
@@ -260,7 +340,7 @@ export const ProtocolsDrawer: FC<ProtocolsDrawerProps> = ({
         {loading ? "Loading…" : "Protocols"}
       </button>
 
-      {typeof document !== "undefined" ? createPortal(drawerEl, document.body) : null}
+      {typeof document !== "undefined" ? createPortal(portalLayer, document.body) : null}
     </div>
   );
 };

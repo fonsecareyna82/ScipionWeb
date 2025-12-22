@@ -230,6 +230,16 @@ export default function ProjectPage() {
   // Drawer
   const [drawerOpen, setDrawerOpen] = useState(false);
 
+  const contentPortalRef = useRef<HTMLDivElement | null>(null);
+  // drawerPortalContainer
+  const [drawerPortalContainer, setDrawerPortalContainer] = useState<HTMLElement | null>(null);
+
+  useLayoutEffect(() => {
+  // syncDrawerPortalContainer
+  setDrawerPortalContainer(contentPortalRef.current);
+}, []);
+
+
   // Last RF point for context menu placement
   const lastPaneRFPointRef = useRef<{ x: number; y: number } | null>(null);
 
@@ -2185,6 +2195,7 @@ export default function ProjectPage() {
                 open={drawerOpen}
                 onOpenChange={setDrawerOpen}
                 onProtocolDoubleClick={handleAddProtocolFromDrawer}
+                portalContainer={drawerPortalContainer}
               />
             </div>
 
@@ -2258,7 +2269,7 @@ export default function ProjectPage() {
 
 
         {/* Content wrapper */}
-        <div className="flex-1 relative min-h-0 overflow-hidden" style={{ contain: "paint" }}>
+        <div ref={contentPortalRef} className="flex-1 relative min-h-0 overflow-hidden" style={{ contain: "paint" }}>
           {/* removed switching overlay to avoid flicker */}
 
           {isLoadingProject && (

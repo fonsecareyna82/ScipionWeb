@@ -1,0 +1,19 @@
+/* RemoteFileDialog.module.css */
+
+.dialogContent {
+  /* keepDialogTypographyStableAcrossHosts */
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    Oxygen, Ubuntu, Cantarell, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+
+  /* Prevent host app from shrinking Radix menus/dialog typography */
+  font-size: 16px;
+  line-height: 1.4;
+
+  /* Avoid odd inherited letter spacing from host themes */
+  letter-spacing: normal;
+}
+
+.dialogContent,
+.dialogContent * {
+  box-sizing: border-box;
+}

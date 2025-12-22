@@ -4,6 +4,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
 } from "@/components/ui/dialog/dialog";
 import { Button } from "@/components/ui/button";
 import {
@@ -16,12 +17,14 @@ import {
   AlertCircle,
 } from "lucide-react";
 
+import styles from "./RemoteFileDialog.module.css";
+
 export type RemoteEntry = {
   name: string;
-  path: string;      // relative path inside protocol root or absolute path (for /home)
+  path: string; // relative path inside protocol root or absolute path (for /home)
   isDir: boolean;
   size?: number;
-  mime?: string;     // guessed mime
+  mime?: string; // guessed mime
 };
 
 type PreviewMeta = {
@@ -97,9 +100,12 @@ export default function RemoteFileDialog({
   const [previewLoading, setPreviewLoading] = useState<boolean>(false);
 
   // Image / volume preview state
-  const [imgUrl, setImgUrl] = useState<string>("");        // blob URL
+  const [imgUrl, setImgUrl] = useState<string>(""); // blob URL
   const [imgMeta, setImgMeta] = useState<PreviewMeta>({}); // width/height/depth/etc
   const [imgLoading, setImgLoading] = useState<boolean>(false);
+
+  // Portal container (fixes "dialog invisible" under transformed ReactFlow canvas)
+  const [portalContainer, setPortalContainer] = useState<HTMLElement | null>(null);
 
   // Fixed layout sizes
   const dialogWidthClass = "w-[1300px] max-w-[1300px]";
@@ -107,13 +113,49 @@ export default function RemoteFileDialog({
   const browserHeightClass = "h-[420px]";
   const previewHeightClass = "h-[360px]";
 
+  useEffect(() => {
+  // ensureDialogPortalRootExists
+  const doc = typeof document !== "undefined" ? document : null;
+  if (!doc) return;
+
+  let host = doc.getElementById("projectpage-portal-root") as HTMLElement | null;
+
+  if (!host) {
+    host = doc.createElement("div");
+    host.id = "projectpage-portal-root";
+
+    // keepTailwindScopeForWidgetBuild
+    host.classList.add("projectpage-widget-root");
+
+    // avoidAffectingHostLayout
+    host.style.position = "fixed";
+    host.style.left = "0";
+    host.style.top = "0";
+    host.style.width = "0";
+    host.style.height = "0";
+    host.style.zIndex = "2147483647";
+
+    doc.body.appendChild(host);
+  } else {
+    host.classList.add("projectpage-widget-root");
+  }
+
+  // keepDarkModeConsistentIfNeeded
+  if (doc.documentElement.classList.contains("dark")) {
+    host.classList.add("dark");
+  } else {
+    host.classList.remove("dark");
+  }
+
+  setPortalContainer(host);
+}, []);
+
+
   // Build breadcrumbs from cwd
   const breadcrumbs = useMemo(() => {
     const normalizedCwd = (cwd || "").replace(/\\/g, "/");
 
-    const crumbs: { name: string; path: string }[] = [
-      { name: "root", path: "" },
-    ];
+    const crumbs: { name: string; path: string }[] = [{ name: "root", path: "" }];
 
     if (!normalizedCwd) {
       return crumbs;
@@ -439,6 +481,7 @@ export default function RemoteFileDialog({
       }}
     >
       <DialogContent
+        container={portalContainer}
         // Prevent close on outside click
         onInteractOutside={(e) => {
           e.preventDefault();
@@ -448,6 +491,7 @@ export default function RemoteFileDialog({
           dialogWidthClass,
           dialogHeightClass,
           "flex flex-col overflow-hidden",
+          styles.dialogContent,
         ].join(" ")}
       >
         {/* Header */}
@@ -460,6 +504,12 @@ export default function RemoteFileDialog({
           <DialogTitle className="text-lg font-medium text-gray-700 dark:text-gray-100 dark:bg-gray-800 flex flex-col bg-gray-300">
             <span className="truncate">{title}</span>
           </DialogTitle>
+
+          {/* satisfyRadixAriaDescription */}
+          <DialogDescription className="sr-only">
+            Remote file browser dialog. Use arrow keys to navigate, Enter to open
+            folders, and Select to choose a file.
+          </DialogDescription>
         </DialogHeader>
 
         {/* Toolbar */}
@@ -469,39 +519,39 @@ export default function RemoteFileDialog({
             "flex-none",
           ].join(" ")}
         >
-          <Button
-            variant="outline"
+          <button
+            type="button"
             onClick={goUp}
-            className="gap-2 h-8 text-xs leading-none"
+            className="pp-chipBtn"
           >
             <CornerUpLeft className="h-4 w-4" />
             Up
-          </Button>
+          </button>
 
-          <Button
-            variant="outline"
+          <button
+            type="button"
             onClick={goHome}
-            className="gap-2 h-8 text-xs leading-none"
+            className="pp-chipBtn"
           >
             <Home className="h-4 w-4" />
             Home
-          </Button>
+          </button>
 
-          <Button
-            variant="outline"
+          <button
+            type="button"
             onClick={goProtocolRoot}
-            className="gap-2 h-8 text-xs leading-none"
+            className="pp-chipBtn"
           >
             <FolderOpen className="h-4 w-4" />
             Protocol folder
-          </Button>
+          </button>
 
-          <Button
-            variant="outline"
+          <button
+            type="button"
             onClick={() => void refresh(cwd)}
-            className="gap-2 h-8 text-xs leading-none"
             disabled={loading}
             title="Refresh this directory"
+            className="pp-chipBtn"
           >
             {loading ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -509,21 +559,22 @@ export default function RemoteFileDialog({
               <RefreshCw className="h-4 w-4" />
             )}
             Refresh
-          </Button>
+          </button>
 
-          <div className="flex flex-wrap items-center gap-1 text-[12px] leading-none text-gray-700 dark:text-gray-300">
+        {/*   <div className="flex flex-wrap items-center gap-1 text-[12px] leading-none text-gray-700 dark:text-gray-300">
             {breadcrumbs.map((b, i) => (
               <button
+                type="submit"
                 key={`${b.path}-${i}`}
-                className="underline decoration-dotted hover:decoration-solid"
+                className="pp-chipBtn"
                 onClick={() => void refresh(b.path)}
               >
                 {b.name}
                 {i < breadcrumbs.length - 1 ? " / " : ""}
               </button>
             ))}
-          </div>
-        </div>
+          </div> */}
+        </div>   
 
         {/* Body: Directory + Preview */}
         <div
@@ -721,27 +772,18 @@ export default function RemoteFileDialog({
                                 imgMeta.height !== undefined ||
                                 imgMeta.depth !== undefined) && (
                                 <div className="mt-2 flex flex-wrap gap-1">
-                                  <span className="font-medium">
-                                    Dimensions:
-                                  </span>
+                                  <span className="font-medium">Dimensions:</span>
                                   <span>
-                                    {imgMeta.width ?? "?"} ×{" "}
-                                    {imgMeta.height ?? "?"}
-                                    {imgMeta.depth !== undefined
-                                      ? ` × ${imgMeta.depth}`
-                                      : ""}
+                                    {imgMeta.width ?? "?"} × {imgMeta.height ?? "?"}
+                                    {imgMeta.depth !== undefined ? ` × ${imgMeta.depth}` : ""}
                                   </span>
                                 </div>
                               )}
 
                               {imgMeta.voxelSize && (
                                 <div className="mt-2 flex flex-wrap gap-1">
-                                  <span className="font-medium">
-                                    Sampling rate:
-                                  </span>
-                                  <span>
-                                    {imgMeta.voxelSize[0].toFixed(1)}
-                                  </span>
+                                  <span className="font-medium">Sampling rate:</span>
+                                  <span>{imgMeta.voxelSize[0].toFixed(1)}</span>
                                 </div>
                               )}
                             </div>
@@ -757,26 +799,23 @@ export default function RemoteFileDialog({
         </div>
 
         {/* Footer */}
-        <div
-          className={[
-            "flex justify-end gap-2 mt-4",
-            "flex-none",
-          ].join(" ")}
-        >
-          <Button
-            variant="outline"
-            onClick={onClose}
-            className="px-5 py-2 rounded-md text-sm min-w-[100px] bg-gray-200 hover:bg-gray-300 text-gray-800 dark:text-gray-300"
+        <div className={["flex justify-end gap-2 mt-4", "flex-none"].join(" ")}>
+          <button
+           type="button"
+           className="pp-dialogBtn"
+           onClick={onClose}
           >
             Close
-          </Button>
-          <Button
+          </button>
+
+          <button
+           type="button"
+           className="pp-dialogBtn pp-dialogBtnPrimary"
             onClick={handlePick}
             disabled={!selected || !!selected?.isDir}
-            className="px-5 py-2 rounded-md text-sm min-w-[100px] bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-60 disabled:cursor-not-allowed"
           >
             Select
-          </Button>
+          </button>
         </div>
       </DialogContent>
     </Dialog>
