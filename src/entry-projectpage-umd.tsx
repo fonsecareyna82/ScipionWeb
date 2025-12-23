@@ -68,6 +68,95 @@ function getHostIsDark(): boolean {
   return document.documentElement.classList.contains("dark");
 }
 
+function createAutoUnmountGuard(containerEl: HTMLElement, onCleanup: () => void) {
+  // createAutoUnmountGuard
+  let isDisposed = false;
+
+  const dispose = () => {
+    // disposeAutoUnmountGuard
+    if (isDisposed) return;
+    isDisposed = true;
+
+    try {
+      onCleanup();
+    } catch {
+      // noOp
+    }
+
+    try {
+      observer.disconnect();
+    } catch {
+      // noOp
+    }
+
+    try {
+      window.removeEventListener("beforeunload", dispose, true);
+    } catch {
+      // noOp
+    }
+  };
+
+  const observer = new MutationObserver(() => {
+    // autoUnmountWhenDetached
+    if (!document.contains(containerEl)) dispose();
+  });
+
+  observer.observe(document.body, { childList: true, subtree: true });
+  window.addEventListener("beforeunload", dispose, true);
+
+  return { dispose };
+}
+
+
+function inferWidgetCssHref(): string | null {
+  // inferWidgetCssHref
+  const scripts = Array.from(document.getElementsByTagName("script"));
+  const widgetScript = scripts.find((s) => {
+    const src = s.getAttribute("src") || "";
+    return src.includes("projectpage-widget.js");
+  });
+
+  if (!widgetScript) return null;
+
+  const src = widgetScript.getAttribute("src") || "";
+  return src.replace(/projectpage-widget\.js(\?.*)?$/, "projectpage-widget.css$1");
+}
+
+function ensureWidgetCssLink(): { insertedByWidget: boolean } {
+  // ensureWidgetCssLink
+  const linkId = "projectpage-widget-css";
+  const existing = document.getElementById(linkId) as HTMLLinkElement | null;
+  if (existing) return { insertedByWidget: false };
+
+  const href = inferWidgetCssHref();
+  if (!href) return { insertedByWidget: false };
+
+  const linkEl = document.createElement("link");
+  linkEl.id = linkId;
+  linkEl.rel = "stylesheet";
+  linkEl.href = href;
+  linkEl.setAttribute("data-inserted-by-widget", "1");
+  document.head.appendChild(linkEl);
+
+  return { insertedByWidget: true };
+}
+
+function removeWidgetCssLinkIfInserted() {
+  // removeWidgetCssLinkIfInserted
+  const linkEl = document.getElementById("projectpage-widget-css") as HTMLLinkElement | null;
+  if (!linkEl) return;
+
+  const inserted = linkEl.getAttribute("data-inserted-by-widget") === "1";
+  if (!inserted) return;
+
+  try {
+    linkEl.parentNode?.removeChild(linkEl);
+  } catch {
+    // noOp
+  }
+}
+
+
 /** Keeps widget shell's dark class in sync with the host document */
 function syncShellDarkMode(shell: HTMLElement) {
   const apply = () => {
@@ -286,7 +375,7 @@ function normalizeServiceAPI(srv: any): ProjectService {
       sliceIndex: number,
     ) => ({
       url: mockSliceDataUrl(sliceIndex),
-      revoke: () => {},
+      revoke: () => { },
     }),
   );
 
@@ -364,17 +453,51 @@ export function mountProjectPageWidget({
   });
   const qcV3 = new QueryClientV3();
 
-  // Render Emotion styles inside the widget shell to reduce host interference
   const emotionCache = createCache({
     key: "mpw",
     container: shell,
     prepend: false,
   });
 
-  // Decouple from host URL using MemoryRouter
   const initialPath = `/project/load/${encodeURIComponent(projectName)}`;
 
   const root = ReactDOM.createRoot(mountPoint);
+
+  let didUnmount = false;
+
+  const doUnmount = () => {
+    // doUnmount
+    if (didUnmount) return;
+    didUnmount = true;
+
+    try {
+      root.unmount();
+    } catch {
+      // noOp
+    }
+
+    try {
+      stopSyncDarkMode();
+    } catch {
+      // noOp
+    }
+
+    try {
+      (target as HTMLElement).removeChild(shell);
+    } catch {
+      // noOp
+    }
+  };
+
+  const guard = createAutoUnmountGuard(shell, doUnmount);
+  const { insertedByWidget } = ensureWidgetCssLink();
+
+  try {
+    if (insertedByWidget) removeWidgetCssLinkIfInserted();
+  } catch {
+    // noOp
+  }
+
   root.render(
     <ProjectServiceProvider service={svc}>
       <QueryClientProviderV3 client={qcV3}>
@@ -385,14 +508,8 @@ export function mountProjectPageWidget({
                 <WidgetErrorBoundary>
                   <DragProvider>
                     <Routes>
-                      <Route
-                        path="/project/load/:projectName"
-                        element={<ProjectPage />}
-                      />
-                      <Route
-                        path="*"
-                        element={<Navigate to={initialPath} replace />}
-                      />
+                      <Route path="/project/load/:projectName" element={<ProjectPage />} />
+                      <Route path="*" element={<Navigate to={initialPath} replace />} />
                     </Routes>
                   </DragProvider>
                 </WidgetErrorBoundary>
@@ -406,23 +523,12 @@ export function mountProjectPageWidget({
 
   return {
     unmount() {
-      root.unmount();
-
-      try {
-        stopSyncDarkMode();
-      } catch {
-        // noOp
-      }
-
-      try {
-        (target as HTMLElement).removeChild(shell);
-      } catch {
-        // noOp
-      }
+      guard.dispose(); // triggers doUnmount once
     },
     root,
   };
 }
+
 
 /** Attach to window for UMD usage (no default export) */
 if (typeof window !== "undefined") {

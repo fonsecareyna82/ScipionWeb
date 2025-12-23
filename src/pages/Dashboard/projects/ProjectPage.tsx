@@ -2963,7 +2963,7 @@ export default function ProjectPage() {
                   onClick={() => setFocusModeEnabled((v) => !v)}
                   aria-pressed={focusModeEnabled}
                   className="pp-flowControlBtn"
-                  title={focusModeEnabled ? "Focus: Off" : "Focus: On"}
+                  title={focusModeEnabled ? "Focus selection: Off" : "Focus selection: On"}
                 >
                   <FocusIcon className="pp-btnIcon" />
                 </button>
