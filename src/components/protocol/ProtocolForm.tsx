@@ -7,6 +7,7 @@ import {
   Typography,
   Button,
   TextField,
+  MenuItem,
   RadioGroup,
   FormControlLabel,
   Radio,
@@ -35,6 +36,7 @@ import OutputSelectorDialog from "./outputSelectorDialog";
 import { useProjectService } from "@/ProjectServiceContext";
 import RemoteFileDialog from "@/components/files/RemoteFileDialog";
 import AnalyzeOutputDialog from "@/components/analyze/analyze-output-dialog";
+import { Copy } from "lucide-react";
 
 type ProtocolFormProps = {
   data: any;
@@ -44,6 +46,491 @@ type ProtocolFormProps = {
   /** Presentation variant: "drawer" (default) slides in from the right; "docked" fills its parent panel. */
   variant?: "drawer" | "docked";
 };
+
+
+// jsonSyntaxColors
+const jsonPunctColor = "#000000"; // braces, brackets, commas, colon
+const jsonKeyColor = "#000000";
+const jsonStringColor = "#16a34a";
+const jsonNumberColor = "#f97316";
+const jsonBooleanColor = "#7c3aed";
+const jsonNullColor = "#6b7280";
+
+function getJsonScalarColor(value: any): string {
+  // getJsonScalarColor
+  if (value === null || value === undefined) return jsonNullColor;
+  if (typeof value === "string") return jsonStringColor;
+  if (typeof value === "number" || typeof value === "bigint") return jsonNumberColor;
+  if (typeof value === "boolean") return jsonBooleanColor;
+  return "#111827";
+}
+
+function renderJsonScalar(value: any) {
+  // renderJsonScalar
+  return <span style={{ color: getJsonScalarColor(value) }}>{formatJsonScalar(value)}</span>;
+}
+
+
+// jsonTreeViewer
+function formatJsonScalar(value: any): string {
+  // formatJsonScalar
+  if (value === null) return "null";
+  if (value === undefined) return "null";
+  if (typeof value === "string") return JSON.stringify(value);
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (typeof value === "bigint") return JSON.stringify(value.toString());
+  if (typeof value === "function") return JSON.stringify("[Function]");
+  if (typeof value === "symbol") return JSON.stringify("[Symbol]");
+  return JSON.stringify(String(value));
+}
+
+function makeSafeJsonReplacer() {
+  // makeSafeJsonReplacer
+  const seen = new WeakSet<object>();
+
+  return (_key: string, value: any) => {
+    if (typeof value === "bigint") return value.toString();
+    if (typeof value === "function") return "[Function]";
+    if (typeof value === "symbol") return "[Symbol]";
+
+    if (value && typeof value === "object") {
+      if (seen.has(value)) return "[Circular]";
+      seen.add(value);
+    }
+    return value;
+  };
+}
+
+function copyTextToClipboard(text: string) {
+  // copyTextToClipboard
+  if (navigator.clipboard?.writeText) {
+    return navigator.clipboard.writeText(text);
+  }
+
+  // fallbackCopy
+  return new Promise<void>((resolve, reject) => {
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.top = "-1000px";
+      ta.style.left = "-1000px";
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      const ok = document.execCommand("copy");
+      document.body.removeChild(ta);
+      ok ? resolve() : reject(new Error("Copy failed"));
+    } catch (e) {
+      reject(e);
+    }
+  });
+}
+
+type JsonValueProps = {
+  value: any;
+  path: string;
+  indent: number;
+  isLast: boolean;
+  expandedPaths: Set<string>;
+  togglePath: (path: string) => void;
+  seen: WeakSet<object>;
+};
+
+function JsonValue({
+  value,
+  path,
+  indent,
+  isLast,
+  expandedPaths,
+  togglePath,
+  seen,
+}: JsonValueProps) {
+  // JsonValue
+  const pad = { paddingLeft: indent * 14 };
+
+  const comma = isLast ? "" : ",";
+
+  const isObj = value && typeof value === "object";
+  const isArr = Array.isArray(value);
+
+  if (!isObj) {
+    return (
+      <div style={pad}>
+        {renderJsonScalar(value)}
+        <span style={{ color: jsonPunctColor }}>{comma}</span>
+      </div>
+    );
+  }
+
+  // handleCircularReferences
+  if (seen.has(value)) {
+    return (
+      <div style={pad}>
+        <span style={{ color: jsonNullColor }}>{JSON.stringify("[Circular]")}</span>
+        <span style={{ color: jsonPunctColor }}>{comma}</span>
+      </div>
+    );
+  }
+  seen.add(value);
+
+  const open = isArr ? "[" : "{";
+  const close = isArr ? "]" : "}";
+
+  const entries = isArr
+    ? (value as any[]).map((v, i) => [String(i), v] as const)
+    : Object.entries(value as Record<string, any>);
+
+  const isExpanded = expandedPaths.has(path);
+
+  // collapsedNode
+  if (!isExpanded) {
+    return (
+      <div style={pad}>
+        <button
+          type="button"
+          onClick={() => togglePath(path)}
+          style={{
+            background: "transparent",
+            border: "none",
+            padding: 0,
+            marginRight: 6,
+            cursor: "pointer",
+            color: "inherit",
+            fontFamily: "inherit",
+            fontSize: "inherit",
+          }}
+          aria-label="Expand"
+        >
+          ▸
+        </button>
+        <span style={{ color: jsonPunctColor }}>
+          {open}…{close}
+        </span>
+        <span style={{ color: jsonPunctColor }}>{comma}</span>
+      </div>
+    );
+  }
+
+  // expandedNode
+  return (
+    <>
+      <div style={pad}>
+        <button
+          type="button"
+          onClick={() => togglePath(path)}
+          style={{
+            background: "transparent",
+            border: "none",
+            padding: 0,
+            marginRight: 6,
+            cursor: "pointer",
+            color: "inherit",
+            fontFamily: "inherit",
+            fontSize: "inherit",
+          }}
+          aria-label="Collapse"
+        >
+          ▾
+        </button>
+        <span style={{ color: jsonPunctColor }}>{open}</span>
+      </div>
+
+      <div>
+        {entries.length === 0 ? (
+          <div style={{ paddingLeft: (indent + 1) * 14, opacity: 0.8 }}>
+            {isArr ? "/* empty */" : "/* empty */"}
+          </div>
+        ) : (
+          entries.map(([k, v], idx) => {
+            const childPath = `${path}.${k}`;
+            const childIsLast = idx === entries.length - 1;
+
+            if (isArr) {
+              return (
+                <JsonValue
+                  key={childPath}
+                  value={v}
+                  path={childPath}
+                  indent={indent + 1}
+                  isLast={childIsLast}
+                  expandedPaths={expandedPaths}
+                  togglePath={togglePath}
+                  seen={seen}
+                />
+              );
+            }
+
+            const childIsObj = v && typeof v === "object";
+            const childIsArr = Array.isArray(v);
+
+            // objectProperty
+            if (childIsObj) {
+              const childExpanded = expandedPaths.has(childPath);
+              const openChild = childIsArr ? "[" : "{";
+              const closeChild = childIsArr ? "]" : "}";
+
+              if (!childExpanded) {
+                return (
+                  <div key={childPath} style={{ paddingLeft: (indent + 1) * 14 }}>
+                    <button
+                      type="button"
+                      onClick={() => togglePath(childPath)}
+                      style={{
+                        background: "transparent",
+                        border: "none",
+                        padding: 0,
+                        marginRight: 6,
+                        cursor: "pointer",
+                        color: "inherit",
+                        fontFamily: "inherit",
+                        fontSize: "inherit",
+                      }}
+                      aria-label="Expand"
+                    >
+                      ▸
+                    </button>
+                    <span style={{ color: jsonKeyColor }}>{JSON.stringify(k)}</span>
+                    <span style={{ color: jsonPunctColor }}>: </span>
+                    <span>
+                      {openChild}…{closeChild}
+                    </span>
+                    <span style={{ color: jsonPunctColor }}>{childIsLast ? "" : ","}</span>
+                  </div>
+                );
+              }
+
+              return (
+                <div key={childPath}>
+                  <div style={{ paddingLeft: (indent + 1) * 14 }}>
+                    <button
+                      type="button"
+                      onClick={() => togglePath(childPath)}
+                      style={{
+                        background: "transparent",
+                        border: "none",
+                        padding: 0,
+                        marginRight: 6,
+                        cursor: "pointer",
+                        color: "inherit",
+                        fontFamily: "inherit",
+                        fontSize: "inherit",
+                      }}
+                      aria-label="Collapse"
+                    >
+                      ▾
+                    </button>
+                    <span style={{ color: jsonKeyColor }}>{JSON.stringify(k)}</span>
+                    <span style={{ color: jsonPunctColor }}>: </span>
+                    <span>{openChild}</span>
+                  </div>
+
+                  <JsonValue
+                    value={v}
+                    path={childPath}
+                    indent={indent + 2}
+                    isLast={true}
+                    expandedPaths={expandedPaths}
+                    togglePath={togglePath}
+                    seen={seen}
+                  />
+
+                  <div style={{ paddingLeft: (indent + 1) * 14 }}>
+                    <span>{closeChild}</span>
+                    <span style={{ color: jsonPunctColor }}>{childIsLast ? "" : ","}</span>
+                  </div>
+                </div>
+              );
+            }
+
+            return (
+              <div key={childPath} style={{ paddingLeft: (indent + 1) * 14 }}>
+                <span style={{ color: jsonKeyColor }}>{JSON.stringify(k)}</span>
+                <span style={{ color: jsonPunctColor }}>: </span>
+                {renderJsonScalar(v)}
+                <span style={{ color: jsonPunctColor }}>{childIsLast ? "" : ","}</span>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      <div style={pad}>
+        <span style={{ color: jsonPunctColor }}>{close}</span>
+        <span style={{ color: jsonPunctColor }}>{comma}</span>
+      </div>
+    </>
+  );
+}
+
+function getJsonSummary(value: any): string {
+  // getJsonSummary
+  if (Array.isArray(value)) return `Array(${value.length})`;
+  if (value && typeof value === "object") return `Object(${Object.keys(value).length})`;
+  return formatJsonScalar(value);
+}
+
+function JsonNode({
+  name,
+  value,
+  level,
+  seen,
+}: {
+  name: string;
+  value: any;
+  level: number;
+  seen: WeakSet<object>;
+}) {
+  // JsonNode
+  const isObject = value && typeof value === "object";
+  const isArray = Array.isArray(value);
+
+  if (!isObject) {
+    return (
+      <div style={{ paddingLeft: level * 14 }}>
+        <span style={{ opacity: 0.8 }}>{name}:</span>{" "}
+        <span>{formatJsonScalar(value)}</span>
+      </div>
+    );
+  }
+
+  // handleCircularReferences
+  if (seen.has(value)) {
+    return (
+      <div style={{ paddingLeft: level * 14 }}>
+        <span style={{ opacity: 0.8 }}>{name}:</span>{" "}
+        <span>[Circular]</span>
+      </div>
+    );
+  }
+  seen.add(value);
+
+  const entries = isArray
+    ? (value as any[]).map((v, i) => [String(i), v] as const)
+    : Object.entries(value as Record<string, any>);
+
+  const defaultOpen = level <= 1;
+
+  return (
+    <details open={defaultOpen} style={{ paddingLeft: level * 14 }}>
+      <summary style={{ cursor: "pointer", userSelect: "none" }}>
+        <span style={{ opacity: 0.8 }}>{name}:</span>{" "}
+        <span>{getJsonSummary(value)}</span>
+      </summary>
+
+      <div style={{ marginTop: 6 }}>
+        {entries.length === 0 ? (
+          <div style={{ paddingLeft: 14, opacity: 0.7 }}>
+            {isArray ? "[]" : "{}"}
+          </div>
+        ) : (
+          entries.map(([k, v]) => (
+            <JsonNode
+              key={`${name}.${k}`}
+              name={k}
+              value={v}
+              level={level + 1}
+              seen={seen}
+            />
+          ))
+        )}
+      </div>
+    </details>
+  );
+}
+
+function JsonTree({ data }: { data: any }) {
+  // JsonTree
+  const [copied, setCopied] = useState(false);
+  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(() => {
+    // defaultExpandedPaths
+    return new Set(["$"]);
+  });
+
+  const togglePath = (path: string) => {
+    // togglePath
+    setExpandedPaths((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+  };
+
+  const jsonText = useMemo(() => {
+    // jsonText
+    try {
+      return JSON.stringify(data, makeSafeJsonReplacer(), 2);
+    } catch {
+      return String(data);
+    }
+  }, [data]);
+
+  const handleCopy = async () => {
+    // handleCopy
+    try {
+      await copyTextToClipboard(jsonText);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 900);
+    } catch {
+      // noOp
+    }
+  };
+
+  const seen = new WeakSet<object>();
+
+  return (
+    <Box
+      sx={{
+        height: "100%",
+        maxHeight: "100%",
+        display: "flex",
+        flexDirection: "column",
+        gap: 1,
+      }}
+    >
+      <Box sx={{ display: "flex", justifyContent: "flex-end" }}>
+        <Button
+          size="small"
+          variant="outlined"
+          onClick={handleCopy}
+          startIcon={<Copy size={16} />}
+          sx={{ textTransform: "none" }}
+        >
+          {copied ? "Copied" : "Copy JSON"}
+        </Button>
+      </Box>
+
+      <Box
+        sx={{
+          flex: 1,
+          minHeight: 0,
+          backgroundColor: "#f5f5f5",
+          color: "#000000",
+          border: "1px solid #e5e7eb",
+          borderRadius: 2,
+          p: 1.5,
+          fontFamily:
+            "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+          fontSize: 12,
+          lineHeight: 1.5,
+          overflow: "auto",
+        }}
+      >
+        {/* renderRootAsJson */}
+        <JsonValue
+          value={data}
+          path="$"
+          indent={0}
+          isLast={true}
+          expandedPaths={expandedPaths}
+          togglePath={togglePath}
+          seen={seen}
+        />
+      </Box>
+    </Box>
+  );
+}
 
 export default function ProtocolForm({
   data,
@@ -1084,35 +1571,40 @@ export default function ProtocolForm({
           setOpenSelector(true);
         };
 
+        // normalizePointerValueForDisplay
+        const displayValue = (() => {
+          const v = value ?? def.default ?? "";
+          if (typeof v === "string" || typeof v === "number") return v;
+          if (v && typeof v === "object") {
+            const objValue = (v as any)._objValue;
+            if (typeof objValue === "string" || typeof objValue === "number") return objValue;
+          }
+          return "";
+        })();
+
         const control = (
           <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
             <TextField
               size="small"
-              value={value ?? def.default ?? ""}
+              value={displayValue}
               InputProps={{ readOnly: true }}
               onClick={() => handleOpenFind(key)}
-              onChange={(e) =>
-                setProtocolDetails((prev: any) => ({
-                  ...prev,
-                  params: {
-                    ...prev.params,
-                    [key]: {
-                      ...prev.params[key],
-                      editableValue: e.target.value,
-                      _objValue: e.target.value,
-                    },
-                  },
-                }))
-              }
               sx={{
                 minWidth: 300,
-                "& .MuiInputBase-input": {
-                  fontSize: "0.8rem",
+
+                // keepHeightConsistentInHostCss
+                "& .MuiInputBase-root": { minHeight: 36 },
+
+                // keepTextVisibleInReadonlyAcrossHostCss
+                "& .MuiInputBase-input, & input, & input[readonly]": {
+                  fontSize: 12,
+                  padding: "8px 10px",
+                  lineHeight: 1.2,
+                  color: "#111827",
+                  WebkitTextFillColor: "#111827",
+                  opacity: 1,
                   userSelect: "none",
                   cursor: "pointer",
-                },
-                "& .MuiInputBase-input:active": {
-                  cursor: "grabbing",
                 },
               }}
             />
@@ -1141,6 +1633,7 @@ export default function ProtocolForm({
           />
         );
       }
+
 
       // PathParam
       if (def._class === "PathParam") {
@@ -1200,7 +1693,11 @@ export default function ProtocolForm({
                   };
                 })
               }
-              sx={{ minWidth: 300, "& .MuiInputBase-input": { fontSize: "0.8rem" } }}
+              sx={{
+                minWidth: 300,
+                "& .MuiInputBase-root": { minHeight: 36 },
+                "& .MuiInputBase-input": { fontSize: 12, padding: "8px 10px", lineHeight: 1.2 },
+              }}
             />
           </Box>
         );
@@ -1220,9 +1717,12 @@ export default function ProtocolForm({
       }
 
       // EnumParam
+      // EnumParam
       if (def._class === "EnumParam" && Array.isArray(def.choices)) {
         let sel = value ?? def.default ?? "";
         if (typeof sel === "number") sel = def.choices[sel] ?? "";
+
+        const safeSel = def.choices.includes(sel) ? sel : (def.choices[0] ?? "");
 
         const onChange = (v: any) =>
           setProtocolDetails((prev: any) => ({
@@ -1234,11 +1734,7 @@ export default function ProtocolForm({
           def.display === 0 ? (
             <RadioGroup
               row
-              value={
-                def.choices?.includes(sel)
-                  ? sel
-                  : def.choices?.[0] ?? ""
-              }
+              value={safeSel}
               onChange={(e) => onChange(e.target.value)}
             >
               {def.choices.map((ch: string, i: number) => (
@@ -1255,15 +1751,21 @@ export default function ProtocolForm({
             <TextField
               select
               size="small"
-              value={sel}
+              value={safeSel}
               onChange={(e) => onChange(e.target.value)}
-              SelectProps={{ native: true }}
-              sx={{ minWidth: 300, "& .MuiInputBase-input": { fontSize: "0.8rem" } }}
+              sx={{
+                minWidth: 300,
+                "& .MuiInputBase-input": { fontSize: 12 },
+                "& .MuiSelect-select": { fontSize: 12, display: "flex", alignItems: "center" },
+              }}
             >
               {def.choices.map((ch: string, i: number) => (
-                <option key={i} value={ch}>
+                <MenuItem key={i} value={ch} sx={{
+                  fontSize: 12
+
+                }}>
                   {ch}
-                </option>
+                </MenuItem>
               ))}
             </TextField>
           );
@@ -1283,6 +1785,7 @@ export default function ProtocolForm({
           />
         );
       }
+
 
       // Group
       if (def._class === "Group" && Array.isArray(def.children)) {
@@ -1391,7 +1894,11 @@ export default function ProtocolForm({
                 },
               }))
             }
-            sx={{ minWidth: 300, "& .MuiInputBase-input": { fontSize: "0.8rem" } }}
+            sx={{
+              minWidth: 300,
+              "& .MuiInputBase-root": { minHeight: 36 },
+              "& .MuiInputBase-input": { fontSize: 12, padding: "8px 10px", lineHeight: 1.2 },
+            }}
           />
         </Box>
       );
@@ -1480,7 +1987,7 @@ export default function ProtocolForm({
           variant="body2"
           sx={{
             color: "#6b7280",
-            fontSize: "0.8rem",
+            fontSize: 12,
             textAlign: "center",
             py: 4,
           }}
@@ -2060,12 +2567,12 @@ export default function ProtocolForm({
   return (
     <div
       className={[
-       styles.protocolForm,
-      isDocked ? styles.asDocked : "",
-       isClosing ? styles.slideOutRight : styles.slideInRight,
-     ]
-       .filter(Boolean)
-       .join(" ")}
+        styles.protocolForm,
+        isDocked ? styles.asDocked : "",
+        isClosing ? styles.slideOutRight : styles.slideInRight,
+      ]
+        .filter(Boolean)
+        .join(" ")}
       onAnimationEnd={handleAnimationEnd}
     >
       {/* HEADER */}
@@ -2146,9 +2653,10 @@ export default function ProtocolForm({
           >
             <Tab label="Inputs and Parameters" />
             <Tab label="Outputs" />
-            <Tab label="Summary" />
-            <Tab label="Methods" />
+            {/* <Tab label="Summary" />
+            <Tab label="Methods" /> */}
             <Tab label="Logs" />
+            <Tab label="Metadata" />
           </Tabs>
 
           <Box
@@ -2161,6 +2669,8 @@ export default function ProtocolForm({
               flexDirection: "column",
             }}
           >
+            {/*Input and parameters */}
+
             {topTab === 0 && (
               <>
                 <Tabs
@@ -2213,6 +2723,7 @@ export default function ProtocolForm({
               </>
             )}
 
+            {/* Outputs */}
             {topTab === 1 && (
               <Box
                 sx={{
@@ -2223,7 +2734,7 @@ export default function ProtocolForm({
                   minHeight: 0,
                 }}
               >
-                {/* Left Panel Outputs */}
+
                 <Box
                   sx={{
                     flex: "0 0 45%",
@@ -2456,7 +2967,8 @@ export default function ProtocolForm({
               </Box>
             )}
 
-            {topTab === 2 && (
+
+            {/* {topTab === 2 && (
               <Typography variant="body1">
                 Summary content goes here.
               </Typography>
@@ -2466,9 +2978,11 @@ export default function ProtocolForm({
               <Typography variant="body1">
                 Methods content goes here.
               </Typography>
-            )}
+            )} */}
 
-            {topTab === 4 && (
+
+            {/* Logs */}
+            {topTab === 2 && (
               <Box
                 sx={{
                   flexGrow: 3,
@@ -2516,9 +3030,10 @@ export default function ProtocolForm({
                         fontFamily:
                           "monospace",
                         fontSize:
-                          "0.80rem",
+                          12,
                         p: 2,
-                        borderRadius: 1,
+                        borderRadius: 2,
+                        border: "1px solid #e5e7eb",
                         maxHeight:
                           "100%",
                         height:
@@ -2587,6 +3102,7 @@ export default function ProtocolForm({
                     </Box>
                   )}
 
+                  {/* Output Log */}
                   {bottomTab === 1 && (
                     <Box
                       ref={
@@ -2601,9 +3117,10 @@ export default function ProtocolForm({
                         fontFamily:
                           "monospace",
                         fontSize:
-                          "0.80rem",
+                          12,
                         p: 2,
-                        borderRadius: 1,
+                        borderRadius: 2,
+                        border: "1px solid #e5e7eb",
                         maxHeight:
                           "100%",
                         height:
@@ -2671,6 +3188,7 @@ export default function ProtocolForm({
                     </Box>
                   )}
 
+                  {/* Errors Log */}
                   {bottomTab === 2 && (
                     <Box
                       ref={
@@ -2685,9 +3203,10 @@ export default function ProtocolForm({
                         fontFamily:
                           "monospace",
                         fontSize:
-                          "0.80rem",
+                          12,
                         p: 2,
-                        borderRadius: 1,
+                        borderRadius: 2,
+                        border: "1px solid #e5e7eb",
                         maxHeight:
                           "100%",
                         height:
@@ -2698,6 +3217,8 @@ export default function ProtocolForm({
                           "pre",
                       }}
                     >
+
+                      {/* Schedule Log */}
                       {scheduleLogs ? (
                         scheduleLogs
                           .split("\n")
@@ -2754,7 +3275,16 @@ export default function ProtocolForm({
                       )}
                     </Box>
                   )}
+
+
                 </Box>
+              </Box>
+            )}
+
+            {/* Metadata */}
+            {topTab === 3 && (
+              <Box sx={{ height: "100%", maxHeight: "100%", overflow: "auto" }}>
+                <JsonTree data={data} />
               </Box>
             )}
           </Box>

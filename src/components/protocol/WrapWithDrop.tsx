@@ -89,10 +89,10 @@ export default function WrapWithDrop({
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
       sx={{
-        border: '2px dashed #888',
+        border: '2px dashed #5f5d5dff',
         borderRadius: 1,
         width: 310,
-        p: 0.5,
+        p: 0.4,
         backgroundColor: isActive
           ? isMatch
             ? '#b7f5c7' // green if match
