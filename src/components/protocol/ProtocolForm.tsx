@@ -36,7 +36,7 @@ import OutputSelectorDialog from "./outputSelectorDialog";
 import { useProjectService } from "@/ProjectServiceContext";
 import RemoteFileDialog from "@/components/files/RemoteFileDialog";
 import AnalyzeOutputDialog from "@/components/analyze/analyze-output-dialog";
-import { Copy } from "lucide-react";
+import { CheckCircle2Icon, Copy } from "lucide-react";
 
 type ProtocolFormProps = {
   data: any;
@@ -497,7 +497,7 @@ function JsonTree({ data }: { data: any }) {
           startIcon={<Copy size={16} />}
           sx={{ textTransform: "none" }}
         >
-          {copied ? "Copied" : "Copy JSON"}
+          {copied ? "Copying..." : "Copy JSON"}
         </Button>
       </Box>
 
@@ -2693,7 +2693,7 @@ export default function ProtocolForm({
                       <Tab
                         key={idx}
                         label={
-                          section.name ||
+                          section.label ||
                           `Section ${idx + 1}`
                         }
                       />

@@ -9,6 +9,7 @@ import {
   ObjectUrlResult,
   ProjectWorkflowDescriptor,
   TiltExclusionsPayload,
+  SettingsObject,
 } from "@/services/ProjectService";
 
 const ACTION_LAUNCH = "launch";
@@ -270,6 +271,76 @@ export async function listProjectShares(projectId: Id): Promise<any[]> {
   // Fallback if backend returns an unexpected structure
   return [];
 }
+
+/* ======================= SETTINGS ======================= */
+
+/**
+ * User settings (JSON object).
+ * Backend endpoints:
+ * - GET  /settings/user
+ * - PUT  /settings/user
+ */
+export async function fetchUserSettings(): Promise<SettingsObject> {
+  const response = await fetchWithAuth(`${BASE_URL}/settings/user`, {
+    method: "GET",
+  });
+  if (!response.ok) {
+    throw await toApiError(response, "Failed to fetch user settings");
+  }
+  const data = await safeJson<SettingsObject>(response);
+  return (data && typeof data === "object") ? data : {};
+}
+
+export async function updateUserSettings(
+  settings: SettingsObject,
+): Promise<SettingsObject> {
+  const response = await fetchWithAuth(`${BASE_URL}/settings/user`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(settings ?? {}),
+  });
+  if (!response.ok) {
+    throw await toApiError(response, "Failed to update user settings");
+  }
+  const data = await safeJson<SettingsObject>(response);
+  return (data && typeof data === "object") ? data : {};
+}
+
+/**
+ * Instance settings (admin-only JSON object).
+ * Backend endpoints:
+ * - GET  /settings/instance
+ * - PUT  /settings/instance
+ */
+export async function fetchInstanceSettings(): Promise<SettingsObject> {
+  const response = await fetchWithAuth(`${BASE_URL}/settings/instance`, {
+    method: "GET",
+  });
+  if (!response.ok) {
+    throw await toApiError(response, "Failed to fetch instance settings");
+  }
+  const data = await safeJson<SettingsObject>(response);
+  return (data && typeof data === "object") ? data : {};
+}
+
+export async function updateInstanceSettings(
+  settings: SettingsObject,
+): Promise<SettingsObject> {
+  const response = await fetchWithAuth(`${BASE_URL}/settings/instance`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(settings ?? {}),
+  });
+  if (!response.ok) {
+    throw await toApiError(response, "Failed to update instance settings");
+  }
+  const data = await safeJson<SettingsObject>(response);
+  return (data && typeof data === "object") ? data : {};
+}
+
+
+
+
 
 /* ======================= LOAD PROTOCOLS ======================= */
 export async function loadProtocols(projectId: number): Promise<any> {

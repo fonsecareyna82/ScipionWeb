@@ -41,7 +41,7 @@ const navItems: NavItem[] = [
   { separator: true },
   { icon: <UserCircleIcon />, name: "User profile", path: "/profile"},
   { icon: <CalenderIcon />,   name: "Calendar", path: "/calendar",},
-  { icon: <LucideSettings2/>, name: "Settings",}
+  { icon: <LucideSettings2/>, name: "Settings", path: "/settings",}
   
 ];
 

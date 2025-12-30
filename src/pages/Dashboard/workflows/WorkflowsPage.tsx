@@ -337,7 +337,7 @@ function ApplyWorkflowDialog({
   return (
     <div className="fixed inset-0 z-[90] flex items-center justify-center">
       {/* dialogCard */}
-      <div className="relative z-10 w-full max-w-md min-h-[510px] max-h-[90vh] rounded-2xl bg-white dark:bg-slate-950 shadow-2xl border border-slate-200 dark:border-slate-800 px-6 pt-10 pb-5 flex flex-col">
+      <div className="relative z-10 w-full max-w-md min-h-[510px] max-h-[90vh] rounded-2xl bg-gray-100 dark:bg-slate-950 shadow-2xl border border-slate-200 dark:border-slate-800 px-6 pt-10 pb-5 flex flex-col">
         {/* closeButton */}
         <button
           type="button"

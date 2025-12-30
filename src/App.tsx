@@ -31,6 +31,7 @@ import { DragProvider } from "./components/protocol/DragContext";
 import { ProjectService } from "./services/ProjectService";
 import { ProjectServiceProvider } from "./ProjectServiceContext";
 import WorkflowsPage from "./pages/Dashboard/workflows/WorkflowsPage";
+import SettingsPage from "./pages/Settings/settingspage";
 
 interface AppProps {
   service?: ProjectService;
@@ -74,6 +75,7 @@ export default function App({ service }: AppProps) {
                 <Route path="/plugins/:pipName" element={<PluginPage />} />
                 <Route path="/profile" element={<UserProfiles />} />
                 <Route path="/calendar" element={<Calendar />} />
+                <Route path="/settings" element={<SettingsPage />} />
                 <Route path="/blank" element={<Blank />} />
                 <Route path="/form-elements" element={<FormElements />} />
                 <Route path="/basic-tables" element={<BasicTables />} />

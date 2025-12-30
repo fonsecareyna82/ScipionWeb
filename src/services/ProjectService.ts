@@ -309,6 +309,40 @@ export type ProjectWorkflowDescriptor = {
 };
 
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Settings
+// ─────────────────────────────────────────────────────────────────────────────
+/** Generic JSON settings payload (user/instance). */
+export type SettingsObject = Record<string, unknown>;
+
+export type UserSettings = {
+  theme: "system" | "light" | "dark";
+  uiDensity: "comfortable" | "compact";
+  fontScale: number;
+
+  language: "en" | "es";
+  timeZone: string;
+
+  graphMiniMapEnabled: boolean;
+  graphFocusModeEnabled: boolean;
+  workflowsAutoRefreshSec: number;
+};
+
+export type UserSettingsPatch = Partial<UserSettings>;
+
+export type InstanceSettings = {
+  enableCelery: boolean;
+  defaultQueueName: string;
+  maxConcurrentRunsPerUser: number;
+
+  requireConfirmBeforeExecute: boolean;
+  requireConfirmBeforeDelete: boolean;
+};
+
+export type InstanceSettingsPatch = Partial<InstanceSettings>;
+
+
+
 /**
  * Optional generics to let consumers specify concrete return shapes.
  * - TProject: shape of a single project
@@ -707,6 +741,18 @@ fetchCTFPsdImage(
     userId: Id,
   ): Promise<void | { success: boolean }>;
 
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Settings (user + instance)
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  fetchUserSettings(): Promise<UserSettings>;
+  putUserSettings(payload: UserSettings): Promise<UserSettings>;
+  patchUserSettings(patch: UserSettingsPatch): Promise<UserSettings>;
+
+  fetchInstanceSettings(): Promise<InstanceSettings>;
+  putInstanceSettings(payload: InstanceSettings): Promise<InstanceSettings>;
+  patchInstanceSettings(patch: InstanceSettingsPatch): Promise<InstanceSettings>;
 
 
 }

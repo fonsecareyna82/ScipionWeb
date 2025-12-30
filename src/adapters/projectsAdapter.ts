@@ -15,6 +15,14 @@ import type {
   CTFTomoExclusionsPayload,
 } from "@/services/ProjectService";
 
+import * as settingsApi from "@/api/settings";
+import type {
+  UserSettings,
+  UserSettingsPatch,
+  InstanceSettings,
+  InstanceSettingsPatch,
+} from "@/services/ProjectService";
+
 /** Normalize id */
 const toId = (id: string | number): string => String(id);
 
@@ -515,6 +523,18 @@ const defaultService: ProjectService = {
 
   revokeProjectShare: (projectId: Id, userId: Id) =>
     api.revokeProjectShare(toId(projectId), userId),
+
+
+  // ──────────────────────────── Settings (user + instance) ────────────────────────────
+
+  fetchUserSettings: () => settingsApi.fetchUserSettings(),
+  putUserSettings: (payload: UserSettings) => settingsApi.putUserSettings(payload),
+  patchUserSettings: (patch: UserSettingsPatch) => settingsApi.patchUserSettings(patch),
+
+  fetchInstanceSettings: () => settingsApi.fetchInstanceSettings(),
+  putInstanceSettings: (payload: InstanceSettings) => settingsApi.putInstanceSettings(payload),
+  patchInstanceSettings: (patch: InstanceSettingsPatch) => settingsApi.patchInstanceSettings(patch),
+
 
 };
 
