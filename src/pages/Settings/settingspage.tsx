@@ -33,7 +33,7 @@ import { TableRows } from "@mui/icons-material";
 
 import { useProjectService } from "@/ProjectServiceContext";
 import { TreeIcon } from "@/icons";
-import { LayoutGrid } from "lucide-react";
+import { LayoutGrid, Table } from "lucide-react";
 import PageMeta from "@/components/common/PageMeta";
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 
@@ -263,14 +263,14 @@ function getViewModeMeta(mode: WorkflowViewMode): { label: string; icon: React.R
   // getViewModeMeta
   switch (mode) {
     case "treeTb":
-      return { label: "Tree TB", icon: <TreeIcon className="pp-btnIcon" /> };
+      return { label: "Tree TB", icon: <TreeIcon className="pp-btnIcon w-4 h-4" /> };
 
     case "treeLr":
       return {
         label: "Tree LR",
         icon: (
           <span className="inline-flex -rotate-90">
-            <TreeIcon className="pp-btnIcon" />
+            <TreeIcon className="pp-btnIcon w-4 h-4" />
           </span>
         ),
       };
@@ -279,10 +279,10 @@ function getViewModeMeta(mode: WorkflowViewMode): { label: string; icon: React.R
       return { label: "Grid", icon: <LayoutGrid className="pp-btnIcon w-4 h-4" /> };
 
     case "table":
-      return { label: "Table", icon: <TableRows className="pp-btnIcon" /> };
+      return { label: "Table", icon: <Table className="pp-btnIcon w-4 h-4" /> };
 
     default:
-      return { label: "Tree TB", icon: <TreeIcon className="pp-btnIcon" /> };
+      return { label: "Tree TB", icon: <TreeIcon className="pp-btnIcon w-4 h-4" /> };
   }
 }
 
