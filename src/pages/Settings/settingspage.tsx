@@ -29,7 +29,6 @@ import {
   InputAdornment,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
-import { TableRows } from "@mui/icons-material";
 
 import { useProjectService } from "@/ProjectServiceContext";
 import { TreeIcon } from "@/icons";

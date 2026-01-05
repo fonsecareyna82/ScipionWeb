@@ -59,7 +59,6 @@ import Label from "@/components/form/Label";
 import { Input } from "@mui/material";
 import toast from "react-hot-toast";
 import RemoteFileDialog from "@/components/files/RemoteFileDialog";
-import { HideImage } from "@mui/icons-material";
 
 /* --------------------- Types --------------------- */
 interface StatusNodeData {
@@ -296,7 +295,7 @@ export default function ProjectPage() {
   const TIME_TO_REFRESH = 15000;
   const localStorageKey = `project-${projectName}-node-positions`;
 
-  const [isSwitchingLayout, setIsSwitchingLayout] = useState(false);
+  const [, setIsSwitchingLayout] = useState(false);
   const [, setTableVisible] = useState(viewMode === "table");
   const [nodesLoadedOnce, setNodesLoadedOnce] = useState(false);
   const firstLoadRef = useRef(true);
@@ -3242,7 +3241,7 @@ export default function ProjectPage() {
             previewRemoteText={(p) => svc.previewProtocolText(projId, pid.toString(), p)}
             buildDownloadUrl={(p, inline) => svc.buildProtocolDownloadUrl(projId.toString(), pid.toString(), p, !!inline)}
             fetchInlinePreviewBlob={(p) => svc.fetchProtocolInlinePreviewBlob(projId.toString(), pid.toString(), p)}
-            onPick={(relativePath) => {
+            onPick={() => {
               setFileDialogOpen(false);
             }}
           />
