@@ -92,6 +92,8 @@ const ParamRow = ({
             </Tooltip>
           )}
 
+          {/*
+
           {isPointerParam && (
             <Tooltip title="Visualize">
               <IconButton size="small" onClick={() => console.log("View")}>
@@ -99,6 +101,8 @@ const ParamRow = ({
               </IconButton>
             </Tooltip>
           )}
+
+          */}
 
           {helpText && (
             <Tooltip title="Help">

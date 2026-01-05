@@ -47,7 +47,6 @@ type ProtocolFormProps = {
   variant?: "drawer" | "docked";
 };
 
-
 // jsonSyntaxColors
 const jsonPunctColor = "#000000"; // braces, brackets, commas, colon
 const jsonKeyColor = "#000000";
@@ -69,7 +68,6 @@ function renderJsonScalar(value: any) {
   // renderJsonScalar
   return <span style={{ color: getJsonScalarColor(value) }}>{formatJsonScalar(value)}</span>;
 }
-
 
 // jsonTreeViewer
 function formatJsonScalar(value: any): string {
@@ -125,6 +123,57 @@ function copyTextToClipboard(text: string) {
       reject(e);
     }
   });
+}
+
+type UnwrappedParam = {
+  paramName: string;
+  paramDef: any;
+};
+
+function unwrapParamDef(paramLike: any): UnwrappedParam {
+  // unwrapParamDef
+  if (!paramLike || typeof paramLike !== "object") {
+    return { paramName: "", paramDef: paramLike };
+  }
+
+  // newBackendShape: paramDef already contains "name"
+  if (typeof (paramLike as any).name === "string" && (paramLike as any).name.trim()) {
+    return { paramName: (paramLike as any).name, paramDef: paramLike };
+  }
+
+  // legacyBackendShape: { [paramName]: def }
+  const entries = Object.entries(paramLike);
+  if (entries.length === 1) {
+    const [paramName, paramDef] = entries[0] as [string, any];
+    return { paramName, paramDef };
+  }
+
+  // fallback
+  return { paramName: String((paramLike as any).name ?? ""), paramDef: paramLike };
+}
+
+function unwrapObjValue(raw: any) {
+  // unwrapObjValue
+  if (raw && typeof raw === "object" && "_objValue" in raw) {
+    return (raw as any)._objValue;
+  }
+  return raw;
+}
+
+function coerceBooleanValue(raw: any): boolean {
+  // coerceBooleanValue
+  const v = unwrapObjValue(raw);
+
+  if (v === true || v === 1 || v === "1") return true;
+  if (v === false || v === 0 || v === "0") return false;
+
+  if (typeof v === "string") {
+    const s = v.trim().toLowerCase();
+    if (s === "true") return true;
+    if (s === "false") return false;
+  }
+
+  return false;
 }
 
 type JsonValueProps = {
@@ -698,7 +747,6 @@ export default function ProtocolForm({
     };
   }, [activeOutput, data?.id, sqliteTable, svc, data?.projectId]);
 
-
   // Use this instead of onClose() directly to play exit animation
   const requestClose = () => setIsClosing(true);
   const handleAnimationEnd = () => {
@@ -706,16 +754,25 @@ export default function ProtocolForm({
     if (isClosing) onClose();
   };
 
-  // Parse JSON envelopes like {"_objValue": "..."} if they appear as strings
+  // Parse JSON envelopes like {"_objValue": "..."} if they appear as strings or objects
   const parseFromJSONValue = (maybeJson: any) => {
+    // parseFromJSONValue
     try {
+      // unwrapObjectEnvelope
+      if (maybeJson && typeof maybeJson === "object" && "_objValue" in maybeJson) {
+        return (maybeJson as any)._objValue;
+      }
+
+      // unwrapStringEnvelope
       if (typeof maybeJson === "string") {
         const obj = JSON.parse(maybeJson);
         if (obj && typeof obj === "object" && "_objValue" in obj) {
-          return obj._objValue;
+          return (obj as any)._objValue;
         }
       }
-    } catch { }
+    } catch {
+      // noOp
+    }
     return maybeJson;
   };
 
@@ -752,9 +809,9 @@ export default function ProtocolForm({
       const section = data.definition[i];
       const params = section?.params ?? [];
       for (const p of params) {
-        const [n, def] = Object.entries(p)[0] as [string, any];
-        if (n === "expertLevel" && def?._class === "EnumParam") {
-          return { sectionIdx: i, name: n };
+        const { paramName, paramDef: def } = unwrapParamDef(p);
+        if (paramName === "expertLevel" && def?._class === "EnumParam") {
+          return { sectionIdx: i, name: paramName };
         }
       }
     }
@@ -886,20 +943,43 @@ export default function ProtocolForm({
     }
 
     const params: any = {};
-    const walk = (secIdx: number, obj: any) => {
-      const [name, def] = Object.entries(obj)[0] as [string, any];
+    const walk = (secIdx: number, paramLike: any) => {
+      const { paramName: name, paramDef: def } = unwrapParamDef(paramLike);
+      if (!name || !def) return;
+
       if (def._class === "Group" && Array.isArray(def.children)) {
         def.children.forEach((c: any) => walk(secIdx, c));
         return;
       }
+
       const key = `${secIdx}_${name}`;
       const raw = def.value ?? def.default ?? "";
       const parsed = parseFromJSONValue(raw);
+
       let init = parsed ?? "";
+
+      // normalizeBooleanParam
+      if (def._class === "BooleanParam") {
+        init = coerceBooleanValue(parsed);
+
+        const defObjValue = parseFromJSONValue(def._objValue);
+        const defDefault = parseFromJSONValue(def.default);
+
+        params[key] = {
+          ...def,
+          _objValue: coerceBooleanValue(defObjValue),
+          default: coerceBooleanValue(defDefault),
+          value: def.value,
+          editableValue: init,
+        };
+        return;
+      }
+
       // If EnumParam default is index, map to label for UI state
       if (def._class === "EnumParam" && Array.isArray(def.choices) && typeof init === "number") {
         init = def.choices[init] ?? def.default ?? "";
       }
+
       params[key] = { ...def, value: def.value, editableValue: init };
     };
 
@@ -938,46 +1018,44 @@ export default function ProtocolForm({
 
   // Incremental log polling
   useEffect(() => {
-    // Clear any previous interval before starting a new polling cycle
+    // clearPreviousInterval
     if (pollRef.current) {
       clearInterval(pollRef.current);
       pollRef.current = null;
     }
 
-    // Minimal conditions to enable polling
-    if (topTab !== 4 || !data?.projectId || !data?.id) return;
+    // enablePollingOnlyOnLogsTab
+    if (topTab !== 2 || !data?.projectId || !data?.id) return;
 
     let cancelled = false;
     idleStreakRef.current = 0;
 
-    // Initial load
+    // initialLoad
     (async () => {
       try {
         const res: any = await fetchProtocolLogsStream(data.projectId, data.id, 0, 0, 0);
         if (cancelled) return;
 
-        // Keep field names consistent: scheduleLog / scheduleOffset
         setLogs(res.stdoutLog ?? "");
         setErrorLogs(res.stderrLog ?? "");
         setScheduleLogs(res.scheduleLog ?? "");
 
-        offsetRef.current = typeof res.stdoutOffset === "number"
-          ? res.stdoutOffset
-          : (typeof res.stdoutLog === "string" ? res.stdoutLog.length : 0);
+        offsetRef.current =
+          typeof res.stdoutOffset === "number" ? res.stdoutOffset : (typeof res.stdoutLog === "string" ? res.stdoutLog.length : 0);
 
-        errorOffsetRef.current = typeof res.stderrOffset === "number"
-          ? res.stderrOffset
-          : (typeof res.stderrLog === "string" ? res.stderrLog.length : 0);
+        errorOffsetRef.current =
+          typeof res.stderrOffset === "number" ? res.stderrOffset : (typeof res.stderrLog === "string" ? res.stderrLog.length : 0);
 
-        scheduleOffsetRef.current = typeof res.scheduleOffset === "number"
-          ? res.scheduleOffset
-          : (typeof res.scheduleLog === "string" ? res.scheduleLog.length : 0);
+        scheduleOffsetRef.current =
+          typeof res.scheduleOffset === "number"
+            ? res.scheduleOffset
+            : (typeof res.scheduleLog === "string" ? res.scheduleLog.length : 0);
       } catch (err: any) {
         if (!cancelled) setLogsError(err.message || "Failed to load logs");
       }
     })();
 
-    // 2) Incremental polling every 2s
+    // incrementalPolling
     pollRef.current = setInterval(async () => {
       try {
         const res: any = await fetchProtocolLogsStream(
@@ -1013,7 +1091,7 @@ export default function ProtocolForm({
           gotNew = true;
         }
 
-        // Stop polling after 2 idle cycles if status is terminal
+        // stopPollingWhenTerminalAndIdle
         if (isTerminalStatus(protocolDetails.status)) {
           idleStreakRef.current = gotNew ? 0 : idleStreakRef.current + 1;
           if (idleStreakRef.current >= 2 && pollRef.current) {
@@ -1036,6 +1114,7 @@ export default function ProtocolForm({
       }
     };
   }, [topTab, data?.projectId, data?.id, protocolDetails.status]);
+
 
   // Autoscroll logs
   useEffect(() => {
@@ -1305,6 +1384,20 @@ export default function ProtocolForm({
         return;
       }
 
+      if (cls === "BooleanParam") {
+        const boolVal = coerceBooleanValue(
+          p.editableValue ?? p._objValue ?? p.value ?? p.default
+        );
+
+        out[newKey] = {
+          value: boolVal ? "True" : "False",
+          _objValue: boolVal,
+          info: p.info,
+          _parentId: p._parentId,
+        };
+        return;
+      }
+
       out[newKey] = {
         value: p.editableValue,
         _objValue: p._objValue,
@@ -1341,7 +1434,7 @@ export default function ProtocolForm({
     setValidationErrors([]);
 
     try {
-      const projectId = data?.projectId
+      const projectId = data?.projectId;
       const pid = data?.id ?? "";
       const serialized = getSerializedParams();
       await svc.executeProtocol(projectId, pid, data?.protocolClassName, serialized);
@@ -1368,7 +1461,7 @@ export default function ProtocolForm({
     setExecLoading(true);
     setExecError(null);
     try {
-      const projectId = data?.projectId
+      const projectId = data?.projectId;
       const pid = data?.id ?? "";
       const serialized = getSerializedParams();
       await svc.saveProtocol(projectId, pid, data?.protocolClassName, serialized);
@@ -1382,8 +1475,10 @@ export default function ProtocolForm({
 
   // Render a single parameter row
   const renderParam = useCallback(
-    (paramObj: any, sectionIdx: number, rowIndex = 0): JSX.Element | null => {
-      const [name, def] = Object.entries(paramObj)[0] as [string, any];
+    (paramLike: any, sectionIdx: number, rowIndex = 0): JSX.Element | null => {
+      const { paramName: name, paramDef: def } = unwrapParamDef(paramLike);
+      if (!name || !def) return null;
+
       const key = `${sectionIdx}_${name}`;
       const value = protocolDetails.params?.[key]?.editableValue;
 
@@ -1591,7 +1686,6 @@ export default function ProtocolForm({
               onClick={() => handleOpenFind(key)}
               sx={{
                 minWidth: 300,
-
                 // keepHeightConsistentInHostCss
                 "& .MuiInputBase-root": { minHeight: 36 },
 
@@ -1633,7 +1727,6 @@ export default function ProtocolForm({
           />
         );
       }
-
 
       // PathParam
       if (def._class === "PathParam") {
@@ -1717,7 +1810,6 @@ export default function ProtocolForm({
       }
 
       // EnumParam
-      // EnumParam
       if (def._class === "EnumParam" && Array.isArray(def.choices)) {
         let sel = value ?? def.default ?? "";
         if (typeof sel === "number") sel = def.choices[sel] ?? "";
@@ -1760,10 +1852,7 @@ export default function ProtocolForm({
               }}
             >
               {def.choices.map((ch: string, i: number) => (
-                <MenuItem key={i} value={ch} sx={{
-                  fontSize: 12
-
-                }}>
+                <MenuItem key={i} value={ch} sx={{ fontSize: 12 }}>
                   {ch}
                 </MenuItem>
               ))}
@@ -1785,7 +1874,6 @@ export default function ProtocolForm({
           />
         );
       }
-
 
       // Group
       if (def._class === "Group" && Array.isArray(def.children)) {
@@ -1838,10 +1926,11 @@ export default function ProtocolForm({
 
       // BooleanParam
       if (def._class === "BooleanParam") {
-        const checked =
+        const checked = coerceBooleanValue(
           value !== undefined
-            ? ["True", true, 1, "1"].includes(value)
-            : ["True", true, 1, "1"].includes(def.default);
+            ? value
+            : protocolDetails.params?.[key]?._objValue ?? def._objValue ?? def.value ?? def.default
+        );
 
         return (
           <ParamRow
@@ -1851,7 +1940,7 @@ export default function ProtocolForm({
               <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
                 {advancedSlot}
                 <Switch
-                  checked={!!checked}
+                  checked={checked}
                   onChange={(e) =>
                     setProtocolDetails((prev: any) => ({
                       ...prev,
@@ -1859,7 +1948,8 @@ export default function ProtocolForm({
                         ...prev.params,
                         [key]: {
                           ...prev.params[key],
-                          editableValue: e.target.checked ? "True" : "False",
+                          editableValue: e.target.checked,
+                          _objValue: e.target.checked,
                         },
                       },
                     }))
@@ -2653,8 +2743,6 @@ export default function ProtocolForm({
           >
             <Tab label="Inputs and Parameters" />
             <Tab label="Outputs" />
-            {/* <Tab label="Summary" />
-            <Tab label="Methods" /> */}
             <Tab label="Logs" />
             <Tab label="Metadata" />
           </Tabs>
@@ -2670,7 +2758,6 @@ export default function ProtocolForm({
             }}
           >
             {/*Input and parameters */}
-
             {topTab === 0 && (
               <>
                 <Tabs
@@ -2734,7 +2821,6 @@ export default function ProtocolForm({
                   minHeight: 0,
                 }}
               >
-
                 <Box
                   sx={{
                     flex: "0 0 45%",
@@ -2781,9 +2867,7 @@ export default function ProtocolForm({
                         fontSize: "0.7rem",
                       }}
                     >
-                      {
-                        normalizedOutputs.length
-                      }{" "}
+                      {normalizedOutputs.length}{" "}
                       items
                     </Typography>
                   </Box>
@@ -2796,16 +2880,13 @@ export default function ProtocolForm({
                       p: 1,
                     }}
                   >
-                    {normalizedOutputs.length ===
-                      0 ? (
+                    {normalizedOutputs.length === 0 ? (
                       <Typography
                         variant="body2"
                         sx={{
                           color: "#6b7280",
-                          fontSize:
-                            "0.8rem",
-                          textAlign:
-                            "center",
+                          fontSize: "0.8rem",
+                          textAlign: "center",
                           py: 4,
                         }}
                       >
@@ -2814,10 +2895,7 @@ export default function ProtocolForm({
                       </Typography>
                     ) : (
                       normalizedOutputs.map(
-                        (
-                          o: any,
-                          idx: number
-                        ) => (
+                        (o: any, idx: number) => (
                           <Box
                             key={idx}
                             onClick={() =>
@@ -2826,36 +2904,28 @@ export default function ProtocolForm({
                               )
                             }
                             sx={{
-                              cursor:
-                                "pointer",
-                              userSelect:
-                                "none",
-                              borderRadius:
-                                1.5,
-                              border:
-                                "1px solid transparent",
+                              cursor: "pointer",
+                              userSelect: "none",
+                              borderRadius: 1.5,
+                              border: "1px solid transparent",
                               px: 1,
                               py: 1,
                               mb: 1,
                               backgroundColor:
-                                selectedOutputIdx ===
-                                  idx
+                                selectedOutputIdx === idx
                                   ? "#eef2ff"
                                   : "transparent",
                               borderColor:
-                                selectedOutputIdx ===
-                                  idx
+                                selectedOutputIdx === idx
                                   ? "#6366f1"
                                   : "transparent",
                               "&:hover": {
                                 backgroundColor:
-                                  selectedOutputIdx ===
-                                    idx
+                                  selectedOutputIdx === idx
                                     ? "#eef2ff"
                                     : "#f9fafb",
                                 borderColor:
-                                  selectedOutputIdx ===
-                                    idx
+                                  selectedOutputIdx === idx
                                     ? "#6366f1"
                                     : "#e5e7eb",
                               },
@@ -2864,26 +2934,18 @@ export default function ProtocolForm({
                             <Typography
                               variant="body2"
                               sx={{
-                                color:
-                                  "#111827",
-                                fontSize:
-                                  "0.7rem",
+                                color: "#111827",
+                                fontSize: "0.7rem",
                                 fontWeight:
-                                  selectedOutputIdx ===
-                                    idx
+                                  selectedOutputIdx === idx
                                     ? 600
                                     : 500,
-                                lineHeight:
-                                  1.4,
-                                wordBreak:
-                                  "break-word",
-                                whiteSpace:
-                                  "pre-wrap",
+                                lineHeight: 1.4,
+                                wordBreak: "break-word",
+                                whiteSpace: "pre-wrap",
                               }}
                             >
-                              {
-                                o.infoText
-                              }
+                              {o.infoText}
                             </Typography>
                           </Box>
                         )
@@ -2905,8 +2967,7 @@ export default function ProtocolForm({
                     border:
                       "1px solid #e5e7eb",
                     display: "flex",
-                    flexDirection:
-                      "column",
+                    flexDirection: "column",
                     overflow: "hidden",
                   }}
                 >
@@ -2941,7 +3002,6 @@ export default function ProtocolForm({
                         Analyze results
                       </Button>
                     </Box>
-
                   </Box>
 
                   <Box
@@ -2966,20 +3026,6 @@ export default function ProtocolForm({
                 </Box>
               </Box>
             )}
-
-
-            {/* {topTab === 2 && (
-              <Typography variant="body1">
-                Summary content goes here.
-              </Typography>
-            )}
-
-            {topTab === 3 && (
-              <Typography variant="body1">
-                Methods content goes here.
-              </Typography>
-            )} */}
-
 
             {/* Logs */}
             {topTab === 2 && (
@@ -3217,7 +3263,6 @@ export default function ProtocolForm({
                           "pre",
                       }}
                     >
-
                       {/* Schedule Log */}
                       {scheduleLogs ? (
                         scheduleLogs
@@ -3275,8 +3320,6 @@ export default function ProtocolForm({
                       )}
                     </Box>
                   )}
-
-
                 </Box>
               </Box>
             )}
@@ -3574,20 +3617,11 @@ export default function ProtocolForm({
                           }}
                         >
                           {parts.map(
-                            (
-                              p,
-                              j
-                            ) =>
-                              p.startsWith(
-                                "**"
-                              ) &&
-                                p.endsWith(
-                                  "**"
-                                ) ? (
+                            (p, j) =>
+                              p.startsWith("**") &&
+                                p.endsWith("**") ? (
                                 <strong
-                                  key={
-                                    j
-                                  }
+                                  key={j}
                                 >
                                   {p.slice(
                                     2,
@@ -3667,7 +3701,6 @@ export default function ProtocolForm({
         outputName={activeOutput?.name || ""}
         outputRaw={activeOutput?.raw || {}}
       />
-
     </div>
   );
 }

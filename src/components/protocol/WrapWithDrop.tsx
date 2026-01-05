@@ -88,7 +88,7 @@ export default function WrapWithDrop({
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
-      sx={{
+      sx={{ ml: 4,
         border: '2px dashed #5f5d5dff',
         borderRadius: 1,
         width: 310,
