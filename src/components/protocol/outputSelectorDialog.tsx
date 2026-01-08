@@ -17,16 +17,30 @@ import {
   TextField,
   Typography,
   Checkbox,
+  Chip,
+  Stack,
+  InputAdornment,
+  Divider,
+  Paper,
+  TableContainer,
+  alpha,
+  useTheme,
 } from "@mui/material";
-import { CheckCircle as CheckIcon, X as CloseIcon } from "lucide-react";
+import {
+  CheckCircle as CheckIcon,
+  X as CloseIcon,
+  Search as SearchIcon,
+  XCircle as ClearIcon,
+} from "lucide-react";
 
 interface Output {
-  _key?: string;
-  _class: string;
+  paramClass: string;
+  pointerClass: string;
   _objValue: string;
   info: string;
   _protocolId: string;
   protocol?: string;
+  key?: string;
 }
 
 interface OutputSelectorDialogProps {
@@ -38,6 +52,18 @@ interface OutputSelectorDialogProps {
   multiSelect?: boolean;
 }
 
+function getOutputRowId(o: Output): string {
+  // getOutputRowId
+  const protoId = String(o._protocolId ?? "");
+  const objValue = String(o._objValue ?? "");
+  return `${protoId}::${objValue}`;
+}
+
+function toLowerString(value: unknown): string {
+  // toLowerString
+  return String(value ?? "").toLowerCase();
+}
+
 const OutputSelectorDialog: React.FC<OutputSelectorDialogProps> = ({
   open,
   onClose,
@@ -46,50 +72,76 @@ const OutputSelectorDialog: React.FC<OutputSelectorDialogProps> = ({
   onSelect,
   multiSelect = false,
 }) => {
+  const theme = useTheme();
+
   const [filter, setFilter] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
 
   useEffect(() => {
+    // resetStateOnOpen
     if (open) {
       setSelectedIds(new Set());
       setHighlightedId(null);
+      setFilter("");
     }
   }, [open]);
 
+  const expectedLabel = useMemo(() => {
+    // expectedLabel
+    if (!expectedClass) return "";
+    const list = Array.isArray(expectedClass) ? expectedClass : [expectedClass];
+    return list.filter(Boolean).join(", ");
+  }, [expectedClass]);
+
   const matchingOutputs = useMemo(() => {
+    // matchingOutputs
     if (!allOutputs) return [];
+
     let filtered = allOutputs;
 
     if (expectedClass) {
       const classes = Array.isArray(expectedClass)
-        ? expectedClass.map((c) => c.toLowerCase())
-        : [expectedClass.toLowerCase()];
-      filtered = filtered.filter((o) => classes.includes(o._class?.toLowerCase()));
+        ? expectedClass.map((c) => toLowerString(c))
+        : [toLowerString(expectedClass)];
+
+      filtered = filtered.filter((o) => classes.includes(toLowerString(o.pointerClass)));
     }
 
     if (filter.trim()) {
       const q = filter.toLowerCase();
-      filtered = filtered.filter(
-        (o) =>
-          o._class?.toLowerCase().includes(q) ||
-          o.info?.toLowerCase().includes(q) ||
-          o._objValue?.toLowerCase().includes(q) ||
-          o._protocolId?.toLowerCase().includes(q) ||
-          o.protocol?.toLowerCase().includes(q)
-      );
+      filtered = filtered.filter((o) => {
+        const pointerClass = toLowerString(o.pointerClass);
+        const paramClass = toLowerString(o.paramClass);
+        const info = toLowerString(o.info);
+        const objValue = toLowerString(o._objValue);
+        const protocolId = toLowerString(o._protocolId);
+        const protocol = toLowerString(o.protocol);
+        const key = toLowerString(o.key);
+
+        return (
+          pointerClass.includes(q) ||
+          paramClass.includes(q) ||
+          info.includes(q) ||
+          objValue.includes(q) ||
+          protocolId.includes(q) ||
+          protocol.includes(q) ||
+          key.includes(q)
+        );
+      });
     }
 
     const sorted = [...filtered].sort((a, b) => {
-        const idA = parseInt(a._protocolId, 10) || 0;
-        const idB = parseInt(b._protocolId, 10) || 0;
-        return idB - idA;
-      });
-      
-      return sorted;
+      const idA = parseInt(String(a._protocolId ?? ""), 10) || 0;
+      const idB = parseInt(String(b._protocolId ?? ""), 10) || 0;
+      return idB - idA;
+    });
+
+    return sorted;
   }, [allOutputs, expectedClass, filter]);
 
   const toggleSelect = (id: string) => {
+    // toggleSelect
     setSelectedIds((prev) => {
       const newSet = new Set(prev);
       newSet.has(id) ? newSet.delete(id) : newSet.add(id);
@@ -97,167 +149,202 @@ const OutputSelectorDialog: React.FC<OutputSelectorDialogProps> = ({
     });
   };
 
+  const clearSelection = () => {
+    // clearSelection
+    setSelectedIds(new Set());
+    setHighlightedId(null);
+  };
+
   const handleConfirm = () => {
+    // handleConfirm
     if (multiSelect) {
-      const selected = matchingOutputs.filter((o) =>
-        selectedIds.has(o._objValue || o._protocolId)
-      );
+      const selected = matchingOutputs.filter((o) => selectedIds.has(getOutputRowId(o)));
       onSelect(selected);
     } else if (highlightedId) {
-      const selected = matchingOutputs.find(
-        (o) => (o._objValue || o._protocolId) === highlightedId
-      );
+      const selected = matchingOutputs.find((o) => getOutputRowId(o) === highlightedId);
       if (selected) onSelect(selected);
     }
     onClose();
   };
 
   const handleDoubleClick = (o: Output) => {
+    // handleDoubleClick
     if (multiSelect) return;
     onSelect(o);
     onClose();
   };
 
   const handleSingleClick = (o: Output) => {
+    // handleSingleClick
     if (multiSelect) return;
-    const id = o._objValue || o._protocolId;
+    const id = getOutputRowId(o);
     setHighlightedId((prev) => (prev === id ? null : id));
   };
 
   const isRowSelected = (o: Output) => {
-    const id = o._objValue || o._protocolId;
+    // isRowSelected
+    const id = getOutputRowId(o);
     return multiSelect ? selectedIds.has(id) : highlightedId === id;
   };
 
-  const hasSelection = multiSelect
-    ? selectedIds.size > 0
-    : highlightedId !== null;
+  const hasSelection = multiSelect ? selectedIds.size > 0 : highlightedId !== null;
+  const confirmLabel = multiSelect ? `Confirm (${selectedIds.size})` : "Confirm";
 
-  const confirmLabel = multiSelect
-    ? `Confirm (${selectedIds.size})`
-    : "Confirm";
+  const tableHeaderBg = alpha(theme.palette.text.primary, 0.06);
+  const tableBorder = alpha(theme.palette.text.primary, 0.12);
+  const selectedBg = alpha(theme.palette.success.main, 0.16);
+  const hoverBg = alpha(theme.palette.success.main, 0.10);
+  const zebraBg = alpha(theme.palette.text.primary, 0.03);
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth>
-      {/* === HEADER === */}
+    <Dialog
+      open={open}
+      onClose={onClose}
+      maxWidth="lg"
+      fullWidth
+      PaperProps={{
+        sx: {
+          borderRadius: 3,
+          overflow: "hidden",
+        },
+      }}
+    >
       <DialogTitle
         sx={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          background: "linear-gradient(90deg, #e0e0e0 0%, #d5d5d5 100%)",
-          borderBottom: "1px #bbb",
-          py: 1.2,
-          px: 2,
-          fontWeight: 100,
-          fontSize: 18
+          px: 2.5,
+          py: 2,
+          background: alpha(theme.palette.text.primary, 0.03),
         }}
       >
-        {multiSelect ? "Select compatible outputs" : "Select compatible output"}
-        <IconButton onClick={onClose} size="small">
-          <CloseIcon size={18} />
-        </IconButton>
+        <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2}>
+          <Box sx={{ minWidth: 0 }}>
+            <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1.1 }}>
+              {multiSelect ? "Select compatible outputs" : "Select compatible output"}
+            </Typography>
+            <Typography variant="body2" sx={{ opacity: 0.75, mt: 0.5 }}>
+              Browse and filter outputs, then confirm your selection.
+            </Typography>
+          </Box>
+
+          <Stack direction="row" alignItems="center" spacing={1} sx={{ flexShrink: 0 }}>
+            {expectedLabel ? (
+              <Chip
+                size="small"
+                variant="outlined"
+                label={`Expected: ${expectedLabel}`}
+                sx={{ maxWidth: 320 }}
+              />
+            ) : (
+              <Chip size="small" variant="outlined" label="No class filter" />
+            )}
+
+            <IconButton onClick={onClose} size="small" aria-label="Close dialog">
+              <CloseIcon size={18} />
+            </IconButton>
+          </Stack>
+        </Stack>
       </DialogTitle>
 
-      {/* === BODY === */}
-      <DialogContent sx={{ p: 2 }}>
-        <Box sx={{ mb: 2, mt: 2 }}>
+      <Divider />
+
+      <DialogContent sx={{ p: 2.5 }}>
+        <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2} sx={{ mb: 2 }}>
           <TextField
             size="small"
             fullWidth
             placeholder="Filter outputs..."
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon size={16} />
+                </InputAdornment>
+              ),
+              endAdornment: filter ? (
+                <InputAdornment position="end">
+                  <IconButton
+                    size="small"
+                    onClick={() => setFilter("")}
+                    aria-label="Clear filter"
+                    edge="end"
+                  >
+                    <ClearIcon size={16} />
+                  </IconButton>
+                </InputAdornment>
+              ) : undefined,
+            }}
           />
-        </Box>
 
-        <Typography
-          variant="body2"
-          sx={{ mb: 1, color: "#555", fontStyle: "italic" }}
-        >
-          Showing {matchingOutputs.length} compatible output
-          {matchingOutputs.length !== 1 ? "s" : ""}
-        </Typography>
+          <Chip
+            size="small"
+            label={`Showing ${matchingOutputs.length}`}
+            sx={{ flexShrink: 0, fontWeight: 600 }}
+          />
+        </Stack>
 
-        <Box
+        <TableContainer
+          component={Paper}
+          elevation={0}
           sx={{
-            border: "1px solid #ddd",
-            borderRadius: 1,
-            overflow: "auto",
-            maxHeight: 460,
+            border: `1px solid ${tableBorder}`,
+            borderRadius: 2,
+            overflow: "hidden",
           }}
         >
-          <Table
-            size="small"
-            stickyHeader
-            sx={{
-              tableLayout: "fixed",
-              "& .MuiTableCell-root": { fontSize: "0.85rem" },
-            }}
-          >
+          <Table size="small" stickyHeader sx={{ tableLayout: "fixed" }}>
             <TableHead>
               <TableRow
                 sx={{
-                  backgroundColor: "#e0e0e0",
                   "& th": {
-                    fontWeight: 700,
-                    borderBottom: "2px solid #bbb",
-                    color: "black",
-                    textTransform: "none",
-                    fontSize: "0.8rem",
+                    background: tableHeaderBg,
+                    fontWeight: 800,
+                    borderBottom: `1px solid ${tableBorder}`,
+                    fontSize: "0.78rem",
+                    letterSpacing: 0.2,
                   },
                 }}
               >
                 {multiSelect && (
-                  <TableCell
-                    sx={{ width: "5%", textAlign: "center", background: "#d5d5d5" }}
-                  >
-                    ✓
+                  <TableCell sx={{ width: "6%", textAlign: "center" }}>
+                    <Typography variant="caption" sx={{ fontWeight: 800 }}>
+                      ✓
+                    </Typography>
                   </TableCell>
                 )}
-                <TableCell sx={{ width: "15%", background: "#d5d5d5" }}>
-                  Protocol ID
-                </TableCell>
-                <TableCell sx={{ width: "40%", background: "#d5d5d5" }}>
-                  Protocol Label
-                </TableCell>
-                <TableCell sx={{ width: "40%", background: "#d5d5d5" }}>
-                  Info
-                </TableCell>
-                <TableCell sx={{ width: "20%", background: "#d5d5d5" }}>
-                  Class
-                </TableCell>
+
+                <TableCell sx={{ width: "12%" }}>Protocol ID</TableCell>
+                <TableCell sx={{ width: "26%" }}>Protocol label</TableCell>
+                <TableCell sx={{ width: "36%" }}>Info</TableCell>
+                <TableCell sx={{ width: "20%" }}>Class</TableCell>
+
                 {!multiSelect && (
-                  <TableCell
-                    sx={{ width: "10%", textAlign: "center", background: "#d5d5d5" }}
-                  >
-                    Action
-                  </TableCell>
+                  <TableCell sx={{ width: "10%", textAlign: "center" }}>Action</TableCell>
                 )}
               </TableRow>
             </TableHead>
 
             <TableBody>
               {matchingOutputs.map((o, i) => {
-                const id = o._objValue || o._protocolId;
+                const id = getOutputRowId(o);
                 const isSelected = isRowSelected(o);
-                const rowBg = isSelected ? "#b5f0b2" : i % 2 === 0 ? "#fafafa" : "#ffffff";
 
                 return (
                   <TableRow
                     key={id}
+                    hover
+                    selected={isSelected}
                     onClick={() => handleSingleClick(o)}
                     onDoubleClick={() => handleDoubleClick(o)}
                     sx={{
                       cursor: "pointer",
-                      backgroundColor: rowBg,
+                      backgroundColor: isSelected ? selectedBg : i % 2 === 0 ? zebraBg : "transparent",
                       "&:hover": {
-                        backgroundColor: isSelected ? rowBg : "#f1faf1",
+                        backgroundColor: isSelected ? selectedBg : hoverBg,
                       },
-                      borderLeft: isSelected
-                        ? "4px solid #4caf50"
-                        : "4px solid transparent",
-                      transition: "border-left 0.15s ease-in-out",
+                      "& td": {
+                        borderBottom: `1px solid ${alpha(theme.palette.text.primary, 0.06)}`,
+                      },
                     }}
                   >
                     {multiSelect && (
@@ -268,36 +355,54 @@ const OutputSelectorDialog: React.FC<OutputSelectorDialogProps> = ({
                             e.stopPropagation();
                             toggleSelect(id);
                           }}
+                          size="small"
                           color="success"
                         />
                       </TableCell>
                     )}
 
-                    {/* === Protocol ID chip === */}
                     <TableCell>
-                      <Box
-                        component="span"
+                      <Chip
+                        size="small"
+                        label={o._protocolId || "—"}
+                        variant="filled"
                         sx={{
-                          display: "inline-block",
-                          px: 1,
-                          py: 0.3,
-                          borderRadius: "16px",
-                          backgroundColor: "#e0e0e0",
                           fontFamily: "monospace",
-                          fontSize: "0.8rem",
-                          color: "#333",
+                          fontWeight: 700,
+                          maxWidth: "100%",
                         }}
-                        title={o._protocolId}
-                      >
-                        {o._protocolId || "—"}
-                      </Box>
+                      />
                     </TableCell>
 
-                    {/* === Protocol Label === */}
-                    <TableCell title={o.protocol}>{o.protocol || "—"}</TableCell>
+                    <TableCell>
+                      <Tooltip title={o.protocol || ""} disableHoverListener={!o.protocol}>
+                        <Typography variant="body2" noWrap sx={{ fontWeight: 600 }}>
+                          {o.protocol || "—"}
+                        </Typography>
+                      </Tooltip>
+                    </TableCell>
 
-                    <TableCell title={o.info}>{o.info || "—"}</TableCell>
-                    <TableCell title={o._class}>{o._class}</TableCell>
+                    <TableCell>
+                      <Tooltip title={o.info || ""} disableHoverListener={!o.info}>
+                        <Typography variant="body2" noWrap sx={{ opacity: 0.9 }}>
+                          {o.info || "—"}
+                        </Typography>
+                      </Tooltip>
+                    </TableCell>
+
+                    <TableCell>
+                      <Tooltip title={o.pointerClass || ""} disableHoverListener={!o.pointerClass}>
+                        <Chip
+                          size="small"
+                          variant="outlined"
+                          label={o.pointerClass || "—"}
+                          sx={{
+                            maxWidth: "100%",
+                            "& .MuiChip-label": { overflow: "hidden", textOverflow: "ellipsis" },
+                          }}
+                        />
+                      </Tooltip>
+                    </TableCell>
 
                     {!multiSelect && (
                       <TableCell sx={{ textAlign: "center" }}>
@@ -310,6 +415,7 @@ const OutputSelectorDialog: React.FC<OutputSelectorDialogProps> = ({
                               onSelect(o);
                               onClose();
                             }}
+                            aria-label="Confirm output"
                           >
                             <CheckIcon size={18} />
                           </IconButton>
@@ -322,40 +428,48 @@ const OutputSelectorDialog: React.FC<OutputSelectorDialogProps> = ({
 
               {matchingOutputs.length === 0 && (
                 <TableRow>
-                  <TableCell
-                    colSpan={multiSelect ? 5 : 6}
-                    sx={{ textAlign: "center", opacity: 0.7 }}
-                  >
+                  <TableCell colSpan={multiSelect ? 5 : 5} sx={{ textAlign: "center", py: 4, opacity: 0.7 }}>
                     No compatible outputs found.
                   </TableCell>
                 </TableRow>
               )}
             </TableBody>
           </Table>
-        </Box>
+        </TableContainer>
       </DialogContent>
 
-      {/* === FOOTER === */}
-      <DialogActions
-        sx={{
-          justifyContent: "center",
-          borderTop: "1px solid #ddd",
-          gap: 2,
-        }}
-      >
-        <Button onClick={onClose} variant="outlined" size="small">
-          Close
-        </Button>
+      <Divider />
 
-        <Button
-          onClick={handleConfirm}
-          variant="contained"
-          color="success"
-          size="small"
-          disabled={!hasSelection}
-        >
-          {confirmLabel}
-        </Button>
+      <DialogActions sx={{ px: 2.5, py: 2, gap: 1.5, justifyContent: "space-between" }}>
+        <Stack direction="row" alignItems="center" spacing={1}>
+          {multiSelect && (
+            <Typography variant="body2" sx={{ opacity: 0.8 }}>
+              Selected: <strong>{selectedIds.size}</strong>
+            </Typography>
+          )}
+
+          {(multiSelect ? selectedIds.size > 0 : highlightedId !== null) && (
+            <Button onClick={clearSelection} variant="text" size="small">
+              Clear
+            </Button>
+          )}
+        </Stack>
+
+        <Stack direction="row" alignItems="center" spacing={1.5}>
+          <Button onClick={onClose} variant="outlined" size="small">
+            Close
+          </Button>
+
+          <Button
+            onClick={handleConfirm}
+            variant="contained"
+            color="success"
+            size="small"
+            disabled={!hasSelection}
+          >
+            {confirmLabel}
+          </Button>
+        </Stack>
       </DialogActions>
     </Dialog>
   );

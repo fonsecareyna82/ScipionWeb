@@ -130,26 +130,38 @@ type UnwrappedParam = {
   paramDef: any;
 };
 
+function getParamClass(defLike: any): string {
+  // getParamClass
+  return String(defLike?.paramClass ?? defLike?._class ?? "");
+}
+
+function getPointerClass(objLike: any): string {
+  // getPointerClass
+  return String(objLike?.pointerClass ?? objLike?._class ?? "");
+}
+
 function unwrapParamDef(paramLike: any): UnwrappedParam {
-  // unwrapParamDef
-  if (!paramLike || typeof paramLike !== "object") {
-    return { paramName: "", paramDef: paramLike };
+   return { paramName: String((paramLike as any).name ?? ""), paramDef: paramLike };
+ }
+
+function unwrapNamedEntry(entryLike: any): { name: string; payload: any } {
+  // unwrapNamedEntry
+  if (!entryLike || typeof entryLike !== "object") return { name: "", payload: entryLike };
+
+  // If backend ever provides a direct shape with a name field
+  if (typeof (entryLike as any).name === "string" && (entryLike as any).name.trim()) {
+    return { name: String((entryLike as any).name), payload: entryLike };
   }
 
-  // newBackendShape: paramDef already contains "name"
-  if (typeof (paramLike as any).name === "string" && (paramLike as any).name.trim()) {
-    return { paramName: (paramLike as any).name, paramDef: paramLike };
-  }
-
-  // legacyBackendShape: { [paramName]: def }
-  const entries = Object.entries(paramLike);
+  // Legacy/current shape: { [name]: payload }
+  const entries = Object.entries(entryLike);
   if (entries.length === 1) {
-    const [paramName, paramDef] = entries[0] as [string, any];
-    return { paramName, paramDef };
+    const [name, payload] = entries[0] as [string, any];
+    return { name, payload };
   }
 
-  // fallback
-  return { paramName: String((paramLike as any).name ?? ""), paramDef: paramLike };
+  // Fallback: no stable name available
+  return { name: String((entryLike as any)._key ?? ""), payload: entryLike };
 }
 
 function unwrapObjValue(raw: any) {
@@ -669,13 +681,14 @@ export default function ProtocolForm({
   // Normalize outputs from data.outputs for the Outputs tab
   const normalizedOutputs = useMemo(() => {
     const arr = Array.isArray(data?.outputs) ? data.outputs : [];
-    return arr.map((entry: any) => {
-      const [name, payload] = Object.entries(entry)[0] as [string, any];
-      const infoText = payload?.info ?? payload?._class ?? "";
+    return arr.map((entry: any, idx: number) => {
+       // newBackendShape: outputName is included in each entry
+      const outputName = String(entry?.outputName ?? entry?.name ?? entry?._key ?? idx);
+      const infoText = entry?.info ?? entry?.pointerClass ?? "";
       return {
-        name,
+        name: outputName,
         infoText,
-        raw: payload,
+        raw: entry,
       };
     });
   }, [data?.outputs]);
@@ -792,7 +805,7 @@ export default function ProtocolForm({
     const key = `${sectionIdx}_${paramName}`;
     const state = protocolDetails.params?.[key];
     if (!state) return "";
-    if (state._class === "EnumParam" && Array.isArray(state.choices)) {
+    if (getParamClass(state) === "EnumParam" && Array.isArray(state.choices)) {
       const v = state.editableValue ?? state.default ?? "";
       if (typeof v === "number") return v;
       const idx = state.choices.indexOf(v);
@@ -810,7 +823,7 @@ export default function ProtocolForm({
       const params = section?.params ?? [];
       for (const p of params) {
         const { paramName, paramDef: def } = unwrapParamDef(p);
-        if (paramName === "expertLevel" && def?._class === "EnumParam") {
+        if (paramName === "expertLevel" && getParamClass(def) === "EnumParam") {
           return { sectionIdx: i, name: paramName };
         }
       }
@@ -947,7 +960,9 @@ export default function ProtocolForm({
       const { paramName: name, paramDef: def } = unwrapParamDef(paramLike);
       if (!name || !def) return;
 
-      if (def._class === "Group" && Array.isArray(def.children)) {
+      const cls = getParamClass(def);
+
+      if (cls === "Group" && Array.isArray(def.children)) {
         def.children.forEach((c: any) => walk(secIdx, c));
         return;
       }
@@ -959,7 +974,7 @@ export default function ProtocolForm({
       let init = parsed ?? "";
 
       // normalizeBooleanParam
-      if (def._class === "BooleanParam") {
+      if (cls === "BooleanParam") {
         init = coerceBooleanValue(parsed);
 
         const defObjValue = parseFromJSONValue(def._objValue);
@@ -976,7 +991,7 @@ export default function ProtocolForm({
       }
 
       // If EnumParam default is index, map to label for UI state
-      if (def._class === "EnumParam" && Array.isArray(def.choices) && typeof init === "number") {
+      if (cls === "EnumParam" && Array.isArray(def.choices) && typeof init === "number") {
         init = def.choices[init] ?? def.default ?? "";
       }
 
@@ -1041,10 +1056,14 @@ export default function ProtocolForm({
         setScheduleLogs(res.scheduleLog ?? "");
 
         offsetRef.current =
-          typeof res.stdoutOffset === "number" ? res.stdoutOffset : (typeof res.stdoutLog === "string" ? res.stdoutLog.length : 0);
+          typeof res.stdoutOffset === "number"
+            ? res.stdoutOffset
+            : (typeof res.stdoutLog === "string" ? res.stdoutLog.length : 0);
 
         errorOffsetRef.current =
-          typeof res.stderrOffset === "number" ? res.stderrOffset : (typeof res.stderrLog === "string" ? res.stderrLog.length : 0);
+          typeof res.stderrOffset === "number"
+            ? res.stderrOffset
+            : (typeof res.stderrLog === "string" ? res.stderrLog.length : 0);
 
         scheduleOffsetRef.current =
           typeof res.scheduleOffset === "number"
@@ -1114,7 +1133,6 @@ export default function ProtocolForm({
       }
     };
   }, [topTab, data?.projectId, data?.id, protocolDetails.status]);
-
 
   // Autoscroll logs
   useEffect(() => {
@@ -1192,19 +1210,22 @@ export default function ProtocolForm({
       dependencyMap[pid] = (prot.children ?? []).map(String);
       if (!Array.isArray(prot.outputs)) continue;
 
-      for (const out of prot.outputs) {
-        const entries = Object.entries(out);
-        if (entries.length === 0) continue;
-        const [key, valAny] = entries[0];
-        const val = valAny as any;
+      for (const outRaw of prot.outputs) {
+        const hasOutputName =
+          outRaw && typeof outRaw === "object" && "outputName" in outRaw;
+        const out = hasOutputName ? (outRaw as any) : (outRaw as any);
+        const key = String(out?.outputName ?? out?._key ?? out?.name ?? "");
+        if (!key) continue;
 
         outputs.push({
           protocol: prot.label ?? prot.protocolName ?? prot.id ?? "Unknown",
           key,
-          info: val?.info ?? "",
-          _class: val?._class ?? "",
-          _objValue: val?._objValue ?? "",
+          info: out?.info ?? "",
+          paramClass: String(out?.paramClass ?? "PointerParam"),
+          pointerClass: String(out?.pointerClass ?? ""),
+          _objValue: String(out?._objValue ?? ""),
           _protocolId: pid,
+          _parentId:  out?._parentId ?? null,
         });
       }
     }
@@ -1317,11 +1338,11 @@ export default function ProtocolForm({
       typeof s === "string" ? s.replace(/\s+/g, "").toLowerCase() : "";
 
     if (expected === null) {
-      return pool.filter((o) => /^setof/i.test(String(o._class || "")));
+      return pool.filter((o) => /^setof/i.test(String(o.pointerClass || "")));
     }
 
     return pool.filter((o) => {
-      const oc = norm(o._class);
+      const oc = norm(o.pointerClass);
       return Array.isArray(expected)
         ? expected.some((e) => norm(e) === oc)
         : norm(expected) === oc;
@@ -1338,7 +1359,7 @@ export default function ProtocolForm({
       const newKey = keyParts.join("_");
 
       const p = pRaw ?? {};
-      const cls = p._class;
+      const cls = getParamClass(p);
 
       if (cls === "PointerParam") {
         const editable = p.editableValue ?? "";
@@ -1346,7 +1367,7 @@ export default function ProtocolForm({
           _objValue: "",
           info: p.info ?? "",
           _parentId: p._parentId ?? null,
-          _class: p._class ?? "PointerParam",
+          paramClass: "PointerParam",
         };
 
         const token = (p._objValue ?? "").toString().trim();
@@ -1369,14 +1390,14 @@ export default function ProtocolForm({
               _objValue: String(item),
               info: "",
               _parentId: null,
-              _class: p._class ?? "PointerParam",
+              paramClass: "PointerParam",
             };
           }
           return {
             _objValue: (item._objValue ?? item.object ?? "") || "",
             info: item.info ?? "",
             _parentId: item._parentId ?? item._protocolId ?? null,
-            _class: item._class ?? "PointerParam",
+            paramClass: "PointerParam",
           };
         });
 
@@ -1479,6 +1500,7 @@ export default function ProtocolForm({
       const { paramName: name, paramDef: def } = unwrapParamDef(paramLike);
       if (!name || !def) return null;
 
+      const defClass = getParamClass(def);
       const key = `${sectionIdx}_${name}`;
       const value = protocolDetails.params?.[key]?.editableValue;
 
@@ -1530,7 +1552,7 @@ export default function ProtocolForm({
       );
 
       // MultiPointerParam
-      if (def._class === "MultiPointerParam") {
+      if (defClass === "MultiPointerParam") {
         const items = Array.isArray(value) ? value : def.default ?? [];
 
         const onClear = (i: number) => {
@@ -1555,7 +1577,7 @@ export default function ProtocolForm({
           const expected = getExpectedClass(liveParam);
           const norm = (s: any) =>
             typeof s === "string" ? s.replace(/\s+/g, "").toLowerCase() : "";
-          const draggedClass = norm(dragged._class);
+          const draggedClass = norm(dragged.pointerClass);
 
           const matches =
             expected === null
@@ -1574,7 +1596,7 @@ export default function ProtocolForm({
             list[i] = {
               object: dragged._objValue ?? "",
               info: dragged.info ?? "",
-              _class: dragged._class ?? "",
+              pointerClass: dragged.pointerClass ?? "",
               _parentId: dragged._parentId ?? null,
             };
             return {
@@ -1598,7 +1620,7 @@ export default function ProtocolForm({
             list[rowIndexInner] = {
               object: picked._objValue ?? "",
               info: picked.info ?? "",
-              _class: picked._class ?? "",
+              pointerClass: picked.pointerClass ?? "",
               _objValue: picked._objValue ?? "",
               _parentId: picked._protocolId ?? picked._parentId ?? null,
             };
@@ -1645,7 +1667,7 @@ export default function ProtocolForm({
       }
 
       // PointerParam
-      if (def._class === "PointerParam") {
+      if (defClass === "PointerParam") {
         const onClear = () =>
           setProtocolDetails((prev: any) => ({
             ...prev,
@@ -1729,7 +1751,7 @@ export default function ProtocolForm({
       }
 
       // PathParam
-      if (def._class === "PathParam") {
+      if (defClass === "PathParam") {
         const current = protocolDetails.params?.[key] || {};
         const textValue =
           current.editableValue ??
@@ -1810,7 +1832,7 @@ export default function ProtocolForm({
       }
 
       // EnumParam
-      if (def._class === "EnumParam" && Array.isArray(def.choices)) {
+      if (defClass === "EnumParam" && Array.isArray(def.choices)) {
         let sel = value ?? def.default ?? "";
         if (typeof sel === "number") sel = def.choices[sel] ?? "";
 
@@ -1876,7 +1898,7 @@ export default function ProtocolForm({
       }
 
       // Group
-      if (def._class === "Group" && Array.isArray(def.children)) {
+      if (defClass === "Group" && Array.isArray(def.children)) {
         const groupKey = `${key}_group`;
         const expanded = expandedGroups[groupKey] ?? true;
 
@@ -1925,7 +1947,7 @@ export default function ProtocolForm({
       }
 
       // BooleanParam
-      if (def._class === "BooleanParam") {
+      if (defClass === "BooleanParam") {
         const checked = coerceBooleanValue(
           value !== undefined
             ? value
@@ -2028,12 +2050,13 @@ export default function ProtocolForm({
 
     setProtocolDetails((prev: any) => {
       const prevParam = prev.params[key];
+      const defClass = getParamClass(def);
 
-      if (def?._class === "MultiPointerParam") {
+      if (defClass === "MultiPointerParam") {
         const newItems = picks.map((pick) => ({
           _objValue: pick?._objValue ?? "",
           info: pick?.info ?? "",
-          _class: pick?._class ?? "PointerParam",
+          pointerClass: pick?.pointerClass ?? "",
           _parentId: pick?._protocolId ?? pick?._parentId ?? null,
         }));
 
@@ -2059,7 +2082,7 @@ export default function ProtocolForm({
             editableValue: pick?._objValue ?? "",
             _objValue: pick?._objValue ?? "",
             info: pick?.info ?? "",
-            _class: pick?._class ?? "",
+            pointerClass: pick?.pointerClass ?? "",
             _parentId: pick?._protocolId ?? pick?._parentId ?? null,
           },
         },
@@ -2651,7 +2674,6 @@ export default function ProtocolForm({
   }, [activeOutput, previewLoading, previewError, previewData, setSqliteTable]);
 
   const safeDefinition = Array.isArray(data?.definition) ? data.definition : [];
-
   const isDocked = variant === "docked";
 
   return (
@@ -2672,7 +2694,8 @@ export default function ProtocolForm({
             {data?.id}
           </Box>
           <span className="text-white">{protocolDetails.label}</span>
-          <span className={styles.nodeStatusPill}
+          <span
+            className={styles.nodeStatusPill}
             style={{
               backgroundColor: protocolDetails.color,
               color: "black",
@@ -2702,7 +2725,8 @@ export default function ProtocolForm({
       )}
 
       {/* BODY */}
-      <div className={styles.formBody}
+      <div
+        className={styles.formBody}
         style={{
           display: "flex",
           flexDirection: "column",
@@ -2775,17 +2799,12 @@ export default function ProtocolForm({
                     },
                   }}
                 >
-                  {safeDefinition.map(
-                    (section: any, idx: number) => (
-                      <Tab
-                        key={idx}
-                        label={
-                          section.label ||
-                          `Section ${idx + 1}`
-                        }
-                      />
-                    )
-                  )}
+                  {safeDefinition.map((section: any, idx: number) => (
+                    <Tab
+                      key={idx}
+                      label={section.label || `Section ${idx + 1}`}
+                    />
+                  ))}
                 </Tabs>
 
                 <Box
@@ -2798,13 +2817,8 @@ export default function ProtocolForm({
                     pb: 1,
                   }}
                 >
-                  {safeDefinition[sectionTab]?.params?.map(
-                    (paramObj: any, idx: number) =>
-                      renderParam(
-                        paramObj,
-                        sectionTab,
-                        idx
-                      )
+                  {safeDefinition[sectionTab]?.params?.map((paramObj: any, idx: number) =>
+                    renderParam(paramObj, sectionTab, idx)
                   )}
                 </Box>
               </>
@@ -2829,10 +2843,8 @@ export default function ProtocolForm({
                     minHeight: 0,
                     backgroundColor: "#fff",
                     borderRadius: 2,
-                    boxShadow:
-                      "0px 2px 6px rgba(0,0,0,0.1)",
-                    border:
-                      "1px solid #e5e7eb",
+                    boxShadow: "0px 2px 6px rgba(0,0,0,0.1)",
+                    border: "1px solid #e5e7eb",
                     display: "flex",
                     flexDirection: "column",
                     overflow: "hidden",
@@ -2842,12 +2854,10 @@ export default function ProtocolForm({
                     sx={{
                       px: 1.5,
                       py: 1,
-                      borderBottom:
-                        "1px solid #e5e7eb",
+                      borderBottom: "1px solid #e5e7eb",
                       display: "flex",
                       alignItems: "center",
-                      justifyContent:
-                        "space-between",
+                      justifyContent: "space-between",
                     }}
                   >
                     <Typography
@@ -2867,8 +2877,7 @@ export default function ProtocolForm({
                         fontSize: "0.7rem",
                       }}
                     >
-                      {normalizedOutputs.length}{" "}
-                      items
+                      {normalizedOutputs.length} items
                     </Typography>
                   </Box>
 
@@ -2890,66 +2899,48 @@ export default function ProtocolForm({
                           py: 4,
                         }}
                       >
-                        No outputs for this
-                        protocol.
+                        No outputs for this protocol.
                       </Typography>
                     ) : (
-                      normalizedOutputs.map(
-                        (o: any, idx: number) => (
-                          <Box
-                            key={idx}
-                            onClick={() =>
-                              setSelectedOutputIdx(
-                                idx
-                              )
-                            }
-                            sx={{
-                              cursor: "pointer",
-                              userSelect: "none",
-                              borderRadius: 1.5,
-                              border: "1px solid transparent",
-                              px: 1,
-                              py: 1,
-                              mb: 1,
+                      normalizedOutputs.map((o: any, idx: number) => (
+                        <Box
+                          key={idx}
+                          onClick={() => setSelectedOutputIdx(idx)}
+                          sx={{
+                            cursor: "pointer",
+                            userSelect: "none",
+                            borderRadius: 1.5,
+                            border: "1px solid transparent",
+                            px: 1,
+                            py: 1,
+                            mb: 1,
+                            backgroundColor:
+                              selectedOutputIdx === idx ? "#eef2ff" : "transparent",
+                            borderColor:
+                              selectedOutputIdx === idx ? "#6366f1" : "transparent",
+                            "&:hover": {
                               backgroundColor:
-                                selectedOutputIdx === idx
-                                  ? "#eef2ff"
-                                  : "transparent",
+                                selectedOutputIdx === idx ? "#eef2ff" : "#f9fafb",
                               borderColor:
-                                selectedOutputIdx === idx
-                                  ? "#6366f1"
-                                  : "transparent",
-                              "&:hover": {
-                                backgroundColor:
-                                  selectedOutputIdx === idx
-                                    ? "#eef2ff"
-                                    : "#f9fafb",
-                                borderColor:
-                                  selectedOutputIdx === idx
-                                    ? "#6366f1"
-                                    : "#e5e7eb",
-                              },
+                                selectedOutputIdx === idx ? "#6366f1" : "#e5e7eb",
+                            },
+                          }}
+                        >
+                          <Typography
+                            variant="body2"
+                            sx={{
+                              color: "#111827",
+                              fontSize: "0.7rem",
+                              fontWeight: selectedOutputIdx === idx ? 600 : 500,
+                              lineHeight: 1.4,
+                              wordBreak: "break-word",
+                              whiteSpace: "pre-wrap",
                             }}
                           >
-                            <Typography
-                              variant="body2"
-                              sx={{
-                                color: "#111827",
-                                fontSize: "0.7rem",
-                                fontWeight:
-                                  selectedOutputIdx === idx
-                                    ? 600
-                                    : 500,
-                                lineHeight: 1.4,
-                                wordBreak: "break-word",
-                                whiteSpace: "pre-wrap",
-                              }}
-                            >
-                              {o.infoText}
-                            </Typography>
-                          </Box>
-                        )
-                      )
+                            {o.infoText}
+                          </Typography>
+                        </Box>
+                      ))
                     )}
                   </Box>
                 </Box>
@@ -2962,10 +2953,8 @@ export default function ProtocolForm({
                     minHeight: 0,
                     backgroundColor: "#fff",
                     borderRadius: 2,
-                    boxShadow:
-                      "0px 2px 6px rgba(0,0,0,0.1)",
-                    border:
-                      "1px solid #e5e7eb",
+                    boxShadow: "0px 2px 6px rgba(0,0,0,0.1)",
+                    border: "1px solid #e5e7eb",
                     display: "flex",
                     flexDirection: "column",
                     overflow: "hidden",
@@ -2982,7 +2971,10 @@ export default function ProtocolForm({
                       gap: 1,
                     }}
                   >
-                    <Typography variant="subtitle2" sx={{ fontWeight: 600, fontSize: "0.8rem", color: "#111827" }}>
+                    <Typography
+                      variant="subtitle2"
+                      sx={{ fontWeight: 600, fontSize: "0.8rem", color: "#111827" }}
+                    >
                       Preview
                     </Typography>
 
@@ -3012,13 +3004,10 @@ export default function ProtocolForm({
                       overflowX: "hidden",
                       p: 1,
                       pb: 6,
-                      backgroundColor:
-                        "#f9fafb",
+                      backgroundColor: "#f9fafb",
                       display: "flex",
-                      justifyContent:
-                        "center",
-                      alignItems:
-                        "flex-start",
+                      justifyContent: "center",
+                      alignItems: "flex-start",
                     }}
                   >
                     {previewContent}
@@ -3037,111 +3026,56 @@ export default function ProtocolForm({
               >
                 <Tabs
                   value={bottomTab}
-                  onChange={(_, val) =>
-                    setBottomTab(val)
-                  }
+                  onChange={(_, val) => setBottomTab(val)}
                   sx={{
                     mb: 0,
                     "& .MuiTab-root": {
-                      textTransform:
-                        "none",
-                      fontSize:
-                        "0.8rem",
+                      textTransform: "none",
+                      fontSize: "0.8rem",
                       fontWeight: 500,
                     },
                   }}
                 >
-                  {["Output", "Errors", "Schedule"].map(
-                    (label, index) => (
-                      <Tab
-                        key={index}
-                        label={label}
-                      />
-                    )
-                  )}
+                  {["Output", "Errors", "Schedule"].map((label, index) => (
+                    <Tab key={index} label={label} />
+                  ))}
                 </Tabs>
-                <Box
-                  className={styles.bottomTabContent}
-                  sx={{ p: 2 }}
-                >
+                <Box className={styles.bottomTabContent} sx={{ p: 2 }}>
                   {bottomTab === 0 && (
                     <Box
                       ref={containerRef}
                       sx={{
-                        backgroundColor:
-                          "#f5f5f5",
+                        backgroundColor: "#f5f5f5",
                         color: "black",
-                        borderColor:
-                          "gray",
-                        fontFamily:
-                          "monospace",
-                        fontSize:
-                          12,
+                        borderColor: "gray",
+                        fontFamily: "monospace",
+                        fontSize: 12,
                         p: 2,
                         borderRadius: 2,
                         border: "1px solid #e5e7eb",
-                        maxHeight:
-                          "100%",
-                        height:
-                          "100%",
-                        overflowY:
-                          "auto",
-                        whiteSpace:
-                          "pre",
+                        maxHeight: "100%",
+                        height: "100%",
+                        overflowY: "auto",
+                        whiteSpace: "pre",
                       }}
                     >
-                      {logs &&
-                        logs.length >
-                        0 ? (
-                        logs
-                          .split("\n")
-                          .map(
-                            (
-                              line,
-                              idx
-                            ) => (
-                              <div
-                                key={
-                                  idx
-                                }
-                                style={{
-                                  display:
-                                    "flex",
-                                }}
-                              >
-                                <span
-                                  style={{
-                                    color:
-                                      "blue",
-                                    userSelect:
-                                      "none",
-                                    marginRight: 8,
-                                  }}
-                                >
-                                  {String(
-                                    idx +
-                                    1
-                                  ).padStart(
-                                    5,
-                                    "0"
-                                  )}
-                                  :
-                                </span>
-                                <span>
-                                  {parseAnsi(
-                                    line
-                                  )}
-                                </span>
-                              </div>
-                            )
-                          )
+                      {logs && logs.length > 0 ? (
+                        logs.split("\n").map((line, idx) => (
+                          <div key={idx} style={{ display: "flex" }}>
+                            <span
+                              style={{
+                                color: "blue",
+                                userSelect: "none",
+                                marginRight: 8,
+                              }}
+                            >
+                              {String(idx + 1).padStart(5, "0")}:
+                            </span>
+                            <span>{parseAnsi(line)}</span>
+                          </div>
+                        ))
                       ) : (
-                        <Typography
-                          variant="body2"
-                          sx={{
-                            opacity: 0.7,
-                          }}
-                        >
+                        <Typography variant="body2" sx={{ opacity: 0.7 }}>
                           No logs yet.
                         </Typography>
                       )}
@@ -3151,84 +3085,40 @@ export default function ProtocolForm({
                   {/* Output Log */}
                   {bottomTab === 1 && (
                     <Box
-                      ref={
-                        errorContainerRef
-                      }
+                      ref={errorContainerRef}
                       sx={{
-                        backgroundColor:
-                          "#f5f5f5",
+                        backgroundColor: "#f5f5f5",
                         color: "black",
-                        borderColor:
-                          "gray",
-                        fontFamily:
-                          "monospace",
-                        fontSize:
-                          12,
+                        borderColor: "gray",
+                        fontFamily: "monospace",
+                        fontSize: 12,
                         p: 2,
                         borderRadius: 2,
                         border: "1px solid #e5e7eb",
-                        maxHeight:
-                          "100%",
-                        height:
-                          "100%",
-                        overflowY:
-                          "auto",
-                        whiteSpace:
-                          "pre",
+                        maxHeight: "100%",
+                        height: "100%",
+                        overflowY: "auto",
+                        whiteSpace: "pre",
                       }}
                     >
                       {errorLogs ? (
-                        errorLogs
-                          .split("\n")
-                          .map(
-                            (
-                              line,
-                              idx
-                            ) => (
-                              <div
-                                key={
-                                  idx
-                                }
-                                style={{
-                                  display:
-                                    "flex",
-                                }}
-                              >
-                                <span
-                                  style={{
-                                    color:
-                                      "red",
-                                    userSelect:
-                                      "none",
-                                    marginRight: 8,
-                                  }}
-                                >
-                                  {String(
-                                    idx +
-                                    1
-                                  ).padStart(
-                                    5,
-                                    "0"
-                                  )}
-                                  :
-                                </span>
-                                <span>
-                                  {parseAnsi(
-                                    line
-                                  )}
-                                </span>
-                              </div>
-                            )
-                          )
+                        errorLogs.split("\n").map((line, idx) => (
+                          <div key={idx} style={{ display: "flex" }}>
+                            <span
+                              style={{
+                                color: "red",
+                                userSelect: "none",
+                                marginRight: 8,
+                              }}
+                            >
+                              {String(idx + 1).padStart(5, "0")}:
+                            </span>
+                            <span>{parseAnsi(line)}</span>
+                          </div>
+                        ))
                       ) : (
-                        <Typography
-                          variant="body2"
-                          sx={{
-                            opacity: 0.7,
-                          }}
-                        >
-                          No error
-                          logs.
+                        <Typography variant="body2" sx={{ opacity: 0.7 }}>
+                          No error logs.
                         </Typography>
                       )}
                     </Box>
@@ -3237,85 +3127,41 @@ export default function ProtocolForm({
                   {/* Errors Log */}
                   {bottomTab === 2 && (
                     <Box
-                      ref={
-                        scheduleContainerRef
-                      }
+                      ref={scheduleContainerRef}
                       sx={{
-                        backgroundColor:
-                          "#f5f5f5",
+                        backgroundColor: "#f5f5f5",
                         color: "black",
-                        borderColor:
-                          "gray",
-                        fontFamily:
-                          "monospace",
-                        fontSize:
-                          12,
+                        borderColor: "gray",
+                        fontFamily: "monospace",
+                        fontSize: 12,
                         p: 2,
                         borderRadius: 2,
                         border: "1px solid #e5e7eb",
-                        maxHeight:
-                          "100%",
-                        height:
-                          "100%",
-                        overflowY:
-                          "auto",
-                        whiteSpace:
-                          "pre",
+                        maxHeight: "100%",
+                        height: "100%",
+                        overflowY: "auto",
+                        whiteSpace: "pre",
                       }}
                     >
                       {/* Schedule Log */}
                       {scheduleLogs ? (
-                        scheduleLogs
-                          .split("\n")
-                          .map(
-                            (
-                              line,
-                              idx
-                            ) => (
-                              <div
-                                key={
-                                  idx
-                                }
-                                style={{
-                                  display:
-                                    "flex",
-                                }}
-                              >
-                                <span
-                                  style={{
-                                    color:
-                                      "red",
-                                    userSelect:
-                                      "none",
-                                    marginRight: 8,
-                                  }}
-                                >
-                                  {String(
-                                    idx +
-                                    1
-                                  ).padStart(
-                                    5,
-                                    "0"
-                                  )}
-                                  :
-                                </span>
-                                <span>
-                                  {parseAnsi(
-                                    line
-                                  )}
-                                </span>
-                              </div>
-                            )
-                          )
+                        scheduleLogs.split("\n").map((line, idx) => (
+                          <div key={idx} style={{ display: "flex" }}>
+                            <span
+                              style={{
+                                color: "red",
+                                userSelect: "none",
+                                marginRight: 8,
+                              }}
+                            >
+                              {String(idx + 1).padStart(5, "0")}:
+                            </span>
+                            <span>{parseAnsi(line)}</span>
+                          </div>
+                        ))
                       ) : (
-                        <Typography
-                          variant="body2"
-                          sx={{
-                            opacity: 0.7,
-                          }}
-                        >
-                          No schedule
-                          logs.
+                        <Typography variant="body2" sx={{ opacity: 0.7 }}>
+                          No schedule logs.
                         </Typography>
                       )}
                     </Box>
@@ -3351,10 +3197,8 @@ export default function ProtocolForm({
           onClick={handleSave}
           disabled={
             execLoading ||
-            protocolDetails.status ===
-            "running" ||
-            protocolDetails.status ===
-            "scheduled"
+            protocolDetails.status === "running" ||
+            protocolDetails.status === "scheduled"
           }
           sx={{ textTransform: "none" }}
         >
@@ -3364,10 +3208,7 @@ export default function ProtocolForm({
           variant="contained"
           startIcon={
             execLoading ? (
-              <CircularProgress
-                size={16}
-                color="inherit"
-              />
+              <CircularProgress size={16} color="inherit" />
             ) : (
               <ExecuteIcon />
             )
@@ -3376,109 +3217,75 @@ export default function ProtocolForm({
           onClick={handleExecute}
           disabled={
             execLoading ||
-            protocolDetails.status ===
-            "running" ||
-            protocolDetails.status ===
-            "scheduled"
+            protocolDetails.status === "running" ||
+            protocolDetails.status === "scheduled"
           }
           sx={{ textTransform: "none" }}
         >
-          {execLoading
-            ? "Executing..."
-            : "Execute"}
+          {execLoading ? "Executing..." : "Execute"}
         </Button>
       </div>
 
       {/* PathParam RemoteFileDialog */}
-      {pathDialog.open &&
-        pathDialog.paramKey &&
-        projectId &&
-        protocolId && (
-          <RemoteFileDialog
-            open={pathDialog.open}
-            onClose={() =>
-              setPathDialog({
-                open: false,
-                paramKey: null,
-              })
-            }
-            title={`Select file for ${pathDialog.paramKey}`}
-            projectId={projectId}
-            protocolId={protocolId}
-            resolveStartPath={() =>
-              svc.resolveProtocolStartPath(
-                projectId,
-                String(protocolId)
-              )
-            }
-            listRemoteDirectory={(p) =>
-              svc.listRemoteDirectory(
-                projectId,
-                String(protocolId),
-                p
-              )
-            }
-            previewRemoteText={(p) =>
-              svc.previewProtocolText(
-                projectId,
-                String(protocolId),
-                p
-              )
-            }
-            buildDownloadUrl={(p, inline) =>
-              svc.buildProtocolDownloadUrl(
-                String(projectId),
-                String(protocolId),
-                p,
-                !!inline
-              )
-            }
-            fetchInlinePreviewBlob={(p) =>
-              svc.fetchProtocolInlinePreviewBlob(
-                String(projectId),
-                String(protocolId),
-                p
-              )
-            }
-            onPick={(relativePath) => {
-              const paramKey =
-                pathDialog.paramKey;
-              if (paramKey) {
-                setProtocolDetails(
-                  (prev: any) => {
-                    if (
-                      !prev?.params?.[
-                      paramKey
-                      ]
-                    ) {
-                      return prev;
-                    }
-                    return {
-                      ...prev,
-                      params: {
-                        ...prev.params,
-                        [paramKey]: {
-                          ...prev
-                            .params[
-                          paramKey
-                          ],
-                          editableValue:
-                            relativePath,
-                          _objValue:
-                            relativePath,
-                        },
-                      },
-                    };
-                  }
-                );
-              }
-              setPathDialog({
-                open: false,
-                paramKey: null,
+      {pathDialog.open && pathDialog.paramKey && projectId && protocolId && (
+        <RemoteFileDialog
+          open={pathDialog.open}
+          onClose={() =>
+            setPathDialog({
+              open: false,
+              paramKey: null,
+            })
+          }
+          title={`Select file for ${pathDialog.paramKey}`}
+          projectId={projectId}
+          protocolId={protocolId}
+          resolveStartPath={() =>
+            svc.resolveProtocolStartPath(projectId, String(protocolId))
+          }
+          listRemoteDirectory={(p) =>
+            svc.listRemoteDirectory(projectId, String(protocolId), p)
+          }
+          previewRemoteText={(p) =>
+            svc.previewProtocolText(projectId, String(protocolId), p)
+          }
+          buildDownloadUrl={(p, inline) =>
+            svc.buildProtocolDownloadUrl(
+              String(projectId),
+              String(protocolId),
+              p,
+              !!inline
+            )
+          }
+          fetchInlinePreviewBlob={(p) =>
+            svc.fetchProtocolInlinePreviewBlob(String(projectId), String(protocolId), p)
+          }
+          onPick={(relativePath) => {
+            const paramKey = pathDialog.paramKey;
+            if (paramKey) {
+              setProtocolDetails((prev: any) => {
+                if (!prev?.params?.[paramKey]) {
+                  return prev;
+                }
+                return {
+                  ...prev,
+                  params: {
+                    ...prev.params,
+                    [paramKey]: {
+                      ...prev.params[paramKey],
+                      editableValue: relativePath,
+                      _objValue: relativePath,
+                    },
+                  },
+                };
               });
-            }}
-          />
-        )}
+            }
+            setPathDialog({
+              open: false,
+              paramKey: null,
+            });
+          }}
+        />
+      )}
 
       <OutputSelectorDialog
         open={openSelector}
@@ -3492,16 +3299,13 @@ export default function ProtocolForm({
       {showValidationDialog && (
         <Dialog
           open={showValidationDialog}
-          onClose={() =>
-            setShowValidationDialog(false)
-          }
+          onClose={() => setShowValidationDialog(false)}
           maxWidth="sm"
           fullWidth
           PaperProps={{
             sx: {
               borderRadius: 3,
-              boxShadow:
-                "0px 10px 25px rgba(0, 0, 0, 0.25)",
+              boxShadow: "0px 10px 25px rgba(0, 0, 0, 0.25)",
             },
           }}
         >
@@ -3512,10 +3316,8 @@ export default function ProtocolForm({
               gap: 1.5,
               fontWeight: "bold",
               color: "#d32f2f",
-              fontSize:
-                "1.1rem",
-              borderBottom:
-                "1px solid ",
+              fontSize: "1.1rem",
+              borderBottom: "1px solid ",
               pb: 1,
             }}
           >
@@ -3524,16 +3326,12 @@ export default function ProtocolForm({
                 width: 32,
                 height: 32,
                 borderRadius: "50%",
-                backgroundColor:
-                  "#f8d7da",
+                backgroundColor: "#f8d7da",
                 color: "#d32f2f",
                 display: "flex",
-                alignItems:
-                  "center",
-                justifyContent:
-                  "center",
-                fontWeight:
-                  "bold",
+                alignItems: "center",
+                justifyContent: "center",
+                fontWeight: "bold",
               }}
             >
               !
@@ -3545,109 +3343,71 @@ export default function ProtocolForm({
             dividers
             sx={{
               maxHeight: "300px",
-              overflowY:
-                "auto",
-              backgroundColor:
-                "#fff8f8",
-              borderTop:
-                "1px solid #f0f0f0",
-              borderBottom:
-                "1px solid #f0f0f0",
+              overflowY: "auto",
+              backgroundColor: "#fff8f8",
+              borderTop: "1px solid #f0f0f0",
+              borderBottom: "1px solid #f0f0f0",
               p: 2.5,
             }}
           >
-            {validationErrors.length >
-              0 ? (
+            {validationErrors.length > 0 ? (
               <Box
                 component="ul"
                 sx={{
-                  listStyle:
-                    "none",
+                  listStyle: "none",
                   pl: 0,
                   m: 0,
-                  color:
-                    "#b00020",
-                  fontSize:
-                    "0.9rem",
+                  color: "#b00020",
+                  fontSize: "0.9rem",
                 }}
               >
-                {validationErrors.map(
-                  (err, i) => {
-                    const parts =
-                      err.split(
-                        /(\*\*[^*]+\*\*)/g
-                      );
-                    return (
+                {validationErrors.map((err, i) => {
+                  const parts = err.split(/(\*\*[^*]+\*\*)/g);
+                  return (
+                    <Box
+                      key={i}
+                      component="li"
+                      sx={{
+                        display: "flex",
+                        alignItems: "flex-start",
+                        mb: 1.2,
+                      }}
+                    >
                       <Box
-                        key={i}
-                        component="li"
+                        component="span"
                         sx={{
-                          display:
-                            "flex",
-                          alignItems:
-                            "flex-start",
-                          mb: 1.2,
+                          color: "#d32f2f",
+                          fontWeight: "bold",
+                          mr: 1.2,
+                          fontSize: "1rem",
+                          lineHeight: "1rem",
                         }}
                       >
-                        <Box
-                          component="span"
-                          sx={{
-                            color:
-                              "#d32f2f",
-                            fontWeight:
-                              "bold",
-                            mr: 1.2,
-                            fontSize:
-                              "1rem",
-                            lineHeight:
-                              "1rem",
-                          }}
-                        >
-                          •
-                        </Box>
-                        <Typography
-                          variant="body2"
-                          sx={{
-                            color:
-                              "#333",
-                            lineHeight:
-                              1.5,
-                            fontSize:
-                              "0.9rem",
-                          }}
-                        >
-                          {parts.map(
-                            (p, j) =>
-                              p.startsWith("**") &&
-                                p.endsWith("**") ? (
-                                <strong
-                                  key={j}
-                                >
-                                  {p.slice(
-                                    2,
-                                    -2
-                                  )}
-                                </strong>
-                              ) : (
-                                p
-                              )
-                          )}
-                        </Typography>
+                        •
                       </Box>
-                    );
-                  }
-                )}
+                      <Typography
+                        variant="body2"
+                        sx={{
+                          color: "#333",
+                          lineHeight: 1.5,
+                          fontSize: "0.9rem",
+                        }}
+                      >
+                        {parts.map((p, j) =>
+                          p.startsWith("**") && p.endsWith("**") ? (
+                            <strong key={j}>{p.slice(2, -2)}</strong>
+                          ) : (
+                            p
+                          )
+                        )}
+                      </Typography>
+                    </Box>
+                  );
+                })}
               </Box>
             ) : (
-              <Typography
-                variant="body2"
-                sx={{
-                  color: "#555",
-                }}
-              >
-                No validation
-                details
-                provided.
+              <Typography variant="body2" sx={{ color: "#555" }}>
+                No validation details provided.
               </Typography>
             )}
           </DialogContent>
@@ -3655,34 +3415,23 @@ export default function ProtocolForm({
           <DialogActions
             sx={{
               p: 2,
-              justifyContent:
-                "flex-end",
-              backgroundColor:
-                "#fafafa",
-              borderTop:
-                "1px solid #eee",
+              justifyContent: "flex-end",
+              backgroundColor: "#fafafa",
+              borderTop: "1px solid #eee",
             }}
           >
             <Button
-              onClick={() =>
-                setShowValidationDialog(
-                  false
-                )
-              }
+              onClick={() => setShowValidationDialog(false)}
               variant="contained"
               color="error"
               sx={{
-                textTransform:
-                  "none",
+                textTransform: "none",
                 px: 3,
                 borderRadius: 2,
-                fontWeight:
-                  "bold",
-                boxShadow:
-                  "none",
+                fontWeight: "bold",
+                boxShadow: "none",
                 "&:hover": {
-                  backgroundColor:
-                    "#c62828",
+                  backgroundColor: "#c62828",
                 },
               }}
             >

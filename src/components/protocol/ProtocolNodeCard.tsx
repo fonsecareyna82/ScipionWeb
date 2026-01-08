@@ -112,7 +112,11 @@ type StatusNodeProps = {
   onSelectFrom?: (id: string) => void;
   onSelectTo?: (id: string) => void;
   onStop?: (id: string) => void;
-  onBrowse?: (protocolId: string, projectId?: string | number, protocolLabel?: string) => void;
+  onBrowse?: (
+    protocolId: string,
+    projectId?: string | number,
+    protocolLabel?: string
+  ) => void;
 
   inPathSelection?: boolean;
   pathSelectionActive?: boolean;
@@ -129,6 +133,82 @@ const formatCpuTime = (seconds: number): string => {
   const secs = Math.floor(seconds % 60);
   const pad = (n: number) => n.toString().padStart(2, "0");
   return `${pad(hours)}h:${pad(minutes)}m:${pad(secs)}s`;
+};
+
+type NormalizedOutput = {
+  name?: string;
+  info?: string;
+  paramClass: string;
+  pointerClass?: string;
+  _objValue?: string;
+  _parentId?: string | number;
+};
+
+const normalizeOutputItem = (outputObj: unknown): NormalizedOutput | null => {
+  // Supports both shapes:
+  // 1) Flat:
+  //    { name, paramClass: "PointerParam", pointerClass, info, _objValue, _parentId }
+  // 2) Wrapped legacy:
+  //    { SomeName: { paramClass: "PointerParam", pointerClass, info, _objValue, _parentId } }
+  // Also tolerates older fields (_class) during transition.
+  if (!outputObj || typeof outputObj !== "object") return null;
+
+  const flatCandidate = outputObj as Record<string, unknown>;
+
+  const hasFlatSignature =
+    "paramClass" in flatCandidate &&
+    (("info" in flatCandidate) || ("name" in flatCandidate) || ("pointerClass" in flatCandidate));
+
+  if (hasFlatSignature) {
+    const normalized: NormalizedOutput = {
+      name: typeof flatCandidate.name === "string" ? flatCandidate.name : undefined,
+      info: typeof flatCandidate.info === "string" ? flatCandidate.info : undefined,
+      paramClass: String(flatCandidate.paramClass ?? ""),
+      pointerClass:
+        typeof flatCandidate.pointerClass === "string"
+          ? flatCandidate.pointerClass
+          : typeof flatCandidate._class === "string"
+            ? (flatCandidate._class as string)
+            : undefined,
+      _objValue: typeof flatCandidate._objValue === "string" ? flatCandidate._objValue : undefined,
+      _parentId:
+        typeof flatCandidate._parentId === "string" || typeof flatCandidate._parentId === "number"
+          ? flatCandidate._parentId
+          : undefined,
+    };
+
+    return normalized.paramClass ? normalized : null;
+  }
+
+  const entries = Object.entries(flatCandidate);
+  if (entries.length === 1) {
+    const [wrappedName, wrappedValue] = entries[0];
+    if (wrappedValue && typeof wrappedValue === "object") {
+      const wrappedDef = wrappedValue as Record<string, unknown>;
+      if ("paramClass" in wrappedDef || "_class" in wrappedDef) {
+        const normalized: NormalizedOutput = {
+          name: wrappedName,
+          info: typeof wrappedDef.info === "string" ? wrappedDef.info : undefined,
+          paramClass: String(wrappedDef.paramClass ?? wrappedDef._class ?? ""),
+          pointerClass:
+            typeof wrappedDef.pointerClass === "string"
+              ? wrappedDef.pointerClass
+              : typeof wrappedDef._class === "string"
+                ? (wrappedDef._class as string)
+                : undefined,
+          _objValue: typeof wrappedDef._objValue === "string" ? wrappedDef._objValue : undefined,
+          _parentId:
+            typeof wrappedDef._parentId === "string" || typeof wrappedDef._parentId === "number"
+              ? wrappedDef._parentId
+              : undefined,
+        };
+
+        return normalized.paramClass ? normalized : null;
+      }
+    }
+  }
+
+  return null;
 };
 
 export default function ProtocolNodeCard({
@@ -271,10 +351,7 @@ export default function ProtocolNodeCard({
   const ShortcutHint = ({ text }: { text?: string }) =>
     text ? <span className={styles.shortcutHint}>{text}</span> : null;
 
-  // projectNodeAlwaysHeaderOnly
   const shouldRenderProtocolBody = !isProjectNode;
-
-  // keepMountedForSmoothCollapse
   const isContentExpanded = !isCompactView;
 
   const contentClassName = [
@@ -569,19 +646,28 @@ export default function ProtocolNodeCard({
 
                       <div className={styles.sectionContent} data-has-scroll>
                         {outputsArray.map((outputObj, idx) => {
-                          const [, rawValue] = Object.entries(outputObj)[0];
-                          const value = rawValue as {
-                            info: string;
-                            _class: string;
-                            _objValue: string;
-                            _parentId: string;
-                          };
+                          const value = normalizeOutputItem(outputObj);
+                          if (!value) return null;
 
                           const isDragging = draggingIdx === idx;
 
+                          const labelText =
+                            value.info ??
+                            value.name ??
+                            value.pointerClass ??
+                            value.paramClass ??
+                            "Output";
+
+                          const displayClass =
+                            value.pointerClass ?? value.paramClass ?? "PointerParam";
+
+                          const pillKey =
+                            value._objValue ??
+                            `${String(value._parentId ?? "")}:${String(value.name ?? idx)}`;
+
                           return (
                             <div
-                              key={idx}
+                              key={pillKey}
                               className={[
                                 styles.outputPill,
                                 isDragging ? styles.outputPillDragging : "",
@@ -607,11 +693,13 @@ export default function ProtocolNodeCard({
                                 setDraggingIdx(idx);
 
                                 const output = {
-                                  _class: value._class,
-                                  _expectedClass: value._class,
-                                  _objValue: value._objValue,
-                                  info: value.info,
-                                  _parentId: value._parentId,
+                                  paramClass: value.paramClass,
+                                  pointerClass: value.pointerClass ?? "",
+                                  _expectedClass: value.pointerClass ?? "",
+                                  _objValue: value._objValue ?? "",
+                                  info: value.info ?? "",
+                                  _parentId: value._parentId ?? "",
+                                  name: value.name ?? "",
                                 };
 
                                 setCurrentDraggedOutput(output);
@@ -629,7 +717,7 @@ export default function ProtocolNodeCard({
                                 ghost.style.border = "1px solid #ccc";
                                 ghost.style.color = "black";
                                 ghost.style.borderRadius = "0.5rem";
-                                ghost.innerText = `${value._class} (${value.info})`;
+                                ghost.innerText = `${displayClass} (${labelText})`;
                                 document.body.appendChild(ghost);
                                 e.dataTransfer.setDragImage(ghost, 0, 15);
                                 setTimeout(() => document.body.removeChild(ghost), 0);
@@ -640,7 +728,7 @@ export default function ProtocolNodeCard({
                               }}
                             >
                               <ArrowUpRight className={styles.outputIcon} />
-                              <span className={styles.outputText}>{value.info}</span>
+                              <span className={styles.outputText}>{labelText}</span>
                             </div>
                           );
                         })}

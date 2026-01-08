@@ -51,8 +51,8 @@ export default function WrapWithDrop({
   const isMatch =
     !expected || // si no hay clase esperada, siempre match
     (Array.isArray(expected)
-      ? expected.includes(currentDraggedOutput?._class)
-      : currentDraggedOutput?._class === expected);
+      ? expected.includes(currentDraggedOutput?.pointerClass)
+      : currentDraggedOutput?.pointerClass === expected);
 
   const isActive = dragOverKey === paramKey;
 

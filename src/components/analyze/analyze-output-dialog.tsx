@@ -148,6 +148,7 @@ export default function AnalyzeOutputDialog({
     () =>
       (
         outputRaw?._class ||
+        outputRaw?.pointerClass ||
         outputRaw?.class ||
         outputRaw?.type ||
         ""
