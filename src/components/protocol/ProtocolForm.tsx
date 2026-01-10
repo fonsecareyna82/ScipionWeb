@@ -1225,7 +1225,7 @@ export default function ProtocolForm({
           pointerClass: String(out?.pointerClass ?? ""),
           _objValue: String(out?._objValue ?? ""),
           _protocolId: pid,
-          _parentId:  out?._parentId ?? null,
+          parentId:  out?.parentId ?? null,
         });
       }
     }
@@ -1366,7 +1366,7 @@ export default function ProtocolForm({
         const normalized = {
           _objValue: "",
           info: p.info ?? "",
-          _parentId: p._parentId ?? null,
+          parentId: p.parentId ?? null,
           paramClass: "PointerParam",
         };
 
@@ -1389,14 +1389,14 @@ export default function ProtocolForm({
             return {
               _objValue: String(item),
               info: "",
-              _parentId: null,
+              parentId: null,
               paramClass: "PointerParam",
             };
           }
           return {
             _objValue: (item._objValue ?? item.object ?? "") || "",
             info: item.info ?? "",
-            _parentId: item._parentId ?? item._protocolId ?? null,
+            parentId: item.parentId ?? item._protocolId ?? null,
             paramClass: "PointerParam",
           };
         });
@@ -1414,7 +1414,7 @@ export default function ProtocolForm({
           value: boolVal ? "True" : "False",
           _objValue: boolVal,
           info: p.info,
-          _parentId: p._parentId,
+          parentId: p.parentId,
         };
         return;
       }
@@ -1423,7 +1423,7 @@ export default function ProtocolForm({
         value: p.editableValue,
         _objValue: p._objValue,
         info: p.info,
-        _parentId: p._parentId,
+        parentId: p.parentId,
       };
     });
 
@@ -1597,7 +1597,7 @@ export default function ProtocolForm({
               object: dragged._objValue ?? "",
               info: dragged.info ?? "",
               pointerClass: dragged.pointerClass ?? "",
-              _parentId: dragged._parentId ?? null,
+              parentId: dragged.parentId ?? null,
             };
             return {
               ...prev,
@@ -1622,7 +1622,7 @@ export default function ProtocolForm({
               info: picked.info ?? "",
               pointerClass: picked.pointerClass ?? "",
               _objValue: picked._objValue ?? "",
-              _parentId: picked._protocolId ?? picked._parentId ?? null,
+              parentId: picked._protocolId ?? picked.parentId ?? null,
             };
 
             return {
@@ -2057,7 +2057,7 @@ export default function ProtocolForm({
           _objValue: pick?._objValue ?? "",
           info: pick?.info ?? "",
           pointerClass: pick?.pointerClass ?? "",
-          _parentId: pick?._protocolId ?? pick?._parentId ?? null,
+          parentId: pick?._protocolId ?? pick?.parentId ?? null,
         }));
 
         return {
@@ -2083,7 +2083,7 @@ export default function ProtocolForm({
             _objValue: pick?._objValue ?? "",
             info: pick?.info ?? "",
             pointerClass: pick?.pointerClass ?? "",
-            _parentId: pick?._protocolId ?? pick?._parentId ?? null,
+            parentId: pick?._protocolId ?? pick?.parentId ?? null,
           },
         },
       };

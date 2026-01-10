@@ -141,15 +141,15 @@ type NormalizedOutput = {
   paramClass: string;
   pointerClass?: string;
   _objValue?: string;
-  _parentId?: string | number;
+  parentId?: string | number;
 };
 
 const normalizeOutputItem = (outputObj: unknown): NormalizedOutput | null => {
   // Supports both shapes:
   // 1) Flat:
-  //    { name, paramClass: "PointerParam", pointerClass, info, _objValue, _parentId }
+  //    { name, paramClass: "PointerParam", pointerClass, info, _objValue, parentId }
   // 2) Wrapped legacy:
-  //    { SomeName: { paramClass: "PointerParam", pointerClass, info, _objValue, _parentId } }
+  //    { SomeName: { paramClass: "PointerParam", pointerClass, info, _objValue, parentId } }
   // Also tolerates older fields (_class) during transition.
   if (!outputObj || typeof outputObj !== "object") return null;
 
@@ -171,9 +171,9 @@ const normalizeOutputItem = (outputObj: unknown): NormalizedOutput | null => {
             ? (flatCandidate._class as string)
             : undefined,
       _objValue: typeof flatCandidate._objValue === "string" ? flatCandidate._objValue : undefined,
-      _parentId:
-        typeof flatCandidate._parentId === "string" || typeof flatCandidate._parentId === "number"
-          ? flatCandidate._parentId
+      parentId:
+        typeof flatCandidate.parentId === "string" || typeof flatCandidate.parentId === "number"
+          ? flatCandidate.parentId
           : undefined,
     };
 
@@ -197,9 +197,9 @@ const normalizeOutputItem = (outputObj: unknown): NormalizedOutput | null => {
                 ? (wrappedDef._class as string)
                 : undefined,
           _objValue: typeof wrappedDef._objValue === "string" ? wrappedDef._objValue : undefined,
-          _parentId:
-            typeof wrappedDef._parentId === "string" || typeof wrappedDef._parentId === "number"
-              ? wrappedDef._parentId
+          parentId:
+            typeof wrappedDef.parentId === "string" || typeof wrappedDef.parentId === "number"
+              ? wrappedDef.parentId
               : undefined,
         };
 
@@ -663,7 +663,7 @@ export default function ProtocolNodeCard({
 
                           const pillKey =
                             value._objValue ??
-                            `${String(value._parentId ?? "")}:${String(value.name ?? idx)}`;
+                            `${String(value.parentId ?? "")}:${String(value.name ?? idx)}`;
 
                           return (
                             <div
@@ -698,7 +698,7 @@ export default function ProtocolNodeCard({
                                   _expectedClass: value.pointerClass ?? "",
                                   _objValue: value._objValue ?? "",
                                   info: value.info ?? "",
-                                  _parentId: value._parentId ?? "",
+                                  parentId: value.parentId ?? "",
                                   name: value.name ?? "",
                                 };
 
