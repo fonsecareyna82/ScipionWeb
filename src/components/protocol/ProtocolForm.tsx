@@ -965,7 +965,7 @@ export default function ProtocolForm({
 
       const cls = getParamClass(def);
 
-      if (cls === "Group" && Array.isArray(def.params)) {
+      if ((cls === "Group" || cls === "Line") && Array.isArray(def.params)) {
         def.params.forEach((c: any) => walk(secIdx, c));
         return;
       }
@@ -1397,7 +1397,7 @@ export default function ProtocolForm({
           p.editableValue ?? p.value ?? p.value ?? p.default
         );
 
-        out[newKey] = boolVal ? "True" : "False"
+        out[newKey] = boolVal ? true : false
         return;
       }
 
@@ -1569,9 +1569,12 @@ export default function ProtocolForm({
 
   // Render a single parameter row
   const renderParam = useCallback(
-    (paramLike: any, sectionIdx: number, rowIndex = 0): JSX.Element | null => {
+    (paramLike: any, sectionIdx: number, rowIndex = 0, layoutVariant: "standard" | "inline" = "standard"): JSX.Element | null => {
       const { paramName: name, paramDef: def } = unwrapParamDef(paramLike);
       if (!name || !def) return null;
+
+      const isInline = layoutVariant === "inline";
+      const fieldWidth = isInline ? 100 : 300;
 
       const defClass = getParamClass(def);
       const key = `${sectionIdx}_${name}`;
@@ -1780,11 +1783,9 @@ export default function ProtocolForm({
               InputProps={{ readOnly: true }}
               onClick={() => handleOpenFind(key)}
               sx={{
-                minWidth: 300,
-                // keepHeightConsistentInHostCss
+                width: fieldWidth,
+                minWidth: 0,
                 "& .MuiInputBase-root": { minHeight: 36 },
-
-                // keepTextVisibleInReadonlyAcrossHostCss
                 "& .MuiInputBase-input, & input, & input[readonly]": {
                   fontSize: 12,
                   padding: "8px 10px",
@@ -1819,6 +1820,7 @@ export default function ProtocolForm({
             onClear={onClear}
             rowIndex={rowIndex}
             onOpenFind={() => handleOpenFind(key)}
+            layoutVariant={layoutVariant}
           />
         );
       }
@@ -1882,7 +1884,7 @@ export default function ProtocolForm({
                 })
               }
               sx={{
-                minWidth: 300,
+                minWidth: fieldWidth,
                 "& .MuiInputBase-root": { minHeight: 36 },
                 "& .MuiInputBase-input": { fontSize: 12, padding: "8px 10px", lineHeight: 1.2 },
               }}
@@ -1900,6 +1902,7 @@ export default function ProtocolForm({
             onBrowsePath={handleBrowsePath}
             onClear={handleClear}
             rowIndex={rowIndex}
+            layoutVariant={layoutVariant}
           />
         );
       }
@@ -1941,7 +1944,8 @@ export default function ProtocolForm({
               value={safeSel}
               onChange={(e) => onChange(e.target.value)}
               sx={{
-                minWidth: 300,
+                width: fieldWidth,
+                minWidth: 0,
                 "& .MuiInputBase-input": { fontSize: 12 },
                 "& .MuiSelect-select": { fontSize: 12, display: "flex", alignItems: "center" },
               }}
@@ -1966,9 +1970,91 @@ export default function ProtocolForm({
             }
             helpText={def.help}
             rowIndex={rowIndex}
+            layoutVariant={layoutVariant}
           />
         );
       }
+
+      // lineParamContainer
+      if (defClass === "Line" && Array.isArray(def.params)) {
+        const lineKey = `${key}_line`;
+        const hasHeader = Boolean(def.label || name);
+        const expanded = expandedGroups[lineKey] ?? true;
+
+        const toggleExpand = () =>
+          setExpandedGroups((prev) => ({ ...prev, [lineKey]: !expanded }));
+
+        const title = def.label || name || `Line ${lineKey}`;
+        const showChildren = !hasHeader || expanded;
+
+        return (
+          <Box
+            key={key}
+            sx={{
+              mb: 2,
+              border: "1px dashed #ccc",
+              borderRadius: 1,
+              p: 1,
+              backgroundColor: (theme) => (theme.palette.mode === "dark" ? "#2c2c2c" : "#f9fafb"),
+            }}
+          >
+            {hasHeader && (
+              <Box
+                sx={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  cursor: "pointer",
+                  mb: 1,
+                }}
+                onClick={toggleExpand}
+              >
+                <Typography
+                  variant="subtitle2"
+                  sx={(theme) => ({
+                    color: theme.palette.mode === "dark" ? "#ffffff" : "#000000",
+                  })}
+                >
+                  {title}
+                </Typography>
+                <IconButton size="small">
+                  {expanded ? <ChevronUpIcon fontSize="small" /> : <ChevronDownIcon fontSize="small" />}
+                </IconButton>
+              </Box>
+            )}
+
+            {showChildren && (
+              <Box
+                sx={{
+                  display: "flex",
+                  overflowX: "auto",
+                  overflowY: "hidden",
+                  pb: 0.5,
+                  alignItems: "center",
+                }}
+              >
+                <Box
+                  sx={{
+                    // alignLineItemsRight
+                    display: "flex",
+                    flexWrap: "nowrap",
+                    gap: 1,
+                    alignItems: "center",
+                    ml: "auto",
+                  }}
+                >
+                  {def.params.map((child: any, idx: number) => (
+                    <Box key={`${lineKey}_${idx}`} sx={{ flex: "0 0 auto", minWidth: 0 }}>
+                      {renderParam(child, sectionIdx, idx, "inline")}
+                    </Box>
+                  ))}
+                </Box>
+              </Box>
+            )}
+          </Box>
+        );
+      }
+
 
       // Group
       if (defClass === "Group" && Array.isArray(def.params)) {
@@ -2080,7 +2166,8 @@ export default function ProtocolForm({
               }))
             }
             sx={{
-              minWidth: 300,
+              width: fieldWidth,
+              minWidth: 0,
               "& .MuiInputBase-root": { minHeight: 36 },
               "& .MuiInputBase-input": { fontSize: 12, padding: "8px 10px", lineHeight: 1.2 },
             }}
@@ -2095,6 +2182,7 @@ export default function ProtocolForm({
           control={defaultControl}
           helpText={def.help}
           rowIndex={rowIndex}
+          layoutVariant={layoutVariant}
         />
       );
     },
@@ -3115,7 +3203,7 @@ export default function ProtocolForm({
                 </Tabs>
                 <Box className={styles.bottomTabContent} sx={{ p: 2 }}>
 
-                   {/* Output Log */}
+                  {/* Output Log */}
                   {bottomTab === 0 && (
                     <Box
                       ref={containerRef}
@@ -3302,7 +3390,7 @@ export default function ProtocolForm({
       </div>
 
       {/* PathParam RemoteFileDialog */}
-            {/* PathParam RemoteFileDialog */}
+      {/* PathParam RemoteFileDialog */}
       {pathDialog.open && pathDialog.paramKey && projectId && protocolId && (
         <RemoteFileDialog
           open={pathDialog.open}
