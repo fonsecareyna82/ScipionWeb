@@ -602,8 +602,20 @@ export default function ProtocolForm({
 }: ProtocolFormProps) {
   const svc = useProjectService();
 
-  const projectId = data?.projectId ?? data?.project?.id ?? null;
-  const protocolId = data?.protocolId ?? null;
+  // unwrapFormEnvelope
+  const form = useMemo(() => {
+    if (data && typeof data === "object" && "form" in data) return (data as any).form ?? {};
+    return data ?? {};
+  }, [data]);
+
+  // keepValuesForLater
+  const values = useMemo(() => {
+    if (data && typeof data === "object" && "values" in data) return (data as any).values ?? null;
+    return null;
+  }, [data]);
+
+  const projectId = form?.projectId ?? form?.project?.id ?? null;
+  const protocolId = form?.protocolId ?? null;
 
   const [topTab, setTopTab] = useState(0);
   const [bottomTab, setBottomTab] = useState(0);
@@ -683,18 +695,14 @@ export default function ProtocolForm({
 
   // Normalize outputs from data.outputs for the Outputs tab
   const normalizedOutputs = useMemo(() => {
-    const arr = Array.isArray(data?.outputs) ? data.outputs : [];
+    const arr = Array.isArray(form?.outputs) ? form.outputs : [];
     return arr.map((entry: any, idx: number) => {
-      // newBackendShape: outputName is included in each entry
       const outputName = String(entry?.outputName ?? entry?.name ?? entry?._key ?? idx);
       const infoText = entry?.info ?? entry?.pointerClass ?? "";
-      return {
-        name: outputName,
-        infoText,
-        raw: entry,
-      };
+      return { name: outputName, infoText, raw: entry };
     });
-  }, [data?.outputs]);
+  }, [form?.outputs]);
+
 
   // Active Output
   const activeOutput = useMemo(() => {
@@ -735,8 +743,8 @@ export default function ProtocolForm({
     (async () => {
       try {
         const res: any = await svc.fetchOutputPreview(
-          data.projectId,
-          data?.protocolId,
+          projectId,
+          protocolId,
           activeOutput.name,
           sqliteTable ? { table: sqliteTable } : undefined
         );
@@ -761,7 +769,7 @@ export default function ProtocolForm({
     return () => {
       cancelled = true;
     };
-  }, [activeOutput, data?.protocolId, sqliteTable, svc, data?.projectId]);
+  }, [activeOutput, form?.protocolId, sqliteTable, svc, form?.projectId]);
 
   // Use this instead of onClose() directly to play exit animation
   const requestClose = () => setIsClosing(true);
@@ -819,10 +827,10 @@ export default function ProtocolForm({
 
   // Locate the global expertLevel EnumParam if present
   const findGeneralExpertLocator = useCallback(() => {
-    if (!data?.expertLevel || !Array.isArray(data?.definition)) return null;
+    if (!form?.expertLevel || !Array.isArray(form?.definition)) return null;
 
-    for (let i = 0; i < data.definition.length; i++) {
-      const section = data.definition[i];
+    for (let i = 0; i < form.definition.length; i++) {
+      const section = form.definition[i];
       const params = section?.params ?? [];
       for (const p of params) {
         const { paramName, paramDef: def } = unwrapParamDef(p);
@@ -832,7 +840,7 @@ export default function ProtocolForm({
       }
     }
     return null;
-  }, [data]);
+  }, [form]);
 
   // 0 = Normal, 1 = Advanced
   const generalExpertLevel = (() => {
@@ -953,7 +961,7 @@ export default function ProtocolForm({
 
   // Load initial parameters into protocolDetails
   useEffect(() => {
-    if (!data) {
+    if (!form) {
       setProtocolDetails({});
       return;
     }
@@ -1000,20 +1008,20 @@ export default function ProtocolForm({
       params[key] = { ...def, value: def.value, editableValue: init };
     };
 
-    data.definition?.forEach((section: any, i: number) => {
+    form.definition?.forEach((section: any, i: number) => {
       section.params?.forEach((p: any) => walk(i, p));
     });
 
     setProtocolDetails({
-      label: data.protocolName ?? "",
-      status: data.status ?? "",
-      id: data.id ?? "",
-      color: data.color ?? "",
+      label: form.protocolName ?? "",
+      status: form.status ?? "",
+      id: form.id ?? "",
+      color: form.color ?? "",
       params,
     });
 
     // Remember initial inputType label to detect future user change
-    if (data.protocolClassName === "ProtUnionSet") {
+    if (form.protocolClassName === "ProtUnionSet") {
       const inputTypeKey = Object.keys(params).find((k) => k.endsWith("_inputType"));
       if (inputTypeKey) {
         const it = params[inputTypeKey];
@@ -1026,7 +1034,7 @@ export default function ProtocolForm({
         prevSelectedInputTypeRef.current = label ?? null;
       }
     }
-  }, [data]);
+  }, [form]);
 
   const isTerminalStatus = (s: any) =>
     ["finished", "success", "done", "failed", "error", "cancelled", "canceled", "stopped", "aborted"]
@@ -1042,7 +1050,7 @@ export default function ProtocolForm({
     }
 
     // enablePollingOnlyOnLogsTab
-    if (topTab !== 2 || !data?.projectId || !data?.protocolId) return;
+    if (topTab !== 2 || !form?.projectId || !form?.protocolId) return;
 
     let cancelled = false;
     idleStreakRef.current = 0;
@@ -1050,7 +1058,7 @@ export default function ProtocolForm({
     // initialLoad
     (async () => {
       try {
-        const res: any = await fetchProtocolLogsStream(data.projectId, data.protocolId, 0, 0, 0);
+        const res: any = await fetchProtocolLogsStream(form.projectId, form.protocolId, 0, 0, 0);
         if (cancelled) return;
 
         setLogs(res.stdoutLog ?? "");
@@ -1080,8 +1088,8 @@ export default function ProtocolForm({
     pollRef.current = setInterval(async () => {
       try {
         const res: any = await fetchProtocolLogsStream(
-          data.projectId,
-          data.protocolId,
+          form.projectId,
+          form.protocolId,
           offsetRef.current || 0,
           errorOffsetRef.current || 0,
           scheduleOffsetRef.current || 0
@@ -1134,7 +1142,7 @@ export default function ProtocolForm({
         pollRef.current = null;
       }
     };
-  }, [topTab, data?.projectId, data?.protocolId, protocolDetails.status]);
+  }, [topTab, form?.projectId, form?.protocolId, protocolDetails.status]);
 
   // Autoscroll logs
   useEffect(() => {
@@ -1237,7 +1245,7 @@ export default function ProtocolForm({
 
   // Keep ProtUnionSet inputSets constraints in sync when inputType changes
   useEffect(() => {
-    if (data?.protocolClassName !== "ProtUnionSet") return;
+    if (form?.protocolClassName !== "ProtUnionSet") return;
     const params = protocolDetails?.params;
     if (!params || Object.keys(params).length === 0) return;
 
@@ -1311,7 +1319,7 @@ export default function ProtocolForm({
       clone.params[inputSetsKey] = target;
       return clone;
     });
-  }, [data?.protocolClassName, protocolDetails.params]);
+  }, [form?.protocolClassName, protocolDetails.params]);
 
   // Filter outputs for a given paramKey, excluding self and descendants
   const getFilteredOutputsForKey = (paramKey: string) => {
@@ -1319,7 +1327,7 @@ export default function ProtocolForm({
     const expected = getExpectedClass(liveParam);
 
     const { outputs, dependencyMap } = gatherAllOutputs();
-    const currentId = String(data?.protocolId ?? "");
+    const currentId = String(form?.protocolId ?? "");
 
     const blocked = new Set<string>([currentId]);
     const stack = [currentId];
@@ -1514,11 +1522,11 @@ export default function ProtocolForm({
     setValidationErrors([]);
 
     try {
-      const projectId = data?.projectId;
-      const pid = data?.protocolId ?? "";
+      const projectId = form?.projectId;
+      const pid = form?.protocolId ?? "";
       const serialized = getSerializedParams();
 
-      await svc.executeProtocol(projectId, pid, data?.protocolClassName, serialized);
+      await svc.executeProtocol(projectId, pid, form?.protocolClassName, serialized);
 
       onExecuted?.();
       requestClose();
@@ -1550,11 +1558,11 @@ export default function ProtocolForm({
     setExecError(null);
 
     try {
-      const projectId = data?.projectId;
-      const pid = data?.protocolId ?? "";
+      const projectId = form?.projectId;
+      const pid = form?.protocolId ?? "";
       const serialized = getSerializedParams();
 
-      await svc.saveProtocol(projectId, pid, data?.protocolClassName, serialized);
+      await svc.saveProtocol(projectId, pid, form?.protocolClassName, serialized);
 
       requestClose();
     } catch (err: any) {
@@ -1587,7 +1595,7 @@ export default function ProtocolForm({
         !!expertLocator && expertLocator.sectionIdx === sectionIdx && name === "expertLevel";
 
       if (
-        data?.expertLevel &&
+        form?.expertLevel &&
         generalExpertLevel === 0 &&
         def?.expertLevel === 1 &&
         !isExpertSelector
@@ -2191,7 +2199,7 @@ export default function ProtocolForm({
       dragOverKey,
       currentDraggedOutput,
       expandedGroups,
-      data,
+      form,
       generalExpertLevel,
       findGeneralExpertLocator,
       getExpectedClass,
@@ -2834,7 +2842,7 @@ export default function ProtocolForm({
     }
   }, [activeOutput, previewLoading, previewError, previewData, setSqliteTable]);
 
-  const safeDefinition = Array.isArray(data?.definition) ? data.definition : [];
+  const safeDefinition = Array.isArray(form?.definition) ? form.definition : [];
   const isDocked = variant === "docked";
 
   return (
@@ -2852,7 +2860,7 @@ export default function ProtocolForm({
       <div className={styles.formHeader}>
         <div className={styles.formTitleWrapper}>
           <Box className="inline-flex items-center justify-center rounded-full bg-green-500 text-black text-xs font-bold px-2 py-1">
-            {data?.protocolId}
+            {form?.protocolId}
           </Box>
           <span className="text-white">{protocolDetails.label}</span>
           <span
