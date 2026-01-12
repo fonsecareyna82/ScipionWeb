@@ -1574,7 +1574,7 @@ export default function ProtocolForm({
       if (!name || !def) return null;
 
       const isInline = layoutVariant === "inline";
-      const fieldWidth = isInline ? 100 : 300;
+      const fieldWidth = isInline ? 75 : 300;
 
       const defClass = getParamClass(def);
       const key = `${sectionIdx}_${name}`;
@@ -1975,7 +1975,7 @@ export default function ProtocolForm({
         );
       }
 
-      // lineParamContainer
+      // Line
       if (defClass === "Line" && Array.isArray(def.params)) {
         const lineKey = `${key}_line`;
         const hasHeader = Boolean(def.label || name);
