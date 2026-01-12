@@ -140,16 +140,16 @@ type NormalizedOutput = {
   info?: string;
   paramClass: string;
   pointerClass?: string;
-  _objValue?: string;
+  value?: string;
   parentId?: string | number;
 };
 
 const normalizeOutputItem = (outputObj: unknown): NormalizedOutput | null => {
   // Supports both shapes:
   // 1) Flat:
-  //    { name, paramClass: "PointerParam", pointerClass, info, _objValue, parentId }
+  //    { name, paramClass: "PointerParam", pointerClass, info, value, parentId }
   // 2) Wrapped legacy:
-  //    { SomeName: { paramClass: "PointerParam", pointerClass, info, _objValue, parentId } }
+  //    { SomeName: { paramClass: "PointerParam", pointerClass, info, value, parentId } }
   // Also tolerates older fields (_class) during transition.
   if (!outputObj || typeof outputObj !== "object") return null;
 
@@ -170,7 +170,7 @@ const normalizeOutputItem = (outputObj: unknown): NormalizedOutput | null => {
           : typeof flatCandidate._class === "string"
             ? (flatCandidate._class as string)
             : undefined,
-      _objValue: typeof flatCandidate._objValue === "string" ? flatCandidate._objValue : undefined,
+      value: typeof flatCandidate.value === "string" ? flatCandidate.value : undefined,
       parentId:
         typeof flatCandidate.parentId === "string" || typeof flatCandidate.parentId === "number"
           ? flatCandidate.parentId
@@ -196,7 +196,7 @@ const normalizeOutputItem = (outputObj: unknown): NormalizedOutput | null => {
               : typeof wrappedDef._class === "string"
                 ? (wrappedDef._class as string)
                 : undefined,
-          _objValue: typeof wrappedDef._objValue === "string" ? wrappedDef._objValue : undefined,
+          value: typeof wrappedDef.value === "string" ? wrappedDef.value : undefined,
           parentId:
             typeof wrappedDef.parentId === "string" || typeof wrappedDef.parentId === "number"
               ? wrappedDef.parentId
@@ -662,7 +662,7 @@ export default function ProtocolNodeCard({
                             value.pointerClass ?? value.paramClass ?? "PointerParam";
 
                           const pillKey =
-                            value._objValue ??
+                            value.value ??
                             `${String(value.parentId ?? "")}:${String(value.name ?? idx)}`;
 
                           return (
@@ -696,7 +696,7 @@ export default function ProtocolNodeCard({
                                   paramClass: value.paramClass,
                                   pointerClass: value.pointerClass ?? "",
                                   _expectedClass: value.pointerClass ?? "",
-                                  _objValue: value._objValue ?? "",
+                                  value: value.value ?? "",
                                   info: value.info ?? "",
                                   parentId: value.parentId ?? "",
                                   name: value.name ?? "",

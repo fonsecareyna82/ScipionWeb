@@ -36,9 +36,9 @@ import {
 interface Output {
   paramClass: string;
   pointerClass: string;
-  _objValue: string;
+  value: string;
   info: string;
-  _protocolId: string;
+  parentId: string;
   protocol?: string;
   key?: string;
 }
@@ -54,8 +54,8 @@ interface OutputSelectorDialogProps {
 
 function getOutputRowId(o: Output): string {
   // getOutputRowId
-  const protoId = String(o._protocolId ?? "");
-  const objValue = String(o._objValue ?? "");
+  const protoId = String(o.parentId ?? "");
+  const objValue = String(o.value ?? "");
   return `${protoId}::${objValue}`;
 }
 
@@ -114,8 +114,8 @@ const OutputSelectorDialog: React.FC<OutputSelectorDialogProps> = ({
         const pointerClass = toLowerString(o.pointerClass);
         const paramClass = toLowerString(o.paramClass);
         const info = toLowerString(o.info);
-        const objValue = toLowerString(o._objValue);
-        const protocolId = toLowerString(o._protocolId);
+        const objValue = toLowerString(o.value);
+        const protocolId = toLowerString(o.parentId);
         const protocol = toLowerString(o.protocol);
         const key = toLowerString(o.key);
 
@@ -132,8 +132,8 @@ const OutputSelectorDialog: React.FC<OutputSelectorDialogProps> = ({
     }
 
     const sorted = [...filtered].sort((a, b) => {
-      const idA = parseInt(String(a._protocolId ?? ""), 10) || 0;
-      const idB = parseInt(String(b._protocolId ?? ""), 10) || 0;
+      const idA = parseInt(String(a.parentId ?? ""), 10) || 0;
+      const idB = parseInt(String(b.parentId ?? ""), 10) || 0;
       return idB - idA;
     });
 
@@ -364,7 +364,7 @@ const OutputSelectorDialog: React.FC<OutputSelectorDialogProps> = ({
                     <TableCell>
                       <Chip
                         size="small"
-                        label={o._protocolId || "—"}
+                        label={o.parentId || "—"}
                         variant="filled"
                         sx={{
                           fontFamily: "monospace",

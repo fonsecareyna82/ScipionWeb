@@ -73,8 +73,8 @@ export default function WrapWithDrop({
           ...prev.params,
           [paramKey]: {
             ...prev.params[paramKey],
-            editableValue: currentDraggedOutput._objValue ?? '',
-            _objValue: currentDraggedOutput._objValue ?? '',
+            editableValue: currentDraggedOutput.value ?? '',
+            value: currentDraggedOutput.value ?? '',
             info: currentDraggedOutput.info ?? '',
             parentId: currentDraggedOutput.parentId ?? null,
           },

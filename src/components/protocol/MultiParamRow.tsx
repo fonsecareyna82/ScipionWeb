@@ -114,7 +114,7 @@ export default function MultiParamRow({
     // computeAvailableOutputs
     const all = getAvailableOutputs ? getAvailableOutputs() ?? [] : [];
     const used = new Set(display.map((r) => r.object).filter(Boolean));
-    return all.filter((o) => !used.has(o._objValue));
+    return all.filter((o) => !used.has(o.value));
   }, [getAvailableOutputs, display]);
 
   const draggedPointerClass = useMemo(() => {
@@ -241,7 +241,7 @@ export default function MultiParamRow({
                       const parsed = JSON.parse(raw);
 
                       // Prevent duplicates
-                      const already = display.some((r) => r.object === parsed._objValue);
+                      const already = display.some((r) => r.object === parsed.value);
                       if (already) return;
 
                       onRowDrop(i, parsed);

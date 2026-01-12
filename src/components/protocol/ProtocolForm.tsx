@@ -141,8 +141,8 @@ function getPointerClass(objLike: any): string {
 }
 
 function unwrapParamDef(paramLike: any): UnwrappedParam {
-   return { paramName: String((paramLike as any).name ?? ""), paramDef: paramLike };
- }
+  return { paramName: String((paramLike as any).name ?? ""), paramDef: paramLike };
+}
 
 function unwrapNamedEntry(entryLike: any): { name: string; payload: any } {
   // unwrapNamedEntry
@@ -166,8 +166,8 @@ function unwrapNamedEntry(entryLike: any): { name: string; payload: any } {
 
 function unwrapObjValue(raw: any) {
   // unwrapObjValue
-  if (raw && typeof raw === "object" && "_objValue" in raw) {
-    return (raw as any)._objValue;
+  if (raw && typeof raw === "object" && "value" in raw) {
+    return (raw as any).value;
   }
   return raw;
 }
@@ -603,7 +603,7 @@ export default function ProtocolForm({
   const svc = useProjectService();
 
   const projectId = data?.projectId ?? data?.project?.id ?? null;
-  const protocolId = data?.id ?? null;
+  const protocolId = data?.protocolId ?? null;
 
   const [topTab, setTopTab] = useState(0);
   const [bottomTab, setBottomTab] = useState(0);
@@ -634,6 +634,9 @@ export default function ProtocolForm({
   const errorContainerRef = useRef<HTMLDivElement>(null);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const [showValidationDialog, setShowValidationDialog] = useState(false);
+  const [execErrorDialogOpen, setExecErrorDialogOpen] = useState(false);
+  const [execErrorDialogTitle, setExecErrorDialogTitle] = useState("Error");
+  const [execErrorDialogMessage, setExecErrorDialogMessage] = useState<string>("");
 
   // Global Output Selector
   const [openSelector, setOpenSelector] = useState(false);
@@ -682,7 +685,7 @@ export default function ProtocolForm({
   const normalizedOutputs = useMemo(() => {
     const arr = Array.isArray(data?.outputs) ? data.outputs : [];
     return arr.map((entry: any, idx: number) => {
-       // newBackendShape: outputName is included in each entry
+      // newBackendShape: outputName is included in each entry
       const outputName = String(entry?.outputName ?? entry?.name ?? entry?._key ?? idx);
       const infoText = entry?.info ?? entry?.pointerClass ?? "";
       return {
@@ -733,7 +736,7 @@ export default function ProtocolForm({
       try {
         const res: any = await svc.fetchOutputPreview(
           data.projectId,
-          data?.id,
+          data?.protocolId,
           activeOutput.name,
           sqliteTable ? { table: sqliteTable } : undefined
         );
@@ -758,7 +761,7 @@ export default function ProtocolForm({
     return () => {
       cancelled = true;
     };
-  }, [activeOutput, data?.id, sqliteTable, svc, data?.projectId]);
+  }, [activeOutput, data?.protocolId, sqliteTable, svc, data?.projectId]);
 
   // Use this instead of onClose() directly to play exit animation
   const requestClose = () => setIsClosing(true);
@@ -767,20 +770,20 @@ export default function ProtocolForm({
     if (isClosing) onClose();
   };
 
-  // Parse JSON envelopes like {"_objValue": "..."} if they appear as strings or objects
+  // Parse JSON envelopes like {"value": "..."} if they appear as strings or objects
   const parseFromJSONValue = (maybeJson: any) => {
     // parseFromJSONValue
     try {
       // unwrapObjectEnvelope
-      if (maybeJson && typeof maybeJson === "object" && "_objValue" in maybeJson) {
-        return (maybeJson as any)._objValue;
+      if (maybeJson && typeof maybeJson === "object" && "value" in maybeJson) {
+        return (maybeJson as any).value;
       }
 
       // unwrapStringEnvelope
       if (typeof maybeJson === "string") {
         const obj = JSON.parse(maybeJson);
-        if (obj && typeof obj === "object" && "_objValue" in obj) {
-          return (obj as any)._objValue;
+        if (obj && typeof obj === "object" && "value" in obj) {
+          return (obj as any).value;
         }
       }
     } catch {
@@ -962,8 +965,8 @@ export default function ProtocolForm({
 
       const cls = getParamClass(def);
 
-      if (cls === "Group" && Array.isArray(def.children)) {
-        def.children.forEach((c: any) => walk(secIdx, c));
+      if (cls === "Group" && Array.isArray(def.params)) {
+        def.params.forEach((c: any) => walk(secIdx, c));
         return;
       }
 
@@ -977,14 +980,13 @@ export default function ProtocolForm({
       if (cls === "BooleanParam") {
         init = coerceBooleanValue(parsed);
 
-        const defObjValue = parseFromJSONValue(def._objValue);
+        const defObjValue = parseFromJSONValue(def.value);
         const defDefault = parseFromJSONValue(def.default);
 
         params[key] = {
           ...def,
-          _objValue: coerceBooleanValue(defObjValue),
+          value: coerceBooleanValue(defObjValue),
           default: coerceBooleanValue(defDefault),
-          value: def.value,
           editableValue: init,
         };
         return;
@@ -1040,7 +1042,7 @@ export default function ProtocolForm({
     }
 
     // enablePollingOnlyOnLogsTab
-    if (topTab !== 2 || !data?.projectId || !data?.id) return;
+    if (topTab !== 2 || !data?.projectId || !data?.protocolId) return;
 
     let cancelled = false;
     idleStreakRef.current = 0;
@@ -1132,7 +1134,7 @@ export default function ProtocolForm({
         pollRef.current = null;
       }
     };
-  }, [topTab, data?.projectId, data?.id, protocolDetails.status]);
+  }, [topTab, data?.projectId, data?.protocolId, protocolDetails.status]);
 
   // Autoscroll logs
   useEffect(() => {
@@ -1223,9 +1225,9 @@ export default function ProtocolForm({
           info: out?.info ?? "",
           paramClass: String(out?.paramClass ?? "PointerParam"),
           pointerClass: String(out?.pointerClass ?? ""),
-          _objValue: String(out?._objValue ?? ""),
-          _protocolId: pid,
-          parentId:  out?.parentId ?? null,
+          value: String(out?.value ?? ""),
+          protocolId: pid,
+          parentId: out?.parentId ?? null,
         });
       }
     }
@@ -1317,7 +1319,7 @@ export default function ProtocolForm({
     const expected = getExpectedClass(liveParam);
 
     const { outputs, dependencyMap } = gatherAllOutputs();
-    const currentId = String(data?.id ?? "");
+    const currentId = String(data?.protocolId ?? "");
 
     const blocked = new Set<string>([currentId]);
     const stack = [currentId];
@@ -1332,7 +1334,7 @@ export default function ProtocolForm({
       }
     }
 
-    const pool = outputs.filter((o) => !blocked.has(String(o._protocolId)));
+    const pool = outputs.filter((o) => !blocked.has(String(o.protocolId)));
 
     const norm = (s: any) =>
       typeof s === "string" ? s.replace(/\s+/g, "").toLowerCase() : "";
@@ -1364,19 +1366,17 @@ export default function ProtocolForm({
       if (cls === "PointerParam") {
         const editable = p.editableValue ?? "";
         const normalized = {
-          _objValue: "",
-          info: p.info ?? "",
+          value: "",
           parentId: p.parentId ?? null,
-          paramClass: "PointerParam",
         };
 
-        const token = (p._objValue ?? "").toString().trim();
+        const token = (p.value ?? "").toString().trim();
         if (token) {
-          normalized._objValue = token;
+          normalized.value = token;
         } else if (editable) {
-          normalized._objValue = String(editable);
+          normalized.value = String(editable);
         } else {
-          normalized._objValue = "";
+          normalized.value = "";
         }
 
         out[newKey] = normalized;
@@ -1387,17 +1387,13 @@ export default function ProtocolForm({
         const list = p.editableValue.map((item: any) => {
           if (typeof item === "string" || typeof item === "number" || typeof item === "boolean") {
             return {
-              _objValue: String(item),
-              info: "",
+              value: String(item),
               parentId: null,
-              paramClass: "PointerParam",
             };
           }
           return {
-            _objValue: (item._objValue ?? item.object ?? "") || "",
-            info: item.info ?? "",
-            parentId: item.parentId ?? item._protocolId ?? null,
-            paramClass: "PointerParam",
+            value: (item.value ?? item.object ?? "") || "",
+            parentId: item.parentId ?? item.protocolId ?? null,
           };
         });
 
@@ -1407,23 +1403,17 @@ export default function ProtocolForm({
 
       if (cls === "BooleanParam") {
         const boolVal = coerceBooleanValue(
-          p.editableValue ?? p._objValue ?? p.value ?? p.default
+          p.editableValue ?? p.value ?? p.value ?? p.default
         );
 
         out[newKey] = {
           value: boolVal ? "True" : "False",
-          _objValue: boolVal,
-          info: p.info,
-          parentId: p.parentId,
         };
         return;
       }
 
       out[newKey] = {
         value: p.editableValue,
-        _objValue: p._objValue,
-        info: p.info,
-        parentId: p.parentId,
       };
     });
 
@@ -1448,6 +1438,88 @@ export default function ProtocolForm({
     return [detail.replace(/^422:\s*/, "").trim()];
   }
 
+  function getHttpStatusFromError(err: any): number | null {
+    // getHttpStatusFromError
+    const status =
+      err?.status ??
+      err?.response?.status ??
+      err?.response?.data?.status ??
+      err?.response?.data?.statusCode ??
+      null;
+
+    return typeof status === "number" ? status : null;
+  }
+
+  function getDetailFromError(err: any): any {
+    // getDetailFromError
+    return (
+      err?.detail ??
+      err?.response?.data?.detail ??
+      err?.response?.data?.error ??
+      err?.response?.data?.message ??
+      err?.data?.detail ??
+      null
+    );
+  }
+
+  function getMessageFromError(err: any, detail: any): string {
+    // getMessageFromError
+    if (typeof err?.message === "string" && err.message.trim()) return err.message;
+
+    if (typeof detail === "string" && detail.trim()) return detail;
+
+    if (detail && typeof detail === "object") {
+      const msg = (detail as any).msg ?? (detail as any).message ?? (detail as any).error;
+      if (typeof msg === "string" && msg.trim()) return msg;
+    }
+
+    return "Error launching the protocol";
+  }
+
+  function extractValidationMessages(detail: any): string[] {
+    // extractValidationMessages
+    if (!detail) return [];
+
+    if (typeof detail === "string") {
+      return extractValidationErrors(detail);
+    }
+
+    // FastAPI/Pydantic often returns an array of error objects
+    if (Array.isArray(detail)) {
+      return detail
+        .map((item) => {
+          if (typeof item === "string") return item;
+
+          const loc = Array.isArray(item?.loc) ? item.loc.join(".") : "";
+          const msg = item?.msg ?? item?.message ?? JSON.stringify(item);
+          const locPrefix = loc ? `${loc}: ` : "";
+          return `${locPrefix}${String(msg)}`;
+        })
+        .filter((s) => typeof s === "string" && s.trim().length > 0);
+    }
+
+    if (typeof detail === "object") {
+      const msg = (detail as any).msg ?? (detail as any).message ?? (detail as any).error;
+      if (typeof msg === "string" && msg.trim()) return [msg];
+      try {
+        return [JSON.stringify(detail)];
+      } catch {
+        return [String(detail)];
+      }
+    }
+
+    return [String(detail)];
+  }
+
+  function openExecErrorDialog(title: string, message: string) {
+    // openExecErrorDialog
+    setExecError(message); // optional: keep the inline Typography too
+    setExecErrorDialogTitle(title);
+    setExecErrorDialogMessage(message);
+    setExecErrorDialogOpen(true);
+  }
+
+
   // Execute handler
   const handleExecute = async () => {
     setExecLoading(true);
@@ -1456,43 +1528,57 @@ export default function ProtocolForm({
 
     try {
       const projectId = data?.projectId;
-      const pid = data?.id ?? "";
+      const pid = data?.protocolId ?? "";
       const serialized = getSerializedParams();
+
       await svc.executeProtocol(projectId, pid, data?.protocolClassName, serialized);
+
       onExecuted?.();
       requestClose();
     } catch (err: any) {
-      if (typeof err?.detail === "string") {
-        const extracted = extractValidationErrors(err.detail);
-        if (extracted.length > 0) {
+      const status = getHttpStatusFromError(err);
+      const detail = getDetailFromError(err);
+
+      // showValidationDialogOn422OrValidationPayload
+      if (status === 422 || detail) {
+        const extracted = extractValidationMessages(detail);
+        if (extracted.length > 0 && (status === 422 || extracted.length > 0)) {
           setValidationErrors(extracted);
           setShowValidationDialog(true);
-          setExecLoading(false);
           return;
         }
       }
-      setExecError(err.message || "Error launching the protocol");
+
+      const msg = getMessageFromError(err, detail);
+      openExecErrorDialog("Execution error", msg);
     } finally {
       setExecLoading(false);
     }
   };
 
+
   // Save handler
   const handleSave = async () => {
     setExecLoading(true);
     setExecError(null);
+
     try {
       const projectId = data?.projectId;
-      const pid = data?.id ?? "";
+      const pid = data?.protocolId ?? "";
       const serialized = getSerializedParams();
+
       await svc.saveProtocol(projectId, pid, data?.protocolClassName, serialized);
+
       requestClose();
     } catch (err: any) {
-      setExecError(err.message || "Error saving the protocol");
+      const detail = getDetailFromError(err);
+      const msg = getMessageFromError(err, detail);
+      openExecErrorDialog("Save error", msg);
     } finally {
       setExecLoading(false);
     }
   };
+
 
   // Render a single parameter row
   const renderParam = useCallback(
@@ -1594,7 +1680,7 @@ export default function ProtocolForm({
               : [];
             while (list.length <= i) list.push({ object: "", info: "" });
             list[i] = {
-              object: dragged._objValue ?? "",
+              object: dragged.value ?? "",
               info: dragged.info ?? "",
               pointerClass: dragged.pointerClass ?? "",
               parentId: dragged.parentId ?? null,
@@ -1618,11 +1704,11 @@ export default function ProtocolForm({
             while (list.length <= rowIndexInner) list.push({ object: "", info: "" });
 
             list[rowIndexInner] = {
-              object: picked._objValue ?? "",
+              object: picked.value ?? "",
               info: picked.info ?? "",
               pointerClass: picked.pointerClass ?? "",
-              _objValue: picked._objValue ?? "",
-              parentId: picked._protocolId ?? picked.parentId ?? null,
+              value: picked.value ?? "",
+              parentId: picked.protocolId ?? picked.parentId ?? null,
             };
 
             return {
@@ -1673,7 +1759,7 @@ export default function ProtocolForm({
             ...prev,
             params: {
               ...prev.params,
-              [key]: { ...prev.params[key], editableValue: "", _objValue: "" },
+              [key]: { ...prev.params[key], editableValue: "", value: "" },
             },
           }));
 
@@ -1693,7 +1779,7 @@ export default function ProtocolForm({
           const v = value ?? def.default ?? "";
           if (typeof v === "string" || typeof v === "number") return v;
           if (v && typeof v === "object") {
-            const objValue = (v as any)._objValue;
+            const objValue = (v as any).value;
             if (typeof objValue === "string" || typeof objValue === "number") return objValue;
           }
           return "";
@@ -1755,7 +1841,7 @@ export default function ProtocolForm({
         const current = protocolDetails.params?.[key] || {};
         const textValue =
           current.editableValue ??
-          current._objValue ??
+          current.value ??
           def.value ??
           def.default ??
           "";
@@ -1778,7 +1864,7 @@ export default function ProtocolForm({
                 [key]: {
                   ...prev.params[key],
                   editableValue: "",
-                  _objValue: "",
+                  value: "",
                 },
               },
             };
@@ -1802,7 +1888,7 @@ export default function ProtocolForm({
                       [key]: {
                         ...prev.params[key],
                         editableValue: e.target.value,
-                        _objValue: e.target.value,
+                        value: e.target.value,
                       },
                     },
                   };
@@ -1898,7 +1984,7 @@ export default function ProtocolForm({
       }
 
       // Group
-      if (defClass === "Group" && Array.isArray(def.children)) {
+      if (defClass === "Group" && Array.isArray(def.params)) {
         const groupKey = `${key}_group`;
         const expanded = expandedGroups[groupKey] ?? true;
 
@@ -1941,7 +2027,7 @@ export default function ProtocolForm({
             </Box>
 
             {expanded &&
-              def.children.map((child: any, idx: number) => renderParam(child, sectionIdx, idx))}
+              def.params.map((child: any, idx: number) => renderParam(child, sectionIdx, idx))}
           </Box>
         );
       }
@@ -1951,7 +2037,7 @@ export default function ProtocolForm({
         const checked = coerceBooleanValue(
           value !== undefined
             ? value
-            : protocolDetails.params?.[key]?._objValue ?? def._objValue ?? def.value ?? def.default
+            : protocolDetails.params?.[key]?.value ?? def.value ?? def.value ?? def.default
         );
 
         return (
@@ -1971,7 +2057,7 @@ export default function ProtocolForm({
                         [key]: {
                           ...prev.params[key],
                           editableValue: e.target.checked,
-                          _objValue: e.target.checked,
+                          value: e.target.checked,
                         },
                       },
                     }))
@@ -2054,10 +2140,10 @@ export default function ProtocolForm({
 
       if (defClass === "MultiPointerParam") {
         const newItems = picks.map((pick) => ({
-          _objValue: pick?._objValue ?? "",
+          value: pick?.value ?? "",
           info: pick?.info ?? "",
           pointerClass: pick?.pointerClass ?? "",
-          parentId: pick?._protocolId ?? pick?.parentId ?? null,
+          parentId: pick?.protocolId ?? pick?.parentId ?? null,
         }));
 
         return {
@@ -2079,11 +2165,11 @@ export default function ProtocolForm({
           ...prev.params,
           [key]: {
             ...prevParam,
-            editableValue: pick?._objValue ?? "",
-            _objValue: pick?._objValue ?? "",
+            editableValue: pick?.value ?? "",
+            value: pick?.value ?? "",
             info: pick?.info ?? "",
             pointerClass: pick?.pointerClass ?? "",
-            parentId: pick?._protocolId ?? pick?.parentId ?? null,
+            parentId: pick?.protocolId ?? pick?.parentId ?? null,
           },
         },
       };
@@ -2691,7 +2777,7 @@ export default function ProtocolForm({
       <div className={styles.formHeader}>
         <div className={styles.formTitleWrapper}>
           <Box className="inline-flex items-center justify-center rounded-full bg-green-500 text-black text-xs font-bold px-2 py-1">
-            {data?.id}
+            {data?.protocolId}
           </Box>
           <span className="text-white">{protocolDetails.label}</span>
           <span
@@ -3227,6 +3313,7 @@ export default function ProtocolForm({
       </div>
 
       {/* PathParam RemoteFileDialog */}
+            {/* PathParam RemoteFileDialog */}
       {pathDialog.open && pathDialog.paramKey && projectId && protocolId && (
         <RemoteFileDialog
           open={pathDialog.open}
@@ -3257,7 +3344,11 @@ export default function ProtocolForm({
             )
           }
           fetchInlinePreviewBlob={(p) =>
-            svc.fetchProtocolInlinePreviewBlob(String(projectId), String(protocolId), p)
+            svc.fetchProtocolInlinePreviewBlob(
+              String(projectId),
+              String(protocolId),
+              p
+            )
           }
           onPick={(relativePath) => {
             const paramKey = pathDialog.paramKey;
@@ -3273,7 +3364,7 @@ export default function ProtocolForm({
                     [paramKey]: {
                       ...prev.params[paramKey],
                       editableValue: relativePath,
-                      _objValue: relativePath,
+                      value: relativePath,
                     },
                   },
                 };
@@ -3296,6 +3387,44 @@ export default function ProtocolForm({
         multiSelect={false}
       />
 
+      {/* Generic execute/save error dialog */}
+      <Dialog
+        open={execErrorDialogOpen}
+        onClose={() => setExecErrorDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 3,
+            boxShadow: "0px 10px 25px rgba(0, 0, 0, 0.25)",
+          },
+        }}
+      >
+        <DialogTitle sx={{ fontWeight: 700 }}>
+          {execErrorDialogTitle}
+        </DialogTitle>
+
+        <DialogContent dividers>
+          <Typography
+            variant="body2"
+            sx={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}
+          >
+            {execErrorDialogMessage}
+          </Typography>
+        </DialogContent>
+
+        <DialogActions>
+          <Button
+            onClick={() => setExecErrorDialogOpen(false)}
+            variant="contained"
+            sx={{ textTransform: "none" }}
+          >
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Validation errors dialog */}
       {showValidationDialog && (
         <Dialog
           open={showValidationDialog}
@@ -3450,6 +3579,7 @@ export default function ProtocolForm({
         outputName={activeOutput?.name || ""}
         outputRaw={activeOutput?.raw || {}}
       />
+
     </div>
   );
 }
