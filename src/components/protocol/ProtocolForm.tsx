@@ -1050,7 +1050,7 @@ export default function ProtocolForm({
     // initialLoad
     (async () => {
       try {
-        const res: any = await fetchProtocolLogsStream(data.projectId, data.id, 0, 0, 0);
+        const res: any = await fetchProtocolLogsStream(data.projectId, data.protocolId, 0, 0, 0);
         if (cancelled) return;
 
         setLogs(res.stdoutLog ?? "");
@@ -1081,7 +1081,7 @@ export default function ProtocolForm({
       try {
         const res: any = await fetchProtocolLogsStream(
           data.projectId,
-          data.id,
+          data.protocolId,
           offsetRef.current || 0,
           errorOffsetRef.current || 0,
           scheduleOffsetRef.current || 0
@@ -1365,18 +1365,15 @@ export default function ProtocolForm({
 
       if (cls === "PointerParam") {
         const editable = p.editableValue ?? "";
-        const normalized = {
-          value: "",
-          parentId: p.parentId ?? null,
-        };
+        let normalized = ""
 
         const token = (p.value ?? "").toString().trim();
         if (token) {
-          normalized.value = token;
+          normalized = token;
         } else if (editable) {
-          normalized.value = String(editable);
+          normalized = String(editable);
         } else {
-          normalized.value = "";
+          normalized = "";
         }
 
         out[newKey] = normalized;
@@ -1386,15 +1383,9 @@ export default function ProtocolForm({
       if (cls === "MultiPointerParam" && Array.isArray(p.editableValue)) {
         const list = p.editableValue.map((item: any) => {
           if (typeof item === "string" || typeof item === "number" || typeof item === "boolean") {
-            return {
-              value: String(item),
-              parentId: null,
-            };
+            return String(item)
           }
-          return {
-            value: (item.value ?? item.object ?? "") || "",
-            parentId: item.parentId ?? item.protocolId ?? null,
-          };
+          return (item.value ?? item.object ?? "") || ""
         });
 
         out[newKey] = list;
@@ -1406,15 +1397,11 @@ export default function ProtocolForm({
           p.editableValue ?? p.value ?? p.value ?? p.default
         );
 
-        out[newKey] = {
-          value: boolVal ? "True" : "False",
-        };
+        out[newKey] = boolVal ? "True" : "False"
         return;
       }
 
-      out[newKey] = {
-        value: p.editableValue,
-      };
+      out[newKey] = p.editableValue;
     });
 
     return out;
@@ -3127,6 +3114,8 @@ export default function ProtocolForm({
                   ))}
                 </Tabs>
                 <Box className={styles.bottomTabContent} sx={{ p: 2 }}>
+
+                   {/* Output Log */}
                   {bottomTab === 0 && (
                     <Box
                       ref={containerRef}
@@ -3168,7 +3157,7 @@ export default function ProtocolForm({
                     </Box>
                   )}
 
-                  {/* Output Log */}
+                  {/* Errors Log */}
                   {bottomTab === 1 && (
                     <Box
                       ref={errorContainerRef}
@@ -3210,7 +3199,7 @@ export default function ProtocolForm({
                     </Box>
                   )}
 
-                  {/* Errors Log */}
+                  {/* Schedule Log */}
                   {bottomTab === 2 && (
                     <Box
                       ref={scheduleContainerRef}
