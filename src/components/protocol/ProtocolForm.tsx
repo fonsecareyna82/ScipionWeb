@@ -1,5 +1,6 @@
 // src/components/ProtocolForm.tsx
 import { useState, useEffect, useCallback, JSX, useRef, useMemo } from "react";
+import toast from "react-hot-toast";
 import {
   Tabs,
   Tab,
@@ -668,6 +669,12 @@ export default function ProtocolForm({
   // Outputs tab state
   // --------------------------------------------
   const [selectedOutputIdx, setSelectedOutputIdx] = useState<number | null>(null);
+
+
+  // --------------------------------------------
+  // Metadata tab snapshot
+  // --------------------------------------------
+  const [metadataSnapshot, setMetadataSnapshot] = useState<any>(data);
 
   // Preview panel state
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -1446,6 +1453,41 @@ export default function ProtocolForm({
     });
   }, [form?.protocolClassName, protocolDetails.params]);
 
+
+  useEffect(() => {
+    // updateMetadataSnapshotOnTabOpen
+    if (topTab !== 3) return;
+
+    const serialized = getSerializedParams();
+
+    setMetadataSnapshot(() => {
+      if (!data || typeof data !== "object") return data;
+
+      // cloneEnvelopeShallow
+      const base: any = Array.isArray(data) ? [...data] : { ...(data as any) };
+
+      // mergeValuesKeepingUnknownKeys
+      const prevValues =
+        base.values && typeof base.values === "object" && !Array.isArray(base.values)
+          ? base.values
+          : {};
+
+      const nextValues = { ...prevValues, ...serialized };
+
+      base.values = nextValues;
+
+      // optionalSyncFormValuesIfPresent
+      if (base.form && typeof base.form === "object" && base.form !== null) {
+        if ("values" in base.form) {
+          base.form = { ...base.form, values: nextValues };
+        }
+      }
+
+      return base;
+    });
+  }, [topTab, data, protocolDetails.params]);
+
+
   // Filter outputs for a given paramKey, excluding self and descendants
   const getFilteredOutputsForKey = (paramKey: string) => {
     const liveParam = protocolDetails.params?.[paramKey];
@@ -1687,17 +1729,34 @@ export default function ProtocolForm({
       const pid = form?.protocolId ?? "";
       const serialized = getSerializedParams();
 
-      await svc.saveProtocol(projectId, pid, form?.protocolClassName, serialized);
+      const res: any = await svc.saveProtocol(projectId, pid, form?.protocolClassName, serialized);
 
-      requestClose();
+      const returnedProtocolId = res?.protocolId ?? pid;
+
+      if (res?.status === "ok" && Array.isArray(res?.errors) && res.errors.length === 0) {
+        toast.success(`Saved protocol ${returnedProtocolId} successfully.`);
+        requestClose();
+        return;
+      }
+
+      if (res?.status === "ok") {
+        const errText = Array.isArray(res?.errors) ? res.errors.join("; ") : "Unknown warning";
+        toast.error(`Saved with warnings: ${errText}`);
+        requestClose();
+        return;
+      }
+
+      toast.error("Save failed");
     } catch (err: any) {
       const detail = getDetailFromError(err);
       const msg = getMessageFromError(err, detail);
+      toast.error(msg);
       openExecErrorDialog("Save error", msg);
     } finally {
       setExecLoading(false);
     }
   };
+
 
 
   // Render a single parameter row
@@ -1707,7 +1766,7 @@ export default function ProtocolForm({
       if (!name || !def) return null;
 
       const isInline = layoutVariant === "inline";
-      const fieldWidth = isInline ? 75 : 300;
+      const fieldWidth = isInline ? 60 : 300;
 
       const defClass = getParamClass(def);
       const key = `${sectionIdx}_${name}`;
@@ -1728,37 +1787,62 @@ export default function ProtocolForm({
         return null;
       }
 
-      const advancedSlot = (
-        <Box
-          sx={{
-            width: "1.5rem",
-            height: "1.5rem",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          {def.expertLevel === 1 ? (
+      // advancedSlot
+      const advancedSlot = isInline
+        ? def.expertLevel === 1
+          ? (
             <Tooltip title="Advanced">
               <Box
                 sx={{
-                  width: "1.5rem",
-                  height: "1.5rem",
+                  width: 18,
+                  height: 18,
                   bgcolor: "#777",
                   color: "white",
                   borderRadius: "50%",
-                  fontSize: "0.8rem",
+                  fontSize: "0.7rem",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
+                  flex: "0 0 auto",
                 }}
               >
                 A
               </Box>
             </Tooltip>
-          ) : null}
-        </Box>
-      );
+          )
+          : null
+        : (
+          <Box
+            sx={{
+              width: "1.5rem",
+              height: "1.5rem",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            {def.expertLevel === 1 ? (
+              <Tooltip title="Advanced">
+                <Box
+                  sx={{
+                    width: "1.5rem",
+                    height: "1.5rem",
+                    bgcolor: "#777",
+                    color: "white",
+                    borderRadius: "50%",
+                    fontSize: "0.8rem",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  A
+                </Box>
+              </Tooltip>
+            ) : null}
+          </Box>
+        );
+
 
       // MultiPointerParam
       if (defClass === "MultiPointerParam") {
@@ -2110,81 +2194,78 @@ export default function ProtocolForm({
 
       // Line
       if (defClass === "Line" && Array.isArray(def.params)) {
-        const lineKey = `${key}_line`;
-        const hasHeader = Boolean(def.label || name);
-        const expanded = expandedGroups[lineKey] ?? true;
+        const title = String(def.label || name || "").trim();
 
-        const toggleExpand = () =>
-          setExpandedGroups((prev) => ({ ...prev, [lineKey]: !expanded }));
+        // renderInlineChildren
+        const children = def.params
+          .map((child: any, idx: number) => {
+            const childEl = renderParam(child, sectionIdx, idx, "inline");
+            if (!childEl) return null;
 
-        const title = def.label || name || `Line ${lineKey}`;
-        const showChildren = !hasHeader || expanded;
-
-        return (
-          <Box
-            key={key}
-            sx={{
-              mb: 2,
-              border: "1px dashed #ccc",
-              borderRadius: 1,
-              p: 1,
-              backgroundColor: (theme) => (theme.palette.mode === "dark" ? "#2c2c2c" : "#f9fafb"),
-            }}
-          >
-            {hasHeader && (
+            return (
               <Box
+                key={`${key}_line_${idx}`}
                 sx={{
+                  flex: "0 0 auto",
+                  minWidth: 0,
                   display: "flex",
-                  justifyContent: "space-between",
                   alignItems: "center",
-                  cursor: "pointer",
-                  mb: 1,
                 }}
-                onClick={toggleExpand}
               >
-                <Typography
-                  variant="subtitle2"
-                  sx={(theme) => ({
-                    color: theme.palette.mode === "dark" ? "#ffffff" : "#000000",
-                  })}
-                >
-                  {title}
-                </Typography>
-                <IconButton size="small">
-                  {expanded ? <ChevronUpIcon fontSize="small" /> : <ChevronDownIcon fontSize="small" />}
-                </IconButton>
+                {childEl}
               </Box>
-            )}
+            );
+          })
+          .filter(Boolean);
 
-            {showChildren && (
+        // If the line has no label, just render the inline controls
+        if (!title) {
+          return (
+            <Box
+              key={key}
+              sx={{
+                mb: 1,
+                display: "flex",
+                alignItems: "center",
+                gap: 1,
+                flexWrap: "nowrap",
+                overflowX: "auto",
+                overflowY: "hidden",
+                pb: 0.25,
+
+              }}
+            >
+              {children as any}
+            </Box>
+          );
+        }
+
+        // Single-row layout: label (left) + children controls (right)
+        return (
+          <ParamRow
+            key={key}
+            label={title}
+            control={
               <Box
                 sx={{
                   display: "flex",
+                  alignItems: "center",
+                  gap: 1,
+                  flexWrap: "nowrap",
                   overflowX: "auto",
                   overflowY: "hidden",
-                  pb: 0.5,
-                  alignItems: "center",
+                  minWidth: 0,
+                  pb: 0.25,
+                  ml: 3,
                 }}
               >
-                <Box
-                  sx={{
-                    // alignLineItemsRight
-                    display: "flex",
-                    flexWrap: "nowrap",
-                    gap: 1,
-                    alignItems: "center",
-                    ml: "auto",
-                  }}
-                >
-                  {def.params.map((child: any, idx: number) => (
-                    <Box key={`${lineKey}_${idx}`} sx={{ flex: "0 0 auto", minWidth: 0 }}>
-                      {renderParam(child, sectionIdx, idx, "inline")}
-                    </Box>
-                  ))}
-                </Box>
+                {children as any}
               </Box>
-            )}
-          </Box>
+            }
+            helpText={def.help}
+            rowIndex={rowIndex}
+            layoutVariant="standard"
+          />
         );
       }
 
@@ -3469,7 +3550,7 @@ export default function ProtocolForm({
             {/* Metadata */}
             {topTab === 3 && (
               <Box sx={{ height: "100%", maxHeight: "100%", overflow: "auto" }}>
-                <JsonTree data={data} />
+                <JsonTree data={metadataSnapshot} />
               </Box>
             )}
           </Box>

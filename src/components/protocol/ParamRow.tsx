@@ -64,24 +64,24 @@ const ParamRow = ({
         sx={{
           ...(isInline
             ? {
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 1,
-                px: 1,
-                py: 0.5,
-                borderRadius: 1,
-                //backgroundColor: rowBg,
-                border: "1px solid rgba(0,0,0,0.08)",
-                minHeight: 42,
-              }
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 0,
+              px: 1,
+              py: 0.5,
+              borderRadius: 1,
+              //backgroundColor: rowBg,
+              //border: "1px solid rgba(0,0,0,0.08)",
+              minHeight: 42,
+            }
             : {
-                display: "grid",
-                gridTemplateColumns: "210px 1fr auto",
-                alignItems: "center",
-                mb: 1,
-                //backgroundColor: rowBg,
-                position: "relative",
-              }),
+              display: "grid",
+              gridTemplateColumns: "210px 1fr auto",
+              alignItems: "center",
+              mb: 1,
+              //backgroundColor: rowBg,
+              position: "relative",
+            }),
         }}
       >
         <Typography
@@ -108,10 +108,10 @@ const ParamRow = ({
             minWidth: 0,
             ...(isInline
               ? {
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 0.75,
-                }
+                display: "flex",
+                alignItems: "center",
+                gap: 0.75,
+              }
               : null),
           }}
         >
@@ -157,19 +157,35 @@ const ParamRow = ({
       </Box>
 
       {helpText && (
-        <Dialog open={openHelp} onClose={() => setOpenHelp(false)} maxWidth="sm" fullWidth>
+        <Dialog
+          open={openHelp}
+          onClose={() => setOpenHelp(false)}
+          maxWidth="sm"
+          fullWidth
+          slotProps={{
+            backdrop: {
+              sx: { backgroundColor: "transparent" },
+            },
+          }}
+        >
           <DialogTitle className={styles.formHeader}>Help</DialogTitle>
           <DialogContent sx={{ p: 2 }}>
-            <Typography variant="body2" sx={{ lineHeight: 1.6 }}>
+            <Typography variant="body2" sx={{ lineHeight: 1.6, mt: 2 }}>
               {helpText}
             </Typography>
           </DialogContent>
           <DialogActions sx={{ justifyContent: "center" }}>
-            <Button variant="outlined" onClick={() => setOpenHelp(false)} startIcon={<CloseIcon />}>
+            <Button
+              variant="outlined"
+              onClick={() => setOpenHelp(false)}
+              startIcon={<CloseIcon />}
+              sx={{ textTransform: "none" }}
+            >
               Close
             </Button>
           </DialogActions>
         </Dialog>
+
       )}
 
       <Dialog open={openSelector} onClose={() => setOpenSelector(false)} maxWidth="sm" fullWidth>
