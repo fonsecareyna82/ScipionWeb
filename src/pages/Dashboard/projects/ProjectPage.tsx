@@ -261,6 +261,18 @@ export default function ProjectPage() {
   const [, startTransition] = useTransition();
   const disablePersistenceRef = useRef(false);
 
+  const projectIdRef = useRef<string | number | undefined>(undefined);
+
+  useEffect(() => {
+    const raw = (project as any)?.projectId ?? (project as any)?.id;
+    if (raw == null) return;
+    const asNumber = typeof raw === "number" ? raw : Number(raw);
+    projectIdRef.current = Number.isNaN(asNumber) ? String(raw) : asNumber;
+  }, [project]);
+
+  const getProjectId = () => projectIdRef.current;
+
+
   // Viewport state (used for hierarchical/table; grid uses fixed zoom)
   const [viewport, setViewport] = useState<{ x: number; y: number; zoom: number }>({ x: 0, y: 0, zoom: 0.3464 });
   const viewportRef = useRef(viewport);
@@ -991,7 +1003,8 @@ export default function ProjectPage() {
         () => nodeActionsRef.current,
         () => getSelectedPathIds(),
         (protocolId: string, projectId?: string | number, protocolLabel?: string) =>
-          openBrowse(protocolId, projectId, protocolLabel)
+          openBrowse(protocolId, projectId, protocolLabel),
+        () => getProjectId()
       ),
     };
   }

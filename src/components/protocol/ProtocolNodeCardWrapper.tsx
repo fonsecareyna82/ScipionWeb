@@ -15,6 +15,7 @@ type NodeActions = {
   onStop?: (id: string) => void;
 };
 
+// addGetProjectId
 export const createStatusNodeWrapper = (
   onClick: (data: any, evt?: React.MouseEvent) => void,
   onDoubleClick: (data: any) => void,
@@ -25,7 +26,8 @@ export const createStatusNodeWrapper = (
   getViewMode?: () => "hierarchical" | "grid" | "table",
   getNodeActions?: () => NodeActions,
   getPathSelectionNodeIds?: () => Set<string>,
-  onBrowse?: (protocolId: string, projectId?: string | number, protocolLabel?: string) => void
+  onBrowse?: (protocolId: string, projectId?: string | number, protocolLabel?: string) => void,
+  getProjectId?: () => string | number | undefined
 ) => {
   return function StatusNodeWrapper(props: NodeProps) {
     const { data, id, ...rest } = props;
@@ -35,25 +37,28 @@ export const createStatusNodeWrapper = (
     const selectedNodeId = getSelectedNodeId?.();
     const hoveredNodeId = getHoveredNodeId?.();
     const graphDirection = getGraphDirection?.() ?? "TB";
-
     const viewMode = getViewMode?.() ?? "hierarchical";
 
     const handleMouseEnter = () => setHoveredNodeId?.(String(id));
     const handleMouseLeave = () => setHoveredNodeId?.(null);
-    const isHovered =
-      typeof hoveredNodeId === "string" && String(id) === String(hoveredNodeId);
 
     const actions = getNodeActions?.() ?? {};
     const pathSelectedSet = getPathSelectionNodeIds?.() ?? new Set<string>();
     const inPathSelection = pathSelectedSet.has(String(id));
     const pathSelectionActive = pathSelectedSet.size > 0;
 
+    const resolvedProjectId = getProjectId?.();
+
     return (
       <div onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave} style={{ display: "inline-block" }}>
         <StatusNode
           {...rest}
           id={String(id)}
-          data={data as any}
+          data={{
+            ...(data as any),
+            // injectProjectIdIntoData
+            projectId: (data as any)?.projectId ?? resolvedProjectId,
+          }}
           selectedNodeId={selectedNodeId}
           onClick={(evt?: React.MouseEvent) => onClick(data, evt)}
           onDoubleClick={() => onDoubleClick(data)}
@@ -61,8 +66,7 @@ export const createStatusNodeWrapper = (
           zoomLevel={zoom}
           hoveredNodeId={hoveredNodeId}
           setHoveredNodeId={setHoveredNodeId}
-          isHovered={isHovered}
-          // actions
+          isHovered={typeof hoveredNodeId === "string" && String(id) === String(hoveredNodeId)}
           onEdit={actions.onEdit}
           onRename={actions.onRename}
           onDuplicate={actions.onDuplicate}
@@ -76,9 +80,10 @@ export const createStatusNodeWrapper = (
           inPathSelection={inPathSelection}
           pathSelectionActive={pathSelectionActive}
           onBrowse={onBrowse}
-          showHandles={viewMode !== "grid"} 
+          showHandles={viewMode !== "grid"}
         />
       </div>
     );
   };
 };
+

@@ -45,7 +45,10 @@ import {
   ArrowDown,
   ArrowUp,
   Scan,
+  Eye,
 } from "lucide-react";
+
+import AnalyzeOutputDialog from "@/components/analyze/analyze-output-dialog";
 
 const statusColors: Record<string, string> = {
   running: "#FCCE62",
@@ -136,7 +139,7 @@ const formatCpuTime = (seconds: number): string => {
 };
 
 type NormalizedOutput = {
-  name?: string;
+  name?: string; // output key/name used by backend
   info?: string;
   paramClass: string;
   pointerClass?: string;
@@ -147,7 +150,7 @@ type NormalizedOutput = {
 const normalizeOutputItem = (outputObj: unknown): NormalizedOutput | null => {
   // Supports both shapes:
   // 1) Flat:
-  //    { name, paramClass: "PointerParam", pointerClass, info, value, parentId }
+  //    { outputName|name, paramClass: "PointerParam", pointerClass, info, value, parentId }
   // 2) Wrapped legacy:
   //    { SomeName: { paramClass: "PointerParam", pointerClass, info, value, parentId } }
   // Also tolerates older fields (_class) during transition.
@@ -157,11 +160,19 @@ const normalizeOutputItem = (outputObj: unknown): NormalizedOutput | null => {
 
   const hasFlatSignature =
     "paramClass" in flatCandidate &&
-    (("info" in flatCandidate) || ("name" in flatCandidate) || ("pointerClass" in flatCandidate));
+    (("info" in flatCandidate) ||
+      ("name" in flatCandidate) ||
+      ("outputName" in flatCandidate) ||
+      ("pointerClass" in flatCandidate));
 
   if (hasFlatSignature) {
     const normalized: NormalizedOutput = {
-      name: typeof flatCandidate.name === "string" ? flatCandidate.name : undefined,
+      name:
+        typeof flatCandidate.outputName === "string"
+          ? flatCandidate.outputName
+          : typeof flatCandidate.name === "string"
+            ? flatCandidate.name
+            : undefined,
       info: typeof flatCandidate.info === "string" ? flatCandidate.info : undefined,
       paramClass: String(flatCandidate.paramClass ?? ""),
       pointerClass:
@@ -297,9 +308,7 @@ export default function ProtocolNodeCard({
     const nodeEl =
       (e.currentTarget as HTMLElement)?.closest(".react-flow__node") ??
       rootRef.current?.closest(".react-flow__node") ??
-      doc.querySelector(
-        `.react-flow__node[data-id="${CSS.escape(String(data.id))}"]`
-      );
+      doc.querySelector(`.react-flow__node[data-id="${CSS.escape(String(data.id))}"]`);
 
     if (!nodeEl) return;
 
@@ -328,8 +337,7 @@ export default function ProtocolNodeCard({
   const hasOutputs = outputsArray.length > 0;
 
   const isMac =
-    typeof navigator !== "undefined" &&
-    /Mac|iPhone|iPad|iPod/.test(navigator.platform);
+    typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/.test(navigator.platform);
 
   const mod = isMac ? "⌘" : "Ctrl";
   const modShift = isMac ? "⌘⇧" : "Ctrl+Shift";
@@ -361,9 +369,24 @@ export default function ProtocolNodeCard({
 
   const contentStyle: React.CSSProperties = {
     opacity: isContentExpanded ? 1 : 0,
-    transition:
-      "max-height 520ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 260ms ease-in-out",
+    transition: "max-height 520ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 260ms ease-in-out",
     willChange: "max-height, opacity",
+  };
+
+  // Output viewer state
+  const [analyzeOpen, setAnalyzeOpen] = useState(false);
+  const [analyzeTarget, setAnalyzeTarget] = useState<{
+    outputName: string;
+    outputRaw: any;
+  } | null>(null);
+
+  const canOpenViewer = !isProjectNode && data.projectId != null;
+
+  const openOutputViewer = (outputName: string, outputRaw: any) => {
+    // openOutputViewer
+    if (!canOpenViewer) return;
+    setAnalyzeTarget({ outputName, outputRaw });
+    setAnalyzeOpen(true);
   };
 
   return (
@@ -382,23 +405,17 @@ export default function ProtocolNodeCard({
           onMouseLeave={() => setIsHovered(false)}
         >
           <div
-            className={[
-              styles.header,
-              isProjectNode ? styles.headerProject : styles.headerProtocol,
-            ].join(" ")}
+            className={[styles.header, isProjectNode ? styles.headerProject : styles.headerProtocol].join(
+              " "
+            )}
           >
             <div className={styles.headerLeft}>
               {!isProjectNode && (
                 <div
-                  className={[
-                    styles.nodeIdBadge,
-                    data.status === "running" ? styles.glowBadge : "",
-                  ]
+                  className={[styles.nodeIdBadge, data.status === "running" ? styles.glowBadge : ""]
                     .filter(Boolean)
                     .join(" ")}
-                  style={
-                    isCompactView ? { fontSize: "2.4rem" } : { fontSize: "2.3rem" }
-                  }
+                  style={isCompactView ? { fontSize: "2.4rem" } : { fontSize: "2.3rem" }}
                 >
                   <span>{data.id}</span>
                 </div>
@@ -413,10 +430,7 @@ export default function ProtocolNodeCard({
                 </div>
               ) : (
                 <div
-                  className={[
-                    styles.label,
-                    isCompactView ? styles.labelCompact : "",
-                  ]
+                  className={[styles.label, isCompactView ? styles.labelCompact : ""]
                     .filter(Boolean)
                     .join(" ")}
                   title={data.label}
@@ -445,10 +459,7 @@ export default function ProtocolNodeCard({
                     </button>
                   </DropdownMenuTrigger>
 
-                  <DropdownMenuContent
-                    className={styles.menuContent}
-                    onClick={(e) => e.stopPropagation()}
-                  >
+                  <DropdownMenuContent className={styles.menuContent} onClick={(e) => e.stopPropagation()}>
                     {!reduceMenus && (
                       <>
                         <DropdownMenuItem onClick={handleEdit}>
@@ -631,11 +642,7 @@ export default function ProtocolNodeCard({
           </div>
 
           {shouldRenderProtocolBody && (
-            <div
-              className={contentClassName}
-              style={contentStyle}
-              aria-hidden={!isContentExpanded}
-            >
+            <div className={contentClassName} style={contentStyle} aria-hidden={!isContentExpanded}>
               <div className={styles.cardContent}>
                 <div className={styles.outputsReserved}>
                   {hasOutputs ? (
@@ -658,12 +665,13 @@ export default function ProtocolNodeCard({
                             value.paramClass ??
                             "Output";
 
-                          const displayClass =
-                            value.pointerClass ?? value.paramClass ?? "PointerParam";
+                          const displayClass = value.pointerClass ?? value.paramClass ?? "PointerParam";
 
                           const pillKey =
-                            value.value ??
-                            `${String(value.parentId ?? "")}:${String(value.name ?? idx)}`;
+                            value.value ?? `${String(value.parentId ?? "")}:${String(value.name ?? idx)}`;
+
+                          const outputName = String(value.name ?? "");
+                          const isViewerEnabled = canOpenViewer && !!outputName;
 
                           return (
                             <div
@@ -703,10 +711,7 @@ export default function ProtocolNodeCard({
                                 };
 
                                 setCurrentDraggedOutput(output);
-                                e.dataTransfer.setData(
-                                  "application/scipion-output",
-                                  JSON.stringify(output)
-                                );
+                                e.dataTransfer.setData("application/scipion-output", JSON.stringify(output));
 
                                 const ghost = document.createElement("div");
                                 ghost.style.position = "absolute";
@@ -729,6 +734,35 @@ export default function ProtocolNodeCard({
                             >
                               <ArrowUpRight className={styles.outputIcon} />
                               <span className={styles.outputText}>{labelText}</span>
+
+                              <button
+                                type="button"
+                                className={`${styles.outputActionBtn} nodrag`}
+                                draggable={false}
+                                data-nodrag
+                                aria-label="View output"
+                                title={isViewerEnabled ? "View output" : "Viewer not available"}
+                                onPointerDown={(e) => {
+                                  // preventDragStartFromViewerButton
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                }}
+                                onMouseDown={(e) => {
+                                  // preventDragStartFromViewerButtonMouse
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                }}
+                                onClick={(e) => {
+                                  // openViewerDialog
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  if (!isViewerEnabled) return;
+                                  openOutputViewer(outputName, outputObj);
+                                }}
+                                disabled={!isViewerEnabled}
+                              >
+                                <Eye className={styles.outputEyeIcon} />
+                              </button>
                             </div>
                           );
                         })}
@@ -796,30 +830,19 @@ export default function ProtocolNodeCard({
               <Handle
                 type="target"
                 position={graphDirection === "TB" ? Position.Top : Position.Left}
-                style={
-                  graphDirection === "TB"
-                    ? {}
-                    : { top: "50%", transform: "translateY(-50%)" }
-                }
+                style={graphDirection === "TB" ? {} : { top: "50%", transform: "translateY(-50%)" }}
               />
               <Handle
                 type="source"
                 position={graphDirection === "TB" ? Position.Bottom : Position.Right}
-                style={
-                  graphDirection === "TB"
-                    ? {}
-                    : { top: "50%", transform: "translateY(-50%)" }
-                }
+                style={graphDirection === "TB" ? {} : { top: "50%", transform: "translateY(-50%)" }}
               />
             </>
           )}
         </div>
       </ContextMenuTrigger>
 
-      <ContextMenuContent
-        className={styles.menuContent}
-        onClick={(e) => e.stopPropagation()}
-      >
+      <ContextMenuContent className={styles.menuContent} onClick={(e) => e.stopPropagation()}>
         {!reduceMenus && (
           <>
             <ContextMenuItem onClick={handleEdit}>
@@ -876,9 +899,7 @@ export default function ProtocolNodeCard({
 
             <ContextMenuSeparator />
 
-            {(data.status === "running" ||
-              data.status === "launched" ||
-              data.status === "scheduled") && (
+            {(data.status === "running" || data.status === "launched" || data.status === "scheduled") && (
               <ContextMenuItem onClick={handleStop}>
                 <div className={styles.menuRow}>
                   <span className={styles.menuLeft}>
@@ -925,9 +946,7 @@ export default function ProtocolNodeCard({
         )}
 
         {reduceMenus &&
-          (data.status === "running" ||
-            data.status === "launched" ||
-            data.status === "scheduled") && (
+          (data.status === "running" || data.status === "launched" || data.status === "scheduled") && (
             <ContextMenuItem onClick={handleStop}>
               <div className={styles.menuRow}>
                 <span className={styles.menuLeft}>
@@ -979,6 +998,18 @@ export default function ProtocolNodeCard({
           </div>
         </ContextMenuItem>
       </ContextMenuContent>
+
+      {canOpenViewer && (
+        <AnalyzeOutputDialog
+          open={analyzeOpen}
+          onClose={() => setAnalyzeOpen(false)}
+          projectId={Number(data.projectId)}
+          protocolId={data.id}
+          protocolLabel={data.label}
+          outputName={analyzeTarget?.outputName ?? ""}
+          outputRaw={analyzeTarget?.outputRaw ?? {}}
+        />
+      )}
     </ContextMenu>
   );
 }
