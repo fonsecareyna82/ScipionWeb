@@ -959,12 +959,95 @@ export default function ProtocolForm({
     return parts;
   }
 
+
+  const hasOwn = (obj: any, key: string) => {
+    // hasOwn
+    return obj != null && typeof obj === "object" && Object.prototype.hasOwnProperty.call(obj, key);
+  };
+
+  const getInitialRawForParam = (paramName: string, def: any, valuesMap: any) => {
+    // getInitialRawForParam
+    if (hasOwn(valuesMap, paramName)) return valuesMap[paramName];
+    return def?.value ?? def?.default ?? "";
+  };
+
+  const normalizePointerToken = (raw: any): string => {
+    // normalizePointerToken
+    const v = parseFromJSONValue(raw);
+
+    if (v === null || v === undefined) return "";
+    if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") return String(v);
+
+    if (v && typeof v === "object") {
+      if ("value" in v) return String((v as any).value ?? "");
+      if ("object" in v) return String((v as any).object ?? "");
+    }
+
+    return "";
+  };
+
+  const normalizeEnumLabel = (raw: any, choices: string[] | undefined, fallback: any) => {
+    // normalizeEnumLabel
+    const parsed = parseFromJSONValue(raw);
+    if (!Array.isArray(choices) || choices.length === 0) return parsed ?? fallback ?? "";
+
+    if (typeof parsed === "number") return choices[parsed] ?? (fallback ?? choices[0]);
+    if (typeof parsed === "string") {
+      const trimmed = parsed.trim();
+
+      // If backend sends "0"/"1" as string index
+      if (!choices.includes(trimmed) && /^\d+$/.test(trimmed)) {
+        const idx = Number(trimmed);
+        return choices[idx] ?? (fallback ?? choices[0]);
+      }
+
+      return choices.includes(trimmed) ? trimmed : (fallback ?? choices[0]);
+    }
+
+    return fallback ?? choices[0];
+  };
+
+  const normalizeMultiPointerValue = (raw: any) => {
+    // normalizeMultiPointerValue
+    const parsed = parseFromJSONValue(raw);
+
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed.map((item: any) => {
+      if (item === null || item === undefined) return { object: "", info: "" };
+
+      if (typeof item === "string" || typeof item === "number" || typeof item === "boolean") {
+        return { object: String(item), info: "" };
+      }
+
+      if (item && typeof item === "object") {
+        const objectToken =
+          (item as any).object ??
+          (item as any).value ??
+          (item as any)._objValue ??
+          "";
+
+        return {
+          object: String(objectToken ?? ""),
+          info: String((item as any).info ?? ""),
+          pointerClass: String((item as any).pointerClass ?? ""),
+          parentId: (item as any).parentId ?? null,
+        };
+      }
+
+      return { object: "", info: "" };
+    });
+  };
+
+
   // Load initial parameters into protocolDetails
   useEffect(() => {
     if (!form) {
       setProtocolDetails({});
       return;
     }
+
+    const valuesMap = values && typeof values === "object" ? values : null;
 
     const params: any = {};
     const walk = (secIdx: number, paramLike: any) => {
@@ -979,14 +1062,14 @@ export default function ProtocolForm({
       }
 
       const key = `${secIdx}_${name}`;
-      const raw = def.value ?? def.default ?? "";
-      const parsed = parseFromJSONValue(raw);
 
-      let init = parsed ?? "";
+      // Use values[name] as source of truth (fallback to def.value/def.default)
+      const rawFromApi = getInitialRawForParam(name, def, valuesMap);
+      const parsedFromApi = parseFromJSONValue(rawFromApi);
 
-      // normalizeBooleanParam
+      // BooleanParam
       if (cls === "BooleanParam") {
-        init = coerceBooleanValue(parsed);
+        const initBool = coerceBooleanValue(parsedFromApi);
 
         const defObjValue = parseFromJSONValue(def.value);
         const defDefault = parseFromJSONValue(def.default);
@@ -995,17 +1078,58 @@ export default function ProtocolForm({
           ...def,
           value: coerceBooleanValue(defObjValue),
           default: coerceBooleanValue(defDefault),
-          editableValue: init,
+          editableValue: initBool,
         };
         return;
       }
 
-      // If EnumParam default is index, map to label for UI state
-      if (cls === "EnumParam" && Array.isArray(def.choices) && typeof init === "number") {
-        init = def.choices[init] ?? def.default ?? "";
+      // MultiPointerParam
+      if (cls === "MultiPointerParam") {
+        const initList = normalizeMultiPointerValue(rawFromApi);
+        params[key] = {
+          ...def,
+          editableValue: initList,
+        };
+        return;
       }
 
-      params[key] = { ...def, value: def.value, editableValue: init };
+      // PointerParam: keep value and editableValue in sync (serializer prioritizes value)
+      if (cls === "PointerParam") {
+        const token = normalizePointerToken(rawFromApi);
+        params[key] = {
+          ...def,
+          value: token,
+          editableValue: token,
+        };
+        return;
+      }
+
+      // PathParam: keep value and editableValue in sync
+      if (cls === "PathParam") {
+        const token = parsedFromApi ?? "";
+        params[key] = {
+          ...def,
+          value: token,
+          editableValue: token,
+        };
+        return;
+      }
+
+      // EnumParam: normalize to label
+      if (cls === "EnumParam" && Array.isArray(def.choices)) {
+        const label = normalizeEnumLabel(rawFromApi, def.choices, def.default);
+        params[key] = {
+          ...def,
+          editableValue: label,
+        };
+        return;
+      }
+
+      // Default: scalar text/number/etc.
+      params[key] = {
+        ...def,
+        editableValue: parsedFromApi ?? "",
+      };
     };
 
     form.definition?.forEach((section: any, i: number) => {
@@ -1034,7 +1158,8 @@ export default function ProtocolForm({
         prevSelectedInputTypeRef.current = label ?? null;
       }
     }
-  }, [form]);
+  }, [form, values]);
+
 
   const isTerminalStatus = (s: any) =>
     ["finished", "success", "done", "failed", "error", "cancelled", "canceled", "stopped", "aborted"]
