@@ -1042,64 +1042,91 @@ export default function CTFTomoViewer({ projectId, protocolId, outputName }: CTF
                 No CTF data available for the selected series.
               </Typography>
             ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={chartData} margin={{ top: 20, right: 48, bottom: 32, left: 48 }}>
-                  <XAxis
-                    dataKey="tiltAngle"
-                    tickFormatter={formatAxisNumber}
-                    label={{ value: "Tilt angle (deg)", position: "insideBottom", offset: -10 }}
-                  />
-                  <YAxis
-                    yAxisId="defocus"
-                    domain={defocusDomain}
-                    tickFormatter={formatAxisNumber}
-                    tickMargin={8}
-                    width={70}
-                    label={{ value: "Defocus (Å)", angle: -90, position: "left" }}
-                  />
-                  <YAxis
-                    yAxisId="resolution"
-                    orientation="right"
-                    domain={resolutionDomain}
-                    tickFormatter={formatAxisNumber}
-                    tickMargin={8}
-                    width={80}
-                    label={{ value: "Resolution (Å)", angle: -90, position: "right" }}
-                  />
-                  <RechartsTooltip content={<CtfChartTooltip />} />
-                  <Legend verticalAlign="top" align="center" wrapperStyle={{ fontSize: "0.75rem" }} />
-                  <Line
-                    type="monotone"
-                    yAxisId="defocus"
-                    dataKey="defocusU"
-                    name="DefocusU (Å)"
-                    stroke="#ef4444"
-                    dot={{ r: 2 }}
-                    activeDot={{ r: 3 }}
-                    connectNulls
-                  />
-                  <Line
-                    type="monotone"
-                    yAxisId="defocus"
-                    dataKey="defocusV"
-                    name="DefocusV (Å)"
-                    stroke="#3b82f6"
-                    dot={{ r: 2 }}
-                    activeDot={{ r: 3 }}
-                    connectNulls
-                  />
-                  <Line
-                    type="monotone"
-                    yAxisId="resolution"
-                    dataKey="resolution"
-                    name="Resolution (Å)"
-                    stroke="#22c55e"
-                    dot={{ r: 2 }}
-                    activeDot={{ r: 3 }}
-                    connectNulls
-                  />
-                </LineChart>
-              </ResponsiveContainer>
+              <Box
+                sx={{
+                  width: "100%",
+                  maxWidth: 900,
+                  mx: "auto",
+                }}
+              >
+                <ResponsiveContainer width="100%" aspect={1.05}>
+                  <LineChart
+                    data={chartData}
+                    margin={{ top: 20, right: 48, bottom: 32, left: 48 }}
+                  >
+                    <XAxis
+                      dataKey="tiltAngle"
+                      tickFormatter={formatAxisNumber}
+                      label={{
+                        value: "Tilt angle (deg)",
+                        position: "insideBottom",
+                        offset: -10,
+                      }}
+                    />
+                    <YAxis
+                      yAxisId="defocus"
+                      domain={defocusDomain}
+                      tickFormatter={formatAxisNumber}
+                      tickMargin={8}
+                      width={70}
+                      label={{
+                        value: "Defocus (Å)",
+                        angle: -90,
+                        position: "left",
+                      }}
+                    />
+                    <YAxis
+                      yAxisId="resolution"
+                      orientation="right"
+                      domain={resolutionDomain}
+                      tickFormatter={formatAxisNumber}
+                      tickMargin={8}
+                      width={80}
+                      label={{
+                        value: "Resolution (Å)",
+                        angle: -90,
+                        position: "right",
+                      }}
+                    />
+                    <RechartsTooltip content={<CtfChartTooltip />} />
+                    <Legend
+                      verticalAlign="top"
+                      align="center"
+                      wrapperStyle={{ fontSize: "0.75rem" }}
+                    />
+                    <Line
+                      type="monotone"
+                      yAxisId="defocus"
+                      dataKey="defocusU"
+                      name="DefocusU (Å)"
+                      stroke="#ef4444"
+                      dot={{ r: 2 }}
+                      activeDot={{ r: 3 }}
+                      connectNulls
+                    />
+                    <Line
+                      type="monotone"
+                      yAxisId="defocus"
+                      dataKey="defocusV"
+                      name="DefocusV (Å)"
+                      stroke="#3b82f6"
+                      dot={{ r: 2 }}
+                      activeDot={{ r: 3 }}
+                      connectNulls
+                    />
+                    <Line
+                      type="monotone"
+                      yAxisId="resolution"
+                      dataKey="resolution"
+                      name="Resolution (Å)"
+                      stroke="#22c55e"
+                      dot={{ r: 2 }}
+                      activeDot={{ r: 3 }}
+                      connectNulls
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </Box>
             )}
           </Box>
 
