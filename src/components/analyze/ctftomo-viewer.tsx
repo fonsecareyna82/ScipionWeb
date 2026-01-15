@@ -16,17 +16,12 @@ import {
   Button,
   Tabs,
   Tab,
+  Menu,
+  MenuItem,
+  Divider,
 } from "@mui/material";
 import { ExpandMore, ChevronRight } from "@mui/icons-material";
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  Tooltip as RechartsTooltip,
-  Legend,
-  ResponsiveContainer,
-} from "recharts";
+import Plot from "react-plotly.js";
 import { useProjectService } from "@/ProjectServiceContext";
 import type { Id } from "@/services/ProjectService";
 import toast from "react-hot-toast";
@@ -73,73 +68,9 @@ type CTFExclusionsMap = Record<
   }
 >;
 
-type CtfTooltipEntry = {
-  dataKey?: string | number;
-  color?: string;
-  value?: number;
-  name?: string;
-};
-
-type CtfTooltipProps = {
-  active?: boolean;
-  payload?: CtfTooltipEntry[];
-  label?: number | string;
-};
-
 function formatNumber(value: number | null | undefined, decimals = 2): string {
   if (value == null || !Number.isFinite(value)) return "";
   return value.toFixed(decimals);
-}
-
-function formatAxisNumber(value: number | string): string {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return "";
-  return n.toFixed(2);
-}
-
-function CtfChartTooltip(props: CtfTooltipProps) {
-  const { active, payload, label } = props;
-  if (!active || !payload || payload.length === 0) {
-    return null;
-  }
-
-  const tiltAngleVal = typeof label === "number" ? label : Number(label);
-
-  const defocusUEntry = payload.find((p) => p.dataKey === "defocusU");
-  const defocusVEntry = payload.find((p) => p.dataKey === "defocusV");
-  const resolutionEntry = payload.find((p) => p.dataKey === "resolution");
-
-  const defocusU = defocusUEntry && typeof defocusUEntry.value === "number" ? defocusUEntry.value : null;
-  const defocusV = defocusVEntry && typeof defocusVEntry.value === "number" ? defocusVEntry.value : null;
-  const resolution =
-    resolutionEntry && typeof resolutionEntry.value === "number" ? resolutionEntry.value : null;
-
-  const colorU = defocusUEntry?.color ?? "#ef4444";
-  const colorV = defocusVEntry?.color ?? "#3b82f6";
-  const colorRes = resolutionEntry?.color ?? "#22c55e";
-
-  return (
-    <Paper elevation={3} sx={{ p: 0.75 }}>
-      <Typography variant="caption" sx={{ fontSize: "0.7rem", display: "block" }}>
-        Tilt angle: {Number.isFinite(tiltAngleVal) ? `${tiltAngleVal.toFixed(2)}°` : "-"}
-      </Typography>
-      {defocusU != null && Number.isFinite(defocusU) && (
-        <Typography variant="caption" sx={{ fontSize: "0.7rem", display: "block", color: colorU }}>
-          DefocusU: {formatAxisNumber(defocusU)} Å
-        </Typography>
-      )}
-      {defocusV != null && Number.isFinite(defocusV) && (
-        <Typography variant="caption" sx={{ fontSize: "0.7rem", display: "block", color: colorV }}>
-          DefocusV: {formatAxisNumber(defocusV)} Å
-        </Typography>
-      )}
-      {resolution != null && Number.isFinite(resolution) && (
-        <Typography variant="caption" sx={{ fontSize: "0.7rem", display: "block", color: colorRes }}>
-          Resolution: {formatAxisNumber(resolution)} Å
-        </Typography>
-      )}
-    </Paper>
-  );
 }
 
 export default function CTFTomoViewer({ projectId, protocolId, outputName }: CTFTomoViewerProps) {
@@ -172,6 +103,10 @@ export default function CTFTomoViewer({ projectId, protocolId, outputName }: CTF
 
   const excludedBySeriesRef = useRef<Record<string, Set<number>>>({});
   const seriesExcludedRef = useRef<Record<string, boolean>>({});
+
+  const chartHoveredPointRef = useRef<{ viewId: Id } | null>(null);
+  const [chartMenuPos, setChartMenuPos] = useState<{ mouseX: number; mouseY: number } | null>(null);
+  const [chartMenuTargetViewId, setChartMenuTargetViewId] = useState<Id | null>(null);
 
   const columnWidths = {
     series: { width: "16%" },
@@ -257,16 +192,15 @@ export default function CTFTomoViewer({ projectId, protocolId, outputName }: CTF
 
         excludedBySeriesRef.current = {};
         seriesExcludedRef.current = {};
+        chartHoveredPointRef.current = null;
 
         const raw = await (svc as any).listOutputCTFTomoSeries(projectId, protocolId, outputName);
 
         if (cancelled) return;
 
         const items: CTFTomoSeriesSummary[] = (raw || []).map((s: any) => {
-          const idRaw =
-            s.ctfSeriesId ?? s.tiltSeriesId ?? s.tsId ?? s.id ?? s.name ?? s.label ?? "CTFSeries";
+          const idRaw = s.ctfSeriesId ?? s.tiltSeriesId ?? s.tsId ?? s.id ?? s.name ?? s.label ?? "CTFSeries";
           const id = String(idRaw);
-
           const label = s.label ?? s.name ?? s.tsLabel ?? `CTFSeries ${id}`;
 
           return {
@@ -427,70 +361,6 @@ export default function CTFTomoViewer({ projectId, protocolId, outputName }: CTF
     return framesData.frames[selectedRowIndex] ?? null;
   }, [framesData, selectedRowIndex]);
 
-  const chartData = useMemo(() => {
-    if (!framesData?.frames?.length) return [];
-    return framesData.frames
-      .filter((f) => f.tiltAngle != null)
-      .map((f) => {
-        const res = f.resolution ?? null;
-        return {
-          tiltAngle: f.tiltAngle as number,
-          defocusU: f.defocusU ?? null,
-          defocusV: f.defocusV ?? null,
-          resolution: res === 0 ? null : res,
-          excluded: Boolean(f.excluded),
-        };
-      })
-      .sort((a, b) => a.tiltAngle - b.tiltAngle);
-  }, [framesData]);
-
-  const defocusDomain = useMemo<[number, number]>(() => {
-    if (!chartData.length) return [0, 1];
-    let min = Infinity;
-    let max = -Infinity;
-
-    chartData.forEach((d) => {
-      const vals: number[] = [];
-      if (d.defocusU != null && Number.isFinite(d.defocusU)) vals.push(d.defocusU as number);
-      if (d.defocusV != null && Number.isFinite(d.defocusV)) vals.push(d.defocusV as number);
-      vals.forEach((v) => {
-        if (v < min) min = v;
-        if (v > max) max = v;
-      });
-    });
-
-    if (!Number.isFinite(min) || !Number.isFinite(max)) return [0, 1];
-    if (min === max) {
-      const pad = Math.abs(min) * 0.1 || 1;
-      return [min - pad, min + pad];
-    }
-    const span = max - min;
-    const pad = span * 0.1;
-    return [min - pad, max + pad];
-  }, [chartData]);
-
-  const resolutionDomain = useMemo<[number, number]>(() => {
-    if (!chartData.length) return [0, 1];
-    let min = Infinity;
-    let max = -Infinity;
-
-    chartData.forEach((d) => {
-      const v = d.resolution;
-      if (v == null || !Number.isFinite(v)) return;
-      if (v < min) min = v;
-      if (v > max) max = v;
-    });
-
-    if (!Number.isFinite(min) || !Number.isFinite(max)) return [0, 1];
-    if (min === max) {
-      const pad = min * 0.1 || 0.1;
-      return [min - pad, min + pad];
-    }
-    const span = max - min;
-    const pad = span * 0.1;
-    return [min - pad, max + pad];
-  }, [chartData]);
-
   const totalFrames = framesData?.frames.length ?? 0;
   const isPsdMode = viewMode === "psdView";
 
@@ -585,6 +455,33 @@ export default function CTFTomoViewer({ projectId, protocolId, outputName }: CTF
     if (idx >= 0) {
       toggleExcludeAtIndex(idx);
     }
+  };
+
+  const setExcludeAllForCurrentSeries = (excluded: boolean) => {
+    if (!framesData) {
+      if (selectedSeriesId != null) {
+        const seriesId = String(selectedSeriesId);
+        seriesExcludedRef.current[seriesId] = excluded;
+        excludedBySeriesRef.current[seriesId] = new Set<number>();
+        setSeries((prevSeries) =>
+          prevSeries.map((s) => (String(s.ctfSeriesId) === seriesId ? { ...s, excluded } : s)),
+        );
+      }
+      return;
+    }
+
+    const seriesId = String(framesData.ctfSeriesId);
+
+    setFramesData((prev) => {
+      if (!prev) return prev;
+      const nextFrames = prev.frames.map((f) => ({ ...f, excluded }));
+      syncExcludedSetForSeries(prev.ctfSeriesId, nextFrames);
+      return { ...prev, frames: nextFrames };
+    });
+
+    setSeries((prevSeries) => prevSeries.map((s) => (String(s.ctfSeriesId) === seriesId ? { ...s, excluded } : s)));
+
+    seriesExcludedRef.current[seriesId] = excluded;
   };
 
   const handleToggleExcludeSeries = (seriesId: Id) => {
@@ -683,6 +580,297 @@ export default function CTFTomoViewer({ projectId, protocolId, outputName }: CTF
       toast.error(getErrorMsg(e));
     } finally {
       setGenerateBusy(false);
+    }
+  };
+
+  const chartRows = useMemo(() => {
+    if (!framesData?.frames?.length) return [];
+    return framesData.frames
+      .filter((f) => f.tiltAngle != null)
+      .map((f, frameIdx) => {
+        const resolutionVal = f.resolution === 0 ? null : f.resolution ?? null;
+        return {
+          viewId: f.viewId,
+          frameIdx,
+          tiltAngle: f.tiltAngle as number,
+          defocusU: f.defocusU ?? null,
+          defocusV: f.defocusV ?? null,
+          resolution: resolutionVal,
+          excluded: Boolean(f.excluded),
+        };
+      })
+      .sort((a, b) => a.tiltAngle - b.tiltAngle);
+  }, [framesData]);
+
+  const defocusDomain = useMemo<[number, number]>(() => {
+    if (!chartRows.length) return [0, 1];
+
+    let min = Infinity;
+    let max = -Infinity;
+
+    chartRows.forEach((d) => {
+      if (d.excluded) return;
+      const vals: number[] = [];
+      if (d.defocusU != null && Number.isFinite(d.defocusU)) vals.push(d.defocusU as number);
+      if (d.defocusV != null && Number.isFinite(d.defocusV)) vals.push(d.defocusV as number);
+      vals.forEach((v) => {
+        if (v < min) min = v;
+        if (v > max) max = v;
+      });
+    });
+
+    if (!Number.isFinite(min) || !Number.isFinite(max)) return [0, 1];
+    if (min === max) {
+      const pad = Math.abs(min) * 0.1 || 1;
+      return [min - pad, min + pad];
+    }
+    const span = max - min;
+    const pad = span * 0.1;
+    return [min - pad, max + pad];
+  }, [chartRows]);
+
+  const resolutionDomain = useMemo<[number, number]>(() => {
+    if (!chartRows.length) return [0, 1];
+
+    let min = Infinity;
+    let max = -Infinity;
+
+    chartRows.forEach((d) => {
+      if (d.excluded) return;
+      const v = d.resolution;
+      if (v == null || !Number.isFinite(v)) return;
+      if (v < min) min = v;
+      if (v > max) max = v;
+    });
+
+    if (!Number.isFinite(min) || !Number.isFinite(max)) return [0, 1];
+    if (min === max) {
+      const pad = min * 0.1 || 0.1;
+      return [min - pad, min + pad];
+    }
+    const span = max - min;
+    const pad = span * 0.1;
+    return [min - pad, max + pad];
+  }, [chartRows]);
+
+  const plotData = useMemo(() => {
+    if (!chartRows.length) return [];
+
+    const x = chartRows.map((r) => r.tiltAngle);
+
+    const defocusUIncluded = chartRows.map((r) => (r.excluded ? null : r.defocusU));
+    const defocusVIncluded = chartRows.map((r) => (r.excluded ? null : r.defocusV));
+    const resolutionIncluded = chartRows.map((r) => (r.excluded ? null : r.resolution));
+
+    const excludedX = chartRows.filter((r) => r.excluded).map((r) => r.tiltAngle);
+    const excludedY = chartRows
+      .filter((r) => r.excluded)
+      .map((r) => (r.defocusU != null ? r.defocusU : 0));
+
+    const customdataIncluded = chartRows.map((r) => [
+      String(r.viewId),
+      r.defocusU,
+      r.defocusV,
+      r.resolution,
+      r.excluded,
+    ]);
+
+    const customdataExcluded = chartRows
+      .filter((r) => r.excluded)
+      .map((r) => [String(r.viewId), r.defocusU, r.defocusV, r.resolution, true]);
+
+    const hovertemplateAll =
+      "Tilt angle: %{x:.2f}°<br>" +
+      "DefocusU: %{customdata[1]:.2f} Å<br>" +
+      "DefocusV: %{customdata[2]:.2f} Å<br>" +
+      "Resolution: %{customdata[3]:.2f} Å<extra></extra>";
+
+    return [
+      {
+        type: "scatter",
+        mode: "lines+markers",
+        name: "DefocusU (Å)",
+        x,
+        y: defocusUIncluded,
+        customdata: customdataIncluded,
+        connectgaps: true,
+        hoveron: "points",
+        hovertemplate: hovertemplateAll,
+        marker: { size: 6 },
+        line: { width: 2, color: "#ef4444" },
+        yaxis: "y",
+      },
+      {
+        type: "scatter",
+        mode: "lines+markers",
+        name: "DefocusV (Å)",
+        x,
+        y: defocusVIncluded,
+        customdata: customdataIncluded,
+        connectgaps: true,
+        hoveron: "points",
+        hovertemplate: hovertemplateAll,
+        marker: { size: 6 },
+        line: { width: 2, color: "#3b82f6" },
+        yaxis: "y",
+      },
+      {
+        type: "scatter",
+        mode: "lines+markers",
+        name: "Resolution (Å)",
+        x,
+        y: resolutionIncluded,
+        customdata: customdataIncluded,
+        connectgaps: true,
+        hoveron: "points",
+        hovertemplate: hovertemplateAll,
+        marker: { size: 6 },
+        line: { width: 2, color: "#22c55e" },
+        yaxis: "y2",
+      },
+      {
+        type: "scatter",
+        mode: "markers",
+        name: "Excluded",
+        x: excludedX,
+        y: excludedY,
+        customdata: customdataExcluded,
+        hoveron: "points",
+        hovertemplate:
+          "Excluded view<br>" +
+          "Tilt angle: %{x:.2f}°<br>" +
+          "DefocusU: %{customdata[1]:.2f} Å<br>" +
+          "DefocusV: %{customdata[2]:.2f} Å<br>" +
+          "Resolution: %{customdata[3]:.2f} Å<extra></extra>",
+        marker: { size: 10, color: "#ef4444", symbol: "o" },
+        yaxis: "y",
+      },
+    ] as any[];
+  }, [chartRows]);
+
+  const plotLayout = useMemo(() => {
+    return {
+      autosize: true,
+      margin: { t: 44, r: 64, b: 48, l: 64 },
+      hovermode: "closest",
+      hoverdistance: 8,
+      legend: {
+        orientation: "v",
+        x: 0.1,
+        xanchor: "center",
+        y: 1.18,
+      },
+      xaxis: {
+        title: "Tilt angle (deg)",
+        tickformat: ".2f",
+        zeroline: false,
+      },
+      yaxis: {
+        title: "Defocus (Å)",
+        tickformat: ".2f",
+        range: [defocusDomain[0], defocusDomain[1]],
+        zeroline: false,
+      },
+      yaxis2: {
+        title: "Resolution (Å)",
+        tickformat: ".2f",
+        range: [resolutionDomain[0], resolutionDomain[1]],
+        overlaying: "y",
+        side: "right",
+        zeroline: false,
+      },
+    } as any;
+  }, [defocusDomain, resolutionDomain]);
+
+  const plotConfig = useMemo(() => {
+    return {
+      responsive: true,
+      displayModeBar: true,
+      displaylogo: false,
+      scrollZoom: true,
+    } as any;
+  }, []);
+
+  const resolveFramesIndexFromViewId = (viewId: Id): number => {
+    if (!framesData?.frames?.length) return -1;
+    return framesData.frames.findIndex((f) => String(f.viewId) === String(viewId));
+  };
+
+  const getRowByViewId = (viewId: Id): CTFViewRow | null => {
+    const idx = resolveFramesIndexFromViewId(viewId);
+    if (idx < 0 || !framesData?.frames) return null;
+    return framesData.frames[idx] ?? null;
+  };
+
+  const openChartContextMenu = (mouseX: number, mouseY: number) => {
+    const hovered = chartHoveredPointRef.current;
+    if (!hovered?.viewId) return;
+
+    setViewMode("seriesChart");
+    setPsdError(null);
+
+    setChartMenuTargetViewId(hovered.viewId);
+    setChartMenuPos({ mouseX, mouseY });
+  };
+
+  const closeChartContextMenu = () => {
+    setChartMenuPos(null);
+    setChartMenuTargetViewId(null);
+  };
+
+  const handleChartContextToggle = () => {
+    if (!chartMenuTargetViewId) return;
+    const idx = resolveFramesIndexFromViewId(chartMenuTargetViewId);
+    if (idx >= 0) {
+      toggleExcludeAtIndex(idx);
+    }
+    closeChartContextMenu();
+  };
+
+  const handleChartExcludeAll = (excludeAll: boolean) => {
+    setExcludeAllForCurrentSeries(excludeAll);
+    closeChartContextMenu();
+  };
+
+  const chartMenuTargetRow = useMemo(() => {
+    if (!chartMenuTargetViewId) return null;
+    return getRowByViewId(chartMenuTargetViewId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chartMenuTargetViewId, framesData]);
+
+  const handlePlotHover = (e: any) => {
+    const p = e?.points?.[0];
+    const viewId = p?.customdata?.[0];
+    if (viewId != null) {
+      chartHoveredPointRef.current = { viewId: String(viewId) };
+    }
+  };
+
+  const handlePlotUnhover = () => {
+    chartHoveredPointRef.current = null;
+  };
+
+  const handlePlotClick = (e: any) => {
+    const mouseButton = e?.event?.button;
+    if (mouseButton != null && mouseButton !== 0) return;
+    if (chartMenuPos) return;
+
+    const p = e?.points?.[0];
+    const viewId = p?.customdata?.[0];
+    if (viewId == null) return;
+
+    const idx = resolveFramesIndexFromViewId(String(viewId));
+    if (idx < 0 || !framesData?.frames) return;
+
+    setSelectedRowIndex(idx);
+
+    const row = framesData.frames[idx];
+    if (row?.psdFile) {
+      loadPsdForRow(row);
+    } else {
+      setViewMode("seriesChart");
+      setPsdError(null);
+      disposePsdImageUrl();
     }
   };
 
@@ -970,6 +1158,9 @@ export default function CTFTomoViewer({ projectId, protocolId, outputName }: CTF
               <Typography variant="subtitle2" sx={{ fontSize: "0.8rem" }}>
                 {isPsdMode ? "PSD preview" : "CTF estimation"}
               </Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.7rem" }}>
+                Right-click on a point to exclude/include.
+              </Typography>
             </Box>
             {selectedFrame && (
               <Box sx={{ textAlign: "right" }}>
@@ -1026,18 +1217,13 @@ export default function CTFTomoViewer({ projectId, protocolId, outputName }: CTF
                   {psdError}
                 </Typography>
               ) : psdImageUrl ? (
-                <Box
-                  component="img"
-                  src={psdImageUrl}
-                  alt="PSD view"
-                  sx={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }}
-                />
+                <Box component="img" src={psdImageUrl} alt="PSD view" sx={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} />
               ) : (
                 <Typography variant="body2" color="text.secondary" sx={{ fontSize: "0.8rem" }}>
                   No PSD image available for the selected view.
                 </Typography>
               )
-            ) : !chartData.length ? (
+            ) : !plotData.length ? (
               <Typography variant="body2" color="text.secondary" sx={{ fontSize: "0.8rem" }}>
                 No CTF data available for the selected series.
               </Typography>
@@ -1045,87 +1231,27 @@ export default function CTFTomoViewer({ projectId, protocolId, outputName }: CTF
               <Box
                 sx={{
                   width: "100%",
-                  maxWidth: 900,
+                  maxWidth: 920,
                   mx: "auto",
+                  aspectRatio: "1 / 1",
+                  minHeight: 320,
+                }}
+                onContextMenu={(evt) => {
+                  evt.preventDefault();
+                  evt.stopPropagation();
+                  openChartContextMenu(evt.clientX, evt.clientY);
                 }}
               >
-                <ResponsiveContainer width="100%" aspect={1.05}>
-                  <LineChart
-                    data={chartData}
-                    margin={{ top: 20, right: 48, bottom: 32, left: 48 }}
-                  >
-                    <XAxis
-                      dataKey="tiltAngle"
-                      tickFormatter={formatAxisNumber}
-                      label={{
-                        value: "Tilt angle (deg)",
-                        position: "insideBottom",
-                        offset: -10,
-                      }}
-                    />
-                    <YAxis
-                      yAxisId="defocus"
-                      domain={defocusDomain}
-                      tickFormatter={formatAxisNumber}
-                      tickMargin={8}
-                      width={70}
-                      label={{
-                        value: "Defocus (Å)",
-                        angle: -90,
-                        position: "left",
-                      }}
-                    />
-                    <YAxis
-                      yAxisId="resolution"
-                      orientation="right"
-                      domain={resolutionDomain}
-                      tickFormatter={formatAxisNumber}
-                      tickMargin={8}
-                      width={80}
-                      label={{
-                        value: "Resolution (Å)",
-                        angle: -90,
-                        position: "right",
-                      }}
-                    />
-                    <RechartsTooltip content={<CtfChartTooltip />} />
-                    <Legend
-                      verticalAlign="top"
-                      align="center"
-                      wrapperStyle={{ fontSize: "0.75rem" }}
-                    />
-                    <Line
-                      type="monotone"
-                      yAxisId="defocus"
-                      dataKey="defocusU"
-                      name="DefocusU (Å)"
-                      stroke="#ef4444"
-                      dot={{ r: 2 }}
-                      activeDot={{ r: 3 }}
-                      connectNulls
-                    />
-                    <Line
-                      type="monotone"
-                      yAxisId="defocus"
-                      dataKey="defocusV"
-                      name="DefocusV (Å)"
-                      stroke="#3b82f6"
-                      dot={{ r: 2 }}
-                      activeDot={{ r: 3 }}
-                      connectNulls
-                    />
-                    <Line
-                      type="monotone"
-                      yAxisId="resolution"
-                      dataKey="resolution"
-                      name="Resolution (Å)"
-                      stroke="#22c55e"
-                      dot={{ r: 2 }}
-                      activeDot={{ r: 3 }}
-                      connectNulls
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
+                <Plot
+                  data={plotData as any}
+                  layout={plotLayout as any}
+                  config={plotConfig as any}
+                  style={{ width: "100%", height: "100%" }}
+                  useResizeHandler
+                  onHover={handlePlotHover as any}
+                  onUnhover={handlePlotUnhover as any}
+                  onClick={handlePlotClick as any}
+                />
               </Box>
             )}
           </Box>
@@ -1145,22 +1271,55 @@ export default function CTFTomoViewer({ projectId, protocolId, outputName }: CTF
             </Typography>
             {selectedFrame && (
               <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.7rem" }}>
-                DefocusU: {formatNumber(selectedFrame.defocusU)} Å, DefocusV: {formatNumber(selectedFrame.defocusV)} Å,
-                Resolution: {formatNumber(selectedFrame.resolution)} Å
+                DefocusU: {formatNumber(selectedFrame.defocusU)} Å, DefocusV: {formatNumber(selectedFrame.defocusV)} Å, Resolution:{" "}
+                {formatNumber(selectedFrame.resolution)} Å
               </Typography>
             )}
           </Box>
         </Box>
       </Box>
 
+      <Menu
+        open={Boolean(chartMenuPos)}
+        onClose={closeChartContextMenu}
+        anchorReference="anchorPosition"
+        anchorPosition={chartMenuPos ? { top: chartMenuPos.mouseY, left: chartMenuPos.mouseX } : undefined}
+        PaperProps={{
+          sx: {
+            borderRadius: 1,
+            minWidth: 180,
+            "& .MuiMenuItem-root": {
+              fontSize: "0.78rem",
+              minHeight: 28,
+              py: 0.25,
+            },
+          },
+        }}
+        MenuListProps={{
+          dense: true,
+          sx: {
+            py: 0.25,
+          },
+        }}
+      >
+        <MenuItem dense disabled={!chartMenuTargetRow} onClick={handleChartContextToggle}>
+          {chartMenuTargetRow?.excluded ? "Include this view" : "Exclude this view"}
+        </MenuItem>
+        <Divider />
+        <MenuItem dense onClick={() => handleChartExcludeAll(true)} disabled={!framesData?.frames?.length}>
+          Exclude all views (current series)
+        </MenuItem>
+        <MenuItem dense onClick={() => handleChartExcludeAll(false)} disabled={!framesData?.frames?.length}>
+          Include all views (current series)
+        </MenuItem>
+      </Menu>
+
       {helpDialogOpen && (
         <div className="fixed inset-0 z-[125] flex items-center justify-center bg-black/40">
           <div className="bg-white dark:bg-gray-950 rounded-xl shadow-lg w-full max-w-lg p-6">
             <h2 className="text-lg font-semibold mb-3 dark:text-white">CTF tomo viewer help</h2>
 
-            <p className="mb-3 text-sm text-muted-foreground">
-              This viewer allows you to create two subsets of CTFTomoSeries.
-            </p>
+            <p className="mb-3 text-sm text-muted-foreground">This viewer allows you to create two subsets of CTFTomoSeries.</p>
 
             <p className="mb-4 text-sm text-muted-foreground">
               Note: The items that are excluded (checked) will be in the new set.
@@ -1207,8 +1366,7 @@ export default function CTFTomoViewer({ projectId, protocolId, outputName }: CTF
 
             <ul className="mb-4 list-disc pl-5 text-sm text-muted-foreground space-y-1">
               <li>
-                <span className="font-semibold">Generate subsets</span>: The new set will contain all views including
-                those that are marked as excluded.
+                <span className="font-semibold">Generate subsets</span>: The new set will contain all views including those that are marked as excluded.
               </li>
             </ul>
 
