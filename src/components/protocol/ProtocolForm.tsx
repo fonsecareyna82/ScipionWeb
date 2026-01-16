@@ -219,6 +219,21 @@ function coerceBooleanValue(raw: any): boolean {
   return false;
 }
 
+function coerceReadOnlyFlag(raw: any): boolean {
+  // coerceReadOnlyFlag
+  if (raw === true || raw === 1 || raw === "1") return true;
+  if (raw === false || raw === 0 || raw === "0") return false;
+
+  if (typeof raw === "string") {
+    const s = raw.trim().toLowerCase();
+    if (s === "true") return true;
+    if (s === "false") return false;
+  }
+
+  return false;
+}
+
+
 type JsonValueProps = {
   value: any;
   path: string;
@@ -1934,6 +1949,29 @@ export default function ProtocolForm({
 
         const items = Array.isArray(value) ? value : def.default ?? [];
 
+        // By default editable; if def.readOnly is true => block manual typing in MultiParamRow
+        const isReadOnly = coerceReadOnlyFlag(def?.readOnly);
+
+        const onRowEdit = (rowIndexInner: number, patch: { object?: string; info?: string }) => {
+          setProtocolDetails((prev: any) => {
+            const existing = prev.params?.[stateKey];
+            const list = Array.isArray(existing?.editableValue) ? [...existing.editableValue] : [];
+
+            while (list.length <= rowIndexInner) list.push({ object: "", info: "" });
+
+            const current = list[rowIndexInner] ?? { object: "", info: "" };
+            list[rowIndexInner] = { ...current, ...patch };
+
+            return {
+              ...prev,
+              params: {
+                ...prev.params,
+                [stateKey]: { ...existing, editableValue: list },
+              },
+            };
+          });
+        };
+
         const onClear = (i: number) => {
           setProtocolDetails((prev: any) => {
             const existing = prev.params?.[stateKey];
@@ -1954,8 +1992,7 @@ export default function ProtocolForm({
         const onRowDrop = (i: number, dragged: any) => {
           const liveParam = protocolDetails.params?.[stateKey];
           const expected = getExpectedClass(liveParam);
-          const norm = (s: any) =>
-            typeof s === "string" ? s.replace(/\s+/g, "").toLowerCase() : "";
+          const norm = (s: any) => (typeof s === "string" ? s.replace(/\s+/g, "").toLowerCase() : "");
           const draggedClass = norm(dragged.pointerClass);
 
           const matches =
@@ -2036,6 +2073,8 @@ export default function ProtocolForm({
                   def={liveDef}
                   getAvailableOutputs={() => getFilteredOutputsForKey(stateKey)}
                   onPickForRow={handlePickFromDialog}
+                  readOnly={isReadOnly}
+                  onRowEdit={onRowEdit}
                 />
               </Box>
             }
@@ -2044,6 +2083,7 @@ export default function ProtocolForm({
           />
         );
       }
+
 
       // PointerParam (requires stateKey)
       if (defClass === "PointerParam") {
@@ -2069,6 +2109,8 @@ export default function ProtocolForm({
           setOpenSelector(true);
         };
 
+        const isReadOnly = coerceReadOnlyFlag(def?.readOnly);
+
         const control = (
           <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
             <TextField
@@ -2079,28 +2121,37 @@ export default function ProtocolForm({
                 def.default ??
                 ""
               )}
-              onChange={(e) =>
-                setProtocolDetails((prev: any) => ({
-                  ...prev,
-                  params: {
-                    ...prev.params,
-                    [stateKey]: {
-                      ...prev.params[stateKey],
-                      editableValue: e.target.value,
-                      value: e.target.value,
-                    },
-                  },
-                }))
+              onChange={
+                isReadOnly
+                  ? undefined
+                  : (e) =>
+                    setProtocolDetails((prev: any) => ({
+                      ...prev,
+                      params: {
+                        ...prev.params,
+                        [stateKey]: {
+                          ...prev.params[stateKey],
+                          editableValue: e.target.value,
+                          value: e.target.value,
+                        },
+                      },
+                    }))
               }
+              InputProps={isReadOnly ? { readOnly: true } : undefined}
+              onClick={isReadOnly ? () => handleOpenFind(stateKey) : undefined}
               sx={{
                 width: fieldWidth,
                 minWidth: 0,
                 "& .MuiInputBase-root": { minHeight: 36 },
-                "& .MuiInputBase-input, & input": {
+                "& .MuiInputBase-input, & input, & input[readonly]": {
                   fontSize: 12,
                   padding: "8px 10px",
                   lineHeight: 1.2,
                   color: "#111827",
+                  WebkitTextFillColor: "#111827",
+                  opacity: 1,
+                  userSelect: isReadOnly ? "none" : "text",
+                  cursor: isReadOnly ? "pointer" : "text",
                 },
               }}
             />
@@ -2130,6 +2181,7 @@ export default function ProtocolForm({
           />
         );
       }
+
 
       // PathParam (requires stateKey)
       if (defClass === "PathParam") {
