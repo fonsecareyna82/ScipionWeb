@@ -142,8 +142,38 @@ function getPointerClass(objLike: any): string {
 }
 
 function unwrapParamDef(paramLike: any): UnwrappedParam {
+  // unwrapParamDef
+  if (!paramLike || typeof paramLike !== "object") {
+    return { paramName: "", paramDef: paramLike };
+  }
+
+  // Direct backend shape: { name: "...", paramClass: "..." }
+  if (typeof (paramLike as any).name === "string") {
+    return { paramName: String((paramLike as any).name ?? ""), paramDef: paramLike };
+  }
+
+  // Common backend shape: { [name]: payload }
+  const entries = Object.entries(paramLike);
+  if (entries.length === 1) {
+    const [maybeName, payload] = entries[0] as [string, any];
+
+    // If payload looks like a param definition, use it
+    if (
+      payload &&
+      typeof payload === "object" &&
+      ("paramClass" in payload || "_class" in payload)
+    ) {
+      return { paramName: String(maybeName), paramDef: payload };
+    }
+
+    // Otherwise keep previous behavior (rare edge cases)
+    return { paramName: String(maybeName), paramDef: paramLike };
+  }
+
+  // Fallback
   return { paramName: String((paramLike as any).name ?? ""), paramDef: paramLike };
 }
+
 
 function unwrapNamedEntry(entryLike: any): { name: string; payload: any } {
   // unwrapNamedEntry
@@ -1106,15 +1136,18 @@ export default function ProtocolForm({
       const cls = getParamClass(def);
 
       // Always traverse decorators even when name is missing
-      if ((cls === "Group" || cls === "Line") && Array.isArray(def.params)) {
-        def.params.forEach((c: any) => walk(secIdx, c));
+      // Decorators should never create state keys; just traverse children if present
+      if (cls === "Group" || cls === "Line") {
+        const children = Array.isArray(def?.params) ? def.params : [];
+        children.forEach((c: any) => walk(secIdx, c));
         return;
       }
 
-      // LabelParam is a pure decorator (no value stored)
+      // Label is a pure decorator (no value stored)
       if (cls === "Label") {
         return;
       }
+
 
       // For real params, name is required to create a state key
       if (!name) return;
@@ -1828,7 +1861,9 @@ export default function ProtocolForm({
       const isInline = layoutVariant === "inline";
       const fieldWidth = isInline ? 60 : 300;
 
-      if (def.condition && !evalExpr(sectionIdx, def.condition)) return null;
+      if (typeof def?.condition === "string" && def.condition.trim()) {
+        if (!evalExpr(sectionIdx, def.condition)) return null;
+      }
 
       const expertLocator = findGeneralExpertLocator();
       const isExpertSelector =
@@ -2242,10 +2277,11 @@ export default function ProtocolForm({
       }
 
       // Line (decorator, name optional)
-      if (defClass === "Line" && Array.isArray(def.params)) {
-        const title = String(def.label || name || "").trim();
+      if (defClass === "Line") {
+        const title = String(def?.label || name || "").trim();
+        const lineParams = Array.isArray(def?.params) ? def.params : [];
 
-        const children = def.params
+        const children = lineParams
           .map((child: any, idx: number) => {
             const childEl = renderParam(child, sectionIdx, idx, "inline", stableKey);
             if (!childEl) return null;
@@ -2265,6 +2301,22 @@ export default function ProtocolForm({
             );
           })
           .filter(Boolean);
+
+        // If Line has no children, render only the label (if present) and stay stable
+        if (children.length === 0) {
+          if (!title) return null;
+
+          return (
+            <ParamRow
+              key={stableKey}
+              label={title}
+              control={<></>}
+              helpText={def?.help}
+              rowIndex={rowIndex}
+              layoutVariant="fullWidth"
+            />
+          );
+        }
 
         if (!title) {
           return (
@@ -2307,20 +2359,24 @@ export default function ProtocolForm({
                 {children as any}
               </Box>
             }
-            helpText={def.help}
+            helpText={def?.help}
             rowIndex={rowIndex}
             layoutVariant="standard"
           />
         );
       }
 
+
       // Group (decorator, name optional)
-      if (defClass === "Group" && Array.isArray(def.params)) {
+      if (defClass === "Group") {
         const groupKey = `${stableKey}|group`;
         const expanded = expandedGroups[groupKey] ?? true;
 
         const toggleExpand = () =>
           setExpandedGroups((prev) => ({ ...prev, [groupKey]: !expanded }));
+
+        const groupLabel = String(def?.label || name || "Group").trim();
+        const groupParams = Array.isArray(def?.params) ? def.params : [];
 
         return (
           <Box
@@ -2350,20 +2406,36 @@ export default function ProtocolForm({
                   color: theme.palette.mode === "dark" ? "#ffffff" : "#000000",
                 })}
               >
-                {def.label || name || "Group"}
+                {groupLabel || "Group"}
               </Typography>
+
               <IconButton size="small">
-                {expanded ? <ChevronUpIcon fontSize="small" /> : <ChevronDownIcon fontSize="small" />}
+                {expanded ? (
+                  <ChevronUpIcon fontSize="small" />
+                ) : (
+                  <ChevronDownIcon fontSize="small" />
+                )}
               </IconButton>
             </Box>
 
-            {expanded &&
-              def.params.map((child: any, idx: number) =>
-                renderParam(child, sectionIdx, idx, "standard", stableKey)
-              )}
+            {expanded && (
+              <>
+                {groupParams.length === 0 ? (
+                  <Typography variant="caption" sx={{ opacity: 0.7, pl: 1 }}>
+                    {/* No parameters in this group */}
+                    No parameters.
+                  </Typography>
+                ) : (
+                  groupParams.map((child: any, idx: number) =>
+                    renderParam(child, sectionIdx, idx, "standard", stableKey)
+                  )
+                )}
+              </>
+            )}
           </Box>
         );
       }
+
 
       // BooleanParam (requires stateKey)
       if (defClass === "BooleanParam") {
