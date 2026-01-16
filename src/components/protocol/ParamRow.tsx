@@ -15,7 +15,7 @@ import { CloseIcon, FindIcon, HelpIcon, TrashBinIcon } from "../../icons";
 import { FolderOpen as FolderIcon } from "lucide-react";
 import styles from "./paramrow.module.css";
 
-type ParamRowLayoutVariant = "standard" | "inline";
+type ParamRowLayoutVariant = "standard" | "inline" | "fullWidth";
 
 type ParamRowProps = {
   label: string;
@@ -52,6 +52,7 @@ const ParamRow = ({
   const [openSelector, setOpenSelector] = useState(false); // fallback
 
   const isInline = layoutVariant === "inline";
+  const isFullWidth = layoutVariant === "fullWidth";
 
   const rowBg = useMemo(() => {
     // computeRowBackground
@@ -64,24 +65,33 @@ const ParamRow = ({
         sx={{
           ...(isInline
             ? {
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 0,
-              px: 1,
-              py: 0.5,
-              borderRadius: 1,
-              //backgroundColor: rowBg,
-              //border: "1px solid rgba(0,0,0,0.08)",
-              minHeight: 42,
-            }
-            : {
-              display: "grid",
-              gridTemplateColumns: "210px 1fr auto",
-              alignItems: "center",
-              mb: 1,
-              //backgroundColor: rowBg,
-              position: "relative",
-            }),
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 0,
+                px: 1,
+                py: 0.5,
+                borderRadius: 1,
+                //backgroundColor: rowBg,
+                //border: "1px solid rgba(0,0,0,0.08)",
+                minHeight: 42,
+              }
+            : isFullWidth
+              ? {
+                  display: "grid",
+                  gridTemplateColumns: "1fr auto",
+                  alignItems: "center",
+                  mb: 1,
+                  //backgroundColor: rowBg,
+                  position: "relative",
+                }
+              : {
+                  display: "grid",
+                  gridTemplateColumns: "210px 1fr auto",
+                  alignItems: "center",
+                  mb: 1,
+                  //backgroundColor: rowBg,
+                  position: "relative",
+                }),
         }}
       >
         <Typography
@@ -93,9 +103,9 @@ const ParamRow = ({
             fontSize: "0.75rem",
             fontWeight: 300,
             color: "black",
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
+            whiteSpace: isFullWidth ? "normal" : "nowrap",
+            overflow: isFullWidth ? "visible" : "hidden",
+            textOverflow: isFullWidth ? "clip" : "ellipsis",
             ...(isInline ? { maxWidth: 180 } : null),
           }}
           title={label}
@@ -103,20 +113,22 @@ const ParamRow = ({
           {label}
         </Typography>
 
-        <Box
-          sx={{
-            minWidth: 0,
-            ...(isInline
-              ? {
-                display: "flex",
-                alignItems: "center",
-                gap: 0.75,
-              }
-              : null),
-          }}
-        >
-          {control}
-        </Box>
+        {!isFullWidth && (
+          <Box
+            sx={{
+              minWidth: 0,
+              ...(isInline
+                ? {
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 0.75,
+                  }
+                : null),
+            }}
+          >
+            {control}
+          </Box>
+        )}
 
         <Box sx={{ display: "flex", gap: 0, alignItems: "center" }}>
           {isPointerParam && (
@@ -185,7 +197,6 @@ const ParamRow = ({
             </Button>
           </DialogActions>
         </Dialog>
-
       )}
 
       <Dialog open={openSelector} onClose={() => setOpenSelector(false)} maxWidth="sm" fullWidth>

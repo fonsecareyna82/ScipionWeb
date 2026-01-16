@@ -15,3 +15,11 @@
   padding: 12px 16px;
   box-sizing: border-box;
 }
+
+.paramRowFullWidth {
+  grid-template-columns: 1fr;
+}
+
+.paramControlFullWidth {
+  grid-column: 1 / -1;
+}

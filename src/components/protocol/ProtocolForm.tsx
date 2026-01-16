@@ -1099,15 +1099,25 @@ export default function ProtocolForm({
 
     const params: any = {};
     const walk = (secIdx: number, paramLike: any) => {
+      // walkParamDefinitionTree
       const { paramName: name, paramDef: def } = unwrapParamDef(paramLike);
-      if (!name || !def) return;
+      if (!def) return;
 
       const cls = getParamClass(def);
 
+      // Always traverse decorators even when name is missing
       if ((cls === "Group" || cls === "Line") && Array.isArray(def.params)) {
         def.params.forEach((c: any) => walk(secIdx, c));
         return;
       }
+
+      // LabelParam is a pure decorator (no value stored)
+      if (cls === "Label") {
+        return;
+      }
+
+      // For real params, name is required to create a state key
+      if (!name) return;
 
       const key = `${secIdx}_${name}`;
 
@@ -1115,7 +1125,6 @@ export default function ProtocolForm({
       const rawFromApi = getInitialRawForParam(name, def, valuesMap);
       const parsedFromApi = parseFromJSONValue(rawFromApi);
 
-      // BooleanParam
       if (cls === "BooleanParam") {
         const initBool = coerceBooleanValue(parsedFromApi);
 
@@ -1131,7 +1140,6 @@ export default function ProtocolForm({
         return;
       }
 
-      // MultiPointerParam
       if (cls === "MultiPointerParam") {
         const initList = normalizeMultiPointerValue(rawFromApi);
         params[key] = {
@@ -1141,7 +1149,6 @@ export default function ProtocolForm({
         return;
       }
 
-      // PointerParam: keep value and editableValue in sync (serializer prioritizes value)
       if (cls === "PointerParam") {
         const token = normalizePointerToken(rawFromApi);
         params[key] = {
@@ -1152,7 +1159,6 @@ export default function ProtocolForm({
         return;
       }
 
-      // PathParam: keep value and editableValue in sync
       if (cls === "PathParam") {
         const token = parsedFromApi ?? "";
         params[key] = {
@@ -1163,7 +1169,6 @@ export default function ProtocolForm({
         return;
       }
 
-      // EnumParam: normalize to label
       if (cls === "EnumParam" && Array.isArray(def.choices)) {
         const label = normalizeEnumLabel(rawFromApi, def.choices, def.default);
         params[key] = {
@@ -1173,12 +1178,12 @@ export default function ProtocolForm({
         return;
       }
 
-      // Default: scalar text/number/etc.
       params[key] = {
         ...def,
         editableValue: parsedFromApi ?? "",
       };
     };
+
 
     sections.forEach((section: any, i: number) => {
       section?.params?.forEach((p: any) => walk(i, p));
@@ -1764,7 +1769,7 @@ export default function ProtocolForm({
     setExecError(null);
 
     try {
-      const pid =String(protocolId ?? "");
+      const pid = String(protocolId ?? "");
       const serialized = getSerializedParams();
 
       const res: any = await svc.saveProtocol(projectId, pid, protocolClassName, serialized);
@@ -1799,16 +1804,29 @@ export default function ProtocolForm({
 
   // Render a single parameter row
   const renderParam = useCallback(
-    (paramLike: any, sectionIdx: number, rowIndex = 0, layoutVariant: "standard" | "inline" = "standard"): JSX.Element | null => {
+    (
+      paramLike: any,
+      sectionIdx: number,
+      rowIndex = 0,
+      layoutVariant: "standard" | "inline" = "standard",
+      parentKeyPrefix = ""
+    ): JSX.Element | null => {
+      // renderParamRow
       const { paramName: name, paramDef: def } = unwrapParamDef(paramLike);
-      if (!name || !def) return null;
+      if (!def) return null;
+
+      const defClass = getParamClass(def);
+
+      // Stable key for React + decorator state (even when name is missing)
+      const basePrefix = parentKeyPrefix || `sec${sectionIdx}`;
+      const stableKey = `${basePrefix}|${name ? `param:${name}` : `decorator:${defClass}:${rowIndex}`}`;
+
+      // State key only exists for real params with a name
+      const stateKey = name ? `${sectionIdx}_${name}` : null;
+      const value = stateKey ? protocolDetails.params?.[stateKey]?.editableValue : undefined;
 
       const isInline = layoutVariant === "inline";
       const fieldWidth = isInline ? 60 : 300;
-
-      const defClass = getParamClass(def);
-      const key = `${sectionIdx}_${name}`;
-      const value = protocolDetails.params?.[key]?.editableValue;
 
       if (def.condition && !evalExpr(sectionIdx, def.condition)) return null;
 
@@ -1820,7 +1838,6 @@ export default function ProtocolForm({
         return null;
       }
 
-      // advancedSlot
       const advancedSlot = isInline
         ? def.expertLevel === 1
           ? (
@@ -1876,30 +1893,31 @@ export default function ProtocolForm({
           </Box>
         );
 
-
-      // MultiPointerParam
+      // MultiPointerParam (requires stateKey)
       if (defClass === "MultiPointerParam") {
+        if (!stateKey) return null;
+
         const items = Array.isArray(value) ? value : def.default ?? [];
 
         const onClear = (i: number) => {
           setProtocolDetails((prev: any) => {
-            const list = Array.isArray(prev.params[key].editableValue)
-              ? [...prev.params[key].editableValue]
-              : [];
+            const existing = prev.params?.[stateKey];
+            const list = Array.isArray(existing?.editableValue) ? [...existing.editableValue] : [];
             list.splice(i, 1);
             list.push({ object: "", info: "" });
+
             return {
               ...prev,
               params: {
                 ...prev.params,
-                [key]: { ...prev.params[key], editableValue: list },
+                [stateKey]: { ...existing, editableValue: list },
               },
             };
           });
         };
 
         const onRowDrop = (i: number, dragged: any) => {
-          const liveParam = protocolDetails.params?.[key];
+          const liveParam = protocolDetails.params?.[stateKey];
           const expected = getExpectedClass(liveParam);
           const norm = (s: any) =>
             typeof s === "string" ? s.replace(/\s+/g, "").toLowerCase() : "";
@@ -1915,21 +1933,22 @@ export default function ProtocolForm({
           if (!matches) return;
 
           setProtocolDetails((prev: any) => {
-            const list = Array.isArray(prev.params[key].editableValue)
-              ? [...prev.params[key].editableValue]
-              : [];
+            const existing = prev.params?.[stateKey];
+            const list = Array.isArray(existing?.editableValue) ? [...existing.editableValue] : [];
             while (list.length <= i) list.push({ object: "", info: "" });
+
             list[i] = {
               object: dragged.value ?? "",
               info: dragged.info ?? "",
               pointerClass: dragged.pointerClass ?? "",
               parentId: dragged.parentId ?? null,
             };
+
             return {
               ...prev,
               params: {
                 ...prev.params,
-                [key]: { ...prev.params[key], editableValue: list },
+                [stateKey]: { ...existing, editableValue: list },
               },
             };
           });
@@ -1937,9 +1956,8 @@ export default function ProtocolForm({
 
         const handlePickFromDialog = (rowIndexInner: number, picked: any) => {
           setProtocolDetails((prev: any) => {
-            const list = Array.isArray(prev.params[key].editableValue)
-              ? [...prev.params[key].editableValue]
-              : [];
+            const existing = prev.params?.[stateKey];
+            const list = Array.isArray(existing?.editableValue) ? [...existing.editableValue] : [];
 
             while (list.length <= rowIndexInner) list.push({ object: "", info: "" });
 
@@ -1955,23 +1973,23 @@ export default function ProtocolForm({
               ...prev,
               params: {
                 ...prev.params,
-                [key]: { ...prev.params[key], editableValue: list },
+                [stateKey]: { ...existing, editableValue: list },
               },
             };
           });
         };
 
-        const liveDef = { ...def, ...(protocolDetails.params?.[key] || {}) };
+        const liveDef = { ...def, ...(protocolDetails.params?.[stateKey] || {}) };
 
         return (
           <ParamRow
-            key={key}
-            label={def.label || name}
+            key={stableKey}
+            label={def.label || name || ""}
             control={
               <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
                 {advancedSlot}
                 <MultiParamRow
-                  label={def.label || name}
+                  label={def.label || name || ""}
                   items={items}
                   helpText={def.help}
                   onRowClear={onClear}
@@ -1979,9 +1997,9 @@ export default function ProtocolForm({
                   dragOverKey={dragOverKey}
                   setDragOverKey={setDragOverKey}
                   currentDraggedOutput={currentDraggedOutput}
-                  paramKey={key}
+                  paramKey={stateKey}
                   def={liveDef}
-                  getAvailableOutputs={() => getFilteredOutputsForKey(key)}
+                  getAvailableOutputs={() => getFilteredOutputsForKey(stateKey)}
                   onPickForRow={handlePickFromDialog}
                 />
               </Box>
@@ -1992,14 +2010,16 @@ export default function ProtocolForm({
         );
       }
 
-      // PointerParam
+      // PointerParam (requires stateKey)
       if (defClass === "PointerParam") {
+        if (!stateKey) return null;
+
         const onClear = () =>
           setProtocolDetails((prev: any) => ({
             ...prev,
             params: {
               ...prev.params,
-              [key]: { ...prev.params[key], editableValue: "", value: "" },
+              [stateKey]: { ...prev.params[stateKey], editableValue: "", value: "" },
             },
           }));
 
@@ -2014,37 +2034,38 @@ export default function ProtocolForm({
           setOpenSelector(true);
         };
 
-        // normalizePointerValueForDisplay
-        const displayValue = (() => {
-          const v = value ?? def.default ?? "";
-          if (typeof v === "string" || typeof v === "number") return v;
-          if (v && typeof v === "object") {
-            const objValue = (v as any).value;
-            if (typeof objValue === "string" || typeof objValue === "number") return objValue;
-          }
-          return "";
-        })();
-
         const control = (
           <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
             <TextField
               size="small"
-              value={String(protocolDetails.params?.[key]?.editableValue ?? protocolDetails.params?.[key]?.value ?? def.default ?? "")}
-              InputProps={{ readOnly: true }}
-              onClick={() => handleOpenFind(key)}
+              value={String(
+                protocolDetails.params?.[stateKey]?.editableValue ??
+                protocolDetails.params?.[stateKey]?.value ??
+                def.default ??
+                ""
+              )}
+              onChange={(e) =>
+                setProtocolDetails((prev: any) => ({
+                  ...prev,
+                  params: {
+                    ...prev.params,
+                    [stateKey]: {
+                      ...prev.params[stateKey],
+                      editableValue: e.target.value,
+                      value: e.target.value,
+                    },
+                  },
+                }))
+              }
               sx={{
                 width: fieldWidth,
                 minWidth: 0,
                 "& .MuiInputBase-root": { minHeight: 36 },
-                "& .MuiInputBase-input, & input, & input[readonly]": {
+                "& .MuiInputBase-input, & input": {
                   fontSize: 12,
                   padding: "8px 10px",
                   lineHeight: 1.2,
                   color: "#111827",
-                  WebkitTextFillColor: "#111827",
-                  opacity: 1,
-                  userSelect: "none",
-                  cursor: "pointer",
                 },
               }}
             />
@@ -2053,13 +2074,13 @@ export default function ProtocolForm({
 
         return (
           <ParamRow
-            key={key}
-            label={def.label || name}
+            key={stableKey}
+            label={def.label || name || ""}
             control={
               <WrapWithDrop
                 control={control}
                 def={def}
-                paramKey={key}
+                paramKey={stateKey}
                 setProtocolDetails={setProtocolDetails}
                 setDragOverKey={setDragOverKey}
                 dragOverKey={dragOverKey}
@@ -2069,39 +2090,36 @@ export default function ProtocolForm({
             isPointerParam
             onClear={onClear}
             rowIndex={rowIndex}
-            onOpenFind={() => handleOpenFind(key)}
+            onOpenFind={() => handleOpenFind(stateKey)}
             layoutVariant={layoutVariant}
           />
         );
       }
 
-      // PathParam
+      // PathParam (requires stateKey)
       if (defClass === "PathParam") {
-        const current = protocolDetails.params?.[key] || {};
-        const textValue =
-          current.editableValue ??
-          current.value ??
-          def.value ??
-          def.default ??
-          "";
+        if (!stateKey) return null;
+
+        const current = protocolDetails.params?.[stateKey] || {};
+        const textValue = current.editableValue ?? current.value ?? def.value ?? def.default ?? "";
 
         const handleBrowsePath = () => {
           if (!projectId || !protocolId) {
             console.warn("Missing projectId or protocolId for PathParam browse.");
             return;
           }
-          setPathDialog({ open: true, paramKey: key });
+          setPathDialog({ open: true, paramKey: stateKey });
         };
 
         const handleClear = () => {
           setProtocolDetails((prev: any) => {
-            if (!prev?.params?.[key]) return prev;
+            if (!prev?.params?.[stateKey]) return prev;
             return {
               ...prev,
               params: {
                 ...prev.params,
-                [key]: {
-                  ...prev.params[key],
+                [stateKey]: {
+                  ...prev.params[stateKey],
                   editableValue: "",
                   value: "",
                 },
@@ -2115,17 +2133,17 @@ export default function ProtocolForm({
             {advancedSlot}
             <TextField
               size="small"
-              name={key}
+              name={stateKey}
               value={textValue}
               onChange={(e) =>
                 setProtocolDetails((prev: any) => {
-                  if (!prev?.params?.[key]) return prev;
+                  if (!prev?.params?.[stateKey]) return prev;
                   return {
                     ...prev,
                     params: {
                       ...prev.params,
-                      [key]: {
-                        ...prev.params[key],
+                      [stateKey]: {
+                        ...prev.params[stateKey],
                         editableValue: e.target.value,
                         value: e.target.value,
                       },
@@ -2144,8 +2162,8 @@ export default function ProtocolForm({
 
         return (
           <ParamRow
-            key={key}
-            label={def.label || name}
+            key={stableKey}
+            label={def.label || name || ""}
             control={control}
             helpText={def.help}
             isPathParam
@@ -2157,8 +2175,10 @@ export default function ProtocolForm({
         );
       }
 
-      // EnumParam
+      // EnumParam (requires stateKey)
       if (defClass === "EnumParam" && Array.isArray(def.choices)) {
+        if (!stateKey) return null;
+
         let sel = value ?? def.default ?? "";
         if (typeof sel === "number") sel = def.choices[sel] ?? "";
 
@@ -2167,16 +2187,12 @@ export default function ProtocolForm({
         const onChange = (v: any) =>
           setProtocolDetails((prev: any) => ({
             ...prev,
-            params: { ...prev.params, [key]: { ...prev.params[key], editableValue: v } },
+            params: { ...prev.params, [stateKey]: { ...prev.params[stateKey], editableValue: v } },
           }));
 
         const controlBase =
           def.display === 0 ? (
-            <RadioGroup
-              row
-              value={safeSel}
-              onChange={(e) => onChange(e.target.value)}
-            >
+            <RadioGroup row value={safeSel} onChange={(e) => onChange(e.target.value)}>
               {def.choices.map((ch: string, i: number) => (
                 <FormControlLabel
                   key={i}
@@ -2210,8 +2226,8 @@ export default function ProtocolForm({
 
         return (
           <ParamRow
-            key={key}
-            label={def.label || name}
+            key={stableKey}
+            label={def.label || name || ""}
             control={
               <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
                 {advancedSlot}
@@ -2225,19 +2241,18 @@ export default function ProtocolForm({
         );
       }
 
-      // Line
+      // Line (decorator, name optional)
       if (defClass === "Line" && Array.isArray(def.params)) {
         const title = String(def.label || name || "").trim();
 
-        // renderInlineChildren
         const children = def.params
           .map((child: any, idx: number) => {
-            const childEl = renderParam(child, sectionIdx, idx, "inline");
+            const childEl = renderParam(child, sectionIdx, idx, "inline", stableKey);
             if (!childEl) return null;
 
             return (
               <Box
-                key={`${key}_line_${idx}`}
+                key={`${stableKey}|lineChild:${idx}`}
                 sx={{
                   flex: "0 0 auto",
                   minWidth: 0,
@@ -2251,11 +2266,10 @@ export default function ProtocolForm({
           })
           .filter(Boolean);
 
-        // If the line has no label, just render the inline controls
         if (!title) {
           return (
             <Box
-              key={key}
+              key={stableKey}
               sx={{
                 mb: 1,
                 display: "flex",
@@ -2265,7 +2279,6 @@ export default function ProtocolForm({
                 overflowX: "auto",
                 overflowY: "hidden",
                 pb: 0.25,
-
               }}
             >
               {children as any}
@@ -2273,10 +2286,9 @@ export default function ProtocolForm({
           );
         }
 
-        // Single-row layout: label (left) + children controls (right)
         return (
           <ParamRow
-            key={key}
+            key={stableKey}
             label={title}
             control={
               <Box
@@ -2302,10 +2314,9 @@ export default function ProtocolForm({
         );
       }
 
-
-      // Group
+      // Group (decorator, name optional)
       if (defClass === "Group" && Array.isArray(def.params)) {
-        const groupKey = `${key}_group`;
+        const groupKey = `${stableKey}|group`;
         const expanded = expandedGroups[groupKey] ?? true;
 
         const toggleExpand = () =>
@@ -2313,7 +2324,7 @@ export default function ProtocolForm({
 
         return (
           <Box
-            key={key}
+            key={stableKey}
             sx={{
               mb: 2,
               border: "1px dashed #ccc",
@@ -2339,7 +2350,7 @@ export default function ProtocolForm({
                   color: theme.palette.mode === "dark" ? "#ffffff" : "#000000",
                 })}
               >
-                {def.label || name || `Group ${groupKey}`}
+                {def.label || name || "Group"}
               </Typography>
               <IconButton size="small">
                 {expanded ? <ChevronUpIcon fontSize="small" /> : <ChevronDownIcon fontSize="small" />}
@@ -2347,23 +2358,27 @@ export default function ProtocolForm({
             </Box>
 
             {expanded &&
-              def.params.map((child: any, idx: number) => renderParam(child, sectionIdx, idx))}
+              def.params.map((child: any, idx: number) =>
+                renderParam(child, sectionIdx, idx, "standard", stableKey)
+              )}
           </Box>
         );
       }
 
-      // BooleanParam
+      // BooleanParam (requires stateKey)
       if (defClass === "BooleanParam") {
+        if (!stateKey) return null;
+
         const checked = coerceBooleanValue(
           value !== undefined
             ? value
-            : protocolDetails.params?.[key]?.value ?? def.value ?? def.value ?? def.default
+            : protocolDetails.params?.[stateKey]?.value ?? def.value ?? def.default
         );
 
         return (
           <ParamRow
-            key={key}
-            label={def.label || name}
+            key={stableKey}
+            label={def.label || name || ""}
             control={
               <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
                 {advancedSlot}
@@ -2374,8 +2389,8 @@ export default function ProtocolForm({
                       ...prev,
                       params: {
                         ...prev.params,
-                        [key]: {
-                          ...prev.params[key],
+                        [stateKey]: {
+                          ...prev.params[stateKey],
                           editableValue: e.target.checked,
                           value: e.target.checked,
                         },
@@ -2392,21 +2407,37 @@ export default function ProtocolForm({
         );
       }
 
-      // Default text param
+      // LabelParam (decorator, name optional)
+      if (defClass === "Label") {
+        return (
+          <ParamRow
+            key={stableKey}
+            label={String(def.label || name || "")}
+            control={<></>}
+            helpText={def.help}
+            rowIndex={rowIndex}
+            layoutVariant="fullWidth"
+          />
+        );
+      }
+
+      // Default text param (requires stateKey)
+      if (!stateKey) return null;
+
       const defaultControl = (
         <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
           {advancedSlot}
           <TextField
             size="small"
-            name={key}
+            name={stateKey}
             value={value ?? def.default ?? ""}
             onChange={(e) =>
               setProtocolDetails((prev: any) => ({
                 ...prev,
                 params: {
                   ...prev.params,
-                  [key]: {
-                    ...prev.params[key],
+                  [stateKey]: {
+                    ...prev.params[stateKey],
                     editableValue: e.target.value,
                   },
                 },
@@ -2424,8 +2455,8 @@ export default function ProtocolForm({
 
       return (
         <ParamRow
-          key={key}
-          label={def.label || name}
+          key={stableKey}
+          label={def.label || name || ""}
           control={defaultControl}
           helpText={def.help}
           rowIndex={rowIndex}
@@ -2438,7 +2469,6 @@ export default function ProtocolForm({
       dragOverKey,
       currentDraggedOutput,
       expandedGroups,
-      form,
       generalExpertLevel,
       findGeneralExpertLocator,
       getExpectedClass,
