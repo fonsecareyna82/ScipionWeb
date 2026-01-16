@@ -742,7 +742,7 @@ export default function CTFTomoViewer({ projectId, protocolId, outputName }: CTF
           "DefocusU: %{customdata[1]:.2f} Å<br>" +
           "DefocusV: %{customdata[2]:.2f} Å<br>" +
           "Resolution: %{customdata[3]:.2f} Å<extra></extra>",
-        marker: { size: 10, color: "#ef4444", symbol: "o" },
+        marker: { size: 10, color: "#140101", symbol: "o" },
         yaxis: "y",
       },
     ] as any[];
