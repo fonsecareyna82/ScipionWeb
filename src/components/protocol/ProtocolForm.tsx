@@ -56,6 +56,9 @@ const jsonNumberColor = "#f97316";
 const jsonBooleanColor = "#7c3aed";
 const jsonNullColor = "#6b7280";
 
+const jsonIndentPx = 14;
+const jsonToggleColWidthPx = 18;
+
 function getJsonScalarColor(value: any): string {
   // getJsonScalarColor
   if (value === null || value === undefined) return jsonNullColor;
@@ -234,7 +237,84 @@ function coerceReadOnlyFlag(raw: any): boolean {
 }
 
 
-type JsonValueProps = {
+type JsonRowProps = {
+  indent: number;
+  toggle: React.ReactNode;
+  children: React.ReactNode;
+};
+
+function JsonRow({ indent, toggle, children }: JsonRowProps) {
+  // JsonRow
+  return (
+    <div
+      style={{
+        paddingLeft: indent * jsonIndentPx,
+        display: "grid",
+        gridTemplateColumns: `${jsonToggleColWidthPx}px 1fr`,
+        columnGap: 6,
+        alignItems: "start",
+      }}
+    >
+      <div style={{ width: jsonToggleColWidthPx, lineHeight: 1 }}>{toggle}</div>
+      <div
+        style={{
+          minWidth: 0,
+          whiteSpace: "pre-wrap",
+          overflowWrap: "anywhere",
+          wordBreak: "break-word",
+        }}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function JsonToggleButton({
+  expanded,
+  onToggle,
+  disabled,
+}: {
+  expanded: boolean;
+  onToggle: () => void;
+  disabled?: boolean;
+}) {
+  // JsonToggleButton
+  if (disabled) return <span />;
+
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      style={{
+        width: jsonToggleColWidthPx,
+        background: "transparent",
+        border: "none",
+        padding: 0,
+        cursor: "pointer",
+        color: "inherit",
+        fontFamily: "inherit",
+        fontSize: "inherit",
+        lineHeight: 1,
+      }}
+      aria-label={expanded ? "Collapse" : "Expand"}
+    >
+      {expanded ? "▾" : "▸"}
+    </button>
+  );
+}
+
+function encodePathSegment(seg: string) {
+  // encodePathSegment
+  try {
+    return encodeURIComponent(seg);
+  } catch {
+    return seg;
+  }
+}
+
+
+type JsonNodeProps = {
   value: any;
   path: string;
   indent: number;
@@ -242,9 +322,11 @@ type JsonValueProps = {
   expandedPaths: Set<string>;
   togglePath: (path: string) => void;
   seen: WeakSet<object>;
+  keyName?: string;
+  isArrayItem?: boolean;
 };
 
-function JsonValue({
+function JsonNode({
   value,
   path,
   indent,
@@ -252,307 +334,149 @@ function JsonValue({
   expandedPaths,
   togglePath,
   seen,
-}: JsonValueProps) {
-  // JsonValue
-  const pad = { paddingLeft: indent * 14 };
-
+  keyName,
+  isArrayItem,
+}: JsonNodeProps) {
+  // JsonNode
   const comma = isLast ? "" : ",";
 
-  const isObj = value && typeof value === "object";
+  const isObjLike = value !== null && typeof value === "object";
   const isArr = Array.isArray(value);
 
-  if (!isObj) {
+  const renderKeyPrefix = () => {
+    // renderKeyPrefix
+    if (typeof keyName !== "string" || !keyName) return null;
+
+    const renderedKey = isArrayItem ? keyName : JSON.stringify(keyName);
+
     return (
-      <div style={pad}>
+      <>
+        <span style={{ color: jsonKeyColor }}>{renderedKey}</span>
+        <span style={{ color: jsonPunctColor }}>: </span>
+      </>
+    );
+  };
+
+  if (!isObjLike) {
+    return (
+      <JsonRow indent={indent} toggle={<span />}>
+        {renderKeyPrefix()}
         {renderJsonScalar(value)}
         <span style={{ color: jsonPunctColor }}>{comma}</span>
-      </div>
+      </JsonRow>
     );
   }
 
-  // handleCircularReferences
   if (seen.has(value)) {
     return (
-      <div style={pad}>
+      <JsonRow indent={indent} toggle={<span />}>
+        {renderKeyPrefix()}
         <span style={{ color: jsonNullColor }}>{JSON.stringify("[Circular]")}</span>
         <span style={{ color: jsonPunctColor }}>{comma}</span>
-      </div>
+      </JsonRow>
     );
   }
   seen.add(value);
 
+  const entries: Array<[string, any]> = isArr
+    ? (value as any[]).map((v, i) => [String(i), v])
+    : Object.entries(value as Record<string, any>);
+
+  const isExpandable = entries.length > 0;
+  const isExpanded = isExpandable && expandedPaths.has(path);
+
+  const itemsLabel = `${entries.length} items`;
+  const collapsedToken = isArr ? `[${itemsLabel}]` : `{ ${itemsLabel}}`;
   const open = isArr ? "[" : "{";
   const close = isArr ? "]" : "}";
 
-  const entries = isArr
-    ? (value as any[]).map((v, i) => [String(i), v] as const)
-    : Object.entries(value as Record<string, any>);
-
-  const isExpanded = expandedPaths.has(path);
-
-  // collapsedNode
-  if (!isExpanded) {
+  // Render empty object/array as a single token: { 0 items } / [0 items]
+  if (!isExpandable) {
     return (
-      <div style={pad}>
-        <button
-          type="button"
-          onClick={() => togglePath(path)}
-          style={{
-            background: "transparent",
-            border: "none",
-            padding: 0,
-            marginRight: 6,
-            cursor: "pointer",
-            color: "inherit",
-            fontFamily: "inherit",
-            fontSize: "inherit",
-          }}
-          aria-label="Expand"
-        >
-          ▸
-        </button>
-        <span style={{ color: jsonPunctColor }}>
-          {open}…{close}
-        </span>
+      <JsonRow indent={indent} toggle={<span />}>
+        {renderKeyPrefix()}
+        <span style={{ color: jsonPunctColor }}>{collapsedToken}</span>
         <span style={{ color: jsonPunctColor }}>{comma}</span>
-      </div>
+      </JsonRow>
     );
   }
 
-  // expandedNode
+  // Collapsed node: "key": { 3 items }  OR  [20 items]
+  if (!isExpanded) {
+    return (
+      <JsonRow
+        indent={indent}
+        toggle={<JsonToggleButton expanded={false} onToggle={() => togglePath(path)} />}
+      >
+        {renderKeyPrefix()}
+        <span style={{ color: jsonPunctColor }}>{collapsedToken}</span>
+        <span style={{ color: jsonPunctColor }}>{comma}</span>
+      </JsonRow>
+    );
+  }
+
+  // Expanded node:
+  // - Opening line contains optional key + the opening brace/bracket
+  // - Children lines
+  // - Closing line contains only closing brace/bracket + comma
   return (
     <>
-      <div style={pad}>
-        <button
-          type="button"
-          onClick={() => togglePath(path)}
-          style={{
-            background: "transparent",
-            border: "none",
-            padding: 0,
-            marginRight: 6,
-            cursor: "pointer",
-            color: "inherit",
-            fontFamily: "inherit",
-            fontSize: "inherit",
-          }}
-          aria-label="Collapse"
-        >
-          ▾
-        </button>
+      <JsonRow
+        indent={indent}
+        toggle={<JsonToggleButton expanded={true} onToggle={() => togglePath(path)} />}
+      >
+        {renderKeyPrefix()}
         <span style={{ color: jsonPunctColor }}>{open}</span>
-      </div>
+      </JsonRow>
 
-      <div>
-        {entries.length === 0 ? (
-          <div style={{ paddingLeft: (indent + 1) * 14, opacity: 0.8 }}>
-            {isArr ? "/* empty */" : "/* empty */"}
-          </div>
-        ) : (
-          entries.map(([k, v], idx) => {
-            const childPath = `${path}.${k}`;
-            const childIsLast = idx === entries.length - 1;
+      {entries.map(([k, v], idx) => {
+        const childIsLast = idx === entries.length - 1;
+        const childPath = `${path}/${encodePathSegment(k)}`;
 
-            if (isArr) {
-              return (
-                <JsonValue
-                  key={childPath}
-                  value={v}
-                  path={childPath}
-                  indent={indent + 1}
-                  isLast={childIsLast}
-                  expandedPaths={expandedPaths}
-                  togglePath={togglePath}
-                  seen={seen}
-                />
-              );
-            }
+        if (isArr) {
+          return (
+            <JsonNode
+              key={childPath}
+              value={v}
+              path={childPath}
+              indent={indent + 1}
+              isLast={childIsLast}
+              expandedPaths={expandedPaths}
+              togglePath={togglePath}
+              seen={seen}
+            />
+          );
+        }
 
-            const childIsObj = v && typeof v === "object";
-            const childIsArr = Array.isArray(v);
+        return (
+          <JsonNode
+            key={childPath}
+            value={v}
+            path={childPath}
+            indent={indent + 1}
+            isLast={childIsLast}
+            expandedPaths={expandedPaths}
+            togglePath={togglePath}
+            seen={seen}
+            keyName={k}
+          />
+        );
+      })}
 
-            // objectProperty
-            if (childIsObj) {
-              const childExpanded = expandedPaths.has(childPath);
-              const openChild = childIsArr ? "[" : "{";
-              const closeChild = childIsArr ? "]" : "}";
-
-              if (!childExpanded) {
-                return (
-                  <div key={childPath} style={{ paddingLeft: (indent + 1) * 14 }}>
-                    <button
-                      type="button"
-                      onClick={() => togglePath(childPath)}
-                      style={{
-                        background: "transparent",
-                        border: "none",
-                        padding: 0,
-                        marginRight: 6,
-                        cursor: "pointer",
-                        color: "inherit",
-                        fontFamily: "inherit",
-                        fontSize: "inherit",
-                      }}
-                      aria-label="Expand"
-                    >
-                      ▸
-                    </button>
-                    <span style={{ color: jsonKeyColor }}>{JSON.stringify(k)}</span>
-                    <span style={{ color: jsonPunctColor }}>: </span>
-                    <span>
-                      {openChild}…{closeChild}
-                    </span>
-                    <span style={{ color: jsonPunctColor }}>{childIsLast ? "" : ","}</span>
-                  </div>
-                );
-              }
-
-              return (
-                <div key={childPath}>
-                  <div style={{ paddingLeft: (indent + 1) * 14 }}>
-                    <button
-                      type="button"
-                      onClick={() => togglePath(childPath)}
-                      style={{
-                        background: "transparent",
-                        border: "none",
-                        padding: 0,
-                        marginRight: 6,
-                        cursor: "pointer",
-                        color: "inherit",
-                        fontFamily: "inherit",
-                        fontSize: "inherit",
-                      }}
-                      aria-label="Collapse"
-                    >
-                      ▾
-                    </button>
-                    <span style={{ color: jsonKeyColor }}>{JSON.stringify(k)}</span>
-                    <span style={{ color: jsonPunctColor }}>: </span>
-                    <span>{openChild}</span>
-                  </div>
-
-                  <JsonValue
-                    value={v}
-                    path={childPath}
-                    indent={indent + 2}
-                    isLast={true}
-                    expandedPaths={expandedPaths}
-                    togglePath={togglePath}
-                    seen={seen}
-                  />
-
-                  <div style={{ paddingLeft: (indent + 1) * 14 }}>
-                    <span>{closeChild}</span>
-                    <span style={{ color: jsonPunctColor }}>{childIsLast ? "" : ","}</span>
-                  </div>
-                </div>
-              );
-            }
-
-            return (
-              <div key={childPath} style={{ paddingLeft: (indent + 1) * 14 }}>
-                <span style={{ color: jsonKeyColor }}>{JSON.stringify(k)}</span>
-                <span style={{ color: jsonPunctColor }}>: </span>
-                {renderJsonScalar(v)}
-                <span style={{ color: jsonPunctColor }}>{childIsLast ? "" : ","}</span>
-              </div>
-            );
-          })
-        )}
-      </div>
-
-      <div style={pad}>
+      <JsonRow indent={indent} toggle={<span />}>
         <span style={{ color: jsonPunctColor }}>{close}</span>
         <span style={{ color: jsonPunctColor }}>{comma}</span>
-      </div>
+      </JsonRow>
     </>
   );
 }
 
-function getJsonSummary(value: any): string {
-  // getJsonSummary
-  if (Array.isArray(value)) return `Array(${value.length})`;
-  if (value && typeof value === "object") return `Object(${Object.keys(value).length})`;
-  return formatJsonScalar(value);
-}
 
-function JsonNode({
-  name,
-  value,
-  level,
-  seen,
-}: {
-  name: string;
-  value: any;
-  level: number;
-  seen: WeakSet<object>;
-}) {
-  // JsonNode
-  const isObject = value && typeof value === "object";
-  const isArray = Array.isArray(value);
-
-  if (!isObject) {
-    return (
-      <div style={{ paddingLeft: level * 14 }}>
-        <span style={{ opacity: 0.8 }}>{name}:</span>{" "}
-        <span>{formatJsonScalar(value)}</span>
-      </div>
-    );
-  }
-
-  // handleCircularReferences
-  if (seen.has(value)) {
-    return (
-      <div style={{ paddingLeft: level * 14 }}>
-        <span style={{ opacity: 0.8 }}>{name}:</span>{" "}
-        <span>[Circular]</span>
-      </div>
-    );
-  }
-  seen.add(value);
-
-  const entries = isArray
-    ? (value as any[]).map((v, i) => [String(i), v] as const)
-    : Object.entries(value as Record<string, any>);
-
-  const defaultOpen = level <= 1;
-
-  return (
-    <details open={defaultOpen} style={{ paddingLeft: level * 14 }}>
-      <summary style={{ cursor: "pointer", userSelect: "none" }}>
-        <span style={{ opacity: 0.8 }}>{name}:</span>{" "}
-        <span>{getJsonSummary(value)}</span>
-      </summary>
-
-      <div style={{ marginTop: 6 }}>
-        {entries.length === 0 ? (
-          <div style={{ paddingLeft: 14, opacity: 0.7 }}>
-            {isArray ? "[]" : "{}"}
-          </div>
-        ) : (
-          entries.map(([k, v]) => (
-            <JsonNode
-              key={`${name}.${k}`}
-              name={k}
-              value={v}
-              level={level + 1}
-              seen={seen}
-            />
-          ))
-        )}
-      </div>
-    </details>
-  );
-}
 
 function JsonTree({ data }: { data: any }) {
   // JsonTree
   const [copied, setCopied] = useState(false);
-  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(() => {
-    // defaultExpandedPaths
-    return new Set(["$"]);
-  });
+  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(() => new Set(["$"]));
 
   const togglePath = (path: string) => {
     // togglePath
@@ -617,15 +541,13 @@ function JsonTree({ data }: { data: any }) {
           border: "1px solid #e5e7eb",
           borderRadius: 2,
           p: 1.5,
-          fontFamily:
-            "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+          fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
           fontSize: 12,
           lineHeight: 1.5,
           overflow: "auto",
         }}
       >
-        {/* renderRootAsJson */}
-        <JsonValue
+        <JsonNode
           value={data}
           path="$"
           indent={0}

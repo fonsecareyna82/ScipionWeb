@@ -337,9 +337,6 @@ export default function MultiParamRow({
                           <IconButton size="small" onClick={() => onRowClear(i)}>
                             <TrashBinIcon fontSize="1.1rem" />
                           </IconButton>
-                          <IconButton size="small" onClick={() => console.log("View", i)}>
-                            <EyeIcon fontSize="1.1rem" />
-                          </IconButton>
                         </Box>
                       )}
                     </TableCell>
