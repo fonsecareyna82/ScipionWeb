@@ -56,6 +56,9 @@ const jsonNumberColor = "#f97316";
 const jsonBooleanColor = "#7c3aed";
 const jsonNullColor = "#6b7280";
 
+const jsonIndentPx = 14;
+const jsonToggleColWidthPx = 18;
+
 function getJsonScalarColor(value: any): string {
   // getJsonScalarColor
   if (value === null || value === undefined) return jsonNullColor;
@@ -142,8 +145,38 @@ function getPointerClass(objLike: any): string {
 }
 
 function unwrapParamDef(paramLike: any): UnwrappedParam {
+  // unwrapParamDef
+  if (!paramLike || typeof paramLike !== "object") {
+    return { paramName: "", paramDef: paramLike };
+  }
+
+  // Direct backend shape: { name: "...", paramClass: "..." }
+  if (typeof (paramLike as any).name === "string") {
+    return { paramName: String((paramLike as any).name ?? ""), paramDef: paramLike };
+  }
+
+  // Common backend shape: { [name]: payload }
+  const entries = Object.entries(paramLike);
+  if (entries.length === 1) {
+    const [maybeName, payload] = entries[0] as [string, any];
+
+    // If payload looks like a param definition, use it
+    if (
+      payload &&
+      typeof payload === "object" &&
+      ("paramClass" in payload || "_class" in payload)
+    ) {
+      return { paramName: String(maybeName), paramDef: payload };
+    }
+
+    // Otherwise keep previous behavior (rare edge cases)
+    return { paramName: String(maybeName), paramDef: paramLike };
+  }
+
+  // Fallback
   return { paramName: String((paramLike as any).name ?? ""), paramDef: paramLike };
 }
+
 
 function unwrapNamedEntry(entryLike: any): { name: string; payload: any } {
   // unwrapNamedEntry
@@ -189,7 +222,99 @@ function coerceBooleanValue(raw: any): boolean {
   return false;
 }
 
-type JsonValueProps = {
+function coerceReadOnlyFlag(raw: any): boolean {
+  // coerceReadOnlyFlag
+  if (raw === true || raw === 1 || raw === "1") return true;
+  if (raw === false || raw === 0 || raw === "0") return false;
+
+  if (typeof raw === "string") {
+    const s = raw.trim().toLowerCase();
+    if (s === "true") return true;
+    if (s === "false") return false;
+  }
+
+  return false;
+}
+
+
+type JsonRowProps = {
+  indent: number;
+  toggle: React.ReactNode;
+  children: React.ReactNode;
+};
+
+function JsonRow({ indent, toggle, children }: JsonRowProps) {
+  // JsonRow
+  return (
+    <div
+      style={{
+        paddingLeft: indent * jsonIndentPx,
+        display: "grid",
+        gridTemplateColumns: `${jsonToggleColWidthPx}px 1fr`,
+        columnGap: 6,
+        alignItems: "start",
+      }}
+    >
+      <div style={{ width: jsonToggleColWidthPx, lineHeight: 1 }}>{toggle}</div>
+      <div
+        style={{
+          minWidth: 0,
+          whiteSpace: "pre-wrap",
+          overflowWrap: "anywhere",
+          wordBreak: "break-word",
+        }}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function JsonToggleButton({
+  expanded,
+  onToggle,
+  disabled,
+}: {
+  expanded: boolean;
+  onToggle: () => void;
+  disabled?: boolean;
+}) {
+  // JsonToggleButton
+  if (disabled) return <span />;
+
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      style={{
+        width: jsonToggleColWidthPx,
+        background: "transparent",
+        border: "none",
+        padding: 0,
+        cursor: "pointer",
+        color: "inherit",
+        fontFamily: "inherit",
+        fontSize: "inherit",
+        lineHeight: 1,
+      }}
+      aria-label={expanded ? "Collapse" : "Expand"}
+    >
+      {expanded ? "▾" : "▸"}
+    </button>
+  );
+}
+
+function encodePathSegment(seg: string) {
+  // encodePathSegment
+  try {
+    return encodeURIComponent(seg);
+  } catch {
+    return seg;
+  }
+}
+
+
+type JsonNodeProps = {
   value: any;
   path: string;
   indent: number;
@@ -197,9 +322,11 @@ type JsonValueProps = {
   expandedPaths: Set<string>;
   togglePath: (path: string) => void;
   seen: WeakSet<object>;
+  keyName?: string;
+  isArrayItem?: boolean;
 };
 
-function JsonValue({
+function JsonNode({
   value,
   path,
   indent,
@@ -207,307 +334,149 @@ function JsonValue({
   expandedPaths,
   togglePath,
   seen,
-}: JsonValueProps) {
-  // JsonValue
-  const pad = { paddingLeft: indent * 14 };
-
+  keyName,
+  isArrayItem,
+}: JsonNodeProps) {
+  // JsonNode
   const comma = isLast ? "" : ",";
 
-  const isObj = value && typeof value === "object";
+  const isObjLike = value !== null && typeof value === "object";
   const isArr = Array.isArray(value);
 
-  if (!isObj) {
+  const renderKeyPrefix = () => {
+    // renderKeyPrefix
+    if (typeof keyName !== "string" || !keyName) return null;
+
+    const renderedKey = isArrayItem ? keyName : JSON.stringify(keyName);
+
     return (
-      <div style={pad}>
+      <>
+        <span style={{ color: jsonKeyColor }}>{renderedKey}</span>
+        <span style={{ color: jsonPunctColor }}>: </span>
+      </>
+    );
+  };
+
+  if (!isObjLike) {
+    return (
+      <JsonRow indent={indent} toggle={<span />}>
+        {renderKeyPrefix()}
         {renderJsonScalar(value)}
         <span style={{ color: jsonPunctColor }}>{comma}</span>
-      </div>
+      </JsonRow>
     );
   }
 
-  // handleCircularReferences
   if (seen.has(value)) {
     return (
-      <div style={pad}>
+      <JsonRow indent={indent} toggle={<span />}>
+        {renderKeyPrefix()}
         <span style={{ color: jsonNullColor }}>{JSON.stringify("[Circular]")}</span>
         <span style={{ color: jsonPunctColor }}>{comma}</span>
-      </div>
+      </JsonRow>
     );
   }
   seen.add(value);
 
+  const entries: Array<[string, any]> = isArr
+    ? (value as any[]).map((v, i) => [String(i), v])
+    : Object.entries(value as Record<string, any>);
+
+  const isExpandable = entries.length > 0;
+  const isExpanded = isExpandable && expandedPaths.has(path);
+
+  const itemsLabel = `${entries.length} items`;
+  const collapsedToken = isArr ? `[${itemsLabel}]` : `{ ${itemsLabel}}`;
   const open = isArr ? "[" : "{";
   const close = isArr ? "]" : "}";
 
-  const entries = isArr
-    ? (value as any[]).map((v, i) => [String(i), v] as const)
-    : Object.entries(value as Record<string, any>);
-
-  const isExpanded = expandedPaths.has(path);
-
-  // collapsedNode
-  if (!isExpanded) {
+  // Render empty object/array as a single token: { 0 items } / [0 items]
+  if (!isExpandable) {
     return (
-      <div style={pad}>
-        <button
-          type="button"
-          onClick={() => togglePath(path)}
-          style={{
-            background: "transparent",
-            border: "none",
-            padding: 0,
-            marginRight: 6,
-            cursor: "pointer",
-            color: "inherit",
-            fontFamily: "inherit",
-            fontSize: "inherit",
-          }}
-          aria-label="Expand"
-        >
-          ▸
-        </button>
-        <span style={{ color: jsonPunctColor }}>
-          {open}…{close}
-        </span>
+      <JsonRow indent={indent} toggle={<span />}>
+        {renderKeyPrefix()}
+        <span style={{ color: jsonPunctColor }}>{collapsedToken}</span>
         <span style={{ color: jsonPunctColor }}>{comma}</span>
-      </div>
+      </JsonRow>
     );
   }
 
-  // expandedNode
+  // Collapsed node: "key": { 3 items }  OR  [20 items]
+  if (!isExpanded) {
+    return (
+      <JsonRow
+        indent={indent}
+        toggle={<JsonToggleButton expanded={false} onToggle={() => togglePath(path)} />}
+      >
+        {renderKeyPrefix()}
+        <span style={{ color: jsonPunctColor }}>{collapsedToken}</span>
+        <span style={{ color: jsonPunctColor }}>{comma}</span>
+      </JsonRow>
+    );
+  }
+
+  // Expanded node:
+  // - Opening line contains optional key + the opening brace/bracket
+  // - Children lines
+  // - Closing line contains only closing brace/bracket + comma
   return (
     <>
-      <div style={pad}>
-        <button
-          type="button"
-          onClick={() => togglePath(path)}
-          style={{
-            background: "transparent",
-            border: "none",
-            padding: 0,
-            marginRight: 6,
-            cursor: "pointer",
-            color: "inherit",
-            fontFamily: "inherit",
-            fontSize: "inherit",
-          }}
-          aria-label="Collapse"
-        >
-          ▾
-        </button>
+      <JsonRow
+        indent={indent}
+        toggle={<JsonToggleButton expanded={true} onToggle={() => togglePath(path)} />}
+      >
+        {renderKeyPrefix()}
         <span style={{ color: jsonPunctColor }}>{open}</span>
-      </div>
+      </JsonRow>
 
-      <div>
-        {entries.length === 0 ? (
-          <div style={{ paddingLeft: (indent + 1) * 14, opacity: 0.8 }}>
-            {isArr ? "/* empty */" : "/* empty */"}
-          </div>
-        ) : (
-          entries.map(([k, v], idx) => {
-            const childPath = `${path}.${k}`;
-            const childIsLast = idx === entries.length - 1;
+      {entries.map(([k, v], idx) => {
+        const childIsLast = idx === entries.length - 1;
+        const childPath = `${path}/${encodePathSegment(k)}`;
 
-            if (isArr) {
-              return (
-                <JsonValue
-                  key={childPath}
-                  value={v}
-                  path={childPath}
-                  indent={indent + 1}
-                  isLast={childIsLast}
-                  expandedPaths={expandedPaths}
-                  togglePath={togglePath}
-                  seen={seen}
-                />
-              );
-            }
+        if (isArr) {
+          return (
+            <JsonNode
+              key={childPath}
+              value={v}
+              path={childPath}
+              indent={indent + 1}
+              isLast={childIsLast}
+              expandedPaths={expandedPaths}
+              togglePath={togglePath}
+              seen={seen}
+            />
+          );
+        }
 
-            const childIsObj = v && typeof v === "object";
-            const childIsArr = Array.isArray(v);
+        return (
+          <JsonNode
+            key={childPath}
+            value={v}
+            path={childPath}
+            indent={indent + 1}
+            isLast={childIsLast}
+            expandedPaths={expandedPaths}
+            togglePath={togglePath}
+            seen={seen}
+            keyName={k}
+          />
+        );
+      })}
 
-            // objectProperty
-            if (childIsObj) {
-              const childExpanded = expandedPaths.has(childPath);
-              const openChild = childIsArr ? "[" : "{";
-              const closeChild = childIsArr ? "]" : "}";
-
-              if (!childExpanded) {
-                return (
-                  <div key={childPath} style={{ paddingLeft: (indent + 1) * 14 }}>
-                    <button
-                      type="button"
-                      onClick={() => togglePath(childPath)}
-                      style={{
-                        background: "transparent",
-                        border: "none",
-                        padding: 0,
-                        marginRight: 6,
-                        cursor: "pointer",
-                        color: "inherit",
-                        fontFamily: "inherit",
-                        fontSize: "inherit",
-                      }}
-                      aria-label="Expand"
-                    >
-                      ▸
-                    </button>
-                    <span style={{ color: jsonKeyColor }}>{JSON.stringify(k)}</span>
-                    <span style={{ color: jsonPunctColor }}>: </span>
-                    <span>
-                      {openChild}…{closeChild}
-                    </span>
-                    <span style={{ color: jsonPunctColor }}>{childIsLast ? "" : ","}</span>
-                  </div>
-                );
-              }
-
-              return (
-                <div key={childPath}>
-                  <div style={{ paddingLeft: (indent + 1) * 14 }}>
-                    <button
-                      type="button"
-                      onClick={() => togglePath(childPath)}
-                      style={{
-                        background: "transparent",
-                        border: "none",
-                        padding: 0,
-                        marginRight: 6,
-                        cursor: "pointer",
-                        color: "inherit",
-                        fontFamily: "inherit",
-                        fontSize: "inherit",
-                      }}
-                      aria-label="Collapse"
-                    >
-                      ▾
-                    </button>
-                    <span style={{ color: jsonKeyColor }}>{JSON.stringify(k)}</span>
-                    <span style={{ color: jsonPunctColor }}>: </span>
-                    <span>{openChild}</span>
-                  </div>
-
-                  <JsonValue
-                    value={v}
-                    path={childPath}
-                    indent={indent + 2}
-                    isLast={true}
-                    expandedPaths={expandedPaths}
-                    togglePath={togglePath}
-                    seen={seen}
-                  />
-
-                  <div style={{ paddingLeft: (indent + 1) * 14 }}>
-                    <span>{closeChild}</span>
-                    <span style={{ color: jsonPunctColor }}>{childIsLast ? "" : ","}</span>
-                  </div>
-                </div>
-              );
-            }
-
-            return (
-              <div key={childPath} style={{ paddingLeft: (indent + 1) * 14 }}>
-                <span style={{ color: jsonKeyColor }}>{JSON.stringify(k)}</span>
-                <span style={{ color: jsonPunctColor }}>: </span>
-                {renderJsonScalar(v)}
-                <span style={{ color: jsonPunctColor }}>{childIsLast ? "" : ","}</span>
-              </div>
-            );
-          })
-        )}
-      </div>
-
-      <div style={pad}>
+      <JsonRow indent={indent} toggle={<span />}>
         <span style={{ color: jsonPunctColor }}>{close}</span>
         <span style={{ color: jsonPunctColor }}>{comma}</span>
-      </div>
+      </JsonRow>
     </>
   );
 }
 
-function getJsonSummary(value: any): string {
-  // getJsonSummary
-  if (Array.isArray(value)) return `Array(${value.length})`;
-  if (value && typeof value === "object") return `Object(${Object.keys(value).length})`;
-  return formatJsonScalar(value);
-}
 
-function JsonNode({
-  name,
-  value,
-  level,
-  seen,
-}: {
-  name: string;
-  value: any;
-  level: number;
-  seen: WeakSet<object>;
-}) {
-  // JsonNode
-  const isObject = value && typeof value === "object";
-  const isArray = Array.isArray(value);
-
-  if (!isObject) {
-    return (
-      <div style={{ paddingLeft: level * 14 }}>
-        <span style={{ opacity: 0.8 }}>{name}:</span>{" "}
-        <span>{formatJsonScalar(value)}</span>
-      </div>
-    );
-  }
-
-  // handleCircularReferences
-  if (seen.has(value)) {
-    return (
-      <div style={{ paddingLeft: level * 14 }}>
-        <span style={{ opacity: 0.8 }}>{name}:</span>{" "}
-        <span>[Circular]</span>
-      </div>
-    );
-  }
-  seen.add(value);
-
-  const entries = isArray
-    ? (value as any[]).map((v, i) => [String(i), v] as const)
-    : Object.entries(value as Record<string, any>);
-
-  const defaultOpen = level <= 1;
-
-  return (
-    <details open={defaultOpen} style={{ paddingLeft: level * 14 }}>
-      <summary style={{ cursor: "pointer", userSelect: "none" }}>
-        <span style={{ opacity: 0.8 }}>{name}:</span>{" "}
-        <span>{getJsonSummary(value)}</span>
-      </summary>
-
-      <div style={{ marginTop: 6 }}>
-        {entries.length === 0 ? (
-          <div style={{ paddingLeft: 14, opacity: 0.7 }}>
-            {isArray ? "[]" : "{}"}
-          </div>
-        ) : (
-          entries.map(([k, v]) => (
-            <JsonNode
-              key={`${name}.${k}`}
-              name={k}
-              value={v}
-              level={level + 1}
-              seen={seen}
-            />
-          ))
-        )}
-      </div>
-    </details>
-  );
-}
 
 function JsonTree({ data }: { data: any }) {
   // JsonTree
   const [copied, setCopied] = useState(false);
-  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(() => {
-    // defaultExpandedPaths
-    return new Set(["$"]);
-  });
+  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(() => new Set(["$"]));
 
   const togglePath = (path: string) => {
     // togglePath
@@ -572,15 +541,13 @@ function JsonTree({ data }: { data: any }) {
           border: "1px solid #e5e7eb",
           borderRadius: 2,
           p: 1.5,
-          fontFamily:
-            "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+          fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
           fontSize: 12,
           lineHeight: 1.5,
           overflow: "auto",
         }}
       >
-        {/* renderRootAsJson */}
-        <JsonValue
+        <JsonNode
           value={data}
           path="$"
           indent={0}
@@ -1099,15 +1066,28 @@ export default function ProtocolForm({
 
     const params: any = {};
     const walk = (secIdx: number, paramLike: any) => {
+      // walkParamDefinitionTree
       const { paramName: name, paramDef: def } = unwrapParamDef(paramLike);
-      if (!name || !def) return;
+      if (!def) return;
 
       const cls = getParamClass(def);
 
-      if ((cls === "Group" || cls === "Line") && Array.isArray(def.params)) {
-        def.params.forEach((c: any) => walk(secIdx, c));
+      // Always traverse decorators even when name is missing
+      // Decorators should never create state keys; just traverse children if present
+      if (cls === "Group" || cls === "Line") {
+        const children = Array.isArray(def?.params) ? def.params : [];
+        children.forEach((c: any) => walk(secIdx, c));
         return;
       }
+
+      // Label is a pure decorator (no value stored)
+      if (cls === "Label") {
+        return;
+      }
+
+
+      // For real params, name is required to create a state key
+      if (!name) return;
 
       const key = `${secIdx}_${name}`;
 
@@ -1115,7 +1095,6 @@ export default function ProtocolForm({
       const rawFromApi = getInitialRawForParam(name, def, valuesMap);
       const parsedFromApi = parseFromJSONValue(rawFromApi);
 
-      // BooleanParam
       if (cls === "BooleanParam") {
         const initBool = coerceBooleanValue(parsedFromApi);
 
@@ -1131,7 +1110,6 @@ export default function ProtocolForm({
         return;
       }
 
-      // MultiPointerParam
       if (cls === "MultiPointerParam") {
         const initList = normalizeMultiPointerValue(rawFromApi);
         params[key] = {
@@ -1141,7 +1119,6 @@ export default function ProtocolForm({
         return;
       }
 
-      // PointerParam: keep value and editableValue in sync (serializer prioritizes value)
       if (cls === "PointerParam") {
         const token = normalizePointerToken(rawFromApi);
         params[key] = {
@@ -1152,7 +1129,6 @@ export default function ProtocolForm({
         return;
       }
 
-      // PathParam: keep value and editableValue in sync
       if (cls === "PathParam") {
         const token = parsedFromApi ?? "";
         params[key] = {
@@ -1163,7 +1139,6 @@ export default function ProtocolForm({
         return;
       }
 
-      // EnumParam: normalize to label
       if (cls === "EnumParam" && Array.isArray(def.choices)) {
         const label = normalizeEnumLabel(rawFromApi, def.choices, def.default);
         params[key] = {
@@ -1173,12 +1148,12 @@ export default function ProtocolForm({
         return;
       }
 
-      // Default: scalar text/number/etc.
       params[key] = {
         ...def,
         editableValue: parsedFromApi ?? "",
       };
     };
+
 
     sections.forEach((section: any, i: number) => {
       section?.params?.forEach((p: any) => walk(i, p));
@@ -1764,7 +1739,7 @@ export default function ProtocolForm({
     setExecError(null);
 
     try {
-      const pid =String(protocolId ?? "");
+      const pid = String(protocolId ?? "");
       const serialized = getSerializedParams();
 
       const res: any = await svc.saveProtocol(projectId, pid, protocolClassName, serialized);
@@ -1799,18 +1774,33 @@ export default function ProtocolForm({
 
   // Render a single parameter row
   const renderParam = useCallback(
-    (paramLike: any, sectionIdx: number, rowIndex = 0, layoutVariant: "standard" | "inline" = "standard"): JSX.Element | null => {
+    (
+      paramLike: any,
+      sectionIdx: number,
+      rowIndex = 0,
+      layoutVariant: "standard" | "inline" = "standard",
+      parentKeyPrefix = ""
+    ): JSX.Element | null => {
+      // renderParamRow
       const { paramName: name, paramDef: def } = unwrapParamDef(paramLike);
-      if (!name || !def) return null;
+      if (!def) return null;
+
+      const defClass = getParamClass(def);
+
+      // Stable key for React + decorator state (even when name is missing)
+      const basePrefix = parentKeyPrefix || `sec${sectionIdx}`;
+      const stableKey = `${basePrefix}|${name ? `param:${name}` : `decorator:${defClass}:${rowIndex}`}`;
+
+      // State key only exists for real params with a name
+      const stateKey = name ? `${sectionIdx}_${name}` : null;
+      const value = stateKey ? protocolDetails.params?.[stateKey]?.editableValue : undefined;
 
       const isInline = layoutVariant === "inline";
       const fieldWidth = isInline ? 60 : 300;
 
-      const defClass = getParamClass(def);
-      const key = `${sectionIdx}_${name}`;
-      const value = protocolDetails.params?.[key]?.editableValue;
-
-      if (def.condition && !evalExpr(sectionIdx, def.condition)) return null;
+      if (typeof def?.condition === "string" && def.condition.trim()) {
+        if (!evalExpr(sectionIdx, def.condition)) return null;
+      }
 
       const expertLocator = findGeneralExpertLocator();
       const isExpertSelector =
@@ -1820,7 +1810,6 @@ export default function ProtocolForm({
         return null;
       }
 
-      // advancedSlot
       const advancedSlot = isInline
         ? def.expertLevel === 1
           ? (
@@ -1876,33 +1865,56 @@ export default function ProtocolForm({
           </Box>
         );
 
-
-      // MultiPointerParam
+      // MultiPointerParam (requires stateKey)
       if (defClass === "MultiPointerParam") {
+        if (!stateKey) return null;
+
         const items = Array.isArray(value) ? value : def.default ?? [];
 
-        const onClear = (i: number) => {
+        // By default editable; if def.readOnly is true => block manual typing in MultiParamRow
+        const isReadOnly = coerceReadOnlyFlag(def?.readOnly);
+
+        const onRowEdit = (rowIndexInner: number, patch: { object?: string; info?: string }) => {
           setProtocolDetails((prev: any) => {
-            const list = Array.isArray(prev.params[key].editableValue)
-              ? [...prev.params[key].editableValue]
-              : [];
-            list.splice(i, 1);
-            list.push({ object: "", info: "" });
+            const existing = prev.params?.[stateKey];
+            const list = Array.isArray(existing?.editableValue) ? [...existing.editableValue] : [];
+
+            while (list.length <= rowIndexInner) list.push({ object: "", info: "" });
+
+            const current = list[rowIndexInner] ?? { object: "", info: "" };
+            list[rowIndexInner] = { ...current, ...patch };
+
             return {
               ...prev,
               params: {
                 ...prev.params,
-                [key]: { ...prev.params[key], editableValue: list },
+                [stateKey]: { ...existing, editableValue: list },
+              },
+            };
+          });
+        };
+
+        const onClear = (i: number) => {
+          setProtocolDetails((prev: any) => {
+            const existing = prev.params?.[stateKey];
+            const list = Array.isArray(existing?.editableValue) ? [...existing.editableValue] : [];
+            list.splice(i, 1);
+            list.push({ object: "", info: "" });
+
+            return {
+              ...prev,
+              params: {
+                ...prev.params,
+                [stateKey]: { ...existing, editableValue: list },
               },
             };
           });
         };
 
         const onRowDrop = (i: number, dragged: any) => {
-          const liveParam = protocolDetails.params?.[key];
+          const liveParam = protocolDetails.params?.[stateKey];
           const expected = getExpectedClass(liveParam);
-          const norm = (s: any) =>
-            typeof s === "string" ? s.replace(/\s+/g, "").toLowerCase() : "";
+          const norm = (s: any) => (typeof s === "string" ? s.replace(/\s+/g, "").toLowerCase() : "");
           const draggedClass = norm(dragged.pointerClass);
 
           const matches =
@@ -1915,21 +1927,22 @@ export default function ProtocolForm({
           if (!matches) return;
 
           setProtocolDetails((prev: any) => {
-            const list = Array.isArray(prev.params[key].editableValue)
-              ? [...prev.params[key].editableValue]
-              : [];
+            const existing = prev.params?.[stateKey];
+            const list = Array.isArray(existing?.editableValue) ? [...existing.editableValue] : [];
             while (list.length <= i) list.push({ object: "", info: "" });
+
             list[i] = {
               object: dragged.value ?? "",
               info: dragged.info ?? "",
               pointerClass: dragged.pointerClass ?? "",
               parentId: dragged.parentId ?? null,
             };
+
             return {
               ...prev,
               params: {
                 ...prev.params,
-                [key]: { ...prev.params[key], editableValue: list },
+                [stateKey]: { ...existing, editableValue: list },
               },
             };
           });
@@ -1937,9 +1950,8 @@ export default function ProtocolForm({
 
         const handlePickFromDialog = (rowIndexInner: number, picked: any) => {
           setProtocolDetails((prev: any) => {
-            const list = Array.isArray(prev.params[key].editableValue)
-              ? [...prev.params[key].editableValue]
-              : [];
+            const existing = prev.params?.[stateKey];
+            const list = Array.isArray(existing?.editableValue) ? [...existing.editableValue] : [];
 
             while (list.length <= rowIndexInner) list.push({ object: "", info: "" });
 
@@ -1955,23 +1967,23 @@ export default function ProtocolForm({
               ...prev,
               params: {
                 ...prev.params,
-                [key]: { ...prev.params[key], editableValue: list },
+                [stateKey]: { ...existing, editableValue: list },
               },
             };
           });
         };
 
-        const liveDef = { ...def, ...(protocolDetails.params?.[key] || {}) };
+        const liveDef = { ...def, ...(protocolDetails.params?.[stateKey] || {}) };
 
         return (
           <ParamRow
-            key={key}
-            label={def.label || name}
+            key={stableKey}
+            label={def.label || name || ""}
             control={
               <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
                 {advancedSlot}
                 <MultiParamRow
-                  label={def.label || name}
+                  label={def.label || name || ""}
                   items={items}
                   helpText={def.help}
                   onRowClear={onClear}
@@ -1979,10 +1991,12 @@ export default function ProtocolForm({
                   dragOverKey={dragOverKey}
                   setDragOverKey={setDragOverKey}
                   currentDraggedOutput={currentDraggedOutput}
-                  paramKey={key}
+                  paramKey={stateKey}
                   def={liveDef}
-                  getAvailableOutputs={() => getFilteredOutputsForKey(key)}
+                  getAvailableOutputs={() => getFilteredOutputsForKey(stateKey)}
                   onPickForRow={handlePickFromDialog}
+                  readOnly={isReadOnly}
+                  onRowEdit={onRowEdit}
                 />
               </Box>
             }
@@ -1992,14 +2006,17 @@ export default function ProtocolForm({
         );
       }
 
-      // PointerParam
+
+      // PointerParam (requires stateKey)
       if (defClass === "PointerParam") {
+        if (!stateKey) return null;
+
         const onClear = () =>
           setProtocolDetails((prev: any) => ({
             ...prev,
             params: {
               ...prev.params,
-              [key]: { ...prev.params[key], editableValue: "", value: "" },
+              [stateKey]: { ...prev.params[stateKey], editableValue: "", value: "" },
             },
           }));
 
@@ -2014,24 +2031,36 @@ export default function ProtocolForm({
           setOpenSelector(true);
         };
 
-        // normalizePointerValueForDisplay
-        const displayValue = (() => {
-          const v = value ?? def.default ?? "";
-          if (typeof v === "string" || typeof v === "number") return v;
-          if (v && typeof v === "object") {
-            const objValue = (v as any).value;
-            if (typeof objValue === "string" || typeof objValue === "number") return objValue;
-          }
-          return "";
-        })();
+        const isReadOnly = coerceReadOnlyFlag(def?.readOnly);
 
         const control = (
           <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
             <TextField
               size="small"
-              value={String(protocolDetails.params?.[key]?.editableValue ?? protocolDetails.params?.[key]?.value ?? def.default ?? "")}
-              InputProps={{ readOnly: true }}
-              onClick={() => handleOpenFind(key)}
+              value={String(
+                protocolDetails.params?.[stateKey]?.editableValue ??
+                protocolDetails.params?.[stateKey]?.value ??
+                def.default ??
+                ""
+              )}
+              onChange={
+                isReadOnly
+                  ? undefined
+                  : (e) =>
+                    setProtocolDetails((prev: any) => ({
+                      ...prev,
+                      params: {
+                        ...prev.params,
+                        [stateKey]: {
+                          ...prev.params[stateKey],
+                          editableValue: e.target.value,
+                          value: e.target.value,
+                        },
+                      },
+                    }))
+              }
+              InputProps={isReadOnly ? { readOnly: true } : undefined}
+              onClick={isReadOnly ? () => handleOpenFind(stateKey) : undefined}
               sx={{
                 width: fieldWidth,
                 minWidth: 0,
@@ -2043,8 +2072,8 @@ export default function ProtocolForm({
                   color: "#111827",
                   WebkitTextFillColor: "#111827",
                   opacity: 1,
-                  userSelect: "none",
-                  cursor: "pointer",
+                  userSelect: isReadOnly ? "none" : "text",
+                  cursor: isReadOnly ? "pointer" : "text",
                 },
               }}
             />
@@ -2053,13 +2082,13 @@ export default function ProtocolForm({
 
         return (
           <ParamRow
-            key={key}
-            label={def.label || name}
+            key={stableKey}
+            label={def.label || name || ""}
             control={
               <WrapWithDrop
                 control={control}
                 def={def}
-                paramKey={key}
+                paramKey={stateKey}
                 setProtocolDetails={setProtocolDetails}
                 setDragOverKey={setDragOverKey}
                 dragOverKey={dragOverKey}
@@ -2069,39 +2098,37 @@ export default function ProtocolForm({
             isPointerParam
             onClear={onClear}
             rowIndex={rowIndex}
-            onOpenFind={() => handleOpenFind(key)}
+            onOpenFind={() => handleOpenFind(stateKey)}
             layoutVariant={layoutVariant}
           />
         );
       }
 
-      // PathParam
+
+      // PathParam (requires stateKey)
       if (defClass === "PathParam") {
-        const current = protocolDetails.params?.[key] || {};
-        const textValue =
-          current.editableValue ??
-          current.value ??
-          def.value ??
-          def.default ??
-          "";
+        if (!stateKey) return null;
+
+        const current = protocolDetails.params?.[stateKey] || {};
+        const textValue = current.editableValue ?? current.value ?? def.value ?? def.default ?? "";
 
         const handleBrowsePath = () => {
           if (!projectId || !protocolId) {
             console.warn("Missing projectId or protocolId for PathParam browse.");
             return;
           }
-          setPathDialog({ open: true, paramKey: key });
+          setPathDialog({ open: true, paramKey: stateKey });
         };
 
         const handleClear = () => {
           setProtocolDetails((prev: any) => {
-            if (!prev?.params?.[key]) return prev;
+            if (!prev?.params?.[stateKey]) return prev;
             return {
               ...prev,
               params: {
                 ...prev.params,
-                [key]: {
-                  ...prev.params[key],
+                [stateKey]: {
+                  ...prev.params[stateKey],
                   editableValue: "",
                   value: "",
                 },
@@ -2115,17 +2142,17 @@ export default function ProtocolForm({
             {advancedSlot}
             <TextField
               size="small"
-              name={key}
+              name={stateKey}
               value={textValue}
               onChange={(e) =>
                 setProtocolDetails((prev: any) => {
-                  if (!prev?.params?.[key]) return prev;
+                  if (!prev?.params?.[stateKey]) return prev;
                   return {
                     ...prev,
                     params: {
                       ...prev.params,
-                      [key]: {
-                        ...prev.params[key],
+                      [stateKey]: {
+                        ...prev.params[stateKey],
                         editableValue: e.target.value,
                         value: e.target.value,
                       },
@@ -2144,8 +2171,8 @@ export default function ProtocolForm({
 
         return (
           <ParamRow
-            key={key}
-            label={def.label || name}
+            key={stableKey}
+            label={def.label || name || ""}
             control={control}
             helpText={def.help}
             isPathParam
@@ -2157,8 +2184,10 @@ export default function ProtocolForm({
         );
       }
 
-      // EnumParam
+      // EnumParam (requires stateKey)
       if (defClass === "EnumParam" && Array.isArray(def.choices)) {
+        if (!stateKey) return null;
+
         let sel = value ?? def.default ?? "";
         if (typeof sel === "number") sel = def.choices[sel] ?? "";
 
@@ -2167,16 +2196,12 @@ export default function ProtocolForm({
         const onChange = (v: any) =>
           setProtocolDetails((prev: any) => ({
             ...prev,
-            params: { ...prev.params, [key]: { ...prev.params[key], editableValue: v } },
+            params: { ...prev.params, [stateKey]: { ...prev.params[stateKey], editableValue: v } },
           }));
 
         const controlBase =
           def.display === 0 ? (
-            <RadioGroup
-              row
-              value={safeSel}
-              onChange={(e) => onChange(e.target.value)}
-            >
+            <RadioGroup row value={safeSel} onChange={(e) => onChange(e.target.value)}>
               {def.choices.map((ch: string, i: number) => (
                 <FormControlLabel
                   key={i}
@@ -2210,8 +2235,8 @@ export default function ProtocolForm({
 
         return (
           <ParamRow
-            key={key}
-            label={def.label || name}
+            key={stableKey}
+            label={def.label || name || ""}
             control={
               <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
                 {advancedSlot}
@@ -2225,19 +2250,19 @@ export default function ProtocolForm({
         );
       }
 
-      // Line
-      if (defClass === "Line" && Array.isArray(def.params)) {
-        const title = String(def.label || name || "").trim();
+      // Line (decorator, name optional)
+      if (defClass === "Line") {
+        const title = String(def?.label || name || "").trim();
+        const lineParams = Array.isArray(def?.params) ? def.params : [];
 
-        // renderInlineChildren
-        const children = def.params
+        const children = lineParams
           .map((child: any, idx: number) => {
-            const childEl = renderParam(child, sectionIdx, idx, "inline");
+            const childEl = renderParam(child, sectionIdx, idx, "inline", stableKey);
             if (!childEl) return null;
 
             return (
               <Box
-                key={`${key}_line_${idx}`}
+                key={`${stableKey}|lineChild:${idx}`}
                 sx={{
                   flex: "0 0 auto",
                   minWidth: 0,
@@ -2251,11 +2276,26 @@ export default function ProtocolForm({
           })
           .filter(Boolean);
 
-        // If the line has no label, just render the inline controls
+        // If Line has no children, render only the label (if present) and stay stable
+        if (children.length === 0) {
+          if (!title) return null;
+
+          return (
+            <ParamRow
+              key={stableKey}
+              label={title}
+              control={<></>}
+              helpText={def?.help}
+              rowIndex={rowIndex}
+              layoutVariant="fullWidth"
+            />
+          );
+        }
+
         if (!title) {
           return (
             <Box
-              key={key}
+              key={stableKey}
               sx={{
                 mb: 1,
                 display: "flex",
@@ -2265,7 +2305,6 @@ export default function ProtocolForm({
                 overflowX: "auto",
                 overflowY: "hidden",
                 pb: 0.25,
-
               }}
             >
               {children as any}
@@ -2273,10 +2312,9 @@ export default function ProtocolForm({
           );
         }
 
-        // Single-row layout: label (left) + children controls (right)
         return (
           <ParamRow
-            key={key}
+            key={stableKey}
             label={title}
             control={
               <Box
@@ -2295,7 +2333,7 @@ export default function ProtocolForm({
                 {children as any}
               </Box>
             }
-            helpText={def.help}
+            helpText={def?.help}
             rowIndex={rowIndex}
             layoutVariant="standard"
           />
@@ -2303,17 +2341,20 @@ export default function ProtocolForm({
       }
 
 
-      // Group
-      if (defClass === "Group" && Array.isArray(def.params)) {
-        const groupKey = `${key}_group`;
+      // Group (decorator, name optional)
+      if (defClass === "Group") {
+        const groupKey = `${stableKey}|group`;
         const expanded = expandedGroups[groupKey] ?? true;
 
         const toggleExpand = () =>
           setExpandedGroups((prev) => ({ ...prev, [groupKey]: !expanded }));
 
+        const groupLabel = String(def?.label || name || "Group").trim();
+        const groupParams = Array.isArray(def?.params) ? def.params : [];
+
         return (
           <Box
-            key={key}
+            key={stableKey}
             sx={{
               mb: 2,
               border: "1px dashed #ccc",
@@ -2339,31 +2380,51 @@ export default function ProtocolForm({
                   color: theme.palette.mode === "dark" ? "#ffffff" : "#000000",
                 })}
               >
-                {def.label || name || `Group ${groupKey}`}
+                {groupLabel || "Group"}
               </Typography>
+
               <IconButton size="small">
-                {expanded ? <ChevronUpIcon fontSize="small" /> : <ChevronDownIcon fontSize="small" />}
+                {expanded ? (
+                  <ChevronUpIcon fontSize="small" />
+                ) : (
+                  <ChevronDownIcon fontSize="small" />
+                )}
               </IconButton>
             </Box>
 
-            {expanded &&
-              def.params.map((child: any, idx: number) => renderParam(child, sectionIdx, idx))}
+            {expanded && (
+              <>
+                {groupParams.length === 0 ? (
+                  <Typography variant="caption" sx={{ opacity: 0.7, pl: 1 }}>
+                    {/* No parameters in this group */}
+                    No parameters.
+                  </Typography>
+                ) : (
+                  groupParams.map((child: any, idx: number) =>
+                    renderParam(child, sectionIdx, idx, "standard", stableKey)
+                  )
+                )}
+              </>
+            )}
           </Box>
         );
       }
 
-      // BooleanParam
+
+      // BooleanParam (requires stateKey)
       if (defClass === "BooleanParam") {
+        if (!stateKey) return null;
+
         const checked = coerceBooleanValue(
           value !== undefined
             ? value
-            : protocolDetails.params?.[key]?.value ?? def.value ?? def.value ?? def.default
+            : protocolDetails.params?.[stateKey]?.value ?? def.value ?? def.default
         );
 
         return (
           <ParamRow
-            key={key}
-            label={def.label || name}
+            key={stableKey}
+            label={def.label || name || ""}
             control={
               <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
                 {advancedSlot}
@@ -2374,8 +2435,8 @@ export default function ProtocolForm({
                       ...prev,
                       params: {
                         ...prev.params,
-                        [key]: {
-                          ...prev.params[key],
+                        [stateKey]: {
+                          ...prev.params[stateKey],
                           editableValue: e.target.checked,
                           value: e.target.checked,
                         },
@@ -2392,21 +2453,37 @@ export default function ProtocolForm({
         );
       }
 
-      // Default text param
+      // LabelParam (decorator, name optional)
+      if (defClass === "Label") {
+        return (
+          <ParamRow
+            key={stableKey}
+            label={String(def.label || name || "")}
+            control={<></>}
+            helpText={def.help}
+            rowIndex={rowIndex}
+            layoutVariant="fullWidth"
+          />
+        );
+      }
+
+      // Default text param (requires stateKey)
+      if (!stateKey) return null;
+
       const defaultControl = (
         <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
           {advancedSlot}
           <TextField
             size="small"
-            name={key}
+            name={stateKey}
             value={value ?? def.default ?? ""}
             onChange={(e) =>
               setProtocolDetails((prev: any) => ({
                 ...prev,
                 params: {
                   ...prev.params,
-                  [key]: {
-                    ...prev.params[key],
+                  [stateKey]: {
+                    ...prev.params[stateKey],
                     editableValue: e.target.value,
                   },
                 },
@@ -2424,8 +2501,8 @@ export default function ProtocolForm({
 
       return (
         <ParamRow
-          key={key}
-          label={def.label || name}
+          key={stableKey}
+          label={def.label || name || ""}
           control={defaultControl}
           helpText={def.help}
           rowIndex={rowIndex}
@@ -2438,7 +2515,6 @@ export default function ProtocolForm({
       dragOverKey,
       currentDraggedOutput,
       expandedGroups,
-      form,
       generalExpertLevel,
       findGeneralExpertLocator,
       getExpectedClass,

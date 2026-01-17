@@ -9,6 +9,7 @@ import {
   TableBody,
   IconButton,
   Tooltip,
+  TextField,
 } from "@mui/material";
 import { TrashBinIcon, EyeIcon, FindIcon } from "../../icons";
 import { useDrag } from "./DragContext";
@@ -29,6 +30,12 @@ type MultiParamRowProps = {
   // Centralized OutputSelectorDialog
   getAvailableOutputs?: () => any[];
   onPickForRow?: (rowIndex: number, picked: any) => void;
+
+  // Inline edit support (optional)
+  onRowEdit?: (rowIndex: number, patch: { object?: string; info?: string }) => void;
+
+  // If true, block manual typing but keep drop/pick/clear behavior unchanged
+  readOnly?: boolean;
 };
 
 // Utility: extract expected accepted pointer class names from parameter definition
@@ -59,7 +66,7 @@ const getExpectedClass = (def: any): string | string[] | undefined => {
     const s = v.trim();
     if (!s) return;
 
-    // Filter out param meta names that are not real output classes
+    // filterOutParamMeta
     if (/pointerparam$/i.test(s) || /multipointerparam$/i.test(s)) return;
 
     if (!result.includes(s)) result.push(s);
@@ -86,11 +93,15 @@ export default function MultiParamRow({
   def,
   getAvailableOutputs,
   onPickForRow,
+  onRowEdit,
+  readOnly,
 }: MultiParamRowProps) {
   const { currentDraggedOutput: contextDragged } = useDrag();
   const dragged = currentDraggedOutput ?? contextDragged;
 
   const [openSelectorFor, setOpenSelectorFor] = useState<number | null>(null);
+
+  const isReadOnly = !!readOnly;
 
   // Always ensure one blank row available
   const display = useMemo(() => {
@@ -119,12 +130,8 @@ export default function MultiParamRow({
 
   const draggedPointerClass = useMemo(() => {
     // draggedPointerClass
-    // Primary: new backend shape
     if (dragged?.pointerClass) return String(dragged.pointerClass);
-
-    // Fallback: if some drag sources still provide legacy field names
     if (dragged?._class) return String(dragged._class);
-
     return "";
   }, [dragged]);
 
@@ -139,9 +146,23 @@ export default function MultiParamRow({
     return draggedPointerClass === expected;
   }, [expected, draggedPointerClass]);
 
+  const cellTextFieldSx = {
+    "& .MuiInputBase-root": {
+      fontSize: 12,
+      height: 30,
+      backgroundColor: "transparent",
+    },
+    "& .MuiInputBase-input": {
+      fontSize: 12,
+      py: 0,
+      px: 0.5,
+      lineHeight: 1.2,
+      color: "#111827",
+    },
+  } as const;
+
   return (
     <Box sx={{ mb: 2, ml: -2 }}>
-      {/* === Table with draggable rows === */}
       <Box
         sx={{
           maxHeight: 320,
@@ -240,7 +261,7 @@ export default function MultiParamRow({
 
                       const parsed = JSON.parse(raw);
 
-                      // Prevent duplicates
+                      // preventDuplicatesOnDrop
                       const already = display.some((r) => r.object === parsed.value);
                       if (already) return;
 
@@ -259,7 +280,18 @@ export default function MultiParamRow({
                     }}
                     title={row.object}
                   >
-                    {row.object}
+                    <TextField
+                      variant="standard"
+                      value={String(row.object ?? "")}
+                      onChange={
+                        isReadOnly
+                          ? undefined
+                          : (e) => onRowEdit?.(i, { object: e.target.value })
+                      }
+                      InputProps={{ disableUnderline: true, readOnly: isReadOnly }}
+                      sx={cellTextFieldSx}
+                      fullWidth
+                    />
                   </TableCell>
 
                   <TableCell
@@ -271,7 +303,18 @@ export default function MultiParamRow({
                     }}
                     title={row.info}
                   >
-                    {row.info}
+                    <TextField
+                      variant="standard"
+                      value={String(row.info ?? "")}
+                      onChange={
+                        isReadOnly
+                          ? undefined
+                          : (e) => onRowEdit?.(i, { info: e.target.value })
+                      }
+                      InputProps={{ disableUnderline: true, readOnly: isReadOnly }}
+                      sx={cellTextFieldSx}
+                      fullWidth
+                    />
                   </TableCell>
 
                   {onRowClear && (
@@ -294,9 +337,6 @@ export default function MultiParamRow({
                           <IconButton size="small" onClick={() => onRowClear(i)}>
                             <TrashBinIcon fontSize="1.1rem" />
                           </IconButton>
-                          <IconButton size="small" onClick={() => console.log("View", i)}>
-                            <EyeIcon fontSize="1.1rem" />
-                          </IconButton>
                         </Box>
                       )}
                     </TableCell>
@@ -308,12 +348,11 @@ export default function MultiParamRow({
         </Table>
       </Box>
 
-      {/* === Centralized OutputSelectorDialog === */}
       <OutputSelectorDialog
         open={openSelectorFor !== null}
         onClose={() => setOpenSelectorFor(null)}
         expectedClass={expected}
-        allOutputs={availableOutputs} // Filtered to exclude already used
+        allOutputs={availableOutputs}
         multiSelect={true}
         onSelect={(selected) => {
           // handleSelectorPick
