@@ -14,7 +14,6 @@ import { MetadataViewer } from "./metadata-viewer";
 import VolumeViewer from "./volume-viewer";
 import Coords3dViewer from "./coords3d-viewer";
 import TiltSeriesViewer from "./tiltseries-viewer";
-import CtftomoViewer from "./ctftomo-viewer";
 import CTFTomoViewer from "./ctftomo-viewer";
 
 type AnalyzeOutputDialogProps = {
@@ -148,6 +147,7 @@ export default function AnalyzeOutputDialog({
     () =>
       (
         outputRaw?._class ||
+        outputRaw?.pointerClass ||
         outputRaw?.class ||
         outputRaw?.type ||
         ""

@@ -1,5 +1,6 @@
 // src/components/ProtocolForm.tsx
 import { useState, useEffect, useCallback, JSX, useRef, useMemo } from "react";
+import toast from "react-hot-toast";
 import {
   Tabs,
   Tab,
@@ -36,7 +37,7 @@ import OutputSelectorDialog from "./outputSelectorDialog";
 import { useProjectService } from "@/ProjectServiceContext";
 import RemoteFileDialog from "@/components/files/RemoteFileDialog";
 import AnalyzeOutputDialog from "@/components/analyze/analyze-output-dialog";
-import { CheckCircle2Icon, Copy } from "lucide-react";
+import { Copy } from "lucide-react";
 
 type ProtocolFormProps = {
   data: any;
@@ -47,7 +48,6 @@ type ProtocolFormProps = {
   variant?: "drawer" | "docked";
 };
 
-
 // jsonSyntaxColors
 const jsonPunctColor = "#000000"; // braces, brackets, commas, colon
 const jsonKeyColor = "#000000";
@@ -55,6 +55,9 @@ const jsonStringColor = "#16a34a";
 const jsonNumberColor = "#f97316";
 const jsonBooleanColor = "#7c3aed";
 const jsonNullColor = "#6b7280";
+
+const jsonIndentPx = 14;
+const jsonToggleColWidthPx = 18;
 
 function getJsonScalarColor(value: any): string {
   // getJsonScalarColor
@@ -69,7 +72,6 @@ function renderJsonScalar(value: any) {
   // renderJsonScalar
   return <span style={{ color: getJsonScalarColor(value) }}>{formatJsonScalar(value)}</span>;
 }
-
 
 // jsonTreeViewer
 function formatJsonScalar(value: any): string {
@@ -127,7 +129,192 @@ function copyTextToClipboard(text: string) {
   });
 }
 
-type JsonValueProps = {
+type UnwrappedParam = {
+  paramName: string;
+  paramDef: any;
+};
+
+function getParamClass(defLike: any): string {
+  // getParamClass
+  return String(defLike?.paramClass ?? defLike?._class ?? "");
+}
+
+function getPointerClass(objLike: any): string {
+  // getPointerClass
+  return String(objLike?.pointerClass ?? objLike?._class ?? "");
+}
+
+function unwrapParamDef(paramLike: any): UnwrappedParam {
+  // unwrapParamDef
+  if (!paramLike || typeof paramLike !== "object") {
+    return { paramName: "", paramDef: paramLike };
+  }
+
+  // Direct backend shape: { name: "...", paramClass: "..." }
+  if (typeof (paramLike as any).name === "string") {
+    return { paramName: String((paramLike as any).name ?? ""), paramDef: paramLike };
+  }
+
+  // Common backend shape: { [name]: payload }
+  const entries = Object.entries(paramLike);
+  if (entries.length === 1) {
+    const [maybeName, payload] = entries[0] as [string, any];
+
+    // If payload looks like a param definition, use it
+    if (
+      payload &&
+      typeof payload === "object" &&
+      ("paramClass" in payload || "_class" in payload)
+    ) {
+      return { paramName: String(maybeName), paramDef: payload };
+    }
+
+    // Otherwise keep previous behavior (rare edge cases)
+    return { paramName: String(maybeName), paramDef: paramLike };
+  }
+
+  // Fallback
+  return { paramName: String((paramLike as any).name ?? ""), paramDef: paramLike };
+}
+
+
+function unwrapNamedEntry(entryLike: any): { name: string; payload: any } {
+  // unwrapNamedEntry
+  if (!entryLike || typeof entryLike !== "object") return { name: "", payload: entryLike };
+
+  // If backend ever provides a direct shape with a name field
+  if (typeof (entryLike as any).name === "string" && (entryLike as any).name.trim()) {
+    return { name: String((entryLike as any).name), payload: entryLike };
+  }
+
+  // Legacy/current shape: { [name]: payload }
+  const entries = Object.entries(entryLike);
+  if (entries.length === 1) {
+    const [name, payload] = entries[0] as [string, any];
+    return { name, payload };
+  }
+
+  // Fallback: no stable name available
+  return { name: String((entryLike as any)._key ?? ""), payload: entryLike };
+}
+
+function unwrapObjValue(raw: any) {
+  // unwrapObjValue
+  if (raw && typeof raw === "object" && "value" in raw) {
+    return (raw as any).value;
+  }
+  return raw;
+}
+
+function coerceBooleanValue(raw: any): boolean {
+  // coerceBooleanValue
+  const v = unwrapObjValue(raw);
+
+  if (v === true || v === 1 || v === "1") return true;
+  if (v === false || v === 0 || v === "0") return false;
+
+  if (typeof v === "string") {
+    const s = v.trim().toLowerCase();
+    if (s === "true") return true;
+    if (s === "false") return false;
+  }
+
+  return false;
+}
+
+function coerceReadOnlyFlag(raw: any): boolean {
+  // coerceReadOnlyFlag
+  if (raw === true || raw === 1 || raw === "1") return true;
+  if (raw === false || raw === 0 || raw === "0") return false;
+
+  if (typeof raw === "string") {
+    const s = raw.trim().toLowerCase();
+    if (s === "true") return true;
+    if (s === "false") return false;
+  }
+
+  return false;
+}
+
+
+type JsonRowProps = {
+  indent: number;
+  toggle: React.ReactNode;
+  children: React.ReactNode;
+};
+
+function JsonRow({ indent, toggle, children }: JsonRowProps) {
+  // JsonRow
+  return (
+    <div
+      style={{
+        paddingLeft: indent * jsonIndentPx,
+        display: "grid",
+        gridTemplateColumns: `${jsonToggleColWidthPx}px 1fr`,
+        columnGap: 6,
+        alignItems: "start",
+      }}
+    >
+      <div style={{ width: jsonToggleColWidthPx, lineHeight: 1 }}>{toggle}</div>
+      <div
+        style={{
+          minWidth: 0,
+          whiteSpace: "pre-wrap",
+          overflowWrap: "anywhere",
+          wordBreak: "break-word",
+        }}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function JsonToggleButton({
+  expanded,
+  onToggle,
+  disabled,
+}: {
+  expanded: boolean;
+  onToggle: () => void;
+  disabled?: boolean;
+}) {
+  // JsonToggleButton
+  if (disabled) return <span />;
+
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      style={{
+        width: jsonToggleColWidthPx,
+        background: "transparent",
+        border: "none",
+        padding: 0,
+        cursor: "pointer",
+        color: "inherit",
+        fontFamily: "inherit",
+        fontSize: "inherit",
+        lineHeight: 1,
+      }}
+      aria-label={expanded ? "Collapse" : "Expand"}
+    >
+      {expanded ? "▾" : "▸"}
+    </button>
+  );
+}
+
+function encodePathSegment(seg: string) {
+  // encodePathSegment
+  try {
+    return encodeURIComponent(seg);
+  } catch {
+    return seg;
+  }
+}
+
+
+type JsonNodeProps = {
   value: any;
   path: string;
   indent: number;
@@ -135,9 +322,11 @@ type JsonValueProps = {
   expandedPaths: Set<string>;
   togglePath: (path: string) => void;
   seen: WeakSet<object>;
+  keyName?: string;
+  isArrayItem?: boolean;
 };
 
-function JsonValue({
+function JsonNode({
   value,
   path,
   indent,
@@ -145,307 +334,149 @@ function JsonValue({
   expandedPaths,
   togglePath,
   seen,
-}: JsonValueProps) {
-  // JsonValue
-  const pad = { paddingLeft: indent * 14 };
-
+  keyName,
+  isArrayItem,
+}: JsonNodeProps) {
+  // JsonNode
   const comma = isLast ? "" : ",";
 
-  const isObj = value && typeof value === "object";
+  const isObjLike = value !== null && typeof value === "object";
   const isArr = Array.isArray(value);
 
-  if (!isObj) {
+  const renderKeyPrefix = () => {
+    // renderKeyPrefix
+    if (typeof keyName !== "string" || !keyName) return null;
+
+    const renderedKey = isArrayItem ? keyName : JSON.stringify(keyName);
+
     return (
-      <div style={pad}>
+      <>
+        <span style={{ color: jsonKeyColor }}>{renderedKey}</span>
+        <span style={{ color: jsonPunctColor }}>: </span>
+      </>
+    );
+  };
+
+  if (!isObjLike) {
+    return (
+      <JsonRow indent={indent} toggle={<span />}>
+        {renderKeyPrefix()}
         {renderJsonScalar(value)}
         <span style={{ color: jsonPunctColor }}>{comma}</span>
-      </div>
+      </JsonRow>
     );
   }
 
-  // handleCircularReferences
   if (seen.has(value)) {
     return (
-      <div style={pad}>
+      <JsonRow indent={indent} toggle={<span />}>
+        {renderKeyPrefix()}
         <span style={{ color: jsonNullColor }}>{JSON.stringify("[Circular]")}</span>
         <span style={{ color: jsonPunctColor }}>{comma}</span>
-      </div>
+      </JsonRow>
     );
   }
   seen.add(value);
 
+  const entries: Array<[string, any]> = isArr
+    ? (value as any[]).map((v, i) => [String(i), v])
+    : Object.entries(value as Record<string, any>);
+
+  const isExpandable = entries.length > 0;
+  const isExpanded = isExpandable && expandedPaths.has(path);
+
+  const itemsLabel = `${entries.length} items`;
+  const collapsedToken = isArr ? `[${itemsLabel}]` : `{ ${itemsLabel}}`;
   const open = isArr ? "[" : "{";
   const close = isArr ? "]" : "}";
 
-  const entries = isArr
-    ? (value as any[]).map((v, i) => [String(i), v] as const)
-    : Object.entries(value as Record<string, any>);
-
-  const isExpanded = expandedPaths.has(path);
-
-  // collapsedNode
-  if (!isExpanded) {
+  // Render empty object/array as a single token: { 0 items } / [0 items]
+  if (!isExpandable) {
     return (
-      <div style={pad}>
-        <button
-          type="button"
-          onClick={() => togglePath(path)}
-          style={{
-            background: "transparent",
-            border: "none",
-            padding: 0,
-            marginRight: 6,
-            cursor: "pointer",
-            color: "inherit",
-            fontFamily: "inherit",
-            fontSize: "inherit",
-          }}
-          aria-label="Expand"
-        >
-          ▸
-        </button>
-        <span style={{ color: jsonPunctColor }}>
-          {open}…{close}
-        </span>
+      <JsonRow indent={indent} toggle={<span />}>
+        {renderKeyPrefix()}
+        <span style={{ color: jsonPunctColor }}>{collapsedToken}</span>
         <span style={{ color: jsonPunctColor }}>{comma}</span>
-      </div>
+      </JsonRow>
     );
   }
 
-  // expandedNode
+  // Collapsed node: "key": { 3 items }  OR  [20 items]
+  if (!isExpanded) {
+    return (
+      <JsonRow
+        indent={indent}
+        toggle={<JsonToggleButton expanded={false} onToggle={() => togglePath(path)} />}
+      >
+        {renderKeyPrefix()}
+        <span style={{ color: jsonPunctColor }}>{collapsedToken}</span>
+        <span style={{ color: jsonPunctColor }}>{comma}</span>
+      </JsonRow>
+    );
+  }
+
+  // Expanded node:
+  // - Opening line contains optional key + the opening brace/bracket
+  // - Children lines
+  // - Closing line contains only closing brace/bracket + comma
   return (
     <>
-      <div style={pad}>
-        <button
-          type="button"
-          onClick={() => togglePath(path)}
-          style={{
-            background: "transparent",
-            border: "none",
-            padding: 0,
-            marginRight: 6,
-            cursor: "pointer",
-            color: "inherit",
-            fontFamily: "inherit",
-            fontSize: "inherit",
-          }}
-          aria-label="Collapse"
-        >
-          ▾
-        </button>
+      <JsonRow
+        indent={indent}
+        toggle={<JsonToggleButton expanded={true} onToggle={() => togglePath(path)} />}
+      >
+        {renderKeyPrefix()}
         <span style={{ color: jsonPunctColor }}>{open}</span>
-      </div>
+      </JsonRow>
 
-      <div>
-        {entries.length === 0 ? (
-          <div style={{ paddingLeft: (indent + 1) * 14, opacity: 0.8 }}>
-            {isArr ? "/* empty */" : "/* empty */"}
-          </div>
-        ) : (
-          entries.map(([k, v], idx) => {
-            const childPath = `${path}.${k}`;
-            const childIsLast = idx === entries.length - 1;
+      {entries.map(([k, v], idx) => {
+        const childIsLast = idx === entries.length - 1;
+        const childPath = `${path}/${encodePathSegment(k)}`;
 
-            if (isArr) {
-              return (
-                <JsonValue
-                  key={childPath}
-                  value={v}
-                  path={childPath}
-                  indent={indent + 1}
-                  isLast={childIsLast}
-                  expandedPaths={expandedPaths}
-                  togglePath={togglePath}
-                  seen={seen}
-                />
-              );
-            }
+        if (isArr) {
+          return (
+            <JsonNode
+              key={childPath}
+              value={v}
+              path={childPath}
+              indent={indent + 1}
+              isLast={childIsLast}
+              expandedPaths={expandedPaths}
+              togglePath={togglePath}
+              seen={seen}
+            />
+          );
+        }
 
-            const childIsObj = v && typeof v === "object";
-            const childIsArr = Array.isArray(v);
+        return (
+          <JsonNode
+            key={childPath}
+            value={v}
+            path={childPath}
+            indent={indent + 1}
+            isLast={childIsLast}
+            expandedPaths={expandedPaths}
+            togglePath={togglePath}
+            seen={seen}
+            keyName={k}
+          />
+        );
+      })}
 
-            // objectProperty
-            if (childIsObj) {
-              const childExpanded = expandedPaths.has(childPath);
-              const openChild = childIsArr ? "[" : "{";
-              const closeChild = childIsArr ? "]" : "}";
-
-              if (!childExpanded) {
-                return (
-                  <div key={childPath} style={{ paddingLeft: (indent + 1) * 14 }}>
-                    <button
-                      type="button"
-                      onClick={() => togglePath(childPath)}
-                      style={{
-                        background: "transparent",
-                        border: "none",
-                        padding: 0,
-                        marginRight: 6,
-                        cursor: "pointer",
-                        color: "inherit",
-                        fontFamily: "inherit",
-                        fontSize: "inherit",
-                      }}
-                      aria-label="Expand"
-                    >
-                      ▸
-                    </button>
-                    <span style={{ color: jsonKeyColor }}>{JSON.stringify(k)}</span>
-                    <span style={{ color: jsonPunctColor }}>: </span>
-                    <span>
-                      {openChild}…{closeChild}
-                    </span>
-                    <span style={{ color: jsonPunctColor }}>{childIsLast ? "" : ","}</span>
-                  </div>
-                );
-              }
-
-              return (
-                <div key={childPath}>
-                  <div style={{ paddingLeft: (indent + 1) * 14 }}>
-                    <button
-                      type="button"
-                      onClick={() => togglePath(childPath)}
-                      style={{
-                        background: "transparent",
-                        border: "none",
-                        padding: 0,
-                        marginRight: 6,
-                        cursor: "pointer",
-                        color: "inherit",
-                        fontFamily: "inherit",
-                        fontSize: "inherit",
-                      }}
-                      aria-label="Collapse"
-                    >
-                      ▾
-                    </button>
-                    <span style={{ color: jsonKeyColor }}>{JSON.stringify(k)}</span>
-                    <span style={{ color: jsonPunctColor }}>: </span>
-                    <span>{openChild}</span>
-                  </div>
-
-                  <JsonValue
-                    value={v}
-                    path={childPath}
-                    indent={indent + 2}
-                    isLast={true}
-                    expandedPaths={expandedPaths}
-                    togglePath={togglePath}
-                    seen={seen}
-                  />
-
-                  <div style={{ paddingLeft: (indent + 1) * 14 }}>
-                    <span>{closeChild}</span>
-                    <span style={{ color: jsonPunctColor }}>{childIsLast ? "" : ","}</span>
-                  </div>
-                </div>
-              );
-            }
-
-            return (
-              <div key={childPath} style={{ paddingLeft: (indent + 1) * 14 }}>
-                <span style={{ color: jsonKeyColor }}>{JSON.stringify(k)}</span>
-                <span style={{ color: jsonPunctColor }}>: </span>
-                {renderJsonScalar(v)}
-                <span style={{ color: jsonPunctColor }}>{childIsLast ? "" : ","}</span>
-              </div>
-            );
-          })
-        )}
-      </div>
-
-      <div style={pad}>
+      <JsonRow indent={indent} toggle={<span />}>
         <span style={{ color: jsonPunctColor }}>{close}</span>
         <span style={{ color: jsonPunctColor }}>{comma}</span>
-      </div>
+      </JsonRow>
     </>
   );
 }
 
-function getJsonSummary(value: any): string {
-  // getJsonSummary
-  if (Array.isArray(value)) return `Array(${value.length})`;
-  if (value && typeof value === "object") return `Object(${Object.keys(value).length})`;
-  return formatJsonScalar(value);
-}
 
-function JsonNode({
-  name,
-  value,
-  level,
-  seen,
-}: {
-  name: string;
-  value: any;
-  level: number;
-  seen: WeakSet<object>;
-}) {
-  // JsonNode
-  const isObject = value && typeof value === "object";
-  const isArray = Array.isArray(value);
-
-  if (!isObject) {
-    return (
-      <div style={{ paddingLeft: level * 14 }}>
-        <span style={{ opacity: 0.8 }}>{name}:</span>{" "}
-        <span>{formatJsonScalar(value)}</span>
-      </div>
-    );
-  }
-
-  // handleCircularReferences
-  if (seen.has(value)) {
-    return (
-      <div style={{ paddingLeft: level * 14 }}>
-        <span style={{ opacity: 0.8 }}>{name}:</span>{" "}
-        <span>[Circular]</span>
-      </div>
-    );
-  }
-  seen.add(value);
-
-  const entries = isArray
-    ? (value as any[]).map((v, i) => [String(i), v] as const)
-    : Object.entries(value as Record<string, any>);
-
-  const defaultOpen = level <= 1;
-
-  return (
-    <details open={defaultOpen} style={{ paddingLeft: level * 14 }}>
-      <summary style={{ cursor: "pointer", userSelect: "none" }}>
-        <span style={{ opacity: 0.8 }}>{name}:</span>{" "}
-        <span>{getJsonSummary(value)}</span>
-      </summary>
-
-      <div style={{ marginTop: 6 }}>
-        {entries.length === 0 ? (
-          <div style={{ paddingLeft: 14, opacity: 0.7 }}>
-            {isArray ? "[]" : "{}"}
-          </div>
-        ) : (
-          entries.map(([k, v]) => (
-            <JsonNode
-              key={`${name}.${k}`}
-              name={k}
-              value={v}
-              level={level + 1}
-              seen={seen}
-            />
-          ))
-        )}
-      </div>
-    </details>
-  );
-}
 
 function JsonTree({ data }: { data: any }) {
   // JsonTree
   const [copied, setCopied] = useState(false);
-  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(() => {
-    // defaultExpandedPaths
-    return new Set(["$"]);
-  });
+  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(() => new Set(["$"]));
 
   const togglePath = (path: string) => {
     // togglePath
@@ -510,15 +541,13 @@ function JsonTree({ data }: { data: any }) {
           border: "1px solid #e5e7eb",
           borderRadius: 2,
           p: 1.5,
-          fontFamily:
-            "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+          fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
           fontSize: 12,
           lineHeight: 1.5,
           overflow: "auto",
         }}
       >
-        {/* renderRootAsJson */}
-        <JsonValue
+        <JsonNode
           value={data}
           path="$"
           indent={0}
@@ -541,8 +570,55 @@ export default function ProtocolForm({
 }: ProtocolFormProps) {
   const svc = useProjectService();
 
-  const projectId = data?.projectId ?? data?.project?.id ?? null;
-  const protocolId = data?.id ?? null;
+  // unwrapEnvelope
+  const info = useMemo(() => {
+    if (data && typeof data === "object" && "info" in data) return (data as any).info ?? {};
+    return {};
+  }, [data]);
+
+  // unwrapFormEnvelope
+  const form = useMemo(() => {
+    if (data && typeof data === "object" && "form" in data) return (data as any).form ?? {};
+    return data ?? {};
+  }, [data]);
+
+  // keepValuesForLater
+  const values = useMemo(() => {
+    if (data && typeof data === "object" && "values" in data) return (data as any).values ?? null;
+    return null;
+  }, [data]);
+
+  // normalizeSections
+  const sections = useMemo(() => {
+    const s = (form as any)?.sections ?? (form as any)?.definition ?? [];
+    return Array.isArray(s) ? s : [];
+  }, [form]);
+
+  // normalizeIdsAndCoreInfo
+  const projectId = info?.projectId ?? (form as any)?.projectId ?? (form as any)?.project?.id ?? null;
+  const protocolId =
+    info?.protocolId ?? info?.id ?? (form as any)?.protocolId ?? (form as any)?.id ?? null;
+  const protocolClassName =
+    info?.protocolClassName ?? (form as any)?.protocolClassName ?? null;
+
+  // normalizeInputsOutputs
+  const inputsFromApi = useMemo(() => {
+    const arr =
+      Array.isArray(info?.inputs) ? info.inputs :
+        Array.isArray((form as any)?.inputs) ? (form as any).inputs :
+          [];
+    return arr;
+  }, [info, form]);
+
+  const outputsFromApi = useMemo(() => {
+    const arr =
+      Array.isArray(info?.outputs) ? info.outputs :
+        Array.isArray((form as any)?.outputs) ? (form as any).outputs :
+          [];
+    return arr;
+  }, [info, form]);
+
+
 
   const [topTab, setTopTab] = useState(0);
   const [bottomTab, setBottomTab] = useState(0);
@@ -573,6 +649,9 @@ export default function ProtocolForm({
   const errorContainerRef = useRef<HTMLDivElement>(null);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const [showValidationDialog, setShowValidationDialog] = useState(false);
+  const [execErrorDialogOpen, setExecErrorDialogOpen] = useState(false);
+  const [execErrorDialogTitle, setExecErrorDialogTitle] = useState("Error");
+  const [execErrorDialogMessage, setExecErrorDialogMessage] = useState<string>("");
 
   // Global Output Selector
   const [openSelector, setOpenSelector] = useState(false);
@@ -592,6 +671,12 @@ export default function ProtocolForm({
   // Outputs tab state
   // --------------------------------------------
   const [selectedOutputIdx, setSelectedOutputIdx] = useState<number | null>(null);
+
+
+  // --------------------------------------------
+  // Metadata tab snapshot
+  // --------------------------------------------
+  const [metadataSnapshot, setMetadataSnapshot] = useState<any>(data);
 
   // Preview panel state
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -619,17 +704,14 @@ export default function ProtocolForm({
 
   // Normalize outputs from data.outputs for the Outputs tab
   const normalizedOutputs = useMemo(() => {
-    const arr = Array.isArray(data?.outputs) ? data.outputs : [];
-    return arr.map((entry: any) => {
-      const [name, payload] = Object.entries(entry)[0] as [string, any];
-      const infoText = payload?.info ?? payload?._class ?? "";
-      return {
-        name,
-        infoText,
-        raw: payload,
-      };
+    const arr = Array.isArray(outputsFromApi) ? outputsFromApi : [];
+    return arr.map((entry: any, idx: number) => {
+      const outputName = String(entry?.outputName ?? entry?.name ?? entry?._key ?? idx);
+      const infoText = entry?.info ?? entry?.pointerClass ?? "";
+      return { name: outputName, infoText, raw: entry };
     });
-  }, [data?.outputs]);
+  }, [form?.outputs]);
+
 
   // Active Output
   const activeOutput = useMemo(() => {
@@ -655,6 +737,12 @@ export default function ProtocolForm({
 
   // Request preview whenever activeOutput/sqliteTable changes
   useEffect(() => {
+    if (!projectId || !protocolId) {
+      setPreviewData(null);
+      setPreviewError("Missing projectId or protocolId");
+      setPreviewLoading(false);
+      return;
+    }
     if (!activeOutput) {
       setPreviewData(null);
       setPreviewError(null);
@@ -670,8 +758,8 @@ export default function ProtocolForm({
     (async () => {
       try {
         const res: any = await svc.fetchOutputPreview(
-          data.projectId,
-          data?.id,
+          projectId,
+          protocolId,
           activeOutput.name,
           sqliteTable ? { table: sqliteTable } : undefined
         );
@@ -696,8 +784,7 @@ export default function ProtocolForm({
     return () => {
       cancelled = true;
     };
-  }, [activeOutput, data?.id, sqliteTable, svc, data?.projectId]);
-
+  }, [activeOutput, protocolId, sqliteTable, svc, projectId]);
 
   // Use this instead of onClose() directly to play exit animation
   const requestClose = () => setIsClosing(true);
@@ -706,16 +793,25 @@ export default function ProtocolForm({
     if (isClosing) onClose();
   };
 
-  // Parse JSON envelopes like {"_objValue": "..."} if they appear as strings
+  // Parse JSON envelopes like {"value": "..."} if they appear as strings or objects
   const parseFromJSONValue = (maybeJson: any) => {
+    // parseFromJSONValue
     try {
+      // unwrapObjectEnvelope
+      if (maybeJson && typeof maybeJson === "object" && "value" in maybeJson) {
+        return (maybeJson as any).value;
+      }
+
+      // unwrapStringEnvelope
       if (typeof maybeJson === "string") {
         const obj = JSON.parse(maybeJson);
-        if (obj && typeof obj === "object" && "_objValue" in obj) {
-          return obj._objValue;
+        if (obj && typeof obj === "object" && "value" in obj) {
+          return (obj as any).value;
         }
       }
-    } catch { }
+    } catch {
+      // noOp
+    }
     return maybeJson;
   };
 
@@ -735,7 +831,7 @@ export default function ProtocolForm({
     const key = `${sectionIdx}_${paramName}`;
     const state = protocolDetails.params?.[key];
     if (!state) return "";
-    if (state._class === "EnumParam" && Array.isArray(state.choices)) {
+    if (getParamClass(state) === "EnumParam" && Array.isArray(state.choices)) {
       const v = state.editableValue ?? state.default ?? "";
       if (typeof v === "number") return v;
       const idx = state.choices.indexOf(v);
@@ -746,20 +842,20 @@ export default function ProtocolForm({
 
   // Locate the global expertLevel EnumParam if present
   const findGeneralExpertLocator = useCallback(() => {
-    if (!data?.expertLevel || !Array.isArray(data?.definition)) return null;
+    if (!Array.isArray(sections)) return null;
 
-    for (let i = 0; i < data.definition.length; i++) {
-      const section = data.definition[i];
+    for (let i = 0; i < sections.length; i++) {
+      const section = sections[i];
       const params = section?.params ?? [];
       for (const p of params) {
-        const [n, def] = Object.entries(p)[0] as [string, any];
-        if (n === "expertLevel" && def?._class === "EnumParam") {
-          return { sectionIdx: i, name: n };
+        const { paramName, paramDef: def } = unwrapParamDef(p);
+        if (paramName === "expertLevel" && getParamClass(def) === "EnumParam") {
+          return { sectionIdx: i, name: paramName };
         }
       }
     }
     return null;
-  }, [data]);
+  }, [sections]);
 
   // 0 = Normal, 1 = Advanced
   const generalExpertLevel = (() => {
@@ -878,45 +974,201 @@ export default function ProtocolForm({
     return parts;
   }
 
+
+  const hasOwn = (obj: any, key: string) => {
+    // hasOwn
+    return obj != null && typeof obj === "object" && Object.prototype.hasOwnProperty.call(obj, key);
+  };
+
+  const getInitialRawForParam = (paramName: string, def: any, valuesMap: any) => {
+    // getInitialRawForParam
+    if (hasOwn(valuesMap, paramName)) return valuesMap[paramName];
+    return def?.value ?? def?.default ?? "";
+  };
+
+  const normalizePointerToken = (raw: any): string => {
+    // normalizePointerToken
+    const v = parseFromJSONValue(raw);
+
+    if (v === null || v === undefined) return "";
+    if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") return String(v);
+
+    if (v && typeof v === "object") {
+      if ("value" in v) return String((v as any).value ?? "");
+      if ("object" in v) return String((v as any).object ?? "");
+    }
+
+    return "";
+  };
+
+  const normalizeEnumLabel = (raw: any, choices: string[] | undefined, fallback: any) => {
+    // normalizeEnumLabel
+    const parsed = parseFromJSONValue(raw);
+    if (!Array.isArray(choices) || choices.length === 0) return parsed ?? fallback ?? "";
+
+    if (typeof parsed === "number") return choices[parsed] ?? (fallback ?? choices[0]);
+    if (typeof parsed === "string") {
+      const trimmed = parsed.trim();
+
+      // If backend sends "0"/"1" as string index
+      if (!choices.includes(trimmed) && /^\d+$/.test(trimmed)) {
+        const idx = Number(trimmed);
+        return choices[idx] ?? (fallback ?? choices[0]);
+      }
+
+      return choices.includes(trimmed) ? trimmed : (fallback ?? choices[0]);
+    }
+
+    return fallback ?? choices[0];
+  };
+
+  const normalizeMultiPointerValue = (raw: any) => {
+    // normalizeMultiPointerValue
+    const parsed = parseFromJSONValue(raw);
+
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed.map((item: any) => {
+      if (item === null || item === undefined) return { object: "", info: "" };
+
+      if (typeof item === "string" || typeof item === "number" || typeof item === "boolean") {
+        return { object: String(item), info: "" };
+      }
+
+      if (item && typeof item === "object") {
+        const objectToken =
+          (item as any).object ??
+          (item as any).value ??
+          (item as any)._objValue ??
+          "";
+
+        return {
+          object: String(objectToken ?? ""),
+          info: String((item as any).info ?? ""),
+          pointerClass: String((item as any).pointerClass ?? ""),
+          parentId: (item as any).parentId ?? null,
+        };
+      }
+
+      return { object: "", info: "" };
+    });
+  };
+
+
   // Load initial parameters into protocolDetails
   useEffect(() => {
-    if (!data) {
+    if (!form) {
       setProtocolDetails({});
       return;
     }
 
+    const valuesMap = values && typeof values === "object" ? values : null;
+
     const params: any = {};
-    const walk = (secIdx: number, obj: any) => {
-      const [name, def] = Object.entries(obj)[0] as [string, any];
-      if (def._class === "Group" && Array.isArray(def.children)) {
-        def.children.forEach((c: any) => walk(secIdx, c));
+    const walk = (secIdx: number, paramLike: any) => {
+      // walkParamDefinitionTree
+      const { paramName: name, paramDef: def } = unwrapParamDef(paramLike);
+      if (!def) return;
+
+      const cls = getParamClass(def);
+
+      // Always traverse decorators even when name is missing
+      // Decorators should never create state keys; just traverse children if present
+      if (cls === "Group" || cls === "Line") {
+        const children = Array.isArray(def?.params) ? def.params : [];
+        children.forEach((c: any) => walk(secIdx, c));
         return;
       }
-      const key = `${secIdx}_${name}`;
-      const raw = def.value ?? def.default ?? "";
-      const parsed = parseFromJSONValue(raw);
-      let init = parsed ?? "";
-      // If EnumParam default is index, map to label for UI state
-      if (def._class === "EnumParam" && Array.isArray(def.choices) && typeof init === "number") {
-        init = def.choices[init] ?? def.default ?? "";
+
+      // Label is a pure decorator (no value stored)
+      if (cls === "Label") {
+        return;
       }
-      params[key] = { ...def, value: def.value, editableValue: init };
+
+
+      // For real params, name is required to create a state key
+      if (!name) return;
+
+      const key = `${secIdx}_${name}`;
+
+      // Use values[name] as source of truth (fallback to def.value/def.default)
+      const rawFromApi = getInitialRawForParam(name, def, valuesMap);
+      const parsedFromApi = parseFromJSONValue(rawFromApi);
+
+      if (cls === "BooleanParam") {
+        const initBool = coerceBooleanValue(parsedFromApi);
+
+        const defObjValue = parseFromJSONValue(def.value);
+        const defDefault = parseFromJSONValue(def.default);
+
+        params[key] = {
+          ...def,
+          value: coerceBooleanValue(defObjValue),
+          default: coerceBooleanValue(defDefault),
+          editableValue: initBool,
+        };
+        return;
+      }
+
+      if (cls === "MultiPointerParam") {
+        const initList = normalizeMultiPointerValue(rawFromApi);
+        params[key] = {
+          ...def,
+          editableValue: initList,
+        };
+        return;
+      }
+
+      if (cls === "PointerParam") {
+        const token = normalizePointerToken(rawFromApi);
+        params[key] = {
+          ...def,
+          value: token,
+          editableValue: token,
+        };
+        return;
+      }
+
+      if (cls === "PathParam") {
+        const token = parsedFromApi ?? "";
+        params[key] = {
+          ...def,
+          value: token,
+          editableValue: token,
+        };
+        return;
+      }
+
+      if (cls === "EnumParam" && Array.isArray(def.choices)) {
+        const label = normalizeEnumLabel(rawFromApi, def.choices, def.default);
+        params[key] = {
+          ...def,
+          editableValue: label,
+        };
+        return;
+      }
+
+      params[key] = {
+        ...def,
+        editableValue: parsedFromApi ?? "",
+      };
     };
 
-    data.definition?.forEach((section: any, i: number) => {
-      section.params?.forEach((p: any) => walk(i, p));
+
+    sections.forEach((section: any, i: number) => {
+      section?.params?.forEach((p: any) => walk(i, p));
     });
 
     setProtocolDetails({
-      label: data.protocolName ?? "",
-      status: data.status ?? "",
-      id: data.id ?? "",
-      color: data.color ?? "",
+      label: info?.protocolName ?? info?.label ?? (form as any)?.protocolName ?? "",
+      status: info?.status ?? (form as any)?.status ?? "",
+      id: protocolId ?? "",
+      color: info?.color ?? (form as any)?.color ?? "",
       params,
     });
 
     // Remember initial inputType label to detect future user change
-    if (data.protocolClassName === "ProtUnionSet") {
+    if (protocolClassName === "ProtUnionSet") {
       const inputTypeKey = Object.keys(params).find((k) => k.endsWith("_inputType"));
       if (inputTypeKey) {
         const it = params[inputTypeKey];
@@ -929,7 +1181,8 @@ export default function ProtocolForm({
         prevSelectedInputTypeRef.current = label ?? null;
       }
     }
-  }, [data]);
+  }, [form, info, values, sections, protocolId, protocolClassName]);
+
 
   const isTerminalStatus = (s: any) =>
     ["finished", "success", "done", "failed", "error", "cancelled", "canceled", "stopped", "aborted"]
@@ -938,51 +1191,52 @@ export default function ProtocolForm({
 
   // Incremental log polling
   useEffect(() => {
-    // Clear any previous interval before starting a new polling cycle
+    // clearPreviousInterval
     if (pollRef.current) {
       clearInterval(pollRef.current);
       pollRef.current = null;
     }
 
-    // Minimal conditions to enable polling
-    if (topTab !== 4 || !data?.projectId || !data?.id) return;
+    // enablePollingOnlyOnLogsTab
+    if (topTab !== 2 || !projectId || !protocolId) return;
 
     let cancelled = false;
     idleStreakRef.current = 0;
 
-    // Initial load
+    // initialLoad
     (async () => {
       try {
-        const res: any = await fetchProtocolLogsStream(data.projectId, data.id, 0, 0, 0);
+        const res: any = await fetchProtocolLogsStream(projectId, protocolId, 0, 0, 0);
         if (cancelled) return;
 
-        // Keep field names consistent: scheduleLog / scheduleOffset
         setLogs(res.stdoutLog ?? "");
         setErrorLogs(res.stderrLog ?? "");
         setScheduleLogs(res.scheduleLog ?? "");
 
-        offsetRef.current = typeof res.stdoutOffset === "number"
-          ? res.stdoutOffset
-          : (typeof res.stdoutLog === "string" ? res.stdoutLog.length : 0);
+        offsetRef.current =
+          typeof res.stdoutOffset === "number"
+            ? res.stdoutOffset
+            : (typeof res.stdoutLog === "string" ? res.stdoutLog.length : 0);
 
-        errorOffsetRef.current = typeof res.stderrOffset === "number"
-          ? res.stderrOffset
-          : (typeof res.stderrLog === "string" ? res.stderrLog.length : 0);
+        errorOffsetRef.current =
+          typeof res.stderrOffset === "number"
+            ? res.stderrOffset
+            : (typeof res.stderrLog === "string" ? res.stderrLog.length : 0);
 
-        scheduleOffsetRef.current = typeof res.scheduleOffset === "number"
-          ? res.scheduleOffset
-          : (typeof res.scheduleLog === "string" ? res.scheduleLog.length : 0);
+        scheduleOffsetRef.current =
+          typeof res.scheduleOffset === "number"
+            ? res.scheduleOffset
+            : (typeof res.scheduleLog === "string" ? res.scheduleLog.length : 0);
       } catch (err: any) {
         if (!cancelled) setLogsError(err.message || "Failed to load logs");
       }
     })();
 
-    // 2) Incremental polling every 2s
+    // incrementalPolling
     pollRef.current = setInterval(async () => {
       try {
         const res: any = await fetchProtocolLogsStream(
-          data.projectId,
-          data.id,
+          projectId, protocolId,
           offsetRef.current || 0,
           errorOffsetRef.current || 0,
           scheduleOffsetRef.current || 0
@@ -1013,7 +1267,7 @@ export default function ProtocolForm({
           gotNew = true;
         }
 
-        // Stop polling after 2 idle cycles if status is terminal
+        // stopPollingWhenTerminalAndIdle
         if (isTerminalStatus(protocolDetails.status)) {
           idleStreakRef.current = gotNew ? 0 : idleStreakRef.current + 1;
           if (idleStreakRef.current >= 2 && pollRef.current) {
@@ -1035,7 +1289,7 @@ export default function ProtocolForm({
         pollRef.current = null;
       }
     };
-  }, [topTab, data?.projectId, data?.id, protocolDetails.status]);
+  }, [topTab, form?.projectId, form?.protocolId, protocolDetails.status]);
 
   // Autoscroll logs
   useEffect(() => {
@@ -1113,19 +1367,22 @@ export default function ProtocolForm({
       dependencyMap[pid] = (prot.children ?? []).map(String);
       if (!Array.isArray(prot.outputs)) continue;
 
-      for (const out of prot.outputs) {
-        const entries = Object.entries(out);
-        if (entries.length === 0) continue;
-        const [key, valAny] = entries[0];
-        const val = valAny as any;
+      for (const outRaw of prot.outputs) {
+        const hasOutputName =
+          outRaw && typeof outRaw === "object" && "outputName" in outRaw;
+        const out = hasOutputName ? (outRaw as any) : (outRaw as any);
+        const key = String(out?.outputName ?? out?._key ?? out?.name ?? "");
+        if (!key) continue;
 
         outputs.push({
           protocol: prot.label ?? prot.protocolName ?? prot.id ?? "Unknown",
           key,
-          info: val?.info ?? "",
-          _class: val?._class ?? "",
-          _objValue: val?._objValue ?? "",
-          _protocolId: pid,
+          info: out?.info ?? "",
+          paramClass: String(out?.paramClass ?? "PointerParam"),
+          pointerClass: String(out?.pointerClass ?? ""),
+          value: String(out?.value ?? ""),
+          protocolId: pid,
+          parentId: out?.parentId ?? null,
         });
       }
     }
@@ -1135,7 +1392,7 @@ export default function ProtocolForm({
 
   // Keep ProtUnionSet inputSets constraints in sync when inputType changes
   useEffect(() => {
-    if (data?.protocolClassName !== "ProtUnionSet") return;
+    if (protocolClassName !== "ProtUnionSet") return;
     const params = protocolDetails?.params;
     if (!params || Object.keys(params).length === 0) return;
 
@@ -1209,7 +1466,42 @@ export default function ProtocolForm({
       clone.params[inputSetsKey] = target;
       return clone;
     });
-  }, [data?.protocolClassName, protocolDetails.params]);
+  }, [form?.protocolClassName, protocolDetails.params]);
+
+
+  useEffect(() => {
+    // updateMetadataSnapshotOnTabOpen
+    if (topTab !== 3) return;
+
+    const serialized = getSerializedParams();
+
+    setMetadataSnapshot(() => {
+      if (!data || typeof data !== "object") return data;
+
+      // cloneEnvelopeShallow
+      const base: any = Array.isArray(data) ? [...data] : { ...(data as any) };
+
+      // mergeValuesKeepingUnknownKeys
+      const prevValues =
+        base.values && typeof base.values === "object" && !Array.isArray(base.values)
+          ? base.values
+          : {};
+
+      const nextValues = { ...prevValues, ...serialized };
+
+      base.values = nextValues;
+
+      // optionalSyncFormValuesIfPresent
+      if (base.form && typeof base.form === "object" && base.form !== null) {
+        if ("values" in base.form) {
+          base.form = { ...base.form, values: nextValues };
+        }
+      }
+
+      return base;
+    });
+  }, [topTab, data, protocolDetails.params]);
+
 
   // Filter outputs for a given paramKey, excluding self and descendants
   const getFilteredOutputsForKey = (paramKey: string) => {
@@ -1217,7 +1509,7 @@ export default function ProtocolForm({
     const expected = getExpectedClass(liveParam);
 
     const { outputs, dependencyMap } = gatherAllOutputs();
-    const currentId = String(data?.id ?? "");
+    const currentId = String(form?.protocolId ?? "");
 
     const blocked = new Set<string>([currentId]);
     const stack = [currentId];
@@ -1232,17 +1524,17 @@ export default function ProtocolForm({
       }
     }
 
-    const pool = outputs.filter((o) => !blocked.has(String(o._protocolId)));
+    const pool = outputs.filter((o) => !blocked.has(String(o.protocolId)));
 
     const norm = (s: any) =>
       typeof s === "string" ? s.replace(/\s+/g, "").toLowerCase() : "";
 
     if (expected === null) {
-      return pool.filter((o) => /^setof/i.test(String(o._class || "")));
+      return pool.filter((o) => /^setof/i.test(String(o.pointerClass || "")));
     }
 
     return pool.filter((o) => {
-      const oc = norm(o._class);
+      const oc = norm(o.pointerClass);
       return Array.isArray(expected)
         ? expected.some((e) => norm(e) === oc)
         : norm(expected) === oc;
@@ -1259,24 +1551,19 @@ export default function ProtocolForm({
       const newKey = keyParts.join("_");
 
       const p = pRaw ?? {};
-      const cls = p._class;
+      const cls = getParamClass(p);
 
       if (cls === "PointerParam") {
         const editable = p.editableValue ?? "";
-        const normalized = {
-          _objValue: "",
-          info: p.info ?? "",
-          _parentId: p._parentId ?? null,
-          _class: p._class ?? "PointerParam",
-        };
+        let normalized = ""
 
-        const token = (p._objValue ?? "").toString().trim();
+        const token = (p.value ?? "").toString().trim();
         if (token) {
-          normalized._objValue = token;
+          normalized = token;
         } else if (editable) {
-          normalized._objValue = String(editable);
+          normalized = String(editable);
         } else {
-          normalized._objValue = "";
+          normalized = "";
         }
 
         out[newKey] = normalized;
@@ -1286,31 +1573,25 @@ export default function ProtocolForm({
       if (cls === "MultiPointerParam" && Array.isArray(p.editableValue)) {
         const list = p.editableValue.map((item: any) => {
           if (typeof item === "string" || typeof item === "number" || typeof item === "boolean") {
-            return {
-              _objValue: String(item),
-              info: "",
-              _parentId: null,
-              _class: p._class ?? "PointerParam",
-            };
+            return String(item)
           }
-          return {
-            _objValue: (item._objValue ?? item.object ?? "") || "",
-            info: item.info ?? "",
-            _parentId: item._parentId ?? item._protocolId ?? null,
-            _class: item._class ?? "PointerParam",
-          };
+          return (item.value ?? item.object ?? "") || ""
         });
 
         out[newKey] = list;
         return;
       }
 
-      out[newKey] = {
-        value: p.editableValue,
-        _objValue: p._objValue,
-        info: p.info,
-        _parentId: p._parentId,
-      };
+      if (cls === "BooleanParam") {
+        const boolVal = coerceBooleanValue(
+          p.editableValue ?? p.value ?? p.value ?? p.default
+        );
+
+        out[newKey] = boolVal ? true : false
+        return;
+      }
+
+      out[newKey] = p.editableValue;
     });
 
     return out;
@@ -1334,6 +1615,88 @@ export default function ProtocolForm({
     return [detail.replace(/^422:\s*/, "").trim()];
   }
 
+  function getHttpStatusFromError(err: any): number | null {
+    // getHttpStatusFromError
+    const status =
+      err?.status ??
+      err?.response?.status ??
+      err?.response?.data?.status ??
+      err?.response?.data?.statusCode ??
+      null;
+
+    return typeof status === "number" ? status : null;
+  }
+
+  function getDetailFromError(err: any): any {
+    // getDetailFromError
+    return (
+      err?.detail ??
+      err?.response?.data?.detail ??
+      err?.response?.data?.error ??
+      err?.response?.data?.message ??
+      err?.data?.detail ??
+      null
+    );
+  }
+
+  function getMessageFromError(err: any, detail: any): string {
+    // getMessageFromError
+    if (typeof err?.message === "string" && err.message.trim()) return err.message;
+
+    if (typeof detail === "string" && detail.trim()) return detail;
+
+    if (detail && typeof detail === "object") {
+      const msg = (detail as any).msg ?? (detail as any).message ?? (detail as any).error;
+      if (typeof msg === "string" && msg.trim()) return msg;
+    }
+
+    return "Error launching the protocol";
+  }
+
+  function extractValidationMessages(detail: any): string[] {
+    // extractValidationMessages
+    if (!detail) return [];
+
+    if (typeof detail === "string") {
+      return extractValidationErrors(detail);
+    }
+
+    // FastAPI/Pydantic often returns an array of error objects
+    if (Array.isArray(detail)) {
+      return detail
+        .map((item) => {
+          if (typeof item === "string") return item;
+
+          const loc = Array.isArray(item?.loc) ? item.loc.join(".") : "";
+          const msg = item?.msg ?? item?.message ?? JSON.stringify(item);
+          const locPrefix = loc ? `${loc}: ` : "";
+          return `${locPrefix}${String(msg)}`;
+        })
+        .filter((s) => typeof s === "string" && s.trim().length > 0);
+    }
+
+    if (typeof detail === "object") {
+      const msg = (detail as any).msg ?? (detail as any).message ?? (detail as any).error;
+      if (typeof msg === "string" && msg.trim()) return [msg];
+      try {
+        return [JSON.stringify(detail)];
+      } catch {
+        return [String(detail)];
+      }
+    }
+
+    return [String(detail)];
+  }
+
+  function openExecErrorDialog(title: string, message: string) {
+    // openExecErrorDialog
+    setExecError(message); // optional: keep the inline Typography too
+    setExecErrorDialogTitle(title);
+    setExecErrorDialogMessage(message);
+    setExecErrorDialogOpen(true);
+  }
+
+
   // Execute handler
   const handleExecute = async () => {
     setExecLoading(true);
@@ -1341,126 +1704,218 @@ export default function ProtocolForm({
     setValidationErrors([]);
 
     try {
-      const projectId = data?.projectId
-      const pid = data?.id ?? "";
+      const pid = String(protocolId ?? "");
       const serialized = getSerializedParams();
-      await svc.executeProtocol(projectId, pid, data?.protocolClassName, serialized);
+
+      await svc.executeProtocol(projectId, pid, protocolClassName, serialized);
+
       onExecuted?.();
       requestClose();
     } catch (err: any) {
-      if (typeof err?.detail === "string") {
-        const extracted = extractValidationErrors(err.detail);
-        if (extracted.length > 0) {
+      const status = getHttpStatusFromError(err);
+      const detail = getDetailFromError(err);
+
+      // showValidationDialogOn422OrValidationPayload
+      if (status === 422 || detail) {
+        const extracted = extractValidationMessages(detail);
+        if (extracted.length > 0 && (status === 422 || extracted.length > 0)) {
           setValidationErrors(extracted);
           setShowValidationDialog(true);
-          setExecLoading(false);
           return;
         }
       }
-      setExecError(err.message || "Error launching the protocol");
+
+      const msg = getMessageFromError(err, detail);
+      openExecErrorDialog("Execution error", msg);
     } finally {
       setExecLoading(false);
     }
   };
+
 
   // Save handler
   const handleSave = async () => {
     setExecLoading(true);
     setExecError(null);
+
     try {
-      const projectId = data?.projectId
-      const pid = data?.id ?? "";
+      const pid = String(protocolId ?? "");
       const serialized = getSerializedParams();
-      await svc.saveProtocol(projectId, pid, data?.protocolClassName, serialized);
-      requestClose();
+
+      const res: any = await svc.saveProtocol(projectId, pid, protocolClassName, serialized);
+
+      const returnedProtocolId = res?.protocolId ?? pid;
+
+      if (res?.status === "ok" && Array.isArray(res?.errors) && res.errors.length === 0) {
+        toast.success(`Saved protocol ${returnedProtocolId} successfully.`);
+        requestClose();
+        return;
+      }
+
+      if (res?.status === "ok") {
+        const errText = Array.isArray(res?.errors) ? res.errors.join("; ") : "Unknown warning";
+        toast.error(`Saved with warnings: ${errText}`);
+        requestClose();
+        return;
+      }
+
+      toast.error("Save failed");
     } catch (err: any) {
-      setExecError(err.message || "Error saving the protocol");
+      const detail = getDetailFromError(err);
+      const msg = getMessageFromError(err, detail);
+      toast.error(msg);
+      openExecErrorDialog("Save error", msg);
     } finally {
       setExecLoading(false);
     }
   };
 
+
+
   // Render a single parameter row
   const renderParam = useCallback(
-    (paramObj: any, sectionIdx: number, rowIndex = 0): JSX.Element | null => {
-      const [name, def] = Object.entries(paramObj)[0] as [string, any];
-      const key = `${sectionIdx}_${name}`;
-      const value = protocolDetails.params?.[key]?.editableValue;
+    (
+      paramLike: any,
+      sectionIdx: number,
+      rowIndex = 0,
+      layoutVariant: "standard" | "inline" = "standard",
+      parentKeyPrefix = ""
+    ): JSX.Element | null => {
+      // renderParamRow
+      const { paramName: name, paramDef: def } = unwrapParamDef(paramLike);
+      if (!def) return null;
 
-      if (def.condition && !evalExpr(sectionIdx, def.condition)) return null;
+      const defClass = getParamClass(def);
+
+      // Stable key for React + decorator state (even when name is missing)
+      const basePrefix = parentKeyPrefix || `sec${sectionIdx}`;
+      const stableKey = `${basePrefix}|${name ? `param:${name}` : `decorator:${defClass}:${rowIndex}`}`;
+
+      // State key only exists for real params with a name
+      const stateKey = name ? `${sectionIdx}_${name}` : null;
+      const value = stateKey ? protocolDetails.params?.[stateKey]?.editableValue : undefined;
+
+      const isInline = layoutVariant === "inline";
+      const fieldWidth = isInline ? 60 : 300;
+
+      if (typeof def?.condition === "string" && def.condition.trim()) {
+        if (!evalExpr(sectionIdx, def.condition)) return null;
+      }
 
       const expertLocator = findGeneralExpertLocator();
       const isExpertSelector =
         !!expertLocator && expertLocator.sectionIdx === sectionIdx && name === "expertLevel";
 
-      if (
-        data?.expertLevel &&
-        generalExpertLevel === 0 &&
-        def?.expertLevel === 1 &&
-        !isExpertSelector
-      ) {
+      if (generalExpertLevel === 0 && def?.expertLevel === 1 && !isExpertSelector) {
         return null;
       }
 
-      const advancedSlot = (
-        <Box
-          sx={{
-            width: "1.5rem",
-            height: "1.5rem",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          {def.expertLevel === 1 ? (
+      const advancedSlot = isInline
+        ? def.expertLevel === 1
+          ? (
             <Tooltip title="Advanced">
               <Box
                 sx={{
-                  width: "1.5rem",
-                  height: "1.5rem",
+                  width: 18,
+                  height: 18,
                   bgcolor: "#777",
                   color: "white",
                   borderRadius: "50%",
-                  fontSize: "0.8rem",
+                  fontSize: "0.7rem",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
+                  flex: "0 0 auto",
                 }}
               >
                 A
               </Box>
             </Tooltip>
-          ) : null}
-        </Box>
-      );
+          )
+          : null
+        : (
+          <Box
+            sx={{
+              width: "1.5rem",
+              height: "1.5rem",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            {def.expertLevel === 1 ? (
+              <Tooltip title="Advanced">
+                <Box
+                  sx={{
+                    width: "1.5rem",
+                    height: "1.5rem",
+                    bgcolor: "#777",
+                    color: "white",
+                    borderRadius: "50%",
+                    fontSize: "0.8rem",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  A
+                </Box>
+              </Tooltip>
+            ) : null}
+          </Box>
+        );
 
-      // MultiPointerParam
-      if (def._class === "MultiPointerParam") {
+      // MultiPointerParam (requires stateKey)
+      if (defClass === "MultiPointerParam") {
+        if (!stateKey) return null;
+
         const items = Array.isArray(value) ? value : def.default ?? [];
 
-        const onClear = (i: number) => {
+        // By default editable; if def.readOnly is true => block manual typing in MultiParamRow
+        const isReadOnly = coerceReadOnlyFlag(def?.readOnly);
+
+        const onRowEdit = (rowIndexInner: number, patch: { object?: string; info?: string }) => {
           setProtocolDetails((prev: any) => {
-            const list = Array.isArray(prev.params[key].editableValue)
-              ? [...prev.params[key].editableValue]
-              : [];
-            list.splice(i, 1);
-            list.push({ object: "", info: "" });
+            const existing = prev.params?.[stateKey];
+            const list = Array.isArray(existing?.editableValue) ? [...existing.editableValue] : [];
+
+            while (list.length <= rowIndexInner) list.push({ object: "", info: "" });
+
+            const current = list[rowIndexInner] ?? { object: "", info: "" };
+            list[rowIndexInner] = { ...current, ...patch };
+
             return {
               ...prev,
               params: {
                 ...prev.params,
-                [key]: { ...prev.params[key], editableValue: list },
+                [stateKey]: { ...existing, editableValue: list },
+              },
+            };
+          });
+        };
+
+        const onClear = (i: number) => {
+          setProtocolDetails((prev: any) => {
+            const existing = prev.params?.[stateKey];
+            const list = Array.isArray(existing?.editableValue) ? [...existing.editableValue] : [];
+            list.splice(i, 1);
+            list.push({ object: "", info: "" });
+
+            return {
+              ...prev,
+              params: {
+                ...prev.params,
+                [stateKey]: { ...existing, editableValue: list },
               },
             };
           });
         };
 
         const onRowDrop = (i: number, dragged: any) => {
-          const liveParam = protocolDetails.params?.[key];
+          const liveParam = protocolDetails.params?.[stateKey];
           const expected = getExpectedClass(liveParam);
-          const norm = (s: any) =>
-            typeof s === "string" ? s.replace(/\s+/g, "").toLowerCase() : "";
-          const draggedClass = norm(dragged._class);
+          const norm = (s: any) => (typeof s === "string" ? s.replace(/\s+/g, "").toLowerCase() : "");
+          const draggedClass = norm(dragged.pointerClass);
 
           const matches =
             expected === null
@@ -1472,21 +1927,22 @@ export default function ProtocolForm({
           if (!matches) return;
 
           setProtocolDetails((prev: any) => {
-            const list = Array.isArray(prev.params[key].editableValue)
-              ? [...prev.params[key].editableValue]
-              : [];
+            const existing = prev.params?.[stateKey];
+            const list = Array.isArray(existing?.editableValue) ? [...existing.editableValue] : [];
             while (list.length <= i) list.push({ object: "", info: "" });
+
             list[i] = {
-              object: dragged._objValue ?? "",
+              object: dragged.value ?? "",
               info: dragged.info ?? "",
-              _class: dragged._class ?? "",
-              _parentId: dragged._parentId ?? null,
+              pointerClass: dragged.pointerClass ?? "",
+              parentId: dragged.parentId ?? null,
             };
+
             return {
               ...prev,
               params: {
                 ...prev.params,
-                [key]: { ...prev.params[key], editableValue: list },
+                [stateKey]: { ...existing, editableValue: list },
               },
             };
           });
@@ -1494,41 +1950,40 @@ export default function ProtocolForm({
 
         const handlePickFromDialog = (rowIndexInner: number, picked: any) => {
           setProtocolDetails((prev: any) => {
-            const list = Array.isArray(prev.params[key].editableValue)
-              ? [...prev.params[key].editableValue]
-              : [];
+            const existing = prev.params?.[stateKey];
+            const list = Array.isArray(existing?.editableValue) ? [...existing.editableValue] : [];
 
             while (list.length <= rowIndexInner) list.push({ object: "", info: "" });
 
             list[rowIndexInner] = {
-              object: picked._objValue ?? "",
+              object: picked.value ?? "",
               info: picked.info ?? "",
-              _class: picked._class ?? "",
-              _objValue: picked._objValue ?? "",
-              _parentId: picked._protocolId ?? picked._parentId ?? null,
+              pointerClass: picked.pointerClass ?? "",
+              value: picked.value ?? "",
+              parentId: picked.protocolId ?? picked.parentId ?? null,
             };
 
             return {
               ...prev,
               params: {
                 ...prev.params,
-                [key]: { ...prev.params[key], editableValue: list },
+                [stateKey]: { ...existing, editableValue: list },
               },
             };
           });
         };
 
-        const liveDef = { ...def, ...(protocolDetails.params?.[key] || {}) };
+        const liveDef = { ...def, ...(protocolDetails.params?.[stateKey] || {}) };
 
         return (
           <ParamRow
-            key={key}
-            label={def.label || name}
+            key={stableKey}
+            label={def.label || name || ""}
             control={
               <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
                 {advancedSlot}
                 <MultiParamRow
-                  label={def.label || name}
+                  label={def.label || name || ""}
                   items={items}
                   helpText={def.help}
                   onRowClear={onClear}
@@ -1536,10 +1991,12 @@ export default function ProtocolForm({
                   dragOverKey={dragOverKey}
                   setDragOverKey={setDragOverKey}
                   currentDraggedOutput={currentDraggedOutput}
-                  paramKey={key}
+                  paramKey={stateKey}
                   def={liveDef}
-                  getAvailableOutputs={() => getFilteredOutputsForKey(key)}
+                  getAvailableOutputs={() => getFilteredOutputsForKey(stateKey)}
                   onPickForRow={handlePickFromDialog}
+                  readOnly={isReadOnly}
+                  onRowEdit={onRowEdit}
                 />
               </Box>
             }
@@ -1549,14 +2006,17 @@ export default function ProtocolForm({
         );
       }
 
-      // PointerParam
-      if (def._class === "PointerParam") {
+
+      // PointerParam (requires stateKey)
+      if (defClass === "PointerParam") {
+        if (!stateKey) return null;
+
         const onClear = () =>
           setProtocolDetails((prev: any) => ({
             ...prev,
             params: {
               ...prev.params,
-              [key]: { ...prev.params[key], editableValue: "", _objValue: "" },
+              [stateKey]: { ...prev.params[stateKey], editableValue: "", value: "" },
             },
           }));
 
@@ -1571,31 +2031,40 @@ export default function ProtocolForm({
           setOpenSelector(true);
         };
 
-        // normalizePointerValueForDisplay
-        const displayValue = (() => {
-          const v = value ?? def.default ?? "";
-          if (typeof v === "string" || typeof v === "number") return v;
-          if (v && typeof v === "object") {
-            const objValue = (v as any)._objValue;
-            if (typeof objValue === "string" || typeof objValue === "number") return objValue;
-          }
-          return "";
-        })();
+        const isReadOnly = coerceReadOnlyFlag(def?.readOnly);
 
         const control = (
           <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
             <TextField
               size="small"
-              value={displayValue}
-              InputProps={{ readOnly: true }}
-              onClick={() => handleOpenFind(key)}
+              value={String(
+                protocolDetails.params?.[stateKey]?.editableValue ??
+                protocolDetails.params?.[stateKey]?.value ??
+                def.default ??
+                ""
+              )}
+              onChange={
+                isReadOnly
+                  ? undefined
+                  : (e) =>
+                    setProtocolDetails((prev: any) => ({
+                      ...prev,
+                      params: {
+                        ...prev.params,
+                        [stateKey]: {
+                          ...prev.params[stateKey],
+                          editableValue: e.target.value,
+                          value: e.target.value,
+                        },
+                      },
+                    }))
+              }
+              InputProps={isReadOnly ? { readOnly: true } : undefined}
+              onClick={isReadOnly ? () => handleOpenFind(stateKey) : undefined}
               sx={{
-                minWidth: 300,
-
-                // keepHeightConsistentInHostCss
+                width: fieldWidth,
+                minWidth: 0,
                 "& .MuiInputBase-root": { minHeight: 36 },
-
-                // keepTextVisibleInReadonlyAcrossHostCss
                 "& .MuiInputBase-input, & input, & input[readonly]": {
                   fontSize: 12,
                   padding: "8px 10px",
@@ -1603,8 +2072,8 @@ export default function ProtocolForm({
                   color: "#111827",
                   WebkitTextFillColor: "#111827",
                   opacity: 1,
-                  userSelect: "none",
-                  cursor: "pointer",
+                  userSelect: isReadOnly ? "none" : "text",
+                  cursor: isReadOnly ? "pointer" : "text",
                 },
               }}
             />
@@ -1613,13 +2082,13 @@ export default function ProtocolForm({
 
         return (
           <ParamRow
-            key={key}
-            label={def.label || name}
+            key={stableKey}
+            label={def.label || name || ""}
             control={
               <WrapWithDrop
                 control={control}
                 def={def}
-                paramKey={key}
+                paramKey={stateKey}
                 setProtocolDetails={setProtocolDetails}
                 setDragOverKey={setDragOverKey}
                 dragOverKey={dragOverKey}
@@ -1629,41 +2098,39 @@ export default function ProtocolForm({
             isPointerParam
             onClear={onClear}
             rowIndex={rowIndex}
-            onOpenFind={() => handleOpenFind(key)}
+            onOpenFind={() => handleOpenFind(stateKey)}
+            layoutVariant={layoutVariant}
           />
         );
       }
 
 
-      // PathParam
-      if (def._class === "PathParam") {
-        const current = protocolDetails.params?.[key] || {};
-        const textValue =
-          current.editableValue ??
-          current._objValue ??
-          def.value ??
-          def.default ??
-          "";
+      // PathParam (requires stateKey)
+      if (defClass === "PathParam") {
+        if (!stateKey) return null;
+
+        const current = protocolDetails.params?.[stateKey] || {};
+        const textValue = current.editableValue ?? current.value ?? def.value ?? def.default ?? "";
 
         const handleBrowsePath = () => {
           if (!projectId || !protocolId) {
             console.warn("Missing projectId or protocolId for PathParam browse.");
             return;
           }
-          setPathDialog({ open: true, paramKey: key });
+          setPathDialog({ open: true, paramKey: stateKey });
         };
 
         const handleClear = () => {
           setProtocolDetails((prev: any) => {
-            if (!prev?.params?.[key]) return prev;
+            if (!prev?.params?.[stateKey]) return prev;
             return {
               ...prev,
               params: {
                 ...prev.params,
-                [key]: {
-                  ...prev.params[key],
+                [stateKey]: {
+                  ...prev.params[stateKey],
                   editableValue: "",
-                  _objValue: "",
+                  value: "",
                 },
               },
             };
@@ -1675,26 +2142,26 @@ export default function ProtocolForm({
             {advancedSlot}
             <TextField
               size="small"
-              name={key}
+              name={stateKey}
               value={textValue}
               onChange={(e) =>
                 setProtocolDetails((prev: any) => {
-                  if (!prev?.params?.[key]) return prev;
+                  if (!prev?.params?.[stateKey]) return prev;
                   return {
                     ...prev,
                     params: {
                       ...prev.params,
-                      [key]: {
-                        ...prev.params[key],
+                      [stateKey]: {
+                        ...prev.params[stateKey],
                         editableValue: e.target.value,
-                        _objValue: e.target.value,
+                        value: e.target.value,
                       },
                     },
                   };
                 })
               }
               sx={{
-                minWidth: 300,
+                minWidth: fieldWidth,
                 "& .MuiInputBase-root": { minHeight: 36 },
                 "& .MuiInputBase-input": { fontSize: 12, padding: "8px 10px", lineHeight: 1.2 },
               }}
@@ -1704,21 +2171,23 @@ export default function ProtocolForm({
 
         return (
           <ParamRow
-            key={key}
-            label={def.label || name}
+            key={stableKey}
+            label={def.label || name || ""}
             control={control}
             helpText={def.help}
             isPathParam
             onBrowsePath={handleBrowsePath}
             onClear={handleClear}
             rowIndex={rowIndex}
+            layoutVariant={layoutVariant}
           />
         );
       }
 
-      // EnumParam
-      // EnumParam
-      if (def._class === "EnumParam" && Array.isArray(def.choices)) {
+      // EnumParam (requires stateKey)
+      if (defClass === "EnumParam" && Array.isArray(def.choices)) {
+        if (!stateKey) return null;
+
         let sel = value ?? def.default ?? "";
         if (typeof sel === "number") sel = def.choices[sel] ?? "";
 
@@ -1727,16 +2196,12 @@ export default function ProtocolForm({
         const onChange = (v: any) =>
           setProtocolDetails((prev: any) => ({
             ...prev,
-            params: { ...prev.params, [key]: { ...prev.params[key], editableValue: v } },
+            params: { ...prev.params, [stateKey]: { ...prev.params[stateKey], editableValue: v } },
           }));
 
         const controlBase =
           def.display === 0 ? (
-            <RadioGroup
-              row
-              value={safeSel}
-              onChange={(e) => onChange(e.target.value)}
-            >
+            <RadioGroup row value={safeSel} onChange={(e) => onChange(e.target.value)}>
               {def.choices.map((ch: string, i: number) => (
                 <FormControlLabel
                   key={i}
@@ -1754,16 +2219,14 @@ export default function ProtocolForm({
               value={safeSel}
               onChange={(e) => onChange(e.target.value)}
               sx={{
-                minWidth: 300,
+                width: fieldWidth,
+                minWidth: 0,
                 "& .MuiInputBase-input": { fontSize: 12 },
                 "& .MuiSelect-select": { fontSize: 12, display: "flex", alignItems: "center" },
               }}
             >
               {def.choices.map((ch: string, i: number) => (
-                <MenuItem key={i} value={ch} sx={{
-                  fontSize: 12
-
-                }}>
+                <MenuItem key={i} value={ch} sx={{ fontSize: 12 }}>
                   {ch}
                 </MenuItem>
               ))}
@@ -1772,8 +2235,8 @@ export default function ProtocolForm({
 
         return (
           <ParamRow
-            key={key}
-            label={def.label || name}
+            key={stableKey}
+            label={def.label || name || ""}
             control={
               <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
                 {advancedSlot}
@@ -1782,22 +2245,116 @@ export default function ProtocolForm({
             }
             helpText={def.help}
             rowIndex={rowIndex}
+            layoutVariant={layoutVariant}
+          />
+        );
+      }
+
+      // Line (decorator, name optional)
+      if (defClass === "Line") {
+        const title = String(def?.label || name || "").trim();
+        const lineParams = Array.isArray(def?.params) ? def.params : [];
+
+        const children = lineParams
+          .map((child: any, idx: number) => {
+            const childEl = renderParam(child, sectionIdx, idx, "inline", stableKey);
+            if (!childEl) return null;
+
+            return (
+              <Box
+                key={`${stableKey}|lineChild:${idx}`}
+                sx={{
+                  flex: "0 0 auto",
+                  minWidth: 0,
+                  display: "flex",
+                  alignItems: "center",
+                }}
+              >
+                {childEl}
+              </Box>
+            );
+          })
+          .filter(Boolean);
+
+        // If Line has no children, render only the label (if present) and stay stable
+        if (children.length === 0) {
+          if (!title) return null;
+
+          return (
+            <ParamRow
+              key={stableKey}
+              label={title}
+              control={<></>}
+              helpText={def?.help}
+              rowIndex={rowIndex}
+              layoutVariant="fullWidth"
+            />
+          );
+        }
+
+        if (!title) {
+          return (
+            <Box
+              key={stableKey}
+              sx={{
+                mb: 1,
+                display: "flex",
+                alignItems: "center",
+                gap: 1,
+                flexWrap: "nowrap",
+                overflowX: "auto",
+                overflowY: "hidden",
+                pb: 0.25,
+              }}
+            >
+              {children as any}
+            </Box>
+          );
+        }
+
+        return (
+          <ParamRow
+            key={stableKey}
+            label={title}
+            control={
+              <Box
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 1,
+                  flexWrap: "nowrap",
+                  overflowX: "auto",
+                  overflowY: "hidden",
+                  minWidth: 0,
+                  pb: 0.25,
+                  ml: 3,
+                }}
+              >
+                {children as any}
+              </Box>
+            }
+            helpText={def?.help}
+            rowIndex={rowIndex}
+            layoutVariant="standard"
           />
         );
       }
 
 
-      // Group
-      if (def._class === "Group" && Array.isArray(def.children)) {
-        const groupKey = `${key}_group`;
+      // Group (decorator, name optional)
+      if (defClass === "Group") {
+        const groupKey = `${stableKey}|group`;
         const expanded = expandedGroups[groupKey] ?? true;
 
         const toggleExpand = () =>
           setExpandedGroups((prev) => ({ ...prev, [groupKey]: !expanded }));
 
+        const groupLabel = String(def?.label || name || "Group").trim();
+        const groupParams = Array.isArray(def?.params) ? def.params : [];
+
         return (
           <Box
-            key={key}
+            key={stableKey}
             sx={{
               mb: 2,
               border: "1px dashed #ccc",
@@ -1823,43 +2380,65 @@ export default function ProtocolForm({
                   color: theme.palette.mode === "dark" ? "#ffffff" : "#000000",
                 })}
               >
-                {def.label || name || `Group ${groupKey}`}
+                {groupLabel || "Group"}
               </Typography>
+
               <IconButton size="small">
-                {expanded ? <ChevronUpIcon fontSize="small" /> : <ChevronDownIcon fontSize="small" />}
+                {expanded ? (
+                  <ChevronUpIcon fontSize="small" />
+                ) : (
+                  <ChevronDownIcon fontSize="small" />
+                )}
               </IconButton>
             </Box>
 
-            {expanded &&
-              def.children.map((child: any, idx: number) => renderParam(child, sectionIdx, idx))}
+            {expanded && (
+              <>
+                {groupParams.length === 0 ? (
+                  <Typography variant="caption" sx={{ opacity: 0.7, pl: 1 }}>
+                    {/* No parameters in this group */}
+                    No parameters.
+                  </Typography>
+                ) : (
+                  groupParams.map((child: any, idx: number) =>
+                    renderParam(child, sectionIdx, idx, "standard", stableKey)
+                  )
+                )}
+              </>
+            )}
           </Box>
         );
       }
 
-      // BooleanParam
-      if (def._class === "BooleanParam") {
-        const checked =
+
+      // BooleanParam (requires stateKey)
+      if (defClass === "BooleanParam") {
+        if (!stateKey) return null;
+
+        const checked = coerceBooleanValue(
           value !== undefined
-            ? ["True", true, 1, "1"].includes(value)
-            : ["True", true, 1, "1"].includes(def.default);
+            ? value
+            : protocolDetails.params?.[stateKey]?.value ?? def.value ?? def.default
+        );
 
         return (
           <ParamRow
-            key={key}
-            label={def.label || name}
+            key={stableKey}
+            label={def.label || name || ""}
             control={
               <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
                 {advancedSlot}
                 <Switch
-                  checked={!!checked}
+                  checked={checked}
                   onChange={(e) =>
                     setProtocolDetails((prev: any) => ({
                       ...prev,
                       params: {
                         ...prev.params,
-                        [key]: {
-                          ...prev.params[key],
-                          editableValue: e.target.checked ? "True" : "False",
+                        [stateKey]: {
+                          ...prev.params[stateKey],
+                          editableValue: e.target.checked,
+                          value: e.target.checked,
                         },
                       },
                     }))
@@ -1874,28 +2453,45 @@ export default function ProtocolForm({
         );
       }
 
-      // Default text param
+      // LabelParam (decorator, name optional)
+      if (defClass === "Label") {
+        return (
+          <ParamRow
+            key={stableKey}
+            label={String(def.label || name || "")}
+            control={<></>}
+            helpText={def.help}
+            rowIndex={rowIndex}
+            layoutVariant="fullWidth"
+          />
+        );
+      }
+
+      // Default text param (requires stateKey)
+      if (!stateKey) return null;
+
       const defaultControl = (
         <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
           {advancedSlot}
           <TextField
             size="small"
-            name={key}
+            name={stateKey}
             value={value ?? def.default ?? ""}
             onChange={(e) =>
               setProtocolDetails((prev: any) => ({
                 ...prev,
                 params: {
                   ...prev.params,
-                  [key]: {
-                    ...prev.params[key],
+                  [stateKey]: {
+                    ...prev.params[stateKey],
                     editableValue: e.target.value,
                   },
                 },
               }))
             }
             sx={{
-              minWidth: 300,
+              width: fieldWidth,
+              minWidth: 0,
               "& .MuiInputBase-root": { minHeight: 36 },
               "& .MuiInputBase-input": { fontSize: 12, padding: "8px 10px", lineHeight: 1.2 },
             }}
@@ -1905,11 +2501,12 @@ export default function ProtocolForm({
 
       return (
         <ParamRow
-          key={key}
-          label={def.label || name}
+          key={stableKey}
+          label={def.label || name || ""}
           control={defaultControl}
           helpText={def.help}
           rowIndex={rowIndex}
+          layoutVariant={layoutVariant}
         />
       );
     },
@@ -1918,7 +2515,6 @@ export default function ProtocolForm({
       dragOverKey,
       currentDraggedOutput,
       expandedGroups,
-      data,
       generalExpertLevel,
       findGeneralExpertLocator,
       getExpectedClass,
@@ -1938,13 +2534,14 @@ export default function ProtocolForm({
 
     setProtocolDetails((prev: any) => {
       const prevParam = prev.params[key];
+      const defClass = getParamClass(def);
 
-      if (def?._class === "MultiPointerParam") {
+      if (defClass === "MultiPointerParam") {
         const newItems = picks.map((pick) => ({
-          _objValue: pick?._objValue ?? "",
+          value: pick?.value ?? "",
           info: pick?.info ?? "",
-          _class: pick?._class ?? "PointerParam",
-          _parentId: pick?._protocolId ?? pick?._parentId ?? null,
+          pointerClass: pick?.pointerClass ?? "",
+          parentId: pick?.protocolId ?? pick?.parentId ?? null,
         }));
 
         return {
@@ -1966,11 +2563,11 @@ export default function ProtocolForm({
           ...prev.params,
           [key]: {
             ...prevParam,
-            editableValue: pick?._objValue ?? "",
-            _objValue: pick?._objValue ?? "",
+            editableValue: pick?.value ?? "",
+            value: pick?.value ?? "",
             info: pick?.info ?? "",
-            _class: pick?._class ?? "",
-            _parentId: pick?._protocolId ?? pick?._parentId ?? null,
+            pointerClass: pick?.pointerClass ?? "",
+            parentId: pick?.protocolId ?? pick?.parentId ?? null,
           },
         },
       };
@@ -2560,8 +3157,7 @@ export default function ProtocolForm({
     }
   }, [activeOutput, previewLoading, previewError, previewData, setSqliteTable]);
 
-  const safeDefinition = Array.isArray(data?.definition) ? data.definition : [];
-
+  const safeDefinition = sections;
   const isDocked = variant === "docked";
 
   return (
@@ -2579,10 +3175,11 @@ export default function ProtocolForm({
       <div className={styles.formHeader}>
         <div className={styles.formTitleWrapper}>
           <Box className="inline-flex items-center justify-center rounded-full bg-green-500 text-black text-xs font-bold px-2 py-1">
-            {data?.id}
+            {String(protocolId ?? "")}
           </Box>
           <span className="text-white">{protocolDetails.label}</span>
-          <span className={styles.nodeStatusPill}
+          <span
+            className={styles.nodeStatusPill}
             style={{
               backgroundColor: protocolDetails.color,
               color: "black",
@@ -2612,7 +3209,8 @@ export default function ProtocolForm({
       )}
 
       {/* BODY */}
-      <div className={styles.formBody}
+      <div
+        className={styles.formBody}
         style={{
           display: "flex",
           flexDirection: "column",
@@ -2653,8 +3251,6 @@ export default function ProtocolForm({
           >
             <Tab label="Inputs and Parameters" />
             <Tab label="Outputs" />
-            {/* <Tab label="Summary" />
-            <Tab label="Methods" /> */}
             <Tab label="Logs" />
             <Tab label="Metadata" />
           </Tabs>
@@ -2670,7 +3266,6 @@ export default function ProtocolForm({
             }}
           >
             {/*Input and parameters */}
-
             {topTab === 0 && (
               <>
                 <Tabs
@@ -2688,17 +3283,12 @@ export default function ProtocolForm({
                     },
                   }}
                 >
-                  {safeDefinition.map(
-                    (section: any, idx: number) => (
-                      <Tab
-                        key={idx}
-                        label={
-                          section.label ||
-                          `Section ${idx + 1}`
-                        }
-                      />
-                    )
-                  )}
+                  {safeDefinition.map((section: any, idx: number) => (
+                    <Tab
+                      key={idx}
+                      label={section.label || `Section ${idx + 1}`}
+                    />
+                  ))}
                 </Tabs>
 
                 <Box
@@ -2711,13 +3301,8 @@ export default function ProtocolForm({
                     pb: 1,
                   }}
                 >
-                  {safeDefinition[sectionTab]?.params?.map(
-                    (paramObj: any, idx: number) =>
-                      renderParam(
-                        paramObj,
-                        sectionTab,
-                        idx
-                      )
+                  {safeDefinition[sectionTab]?.params?.map((paramObj: any, idx: number) =>
+                    renderParam(paramObj, sectionTab, idx)
                   )}
                 </Box>
               </>
@@ -2734,7 +3319,6 @@ export default function ProtocolForm({
                   minHeight: 0,
                 }}
               >
-
                 <Box
                   sx={{
                     flex: "0 0 45%",
@@ -2743,10 +3327,8 @@ export default function ProtocolForm({
                     minHeight: 0,
                     backgroundColor: "#fff",
                     borderRadius: 2,
-                    boxShadow:
-                      "0px 2px 6px rgba(0,0,0,0.1)",
-                    border:
-                      "1px solid #e5e7eb",
+                    boxShadow: "0px 2px 6px rgba(0,0,0,0.1)",
+                    border: "1px solid #e5e7eb",
                     display: "flex",
                     flexDirection: "column",
                     overflow: "hidden",
@@ -2756,12 +3338,10 @@ export default function ProtocolForm({
                     sx={{
                       px: 1.5,
                       py: 1,
-                      borderBottom:
-                        "1px solid #e5e7eb",
+                      borderBottom: "1px solid #e5e7eb",
                       display: "flex",
                       alignItems: "center",
-                      justifyContent:
-                        "space-between",
+                      justifyContent: "space-between",
                     }}
                   >
                     <Typography
@@ -2781,10 +3361,7 @@ export default function ProtocolForm({
                         fontSize: "0.7rem",
                       }}
                     >
-                      {
-                        normalizedOutputs.length
-                      }{" "}
-                      items
+                      {normalizedOutputs.length} items
                     </Typography>
                   </Box>
 
@@ -2796,98 +3373,58 @@ export default function ProtocolForm({
                       p: 1,
                     }}
                   >
-                    {normalizedOutputs.length ===
-                      0 ? (
+                    {normalizedOutputs.length === 0 ? (
                       <Typography
                         variant="body2"
                         sx={{
                           color: "#6b7280",
-                          fontSize:
-                            "0.8rem",
-                          textAlign:
-                            "center",
+                          fontSize: "0.8rem",
+                          textAlign: "center",
                           py: 4,
                         }}
                       >
-                        No outputs for this
-                        protocol.
+                        No outputs for this protocol.
                       </Typography>
                     ) : (
-                      normalizedOutputs.map(
-                        (
-                          o: any,
-                          idx: number
-                        ) => (
-                          <Box
-                            key={idx}
-                            onClick={() =>
-                              setSelectedOutputIdx(
-                                idx
-                              )
-                            }
-                            sx={{
-                              cursor:
-                                "pointer",
-                              userSelect:
-                                "none",
-                              borderRadius:
-                                1.5,
-                              border:
-                                "1px solid transparent",
-                              px: 1,
-                              py: 1,
-                              mb: 1,
+                      normalizedOutputs.map((o: any, idx: number) => (
+                        <Box
+                          key={idx}
+                          onClick={() => setSelectedOutputIdx(idx)}
+                          sx={{
+                            cursor: "pointer",
+                            userSelect: "none",
+                            borderRadius: 1.5,
+                            border: "1px solid transparent",
+                            px: 1,
+                            py: 1,
+                            mb: 1,
+                            backgroundColor:
+                              selectedOutputIdx === idx ? "#eef2ff" : "transparent",
+                            borderColor:
+                              selectedOutputIdx === idx ? "#6366f1" : "transparent",
+                            "&:hover": {
                               backgroundColor:
-                                selectedOutputIdx ===
-                                  idx
-                                  ? "#eef2ff"
-                                  : "transparent",
+                                selectedOutputIdx === idx ? "#eef2ff" : "#f9fafb",
                               borderColor:
-                                selectedOutputIdx ===
-                                  idx
-                                  ? "#6366f1"
-                                  : "transparent",
-                              "&:hover": {
-                                backgroundColor:
-                                  selectedOutputIdx ===
-                                    idx
-                                    ? "#eef2ff"
-                                    : "#f9fafb",
-                                borderColor:
-                                  selectedOutputIdx ===
-                                    idx
-                                    ? "#6366f1"
-                                    : "#e5e7eb",
-                              },
+                                selectedOutputIdx === idx ? "#6366f1" : "#e5e7eb",
+                            },
+                          }}
+                        >
+                          <Typography
+                            variant="body2"
+                            sx={{
+                              color: "#111827",
+                              fontSize: "0.7rem",
+                              fontWeight: selectedOutputIdx === idx ? 600 : 500,
+                              lineHeight: 1.4,
+                              wordBreak: "break-word",
+                              whiteSpace: "pre-wrap",
                             }}
                           >
-                            <Typography
-                              variant="body2"
-                              sx={{
-                                color:
-                                  "#111827",
-                                fontSize:
-                                  "0.7rem",
-                                fontWeight:
-                                  selectedOutputIdx ===
-                                    idx
-                                    ? 600
-                                    : 500,
-                                lineHeight:
-                                  1.4,
-                                wordBreak:
-                                  "break-word",
-                                whiteSpace:
-                                  "pre-wrap",
-                              }}
-                            >
-                              {
-                                o.infoText
-                              }
-                            </Typography>
-                          </Box>
-                        )
-                      )
+                            {o.infoText}
+                          </Typography>
+                        </Box>
+                      ))
                     )}
                   </Box>
                 </Box>
@@ -2900,13 +3437,10 @@ export default function ProtocolForm({
                     minHeight: 0,
                     backgroundColor: "#fff",
                     borderRadius: 2,
-                    boxShadow:
-                      "0px 2px 6px rgba(0,0,0,0.1)",
-                    border:
-                      "1px solid #e5e7eb",
+                    boxShadow: "0px 2px 6px rgba(0,0,0,0.1)",
+                    border: "1px solid #e5e7eb",
                     display: "flex",
-                    flexDirection:
-                      "column",
+                    flexDirection: "column",
                     overflow: "hidden",
                   }}
                 >
@@ -2921,7 +3455,10 @@ export default function ProtocolForm({
                       gap: 1,
                     }}
                   >
-                    <Typography variant="subtitle2" sx={{ fontWeight: 600, fontSize: "0.8rem", color: "#111827" }}>
+                    <Typography
+                      variant="subtitle2"
+                      sx={{ fontWeight: 600, fontSize: "0.8rem", color: "#111827" }}
+                    >
                       Preview
                     </Typography>
 
@@ -2941,7 +3478,6 @@ export default function ProtocolForm({
                         Analyze results
                       </Button>
                     </Box>
-
                   </Box>
 
                   <Box
@@ -2952,13 +3488,10 @@ export default function ProtocolForm({
                       overflowX: "hidden",
                       p: 1,
                       pb: 6,
-                      backgroundColor:
-                        "#f9fafb",
+                      backgroundColor: "#f9fafb",
                       display: "flex",
-                      justifyContent:
-                        "center",
-                      alignItems:
-                        "flex-start",
+                      justifyContent: "center",
+                      alignItems: "flex-start",
                     }}
                   >
                     {previewContent}
@@ -2966,20 +3499,6 @@ export default function ProtocolForm({
                 </Box>
               </Box>
             )}
-
-
-            {/* {topTab === 2 && (
-              <Typography variant="body1">
-                Summary content goes here.
-              </Typography>
-            )}
-
-            {topTab === 3 && (
-              <Typography variant="body1">
-                Methods content goes here.
-              </Typography>
-            )} */}
-
 
             {/* Logs */}
             {topTab === 2 && (
@@ -2991,292 +3510,148 @@ export default function ProtocolForm({
               >
                 <Tabs
                   value={bottomTab}
-                  onChange={(_, val) =>
-                    setBottomTab(val)
-                  }
+                  onChange={(_, val) => setBottomTab(val)}
                   sx={{
                     mb: 0,
                     "& .MuiTab-root": {
-                      textTransform:
-                        "none",
-                      fontSize:
-                        "0.8rem",
+                      textTransform: "none",
+                      fontSize: "0.8rem",
                       fontWeight: 500,
                     },
                   }}
                 >
-                  {["Output", "Errors", "Schedule"].map(
-                    (label, index) => (
-                      <Tab
-                        key={index}
-                        label={label}
-                      />
-                    )
-                  )}
+                  {["Output", "Errors", "Schedule"].map((label, index) => (
+                    <Tab key={index} label={label} />
+                  ))}
                 </Tabs>
-                <Box
-                  className={styles.bottomTabContent}
-                  sx={{ p: 2 }}
-                >
+                <Box className={styles.bottomTabContent} sx={{ p: 2 }}>
+
+                  {/* Output Log */}
                   {bottomTab === 0 && (
                     <Box
                       ref={containerRef}
                       sx={{
-                        backgroundColor:
-                          "#f5f5f5",
+                        backgroundColor: "#f5f5f5",
                         color: "black",
-                        borderColor:
-                          "gray",
-                        fontFamily:
-                          "monospace",
-                        fontSize:
-                          12,
+                        borderColor: "gray",
+                        fontFamily: "monospace",
+                        fontSize: 12,
                         p: 2,
                         borderRadius: 2,
                         border: "1px solid #e5e7eb",
-                        maxHeight:
-                          "100%",
-                        height:
-                          "100%",
-                        overflowY:
-                          "auto",
-                        whiteSpace:
-                          "pre",
+                        maxHeight: "100%",
+                        height: "100%",
+                        overflowY: "auto",
+                        whiteSpace: "pre",
                       }}
                     >
-                      {logs &&
-                        logs.length >
-                        0 ? (
-                        logs
-                          .split("\n")
-                          .map(
-                            (
-                              line,
-                              idx
-                            ) => (
-                              <div
-                                key={
-                                  idx
-                                }
-                                style={{
-                                  display:
-                                    "flex",
-                                }}
-                              >
-                                <span
-                                  style={{
-                                    color:
-                                      "blue",
-                                    userSelect:
-                                      "none",
-                                    marginRight: 8,
-                                  }}
-                                >
-                                  {String(
-                                    idx +
-                                    1
-                                  ).padStart(
-                                    5,
-                                    "0"
-                                  )}
-                                  :
-                                </span>
-                                <span>
-                                  {parseAnsi(
-                                    line
-                                  )}
-                                </span>
-                              </div>
-                            )
-                          )
+                      {logs && logs.length > 0 ? (
+                        logs.split("\n").map((line, idx) => (
+                          <div key={idx} style={{ display: "flex" }}>
+                            <span
+                              style={{
+                                color: "blue",
+                                userSelect: "none",
+                                marginRight: 8,
+                              }}
+                            >
+                              {String(idx + 1).padStart(5, "0")}:
+                            </span>
+                            <span>{parseAnsi(line)}</span>
+                          </div>
+                        ))
                       ) : (
-                        <Typography
-                          variant="body2"
-                          sx={{
-                            opacity: 0.7,
-                          }}
-                        >
+                        <Typography variant="body2" sx={{ opacity: 0.7 }}>
                           No logs yet.
                         </Typography>
                       )}
                     </Box>
                   )}
 
-                  {/* Output Log */}
+                  {/* Errors Log */}
                   {bottomTab === 1 && (
                     <Box
-                      ref={
-                        errorContainerRef
-                      }
+                      ref={errorContainerRef}
                       sx={{
-                        backgroundColor:
-                          "#f5f5f5",
+                        backgroundColor: "#f5f5f5",
                         color: "black",
-                        borderColor:
-                          "gray",
-                        fontFamily:
-                          "monospace",
-                        fontSize:
-                          12,
+                        borderColor: "gray",
+                        fontFamily: "monospace",
+                        fontSize: 12,
                         p: 2,
                         borderRadius: 2,
                         border: "1px solid #e5e7eb",
-                        maxHeight:
-                          "100%",
-                        height:
-                          "100%",
-                        overflowY:
-                          "auto",
-                        whiteSpace:
-                          "pre",
+                        maxHeight: "100%",
+                        height: "100%",
+                        overflowY: "auto",
+                        whiteSpace: "pre",
                       }}
                     >
                       {errorLogs ? (
-                        errorLogs
-                          .split("\n")
-                          .map(
-                            (
-                              line,
-                              idx
-                            ) => (
-                              <div
-                                key={
-                                  idx
-                                }
-                                style={{
-                                  display:
-                                    "flex",
-                                }}
-                              >
-                                <span
-                                  style={{
-                                    color:
-                                      "red",
-                                    userSelect:
-                                      "none",
-                                    marginRight: 8,
-                                  }}
-                                >
-                                  {String(
-                                    idx +
-                                    1
-                                  ).padStart(
-                                    5,
-                                    "0"
-                                  )}
-                                  :
-                                </span>
-                                <span>
-                                  {parseAnsi(
-                                    line
-                                  )}
-                                </span>
-                              </div>
-                            )
-                          )
+                        errorLogs.split("\n").map((line, idx) => (
+                          <div key={idx} style={{ display: "flex" }}>
+                            <span
+                              style={{
+                                color: "red",
+                                userSelect: "none",
+                                marginRight: 8,
+                              }}
+                            >
+                              {String(idx + 1).padStart(5, "0")}:
+                            </span>
+                            <span>{parseAnsi(line)}</span>
+                          </div>
+                        ))
                       ) : (
-                        <Typography
-                          variant="body2"
-                          sx={{
-                            opacity: 0.7,
-                          }}
-                        >
-                          No error
-                          logs.
+                        <Typography variant="body2" sx={{ opacity: 0.7 }}>
+                          No error logs.
                         </Typography>
                       )}
                     </Box>
                   )}
 
-                  {/* Errors Log */}
+                  {/* Schedule Log */}
                   {bottomTab === 2 && (
                     <Box
-                      ref={
-                        scheduleContainerRef
-                      }
+                      ref={scheduleContainerRef}
                       sx={{
-                        backgroundColor:
-                          "#f5f5f5",
+                        backgroundColor: "#f5f5f5",
                         color: "black",
-                        borderColor:
-                          "gray",
-                        fontFamily:
-                          "monospace",
-                        fontSize:
-                          12,
+                        borderColor: "gray",
+                        fontFamily: "monospace",
+                        fontSize: 12,
                         p: 2,
                         borderRadius: 2,
                         border: "1px solid #e5e7eb",
-                        maxHeight:
-                          "100%",
-                        height:
-                          "100%",
-                        overflowY:
-                          "auto",
-                        whiteSpace:
-                          "pre",
+                        maxHeight: "100%",
+                        height: "100%",
+                        overflowY: "auto",
+                        whiteSpace: "pre",
                       }}
                     >
-
                       {/* Schedule Log */}
                       {scheduleLogs ? (
-                        scheduleLogs
-                          .split("\n")
-                          .map(
-                            (
-                              line,
-                              idx
-                            ) => (
-                              <div
-                                key={
-                                  idx
-                                }
-                                style={{
-                                  display:
-                                    "flex",
-                                }}
-                              >
-                                <span
-                                  style={{
-                                    color:
-                                      "red",
-                                    userSelect:
-                                      "none",
-                                    marginRight: 8,
-                                  }}
-                                >
-                                  {String(
-                                    idx +
-                                    1
-                                  ).padStart(
-                                    5,
-                                    "0"
-                                  )}
-                                  :
-                                </span>
-                                <span>
-                                  {parseAnsi(
-                                    line
-                                  )}
-                                </span>
-                              </div>
-                            )
-                          )
+                        scheduleLogs.split("\n").map((line, idx) => (
+                          <div key={idx} style={{ display: "flex" }}>
+                            <span
+                              style={{
+                                color: "red",
+                                userSelect: "none",
+                                marginRight: 8,
+                              }}
+                            >
+                              {String(idx + 1).padStart(5, "0")}:
+                            </span>
+                            <span>{parseAnsi(line)}</span>
+                          </div>
+                        ))
                       ) : (
-                        <Typography
-                          variant="body2"
-                          sx={{
-                            opacity: 0.7,
-                          }}
-                        >
-                          No schedule
-                          logs.
+                        <Typography variant="body2" sx={{ opacity: 0.7 }}>
+                          No schedule logs.
                         </Typography>
                       )}
                     </Box>
                   )}
-
-
                 </Box>
               </Box>
             )}
@@ -3284,7 +3659,7 @@ export default function ProtocolForm({
             {/* Metadata */}
             {topTab === 3 && (
               <Box sx={{ height: "100%", maxHeight: "100%", overflow: "auto" }}>
-                <JsonTree data={data} />
+                <JsonTree data={metadataSnapshot} />
               </Box>
             )}
           </Box>
@@ -3308,10 +3683,8 @@ export default function ProtocolForm({
           onClick={handleSave}
           disabled={
             execLoading ||
-            protocolDetails.status ===
-            "running" ||
-            protocolDetails.status ===
-            "scheduled"
+            protocolDetails.status === "running" ||
+            protocolDetails.status === "scheduled"
           }
           sx={{ textTransform: "none" }}
         >
@@ -3321,10 +3694,7 @@ export default function ProtocolForm({
           variant="contained"
           startIcon={
             execLoading ? (
-              <CircularProgress
-                size={16}
-                color="inherit"
-              />
+              <CircularProgress size={16} color="inherit" />
             ) : (
               <ExecuteIcon />
             )
@@ -3333,109 +3703,80 @@ export default function ProtocolForm({
           onClick={handleExecute}
           disabled={
             execLoading ||
-            protocolDetails.status ===
-            "running" ||
-            protocolDetails.status ===
-            "scheduled"
+            protocolDetails.status === "running" ||
+            protocolDetails.status === "scheduled"
           }
           sx={{ textTransform: "none" }}
         >
-          {execLoading
-            ? "Executing..."
-            : "Execute"}
+          {execLoading ? "Executing..." : "Execute"}
         </Button>
       </div>
 
       {/* PathParam RemoteFileDialog */}
-      {pathDialog.open &&
-        pathDialog.paramKey &&
-        projectId &&
-        protocolId && (
-          <RemoteFileDialog
-            open={pathDialog.open}
-            onClose={() =>
-              setPathDialog({
-                open: false,
-                paramKey: null,
-              })
-            }
-            title={`Select file for ${pathDialog.paramKey}`}
-            projectId={projectId}
-            protocolId={protocolId}
-            resolveStartPath={() =>
-              svc.resolveProtocolStartPath(
-                projectId,
-                String(protocolId)
-              )
-            }
-            listRemoteDirectory={(p) =>
-              svc.listRemoteDirectory(
-                projectId,
-                String(protocolId),
-                p
-              )
-            }
-            previewRemoteText={(p) =>
-              svc.previewProtocolText(
-                projectId,
-                String(protocolId),
-                p
-              )
-            }
-            buildDownloadUrl={(p, inline) =>
-              svc.buildProtocolDownloadUrl(
-                String(projectId),
-                String(protocolId),
-                p,
-                !!inline
-              )
-            }
-            fetchInlinePreviewBlob={(p) =>
-              svc.fetchProtocolInlinePreviewBlob(
-                String(projectId),
-                String(protocolId),
-                p
-              )
-            }
-            onPick={(relativePath) => {
-              const paramKey =
-                pathDialog.paramKey;
-              if (paramKey) {
-                setProtocolDetails(
-                  (prev: any) => {
-                    if (
-                      !prev?.params?.[
-                      paramKey
-                      ]
-                    ) {
-                      return prev;
-                    }
-                    return {
-                      ...prev,
-                      params: {
-                        ...prev.params,
-                        [paramKey]: {
-                          ...prev
-                            .params[
-                          paramKey
-                          ],
-                          editableValue:
-                            relativePath,
-                          _objValue:
-                            relativePath,
-                        },
-                      },
-                    };
-                  }
-                );
-              }
-              setPathDialog({
-                open: false,
-                paramKey: null,
+      {/* PathParam RemoteFileDialog */}
+      {pathDialog.open && pathDialog.paramKey && projectId && protocolId && (
+        <RemoteFileDialog
+          open={pathDialog.open}
+          onClose={() =>
+            setPathDialog({
+              open: false,
+              paramKey: null,
+            })
+          }
+          title={`Select file for ${pathDialog.paramKey}`}
+          projectId={projectId}
+          protocolId={protocolId}
+          resolveStartPath={() =>
+            svc.resolveProtocolStartPath(projectId, String(protocolId))
+          }
+          listRemoteDirectory={(p) =>
+            svc.listRemoteDirectory(projectId, String(protocolId), p)
+          }
+          previewRemoteText={(p) =>
+            svc.previewProtocolText(projectId, String(protocolId), p)
+          }
+          buildDownloadUrl={(p, inline) =>
+            svc.buildProtocolDownloadUrl(
+              String(projectId),
+              String(protocolId),
+              p,
+              !!inline
+            )
+          }
+          fetchInlinePreviewBlob={(p) =>
+            svc.fetchProtocolInlinePreviewBlob(
+              String(projectId),
+              String(protocolId),
+              p
+            )
+          }
+          onPick={(relativePath) => {
+            const paramKey = pathDialog.paramKey;
+            if (paramKey) {
+              setProtocolDetails((prev: any) => {
+                if (!prev?.params?.[paramKey]) {
+                  return prev;
+                }
+                return {
+                  ...prev,
+                  params: {
+                    ...prev.params,
+                    [paramKey]: {
+                      ...prev.params[paramKey],
+                      editableValue: relativePath,
+                      value: relativePath,
+                    },
+                  },
+                };
               });
-            }}
-          />
-        )}
+            }
+            setPathDialog({
+              open: false,
+              paramKey: null,
+            });
+          }}
+        />
+      )}
 
       <OutputSelectorDialog
         open={openSelector}
@@ -3446,19 +3787,54 @@ export default function ProtocolForm({
         multiSelect={false}
       />
 
+      {/* Generic execute/save error dialog */}
+      <Dialog
+        open={execErrorDialogOpen}
+        onClose={() => setExecErrorDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 3,
+            boxShadow: "0px 10px 25px rgba(0, 0, 0, 0.25)",
+          },
+        }}
+      >
+        <DialogTitle sx={{ fontWeight: 700 }}>
+          {execErrorDialogTitle}
+        </DialogTitle>
+
+        <DialogContent dividers>
+          <Typography
+            variant="body2"
+            sx={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}
+          >
+            {execErrorDialogMessage}
+          </Typography>
+        </DialogContent>
+
+        <DialogActions>
+          <Button
+            onClick={() => setExecErrorDialogOpen(false)}
+            variant="contained"
+            sx={{ textTransform: "none" }}
+          >
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Validation errors dialog */}
       {showValidationDialog && (
         <Dialog
           open={showValidationDialog}
-          onClose={() =>
-            setShowValidationDialog(false)
-          }
+          onClose={() => setShowValidationDialog(false)}
           maxWidth="sm"
           fullWidth
           PaperProps={{
             sx: {
               borderRadius: 3,
-              boxShadow:
-                "0px 10px 25px rgba(0, 0, 0, 0.25)",
+              boxShadow: "0px 10px 25px rgba(0, 0, 0, 0.25)",
             },
           }}
         >
@@ -3469,10 +3845,8 @@ export default function ProtocolForm({
               gap: 1.5,
               fontWeight: "bold",
               color: "#d32f2f",
-              fontSize:
-                "1.1rem",
-              borderBottom:
-                "1px solid ",
+              fontSize: "1.1rem",
+              borderBottom: "1px solid ",
               pb: 1,
             }}
           >
@@ -3481,16 +3855,12 @@ export default function ProtocolForm({
                 width: 32,
                 height: 32,
                 borderRadius: "50%",
-                backgroundColor:
-                  "#f8d7da",
+                backgroundColor: "#f8d7da",
                 color: "#d32f2f",
                 display: "flex",
-                alignItems:
-                  "center",
-                justifyContent:
-                  "center",
-                fontWeight:
-                  "bold",
+                alignItems: "center",
+                justifyContent: "center",
+                fontWeight: "bold",
               }}
             >
               !
@@ -3502,118 +3872,71 @@ export default function ProtocolForm({
             dividers
             sx={{
               maxHeight: "300px",
-              overflowY:
-                "auto",
-              backgroundColor:
-                "#fff8f8",
-              borderTop:
-                "1px solid #f0f0f0",
-              borderBottom:
-                "1px solid #f0f0f0",
+              overflowY: "auto",
+              backgroundColor: "#fff8f8",
+              borderTop: "1px solid #f0f0f0",
+              borderBottom: "1px solid #f0f0f0",
               p: 2.5,
             }}
           >
-            {validationErrors.length >
-              0 ? (
+            {validationErrors.length > 0 ? (
               <Box
                 component="ul"
                 sx={{
-                  listStyle:
-                    "none",
+                  listStyle: "none",
                   pl: 0,
                   m: 0,
-                  color:
-                    "#b00020",
-                  fontSize:
-                    "0.9rem",
+                  color: "#b00020",
+                  fontSize: "0.9rem",
                 }}
               >
-                {validationErrors.map(
-                  (err, i) => {
-                    const parts =
-                      err.split(
-                        /(\*\*[^*]+\*\*)/g
-                      );
-                    return (
+                {validationErrors.map((err, i) => {
+                  const parts = err.split(/(\*\*[^*]+\*\*)/g);
+                  return (
+                    <Box
+                      key={i}
+                      component="li"
+                      sx={{
+                        display: "flex",
+                        alignItems: "flex-start",
+                        mb: 1.2,
+                      }}
+                    >
                       <Box
-                        key={i}
-                        component="li"
+                        component="span"
                         sx={{
-                          display:
-                            "flex",
-                          alignItems:
-                            "flex-start",
-                          mb: 1.2,
+                          color: "#d32f2f",
+                          fontWeight: "bold",
+                          mr: 1.2,
+                          fontSize: "1rem",
+                          lineHeight: "1rem",
                         }}
                       >
-                        <Box
-                          component="span"
-                          sx={{
-                            color:
-                              "#d32f2f",
-                            fontWeight:
-                              "bold",
-                            mr: 1.2,
-                            fontSize:
-                              "1rem",
-                            lineHeight:
-                              "1rem",
-                          }}
-                        >
-                          •
-                        </Box>
-                        <Typography
-                          variant="body2"
-                          sx={{
-                            color:
-                              "#333",
-                            lineHeight:
-                              1.5,
-                            fontSize:
-                              "0.9rem",
-                          }}
-                        >
-                          {parts.map(
-                            (
-                              p,
-                              j
-                            ) =>
-                              p.startsWith(
-                                "**"
-                              ) &&
-                                p.endsWith(
-                                  "**"
-                                ) ? (
-                                <strong
-                                  key={
-                                    j
-                                  }
-                                >
-                                  {p.slice(
-                                    2,
-                                    -2
-                                  )}
-                                </strong>
-                              ) : (
-                                p
-                              )
-                          )}
-                        </Typography>
+                        •
                       </Box>
-                    );
-                  }
-                )}
+                      <Typography
+                        variant="body2"
+                        sx={{
+                          color: "#333",
+                          lineHeight: 1.5,
+                          fontSize: "0.9rem",
+                        }}
+                      >
+                        {parts.map((p, j) =>
+                          p.startsWith("**") && p.endsWith("**") ? (
+                            <strong key={j}>{p.slice(2, -2)}</strong>
+                          ) : (
+                            p
+                          )
+                        )}
+                      </Typography>
+                    </Box>
+                  );
+                })}
               </Box>
             ) : (
-              <Typography
-                variant="body2"
-                sx={{
-                  color: "#555",
-                }}
-              >
-                No validation
-                details
-                provided.
+              <Typography variant="body2" sx={{ color: "#555" }}>
+                No validation details provided.
               </Typography>
             )}
           </DialogContent>
@@ -3621,34 +3944,23 @@ export default function ProtocolForm({
           <DialogActions
             sx={{
               p: 2,
-              justifyContent:
-                "flex-end",
-              backgroundColor:
-                "#fafafa",
-              borderTop:
-                "1px solid #eee",
+              justifyContent: "flex-end",
+              backgroundColor: "#fafafa",
+              borderTop: "1px solid #eee",
             }}
           >
             <Button
-              onClick={() =>
-                setShowValidationDialog(
-                  false
-                )
-              }
+              onClick={() => setShowValidationDialog(false)}
               variant="contained"
               color="error"
               sx={{
-                textTransform:
-                  "none",
+                textTransform: "none",
                 px: 3,
                 borderRadius: 2,
-                fontWeight:
-                  "bold",
-                boxShadow:
-                  "none",
+                fontWeight: "bold",
+                boxShadow: "none",
                 "&:hover": {
-                  backgroundColor:
-                    "#c62828",
+                  backgroundColor: "#c62828",
                 },
               }}
             >

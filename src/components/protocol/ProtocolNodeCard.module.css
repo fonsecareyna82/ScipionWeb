@@ -488,3 +488,29 @@
 .menuContent [data-highlighted] svg {
   opacity: 0.95;
 }
+
+.outputActionBtn {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  opacity: 0.85;
+}
+
+.outputActionBtn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.outputActionBtn:hover:not(:disabled) {
+  opacity: 1;
+}
+
+.outputEyeIcon {
+  width: 44px;
+  height: 44px;
+}

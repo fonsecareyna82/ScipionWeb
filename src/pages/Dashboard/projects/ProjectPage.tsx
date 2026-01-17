@@ -155,6 +155,8 @@ export default function ProjectPage() {
 
   // Multi-form dock state
   const [openForms, setOpenForms] = useState<OpenForm[]>([]);
+  // inFlightFormOpenIdsRef
+  const openingFormIdsRef = useRef<Set<string>>(new Set());
 
   // --- Smooth dock animations (FLIP) ---
   const dockRef = useRef<HTMLDivElement | null>(null);
@@ -258,6 +260,18 @@ export default function ProjectPage() {
   const [_, setHideGraphDuringCenter] = useState(false);
   const [, startTransition] = useTransition();
   const disablePersistenceRef = useRef(false);
+
+  const projectIdRef = useRef<string | number | undefined>(undefined);
+
+  useEffect(() => {
+    const raw = (project as any)?.projectId ?? (project as any)?.id;
+    if (raw == null) return;
+    const asNumber = typeof raw === "number" ? raw : Number(raw);
+    projectIdRef.current = Number.isNaN(asNumber) ? String(raw) : asNumber;
+  }, [project]);
+
+  const getProjectId = () => projectIdRef.current;
+
 
   // Viewport state (used for hierarchical/table; grid uses fixed zoom)
   const [viewport, setViewport] = useState<{ x: number; y: number; zoom: number }>({ x: 0, y: 0, zoom: 0.3464 });
@@ -766,48 +780,70 @@ export default function ProjectPage() {
   };
 
   // Open or focus a form for a node; fetch details only when needed
+  // openFormForNode
   const openFormForNode = useCallback(
     async (nodeId: string, fetcher: () => Promise<any>) => {
       if (!projectName) return;
 
-      selectedIdRef.current = String(nodeId);
+      const id = String(nodeId);
+
+      selectedIdRef.current = id;
       syncUnifiedSelectedIds();
-      setPreviousNodeId(String(nodeId));
-      setHighlightedId(String(nodeId));
-      applyEdgeHighlight(String(nodeId));
+      setPreviousNodeId(id);
+      setHighlightedId(id);
+      applyEdgeHighlight(id);
 
-      captureDockPositions();
-      pendingFlipRef.current = true;
+      // preventDuplicateOpensInFlight
+      if (openingFormIdsRef.current.has(id)) {
+        // bringToFrontIfAlreadyInDock
+        setOpenForms((prev) => {
+          const hitIndex = prev.findIndex((f) => f.id === id);
+          if (hitIndex < 0) return prev;
+          const hit = prev[hitIndex];
+          return [hit, ...prev.filter((_, i) => i !== hitIndex)];
+        });
+        return;
+      }
 
-      let alreadyOpen = false;
+      openingFormIdsRef.current.add(id);
+
+      // bringToFrontIfAlreadyOpen
+      let wasAlreadyOpen = false;
       setOpenForms((prev) => {
-        const hitIndex = prev.findIndex((f) => f.id === String(nodeId));
+        const hitIndex = prev.findIndex((f) => f.id === id);
         if (hitIndex >= 0) {
-          alreadyOpen = true;
+          wasAlreadyOpen = true;
           const hit = prev[hitIndex];
           return [hit, ...prev.filter((_, i) => i !== hitIndex)];
         }
         return prev;
       });
 
-
-      if (alreadyOpen) return;
+      if (wasAlreadyOpen) {
+        openingFormIdsRef.current.delete(id);
+        return;
+      }
 
       try {
         const details = await fetcher();
+
         captureDockPositions();
         pendingFlipRef.current = true;
 
+        // useStableKeyToGuaranteeUniquenessPerId
         setOpenForms((prev) => [
-          { key: `${nodeId}-${Date.now()}`, id: String(nodeId), details },
-          ...prev,
+          { key: id, id, details },
+          ...prev.filter((f) => f.id !== id),
         ]);
       } catch (err) {
         console.error("openFormForNode failed", err);
+      } finally {
+        openingFormIdsRef.current.delete(id);
       }
     },
-    [projectName, applyEdgeHighlight]
+    [projectName, applyEdgeHighlight, syncUnifiedSelectedIds]
   );
+
 
   const handleNodeDoubleClick = useCallback(
     async (nodeData: any) => {
@@ -967,7 +1003,8 @@ export default function ProjectPage() {
         () => nodeActionsRef.current,
         () => getSelectedPathIds(),
         (protocolId: string, projectId?: string | number, protocolLabel?: string) =>
-          openBrowse(protocolId, projectId, protocolLabel)
+          openBrowse(protocolId, projectId, protocolLabel),
+        () => getProjectId()
       ),
     };
   }

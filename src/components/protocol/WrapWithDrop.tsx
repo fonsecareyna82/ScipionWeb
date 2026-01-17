@@ -51,8 +51,8 @@ export default function WrapWithDrop({
   const isMatch =
     !expected || // si no hay clase esperada, siempre match
     (Array.isArray(expected)
-      ? expected.includes(currentDraggedOutput?._class)
-      : currentDraggedOutput?._class === expected);
+      ? expected.includes(currentDraggedOutput?.pointerClass)
+      : currentDraggedOutput?.pointerClass === expected);
 
   const isActive = dragOverKey === paramKey;
 
@@ -73,10 +73,10 @@ export default function WrapWithDrop({
           ...prev.params,
           [paramKey]: {
             ...prev.params[paramKey],
-            editableValue: currentDraggedOutput._objValue ?? '',
-            _objValue: currentDraggedOutput._objValue ?? '',
+            editableValue: currentDraggedOutput.value ?? '',
+            value: currentDraggedOutput.value ?? '',
             info: currentDraggedOutput.info ?? '',
-            _parentId: currentDraggedOutput._parentId ?? null,
+            parentId: currentDraggedOutput.parentId ?? null,
           },
         },
       }));
@@ -88,7 +88,7 @@ export default function WrapWithDrop({
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
-      sx={{
+      sx={{ ml: 4,
         border: '2px dashed #5f5d5dff',
         borderRadius: 1,
         width: 310,

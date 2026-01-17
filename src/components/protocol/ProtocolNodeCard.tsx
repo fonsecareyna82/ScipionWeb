@@ -45,7 +45,10 @@ import {
   ArrowDown,
   ArrowUp,
   Scan,
+  Eye,
 } from "lucide-react";
+
+import AnalyzeOutputDialog from "@/components/analyze/analyze-output-dialog";
 
 const statusColors: Record<string, string> = {
   running: "#FCCE62",
@@ -112,7 +115,11 @@ type StatusNodeProps = {
   onSelectFrom?: (id: string) => void;
   onSelectTo?: (id: string) => void;
   onStop?: (id: string) => void;
-  onBrowse?: (protocolId: string, projectId?: string | number, protocolLabel?: string) => void;
+  onBrowse?: (
+    protocolId: string,
+    projectId?: string | number,
+    protocolLabel?: string
+  ) => void;
 
   inPathSelection?: boolean;
   pathSelectionActive?: boolean;
@@ -129,6 +136,90 @@ const formatCpuTime = (seconds: number): string => {
   const secs = Math.floor(seconds % 60);
   const pad = (n: number) => n.toString().padStart(2, "0");
   return `${pad(hours)}h:${pad(minutes)}m:${pad(secs)}s`;
+};
+
+type NormalizedOutput = {
+  name?: string; // output key/name used by backend
+  info?: string;
+  paramClass: string;
+  pointerClass?: string;
+  value?: string;
+  parentId?: string | number;
+};
+
+const normalizeOutputItem = (outputObj: unknown): NormalizedOutput | null => {
+  // Supports both shapes:
+  // 1) Flat:
+  //    { outputName|name, paramClass: "PointerParam", pointerClass, info, value, parentId }
+  // 2) Wrapped legacy:
+  //    { SomeName: { paramClass: "PointerParam", pointerClass, info, value, parentId } }
+  // Also tolerates older fields (_class) during transition.
+  if (!outputObj || typeof outputObj !== "object") return null;
+
+  const flatCandidate = outputObj as Record<string, unknown>;
+
+  const hasFlatSignature =
+    "paramClass" in flatCandidate &&
+    (("info" in flatCandidate) ||
+      ("name" in flatCandidate) ||
+      ("outputName" in flatCandidate) ||
+      ("pointerClass" in flatCandidate));
+
+  if (hasFlatSignature) {
+    const normalized: NormalizedOutput = {
+      name:
+        typeof flatCandidate.outputName === "string"
+          ? flatCandidate.outputName
+          : typeof flatCandidate.name === "string"
+            ? flatCandidate.name
+            : undefined,
+      info: typeof flatCandidate.info === "string" ? flatCandidate.info : undefined,
+      paramClass: String(flatCandidate.paramClass ?? ""),
+      pointerClass:
+        typeof flatCandidate.pointerClass === "string"
+          ? flatCandidate.pointerClass
+          : typeof flatCandidate._class === "string"
+            ? (flatCandidate._class as string)
+            : undefined,
+      value: typeof flatCandidate.value === "string" ? flatCandidate.value : undefined,
+      parentId:
+        typeof flatCandidate.parentId === "string" || typeof flatCandidate.parentId === "number"
+          ? flatCandidate.parentId
+          : undefined,
+    };
+
+    return normalized.paramClass ? normalized : null;
+  }
+
+  const entries = Object.entries(flatCandidate);
+  if (entries.length === 1) {
+    const [wrappedName, wrappedValue] = entries[0];
+    if (wrappedValue && typeof wrappedValue === "object") {
+      const wrappedDef = wrappedValue as Record<string, unknown>;
+      if ("paramClass" in wrappedDef || "_class" in wrappedDef) {
+        const normalized: NormalizedOutput = {
+          name: wrappedName,
+          info: typeof wrappedDef.info === "string" ? wrappedDef.info : undefined,
+          paramClass: String(wrappedDef.paramClass ?? wrappedDef._class ?? ""),
+          pointerClass:
+            typeof wrappedDef.pointerClass === "string"
+              ? wrappedDef.pointerClass
+              : typeof wrappedDef._class === "string"
+                ? (wrappedDef._class as string)
+                : undefined,
+          value: typeof wrappedDef.value === "string" ? wrappedDef.value : undefined,
+          parentId:
+            typeof wrappedDef.parentId === "string" || typeof wrappedDef.parentId === "number"
+              ? wrappedDef.parentId
+              : undefined,
+        };
+
+        return normalized.paramClass ? normalized : null;
+      }
+    }
+  }
+
+  return null;
 };
 
 export default function ProtocolNodeCard({
@@ -217,9 +308,7 @@ export default function ProtocolNodeCard({
     const nodeEl =
       (e.currentTarget as HTMLElement)?.closest(".react-flow__node") ??
       rootRef.current?.closest(".react-flow__node") ??
-      doc.querySelector(
-        `.react-flow__node[data-id="${CSS.escape(String(data.id))}"]`
-      );
+      doc.querySelector(`.react-flow__node[data-id="${CSS.escape(String(data.id))}"]`);
 
     if (!nodeEl) return;
 
@@ -248,8 +337,7 @@ export default function ProtocolNodeCard({
   const hasOutputs = outputsArray.length > 0;
 
   const isMac =
-    typeof navigator !== "undefined" &&
-    /Mac|iPhone|iPad|iPod/.test(navigator.platform);
+    typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/.test(navigator.platform);
 
   const mod = isMac ? "⌘" : "Ctrl";
   const modShift = isMac ? "⌘⇧" : "Ctrl+Shift";
@@ -271,10 +359,7 @@ export default function ProtocolNodeCard({
   const ShortcutHint = ({ text }: { text?: string }) =>
     text ? <span className={styles.shortcutHint}>{text}</span> : null;
 
-  // projectNodeAlwaysHeaderOnly
   const shouldRenderProtocolBody = !isProjectNode;
-
-  // keepMountedForSmoothCollapse
   const isContentExpanded = !isCompactView;
 
   const contentClassName = [
@@ -284,9 +369,24 @@ export default function ProtocolNodeCard({
 
   const contentStyle: React.CSSProperties = {
     opacity: isContentExpanded ? 1 : 0,
-    transition:
-      "max-height 520ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 260ms ease-in-out",
+    transition: "max-height 520ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 260ms ease-in-out",
     willChange: "max-height, opacity",
+  };
+
+  // Output viewer state
+  const [analyzeOpen, setAnalyzeOpen] = useState(false);
+  const [analyzeTarget, setAnalyzeTarget] = useState<{
+    outputName: string;
+    outputRaw: any;
+  } | null>(null);
+
+  const canOpenViewer = !isProjectNode && data.projectId != null;
+
+  const openOutputViewer = (outputName: string, outputRaw: any) => {
+    // openOutputViewer
+    if (!canOpenViewer) return;
+    setAnalyzeTarget({ outputName, outputRaw });
+    setAnalyzeOpen(true);
   };
 
   return (
@@ -305,23 +405,17 @@ export default function ProtocolNodeCard({
           onMouseLeave={() => setIsHovered(false)}
         >
           <div
-            className={[
-              styles.header,
-              isProjectNode ? styles.headerProject : styles.headerProtocol,
-            ].join(" ")}
+            className={[styles.header, isProjectNode ? styles.headerProject : styles.headerProtocol].join(
+              " "
+            )}
           >
             <div className={styles.headerLeft}>
               {!isProjectNode && (
                 <div
-                  className={[
-                    styles.nodeIdBadge,
-                    data.status === "running" ? styles.glowBadge : "",
-                  ]
+                  className={[styles.nodeIdBadge, data.status === "running" ? styles.glowBadge : ""]
                     .filter(Boolean)
                     .join(" ")}
-                  style={
-                    isCompactView ? { fontSize: "2.4rem" } : { fontSize: "2.3rem" }
-                  }
+                  style={isCompactView ? { fontSize: "2.4rem" } : { fontSize: "2.3rem" }}
                 >
                   <span>{data.id}</span>
                 </div>
@@ -336,10 +430,7 @@ export default function ProtocolNodeCard({
                 </div>
               ) : (
                 <div
-                  className={[
-                    styles.label,
-                    isCompactView ? styles.labelCompact : "",
-                  ]
+                  className={[styles.label, isCompactView ? styles.labelCompact : ""]
                     .filter(Boolean)
                     .join(" ")}
                   title={data.label}
@@ -368,10 +459,7 @@ export default function ProtocolNodeCard({
                     </button>
                   </DropdownMenuTrigger>
 
-                  <DropdownMenuContent
-                    className={styles.menuContent}
-                    onClick={(e) => e.stopPropagation()}
-                  >
+                  <DropdownMenuContent className={styles.menuContent} onClick={(e) => e.stopPropagation()}>
                     {!reduceMenus && (
                       <>
                         <DropdownMenuItem onClick={handleEdit}>
@@ -554,11 +642,7 @@ export default function ProtocolNodeCard({
           </div>
 
           {shouldRenderProtocolBody && (
-            <div
-              className={contentClassName}
-              style={contentStyle}
-              aria-hidden={!isContentExpanded}
-            >
+            <div className={contentClassName} style={contentStyle} aria-hidden={!isContentExpanded}>
               <div className={styles.cardContent}>
                 <div className={styles.outputsReserved}>
                   {hasOutputs ? (
@@ -569,19 +653,29 @@ export default function ProtocolNodeCard({
 
                       <div className={styles.sectionContent} data-has-scroll>
                         {outputsArray.map((outputObj, idx) => {
-                          const [, rawValue] = Object.entries(outputObj)[0];
-                          const value = rawValue as {
-                            info: string;
-                            _class: string;
-                            _objValue: string;
-                            _parentId: string;
-                          };
+                          const value = normalizeOutputItem(outputObj);
+                          if (!value) return null;
 
                           const isDragging = draggingIdx === idx;
 
+                          const labelText =
+                            value.info ??
+                            value.name ??
+                            value.pointerClass ??
+                            value.paramClass ??
+                            "Output";
+
+                          const displayClass = value.pointerClass ?? value.paramClass ?? "PointerParam";
+
+                          const pillKey =
+                            value.value ?? `${String(value.parentId ?? "")}:${String(value.name ?? idx)}`;
+
+                          const outputName = String(value.name ?? "");
+                          const isViewerEnabled = canOpenViewer && !!outputName;
+
                           return (
                             <div
-                              key={idx}
+                              key={pillKey}
                               className={[
                                 styles.outputPill,
                                 isDragging ? styles.outputPillDragging : "",
@@ -607,18 +701,17 @@ export default function ProtocolNodeCard({
                                 setDraggingIdx(idx);
 
                                 const output = {
-                                  _class: value._class,
-                                  _expectedClass: value._class,
-                                  _objValue: value._objValue,
-                                  info: value.info,
-                                  _parentId: value._parentId,
+                                  paramClass: value.paramClass,
+                                  pointerClass: value.pointerClass ?? "",
+                                  _expectedClass: value.pointerClass ?? "",
+                                  value: value.value ?? "",
+                                  info: value.info ?? "",
+                                  parentId: value.parentId ?? "",
+                                  name: value.name ?? "",
                                 };
 
                                 setCurrentDraggedOutput(output);
-                                e.dataTransfer.setData(
-                                  "application/scipion-output",
-                                  JSON.stringify(output)
-                                );
+                                e.dataTransfer.setData("application/scipion-output", JSON.stringify(output));
 
                                 const ghost = document.createElement("div");
                                 ghost.style.position = "absolute";
@@ -629,7 +722,7 @@ export default function ProtocolNodeCard({
                                 ghost.style.border = "1px solid #ccc";
                                 ghost.style.color = "black";
                                 ghost.style.borderRadius = "0.5rem";
-                                ghost.innerText = `${value._class} (${value.info})`;
+                                ghost.innerText = `${displayClass} (${labelText})`;
                                 document.body.appendChild(ghost);
                                 e.dataTransfer.setDragImage(ghost, 0, 15);
                                 setTimeout(() => document.body.removeChild(ghost), 0);
@@ -640,7 +733,36 @@ export default function ProtocolNodeCard({
                               }}
                             >
                               <ArrowUpRight className={styles.outputIcon} />
-                              <span className={styles.outputText}>{value.info}</span>
+                              <span className={styles.outputText}>{labelText}</span>
+
+                              <button
+                                type="button"
+                                className={`${styles.outputActionBtn} nodrag`}
+                                draggable={false}
+                                data-nodrag
+                                aria-label="View output"
+                                title={isViewerEnabled ? "View output" : "Viewer not available"}
+                                onPointerDown={(e) => {
+                                  // preventDragStartFromViewerButton
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                }}
+                                onMouseDown={(e) => {
+                                  // preventDragStartFromViewerButtonMouse
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                }}
+                                onClick={(e) => {
+                                  // openViewerDialog
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  if (!isViewerEnabled) return;
+                                  openOutputViewer(outputName, outputObj);
+                                }}
+                                disabled={!isViewerEnabled}
+                              >
+                                <Eye className={styles.outputEyeIcon} />
+                              </button>
                             </div>
                           );
                         })}
@@ -708,30 +830,19 @@ export default function ProtocolNodeCard({
               <Handle
                 type="target"
                 position={graphDirection === "TB" ? Position.Top : Position.Left}
-                style={
-                  graphDirection === "TB"
-                    ? {}
-                    : { top: "50%", transform: "translateY(-50%)" }
-                }
+                style={graphDirection === "TB" ? {} : { top: "50%", transform: "translateY(-50%)" }}
               />
               <Handle
                 type="source"
                 position={graphDirection === "TB" ? Position.Bottom : Position.Right}
-                style={
-                  graphDirection === "TB"
-                    ? {}
-                    : { top: "50%", transform: "translateY(-50%)" }
-                }
+                style={graphDirection === "TB" ? {} : { top: "50%", transform: "translateY(-50%)" }}
               />
             </>
           )}
         </div>
       </ContextMenuTrigger>
 
-      <ContextMenuContent
-        className={styles.menuContent}
-        onClick={(e) => e.stopPropagation()}
-      >
+      <ContextMenuContent className={styles.menuContent} onClick={(e) => e.stopPropagation()}>
         {!reduceMenus && (
           <>
             <ContextMenuItem onClick={handleEdit}>
@@ -788,9 +899,7 @@ export default function ProtocolNodeCard({
 
             <ContextMenuSeparator />
 
-            {(data.status === "running" ||
-              data.status === "launched" ||
-              data.status === "scheduled") && (
+            {(data.status === "running" || data.status === "launched" || data.status === "scheduled") && (
               <ContextMenuItem onClick={handleStop}>
                 <div className={styles.menuRow}>
                   <span className={styles.menuLeft}>
@@ -837,9 +946,7 @@ export default function ProtocolNodeCard({
         )}
 
         {reduceMenus &&
-          (data.status === "running" ||
-            data.status === "launched" ||
-            data.status === "scheduled") && (
+          (data.status === "running" || data.status === "launched" || data.status === "scheduled") && (
             <ContextMenuItem onClick={handleStop}>
               <div className={styles.menuRow}>
                 <span className={styles.menuLeft}>
@@ -891,6 +998,18 @@ export default function ProtocolNodeCard({
           </div>
         </ContextMenuItem>
       </ContextMenuContent>
+
+      {canOpenViewer && (
+        <AnalyzeOutputDialog
+          open={analyzeOpen}
+          onClose={() => setAnalyzeOpen(false)}
+          projectId={Number(data.projectId)}
+          protocolId={data.id}
+          protocolLabel={data.label}
+          outputName={analyzeTarget?.outputName ?? ""}
+          outputRaw={analyzeTarget?.outputRaw ?? {}}
+        />
+      )}
     </ContextMenu>
   );
 }
