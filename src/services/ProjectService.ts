@@ -415,7 +415,7 @@ export interface ProjectService<
     projectId: Id,
     items: { id: string; name?: string }[],
   ): Promise<TProtocol>;
-  deleteProtocol(projectId: Id, ids: string[]): Promise<TProtocol>;
+  deleteProtocol(projectId: Id, protocolIds: string[]): Promise<TProtocol>;
   restartAll(projectId: Id, protocolId: Id): Promise<TProject>;
   continueAll(projectId: Id, protocolId: Id): Promise<TProject>;
   resetFrom(projectId: Id, protocolId: Id): Promise<TProject>;

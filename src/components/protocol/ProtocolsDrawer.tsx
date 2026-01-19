@@ -3,9 +3,9 @@ import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 
 import { ProtocolsTree, type ProtocolNode } from "./ProtocolTree";
-import { loadProtocols } from "@/api/projects";
 import { BoxCubeIcon } from "@/icons";
 import styles from "./protocolsdrawer.module.css";
+import { useProjectService } from "@/ProjectServiceContext";
 
 interface ProtocolsDrawerProps {
   projectId: number | null;
@@ -65,6 +65,7 @@ export const ProtocolsDrawer: FC<ProtocolsDrawerProps> = ({
   autoLoadOnOpen = true,
   portalContainer,
 }) => {
+  const svc = useProjectService();
   const hostRef = useRef<HTMLDivElement | null>(null);
 
   const [hostIsDark, setHostIsDark] = useState(false);
@@ -113,7 +114,7 @@ export const ProtocolsDrawer: FC<ProtocolsDrawerProps> = ({
   const fetchProtocolsForProject = useCallback(async (pid: number) => {
     setLoading(true);
     try {
-      const data = await loadProtocols(pid);
+      const data = await svc.loadProtocols(pid);
       const normalized = Array.isArray(data) ? data : Object.values(data);
       setProtocols(normalized);
       setSelectedRoot(normalized.length > 0 ? normalized[0] : null);

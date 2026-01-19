@@ -46,6 +46,10 @@ import type {
   CTFTomoExclusionsPayload,
   ShareableUser,
   ProjectWorkflowDescriptor,
+  UserSettings,
+  UserSettingsPatch,
+  InstanceSettings,
+  InstanceSettingsPatch,
 } from "./services/ProjectService";
 import type { WidgetGlobal } from "./types/global-widget";
 import type { ApplyWorkflowToProjectPayload } from "@/api/projects";
@@ -121,6 +125,34 @@ const mockSliceDataUrl = (sliceIndex: number) => {
   </svg>`;
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 };
+
+const defaultTimeZone = (() => {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  } catch {
+    return "UTC";
+  }
+})();
+
+let mockUserSettings: UserSettings = {
+  theme: "system",
+  uiDensity: "comfortable",
+  fontScale: 1,
+  language: "en",
+  timeZone: defaultTimeZone,
+  graphMiniMapEnabled: true,
+  graphFocusModeEnabled: false,
+  workflowsAutoRefreshSec: 10,
+};
+
+let mockInstanceSettings: InstanceSettings = {
+  enableCelery: true,
+  defaultQueueName: "default",
+  maxConcurrentRunsPerUser: 1,
+  requireConfirmBeforeExecute: true,
+  requireConfirmBeforeDelete: true,
+};
+
 
 /** defaultMockServiceImplementsFullProjectService */
 const defaultMockService: ProjectService = {
@@ -212,7 +244,7 @@ const defaultMockService: ProjectService = {
     return { duplicated: items.map((i) => ({ ...i, id: `${i.id}-copy` })) } as any;
   },
 
-  async deleteProtocol(_projectId: Id, _ids: string[]) {
+  async deleteProtocol(_projectId: Id, protocolIds: string[]) {
     return { success: true } as any;
   },
 
@@ -306,7 +338,7 @@ const defaultMockService: ProjectService = {
     _opts?: VolumeSliceOptions
   ): Promise<VolumeSliceObjectUrl> {
     const url = mockSliceDataUrl(Number(sliceIndex));
-    return { url, revoke: () => {} };
+    return { url, revoke: () => { } };
   },
 
   async getVolumeData3d(
@@ -340,7 +372,7 @@ const defaultMockService: ProjectService = {
     sliceIndex: number
   ): Promise<VolumeSliceObjectUrl> {
     const url = mockSliceDataUrl(Number(sliceIndex));
-    return { url, revoke: () => {} };
+    return { url, revoke: () => { } };
   },
 
   async fetchOutputMetadataTables(_projectId: Id, _protocolId: Id, _outputName: string): Promise<MetadataTableInfo[]> {
@@ -374,7 +406,7 @@ const defaultMockService: ProjectService = {
   },
 
   async fetchMetadataImageCellObjectUrl(): Promise<{ url: string; revoke: () => void }> {
-    return { url: mockSliceDataUrl(0), revoke: () => {} };
+    return { url: mockSliceDataUrl(0), revoke: () => { } };
   },
 
   getMetadataImageCellUrl(): string {
@@ -395,7 +427,7 @@ const defaultMockService: ProjectService = {
     _outputName: string,
     _tiltSeriesId: Id
   ): Promise<ObjectUrlResult> {
-    return { url: mockSliceDataUrl(0), revoke: () => {} };
+    return { url: mockSliceDataUrl(0), revoke: () => { } };
   },
 
   async createNewSetOfTiltSeries(
@@ -444,6 +476,37 @@ const defaultMockService: ProjectService = {
   async revokeProjectShare(): Promise<void | { success: boolean }> {
     return { success: true };
   },
+
+  // settingsApiMockImplementations
+  async fetchUserSettings(): Promise<UserSettings> {
+    return { ...mockUserSettings };
+  },
+
+  async putUserSettings(payload: UserSettings): Promise<UserSettings> {
+    mockUserSettings = { ...payload };
+    return { ...mockUserSettings };
+  },
+
+  async patchUserSettings(patch: UserSettingsPatch): Promise<UserSettings> {
+    mockUserSettings = { ...mockUserSettings, ...patch };
+    return { ...mockUserSettings };
+  },
+
+  async fetchInstanceSettings(): Promise<InstanceSettings> {
+    return { ...mockInstanceSettings };
+  },
+
+  async putInstanceSettings(payload: InstanceSettings): Promise<InstanceSettings> {
+    mockInstanceSettings = { ...payload };
+    return { ...mockInstanceSettings };
+  },
+
+  async patchInstanceSettings(patch: InstanceSettingsPatch): Promise<InstanceSettings> {
+    mockInstanceSettings = { ...mockInstanceSettings, ...patch };
+    return { ...mockInstanceSettings };
+  },
+
+
 };
 
 /** normalizeServiceApiAliasMappingAndSignatureAdapters */

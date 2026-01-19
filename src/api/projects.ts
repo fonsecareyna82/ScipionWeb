@@ -345,7 +345,7 @@ export async function updateInstanceSettings(
 /* ======================= LOAD PROTOCOLS ======================= */
 export async function loadProtocols(projectId: number): Promise<any> {
   const response = await fetchWithAuth(
-    `${BASE_URL}/projects/${projectId}/protocols`,
+    `${BASE_URL}/projects/${projectId}/protocols`, { method: "GET" }
   );
   if (!response.ok) throw await toApiError(response, "Failed to fetch protocols");
   return safeJson<any>(response);
@@ -359,20 +359,13 @@ export async function loadProtocols(projectId: number): Promise<any> {
  */
 export async function fetchProjectWorkflows(): Promise<ProjectWorkflowDescriptor[]> {
   const url = `${BASE_URL}/projects/workflows`;
-  console.log("[fetchProjectWorkflows] about to call:", url);
-
   const response = await fetchWithAuth(url, { method: "GET" });
-
-  console.log("[fetchProjectWorkflows] status:", response.status);
 
   if (!response.ok) {
     console.error("[fetchProjectWorkflows] error response", response);
     throw await toApiError(response, "Failed to fetch project workflows");
   }
-
   const data = await safeJson<any>(response);
-  console.log("[fetchProjectWorkflows] data:", data);
-
   if (Array.isArray(data)) return data as ProjectWorkflowDescriptor[];
   if (data && Array.isArray((data as any).workflows)) return (data as any).workflows as ProjectWorkflowDescriptor[];
   if (data && Array.isArray((data as any).results)) return (data as any).results as ProjectWorkflowDescriptor[];
@@ -436,13 +429,13 @@ export async function duplicateProtocol(
     throw await toApiError(response, "Failed to duplicate protocol(s)");
   return safeJson<ProtocolNode[]>(response);
 }
-export async function deleteProtocol(projectId: Id, ids: Id[]): Promise<void> {
+export async function deleteProtocol(projectId: Id, protocolIds: Id[]): Promise<void> {
   const response = await fetchWithAuth(
     `${BASE_URL}/projects/${projectId}/protocols/delete`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ids }),
+      body: JSON.stringify({ protocolIds }),
     },
   );
   if (!response.ok)
