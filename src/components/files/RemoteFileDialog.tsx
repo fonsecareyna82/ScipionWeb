@@ -580,10 +580,13 @@ export default function RemoteFileDialog({
             Home
           </button>
 
+          {/* 
           <button type="button" onClick={goProjectRoot} className="pp-chipBtn" disabled={!baseAbs}>
             <FolderOpen className="h-4 w-4" />
             Project folder
           </button>
+
+          */}
 
           <button type="button" onClick={goProtocolRoot} className="pp-chipBtn" disabled={!protocolRoot}>
             <FolderOpen className="h-4 w-4" />
@@ -601,18 +604,6 @@ export default function RemoteFileDialog({
             Refresh
           </button>
 
-          {buildDownloadUrl && (
-            <button
-              type="button"
-              onClick={handleDownload}
-              disabled={!selected || !!selected?.isDir}
-              title="Download selected file"
-              className="pp-chipBtn"
-            >
-              <FileIcon className="h-4 w-4" />
-              Download
-            </button>
-          )}
         </div>
 
         {/* body */}
