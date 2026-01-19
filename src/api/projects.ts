@@ -505,6 +505,7 @@ export async function resolveProtocolStartPath(
   const j = await safeJson<{ path?: string }>(res);
   return j?.path || "/";
 }
+
 export async function listProtocolDir(
   projectId: Id,
   protocolId: Id,
@@ -518,6 +519,7 @@ export async function listProtocolDir(
   if (!res.ok) throw await toApiError(res, "Failed to list directory");
   return await safeJson<RemoteListing>(res);
 }
+
 export async function listRemoteDirectory(
   projectId: Id,
   protocolId: Id,
@@ -526,6 +528,7 @@ export async function listRemoteDirectory(
   const { items } = await listProtocolDir(projectId, protocolId, path);
   return items;
 }
+
 export async function previewProtocolText(
   projectId: Id,
   protocolId: Id,
@@ -539,6 +542,7 @@ export async function previewProtocolText(
   if (!res.ok) throw await toApiError(res, "Failed to preview file");
   return await res.text();
 }
+
 export function buildProtocolDownloadUrl(
   projectId: Id,
   protocolId: Id,
