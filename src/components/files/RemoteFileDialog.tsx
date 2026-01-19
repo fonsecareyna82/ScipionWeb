@@ -1,3 +1,4 @@
+// src/components/RemoteFileDialog.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import {
   Dialog,
@@ -104,10 +105,10 @@ export default function RemoteFileDialog({
   const [portalContainer, setPortalContainer] = useState<HTMLElement | null>(null);
 
   // fixedLayoutSizes
-  const dialogWidthClass = "w-[1300px] max-w-[1300px]";
-  const dialogHeightClass = "h-[700px] max-h-[700px]";
-  const browserHeightClass = "h-[420px]";
-  const previewHeightClass = "h-[360px]";
+  const dialogWidthClass = styles.dialogWidth;
+  const dialogHeightClass = styles.dialogHeight;
+  const browserHeightClass = styles.browserHeight;
+  const previewHeightClass = styles.previewHeight;
 
   useEffect(() => {
     // ensureDialogPortalRootExists
@@ -479,11 +480,9 @@ export default function RemoteFileDialog({
       let startPath = initialPath || "";
 
       // resolveProtocolRootOnce
-     
       if (resolveStartPath) {
         try {
           const resolved = await resolveStartPath();
-           console.log(resolved)
           if (!mounted) return;
           if (resolved) {
             startPath = resolved;
@@ -544,52 +543,41 @@ export default function RemoteFileDialog({
         className={[
           dialogWidthClass,
           dialogHeightClass,
-          "flex flex-col overflow-hidden",
           styles.dialogContent,
+          styles.dialogLayout,
         ].join(" ")}
       >
-        <DialogHeader
-          className={[
-            "-mx-6 -mt-6 px-6 py-4 bg-gray-300 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 rounded-t-lg",
-            "flex-none",
-          ].join(" ")}
-        >
-          <DialogTitle className="text-lg font-medium text-gray-700 dark:text-gray-100 dark:bg-gray-800 flex flex-col bg-gray-300">
-            <span className="truncate">{title}</span>
+        <DialogHeader className={styles.headerBar}>
+          <DialogTitle className={styles.headerTitle}>
+            <span className={styles.truncate}>{title}</span>
           </DialogTitle>
 
-          <DialogDescription className="sr-only">
+          <DialogDescription className={styles.srOnly}>
             Remote file browser dialog. Use Enter/double-click to open folders, and Select to choose a file or folder.
           </DialogDescription>
         </DialogHeader>
 
         {/* toolbar */}
-        <div
-          className={[
-            "flex flex-wrap items-center gap-2 mt-4 bg-gray-100 dark:bg-gray-900/40 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-sm",
-            "flex-none",
-          ].join(" ")}
-        >
-          <button type="button" onClick={goUp} className="pp-chipBtn" disabled={!parentAbs}>
-            <CornerUpLeft className="h-4 w-4" />
+        <div className={styles.toolbar}>
+          <button type="button" onClick={goUp} className={styles.ppChipBtn} disabled={!parentAbs}>
+            <CornerUpLeft className={styles.iconSm} />
             Up
           </button>
 
-          <button type="button" onClick={goHome} className="pp-chipBtn">
-            <Home className="h-4 w-4" />
+          <button type="button" onClick={goHome} className={styles.ppChipBtn}>
+            <Home className={styles.iconSm} />
             Home
           </button>
 
-          {/* 
-          <button type="button" onClick={goProjectRoot} className="pp-chipBtn" disabled={!baseAbs}>
-            <FolderOpen className="h-4 w-4" />
+          {/*
+          <button type="button" onClick={goProjectRoot} className={styles.ppChipBtn} disabled={!baseAbs}>
+            <FolderOpen className={styles.iconSm} />
             Project folder
           </button>
-
           */}
 
-          <button type="button" onClick={goProtocolRoot} className="pp-chipBtn" disabled={!protocolRoot}>
-            <FolderOpen className="h-4 w-4" />
+          <button type="button" onClick={goProtocolRoot} className={styles.ppChipBtn} disabled={!protocolRoot}>
+            <FolderOpen className={styles.iconSm} />
             Protocol folder
           </button>
 
@@ -598,62 +586,54 @@ export default function RemoteFileDialog({
             onClick={() => void refresh(baseAbs || cwd || "")}
             disabled={loading}
             title="Refresh this directory"
-            className="pp-chipBtn"
+            className={styles.ppChipBtn}
           >
-            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            {loading ? <Loader2 className={styles.iconSpinSm} /> : <RefreshCw className={styles.iconSm} />}
             Refresh
           </button>
 
         </div>
 
         {/* body */}
-        <div className={["grid grid-cols-2 gap-4 mt-4", browserHeightClass, "flex-none"].join(" ")}>
+        <div className={[styles.bodyGrid, browserHeightClass].join(" ")}>
           {/* left */}
-          <div className="h-full border border-gray-200 dark:border-gray-700 rounded-2xl overflow-hidden flex flex-col bg-white dark:bg-gray-900">
-            <div className="px-3 py-2 border-b border-gray-200 dark:border-gray-700 bg-gray-300 dark:bg-gray-800 text-[13px] font-medium text-gray-700 dark:text-gray-200 flex items-start justify-between flex-none">
-              <div className="min-w-0">
-                <div>Directory</div>
-                <div className="mt-0.5 text-[11px] font-normal text-gray-600 dark:text-gray-300 truncate">
-                  {directoryLabel}
-                </div>
+          <div className={styles.panel}>
+            <div className={styles.panelHeader}>
+              <div className={styles.panelHeaderLeft}>
+                <div className={styles.panelHeaderTitle}>Directory</div>
+                <div className={styles.panelHeaderPath}>{directoryLabel}</div>
               </div>
 
               {error && (
-                <span className="flex items-center gap-1 text-red-600 dark:text-red-400 text-[11px] font-normal">
-                  <AlertCircle className="h-3 w-3" />
+                <span className={styles.panelError}>
+                  <AlertCircle className={styles.iconXs} />
                   <span>Error</span>
                 </span>
               )}
             </div>
 
-            <div className="flex-1 overflow-auto">
+            <div className={styles.panelBody}>
               {error && (
-                <div className="p-3 text-sm text-red-700 dark:text-red-400 flex items-center gap-2">
-                  <AlertCircle className="h-4 w-4" />
+                <div className={styles.errorBox}>
+                  <AlertCircle className={styles.iconSm} />
                   <span>{error}</span>
                 </div>
               )}
 
               {!error && (
-                <ul className="divide-y divide-gray-200 dark:divide-gray-700 text-sm text-gray-800 dark:text-gray-100">
+                <ul className={styles.list}>
                   {showParentEntry && (
-                    <li key="..">
-                      <button
-                        className={[
-                          "w-full text-left px-3 py-2 flex items-center gap-2",
-                          "hover:bg-gray-100 dark:hover:bg-gray-800/70",
-                        ].join(" ")}
-                        onClick={goUp}
-                      >
-                        <FolderOpen className="h-4 w-4 flex-shrink-0 text-gray-600 dark:text-gray-300" />
-                        <span className="truncate">..</span>
+                    <li className={styles.listItem} key="..">
+                      <button className={styles.rowBtn} onClick={goUp} type="button">
+                        <FolderOpen className={styles.iconSmMut} />
+                        <span className={styles.truncate}>..</span>
                       </button>
                     </li>
                   )}
 
                   {loading && (
-                    <li className="p-3 flex items-center gap-2 text-gray-600 dark:text-gray-400">
-                      <Loader2 className="h-4 w-4 animate-spin" />
+                    <li className={styles.loadingRow} key="loading">
+                      <Loader2 className={styles.iconSpinSmMut} />
                       <span>Loading…</span>
                     </li>
                   )}
@@ -662,26 +642,23 @@ export default function RemoteFileDialog({
                     items.map((entry) => {
                       const isSel = selected?.name === entry.name && selected?.path === entry.path;
                       return (
-                        <li key={`${entry.path}-${entry.name}`}>
+                        <li key={`${entry.path}-${entry.name}`} className={styles.listItem}>
                           <button
-                            className={[
-                              "w-full text-left px-3 py-2 flex items-center gap-2",
-                              "hover:bg-gray-100 dark:hover:bg-gray-800/70",
-                              isSel ? "bg-gray-100 dark:bg-gray-800/70" : "",
-                            ].join(" ")}
+                            className={[styles.rowBtn, isSel ? styles.rowBtnSelected : ""].join(" ")}
                             onClick={() => handleSelectEntry(entry)}
                             onDoubleClick={() => enterDir(entry)}
+                            type="button"
                           >
                             {entry.isDir ? (
                               <>
-                                <FolderOpen className="h-4 w-4 flex-shrink-0 text-gray-600 dark:text-gray-300" />
-                                <span className="truncate">{entry.name}</span>
+                                <FolderOpen className={styles.iconSmMut} />
+                                <span className={styles.truncate}>{entry.name}</span>
                               </>
                             ) : (
                               <>
-                                <FileIcon className="h-4 w-4 flex-shrink-0 text-gray-600 dark:text-gray-300" />
-                                <span className="truncate">{entry.name}</span>
-                                <span className="ml-auto text-[11px] leading-none opacity-60">
+                                <FileIcon className={styles.iconSmMut} />
+                                <span className={styles.truncate}>{entry.name}</span>
+                                <span className={styles.fileSize}>
                                   {typeof entry.size === "number" ? `${entry.size.toLocaleString()} bytes` : ""}
                                 </span>
                               </>
@@ -696,21 +673,12 @@ export default function RemoteFileDialog({
           </div>
 
           {/* right */}
-          <div className="h-full border border-gray-200 dark:border-gray-700 rounded-2xl overflow-hidden flex flex-col bg-white dark:bg-gray-900">
-            <div
-              className={[
-                "flex-1 px-3 py-3 text-sm text-gray-800 dark:text-gray-100 overflow-hidden",
-                previewHeightClass,
-              ].join(" ")}
-            >
-              {!selected && (
-                <div className="w-full h-full flex items-center justify-center text-gray-500 dark:text-gray-400 text-center text-[13px]">
-                  Select a file or folder.
-                </div>
-              )}
+          <div className={styles.panel}>
+            <div className={styles.previewViewport + " " + previewHeightClass}>
+              {!selected && <div className={styles.centerPlaceholder}>Select a file or folder.</div>}
 
               {selected && selected.isDir && (
-                <div className="w-full h-full flex items-center justify-center text-gray-500 dark:text-gray-400 text-center text-[13px]">
+                <div className={styles.centerPlaceholder}>
                   Double-click a folder to enter it. Select to pick this folder.
                 </div>
               )}
@@ -719,78 +687,68 @@ export default function RemoteFileDialog({
                 <>
                   {/* textPreview */}
                   {looksTextLike(selected) && previewRemoteText && (
-                    <div className="w-full h-full flex flex-col">
+                    <div className={styles.previewCol}>
                       {previewLoading && (
-                        <div className="flex items-center gap-2 text-gray-600 dark:text-gray-300 text-[13px]">
-                          <Loader2 className="h-4 w-4 animate-spin" />
+                        <div className={styles.inlineLoading}>
+                          <Loader2 className={styles.iconSpinSm} />
                           <span>Loading preview…</span>
                         </div>
                       )}
 
-                      {!previewLoading && previewText && (
-                        <div className="flex-1 overflow-auto rounded-md border border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50 p-3 text-[12px] leading-relaxed text-gray-800 dark:text-gray-100 font-mono whitespace-pre-wrap break-words">
-                          {previewText}
-                        </div>
-                      )}
+                      {!previewLoading && previewText && <div className={styles.textPreviewBox}>{previewText}</div>}
 
                       {!previewLoading && !previewText && (
-                        <div className="w-full h-full flex items-center justify-center text-gray-500 dark:text-gray-400 text-[13px] text-center">
-                          No text preview available.
-                        </div>
+                        <div className={styles.centerPlaceholder}>No text preview available.</div>
                       )}
                     </div>
                   )}
 
                   {/* imagePreview */}
                   {!looksTextLike(selected) && (
-                    <div className="w-full h-full flex flex-col md:flex-row gap-4 overflow-hidden">
+                    <div className={styles.previewRow}>
                       {(() => {
                         const seemsImage = looksImageLike(selected);
                         if (!seemsImage) {
-                          return (
-                            <div className="w-full h-full flex items-center justify-center text-gray-500 dark:text-gray-400 text-[13px] text-center">
-                              No preview available.
-                            </div>
-                          );
+                          return <div className={styles.centerPlaceholder}>No preview available.</div>;
                         }
 
                         return (
                           <>
-                            <div className="flex-shrink-0 flex flex-col items-center justify-center">
+                            <div className={styles.imageBlock}>
                               {imgLoading && (
-                                <div className="flex items-center gap-2 text-gray-600 dark:text-gray-300 text-[13px]">
-                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                <div className={styles.inlineLoading}>
+                                  <Loader2 className={styles.iconSpinSm} />
                                   <span>Loading image…</span>
                                 </div>
                               )}
 
                               {!imgLoading && imgUrl && (
-                                <div className="w-[320px] h-[320px] max-w-full max-h-[320px] rounded-md border border-gray-300 dark:border-gray-600 bg-black flex items-center justify-center overflow-hidden">
-                                  <img src={imgUrl} alt={selected.name} className="object-contain w-full h-full" />
+                                <div className={styles.imageFrame}>
+                                  <img src={imgUrl} alt={selected.name} className={styles.previewImage} />
                                 </div>
                               )}
 
                               {!imgLoading && !imgUrl && (
-                                <div className="text-gray-500 dark:text-gray-400 text-[13px] text-center">
-                                  No image preview available.
-                                </div>
+                                <div className={styles.centerPlaceholder}>No image preview available.</div>
                               )}
                             </div>
 
-                            <div className="flex-1 min-w-0 overflow-auto rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-3 text-[12px] leading-relaxed text-gray-700 dark:text-gray-300">
-                              <div className="font-medium text-gray-900 dark:text-gray-100 break-words">{selected.name}</div>
+                            <div className={styles.metaBox}>
+                              <div className={styles.metaTitle}>{selected.name}</div>
 
                               {imgMeta.sizeBytes !== undefined && (
-                                <div className="mt-2 flex flex-wrap gap-1">
-                                  <span className="font-medium">Size:</span>
-                                  <span>{humanBytes(imgMeta.sizeBytes)}</span>
+                                <div className={styles.metaRow}>
+                                  <span className={styles.metaLabel}>Size:</span>
+                                  <span className={styles.metaValue}>{humanBytes(imgMeta.sizeBytes)}</span>
                                 </div>
                               )}
 
-                              {(imgMeta.width !== undefined || imgMeta.height !== undefined || imgMeta.depth !== undefined) && (
-                                <div className="mt-2 flex flex-wrap gap-1">
-                                  <span className="font-medium">Dimensions:</span>
-                                  <span>
+                              {(imgMeta.width !== undefined ||
+                                imgMeta.height !== undefined ||
+                                imgMeta.depth !== undefined) && (
+                                <div className={styles.metaRow}>
+                                  <span className={styles.metaLabel}>Dimensions:</span>
+                                  <span className={styles.metaValue}>
                                     {imgMeta.width ?? "?"} × {imgMeta.height ?? "?"}
                                     {imgMeta.depth !== undefined ? ` × ${imgMeta.depth}` : ""}
                                   </span>
@@ -798,9 +756,9 @@ export default function RemoteFileDialog({
                               )}
 
                               {imgMeta.voxelSize && (
-                                <div className="mt-2 flex flex-wrap gap-1">
-                                  <span className="font-medium">Sampling rate:</span>
-                                  <span>{imgMeta.voxelSize[0].toFixed(1)}</span>
+                                <div className={styles.metaRow}>
+                                  <span className={styles.metaLabel}>Sampling rate:</span>
+                                  <span className={styles.metaValue}>{imgMeta.voxelSize[0].toFixed(1)}</span>
                                 </div>
                               )}
                             </div>
@@ -816,12 +774,17 @@ export default function RemoteFileDialog({
         </div>
 
         {/* footer */}
-        <div className={["flex justify-end gap-2 mt-4", "flex-none"].join(" ")}>
-          <button type="button" className="pp-dialogBtn" onClick={onClose}>
+        <div className={styles.footer}>
+          <button type="button" className={styles.ppDialogBtn} onClick={onClose}>
             Close
           </button>
 
-          <button type="button" className="pp-dialogBtn pp-dialogBtnPrimary" onClick={handlePick} disabled={!selected}>
+          <button
+            type="button"
+            className={[styles.ppDialogBtn, styles.ppDialogBtnPrimary].join(" ")}
+            onClick={handlePick}
+            disabled={!selected}
+          >
             Select
           </button>
         </div>
