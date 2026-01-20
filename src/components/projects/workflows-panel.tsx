@@ -225,7 +225,7 @@ function ApplyWorkflowToCurrentProjectDialog({
     setSubmitting(true);
 
     try {
-      await svc.applyWorkflowToProject(projectId, {
+      await svc.loadWorkflow(projectId, {
         workflowId: String(workflow.id),
       });
 
@@ -265,10 +265,10 @@ function ApplyWorkflowToCurrentProjectDialog({
         </button>
 
         <div className={styles.applyHeader}>
-          <h2 className={styles.applyTitle}>Apply workflow</h2>
+          <h2 className={styles.applyTitle}>Load workflow</h2>
           <p className={styles.applySubtitle}>{workflow.name}</p>
           <p className={styles.applyHint}>
-            This workflow will be applied to the current project.
+            This workflow will be loaded to the current project.
           </p>
         </div>
 
@@ -303,7 +303,7 @@ function ApplyWorkflowToCurrentProjectDialog({
             disabled={submitting}
             className={styles.applyButton}
           >
-            {submitting ? "Applying…" : "Apply"}
+            {submitting ? "loading…" : "Load"}
           </button>
         </div>
       </div>

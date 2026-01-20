@@ -24,7 +24,7 @@ export default function WorkflowsPage() {
     setErrorMessage(null);
 
     try {
-      const data = await svc.fetchProjectWorkflows();
+      const data = await svc.fetchWorkflows();
 
       const normalized: ProjectWorkflow[] = Array.isArray(data)
         ? data.map((wf: any) => ({
@@ -51,7 +51,7 @@ export default function WorkflowsPage() {
 
   const handleWorkflowClick = (workflow: ProjectWorkflow) => {
     // workflowClickHandlerPlaceholder
-    console.log("workflowClicked", workflow);
+    //console.log("workflowClicked", workflow);
   };
 
   const handleWorkflowDoubleClick = (workflow: ProjectWorkflow) => {
@@ -307,7 +307,7 @@ function ApplyWorkflowDialog({
         targetProjectName = match?.name ?? selectedProjectId;
       }
 
-      await svc.applyWorkflowToProject(targetProjectId, {
+      await svc.loadWorkflow(targetProjectId, {
         workflowId: String(workflow.id),
       });
 
@@ -352,7 +352,7 @@ function ApplyWorkflowDialog({
           {/* titleSection */}
           <div className="text-center mb-2">
             <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-50">
-              Apply workflow
+              Workflow
             </h2>
             <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
               {workflow.name}
@@ -395,7 +395,7 @@ function ApplyWorkflowDialog({
                 <>
                   <div className="space-y-1.5">
                     <label className="text-sm font-medium text-slate-800 dark:text-slate-200">
-                      New project title
+                      New project name
                     </label>
                     <input
                       type="text"
@@ -421,7 +421,7 @@ function ApplyWorkflowDialog({
                     />
                     <p className="text-xs text-slate-500 dark:text-slate-400">
                       A new Scipion project will be created and this workflow
-                      will be applied to it.
+                      will be loaded to it.
                     </p>
                   </div>
                 </>
@@ -458,7 +458,7 @@ function ApplyWorkflowDialog({
                       </p>
                     ) : (
                       <p className="text-xs text-slate-500 dark:text-slate-400">
-                        The workflow will be applied inside the selected
+                        The workflow will be loaded inside the selected
                         existing project.
                       </p>
                     )}
@@ -489,7 +489,7 @@ function ApplyWorkflowDialog({
             disabled={applyDisabled}
             className="inline-flex min-w-[96px] items-center justify-center rounded-md px-4 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed shadow-sm"
           >
-            {submitting ? "Applying…" : "Apply"}
+            {submitting ? "Loading…" : "Load"}
           </button>
         </div>
       </div>

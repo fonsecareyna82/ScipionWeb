@@ -53,10 +53,10 @@ const defaultService: ProjectService = {
   /**
    * Fetch predefined workflows / pipelines for a given project.
    */
-  fetchProjectWorkflows: () => api.fetchProjectWorkflows(),
+  fetchWorkflows: () => api.fetchWorkflows(),
 
-  applyWorkflowToProject: (projectId, payload) =>
-    api.applyWorkflowToProject(projectId, payload),
+  loadWorkflow: (projectId, payload) =>
+    api.loadWorkflow(projectId, payload),
 
   // --- Protocol actions ---
   executeProtocol: (

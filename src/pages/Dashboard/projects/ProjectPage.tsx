@@ -349,7 +349,7 @@ export default function ProjectPage() {
       setWorkflowsLoading(true);
       setWorkflowsError(null);
 
-      const data = await svc.fetchProjectWorkflows();
+      const data = await svc.fetchWorkflows();
 
       const normalized: ProjectWorkflow[] = Array.isArray(data)
         ? data.map((wf: any, idx: number) => ({
@@ -362,7 +362,7 @@ export default function ProjectPage() {
       setWorkflows(normalized);
       setWorkflowsLoadedOnce(true);
     } catch (err: any) {
-      console.error("fetchProjectWorkflows error:", err);
+      console.error("fetchWorkflows error:", err);
       setWorkflows([]);
       const msg = err?.message || "Failed to load workflows.";
       setWorkflowsError(msg);

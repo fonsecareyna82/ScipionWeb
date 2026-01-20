@@ -1,6 +1,6 @@
 // src/services/ProjectService.ts
 
-import { ApplyWorkflowToProjectPayload } from "@/api/projects";
+import { loadWorkflowPayload } from "@/api/projects";
 
 /** Common ID type to accept either string or number seamlessly. */
 export type Id = string | number;
@@ -299,7 +299,7 @@ export type ShareableUser = {
 // Project workflows / templates (predefined pipelines)
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type ProjectWorkflowDescriptor = {
+export type WorkflowDescriptor = {
   /** Workflow identifier (index, db id, or slug). */
   id: Id;
   /** Human-friendly workflow name to display in the UI. */
@@ -385,11 +385,11 @@ export interface ProjectService<
    * List predefined workflows / pipelines available for a project.
    * Backend may filter them by project type, owner, or permissions.
    */
-  fetchProjectWorkflows(): Promise<ProjectWorkflowDescriptor[] | any>;
+  fetchWorkflows(): Promise<WorkflowDescriptor[] | any>;
 
-  applyWorkflowToProject(
+  loadWorkflow(
     projectId: string | number,
-    payload: ApplyWorkflowToProjectPayload,
+    payload: loadWorkflowPayload,
   ): Promise<any>;
 
 

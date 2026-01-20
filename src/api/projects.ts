@@ -7,7 +7,7 @@ import {
   CTFTomoExclusionsPayload,
   FetchImageSliceOptions,
   ObjectUrlResult,
-  ProjectWorkflowDescriptor,
+  WorkflowDescriptor,
   TiltExclusionsPayload,
   SettingsObject,
 } from "@/services/ProjectService";
@@ -73,11 +73,13 @@ export async function fetchProjects(): Promise<Project[]> {
   if (!response.ok) throw await toApiError(response, "Failed to fetch projects");
   return safeJson<Project[]>(response);
 }
+
 export async function fetchProject(projectId: Id): Promise<Project> {
   const response = await fetchWithAuth(`${BASE_URL}/projects/${projectId}`);
   if (!response.ok) throw await toApiError(response, "Failed to fetch project");
   return safeJson<Project>(response);
 }
+
 export async function createProject(
   name: string,
   description: string,
@@ -102,6 +104,7 @@ export async function fetchProtocolDetails(
     throw await toApiError(response, "Failed to fetch protocol details");
   return safeJson<ProtocolNode>(response);
 }
+
 export async function fetchNewProtocolDetails(
   projectId: Id,
   protocolClass: string,
@@ -128,6 +131,7 @@ export async function executeProtocol(
   if (!response.ok) throw await toApiError(response, "Failed to execute protocol");
   return safeJson<any>(response);
 }
+
 export async function saveProtocol(
   projectId: Id,
   protocolId: Id,
@@ -155,6 +159,7 @@ export async function renameProject(
   if (!response.ok) throw await toApiError(response, "Failed to rename project");
   return safeJson<Project>(response);
 }
+
 export async function deleteProject(id: Id): Promise<void> {
   const response = await fetchWithAuth(`${BASE_URL}/projects/${id}`, {
     method: "DELETE",
@@ -339,9 +344,6 @@ export async function updateInstanceSettings(
 }
 
 
-
-
-
 /* ======================= LOAD PROTOCOLS ======================= */
 export async function loadProtocols(projectId: number): Promise<any> {
   const response = await fetchWithAuth(
@@ -357,38 +359,38 @@ export async function loadProtocols(projectId: number): Promise<any> {
  * Fetch predefined workflows / pipelines for a given project.
  * Backend endpoint: GET /projects/workflows
  */
-export async function fetchProjectWorkflows(): Promise<ProjectWorkflowDescriptor[]> {
+export async function fetchWorkflows(): Promise<WorkflowDescriptor[]> {
   const url = `${BASE_URL}/projects/workflows`;
   const response = await fetchWithAuth(url, { method: "GET" });
 
   if (!response.ok) {
-    console.error("[fetchProjectWorkflows] error response", response);
+    console.error("[fetchWorkflows] error response", response);
     throw await toApiError(response, "Failed to fetch project workflows");
   }
   const data = await safeJson<any>(response);
-  if (Array.isArray(data)) return data as ProjectWorkflowDescriptor[];
-  if (data && Array.isArray((data as any).workflows)) return (data as any).workflows as ProjectWorkflowDescriptor[];
-  if (data && Array.isArray((data as any).results)) return (data as any).results as ProjectWorkflowDescriptor[];
+  if (Array.isArray(data)) return data as WorkflowDescriptor[];
+  if (data && Array.isArray((data as any).workflows)) return (data as any).workflows as WorkflowDescriptor[];
+  if (data && Array.isArray((data as any).results)) return (data as any).results as WorkflowDescriptor[];
 
   return [];
 }
 
 
-export interface ApplyWorkflowToProjectPayload {
+export interface loadWorkflowPayload {
   workflowId: string;
 }
 
 /**
- * Apply a predefined workflow to an existing project.
- * Backend endpoint: POST /projects/{projectId}/workflows/apply
+ * Load a predefined workflow to an existing project.
+ * Backend endpoint: POST /projects/{projectId}/workflows/load
  */
-export async function applyWorkflowToProject(
+export async function loadWorkflow(
   projectId: string | number,
-  payload: ApplyWorkflowToProjectPayload,
+  payload: loadWorkflowPayload,
 ): Promise<any> {
   const url = `${BASE_URL}/projects/${encodeURIComponent(
     String(projectId),
-  )}/workflows/apply`;
+  )}/workflows/load`;
 
   const response = await fetchWithAuth(url, {
     method: "POST",
@@ -417,6 +419,7 @@ export async function renameProtocol(
     throw await toApiError(response, "Failed to rename protocol");
   return safeJson<ProtocolNode>(response);
 }
+
 export async function duplicateProtocol(
   projectId: Id,
   items: { id: Id; name?: string }[],
@@ -429,6 +432,7 @@ export async function duplicateProtocol(
     throw await toApiError(response, "Failed to duplicate protocol(s)");
   return safeJson<ProtocolNode[]>(response);
 }
+
 export async function deleteProtocol(projectId: Id, protocolIds: Id[]): Promise<void> {
   const response = await fetchWithAuth(
     `${BASE_URL}/projects/${projectId}/protocols/delete`,
@@ -441,6 +445,7 @@ export async function deleteProtocol(projectId: Id, protocolIds: Id[]): Promise<
   if (!response.ok)
     throw await toApiError(response, "Failed to delete protocol(s)");
 }
+
 export async function restartAll(projectId: Id, protocolId: Id): Promise<any> {
   const response = await fetchWithAuth(
     `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/${ACTION_RESTART_ALL}`,
@@ -450,6 +455,7 @@ export async function restartAll(projectId: Id, protocolId: Id): Promise<any> {
     throw await toApiError(response, "Failed to restart protocol");
   return safeJson<any>(response);
 }
+
 export async function continueAll(projectId: Id, protocolId: Id): Promise<any> {
   const response = await fetchWithAuth(
     `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/${ACTION_CONTINUE_ALL}`,
@@ -459,6 +465,7 @@ export async function continueAll(projectId: Id, protocolId: Id): Promise<any> {
     throw await toApiError(response, "Failed to continue protocol");
   return safeJson<any>(response);
 }
+
 export async function resetFrom(projectId: Id, protocolId: Id): Promise<any> {
   const response = await fetchWithAuth(
     `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/${ACTION_RESET_FROM}`,
@@ -468,6 +475,7 @@ export async function resetFrom(projectId: Id, protocolId: Id): Promise<any> {
     throw await toApiError(response, "Failed to reset from protocol");
   return safeJson<any>(response);
 }
+
 export async function stopProtocol(projectId: Id, ids: Id[]): Promise<void> {
   const response = await fetchWithAuth(
     `${BASE_URL}/projects/${projectId}/protocols/stop`,
@@ -644,8 +652,6 @@ export async function fetchCTFPsdImage(
 }
 
 
-
-
 /* ======================= Output preview (tables/pdfs/etc.) ======================= */
 export type PreviewResult =
   | { kind: "image"; url: string; meta: any; downloadUrl: string }
@@ -674,6 +680,7 @@ function parseMeta(h: Headers) {
     rowCount: num(h.get("X-Preview-RowCount")),
   };
 }
+
 async function buildPreviewResult(
   res: Response,
   baseDownloadUrl: string,
@@ -768,6 +775,7 @@ export async function listOutputVolumes(
   if (!res.ok) throw await toApiError(res, "Failed to list output volumes");
   return safeJson<any[]>(res);
 }
+
 export async function getVolumeInfo(
   projectId: Id,
   protocolId: Id,
@@ -1501,8 +1509,6 @@ export async function fetchTiltSeriesViewImageObjectUrl(
 
   return { url: objUrl, revoke };
 }
-
-
 
 export async function fetchTiltSeriesFrames(
   projectId: Id,

@@ -263,13 +263,13 @@ function normalizeServiceAPI(srv: any): ProjectService {
 
   // workflows
   mapFn(
-    "fetchProjectWorkflows",
+    "fetchWorkflows",
     "listProjectWorkflows",
     "listWorkflows",
     "fetchWorkflows",
   );
   mapFn(
-    "applyWorkflowToProject",
+    "loadWorkflow",
     "applyWorkflow",
     "applyTemplateToProject",
     "runWorkflowOnProject",
@@ -363,8 +363,8 @@ function normalizeServiceAPI(srv: any): ProjectService {
   };
 
   // Safe defaults for non-core features (avoid hard crashes in embedded contexts)
-  ensureFn("fetchProjectWorkflows", async () => []);
-  ensureFn("applyWorkflowToProject", async () => ({ success: true }));
+  ensureFn("fetchWorkflows", async () => []);
+  ensureFn("loadWorkflow", async () => ({ success: true }));
   ensureFn(
     "fetchCoords3dTomogramSliceObjectUrl",
     async (

@@ -45,14 +45,14 @@ import type {
   TiltExclusionsPayload,
   CTFTomoExclusionsPayload,
   ShareableUser,
-  ProjectWorkflowDescriptor,
+  WorkflowDescriptor,
   UserSettings,
   UserSettingsPatch,
   InstanceSettings,
   InstanceSettingsPatch,
 } from "./services/ProjectService";
 import type { WidgetGlobal } from "./types/global-widget";
-import type { ApplyWorkflowToProjectPayload } from "@/api/projects";
+import type { loadWorkflowPayload } from "@/api/projects";
 
 /** widgetErrorBoundaryReadableErrorsInsideHost */
 class WidgetErrorBoundary extends React.Component<
@@ -210,11 +210,11 @@ const defaultMockService: ProjectService = {
     return [] as any;
   },
 
-  async fetchProjectWorkflows() {
-    return [] as ProjectWorkflowDescriptor[];
+  async fetchWorkflows() {
+    return [] as WorkflowDescriptor[];
   },
 
-  async applyWorkflowToProject(_projectId: string | number, _payload: ApplyWorkflowToProjectPayload) {
+  async loadWorkflow(_projectId: string | number, _payload: loadWorkflowPayload) {
     return { success: true } as any;
   },
 
@@ -545,8 +545,8 @@ function normalizeServiceAPI(srv?: any): ProjectService {
   mapFn("deleteProject", "delete", "remove", "removeProject");
 
   // workflowsApiAliases
-  mapFn("fetchProjectWorkflows", "listProjectWorkflows", "getProjectWorkflows", "workflows");
-  mapFn("applyWorkflowToProject", "applyWorkflow", "applyWorkflowTemplate", "applyProjectWorkflow");
+  mapFn("fetchWorkflows", "listProjectWorkflows", "getProjectWorkflows", "workflows");
+  mapFn("loadWorkflow", "applyWorkflow", "applyWorkflowTemplate", "applyProjectWorkflow");
 
   // protocolsApiAliases
   mapFn("fetchProtocolDetails", "getProtocol", "getProtocolDetails");
