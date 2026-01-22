@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import type {
   Dispatch,
   DragEvent as ReactDragEvent,
@@ -379,6 +379,15 @@ export default function ProtocolNodeCard({
     outputName: string;
     outputRaw: any;
   } | null>(null);
+
+  const handleAnalyzeClose = useCallback(() => {
+    // closeAnalyzeDialog
+    setAnalyzeOpen(false);
+    setAnalyzeTarget(null);
+  }, []);
+
+  const analyzeProjectId = useMemo(() => Number(data.projectId), [data.projectId]);
+  const analyzeProtocolId = useMemo(() => Number(data.id), [data.id]);
 
   const canOpenViewer = !isProjectNode && data.projectId != null;
 
@@ -1000,17 +1009,17 @@ export default function ProtocolNodeCard({
         </ContextMenuItem>
       </ContextMenuContent>
 
-      {canOpenViewer && (
+      {canOpenViewer && analyzeOpen && analyzeTarget ? (
         <AnalyzeOutputDialog
-          open={analyzeOpen}
-          onClose={() => setAnalyzeOpen(false)}
-          projectId={Number(data.projectId)}
-          protocolId={data.id}
+          open
+          onClose={handleAnalyzeClose}
+          projectId={analyzeProjectId}
+          protocolId={analyzeProtocolId}
           protocolLabel={data.label}
-          outputName={analyzeTarget?.outputName ?? ""}
-          outputRaw={analyzeTarget?.outputRaw ?? {}}
+          outputName={analyzeTarget.outputName}
+          outputRaw={analyzeTarget.outputRaw}
         />
-      )}
+      ) : null}
     </ContextMenu>
   );
 }

@@ -1,5 +1,5 @@
 // src/components/analyze/analyze-output-dialog.tsx
-import { useMemo, useEffect, useRef } from "react";
+import { useMemo, useEffect, useRef, memo } from "react";
 import type { IframeHTMLAttributes } from "react";
 import {
   Dialog,
@@ -23,7 +23,7 @@ type AnalyzeViewerContext = {
   protocolLabel: string;
   outputName: string;
   outputRaw: any;
-  outputClass: string;
+  pointerClass: string;
 };
 
 type ExternalAnalyzeViewer =
@@ -54,7 +54,7 @@ type AnalyzeOutputDialogProps = {
   protocolId: string | number;
   protocolLabel: string;
   outputName: string;
-  outputRaw: any;
+  outputRaw: any | null;
 };
 
 function resolveExternalAnalyzeViewer(ctx: AnalyzeViewerContext): ExternalAnalyzeViewer | null {
@@ -167,8 +167,20 @@ const closeBtnSx = {
   },
 };
 
+function stableAttrsKey(attrs?: Record<string, string>) {
+  // stableAttrsKey
+  if (!attrs) return "";
+  const keys = Object.keys(attrs).sort();
+  return keys.map((k) => `${k}=${attrs[k] ?? ""}`).join("&");
+}
+
 function ExternalViewerHost({ spec }: { spec: ExternalAnalyzeViewer }) {
   const hostRef = useRef<HTMLDivElement | null>(null);
+
+  const attrsKey = useMemo(() => {
+    // attrsKey
+    return spec.kind === "customElement" ? stableAttrsKey(spec.attrs) : "";
+  }, [spec.kind, spec.kind === "customElement" ? spec.tag : "", spec.kind === "customElement" ? spec.attrs : undefined]);
 
   useEffect(() => {
     // mountCustomElementIntoHost
@@ -190,11 +202,7 @@ function ExternalViewerHost({ spec }: { spec: ExternalAnalyzeViewer }) {
     return () => {
       if (hostRef.current) hostRef.current.innerHTML = "";
     };
-  }, [
-    spec.kind,
-    spec.kind === "customElement" ? spec.tag : "",
-    spec.kind === "customElement" ? JSON.stringify(spec.attrs ?? {}) : "",
-  ]);
+  }, [spec.kind, spec.kind === "customElement" ? spec.tag : "", attrsKey]);
 
   if (spec.kind === "iframe") {
     return (
@@ -226,7 +234,7 @@ function unwrapOutputRaw(raw: any): any {
 }
 
 
-export default function AnalyzeOutputDialog({
+function AnalyzeOutputDialog({
   open,
   onClose,
   projectId,
@@ -235,7 +243,7 @@ export default function AnalyzeOutputDialog({
   outputName,
   outputRaw,
 }: AnalyzeOutputDialogProps) {
-  const outputClass = useMemo(() => {
+  const pointerClass = useMemo(() => {
     const r = unwrapOutputRaw(outputRaw);
     return (r?._class || r?.pointerClass || r?.class || r?.type || "").toString();
   }, [outputRaw]);
@@ -243,9 +251,15 @@ export default function AnalyzeOutputDialog({
   const projectIdNum = useMemo(() => Number(projectId), [projectId]);
   const protocolIdNum = useMemo(() => Number(protocolId), [protocolId]);
 
+  useEffect(() => {
+    // debugRenderChanges
+    if (!open) return;
+
+  }, [open, projectIdNum, protocolIdNum, outputName, pointerClass]);
+
   const body = useMemo(() => {
     // internalViewerDispatch
-    if (isVolumeKind(outputClass)) {
+    if (isVolumeKind(pointerClass)) {
       return (
         <VolumeViewer
           projectId={projectIdNum}
@@ -256,7 +270,7 @@ export default function AnalyzeOutputDialog({
       );
     }
 
-    if (isCoords3dKind(outputClass)) {
+    if (isCoords3dKind(pointerClass)) {
       return (
         <Coords3dViewer
           projectId={projectIdNum}
@@ -267,7 +281,7 @@ export default function AnalyzeOutputDialog({
       );
     }
 
-    if (isTiltSeriesKind(outputClass)) {
+    if (isTiltSeriesKind(pointerClass)) {
       return (
         <TiltSeriesViewer
           projectId={projectIdNum}
@@ -277,7 +291,7 @@ export default function AnalyzeOutputDialog({
       );
     }
 
-    if (isCTFTomoSeriesKind(outputClass)) {
+    if (isCTFTomoSeriesKind(pointerClass)) {
       return (
         <CTFTomoViewer
           projectId={projectIdNum}
@@ -287,7 +301,7 @@ export default function AnalyzeOutputDialog({
       );
     }
 
-    if (isSetOfMetadataKind(outputClass)) {
+    if (isSetOfMetadataKind(pointerClass)) {
       return (
         <MetadataViewer
           projectId={projectIdNum}
@@ -305,7 +319,7 @@ export default function AnalyzeOutputDialog({
       protocolLabel,
       outputName,
       outputRaw,
-      outputClass,
+      pointerClass,
     });
 
     if (externalSpec) {
@@ -321,11 +335,11 @@ export default function AnalyzeOutputDialog({
         <Typography variant="body2" sx={{ color: "text.secondary" }}>
           Output: <strong>{outputName}</strong>
           <br />
-          Class: <code>{outputClass || "(unknown)"}</code>
+          Class: <code>{pointerClass || "(unknown)"}</code>
         </Typography>
       </Box>
     );
-  }, [outputClass, outputName, projectIdNum, protocolIdNum, protocolLabel, outputRaw]);
+  }, [pointerClass, outputName, projectIdNum, protocolIdNum, protocolLabel, outputRaw]);
 
   const handleDialogClose = (_event: object, reason: "backdropClick" | "escapeKeyDown") => {
     // preventBackdropClose
@@ -347,10 +361,10 @@ export default function AnalyzeOutputDialog({
             <Typography variant="subtitle1" sx={titleTextSx}>
               Analyze Result — {outputName}
             </Typography>
-            {outputClass ? (
+            {pointerClass ? (
               <Chip
                 size="small"
-                label={outputClass}
+                label={pointerClass}
                 sx={{
                   height: 22,
                   color: "#e5e7eb",
@@ -387,3 +401,5 @@ export default function AnalyzeOutputDialog({
     </Dialog>
   );
 }
+
+export default memo(AnalyzeOutputDialog);

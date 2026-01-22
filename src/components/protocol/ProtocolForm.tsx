@@ -4017,7 +4017,7 @@ export default function ProtocolForm({
         protocolId={protocolId}
         protocolLabel={protocolDetails.label}
         outputName={activeOutput?.name || ""}
-        outputRaw={activeOutput?.raw || {}}
+        outputRaw={activeOutput?.raw ?? null}
       />
 
     </div>
