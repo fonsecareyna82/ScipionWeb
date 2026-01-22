@@ -1615,44 +1615,6 @@ export default function ProtocolForm({
     return [detail.replace(/^422:\s*/, "").trim()];
   }
 
-  function getHttpStatusFromError(err: any): number | null {
-    // getHttpStatusFromError
-    const status =
-      err?.status ??
-      err?.response?.status ??
-      err?.response?.data?.status ??
-      err?.response?.data?.statusCode ??
-      null;
-
-    return typeof status === "number" ? status : null;
-  }
-
-  function getDetailFromError(err: any): any {
-    // getDetailFromError
-    return (
-      err?.detail ??
-      err?.response?.data?.detail ??
-      err?.response?.data?.error ??
-      err?.response?.data?.message ??
-      err?.data?.detail ??
-      null
-    );
-  }
-
-  function getMessageFromError(err: any, detail: any): string {
-    // getMessageFromError
-    if (typeof err?.message === "string" && err.message.trim()) return err.message;
-
-    if (typeof detail === "string" && detail.trim()) return detail;
-
-    if (detail && typeof detail === "object") {
-      const msg = (detail as any).msg ?? (detail as any).message ?? (detail as any).error;
-      if (typeof msg === "string" && msg.trim()) return msg;
-    }
-
-    return "Error launching the protocol";
-  }
-
   function extractValidationMessages(detail: any): string[] {
     // extractValidationMessages
     if (!detail) return [];
@@ -1696,9 +1658,52 @@ export default function ProtocolForm({
     setExecErrorDialogOpen(true);
   }
 
+  function normalizeStringList(value: any): string[] {
+    // normalizeStringList
+    if (!value) return [];
+    if (Array.isArray(value)) return value.map((v) => String(v)).filter((s) => s.trim().length > 0);
+    if (typeof value === "string") return [value].filter((s) => s.trim().length > 0);
+    return [String(value)].filter((s) => s.trim().length > 0);
+  }
+
+  function getBackendPayloadFromError(err: any): any {
+    // getBackendPayloadFromError
+    return err?.response?.data ?? err?.data ?? null;
+  }
+
+  function getHttpStatusFromError(err: any): number | null {
+    // getHttpStatusFromError
+    const statusCode = err?.status ?? err?.response?.status ?? null;
+    return typeof statusCode === "number" ? statusCode : null;
+  }
+
+  function getErrorsFromBackendPayload(payload: any): string[] {
+    // getErrorsFromBackendPayload
+    if (!payload) return [];
+
+    // Preferred schema from backend: { status: number, errors: string[], workflow: [] }
+    const directErrors = normalizeStringList(payload?.errors);
+    if (directErrors.length > 0) return directErrors;
+
+    // Fallbacks (older/other shapes)
+    const detail = payload?.detail ?? payload?.error ?? payload?.message ?? null;
+    if (!detail) return [];
+
+    // Reuse your existing logic for detail parsing if you want
+    return extractValidationMessages(detail);
+  }
+
+  function formatErrorsForDialog(errors: string[]): string {
+    // formatErrorsForDialog
+    if (errors.length === 0) return "Unknown error";
+    if (errors.length === 1) return errors[0];
+    return errors.map((e, i) => `${i + 1}. ${e}`).join("\n");
+  }
+
 
   // Execute handler
   const handleExecute = async () => {
+    // handleExecute
     setExecLoading(true);
     setExecError(null);
     setValidationErrors([]);
@@ -1707,26 +1712,41 @@ export default function ProtocolForm({
       const pid = String(protocolId ?? "");
       const serialized = getSerializedParams();
 
-      await svc.executeProtocol(projectId, pid, protocolClassName, serialized);
+      const res: any = await svc.executeProtocol(projectId, pid, protocolClassName, serialized);
+      const errors = getErrorsFromBackendPayload(res);
+
+      if (errors.length > 0) {
+        // Successful HTTP but backend returned validation/errors in-band
+        setValidationErrors(errors);
+        setShowValidationDialog(true);
+        return;
+      }
 
       onExecuted?.();
       requestClose();
     } catch (err: any) {
-      const status = getHttpStatusFromError(err);
-      const detail = getDetailFromError(err);
+      const httpStatus = getHttpStatusFromError(err);
+      const payload = getBackendPayloadFromError(err);
+      const errors = getErrorsFromBackendPayload(payload);
 
-      // showValidationDialogOn422OrValidationPayload
-      if (status === 422 || detail) {
-        const extracted = extractValidationMessages(detail);
-        if (extracted.length > 0 && (status === 422 || extracted.length > 0)) {
-          setValidationErrors(extracted);
+      if (errors.length > 0) {
+        if (httpStatus === 422) {
+          setValidationErrors(errors);
           setShowValidationDialog(true);
           return;
         }
+
+        openExecErrorDialog("Execution error", formatErrorsForDialog(errors));
+        return;
       }
 
-      const msg = getMessageFromError(err, detail);
-      openExecErrorDialog("Execution error", msg);
+      // Final fallback if backend did not provide errors[]
+      const fallbackMsg =
+        err?.message ||
+        (typeof payload?.detail === "string" ? payload.detail : null) ||
+        "Error launching the protocol";
+
+      openExecErrorDialog("Execution error", String(fallbackMsg));
     } finally {
       setExecLoading(false);
     }
@@ -1735,6 +1755,7 @@ export default function ProtocolForm({
 
   // Save handler
   const handleSave = async () => {
+    // handleSave
     setExecLoading(true);
     setExecError(null);
 
@@ -1743,33 +1764,42 @@ export default function ProtocolForm({
       const serialized = getSerializedParams();
 
       const res: any = await svc.saveProtocol(projectId, pid, protocolClassName, serialized);
+      const errors = getErrorsFromBackendPayload(res);
 
-      const returnedProtocolId = res?.protocolId ?? pid;
+      const returnedProtocolId = String(res?.protocolId ?? pid);
 
-      if (res?.status === "ok" && Array.isArray(res?.errors) && res.errors.length === 0) {
+      if (errors.length === 0) {
         toast.success(`Saved protocol ${returnedProtocolId} successfully.`);
         requestClose();
         return;
       }
 
-      if (res?.status === "ok") {
-        const errText = Array.isArray(res?.errors) ? res.errors.join("; ") : "Unknown warning";
-        toast.error(`Saved with warnings: ${errText}`);
-        requestClose();
+      // Saved but backend returned warnings/errors in-band
+      const msg = formatErrorsForDialog(errors);
+      toast.error(`Saved with warnings: ${msg}`);
+      requestClose();
+    } catch (err: any) {
+      const payload = getBackendPayloadFromError(err);
+      const errors = getErrorsFromBackendPayload(payload);
+
+      if (errors.length > 0) {
+        const msg = formatErrorsForDialog(errors);
+        toast.error(msg);
+        openExecErrorDialog("Save error", msg);
         return;
       }
 
-      toast.error("Save failed");
-    } catch (err: any) {
-      const detail = getDetailFromError(err);
-      const msg = getMessageFromError(err, detail);
-      toast.error(msg);
-      openExecErrorDialog("Save error", msg);
+      const fallbackMsg =
+        err?.message ||
+        (typeof payload?.detail === "string" ? payload.detail : null) ||
+        "Save failed";
+
+      toast.error(String(fallbackMsg));
+      openExecErrorDialog("Save error", String(fallbackMsg));
     } finally {
       setExecLoading(false);
     }
   };
-
 
 
   // Render a single parameter row

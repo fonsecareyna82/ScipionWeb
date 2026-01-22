@@ -50,16 +50,69 @@ async function safeJson<T = any>(response: Response): Promise<T> {
 }
 
 async function toApiError(response: Response, fallback: string): Promise<ApiError> {
-  let payload: ApiErrorShape | string | undefined;
+  // toApiError
+  let payload: any;
   try {
-    payload = await safeJson<ApiErrorShape | string>(response);
-  } catch { }
+    payload = await safeJson<any>(response);
+  } catch {
+    payload = undefined;
+  }
+
+  const normalizeStringList = (value: any): string[] => {
+    // normalizeStringList
+    if (value == null) return [];
+    if (Array.isArray(value)) {
+      return value
+        .map((v) => String(v))
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0);
+    }
+    if (typeof value === "string") {
+      const s = value.trim();
+      return s ? [s] : [];
+    }
+    const s = String(value).trim();
+    return s ? [s] : [];
+  };
+
+  const extractBackendErrors = (data: any): string[] => {
+    // extractBackendErrors
+    if (!data) return [];
+
+    // New backend contract: { status: number, errors: string[], workflow: [] }
+    if (typeof data === "object" && data !== null) {
+      const errors = normalizeStringList((data as any).errors);
+      if (errors.length > 0) return errors;
+
+      // Backward compatibility: FastAPI HTTPException detail/message/error
+      const legacyDetail = (data as any).detail ?? (data as any).message ?? (data as any).error ?? null;
+      const legacyErrors = normalizeStringList(legacyDetail);
+      if (legacyErrors.length > 0) return legacyErrors;
+    }
+
+    // If server returns plain text or something unexpected
+    if (typeof data === "string") return normalizeStringList(data);
+
+    return [];
+  };
+
+  const errors = extractBackendErrors(payload);
+
   const message =
-    (typeof payload === "object" && (payload.message as string)) ||
-    (typeof payload === "object" && (payload.detail as string)) ||
-    (typeof payload === "string" && payload) ||
+    (errors.length > 0 && errors.join("\n")) ||
+    (typeof payload === "object" && payload !== null && typeof (payload as any).message === "string" && (payload as any).message) ||
+    (typeof payload === "object" && payload !== null && typeof (payload as any).detail === "string" && (payload as any).detail) ||
+    (typeof payload === "string" && payload.trim() ? payload.trim() : "") ||
     fallback;
-  const detail = typeof payload === "object" ? payload.detail : undefined;
+
+  // Prefer returning string[] in detail for consistent UI consumption
+  const detail =
+    errors.length > 0
+      ? errors
+      : typeof payload === "object" && payload !== null
+        ? (payload as any).detail
+        : undefined;
+
   return new ApiError(message || fallback, {
     status: response.status,
     detail,
@@ -476,13 +529,13 @@ export async function resetFrom(projectId: Id, protocolId: Id): Promise<any> {
   return safeJson<any>(response);
 }
 
-export async function stopProtocol(projectId: Id, ids: Id[]): Promise<void> {
+export async function stopProtocol(projectId: Id, protocolIds: Id[]): Promise<void> {
   const response = await fetchWithAuth(
     `${BASE_URL}/projects/${projectId}/protocols/stop`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ids }),
+      body: JSON.stringify({ protocolIds }),
     },
   );
   if (!response.ok)

@@ -265,7 +265,7 @@ function ApplyWorkflowToCurrentProjectDialog({
         </button>
 
         <div className={styles.applyHeader}>
-          <h2 className={styles.applyTitle}>Load workflow</h2>
+          <h2 className={styles.applyTitle}>Workflow</h2>
           <p className={styles.applySubtitle}>{workflow.name}</p>
           <p className={styles.applyHint}>
             This workflow will be loaded to the current project.
