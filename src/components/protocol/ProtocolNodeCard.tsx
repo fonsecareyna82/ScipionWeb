@@ -757,7 +757,8 @@ export default function ProtocolNodeCard({
                                   e.preventDefault();
                                   e.stopPropagation();
                                   if (!isViewerEnabled) return;
-                                  openOutputViewer(outputName, outputObj);
+                                  const value = normalizeOutputItem(outputObj);
+                                  openOutputViewer(outputName, value);
                                 }}
                                 disabled={!isViewerEnabled}
                               >

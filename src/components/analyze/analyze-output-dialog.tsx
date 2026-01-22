@@ -1,5 +1,6 @@
 // src/components/analyze/analyze-output-dialog.tsx
-import { useMemo } from "react";
+import { useMemo, useEffect, useRef } from "react";
+import type { IframeHTMLAttributes } from "react";
 import {
   Dialog,
   DialogContent,
@@ -16,6 +17,36 @@ import Coords3dViewer from "./coords3d-viewer";
 import TiltSeriesViewer from "./tiltseries-viewer";
 import CTFTomoViewer from "./ctftomo-viewer";
 
+type AnalyzeViewerContext = {
+  projectId: number;
+  protocolId: number;
+  protocolLabel: string;
+  outputName: string;
+  outputRaw: any;
+  outputClass: string;
+};
+
+type ExternalAnalyzeViewer =
+  | {
+    kind: "iframe";
+    src: string;
+    title?: string;
+    iframeProps?: IframeHTMLAttributes<HTMLIFrameElement>;
+  }
+  | {
+    kind: "customElement";
+    tag: string;
+    attrs?: Record<string, string>;
+  };
+
+declare global {
+  interface Window {
+    externalViewers?: {
+      resolveAnalyzeViewer?: (ctx: AnalyzeViewerContext) => ExternalAnalyzeViewer | null;
+    };
+  }
+}
+
 type AnalyzeOutputDialogProps = {
   open: boolean;
   onClose: () => void;
@@ -26,28 +57,33 @@ type AnalyzeOutputDialogProps = {
   outputRaw: any;
 };
 
+function resolveExternalAnalyzeViewer(ctx: AnalyzeViewerContext): ExternalAnalyzeViewer | null {
+  const resolver = window.externalViewers?.resolveAnalyzeViewer;
+  if (typeof resolver !== "function") return null;
+
+  try {
+    return resolver(ctx) ?? null;
+  } catch {
+    return null;
+  }
+}
+
 function isVolumeKind(k?: string) {
   if (!k) return false;
   const s = k.replace(/\s+/g, "").toLowerCase();
-  return (
-    s === "volume" ||
-    s === "volumemask" ||
-    s === "setofvolumes" ||
-    s === "setoftomograms"
-  );
+  return s === "volume" || s === "volumemask" || s === "setofvolumes" || s === "setoftomograms";
 }
 
 function isCoords3dKind(k?: string) {
   if (!k) return false;
   const s = k.replace(/\s+/g, "").toLowerCase();
-  // Match: "SetOfCoordinates3D"
   return s.includes("setofcoordinates3d");
 }
 
 function isSetOfMetadataKind(k?: string) {
   if (!k) return false;
   const trimmed = k.replace(/\s+/g, "");
-  if ((!/^SetOf/i.test(trimmed)) && (!/^RelionSetOf/i.test(trimmed))) return false;
+  if (!/^SetOf/i.test(trimmed) && !/^RelionSetOf/i.test(trimmed)) return false;
   if (isVolumeKind(k)) return false;
   if (isCoords3dKind(k)) return false;
   return true;
@@ -56,14 +92,12 @@ function isSetOfMetadataKind(k?: string) {
 function isTiltSeriesKind(k?: string) {
   if (!k) return false;
   const s = k.replace(/\s+/g, "").toLowerCase();
-  // Match: "SetOfTiltseries and not SetOfTiltseriesM "
-  return (s.includes("setoftiltseries") && s !== "setoftiltseriesm");
+  return s.includes("setoftiltseries") && s !== "setoftiltseriesm";
 }
 
 function isCTFTomoSeriesKind(k?: string) {
   if (!k) return false;
   const s = k.replace(/\s+/g, "").toLowerCase();
-  // Match: "SetOfCTFTomoseries"
   return s.includes("setofctftomoseries");
 }
 
@@ -71,8 +105,7 @@ const dialogPaperSx = {
   borderRadius: 2,
   overflow: "hidden",
   border: "1px solid rgba(0,0,0,0.08)",
-  boxShadow:
-    "0 10px 20px rgba(0,0,0,0.15), 0 6px 10px rgba(0,0,0,0.08)",
+  boxShadow: "0 10px 20px rgba(0,0,0,0.15), 0 6px 10px rgba(0,0,0,0.08)",
   display: "flex",
   flexDirection: "column",
   height: "97vh",
@@ -134,6 +167,65 @@ const closeBtnSx = {
   },
 };
 
+function ExternalViewerHost({ spec }: { spec: ExternalAnalyzeViewer }) {
+  const hostRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    // mountCustomElementIntoHost
+    if (spec.kind !== "customElement") return;
+    if (!hostRef.current) return;
+
+    hostRef.current.innerHTML = "";
+
+    const el = document.createElement(spec.tag);
+    const attrs = spec.attrs ?? {};
+    Object.entries(attrs).forEach(([k, v]) => el.setAttribute(k, v));
+
+    (el as HTMLElement).style.width = "100%";
+    (el as HTMLElement).style.height = "100%";
+    (el as HTMLElement).style.display = "block";
+
+    hostRef.current.appendChild(el);
+
+    return () => {
+      if (hostRef.current) hostRef.current.innerHTML = "";
+    };
+  }, [
+    spec.kind,
+    spec.kind === "customElement" ? spec.tag : "",
+    spec.kind === "customElement" ? JSON.stringify(spec.attrs ?? {}) : "",
+  ]);
+
+  if (spec.kind === "iframe") {
+    return (
+      <iframe
+        title={spec.title || "Analyze viewer"}
+        src={spec.src}
+        style={{ width: "100%", height: "100%", border: 0 }}
+        {...(spec.iframeProps ?? {})}
+      />
+    );
+  }
+
+  return <div ref={hostRef} style={{ width: "100%", height: "100%" }} />;
+}
+
+function unwrapOutputRaw(raw: any): any {
+  // unwrapLegacySingleKeyObject
+  if (!raw || typeof raw !== "object") return raw;
+
+  if (raw.pointerClass || raw._class || raw.class || raw.type) return raw;
+
+  const entries = Object.entries(raw);
+  if (entries.length === 1) {
+    const maybeInner = entries[0][1];
+    if (maybeInner && typeof maybeInner === "object") return maybeInner;
+  }
+
+  return raw;
+}
+
+
 export default function AnalyzeOutputDialog({
   open,
   onClose,
@@ -143,22 +235,16 @@ export default function AnalyzeOutputDialog({
   outputName,
   outputRaw,
 }: AnalyzeOutputDialogProps) {
-  const outputClass = useMemo(
-    () =>
-      (
-        outputRaw?._class ||
-        outputRaw?.pointerClass ||
-        outputRaw?.class ||
-        outputRaw?.type ||
-        ""
-      ).toString(),
-    [outputRaw]
-  );
+  const outputClass = useMemo(() => {
+    const r = unwrapOutputRaw(outputRaw);
+    return (r?._class || r?.pointerClass || r?.class || r?.type || "").toString();
+  }, [outputRaw]);
 
   const projectIdNum = useMemo(() => Number(projectId), [projectId]);
   const protocolIdNum = useMemo(() => Number(protocolId), [protocolId]);
 
   const body = useMemo(() => {
+    // internalViewerDispatch
     if (isVolumeKind(outputClass)) {
       return (
         <VolumeViewer
@@ -187,7 +273,6 @@ export default function AnalyzeOutputDialog({
           projectId={projectIdNum}
           protocolId={protocolIdNum}
           outputName={outputName}
-          // optionally tableName="TiltSeries" imageColumn="stack"
         />
       );
     }
@@ -198,7 +283,6 @@ export default function AnalyzeOutputDialog({
           projectId={projectIdNum}
           protocolId={protocolIdNum}
           outputName={outputName}
-          // optionally tableName="TiltSeries" imageColumn="stack"
         />
       );
     }
@@ -213,6 +297,22 @@ export default function AnalyzeOutputDialog({
       );
     }
 
+
+    // externalViewerFallback
+    const externalSpec = resolveExternalAnalyzeViewer({
+      projectId: projectIdNum,
+      protocolId: protocolIdNum,
+      protocolLabel,
+      outputName,
+      outputRaw,
+      outputClass,
+    });
+
+    if (externalSpec) {
+      return <ExternalViewerHost spec={externalSpec} />;
+    }
+
+    // noViewerFallback
     return (
       <Box sx={{ p: 2 }}>
         <Typography variant="subtitle2" sx={{ mb: 1 }}>
@@ -225,22 +325,11 @@ export default function AnalyzeOutputDialog({
         </Typography>
       </Box>
     );
-  }, [
-    outputClass,
-    outputName,
-    projectIdNum,
-    protocolIdNum,
-    protocolLabel,
-  ]);
+  }, [outputClass, outputName, projectIdNum, protocolIdNum, protocolLabel, outputRaw]);
 
-  // prevent close on backdrop click, but allow ESC and close button
-  const handleDialogClose = (
-    _event: object,
-    reason: "backdropClick" | "escapeKeyDown"
-  ) => {
-    if (reason === "backdropClick") {
-      return;
-    }
+  const handleDialogClose = (_event: object, reason: "backdropClick" | "escapeKeyDown") => {
+    // preventBackdropClose
+    if (reason === "backdropClick") return;
     onClose();
   };
 
@@ -277,12 +366,7 @@ export default function AnalyzeOutputDialog({
           </Typography>
         </Box>
 
-        <IconButton
-          onClick={onClose}
-          aria-label="Close analyze dialog"
-          size="small"
-          sx={closeBtnSx}
-        >
+        <IconButton onClick={onClose} aria-label="Close analyze dialog" size="small" sx={closeBtnSx}>
           <CloseIcon fontSize="small" />
         </IconButton>
       </DialogTitle>
@@ -298,9 +382,7 @@ export default function AnalyzeOutputDialog({
           overflow: "hidden",
         }}
       >
-        <Box sx={{ flex: 1, minHeight: 0, minWidth: 0, overflow: "hidden" }}>
-          {body}
-        </Box>
+        <Box sx={{ flex: 1, minHeight: 0, minWidth: 0, overflow: "hidden" }}>{body}</Box>
       </DialogContent>
     </Dialog>
   );

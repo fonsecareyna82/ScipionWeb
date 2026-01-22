@@ -1801,6 +1801,15 @@ export default function ProtocolForm({
     }
   };
 
+  const handleAnalyzeResultsClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+    // openAnalyzeResultsDialog
+    e.preventDefault();
+    e.stopPropagation();
+    if (!activeOutput) return;
+    setAnalyzeOpen(true);
+  };
+
+
 
   // Render a single parameter row
   const renderParam = useCallback(
@@ -3496,17 +3505,18 @@ export default function ProtocolForm({
                       <Button
                         size="small"
                         variant="contained"
+                        disabled={!activeOutput}
+                        onClick={handleAnalyzeResultsClick}
                         sx={{
                           textTransform: "none",
                           ml: 1,
                           backgroundColor: "#333d49",
                           "&:hover": { backgroundColor: "#596472ff" },
                         }}
-                        disabled={!activeOutput}
-                        onClick={() => setAnalyzeOpen(true)}
                       >
                         Analyze results
                       </Button>
+
                     </Box>
                   </Box>
 
