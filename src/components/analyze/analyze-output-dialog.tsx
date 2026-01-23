@@ -17,27 +17,35 @@ import Coords3dViewer from "./coords3d-viewer";
 import TiltSeriesViewer from "./tiltseries-viewer";
 import CTFTomoViewer from "./ctftomo-viewer";
 
+type AnalyzeOutputRef = {
+  paramClass: string;
+  value: string;
+  info: string;
+};
+
 type AnalyzeViewerContext = {
   projectId: number;
   protocolId: number;
   protocolLabel: string;
   outputName: string;
-  outputRaw: any;
   pointerClass: string;
+  paramClass: string;
+  value: string;
+  info: string;
 };
 
 type ExternalAnalyzeViewer =
   | {
-    kind: "iframe";
-    src: string;
-    title?: string;
-    iframeProps?: IframeHTMLAttributes<HTMLIFrameElement>;
-  }
+      kind: "iframe";
+      src: string;
+      title?: string;
+      iframeProps?: IframeHTMLAttributes<HTMLIFrameElement>;
+    }
   | {
-    kind: "customElement";
-    tag: string;
-    attrs?: Record<string, string>;
-  };
+      kind: "customElement";
+      tag: string;
+      attrs?: Record<string, string>;
+    };
 
 declare global {
   interface Window {
@@ -167,6 +175,16 @@ const closeBtnSx = {
   },
 };
 
+function toStringSafe(v: unknown): string {
+  // toStringSafe
+  if (v == null) return "";
+  try {
+    return String(v);
+  } catch {
+    return "";
+  }
+}
+
 function stableAttrsKey(attrs?: Record<string, string>) {
   // stableAttrsKey
   if (!attrs) return "";
@@ -179,7 +197,8 @@ function ExternalViewerHost({ spec }: { spec: ExternalAnalyzeViewer }) {
 
   const attrsKey = useMemo(() => {
     // attrsKey
-    return spec.kind === "customElement" ? stableAttrsKey(spec.attrs) : "";
+    if (spec.kind !== "customElement") return "";
+    return stableAttrsKey(spec.attrs);
   }, [spec.kind, spec.kind === "customElement" ? spec.tag : "", spec.kind === "customElement" ? spec.attrs : undefined]);
 
   useEffect(() => {
@@ -233,6 +252,16 @@ function unwrapOutputRaw(raw: any): any {
   return raw;
 }
 
+function buildOutputRef(raw: any): AnalyzeOutputRef {
+  // buildOutputRef
+  const r = unwrapOutputRaw(raw);
+
+  return {
+    paramClass: toStringSafe(r?.paramClass),
+    value: toStringSafe(r?.value ?? r?._objValue ?? ""),
+    info: toStringSafe(r?.info),
+  };
+}
 
 function AnalyzeOutputDialog({
   open,
@@ -248,13 +277,18 @@ function AnalyzeOutputDialog({
     return (r?._class || r?.pointerClass || r?.class || r?.type || "").toString();
   }, [outputRaw]);
 
+  //console.log(outputRaw)
+  const outputRef = useMemo(() => {
+    // outputRef
+    return buildOutputRef(outputRaw);
+  }, [outputRaw]);
+
   const projectIdNum = useMemo(() => Number(projectId), [projectId]);
   const protocolIdNum = useMemo(() => Number(protocolId), [protocolId]);
 
   useEffect(() => {
     // debugRenderChanges
     if (!open) return;
-
   }, [open, projectIdNum, protocolIdNum, outputName, pointerClass]);
 
   const body = useMemo(() => {
@@ -311,15 +345,16 @@ function AnalyzeOutputDialog({
       );
     }
 
-
     // externalViewerFallback
     const externalSpec = resolveExternalAnalyzeViewer({
       projectId: projectIdNum,
       protocolId: protocolIdNum,
       protocolLabel,
       outputName,
-      outputRaw,
       pointerClass,
+      paramClass: outputRef.paramClass,
+      value: outputRef.value,
+      info: outputRef.info,
     });
 
     if (externalSpec) {
@@ -339,7 +374,7 @@ function AnalyzeOutputDialog({
         </Typography>
       </Box>
     );
-  }, [pointerClass, outputName, projectIdNum, protocolIdNum, protocolLabel, outputRaw]);
+  }, [pointerClass, outputName, projectIdNum, protocolIdNum, protocolLabel, outputRef]);
 
   const handleDialogClose = (_event: object, reason: "backdropClick" | "escapeKeyDown") => {
     // preventBackdropClose
