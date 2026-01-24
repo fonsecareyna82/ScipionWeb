@@ -13,7 +13,10 @@ import type {
   VolumeData3dOptions,
   TiltExclusionsPayload,
   CTFTomoExclusionsPayload,
+  AnalyzeViewerResolveContext,
+  AnalyzeViewerResolveDecision,
 } from "@/services/ProjectService";
+
 
 import * as settingsApi from "@/api/settings";
 import type {
@@ -119,6 +122,59 @@ const defaultService: ProjectService = {
     path: string,
     opts?: { table?: string },
   ) => api.fetchOutputPreview(toId(projectId), toId(protocolId), path, opts),
+
+
+  resolveAnalyzeViewer: async (
+    ctx: AnalyzeViewerResolveContext
+  ): Promise<AnalyzeViewerResolveDecision> => {
+    // resolveAnalyzeViewer
+    const projectId = toId(ctx.projectId);
+    const protocolId = toId(ctx.protocolId);
+    const enc = encodeURIComponent;
+
+    const url = `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/viewer/resolve`;
+
+    const payload = {
+      protocolLabel: ctx.protocolLabel ?? "",
+      pointerClass: ctx.pointerClass ?? "",
+      paramClass: ctx.paramClass ?? "",
+      value: ctx.value ?? "",
+      info: ctx.info ?? "",
+      parentId: ctx.parentId ?? null,
+    };
+
+    const res = await fetchWithAuth(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    // treatMissingAsNotHandled
+    if (res.status === 404 || res.status === 204) return { handled: false };
+
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(text || "Failed to resolve analyze viewer");
+    }
+
+    const raw = await res.json().catch(() => null);
+    if (!raw || typeof raw !== "object") return { handled: false };
+
+    const handled = (raw as any).handled === true;
+    if (!handled) return { handled: false };
+
+    const decisionUrl = String((raw as any).url ?? "");
+    if (!decisionUrl) return { handled: false };
+
+    return {
+      handled: true,
+      url: decisionUrl,
+      target: (raw as any).target,
+      kind: (raw as any).kind,
+      title: (raw as any).title,
+    };
+  },
+
 
   // ──────────────────────────── Analyze Results: Volumes ────────────────────────────
 
@@ -243,8 +299,8 @@ const defaultService: ProjectService = {
           typeof raw.n === "number"
             ? raw.n
             : Array.isArray(raw.coords)
-            ? raw.coords.length
-            : 0,
+              ? raw.coords.length
+              : 0,
         coords: raw.coords ?? [],
       })),
 
@@ -490,7 +546,7 @@ const defaultService: ProjectService = {
       outputName,
       exclusions,
     ),
-  
+
   fetchCTFPsdImage: (
     projectId: Id,
     protocolId: Id,

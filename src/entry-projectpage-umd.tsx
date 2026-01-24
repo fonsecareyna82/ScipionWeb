@@ -303,6 +303,15 @@ function normalizeServiceAPI(srv: any): ProjectService {
   );
   mapFn("fetchOutputPreview", "previewOutput", "getOutputPreview");
 
+  // analyze viewer resolve
+  mapFn(
+    "resolveAnalyzeViewer",
+    "resolveAnalyzeViewer",
+    "resolveAnalyzeOutputViewer",
+    "resolveAnalyzeViewerDecision",
+    "analyzeViewerResolve",
+  );
+
   const rawExecute =
     typeof normalized.executeProtocol === "function"
       ? normalized.executeProtocol
@@ -319,6 +328,9 @@ function normalizeServiceAPI(srv: any): ProjectService {
   ensureFn("saveProtocol", async () => {
     throw createMissingServiceMethodError("saveProtocol");
   });
+
+  // Safe default: if host does not provide it, let the internal viewer open.
+  ensureFn("resolveAnalyzeViewer", async () => ({ handled: false } as any));
 
   // Support both standard and legacy execute signatures
   normalized.executeProtocol = async (

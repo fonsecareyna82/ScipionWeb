@@ -1,6 +1,5 @@
 // src/components/analyze/analyze-output-dialog.tsx
-import { useMemo, useEffect, useRef, memo } from "react";
-import type { IframeHTMLAttributes } from "react";
+import { useMemo, useEffect, memo } from "react";
 import {
   Dialog,
   DialogContent,
@@ -23,38 +22,6 @@ type AnalyzeOutputRef = {
   info: string;
 };
 
-type AnalyzeViewerContext = {
-  projectId: number;
-  protocolId: number;
-  protocolLabel: string;
-  outputName: string;
-  pointerClass: string;
-  paramClass: string;
-  value: string;
-  info: string;
-};
-
-type ExternalAnalyzeViewer =
-  | {
-      kind: "iframe";
-      src: string;
-      title?: string;
-      iframeProps?: IframeHTMLAttributes<HTMLIFrameElement>;
-    }
-  | {
-      kind: "customElement";
-      tag: string;
-      attrs?: Record<string, string>;
-    };
-
-declare global {
-  interface Window {
-    externalViewers?: {
-      resolveAnalyzeViewer?: (ctx: AnalyzeViewerContext) => ExternalAnalyzeViewer | null;
-    };
-  }
-}
-
 type AnalyzeOutputDialogProps = {
   open: boolean;
   onClose: () => void;
@@ -64,17 +31,6 @@ type AnalyzeOutputDialogProps = {
   outputName: string;
   outputRaw: any | null;
 };
-
-function resolveExternalAnalyzeViewer(ctx: AnalyzeViewerContext): ExternalAnalyzeViewer | null {
-  const resolver = window.externalViewers?.resolveAnalyzeViewer;
-  if (typeof resolver !== "function") return null;
-
-  try {
-    return resolver(ctx) ?? null;
-  } catch {
-    return null;
-  }
-}
 
 function isVolumeKind(k?: string) {
   if (!k) return false;
@@ -185,58 +141,6 @@ function toStringSafe(v: unknown): string {
   }
 }
 
-function stableAttrsKey(attrs?: Record<string, string>) {
-  // stableAttrsKey
-  if (!attrs) return "";
-  const keys = Object.keys(attrs).sort();
-  return keys.map((k) => `${k}=${attrs[k] ?? ""}`).join("&");
-}
-
-function ExternalViewerHost({ spec }: { spec: ExternalAnalyzeViewer }) {
-  const hostRef = useRef<HTMLDivElement | null>(null);
-
-  const attrsKey = useMemo(() => {
-    // attrsKey
-    if (spec.kind !== "customElement") return "";
-    return stableAttrsKey(spec.attrs);
-  }, [spec.kind, spec.kind === "customElement" ? spec.tag : "", spec.kind === "customElement" ? spec.attrs : undefined]);
-
-  useEffect(() => {
-    // mountCustomElementIntoHost
-    if (spec.kind !== "customElement") return;
-    if (!hostRef.current) return;
-
-    hostRef.current.innerHTML = "";
-
-    const el = document.createElement(spec.tag);
-    const attrs = spec.attrs ?? {};
-    Object.entries(attrs).forEach(([k, v]) => el.setAttribute(k, v));
-
-    (el as HTMLElement).style.width = "100%";
-    (el as HTMLElement).style.height = "100%";
-    (el as HTMLElement).style.display = "block";
-
-    hostRef.current.appendChild(el);
-
-    return () => {
-      if (hostRef.current) hostRef.current.innerHTML = "";
-    };
-  }, [spec.kind, spec.kind === "customElement" ? spec.tag : "", attrsKey]);
-
-  if (spec.kind === "iframe") {
-    return (
-      <iframe
-        title={spec.title || "Analyze viewer"}
-        src={spec.src}
-        style={{ width: "100%", height: "100%", border: 0 }}
-        {...(spec.iframeProps ?? {})}
-      />
-    );
-  }
-
-  return <div ref={hostRef} style={{ width: "100%", height: "100%" }} />;
-}
-
 function unwrapOutputRaw(raw: any): any {
   // unwrapLegacySingleKeyObject
   if (!raw || typeof raw !== "object") return raw;
@@ -277,7 +181,6 @@ function AnalyzeOutputDialog({
     return (r?._class || r?.pointerClass || r?.class || r?.type || "").toString();
   }, [outputRaw]);
 
-  //console.log(outputRaw)
   const outputRef = useMemo(() => {
     // outputRef
     return buildOutputRef(outputRaw);
@@ -316,49 +219,15 @@ function AnalyzeOutputDialog({
     }
 
     if (isTiltSeriesKind(pointerClass)) {
-      return (
-        <TiltSeriesViewer
-          projectId={projectIdNum}
-          protocolId={protocolIdNum}
-          outputName={outputName}
-        />
-      );
+      return <TiltSeriesViewer projectId={projectIdNum} protocolId={protocolIdNum} outputName={outputName} />;
     }
 
     if (isCTFTomoSeriesKind(pointerClass)) {
-      return (
-        <CTFTomoViewer
-          projectId={projectIdNum}
-          protocolId={protocolIdNum}
-          outputName={outputName}
-        />
-      );
+      return <CTFTomoViewer projectId={projectIdNum} protocolId={protocolIdNum} outputName={outputName} />;
     }
 
     if (isSetOfMetadataKind(pointerClass)) {
-      return (
-        <MetadataViewer
-          projectId={projectIdNum}
-          protocolId={protocolIdNum}
-          outputName={outputName}
-        />
-      );
-    }
-
-    // externalViewerFallback
-    const externalSpec = resolveExternalAnalyzeViewer({
-      projectId: projectIdNum,
-      protocolId: protocolIdNum,
-      protocolLabel,
-      outputName,
-      pointerClass,
-      paramClass: outputRef.paramClass,
-      value: outputRef.value,
-      info: outputRef.info,
-    });
-
-    if (externalSpec) {
-      return <ExternalViewerHost spec={externalSpec} />;
+      return <MetadataViewer projectId={projectIdNum} protocolId={protocolIdNum} outputName={outputName} />;
     }
 
     // noViewerFallback
@@ -371,6 +240,8 @@ function AnalyzeOutputDialog({
           Output: <strong>{outputName}</strong>
           <br />
           Class: <code>{pointerClass || "(unknown)"}</code>
+          <br />
+          ParamClass: <code>{outputRef.paramClass || "(unknown)"}</code>
         </Typography>
       </Box>
     );
@@ -383,13 +254,7 @@ function AnalyzeOutputDialog({
   };
 
   return (
-    <Dialog
-      open={open}
-      onClose={handleDialogClose}
-      maxWidth="xl"
-      fullWidth
-      PaperProps={{ sx: dialogPaperSx }}
-    >
+    <Dialog open={open} onClose={handleDialogClose} maxWidth="xl" fullWidth PaperProps={{ sx: dialogPaperSx }}>
       <DialogTitle component="div" sx={headerSx}>
         <Box sx={titleWrapSx}>
           <Box sx={titleRowSx}>

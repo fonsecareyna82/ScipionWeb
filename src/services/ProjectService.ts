@@ -284,6 +284,39 @@ export type FetchImageSliceOptions = {
 };
 
 
+export type AnalyzeViewerResolveContext = {
+  projectId: Id;
+  protocolId: Id;
+  protocolLabel?: string;
+
+  outputName: string;
+
+  // Minimal identity for routing decisions
+  pointerClass?: string;
+  paramClass?: string;
+
+  // Optional extra hints (do not require sending the whole outputRaw)
+  value?: string;
+  info?: string;
+  parentId?: Id;
+};
+
+export type AnalyzeViewerResolveDecision =
+  | {
+      handled: false;
+    }
+  | {
+      handled: true;
+      // Usually a Flask route that will render the viewer
+      url: string;
+
+      // Optional behavior hints for the frontend
+      target?: "_self" | "_blank";
+      kind?: "redirect" | "iframe";
+      title?: string;
+    };
+
+
 // ─────────────────────────────────────────────────────────────────────────────
 // User (sharing / collaboration)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -340,7 +373,6 @@ export type InstanceSettings = {
 };
 
 export type InstanceSettingsPatch = Partial<InstanceSettings>;
-
 
 
 /**
@@ -444,6 +476,15 @@ export interface ProjectService<
   // ─────────────────────────────────────────────────────────────────────────────
   // Analyze Results (Volumes) — used by the "Analyze Results" viewer.
   // ─────────────────────────────────────────────────────────────────────────────
+
+   /**
+   * Ask the backend whether an output should be handled by an external viewer (e.g., Flask).
+   * If handled is true, the frontend should not open the React modal and should open the returned url instead.
+   */
+  resolveAnalyzeViewer(
+    ctx: AnalyzeViewerResolveContext
+  ): Promise<AnalyzeViewerResolveDecision>;
+
 
   listOutputVolumes(
     projectId: Id,

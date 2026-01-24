@@ -272,6 +272,11 @@ const defaultMockService: ProjectService = {
     return { id: projectId, protocolId, path, entries: [] } as any;
   },
 
+  
+  async resolveAnalyzeViewer() {
+    return { handled: false } as any;
+  },
+  
   async previewProtocolText(projectId: Id, id: string, path: string) {
     return { id: projectId, action: "previewProtocolText", protocolId: id, path, content: "Mock preview..." } as any;
   },
@@ -563,6 +568,14 @@ function normalizeServiceAPI(srv?: any): ProjectService {
   mapFn("continueAll", "continueAll");
   mapFn("resetFrom", "resetFrom");
   mapFn("stopProtocol", "stopProtocol");
+
+   mapFn(
+    "resolveAnalyzeViewer",
+    "resolveAnalyzeViewer",
+    "resolveAnalyzeOutputViewer",
+    "resolveAnalyzeViewerDecision",
+    "analyzeViewerResolve",
+  );
 
   // fileAndPreviewApiAliases
   mapFn("resolveProtocolStartPath", "resolveProtocolStartPath");

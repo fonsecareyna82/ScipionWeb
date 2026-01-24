@@ -54,6 +54,13 @@ function normalizeServiceAPI(srv?: ProjectService): Required<ProjectService> {
 
   mapFn("fetchProtocolDetails", "getProtocol", "getProtocolDetails", "fetchProtocol");
   mapFn("loadProtocols", "listProtocols", "fetchProtocols", "getProtocols");
+  mapFn(
+    "resolveAnalyzeViewer",
+    "resolveAnalyzeViewer",
+    "resolveAnalyzeOutputViewer",
+    "resolveAnalyzeViewerDecision",
+    "analyzeViewerResolve",
+  );
 
   if (typeof n.fetchProtocolDetails !== "function") n.fetchProtocolDetails = fallbackFetchProtocolDetails;
   if (typeof n.loadProtocols !== "function") n.loadProtocols = fallbackLoadProtocols;

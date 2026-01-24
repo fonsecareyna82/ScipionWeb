@@ -1801,13 +1801,57 @@ export default function ProtocolForm({
     }
   };
 
-  const handleAnalyzeResultsClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+  const handleAnalyzeResultsClick = async (e: React.MouseEvent<HTMLButtonElement>) => {
     // openAnalyzeResultsDialog
     e.preventDefault();
     e.stopPropagation();
     if (!activeOutput) return;
+
+    // buildAnalyzeContext
+    const outputRaw = activeOutput.raw ?? null;
+    const ctx = {
+      projectId: String(projectId ?? ""),
+      protocolId: String(protocolId ?? ""),
+      outputName: String(activeOutput.name ?? ""),
+      outputRaw,
+      pointerClass: String(outputRaw?.pointerClass ?? outputRaw?.paramClass ?? outputRaw?._class ?? ""),
+    };
+
+    // tryServiceResolverFirst
+    const resolveAnalyzeViewer = (svc as any)?.resolveAnalyzeViewer;
+    if (typeof resolveAnalyzeViewer === "function") {
+      try {
+        const res = await resolveAnalyzeViewer(ctx);
+
+        if (res?.handled) {
+          const url = typeof res?.url === "string" ? res.url : "";
+          const target = typeof res?.target === "string" ? res.target : "_self";
+
+          // honorUrlTargetIfProvided
+          if (url) {
+            if (target === "_self") {
+              if (url.startsWith("#")) {
+                window.location.hash = url.slice(1);
+              } else {
+                window.location.assign(url);
+              }
+            } else {
+              window.open(url, target);
+            }
+          }
+
+          // doNotOpenInternalDialog
+          return;
+        }
+      } catch (err) {
+        console.warn("[ProtocolForm] resolveAnalyzeViewer failed, falling back:", err);
+      }
+    }
+
+    // fallbackToInternalAnalyzeDialog
     setAnalyzeOpen(true);
   };
+
 
 
 

@@ -1,6 +1,7 @@
 // src/components/protocol/ProtocolNodeCardWrapper.tsx
+import type React from "react";
 import { NodeProps, useReactFlow } from "reactflow";
-import StatusNode from "./ProtocolNodeCard";
+import StatusNode, { type ExternalAnalyzeViewerService } from "./ProtocolNodeCard";
 
 type NodeActions = {
   onEdit?: (id: string) => void;
@@ -15,7 +16,6 @@ type NodeActions = {
   onStop?: (id: string) => void;
 };
 
-// addGetProjectId
 export const createStatusNodeWrapper = (
   onClick: (data: any, evt?: React.MouseEvent) => void,
   onDoubleClick: (data: any) => void,
@@ -27,7 +27,8 @@ export const createStatusNodeWrapper = (
   getNodeActions?: () => NodeActions,
   getPathSelectionNodeIds?: () => Set<string>,
   onBrowse?: (protocolId: string, projectId?: string | number, protocolLabel?: string) => void,
-  getProjectId?: () => string | number | undefined
+  getProjectId?: () => string | number | undefined,
+  getAnalyzeViewerService?: () => ExternalAnalyzeViewerService | undefined
 ) => {
   return function StatusNodeWrapper(props: NodeProps) {
     const { data, id, ...rest } = props;
@@ -48,6 +49,7 @@ export const createStatusNodeWrapper = (
     const pathSelectionActive = pathSelectedSet.size > 0;
 
     const resolvedProjectId = getProjectId?.();
+    const analyzeViewerService = getAnalyzeViewerService?.();
 
     return (
       <div onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave} style={{ display: "inline-block" }}>
@@ -81,9 +83,9 @@ export const createStatusNodeWrapper = (
           pathSelectionActive={pathSelectionActive}
           onBrowse={onBrowse}
           showHandles={viewMode !== "grid"}
+          service={analyzeViewerService}
         />
       </div>
     );
   };
 };
-

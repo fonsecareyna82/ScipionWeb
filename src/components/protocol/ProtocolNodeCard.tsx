@@ -49,6 +49,10 @@ import {
 } from "lucide-react";
 
 import AnalyzeOutputDialog from "@/components/analyze/analyze-output-dialog";
+import type {
+  AnalyzeViewerResolveContext,
+  AnalyzeViewerResolveDecision,
+} from "@/services/ProjectService";
 
 const statusColors: Record<string, string> = {
   running: "#FCCE62",
@@ -73,6 +77,12 @@ const statusBadgeColors: Record<string, string> = {
   interactive: "#FFC107",
   scheduled: "#918516",
   new: "#1E90FF",
+};
+
+export type ExternalAnalyzeViewerService = {
+  resolveAnalyzeViewer?: (
+    ctx: AnalyzeViewerResolveContext
+  ) => Promise<AnalyzeViewerResolveDecision>;
 };
 
 type StatusNodeProps = {
@@ -115,11 +125,7 @@ type StatusNodeProps = {
   onSelectFrom?: (id: string) => void;
   onSelectTo?: (id: string) => void;
   onStop?: (id: string) => void;
-  onBrowse?: (
-    protocolId: string,
-    projectId?: string | number,
-    protocolLabel?: string
-  ) => void;
+  onBrowse?: (protocolId: string, projectId?: string | number, protocolLabel?: string) => void;
 
   inPathSelection?: boolean;
   pathSelectionActive?: boolean;
@@ -128,6 +134,8 @@ type StatusNodeProps = {
   targetPosition?: Position;
 
   showHandles?: boolean;
+
+  service?: ExternalAnalyzeViewerService;
 };
 
 const formatCpuTime = (seconds: number): string => {
@@ -139,7 +147,7 @@ const formatCpuTime = (seconds: number): string => {
 };
 
 type NormalizedOutput = {
-  name?: string; // output key/name used by backend
+  name?: string; // outputKeyNameUsedByBackend
   info?: string;
   paramClass: string;
   pointerClass?: string;
@@ -148,12 +156,7 @@ type NormalizedOutput = {
 };
 
 const normalizeOutputItem = (outputObj: unknown): NormalizedOutput | null => {
-  // Supports both shapes:
-  // 1) Flat:
-  //    { outputName|name, paramClass: "PointerParam", pointerClass, info, value, parentId }
-  // 2) Wrapped legacy:
-  //    { SomeName: { paramClass: "PointerParam", pointerClass, info, value, parentId } }
-  // Also tolerates older fields (_class) during transition.
+  // normalizeOutputItem
   if (!outputObj || typeof outputObj !== "object") return null;
 
   const flatCandidate = outputObj as Record<string, unknown>;
@@ -222,6 +225,24 @@ const normalizeOutputItem = (outputObj: unknown): NormalizedOutput | null => {
   return null;
 };
 
+const openDecisionUrl = (decision: AnalyzeViewerResolveDecision) => {
+  // openDecisionUrl
+  if (!decision || decision.handled !== true) return false;
+
+  const url = decision.url;
+  if (!url) return false;
+
+  const target = decision.target ?? "_blank";
+
+  if (target === "_self") {
+    window.location.assign(url);
+    return true;
+  }
+
+  window.open(url, "_blank", "noopener,noreferrer");
+  return true;
+};
+
 export default function ProtocolNodeCard({
   data,
   selectedNodeId,
@@ -244,6 +265,7 @@ export default function ProtocolNodeCard({
   inPathSelection = false,
   pathSelectionActive = false,
   showHandles = true,
+  service,
 }: StatusNodeProps) {
   const [isHovered, setIsHovered] = useState(false);
   const [draggingIdx, setDraggingIdx] = useState<number | null>(null);
@@ -302,6 +324,7 @@ export default function ProtocolNodeCard({
   const ToIcon = graphDirection === "TB" ? ArrowUp : ArrowLeft;
 
   const forwardClickToRFNode = (e: ReactMouseEvent) => {
+    // forwardClickToRFNode
     const doc = (e.target as HTMLElement | null)?.ownerDocument || document;
     const win = doc.defaultView || window;
 
@@ -386,17 +409,53 @@ export default function ProtocolNodeCard({
     setAnalyzeTarget(null);
   }, []);
 
-  const analyzeProjectId = useMemo(() => Number(data.projectId), [data.projectId]);
-  const analyzeProtocolId = useMemo(() => Number(data.id), [data.id]);
+  const analyzeProjectId = useMemo(() => {
+    const n = Number(data.projectId);
+    return Number.isFinite(n) ? n : 0;
+  }, [data.projectId]);
+
+  const analyzeProtocolId = useMemo(() => {
+    const n = Number(data.id);
+    return Number.isFinite(n) ? n : 0;
+  }, [data.id]);
 
   const canOpenViewer = !isProjectNode && data.projectId != null;
 
-  const openOutputViewer = (outputName: string, outputRaw: any) => {
-    // openOutputViewer
-    if (!canOpenViewer) return;
-    setAnalyzeTarget({ outputName, outputRaw });
-    setAnalyzeOpen(true);
-  };
+  const openOutputViewer = useCallback(
+    async (outputName: string, outputRaw: any, normalized?: NormalizedOutput | null) => {
+
+      // openOutputViewerWithBackendResolve
+      if (!canOpenViewer) return;
+      const maybeResolve = service?.resolveAnalyzeViewer;
+      if (typeof maybeResolve === "function") {
+        try {
+          const ctx: AnalyzeViewerResolveContext = {
+            projectId: data.projectId as string | number,
+            protocolId: data.id,
+            protocolLabel: data.label,
+            outputName,
+            pointerClass: normalized?.pointerClass,
+            paramClass: normalized?.paramClass,
+            info: normalized?.info,
+            value: normalized?.value,
+            parentId: normalized?.parentId as any,
+          };
+
+          const decision = await maybeResolve(ctx);
+          if (decision?.handled === true) {
+            const opened = openDecisionUrl(decision);
+            if (opened) return; // handledByExternalViewer
+          }
+        } catch {
+          // ignoreResolveErrorsAndFallbackToInternal
+        }
+      }
+
+      setAnalyzeTarget({ outputName, outputRaw });
+      setAnalyzeOpen(true);
+    },
+    [canOpenViewer, data.projectId, data.id, data.label, service]
+  );
 
   return (
     <ContextMenu>
@@ -528,16 +587,16 @@ export default function ProtocolNodeCard({
                         {(data.status === "running" ||
                           data.status === "launched" ||
                           data.status === "scheduled") && (
-                          <DropdownMenuItem onClick={handleStop}>
-                            <div className={styles.menuRow}>
-                              <span className={styles.menuLeft}>
-                                <Square className={styles.menuItemIcon} />
-                                <span>Stop</span>
-                              </span>
-                              <ShortcutHint text={shortcuts.stop} />
-                            </div>
-                          </DropdownMenuItem>
-                        )}
+                            <DropdownMenuItem onClick={handleStop}>
+                              <div className={styles.menuRow}>
+                                <span className={styles.menuLeft}>
+                                  <Square className={styles.menuItemIcon} />
+                                  <span>Stop</span>
+                                </span>
+                                <ShortcutHint text={shortcuts.stop} />
+                              </div>
+                            </DropdownMenuItem>
+                          )}
 
                         <DropdownMenuItem onClick={handleRestartAll}>
                           <div className={styles.menuRow}>
@@ -762,12 +821,11 @@ export default function ProtocolNodeCard({
                                   e.stopPropagation();
                                 }}
                                 onClick={(e) => {
-                                  // openViewerDialog
+                                  // openViewerWithBackendResolve
                                   e.preventDefault();
                                   e.stopPropagation();
                                   if (!isViewerEnabled) return;
-                                  const value = normalizeOutputItem(outputObj);
-                                  openOutputViewer(outputName, value);
+                                  void openOutputViewer(outputName, outputObj, value);
                                 }}
                                 disabled={!isViewerEnabled}
                               >
@@ -797,20 +855,20 @@ export default function ProtocolNodeCard({
                     {(data.status === "running" ||
                       data.status === "failed" ||
                       data.status === "aborted") && (
-                      <span className={styles.progress}>
-                        <span className={styles.progressTrack}>
-                          <span
-                            className={styles.progressFill}
-                            style={{
-                              width: `${((data.stepsDone ?? 0) / (data.numberOfSteps ?? 1)) * 100}%`,
-                            }}
-                          />
+                        <span className={styles.progress}>
+                          <span className={styles.progressTrack}>
+                            <span
+                              className={styles.progressFill}
+                              style={{
+                                width: `${((data.stepsDone ?? 0) / (data.numberOfSteps ?? 1)) * 100}%`,
+                              }}
+                            />
+                          </span>
+                          <span className={styles.progressText}>
+                            {data.stepsDone}/{data.numberOfSteps}
+                          </span>
                         </span>
-                        <span className={styles.progressText}>
-                          {data.stepsDone}/{data.numberOfSteps}
-                        </span>
-                      </span>
-                    )}
+                      )}
                   </span>
 
                   <span className={styles.timeRow}>

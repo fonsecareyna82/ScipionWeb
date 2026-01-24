@@ -59,21 +59,34 @@ import Label from "@/components/form/Label";
 import { Input } from "@mui/material";
 import toast from "react-hot-toast";
 import RemoteFileDialog from "@/components/files/RemoteFileDialog";
+import type { ExternalAnalyzeViewerService } from "@/components/protocol/ProtocolNodeCard";
+
 
 /* --------------------- Types --------------------- */
 interface StatusNodeData {
   label: string;
   status?: string;
   id: string;
-  color?: string;
+
+  // Used by ProtocolNodeCard
+  projectId?: string | number;
+  outputs?: unknown[];
+  inputs?: unknown[];
+
+  // Progress/timing
   cpuTime?: string;
   elapsedTime?: string;
   tick?: number;
   numberOfSteps?: number;
   stepsDone?: number;
+
+  // Selection/path
   parents?: string[];
   children?: string[];
   __pathVer?: number;
+
+  // Optional color cache
+  color?: string;
 }
 
 interface ContextMenuState {
@@ -116,6 +129,14 @@ export default function ProjectPage() {
 
   // focusModeState
   const [focusModeEnabled, setFocusModeEnabled] = useState(false);
+
+  const analyzeViewerService = useMemo<ExternalAnalyzeViewerService>(() => {
+    return {
+      resolveAnalyzeViewer: svc.resolveAnalyzeViewer,
+    };
+  }, [svc]);
+
+  const getAnalyzeViewerService = () => analyzeViewerService;
 
   useEffect(() => {
     // loadFocusModeFromStorage
@@ -999,14 +1020,16 @@ export default function ProjectPage() {
         () => hoveredIdRef.current ?? undefined,
         setHoveredNodeId,
         () => graphDirRef.current,
-        () => viewMode,
+        () => viewModeRef.current,
         () => nodeActionsRef.current,
         () => getSelectedPathIds(),
         (protocolId: string, projectId?: string | number, protocolLabel?: string) =>
           openBrowse(protocolId, projectId, protocolLabel),
-        () => getProjectId()
+        () => getProjectId(),
+        () => getAnalyzeViewerService(),
       ),
     };
+
   }
   const nodeTypes = nodeTypesRef.current;
 
