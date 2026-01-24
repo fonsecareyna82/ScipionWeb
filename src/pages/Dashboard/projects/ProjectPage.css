@@ -1057,7 +1057,7 @@
   z-index: 100;
   min-width: 220px;
   padding: 6px;
-  border-radius: 12px;
+  border-radius: 8px;
   border: 1px solid var(--color-border, #e5e7eb);
   background: var(--card);
   color: var(--ppInk, #374151);
