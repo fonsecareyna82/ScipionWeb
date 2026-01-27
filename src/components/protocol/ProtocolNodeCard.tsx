@@ -362,6 +362,16 @@ export default function ProtocolNodeCard({
   const isMac =
     typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/.test(navigator.platform);
 
+  const handleContextMenuCapture = useCallback((e: ReactMouseEvent) => {
+    // On macOS Ctrl+Click is treated as a secondary click (context menu).
+    // We block it so Ctrl can be used for multi-selection in ReactFlow.
+    if (isMac && e.ctrlKey) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  }, [isMac]);
+
+
   const mod = isMac ? "⌘" : "Ctrl";
   const modShift = isMac ? "⌘⇧" : "Ctrl+Shift";
 
@@ -464,6 +474,7 @@ export default function ProtocolNodeCard({
           ref={rootRef}
           className={classNames}
           style={nodeStyle}
+          onContextMenuCapture={handleContextMenuCapture}
           onClick={onClick}
           onDoubleClick={(e: ReactMouseEvent) => {
             e.stopPropagation();

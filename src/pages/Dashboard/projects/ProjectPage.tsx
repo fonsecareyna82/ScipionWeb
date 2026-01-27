@@ -114,6 +114,8 @@ type SearchResult = { id: string; label: string; status?: string };
 
 export default function ProjectPage() {
   const hostIsDark = useHostDarkMode();
+  const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/.test(navigator.platform);
+
   const { projectName } = useParams<{ projectName: string }>();
   const svc = useProjectService();
 
@@ -3108,7 +3110,7 @@ export default function ProjectPage() {
                 }}
                 onNodeDoubleClick={(_, node) => handleNodeDoubleClick(node)}
                 onNodeClick={(evt, node) => handleNodeClick(node, evt)}
-                multiSelectionKeyCode="Control"
+                multiSelectionKeyCode={isMac ? "Meta" : "Control"}
                 selectionKeyCode="Shift"
                 selectionOnDrag
                 style={{ width: "100%", height: "100%" }}
