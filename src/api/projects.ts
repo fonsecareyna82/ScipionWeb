@@ -486,7 +486,7 @@ export async function duplicateProtocol(
   return safeJson<ProtocolNode[]>(response);
 }
 
-export async function deleteProtocol(projectId: Id, protocolIds: Id[]): Promise<void> {
+export async function deleteProtocol(projectId: Id, protocolIds: Id[]): Promise<any> {
   const response = await fetchWithAuth(
     `${BASE_URL}/projects/${projectId}/protocols/delete`,
     {
@@ -497,6 +497,7 @@ export async function deleteProtocol(projectId: Id, protocolIds: Id[]): Promise<
   );
   if (!response.ok)
     throw await toApiError(response, "Failed to delete protocol(s)");
+  return safeJson<any>(response);
 }
 
 export async function restartAll(projectId: Id, protocolId: Id): Promise<any> {

@@ -2184,6 +2184,54 @@ export default function ProjectPage() {
     open: false, id: null, ids: null, kind: null,
   });
 
+  type ApiWorkflowResponse = {
+    status: number;
+    errors: string[];
+    workflow: unknown[];
+  };
+
+  const isApiWorkflowResponse = (v: any): v is ApiWorkflowResponse => {
+    return (
+      v != null &&
+      typeof v === "object" &&
+      typeof v.status === "number" &&
+      Array.isArray(v.errors) &&
+      Array.isArray(v.workflow)
+    );
+  };
+
+  const showApiErrorsToast = (errors: unknown, fallbackMessage: string) => {
+    const list = Array.isArray(errors) ? errors.map((x) => String(x)).filter(Boolean) : [];
+    const msg = list.length ? list : [fallbackMessage];
+
+    toast.error(
+      <div style={{ maxWidth: 520 }}>
+        <div style={{ fontWeight: 600, marginBottom: 6 }}>Operation failed</div>
+        <ul style={{ margin: 0, paddingLeft: 18 }}>
+          {msg.map((e, i) => (
+            <li key={i}>{e}</li>
+          ))}
+        </ul>
+      </div>
+    );
+  };
+
+  const ensureApiOk = (res: any, fallbackMessage: string): boolean => {
+    // Validate backend contract: always returns {status, errors, workflow}
+    if (!isApiWorkflowResponse(res)) {
+      toast.error(fallbackMessage);
+      return false;
+    }
+
+    if (Number(res.status) === 1) {
+      showApiErrorsToast(res.errors, fallbackMessage);
+      return false;
+    }
+
+    return true;
+  };
+
+
   const getErrorMsg = (e: any) => {
     if (e && typeof e === "object") {
       const status = (e as any).status;
@@ -3205,43 +3253,68 @@ export default function ProjectPage() {
               <button
                 onClick={async () => {
                   if (!projectName || !confirm.kind) return;
+
                   const kind = confirm.kind;
+
                   try {
-                    if (confirm.kind === "delete") {
+                    if (kind === "delete") {
                       const ids = confirm.ids ?? (confirm.id ? [confirm.id] : []);
-                      if (ids.length === 0) return;
-                      await svc.deleteProtocol(projectName, ids);
+                      if (!ids.length) return;
+
+                      const res = await svc.deleteProtocol(projectName, ids);
+                      if (!ensureApiOk(res, "Delete failed.")) return;
 
                       clearAllSelectionHard();
+                      toast.success(ids.length > 1 ? "Protocols deleted successfully." : "Protocol deleted successfully.");
 
-                      toast.success(
-                        ids.length > 1
-                          ? "Protocols deleted successfully."
-                          : "Protocol deleted successfully.",
-                      );
-                    } else if (confirm.kind === "restartAll" && confirm.id) {
-                      await svc.restartAll(projectName, confirm.id);
-                      toast.success("Restart started.");
-                      scheduleDoubleRefresh(5000, true);
-                    } else if (confirm.kind === "continueAll" && confirm.id) {
-                      await svc.continueAll(projectName, confirm.id);
-                      toast.success("Continue started.");
-                    } else if (confirm.kind === "stop") {
-                      const ids = confirm.ids ?? (confirm.id ? [confirm.id] : []);
-                      if (ids.length === 0) return;
-                      await stopProtocolNow(ids);
+                      setConfirm({ open: false, id: null, ids: null, kind: null });
+                      await handleRefresh();
+                      return;
                     }
 
-                    setConfirm({ open: false, id: null, ids: null, kind: null });
+                    if (kind === "restartAll" && confirm.id) {
+                      const res = await svc.restartAll(projectName, confirm.id);
+                      if (!ensureApiOk(res, "Restart failed.")) return;
 
-                    if (kind !== "stop" && kind !== "restartAll") {
+                      toast.success("Restart started.");
+                      setConfirm({ open: false, id: null, ids: null, kind: null });
+
+                      scheduleDoubleRefresh(5000, true);
+                      return;
+                    }
+
+                    if (kind === "continueAll" && confirm.id) {
+                      const res = await svc.continueAll(projectName, confirm.id);
+                      if (!ensureApiOk(res, "Continue failed.")) return;
+
+                      toast.success("Continue started.");
+                      setConfirm({ open: false, id: null, ids: null, kind: null });
+
                       await handleRefresh();
+                      return;
+                    }
+
+                    if (kind === "stop") {
+                      const ids = confirm.ids ?? (confirm.id ? [confirm.id] : []);
+                      if (!ids.length) return;
+
+                      const res = await svc.stopProtocol(projectName, ids);
+                      if (!ensureApiOk(res, "Stop failed.")) return;
+
+                      toast.success(ids.length > 1 ? `Stop requested for ${ids.length} protocols.` : "Stop requested.");
+
+                      clearAllSelectionHard();
+                      setConfirm({ open: false, id: null, ids: null, kind: null });
+
+                      await handleRefresh();
+                      return;
                     }
                   } catch (e) {
                     console.error(e);
                     toast.error(getErrorMsg(e));
                   }
                 }}
+
                 className="pp-dialogBtn pp-dialogBtnPrimary"
               >
                 {confirm.kind === "delete"
