@@ -2033,6 +2033,12 @@ export default function ProjectPage() {
     const isNode = !!target.closest(".react-flow__node");
     if (isNode) return;
 
+    // preventCtrlClickContextMenuOnMac
+    if (isMac && event.ctrlKey) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
     event.preventDefault();
     event.stopPropagation();
 
@@ -2186,6 +2192,13 @@ export default function ProjectPage() {
     open: false, id: null, ids: null, kind: null,
   });
 
+  const [confirmBusy, setConfirmBusy] = useState(false);
+
+  const closeConfirm = useCallback(() => {
+    setConfirm({ open: false, id: null, ids: null, kind: null });
+  }, []);
+
+
   type ApiWorkflowResponse = {
     status: number;
     errors: string[];
@@ -2218,20 +2231,131 @@ export default function ProjectPage() {
     );
   };
 
-  const ensureApiOk = (res: any, fallbackMessage: string): boolean => {
-    // Validate backend contract: always returns {status, errors, workflow}
-    if (!isApiWorkflowResponse(res)) {
+  const ensureApiOk = (res: ApiWorkflowResponse, fallbackMessage: string): boolean => {
+    const status = Number(res.status);
+
+    if (!Number.isFinite(status)) {
       toast.error(fallbackMessage);
       return false;
     }
 
-    if (Number(res.status) === 1) {
+    if (status !== 0) {
       showApiErrorsToast(res.errors, fallbackMessage);
       return false;
     }
 
     return true;
   };
+
+
+  const handleConfirmAction = useCallback(
+    async (e: React.MouseEvent<HTMLButtonElement>) => {
+      // preventDefaultAndStopPropagation
+      e.preventDefault();
+      e.stopPropagation();
+
+      if (!projectName || !confirm.kind || confirmBusy) return;
+
+      // snapshotConfirmToAvoidRaces
+      const kind = confirm.kind;
+      const snapId = confirm.id;
+      const snapIds = (confirm.ids ?? (snapId ? [snapId] : []))
+        .map(String)
+        .filter((id) => id && id !== "PROJECT");
+
+      setConfirmBusy(true);
+      try {
+        if (kind === "delete") {
+          if (snapIds.length === 0) {
+            closeConfirm();
+            return;
+          }
+
+          const res = await svc.deleteProtocol(projectName, snapIds);
+          if (!ensureApiOk(res, "Delete failed.")) return;
+
+          clearAllSelectionHard();
+          toast.success(
+            snapIds.length > 1
+              ? "Protocols deleted successfully."
+              : "Protocol deleted successfully."
+          );
+
+          closeConfirm();
+          await handleRefresh();
+          return;
+        }
+
+        if (kind === "restartAll") {
+          if (!snapId) {
+            closeConfirm();
+            return;
+          }
+
+          const res = await svc.restartAll(projectName, snapId);
+          if (!ensureApiOk(res, "Restart failed.")) return;
+
+          toast.success("Restart started.");
+          closeConfirm();
+          scheduleDoubleRefresh(5000, true);
+          return;
+        }
+
+        if (kind === "continueAll") {
+          if (!snapId) {
+            closeConfirm();
+            return;
+          }
+
+          const res = await svc.continueAll(projectName, snapId);
+          if (!ensureApiOk(res, "Continue failed.")) return;
+
+          toast.success("Continue started.");
+          closeConfirm();
+          await handleRefresh();
+          return;
+        }
+
+        if (kind === "stop") {
+          if (snapIds.length === 0) {
+            closeConfirm();
+            return;
+          }
+
+          const res = await svc.stopProtocol(projectName, snapIds);
+          if (!ensureApiOk(res, "Stop failed.")) return;
+
+          toast.success(
+            snapIds.length > 1 ? `Stop requested for ${snapIds.length} protocols.` : "Stop requested."
+          );
+
+          clearAllSelectionHard();
+          closeConfirm();
+          await handleRefresh();
+          return;
+        }
+      } catch (err) {
+        console.error(err);
+        toast.error(getErrorMsg(err));
+      } finally {
+        setConfirmBusy(false);
+      }
+    },
+    [
+      projectName,
+      confirm.kind,
+      confirm.id,
+      confirm.ids,
+      confirmBusy,
+      svc,
+      ensureApiOk,
+      clearAllSelectionHard,
+      closeConfirm,
+      handleRefresh,
+      scheduleDoubleRefresh,
+    ]
+  );
+
 
 
   const getErrorMsg = (e: any) => {
@@ -3244,79 +3368,30 @@ export default function ProjectPage() {
             {/* Footer */}
             <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
               <button
-                onClick={() =>
-                  setConfirm({ open: false, id: null, ids: null, kind: null })
-                }
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  closeConfirm();
+                }}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                }}
                 className="pp-dialogBtn"
               >
                 Cancel
               </button>
 
+
               <button
-                onClick={async () => {
-                  if (!projectName || !confirm.kind) return;
-
-                  const kind = confirm.kind;
-
-                  try {
-                    if (kind === "delete") {
-                      const ids = confirm.ids ?? (confirm.id ? [confirm.id] : []);
-                      if (!ids.length) return;
-
-                      const res = await svc.deleteProtocol(projectName, ids);
-                      if (!ensureApiOk(res, "Delete failed.")) return;
-
-                      clearAllSelectionHard();
-                      toast.success(ids.length > 1 ? "Protocols deleted successfully." : "Protocol deleted successfully.");
-
-                      setConfirm({ open: false, id: null, ids: null, kind: null });
-                      await handleRefresh();
-                      return;
-                    }
-
-                    if (kind === "restartAll" && confirm.id) {
-                      const res = await svc.restartAll(projectName, confirm.id);
-                      if (!ensureApiOk(res, "Restart failed.")) return;
-
-                      toast.success("Restart started.");
-                      setConfirm({ open: false, id: null, ids: null, kind: null });
-
-                      scheduleDoubleRefresh(5000, true);
-                      return;
-                    }
-
-                    if (kind === "continueAll" && confirm.id) {
-                      const res = await svc.continueAll(projectName, confirm.id);
-                      if (!ensureApiOk(res, "Continue failed.")) return;
-
-                      toast.success("Continue started.");
-                      setConfirm({ open: false, id: null, ids: null, kind: null });
-
-                      await handleRefresh();
-                      return;
-                    }
-
-                    if (kind === "stop") {
-                      const ids = confirm.ids ?? (confirm.id ? [confirm.id] : []);
-                      if (!ids.length) return;
-
-                      const res = await svc.stopProtocol(projectName, ids);
-                      if (!ensureApiOk(res, "Stop failed.")) return;
-
-                      toast.success(ids.length > 1 ? `Stop requested for ${ids.length} protocols.` : "Stop requested.");
-
-                      clearAllSelectionHard();
-                      setConfirm({ open: false, id: null, ids: null, kind: null });
-
-                      await handleRefresh();
-                      return;
-                    }
-                  } catch (e) {
-                    console.error(e);
-                    toast.error(getErrorMsg(e));
-                  }
+                type="button"
+                onClick={handleConfirmAction}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
                 }}
-
+                disabled={confirmBusy}
                 className="pp-dialogBtn pp-dialogBtnPrimary"
               >
                 {confirm.kind === "delete"
@@ -3327,6 +3402,7 @@ export default function ProjectPage() {
                       ? "Continue"
                       : "Stop"}
               </button>
+
             </div>
           </DialogContent>
         </Dialog>
