@@ -541,6 +541,7 @@ export async function stopProtocol(projectId: Id, protocolIds: Id[]): Promise<vo
   );
   if (!response.ok)
     throw await toApiError(response, "Failed to stop protocol(s)");
+  return safeJson<any>(response);
 }
 
 /* ======================= Remote FS / Previews ======================= */

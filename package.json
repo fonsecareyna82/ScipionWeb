@@ -5,6 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "node ./node_modules/vite/bin/vite.js",
+
+    "build:web": "cross-env NODE_OPTIONS=--max-old-space-size=12288 vite build --mode app",
+    "preview:web": "vite preview --mode app",
+
     "build:widget:list": "WIDGET_BUILD=1 vite build --mode projects && node src/scripts/rename-css.mjs projects",
     "build:widget:page": "WIDGET_BUILD=1 vite build --mode projectpage && node src/scripts/rename-css.mjs projectpage",
     "build:widget:protocoldetail": "WIDGET_BUILD=1 vite build --mode protocoldetail && node src/scripts/rename-css.mjs protocoldetail",

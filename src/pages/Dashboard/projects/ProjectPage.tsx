@@ -3349,8 +3349,8 @@ export default function ProjectPage() {
             <DialogHeader>
               <DialogTitle className="mb-6">
                 {confirm.kind === "delete" && "Delete protocol(s)?"}
-                {confirm.kind === "restartAll" && "Restart all steps?"}
-                {confirm.kind === "continueAll" && "Continue all steps?"}
+                {confirm.kind === "restartAll" && "Restart all protocol(s)?"}
+                {confirm.kind === "continueAll" && "Continue all protocol(s)?"}
                 {confirm.kind === "stop" && "Stop protocol(s)?"}
               </DialogTitle>
               <DialogDescription className="mb-5 text-sm text-muted-foreground">
