@@ -264,8 +264,8 @@ const defaultMockService: ProjectService = {
     return { id: projectId, action: "stopProtocol", stopped: ids } as any;
   },
 
-  async resolveProtocolStartPath(projectId: Id, pid: string) {
-    return { id: projectId, action: "resolveProtocolStartPath", startPid: pid } as any;
+  async resolveBrowserPaths(projectId: Id, pid: string) {
+    return { id: projectId, action: "resolveBrowserPaths", browserPid: pid } as any;
   },
 
   async listRemoteDirectory(projectId: Id, protocolId: Id, path: string) {

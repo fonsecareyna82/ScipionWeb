@@ -38,10 +38,16 @@ type PreviewMeta = {
 };
 
 type RemoteListResult = {
-  cwd: string;
-  dirName?: string; // absolute directory that contains returned items
+  cwd: string; // relative-to-root preferred, can be absolute in older modes
+  dirName?: string; // absolute directory that contains returned items (older)
   absPath?: string; // backend alias (older)
   items: RemoteEntry[];
+};
+
+type ResolveBrowserPathsResult = {
+  rootAbs?: string; // absolute root boundary; default "/home"
+  startPath?: string; // relative-to-root preferred ("" means root); absolute allowed
+  protocolRoot?: string; // relative preferred; absolute allowed
 };
 
 type RemoteFileDialogProps = {
@@ -52,19 +58,20 @@ type RemoteFileDialogProps = {
   projectId?: string | number;
   protocolId?: string | number;
 
+  // initialPathRel: relative to root ("" means root)
   initialPath?: string;
-  resolveStartPath?: () => Promise<string>;
 
-  listRemoteDirectory: (absOrRelPath: string) => Promise<RemoteListResult | RemoteEntry[]>;
+  // resolveBrowserPaths: returns rootAbs + startPath (and optional protocolRoot)
+  resolveBrowserPaths?: () => Promise<ResolveBrowserPathsResult>;
 
-  previewRemoteText?: (absOrRelPath: string) => Promise<string | null>;
+  // all paths are relative to root
+  listRemoteDirectory: (relPath: string) => Promise<RemoteListResult | RemoteEntry[]>;
+  previewRemoteText?: (relPath: string) => Promise<string | null>;
+  fetchInlinePreviewBlob?: (relPath: string) => Promise<{ blob: Blob; meta: PreviewMeta }>;
+  buildDownloadUrl?: (relPath: string, inline?: boolean) => string;
 
-  fetchInlinePreviewBlob?: (absOrRelPath: string) => Promise<{ blob: Blob; meta: PreviewMeta }>;
-
-  buildDownloadUrl?: (absOrRelPath: string, inline?: boolean) => string;
-
-  // alwaysReceivesAbsolutePathFileOrDirectory
-  onPick?: (absolutePath: string) => void;
+  // alwaysReceivesRelativePathToRootFileOrDirectory
+  onPick?: (relativePath: string) => void;
 };
 
 export default function RemoteFileDialog({
@@ -72,22 +79,24 @@ export default function RemoteFileDialog({
   onClose,
   title = "Browse protocol files",
   initialPath = "",
-  resolveStartPath,
+  resolveBrowserPaths,
   listRemoteDirectory,
   previewRemoteText,
   fetchInlinePreviewBlob,
   buildDownloadUrl,
   onPick,
 }: RemoteFileDialogProps) {
-  // directoryState
-  const [cwd, setCwd] = useState<string>(initialPath);
-  const [dirName, setDirName] = useState<string>("");
+  // directoryState (cwdRel is relative to root; "" means root)
+  const [cwdRel, setCwdRel] = useState<string>(initialPath);
   const [items, setItems] = useState<RemoteEntry[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
-  // protocolRootAbsoluteOnceResolved
-  const [protocolRoot, setProtocolRoot] = useState<string>("");
+  // rootBoundaryAbsoluteOnceResolved
+  const [rootAbs, setRootAbs] = useState<string>("/home");
+
+  // protocolRootRelativeOnceResolved
+  const [protocolRootRel, setProtocolRootRel] = useState<string>("");
 
   // selectionState
   const [selected, setSelected] = useState<RemoteEntry | null>(null);
@@ -148,82 +157,86 @@ export default function RemoteFileDialog({
   }, []);
 
   /** normalizePosixPath */
-  const normalizePosixPath = (p: string) => (p || "").replace(/\\/g, "/").replace(/\/+/g, "/");
+  const normalizePosixPath = (p: string) => (p || "").replace(/\\/g, "/").replace(/\/+/g, "/").trim();
 
-  /** joinPosixPaths */
-  const joinPosixPaths = (base: string, leaf: string) => {
-    const b = normalizePosixPath(base).replace(/\/+$/g, "");
-    const l = normalizePosixPath(leaf).replace(/^\/+/g, "");
-    if (!b) return l;
-    if (!l) return b;
-    return normalizePosixPath(`${b}/${l}`);
+  /** normalizeAbsPath */
+  const normalizeAbsPath = (p: string) => {
+    const n = normalizePosixPath(p || "");
+    if (!n.startsWith("/")) return "";
+    if (n === "/") return "/";
+    return n.replace(/\/+$/g, "");
   };
 
-  /** getCurrentDirAbs */
-  const getCurrentDirAbs = () => {
-    const dn = normalizePosixPath(dirName || "");
-    if (dn.startsWith("/")) return dn;
+  /** normalizeRelPath */
+  const normalizeRelPath = (p: string) => {
+    const raw = normalizePosixPath(p || "").replace(/^\/+/g, "");
+    if (!raw) return "";
 
-    const c = normalizePosixPath(cwd || "");
-    if (c.startsWith("/")) return c;
+    const parts = raw.split("/").filter(Boolean);
+    const out: string[] = [];
 
-    const pr = normalizePosixPath(protocolRoot || "");
-    if (pr.startsWith("/")) return joinPosixPaths(pr, c);
-
-    return "";
-  };
-
-  /** buildAbsolutePathForEntry */
-  const buildAbsolutePathForEntry = (entry: RemoteEntry) => {
-    const p = normalizePosixPath(entry?.path || entry?.name || "");
-    if (!p) return "";
-
-    // keepAbsolutePathIfProvided
-    if (p.startsWith("/")) return p;
-
-    // newBackendContract: item.pathIsLeafSoJoin(dirName, item.path)
-    const baseAbs = getCurrentDirAbs();
-    if (baseAbs) return joinPosixPaths(baseAbs, p);
-
-    // fallbackIfNoDirNameYet
-    const c = normalizePosixPath(cwd || "");
-    if (c.startsWith("/")) return joinPosixPaths(c, p);
-
-    const pr = normalizePosixPath(protocolRoot || "");
-    if (pr.startsWith("/")) return joinPosixPaths(joinPosixPaths(pr, c), p);
-
-    return joinPosixPaths(c, p);
-  };
-
-  /** getParentAbsPath */
-  const getParentAbsPath = (absDir: string): string | null => {
-    const normalized = normalizePosixPath(absDir);
-    if (!normalized || !normalized.startsWith("/")) return null;
-    if (normalized === "/") return null;
-
-    if (normalized.startsWith("/home")) {
-      if (normalized === "/home") return null;
-      const parts = normalized.split("/").filter(Boolean);
-      if (parts.length <= 1) return null;
-      return "/" + parts.slice(0, -1).join("/");
+    for (const part of parts) {
+      if (part === ".") continue;
+      if (part === "..") {
+        if (out.length > 0) out.pop();
+        continue; // clamp: never go above root
+      }
+      out.push(part);
     }
 
-    const parts = normalized.split("/").filter(Boolean);
-    if (parts.length <= 1) return "/";
-    return "/" + parts.slice(0, -1).join("/");
+    return out.join("/");
   };
 
-  /** inferProjectFolderFromKnownPath */
-  const inferProjectFolderFromKnownPath = (p: string) => {
-    const norm = normalizePosixPath(p || "");
-    if (!norm) return "";
+  /** joinRelPaths */
+  const joinRelPaths = (baseRel: string, leaf: string) => {
+    const b = normalizeRelPath(baseRel || "");
+    const l = normalizeRelPath(leaf || "");
+    if (!b) return l;
+    if (!l) return b;
+    return normalizeRelPath(`${b}/${l}`);
+  };
 
-    const runsMarker = "/Runs/";
-    if (norm.includes(runsMarker)) return norm.split(runsMarker)[0] || "";
+  /** absToRelIfInsideRoot */
+  const absToRelIfInsideRoot = (absPath: string, rootPathAbs: string) => {
+    const absNorm = normalizeAbsPath(absPath);
+    const rootNorm = normalizeAbsPath(rootPathAbs);
 
-    if (norm.endsWith("/Runs")) return norm.slice(0, -"/Runs".length) || "";
+    if (!absNorm || !rootNorm) return null;
+    if (rootNorm === "/") return normalizeRelPath(absNorm.slice(1));
 
-    return norm;
+    if (absNorm === rootNorm) return "";
+    if (absNorm.startsWith(`${rootNorm}/`)) {
+      return normalizeRelPath(absNorm.slice(rootNorm.length + 1));
+    }
+    return null;
+  };
+
+  /** getParentRelPath */
+  const getParentRelPath = (relPath: string): string | null => {
+    const r = normalizeRelPath(relPath || "");
+    if (!r) return null;
+    const parts = r.split("/").filter(Boolean);
+    if (parts.length <= 1) return "";
+    return parts.slice(0, -1).join("/");
+  };
+
+  /** buildRelPathForEntry */
+  const buildRelPathForEntry = (entry: RemoteEntry) => {
+    const raw = normalizePosixPath(entry?.path || entry?.name || "");
+    if (!raw) return "";
+
+    // absolute path in older modes: convert if it is inside root; otherwise fallback to basename under cwdRel
+    if (raw.startsWith("/")) {
+      const rel = absToRelIfInsideRoot(raw, rootAbs);
+      if (rel !== null) return rel;
+
+      const parts = raw.split("/").filter(Boolean);
+      const baseName = parts.length ? parts[parts.length - 1] : "";
+      return joinRelPaths(cwdRel, baseName);
+    }
+
+    // new backend contract: entry.path is leaf
+    return joinRelPaths(cwdRel, raw);
   };
 
   // decideIfTextLike
@@ -286,43 +299,48 @@ export default function RemoteFileDialog({
   };
 
   /** refresh */
-  const refresh = async (pathAbsOrRel: string) => {
+  const refresh = async (relPath: string, rootAbsOverride?: string) => {
     try {
       setLoading(true);
       setError(null);
 
-      const listing = await listRemoteDirectory(pathAbsOrRel);
+      const effectiveRootAbs = normalizeAbsPath(rootAbsOverride || rootAbs) || "/home";
+      const safeRel = normalizeRelPath(relPath || "");
+      const listing = await listRemoteDirectory(safeRel);
 
       let nextItems: RemoteEntry[] = [];
-      let nextCwd = "";
-      let nextDirName = "";
+      let nextCwdRel = safeRel;
 
       if (Array.isArray(listing)) {
         // backwardCompatibleModeOnlyItems
         nextItems = listing;
-        nextCwd = pathAbsOrRel || "";
-
-        const req = normalizePosixPath(pathAbsOrRel || "");
-        if (req.startsWith("/") && req !== "/") nextDirName = req;
       } else if (listing && Array.isArray((listing as RemoteListResult).items)) {
         const result = listing as RemoteListResult;
         nextItems = result.items;
-        nextCwd = typeof result.cwd === "string" ? result.cwd : pathAbsOrRel || "";
 
-        const dn = (result.dirName || "").trim();
-        const ap = (result.absPath || "").trim();
+        // prefer cwd as relative-to-root; accept absolute in older responses
+        const maybeCwd = normalizePosixPath(result.cwd || "");
+        if (maybeCwd.startsWith("/")) {
+          const rel = absToRelIfInsideRoot(maybeCwd, effectiveRootAbs);
+          nextCwdRel = rel !== null ? rel : safeRel;
+        } else {
+          nextCwdRel = normalizeRelPath(maybeCwd) || safeRel;
+        }
 
-        if (dn) nextDirName = normalizePosixPath(dn);
-        else if (ap) nextDirName = normalizePosixPath(ap);
-        else {
-          const req = normalizePosixPath(pathAbsOrRel || "");
-          if (req.startsWith("/") && req !== "/") nextDirName = req;
+        // if older returns only dirName/absPath as absolute, try to derive cwdRel from it
+        if (!result.cwd) {
+          const dn = normalizePosixPath((result.dirName || "").trim());
+          const ap = normalizePosixPath((result.absPath || "").trim());
+          const absGuess = dn || ap;
+          if (absGuess.startsWith("/")) {
+            const rel = absToRelIfInsideRoot(absGuess, effectiveRootAbs);
+            if (rel !== null) nextCwdRel = rel;
+          }
         }
       }
 
       setItems(nextItems);
-      setCwd(nextCwd);
-      setDirName(nextDirName);
+      setCwdRel(nextCwdRel);
 
       // resetSelectionAndPreviewsOnDirectoryChange
       setSelected(null);
@@ -343,29 +361,23 @@ export default function RemoteFileDialog({
 
   const enterDir = (entry: RemoteEntry) => {
     if (!entry.isDir) return;
-    const nextAbsDir = buildAbsolutePathForEntry(entry);
-    void refresh(nextAbsDir);
+    const nextRelDir = buildRelPathForEntry(entry);
+    void refresh(nextRelDir);
   };
 
   const goUp = () => {
-    const baseAbs = getCurrentDirAbs();
-    const parentAbs = getParentAbsPath(baseAbs);
-    if (!parentAbs) return;
-    void refresh(parentAbs);
+    const parentRel = getParentRelPath(cwdRel);
+    if (parentRel === null) return;
+    void refresh(parentRel);
   };
 
-  const goHome = () => {
-    void refresh("/home");
-  };
-
-  const goProjectRoot = () => {
-    const baseAbs = getCurrentDirAbs();
-    const projectPath = inferProjectFolderFromKnownPath(baseAbs);
-    void refresh(projectPath || baseAbs || "");
+  const goRoot = () => {
+    void refresh("");
   };
 
   const goProtocolRoot = () => {
-    void refresh(protocolRoot || "");
+    if (!protocolRootRel) return;
+    void refresh(protocolRootRel);
   };
 
   const loadTextPreview = async (entry: RemoteEntry) => {
@@ -376,8 +388,8 @@ export default function RemoteFileDialog({
     setPreviewText("");
     setPreviewLoading(true);
     try {
-      const absPath = buildAbsolutePathForEntry(entry);
-      const text = await previewRemoteText(absPath);
+      const relPath = buildRelPathForEntry(entry);
+      const text = await previewRemoteText(relPath);
       setPreviewText(text || "");
     } catch {
       setPreviewText("");
@@ -401,8 +413,8 @@ export default function RemoteFileDialog({
     setImgLoading(true);
 
     try {
-      const absPath = buildAbsolutePathForEntry(entry);
-      const { blob, meta } = await fetchInlinePreviewBlob(absPath);
+      const relPath = buildRelPathForEntry(entry);
+      const { blob, meta } = await fetchInlinePreviewBlob(relPath);
       const objUrl = URL.createObjectURL(blob);
       setImgUrl(objUrl);
       setImgMeta(meta || {});
@@ -438,17 +450,15 @@ export default function RemoteFileDialog({
 
   const handlePick = () => {
     if (!selected || !onPick) return;
-    const absPath = buildAbsolutePathForEntry(selected);
-    if (!absPath) return;
-    onPick(absPath);
+    const relPath = buildRelPathForEntry(selected);
+    onPick(relPath);
     onClose();
   };
 
   const handleDownload = () => {
     if (!selected || selected.isDir || !buildDownloadUrl) return;
-    const absPath = buildAbsolutePathForEntry(selected);
-    if (!absPath) return;
-    const url = buildDownloadUrl(absPath, false);
+    const relPath = buildRelPathForEntry(selected);
+    const url = buildDownloadUrl(relPath, false);
     window.open(url, "_blank");
   };
 
@@ -463,8 +473,7 @@ export default function RemoteFileDialog({
       if (!open) {
         // resetStateWhenClosed
         setItems([]);
-        setCwd(initialPath || "");
-        setDirName("");
+        setCwdRel(normalizeRelPath(initialPath || ""));
         setSelected(null);
         setPreviewText("");
         setPreviewLoading(false);
@@ -477,35 +486,53 @@ export default function RemoteFileDialog({
         return;
       }
 
-      let startPath = initialPath || "";
+      let nextRootAbs = "/home";
+      let startRel = normalizeRelPath(initialPath || "");
+      let nextProtocolRootRel = "";
 
-      // resolveProtocolRootOnce
-      if (resolveStartPath) {
+      if (resolveBrowserPaths) {
         try {
-          const resolved = await resolveStartPath();
+          const resolved = await resolveBrowserPaths();
           if (!mounted) return;
-          if (resolved) {
-            startPath = resolved;
-            setProtocolRoot(resolved);
 
-            // setInitialDirNameOptimisticallyForBetterHeader
-            const resolvedNorm = normalizePosixPath(resolved);
-            if (resolvedNorm.startsWith("/") && resolvedNorm !== "/") {
-              setDirName(resolvedNorm);
+          const resolvedRootAbs = normalizeAbsPath(resolved?.rootAbs || "") || "/home";
+          nextRootAbs = resolvedRootAbs;
+
+          // normalizeStartPath (prefer relative; accept absolute inside root)
+          const startRaw = normalizePosixPath(resolved?.startPath || "");
+          if (startRaw.startsWith("/")) {
+            const rel = absToRelIfInsideRoot(startRaw, resolvedRootAbs);
+            startRel = rel !== null ? rel : "";
+          } else {
+            startRel = normalizeRelPath(startRaw);
+          }
+
+          // normalizeProtocolRoot (optional; fallback to startRel)
+          const protoRaw = normalizePosixPath(resolved?.protocolRoot || "");
+          if (protoRaw) {
+            if (protoRaw.startsWith("/")) {
+              const rel = absToRelIfInsideRoot(protoRaw, resolvedRootAbs);
+              nextProtocolRootRel = rel !== null ? rel : startRel;
+            } else {
+              nextProtocolRootRel = normalizeRelPath(protoRaw);
             }
+          } else {
+            nextProtocolRootRel = startRel;
           }
         } catch {
-          // ignoreResolveErrorsAndFallbackToInitialPath
+          // ignoreResolveErrorsAndFallbackToInitialPath + defaultRoot
+          nextRootAbs = "/home";
+          startRel = normalizeRelPath(initialPath || "");
+          nextProtocolRootRel = startRel;
         }
       } else {
-        // setInitialDirNameOptimisticallyIfAbsolute
-        const startNorm = normalizePosixPath(startPath);
-        if (startNorm.startsWith("/") && startNorm !== "/") {
-          setDirName(startNorm);
-        }
+        nextProtocolRootRel = startRel;
       }
 
-      await refresh(startPath);
+      setRootAbs(nextRootAbs);
+      setProtocolRootRel(nextProtocolRootRel);
+
+      await refresh(startRel, nextRootAbs);
     };
 
     void boot();
@@ -515,16 +542,13 @@ export default function RemoteFileDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  const baseAbs = getCurrentDirAbs();
-  const parentAbs = getParentAbsPath(baseAbs);
-  const showParentEntry = !!parentAbs && !loading && !error;
+  const parentRel = getParentRelPath(cwdRel);
+  const showParentEntry = parentRel !== null && !loading && !error;
 
   const directoryLabel = useMemo(() => {
-    const d = baseAbs || dirName || "";
-    if (d && d !== "/") return d;
-    if (protocolRoot) return protocolRoot;
-    return cwd && cwd !== "/" ? cwd : "";
-  }, [baseAbs, dirName, protocolRoot, cwd]);
+  const rel = normalizeRelPath(cwdRel || "");
+  return rel ? `./${rel}` : ".";
+}, [cwdRel]);
 
   return (
     <Dialog
@@ -559,31 +583,24 @@ export default function RemoteFileDialog({
 
         {/* toolbar */}
         <div className={styles.toolbar}>
-          <button type="button" onClick={goUp} className={styles.ppChipBtn} disabled={!parentAbs}>
+          <button type="button" onClick={goUp} className={styles.ppChipBtn} disabled={parentRel === null}>
             <CornerUpLeft className={styles.iconSm} />
             Up
           </button>
 
-          <button type="button" onClick={goHome} className={styles.ppChipBtn}>
+          <button type="button" onClick={goRoot} className={styles.ppChipBtn}>
             <Home className={styles.iconSm} />
-            Home
+            Root
           </button>
 
-          {/*
-          <button type="button" onClick={goProjectRoot} className={styles.ppChipBtn} disabled={!baseAbs}>
-            <FolderOpen className={styles.iconSm} />
-            Project folder
-          </button>
-          */}
-
-          <button type="button" onClick={goProtocolRoot} className={styles.ppChipBtn} disabled={!protocolRoot}>
+          <button type="button" onClick={goProtocolRoot} className={styles.ppChipBtn} disabled={!protocolRootRel}>
             <FolderOpen className={styles.iconSm} />
             Protocol folder
           </button>
 
           <button
             type="button"
-            onClick={() => void refresh(baseAbs || cwd || "")}
+            onClick={() => void refresh(cwdRel || "")}
             disabled={loading}
             title="Refresh this directory"
             className={styles.ppChipBtn}
@@ -591,7 +608,6 @@ export default function RemoteFileDialog({
             {loading ? <Loader2 className={styles.iconSpinSm} /> : <RefreshCw className={styles.iconSm} />}
             Refresh
           </button>
-
         </div>
 
         {/* body */}

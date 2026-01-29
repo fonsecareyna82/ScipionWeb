@@ -97,8 +97,8 @@ const defaultService: ProjectService = {
   stopProtocol: (projectId: Id, ids: string[]) =>
     api.stopProtocol(toId(projectId), ids),
 
-  resolveProtocolStartPath: (projectId: Id, protocolId: Id) =>
-    api.resolveProtocolStartPath(toId(projectId), toId(protocolId)),
+  resolveBrowserPaths: (projectId: Id, protocolId: Id) =>
+    api.resolveBrowserPaths(toId(projectId), toId(protocolId)),
 
   listRemoteDirectory: (projectId: Id, protocolId: Id, path: string) =>
     api.listRemoteDirectory(toId(projectId), toId(protocolId), path),

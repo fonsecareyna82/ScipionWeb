@@ -3447,7 +3447,7 @@ export default function ProjectPage() {
             title={`Browsing — ${plabel}`}
             projectId={projId}
             protocolId={pid}
-            resolveStartPath={() => svc.resolveProtocolStartPath(projId, pid.toString())}
+            resolveBrowserPaths={() => svc.resolveBrowserPaths(projId, pid.toString())}
             listRemoteDirectory={(p) => svc.listRemoteDirectory(projId, pid.toString(), p)}
             previewRemoteText={(p) => svc.previewProtocolText(projId, pid.toString(), p)}
             buildDownloadUrl={(p, inline) => svc.buildProtocolDownloadUrl(projId.toString(), pid.toString(), p, !!inline)}

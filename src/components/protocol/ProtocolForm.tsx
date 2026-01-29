@@ -3810,12 +3810,8 @@ export default function ProtocolForm({
           title={`Select file for ${pathDialog.paramKey}`}
           projectId={projectId}
           protocolId={protocolId}
-          resolveStartPath={() =>
-            svc.resolveProtocolStartPath(projectId, String(protocolId))
-          }
-          listRemoteDirectory={(p) =>
-            svc.listRemoteDirectory(projectId, String(protocolId), p)
-          }
+          resolveBrowserPaths={() => svc.resolveBrowserPaths(projectId, protocolId.toString())}
+          listRemoteDirectory={(p) => svc.listRemoteDirectory(projectId, protocolId.toString(), p)}
           previewRemoteText={(p) =>
             svc.previewProtocolText(projectId, String(protocolId), p)
           }

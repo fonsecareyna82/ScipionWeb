@@ -557,17 +557,49 @@ export interface RemoteListing {
   items: RemoteEntry[];
 }
 
-export async function resolveProtocolStartPath(
+export type ResolveBrowserPathsResult = {
+  rootAbs?: string; // absolute root boundary; default "/home"
+  startPath?: string; // relative-to-root preferred ("" means root); absolute allowed
+  protocolRoot?: string; // relative preferred; absolute allowed
+};
+
+export async function resolveBrowserPaths(
   projectId: Id,
   protocolId: Id,
-): Promise<string> {
+): Promise<ResolveBrowserPathsResult> {
   const res = await fetchWithAuth(
     `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/fs/start-path`,
   );
-  if (!res.ok) throw await toApiError(res, "Failed to resolve start path");
-  const j = await safeJson<{ path?: string }>(res);
-  return j?.path || "/";
+  if (!res.ok) throw await toApiError(res, "Failed to resolve browser paths");
+
+  const j = await safeJson<{
+    // new contract
+    rootAbs?: string;
+    startPath?: string;
+    protocolRoot?: string;
+
+    // legacy contract
+    path?: string;
+  }>(res);
+
+  // preferNewContract
+  if (j && (j.rootAbs || j.startPath || j.protocolRoot)) {
+    return {
+      rootAbs: j.rootAbs || "/home",
+      startPath: j.startPath ?? "",
+      protocolRoot: j.protocolRoot,
+    };
+  }
+
+  // legacyFallback
+  const legacyPath = j?.path || "/";
+  return {
+    rootAbs: "/home",
+    startPath: legacyPath,
+    protocolRoot: legacyPath,
+  };
 }
+
 
 export async function listProtocolDir(
   projectId: Id,
