@@ -54,8 +54,9 @@
   padding-top: 16px;
   padding-bottom: 16px;
 
-  background: #d1d5db;
-  border-bottom: 1px solid #e5e7eb;
+  background: linear-gradient(90deg, #111827, #1f2937);
+  background-color: #111827;
+  border-bottom: 1px solid #152d52;
   border-top-left-radius: 0.5rem;
   border-top-right-radius: 0.5rem;
 
@@ -65,7 +66,7 @@
 :global(.dark) .headerBar,
 :global(.projectpage-widget-root.dark) .headerBar {
   background: #1f2937;
-  border-bottom-color: #374151;
+  border-bottom-color: #445137;
 }
 
 .headerTitle {
@@ -74,7 +75,8 @@
   color: #374151;
   display: flex;
   flex-direction: column;
-  background: #d1d5db;
+   background: linear-gradient(90deg, #111827, #1f2937);
+  background-color: #111827;
 }
 
 :global(.dark) .headerTitle,
@@ -545,6 +547,39 @@
   white-space: nowrap;
 }
 
+.headerTitleText {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: white;
+}
+
+/* Override close button color */
+:global(.pp-dialogClose) {
+  color: rgba(148, 163, 184, 0.85);
+}
+
+/* Hover */
+:global(.pp-dialogClose:hover) {
+  color: rgba(148, 163, 184, 0.85);
+}
+
+/* Optional: focus ring look */
+:global(.pp-dialogClose:focus-visible) {
+  outline: 2px solid rgba(148, 163, 184, 0.35);
+  outline-offset: 2px;
+}
+
+/* Only when the dialog content includes RemoteFileDialog's dialogContent class */
+:global(.pp-dialogContent).dialogContent :global(.pp-dialogClose) {
+  color: rgba(148, 163, 184, 0.85);
+}
+
+:global(.pp-dialogContent).dialogContent :global(.pp-dialogClose:hover) {
+  color: rgba(226, 232, 240, 0.95);
+}
+
+
 .srOnly {
   position: absolute;
   width: 1px;
@@ -586,6 +621,7 @@
   from {
     transform: rotate(0deg);
   }
+
   to {
     transform: rotate(360deg);
   }

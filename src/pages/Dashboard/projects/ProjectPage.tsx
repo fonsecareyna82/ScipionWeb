@@ -3108,7 +3108,7 @@ export default function ProjectPage() {
               >
                 <button className="pp-canvasMenuItem" onClick={handleAddProtocolFromContext}>
                   <PlusIcon className="pp-canvasMenuIcon" />
-                  <span>Add protocol</span>
+                  <span className="text-sm mb-1">Add protocol</span>
                 </button>
 
                 <div className="pp-canvasMenuSep" />
@@ -3118,7 +3118,7 @@ export default function ProjectPage() {
                   onClick={() => { handleRefresh(); handleCloseMenu(); }}
                 >
                   <RefreshCw className="pp-canvasMenuIcon" />
-                  <span>Refresh graph</span>
+                  <span className="text-sm mb-2">Refresh graph</span>
                 </button>
 
                 <button
@@ -3126,7 +3126,7 @@ export default function ProjectPage() {
                   onClick={() => { clearAllSelectionHard(); applyEdgeHighlight(null); handleCloseMenu(); }}
                 >
                   <XCircle className="pp-canvasMenuIcon" />
-                  <span>Clear selection</span>
+                  <span className="text-sm">Clear selection</span>
                 </button>
               </div>
             )}

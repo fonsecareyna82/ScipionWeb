@@ -1112,7 +1112,7 @@
 .projectpage-widget-root .pp-canvasMenuIcon {
   width: 16px;
   height: 16px;
-  color: currentColor;
+  color: gray;
   stroke: currentColor;
   flex: 0 0 auto;
 }

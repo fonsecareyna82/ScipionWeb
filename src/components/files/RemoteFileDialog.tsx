@@ -1,5 +1,5 @@
 // src/components/RemoteFileDialog.tsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -15,6 +15,9 @@ import {
   Home,
   Loader2,
   AlertCircle,
+  Search,
+  ArrowUp,
+  ArrowDown,
 } from "lucide-react";
 
 import styles from "./RemoteFileDialog.module.css";
@@ -74,6 +77,8 @@ type RemoteFileDialogProps = {
   onPick?: (relativePath: string) => void;
 };
 
+type SortDir = "asc" | "desc";
+
 export default function RemoteFileDialog({
   open,
   onClose,
@@ -101,6 +106,10 @@ export default function RemoteFileDialog({
   // selectionState
   const [selected, setSelected] = useState<RemoteEntry | null>(null);
 
+  // search / sort state
+  const [filterText, setFilterText] = useState<string>("");
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
+
   // textPreviewState
   const [previewText, setPreviewText] = useState<string>("");
   const [previewLoading, setPreviewLoading] = useState<boolean>(false);
@@ -112,6 +121,13 @@ export default function RemoteFileDialog({
 
   // portalContainer
   const [portalContainer, setPortalContainer] = useState<HTMLElement | null>(null);
+
+  // hardening refs
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const refreshSeqRef = useRef<number>(0);
+  const textPreviewSeqRef = useRef<number>(0);
+  const imgPreviewSeqRef = useRef<number>(0);
+  const imgUrlRef = useRef<string>("");
 
   // fixedLayoutSizes
   const dialogWidthClass = styles.dialogWidth;
@@ -239,6 +255,15 @@ export default function RemoteFileDialog({
     return joinRelPaths(cwdRel, raw);
   };
 
+  /** revokeObjectUrlSafe */
+  const revokeObjectUrlSafe = (url: string) => {
+    try {
+      if (url) URL.revokeObjectURL(url);
+    } catch {
+      // ignoreRevokeErrors
+    }
+  };
+
   // decideIfTextLike
   const looksTextLike = (entry: RemoteEntry): boolean => {
     if (entry.isDir) return false;
@@ -300,6 +325,8 @@ export default function RemoteFileDialog({
 
   /** refresh */
   const refresh = async (relPath: string, rootAbsOverride?: string) => {
+    const seq = ++refreshSeqRef.current;
+
     try {
       setLoading(true);
       setError(null);
@@ -307,6 +334,9 @@ export default function RemoteFileDialog({
       const effectiveRootAbs = normalizeAbsPath(rootAbsOverride || rootAbs) || "/home";
       const safeRel = normalizeRelPath(relPath || "");
       const listing = await listRemoteDirectory(safeRel);
+
+      // ignoreStaleRefreshResults
+      if (refreshSeqRef.current !== seq) return;
 
       let nextItems: RemoteEntry[] = [];
       let nextCwdRel = safeRel;
@@ -347,15 +377,20 @@ export default function RemoteFileDialog({
       setPreviewText("");
       setPreviewLoading(false);
 
-      if (imgUrl) URL.revokeObjectURL(imgUrl);
+      textPreviewSeqRef.current += 1;
+      imgPreviewSeqRef.current += 1;
+
+      revokeObjectUrlSafe(imgUrlRef.current);
+      imgUrlRef.current = "";
       setImgUrl("");
       setImgMeta({});
       setImgLoading(false);
     } catch (e: unknown) {
+      if (refreshSeqRef.current !== seq) return;
       const msg = e instanceof Error ? e.message : "Failed to list directory contents";
       setError(msg);
     } finally {
-      setLoading(false);
+      if (refreshSeqRef.current === seq) setLoading(false);
     }
   };
 
@@ -385,29 +420,37 @@ export default function RemoteFileDialog({
     if (entry.isDir) return;
     if (!looksTextLike(entry)) return;
 
+    const seq = ++textPreviewSeqRef.current;
+
     setPreviewText("");
     setPreviewLoading(true);
     try {
       const relPath = buildRelPathForEntry(entry);
       const text = await previewRemoteText(relPath);
+      if (textPreviewSeqRef.current !== seq) return;
       setPreviewText(text || "");
     } catch {
+      if (textPreviewSeqRef.current !== seq) return;
       setPreviewText("");
     } finally {
-      setPreviewLoading(false);
+      if (textPreviewSeqRef.current === seq) setPreviewLoading(false);
     }
   };
 
   const loadImagePreview = async (entry: RemoteEntry) => {
     if (!looksImageLike(entry)) return;
     if (!fetchInlinePreviewBlob) {
+      revokeObjectUrlSafe(imgUrlRef.current);
+      imgUrlRef.current = "";
       setImgUrl("");
       setImgMeta({});
       return;
     }
 
-    if (imgUrl) URL.revokeObjectURL(imgUrl);
+    const seq = ++imgPreviewSeqRef.current;
 
+    revokeObjectUrlSafe(imgUrlRef.current);
+    imgUrlRef.current = "";
     setImgUrl("");
     setImgMeta({});
     setImgLoading(true);
@@ -415,14 +458,21 @@ export default function RemoteFileDialog({
     try {
       const relPath = buildRelPathForEntry(entry);
       const { blob, meta } = await fetchInlinePreviewBlob(relPath);
+      if (imgPreviewSeqRef.current !== seq) return;
+
       const objUrl = URL.createObjectURL(blob);
+      imgUrlRef.current = objUrl;
+
       setImgUrl(objUrl);
       setImgMeta(meta || {});
     } catch {
+      if (imgPreviewSeqRef.current !== seq) return;
+      revokeObjectUrlSafe(imgUrlRef.current);
+      imgUrlRef.current = "";
       setImgUrl("");
       setImgMeta({});
     } finally {
-      setImgLoading(false);
+      if (imgPreviewSeqRef.current === seq) setImgLoading(false);
     }
   };
 
@@ -433,6 +483,7 @@ export default function RemoteFileDialog({
     if (!entry.isDir && looksTextLike(entry) && previewRemoteText) {
       void loadTextPreview(entry);
     } else {
+      textPreviewSeqRef.current += 1;
       setPreviewText("");
       setPreviewLoading(false);
     }
@@ -441,7 +492,9 @@ export default function RemoteFileDialog({
     if (!entry.isDir && looksImageLike(entry)) {
       void loadImagePreview(entry);
     } else {
-      if (imgUrl) URL.revokeObjectURL(imgUrl);
+      imgPreviewSeqRef.current += 1;
+      revokeObjectUrlSafe(imgUrlRef.current);
+      imgUrlRef.current = "";
       setImgUrl("");
       setImgMeta({});
       setImgLoading(false);
@@ -455,15 +508,41 @@ export default function RemoteFileDialog({
     onClose();
   };
 
-  const handleDownload = () => {
-    if (!selected || selected.isDir || !buildDownloadUrl) return;
-    const relPath = buildRelPathForEntry(selected);
-    const url = buildDownloadUrl(relPath, false);
-    window.open(url, "_blank");
-  };
-
   const handleDialogClick: React.MouseEventHandler = (e) => {
     e.stopPropagation();
+  };
+
+  /** isTextInputTarget */
+  const isTextInputTarget = (t: EventTarget | null) => {
+    const el = t as HTMLElement | null;
+    if (!el) return false;
+    const tag = (el.tagName || "").toLowerCase();
+    if (tag === "input" || tag === "textarea" || tag === "select") return true;
+    return !!el.getAttribute?.("contenteditable");
+  };
+
+  /** moveSelectionBy */
+  const moveSelectionBy = (delta: number, visibleList: RemoteEntry[]) => {
+    if (!visibleList.length) return;
+
+    const currIndex = selected
+      ? visibleList.findIndex((e) => e.name === selected.name && e.path === selected.path)
+      : -1;
+
+    const baseIndex = currIndex >= 0 ? currIndex : delta > 0 ? -1 : visibleList.length;
+    const nextIndex = Math.max(0, Math.min(visibleList.length - 1, baseIndex + delta));
+    const next = visibleList[nextIndex];
+    if (next) handleSelectEntry(next);
+  };
+
+  /** focusSearch */
+  const focusSearch = () => {
+    try {
+      searchInputRef.current?.focus();
+      searchInputRef.current?.select();
+    } catch {
+      // ignoreFocusErrors
+    }
   };
 
   useEffect(() => {
@@ -472,13 +551,19 @@ export default function RemoteFileDialog({
     const boot = async () => {
       if (!open) {
         // resetStateWhenClosed
+        refreshSeqRef.current += 1;
+        textPreviewSeqRef.current += 1;
+        imgPreviewSeqRef.current += 1;
+
         setItems([]);
         setCwdRel(normalizeRelPath(initialPath || ""));
         setSelected(null);
+        setFilterText("");
         setPreviewText("");
         setPreviewLoading(false);
 
-        if (imgUrl) URL.revokeObjectURL(imgUrl);
+        revokeObjectUrlSafe(imgUrlRef.current);
+        imgUrlRef.current = "";
         setImgUrl("");
         setImgMeta({});
         setImgLoading(false);
@@ -545,10 +630,103 @@ export default function RemoteFileDialog({
   const parentRel = getParentRelPath(cwdRel);
   const showParentEntry = parentRel !== null && !loading && !error;
 
-  const directoryLabel = useMemo(() => {
-  const rel = normalizeRelPath(cwdRel || "");
-  return rel ? `./${rel}` : ".";
-}, [cwdRel]);
+  const breadcrumbs = useMemo(() => {
+    const rel = normalizeRelPath(cwdRel || "");
+    const parts = rel ? rel.split("/").filter(Boolean) : [];
+    const crumbs: { label: string; relPath: string }[] = [{ label: ".", relPath: "" }];
+
+    let acc = "";
+    for (const p of parts) {
+      acc = acc ? `${acc}/${p}` : p;
+      crumbs.push({ label: p, relPath: acc });
+    }
+    return crumbs;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cwdRel]);
+
+  const visibleItems = useMemo(() => {
+    const needle = (filterText || "").trim().toLowerCase();
+
+    const filtered = !needle
+      ? items
+      : items.filter((e) => (e.name || "").toLowerCase().includes(needle));
+
+    const dirMult = sortDir === "asc" ? 1 : -1;
+
+    const sorted = [...filtered].sort((a, b) => {
+      // foldersFirstAlways
+      if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
+
+      // nameOnlySort
+      const na = (a.name || "").toLowerCase();
+      const nb = (b.name || "").toLowerCase();
+      if (na === nb) return 0;
+      return na < nb ? -1 * dirMult : 1 * dirMult;
+    });
+
+    return sorted;
+  }, [items, filterText, sortDir]);
+
+  useEffect(() => {
+    // keepSelectionIfStillVisible
+    if (!selected) return;
+    const stillThere = visibleItems.some((e) => e.name === selected.name && e.path === selected.path);
+    if (!stillThere) setSelected(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleItems]);
+
+  const onKeyDown: React.KeyboardEventHandler = (e) => {
+    if (!open) return;
+
+    // doNotHijackTypingInInputs
+    if (isTextInputTarget(e.target)) {
+      if ((e.ctrlKey || e.metaKey) && (e.key === "f" || e.key === "F")) {
+        e.preventDefault();
+        focusSearch();
+      }
+      return;
+    }
+
+    if ((e.ctrlKey || e.metaKey) && (e.key === "f" || e.key === "F")) {
+      e.preventDefault();
+      focusSearch();
+      return;
+    }
+
+    if (e.key === "Escape") {
+      e.preventDefault();
+      onClose();
+      return;
+    }
+
+    if (e.key === "Backspace") {
+      e.preventDefault();
+      goUp();
+      return;
+    }
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      moveSelectionBy(1, visibleItems);
+      return;
+    }
+
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      moveSelectionBy(-1, visibleItems);
+      return;
+    }
+
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (!selected) return;
+      if (selected.isDir) enterDir(selected);
+      else handlePick();
+    }
+  };
+
+  const toggleSortDir = () => setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+  const SortDirIcon = sortDir === "asc" ? ArrowUp : ArrowDown;
 
   return (
     <Dialog
@@ -559,6 +737,8 @@ export default function RemoteFileDialog({
     >
       <DialogContent
         container={portalContainer}
+        tabIndex={-1}
+        onKeyDown={onKeyDown}
         // preventCloseOnOutsideClick
         onInteractOutside={(e) => {
           e.preventDefault();
@@ -573,7 +753,7 @@ export default function RemoteFileDialog({
       >
         <DialogHeader className={styles.headerBar}>
           <DialogTitle className={styles.headerTitle}>
-            <span className={styles.truncate}>{title}</span>
+            <span className={styles.headerTitleText}>{title}</span>
           </DialogTitle>
 
           <DialogDescription className={styles.srOnly}>
@@ -617,7 +797,48 @@ export default function RemoteFileDialog({
             <div className={styles.panelHeader}>
               <div className={styles.panelHeaderLeft}>
                 <div className={styles.panelHeaderTitle}>Directory</div>
-                <div className={styles.panelHeaderPath}>{directoryLabel}</div>
+
+                {/* breadcrumbs (compact, no chips) */}
+                <div
+                  className={styles.panelHeaderPath}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                    gap: 0,
+                    lineHeight: 1.2,
+                  }}
+                >
+                  {breadcrumbs.map((c, idx) => {
+                    const isLast = idx === breadcrumbs.length - 1;
+                    return (
+                      <React.Fragment key={`${c.relPath}-${idx}`}>
+                        <button
+                          type="button"
+                          onClick={() => void refresh(c.relPath)}
+                          disabled={loading || !!error || isLast}
+                          title={c.relPath ? `Go to ./${c.relPath}` : "Go to root"}
+                          style={{
+                            border: "none",
+                            background: "transparent",
+                            padding: 0,
+                            margin: 0,
+                            cursor: isLast ? "default" : "pointer",
+                            color: "inherit",
+                            opacity: isLast ? 0.9 : 0.7,
+                            fontWeight: isLast ? 600 : 500,
+                          }}
+                        >
+                          {c.label}
+                        </button>
+
+                        {!isLast && (
+                          <span style={{ opacity: 0.55, padding: "0 2px", userSelect: "none" }}>/</span>
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
+                </div>
               </div>
 
               {error && (
@@ -637,53 +858,127 @@ export default function RemoteFileDialog({
               )}
 
               {!error && (
-                <ul className={styles.list}>
-                  {showParentEntry && (
-                    <li className={styles.listItem} key="..">
-                      <button className={styles.rowBtn} onClick={goUp} type="button">
-                        <FolderOpen className={styles.iconSmMut} />
-                        <span className={styles.truncate}>..</span>
+                <>
+                  {/* listControls (filter + nameSortHeader) */}
+                  <div
+                    style={{
+                      padding: "10px 10px 0 10px",
+                      borderBottom: "1px solid rgba(148, 163, 184, 0.18)",
+                    }}
+                  >
+                    <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+                      <Search
+                        className={styles.iconSm}
+                        style={{ position: "absolute", left: 10, opacity: 0.7 }}
+                      />
+                      <input
+                        ref={searchInputRef}
+                        value={filterText}
+                        onChange={(e) => setFilterText(e.target.value)}
+                        placeholder="Filter file names…"
+                        aria-label="Filter file names"
+                        style={{
+                          width: "100%",
+                          paddingLeft: 34,
+                          paddingRight: 10,
+                          height: 34,
+                          borderRadius: 10,
+                          border: "1px solid rgba(148, 163, 184, 0.35)",
+                          background: "transparent",
+                          color: "inherit",
+                          outline: "none",
+                          fontSize: 12, // smaller placeholder text (inherits)
+                        }}
+                      />
+                    </div>
+
+                    {/* nameSortHeader (table-like header, different color) */}
+                    <div
+                      style={{
+                        marginTop: 10,
+                        marginLeft: -10,
+                        marginRight: -10,
+                        padding: "8px 10px",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        background: "rgba(148, 163, 184, 0.10)",
+                        borderTop: "1px solid rgba(148, 163, 184, 0.14)",
+                      }}
+                    >
+                      <div style={{ fontSize: 12, opacity: 0.85, fontWeight: 600 }}>Name</div>
+
+                      <button
+                        type="button"
+                        onClick={toggleSortDir}
+                        title={sortDir === "asc" ? "Ascending" : "Descending"}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          width: 30,
+                          height: 26,
+                          borderRadius: 8,
+                          border: "1px solid rgba(148, 163, 184, 0.25)",
+                          background: "rgba(0,0,0,0)",
+                          color: "inherit",
+                          cursor: "pointer",
+                          opacity: 0.9,
+                        }}
+                      >
+                        <SortDirIcon className={styles.iconSm} />
                       </button>
-                    </li>
-                  )}
+                    </div>
+                  </div>
 
-                  {loading && (
-                    <li className={styles.loadingRow} key="loading">
-                      <Loader2 className={styles.iconSpinSmMut} />
-                      <span>Loading…</span>
-                    </li>
-                  )}
+                  <ul className={styles.list}>
+                    {showParentEntry && (
+                      <li className={styles.listItem} key="..">
+                        <button className={styles.rowBtn} onClick={goUp} type="button">
+                          <FolderOpen className={styles.iconSmMut} />
+                          <span className={styles.truncate}>..</span>
+                        </button>
+                      </li>
+                    )}
 
-                  {!loading &&
-                    items.map((entry) => {
-                      const isSel = selected?.name === entry.name && selected?.path === entry.path;
-                      return (
-                        <li key={`${entry.path}-${entry.name}`} className={styles.listItem}>
-                          <button
-                            className={[styles.rowBtn, isSel ? styles.rowBtnSelected : ""].join(" ")}
-                            onClick={() => handleSelectEntry(entry)}
-                            onDoubleClick={() => enterDir(entry)}
-                            type="button"
-                          >
-                            {entry.isDir ? (
-                              <>
-                                <FolderOpen className={styles.iconSmMut} />
-                                <span className={styles.truncate}>{entry.name}</span>
-                              </>
-                            ) : (
-                              <>
-                                <FileIcon className={styles.iconSmMut} />
-                                <span className={styles.truncate}>{entry.name}</span>
-                                <span className={styles.fileSize}>
-                                  {typeof entry.size === "number" ? `${entry.size.toLocaleString()} bytes` : ""}
-                                </span>
-                              </>
-                            )}
-                          </button>
-                        </li>
-                      );
-                    })}
-                </ul>
+                    {loading && (
+                      <li className={styles.loadingRow} key="loading">
+                        <Loader2 className={styles.iconSpinSmMut} />
+                        <span>Loading…</span>
+                      </li>
+                    )}
+
+                    {!loading &&
+                      visibleItems.map((entry) => {
+                        const isSel = selected?.name === entry.name && selected?.path === entry.path;
+                        return (
+                          <li key={`${entry.path}-${entry.name}`} className={styles.listItem}>
+                            <button
+                              className={[styles.rowBtn, isSel ? styles.rowBtnSelected : ""].join(" ")}
+                              onClick={() => handleSelectEntry(entry)}
+                              onDoubleClick={() => enterDir(entry)}
+                              type="button"
+                            >
+                              {entry.isDir ? (
+                                <>
+                                  <FolderOpen className={styles.iconSmMut} />
+                                  <span className={styles.truncate}>{entry.name}</span>
+                                </>
+                              ) : (
+                                <>
+                                  <FileIcon className={styles.iconSmMut} />
+                                  <span className={styles.truncate}>{entry.name}</span>
+                                  <span className={styles.fileSize}>
+                                    {typeof entry.size === "number" ? `${entry.size.toLocaleString()} bytes` : ""}
+                                  </span>
+                                </>
+                              )}
+                            </button>
+                          </li>
+                        );
+                      })}
+                  </ul>
+                </>
               )}
             </div>
           </div>
@@ -775,6 +1070,13 @@ export default function RemoteFileDialog({
                                 <div className={styles.metaRow}>
                                   <span className={styles.metaLabel}>Sampling rate:</span>
                                   <span className={styles.metaValue}>{imgMeta.voxelSize[0].toFixed(1)}</span>
+                                </div>
+                              )}
+
+                              {imgMeta.note && (
+                                <div className={styles.metaRow}>
+                                  <span className={styles.metaLabel}>Note:</span>
+                                  <span className={styles.metaValue}>{imgMeta.note}</span>
                                 </div>
                               )}
                             </div>
