@@ -319,6 +319,14 @@ export default function ProjectPage() {
     setDrawerPortalContainer(contentPortalRef.current);
   }, []);
 
+  // Add near your state declarations
+  const handleProtocolsDrawerOpenChange = useCallback((open: boolean) => {
+    setDrawerOpen(open);
+
+    // Ensure mutual exclusivity: opening Protocols closes Workflows
+    if (open) setWorkflowsOpen(false);
+  }, []);
+
 
   // Last RF point for context menu placement
   const lastPaneRFPointRef = useRef<{ x: number; y: number } | null>(null);
@@ -360,7 +368,8 @@ export default function ProjectPage() {
   const handleOpenWorkflows = useCallback(async () => {
     if (!projectName) return;
 
-    // Always open panel when user clicks
+    // Ensure mutual exclusivity: opening Workflows closes Protocols
+    setDrawerOpen(false);
     setWorkflowsOpen(true);
 
     // Avoid refetch if already loaded or currently loading
@@ -394,6 +403,7 @@ export default function ProjectPage() {
       setWorkflowsLoading(false);
     }
   }, [projectName, svc, workflowsLoading, workflowsLoadedOnce]);
+
 
 
 
@@ -2084,6 +2094,10 @@ export default function ProjectPage() {
   const handleAddProtocolFromContext = () => {
     handleCloseMenu();
 
+    // Ensure mutual exclusivity: opening Protocols closes Workflows
+    setWorkflowsOpen(false);
+    setDrawerOpen(true);
+
     const point = lastPaneRFPointRef.current;
     if (!point) {
       const inst = reactFlowInstanceRef.current;
@@ -2851,7 +2865,7 @@ export default function ProjectPage() {
               <ProtocolsDrawer
                 projectId={project?.id ? Number(project.id) : null}
                 open={drawerOpen}
-                onOpenChange={setDrawerOpen}
+                onOpenChange={handleProtocolsDrawerOpenChange}
                 onProtocolDoubleClick={handleAddProtocolFromDrawer}
                 portalContainer={drawerPortalContainer}
               />

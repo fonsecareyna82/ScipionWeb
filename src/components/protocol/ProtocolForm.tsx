@@ -625,8 +625,13 @@ export default function ProtocolForm({
   const [sectionTab, setSectionTab] = useState(0);
   const [protocolDetails, setProtocolDetails] = useState<any>({});
   const [expandedGroups, setExpandedGroups] = useState<{ [key: string]: boolean }>({});
-  const [execLoading, setExecLoading] = useState(false);
   const [execError, setExecError] = useState<string | null>(null);
+
+  // actionLoadingState
+  const [actionLoading, setActionLoading] = useState<"save" | "execute" | null>(null);
+  const isSaving = actionLoading === "save";
+  const isExecuting = actionLoading === "execute";
+  const isBusy = actionLoading !== null;
 
   // Exit animation state
   const [isClosing, setIsClosing] = useState(false);
@@ -1029,28 +1034,21 @@ export default function ProtocolForm({
     if (!Array.isArray(parsed)) return [];
 
     return parsed.map((item: any) => {
-      if (item === null || item === undefined) return { object: "", info: "" };
+      const objectToken =
+        (item as any)?.object ??
+        (item as any)?.value ??
+        (item as any)?._objValue ??
+        "";
 
-      if (typeof item === "string" || typeof item === "number" || typeof item === "boolean") {
-        return { object: String(item), info: "" };
-      }
+      const objectStr = String(objectToken ?? "");
 
-      if (item && typeof item === "object") {
-        const objectToken =
-          (item as any).object ??
-          (item as any).value ??
-          (item as any)._objValue ??
-          "";
-
-        return {
-          object: String(objectToken ?? ""),
-          info: String((item as any).info ?? ""),
-          pointerClass: String((item as any).pointerClass ?? ""),
-          parentId: (item as any).parentId ?? null,
-        };
-      }
-
-      return { object: "", info: "" };
+      return {
+        object: objectStr,
+        value: objectStr,
+        info: String((item as any)?.info ?? ""),
+        pointerClass: String((item as any)?.pointerClass ?? ""),
+        parentId: (item as any)?.parentId ?? null,
+      };
     });
   };
 
@@ -1542,13 +1540,20 @@ export default function ProtocolForm({
   };
 
   // Serialize protocol parameters before save/execute
+
+  // deriveParamNameFromStateKey
+  const getParamNameFromStateKey = (stateKey: string) => {
+    const firstUnderscore = stateKey.indexOf("_");
+    return firstUnderscore >= 0 ? stateKey.slice(firstUnderscore + 1) : stateKey;
+  };
+
   const getSerializedParams = () => {
     const out: any = {};
 
     Object.entries(protocolDetails.params || {}).forEach(([k, pRaw]: any) => {
       const keyParts = k.split("_");
       keyParts.shift();
-      const newKey = keyParts.join("_");
+      const newKey = getParamNameFromStateKey(k);
 
       const p = pRaw ?? {};
       const cls = getParamClass(p);
@@ -1572,10 +1577,8 @@ export default function ProtocolForm({
 
       if (cls === "MultiPointerParam" && Array.isArray(p.editableValue)) {
         const list = p.editableValue.map((item: any) => {
-          if (typeof item === "string" || typeof item === "number" || typeof item === "boolean") {
-            return String(item)
-          }
-          return (item.value ?? item.object ?? "") || ""
+          const token = item?.object ?? item?.value ?? "";
+          return token ? String(token) : "";
         });
 
         out[newKey] = list;
@@ -1701,10 +1704,9 @@ export default function ProtocolForm({
   }
 
 
-  // Execute handler
+  // handleExecute
   const handleExecute = async () => {
-    // handleExecute
-    setExecLoading(true);
+    setActionLoading("execute");
     setExecError(null);
     setValidationErrors([]);
 
@@ -1716,7 +1718,6 @@ export default function ProtocolForm({
       const errors = getErrorsFromBackendPayload(res);
 
       if (errors.length > 0) {
-        // Successful HTTP but backend returned validation/errors in-band
         setValidationErrors(errors);
         setShowValidationDialog(true);
         return;
@@ -1740,7 +1741,6 @@ export default function ProtocolForm({
         return;
       }
 
-      // Final fallback if backend did not provide errors[]
       const fallbackMsg =
         err?.message ||
         (typeof payload?.detail === "string" ? payload.detail : null) ||
@@ -1748,15 +1748,13 @@ export default function ProtocolForm({
 
       openExecErrorDialog("Execution error", String(fallbackMsg));
     } finally {
-      setExecLoading(false);
+      setActionLoading(null);
     }
   };
 
-
-  // Save handler
+  // handleSave
   const handleSave = async () => {
-    // handleSave
-    setExecLoading(true);
+    setActionLoading("save");
     setExecError(null);
 
     try {
@@ -1774,7 +1772,6 @@ export default function ProtocolForm({
         return;
       }
 
-      // Saved but backend returned warnings/errors in-band
       const msg = formatErrorsForDialog(errors);
       toast.error(`Saved with warnings: ${msg}`);
       requestClose();
@@ -1797,9 +1794,10 @@ export default function ProtocolForm({
       toast.error(String(fallbackMsg));
       openExecErrorDialog("Save error", String(fallbackMsg));
     } finally {
-      setExecLoading(false);
+      setActionLoading(null);
     }
   };
+
 
   const handleAnalyzeResultsClick = async (e: React.MouseEvent<HTMLButtonElement>) => {
     // openAnalyzeResultsDialog
@@ -1957,15 +1955,21 @@ export default function ProtocolForm({
         // By default editable; if def.readOnly is true => block manual typing in MultiParamRow
         const isReadOnly = coerceReadOnlyFlag(def?.readOnly);
 
+        // onRowEdit
         const onRowEdit = (rowIndexInner: number, patch: { object?: string; info?: string }) => {
           setProtocolDetails((prev: any) => {
             const existing = prev.params?.[stateKey];
             const list = Array.isArray(existing?.editableValue) ? [...existing.editableValue] : [];
 
-            while (list.length <= rowIndexInner) list.push({ object: "", info: "" });
+            while (list.length <= rowIndexInner) list.push({ object: "", value: "", info: "" });
 
-            const current = list[rowIndexInner] ?? { object: "", info: "" };
-            list[rowIndexInner] = { ...current, ...patch };
+            const current = list[rowIndexInner] ?? { object: "", value: "", info: "" };
+            const nextItem = { ...current, ...patch };
+
+            // keepObjectValueSynced
+            if (typeof patch.object === "string") nextItem.value = patch.object;
+
+            list[rowIndexInner] = nextItem;
 
             return {
               ...prev,
@@ -1976,6 +1980,7 @@ export default function ProtocolForm({
             };
           });
         };
+
 
         const onClear = (i: number) => {
           setProtocolDetails((prev: any) => {
@@ -2016,6 +2021,7 @@ export default function ProtocolForm({
 
             list[i] = {
               object: dragged.value ?? "",
+              value: dragged.value ?? "",
               info: dragged.info ?? "",
               pointerClass: dragged.pointerClass ?? "",
               parentId: dragged.parentId ?? null,
@@ -2040,9 +2046,9 @@ export default function ProtocolForm({
 
             list[rowIndexInner] = {
               object: picked.value ?? "",
+              value: picked.value ?? "",
               info: picked.info ?? "",
               pointerClass: picked.pointerClass ?? "",
-              value: picked.value ?? "",
               parentId: picked.protocolId ?? picked.parentId ?? null,
             };
 
@@ -2621,6 +2627,7 @@ export default function ProtocolForm({
 
       if (defClass === "MultiPointerParam") {
         const newItems = picks.map((pick) => ({
+          object: pick?.value ?? "",
           value: pick?.value ?? "",
           info: pick?.info ?? "",
           pointerClass: pick?.pointerClass ?? "",
@@ -3763,37 +3770,33 @@ export default function ProtocolForm({
         </Button>
         <Button
           variant="contained"
-          startIcon={<SaveIcon />}
+          startIcon={isSaving ? <CircularProgress size={16} color="inherit" /> : <SaveIcon />}
           onClick={handleSave}
           disabled={
-            execLoading ||
+            isBusy ||
             protocolDetails.status === "running" ||
             protocolDetails.status === "scheduled"
           }
           sx={{ textTransform: "none" }}
         >
-          Save
+          {isSaving ? "Saving..." : "Save"}
         </Button>
+
         <Button
           variant="contained"
-          startIcon={
-            execLoading ? (
-              <CircularProgress size={16} color="inherit" />
-            ) : (
-              <ExecuteIcon />
-            )
-          }
+          startIcon={isExecuting ? <CircularProgress size={16} color="inherit" /> : <ExecuteIcon />}
           color="success"
           onClick={handleExecute}
           disabled={
-            execLoading ||
+            isBusy ||
             protocolDetails.status === "running" ||
             protocolDetails.status === "scheduled"
           }
           sx={{ textTransform: "none" }}
         >
-          {execLoading ? "Executing..." : "Execute"}
+          {isExecuting ? "Executing..." : "Execute"}
         </Button>
+
       </div>
 
       {/* PathParam RemoteFileDialog */}
