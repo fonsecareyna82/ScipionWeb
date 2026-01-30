@@ -59,41 +59,81 @@ const ParamRow = ({
     return rowIndex % 2 ? "white" : "white";
   }, [rowIndex]);
 
+  const actionIconButtonSx = {
+    // actionIconButtonSx
+    p: 0.5,
+    width: 32,
+    height: 32,
+  };
+
+  const controlSlotSx = {
+    // controlSlotSx
+    minWidth: 0,
+    display: "flex",
+    alignItems: "center",
+    overflow: "visible",
+
+    // Do not override width/minWidth of controls.
+    // Only prevent controls from pushing into the actions column.
+    "& .MuiFormControl-root": {
+      maxWidth: "100%",
+    },
+    "& .MuiTextField-root": {
+      maxWidth: "100%",
+    },
+    "& .MuiInputBase-root": {
+      maxWidth: "100%",
+    },
+  } as const;
+
+  const actionsSlotSx = {
+    // actionsSlotSx
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 0,
+    flex: "0 0 auto",
+    whiteSpace: "nowrap",
+    ml: isInline ? 0.25 : 0.,
+  } as const;
+
   return (
     <>
       <Box
         sx={{
           ...(isInline
             ? {
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 0,
-                px: 1,
-                py: 0.5,
-                borderRadius: 1,
-                //backgroundColor: rowBg,
-                //border: "1px solid rgba(0,0,0,0.08)",
-                minHeight: 42,
-              }
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 0.75,
+              px: 1,
+              py: 0.5,
+              borderRadius: 1,
+              minHeight: 42,
+            }
             : isFullWidth
               ? {
-                  display: "grid",
-                  gridTemplateColumns: "1fr auto",
-                  alignItems: "center",
-                  mb: 1,
-                  //backgroundColor: rowBg,
-                  position: "relative",
-                }
+                // fullWidthLayout
+                display: "grid",
+                gridTemplateColumns: "1fr auto",
+                columnGap: 1,
+                alignItems: "center",
+                mb: 1,
+                mt: rowIndex === 0 ? 1.5 : 0, // firstRowTopMargin
+                position: "relative",
+              }
               : {
-                  display: "grid",
-                  gridTemplateColumns: "210px 1fr auto",
-                  alignItems: "center",
-                  mb: 1,
-                  //backgroundColor: rowBg,
-                  position: "relative",
-                }),
+                // standardLayout
+                display: "grid",
+                gridTemplateColumns: "210px minmax(0, 1fr) auto",
+                columnGap: 1,
+                alignItems: "center",
+                mb: 1,
+                mt: rowIndex === 0 ? 1.5 : 0, // firstRowTopMargin
+                position: "relative",
+              }),
         }}
       >
+
         <Typography
           variant="body2"
           className={styles.paramRowLabel}
@@ -117,12 +157,14 @@ const ParamRow = ({
           <Box
             sx={{
               minWidth: 0,
+              width: "100%", // allowControlToStretch
               ...(isInline
                 ? {
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 0.75,
-                  }
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 0.75,
+                  width: "auto",
+                }
                 : null),
             }}
           >
@@ -130,21 +172,23 @@ const ParamRow = ({
           </Box>
         )}
 
-        <Box sx={{ display: "flex", gap: 0, alignItems: "center" }}>
+
+        <Box sx={actionsSlotSx}>
           {isPointerParam && (
             <Tooltip title="Find">
               <IconButton
                 size="small"
+                sx={actionIconButtonSx}
                 onClick={onOpenFind ? onOpenFind : () => setOpenSelector(true)}
               >
-                <FindIcon className="ml-0" fontSize="1.3rem" />
+                <FindIcon className="ml-0" fontSize="1.2rem" />
               </IconButton>
             </Tooltip>
           )}
 
           {isPathParam && (
             <Tooltip title="Browse files">
-              <IconButton size="small" onClick={onBrowsePath}>
+              <IconButton size="small" sx={actionIconButtonSx} onClick={onBrowsePath}>
                 <FolderIcon className="ml-0" size={18} />
               </IconButton>
             </Tooltip>
@@ -152,16 +196,16 @@ const ParamRow = ({
 
           {onClear && (
             <Tooltip title="Clear">
-              <IconButton size="small" onClick={onClear}>
-                <TrashBinIcon className="ml-0" fontSize="1.3rem" />
+              <IconButton size="small" sx={actionIconButtonSx} onClick={onClear}>
+                <TrashBinIcon className="ml-0" fontSize="1.2rem" />
               </IconButton>
             </Tooltip>
           )}
 
           {helpText && (
             <Tooltip title="Help">
-              <IconButton size="small" onClick={() => setOpenHelp(true)}>
-                <HelpIcon className="ml-0" fontSize="1.3rem" />
+              <IconButton size="small" sx={actionIconButtonSx} onClick={() => setOpenHelp(true)}>
+                <HelpIcon className="ml-0" fontSize="1.2rem" />
               </IconButton>
             </Tooltip>
           )}

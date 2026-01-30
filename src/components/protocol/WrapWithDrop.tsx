@@ -83,25 +83,32 @@ export default function WrapWithDrop({
     }
   };
 
-  return (
-    <Box
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
-      sx={{ ml: 4,
-        border: '2px dashed #5f5d5dff',
-        borderRadius: 1,
-        width: 310,
-        p: 0.4,
-        backgroundColor: isActive
-          ? isMatch
-            ? '#b7f5c7' // green if match
-            : '#f5b7b7' // red if no match
-          : 'transparent',
-        transition: 'background-color 0.2s',
-      }}
-    >
-      {control}
-    </Box>
-  );
+  // WrapWithDrop.tsx
+return (
+  <Box
+    onDragOver={handleDragOver}
+    onDragLeave={handleDragLeave}
+    onDrop={handleDrop}
+    sx={{
+      // wrapWithDropContainer
+      display: "block",
+      width: "100%",
+      minWidth: 0,
+      borderRadius: 1,
+      mt: 1,
+
+      outline: "2px dashed #5f5d5dff",
+      outlineOffset: 2,
+
+      backgroundColor: isActive ? (isMatch ? "#b7f5c7" : "#f5b7b7") : "transparent",
+      transition: "background-color 0.2s",
+    }}
+  >
+    {control}
+  </Box>
+);
+
+
+
+
 }

@@ -139,10 +139,72 @@ function getParamClass(defLike: any): string {
   return String(defLike?.paramClass ?? defLike?._class ?? "");
 }
 
+function isNonEmptyString(v: any): boolean {
+  // isNonEmptyString
+  return typeof v === "string" && v.trim().length > 0;
+}
+
+function hasPointerClass(def: any): boolean {
+  // hasPointerClass
+  return isNonEmptyString(def?.pointerClass) || isNonEmptyString(def?.pointerClassName);
+}
+
+function inferPointerParamClass(def: any): "PointerParam" | "MultiPointerParam" | "" {
+  // inferPointerParamClass
+  if (!hasPointerClass(def)) return "";
+  const hasMin = def && typeof def === "object" && ("min" in def);
+  const hasMax = def && typeof def === "object" && ("max" in def);
+  return hasMin || hasMax ? "MultiPointerParam" : "PointerParam";
+}
+
+
 function getPointerClass(objLike: any): string {
   // getPointerClass
   return String(objLike?.pointerClass ?? objLike?._class ?? "");
 }
+
+
+function hasMinMax(defLike: any): boolean {
+  // hasMinMax
+  if (!defLike || typeof defLike !== "object") return false;
+  return "min" in defLike || "max" in defLike;
+}
+
+function resolveParamClass(defLike: any): string {
+  // resolveParamClass
+  const rawCls = getParamClass(defLike);
+
+  // Keep explicit pointer classes as-is
+  if (rawCls === "PointerParam" || rawCls === "MultiPointerParam") return rawCls;
+
+  // Keep PathParam as PathParam even if pointerClass is present.
+  // PathParam may be "pointer-enabled" via pointerClass, but it must still render as PathParam.
+  if (rawCls === "PathParam") return "PathParam";
+
+  const pointerLike = hasPointerClass(defLike);
+
+  // If pointerClass exists, treat it as pointer for non-PathParam params
+  if (pointerLike) {
+    // If backend sends min/max, interpret as multi-pointer
+    if (hasMinMax(defLike)) return "MultiPointerParam";
+    return "PointerParam";
+  }
+
+  return rawCls;
+}
+
+
+function withResolvedParamClass(defLike: any): any {
+  // withResolvedParamClass
+  const rawCls = getParamClass(defLike);
+  const resolved = resolveParamClass(defLike);
+
+  if (!resolved || resolved === rawCls) return defLike;
+
+  // Force a stable paramClass so later logic (render/serialize) is consistent
+  return { ...defLike, paramClass: resolved };
+}
+
 
 function unwrapParamDef(paramLike: any): UnwrappedParam {
   // unwrapParamDef
@@ -1031,26 +1093,56 @@ export default function ProtocolForm({
     // normalizeMultiPointerValue
     const parsed = parseFromJSONValue(raw);
 
-    if (!Array.isArray(parsed)) return [];
+    const tryParseJsonArray = (text: string) => {
+      // tryParseJsonArray
+      const t = text.trim();
+      if (!t) return null;
 
-    return parsed.map((item: any) => {
-      const objectToken =
-        (item as any)?.object ??
-        (item as any)?.value ??
-        (item as any)?._objValue ??
-        "";
+      try {
+        const v = JSON.parse(t);
+        return Array.isArray(v) ? v : null;
+      } catch {
+        try {
+          const normalized = t
+            .replace(/'/g, '"')
+            .replace(/\bNone\b/g, "null")
+            .replace(/\bTrue\b/g, "true")
+            .replace(/\bFalse\b/g, "false");
+          const v2 = JSON.parse(normalized);
+          return Array.isArray(v2) ? v2 : null;
+        } catch {
+          return null;
+        }
+      }
+    };
 
+    const asArray =
+      Array.isArray(parsed)
+        ? parsed
+        : typeof parsed === "string"
+          ? (tryParseJsonArray(parsed) ?? [])
+          : [];
+
+    return asArray.map((item: any) => {
+      // normalizeMultiPointerItem
+      if (typeof item === "string" || typeof item === "number" || typeof item === "boolean") {
+        const token = String(item);
+        return { object: token, value: token, info: "", pointerClass: "", parentId: null };
+      }
+
+      const objectToken = item?.object ?? item?.value ?? item?._objValue ?? item?._objId ?? "";
       const objectStr = String(objectToken ?? "");
 
       return {
         object: objectStr,
         value: objectStr,
-        info: String((item as any)?.info ?? ""),
-        pointerClass: String((item as any)?.pointerClass ?? ""),
-        parentId: (item as any)?.parentId ?? null,
+        info: String(item?.info ?? ""),
+        pointerClass: String(item?.pointerClass ?? item?._class ?? ""),
+        parentId: item?.parentId ?? null,
       };
     });
   };
+
 
 
   // Load initial parameters into protocolDetails
@@ -1068,12 +1160,14 @@ export default function ProtocolForm({
       const { paramName: name, paramDef: def } = unwrapParamDef(paramLike);
       if (!def) return;
 
-      const cls = getParamClass(def);
+      const rawDef = def;
+      const defResolved = withResolvedParamClass(rawDef);
+      const cls = resolveParamClass(defResolved);
 
       // Always traverse decorators even when name is missing
       // Decorators should never create state keys; just traverse children if present
       if (cls === "Group" || cls === "Line") {
-        const children = Array.isArray(def?.params) ? def.params : [];
+        const children = Array.isArray(rawDef?.params) ? rawDef.params : [];
         children.forEach((c: any) => walk(secIdx, c));
         return;
       }
@@ -1100,7 +1194,7 @@ export default function ProtocolForm({
         const defDefault = parseFromJSONValue(def.default);
 
         params[key] = {
-          ...def,
+          ...defResolved,
           value: coerceBooleanValue(defObjValue),
           default: coerceBooleanValue(defDefault),
           editableValue: initBool,
@@ -1109,7 +1203,16 @@ export default function ProtocolForm({
       }
 
       if (cls === "MultiPointerParam") {
-        const initList = normalizeMultiPointerValue(rawFromApi);
+        // If valuesMap provides an empty/null value, fallback to def.value/def.default
+        const rawCandidate = getInitialRawForParam(name, def, valuesMap);
+        const fallbackRaw = def?.value ?? def?.default ?? [];
+        const rawEffective =
+          rawCandidate === null || rawCandidate === undefined || rawCandidate === ""
+            ? fallbackRaw
+            : rawCandidate;
+
+        const initList = normalizeMultiPointerValue(rawEffective);
+
         params[key] = {
           ...def,
           editableValue: initList,
@@ -1117,10 +1220,12 @@ export default function ProtocolForm({
         return;
       }
 
+
       if (cls === "PointerParam") {
         const token = normalizePointerToken(rawFromApi);
         params[key] = {
-          ...def,
+          ...defResolved,
+          paramClass: "PointerParam",
           value: token,
           editableValue: token,
         };
@@ -1130,7 +1235,8 @@ export default function ProtocolForm({
       if (cls === "PathParam") {
         const token = parsedFromApi ?? "";
         params[key] = {
-          ...def,
+          ...defResolved,
+          paramClass: "PathParam",
           value: token,
           editableValue: token,
         };
@@ -1140,14 +1246,14 @@ export default function ProtocolForm({
       if (cls === "EnumParam" && Array.isArray(def.choices)) {
         const label = normalizeEnumLabel(rawFromApi, def.choices, def.default);
         params[key] = {
-          ...def,
+          ...defResolved,
           editableValue: label,
         };
         return;
       }
 
       params[key] = {
-        ...def,
+        ...defResolved,
         editableValue: parsedFromApi ?? "",
       };
     };
@@ -1556,7 +1662,7 @@ export default function ProtocolForm({
       const newKey = getParamNameFromStateKey(k);
 
       const p = pRaw ?? {};
-      const cls = getParamClass(p);
+      const cls = resolveParamClass(p);
 
       if (cls === "PointerParam") {
         const editable = p.editableValue ?? "";
@@ -1593,6 +1699,13 @@ export default function ProtocolForm({
         out[newKey] = boolVal ? true : false
         return;
       }
+
+      if (cls === "PathParam") {
+        const token = (p.value ?? p.editableValue ?? "").toString();
+        out[newKey] = token;
+        return;
+      }
+
 
       out[newKey] = p.editableValue;
     });
@@ -1866,7 +1979,9 @@ export default function ProtocolForm({
       const { paramName: name, paramDef: def } = unwrapParamDef(paramLike);
       if (!def) return null;
 
-      const defClass = getParamClass(def);
+      const rawDef = def;
+      const defResolved = withResolvedParamClass(rawDef);
+      const defClass = resolveParamClass(defResolved);
 
       // Stable key for React + decorator state (even when name is missing)
       const basePrefix = parentKeyPrefix || `sec${sectionIdx}`;
@@ -1877,7 +1992,17 @@ export default function ProtocolForm({
       const value = stateKey ? protocolDetails.params?.[stateKey]?.editableValue : undefined;
 
       const isInline = layoutVariant === "inline";
-      const fieldWidth = isInline ? 60 : 300;
+
+
+      // fieldWidthPx
+      const inlineFieldWidth = 50;
+      const standardFieldWidth = variant === "docked" ? 280 : 460;
+      const fieldWidth = isInline ? inlineFieldWidth : standardFieldWidth;
+
+      const fieldContainerSx = isInline
+        ? { width: fieldWidth, flex: "0 0 auto", minWidth: 0 }
+        : { flex: 1, minWidth: 0, maxWidth: "100%" };
+
 
       if (typeof def?.condition === "string" && def.condition.trim()) {
         if (!evalExpr(sectionIdx, def.condition)) return null;
@@ -2062,7 +2187,11 @@ export default function ProtocolForm({
           });
         };
 
-        const liveDef = { ...def, ...(protocolDetails.params?.[stateKey] || {}) };
+        const liveDef = {
+          ...defResolved,
+          ...(protocolDetails.params?.[stateKey] || {}),
+          paramClass: "MultiPointerParam",
+        };
 
         return (
           <ParamRow
@@ -2100,6 +2229,12 @@ export default function ProtocolForm({
       if (defClass === "PointerParam") {
         if (!stateKey) return null;
 
+        const liveDef = {
+          ...defResolved,
+          ...(protocolDetails.params?.[stateKey] || {}),
+          paramClass: "PointerParam",
+        };
+
         const onClear = () =>
           setProtocolDetails((prev: any) => ({
             ...prev,
@@ -2122,67 +2257,82 @@ export default function ProtocolForm({
 
         const isReadOnly = coerceReadOnlyFlag(def?.readOnly);
 
-        const control = (
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-            <TextField
-              size="small"
-              value={String(
-                protocolDetails.params?.[stateKey]?.editableValue ??
-                protocolDetails.params?.[stateKey]?.value ??
-                def.default ??
-                ""
-              )}
-              onChange={
-                isReadOnly
-                  ? undefined
-                  : (e) =>
-                    setProtocolDetails((prev: any) => ({
-                      ...prev,
-                      params: {
-                        ...prev.params,
-                        [stateKey]: {
-                          ...prev.params[stateKey],
-                          editableValue: e.target.value,
-                          value: e.target.value,
-                        },
+
+
+        const fieldContainerSx = {
+          // fieldContainerSx
+          width: "100%",
+          maxWidth: fieldWidth,
+          minWidth: 0,
+        };
+
+        const field = (
+          <TextField
+            size="small"
+            fullWidth={!isInline}
+            value={String(
+              protocolDetails.params?.[stateKey]?.editableValue ??
+              protocolDetails.params?.[stateKey]?.value ??
+              def.default ??
+              ""
+            )}
+            onChange={
+              isReadOnly
+                ? undefined
+                : (e) =>
+                  setProtocolDetails((prev: any) => ({
+                    ...prev,
+                    params: {
+                      ...prev.params,
+                      [stateKey]: {
+                        ...prev.params[stateKey],
+                        editableValue: e.target.value,
+                        value: e.target.value,
                       },
-                    }))
-              }
-              InputProps={isReadOnly ? { readOnly: true } : undefined}
-              onClick={isReadOnly ? () => handleOpenFind(stateKey) : undefined}
-              sx={{
-                width: fieldWidth,
-                minWidth: 0,
-                "& .MuiInputBase-root": { minHeight: 36 },
-                "& .MuiInputBase-input, & input, & input[readonly]": {
-                  fontSize: 12,
-                  padding: "8px 10px",
-                  lineHeight: 1.2,
-                  color: "#111827",
-                  WebkitTextFillColor: "#111827",
-                  opacity: 1,
-                  userSelect: isReadOnly ? "none" : "text",
-                  cursor: isReadOnly ? "pointer" : "text",
-                },
-              }}
-            />
-          </Box>
+                    },
+                  }))
+            }
+            InputProps={isReadOnly ? { readOnly: true } : undefined}
+            onClick={isReadOnly ? () => handleOpenFind(stateKey) : undefined}
+            sx={{
+              width: isInline ? fieldWidth : "100%",
+              minWidth: 0,
+              "& .MuiInputBase-root": { minHeight: 36 },
+              "& .MuiInputBase-input, & input, & input[readonly]": {
+                fontSize: 12,
+                padding: "8px 10px",
+                lineHeight: 1.2,
+                color: "#111827",
+                WebkitTextFillColor: "#111827",
+                opacity: 1,
+                userSelect: isReadOnly ? "none" : "text",
+                cursor: isReadOnly ? "pointer" : "text",
+              },
+            }}
+          />
         );
+
 
         return (
           <ParamRow
             key={stableKey}
             label={def.label || name || ""}
             control={
-              <WrapWithDrop
-                control={control}
-                def={def}
-                paramKey={stateKey}
-                setProtocolDetails={setProtocolDetails}
-                setDragOverKey={setDragOverKey}
-                dragOverKey={dragOverKey}
-              />
+              <Box sx={{ display: "flex", alignItems: "center", gap: 1, minWidth: 0, width: "100%" }}>
+                {advancedSlot}
+                <Box sx={fieldContainerSx}>
+                  <WrapWithDrop
+                    control={field}
+                    def={liveDef}
+                    paramKey={stateKey}
+                    setProtocolDetails={setProtocolDetails}
+                    setDragOverKey={setDragOverKey}
+                    dragOverKey={dragOverKey}
+                  />
+                </Box>
+              </Box>
             }
+
             helpText={def.help}
             isPointerParam
             onClear={onClear}
@@ -2200,6 +2350,11 @@ export default function ProtocolForm({
 
         const current = protocolDetails.params?.[stateKey] || {};
         const textValue = current.editableValue ?? current.value ?? def.value ?? def.default ?? "";
+
+        const isPointerEnabled =
+          typeof current.pointerClass === "string"
+            ? current.pointerClass.trim().length > 0
+            : typeof def.pointerClass === "string" && def.pointerClass.trim().length > 0;
 
         const handleBrowsePath = () => {
           if (!projectId || !protocolId) {
@@ -2226,52 +2381,107 @@ export default function ProtocolForm({
           });
         };
 
-        const control = (
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-            {advancedSlot}
-            <TextField
-              size="small"
-              name={stateKey}
-              value={textValue}
-              onChange={(e) =>
-                setProtocolDetails((prev: any) => {
-                  if (!prev?.params?.[stateKey]) return prev;
-                  return {
-                    ...prev,
-                    params: {
-                      ...prev.params,
-                      [stateKey]: {
-                        ...prev.params[stateKey],
-                        editableValue: e.target.value,
-                        value: e.target.value,
-                      },
+        const handleOpenFind = (targetKey: string) => {
+          const liveParam = protocolDetails.params?.[targetKey];
+          const expected = getExpectedClass(liveParam);
+          setExpectedClass(expected);
+          setSelectorTarget({ key: targetKey, def: liveParam, expectedClass: expected });
+
+          const finalOutputs = getFilteredOutputsForKey(targetKey);
+          setAllOutputs(finalOutputs);
+          setOpenSelector(true);
+        };
+
+        const fieldContainerSx = {
+          // fieldContainerSx
+          width: "100%",
+          maxWidth: fieldWidth,
+          minWidth: 0,
+        };
+
+        const field = (
+          <TextField
+            size="small"
+            fullWidth={!isInline}
+            name={stateKey}
+            value={textValue}
+            onChange={(e) =>
+              setProtocolDetails((prev: any) => {
+                if (!prev?.params?.[stateKey]) return prev;
+                return {
+                  ...prev,
+                  params: {
+                    ...prev.params,
+                    [stateKey]: {
+                      ...prev.params[stateKey],
+                      editableValue: e.target.value,
+                      value: e.target.value,
                     },
-                  };
-                })
-              }
-              sx={{
-                minWidth: fieldWidth,
-                "& .MuiInputBase-root": { minHeight: 36 },
-                "& .MuiInputBase-input": { fontSize: 12, padding: "8px 10px", lineHeight: 1.2 },
-              }}
-            />
-          </Box>
+                  },
+                };
+              })
+            }
+            sx={{
+              width: isInline ? fieldWidth : "100%",
+              minWidth: 0,
+              "& .MuiInputBase-root": { minHeight: 36 },
+              "& .MuiInputBase-input": { fontSize: 12, padding: "8px 10px", lineHeight: 1.2 },
+            }}
+          />
+        );
+
+
+        const fieldNode = isPointerEnabled ? (
+          <WrapWithDrop
+            control={field}
+            def={{ ...def, ...current }}
+            paramKey={stateKey}
+            setProtocolDetails={setProtocolDetails}
+            setDragOverKey={setDragOverKey}
+            dragOverKey={dragOverKey}
+          />
+        ) : (
+          field
         );
 
         return (
           <ParamRow
             key={stableKey}
             label={def.label || name || ""}
-            control={control}
+            control={
+              <Box sx={{ display: "flex", alignItems: "center", gap: 1, minWidth: 0, width: "100%" }}>
+                {advancedSlot}
+                <Box sx={fieldContainerSx}>
+                  {isPointerEnabled ? (
+                    <WrapWithDrop
+                      control={field}
+                      def={{ ...def, ...current }}
+                      paramKey={stateKey}
+                      setProtocolDetails={setProtocolDetails}
+                      setDragOverKey={setDragOverKey}
+                      dragOverKey={dragOverKey}
+                    />
+                  ) : (
+                    field
+                  )}
+                </Box>
+              </Box>
+            }
+
             helpText={def.help}
             isPathParam
             onBrowsePath={handleBrowsePath}
             onClear={handleClear}
+            isPointerParam={isPointerEnabled}
+            onOpenFind={isPointerEnabled ? () => handleOpenFind(stateKey) : undefined}
             rowIndex={rowIndex}
             layoutVariant={layoutVariant}
           />
         );
+
+
       }
+
 
       // EnumParam (requires stateKey)
       if (defClass === "EnumParam" && Array.isArray(def.choices)) {
@@ -2308,7 +2518,7 @@ export default function ProtocolForm({
               value={safeSel}
               onChange={(e) => onChange(e.target.value)}
               sx={{
-                width: fieldWidth,
+                width: 260,
                 minWidth: 0,
                 "& .MuiInputBase-input": { fontSize: 12 },
                 "& .MuiSelect-select": { fontSize: 12, display: "flex", alignItems: "center" },
@@ -2560,31 +2770,34 @@ export default function ProtocolForm({
       if (!stateKey) return null;
 
       const defaultControl = (
-        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1, minWidth: 0, width: "77%" }}>
           {advancedSlot}
-          <TextField
-            size="small"
-            name={stateKey}
-            value={value ?? def.default ?? ""}
-            onChange={(e) =>
-              setProtocolDetails((prev: any) => ({
-                ...prev,
-                params: {
-                  ...prev.params,
-                  [stateKey]: {
-                    ...prev.params[stateKey],
-                    editableValue: e.target.value,
+          <Box sx={fieldContainerSx}>
+            <TextField
+              size="small"
+              fullWidth={!isInline}
+              name={stateKey}
+              value={value ?? def.default ?? ""}
+              onChange={(e) =>
+                setProtocolDetails((prev: any) => ({
+                  ...prev,
+                  params: {
+                    ...prev.params,
+                    [stateKey]: {
+                      ...prev.params[stateKey],
+                      editableValue: e.target.value,
+                    },
                   },
-                },
-              }))
-            }
-            sx={{
-              width: fieldWidth,
-              minWidth: 0,
-              "& .MuiInputBase-root": { minHeight: 36 },
-              "& .MuiInputBase-input": { fontSize: 12, padding: "8px 10px", lineHeight: 1.2 },
-            }}
-          />
+                }))
+              }
+              sx={{
+                width: isInline ? fieldWidth : "100%",
+                minWidth: 0,
+                "& .MuiInputBase-root": { minHeight: 36 },
+                "& .MuiInputBase-input": { fontSize: 12, padding: "8px 10px", lineHeight: 1.2 },
+              }}
+            />
+          </Box>
         </Box>
       );
 
@@ -2623,7 +2836,7 @@ export default function ProtocolForm({
 
     setProtocolDetails((prev: any) => {
       const prevParam = prev.params[key];
-      const defClass = getParamClass(def);
+      const defClass = resolveParamClass(def);
 
       if (defClass === "MultiPointerParam") {
         const newItems = picks.map((pick) => ({
@@ -3799,7 +4012,6 @@ export default function ProtocolForm({
 
       </div>
 
-      {/* PathParam RemoteFileDialog */}
       {/* PathParam RemoteFileDialog */}
       {pathDialog.open && pathDialog.paramKey && projectId && protocolId && (
         <RemoteFileDialog
