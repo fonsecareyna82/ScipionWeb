@@ -149,21 +149,6 @@ function hasPointerClass(def: any): boolean {
   return isNonEmptyString(def?.pointerClass) || isNonEmptyString(def?.pointerClassName);
 }
 
-function inferPointerParamClass(def: any): "PointerParam" | "MultiPointerParam" | "" {
-  // inferPointerParamClass
-  if (!hasPointerClass(def)) return "";
-  const hasMin = def && typeof def === "object" && ("min" in def);
-  const hasMax = def && typeof def === "object" && ("max" in def);
-  return hasMin || hasMax ? "MultiPointerParam" : "PointerParam";
-}
-
-
-function getPointerClass(objLike: any): string {
-  // getPointerClass
-  return String(objLike?.pointerClass ?? objLike?._class ?? "");
-}
-
-
 function hasMinMax(defLike: any): boolean {
   // hasMinMax
   if (!defLike || typeof defLike !== "object") return false;
@@ -239,26 +224,6 @@ function unwrapParamDef(paramLike: any): UnwrappedParam {
   return { paramName: String((paramLike as any).name ?? ""), paramDef: paramLike };
 }
 
-
-function unwrapNamedEntry(entryLike: any): { name: string; payload: any } {
-  // unwrapNamedEntry
-  if (!entryLike || typeof entryLike !== "object") return { name: "", payload: entryLike };
-
-  // If backend ever provides a direct shape with a name field
-  if (typeof (entryLike as any).name === "string" && (entryLike as any).name.trim()) {
-    return { name: String((entryLike as any).name), payload: entryLike };
-  }
-
-  // Legacy/current shape: { [name]: payload }
-  const entries = Object.entries(entryLike);
-  if (entries.length === 1) {
-    const [name, payload] = entries[0] as [string, any];
-    return { name, payload };
-  }
-
-  // Fallback: no stable name available
-  return { name: String((entryLike as any)._key ?? ""), payload: entryLike };
-}
 
 function unwrapObjValue(raw: any) {
   // unwrapObjValue
@@ -663,14 +628,6 @@ export default function ProtocolForm({
   const protocolClassName =
     info?.protocolClassName ?? (form as any)?.protocolClassName ?? null;
 
-  // normalizeInputsOutputs
-  const inputsFromApi = useMemo(() => {
-    const arr =
-      Array.isArray(info?.inputs) ? info.inputs :
-        Array.isArray((form as any)?.inputs) ? (form as any).inputs :
-          [];
-    return arr;
-  }, [info, form]);
 
   const outputsFromApi = useMemo(() => {
     const arr =
@@ -2428,20 +2385,6 @@ export default function ProtocolForm({
               "& .MuiInputBase-input": { fontSize: 12, padding: "8px 10px", lineHeight: 1.2 },
             }}
           />
-        );
-
-
-        const fieldNode = isPointerEnabled ? (
-          <WrapWithDrop
-            control={field}
-            def={{ ...def, ...current }}
-            paramKey={stateKey}
-            setProtocolDetails={setProtocolDetails}
-            setDragOverKey={setDragOverKey}
-            dragOverKey={dragOverKey}
-          />
-        ) : (
-          field
         );
 
         return (

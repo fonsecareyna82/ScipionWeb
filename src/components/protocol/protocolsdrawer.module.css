@@ -99,7 +99,6 @@
   color: var(--pdInk, #374151);
   box-shadow: var(--pdShadow, 0 18px 42px rgba(15, 23, 42, 0.22));
 
-  remember: hidden;
   overflow: hidden;
 
   display: flex;

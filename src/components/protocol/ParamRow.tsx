@@ -1,5 +1,5 @@
 // src/components/ParamRow.tsx
-import { JSX, useMemo, useState } from "react";
+import { JSX, useState } from "react";
 import {
   Box,
   Typography,
@@ -54,37 +54,12 @@ const ParamRow = ({
   const isInline = layoutVariant === "inline";
   const isFullWidth = layoutVariant === "fullWidth";
 
-  const rowBg = useMemo(() => {
-    // computeRowBackground
-    return rowIndex % 2 ? "white" : "white";
-  }, [rowIndex]);
-
   const actionIconButtonSx = {
     // actionIconButtonSx
     p: 0.5,
     width: 32,
     height: 32,
   };
-
-  const controlSlotSx = {
-    // controlSlotSx
-    minWidth: 0,
-    display: "flex",
-    alignItems: "center",
-    overflow: "visible",
-
-    // Do not override width/minWidth of controls.
-    // Only prevent controls from pushing into the actions column.
-    "& .MuiFormControl-root": {
-      maxWidth: "100%",
-    },
-    "& .MuiTextField-root": {
-      maxWidth: "100%",
-    },
-    "& .MuiInputBase-root": {
-      maxWidth: "100%",
-    },
-  } as const;
 
   const actionsSlotSx = {
     // actionsSlotSx
