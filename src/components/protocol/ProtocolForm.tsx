@@ -611,7 +611,15 @@ export default function ProtocolForm({
 
   // keepValuesForLater
   const values = useMemo(() => {
-    if (data && typeof data === "object" && "values" in data) return (data as any).values ?? null;
+    if (!data || typeof data !== "object") return null;
+
+    if ("values" in data) return (data as any).values ?? null;
+
+    const formObj = (data as any).form;
+    if (formObj && typeof formObj === "object" && "values" in formObj) {
+      return (formObj as any).values ?? null;
+    }
+
     return null;
   }, [data]);
 
