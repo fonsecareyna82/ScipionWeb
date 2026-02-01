@@ -34,13 +34,25 @@ import {
 } from "lucide-react";
 
 interface Output {
-  paramClass: string;
-  pointerClass: string;
-  value: string;
-  info: string;
-  parentId: string;
+  paramClass?: string;
+  pointerClass?: string;
+  _expectedClass?: string;
+  value?: string;
+  info?: string;
+  parentId?: string | number;
   protocol?: string;
   key?: string;
+}
+
+function getPointerClass(o: Output): string {
+  // getPointerClass
+  return String(o.pointerClass ?? o._expectedClass ?? "");
+}
+
+function getParamClass(o: Output): string {
+  // getParamClass
+  const rawParamClass = String(o.paramClass ?? "");
+  return rawParamClass || (getPointerClass(o) ? "PointerParam" : "");
 }
 
 interface OutputSelectorDialogProps {
@@ -55,9 +67,12 @@ interface OutputSelectorDialogProps {
 function getOutputRowId(o: Output): string {
   // getOutputRowId
   const protoId = String(o.parentId ?? "");
-  const objValue = String(o.value ?? "");
-  return `${protoId}::${objValue}`;
+  const stableKey = String(
+    o.key ?? o.value ?? o.info ?? getPointerClass(o) ?? getParamClass(o) ?? ""
+  );
+  return `${protoId}::${stableKey}`;
 }
+
 
 function toLowerString(value: unknown): string {
   // toLowerString
@@ -105,14 +120,14 @@ const OutputSelectorDialog: React.FC<OutputSelectorDialogProps> = ({
         ? expectedClass.map((c) => toLowerString(c))
         : [toLowerString(expectedClass)];
 
-      filtered = filtered.filter((o) => classes.includes(toLowerString(o.pointerClass)));
+      filtered = filtered.filter((o) => classes.includes(toLowerString(getPointerClass(o))));
     }
 
     if (filter.trim()) {
       const q = filter.toLowerCase();
       filtered = filtered.filter((o) => {
-        const pointerClass = toLowerString(o.pointerClass);
-        const paramClass = toLowerString(o.paramClass);
+        const pointerClass = toLowerString(getPointerClass(o));
+        const paramClass = toLowerString(getParamClass(o));
         const info = toLowerString(o.info);
         const objValue = toLowerString(o.value);
         const protocolId = toLowerString(o.parentId);
@@ -328,6 +343,7 @@ const OutputSelectorDialog: React.FC<OutputSelectorDialogProps> = ({
               {matchingOutputs.map((o, i) => {
                 const id = getOutputRowId(o);
                 const isSelected = isRowSelected(o);
+                const effectivePointerClass = getPointerClass(o);
 
                 return (
                   <TableRow
@@ -391,17 +407,20 @@ const OutputSelectorDialog: React.FC<OutputSelectorDialogProps> = ({
                     </TableCell>
 
                     <TableCell>
-                      <Tooltip title={o.pointerClass || ""} disableHoverListener={!o.pointerClass}>
+                      
+
+                      <Tooltip title={effectivePointerClass || ""} disableHoverListener={!effectivePointerClass}>
                         <Chip
                           size="small"
                           variant="outlined"
-                          label={o.pointerClass || "—"}
+                          label={effectivePointerClass || "—"}
                           sx={{
                             maxWidth: "100%",
                             "& .MuiChip-label": { overflow: "hidden", textOverflow: "ellipsis" },
                           }}
                         />
                       </Tooltip>
+
                     </TableCell>
 
                     {!multiSelect && (

@@ -161,14 +161,30 @@ const normalizeOutputItem = (outputObj: unknown): NormalizedOutput | null => {
 
   const flatCandidate = outputObj as Record<string, unknown>;
 
-  const hasFlatSignature =
-    "paramClass" in flatCandidate &&
+  const hasAnyClassHint =
+    "paramClass" in flatCandidate || "pointerClass" in flatCandidate || "_class" in flatCandidate;
+
+  const looksLikeOutput =
+    hasAnyClassHint &&
     (("info" in flatCandidate) ||
       ("name" in flatCandidate) ||
       ("outputName" in flatCandidate) ||
-      ("pointerClass" in flatCandidate));
+      ("value" in flatCandidate) ||
+      ("parentId" in flatCandidate));
 
-  if (hasFlatSignature) {
+  if (looksLikeOutput) {
+    const pointerClass =
+      typeof flatCandidate.pointerClass === "string"
+        ? flatCandidate.pointerClass
+        : typeof flatCandidate._class === "string"
+          ? (flatCandidate._class as string)
+          : undefined;
+
+    const rawParamClass =
+      typeof flatCandidate.paramClass === "string" ? flatCandidate.paramClass : "";
+
+    const inferredParamClass = rawParamClass || (pointerClass ? "PointerParam" : "");
+
     const normalized: NormalizedOutput = {
       name:
         typeof flatCandidate.outputName === "string"
@@ -177,13 +193,8 @@ const normalizeOutputItem = (outputObj: unknown): NormalizedOutput | null => {
             ? flatCandidate.name
             : undefined,
       info: typeof flatCandidate.info === "string" ? flatCandidate.info : undefined,
-      paramClass: String(flatCandidate.paramClass ?? ""),
-      pointerClass:
-        typeof flatCandidate.pointerClass === "string"
-          ? flatCandidate.pointerClass
-          : typeof flatCandidate._class === "string"
-            ? (flatCandidate._class as string)
-            : undefined,
+      paramClass: inferredParamClass,
+      pointerClass,
       value: typeof flatCandidate.value === "string" ? flatCandidate.value : undefined,
       parentId:
         typeof flatCandidate.parentId === "string" || typeof flatCandidate.parentId === "number"
@@ -199,17 +210,26 @@ const normalizeOutputItem = (outputObj: unknown): NormalizedOutput | null => {
     const [wrappedName, wrappedValue] = entries[0];
     if (wrappedValue && typeof wrappedValue === "object") {
       const wrappedDef = wrappedValue as Record<string, unknown>;
-      if ("paramClass" in wrappedDef || "_class" in wrappedDef) {
+
+      const hasAnyWrappedClassHint =
+        "paramClass" in wrappedDef || "pointerClass" in wrappedDef || "_class" in wrappedDef;
+
+      if (hasAnyWrappedClassHint) {
+        const pointerClass =
+          typeof wrappedDef.pointerClass === "string"
+            ? wrappedDef.pointerClass
+            : typeof wrappedDef._class === "string"
+              ? (wrappedDef._class as string)
+              : undefined;
+
+        const rawParamClass = typeof wrappedDef.paramClass === "string" ? wrappedDef.paramClass : "";
+        const inferredParamClass = rawParamClass || (pointerClass ? "PointerParam" : "");
+
         const normalized: NormalizedOutput = {
           name: wrappedName,
           info: typeof wrappedDef.info === "string" ? wrappedDef.info : undefined,
-          paramClass: String(wrappedDef.paramClass ?? wrappedDef._class ?? ""),
-          pointerClass:
-            typeof wrappedDef.pointerClass === "string"
-              ? wrappedDef.pointerClass
-              : typeof wrappedDef._class === "string"
-                ? (wrappedDef._class as string)
-                : undefined,
+          paramClass: inferredParamClass,
+          pointerClass,
           value: typeof wrappedDef.value === "string" ? wrappedDef.value : undefined,
           parentId:
             typeof wrappedDef.parentId === "string" || typeof wrappedDef.parentId === "number"
@@ -224,6 +244,7 @@ const normalizeOutputItem = (outputObj: unknown): NormalizedOutput | null => {
 
   return null;
 };
+
 
 const openDecisionUrl = (decision: AnalyzeViewerResolveDecision) => {
   // openDecisionUrl
@@ -779,8 +800,10 @@ export default function ProtocolNodeCard({
                                 e.stopPropagation();
                                 setDraggingIdx(idx);
 
+                                const inferredParamClass = value.paramClass || (value.pointerClass ? "PointerParam" : "");
+
                                 const output = {
-                                  paramClass: value.paramClass,
+                                  paramClass: inferredParamClass,
                                   pointerClass: value.pointerClass ?? "",
                                   _expectedClass: value.pointerClass ?? "",
                                   value: value.value ?? "",
@@ -801,7 +824,8 @@ export default function ProtocolNodeCard({
                                 ghost.style.border = "1px solid #ccc";
                                 ghost.style.color = "black";
                                 ghost.style.borderRadius = "0.5rem";
-                                ghost.innerText = `${displayClass} (${labelText})`;
+                                //ghost.innerText = `${displayClass} (${labelText})`;
+                                ghost.innerText = `(${labelText})`;
                                 document.body.appendChild(ghost);
                                 e.dataTransfer.setDragImage(ghost, 0, 15);
                                 setTimeout(() => document.body.removeChild(ghost), 0);
