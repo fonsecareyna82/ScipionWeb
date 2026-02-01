@@ -38,6 +38,7 @@ import { useProjectService } from "@/ProjectServiceContext";
 import RemoteFileDialog from "@/components/files/RemoteFileDialog";
 import AnalyzeOutputDialog from "@/components/analyze/analyze-output-dialog";
 import { Copy } from "lucide-react";
+import ExecuteModeButton from "./ExecuteModeButton";
 
 type ProtocolFormProps = {
   data: any;
@@ -644,6 +645,27 @@ export default function ProtocolForm({
           [];
     return arr;
   }, [info, form]);
+
+
+  const executeModeMap = useMemo(() => {
+    const raw = (info as any)?.executeMode ?? null;
+    if (!raw || typeof raw !== "object") return null;
+    return raw as Record<string, { label?: string; help?: string }>;
+  }, [info]);
+
+  const [selectedExecuteMode, setSelectedExecuteMode] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!executeModeMap) return;
+    const keys = Object.keys(executeModeMap);
+    if (keys.length === 0) return;
+
+    setSelectedExecuteMode((prev) => {
+      if (prev && executeModeMap[prev]) return prev;
+      return keys[0];
+    });
+  }, [executeModeMap]);
+
 
 
 
@@ -1783,16 +1805,15 @@ export default function ProtocolForm({
 
 
   // handleExecute
-  const handleExecute = async () => {
+  const handleExecute = async (modeKey: string) => {
     setActionLoading("execute");
     setExecError(null);
     setValidationErrors([]);
 
     try {
       const pid = String(protocolId ?? "");
-      const serialized = getSerializedParams();
-
-      const res: any = await svc.executeProtocol(projectId, pid, protocolClassName, serialized);
+      const serializedParams = getSerializedParams();
+      const res: any = await svc.executeProtocol(projectId, pid, protocolClassName, serializedParams, modeKey);
       const errors = getErrorsFromBackendPayload(res);
 
       if (errors.length > 0) {
@@ -1804,9 +1825,10 @@ export default function ProtocolForm({
       onExecuted?.();
       requestClose();
     } catch (err: any) {
+      // keepYourExistingErrorHandling
       const httpStatus = getHttpStatusFromError(err);
-      const payload = getBackendPayloadFromError(err);
-      const errors = getErrorsFromBackendPayload(payload);
+      const backendPayload = getBackendPayloadFromError(err);
+      const errors = getErrorsFromBackendPayload(backendPayload);
 
       if (errors.length > 0) {
         if (httpStatus === 422) {
@@ -1814,14 +1836,13 @@ export default function ProtocolForm({
           setShowValidationDialog(true);
           return;
         }
-
         openExecErrorDialog("Execution error", formatErrorsForDialog(errors));
         return;
       }
 
       const fallbackMsg =
         err?.message ||
-        (typeof payload?.detail === "string" ? payload.detail : null) ||
+        (typeof backendPayload?.detail === "string" ? backendPayload.detail : null) ||
         "Error launching the protocol";
 
       openExecErrorDialog("Execution error", String(fallbackMsg));
@@ -1829,6 +1850,8 @@ export default function ProtocolForm({
       setActionLoading(null);
     }
   };
+
+
 
   // handleSave
   const handleSave = async () => {
@@ -3946,20 +3969,36 @@ export default function ProtocolForm({
           {isSaving ? "Saving..." : "Save"}
         </Button>
 
-        <Button
-          variant="contained"
-          startIcon={isExecuting ? <CircularProgress size={16} color="inherit" /> : <ExecuteIcon />}
-          color="success"
-          onClick={handleExecute}
-          disabled={
-            isBusy ||
-            protocolDetails.status === "running" ||
-            protocolDetails.status === "scheduled"
-          }
-          sx={{ textTransform: "none" }}
-        >
-          {isExecuting ? "Executing..." : "Execute"}
-        </Button>
+        {executeModeMap && Object.keys(executeModeMap).length > 0 ? (
+          <ExecuteModeButton
+            executeModeMap={executeModeMap}
+            selectedMode={selectedExecuteMode}
+            onSelectedModeChange={setSelectedExecuteMode}
+            onExecute={handleExecute}
+            disabled={
+              isBusy ||
+              protocolDetails.status === "running" ||
+              protocolDetails.status === "scheduled"
+            }
+            loading={isExecuting}
+          />
+
+        ) : (
+          <Button
+            variant="contained"
+            startIcon={isExecuting ? <CircularProgress size={16} color="inherit" /> : <ExecuteIcon />}
+            color="success"
+            onClick={() => handleExecute("launch")}
+            disabled={
+              isBusy ||
+              protocolDetails.status === "running" ||
+              protocolDetails.status === "scheduled"
+            }
+            sx={{ textTransform: "none" }}
+          >
+            {isExecuting ? "Launching..." : "Launch"}
+          </Button>
+        )}
 
       </div>
 

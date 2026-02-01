@@ -430,7 +430,8 @@ export interface ProjectService<
     projectId: Id,
     protocolId: Id,
     protocolClassName: string,
-    params: Record<string, unknown>
+    params: Record<string, unknown>,
+    mode?: string
   ): Promise<TProtocol>;
 
   /** Save protocol parameters without executing. */

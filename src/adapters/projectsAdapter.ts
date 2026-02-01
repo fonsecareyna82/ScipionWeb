@@ -67,7 +67,8 @@ const defaultService: ProjectService = {
     protocolId: Id,
     protocolClassName: string,
     params: Record<string, unknown>,
-  ) => api.executeProtocol(toId(projectId), toId(protocolId), protocolClassName, params),
+    mode?: string
+  ) => api.executeProtocol(toId(projectId), toId(protocolId), protocolClassName, params, mode),
 
   saveProtocol: (
     projectId: Id,

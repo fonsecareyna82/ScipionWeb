@@ -176,10 +176,11 @@ export async function executeProtocol(
   protocolId: Id,
   protocolClassName: string,
   params: Record<string, any>,
+  mode?: string,
 ): Promise<any> {
   const response = await fetchWithAuth(`${BASE_URL}/projects/${projectId}/${ACTION_LAUNCH}`, {
     method: "POST",
-    body: JSON.stringify({ protocolId, protocolClassName, params }),
+    body: JSON.stringify({ protocolId, protocolClassName, params, mode }),
   });
   if (!response.ok) throw await toApiError(response, "Failed to execute protocol");
   return safeJson<any>(response);
