@@ -24,7 +24,7 @@ import styles from "./RemoteFileDialog.module.css";
 
 export type RemoteEntry = {
   name: string;
-  path: string; // item leaf (basename) in new backend contract; can be absolute in older modes
+  path: string; // leaf (basename) in new backend contract
   isDir: boolean;
   size?: number;
   mime?: string;
@@ -40,17 +40,9 @@ type PreviewMeta = {
   note?: string;
 };
 
-type RemoteListResult = {
-  cwd: string; // relative-to-root preferred, can be absolute in older modes
-  dirName?: string; // absolute directory that contains returned items (older)
-  absPath?: string; // backend alias (older)
-  items: RemoteEntry[];
-};
-
 type ResolveBrowserPathsResult = {
-  rootAbs?: string; // absolute root boundary; default "/home"
-  startPath?: string; // relative-to-root preferred ("" means root); absolute allowed
-  protocolRoot?: string; // relative preferred; absolute allowed
+  rootAbs?: string; // provided by backend, not needed by the new frontend contract
+  startPath?: string; // relative-to-root preferred ("" means root)
 };
 
 type RemoteFileDialogProps = {
@@ -64,11 +56,11 @@ type RemoteFileDialogProps = {
   // initialPathRel: relative to root ("" means root)
   initialPath?: string;
 
-  // resolveBrowserPaths: returns rootAbs + startPath (and optional protocolRoot)
+  // resolveBrowserPaths: returns startPath (rootAbs ignored in this minimal contract)
   resolveBrowserPaths?: () => Promise<ResolveBrowserPathsResult>;
 
-  // all paths are relative to root
-  listRemoteDirectory: (relPath: string) => Promise<RemoteListResult | RemoteEntry[]>;
+  // new backend: returns items only
+  listRemoteDirectory: (relPath: string) => Promise<RemoteEntry[]>;
   previewRemoteText?: (relPath: string) => Promise<string | null>;
   fetchInlinePreviewBlob?: (relPath: string) => Promise<{ blob: Blob; meta: PreviewMeta }>;
   buildDownloadUrl?: (relPath: string, inline?: boolean) => string;
@@ -97,10 +89,7 @@ export default function RemoteFileDialog({
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
-  // rootBoundaryAbsoluteOnceResolved
-  const [rootAbs, setRootAbs] = useState<string>("/home");
-
-  // protocolRootRelativeOnceResolved
+  // protocolRootRelativeOnceResolved (in the new backend contract it is just startPath)
   const [protocolRootRel, setProtocolRootRel] = useState<string>("");
 
   // selectionState
@@ -175,14 +164,6 @@ export default function RemoteFileDialog({
   /** normalizePosixPath */
   const normalizePosixPath = (p: string) => (p || "").replace(/\\/g, "/").replace(/\/+/g, "/").trim();
 
-  /** normalizeAbsPath */
-  const normalizeAbsPath = (p: string) => {
-    const n = normalizePosixPath(p || "");
-    if (!n.startsWith("/")) return "";
-    if (n === "/") return "/";
-    return n.replace(/\/+$/g, "");
-  };
-
   /** normalizeRelPath */
   const normalizeRelPath = (p: string) => {
     const raw = normalizePosixPath(p || "").replace(/^\/+/g, "");
@@ -212,21 +193,6 @@ export default function RemoteFileDialog({
     return normalizeRelPath(`${b}/${l}`);
   };
 
-  /** absToRelIfInsideRoot */
-  const absToRelIfInsideRoot = (absPath: string, rootPathAbs: string) => {
-    const absNorm = normalizeAbsPath(absPath);
-    const rootNorm = normalizeAbsPath(rootPathAbs);
-
-    if (!absNorm || !rootNorm) return null;
-    if (rootNorm === "/") return normalizeRelPath(absNorm.slice(1));
-
-    if (absNorm === rootNorm) return "";
-    if (absNorm.startsWith(`${rootNorm}/`)) {
-      return normalizeRelPath(absNorm.slice(rootNorm.length + 1));
-    }
-    return null;
-  };
-
   /** getParentRelPath */
   const getParentRelPath = (relPath: string): string | null => {
     const r = normalizeRelPath(relPath || "");
@@ -241,18 +207,10 @@ export default function RemoteFileDialog({
     const raw = normalizePosixPath(entry?.path || entry?.name || "");
     if (!raw) return "";
 
-    // absolute path in older modes: convert if it is inside root; otherwise fallback to basename under cwdRel
-    if (raw.startsWith("/")) {
-      const rel = absToRelIfInsideRoot(raw, rootAbs);
-      if (rel !== null) return rel;
-
-      const parts = raw.split("/").filter(Boolean);
-      const baseName = parts.length ? parts[parts.length - 1] : "";
-      return joinRelPaths(cwdRel, baseName);
-    }
-
-    // new backend contract: entry.path is leaf
-    return joinRelPaths(cwdRel, raw);
+    // new backend contract: entry.path is leaf (basename)
+    const safe = normalizeRelPath(raw);
+    const leaf = safe.split("/").filter(Boolean).pop() || "";
+    return joinRelPaths(cwdRel, leaf);
   };
 
   /** revokeObjectUrlSafe */
@@ -298,6 +256,10 @@ export default function RemoteFileDialog({
       ".tlt",
       ".xf",
       ".xtilt",
+      ".stderr",
+      ".stdout",
+      ".out",
+      ".err",
     ];
     return textExts.some((ext) => lowerName.endsWith(ext));
   };
@@ -324,53 +286,21 @@ export default function RemoteFileDialog({
   };
 
   /** refresh */
-  const refresh = async (relPath: string, rootAbsOverride?: string) => {
+  const refresh = async (relPath: string) => {
     const seq = ++refreshSeqRef.current;
 
     try {
       setLoading(true);
       setError(null);
 
-      const effectiveRootAbs = normalizeAbsPath(rootAbsOverride || rootAbs) || "/home";
       const safeRel = normalizeRelPath(relPath || "");
       const listing = await listRemoteDirectory(safeRel);
 
       // ignoreStaleRefreshResults
       if (refreshSeqRef.current !== seq) return;
 
-      let nextItems: RemoteEntry[] = [];
-      let nextCwdRel = safeRel;
-
-      if (Array.isArray(listing)) {
-        // backwardCompatibleModeOnlyItems
-        nextItems = listing;
-      } else if (listing && Array.isArray((listing as RemoteListResult).items)) {
-        const result = listing as RemoteListResult;
-        nextItems = result.items;
-
-        // prefer cwd as relative-to-root; accept absolute in older responses
-        const maybeCwd = normalizePosixPath(result.cwd || "");
-        if (maybeCwd.startsWith("/")) {
-          const rel = absToRelIfInsideRoot(maybeCwd, effectiveRootAbs);
-          nextCwdRel = rel !== null ? rel : safeRel;
-        } else {
-          nextCwdRel = normalizeRelPath(maybeCwd) || safeRel;
-        }
-
-        // if older returns only dirName/absPath as absolute, try to derive cwdRel from it
-        if (!result.cwd) {
-          const dn = normalizePosixPath((result.dirName || "").trim());
-          const ap = normalizePosixPath((result.absPath || "").trim());
-          const absGuess = dn || ap;
-          if (absGuess.startsWith("/")) {
-            const rel = absToRelIfInsideRoot(absGuess, effectiveRootAbs);
-            if (rel !== null) nextCwdRel = rel;
-          }
-        }
-      }
-
-      setItems(nextItems);
-      setCwdRel(nextCwdRel);
+      setItems(Array.isArray(listing) ? listing : []);
+      setCwdRel(safeRel);
 
       // resetSelectionAndPreviewsOnDirectoryChange
       setSelected(null);
@@ -557,6 +487,7 @@ export default function RemoteFileDialog({
 
         setItems([]);
         setCwdRel(normalizeRelPath(initialPath || ""));
+        setProtocolRootRel("");
         setSelected(null);
         setFilterText("");
         setPreviewText("");
@@ -571,53 +502,23 @@ export default function RemoteFileDialog({
         return;
       }
 
-      let nextRootAbs = "/home";
       let startRel = normalizeRelPath(initialPath || "");
-      let nextProtocolRootRel = "";
 
       if (resolveBrowserPaths) {
         try {
           const resolved = await resolveBrowserPaths();
           if (!mounted) return;
 
-          const resolvedRootAbs = normalizeAbsPath(resolved?.rootAbs || "") || "/home";
-          nextRootAbs = resolvedRootAbs;
-
-          // normalizeStartPath (prefer relative; accept absolute inside root)
           const startRaw = normalizePosixPath(resolved?.startPath || "");
-          if (startRaw.startsWith("/")) {
-            const rel = absToRelIfInsideRoot(startRaw, resolvedRootAbs);
-            startRel = rel !== null ? rel : "";
-          } else {
-            startRel = normalizeRelPath(startRaw);
-          }
-
-          // normalizeProtocolRoot (optional; fallback to startRel)
-          const protoRaw = normalizePosixPath(resolved?.protocolRoot || "");
-          if (protoRaw) {
-            if (protoRaw.startsWith("/")) {
-              const rel = absToRelIfInsideRoot(protoRaw, resolvedRootAbs);
-              nextProtocolRootRel = rel !== null ? rel : startRel;
-            } else {
-              nextProtocolRootRel = normalizeRelPath(protoRaw);
-            }
-          } else {
-            nextProtocolRootRel = startRel;
-          }
+          startRel = normalizeRelPath(startRaw);
         } catch {
-          // ignoreResolveErrorsAndFallbackToInitialPath + defaultRoot
-          nextRootAbs = "/home";
+          // ignoreResolveErrorsAndFallbackToInitialPath
           startRel = normalizeRelPath(initialPath || "");
-          nextProtocolRootRel = startRel;
         }
-      } else {
-        nextProtocolRootRel = startRel;
       }
 
-      setRootAbs(nextRootAbs);
-      setProtocolRootRel(nextProtocolRootRel);
-
-      await refresh(startRel, nextRootAbs);
+      setProtocolRootRel(startRel);
+      await refresh(startRel);
     };
 
     void boot();
@@ -629,6 +530,8 @@ export default function RemoteFileDialog({
 
   const parentRel = getParentRelPath(cwdRel);
   const showParentEntry = parentRel !== null && !loading && !error;
+  const parentEntry = useMemo<RemoteEntry>(() => ({ name: "..", path: "..", isDir: true }), []);
+
 
   const breadcrumbs = useMemo(() => {
     const rel = normalizeRelPath(cwdRel || "");
@@ -647,9 +550,7 @@ export default function RemoteFileDialog({
   const visibleItems = useMemo(() => {
     const needle = (filterText || "").trim().toLowerCase();
 
-    const filtered = !needle
-      ? items
-      : items.filter((e) => (e.name || "").toLowerCase().includes(needle));
+    const filtered = !needle ? items : items.filter((e) => (e.name || "").toLowerCase().includes(needle));
 
     const dirMult = sortDir === "asc" ? 1 : -1;
 
@@ -744,12 +645,7 @@ export default function RemoteFileDialog({
           e.preventDefault();
         }}
         onClick={handleDialogClick}
-        className={[
-          dialogWidthClass,
-          dialogHeightClass,
-          styles.dialogContent,
-          styles.dialogLayout,
-        ].join(" ")}
+        className={[dialogWidthClass, dialogHeightClass, styles.dialogContent, styles.dialogLayout].join(" ")}
       >
         <DialogHeader className={styles.headerBar}>
           <DialogTitle className={styles.headerTitle}>
@@ -773,7 +669,13 @@ export default function RemoteFileDialog({
             Root
           </button>
 
-          <button type="button" onClick={goProtocolRoot} className={styles.ppChipBtn} disabled={!protocolRootRel}>
+          <button
+            type="button"
+            onClick={goProtocolRoot}
+            className={styles.ppChipBtn}
+            disabled={!protocolRootRel}
+            title="Back to the protocol start directory"
+          >
             <FolderOpen className={styles.iconSm} />
             Protocol folder
           </button>
@@ -867,10 +769,7 @@ export default function RemoteFileDialog({
                     }}
                   >
                     <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
-                      <Search
-                        className={styles.iconSm}
-                        style={{ position: "absolute", left: 10, opacity: 0.7 }}
-                      />
+                      <Search className={styles.iconSm} style={{ position: "absolute", left: 10, opacity: 0.7 }} />
                       <input
                         ref={searchInputRef}
                         value={filterText}
@@ -887,7 +786,7 @@ export default function RemoteFileDialog({
                           background: "transparent",
                           color: "inherit",
                           outline: "none",
-                          fontSize: 12, // smaller placeholder text (inherits)
+                          fontSize: 12,
                         }}
                       />
                     </div>
@@ -934,10 +833,21 @@ export default function RemoteFileDialog({
                   <ul className={styles.list}>
                     {showParentEntry && (
                       <li className={styles.listItem} key="..">
-                        <button className={styles.rowBtn} onClick={goUp} type="button">
-                          <FolderOpen className={styles.iconSmMut} />
-                          <span className={styles.truncate}>..</span>
-                        </button>
+                        {(() => {
+                          const isSel = selected?.name === ".." && selected?.path === "..";
+                          return (
+                            <button
+                              className={[styles.rowBtn, isSel ? styles.rowBtnSelected : ""].join(" ")}
+                              onClick={() => handleSelectEntry(parentEntry)}     // singleClickSelectOnly
+                              onDoubleClick={goUp}                               // doubleClickToGoUp
+                              type="button"
+                              title="Double-click to go up"
+                            >
+                              <FolderOpen className={styles.iconSmMut} />
+                              <span className={styles.truncate}>..</span>
+                            </button>
+                          );
+                        })()}
                       </li>
                     )}
 
@@ -1057,14 +967,14 @@ export default function RemoteFileDialog({
                               {(imgMeta.width !== undefined ||
                                 imgMeta.height !== undefined ||
                                 imgMeta.depth !== undefined) && (
-                                <div className={styles.metaRow}>
-                                  <span className={styles.metaLabel}>Dimensions:</span>
-                                  <span className={styles.metaValue}>
-                                    {imgMeta.width ?? "?"} × {imgMeta.height ?? "?"}
-                                    {imgMeta.depth !== undefined ? ` × ${imgMeta.depth}` : ""}
-                                  </span>
-                                </div>
-                              )}
+                                  <div className={styles.metaRow}>
+                                    <span className={styles.metaLabel}>Dimensions:</span>
+                                    <span className={styles.metaValue}>
+                                      {imgMeta.width ?? "?"} × {imgMeta.height ?? "?"}
+                                      {imgMeta.depth !== undefined ? ` × ${imgMeta.depth}` : ""}
+                                    </span>
+                                  </div>
+                                )}
 
                               {imgMeta.voxelSize && (
                                 <div className={styles.metaRow}>

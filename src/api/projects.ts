@@ -554,7 +554,6 @@ export interface RemoteEntry {
   mime?: string;
 }
 export interface RemoteListing {
-  cwd: string;
   items: RemoteEntry[];
 }
 
@@ -578,9 +577,6 @@ export async function resolveBrowserPaths(
     rootAbs?: string;
     startPath?: string;
     protocolRoot?: string;
-
-    // legacy contract
-    path?: string;
   }>(res);
 
   // preferNewContract
@@ -593,7 +589,7 @@ export async function resolveBrowserPaths(
   }
 
   // legacyFallback
-  const legacyPath = j?.path || "/";
+  const legacyPath = "/";
   return {
     rootAbs: "/home",
     startPath: legacyPath,
@@ -601,19 +597,21 @@ export async function resolveBrowserPaths(
   };
 }
 
+// supportNewAndLegacyFsListResponses
+export type ListProtocolDirResponse = RemoteEntry[] | RemoteListing;
 
 export async function listProtocolDir(
   projectId: Id,
   protocolId: Id,
   path: string,
-): Promise<RemoteListing> {
+): Promise<ListProtocolDirResponse> {
   const res = await fetchWithAuth(
     `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/fs/list?path=${encodeURIComponent(
       path,
     )}`,
   );
   if (!res.ok) throw await toApiError(res, "Failed to list directory");
-  return await safeJson<RemoteListing>(res);
+  return await safeJson<ListProtocolDirResponse>(res);
 }
 
 export async function listRemoteDirectory(
@@ -621,8 +619,11 @@ export async function listRemoteDirectory(
   protocolId: Id,
   path: string,
 ): Promise<RemoteEntry[]> {
-  const { items } = await listProtocolDir(projectId, protocolId, path);
-  return items;
+  const payload = await listProtocolDir(projectId, protocolId, path);
+
+  // normalizeFsListResponse
+  if (Array.isArray(payload)) return payload;
+  return Array.isArray(payload?.items) ? payload.items : [];
 }
 
 export async function previewProtocolText(
