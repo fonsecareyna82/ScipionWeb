@@ -15,7 +15,7 @@ import SettingsIcon from "@mui/icons-material/Settings";
 import RocketLaunchIcon from "@mui/icons-material/RocketLaunch";
 import RestartAltIcon from "@mui/icons-material/RestartAlt";
 import HelpOutlineIcon from "@mui/icons-material/HelpOutline";
-import { ScheduleRounded } from "@mui/icons-material";
+import { ScheduleRounded, StopOutlined } from "@mui/icons-material";
 
 export type ExecuteModeInfo = {
   label?: string;
@@ -39,6 +39,7 @@ function getExecuteModeIcon(modeKey: string) {
   if (key === "launch") return <RocketLaunchIcon fontSize="small" />;
   if (key === "restart") return <RestartAltIcon fontSize="small" />;
   if (key === "schedule") return <ScheduleRounded fontSize="small" />;
+  if (key === "stop") return <StopOutlined fontSize="small" />;
   return <SettingsIcon fontSize="small" />;
 }
 

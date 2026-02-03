@@ -290,6 +290,12 @@ function normalizeServiceAPI(srv: any): ProjectService {
   mapFn("continueAll", "continueAll");
   mapFn("resetFrom", "resetFrom");
   mapFn("stopProtocol", "stopProtocol");
+  mapFn("fetchProtocolLogChannels", "getProtocolLogChannels");
+  mapFn("fetchProtocolLogsChunk", "getProtocolLogsChunk");
+
+  // instance settings
+  mapFn("fetchInstanceSettings", "getInstanceSettings");
+  mapFn("updateInstanceSettings", "patchInstanceSettings");
 
   // file / previews
   mapFn("resolveProtocolStartPath", "resolveProtocolStartPath");
@@ -338,6 +344,7 @@ function normalizeServiceAPI(srv: any): ProjectService {
     protocolId: any,
     protocolClassName: string,
     params: any,
+    mode: string
   ) => {
     const fn = rawExecute ?? normalized.executeProtocol;
     try {
@@ -347,9 +354,10 @@ function normalizeServiceAPI(srv: any): ProjectService {
         protocolId,
         protocolClassName,
         params,
+        mode,
       );
     } catch (err) {
-      return await fn.call(normalized, protocolId, protocolClassName, params);
+      return await fn.call(normalized, protocolId, protocolClassName, params, mode);
     }
   };
 

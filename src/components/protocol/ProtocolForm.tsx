@@ -616,11 +616,7 @@ type LogsChunkResponse = {
 };
 
 
-const defaultLogChannels: LogChannel[] = [
-  { id: "stdout", label: "Output", order: 10 },
-  { id: "stderr", label: "Errors", order: 20 },
-  { id: "schedule", label: "Schedule", order: 30 },
-];
+const defaultLogChannels: LogChannel[] = [];
 
 function mergeLogChannels(base: LogChannel[], extra: LogChannel[]) {
   // mergeLogChannels
@@ -4040,15 +4036,23 @@ export default function ProtocolForm({
             {topTab === 2 && (
               <Box
                 sx={{
-                  flexGrow: 3,
-                  overflowY: "auto",
+                  flex: 1,
+                  minHeight: 0,
+                  minWidth: 0,
+                  display: "flex",
+                  flexDirection: "column",
+                  overflow: "hidden",
                 }}
               >
                 <Tabs
                   value={activeLogChannelId}
                   onChange={(_, val) => setActiveLogChannelId(String(val))}
+                  variant="scrollable"
+                  scrollButtons="auto"
+                  allowScrollButtonsMobile
                   sx={{
-                    mb: 0,
+                    flex: "0 0 auto",
+                    mb: 0.5,
                     "& .MuiTab-root": {
                       textTransform: "none",
                       fontSize: "0.8rem",
@@ -4061,7 +4065,18 @@ export default function ProtocolForm({
                   ))}
                 </Tabs>
 
-                <Box className={styles.bottomTabContent} sx={{ p: 2 }}>
+                <Box
+                  className={styles.bottomTabContent}
+                  sx={{
+                    flex: 1,
+                    minHeight: 0,
+                    minWidth: 0,
+                    display: "flex",
+                    flexDirection: "column",
+                    overflow: "hidden",
+                    p: 1,
+                  }}
+                >
                   {logsError && (
                     <Typography variant="body2" color="error" sx={{ mb: 1 }}>
                       {logsError}
@@ -4071,17 +4086,23 @@ export default function ProtocolForm({
                   <Box
                     ref={logsContainerRef}
                     sx={{
+                      flex: 1,
+                      minHeight: 0,
+                      minWidth: 0,
                       backgroundColor: "#f5f5f5",
                       color: "black",
-                      borderColor: "gray",
-                      fontFamily: "monospace",
-                      fontSize: 12,
-                      p: 2,
                       borderRadius: 2,
                       border: "1px solid #e5e7eb",
-                      maxHeight: "100%",
-                      height: "100%",
+                      p: 1.5,
+                      fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+                      fontSize: 12,
+                      lineHeight: 1.4,
+
+                      // The scrollbars must live here, not in the whole form
                       overflowY: "auto",
+                      overflowX: "auto",
+
+                      // Keep log formatting; horizontal scroll stays inside this panel
                       whiteSpace: "pre",
                     }}
                   >
@@ -4090,17 +4111,20 @@ export default function ProtocolForm({
                         const lineNoColor = activeLogChannelId === "stderr" ? "red" : "blue";
 
                         return (
-                          <div key={idx} style={{ display: "flex" }}>
+                          <div key={idx} style={{ display: "flex", minWidth: 0 }}>
                             <span
                               style={{
                                 color: lineNoColor,
                                 userSelect: "none",
                                 marginRight: 8,
+                                flex: "0 0 auto",
                               }}
                             >
                               {String(idx + 1).padStart(5, "0")}:
                             </span>
-                            <span>{parseAnsi(line)}</span>
+                            <span style={{ flex: "1 1 auto", minWidth: 0 }}>
+                              {parseAnsi(line)}
+                            </span>
                           </div>
                         );
                       })
@@ -4113,6 +4137,7 @@ export default function ProtocolForm({
                 </Box>
               </Box>
             )}
+
 
 
             {/* Metadata */}
@@ -4157,9 +4182,9 @@ export default function ProtocolForm({
             onSelectedModeChange={setSelectedExecuteMode}
             onExecute={handleExecute}
             disabled={
-              isBusy ||
-              protocolDetails.status === "running" ||
-              protocolDetails.status === "scheduled"
+              isBusy //||
+              //protocolDetails.status === "running" ||
+              //protocolDetails.status === "scheduled"
             }
             loading={isExecuting}
           />
@@ -4171,13 +4196,13 @@ export default function ProtocolForm({
             color="success"
             onClick={() => handleExecute("launch")}
             disabled={
-              isBusy ||
-              protocolDetails.status === "running" ||
-              protocolDetails.status === "scheduled"
+              isBusy //||
+              //protocolDetails.status === "running" ||
+              // protocolDetails.status === "scheduled"
             }
             sx={{ textTransform: "none" }}
           >
-            {isExecuting ? "Launching..." : "Launch"}
+            {isExecuting ? "Processing..." : "Launch"}
           </Button>
         )}
 

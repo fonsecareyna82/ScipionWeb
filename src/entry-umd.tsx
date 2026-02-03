@@ -50,6 +50,11 @@ import type {
   UserSettingsPatch,
   InstanceSettings,
   InstanceSettingsPatch,
+  ProtocolLogChannelsResponse,
+  ProtocolLogOffsets,
+  ProtocolLogsChunkResponse,
+  ProtocolLogChunk
+
 } from "./services/ProjectService";
 import type { WidgetGlobal } from "./types/global-widget";
 import type { loadWorkflowPayload } from "@/api/projects";
@@ -222,7 +227,8 @@ const defaultMockService: ProjectService = {
     _projectId: Id,
     _protocolId: Id,
     _protocolClassName: string,
-    _params: Record<string, unknown>
+    _params: Record<string, unknown>,
+    _mode: string
   ) {
     return { success: true } as any;
   },
@@ -511,7 +517,40 @@ const defaultMockService: ProjectService = {
     return { ...mockInstanceSettings };
   },
 
+   async fetchProtocolLogChannels(
+    _projectId: Id,
+    _protocolId: Id,
+  ): Promise<ProtocolLogChannelsResponse> {
+    return { channels: [{ id: "default", label: "Default", order: 0 }] };
+  },
 
+    async fetchProtocolLogsChunk(
+    _projectId: Id,
+    _protocolId: Id,
+    offsets: ProtocolLogOffsets,
+    _opts?: {
+      limit?: number;
+      signal?: AbortSignal;
+    },
+  ): Promise<ProtocolLogsChunkResponse> {
+    // Build a valid ProtocolLogsChunkResponse using the provided offsets
+    const channelIds = Object.keys(offsets ?? {});
+    const safeChannelIds = channelIds.length > 0 ? channelIds : ["default"];
+
+    const chunks: Record<string, ProtocolLogChunk> = {};
+
+    for (const channelId of safeChannelIds) {
+      const offset = (offsets && offsets[channelId] != null) ? offsets[channelId] : 0;
+
+      chunks[channelId] = {
+        text: "",
+        offset,
+        done: true,
+      };
+    }
+
+    return { chunks };
+  },
 };
 
 /** normalizeServiceApiAliasMappingAndSignatureAdapters */
@@ -634,10 +673,11 @@ function normalizeServiceAPI(srv?: any): ProjectService {
       projectId: Id,
       protocolId: Id,
       protocolClassName: string,
-      params: Record<string, unknown>
+      params: Record<string, unknown>,
+      mode: string
     ) => {
-      if (execLen >= 4) return baseExec(projectId, protocolId, protocolClassName, params);
-      return baseExec(protocolId, protocolClassName, params);
+      if (execLen >= 4) return baseExec(projectId, protocolId, protocolClassName, params, mode);
+      return baseExec(protocolId, protocolClassName, params, mode);
     };
   }
 
