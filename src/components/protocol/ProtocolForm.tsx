@@ -2591,8 +2591,6 @@ export default function ProtocolForm({
         const textValue = current.editableValue ?? current.value ?? def.value ?? def.default ?? "";
         const label = current['label'] ?? def.label ?? name ?? "";
 
-        console.log("Rendering PathParam", label);
-
         const isPointerEnabled =
           typeof current.pointerClass === "string"
             ? current.pointerClass.trim().length > 0
