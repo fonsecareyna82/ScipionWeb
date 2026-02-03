@@ -2338,6 +2338,9 @@ export default function ProtocolForm({
 
         const current = protocolDetails.params?.[stateKey] || {};
         const textValue = current.editableValue ?? current.value ?? def.value ?? def.default ?? "";
+        const label = current['label'] ?? def.label ?? name ?? "";
+
+        console.log("Rendering PathParam", label);
 
         const isPointerEnabled =
           typeof current.pointerClass === "string"
@@ -2349,7 +2352,7 @@ export default function ProtocolForm({
             console.warn("Missing projectId or protocolId for PathParam browse.");
             return;
           }
-          setPathDialog({ open: true, paramKey: stateKey });
+          setPathDialog({ open: true, paramKey: label  });
         };
 
         const handleClear = () => {
@@ -4012,7 +4015,7 @@ export default function ProtocolForm({
               paramKey: null,
             })
           }
-          title={`Select file for ${pathDialog.paramKey}`}
+          title={`Select file for: ${pathDialog.paramKey}`}
           projectId={projectId}
           protocolId={protocolId}
           resolveBrowserPaths={() => svc.resolveBrowserPaths(projectId, protocolId.toString())}
