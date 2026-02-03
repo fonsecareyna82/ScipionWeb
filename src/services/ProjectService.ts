@@ -375,6 +375,46 @@ export type InstanceSettings = {
 export type InstanceSettingsPatch = Partial<InstanceSettings>;
 
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Protocol logs (dynamic channels)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type ProtocolLogChannel = {
+  id: string;
+  label: string;
+  order?: number;
+};
+
+export type ProtocolLogChannelMeta = {
+  label?: string;
+  name?: string;
+  title?: string;
+  order?: number;
+};
+
+export type ProtocolLogChannelsResponse =
+  | ProtocolLogChannel[]
+  | { channels: ProtocolLogChannel[] }
+  | Record<string, ProtocolLogChannelMeta>;
+
+export type ProtocolLogOffsets = Record<string, number>;
+
+export type ProtocolLogChunk = {
+  text: string;
+  offset: number;
+  done?: boolean;
+};
+
+export type ProtocolLogsChunkResponse = {
+  chunks?: Record<string, ProtocolLogChunk>;
+};
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ProjectService interface
+// ─────────────────────────────────────────────────────────────────────────────  
+
+
 /**
  * Optional generics to let consumers specify concrete return shapes.
  * - TProject: shape of a single project
@@ -795,6 +835,27 @@ fetchCTFPsdImage(
   fetchInstanceSettings(): Promise<InstanceSettings>;
   putInstanceSettings(payload: InstanceSettings): Promise<InstanceSettings>;
   patchInstanceSettings(patch: InstanceSettingsPatch): Promise<InstanceSettings>;
+
+
+    // ─────────────────────────────────────────────────────────────────────────────
+  // Protocol logs (dynamic channels)
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  fetchProtocolLogChannels(
+    projectId: Id,
+    protocolId: Id,
+  ): Promise<ProtocolLogChannelsResponse>;
+
+  fetchProtocolLogsChunk(
+    projectId: Id,
+    protocolId: Id,
+    offsets: ProtocolLogOffsets,
+    opts?: {
+      limit?: number;
+      signal?: AbortSignal;
+    },
+  ): Promise<ProtocolLogsChunkResponse>;
+
 
 
 }

@@ -32,7 +32,6 @@ import {
 import WrapWithDrop from "./WrapWithDrop";
 import MultiParamRow from "./MultiParamRow";
 import ParamRow from "./ParamRow";
-import { fetchProtocolLogsStream } from "@/api/protocols";
 import OutputSelectorDialog from "./outputSelectorDialog";
 import { useProjectService } from "@/ProjectServiceContext";
 import RemoteFileDialog from "@/components/files/RemoteFileDialog";
@@ -589,6 +588,136 @@ function JsonTree({ data }: { data: any }) {
   );
 }
 
+type LogChannel = {
+  id: string;
+  label: string;
+  order?: number;
+};
+
+type LogOffsets = Record<string, number>;
+
+type LogChunkItem = {
+  channel: string;
+  content?: string;
+  text?: string; // backward compatibility
+  offset?: number;
+  resetOffset?: boolean;
+  truncated?: boolean;
+  exists?: boolean;
+  path?: string;
+  bytesRead?: number;
+  linesRead?: number;
+  sizeBytes?: number;
+};
+
+type LogsChunkResponse = {
+  chunks?: LogChunkItem[] | Record<string, { text?: string; offset?: number }>;
+  done?: boolean;
+};
+
+
+const defaultLogChannels: LogChannel[] = [
+  { id: "stdout", label: "Output", order: 10 },
+  { id: "stderr", label: "Errors", order: 20 },
+  { id: "schedule", label: "Schedule", order: 30 },
+];
+
+function mergeLogChannels(base: LogChannel[], extra: LogChannel[]) {
+  // mergeLogChannels
+  const map = new Map<string, LogChannel>();
+
+  for (const ch of base) map.set(ch.id, ch);
+  for (const ch of extra) {
+    const prev = map.get(ch.id);
+    map.set(ch.id, { ...prev, ...ch }); // extra overrides label/order if provided
+  }
+
+  return Array.from(map.values());
+}
+
+function buildLogBuffers(channels: LogChannel[], prev?: Record<string, string>) {
+  // buildLogBuffers
+  const next: Record<string, string> = {};
+  for (const ch of channels) {
+    next[ch.id] = typeof prev?.[ch.id] === "string" ? prev![ch.id] : "";
+  }
+  return next;
+}
+
+function buildOffsets(channels: LogChannel[], prev?: Record<string, number>) {
+  // buildOffsets
+  const next: Record<string, number> = {};
+  for (const ch of channels) {
+    const v = prev?.[ch.id];
+    next[ch.id] = typeof v === "number" ? v : 0;
+  }
+  return next;
+}
+
+function buildOffsetsPayload(requestChannels: LogChannel[], offsets: Record<string, number>) {
+  // buildOffsetsPayload
+  const payload: Record<string, number> = {};
+  for (const ch of requestChannels) {
+    payload[ch.id] = typeof offsets[ch.id] === "number" ? offsets[ch.id] : 0;
+  }
+  return payload;
+}
+
+
+function normalizeLogChannels(raw: any): LogChannel[] {
+  // normalizeLogChannels
+  if (!raw) return defaultLogChannels;
+
+  if (Array.isArray(raw)) {
+    const arr = raw
+      .map((x) => ({
+        id: String(x?.id ?? x?.key ?? x?.name ?? ""),
+        label: String(x?.label ?? x?.title ?? x?.name ?? ""),
+        order: typeof x?.order === "number" ? x.order : undefined,
+      }))
+      .filter((x) => x.id.length > 0)
+      .map((x) => ({
+        ...x,
+        label: x.label.trim().length > 0 ? x.label : x.id,
+      }));
+
+    return arr.length > 0 ? arr : defaultLogChannels;
+  }
+
+  if (raw && typeof raw === "object") {
+    const channelsArr = Array.isArray(raw.channels) ? raw.channels : null;
+    if (channelsArr) return normalizeLogChannels(channelsArr);
+
+    const dict = raw.logs && typeof raw.logs === "object" ? raw.logs : raw;
+    const entries = Object.entries(dict as Record<string, any>);
+
+    const arr = entries
+      .map(([id, meta]) => ({
+        id: String(id),
+        label: String(meta?.label ?? meta?.name ?? meta?.title ?? id),
+        order: typeof meta?.order === "number" ? meta.order : undefined,
+      }))
+      .filter((x) => x.id.length > 0);
+
+    return arr.length > 0 ? arr : defaultLogChannels;
+  }
+
+  return defaultLogChannels;
+}
+
+function sortLogChannels(channels: LogChannel[]): LogChannel[] {
+  // sortLogChannels
+  const arr = Array.isArray(channels) ? [...channels] : [];
+  arr.sort((a, b) => {
+    const ao = typeof a.order === "number" ? a.order : 1_000_000;
+    const bo = typeof b.order === "number" ? b.order : 1_000_000;
+    if (ao !== bo) return ao - bo;
+    return String(a.label || a.id).localeCompare(String(b.label || b.id));
+  });
+  return arr.length > 0 ? arr : defaultLogChannels;
+}
+
+
 export default function ProtocolForm({
   data,
   projectProtocols = [],
@@ -670,7 +799,7 @@ export default function ProtocolForm({
 
 
   const [topTab, setTopTab] = useState(0);
-  const [bottomTab, setBottomTab] = useState(0);
+  const [activeLogChannelId, setActiveLogChannelId] = useState<string>("");
   const [sectionTab, setSectionTab] = useState(0);
   const [protocolDetails, setProtocolDetails] = useState<any>({});
   const [expandedGroups, setExpandedGroups] = useState<{ [key: string]: boolean }>({});
@@ -689,18 +818,35 @@ export default function ProtocolForm({
   const [dragOverKey, setDragOverKey] = useState<string | null>(null);
   const [currentDraggedOutput] = useState<any>(null);
 
-  // Logs
-  const containerRef = useRef<HTMLDivElement>(null);
+  // Logs (dynamic channels)
+  const logsContainerRef = useRef<HTMLDivElement>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const [logs, setLogs] = useState<string>("");
-  const [errorLogs, setErrorLogs] = useState<string>("");
-  const [scheduleLogs, setScheduleLogs] = useState<string>("");
-  const [, setLogsError] = useState<string | null>(null);
-  const offsetRef = useRef<number>(0);
-  const errorOffsetRef = useRef<number>(0);
-  const scheduleOffsetRef = useRef<number>(0);
-  const scheduleContainerRef = useRef<HTMLDivElement>(null);
-  const errorContainerRef = useRef<HTMLDivElement>(null);
+
+  const [logChannels, setLogChannels] = useState<LogChannel[]>(defaultLogChannels);
+  const sortedLogChannels = useMemo(() => sortLogChannels(logChannels), [logChannels]);
+
+  const uiChannelsRef = useRef<LogChannel[]>(defaultLogChannels);
+  const requestChannelsRef = useRef<LogChannel[]>(defaultLogChannels);
+
+  const [logBuffers, setLogBuffers] = useState<Record<string, string>>(() =>
+    buildLogBuffers(defaultLogChannels)
+  );
+
+  const offsetsRef = useRef<Record<string, number>>(buildOffsets(defaultLogChannels));
+
+  useEffect(() => {
+    // ensureActiveLogChannelId
+    if (!sortedLogChannels || sortedLogChannels.length === 0) return;
+
+    setActiveLogChannelId((prev) => {
+      if (prev && sortedLogChannels.some((c) => c.id === prev)) return prev;
+      return sortedLogChannels[0].id;
+    });
+  }, [sortedLogChannels]);
+
+
+  const [logsError, setLogsError] = useState<string | null>(null);
+
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const [showValidationDialog, setShowValidationDialog] = useState(false);
   const [execErrorDialogOpen, setExecErrorDialogOpen] = useState(false);
@@ -740,10 +886,16 @@ export default function ProtocolForm({
   const [sqliteTable, setSqliteTable] = useState<string | null>(null);
   const previewUrlRef = useRef<string | null>(null);
 
-  const [pathDialog, setPathDialog] = useState<{ open: boolean; paramKey: string | null }>({
+  const [pathDialog, setPathDialog] = useState<{
+    open: boolean;
+    stateKey: string | null;
+    title: string | null;
+  }>({
     open: false,
-    paramKey: null,
+    stateKey: null,
+    title: null,
   });
+
 
   const closeBtnSx = {
     ml: "auto",
@@ -764,7 +916,8 @@ export default function ProtocolForm({
       const infoText = entry?.info ?? entry?.pointerClass ?? "";
       return { name: outputName, infoText, raw: entry };
     });
-  }, [form?.outputs]);
+  }, [outputsFromApi]);
+
 
 
   // Active Output
@@ -1280,7 +1433,24 @@ export default function ProtocolForm({
       .includes(String(s || "").toLowerCase());
   const idleStreakRef = useRef<number>(0);
 
-  // Incremental log polling
+  const maxLogCharsPerChannel = 300_000;
+
+  function trimLogBuffer(text: string, maxChars: number): string {
+    // trimLogBuffer
+    if (maxChars <= 0) return text;
+    if (text.length <= maxChars) return text;
+
+    const start = text.length - maxChars;
+
+    // trimToNextNewline
+    const nl = text.indexOf("\n", start);
+    if (nl >= 0 && nl + 1 < text.length) return text.slice(nl + 1);
+
+    return text.slice(start);
+  }
+
+
+  // Incremental log polling (svc-only, dynamic channels)
   useEffect(() => {
     // clearPreviousInterval
     if (pollRef.current) {
@@ -1288,75 +1458,165 @@ export default function ProtocolForm({
       pollRef.current = null;
     }
 
+    setLogsError(null);
+
     // enablePollingOnlyOnLogsTab
     if (topTab !== 2 || !projectId || !protocolId) return;
 
     let cancelled = false;
     idleStreakRef.current = 0;
 
+    const fetchChannelsFn = svc.fetchProtocolLogChannels;
+    const fetchChunkFn = svc.fetchProtocolLogsChunk;
+
+
+    const ensureChannelState = (channels: LogChannel[]) => {
+      // ensureChannelState
+      const ids = channels.map((c) => c.id);
+
+      setLogBuffers((prev) => {
+        const next = { ...prev };
+        for (const id of ids) {
+          if (typeof next[id] !== "string") next[id] = "";
+        }
+        return next;
+      });
+
+      for (const id of ids) {
+        if (typeof offsetsRef.current[id] !== "number") offsetsRef.current[id] = 0;
+      }
+    };
+
+    const appendChunks = (chunksRaw: any): boolean => {
+      // appendChunks
+      if (!chunksRaw) return false;
+
+      const items: Array<{ id: string; text: string; nextOffset: number | null; reset: boolean }> = [];
+
+      // normalizeFromArrayShape
+      if (Array.isArray(chunksRaw)) {
+        for (const c of chunksRaw) {
+          const id = String(c?.channel ?? "");
+          if (!id) continue;
+
+          const text =
+            typeof c?.content === "string"
+              ? c.content
+              : typeof c?.text === "string"
+                ? c.text
+                : "";
+
+          const nextOffset = typeof c?.offset === "number" ? c.offset : null;
+          const reset = Boolean(c?.resetOffset);
+
+          items.push({ id, text, nextOffset, reset });
+        }
+      }
+      // normalizeFromDictShape (legacy)
+      else if (typeof chunksRaw === "object") {
+        for (const [idRaw, chunk] of Object.entries(chunksRaw)) {
+          const id = String(idRaw ?? "");
+          if (!id) continue;
+
+          const text = typeof (chunk as any)?.text === "string" ? (chunk as any).text : "";
+          const nextOffset = typeof (chunk as any)?.offset === "number" ? (chunk as any).offset : null;
+
+          items.push({ id, text, nextOffset, reset: false });
+        }
+      } else {
+        return false;
+      }
+
+      if (items.length === 0) return false;
+
+      let gotNew = false;
+      const patches: Record<string, { reset: boolean; text: string }> = {};
+
+      for (const it of items) {
+        const curOffset = typeof offsetsRef.current[it.id] === "number" ? offsetsRef.current[it.id] : 0;
+
+        const offsetKnown = typeof it.nextOffset === "number";
+        const nextOffset = offsetKnown ? (it.nextOffset as number) : curOffset;
+
+        // resetIfServerSaysOrOffsetGoesBack
+        const mustReset = it.reset || (offsetKnown && nextOffset < curOffset);
+
+        if (mustReset) {
+          offsetsRef.current[it.id] = offsetKnown ? nextOffset : 0;
+          patches[it.id] = { reset: true, text: it.text };
+          if (it.text.length > 0) gotNew = true;
+          continue;
+        }
+
+        // appendOnlyIfOffsetAdvanced
+        if (offsetKnown && nextOffset > curOffset) {
+          offsetsRef.current[it.id] = nextOffset;
+
+          if (it.text.length > 0) {
+            patches[it.id] = { reset: false, text: it.text };
+            gotNew = true;
+          }
+        }
+      }
+
+      if (gotNew) {
+        setLogBuffers((prev) => {
+          const next = { ...prev };
+          for (const [id, p] of Object.entries(patches)) {
+            const base = p.reset ? "" : String(next[id] ?? "");
+            next[id] = trimLogBuffer(base + p.text, maxLogCharsPerChannel);
+          }
+          return next;
+        });
+      }
+
+      return gotNew;
+    };
+
+
     // initialLoad
     (async () => {
       try {
-        const res: any = await fetchProtocolLogsStream(projectId, protocolId, 0, 0, 0);
+        const rawChannels: any = await fetchChannelsFn(projectId, protocolId);
         if (cancelled) return;
 
-        setLogs(res.stdoutLog ?? "");
-        setErrorLogs(res.stderrLog ?? "");
-        setScheduleLogs(res.scheduleLog ?? "");
+        const serverChannels = sortLogChannels(normalizeLogChannels(rawChannels));
 
-        offsetRef.current =
-          typeof res.stdoutOffset === "number"
-            ? res.stdoutOffset
-            : (typeof res.stdoutLog === "string" ? res.stdoutLog.length : 0);
+        // uiChannels keeps defaults (includes schedule) plus whatever the server declares
+        const uiChannels = sortLogChannels(mergeLogChannels(defaultLogChannels, serverChannels));
 
-        errorOffsetRef.current =
-          typeof res.stderrOffset === "number"
-            ? res.stderrOffset
-            : (typeof res.stderrLog === "string" ? res.stderrLog.length : 0);
+        // requestChannels only includes what server declared (if any); otherwise fallback to defaults
+        const requestChannels = serverChannels.length > 0 ? serverChannels : defaultLogChannels;
 
-        scheduleOffsetRef.current =
-          typeof res.scheduleOffset === "number"
-            ? res.scheduleOffset
-            : (typeof res.scheduleLog === "string" ? res.scheduleLog.length : 0);
+        uiChannelsRef.current = uiChannels;
+        requestChannelsRef.current = requestChannels;
+
+        setLogChannels(uiChannels);
+
+        setLogBuffers((prev) => buildLogBuffers(uiChannels, prev));
+        offsetsRef.current = buildOffsets(uiChannels, offsetsRef.current);
+
+        const offsetsPayload = buildOffsetsPayload(requestChannelsRef.current, offsetsRef.current);
+
+        const rawChunk: LogsChunkResponse = await fetchChunkFn(projectId, protocolId, offsetsPayload);
+        if (cancelled) return;
+
+        appendChunks(rawChunk?.chunks);
       } catch (err: any) {
-        if (!cancelled) setLogsError(err.message || "Failed to load logs");
+        if (!cancelled) setLogsError(err?.message || "Failed to load logs");
       }
     })();
+
 
     // incrementalPolling
     pollRef.current = setInterval(async () => {
       try {
-        const res: any = await fetchProtocolLogsStream(
-          projectId, protocolId,
-          offsetRef.current || 0,
-          errorOffsetRef.current || 0,
-          scheduleOffsetRef.current || 0
-        );
+        const offsetsPayload = buildOffsetsPayload(requestChannelsRef.current, offsetsRef.current);
+
+        const rawChunk: LogsChunkResponse = await fetchChunkFn(projectId, protocolId, offsetsPayload);
         if (cancelled) return;
 
-        let gotNew = false;
-
-        const hasStdout = typeof res.stdoutLog === "string" && res.stdoutLog.length > 0;
-        const hasStderr = typeof res.stderrLog === "string" && res.stderrLog.length > 0;
-        const hasSched = typeof res.scheduleLog === "string" && res.scheduleLog.length > 0;
-
-        if (hasStdout && typeof res.stdoutOffset === "number" && res.stdoutOffset > offsetRef.current) {
-          setLogs((prev) => prev + res.stdoutLog);
-          offsetRef.current = res.stdoutOffset;
-          gotNew = true;
-        }
-
-        if (hasStderr && typeof res.stderrOffset === "number" && res.stderrOffset > errorOffsetRef.current) {
-          setErrorLogs((prev) => prev + res.stderrLog);
-          errorOffsetRef.current = res.stderrOffset;
-          gotNew = true;
-        }
-
-        if (hasSched && typeof res.scheduleOffset === "number" && res.scheduleOffset > scheduleOffsetRef.current) {
-          setScheduleLogs((prev) => prev + res.scheduleLog);
-          scheduleOffsetRef.current = res.scheduleOffset;
-          gotNew = true;
-        }
+        const gotNew = appendChunks(rawChunk?.chunks);
 
         // stopPollingWhenTerminalAndIdle
         if (isTerminalStatus(protocolDetails.status)) {
@@ -1369,9 +1629,10 @@ export default function ProtocolForm({
           if (gotNew) idleStreakRef.current = 0;
         }
       } catch (err: any) {
-        if (!cancelled) setLogsError(err.message || "Failed to load logs");
+        if (!cancelled) setLogsError(err?.message || "Failed to poll logs");
       }
     }, 2000);
+
 
     return () => {
       cancelled = true;
@@ -1380,25 +1641,19 @@ export default function ProtocolForm({
         pollRef.current = null;
       }
     };
-  }, [topTab, form?.projectId, form?.protocolId, protocolDetails.status]);
+  }, [topTab, projectId, protocolId, protocolDetails.status, svc]);
+
 
   // Autoscroll logs
-  useEffect(() => {
-    if (!containerRef.current) return;
-    containerRef.current.scrollTop = containerRef.current.scrollHeight;
-  }, [logs]);
+  const activeLogText = logBuffers[activeLogChannelId] ?? "";
 
-  // Autoscroll on new error logs
   useEffect(() => {
-    if (!errorContainerRef.current) return;
-    errorContainerRef.current.scrollTop = errorContainerRef.current.scrollHeight;
-  }, [errorLogs]);
+    // autoscrollActiveLogChannel
+    if (!logsContainerRef.current) return;
+    logsContainerRef.current.scrollTop = logsContainerRef.current.scrollHeight;
+  }, [activeLogChannelId, activeLogText]);
 
-  // Autoscroll on new schedule logs
-  useEffect(() => {
-    if (!scheduleContainerRef.current) return;
-    scheduleContainerRef.current.scrollTop = scheduleContainerRef.current.scrollHeight;
-  }, [scheduleLogs]);
+
 
   // Live expected-class reader for pointer-like params
   const getExpectedClass = (def: any): string | string[] | null => {
@@ -2352,7 +2607,7 @@ export default function ProtocolForm({
             console.warn("Missing projectId or protocolId for PathParam browse.");
             return;
           }
-          setPathDialog({ open: true, paramKey: label  });
+          setPathDialog({ open: true, stateKey, title: label });
         };
 
         const handleClear = () => {
@@ -3790,8 +4045,8 @@ export default function ProtocolForm({
                 }}
               >
                 <Tabs
-                  value={bottomTab}
-                  onChange={(_, val) => setBottomTab(val)}
+                  value={activeLogChannelId}
+                  onChange={(_, val) => setActiveLogChannelId(String(val))}
                   sx={{
                     mb: 0,
                     "& .MuiTab-root": {
@@ -3801,37 +4056,44 @@ export default function ProtocolForm({
                     },
                   }}
                 >
-                  {["Output", "Errors", "Schedule"].map((label, index) => (
-                    <Tab key={index} label={label} />
+                  {sortedLogChannels.map((ch) => (
+                    <Tab key={ch.id} value={ch.id} label={ch.label} />
                   ))}
                 </Tabs>
+
                 <Box className={styles.bottomTabContent} sx={{ p: 2 }}>
+                  {logsError && (
+                    <Typography variant="body2" color="error" sx={{ mb: 1 }}>
+                      {logsError}
+                    </Typography>
+                  )}
 
-                  {/* Output Log */}
-                  {bottomTab === 0 && (
-                    <Box
-                      ref={containerRef}
-                      sx={{
-                        backgroundColor: "#f5f5f5",
-                        color: "black",
-                        borderColor: "gray",
-                        fontFamily: "monospace",
-                        fontSize: 12,
-                        p: 2,
-                        borderRadius: 2,
-                        border: "1px solid #e5e7eb",
-                        maxHeight: "100%",
-                        height: "100%",
-                        overflowY: "auto",
-                        whiteSpace: "pre",
-                      }}
-                    >
-                      {logs && logs.length > 0 ? (
-                        logs.split("\n").map((line, idx) => (
+                  <Box
+                    ref={logsContainerRef}
+                    sx={{
+                      backgroundColor: "#f5f5f5",
+                      color: "black",
+                      borderColor: "gray",
+                      fontFamily: "monospace",
+                      fontSize: 12,
+                      p: 2,
+                      borderRadius: 2,
+                      border: "1px solid #e5e7eb",
+                      maxHeight: "100%",
+                      height: "100%",
+                      overflowY: "auto",
+                      whiteSpace: "pre",
+                    }}
+                  >
+                    {activeLogText && activeLogText.length > 0 ? (
+                      activeLogText.split("\n").map((line, idx) => {
+                        const lineNoColor = activeLogChannelId === "stderr" ? "red" : "blue";
+
+                        return (
                           <div key={idx} style={{ display: "flex" }}>
                             <span
                               style={{
-                                color: "blue",
+                                color: lineNoColor,
                                 userSelect: "none",
                                 marginRight: 8,
                               }}
@@ -3840,102 +4102,18 @@ export default function ProtocolForm({
                             </span>
                             <span>{parseAnsi(line)}</span>
                           </div>
-                        ))
-                      ) : (
-                        <Typography variant="body2" sx={{ opacity: 0.7 }}>
-                          No logs yet.
-                        </Typography>
-                      )}
-                    </Box>
-                  )}
-
-                  {/* Errors Log */}
-                  {bottomTab === 1 && (
-                    <Box
-                      ref={errorContainerRef}
-                      sx={{
-                        backgroundColor: "#f5f5f5",
-                        color: "black",
-                        borderColor: "gray",
-                        fontFamily: "monospace",
-                        fontSize: 12,
-                        p: 2,
-                        borderRadius: 2,
-                        border: "1px solid #e5e7eb",
-                        maxHeight: "100%",
-                        height: "100%",
-                        overflowY: "auto",
-                        whiteSpace: "pre",
-                      }}
-                    >
-                      {errorLogs ? (
-                        errorLogs.split("\n").map((line, idx) => (
-                          <div key={idx} style={{ display: "flex" }}>
-                            <span
-                              style={{
-                                color: "red",
-                                userSelect: "none",
-                                marginRight: 8,
-                              }}
-                            >
-                              {String(idx + 1).padStart(5, "0")}:
-                            </span>
-                            <span>{parseAnsi(line)}</span>
-                          </div>
-                        ))
-                      ) : (
-                        <Typography variant="body2" sx={{ opacity: 0.7 }}>
-                          No error logs.
-                        </Typography>
-                      )}
-                    </Box>
-                  )}
-
-                  {/* Schedule Log */}
-                  {bottomTab === 2 && (
-                    <Box
-                      ref={scheduleContainerRef}
-                      sx={{
-                        backgroundColor: "#f5f5f5",
-                        color: "black",
-                        borderColor: "gray",
-                        fontFamily: "monospace",
-                        fontSize: 12,
-                        p: 2,
-                        borderRadius: 2,
-                        border: "1px solid #e5e7eb",
-                        maxHeight: "100%",
-                        height: "100%",
-                        overflowY: "auto",
-                        whiteSpace: "pre",
-                      }}
-                    >
-                      {/* Schedule Log */}
-                      {scheduleLogs ? (
-                        scheduleLogs.split("\n").map((line, idx) => (
-                          <div key={idx} style={{ display: "flex" }}>
-                            <span
-                              style={{
-                                color: "red",
-                                userSelect: "none",
-                                marginRight: 8,
-                              }}
-                            >
-                              {String(idx + 1).padStart(5, "0")}:
-                            </span>
-                            <span>{parseAnsi(line)}</span>
-                          </div>
-                        ))
-                      ) : (
-                        <Typography variant="body2" sx={{ opacity: 0.7 }}>
-                          No schedule logs.
-                        </Typography>
-                      )}
-                    </Box>
-                  )}
+                        );
+                      })
+                    ) : (
+                      <Typography variant="body2" sx={{ opacity: 0.7 }}>
+                        No logs yet.
+                      </Typography>
+                    )}
+                  </Box>
                 </Box>
               </Box>
             )}
+
 
             {/* Metadata */}
             {topTab === 3 && (
@@ -4006,51 +4184,41 @@ export default function ProtocolForm({
       </div>
 
       {/* PathParam RemoteFileDialog */}
-      {pathDialog.open && pathDialog.paramKey && projectId && protocolId && (
+      {pathDialog.open && pathDialog.stateKey && projectId && protocolId && (
         <RemoteFileDialog
           open={pathDialog.open}
           onClose={() =>
             setPathDialog({
               open: false,
-              paramKey: null,
+              stateKey: null,
+              title: null,
             })
           }
-          title={`Select file for: ${pathDialog.paramKey}`}
+          title={`Select file for: ${pathDialog.title ?? pathDialog.stateKey}`}
           projectId={projectId}
           protocolId={protocolId}
           resolveBrowserPaths={() => svc.resolveBrowserPaths(projectId, protocolId.toString())}
           listRemoteDirectory={(p) => svc.listRemoteDirectory(projectId, protocolId.toString(), p)}
-          previewRemoteText={(p) =>
-            svc.previewProtocolText(projectId, String(protocolId), p)
-          }
+          previewRemoteText={(p) => svc.previewProtocolText(projectId, String(protocolId), p)}
           buildDownloadUrl={(p, inline) =>
-            svc.buildProtocolDownloadUrl(
-              String(projectId),
-              String(protocolId),
-              p,
-              !!inline
-            )
+            svc.buildProtocolDownloadUrl(String(projectId), String(protocolId), p, !!inline)
           }
           fetchInlinePreviewBlob={(p) =>
-            svc.fetchProtocolInlinePreviewBlob(
-              String(projectId),
-              String(protocolId),
-              p
-            )
+            svc.fetchProtocolInlinePreviewBlob(String(projectId), String(protocolId), p)
           }
           onPick={(relativePath) => {
-            const paramKey = pathDialog.paramKey;
-            if (paramKey) {
+            const stateKey = pathDialog.stateKey;
+
+            if (stateKey) {
               setProtocolDetails((prev: any) => {
-                if (!prev?.params?.[paramKey]) {
-                  return prev;
-                }
+                if (!prev?.params?.[stateKey]) return prev;
+
                 return {
                   ...prev,
                   params: {
                     ...prev.params,
-                    [paramKey]: {
-                      ...prev.params[paramKey],
+                    [stateKey]: {
+                      ...prev.params[stateKey],
                       editableValue: relativePath,
                       value: relativePath,
                     },
@@ -4058,9 +4226,11 @@ export default function ProtocolForm({
                 };
               });
             }
+
             setPathDialog({
               open: false,
-              paramKey: null,
+              stateKey: null,
+              title: null,
             });
           }}
         />

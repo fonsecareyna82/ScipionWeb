@@ -15,6 +15,9 @@ import type {
   CTFTomoExclusionsPayload,
   AnalyzeViewerResolveContext,
   AnalyzeViewerResolveDecision,
+  ProtocolLogChannelsResponse,
+  ProtocolLogsChunkResponse,
+  ProtocolLogOffsets,
 } from "@/services/ProjectService";
 
 
@@ -591,6 +594,23 @@ const defaultService: ProjectService = {
   fetchInstanceSettings: () => settingsApi.fetchInstanceSettings(),
   putInstanceSettings: (payload: InstanceSettings) => settingsApi.putInstanceSettings(payload),
   patchInstanceSettings: (patch: InstanceSettingsPatch) => settingsApi.patchInstanceSettings(patch),
+
+    // ──────────────────────────── Protocol logs (dynamic channels) ────────────────────────────
+
+  fetchProtocolLogChannels: (
+    projectId: Id,
+    protocolId: Id,
+  ): Promise<ProtocolLogChannelsResponse> =>
+    api.fetchProtocolLogChannels(toId(projectId), toId(protocolId)),
+
+  fetchProtocolLogsChunk: (
+    projectId: Id,
+    protocolId: Id,
+    offsets: ProtocolLogOffsets,
+    opts?: { limit?: number; signal?: AbortSignal },
+  ): Promise<ProtocolLogsChunkResponse> =>
+    api.fetchProtocolLogsChunk(toId(projectId), toId(protocolId), offsets, opts),
+
 
 
 };

@@ -10,6 +10,9 @@ import {
   WorkflowDescriptor,
   TiltExclusionsPayload,
   SettingsObject,
+  ProtocolLogChannelsResponse,
+  ProtocolLogsChunkResponse,
+  ProtocolLogOffsets,
 } from "@/services/ProjectService";
 
 const ACTION_LAUNCH = "launch";
@@ -544,6 +547,193 @@ export async function stopProtocol(projectId: Id, protocolIds: Id[]): Promise<vo
     throw await toApiError(response, "Failed to stop protocol(s)");
   return safeJson<any>(response);
 }
+
+/* ======================= PROTOCOL LOGS ======================= */
+
+type ProtocolLogChannel = {
+  id: string;
+  label: string;
+  order?: number;
+};
+
+type ProtocolLogChunk = {
+  text: string;
+  offset: number;
+  done?: boolean;
+};
+
+function normalizeProtocolLogChannelsResponse(
+  raw: unknown,
+): { channels: ProtocolLogChannel[] } {
+  // normalizeProtocolLogChannelsResponse
+  const toLabel = (meta: any, fallbackId: string): string => {
+    // toLabel
+    if (typeof meta === "string" && meta.trim()) return meta.trim();
+    if (meta == null) return fallbackId;
+
+    const v = meta?.label ?? meta?.name ?? meta?.title ?? fallbackId;
+    const s = String(v).trim();
+    return s || fallbackId;
+  };
+
+  const toOrder = (meta: any): number | undefined => {
+    // toOrder
+    const v = meta?.order;
+    return typeof v === "number" && Number.isFinite(v) ? v : undefined;
+  };
+
+  // Case 1: { channels: [...] }
+  if (raw && typeof raw === "object" && Array.isArray((raw as any).channels)) {
+    const channels = (raw as any).channels
+      .map((c: any) => ({
+        id: String(c?.id ?? "").trim(),
+        label: String(c?.label ?? c?.name ?? c?.title ?? c?.id ?? "").trim(),
+        order: toOrder(c),
+      }))
+      .filter((c: ProtocolLogChannel) => c.id.length > 0 && c.label.length > 0);
+
+    return { channels: sortChannels(channels) };
+  }
+
+  // Case 2: [...]
+  if (Array.isArray(raw)) {
+    const channels = raw
+      .map((c: any) => ({
+        id: String(c?.id ?? "").trim(),
+        label: String(c?.label ?? c?.name ?? c?.title ?? c?.id ?? "").trim(),
+        order: toOrder(c),
+      }))
+      .filter((c: ProtocolLogChannel) => c.id.length > 0 && c.label.length > 0);
+
+    return { channels: sortChannels(channels) };
+  }
+
+  // Case 3: { stdout: { label }, stderr: "Errors" }
+  if (raw && typeof raw === "object") {
+    const obj = raw as Record<string, any>;
+
+    const channels = Object.keys(obj)
+      .map((id) => ({
+        id: String(id).trim(),
+        label: toLabel(obj[id], id),
+        order: toOrder(obj[id]),
+      }))
+      .filter((c) => c.id.length > 0 && c.label.length > 0);
+
+    return { channels: sortChannels(channels) };
+  }
+
+  return { channels: [] };
+}
+
+
+function sortChannels(channels: ProtocolLogChannel[]): ProtocolLogChannel[] {
+  // sortChannels
+  return [...channels].sort((a, b) => {
+    const ao = a.order ?? 0;
+    const bo = b.order ?? 0;
+    if (ao !== bo) return ao - bo;
+    return a.label.localeCompare(b.label);
+  });
+}
+
+function normalizeProtocolLogsChunkResponse(
+  raw: unknown,
+): { chunks: Record<string, ProtocolLogChunk> } {
+  // normalizeProtocolLogsChunkResponse
+  if (!raw || typeof raw !== "object") return { chunks: {} };
+
+  // Case 1: { chunks: { stdout: { text, offset }, ... } }
+  const maybeChunks = (raw as any).chunks;
+  if (maybeChunks && typeof maybeChunks === "object") {
+    return { chunks: maybeChunks as Record<string, ProtocolLogChunk> };
+  }
+
+  // Case 2: { stdout: { text, offset }, stderr: { text, offset } }
+  const obj = raw as Record<string, any>;
+  const keys = Object.keys(obj);
+  const looksLikeChunks = keys.some((k) => {
+    const v = obj[k];
+    return v && typeof v === "object" && typeof v.text === "string" && typeof v.offset === "number";
+  });
+
+  if (looksLikeChunks) {
+    return { chunks: obj as Record<string, ProtocolLogChunk> };
+  }
+
+  return { chunks: {} };
+}
+
+/**
+ * Fetch dynamic log channels for a protocol.
+ * Recommended backend endpoint:
+ *   GET /projects/{projectId}/protocols/{protocolId}/logs/channels
+ */
+export async function fetchProtocolLogChannels(
+  projectId: Id,
+  protocolId: Id,
+): Promise<ProtocolLogChannelsResponse> {
+  // fetchProtocolLogChannels
+  const url = `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/logs/channels`;
+
+  const res = await fetchWithAuth(url, { method: "GET" });
+
+  // Treat missing logs as empty
+  if (res.status === 404 || res.status === 204) {
+    return { channels: [] };
+  }
+
+  if (!res.ok) {
+    throw await toApiError(res, "Failed to fetch protocol log channels");
+  }
+
+  const raw = await safeJson<any>(res);
+  return normalizeProtocolLogChannelsResponse(raw);
+}
+
+/**
+ * Fetch incremental log chunks using per-channel offsets.
+ * Recommended backend endpoint:
+ *   POST /projects/{projectId}/protocols/{protocolId}/logs/chunk
+ * Body:
+ *   { offsets: { stdout: 123, stderr: 0 }, limit?: 20000 }
+ */
+export async function fetchProtocolLogsChunk(
+  projectId: Id,
+  protocolId: Id,
+  offsets: ProtocolLogOffsets,
+  opts: { limit?: number; signal?: AbortSignal } = {},
+): Promise<ProtocolLogsChunkResponse> {
+  // fetchProtocolLogsChunk
+  const url = `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/logs/chunk`;
+
+  const payload = {
+    offsets: offsets ?? {},
+    limit: typeof opts.limit === "number" ? opts.limit : undefined,
+  };
+
+  const res = await fetchWithAuth(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+    signal: opts.signal,
+  });
+
+  
+
+  // Treat missing logs as empty
+  if (res.status === 404 || res.status === 204) {
+    return { chunks: {} };
+  }
+
+  if (!res.ok) {
+    throw await toApiError(res, "Failed to fetch protocol logs chunk");
+  }
+
+  const raw = await safeJson<any>(res);
+  return normalizeProtocolLogsChunkResponse(raw);
+}
+
 
 /* ======================= Remote FS / Previews ======================= */
 export interface RemoteEntry {
