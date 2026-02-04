@@ -19,7 +19,7 @@ const LayoutContent: React.FC = () => {
 
   return (
     <div
-      className="min-h-screen w-full overflow-hidden xl:flex"
+      className="min-h-screen w-full overflow-hidden xl:flex ml-[-10px]"
       style={{ height: "100dvh" }}
     >
       <div>

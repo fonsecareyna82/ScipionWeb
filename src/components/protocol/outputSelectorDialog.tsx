@@ -328,10 +328,10 @@ const OutputSelectorDialog: React.FC<OutputSelectorDialogProps> = ({
                   </TableCell>
                 )}
 
-                <TableCell sx={{ width: "12%" }}>Protocol ID</TableCell>
-                <TableCell sx={{ width: "26%" }}>Protocol label</TableCell>
+                <TableCell sx={{ width: "35%" }}>Protocol ID</TableCell>
+                <TableCell sx={{ width: "40%" }}>Protocol label</TableCell>
                 <TableCell sx={{ width: "36%" }}>Info</TableCell>
-                <TableCell sx={{ width: "20%" }}>Class</TableCell>
+                {/*  <TableCell sx={{ width: "20%" }}>Class</TableCell>  */}
 
                 {!multiSelect && (
                   <TableCell sx={{ width: "10%", textAlign: "center" }}>Action</TableCell>
@@ -406,6 +406,7 @@ const OutputSelectorDialog: React.FC<OutputSelectorDialogProps> = ({
                       </Tooltip>
                     </TableCell>
 
+                    {/* 
                     <TableCell>
                       
 
@@ -421,7 +422,7 @@ const OutputSelectorDialog: React.FC<OutputSelectorDialogProps> = ({
                         />
                       </Tooltip>
 
-                    </TableCell>
+                    </TableCell> */}
 
                     {!multiSelect && (
                       <TableCell sx={{ textAlign: "center" }}>

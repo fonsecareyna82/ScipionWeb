@@ -21,6 +21,7 @@ const ACTION_RENAME = "rename";
 const ACTION_RESTART_ALL = "restart-all";
 const ACTION_CONTINUE_ALL = "continue-all";
 const ACTION_RESET_FROM = "reset-from";
+const ACTION_STOP = "stop";
 
 type Id = string | number;
 
@@ -536,7 +537,7 @@ export async function resetFrom(projectId: Id, protocolId: Id): Promise<any> {
 
 export async function stopProtocol(projectId: Id, protocolIds: Id[]): Promise<void> {
   const response = await fetchWithAuth(
-    `${BASE_URL}/projects/${projectId}/protocols/stop`,
+    `${BASE_URL}/projects/${projectId}/protocols/${ACTION_STOP}`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },

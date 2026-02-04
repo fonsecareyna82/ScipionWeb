@@ -92,7 +92,7 @@ return (
     sx={{
       // wrapWithDropContainer
       display: "block",
-      width: "100%",
+      width: "98%",
       minWidth: 0,
       borderRadius: 1,
       mt: 1,

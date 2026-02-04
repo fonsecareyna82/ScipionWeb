@@ -758,7 +758,7 @@ export default function ProtocolForm({
   // normalizeIdsAndCoreInfo
   const projectId = info?.projectId ?? (form as any)?.projectId ?? (form as any)?.project?.id ?? null;
   const protocolId =
-    info?.protocolId ?? info?.id ?? (form as any)?.protocolId ?? (form as any)?.id ?? null;
+    info?.protocolId ?? info?.id ?? (form as any)?.protocolId ?? (form as any)?.id ?? 'fake-id';
   const protocolClassName =
     info?.protocolClassName ?? (form as any)?.protocolClassName ?? null;
 
@@ -2662,7 +2662,7 @@ export default function ProtocolForm({
               })
             }
             sx={{
-              width: isInline ? fieldWidth : "100%",
+              width: isInline ? fieldWidth : "98%",
               minWidth: 0,
               "& .MuiInputBase-root": { minHeight: 36 },
               "& .MuiInputBase-input": { fontSize: 12, padding: "8px 10px", lineHeight: 1.2 },
@@ -2744,7 +2744,7 @@ export default function ProtocolForm({
               value={safeSel}
               onChange={(e) => onChange(e.target.value)}
               sx={{
-                width: 260,
+                width: "69%",
                 minWidth: 0,
                 "& .MuiInputBase-input": { fontSize: 12 },
                 "& .MuiSelect-select": { fontSize: 12, display: "flex", alignItems: "center" },
@@ -4208,6 +4208,7 @@ export default function ProtocolForm({
 
       {/* PathParam RemoteFileDialog */}
       {pathDialog.open && pathDialog.stateKey && projectId && protocolId && (
+       
         <RemoteFileDialog
           open={pathDialog.open}
           onClose={() =>
