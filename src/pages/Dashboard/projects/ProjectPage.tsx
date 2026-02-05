@@ -110,7 +110,8 @@ type NodeActions = {
   onStop?: (id: string) => void;
 };
 
-type OpenForm = { key: string; id: string; details: any };
+type OpenForm = { key: string; id: string; details: any; isClosing?: boolean };
+
 type SearchResult = { id: string; label: string; status?: string };
 
 type ProtocolHelpState = {
@@ -468,6 +469,25 @@ export default function ProjectPage() {
   // inFlightFormOpenIdsRef
   const openingFormIdsRef = useRef<Set<string>>(new Set());
 
+  // dockEpochRef: prevents reopening forms after global close while a fetch is in-flight
+  const dockEpochRef = useRef(0);
+
+
+  const closeAllDockedForms = useCallback(() => {
+    // closeAllDockedForms
+    if (!openForms.length) return;
+
+    captureDockPositions();
+    pendingFlipRef.current = true;
+
+    // Invalidate any in-flight opens so they can't re-add forms later
+    dockEpochRef.current += 1;
+    openingFormIdsRef.current.clear();
+
+    setOpenForms([]);
+  }, [openForms.length]);
+
+
   // --- Smooth dock animations (FLIP) ---
   const dockRef = useRef<HTMLDivElement | null>(null);
   const lastPositionsRef = useRef<Record<string, DOMRect>>({});
@@ -652,12 +672,28 @@ export default function ProjectPage() {
   // Workflows
   const [workflowsOpen, setWorkflowsOpen] = useState(false);
 
+  useEffect(() => {
+    // closeDockWhenExclusivePanelsOpen
+    if (!drawerOpen && !workflowsOpen) return;
+
+    captureDockPositions();
+    pendingFlipRef.current = true;
+
+    // Invalidate any in-flight opens so they can't re-add forms later
+    dockEpochRef.current += 1;
+    openingFormIdsRef.current.clear();
+
+    setOpenForms([]);
+  }, [drawerOpen, workflowsOpen]);
+
+
   const handleOpenWorkflows = useCallback(async () => {
     if (!projectName) return;
 
     // Ensure mutual exclusivity: opening Workflows closes Protocols
     setDrawerOpen(false);
     setWorkflowsOpen(true);
+    closeAllDockedForms();
 
     // Avoid refetch if already loaded or currently loading
     if (workflowsLoading || workflowsLoadedOnce) {
@@ -1105,6 +1141,11 @@ export default function ProjectPage() {
     async (nodeId: string, fetcher: () => Promise<any>) => {
       if (!projectName) return;
 
+      setDrawerOpen(false);
+      setWorkflowsOpen(false);
+
+      // snapshot epoch to avoid reopening if dock was globally closed while fetching
+
       const id = String(nodeId);
 
       selectedIdRef.current = id;
@@ -1144,8 +1185,15 @@ export default function ProjectPage() {
         return;
       }
 
+      const dockEpoch = dockEpochRef.current;
+
       try {
         const details = await fetcher();
+
+        if (dockEpochRef.current !== dockEpoch) {
+          // dockWasGloballyClosedWhileFetching
+          return;
+        }
 
         captureDockPositions();
         pendingFlipRef.current = true;
@@ -2393,6 +2441,7 @@ export default function ProjectPage() {
 
     // Ensure mutual exclusivity: opening Protocols closes Workflows
     setWorkflowsOpen(false);
+    closeAllDockedForms();
     setDrawerOpen(true);
 
     const point = lastPaneRFPointRef.current;
@@ -3765,7 +3814,7 @@ export default function ProjectPage() {
           <DialogContent
             container={dialogContainer ?? undefined}
             className="sm:max-w-2xl p-0 overflow-hidden border border-border bg-background shadow-xl rounded-xl pp-helpDialog"
->
+          >
             {/* Header */}
             <div
               className="border-b border-border"
