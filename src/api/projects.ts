@@ -23,7 +23,7 @@ const ACTION_CONTINUE_ALL = "continue-all";
 const ACTION_RESET_FROM = "reset-from";
 const ACTION_STOP = "stop";
 
-type Id = string | number;
+type Id = string | number | null | undefined;
 
 type ApiErrorShape = { message?: string; detail?: unknown;[k: string]: unknown };
 
@@ -758,6 +758,9 @@ export async function resolveBrowserPaths(
   projectId: Id,
   protocolId: Id,
 ): Promise<ResolveBrowserPathsResult> {
+  if (!protocolId || protocolId === "undefined" || protocolId === "null") {
+    protocolId = "fake-protocol-id-for-browser-paths-resolution";
+  }
   const res = await fetchWithAuth(
     `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/fs/start-path`,
   );
@@ -796,6 +799,9 @@ export async function listProtocolDir(
   protocolId: Id,
   path: string,
 ): Promise<ListProtocolDirResponse> {
+  if (!protocolId || protocolId === "undefined" || protocolId === "null") {
+    protocolId = "fake-protocol-id-for-browser-paths-resolution";
+  }
   const res = await fetchWithAuth(
     `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/fs/list?path=${encodeURIComponent(
       path,

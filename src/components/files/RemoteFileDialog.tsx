@@ -51,7 +51,7 @@ type RemoteFileDialogProps = {
   title?: string;
 
   projectId?: string | number;
-  protocolId?: string | number;
+  protocolId?: string | number | null | undefined;
 
   // initialPathRel: relative to root ("" means root)
   initialPath?: string;
@@ -80,6 +80,8 @@ export default function RemoteFileDialog({
   listRemoteDirectory,
   previewRemoteText,
   fetchInlinePreviewBlob,
+  protocolId,
+  projectId,
   buildDownloadUrl,
   onPick,
 }: RemoteFileDialogProps) {
@@ -669,16 +671,17 @@ export default function RemoteFileDialog({
             Root
           </button>
 
-          <button
-            type="button"
-            onClick={goProtocolRoot}
-            className={styles.ppChipBtn}
-            disabled={!protocolRootRel}
-            title="Back to the protocol start directory"
-          >
-            <FolderOpen className={styles.iconSm} />
-            Protocol folder
-          </button>
+          {protocolId !== null && protocolId !== undefined && (
+            <button
+              type="button"
+              onClick={goProtocolRoot}
+              className={styles.ppChipBtn}
+              title="Back to the protocol start directory"
+            >
+              <FolderOpen className={styles.iconSm} />
+              Protocol folder
+            </button>
+          )}
 
           <button
             type="button"

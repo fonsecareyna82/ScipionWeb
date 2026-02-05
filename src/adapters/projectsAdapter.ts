@@ -30,7 +30,7 @@ import type {
 } from "@/services/ProjectService";
 
 /** Normalize id */
-const toId = (id: string | number): string => String(id);
+const toId = (id: string | number | null | undefined): string => String(id);
 
 const defaultService: ProjectService = {
   // --- Reads ---

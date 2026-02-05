@@ -3,7 +3,7 @@
 import { loadWorkflowPayload } from "@/api/projects";
 
 /** Common ID type to accept either string or number seamlessly. */
-export type Id = string | number;
+export type Id = string | number | null | undefined;
 
 /** Payload for creating a project. */
 export type ProjectPayload = { name: string; description?: string };
@@ -493,7 +493,7 @@ export interface ProjectService<
   continueAll(projectId: Id, protocolId: Id): Promise<TProject>;
   resetFrom(projectId: Id, protocolId: Id): Promise<TProject>;
   stopProtocol(projectId: Id, ids: string[]): Promise<TProject>;
-  resolveBrowserPaths(projectId: Id, protocolId: string): Promise<TProject>;
+  resolveBrowserPaths(projectId: Id, protocolId: Id): Promise<TProject>;
   listRemoteDirectory(projectId: Id, protocolId: Id, path: string): Promise<TProject>;
   previewProtocolText(projectId: Id, protocolId: string, path: string): Promise<TProject>;
   buildProtocolDownloadUrl(

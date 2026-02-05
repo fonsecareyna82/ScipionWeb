@@ -758,7 +758,7 @@ export default function ProtocolForm({
   // normalizeIdsAndCoreInfo
   const projectId = info?.projectId ?? (form as any)?.projectId ?? (form as any)?.project?.id ?? null;
   const protocolId =
-    info?.protocolId ?? info?.id ?? (form as any)?.protocolId ?? (form as any)?.id ?? 'fake-id';
+    info?.protocolId ?? info?.id ?? (form as any)?.protocolId ?? (form as any)?.id ?? null;
   const protocolClassName =
     info?.protocolClassName ?? (form as any)?.protocolClassName ?? null;
 
@@ -2597,8 +2597,8 @@ export default function ProtocolForm({
             : typeof def.pointerClass === "string" && def.pointerClass.trim().length > 0;
 
         const handleBrowsePath = () => {
-          if (!projectId || !protocolId) {
-            console.warn("Missing projectId or protocolId for PathParam browse.");
+          if (!projectId) {
+            console.warn("Missing projectId for PathParam browse.");
             return;
           }
           setPathDialog({ open: true, stateKey, title: label });
@@ -4207,7 +4207,7 @@ export default function ProtocolForm({
       </div>
 
       {/* PathParam RemoteFileDialog */}
-      {pathDialog.open && pathDialog.stateKey && projectId && protocolId && (
+      {pathDialog.open && pathDialog.stateKey && projectId && (
        
         <RemoteFileDialog
           open={pathDialog.open}
@@ -4221,14 +4221,14 @@ export default function ProtocolForm({
           title={`Select file for: ${pathDialog.title ?? pathDialog.stateKey}`}
           projectId={projectId}
           protocolId={protocolId}
-          resolveBrowserPaths={() => svc.resolveBrowserPaths(projectId, protocolId.toString())}
-          listRemoteDirectory={(p) => svc.listRemoteDirectory(projectId, protocolId.toString(), p)}
-          previewRemoteText={(p) => svc.previewProtocolText(projectId, String(protocolId), p)}
+          resolveBrowserPaths={() => svc.resolveBrowserPaths(projectId, protocolId)}
+          listRemoteDirectory={(p) => svc.listRemoteDirectory(projectId, protocolId, p)}
+          previewRemoteText={(p) => svc.previewProtocolText(projectId, protocolId, p)}
           buildDownloadUrl={(p, inline) =>
-            svc.buildProtocolDownloadUrl(String(projectId), String(protocolId), p, !!inline)
+            svc.buildProtocolDownloadUrl(projectId, protocolId, p, !!inline)
           }
           fetchInlinePreviewBlob={(p) =>
-            svc.fetchProtocolInlinePreviewBlob(String(projectId), String(protocolId), p)
+            svc.fetchProtocolInlinePreviewBlob(projectId, protocolId, p)
           }
           onPick={(relativePath) => {
             const stateKey = pathDialog.stateKey;
