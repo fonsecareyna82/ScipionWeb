@@ -8,6 +8,7 @@ import React, {
   useRef,
   useState,
   useTransition,
+  JSX
 } from "react";
 
 import ProtocolForm from "../../../components/protocol/ProtocolForm";
@@ -56,7 +57,7 @@ import { FitViewIcon, TableIcon, TreeIcon } from "../../../icons";
 import { useProjectService } from "@/ProjectServiceContext";
 import { Project } from "@/types/project";
 import Label from "@/components/form/Label";
-import { Input } from "@mui/material";
+import { Input, Typography, Link } from "@mui/material";
 import toast from "react-hot-toast";
 import RemoteFileDialog from "@/components/files/RemoteFileDialog";
 import type { ExternalAnalyzeViewerService } from "@/components/protocol/ProtocolNodeCard";
@@ -112,6 +113,222 @@ type NodeActions = {
 type OpenForm = { key: string; id: string; details: any };
 type SearchResult = { id: string; label: string; status?: string };
 
+type ProtocolHelpState = {
+  open: boolean;
+  title: string;
+  text: string;
+  loading: boolean;
+  error: string | null;
+};
+
+function normalizeHelpText(raw: unknown): string {
+  // normalizeHelpText
+  return String(raw ?? "").replace(/\\n/g, "\n");
+}
+
+function sanitizeHref(rawUrl: string): string {
+  // sanitizeHref
+  let hrefToken = String(rawUrl ?? "").trim();
+  while (/[.,;:!?)]$/.test(hrefToken)) hrefToken = hrefToken.slice(0, -1);
+  if (!hrefToken) return "";
+  if (hrefToken.startsWith("http://") || hrefToken.startsWith("https://")) return hrefToken;
+  return `https://${hrefToken}`;
+}
+
+function parseOrgLinkToken(token: string): { href: string; label: string } | null {
+  // parseOrgLinkToken
+  const orgRegex = /^\[\[([^\]]+)\](?:\[([^\]]+)\])?\]$/;
+  const match = orgRegex.exec(token);
+  if (!match) return null;
+
+  const rawUrl = match[1] ?? "";
+  const rawLabel = match[2];
+
+  const href = sanitizeHref(rawUrl);
+  if (!href) return null;
+
+  return { href, label: String(rawLabel ?? rawUrl) };
+}
+
+function extractHelpText(payload: unknown): string | null {
+  // extractHelpText
+  if (payload == null) return null;
+  if (typeof payload === "string") return payload;
+
+  if (typeof payload === "object") {
+    const obj = payload as Record<string, unknown>;
+
+    const directCandidates = [
+      obj.help,
+      obj.helpText,
+      obj.doc,
+      obj.documentation,
+      obj.description,
+      obj._help,
+      obj._doc,
+    ];
+
+    for (const v of directCandidates) {
+      if (typeof v === "string" && v.trim().length > 0) return v;
+    }
+
+    // backendShapeSupport: { form: { help: "..." } }
+    const nestedCandidates = [obj.form, obj.protocol, obj.data, obj.result, obj.payload];
+
+    for (const nested of nestedCandidates) {
+      const found = extractHelpText(nested);
+      if (found) return found;
+    }
+  }
+
+  return null;
+}
+
+function sanitizeUrlToken(token: string): { display: string; href: string } {
+  // sanitizeUrlToken
+  const display = token;
+
+  let hrefToken = token;
+  while (/[.,;:!?)]$/.test(hrefToken)) {
+    hrefToken = hrefToken.slice(0, -1);
+  }
+
+  const href = sanitizeHref(hrefToken);
+  return { display, href };
+}
+
+function renderBoldInline(text: string, keyPrefix: string): Array<JSX.Element | string> {
+  // renderBoldInline
+  const parts: Array<JSX.Element | string> = [];
+  const boldRegex = /\*[^*]+\*/g;
+
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  let segIndex = 0;
+
+  while ((match = boldRegex.exec(text)) !== null) {
+    const token = match[0];
+    const start = match.index;
+
+    if (start > lastIndex) {
+      parts.push(text.slice(lastIndex, start));
+    }
+
+    const boldText = token.slice(1, -1);
+    parts.push(<strong key={`${keyPrefix}-b-${segIndex++}`}>{boldText}</strong>);
+
+    lastIndex = boldRegex.lastIndex;
+  }
+
+  if (lastIndex < text.length) {
+    parts.push(text.slice(lastIndex));
+  }
+
+  return parts;
+}
+
+function renderHelpText(helpText: string): JSX.Element {
+  // renderHelpText
+  const normalized = normalizeHelpText(helpText);
+  const lines = normalized.split("\n");
+
+  const tokenPattern =
+    /(\[\[[^\]]+\](?:\[[^\]]+\])?\]|\*[^*]+\*|https?:\/\/[^\s<>()]+|www\.[^\s<>()]+)/g;
+
+  const renderLine = (line: string, lineIndex: number) => {
+    // renderLine
+    const parts: JSX.Element[] = [];
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+    let keyIndex = 0;
+
+    const tokenRegex = new RegExp(tokenPattern.source, "g");
+
+    while ((match = tokenRegex.exec(line)) !== null) {
+      const token = match[0];
+      const start = match.index;
+
+      if (start > lastIndex) {
+        const text = line.slice(lastIndex, start);
+        parts.push(<span key={`t-${lineIndex}-${keyIndex++}`}>{text}</span>);
+      }
+
+      if (token.startsWith("[[")) {
+        const orgLink = parseOrgLinkToken(token);
+
+        if (orgLink) {
+          const linkKey = `ol-${lineIndex}-${keyIndex++}`;
+          parts.push(
+            <Link
+              key={linkKey}
+              href={orgLink.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              underline="hover"
+              sx={{ wordBreak: "break-word", fontWeight: 600 }}
+            >
+              {renderBoldInline(orgLink.label, linkKey)}
+            </Link>
+          );
+        } else {
+          parts.push(<span key={`ot-${lineIndex}-${keyIndex++}`}>{token}</span>);
+        }
+      } else if (token.startsWith("*") && token.endsWith("*") && token.length >= 2) {
+        const boldText = token.slice(1, -1);
+        parts.push(<strong key={`b-${lineIndex}-${keyIndex++}`}>{boldText}</strong>);
+      } else {
+        const { display, href } = sanitizeUrlToken(token);
+
+        if (!href) {
+          parts.push(<span key={`u-${lineIndex}-${keyIndex++}`}>{display}</span>);
+        } else {
+          parts.push(
+            <Link
+              key={`l-${lineIndex}-${keyIndex++}`}
+              href={href}
+              target="_blank"
+              rel="noopener noreferrer"
+              underline="hover"
+              sx={{ wordBreak: "break-word" }}
+            >
+              {display}
+            </Link>
+          );
+        }
+      }
+
+      lastIndex = tokenRegex.lastIndex;
+    }
+
+    if (lastIndex < line.length) {
+      parts.push(<span key={`t-${lineIndex}-${keyIndex++}`}>{line.slice(lastIndex)}</span>);
+    }
+
+    return parts;
+  };
+
+  return (
+    <Typography
+      variant="body2"
+      component="div"
+      sx={{
+        lineHeight: 1.6,
+        mt: 2,
+        whiteSpace: "normal",
+        wordBreak: "break-word",
+      }}
+    >
+      {lines.map((line, i) => (
+        <span key={`hl-${i}`}>
+          {renderLine(line, i)}
+          {i < lines.length - 1 ? <br /> : null}
+        </span>
+      ))}
+    </Typography>
+  );
+}
+
+
 export default function ProjectPage() {
   const hostIsDark = useHostDarkMode();
   const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/.test(navigator.platform);
@@ -139,6 +356,76 @@ export default function ProjectPage() {
   }, [svc]);
 
   const getAnalyzeViewerService = () => analyzeViewerService;
+
+  const helpCacheRef = useRef<Record<string, string>>({});
+
+  const [protocolHelp, setProtocolHelp] = useState<ProtocolHelpState>({
+    open: false,
+    title: "Protocol help",
+    text: "",
+    loading: false,
+    error: null,
+  });
+
+  const openProtocolHelp = useCallback(
+    async (protocolClass: string, protocolLabel?: string) => {
+      // openProtocolHelp
+      if (!projectName) return;
+
+      const cacheKey = `${projectName}:${protocolClass}`;
+      const title = protocolLabel ? `Help — ${protocolLabel}` : "Protocol help";
+
+      setProtocolHelp({
+        open: true,
+        title,
+        text: "",
+        loading: true,
+        error: null,
+      });
+
+      const cached = helpCacheRef.current[cacheKey];
+      if (cached) {
+        setProtocolHelp({
+          open: true,
+          title,
+          text: cached,
+          loading: false,
+          error: null,
+        });
+        return;
+      }
+
+      try {
+        const details = await svc.fetchNewProtocolDetails(projectName, protocolClass);
+        const extracted = extractHelpText(details);
+        const finalText =
+          extracted && extracted.trim().length > 0
+            ? normalizeHelpText(extracted)
+            : "No help available for this protocol.";
+
+        helpCacheRef.current[cacheKey] = finalText;
+
+        setProtocolHelp({
+          open: true,
+          title,
+          text: finalText,
+          loading: false,
+          error: null,
+        });
+      } catch (err) {
+        console.error("openProtocolHelp failed", err);
+        setProtocolHelp({
+          open: true,
+          title,
+          text: "",
+          loading: false,
+          error: "Failed to load help for this protocol.",
+        });
+      }
+    },
+    [projectName, svc]
+  );
+
 
   useEffect(() => {
     // loadFocusModeFromStorage
@@ -968,8 +1255,17 @@ export default function ProjectPage() {
   }, [collectAncestors, computeIncomingEdgesToSet, applyPathSelection]);
 
   const handleAddProtocolFromDrawer = useCallback(
-    async (protocolClass: string) => {
+    async (
+      protocolClass: string,
+      opts?: { mode?: "add" | "help"; protocolLabel?: string }
+    ) => {
+      // handleAddProtocolFromDrawer
       if (!projectName) return;
+
+      if (opts?.mode === "help") {
+        await openProtocolHelp(protocolClass, opts.protocolLabel);
+        return;
+      }
 
       setDrawerOpen(false);
 
@@ -977,8 +1273,9 @@ export default function ProjectPage() {
         svc.fetchNewProtocolDetails(projectName, protocolClass)
       );
     },
-    [projectName, openFormForNode, svc]
+    [projectName, openFormForNode, svc, openProtocolHelp]
   );
+
 
   useEffect(() => {
     nodeActionsRef.current = {
@@ -2867,6 +3164,10 @@ export default function ProjectPage() {
                 open={drawerOpen}
                 onOpenChange={handleProtocolsDrawerOpenChange}
                 onProtocolDoubleClick={handleAddProtocolFromDrawer}
+                onProtocolHelpClick={(protocolClass, protocolLabel) => {
+                  // openProtocolHelpFromDrawer
+                  void openProtocolHelp(protocolClass, protocolLabel);
+                }}
                 portalContainer={drawerPortalContainer}
               />
             </div>
@@ -3331,7 +3632,7 @@ export default function ProjectPage() {
 
         {/* --- Dialogs --- */}
         <Dialog open={dlgRename.open} onOpenChange={(open: boolean) => { if (!open) setDlgRename({ open: false, id: null, value: "" }); }}>
-          <DialogContent container={dialogContainer} className="sm:max-w-md">
+          <DialogContent container={dialogContainer ?? undefined} className="sm:max-w-2xl">
             <DialogHeader>
               <DialogTitle>Rename protocol</DialogTitle>
               <DialogDescription>Set a new name for this protocol.</DialogDescription>
@@ -3359,7 +3660,7 @@ export default function ProjectPage() {
             }
           }}
         >
-          <DialogContent container={dialogContainer}>
+          <DialogContent container={dialogContainer ?? undefined} >
             <DialogHeader>
               <DialogTitle className="mb-6">
                 {confirm.kind === "delete" && "Delete protocol(s)?"}
@@ -3422,7 +3723,7 @@ export default function ProjectPage() {
         </Dialog>
 
         <Dialog open={dlgResetFrom.open} onOpenChange={(open: boolean) => { if (!open) setDlgResetFrom({ open: false, id: null }); }}>
-          <DialogContent container={dialogContainer} className="sm:max-w-md">
+          <DialogContent container={dialogContainer ?? undefined} className="sm:max-w-md">
             <DialogHeader>
               <DialogTitle>Reset from this protocol?</DialogTitle>
               <DialogDescription>Downstream steps may be invalidated. You can re-run them later.</DialogDescription>
@@ -3453,6 +3754,73 @@ export default function ProjectPage() {
           </DialogContent>
         </Dialog>
 
+        <Dialog
+          open={protocolHelp.open}
+          onOpenChange={(open: boolean) => {
+            if (!open) {
+              setProtocolHelp((s) => ({ ...s, open: false, loading: false, error: null }));
+            }
+          }}
+        >
+          <DialogContent
+            container={dialogContainer ?? undefined}
+            className="sm:max-w-2xl p-0 overflow-hidden border border-border bg-background shadow-xl rounded-xl pp-helpDialog"
+>
+            {/* Header */}
+            <div
+              className="border-b border-border"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                backgroundColor: "#333d49",
+                color: "white",
+                padding: "12px 16px",
+                boxSizing: "border-box",
+              }}
+            >
+              <div className="min-w-0 pr-3 mb-4">
+                <DialogTitle className="text-base font-semibold leading-6 text-white truncate">
+                  {protocolHelp.title}
+                </DialogTitle>
+
+              </div>
+            </div>
+
+            {/* Body */}
+            <div className="px-5 py-1">
+              <div className="max-h-[60vh] overflow-auto pr-1">
+                {protocolHelp.loading ? (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <div className="w-4 h-4 rounded-full border-2 border-gray-300 dark:border-gray-700 border-t-gray-700 dark:border-t-gray-200 animate-spin" />
+                    <span>Loading…</span>
+                  </div>
+                ) : protocolHelp.error ? (
+                  <div className="text-sm">{protocolHelp.error}</div>
+                ) : (
+                  renderHelpText(protocolHelp.text)
+                )}
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="px-5 py-4 border-t border-border bg-background">
+              <div className="flex justify-center">
+                <Button
+                  variant="outline"
+                  onClick={() => setProtocolHelp((s) => ({ ...s, open: false }))}
+                  className="min-w-28"
+                >
+                  Close
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+
+
+
         {/* ================= RemoteFileDialog ================= */}
         {canOpenFileDialog && (
           <RemoteFileDialog
@@ -3473,7 +3841,7 @@ export default function ProjectPage() {
         )}
       </div>
       {/* portalRootInsideWidgetSoDialogsInheritWidgetStyles */}
-      <div ref={portalRootRef} className="pp-portalRoot" />
+      <div ref={portalRootRef} id="projectpage-portal-root" className="pp-portalRoot" />
     </div>
   );
 }

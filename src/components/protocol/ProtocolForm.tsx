@@ -3786,15 +3786,87 @@ export default function ProtocolForm({
               sx: { backgroundColor: "transparent" },
             },
           }}
+          PaperProps={{
+            sx: {
+              borderRadius: 4, // 16px
+              overflow: "hidden",
+              border: "1px solid",
+              borderColor: "divider",
+              boxShadow: "0 18px 50px rgba(0,0,0,0.35)",
+            },
+          }}
         >
-          <DialogTitle className={styles.formHeader}>Help</DialogTitle>
-          <DialogContent sx={{ p: 2 }}>{renderRichHelpText(formHelpText)}</DialogContent>
-          <DialogActions sx={{ justifyContent: "center" }}>
-            <Button variant="outlined" onClick={() => setOpenFormHelp(false)} sx={{ textTransform: "none" }}>
+          {/* headerBar */}
+          <DialogTitle
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              backgroundColor: "#333d49",
+              color: "white",
+              px: 2,
+              py: 1.5,
+              boxSizing: "border-box",
+              m: 0,
+            }}
+          >
+            <Box sx={{ minWidth: 0, pr: 1 }}>
+              <Box
+                component="div"
+                sx={{
+                  fontWeight: 600,
+                  fontSize: 16,
+                  lineHeight: 1.2,
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
+                Help
+              </Box>
+            </Box>
+
+            <IconButton
+              onClick={() => setOpenFormHelp(false)}
+              aria-label="Close"
+              size="small"
+              sx={{
+                color: "white",
+                borderRadius: 1,
+                "&:hover": { backgroundColor: "rgba(255,255,255,0.10)" },
+                "&:focus-visible": { outline: "2px solid rgba(255,255,255,0.55)", outlineOffset: 2 },
+              }}
+            >
+              <CloseIcon fontSize="small" />
+            </IconButton>
+          </DialogTitle>
+
+          <DialogContent sx={{ px: 2, py: 1.5 }}>
+            <Box sx={{ maxHeight: "60vh", overflow: "auto", pr: 0.5 }}>
+              {renderRichHelpText(formHelpText)}
+            </Box>
+          </DialogContent>
+
+          <DialogActions
+            sx={{
+              justifyContent: "center",
+              px: 2,
+              py: 1.5,
+              borderTop: "1px solid",
+              borderColor: "divider",
+              backgroundColor: "background.paper",
+            }}
+          >
+            <Button
+              variant="outlined"
+              onClick={() => setOpenFormHelp(false)}
+              sx={{ textTransform: "none", minWidth: 112 }}
+            >
               Close
             </Button>
           </DialogActions>
         </Dialog>
+
       )}
 
       {execError && (

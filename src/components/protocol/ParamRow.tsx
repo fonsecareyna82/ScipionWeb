@@ -273,35 +273,35 @@ const ParamRow = ({
         sx={{
           ...(isInline
             ? {
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 0.75,
-                px: 1,
-                py: 0.5,
-                borderRadius: 1,
-                minHeight: 42,
-              }
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 0.75,
+              px: 1,
+              py: 0.5,
+              borderRadius: 1,
+              minHeight: 42,
+            }
             : isFullWidth
               ? {
-                  // fullWidthLayout
-                  display: "grid",
-                  gridTemplateColumns: "1fr auto",
-                  columnGap: 1,
-                  alignItems: "center",
-                  mb: 1,
-                  mt: rowIndex === 0 ? 1.5 : 0, // firstRowTopMargin
-                  position: "relative",
-                }
+                // fullWidthLayout
+                display: "grid",
+                gridTemplateColumns: "1fr auto",
+                columnGap: 1,
+                alignItems: "center",
+                mb: 1,
+                mt: rowIndex === 0 ? 1.5 : 0, // firstRowTopMargin
+                position: "relative",
+              }
               : {
-                  // standardLayout
-                  display: "grid",
-                  gridTemplateColumns: "210px minmax(0, 1fr) auto",
-                  columnGap: 1,
-                  alignItems: "center",
-                  mb: 1,
-                  mt: rowIndex === 0 ? 1.5 : 0, // firstRowTopMargin
-                  position: "relative",
-                }),
+                // standardLayout
+                display: "grid",
+                gridTemplateColumns: "210px minmax(0, 1fr) auto",
+                columnGap: 1,
+                alignItems: "center",
+                mb: 1,
+                mt: rowIndex === 0 ? 1.5 : 0, // firstRowTopMargin
+                position: "relative",
+              }),
         }}
       >
         <Typography
@@ -330,11 +330,11 @@ const ParamRow = ({
               width: "100%", // allowControlToStretch
               ...(isInline
                 ? {
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 0.75,
-                    width: "auto",
-                  }
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 0.75,
+                  width: "auto",
+                }
                 : null),
             }}
           >
@@ -392,20 +392,92 @@ const ParamRow = ({
               sx: { backgroundColor: "transparent" },
             },
           }}
+          PaperProps={{
+            sx: {
+              borderRadius: 4, // moreRounded
+              overflow: "hidden",
+              border: "1px solid",
+              borderColor: "divider",
+              boxShadow: "0 18px 50px rgba(0,0,0,0.35)",
+            },
+          }}
         >
-          <DialogTitle className={styles.formHeader}>Help</DialogTitle>
-          <DialogContent sx={{ p: 2 }}>{renderHelpText(helpText)}</DialogContent>
-          <DialogActions sx={{ justifyContent: "center" }}>
+          {/* headerBar */}
+          <DialogTitle
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              backgroundColor: "#333d49",
+              color: "white",
+              px: 2,
+              py: 1.5,
+              boxSizing: "border-box",
+              m: 0,
+            }}
+          >
+            <Box sx={{ minWidth: 0, pr: 1 }}>
+              <Box
+                component="div"
+                sx={{
+                  fontWeight: 600,
+                  fontSize: 16,
+                  lineHeight: 1.2,
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
+                Help
+              </Box>
+            </Box>
+
+            <IconButton
+              onClick={() => setOpenHelp(false)}
+              aria-label="Close"
+              size="small"
+              sx={{
+                color: "white",
+                borderRadius: 2,
+                "&:hover": { backgroundColor: "rgba(255,255,255,0.10)" },
+                "&:focus-visible": {
+                  outline: "2px solid rgba(255,255,255,0.55)",
+                  outlineOffset: 2,
+                },
+              }}
+            >
+              <CloseIcon fontSize="small" />
+            </IconButton>
+          </DialogTitle>
+
+          {/* body */}
+          <DialogContent sx={{ px: 2, py: 1.5 }}>
+            <Box sx={{ maxHeight: "60vh", overflow: "auto", pr: 0.5 }}>
+              {renderHelpText(helpText)}
+            </Box>
+          </DialogContent>
+
+          {/* footer */}
+          <DialogActions
+            sx={{
+              justifyContent: "center",
+              px: 2,
+              py: 1.5,
+              borderTop: "1px solid",
+              borderColor: "divider",
+              backgroundColor: "background.paper",
+            }}
+          >
             <Button
               variant="outlined"
               onClick={() => setOpenHelp(false)}
-              startIcon={<CloseIcon />}
-              sx={{ textTransform: "none" }}
+              sx={{ textTransform: "none", minWidth: 112 }}
             >
               Close
             </Button>
           </DialogActions>
         </Dialog>
+
       )}
 
       <Dialog open={openSelector} onClose={() => setOpenSelector(false)} maxWidth="sm" fullWidth>

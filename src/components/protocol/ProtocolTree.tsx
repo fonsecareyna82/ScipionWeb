@@ -6,6 +6,7 @@ import {
   ChevronDownIcon,
   ChevronUpIcon,
 } from "@/icons";
+import { HelpCircle } from "lucide-react";
 import styles from "./protocoltree.module.css";
 
 // --- Icon components ---
@@ -110,6 +111,7 @@ interface ProtocolsTreeProps {
   data: ProtocolNode[];
   searchText?: string;
   onNodeDoubleClick?: (protocolId: string) => void;
+  onNodeHelpClick?: (protocolId: string, protocolLabel?: string) => void;
   isDark?: boolean;
 }
 
@@ -153,6 +155,7 @@ export const ProtocolsTree: FC<ProtocolsTreeProps> = ({
   data,
   searchText = "",
   onNodeDoubleClick,
+  onNodeHelpClick,
   isDark = false,
 }) => {
   const filteredData = searchText ? filterTree(data, searchText) : data;
@@ -167,6 +170,7 @@ export const ProtocolsTree: FC<ProtocolsTreeProps> = ({
             searchText={searchText}
             isRoot
             onNodeDoubleClick={onNodeDoubleClick}
+            onNodeHelpClick={onNodeHelpClick}
           />
         ))}
       </div>
@@ -180,7 +184,8 @@ const ProtocolNodeItem: FC<{
   searchText?: string;
   isRoot?: boolean;
   onNodeDoubleClick?: (protocolId: string) => void;
-}> = ({ node, searchText, isRoot = false, onNodeDoubleClick }) => {
+  onNodeHelpClick?: (protocolId: string, protocolLabel?: string) => void;
+}> = ({ node, searchText, isRoot = false, onNodeDoubleClick, onNodeHelpClick }) => {
   const hasChildren = !!(node.childs && node.childs.length > 0);
 
   const [expanded, setExpanded] = useState<boolean>(
@@ -228,6 +233,17 @@ const ProtocolNodeItem: FC<{
     }
   };
 
+  const handleHelpClick = (e: React.MouseEvent) => {
+    // preventRowHandlersAndOpenHelp
+    e.preventDefault();
+    e.stopPropagation();
+    if (node.tag === "protocol" && node.value && onNodeHelpClick) {
+      onNodeHelpClick(node.value, node.text);
+    }
+  };
+
+  const showHelp = node.tag === "protocol" && !!node.value && !!onNodeHelpClick;
+
   return (
     <div className={styles.nodeItem}>
       <div
@@ -251,9 +267,26 @@ const ProtocolNodeItem: FC<{
 
         {tagIcon()}
 
-        <span className={styles.nodeText}>
+        <span className={styles.nodeText} style={{ flex: 1, minWidth: 0 }}>
           {highlightText(node.text, searchText || "")}
         </span>
+
+        {showHelp && (
+          <button
+            type="button"
+            className={styles.helpButton}
+            aria-label="Open protocol help"
+            title="Help"
+            onClick={handleHelpClick}
+            onDoubleClick={(e) => {
+              // preventDoubleClickFromFiringRowHandler
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+          >
+            <HelpCircle className={styles.helpIcon} />
+          </button>
+        )}
       </div>
 
       {hasChildren && (
@@ -269,6 +302,7 @@ const ProtocolNodeItem: FC<{
               node={child}
               searchText={searchText}
               onNodeDoubleClick={onNodeDoubleClick}
+              onNodeHelpClick={onNodeHelpClick}
             />
           ))}
         </div>

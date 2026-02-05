@@ -10,6 +10,7 @@ import { useProjectService } from "@/ProjectServiceContext";
 interface ProtocolsDrawerProps {
   projectId: number | null;
   onProtocolDoubleClick?: (protocolId: string) => void;
+  onProtocolHelpClick?: (protocolId: string, protocolLabel?: string) => void;
 
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
@@ -60,6 +61,7 @@ const computeInsetsFromRect = (rect: DOMRect): Insets => {
 export const ProtocolsDrawer: FC<ProtocolsDrawerProps> = ({
   projectId,
   onProtocolDoubleClick,
+  onProtocolHelpClick,
   open: openProp,
   onOpenChange,
   autoLoadOnOpen = true,
@@ -173,14 +175,14 @@ export const ProtocolsDrawer: FC<ProtocolsDrawerProps> = ({
   const [insets, setInsets] = useState<Insets>({ top: 0, right: 0, bottom: 0, left: 0 });
 
   const computeBoundsTarget = useCallback((): HTMLElement | null => {
-    // Prefer explicit portalContainer as a bounds reference
+    // preferExplicitPortalContainerAsBoundsReference
     if (portalContainer) return portalContainer;
 
-    // Fallback: widget root
+    // fallbackWidgetRoot
     const widgetRoot = hostRef.current?.closest(".projectpage-widget-root") as HTMLElement | null;
     if (widgetRoot) return widgetRoot;
 
-    // Final fallback: the trigger host itself
+    // finalFallback
     return hostRef.current;
   }, [portalContainer]);
 
@@ -204,7 +206,7 @@ export const ProtocolsDrawer: FC<ProtocolsDrawerProps> = ({
     const onScroll = () => refreshInsets();
 
     window.addEventListener("resize", onResize);
-    // capture=true to react to scroll inside containers too
+    // capture=trueToReactToScrollInsideContainersToo
     window.addEventListener("scroll", onScroll, true);
 
     return () => {
@@ -231,7 +233,7 @@ export const ProtocolsDrawer: FC<ProtocolsDrawerProps> = ({
         isOpen ? styles.drawerOpen : styles.drawerClosed,
       ]
         .filter(Boolean)
-    .join(" ")}
+        .join(" ")}
       role="dialog"
       aria-label="Protocols drawer"
       aria-hidden={!isOpen}
@@ -308,6 +310,9 @@ export const ProtocolsDrawer: FC<ProtocolsDrawerProps> = ({
             onNodeDoubleClick={(protocolId: string) => {
               onProtocolDoubleClick?.(protocolId);
               setOpen(false);
+            }}
+            onNodeHelpClick={(protocolId: string, protocolLabel?: string) => {
+              onProtocolHelpClick?.(protocolId, protocolLabel);
             }}
           />
         ) : (

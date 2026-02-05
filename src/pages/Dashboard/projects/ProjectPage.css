@@ -1311,3 +1311,24 @@
     inset 0 3px 0 rgba(255, 255, 255, 0.10),
     inset 0 -2px 6px rgba(0, 0, 0, 0.55);
 }
+
+
+/* Used by DialogTitle to mimic the ProtocolForm header look */
+.pp-formHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background-color: #333d49;
+  color: white;
+  padding: 12px 16px;
+  box-sizing: border-box;
+}
+
+.pp-helpDialog > button[aria-label="Close"] {
+  color: #fff !important;
+}
+
+.pp-helpDialog > button[aria-label="Close"]:hover {
+  background-color: rgba(255, 255, 255, 0.10) !important;
+}
+

@@ -133,3 +133,25 @@
 .childrenClosed {
   display: none;
 }
+
+.helpButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  opacity: 0.85;
+}
+
+.helpButton:hover {
+  opacity: 1;
+  border-color: rgba(148, 163, 184, 0.35);
+  background: rgba(148, 163, 184, 0.10);
+}
+
+.helpIcon {
+  width: 16px;
+  height: 16px;
+}
