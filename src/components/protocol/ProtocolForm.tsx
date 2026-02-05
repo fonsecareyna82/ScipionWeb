@@ -2951,32 +2951,45 @@ export default function ProtocolForm({
             key={stableKey}
             label={def.label || name || ""}
             control={
-              <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+              <Box
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 1,
+                  minWidth: 0,
+                  width: isInline ? fieldWidth : "100%",
+                }}
+              >
                 {advancedSlot}
-                <Switch
-                  checked={checked}
-                  onChange={(e) =>
-                    setProtocolDetails((prev: any) => ({
-                      ...prev,
-                      params: {
-                        ...prev.params,
-                        [stateKey]: {
-                          ...prev.params[stateKey],
-                          editableValue: e.target.checked,
-                          value: e.target.checked,
+                <Box sx={fieldContainerSx}>
+                  <Switch
+                    checked={checked}
+                    onChange={(e) =>
+                      setProtocolDetails((prev: any) => ({
+                        ...prev,
+                        params: {
+                          ...prev.params,
+                          [stateKey]: {
+                            ...prev.params[stateKey],
+                            editableValue: e.target.checked,
+                            value: e.target.checked,
+                          },
                         },
-                      },
-                    }))
-                  }
-                  color="primary"
-                />
+                      }))
+                    }
+                    color="primary"
+                    sx={{ m: 0 }}
+                  />
+                </Box>
               </Box>
             }
             helpText={def.help}
             rowIndex={rowIndex}
+            layoutVariant={layoutVariant}
           />
         );
       }
+
 
       // LabelParam (decorator, name optional)
       if (defClass === "Label") {
@@ -4208,7 +4221,7 @@ export default function ProtocolForm({
 
       {/* PathParam RemoteFileDialog */}
       {pathDialog.open && pathDialog.stateKey && projectId && (
-       
+
         <RemoteFileDialog
           open={pathDialog.open}
           onClose={() =>

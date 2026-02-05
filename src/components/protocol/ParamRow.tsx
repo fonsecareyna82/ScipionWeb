@@ -10,6 +10,7 @@ import {
   DialogContent,
   DialogActions,
   Button,
+  Link,
 } from "@mui/material";
 import { CloseIcon, FindIcon, HelpIcon, TrashBinIcon } from "../../icons";
 import { FolderOpen as FolderIcon } from "lucide-react";
@@ -35,6 +36,108 @@ type ParamRowProps = {
   // Layout
   layoutVariant?: ParamRowLayoutVariant;
 };
+
+function normalizeHelpText(raw: string): string {
+  // normalizeHelpText
+  return String(raw ?? "").replace(/\\n/g, "\n");
+}
+
+function sanitizeUrlToken(token: string): { display: string; href: string } {
+  // sanitizeUrlToken
+  const display = token;
+
+  // Trim common trailing punctuation from the URL target, but keep it in display
+  let hrefToken = token;
+  while (/[.,;:!?)]$/.test(hrefToken)) {
+    hrefToken = hrefToken.slice(0, -1);
+  }
+
+  const href = hrefToken.startsWith("http") ? hrefToken : `https://${hrefToken}`;
+  return { display, href };
+}
+
+function renderHelpText(helpText: string): JSX.Element {
+  // renderHelpText
+  const normalized = normalizeHelpText(helpText);
+
+  // Matches:
+  // - *boldText*
+  // - http(s)://...
+  // - www....
+  const tokenRegex = /(\*[^*]+\*|https?:\/\/[^\s<>()]+|www\.[^\s<>()]+)/g;
+
+  const renderLine = (line: string, lineIndex: number) => {
+    // renderLine
+    const parts: JSX.Element[] = [];
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+    let keyIndex = 0;
+
+    while ((match = tokenRegex.exec(line)) !== null) {
+      const token = match[0];
+      const start = match.index;
+
+      if (start > lastIndex) {
+        const text = line.slice(lastIndex, start);
+        parts.push(<span key={`t-${lineIndex}-${keyIndex++}`}>{text}</span>);
+      }
+
+      // Bold: *text*
+      if (token.startsWith("*") && token.endsWith("*") && token.length >= 2) {
+        const boldText = token.slice(1, -1);
+        parts.push(<strong key={`b-${lineIndex}-${keyIndex++}`}>{boldText}</strong>);
+      } else {
+        // Link
+        const { display, href } = sanitizeUrlToken(token);
+        parts.push(
+          <Link
+            key={`l-${lineIndex}-${keyIndex++}`}
+            href={href}
+            target="_blank"
+            rel="noreferrer"
+            underline="hover"
+            sx={{ wordBreak: "break-word" }}
+          >
+            {display}
+          </Link>
+        );
+      }
+
+      lastIndex = tokenRegex.lastIndex;
+    }
+
+    if (lastIndex < line.length) {
+      parts.push(<span key={`t-${lineIndex}-${keyIndex++}`}>{line.slice(lastIndex)}</span>);
+    }
+
+    // Reset regex state for the next line
+    tokenRegex.lastIndex = 0;
+
+    return parts;
+  };
+
+  const lines = normalized.split("\n");
+
+  return (
+    <Typography
+      variant="body2"
+      component="div"
+      sx={{
+        lineHeight: 1.6,
+        mt: 2,
+        whiteSpace: "normal",
+        wordBreak: "break-word",
+      }}
+    >
+      {lines.map((line, i) => (
+        <span key={`hl-${i}`}>
+          {renderLine(line, i)}
+          {i < lines.length - 1 ? <br /> : null}
+        </span>
+      ))}
+    </Typography>
+  );
+}
 
 const ParamRow = ({
   label,
@@ -68,7 +171,7 @@ const ParamRow = ({
     gap: 0,
     flex: "0 0 auto",
     whiteSpace: "nowrap",
-    ml: isInline ? 0.25 : 0.,
+    ml: isInline ? 0.25 : 0.0,
   } as const;
 
   return (
@@ -77,38 +180,37 @@ const ParamRow = ({
         sx={{
           ...(isInline
             ? {
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 0.75,
-              px: 1,
-              py: 0.5,
-              borderRadius: 1,
-              minHeight: 42,
-            }
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 0.75,
+                px: 1,
+                py: 0.5,
+                borderRadius: 1,
+                minHeight: 42,
+              }
             : isFullWidth
               ? {
-                // fullWidthLayout
-                display: "grid",
-                gridTemplateColumns: "1fr auto",
-                columnGap: 1,
-                alignItems: "center",
-                mb: 1,
-                mt: rowIndex === 0 ? 1.5 : 0, // firstRowTopMargin
-                position: "relative",
-              }
+                  // fullWidthLayout
+                  display: "grid",
+                  gridTemplateColumns: "1fr auto",
+                  columnGap: 1,
+                  alignItems: "center",
+                  mb: 1,
+                  mt: rowIndex === 0 ? 1.5 : 0, // firstRowTopMargin
+                  position: "relative",
+                }
               : {
-                // standardLayout
-                display: "grid",
-                gridTemplateColumns: "210px minmax(0, 1fr) auto",
-                columnGap: 1,
-                alignItems: "center",
-                mb: 1,
-                mt: rowIndex === 0 ? 1.5 : 0, // firstRowTopMargin
-                position: "relative",
-              }),
+                  // standardLayout
+                  display: "grid",
+                  gridTemplateColumns: "210px minmax(0, 1fr) auto",
+                  columnGap: 1,
+                  alignItems: "center",
+                  mb: 1,
+                  mt: rowIndex === 0 ? 1.5 : 0, // firstRowTopMargin
+                  position: "relative",
+                }),
         }}
       >
-
         <Typography
           variant="body2"
           className={styles.paramRowLabel}
@@ -135,18 +237,17 @@ const ParamRow = ({
               width: "100%", // allowControlToStretch
               ...(isInline
                 ? {
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 0.75,
-                  width: "auto",
-                }
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 0.75,
+                    width: "auto",
+                  }
                 : null),
             }}
           >
             {control}
           </Box>
         )}
-
 
         <Box sx={actionsSlotSx}>
           {isPointerParam && (
@@ -200,11 +301,7 @@ const ParamRow = ({
           }}
         >
           <DialogTitle className={styles.formHeader}>Help</DialogTitle>
-          <DialogContent sx={{ p: 2 }}>
-            <Typography variant="body2" sx={{ lineHeight: 1.6, mt: 2 }}>
-              {helpText}
-            </Typography>
-          </DialogContent>
+          <DialogContent sx={{ p: 2 }}>{renderHelpText(helpText)}</DialogContent>
           <DialogActions sx={{ justifyContent: "center" }}>
             <Button
               variant="outlined"
