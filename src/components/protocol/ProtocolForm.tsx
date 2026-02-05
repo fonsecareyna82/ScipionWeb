@@ -1,4 +1,5 @@
 // src/components/ProtocolForm.tsx
+// src/components/ProtocolForm.tsx
 import { useState, useEffect, useCallback, JSX, useRef, useMemo } from "react";
 import toast from "react-hot-toast";
 import {
@@ -20,6 +21,7 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
+  Link,
 } from "@mui/material";
 import styles from "./protocolform.module.css";
 import {
@@ -261,6 +263,204 @@ function coerceReadOnlyFlag(raw: any): boolean {
   }
 
   return false;
+}
+
+
+function renderBoldLabel(label: string, keyPrefix: string): Array<JSX.Element | string> {
+  // renderBoldLabel
+  const parts: Array<JSX.Element | string> = [];
+  const boldRegex = /\*[^*]+\*/g;
+
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  let segIndex = 0;
+
+  while ((match = boldRegex.exec(label)) !== null) {
+    const token = match[0];
+    const start = match.index;
+
+    if (start > lastIndex) {
+      parts.push(label.slice(lastIndex, start));
+    }
+
+    const boldText = token.slice(1, -1);
+    parts.push(<strong key={`${keyPrefix}-b-${segIndex++}`}>{boldText}</strong>);
+
+    lastIndex = boldRegex.lastIndex;
+  }
+
+  if (lastIndex < label.length) {
+    parts.push(label.slice(lastIndex));
+  }
+
+  return parts;
+}
+
+
+// richHelpTextRenderer
+function normalizeHelpText(raw: string): string {
+  // normalizeHelpText
+  return String(raw ?? "").replace(/\\n/g, "\n");
+}
+
+function sanitizeHref(rawUrl: string): string {
+  // sanitizeHref
+  let hrefToken = String(rawUrl ?? "").trim();
+
+  // Trim common trailing punctuation
+  while (/[.,;:!?)]$/.test(hrefToken)) {
+    hrefToken = hrefToken.slice(0, -1);
+  }
+
+  if (!hrefToken) return "";
+
+  const href = hrefToken.startsWith("http://") || hrefToken.startsWith("https://")
+    ? hrefToken
+    : `https://${hrefToken}`;
+
+  return href;
+}
+
+function sanitizeUrlToken(token: string): { display: string; href: string } {
+  // sanitizeUrlToken
+  const display = token;
+
+  let hrefToken = token;
+  while (/[.,;:!?)]$/.test(hrefToken)) {
+    hrefToken = hrefToken.slice(0, -1);
+  }
+
+  const href = sanitizeHref(hrefToken);
+  return { display, href };
+}
+
+function parseOrgLinkToken(token: string): { href: string; label: string } | null {
+  // parseOrgLinkToken
+  // Matches [[url][label]] or [[url]]
+  const orgRegex = /^\[\[([^\]]+)\](?:\[([^\]]+)\])?\]$/;
+  const match = orgRegex.exec(token);
+  if (!match) return null;
+
+  const rawUrl = match[1] ?? "";
+  const rawLabel = match[2];
+
+  const href = sanitizeHref(rawUrl);
+  const label = String(rawLabel ?? rawUrl);
+
+  if (!href) return null;
+  return { href, label };
+}
+
+function renderRichHelpText(helpText: string): JSX.Element {
+  // renderRichHelpText
+  const normalized = normalizeHelpText(helpText);
+  const lines = normalized.split("\n");
+
+  // Matches:
+  // - [[url][label]] (Scipion/Org-mode style)
+  // - *boldText*
+  // - http(s)://...
+  // - www....
+  const tokenPattern =
+    /(\[\[[^\]]+\](?:\[[^\]]+\])?\]|\*[^*]+\*|https?:\/\/[^\s<>()]+|www\.[^\s<>()]+)/g;
+
+  const renderLineTokens = (line: string, lineIndex: number) => {
+    // renderLineTokens
+    const parts: JSX.Element[] = [];
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+    let keyIndex = 0;
+
+    const tokenRegex = new RegExp(tokenPattern.source, "g");
+
+    while ((match = tokenRegex.exec(line)) !== null) {
+      const token = match[0];
+      const start = match.index;
+
+      if (start > lastIndex) {
+        parts.push(
+          <span key={`t-${lineIndex}-${keyIndex++}`}>{line.slice(lastIndex, start)}</span>
+        );
+      }
+
+      // Org-style link: [[url][label]] or [[url]]
+      if (token.startsWith("[[")) {
+        const orgLink = parseOrgLinkToken(token);
+        if (orgLink) {
+          const linkKey = `ol-${lineIndex}-${keyIndex++}`;
+          parts.push(
+            <Link
+              key={linkKey}
+              href={orgLink.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              underline="hover"
+              sx={{ wordBreak: "break-word", fontWeight: 600 }}
+            >
+              {renderBoldLabel(orgLink.label, linkKey)}
+            </Link>
+          );
+
+        } else {
+          // Fallback: render as text if parsing failed
+          parts.push(<span key={`ot-${lineIndex}-${keyIndex++}`}>{token}</span>);
+        }
+      }
+      // Bold: *text*
+      else if (token.startsWith("*") && token.endsWith("*") && token.length >= 2) {
+        const boldText = token.slice(1, -1);
+        parts.push(<strong key={`b-${lineIndex}-${keyIndex++}`}>{boldText}</strong>);
+      }
+      // Plain URL
+      else {
+        const { display, href } = sanitizeUrlToken(token);
+        if (!href) {
+          parts.push(<span key={`u-${lineIndex}-${keyIndex++}`}>{display}</span>);
+        } else {
+          parts.push(
+            <Link
+              key={`l-${lineIndex}-${keyIndex++}`}
+              href={href}
+              target="_blank"
+              rel="noopener noreferrer"
+              underline="hover"
+              sx={{ wordBreak: "break-word" }}
+            >
+              {display}
+            </Link>
+          );
+        }
+      }
+
+      lastIndex = tokenRegex.lastIndex;
+    }
+
+    if (lastIndex < line.length) {
+      parts.push(<span key={`t-${lineIndex}-${keyIndex++}`}>{line.slice(lastIndex)}</span>);
+    }
+
+    return parts;
+  };
+
+  return (
+    <Typography
+      variant="body2"
+      component="div"
+      sx={{
+        lineHeight: 1.6,
+        mt: 1,
+        whiteSpace: "normal",
+        wordBreak: "break-word",
+      }}
+    >
+      {lines.map((line, i) => (
+        <span key={`hl-${i}`}>
+          {renderLineTokens(line, i)}
+          {i < lines.length - 1 ? <br /> : null}
+        </span>
+      ))}
+    </Typography>
+  );
 }
 
 
@@ -735,6 +935,15 @@ export default function ProtocolForm({
     return data ?? {};
   }, [data]);
 
+  const formHelpText = useMemo(() => {
+    // formHelpText
+    const raw = (form as any)?.help ?? (form as any)?.helpText ?? "";
+    return typeof raw === "string" ? raw : "";
+  }, [form]);
+
+  const hasFormHelp = isNonEmptyString(formHelpText);
+  const [openFormHelp, setOpenFormHelp] = useState(false);
+
   // keepValuesForLater
   const values = useMemo(() => {
     if (!data || typeof data !== "object") return null;
@@ -892,9 +1101,8 @@ export default function ProtocolForm({
     title: null,
   });
 
-
-  const closeBtnSx = {
-    ml: "auto",
+  const headerActionBtnSx = {
+    // headerActionBtnSx
     color: "#e5e7eb",
     border: "1px solid rgba(255,255,255,0.18)",
     background: "rgba(255,255,255,0.06)",
@@ -1219,7 +1427,7 @@ export default function ProtocolForm({
         return choices[idx] ?? (fallback ?? choices[0]);
       }
 
-      return choices.includes(trimmed) ? trimmed : (fallback ?? choices[0]);
+      return choices.includes(trimmed) ? trimmed : fallback ?? choices[0];
     }
 
     return fallback ?? choices[0];
@@ -1256,7 +1464,7 @@ export default function ProtocolForm({
       Array.isArray(parsed)
         ? parsed
         : typeof parsed === "string"
-          ? (tryParseJsonArray(parsed) ?? [])
+          ? tryParseJsonArray(parsed) ?? []
           : [];
 
     return asArray.map((item: any) => {
@@ -1423,10 +1631,10 @@ export default function ProtocolForm({
     }
   }, [form, info, values, sections, protocolId, protocolClassName]);
 
-
   const isTerminalStatus = (s: any) =>
-    ["finished", "success", "done", "failed", "error", "cancelled", "canceled", "stopped", "aborted"]
-      .includes(String(s || "").toLowerCase());
+    ["finished", "success", "done", "failed", "error", "cancelled", "canceled", "stopped", "aborted"].includes(
+      String(s || "").toLowerCase()
+    );
   const idleStreakRef = useRef<number>(0);
 
   const maxLogCharsPerChannel = 300_000;
@@ -1496,11 +1704,7 @@ export default function ProtocolForm({
           if (!id) continue;
 
           const text =
-            typeof c?.content === "string"
-              ? c.content
-              : typeof c?.text === "string"
-                ? c.text
-                : "";
+            typeof c?.content === "string" ? c.content : typeof c?.text === "string" ? c.text : "";
 
           const nextOffset = typeof c?.offset === "number" ? c.offset : null;
           const reset = Boolean(c?.resetOffset);
@@ -1597,6 +1801,7 @@ export default function ProtocolForm({
         const rawChunk: LogsChunkResponse = await fetchChunkFn(projectId, protocolId, offsetsPayload);
         if (cancelled) return;
 
+        ensureChannelState(uiChannels);
         appendChunks(rawChunk?.chunks);
       } catch (err: any) {
         if (!cancelled) setLogsError(err?.message || "Failed to load logs");
@@ -1629,7 +1834,6 @@ export default function ProtocolForm({
       }
     }, 2000);
 
-
     return () => {
       cancelled = true;
       if (pollRef.current) {
@@ -1639,7 +1843,6 @@ export default function ProtocolForm({
     };
   }, [topTab, projectId, protocolId, protocolDetails.status, svc]);
 
-
   // Autoscroll logs
   const activeLogText = logBuffers[activeLogChannelId] ?? "";
 
@@ -1648,8 +1851,6 @@ export default function ProtocolForm({
     if (!logsContainerRef.current) return;
     logsContainerRef.current.scrollTop = logsContainerRef.current.scrollHeight;
   }, [activeLogChannelId, activeLogText]);
-
-
 
   // Live expected-class reader for pointer-like params
   const getExpectedClass = (def: any): string | string[] | null => {
@@ -1682,8 +1883,7 @@ export default function ProtocolForm({
       else push(c);
     }
 
-    const isParamMeta = (s: string) =>
-      /pointerparam$/i.test(s) || /multipointerparam$/i.test(s);
+    const isParamMeta = (s: string) => /pointerparam$/i.test(s) || /multipointerparam$/i.test(s);
     const filtered = flat.filter((s) => !isParamMeta(s));
 
     if (filtered.length === 0) return null;
@@ -1691,15 +1891,10 @@ export default function ProtocolForm({
   };
 
   // Collect outputs from all protocols (for the input selector)
-  const gatherAllOutputs = useCallback((): {
-    outputs: any[];
-    dependencyMap: Record<string, string[]>;
-  } => {
+  const gatherAllOutputs = useCallback((): { outputs: any[]; dependencyMap: Record<string, string[]> } => {
     if (!projectProtocols) return { outputs: [], dependencyMap: {} };
 
-    const protocolsArray = Array.isArray(projectProtocols)
-      ? projectProtocols
-      : Object.values(projectProtocols);
+    const protocolsArray = Array.isArray(projectProtocols) ? projectProtocols : Object.values(projectProtocols);
 
     const outputs: any[] = [];
     const dependencyMap: Record<string, string[]> = {};
@@ -1710,8 +1905,7 @@ export default function ProtocolForm({
       if (!Array.isArray(prot.outputs)) continue;
 
       for (const outRaw of prot.outputs) {
-        const hasOutputName =
-          outRaw && typeof outRaw === "object" && "outputName" in outRaw;
+        const hasOutputName = outRaw && typeof outRaw === "object" && "outputName" in outRaw;
         const out = hasOutputName ? (outRaw as any) : (outRaw as any);
         const key = String(out?.outputName ?? out?._key ?? out?.name ?? "");
         if (!key) continue;
@@ -1732,157 +1926,6 @@ export default function ProtocolForm({
     return { outputs, dependencyMap };
   }, [projectProtocols]);
 
-  // Keep ProtUnionSet inputSets constraints in sync when inputType changes
-  useEffect(() => {
-    if (protocolClassName !== "ProtUnionSet") return;
-    const params = protocolDetails?.params;
-    if (!params || Object.keys(params).length === 0) return;
-
-    const findKey = (name: string) =>
-      Object.keys(params).find((k) => k.endsWith(`_${name}`));
-
-    const inputTypeKey = findKey("inputType");
-    const inputSetsKey = findKey("inputSets");
-    if (!inputTypeKey || !inputSetsKey) return;
-
-    const inputTypeParam = params[inputTypeKey];
-    const inputSetsParam = params[inputSetsKey];
-    if (!inputTypeParam || !inputSetsParam) return;
-
-    // Resolve current label
-    const rawSel =
-      inputTypeParam.editableValue !== undefined
-        ? inputTypeParam.editableValue
-        : inputTypeParam.default;
-
-    let selectedLabel: string | null = null;
-    if (typeof rawSel === "number" && Array.isArray(inputTypeParam.choices)) {
-      selectedLabel = inputTypeParam.choices[rawSel] ?? null;
-    } else if (typeof rawSel === "string") {
-      selectedLabel = rawSel;
-    }
-    if (selectedLabel == null) return;
-
-    const prev = prevSelectedInputTypeRef.current;
-
-    // First run: record and exit (no changes)
-    if (prev === null) {
-      prevSelectedInputTypeRef.current = selectedLabel;
-      return;
-    }
-
-    // No change: do nothing
-    if (prev === selectedLabel) return;
-
-    prevSelectedInputTypeRef.current = selectedLabel;
-
-    // Apply constraints according to selection
-    const isAll = selectedLabel.trim().toLowerCase() === "all";
-    const nextPointerClass = isAll ? null : `SetOf${selectedLabel.replace(/\s+/g, "")}`;
-
-    setProtocolDetails((prevState: any) => {
-      const clone = { ...prevState, params: { ...prevState.params } };
-      const target = { ...clone.params[inputSetsKey] };
-
-      if (isAll) {
-        delete target.pointerClass;
-        delete target.pointerClassName;
-        delete target.accept;
-        target.accepts = [];
-        delete target.accepted;
-        delete target._expectedClass;
-        delete target.objectClass;
-        delete target.type;
-      } else {
-        target.pointerClass = nextPointerClass!;
-        target.pointerClassName = nextPointerClass!;
-        target.accept = nextPointerClass!;
-        target.accepts = [nextPointerClass!];
-        target.accepted = nextPointerClass!;
-        target._expectedClass = nextPointerClass!;
-        target.objectClass = nextPointerClass!;
-        target.type = nextPointerClass!;
-        target.editableValue = [];
-      }
-
-      clone.params[inputSetsKey] = target;
-      return clone;
-    });
-  }, [form?.protocolClassName, protocolDetails.params]);
-
-
-  useEffect(() => {
-    // updateMetadataSnapshotOnTabOpen
-    if (topTab !== 3) return;
-
-    const serialized = getSerializedParams();
-
-    setMetadataSnapshot(() => {
-      if (!data || typeof data !== "object") return data;
-
-      // cloneEnvelopeShallow
-      const base: any = Array.isArray(data) ? [...data] : { ...(data as any) };
-
-      // mergeValuesKeepingUnknownKeys
-      const prevValues =
-        base.values && typeof base.values === "object" && !Array.isArray(base.values)
-          ? base.values
-          : {};
-
-      const nextValues = { ...prevValues, ...serialized };
-
-      base.values = nextValues;
-
-      // optionalSyncFormValuesIfPresent
-      if (base.form && typeof base.form === "object" && base.form !== null) {
-        if ("values" in base.form) {
-          base.form = { ...base.form, values: nextValues };
-        }
-      }
-
-      return base;
-    });
-  }, [topTab, data, protocolDetails.params]);
-
-
-  // Filter outputs for a given paramKey, excluding self and descendants
-  const getFilteredOutputsForKey = (paramKey: string) => {
-    const liveParam = protocolDetails.params?.[paramKey];
-    const expected = getExpectedClass(liveParam);
-
-    const { outputs, dependencyMap } = gatherAllOutputs();
-    const currentId = String(form?.protocolId ?? "");
-
-    const blocked = new Set<string>([currentId]);
-    const stack = [currentId];
-    while (stack.length > 0) {
-      const parent = stack.pop()!;
-      const children = dependencyMap[parent] || [];
-      for (const child of children) {
-        if (!blocked.has(child)) {
-          blocked.add(child);
-          stack.push(child);
-        }
-      }
-    }
-
-    const pool = outputs.filter((o) => !blocked.has(String(o.protocolId)));
-
-    const norm = (s: any) =>
-      typeof s === "string" ? s.replace(/\s+/g, "").toLowerCase() : "";
-
-    if (expected === null) {
-      return pool.filter((o) => /^setof/i.test(String(o.pointerClass || "")));
-    }
-
-    return pool.filter((o) => {
-      const oc = norm(o.pointerClass);
-      return Array.isArray(expected)
-        ? expected.some((e) => norm(e) === oc)
-        : norm(expected) === oc;
-    });
-  };
-
   // Serialize protocol parameters before save/execute
 
   // deriveParamNameFromStateKey
@@ -1895,8 +1938,6 @@ export default function ProtocolForm({
     const out: any = {};
 
     Object.entries(protocolDetails.params || {}).forEach(([k, pRaw]: any) => {
-      const keyParts = k.split("_");
-      keyParts.shift();
       const newKey = getParamNameFromStateKey(k);
 
       const p = pRaw ?? {};
@@ -1904,7 +1945,7 @@ export default function ProtocolForm({
 
       if (cls === "PointerParam") {
         const editable = p.editableValue ?? "";
-        let normalized = ""
+        let normalized = "";
 
         const token = (p.value ?? "").toString().trim();
         if (token) {
@@ -1930,11 +1971,9 @@ export default function ProtocolForm({
       }
 
       if (cls === "BooleanParam") {
-        const boolVal = coerceBooleanValue(
-          p.editableValue ?? p.value ?? p.value ?? p.default
-        );
+        const boolVal = coerceBooleanValue(p.editableValue ?? p.value ?? p.value ?? p.default);
 
-        out[newKey] = boolVal ? true : false
+        out[newKey] = boolVal ? true : false;
         return;
       }
 
@@ -1943,7 +1982,6 @@ export default function ProtocolForm({
         out[newKey] = token;
         return;
       }
-
 
       out[newKey] = p.editableValue;
     });
@@ -2054,7 +2092,6 @@ export default function ProtocolForm({
     return errors.map((e, i) => `${i + 1}. ${e}`).join("\n");
   }
 
-
   // handleExecute
   const handleExecute = async (modeKey: string) => {
     setActionLoading("execute");
@@ -2102,8 +2139,6 @@ export default function ProtocolForm({
     }
   };
 
-
-
   // handleSave
   const handleSave = async () => {
     setActionLoading("save");
@@ -2139,9 +2174,7 @@ export default function ProtocolForm({
       }
 
       const fallbackMsg =
-        err?.message ||
-        (typeof payload?.detail === "string" ? payload.detail : null) ||
-        "Save failed";
+        err?.message || (typeof payload?.detail === "string" ? payload.detail : null) || "Save failed";
 
       toast.error(String(fallbackMsg));
       openExecErrorDialog("Save error", String(fallbackMsg));
@@ -2149,7 +2182,6 @@ export default function ProtocolForm({
       setActionLoading(null);
     }
   };
-
 
   const handleAnalyzeResultsClick = async (e: React.MouseEvent<HTMLButtonElement>) => {
     // openAnalyzeResultsDialog
@@ -2202,9 +2234,6 @@ export default function ProtocolForm({
     setAnalyzeOpen(true);
   };
 
-
-
-
   // Render a single parameter row
   const renderParam = useCallback(
     (
@@ -2232,7 +2261,6 @@ export default function ProtocolForm({
 
       const isInline = layoutVariant === "inline";
 
-
       // fieldWidthPx
       const inlineFieldWidth = 50;
       const standardFieldWidth = variant === "docked" ? 280 : 460;
@@ -2241,7 +2269,6 @@ export default function ProtocolForm({
       const fieldContainerSx = isInline
         ? { width: fieldWidth, flex: "0 0 auto", minWidth: 0 }
         : { flex: 1, minWidth: 0, maxWidth: "100%" };
-
 
       if (typeof def?.condition === "string" && def.condition.trim()) {
         if (!evalExpr(sectionIdx, def.condition)) return null;
@@ -2344,7 +2371,6 @@ export default function ProtocolForm({
             };
           });
         };
-
 
         const onClear = (i: number) => {
           setProtocolDetails((prev: any) => {
@@ -2463,7 +2489,6 @@ export default function ProtocolForm({
         );
       }
 
-
       // PointerParam (requires stateKey)
       if (defClass === "PointerParam") {
         if (!stateKey) return null;
@@ -2495,15 +2520,6 @@ export default function ProtocolForm({
         };
 
         const isReadOnly = coerceReadOnlyFlag(def?.readOnly);
-
-
-
-        const fieldContainerSx = {
-          // fieldContainerSx
-          width: "100%",
-          maxWidth: fieldWidth,
-          minWidth: 0,
-        };
 
         const field = (
           <TextField
@@ -2551,7 +2567,6 @@ export default function ProtocolForm({
           />
         );
 
-
         return (
           <ParamRow
             key={stableKey}
@@ -2559,7 +2574,13 @@ export default function ProtocolForm({
             control={
               <Box sx={{ display: "flex", alignItems: "center", gap: 1, minWidth: 0, width: "100%" }}>
                 {advancedSlot}
-                <Box sx={fieldContainerSx}>
+                <Box
+                  sx={{
+                    width: "100%",
+                    maxWidth: fieldWidth,
+                    minWidth: 0,
+                  }}
+                >
                   <WrapWithDrop
                     control={field}
                     def={liveDef}
@@ -2571,7 +2592,6 @@ export default function ProtocolForm({
                 </Box>
               </Box>
             }
-
             helpText={def.help}
             isPointerParam
             onClear={onClear}
@@ -2582,14 +2602,13 @@ export default function ProtocolForm({
         );
       }
 
-
       // PathParam (requires stateKey)
       if (defClass === "PathParam") {
         if (!stateKey) return null;
 
         const current = protocolDetails.params?.[stateKey] || {};
         const textValue = current.editableValue ?? current.value ?? def.value ?? def.default ?? "";
-        const label = current['label'] ?? def.label ?? name ?? "";
+        const label = current["label"] ?? def.label ?? name ?? "";
 
         const isPointerEnabled =
           typeof current.pointerClass === "string"
@@ -2632,13 +2651,6 @@ export default function ProtocolForm({
           setOpenSelector(true);
         };
 
-        const fieldContainerSx = {
-          // fieldContainerSx
-          width: "100%",
-          maxWidth: fieldWidth,
-          minWidth: 0,
-        };
-
         const field = (
           <TextField
             size="small"
@@ -2677,7 +2689,13 @@ export default function ProtocolForm({
             control={
               <Box sx={{ display: "flex", alignItems: "center", gap: 1, minWidth: 0, width: "100%" }}>
                 {advancedSlot}
-                <Box sx={fieldContainerSx}>
+                <Box
+                  sx={{
+                    width: "100%",
+                    maxWidth: fieldWidth,
+                    minWidth: 0,
+                  }}
+                >
                   {isPointerEnabled ? (
                     <WrapWithDrop
                       control={field}
@@ -2693,7 +2711,6 @@ export default function ProtocolForm({
                 </Box>
               </Box>
             }
-
             helpText={def.help}
             isPathParam
             onBrowsePath={handleBrowsePath}
@@ -2704,10 +2721,7 @@ export default function ProtocolForm({
             layoutVariant={layoutVariant}
           />
         );
-
-
       }
-
 
       // EnumParam (requires stateKey)
       if (defClass === "EnumParam" && Array.isArray(def.choices)) {
@@ -2716,7 +2730,7 @@ export default function ProtocolForm({
         let sel = value ?? def.default ?? "";
         if (typeof sel === "number") sel = def.choices[sel] ?? "";
 
-        const safeSel = def.choices.includes(sel) ? sel : (def.choices[0] ?? "");
+        const safeSel = def.choices.includes(sel) ? sel : def.choices[0] ?? "";
 
         const onChange = (v: any) =>
           setProtocolDetails((prev: any) => ({
@@ -2865,14 +2879,12 @@ export default function ProtocolForm({
         );
       }
 
-
       // Group (decorator, name optional)
       if (defClass === "Group") {
         const groupKey = `${stableKey}|group`;
         const expanded = expandedGroups[groupKey] ?? true;
 
-        const toggleExpand = () =>
-          setExpandedGroups((prev) => ({ ...prev, [groupKey]: !expanded }));
+        const toggleExpand = () => setExpandedGroups((prev) => ({ ...prev, [groupKey]: !expanded }));
 
         const groupLabel = String(def?.label || name || "Group").trim();
         const groupParams = Array.isArray(def?.params) ? def.params : [];
@@ -2885,8 +2897,7 @@ export default function ProtocolForm({
               border: "1px dashed #ccc",
               borderRadius: 1,
               p: 1,
-              backgroundColor: (theme) =>
-                theme.palette.mode === "dark" ? "#2c2c2c" : "#f9fafb",
+              backgroundColor: (theme) => (theme.palette.mode === "dark" ? "#2c2c2c" : "#f9fafb"),
             }}
           >
             <Box
@@ -2908,26 +2919,17 @@ export default function ProtocolForm({
                 {groupLabel || "Group"}
               </Typography>
 
-              <IconButton size="small">
-                {expanded ? (
-                  <ChevronUpIcon fontSize="small" />
-                ) : (
-                  <ChevronDownIcon fontSize="small" />
-                )}
-              </IconButton>
+              <IconButton size="small">{expanded ? <ChevronUpIcon fontSize="small" /> : <ChevronDownIcon fontSize="small" />}</IconButton>
             </Box>
 
             {expanded && (
               <>
                 {groupParams.length === 0 ? (
                   <Typography variant="caption" sx={{ opacity: 0.7, pl: 1 }}>
-                    {/* No parameters in this group */}
                     No parameters.
                   </Typography>
                 ) : (
-                  groupParams.map((child: any, idx: number) =>
-                    renderParam(child, sectionIdx, idx, "standard", stableKey)
-                  )
+                  groupParams.map((child: any, idx: number) => renderParam(child, sectionIdx, idx, "standard", stableKey))
                 )}
               </>
             )}
@@ -2935,15 +2937,12 @@ export default function ProtocolForm({
         );
       }
 
-
       // BooleanParam (requires stateKey)
       if (defClass === "BooleanParam") {
         if (!stateKey) return null;
 
         const checked = coerceBooleanValue(
-          value !== undefined
-            ? value
-            : protocolDetails.params?.[stateKey]?.value ?? def.value ?? def.default
+          value !== undefined ? value : protocolDetails.params?.[stateKey]?.value ?? def.value ?? def.default
         );
 
         return (
@@ -3060,11 +3059,45 @@ export default function ProtocolForm({
       findGeneralExpertLocator,
       getExpectedClass,
       gatherAllOutputs,
-      getFilteredOutputsForKey,
       projectId,
       protocolId,
     ]
   );
+
+  // Filter outputs for a given paramKey, excluding self and descendants
+  const getFilteredOutputsForKey = (paramKey: string) => {
+    const liveParam = protocolDetails.params?.[paramKey];
+    const expected = getExpectedClass(liveParam);
+
+    const { outputs, dependencyMap } = gatherAllOutputs();
+    const currentId = String((form as any)?.protocolId ?? "");
+
+    const blocked = new Set<string>([currentId]);
+    const stack = [currentId];
+    while (stack.length > 0) {
+      const parent = stack.pop()!;
+      const children = dependencyMap[parent] || [];
+      for (const child of children) {
+        if (!blocked.has(child)) {
+          blocked.add(child);
+          stack.push(child);
+        }
+      }
+    }
+
+    const pool = outputs.filter((o) => !blocked.has(String(o.protocolId)));
+
+    const norm = (s: any) => (typeof s === "string" ? s.replace(/\s+/g, "").toLowerCase() : "");
+
+    if (expected === null) {
+      return pool.filter((o) => /^setof/i.test(String(o.pointerClass || "")));
+    }
+
+    return pool.filter((o) => {
+      const oc = norm(o.pointerClass);
+      return Array.isArray(expected) ? expected.some((e) => norm(e) === oc) : norm(expected) === oc;
+    });
+  };
 
   // Handle selected output in OutputSelectorDialog
   const handleSelectOutput = (selected: any | any[]) => {
@@ -3148,10 +3181,7 @@ export default function ProtocolForm({
           }}
         >
           <CircularProgress size={20} />
-          <Typography
-            variant="caption"
-            sx={{ fontSize: "0.75rem", color: "#4b5563" }}
-          >
+          <Typography variant="caption" sx={{ fontSize: "0.75rem", color: "#4b5563" }}>
             Loading preview...
           </Typography>
         </Box>
@@ -3227,14 +3257,7 @@ export default function ProtocolForm({
     switch (previewData?.kind) {
       case "image":
         return (
-          <Box
-            sx={{
-              width: "100%",
-              display: "flex",
-              justifyContent: "center",
-              alignItems: "flex-start",
-            }}
-          >
+          <Box sx={{ width: "100%", display: "flex", justifyContent: "center", alignItems: "flex-start" }}>
             <img
               src={previewData.url}
               alt={activeOutput.name}
@@ -3259,12 +3282,7 @@ export default function ProtocolForm({
               backgroundColor: "#fff",
             }}
           >
-            <object
-              data={previewData.url}
-              type="application/pdf"
-              width="100%"
-              height="100%"
-            >
+            <object data={previewData.url} type="application/pdf" width="100%" height="100%">
               <Box sx={{ p: 2 }}>
                 <Typography variant="body2" sx={{ mb: 1 }}>
                   PDF preview not supported by your browser.
@@ -3730,22 +3748,57 @@ export default function ProtocolForm({
             {protocolDetails.status || "Unknown"}
           </span>
         </div>
-        <IconButton
-          onClick={requestClose}
-          aria-label="Close analyze dialog"
-          size="small"
-          sx={closeBtnSx}
-        >
-          <CloseIcon fontSize="small" />
-        </IconButton>
+
+        <Box sx={{ ml: "auto", display: "inline-flex", alignItems: "center", gap: 0.75 }}>
+          {hasFormHelp && (
+            <Tooltip title="Help">
+              <IconButton
+                onClick={() => setOpenFormHelp(true)}
+                aria-label="Open protocol help"
+                size="small"
+                sx={headerActionBtnSx}
+              >
+                <span style={{ fontSize: "1.1rem" }} className="ml-2 mr-2 text-white">?</span>
+              </IconButton>
+            </Tooltip>
+          )}
+
+          <IconButton
+            onClick={requestClose}
+            aria-label="Close analyze dialog"
+            size="small"
+            sx={headerActionBtnSx}
+          >
+            <CloseIcon fontSize="small" />
+          </IconButton>
+        </Box>
       </div>
 
-      {execError && (
-        <Typography
-          color="error"
-          variant="body2"
-          sx={{ px: 2, py: 1 }}
+      {/* Protocol form help dialog */}
+      {hasFormHelp && (
+        <Dialog
+          open={openFormHelp}
+          onClose={() => setOpenFormHelp(false)}
+          maxWidth="sm"
+          fullWidth
+          slotProps={{
+            backdrop: {
+              sx: { backgroundColor: "transparent" },
+            },
+          }}
         >
+          <DialogTitle className={styles.formHeader}>Help</DialogTitle>
+          <DialogContent sx={{ p: 2 }}>{renderRichHelpText(formHelpText)}</DialogContent>
+          <DialogActions sx={{ justifyContent: "center" }}>
+            <Button variant="outlined" onClick={() => setOpenFormHelp(false)} sx={{ textTransform: "none" }}>
+              Close
+            </Button>
+          </DialogActions>
+        </Dialog>
+      )}
+
+      {execError && (
+        <Typography color="error" variant="body2" sx={{ px: 2, py: 1 }}>
           {execError}
         </Typography>
       )}

@@ -42,29 +42,97 @@ function normalizeHelpText(raw: string): string {
   return String(raw ?? "").replace(/\\n/g, "\n");
 }
 
+function sanitizeHref(rawUrl: string): string {
+  // sanitizeHref
+  let hrefToken = String(rawUrl ?? "").trim();
+
+  // Trim common trailing punctuation
+  while (/[.,;:!?)]$/.test(hrefToken)) {
+    hrefToken = hrefToken.slice(0, -1);
+  }
+
+  if (!hrefToken) return "";
+
+  const href =
+    hrefToken.startsWith("http://") || hrefToken.startsWith("https://")
+      ? hrefToken
+      : `https://${hrefToken}`;
+
+  return href;
+}
+
 function sanitizeUrlToken(token: string): { display: string; href: string } {
   // sanitizeUrlToken
   const display = token;
 
-  // Trim common trailing punctuation from the URL target, but keep it in display
   let hrefToken = token;
   while (/[.,;:!?)]$/.test(hrefToken)) {
     hrefToken = hrefToken.slice(0, -1);
   }
 
-  const href = hrefToken.startsWith("http") ? hrefToken : `https://${hrefToken}`;
+  const href = sanitizeHref(hrefToken);
   return { display, href };
+}
+
+function parseOrgLinkToken(token: string): { href: string; label: string } | null {
+  // parseOrgLinkToken
+  // Matches [[url][label]] or [[url]]
+  const orgRegex = /^\[\[([^\]]+)\](?:\[([^\]]+)\])?\]$/;
+  const match = orgRegex.exec(token);
+  if (!match) return null;
+
+  const rawUrl = match[1] ?? "";
+  const rawLabel = match[2];
+
+  const href = sanitizeHref(rawUrl);
+  if (!href) return null;
+
+  const label = String(rawLabel ?? rawUrl);
+  return { href, label };
+}
+
+function renderBoldInline(text: string, keyPrefix: string): Array<JSX.Element | string> {
+  // renderBoldInline
+  const parts: Array<JSX.Element | string> = [];
+  const boldRegex = /\*[^*]+\*/g;
+
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  let segIndex = 0;
+
+  while ((match = boldRegex.exec(text)) !== null) {
+    const token = match[0];
+    const start = match.index;
+
+    if (start > lastIndex) {
+      parts.push(text.slice(lastIndex, start));
+    }
+
+    const boldText = token.slice(1, -1);
+    parts.push(<strong key={`${keyPrefix}-b-${segIndex++}`}>{boldText}</strong>);
+
+    lastIndex = boldRegex.lastIndex;
+  }
+
+  if (lastIndex < text.length) {
+    parts.push(text.slice(lastIndex));
+  }
+
+  return parts;
 }
 
 function renderHelpText(helpText: string): JSX.Element {
   // renderHelpText
   const normalized = normalizeHelpText(helpText);
+  const lines = normalized.split("\n");
 
   // Matches:
+  // - [[url][label]] or [[url]] (Scipion/Org-mode style)
   // - *boldText*
   // - http(s)://...
   // - www....
-  const tokenRegex = /(\*[^*]+\*|https?:\/\/[^\s<>()]+|www\.[^\s<>()]+)/g;
+  const tokenPattern =
+    /(\[\[[^\]]+\](?:\[[^\]]+\])?\]|\*[^*]+\*|https?:\/\/[^\s<>()]+|www\.[^\s<>()]+)/g;
 
   const renderLine = (line: string, lineIndex: number) => {
     // renderLine
@@ -72,6 +140,8 @@ function renderHelpText(helpText: string): JSX.Element {
     let lastIndex = 0;
     let match: RegExpExecArray | null;
     let keyIndex = 0;
+
+    const tokenRegex = new RegExp(tokenPattern.source, "g");
 
     while ((match = tokenRegex.exec(line)) !== null) {
       const token = match[0];
@@ -82,25 +152,53 @@ function renderHelpText(helpText: string): JSX.Element {
         parts.push(<span key={`t-${lineIndex}-${keyIndex++}`}>{text}</span>);
       }
 
+      // Org-style link: [[url][label]] or [[url]]
+      if (token.startsWith("[[")) {
+        const orgLink = parseOrgLinkToken(token);
+
+        if (orgLink) {
+          const linkKey = `ol-${lineIndex}-${keyIndex++}`;
+          parts.push(
+            <Link
+              key={linkKey}
+              href={orgLink.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              underline="hover"
+              sx={{ wordBreak: "break-word", fontWeight: 600 }}
+            >
+              {renderBoldInline(orgLink.label, linkKey)}
+            </Link>
+          );
+        } else {
+          parts.push(<span key={`ot-${lineIndex}-${keyIndex++}`}>{token}</span>);
+        }
+      }
       // Bold: *text*
-      if (token.startsWith("*") && token.endsWith("*") && token.length >= 2) {
+      else if (token.startsWith("*") && token.endsWith("*") && token.length >= 2) {
         const boldText = token.slice(1, -1);
         parts.push(<strong key={`b-${lineIndex}-${keyIndex++}`}>{boldText}</strong>);
-      } else {
-        // Link
+      }
+      // Plain URL
+      else {
         const { display, href } = sanitizeUrlToken(token);
-        parts.push(
-          <Link
-            key={`l-${lineIndex}-${keyIndex++}`}
-            href={href}
-            target="_blank"
-            rel="noreferrer"
-            underline="hover"
-            sx={{ wordBreak: "break-word" }}
-          >
-            {display}
-          </Link>
-        );
+
+        if (!href) {
+          parts.push(<span key={`u-${lineIndex}-${keyIndex++}`}>{display}</span>);
+        } else {
+          parts.push(
+            <Link
+              key={`l-${lineIndex}-${keyIndex++}`}
+              href={href}
+              target="_blank"
+              rel="noopener noreferrer"
+              underline="hover"
+              sx={{ wordBreak: "break-word" }}
+            >
+              {display}
+            </Link>
+          );
+        }
       }
 
       lastIndex = tokenRegex.lastIndex;
@@ -110,13 +208,8 @@ function renderHelpText(helpText: string): JSX.Element {
       parts.push(<span key={`t-${lineIndex}-${keyIndex++}`}>{line.slice(lastIndex)}</span>);
     }
 
-    // Reset regex state for the next line
-    tokenRegex.lastIndex = 0;
-
     return parts;
   };
-
-  const lines = normalized.split("\n");
 
   return (
     <Typography
