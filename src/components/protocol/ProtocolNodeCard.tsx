@@ -3,6 +3,7 @@ import type {
   Dispatch,
   DragEvent as ReactDragEvent,
   MouseEvent as ReactMouseEvent,
+  PointerEvent as ReactPointerEvent,
   SetStateAction,
 } from "react";
 
@@ -125,7 +126,11 @@ type StatusNodeProps = {
   onSelectFrom?: (id: string) => void;
   onSelectTo?: (id: string) => void;
   onStop?: (id: string) => void;
-  onBrowse?: (protocolId: string, projectId?: string | number, protocolLabel?: string) => void;
+  onBrowse?: (
+    protocolId: string,
+    projectId?: string | number,
+    protocolLabel?: string
+  ) => void;
 
   inPathSelection?: boolean;
   pathSelectionActive?: boolean;
@@ -162,15 +167,17 @@ const normalizeOutputItem = (outputObj: unknown): NormalizedOutput | null => {
   const flatCandidate = outputObj as Record<string, unknown>;
 
   const hasAnyClassHint =
-    "paramClass" in flatCandidate || "pointerClass" in flatCandidate || "_class" in flatCandidate;
+    "paramClass" in flatCandidate ||
+    "pointerClass" in flatCandidate ||
+    "_class" in flatCandidate;
 
   const looksLikeOutput =
     hasAnyClassHint &&
-    (("info" in flatCandidate) ||
-      ("name" in flatCandidate) ||
-      ("outputName" in flatCandidate) ||
-      ("value" in flatCandidate) ||
-      ("parentId" in flatCandidate));
+    ("info" in flatCandidate ||
+      "name" in flatCandidate ||
+      "outputName" in flatCandidate ||
+      "value" in flatCandidate ||
+      "parentId" in flatCandidate);
 
   if (looksLikeOutput) {
     const pointerClass =
@@ -222,7 +229,8 @@ const normalizeOutputItem = (outputObj: unknown): NormalizedOutput | null => {
               ? (wrappedDef._class as string)
               : undefined;
 
-        const rawParamClass = typeof wrappedDef.paramClass === "string" ? wrappedDef.paramClass : "";
+        const rawParamClass =
+          typeof wrappedDef.paramClass === "string" ? wrappedDef.paramClass : "";
         const inferredParamClass = rawParamClass || (pointerClass ? "PointerParam" : "");
 
         const normalized: NormalizedOutput = {
@@ -245,7 +253,6 @@ const normalizeOutputItem = (outputObj: unknown): NormalizedOutput | null => {
   return null;
 };
 
-
 const openDecisionUrl = (decision: AnalyzeViewerResolveDecision) => {
   // openDecisionUrl
   if (!decision || decision.handled !== true) return false;
@@ -263,6 +270,10 @@ const openDecisionUrl = (decision: AnalyzeViewerResolveDecision) => {
   window.open(url, "_blank", "noopener,noreferrer");
   return true;
 };
+
+type ReactFlowSelectionEvent =
+  | ReactMouseEvent
+  | ReactPointerEvent<HTMLDivElement>;
 
 export default function ProtocolNodeCard({
   data,
@@ -306,12 +317,12 @@ export default function ProtocolNodeCard({
     }, 0);
   }, []);
 
-
   const contextMenuOpenedAtRef = useRef<number>(0);
 
   const armContextMenuOpenGuard = useCallback(() => {
     // armContextMenuOpenGuard
-    contextMenuOpenedAtRef.current = typeof performance !== "undefined" ? performance.now() : Date.now();
+    contextMenuOpenedAtRef.current =
+      typeof performance !== "undefined" ? performance.now() : Date.now();
   }, []);
 
   const isInContextMenuOpenGuardWindow = useCallback(() => {
@@ -331,8 +342,6 @@ export default function ProtocolNodeCard({
     },
     [isInContextMenuOpenGuardWindow]
   );
-
-
 
   const isProjectNode = data.id === "PROJECT";
   const isCompactView = zoomLevel <= compactThreshold;
@@ -413,6 +422,74 @@ export default function ProtocolNodeCard({
     nodeEl.dispatchEvent(new MouseEvent("click", opts));
   };
 
+  const getReactFlowNodeElement = useCallback(
+    (e: ReactFlowSelectionEvent) => {
+      // getReactFlowNodeElement
+      const doc = (e.target as HTMLElement | null)?.ownerDocument || document;
+
+      const nodeEl =
+        (e.currentTarget as HTMLElement | null)?.closest(".react-flow__node") ??
+        rootRef.current?.closest(".react-flow__node") ??
+        doc.querySelector(`.react-flow__node[data-id="${CSS.escape(String(data.id))}"]`);
+
+      return nodeEl as HTMLElement | null;
+    },
+    [data.id]
+  );
+
+  const isReactFlowNodeCurrentlySelected = useCallback(
+    (e: ReactFlowSelectionEvent) => {
+      // isReactFlowNodeCurrentlySelected
+      const nodeEl = getReactFlowNodeElement(e);
+      if (!nodeEl) return false;
+      return nodeEl.classList.contains("selected");
+    },
+    [getReactFlowNodeElement]
+  );
+
+  const selectNodeExclusivelyInReactFlow = useCallback(
+    (e: ReactFlowSelectionEvent) => {
+      // selectNodeExclusivelyInReactFlow
+      const doc = (e.target as HTMLElement | null)?.ownerDocument || document;
+      const win = doc.defaultView || window;
+
+      const nodeEl = getReactFlowNodeElement(e);
+      if (!nodeEl) return;
+
+      const clientX = (e as any).clientX ?? 0;
+      const clientY = (e as any).clientY ?? 0;
+
+      const opts: MouseEventInit = {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+        clientX,
+        clientY,
+        ctrlKey: false,
+        metaKey: false,
+        shiftKey: false,
+        view: win,
+      };
+
+      nodeEl.dispatchEvent(new MouseEvent("pointerdown", opts));
+      nodeEl.dispatchEvent(new MouseEvent("pointerup", opts));
+      nodeEl.dispatchEvent(new MouseEvent("mousedown", opts));
+      nodeEl.dispatchEvent(new MouseEvent("mouseup", opts));
+      nodeEl.dispatchEvent(new MouseEvent("click", opts));
+    },
+    [getReactFlowNodeElement]
+  );
+
+  const ensureRightClickSelectionIsUnambiguous = useCallback(
+    (e: ReactFlowSelectionEvent) => {
+      // ensureRightClickSelectionIsUnambiguous
+      const alreadySelected = isReactFlowNodeCurrentlySelected(e);
+      if (alreadySelected) return;
+      selectNodeExclusivelyInReactFlow(e);
+    },
+    [isReactFlowNodeCurrentlySelected, selectNodeExclusivelyInReactFlow]
+  );
+
   const truncateLabel = (text: string = "", max: number = 120) =>
     text.length > max ? `${text.slice(0, max)}…` : text;
 
@@ -432,12 +509,14 @@ export default function ProtocolNodeCard({
       if (isMac && e.ctrlKey) {
         e.preventDefault();
         e.stopPropagation();
+        return;
       }
+
+      // If user right-clicks a non-selected node, make it the only selection.
+      ensureRightClickSelectionIsUnambiguous(e);
     },
-    [isMac, armSuppressNextMenuAction]
+    [isMac, armSuppressNextMenuAction, ensureRightClickSelectionIsUnambiguous]
   );
-
-
 
   const mod = isMac ? "⌘" : "Ctrl";
   const modShift = isMac ? "⌘⇧" : "Ctrl+Shift";
@@ -500,7 +579,6 @@ export default function ProtocolNodeCard({
 
   const openOutputViewer = useCallback(
     async (outputName: string, outputRaw: any, normalized?: NormalizedOutput | null) => {
-
       // openOutputViewerWithBackendResolve
       if (!canOpenViewer) return;
       const maybeResolve = service?.resolveAnalyzeViewer;
@@ -547,9 +625,13 @@ export default function ProtocolNodeCard({
           className={classNames}
           style={nodeStyle}
           onContextMenuCapture={handleContextMenuCapture}
-          onPointerDownCapture={(e) => {
+          onPointerDownCapture={(e: ReactPointerEvent<HTMLDivElement>) => {
             // suppressMenuMouseUpSelectingFirstItem
-            if (e.button === 2) armSuppressNextMenuAction();
+            if (e.button === 2) {
+              // If user right-clicks a non-selected node, make it the only selection.
+              ensureRightClickSelectionIsUnambiguous(e);
+              armSuppressNextMenuAction();
+            }
           }}
           onClick={(e) => {
             // avoidClickSideEffectsAfterContextMenuOpen
@@ -569,9 +651,10 @@ export default function ProtocolNodeCard({
           onMouseLeave={() => setIsHovered(false)}
         >
           <div
-            className={[styles.header, isProjectNode ? styles.headerProject : styles.headerProtocol].join(
-              " "
-            )}
+            className={[
+              styles.header,
+              isProjectNode ? styles.headerProject : styles.headerProtocol,
+            ].join(" ")}
           >
             <div className={styles.headerLeft}>
               {!isProjectNode && (
@@ -623,7 +706,10 @@ export default function ProtocolNodeCard({
                     </button>
                   </DropdownMenuTrigger>
 
-                  <DropdownMenuContent className={styles.menuContent} onClick={(e) => e.stopPropagation()}>
+                  <DropdownMenuContent
+                    className={styles.menuContent}
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     {!reduceMenus && (
                       <>
                         <DropdownMenuItem onSelect={(e) => runMenuAction(e, handleEdit)}>
@@ -864,7 +950,8 @@ export default function ProtocolNodeCard({
                                 e.stopPropagation();
                                 setDraggingIdx(idx);
 
-                                const inferredParamClass = value.paramClass || (value.pointerClass ? "PointerParam" : "");
+                                const inferredParamClass =
+                                  value.paramClass || (value.pointerClass ? "PointerParam" : "");
 
                                 const output = {
                                   paramClass: inferredParamClass,
@@ -877,7 +964,10 @@ export default function ProtocolNodeCard({
                                 };
 
                                 setCurrentDraggedOutput(output);
-                                e.dataTransfer.setData("application/scipion-output", JSON.stringify(output));
+                                e.dataTransfer.setData(
+                                  "application/scipion-output",
+                                  JSON.stringify(output)
+                                );
 
                                 const ghost = document.createElement("div");
                                 ghost.style.position = "absolute";
@@ -888,7 +978,6 @@ export default function ProtocolNodeCard({
                                 ghost.style.border = "1px solid #ccc";
                                 ghost.style.color = "black";
                                 ghost.style.borderRadius = "0.5rem";
-                                //ghost.innerText = `${displayClass} (${labelText})`;
                                 ghost.innerText = `(${labelText})`;
                                 document.body.appendChild(ghost);
                                 e.dataTransfer.setDragImage(ghost, 0, 15);
@@ -1009,11 +1098,13 @@ export default function ProtocolNodeCard({
         </div>
       </ContextMenuTrigger>
 
-      <ContextMenuContent className={styles.menuContent}
+      <ContextMenuContent
+        className={styles.menuContent}
         style={{ marginLeft: 8, marginTop: 8 }}
         onPointerDown={(e) => e.stopPropagation()}
         onPointerUp={(e) => e.stopPropagation()}
-        onClick={(e) => e.stopPropagation()}>
+        onClick={(e) => e.stopPropagation()}
+      >
         {!reduceMenus && (
           <>
             <ContextMenuItem onClick={handleEdit}>
@@ -1070,17 +1161,19 @@ export default function ProtocolNodeCard({
 
             <ContextMenuSeparator />
 
-            {(data.status === "running" || data.status === "launched" || data.status === "scheduled") && (
-              <ContextMenuItem onClick={handleStop}>
-                <div className={styles.menuRow}>
-                  <span className={styles.menuLeft}>
-                    <Square className={styles.menuItemIcon} />
-                    <span>Stop</span>
-                  </span>
-                  <ShortcutHint text={shortcuts.stop} />
-                </div>
-              </ContextMenuItem>
-            )}
+            {(data.status === "running" ||
+              data.status === "launched" ||
+              data.status === "scheduled") && (
+                <ContextMenuItem onClick={handleStop}>
+                  <div className={styles.menuRow}>
+                    <span className={styles.menuLeft}>
+                      <Square className={styles.menuItemIcon} />
+                      <span>Stop</span>
+                    </span>
+                    <ShortcutHint text={shortcuts.stop} />
+                  </div>
+                </ContextMenuItem>
+              )}
 
             <ContextMenuItem onClick={handleRestartAll}>
               <div className={styles.menuRow}>
@@ -1117,7 +1210,9 @@ export default function ProtocolNodeCard({
         )}
 
         {reduceMenus &&
-          (data.status === "running" || data.status === "launched" || data.status === "scheduled") && (
+          (data.status === "running" ||
+            data.status === "launched" ||
+            data.status === "scheduled") && (
             <ContextMenuItem onClick={handleStop}>
               <div className={styles.menuRow}>
                 <span className={styles.menuLeft}>
