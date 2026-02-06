@@ -334,9 +334,9 @@ export default function ProtocolNodeCard({
   const runMenuAction = useCallback(
     (e: Event, fn?: () => void) => {
       // runMenuAction
-      e.preventDefault();
       e.stopPropagation();
 
+      // Do not preventDefault here, otherwise Radix will keep the menu open
       if (isInContextMenuOpenGuardWindow()) return;
       fn?.();
     },
@@ -769,7 +769,7 @@ export default function ProtocolNodeCard({
                         {(data.status === "running" ||
                           data.status === "launched" ||
                           data.status === "scheduled") && (
-                            <DropdownMenuItem onClick={handleStop}>
+                            <DropdownMenuItem onSelect={(e) => runMenuAction(e, handleStop)}>
                               <div className={styles.menuRow}>
                                 <span className={styles.menuLeft}>
                                   <Square className={styles.menuItemIcon} />
@@ -779,6 +779,7 @@ export default function ProtocolNodeCard({
                               </div>
                             </DropdownMenuItem>
                           )}
+
 
                         <DropdownMenuItem onSelect={(e) => runMenuAction(e, handleRestartAll)}>
                           <div className={styles.menuRow}>
@@ -1164,7 +1165,7 @@ export default function ProtocolNodeCard({
             {(data.status === "running" ||
               data.status === "launched" ||
               data.status === "scheduled") && (
-                <ContextMenuItem onClick={handleStop}>
+                <DropdownMenuItem onSelect={(e) => runMenuAction(e, handleStop)}>
                   <div className={styles.menuRow}>
                     <span className={styles.menuLeft}>
                       <Square className={styles.menuItemIcon} />
@@ -1172,8 +1173,9 @@ export default function ProtocolNodeCard({
                     </span>
                     <ShortcutHint text={shortcuts.stop} />
                   </div>
-                </ContextMenuItem>
+                </DropdownMenuItem>
               )}
+
 
             <ContextMenuItem onClick={handleRestartAll}>
               <div className={styles.menuRow}>
