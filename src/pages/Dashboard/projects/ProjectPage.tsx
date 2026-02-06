@@ -2814,30 +2814,37 @@ export default function ProjectPage() {
         return;
       }
 
-
       const ids = getSelectedIds();
       const selectedId = selectedIdRef.current;
 
-      if ((e.key === " " || e.key === "Enter" || e.code === "Space" || e.key === " " || e.key === "Spacebar") && selectedId) {
+      if ((e.key === " " || e.key === "Enter" || e.code === "Space" || e.key === "Spacebar") && selectedId) {
         e.preventDefault();
+        e.stopPropagation();
+        (e as any).stopImmediatePropagation?.();
         handleNodeDoubleClick({ id: selectedId });
         return;
       }
 
       if ((e.key === "Delete" || e.key === "Backspace") && ids.length > 0) {
         e.preventDefault();
+        e.stopPropagation();
+        (e as any).stopImmediatePropagation?.();
         openDelete(ids[0]);
         return;
       }
 
       if (e.key === "F2" && selectedId) {
         e.preventDefault();
+        e.stopPropagation();
+        (e as any).stopImmediatePropagation?.();
         openRename(selectedId);
         return;
       }
 
       if (modPressed(e) && !e.shiftKey && e.key.toLowerCase() === "d" && ids.length > 0) {
         e.preventDefault();
+        e.stopPropagation();
+        (e as any).stopImmediatePropagation?.();
         duplicateNow(ids);
         return;
       }
@@ -2884,8 +2891,8 @@ export default function ProjectPage() {
       }
     };
 
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    window.addEventListener("keydown", onKeyDown, { capture: true });
+    return () => window.removeEventListener("keydown", onKeyDown, { capture: true } as any);
   }, [
     project?.id,
     drawerOpen,
@@ -2893,6 +2900,10 @@ export default function ProjectPage() {
     contextMenu.visible,
     dlgRename.open,
     dlgResetFrom.open,
+    dlgDelete.open,
+    dlgRestartAll.open,
+    dlgContinueAll.open,
+    dlgStop.open,
     handleNodeDoubleClick,
     openDelete,
     openRename,
@@ -3475,6 +3486,8 @@ export default function ProjectPage() {
               <ReactFlow
                 nodes={renderNodes}
                 edges={renderEdges}
+                // preventReactFlowDefaultDeleteeKeyCode is set to null to allow global handling of delete key for both nodes and edges without interference from React Flow's internal handling, enabling custom delete logic that can consider both nodes and edges together.
+                deleteKeyCode={null}
                 onNodesChange={handleNodesChangeWithPersistence}
                 onEdgesChange={onEdgesChange}
                 nodeTypes={nodeTypes}
