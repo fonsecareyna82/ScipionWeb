@@ -1339,7 +1339,6 @@ export default function ProjectPage() {
       onDelete: openDelete,
       onRestartAll: openRestartAll,
       onContinueAll: openContinueAll,
-      onResetFrom: openResetFrom,
       onSelectFrom: handleSelectFrom,
       onSelectTo: handleSelectTo,
       onStop: openStop,
@@ -2533,9 +2532,8 @@ export default function ProjectPage() {
     syncUnifiedSelectedIds();
   }, [setNodes, applyGenericSelectionFromSet, clearPathSelection, applyEdgeHighlight]);
 
-  /* ------------------------ Dialogs + API ------------------------ */
-  type ConfirmKind = "delete" | "restartAll" | "continueAll" | "stop";
 
+  /* ------------------------ Dialogs + API ------------------------ */
   const [dlgRename, setDlgRename] = useState<{ open: boolean; id: string | null; value: string }>({
     open: false, id: null, value: "",
   });
@@ -2543,20 +2541,34 @@ export default function ProjectPage() {
     open: false, id: null,
   });
 
-  const [confirm, setConfirm] = useState<{
-    open: boolean;
-    id: string | null;
-    ids: string[] | null;
-    kind: ConfirmKind | null;
-  }>({
-    open: false, id: null, ids: null, kind: null,
+  // deleteDialogState
+  const [dlgDelete, setDlgDelete] = useState<{ open: boolean; ids: string[] }>({
+    open: false,
+    ids: [],
   });
 
-  const [confirmBusy, setConfirmBusy] = useState(false);
+  // restartAllDialogState
+  const [dlgRestartAll, setDlgRestartAll] = useState<{ open: boolean; id: string | null }>({
+    open: false,
+    id: null,
+  });
 
-  const closeConfirm = useCallback(() => {
-    setConfirm({ open: false, id: null, ids: null, kind: null });
-  }, []);
+  // continueAllDialogState
+  const [dlgContinueAll, setDlgContinueAll] = useState<{ open: boolean; id: string | null }>({
+    open: false,
+    id: null,
+  });
+
+  // stopDialogState
+  const [dlgStop, setDlgStop] = useState<{ open: boolean; ids: string[] }>({
+    open: false,
+    ids: [],
+  });
+
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [restartAllBusy, setRestartAllBusy] = useState(false);
+  const [continueAllBusy, setContinueAllBusy] = useState(false);
+  const [stopBusy, setStopBusy] = useState(false);
 
 
   type ApiWorkflowResponse = {
@@ -2606,116 +2618,6 @@ export default function ProjectPage() {
 
     return true;
   };
-
-
-  const handleConfirmAction = useCallback(
-    async (e: React.MouseEvent<HTMLButtonElement>) => {
-      // preventDefaultAndStopPropagation
-      e.preventDefault();
-      e.stopPropagation();
-
-      if (!projectName || !confirm.kind || confirmBusy) return;
-
-      // snapshotConfirmToAvoidRaces
-      const kind = confirm.kind;
-      const snapId = confirm.id;
-      const snapIds = (confirm.ids ?? (snapId ? [snapId] : []))
-        .map(String)
-        .filter((id) => id && id !== "PROJECT");
-
-      setConfirmBusy(true);
-      try {
-        if (kind === "delete") {
-          if (snapIds.length === 0) {
-            closeConfirm();
-            return;
-          }
-
-          const res = await svc.deleteProtocol(projectName, snapIds);
-          if (!ensureApiOk(res, "Delete failed.")) return;
-
-          clearAllSelectionHard();
-          toast.success(
-            snapIds.length > 1
-              ? "Protocols deleted successfully."
-              : "Protocol deleted successfully."
-          );
-
-          closeConfirm();
-          await handleRefresh();
-          return;
-        }
-
-        if (kind === "restartAll") {
-          if (!snapId) {
-            closeConfirm();
-            return;
-          }
-
-          const res = await svc.restartAll(projectName, snapId);
-          if (!ensureApiOk(res, "Restart failed.")) return;
-
-          toast.success("Restart started.");
-          closeConfirm();
-          scheduleDoubleRefresh(5000, true);
-          return;
-        }
-
-        if (kind === "continueAll") {
-          if (!snapId) {
-            closeConfirm();
-            return;
-          }
-
-          const res = await svc.continueAll(projectName, snapId);
-          if (!ensureApiOk(res, "Continue failed.")) return;
-
-          toast.success("Continue started.");
-          closeConfirm();
-          await handleRefresh();
-          return;
-        }
-
-        if (kind === "stop") {
-          if (snapIds.length === 0) {
-            closeConfirm();
-            return;
-          }
-
-          const res = await svc.stopProtocol(projectName, snapIds);
-          if (!ensureApiOk(res, "Stop failed.")) return;
-
-          toast.success(
-            snapIds.length > 1 ? `Stop requested for ${snapIds.length} protocols.` : "Stop requested."
-          );
-
-          clearAllSelectionHard();
-          closeConfirm();
-          await handleRefresh();
-          return;
-        }
-      } catch (err) {
-        console.error(err);
-        toast.error(getErrorMsg(err));
-      } finally {
-        setConfirmBusy(false);
-      }
-    },
-    [
-      projectName,
-      confirm.kind,
-      confirm.id,
-      confirm.ids,
-      confirmBusy,
-      svc,
-      ensureApiOk,
-      clearAllSelectionHard,
-      closeConfirm,
-      handleRefresh,
-      scheduleDoubleRefresh,
-    ]
-  );
-
 
 
   const getErrorMsg = (e: any) => {
@@ -2788,12 +2690,13 @@ export default function ProjectPage() {
       pathSelRef.current.nodes.size > 0
         ? Array.from(pathSelRef.current.nodes).map(String).filter((x) => x !== "PROJECT")
         : [String(id)];
-    setConfirm({ open: true, id: null, ids: selected, kind: "delete" });
+
+    setDlgDelete({ open: true, ids: selected });
   };
 
-  const openRestartAll = (id: string) => setConfirm({ open: true, id, ids: null, kind: "restartAll" });
-  const openContinueAll = (id: string) => setConfirm({ open: true, id, ids: null, kind: "continueAll" });
-  const openResetFrom = (id: string) => setDlgResetFrom({ open: true, id });
+  const openRestartAll = (id: string) => setDlgRestartAll({ open: true, id: String(id) });
+
+  const openContinueAll = (id: string) => setDlgContinueAll({ open: true, id: String(id) });
 
   const openStop = (id: string) => {
     const ids =
@@ -2801,13 +2704,11 @@ export default function ProjectPage() {
         ? Array.from(pathSelRef.current.nodes).map(String).filter((x) => x !== "PROJECT")
         : [String(id)];
 
-    setConfirm({
-      open: true,
-      id: ids.length === 1 ? ids[0] : null,
-      ids: ids.length > 1 ? ids : null,
-      kind: "stop",
-    });
+    setDlgStop({ open: true, ids });
   };
+
+
+
 
   const submitRename = async () => {
     if (!projectName || !dlgRename.id || !dlgRename.value.trim()) return;
@@ -2898,9 +2799,12 @@ export default function ProjectPage() {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.repeat) return;
 
+      const anyActionDialogOpen =
+        dlgDelete.open || dlgRestartAll.open || dlgContinueAll.open || dlgStop.open;
+
       if (
         dlgRename.open ||
-        confirm.open ||
+        anyActionDialogOpen ||
         dlgResetFrom.open ||
         fileDialogOpen ||
         drawerOpen ||
@@ -2909,6 +2813,7 @@ export default function ProjectPage() {
       ) {
         return;
       }
+
 
       const ids = getSelectedIds();
       const selectedId = selectedIdRef.current;
@@ -2957,7 +2862,6 @@ export default function ProjectPage() {
 
       if (modPressed(e) && e.shiftKey && e.key.toLowerCase() === "f" && selectedId) {
         e.preventDefault();
-        openResetFrom(selectedId);
         return;
       }
 
@@ -2989,13 +2893,11 @@ export default function ProjectPage() {
     contextMenu.visible,
     dlgRename.open,
     dlgResetFrom.open,
-    confirm.open,
     handleNodeDoubleClick,
     openDelete,
     openRename,
     openRestartAll,
     openContinueAll,
-    openResetFrom,
     openStop,
     handleSelectFrom,
     handleSelectTo,
@@ -3701,75 +3603,6 @@ export default function ProjectPage() {
           </DialogContent>
         </Dialog>
 
-        <Dialog
-          open={confirm.open}
-          onOpenChange={(open: boolean) => {
-            if (!open) {
-              setConfirm({ open: false, id: null, ids: null, kind: null });
-            }
-          }}
-        >
-          <DialogContent container={dialogContainer ?? undefined} >
-            <DialogHeader>
-              <DialogTitle className="mb-6">
-                {confirm.kind === "delete" && "Delete protocol(s)?"}
-                {confirm.kind === "restartAll" && "Restart all protocol(s)?"}
-                {confirm.kind === "continueAll" && "Continue all protocol(s)?"}
-                {confirm.kind === "stop" && "Stop protocol(s)?"}
-              </DialogTitle>
-              <DialogDescription className="mb-5 text-sm text-muted-foreground">
-                {confirm.kind === "delete" &&
-                  "This action cannot be undone. This will permanently remove the selected protocol(s) and outputs not used elsewhere."}
-                {confirm.kind === "restartAll" &&
-                  "All protocols will be restarted from this protocol, so the previous results will be deleted"}
-                {confirm.kind === "continueAll" &&
-                  "All protocols will continue for this protocol, so the previous results will be affected"}
-                {confirm.kind === "stop" &&
-                  "This will attempt to gracefully stop the selected protocol(s). Running work may be interrupted."}
-              </DialogDescription>
-            </DialogHeader>
-
-            {/* Footer */}
-            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  closeConfirm();
-                }}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                }}
-                className="pp-dialogBtn"
-              >
-                Cancel
-              </button>
-
-
-              <button
-                type="button"
-                onClick={handleConfirmAction}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                }}
-                disabled={confirmBusy}
-                className="pp-dialogBtn pp-dialogBtnPrimary"
-              >
-                {confirm.kind === "delete"
-                  ? "Delete"
-                  : confirm.kind === "restartAll"
-                    ? "Restart"
-                    : confirm.kind === "continueAll"
-                      ? "Continue"
-                      : "Stop"}
-              </button>
-
-            </div>
-          </DialogContent>
-        </Dialog>
 
         <Dialog open={dlgResetFrom.open} onOpenChange={(open: boolean) => { if (!open) setDlgResetFrom({ open: false, id: null }); }}>
           <DialogContent container={dialogContainer ?? undefined} className="sm:max-w-md">
@@ -3867,7 +3700,317 @@ export default function ProjectPage() {
           </DialogContent>
         </Dialog>
 
+        <Dialog
+          open={dlgDelete.open}
+          onOpenChange={(open: boolean) => {
+            if (!open) {
+              setDeleteBusy(false);
+              setDlgDelete({ open: false, ids: [] });
+            }
+          }}
+        >
+          <DialogContent container={dialogContainer ?? undefined}>
+            <DialogHeader>
+              <DialogTitle className="mb-6">Delete protocol(s)?</DialogTitle>
+              <DialogDescription className="mb-5 text-sm text-muted-foreground">
+                This action cannot be undone. This will permanently remove the selected protocol(s) and outputs not used elsewhere.
+              </DialogDescription>
+            </DialogHeader>
 
+            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setDlgDelete({ open: false, ids: [] });
+                }}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                }}
+                className="pp-dialogBtn"
+                disabled={deleteBusy}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={async (e) => {
+                  // preventDefaultAndStopPropagation
+                  e.preventDefault();
+                  e.stopPropagation();
+
+                  if (!projectName || deleteBusy) return;
+
+                  const ids = Array.from(new Set((dlgDelete.ids ?? []).map(String)))
+                    .filter((x) => x && x !== "PROJECT");
+
+                  if (ids.length === 0) {
+                    setDlgDelete({ open: false, ids: [] });
+                    return;
+                  }
+
+                  setDeleteBusy(true);
+                  try {
+                    const res = await svc.deleteProtocol(projectName, ids);
+                    if (!ensureApiOk(res, "Delete failed.")) return;
+
+                    clearAllSelectionHard();
+                    toast.success(ids.length > 1 ? "Protocols deleted successfully." : "Protocol deleted successfully.");
+
+                    setDlgDelete({ open: false, ids: [] });
+                    await handleRefresh();
+                  } catch (err) {
+                    console.error(err);
+                    toast.error(getErrorMsg(err));
+                  } finally {
+                    setDeleteBusy(false);
+                  }
+                }}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                }}
+                disabled={deleteBusy}
+                className="pp-dialogBtn pp-dialogBtnPrimary"
+              >
+                Delete
+              </button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+
+        <Dialog
+          open={dlgRestartAll.open}
+          onOpenChange={(open: boolean) => {
+            if (!open) {
+              setRestartAllBusy(false);
+              setDlgRestartAll({ open: false, id: null });
+            }
+          }}
+        >
+          <DialogContent container={dialogContainer ?? undefined}>
+            <DialogHeader>
+              <DialogTitle className="mb-6">Restart all protocol(s)?</DialogTitle>
+              <DialogDescription className="mb-5 text-sm text-muted-foreground">
+                All protocols will be restarted from this protocol, so the previous results will be deleted
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setDlgRestartAll({ open: false, id: null });
+                }}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                }}
+                className="pp-dialogBtn"
+                disabled={restartAllBusy}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={async (e) => {
+                  // preventDefaultAndStopPropagation
+                  e.preventDefault();
+                  e.stopPropagation();
+
+                  if (!projectName || !dlgRestartAll.id || restartAllBusy) return;
+
+                  setRestartAllBusy(true);
+                  try {
+                    const res = await svc.restartAll(projectName, dlgRestartAll.id);
+                    if (!ensureApiOk(res, "Restart failed.")) return;
+
+                    toast.success("Restart started.");
+                    setDlgRestartAll({ open: false, id: null });
+
+                    scheduleDoubleRefresh(5000, true);
+                  } catch (err) {
+                    console.error(err);
+                    toast.error(getErrorMsg(err));
+                  } finally {
+                    setRestartAllBusy(false);
+                  }
+                }}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                }}
+                disabled={restartAllBusy}
+                className="pp-dialogBtn pp-dialogBtnPrimary"
+              >
+                Restart
+              </button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+
+        <Dialog
+          open={dlgContinueAll.open}
+          onOpenChange={(open: boolean) => {
+            if (!open) {
+              setContinueAllBusy(false);
+              setDlgContinueAll({ open: false, id: null });
+            }
+          }}
+        >
+          <DialogContent container={dialogContainer ?? undefined}>
+            <DialogHeader>
+              <DialogTitle className="mb-6">Continue all protocol(s)?</DialogTitle>
+              <DialogDescription className="mb-5 text-sm text-muted-foreground">
+                All protocols will continue for this protocol, so the previous results will be affected
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setDlgContinueAll({ open: false, id: null });
+                }}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                }}
+                className="pp-dialogBtn"
+                disabled={continueAllBusy}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={async (e) => {
+                  // preventDefaultAndStopPropagation
+                  e.preventDefault();
+                  e.stopPropagation();
+
+                  if (!projectName || !dlgContinueAll.id || continueAllBusy) return;
+
+                  setContinueAllBusy(true);
+                  try {
+                    const res = await svc.continueAll(projectName, dlgContinueAll.id);
+                    if (!ensureApiOk(res, "Continue failed.")) return;
+
+                    toast.success("Continue started.");
+                    setDlgContinueAll({ open: false, id: null });
+
+                    await handleRefresh();
+                  } catch (err) {
+                    console.error(err);
+                    toast.error(getErrorMsg(err));
+                  } finally {
+                    setContinueAllBusy(false);
+                  }
+                }}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                }}
+                disabled={continueAllBusy}
+                className="pp-dialogBtn pp-dialogBtnPrimary"
+              >
+                Continue
+              </button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog
+          open={dlgStop.open}
+          onOpenChange={(open: boolean) => {
+            if (!open) {
+              setStopBusy(false);
+              setDlgStop({ open: false, ids: [] });
+            }
+          }}
+        >
+          <DialogContent container={dialogContainer ?? undefined}>
+            <DialogHeader>
+              <DialogTitle className="mb-6">Stop protocol(s)?</DialogTitle>
+              <DialogDescription className="mb-5 text-sm text-muted-foreground">
+                This will attempt to gracefully stop the selected protocol(s). Running work may be interrupted.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setDlgStop({ open: false, ids: [] });
+                }}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                }}
+                className="pp-dialogBtn"
+                disabled={stopBusy}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={async (e) => {
+                  // preventDefaultAndStopPropagation
+                  e.preventDefault();
+                  e.stopPropagation();
+
+                  if (!projectName || stopBusy) return;
+
+                  const ids = Array.from(new Set((dlgStop.ids ?? []).map(String)))
+                    .filter((x) => x && x !== "PROJECT");
+
+                  if (ids.length === 0) {
+                    setDlgStop({ open: false, ids: [] });
+                    return;
+                  }
+
+                  setStopBusy(true);
+                  try {
+                    const res = await svc.stopProtocol(projectName, ids);
+                    if (!ensureApiOk(res, "Stop failed.")) return;
+
+                    toast.success(ids.length > 1 ? `Stop requested for ${ids.length} protocols.` : "Stop requested.");
+
+                    clearAllSelectionHard();
+                    setDlgStop({ open: false, ids: [] });
+                    await handleRefresh();
+                  } catch (err) {
+                    console.error(err);
+                    toast.error(getErrorMsg(err));
+                  } finally {
+                    setStopBusy(false);
+                  }
+                }}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                }}
+                disabled={stopBusy}
+                className="pp-dialogBtn pp-dialogBtnPrimary"
+              >
+                Stop
+              </button>
+            </div>
+          </DialogContent>
+        </Dialog>
 
 
         {/* ================= RemoteFileDialog ================= */}

@@ -295,6 +295,45 @@ export default function ProtocolNodeCard({
   const { setCurrentDraggedOutput } = useDrag();
   const rootRef = useRef<HTMLDivElement | null>(null);
 
+  const suppressNextMenuActionRef = useRef(false);
+
+  const armSuppressNextMenuAction = useCallback(() => {
+    // suppressNextMenuAction
+    suppressNextMenuActionRef.current = true;
+
+    window.setTimeout(() => {
+      suppressNextMenuActionRef.current = false;
+    }, 0);
+  }, []);
+
+
+  const contextMenuOpenedAtRef = useRef<number>(0);
+
+  const armContextMenuOpenGuard = useCallback(() => {
+    // armContextMenuOpenGuard
+    contextMenuOpenedAtRef.current = typeof performance !== "undefined" ? performance.now() : Date.now();
+  }, []);
+
+  const isInContextMenuOpenGuardWindow = useCallback(() => {
+    // isInContextMenuOpenGuardWindow
+    const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+    return now - contextMenuOpenedAtRef.current < 120;
+  }, []);
+
+  const runMenuAction = useCallback(
+    (e: Event, fn?: () => void) => {
+      // runMenuAction
+      e.preventDefault();
+      e.stopPropagation();
+
+      if (isInContextMenuOpenGuardWindow()) return;
+      fn?.();
+    },
+    [isInContextMenuOpenGuardWindow]
+  );
+
+
+
   const isProjectNode = data.id === "PROJECT";
   const isCompactView = zoomLevel <= compactThreshold;
 
@@ -383,14 +422,21 @@ export default function ProtocolNodeCard({
   const isMac =
     typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/.test(navigator.platform);
 
-  const handleContextMenuCapture = useCallback((e: ReactMouseEvent) => {
-    // On macOS Ctrl+Click is treated as a secondary click (context menu).
-    // We block it so Ctrl can be used for multi-selection in ReactFlow.
-    if (isMac && e.ctrlKey) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-  }, [isMac]);
+  const handleContextMenuCapture = useCallback(
+    (e: ReactMouseEvent) => {
+      // handleContextMenuCapture
+      armSuppressNextMenuAction();
+
+      // On macOS Ctrl+Click is treated as a secondary click (context menu).
+      // We block it so Ctrl can be used for multi-selection in ReactFlow.
+      if (isMac && e.ctrlKey) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    },
+    [isMac, armSuppressNextMenuAction]
+  );
+
 
 
   const mod = isMac ? "⌘" : "Ctrl";
@@ -489,14 +535,32 @@ export default function ProtocolNodeCard({
   );
 
   return (
-    <ContextMenu>
+    <ContextMenu
+      onOpenChange={(open) => {
+        // onContextMenuOpenChange
+        if (open) armContextMenuOpenGuard();
+      }}
+    >
       <ContextMenuTrigger asChild>
         <div
           ref={rootRef}
           className={classNames}
           style={nodeStyle}
           onContextMenuCapture={handleContextMenuCapture}
-          onClick={onClick}
+          onPointerDownCapture={(e) => {
+            // suppressMenuMouseUpSelectingFirstItem
+            if (e.button === 2) armSuppressNextMenuAction();
+          }}
+          onClick={(e) => {
+            // avoidClickSideEffectsAfterContextMenuOpen
+            if (suppressNextMenuActionRef.current) {
+              e.preventDefault();
+              e.stopPropagation();
+              return;
+            }
+            onClick?.(e);
+            if (e.button === 2) armContextMenuOpenGuard();
+          }}
           onDoubleClick={(e: ReactMouseEvent) => {
             e.stopPropagation();
             onDoubleClick?.();
@@ -562,7 +626,7 @@ export default function ProtocolNodeCard({
                   <DropdownMenuContent className={styles.menuContent} onClick={(e) => e.stopPropagation()}>
                     {!reduceMenus && (
                       <>
-                        <DropdownMenuItem onClick={handleEdit}>
+                        <DropdownMenuItem onSelect={(e) => runMenuAction(e, handleEdit)}>
                           <div className={styles.menuRow}>
                             <span className={styles.menuLeft}>
                               <Pencil className={styles.menuItemIcon} />
@@ -572,7 +636,7 @@ export default function ProtocolNodeCard({
                           </div>
                         </DropdownMenuItem>
 
-                        <DropdownMenuItem onClick={handleBrowse}>
+                        <DropdownMenuItem onSelect={(e) => runMenuAction(e, handleBrowse)}>
                           <div className={styles.menuRow}>
                             <span className={styles.menuLeft}>
                               <FolderOpen className={styles.menuItemIcon} />
@@ -582,7 +646,7 @@ export default function ProtocolNodeCard({
                           </div>
                         </DropdownMenuItem>
 
-                        <DropdownMenuItem onClick={handleRename}>
+                        <DropdownMenuItem onSelect={(e) => runMenuAction(e, handleRename)}>
                           <div className={styles.menuRow}>
                             <span className={styles.menuLeft}>
                               <Pencil className={styles.menuItemIcon} />
@@ -594,7 +658,7 @@ export default function ProtocolNodeCard({
 
                         <DropdownMenuSeparator />
 
-                        <DropdownMenuItem onClick={handleSelectFrom}>
+                        <DropdownMenuItem onSelect={(e) => runMenuAction(e, handleSelectFrom)}>
                           <div className={styles.menuRow}>
                             <span className={styles.menuLeft}>
                               <FromIcon className={styles.menuItemIcon} />
@@ -604,7 +668,7 @@ export default function ProtocolNodeCard({
                           </div>
                         </DropdownMenuItem>
 
-                        <DropdownMenuItem onClick={handleSelectTo}>
+                        <DropdownMenuItem onSelect={(e) => runMenuAction(e, handleSelectTo)}>
                           <div className={styles.menuRow}>
                             <span className={styles.menuLeft}>
                               <ToIcon className={styles.menuItemIcon} />
@@ -630,7 +694,7 @@ export default function ProtocolNodeCard({
                             </DropdownMenuItem>
                           )}
 
-                        <DropdownMenuItem onClick={handleRestartAll}>
+                        <DropdownMenuItem onSelect={(e) => runMenuAction(e, handleRestartAll)}>
                           <div className={styles.menuRow}>
                             <span className={styles.menuLeft}>
                               <RefreshCw className={styles.menuItemIcon} />
@@ -640,7 +704,7 @@ export default function ProtocolNodeCard({
                           </div>
                         </DropdownMenuItem>
 
-                        <DropdownMenuItem onClick={handleContinueAll}>
+                        <DropdownMenuItem onSelect={(e) => runMenuAction(e, handleContinueAll)}>
                           <div className={styles.menuRow}>
                             <span className={styles.menuLeft}>
                               <Play className={styles.menuItemIcon} />
@@ -650,7 +714,7 @@ export default function ProtocolNodeCard({
                           </div>
                         </DropdownMenuItem>
 
-                        <DropdownMenuItem onClick={handleResetFrom}>
+                        <DropdownMenuItem onSelect={(e) => runMenuAction(e, handleResetFrom)}>
                           <div className={styles.menuRow}>
                             <span className={styles.menuLeft}>
                               <RotateCcw className={styles.menuItemIcon} />
@@ -668,7 +732,7 @@ export default function ProtocolNodeCard({
                       (data.status === "running" ||
                         data.status === "launched" ||
                         data.status === "scheduled") && (
-                        <DropdownMenuItem onClick={handleStop}>
+                        <DropdownMenuItem onSelect={(e) => runMenuAction(e, handleStop)}>
                           <div className={styles.menuRow}>
                             <span className={styles.menuLeft}>
                               <Square className={styles.menuItemIcon} />
@@ -679,7 +743,7 @@ export default function ProtocolNodeCard({
                         </DropdownMenuItem>
                       )}
 
-                    <DropdownMenuItem onClick={handleDelete}>
+                    <DropdownMenuItem onSelect={(e) => runMenuAction(e, handleDelete)}>
                       <div className={styles.menuRow}>
                         <span className={styles.menuLeft}>
                           <Trash2 className={styles.menuItemIcon} />
@@ -689,7 +753,7 @@ export default function ProtocolNodeCard({
                       </div>
                     </DropdownMenuItem>
 
-                    <DropdownMenuItem onClick={handleDuplicate}>
+                    <DropdownMenuItem onSelect={(e) => runMenuAction(e, handleDuplicate)}>
                       <div className={styles.menuRow}>
                         <span className={styles.menuLeft}>
                           <Copy className={styles.menuItemIcon} />
@@ -945,7 +1009,11 @@ export default function ProtocolNodeCard({
         </div>
       </ContextMenuTrigger>
 
-      <ContextMenuContent className={styles.menuContent} onClick={(e) => e.stopPropagation()}>
+      <ContextMenuContent className={styles.menuContent}
+        style={{ marginLeft: 8, marginTop: 8 }}
+        onPointerDown={(e) => e.stopPropagation()}
+        onPointerUp={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}>
         {!reduceMenus && (
           <>
             <ContextMenuItem onClick={handleEdit}>
