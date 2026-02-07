@@ -24,7 +24,7 @@ function estimateLabelWidth(label: string, fontSize = 20): number {
 }
 
 /**
- * Estimate node height (optional, for LR layout)
+ * Estimate node height deterministically (no canvas).
  */
 function estimateNodeHeight(label: string, fontSize = 20, fontFamily = "Arial"): number {
   const avgCharWidth = fontSize * 0.6;
@@ -41,141 +41,209 @@ function estimateNodeHeight(label: string, fontSize = 20, fontFamily = "Arial"):
 
 type Direction = "TB" | "LR";
 
-type IdIndexMap = Map<string, number>;
+export type NodeSizeMap = Record<string, { width: number; height: number }>;
 
-const stableIdCompare = (a: string, b: string): number => {
-  // stableIdCompare
-  if (a === "PROJECT") return -1;
-  if (b === "PROJECT") return 1;
+function stableIdCompare(a: string, b: string): number {
+  if (a === "PROJECT" && b !== "PROJECT") return -1;
+  if (b === "PROJECT" && a !== "PROJECT") return 1;
 
   const na = parseInt(a, 10);
   const nb = parseInt(b, 10);
-  const aNum = !Number.isNaN(na);
-  const bNum = !Number.isNaN(nb);
+  const aNum = Number.isFinite(na);
+  const bNum = Number.isFinite(nb);
 
   if (aNum && bNum) return na - nb;
   if (aNum && !bNum) return -1;
   if (!aNum && bNum) return 1;
 
   return String(a).localeCompare(String(b));
-};
+}
 
-const buildIndexMap = (order: string[]): IdIndexMap => {
-  // buildIndexMap
-  const m: IdIndexMap = new Map();
-  for (let i = 0; i < order.length; i++) m.set(order[i], i);
-  return m;
-};
+function getNodeWidth(
+  nodeId: string,
+  label: string,
+  nodeSizeMap?: NodeSizeMap | null
+): number {
+  const w = nodeSizeMap?.[nodeId]?.width;
+  return typeof w === "number" && w > 0 ? Math.ceil(w) : estimateLabelWidth(label);
+}
 
-const buildParentMap = (protocols: Record<string, ProtocolNode>): Record<string, string[]> => {
-  // buildParentMap
-  const parentMap: Record<string, string[]> = {};
-  const ids = Object.keys(protocols).sort(stableIdCompare);
+function getNodeHeight(
+  nodeId: string,
+  label: string,
+  nodeSizeMap?: NodeSizeMap | null
+): number {
+  const h = nodeSizeMap?.[nodeId]?.height;
+  return typeof h === "number" && h > 0 ? Math.ceil(h) : estimateNodeHeight(label);
+}
 
-  for (const parentId of ids) {
-    const prot = protocols[parentId];
-    const rawChildren = Array.isArray(prot?.children) ? prot.children : [];
-    const children = [...rawChildren].sort(stableIdCompare);
-
-    for (const childId of children) {
-      if (!parentMap[childId]) parentMap[childId] = [];
-      parentMap[childId].push(parentId);
-    }
+function uniqStable(arr: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const x of arr) {
+    const s = String(x);
+    if (seen.has(s)) continue;
+    seen.add(s);
+    out.push(s);
   }
+  return out;
+}
 
-  return parentMap;
-};
-
-const getChildrenSorted = (protocols: Record<string, ProtocolNode>, id: string): string[] => {
-  // getChildrenSorted
-  const prot = protocols[id];
-  const raw = Array.isArray(prot?.children) ? prot.children : [];
-  return [...raw].sort(stableIdCompare);
-};
-
-const averageNeighborIndex = (neighbors: string[], neighborIndex: IdIndexMap): number | null => {
-  // averageNeighborIndex
-  let sum = 0;
-  let count = 0;
-
-  for (const n of neighbors) {
-    const idx = neighborIndex.get(n);
-    if (typeof idx === "number") {
-      sum += idx;
-      count += 1;
-    }
-  }
-
-  if (count === 0) return null;
-  return sum / count;
-};
-
-const reorderByBarycenter = (
-  currentOrder: string[],
-  getNeighbors: (id: string) => string[],
-  neighborIndex: IdIndexMap
-): string[] => {
-  // reorderByBarycenter
-  const decorated = currentOrder.map((id, originalIndex) => {
-    const anchor = averageNeighborIndex(getNeighbors(id), neighborIndex);
-    return {
-      id,
-      originalIndex,
-      hasAnchor: anchor != null,
-      anchor: anchor ?? Number.POSITIVE_INFINITY,
-    };
-  });
-
-  decorated.sort((a, b) => {
-    if (a.anchor !== b.anchor) return a.anchor - b.anchor;
-
-    // If neither has anchors, keep original relative order (stable fallback)
-    if (!a.hasAnchor && !b.hasAnchor) return a.originalIndex - b.originalIndex;
-
-    // Deterministic tie-break when anchors exist or coincide
-    return stableIdCompare(a.id, b.id);
-  });
-
-  return decorated.map((d) => d.id);
-};
-
-const buildInitialLevelOrder = (
-  level: number,
-  idsRaw: string[],
-  prevOrder: string[],
-  protocols: Record<string, ProtocolNode>
-): string[] => {
-  // buildInitialLevelOrder
-  if (level === 0) {
-    const onlyProject = idsRaw.includes("PROJECT") ? ["PROJECT"] : [];
-    const rest = idsRaw.filter((id) => id !== "PROJECT").sort(stableIdCompare);
-    return [...onlyProject, ...rest];
-  }
-
-  const levelSet = new Set(idsRaw);
-  const used = new Set<string>();
+function getTraversalOrderForGrid(protocols: Record<string, ProtocolNode>): string[] {
+  // getTraversalOrderForGrid
+  const visited = new Set<string>();
   const order: string[] = [];
 
-  // Expand from previous level order: append children in a deterministic order
-  for (const parentId of prevOrder) {
-    const children = getChildrenSorted(protocols, parentId);
-    for (const childId of children) {
-      if (!levelSet.has(childId)) continue;
-      if (used.has(childId)) continue;
-      order.push(childId);
-      used.add(childId);
+  const visit = (id: string) => {
+    // visit
+    if (!id || id === "PROJECT") return;
+    if (visited.has(id)) return;
+    visited.add(id);
+    order.push(id);
+
+    const prot = protocols[id];
+    const children = uniqStable(Array.isArray(prot?.children) ? prot.children.map(String) : []);
+    for (const childId of children) visit(childId);
+  };
+
+  const root = protocols.PROJECT;
+  const rootChildren = uniqStable(Array.isArray(root?.children) ? root.children.map(String) : []);
+  for (const childId of rootChildren) visit(childId);
+
+  // append disconnected nodes (stable)
+  const remaining = Object.keys(protocols)
+    .filter((id) => id !== "PROJECT" && !visited.has(id))
+    .sort(stableIdCompare);
+
+  return [...order, ...remaining];
+}
+
+function computeLevelOrderingByBarycenter(params: {
+  sortedLevels: number[];
+  levelBuckets: Record<number, string[]>;
+  levelMap: Record<string, number>;
+  parentMap: Record<string, string[]>;
+  protocols: Record<string, ProtocolNode>;
+}): Record<number, string[]> {
+  // computeLevelOrderingByBarycenter
+  const { sortedLevels, levelBuckets, levelMap, parentMap, protocols } = params;
+
+  const levelOrder: Record<number, string[]> = {};
+
+  for (const level of sortedLevels) {
+    const raw = uniqStable(levelBuckets[level] ?? []);
+
+    if (level === 0) {
+      const onlyProject = raw.includes("PROJECT") ? ["PROJECT"] : ["PROJECT"];
+      levelOrder[level] = onlyProject;
+      continue;
     }
+
+    const prev = levelOrder[level - 1] ?? uniqStable(levelBuckets[level - 1] ?? []).sort(stableIdCompare);
+    const prevIndex = new Map<string, number>();
+    prev.forEach((id, idx) => prevIndex.set(id, idx));
+
+    const getChildRankUnderParent = (parentId: string, childId: string): number => {
+      // getChildRankUnderParent
+      const children = protocols[parentId]?.children;
+      if (!Array.isArray(children)) return Number.POSITIVE_INFINITY;
+      const idx = children.map(String).indexOf(String(childId));
+      return idx === -1 ? Number.POSITIVE_INFINITY : idx;
+    };
+
+    const scored = raw.map((id) => {
+      const parentsAll = uniqStable(parentMap[id] ?? []);
+      const parentsImmediate = parentsAll.filter((p) => levelMap[p] === level - 1);
+
+      const parents = parentsImmediate.length > 0 ? parentsImmediate : parentsAll;
+
+      const parentIndices = parents
+        .map((p) => prevIndex.get(p))
+        .filter((x): x is number => typeof x === "number" && Number.isFinite(x));
+
+      const barycenter =
+        parentIndices.length > 0
+          ? parentIndices.reduce((a, b) => a + b, 0) / parentIndices.length
+          : Number.POSITIVE_INFINITY;
+
+      const minParentIndex =
+        parentIndices.length > 0 ? Math.min(...parentIndices) : Number.POSITIVE_INFINITY;
+
+      const childRank =
+        parents.length > 0
+          ? Math.min(...parents.map((p) => getChildRankUnderParent(p, id)))
+          : Number.POSITIVE_INFINITY;
+
+      return { id, barycenter, minParentIndex, childRank };
+    });
+
+    scored.sort((a, b) => {
+      if (a.barycenter !== b.barycenter) return a.barycenter - b.barycenter;
+      if (a.minParentIndex !== b.minParentIndex) return a.minParentIndex - b.minParentIndex;
+      if (a.childRank !== b.childRank) return a.childRank - b.childRank;
+      return stableIdCompare(a.id, b.id);
+    });
+
+    levelOrder[level] = scored.map((x) => x.id);
   }
 
-  // Append remaining nodes (orphans or nodes not reached via previous-level parents)
-  const remaining = idsRaw.filter((id) => id !== "PROJECT" && !used.has(id)).sort(stableIdCompare);
-  order.push(...remaining);
+  return levelOrder;
+}
 
-  return order;
-};
+function placeLevelNoOverlap(params: {
+  ids: string[];
+  level: number;
+  direction: Direction;
+  spacingX: number;
+  spacingY: number;
+  protocols: Record<string, ProtocolNode>;
+  projectName: string;
+  nodeSizeMap?: NodeSizeMap | null;
+}) {
+  // placeLevelNoOverlap
+  const { ids, level, direction, spacingX, spacingY, protocols, projectName, nodeSizeMap } = params;
+
+  const gap = direction === "TB" ? spacingX : spacingY;
+
+  const sizes = ids.map((id) => {
+    const label = id === "PROJECT" ? projectName : (protocols[id]?.label || id);
+    return direction === "TB"
+      ? getNodeWidth(id, label, nodeSizeMap)
+      : getNodeHeight(id, label, nodeSizeMap);
+  });
+
+  // totalSizeWithoutTrailingGap
+  const total = sizes.reduce((sum, s) => sum + s, 0) + Math.max(0, ids.length - 1) * gap;
+
+  // cursor is the start of each node box; we output center coordinates
+  let cursor = -total / 2;
+
+  const placements: Record<string, { x: number; y: number }> = {};
+
+  for (let i = 0; i < ids.length; i++) {
+    const id = ids[i];
+    const size = sizes[i];
+    const center = cursor + size / 2;
+
+    placements[id] =
+      direction === "TB"
+        ? { x: center, y: level * spacingY }
+        : { x: level * spacingX, y: center };
+
+    cursor += size + gap;
+  }
+
+  return placements;
+}
 
 /**
  * Build nodes and edges for ReactFlow from protocols.
+ *
+ * Improvements:
+ * - Hierarchical ordering within each level uses parent/child relations (barycenter heuristic)
+ *   instead of sorting by id, so children stay near their parents.
+ * - No-overlap placement packs each level using node widths/heights (optionally measured via nodeSizeMap).
+ * - Grid mode can follow traversal order (parents before children) to reduce visual confusion.
  */
 export function buildGraphElements(
   projectName: string,
@@ -183,9 +251,10 @@ export function buildGraphElements(
   viewMode: "hierarchical" | "grid" | "table" = "hierarchical",
   direction: Direction = "TB",
   containerWidth?: number | null,
-  viewportZoom?: number | null
+  viewportZoom?: number | null,
+  nodeSizeMap?: NodeSizeMap | null
 ) {
-  const spacingX = direction === "TB" ? 430 : 1150;
+  const spacingX = direction === "TB" ? 300 : 1150;
   const spacingY = direction === "TB" ? 580 : 380;
 
   const nodes: Node[] = [];
@@ -195,7 +264,7 @@ export function buildGraphElements(
   if (viewMode === "table") {
     const sorted = Object.entries(protocols)
       .filter(([id]) => id !== "PROJECT")
-      .sort(([idA], [idB]) => parseInt(idA, 10) - parseInt(idB, 10));
+      .sort(([idA], [idB]) => stableIdCompare(idA, idB));
 
     const tableData = sorted.map(([id, prot]) => ({
       id,
@@ -215,32 +284,28 @@ export function buildGraphElements(
 
   // GRID view -> rows and columns from top-left, no edges
   if (viewMode === "grid") {
-    const items = Object.entries(protocols)
-      .filter(([id]) => id !== "PROJECT")
-      // DESC: numeric ids first; fallback to lexicographic desc
-      .sort(([idA], [idB]) => {
-        const a = parseInt(idA, 10);
-        const b = parseInt(idB, 10);
-        const aNum = !Number.isNaN(a);
-        const bNum = !Number.isNaN(b);
-        if (aNum && bNum) return b - a; // numeric descending
-        return String(idB).localeCompare(String(idA)); // string descending
-      });
+    const orderedIds = getTraversalOrderForGrid(protocols);
+    const items = orderedIds.map((id) => [id, protocols[id]] as const);
 
     const total = items.length;
     if (total === 0) return { nodes: [], edges: [] };
 
     const fallbackW =
-      typeof window !== "undefined" && typeof window.innerWidth === "number"
-        ? window.innerWidth
-        : 1600;
+      typeof window !== "undefined" && typeof window.innerWidth === "number" ? window.innerWidth : 1600;
 
     const zoom = typeof viewportZoom === "number" && viewportZoom > 0 ? viewportZoom : 1;
     const screenWidthPx = Math.max(600, containerWidth ?? fallbackW);
     const wrapWorldWidth = screenWidthPx / zoom;
 
-    const estWidths = items.map(([, prot]) => estimateLabelWidth(prot?.label || ""));
-    const estHeights = items.map(([, prot]) => estimateNodeHeight(prot?.label || ""));
+    const estWidths = items.map(([id, prot]) => {
+      const label = prot?.label || id;
+      return getNodeWidth(id, label, nodeSizeMap);
+    });
+
+    const estHeights = items.map(([id, prot]) => {
+      const label = prot?.label || id;
+      return getNodeHeight(id, label, nodeSizeMap);
+    });
 
     const gapX = 650;
     const gapY = 200;
@@ -255,20 +320,19 @@ export function buildGraphElements(
     const baseH =
       estHeights.length > 0
         ? Math.min(
-            520,
-            Math.max(
-              320,
-              Math.round((estHeights.reduce((a, b) => a + b, 0) / estHeights.length) * 0.9)
-            )
+          520,
+          Math.max(
+            320,
+            Math.round((estHeights.reduce((a, b) => a + b, 0) / estHeights.length) * 0.9)
           )
+        )
         : 380;
 
     const cellW = baseW + gapX;
     const cellH = baseH + gapY;
 
     const cols =
-      Math.max(1, Math.min(total, Math.floor((wrapWorldWidth - gapX) / Math.max(320, cellW))) + 1) ||
-      1;
+      Math.max(1, Math.min(total, Math.floor((wrapWorldWidth - gapX) / Math.max(320, cellW))) + 1) || 1;
 
     const sourcePosition: Position = direction === "LR" ? Position.Right : Position.Bottom;
     const targetPosition: Position = direction === "LR" ? Position.Left : Position.Top;
@@ -316,30 +380,53 @@ export function buildGraphElements(
   const levelBuckets: Record<number, string[]> = {};
   const edgeSet = new Set<string>();
 
-  const parentMap = buildParentMap(protocols);
+  const parentMap: Record<string, string[]> = {};
 
-  function traverse(id: string, level: number) {
+  const removeFromOtherBuckets = (id: string) => {
+    // removeFromOtherBuckets
+    Object.values(levelBuckets).forEach((bucket) => {
+      const idx = bucket.indexOf(id);
+      if (idx !== -1) bucket.splice(idx, 1);
+    });
+  };
+
+  const addToBucket = (id: string, level: number) => {
+    // addToBucket
+    if (!levelBuckets[level]) levelBuckets[level] = [];
+    levelBuckets[level].push(id);
+  };
+
+  const addParentLink = (childId: string, parentId: string) => {
+    // addParentLink
+    if (!parentMap[childId]) parentMap[childId] = [];
+    parentMap[childId].push(parentId);
+  };
+
+  const visiting = new Set<string>();
+
+  const traverse = (id: string, level: number) => {
+    // traverse
     const currentLevel = levelMap[id];
     if (currentLevel === undefined || level > currentLevel) {
       levelMap[id] = level;
-
-      Object.values(levelBuckets).forEach((bucket) => {
-        const index = bucket.indexOf(id);
-        if (index !== -1) bucket.splice(index, 1);
-      });
-
-      if (!levelBuckets[level]) levelBuckets[level] = [];
-      levelBuckets[level].push(id);
+      removeFromOtherBuckets(id);
+      addToBucket(id, level);
     }
 
-    const prot = protocols[id];
-    if (!prot) return;
+    if (visiting.has(id)) return;
+    visiting.add(id);
 
-    const children = Array.isArray(prot.children) ? prot.children : [];
+    const prot = protocols[id];
+    const children = uniqStable(Array.isArray(prot?.children) ? prot.children.map(String) : []);
+
     for (const childId of children) {
       const edgeId = `${id}-${childId}`;
       if (!edgeSet.has(edgeId)) {
         edgeSet.add(edgeId);
+
+        // parentLinksForOrdering
+        addParentLink(childId, id);
+
         edges.push({
           id: edgeId,
           source: id,
@@ -350,119 +437,61 @@ export function buildGraphElements(
           sourceHandle: direction === "TB" ? "bottom" : "right",
           targetHandle: direction === "TB" ? "top" : "left",
         });
+      } else {
+        addParentLink(childId, id);
       }
-      traverse(childId, (levelMap[id] ?? level) + 1);
+
+      const nextLevel = (levelMap[id] ?? level) + 1;
+      traverse(childId, nextLevel);
     }
-  }
+
+    visiting.delete(id);
+  };
 
   traverse("PROJECT", 0);
 
   // Ensure stable ordering of levels across hosts
   const sortedLevels = Object.keys(levelBuckets)
     .map((k) => parseInt(k, 10))
-    .filter((n) => !Number.isNaN(n))
+    .filter((n) => Number.isFinite(n))
     .sort((a, b) => a - b);
 
-  const maxLevel = sortedLevels.length > 0 ? Math.max(...sortedLevels) : 0;
+  // Ensure buckets do not keep duplicates
+  for (const lvl of sortedLevels) levelBuckets[lvl] = uniqStable(levelBuckets[lvl] ?? []);
 
-  // Build initial per-level order based on parent expansion (not id sorting)
-  const orderByLevel: Record<number, string[]> = {};
+  // Parent/child-driven ordering per level (works for both TB and LR)
+  const levelOrder = computeLevelOrderingByBarycenter({
+    sortedLevels,
+    levelBuckets,
+    levelMap,
+    parentMap,
+    protocols,
+  });
+
   for (const level of sortedLevels) {
-    const idsRaw = (levelBuckets[level] ?? []).filter(Boolean);
+    const idsRaw = levelOrder[level] ?? uniqStable(levelBuckets[level] ?? []);
+    const ids =
+      idsRaw.length > 0
+        ? idsRaw
+        : uniqStable(levelBuckets[level] ?? []).sort(stableIdCompare);
 
-    const prevOrder = level > 0 ? orderByLevel[level - 1] ?? [] : [];
-    const initialOrder = buildInitialLevelOrder(level, idsRaw, prevOrder, protocols);
+    const placements = placeLevelNoOverlap({
+      ids,
+      level,
+      direction,
+      spacingX,
+      spacingY,
+      protocols,
+      projectName,
+      nodeSizeMap,
+    });
 
-    // Ensure PROJECT stays only at level 0
-    orderByLevel[level] =
-      level === 0
-        ? initialOrder
-        : initialOrder.filter((id) => id !== "PROJECT");
-  }
-
-  // Barycenter sweeps to keep children close to parents and reduce edge crossings
-  const iterations = 2;
-
-  for (let iter = 0; iter < iterations; iter++) {
-    // Top-down: reorder by parents in previous layer
-    const indexByLevelTop: Record<number, IdIndexMap> = {};
-    for (const level of sortedLevels) indexByLevelTop[level] = buildIndexMap(orderByLevel[level] ?? []);
-
-    for (const level of sortedLevels) {
-      if (level === 0) continue;
-
-      const prevIndex = indexByLevelTop[level - 1] ?? new Map();
-      const current = orderByLevel[level] ?? [];
-
-      orderByLevel[level] = reorderByBarycenter(
-        current,
-        (id) => parentMap[id] ?? [],
-        prevIndex
-      );
-    }
-
-    // Bottom-up: reorder by children in next layer
-    const indexByLevelBottom: Record<number, IdIndexMap> = {};
-    for (const level of sortedLevels) indexByLevelBottom[level] = buildIndexMap(orderByLevel[level] ?? []);
-
-    for (let i = sortedLevels.length - 1; i >= 0; i--) {
-      const level = sortedLevels[i];
-      if (level === maxLevel) continue;
-
-      const nextIndex = indexByLevelBottom[level + 1] ?? new Map();
-      const current = orderByLevel[level] ?? [];
-
-      // Keep PROJECT pinned first in level 0
-      if (level === 0) {
-        const projectFirst = current.includes("PROJECT") ? ["PROJECT"] : [];
-        const rest = current.filter((id) => id !== "PROJECT");
-        const reorderedRest = reorderByBarycenter(
-          rest,
-          (id) => getChildrenSorted(protocols, id),
-          nextIndex
-        );
-        orderByLevel[level] = [...projectFirst, ...reorderedRest];
-        continue;
-      }
-
-      orderByLevel[level] = reorderByBarycenter(
-        current,
-        (id) => getChildrenSorted(protocols, id),
-        nextIndex
-      );
-    }
-  }
-
-  // Build positioned nodes using improved per-level ordering
-  for (const level of sortedLevels) {
-    const ids = orderByLevel[level] ?? [];
-    if (ids.length === 0) continue;
-
-    const sizes = ids.map((id) => estimateLabelWidth(protocols[id]?.label || id));
-    const heights = ids.map((id) => estimateNodeHeight(protocols[id]?.label || id));
-
-    const spacing = direction === "TB" ? spacingX : spacingY;
-
-    // computeTotalSizeWithoutTrailingSpacing
-    const totalSize =
-      direction === "TB"
-        ? sizes.reduce((sum, s) => sum + s, 0) + Math.max(0, ids.length - 1) * spacing
-        : heights.reduce((sum, h) => sum + h, 0) + Math.max(0, ids.length - 1) * spacing;
-
-    let secondary = -totalSize / 2;
-
-    ids.forEach((id, index) => {
+    for (const id of ids) {
       const prot = protocols[id];
       const label = prot?.label || id;
       const status = prot?.status;
 
-      const nodeWidth = sizes[index];
-      const nodeHeight = heights[index];
-
-      const position =
-        direction === "TB"
-          ? { x: secondary + nodeWidth / 2, y: level * spacingY }
-          : { x: level * spacingX, y: secondary + nodeHeight / 2 };
+      const position = placements[id] ?? (direction === "TB" ? { x: 0, y: level * spacingY } : { x: level * spacingX, y: 0 });
 
       const sourcePosition: Position = direction === "LR" ? Position.Right : Position.Bottom;
       const targetPosition: Position = direction === "LR" ? Position.Left : Position.Top;
@@ -488,9 +517,7 @@ export function buildGraphElements(
         sourcePosition,
         targetPosition,
       });
-
-      secondary += direction === "TB" ? nodeWidth + spacing : nodeHeight + spacing;
-    });
+    }
   }
 
   return { nodes, edges };
