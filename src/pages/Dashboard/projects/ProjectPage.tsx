@@ -593,6 +593,12 @@ export default function ProjectPage() {
 
   const projectIdRef = useRef<string | number | undefined>(undefined);
 
+  // pendingNewNodesRef tracks node ids before an operation that creates new nodes (duplicate/add)
+  const pendingNewNodesRef = useRef<{
+    beforeIds: Set<string>;
+  } | null>(null);
+
+
   useEffect(() => {
     const raw = (project as any)?.projectId ?? (project as any)?.id;
     if (raw == null) return;
@@ -1463,6 +1469,7 @@ export default function ProjectPage() {
     localStorage.setItem(key, JSON.stringify(payload));
   };
 
+
   const handleNodesChangeWithPersistence = (changes: NodeChange[]) => {
     if (disablePersistenceRef.current || viewMode !== "hierarchical") {
       return onNodesChange(changes);
@@ -1500,6 +1507,23 @@ export default function ProjectPage() {
   const mergeEdges = (newEdges: Edge[]) => {
     const oldEdgesMap = new Map(edges.map((e) => [e.id, e]));
     return newEdges.map((e) => (oldEdgesMap.get(e.id) ? { ...oldEdgesMap.get(e.id)!, ...e } : e));
+  };
+
+
+  // persistPositionsBulk writes multiple node positions in a single localStorage write
+  const persistPositionsBulk = (direction: "TB" | "LR", items: Array<{ id: string; position: { x: number; y: number } }>) => {
+    try {
+      const key = storageKeyHier;
+      const saved = readPersistedPositions(key, direction);
+      const byId = new Map(saved.map((p) => [p.id, p.position]));
+
+      for (const it of items) byId.set(it.id, it.position);
+
+      const merged = Array.from(byId.entries()).map(([id, position]) => ({ id, position }));
+      writePersistedPositions(key, direction, merged);
+    } catch {
+      // noOp
+    }
   };
 
 
@@ -1696,7 +1720,14 @@ export default function ProjectPage() {
         setTimeout(() => tryPlaceNewlyCreatedNode(), 400);
         setTimeout(() => tryPlaceNewlyCreatedNode(), 1200);
       }
+
+      if (pendingNewNodesRef.current) {
+        setTimeout(() => tryResolveNewNodesCollisions(), 80);
+        setTimeout(() => tryResolveNewNodesCollisions(), 420);
+        setTimeout(() => tryResolveNewNodesCollisions(), 1250);
+      }
     }
+
   }, [projectName, viewMode, graphDirection, nodeTicks, svc, paintEdgeHighlight, paintPathHighlight, computeEdgesForMode, gridWidth]);
 
   const handleRefreshRef = useRef(handleRefresh);
@@ -2441,15 +2472,328 @@ export default function ProjectPage() {
   };
 
 
+  // layoutConstantsForHierarchical
+  const hierSpacingX = (dir: "TB" | "LR") => (dir === "TB" ? 300 : 1150);
+  const hierSpacingY = (dir: "TB" | "LR") => (dir === "TB" ? 580 : 380);
+
+  // minGapBetweenSiblings is intentionally small; packing should be compact
+  const minGapBetweenSiblings = 40;
+
+  // estimateLabelWidth matches graph_utils.ts to keep consistency
+  const estimateLabelWidth = (label: string, fontSize = 20): number => {
+    const text = String(label ?? "");
+    const avgCharWidth = fontSize * 0.58;
+    const fixedPaddingForNodeCard = 480;
+    const minNodeWidth = 620;
+    const maxNodeWidth = 980;
+    const estimated = Math.ceil(text.length * avgCharWidth + fixedPaddingForNodeCard);
+    return Math.max(minNodeWidth, Math.min(maxNodeWidth, estimated));
+  };
+
+  // estimateNodeHeight matches graph_utils.ts to keep consistency
+  const estimateNodeHeight = (label: string, fontSize = 20): number => {
+    const avgCharWidth = fontSize * 0.6;
+    const maxWidth = 240;
+    const text = String(label ?? "");
+    const charsPerLine = Math.max(1, Math.floor(maxWidth / avgCharWidth));
+    const lines = Math.ceil(text.length / charsPerLine) || 1;
+    const baseLineHeight = Math.round(fontSize * 1.2);
+    return Math.ceil(lines * baseLineHeight) + 180;
+  };
+
+  const getNodeLabelForEstimate = (n: Node<any>): string => {
+    const d: any = (n as any).data ?? {};
+    return String(d.label ?? n.id);
+  };
+
+  // getNodeSize tries measured sizes first, falls back to deterministic estimates
+  const getNodeSize = (n: Node<any>): { width: number; height: number } => {
+    const anyN: any = n as any;
+
+    const mw = Number(anyN.measured?.width ?? anyN.width);
+    const mh = Number(anyN.measured?.height ?? anyN.height);
+
+    const label = getNodeLabelForEstimate(n);
+
+    const width = Number.isFinite(mw) && mw > 0 ? Math.ceil(mw) : estimateLabelWidth(label);
+    const height = Number.isFinite(mh) && mh > 0 ? Math.ceil(mh) : estimateNodeHeight(label);
+
+    return { width, height };
+  };
+
+
+  const getLevelCoord = (dir: "TB" | "LR", pos: { x: number; y: number }) => (dir === "TB" ? pos.y : pos.x);
+  const setLevelCoord = (dir: "TB" | "LR", pos: { x: number; y: number }, v: number) =>
+    dir === "TB" ? { x: pos.x, y: v } : { x: v, y: pos.y };
+
+  const getAxisCoord = (dir: "TB" | "LR", pos: { x: number; y: number }) => (dir === "TB" ? pos.x : pos.y);
+  const setAxisCoord = (dir: "TB" | "LR", pos: { x: number; y: number }, v: number) =>
+    dir === "TB" ? { x: v, y: pos.y } : { x: pos.x, y: v };
+
+  // collisionGap controls packing distance between sibling bounding boxes
+  const collisionGap = 60;
+
+  const getAxisSize = (dir: "TB" | "LR", n: Node<any>) => {
+    const anyN: any = n as any;
+    const mw = Number(anyN.measured?.width ?? anyN.width);
+    const mh = Number(anyN.measured?.height ?? anyN.height);
+
+    // fallBackSize is intentionally conservative to avoid visual overlaps
+    const width = Number.isFinite(mw) && mw > 0 ? Math.ceil(mw) : 900;
+    const height = Number.isFinite(mh) && mh > 0 ? Math.ceil(mh) : 520;
+
+    // addPadding to be safer with card shadows/margins
+    return (dir === "TB" ? width : height) + 40;
+  };
+
+  const computeLevelTolerance = (dir: "TB" | "LR", nodesList: Node<any>[]) => {
+    // compute typical separation between levels and use a fraction as tolerance
+    const coords = nodesList
+      .map((n) => getLevelCoord(dir, n.position))
+      .filter((v) => Number.isFinite(v))
+      .sort((a, b) => a - b);
+
+    const diffs: number[] = [];
+    for (let i = 1; i < coords.length; i++) {
+      const d = coords[i] - coords[i - 1];
+      if (d > 5) diffs.push(d);
+    }
+    diffs.sort((a, b) => a - b);
+
+    const median = diffs.length ? diffs[Math.floor(diffs.length / 2)] : (dir === "TB" ? 650 : 1150);
+
+    // capTolerance prevents accidentally merging adjacent levels
+    const cap = dir === "TB" ? 320 : 520;
+    return Math.max(140, Math.min(cap, median * 0.45));
+  };
+
+  const resolveOverlapsAtAnchorLevel = (
+    dir: "TB" | "LR",
+    nodesList: Node<any>[],
+    anchorId: string
+  ): { nodes: Node<any>[]; changed: Array<{ id: string; position: { x: number; y: number } }> } => {
+    const anchor = nodesList.find((n) => String(n.id) === String(anchorId));
+    if (!anchor) return { nodes: nodesList, changed: [] };
+
+    const anchorLevel = getLevelCoord(dir, anchor.position);
+    const tol = computeLevelTolerance(dir, nodesList);
+
+    const sameLevel = nodesList.filter((n) => Math.abs(getLevelCoord(dir, n.position) - anchorLevel) <= tol);
+    if (sameLevel.length <= 1) {
+      // snapAnchorToLevelOnly
+      const snapped = nodesList.map((n) => {
+        if (n.id !== anchorId) return n;
+        const pos = setLevelCoord(dir, n.position, anchorLevel);
+        return (pos.x === n.position.x && pos.y === n.position.y) ? n : { ...n, position: pos };
+      });
+      const changed = snapped
+        .filter((n) => n.id === anchorId)
+        .map((n) => ({ id: n.id, position: n.position }));
+      return { nodes: snapped, changed };
+    }
+
+    // snapAllSameLevelToExactAnchorLevel for stability
+    const posMap = new Map<string, { x: number; y: number }>();
+    for (const n of sameLevel) posMap.set(n.id, setLevelCoord(dir, n.position, anchorLevel));
+
+    // sortByAxis
+    const sorted = [...sameLevel].sort(
+      (a, b) => getAxisCoord(dir, posMap.get(a.id)!) - getAxisCoord(dir, posMap.get(b.id)!)
+    );
+
+    const idx = sorted.findIndex((n) => n.id === anchorId);
+    if (idx < 0) return { nodes: nodesList, changed: [] };
+
+    // keepAnchorAxisFixed
+    const anchorPos = posMap.get(anchorId)!;
+    const anchorAxis = getAxisCoord(dir, anchorPos);
+    posMap.set(anchorId, setAxisCoord(dir, anchorPos, anchorAxis));
+
+    // packRight
+    for (let i = idx + 1; i < sorted.length; i++) {
+      const prevN = sorted[i - 1];
+      const curN = sorted[i];
+
+      const prevPos = posMap.get(prevN.id)!;
+      const curPos = posMap.get(curN.id)!;
+
+      const prevAxis = getAxisCoord(dir, prevPos);
+      const prevSize = getAxisSize(dir, prevN);
+
+      const curAxis = getAxisCoord(dir, curPos);
+      const curSize = getAxisSize(dir, curN);
+
+      const prevRight = prevAxis + prevSize / 2;
+      const minCenter = prevRight + collisionGap + curSize / 2;
+
+      if (curAxis < minCenter) {
+        posMap.set(curN.id, setAxisCoord(dir, curPos, minCenter));
+      }
+    }
+
+    // packLeft
+    for (let i = idx - 1; i >= 0; i--) {
+      const nextN = sorted[i + 1];
+      const curN = sorted[i];
+
+      const nextPos = posMap.get(nextN.id)!;
+      const curPos = posMap.get(curN.id)!;
+
+      const nextAxis = getAxisCoord(dir, nextPos);
+      const nextSize = getAxisSize(dir, nextN);
+
+      const curAxis = getAxisCoord(dir, curPos);
+      const curSize = getAxisSize(dir, curN);
+
+      const nextLeft = nextAxis - nextSize / 2;
+      const maxCenter = nextLeft - collisionGap - curSize / 2;
+
+      if (curAxis > maxCenter) {
+        posMap.set(curN.id, setAxisCoord(dir, curPos, maxCenter));
+      }
+    }
+
+    // applyBack
+    const sameLevelIds = new Set(sameLevel.map((n) => n.id));
+    const nextNodes = nodesList.map((n) => {
+      if (!sameLevelIds.has(n.id)) return n;
+      const np = posMap.get(n.id)!;
+      return (np.x === n.position.x && np.y === n.position.y) ? n : { ...n, position: np };
+    });
+
+    const changed = nextNodes
+      .filter((n) => sameLevelIds.has(n.id))
+      .map((n) => ({ id: n.id, position: n.position }));
+
+    return { nodes: nextNodes, changed };
+  };
+
+  const getLevelStep = (dir: "TB" | "LR") => (dir === "TB" ? hierSpacingY(dir) : hierSpacingX(dir));
+
+  // inferNearestLevelKey snaps a raw point to the closest existing level among current nodes
+  const inferNearestLevelKey = (dir: "TB" | "LR", point: { x: number; y: number }, nodesList: Node<any>[]) => {
+    const step = getLevelStep(dir);
+    const p = getLevelCoord(dir, point);
+
+    let bestKey = Math.round(p / step);
+    let bestDist = Number.POSITIVE_INFINITY;
+
+    for (const n of nodesList) {
+      const k = Math.round(getLevelCoord(dir, n.position) / step);
+      const levelPos = k * step;
+      const dist = Math.abs(levelPos - p);
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestKey = k;
+      }
+    }
+
+    return bestKey;
+  };
+
+  // resolveOverlapsInLevel keeps anchorId fixed and packs siblings left/right to avoid overlaps
+  const resolveOverlapsInLevel = (
+    dir: "TB" | "LR",
+    nodesList: Node<any>[],
+    anchorId: string,
+    levelKey: number
+  ): Node<any>[] => {
+    const step = getLevelStep(dir);
+    const levelPos = levelKey * step;
+
+    // collect nodes in the same level (snap tolerance: half step)
+    const sameLevel = nodesList.filter((n) => {
+      const k = Math.round(getLevelCoord(dir, n.position) / step);
+      return k === levelKey;
+    });
+
+    if (sameLevel.length <= 1) {
+      // snap anchor level coord anyway for stability
+      return nodesList.map((n) => {
+        if (n.id !== anchorId) return n;
+        const snapped = setLevelCoord(dir, n.position, levelPos);
+        return (snapped.x === n.position.x && snapped.y === n.position.y) ? n : { ...n, position: snapped };
+      });
+    }
+
+    // sort by axis coordinate
+    const sorted = [...sameLevel].sort((a, b) => getAxisCoord(dir, a.position) - getAxisCoord(dir, b.position));
+
+    const idx = sorted.findIndex((n) => n.id === anchorId);
+    if (idx < 0) return nodesList;
+
+    // snap all nodes to exact level coord (prevents drift across levels)
+    const posMap = new Map<string, { x: number; y: number }>();
+    for (const n of sorted) posMap.set(n.id, setLevelCoord(dir, n.position, levelPos));
+
+    // anchor stays fixed on axis (but snapped in level coord)
+    const anchorPos = posMap.get(anchorId)!;
+    const anchorAxis = getAxisCoord(dir, anchorPos);
+    posMap.set(anchorId, setAxisCoord(dir, anchorPos, anchorAxis));
+
+    // pass to the right
+    for (let i = idx + 1; i < sorted.length; i++) {
+      const prevId = sorted[i - 1].id;
+      const curId = sorted[i].id;
+
+      const prevPos = posMap.get(prevId)!;
+      const curPos = posMap.get(curId)!;
+
+      const prevAxis = getAxisCoord(dir, prevPos);
+      const prevSize = getAxisSize(dir, sorted[i - 1]);
+      const curAxis = getAxisCoord(dir, curPos);
+      const curSize = getAxisSize(dir, sorted[i]);
+
+      const prevRight = prevAxis + prevSize / 2;
+      const minCenter = prevRight + minGapBetweenSiblings + curSize / 2;
+
+      if (curAxis < minCenter) {
+        posMap.set(curId, setAxisCoord(dir, curPos, minCenter));
+      }
+    }
+
+    // pass to the left
+    for (let i = idx - 1; i >= 0; i--) {
+      const nextId = sorted[i + 1].id;
+      const curId = sorted[i].id;
+
+      const nextPos = posMap.get(nextId)!;
+      const curPos = posMap.get(curId)!;
+
+      const nextAxis = getAxisCoord(dir, nextPos);
+      const nextSize = getAxisSize(dir, sorted[i + 1]);
+      const curAxis = getAxisCoord(dir, curPos);
+      const curSize = getAxisSize(dir, sorted[i]);
+
+      const nextLeft = nextAxis - nextSize / 2;
+      const maxCenter = nextLeft - minGapBetweenSiblings - curSize / 2;
+
+      if (curAxis > maxCenter) {
+        posMap.set(curId, setAxisCoord(dir, curPos, maxCenter));
+      }
+    }
+
+    // apply back to full list (only same-level nodes changed)
+    const changedIds = new Set(sorted.map((n) => n.id));
+    return nodesList.map((n) => {
+      if (!changedIds.has(n.id)) return n;
+      const np = posMap.get(n.id)!;
+      return (np.x === n.position.x && np.y === n.position.y) ? n : { ...n, position: np };
+    });
+  };
+
+
   // Try to find the newly created node and place it at pending point
   const tryPlaceNewlyCreatedNode = () => {
     const pending = pendingPlacementRef.current;
     if (!pending) return;
 
+    if (viewModeRef.current !== "hierarchical") return;
+
     const { beforeIds, point } = pending;
+
     const currentIds = new Set(nodesRef.current.map((n) => String(n.id)));
     const candidates = Array.from(currentIds).filter((id) => !beforeIds.has(id) && id !== "PROJECT");
-
     if (candidates.length === 0) return;
 
     let pick = candidates[0];
@@ -2462,13 +2806,71 @@ export default function ProjectPage() {
       }
     }
 
-    setNodes((prev) =>
-      prev.map((n) => (n.id === pick ? { ...n, position: { x: point.x, y: point.y } } : n))
-    );
-    persistPositionForId(pick, { x: point.x, y: point.y });
+    const dir = graphDirRef.current;
+
+    setNodes((prev) => {
+      const levelKey = inferNearestLevelKey(dir, point, prev);
+      const levelPos = levelKey * getLevelStep(dir);
+
+      // placeNewNodeAtPointButSnapToLevel
+      const desiredPos = setLevelCoord(dir, { x: point.x, y: point.y }, levelPos);
+
+      const placed = prev.map((n) => (n.id === pick ? { ...n, position: desiredPos } : n));
+
+      // resolveOverlapsOnlyInThatLevel
+      const resolved = resolveOverlapsInLevel(dir, placed, pick, levelKey);
+
+      // persistUpdatedLevelPositions
+      const levelIds = resolved
+        .filter((n) => Math.round(getLevelCoord(dir, n.position) / getLevelStep(dir)) === levelKey)
+        .map((n) => ({ id: n.id, position: n.position }));
+
+      // note: side effect inside setState is acceptable here because it is idempotent and tied to user action
+      persistPositionsBulk(dir, levelIds);
+
+      return resolved;
+    });
 
     pendingPlacementRef.current = null;
   };
+
+  const tryResolveNewNodesCollisions = () => {
+    const pending = pendingNewNodesRef.current;
+    if (!pending) return;
+
+    if (viewModeRef.current !== "hierarchical") return;
+
+    const currentIds = new Set(nodesRef.current.map((n) => String(n.id)));
+    const newIds = Array.from(currentIds).filter((id) => !pending.beforeIds.has(id) && id !== "PROJECT");
+
+    if (newIds.length === 0) return;
+
+    // pickHighestNumericIdForStability
+    let pick = newIds[0];
+    let bestNum = Number.NEGATIVE_INFINITY;
+    for (const id of newIds) {
+      const n = parseInt(id, 10);
+      if (!Number.isNaN(n) && n > bestNum) {
+        bestNum = n;
+        pick = id;
+      }
+    }
+
+    const dir = graphDirRef.current;
+
+    setNodes((prev) => {
+      const { nodes: nextNodes, changed } = resolveOverlapsAtAnchorLevel(dir, prev, pick);
+      if (changed.length) {
+        persistPositionsBulk(dir, changed);
+      }
+      return nextNodes;
+    });
+
+    // clearPendingOnceApplied
+    pendingNewNodesRef.current = null;
+  };
+
+
 
   const handleContextMenu = (event: React.MouseEvent) => {
     const target = event.target as HTMLElement;
@@ -2731,8 +3133,15 @@ export default function ProjectPage() {
 
   const duplicateNow = async (ids: string[]) => {
     if (!projectName) return;
+
     const cleanIds = ids.filter((i) => i && i !== "PROJECT");
     if (cleanIds.length === 0) return;
+
+    // snapshotIdsBeforeDuplicate
+    pendingNewNodesRef.current = {
+      beforeIds: new Set(nodesRef.current.map((n) => String(n.id))),
+    };
+
     try {
       const items = cleanIds.map((id) => ({ id, name: genCopyName(id) }));
       await svc.duplicateProtocol(projectName, items);
@@ -2743,8 +3152,10 @@ export default function ProjectPage() {
     } catch (e) {
       console.error(e);
       toast.error(getErrorMsg(e));
+      pendingNewNodesRef.current = null;
     }
   };
+
 
   const stopProtocolNow = async (ids: string[]) => {
     if (!projectName) return;
