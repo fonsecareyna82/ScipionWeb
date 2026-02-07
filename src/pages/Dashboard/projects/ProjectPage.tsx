@@ -1390,30 +1390,111 @@ export default function ProjectPage() {
   const nodeTypes = nodeTypesRef.current;
 
   /* --------------------- Persistence of positions --------------------- */
+  /* --------------------- Persistence of positions --------------------- */
+  type PersistedNodePositionsV2 = {
+    version: 2;
+    direction: "TB" | "LR";
+    positions: Array<{ id: string; position: { x: number; y: number } }>;
+  };
+
+  const nodePositionsVersion = 2;
+
   const storageKeyHier = `${localStorageKey}-${graphDirection}-hier`;
+
+  const safeParseJson = (raw: string | null): unknown => {
+    // safeParseJson
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  };
+
+  const isValidPosItem = (v: any): v is { id: string; position: { x: number; y: number } } => {
+    // isValidPosItem
+    const idOk = typeof v?.id === "string" && v.id.length > 0;
+    const xOk = typeof v?.position?.x === "number" && Number.isFinite(v.position.x);
+    const yOk = typeof v?.position?.y === "number" && Number.isFinite(v.position.y);
+    return idOk && xOk && yOk;
+  };
+
+  const readPersistedPositions = (
+    key: string,
+    expectedDirection: "TB" | "LR"
+  ): Array<{ id: string; position: { x: number; y: number } }> => {
+    // readPersistedPositions
+    const parsed = safeParseJson(localStorage.getItem(key));
+    if (!parsed) return [];
+
+    // Legacy format: Array<{id, position}>
+    // Important: ignore legacy arrays in LR to prevent TB positions being applied in LR.
+    if (Array.isArray(parsed)) {
+      if (expectedDirection !== "TB") return [];
+      return parsed.filter(isValidPosItem);
+    }
+
+    // V2 format: {version, direction, positions}
+    if (typeof parsed === "object" && parsed !== null) {
+      const obj: any = parsed;
+      const versionOk = obj.version === nodePositionsVersion;
+      const dirOk = obj.direction === expectedDirection;
+      const posArr = Array.isArray(obj.positions) ? obj.positions : null;
+
+      if (versionOk && dirOk && posArr) {
+        return posArr.filter(isValidPosItem);
+      }
+    }
+
+    return [];
+  };
+
+  const writePersistedPositions = (
+    key: string,
+    direction: "TB" | "LR",
+    positions: Array<{ id: string; position: { x: number; y: number } }>
+  ) => {
+    // writePersistedPositions
+    const payload: PersistedNodePositionsV2 = {
+      version: nodePositionsVersion,
+      direction,
+      positions,
+    };
+    localStorage.setItem(key, JSON.stringify(payload));
+  };
 
   const handleNodesChangeWithPersistence = (changes: NodeChange[]) => {
     if (disablePersistenceRef.current || viewMode !== "hierarchical") {
       return onNodesChange(changes);
     }
+
     setNodes((nds) => {
       const updated = applyNodeChanges(changes, nds);
       const positions = updated.map((n) => ({ id: n.id, position: n.position }));
+
       try {
-        localStorage.setItem(storageKeyHier, JSON.stringify(positions));
-      } catch { }
+        writePersistedPositions(storageKeyHier, graphDirection, positions);
+      } catch {
+        // noOp
+      }
+
       return updated;
     });
   };
 
   const loadNodesWithPositions = (loadedNodes: Node[]) => {
-    const saved: { id: string; position: { x: number; y: number } }[] =
-      JSON.parse(localStorage.getItem(storageKeyHier) || "[]");
+    const saved = readPersistedPositions(storageKeyHier, graphDirection);
+    if (!saved.length) return loadedNodes;
+
+    const byId = new Map<string, { x: number; y: number }>();
+    for (const p of saved) byId.set(p.id, p.position);
+
     return loadedNodes.map((n) => {
-      const s = saved.find((p) => p.id === n.id);
-      return s ? { ...n, position: s.position } : n;
+      const pos = byId.get(n.id);
+      return pos ? { ...n, position: pos } : n;
     });
   };
+
 
 
   const mergeEdges = (newEdges: Edge[]) => {
@@ -2342,16 +2423,23 @@ export default function ProjectPage() {
   // Save a position to localStorage for a given node id (only for hierarchical)
   const persistPositionForId = (id: string, position: { x: number; y: number }) => {
     if (viewMode !== "hierarchical") return;
+
     try {
       const key = storageKeyHier;
-      const saved: { id: string; position: { x: number; y: number } }[] =
-        JSON.parse(localStorage.getItem(key) || "[]");
+
+      const saved = readPersistedPositions(key, graphDirection);
       const idx = saved.findIndex((p) => p.id === id);
-      if (idx >= 0) saved[idx] = { id, position };
-      else saved.push({ id, position });
-      localStorage.setItem(key, JSON.stringify(saved));
-    } catch { /* ignore */ }
+
+      const next = [...saved];
+      if (idx >= 0) next[idx] = { id, position };
+      else next.push({ id, position });
+
+      writePersistedPositions(key, graphDirection, next);
+    } catch {
+      // ignore
+    }
   };
+
 
   // Try to find the newly created node and place it at pending point
   const tryPlaceNewlyCreatedNode = () => {
@@ -2651,7 +2739,7 @@ export default function ProjectPage() {
       toast.success(cleanIds.length > 1 ? "Protocols duplicated successfully." : "Protocol duplicated successfully.");
 
       clearAllSelectionHard();
-      await handleRefresh();
+      await Promise.resolve(handleRefreshRef.current?.());
     } catch (e) {
       console.error(e);
       toast.error(getErrorMsg(e));
@@ -2676,7 +2764,7 @@ export default function ProjectPage() {
       );
 
       clearAllSelectionHard();
-      await handleRefresh();
+      await Promise.resolve(handleRefreshRef.current?.());
     } catch (e) {
       console.error(e);
       toast.error(getErrorMsg(e));
