@@ -2841,34 +2841,94 @@ export default function ProjectPage() {
     if (viewModeRef.current !== "hierarchical") return;
 
     const currentIds = new Set(nodesRef.current.map((n) => String(n.id)));
-    const newIds = Array.from(currentIds).filter((id) => !pending.beforeIds.has(id) && id !== "PROJECT");
+    const newIds = Array.from(currentIds).filter(
+      (id) => !pending.beforeIds.has(id) && id !== "PROJECT"
+    );
 
     if (newIds.length === 0) return;
-
-    // pickHighestNumericIdForStability
-    let pick = newIds[0];
-    let bestNum = Number.NEGATIVE_INFINITY;
-    for (const id of newIds) {
-      const n = parseInt(id, 10);
-      if (!Number.isNaN(n) && n > bestNum) {
-        bestNum = n;
-        pick = id;
-      }
-    }
 
     const dir = graphDirRef.current;
 
     setNodes((prev) => {
-      const { nodes: nextNodes, changed } = resolveOverlapsAtAnchorLevel(dir, prev, pick);
-      if (changed.length) {
-        persistPositionsBulk(dir, changed);
-      }
-      return nextNodes;
-    });
+      const step = getLevelStep(dir);
 
-    // clearPendingOnceApplied
-    pendingNewNodesRef.current = null;
+      // groupNewNodesByLevelKey
+      const newIdsByLevel = new Map<number, string[]>();
+      for (const id of newIds) {
+        const node = prev.find((n) => String(n.id) === id);
+        if (!node) continue;
+
+        const levelKey = Math.round(getLevelCoord(dir, node.position) / step);
+        const arr = newIdsByLevel.get(levelKey) ?? [];
+        arr.push(id);
+        newIdsByLevel.set(levelKey, arr);
+      }
+
+      // ifNodesNotReadyYetKeepPendingForNextRetry
+      if (newIdsByLevel.size === 0) return prev;
+
+      // processLevelsInStableOrder
+      const levelKeys = Array.from(newIdsByLevel.keys()).sort((a, b) => a - b);
+
+      let nodesAcc = prev;
+      const changedMap = new Map<string, { x: number; y: number }>();
+
+      for (const levelKey of levelKeys) {
+        const idsInLevel = newIdsByLevel.get(levelKey) ?? [];
+        if (idsInLevel.length === 0) continue;
+
+        // pickAnchorForThisLevel: highestNumericIdForStability
+        let anchorId = idsInLevel[0];
+        let bestNum = Number.NEGATIVE_INFINITY;
+        for (const id of idsInLevel) {
+          const n = parseInt(id, 10);
+          if (!Number.isNaN(n) && n > bestNum) {
+            bestNum = n;
+            anchorId = id;
+          }
+        }
+
+        // snapshotPositionsInThisLevelBefore
+        const beforePos = new Map<string, { x: number; y: number }>();
+        for (const n of nodesAcc) {
+          const k = Math.round(getLevelCoord(dir, n.position) / step);
+          if (k === levelKey) beforePos.set(String(n.id), n.position);
+        }
+
+        // resolveOverlapsForThisLevel
+        nodesAcc = resolveOverlapsInLevel(dir, nodesAcc, anchorId, levelKey);
+
+        // collectChangesForPersistence
+        for (const n of nodesAcc) {
+          const k = Math.round(getLevelCoord(dir, n.position) / step);
+          if (k !== levelKey) continue;
+
+          const prevP = beforePos.get(String(n.id));
+          if (!prevP) continue;
+
+          if (prevP.x !== n.position.x || prevP.y !== n.position.y) {
+            changedMap.set(String(n.id), n.position);
+          }
+        }
+      }
+
+      const changedItems = Array.from(changedMap.entries()).map(([id, position]) => ({
+        id,
+        position,
+      }));
+
+      if (changedItems.length) {
+        // note: side effect inside setState is acceptable here because it is idempotent and tied to user action
+        persistPositionsBulk(dir, changedItems);
+      }
+
+      // clearPendingOnceApplied (only if we actually processed at least one level)
+      pendingNewNodesRef.current = null;
+
+      return nodesAcc;
+    });
   };
+
 
 
 
