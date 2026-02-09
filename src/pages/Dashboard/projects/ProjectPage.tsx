@@ -412,6 +412,19 @@ function loadTagsCatalogFromStorage(): ProtocolTag[] {
   return [];
 }
 
+
+const globalAssignmentsStorageKey = "scipion.protocolTagAssignments.v1";
+
+function normalizeProtocolTagAssignments(raw: unknown): ProtocolTagAssignments {
+  // normalizeProtocolTagAssignments
+  if (!raw || typeof raw !== "object") return {};
+  const out: ProtocolTagAssignments = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    out[String(k)] = normalizeTagIds(v);
+  }
+  return out;
+}
+
 function getAssignmentsStorageKey(projectName: string): string {
   // getAssignmentsStorageKey
   return `project-${projectName}-protocol-tags.v1`;
@@ -419,19 +432,54 @@ function getAssignmentsStorageKey(projectName: string): string {
 
 function loadTagAssignments(projectName: string): ProtocolTagAssignments {
   // loadTagAssignments
-  const parsed = safeParseJson<any>(localStorage.getItem(getAssignmentsStorageKey(projectName)));
-  if (!parsed || typeof parsed !== "object") return {};
-  const out: ProtocolTagAssignments = {};
+  const legacyKey = `project-${projectName}-protocol-tags.v1`;
 
-  for (const [k, v] of Object.entries(parsed)) {
-    out[String(k)] = normalizeTagIds(v);
+  const legacyRaw = safeParseJson<any>(localStorage.getItem(legacyKey));
+  const globalRaw = safeParseJson<any>(localStorage.getItem(globalAssignmentsStorageKey));
+
+  // preferGlobalIfMatchesShape
+  // supports:
+  // 1) global: { [projectName]: { [protocolId]: string[] } }
+  // 2) global: { [protocolId]: string[] }  (no project nesting)
+  if (globalRaw && typeof globalRaw === "object") {
+    const maybeNested = (globalRaw as any)[projectName];
+    if (maybeNested && typeof maybeNested === "object") {
+      return normalizeProtocolTagAssignments(maybeNested);
+    }
+    return normalizeProtocolTagAssignments(globalRaw);
   }
-  return out;
+
+  if (legacyRaw && typeof legacyRaw === "object") {
+    return normalizeProtocolTagAssignments(legacyRaw);
+  }
+
+  return {};
 }
 
 function saveTagAssignments(projectName: string, map: ProtocolTagAssignments): void {
   // saveTagAssignments
-  localStorage.setItem(getAssignmentsStorageKey(projectName), JSON.stringify(map));
+  const legacyKey = `project-${projectName}-protocol-tags.v1`;
+
+  // writeLegacyForBackCompat
+  try {
+    localStorage.setItem(legacyKey, JSON.stringify(map));
+  } catch {
+    // ignoreStorageErrors
+  }
+
+  // writeGlobalPreferredShape
+  try {
+    const prev = safeParseJson<any>(localStorage.getItem(globalAssignmentsStorageKey));
+    const nextGlobal =
+      prev && typeof prev === "object" && !Array.isArray(prev) ? { ...prev } : {};
+
+    // storeNestedByProjectName
+    (nextGlobal as any)[projectName] = map;
+
+    localStorage.setItem(globalAssignmentsStorageKey, JSON.stringify(nextGlobal));
+  } catch {
+    // ignoreStorageErrors
+  }
 }
 
 /**
@@ -840,6 +888,25 @@ export default function ProjectPage() {
   }, [projectName]);
 
   useEffect(() => {
+    // syncAssignmentsOnCustomEvent
+    if (!projectName) return;
+
+    const onAssignmentsChanged = () => {
+      try {
+        setTagAssignments(loadTagAssignments(projectName));
+      } catch {
+        setTagAssignments({});
+      }
+    };
+
+    window.addEventListener("scipionProtocolTagAssignmentsChanged", onAssignmentsChanged);
+    return () => window.removeEventListener("scipionProtocolTagAssignmentsChanged", onAssignmentsChanged);
+  }, [projectName]);
+
+
+
+
+  useEffect(() => {
     // mergeAssignmentsFromProjectPayloadIfPresent
     if (!projectName || !project?.protocols) return;
 
@@ -1108,18 +1175,27 @@ export default function ProjectPage() {
 
   /* --------------------- Grid container width observer --------------------- */
   const [gridWidth, setGridWidth] = useState<number>(0);
+  const lastObservedWidthRef = useRef<number>(-1);
 
   useLayoutEffect(() => {
     const el = flowWrapperRef.current;
     if (!el) return;
 
+    // Set initial width and seed the ref to avoid a recenter on height-only changes
+    const initialWidth = Math.max(0, Math.floor(el.clientWidth || 0));
+    lastObservedWidthRef.current = initialWidth;
+    setGridWidth(initialWidth);
+
     const ro = new ResizeObserver((entries) => {
       const entry = entries[0];
-      const w = Math.max(0, Math.floor(entry.contentRect.width));
-      setGridWidth(w);
+      const nextWidth = Math.max(0, Math.floor(entry.contentRect.width));
 
-      // Re-center/adjust viewport when the available space changes.
-      // Grid: pegamos arriba-izquierda; Hierarchical: centramos preservando zoom.
+      // Ignore height-only changes (e.g., TagPicker chips wrapping)
+      if (nextWidth === lastObservedWidthRef.current) return;
+
+      lastObservedWidthRef.current = nextWidth;
+      setGridWidth(nextWidth);
+
       requestAnimationFrame(() => {
         const inst = reactFlowInstanceRef.current ?? (window as any).reactFlowInstance;
         if (!inst) return;
@@ -1133,9 +1209,6 @@ export default function ProjectPage() {
     });
 
     ro.observe(el);
-
-    // Ensure initial measurement and correct height on mount
-    setGridWidth(el.clientWidth || 0);
 
     return () => {
       try { ro.disconnect(); } catch { /* ignore */ }
@@ -1431,6 +1504,52 @@ export default function ProjectPage() {
       return out;
     });
   }, [paintEdgeHighlight, paintPathHighlight, setEdges]);
+
+
+  useEffect(() => {
+    // focusNodesMatchingTagFilter
+    if (!tagFilterIds.length) return;
+
+    // tableModeAlreadyFiltersRows; optional: scroll to first match
+    if (viewMode === "table") {
+      const filterSet = new Set(tagFilterIds);
+      const first = filteredTableData.find((row) => {
+        const pid = String(row?.id ?? "");
+        const assigned = tagAssignments[pid] ?? normalizeTagIds((row as any)?.tagIds ?? (row as any)?.tags);
+        return assigned.some((tid) => filterSet.has(tid));
+      });
+      if (first) scrollToProtocol(String(first.id));
+      return;
+    }
+
+    const filterSet = new Set(tagFilterIds);
+
+    const matches = nodesRef.current.filter((n) => {
+      const nodeId = String(n.id);
+      if (nodeId === "PROJECT") return false;
+      const assigned = tagAssignments[nodeId] ?? normalizeTagIds((n as any)?.data?.tagIds);
+      return assigned.some((tid) => filterSet.has(tid));
+    });
+
+    if (!matches.length) return;
+
+    // selectAllMatchesSoTheyAreVisuallyFocused
+    applyPathSelection(matches.map((n) => String(n.id)));
+
+    // centerViewportOnMatches
+    //requestAnimationFrame(() => {
+    //   const zoomOverride = viewMode === "grid" ? GRID_ZOOM : viewportRef.current.zoom;
+    //  centerLikeButton(matches, true, zoomOverride);
+    // });
+  }, [
+    tagFilterIds,
+    tagAssignments,
+    viewMode,
+    filteredTableData,
+    applyPathSelection,
+    centerLikeButton,
+  ]);
+
 
   /* --------------------- Node click / double click --------------------- */
   const handleNodeClick = (nodeData: any, evt?: React.MouseEvent) => {
@@ -3966,189 +4085,194 @@ export default function ProjectPage() {
 
         {/* Header */}
         <div className="pp-headerRow">
-          <div ref={searchBoxRef} className="pp-searchBox">
-            <div className="pp-searchIconWrap" aria-hidden="true">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="pp-searchIcon"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={2}
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                />
-              </svg>
-            </div>
-
-            <input
-              type="text"
-              placeholder="Search protocol..."
-              value={searchQuery}
-              onChange={(e) => handleSearchInputChange(e.target.value)}
-              onKeyDown={handleSearchKeyDown}
-              onFocus={() => {
-                if (searchQuery.trim()) setSearchOpen(true);
-              }}
-              className="pp-searchInput"
-            />
-
-            {searchOpen && searchQuery.trim() && (
-              <div className="pp-searchDropdown" role="listbox" aria-label="Search results">
-                {searchResults.length === 0 ? (
-                  <div className="pp-searchEmpty" role="status">
-                    No matches
-                  </div>
-                ) : (
-                  searchResults.map((r, idx) => (
-                    <button
-                      key={r.id}
-                      type="button"
-                      role="option"
-                      aria-selected={idx === searchActiveIndex}
-                      className={[
-                        "pp-searchItem",
-                        idx === searchActiveIndex ? "is-active" : "",
-                      ].join(" ")}
-                      onMouseDown={(ev) => {
-                        // preventInputBlurBeforeClick
-                        ev.preventDefault();
-                      }}
-                      onMouseEnter={() => setSearchActiveIndex(idx)}
-                      onClick={() => {
-                        void jumpToSearchResult(r);
-                      }}
-                      title={`${r.id} — ${r.label}`}
-                    >
-                      <div className="pp-searchItemMain">
-                        <span className="pp-searchItemId">{r.id}</span>
-                        <span className="pp-searchItemLabel">{r.label}</span>
-                      </div>
-
-                      <span
-                        className="pp-searchItemStatus"
-                        style={getStatusStyle(r.status)}
-                      >
-                        {r.status ?? "—"}
-                      </span>
-                    </button>
-                  ))
-                )}
+          <div className="pp-headerLeft">
+            <div ref={searchBoxRef} className="pp-searchBox">
+              <div className="pp-searchIconWrap" aria-hidden="true">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="pp-searchIcon"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                  />
+                </svg>
               </div>
-            )}
-          </div>
 
-          <div className="pp-headerCard pp-tagsCard">
-            <div className="pp-tagsPicker">
-              <TagPicker
-                allTags={allTags}
-                selectedTagIds={tagFilterIds}
-                onChange={setTagFilterIds}
-                disabled={allTags.length === 0}
+              <input
+                type="text"
+                placeholder="Search protocol..."
+                value={searchQuery}
+                onChange={(e) => handleSearchInputChange(e.target.value)}
+                onKeyDown={handleSearchKeyDown}
+                onFocus={() => {
+                  if (searchQuery.trim()) setSearchOpen(true);
+                }}
+                className="pp-searchInput"
               />
+
+              {searchOpen && searchQuery.trim() && (
+                <div className="pp-searchDropdown" role="listbox" aria-label="Search results">
+                  {searchResults.length === 0 ? (
+                    <div className="pp-searchEmpty" role="status">
+                      No matches
+                    </div>
+                  ) : (
+                    searchResults.map((r, idx) => (
+                      <button
+                        key={r.id}
+                        type="button"
+                        role="option"
+                        aria-selected={idx === searchActiveIndex}
+                        className={[
+                          "pp-searchItem",
+                          idx === searchActiveIndex ? "is-active" : "",
+                        ].join(" ")}
+                        onMouseDown={(ev) => {
+                          // preventInputBlurBeforeClick
+                          ev.preventDefault();
+                        }}
+                        onMouseEnter={() => setSearchActiveIndex(idx)}
+                        onClick={() => {
+                          void jumpToSearchResult(r);
+                        }}
+                        title={`${r.id} — ${r.label}`}
+                      >
+                        <div className="pp-searchItemMain">
+                          <span className="pp-searchItemId">{r.id}</span>
+                          <span className="pp-searchItemLabel">{r.label}</span>
+                        </div>
+
+                        <span
+                          className="pp-searchItemStatus"
+                          style={getStatusStyle(r.status)}
+                        >
+                          {r.status ?? "—"}
+                        </span>
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
             </div>
 
-            <div className="pp-tagsActions">
+            <div className="pp-headerCard pp-tagsCard">
+              <div className="pp-tagsPicker">
+                <TagPicker
+                  allTags={allTags}
+                  selectedTagIds={tagFilterIds}
+                  onChange={setTagFilterIds}
+                  disabled={allTags.length === 0}
+                />
+              </div>
+
+              <div className="pp-tagsActions">
+                <button
+                  type="button"
+                  onClick={() => setTagManagerOpen(true)}
+                  className="pp-chipBtn"
+                  title="Manage tags"
+                >
+                  <TagsIcon className="pp-btnIcon" />
+                  <span>Tags</span>
+                </button>
+
+              </div>
+            </div>
+          </div>
+
+          <div className="pp-headerCenter">
+
+            <div className="pp-headerCard pp-actionsCard">
+              <div className="pp-protocolsTrigger">
+                <ProtocolsDrawer
+                  projectId={project?.id ? Number(project.id) : null}
+                  open={drawerOpen}
+                  onOpenChange={handleProtocolsDrawerOpenChange}
+                  onProtocolDoubleClick={handleAddProtocolFromDrawer}
+                  onProtocolHelpClick={(protocolClass, protocolLabel) => {
+                    // openProtocolHelpFromDrawer
+                    void openProtocolHelp(protocolClass, protocolLabel);
+                  }}
+                  portalContainer={drawerPortalContainer}
+                />
+              </div>
+
               <button
                 type="button"
-                onClick={() => setTagManagerOpen(true)}
+                onClick={handleOpenWorkflows}
+                disabled={workflowsLoading || !projectName}
                 className="pp-chipBtn"
-                title="Manage tags"
-              >
-                <TagsIcon className="pp-btnIcon" />
-                <span>Tags</span>
-              </button>
-              
-            </div>
-          </div>
-
-          <div className="pp-headerCard pp-actionsCard">
-            <div className="pp-protocolsTrigger">
-              <ProtocolsDrawer
-                projectId={project?.id ? Number(project.id) : null}
-                open={drawerOpen}
-                onOpenChange={handleProtocolsDrawerOpenChange}
-                onProtocolDoubleClick={handleAddProtocolFromDrawer}
-                onProtocolHelpClick={(protocolClass, protocolLabel) => {
-                  // openProtocolHelpFromDrawer
-                  void openProtocolHelp(protocolClass, protocolLabel);
-                }}
-                portalContainer={drawerPortalContainer}
-              />
-            </div>
-
-            <button
-              type="button"
-              onClick={handleOpenWorkflows}
-              disabled={workflowsLoading || !projectName}
-              className="pp-chipBtn"
-            >
-              <TreeIcon className="pp-btnIcon" />
-              <span>{workflowsLoading ? "Loading..." : "Workflows"}</span>
-            </button>
-          </div>
-
-          <div className="pp-headerCard pp-viewCard">
-            <span className="pp-viewLabel">View modes</span>
-
-            <div className="pp-toggleGroup" role="group" aria-label="View mode">
-              <button
-                type="button"
-                onClick={() => {
-                  setViewMode("hierarchical");
-                  setGraphDirection("TB");
-                }}
-                aria-pressed={viewMode === "hierarchical" && graphDirection === "TB"}
-                data-active={viewMode === "hierarchical" && graphDirection === "TB"}
-                className="pp-toggleBtn"
-                title="Tree TB"
               >
                 <TreeIcon className="pp-btnIcon" />
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setViewMode("hierarchical");
-                  setGraphDirection("LR");
-                }}
-                aria-pressed={viewMode === "hierarchical" && graphDirection === "LR"}
-                data-active={viewMode === "hierarchical" && graphDirection === "LR"}
-                className="pp-toggleBtn"
-                title="Tree LR"
-              >
-                <TreeIcon className="pp-btnIcon pp-rotateLeft" />
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setViewMode("grid")}
-                aria-pressed={viewMode === "grid"}
-                data-active={viewMode === "grid"}
-                className="pp-toggleBtn"
-                title="Grid"
-              >
-                <LayoutGrid className="pp-btnIcon" />
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setViewMode("table")}
-                aria-pressed={viewMode === "table"}
-                data-active={viewMode === "table"}
-                className="pp-toggleBtn"
-                title="Table"
-              >
-                <TableIcon className="pp-btnIcon" />
+                <span>{workflowsLoading ? "Loading..." : "Workflows"}</span>
               </button>
             </div>
           </div>
 
+          <div className="pp-headerRight">
+            <div className="pp-headerCard pp-viewCard">
+              <span className="pp-viewLabel">View modes</span>
 
+              <div className="pp-toggleGroup" role="group" aria-label="View mode">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setViewMode("hierarchical");
+                    setGraphDirection("TB");
+                  }}
+                  aria-pressed={viewMode === "hierarchical" && graphDirection === "TB"}
+                  data-active={viewMode === "hierarchical" && graphDirection === "TB"}
+                  className="pp-toggleBtn"
+                  title="Tree TB"
+                >
+                  <TreeIcon className="pp-btnIcon" />
+                </button>
 
+                <button
+                  type="button"
+                  onClick={() => {
+                    setViewMode("hierarchical");
+                    setGraphDirection("LR");
+                  }}
+                  aria-pressed={viewMode === "hierarchical" && graphDirection === "LR"}
+                  data-active={viewMode === "hierarchical" && graphDirection === "LR"}
+                  className="pp-toggleBtn"
+                  title="Tree LR"
+                >
+                  <TreeIcon className="pp-btnIcon pp-rotateLeft" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setViewMode("grid")}
+                  aria-pressed={viewMode === "grid"}
+                  data-active={viewMode === "grid"}
+                  className="pp-toggleBtn"
+                  title="Grid"
+                >
+                  <LayoutGrid className="pp-btnIcon" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setViewMode("table")}
+                  aria-pressed={viewMode === "table"}
+                  data-active={viewMode === "table"}
+                  className="pp-toggleBtn"
+                  title="Table"
+                >
+                  <TableIcon className="pp-btnIcon" />
+                </button>
+              </div>
+            </div>
+
+          </div>
         </div>
 
 

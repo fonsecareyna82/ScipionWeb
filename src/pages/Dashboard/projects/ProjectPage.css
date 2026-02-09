@@ -3,21 +3,20 @@
 @import "tailwindcss/utilities.css" layer(utilities);
 
 /* ─────────────────────────────────────────────
-   Theme tokens scoped to the widget root
-   (equivalent to @theme inline + :root + .dark)
+   themeTokensScopedToWidgetRoot
    ───────────────────────────────────────────── */
 
 .projectpage-widget-root {
-  /* core radius token */
+  /* coreRadiusToken */
   --radius: 0.625rem;
 
-  /* derived radius tokens */
+  /* derivedRadiusTokens */
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
 
-  /* light theme base */
+  /* lightThemeBase */
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -50,7 +49,7 @@
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
 
-  /* color-* aliases used by shadcn/tailwind */
+  /* colorAliasesUsedByShadcnTailwind */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -77,19 +76,14 @@
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-primary-foreground: var(
-    --sidebar-primary-foreground
-  );
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
   --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-accent-foreground: var(
-    --sidebar-accent-foreground
-  );
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
 }
 
-/* dark mode variant only inside the widget
-   (use .projectpage-widget-root.dark if you need it) */
+/* darkModeVariantInsideWidgetOnly */
 .projectpage-widget-root.dark {
   --background: #111827;
   --foreground: oklch(0.985 0 0);
@@ -125,7 +119,7 @@
 }
 
 /* ─────────────────────────────────────────────
-   Root wrapper: base look and layout
+   rootWrapperBaseLookAndLayout
    ───────────────────────────────────────────── */
 
 .projectpage-widget-root {
@@ -135,11 +129,37 @@
   color: var(--foreground);
   display: flex;
   flex-direction: column;
-  /* make sure the widget is visible even if host container has no explicit height */
   min-height: 400px;
+
+  /* projectPageBrandTokens */
+  --ppBrand: #3b82f6;
+  --ppBrandHover: #2563eb;
+  --ppRing: rgba(59, 130, 246, 0.35);
+  --ppShadowSm: 0 1px 2px rgba(15, 23, 42, 0.10);
+  --ppShadowMd: 0 10px 26px rgba(15, 23, 42, 0.18);
+
+  /* strongGrayInk */
+  --ppInk: #374151;
+  --ppInkMuted: #4b5563;
+
+  /* flowControlSizing */
+  --ppFlowBtnSize: 28px;
+  --ppFlowIconSize: 14px;
+
+  /* headerControlSizing */
+  --ppHeaderControlHeight: 34px;
+  --ppHeaderControlFontSize: 0.82rem;
 }
 
-/* isolate box sizing inside the widget */
+.projectpage-widget-root.dark {
+  --ppShadowSm: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --ppShadowMd: 0 12px 30px rgba(0, 0, 0, 0.45);
+
+  --ppInk: #d1d5db;
+  --ppInkMuted: #9ca3af;
+}
+
+/* isolateBoxSizingInsideWidget */
 .projectpage-widget-root *,
 .projectpage-widget-root *::before,
 .projectpage-widget-root *::after {
@@ -147,13 +167,13 @@
   border-color: var(--color-border, #e4e7ec);
 }
 
-/* button cursor behavior inside the widget */
+/* buttonCursorBehaviorInsideWidget */
 .projectpage-widget-root button:not(:disabled),
 .projectpage-widget-root [role="button"]:not(:disabled) {
   cursor: pointer;
 }
 
-/* main page wrapper (.h-app in ProjectPage) */
+/* mainPageWrapper */
 .projectpage-widget-root .h-app {
   height: 90vh;
   min-height: 90vh;
@@ -161,49 +181,45 @@
   flex-direction: column;
 }
 
-/* safety for .min-h-0 usage */
+/* safetyForMinH0 */
 .projectpage-widget-root .h-app.min-h-0 {
   min-height: 0;
 }
 
 /* ─────────────────────────────────────────────
-   Multi-Form Dock (right side)
+   multiFormDockRightSide
    ───────────────────────────────────────────── */
 
-/* Wrapper absoluto pegado a la derecha, sin capturar eventos */
 .projectpage-widget-root .dock-wrapper {
   position: absolute;
-  inset-block: 0;             /* top: 0; bottom: 0; */
-  inset-inline-end: 0;        /* right: 0; */
+  inset-block: 0;
+  inset-inline-end: 0;
   display: flex;
-  justify-content: flex-end;  /* empuja el dock al borde derecho */
+  justify-content: flex-end;
   width: 100%;
-  pointer-events: none;       /* importante: deja pasar los clicks al grafo */
+  pointer-events: none;
 }
 
-/* Dock horizontal que contiene todos los ProtocolForm */
 .projectpage-widget-root .dock-scroll {
   display: flex;
-  flex-direction: row-reverse;  /* los formularios empiezan desde la derecha */
+  flex-direction: row-reverse;
   flex-wrap: nowrap;
   align-items: stretch;
   gap: 0.5rem;
   padding: 0.5rem;
 
-  /* hasta 2 formularios visibles de 700px cada uno */
   max-width: min(1450px, 100vw);
   width: auto;
 
   overflow-x: auto;
   overflow-y: hidden;
 
-  pointer-events: auto;        /* aquí SÍ capturamos eventos para poder scrollear */
+  pointer-events: auto;
 
   background: transparent;
   border: none;
 }
 
-/* Cada ProtocolForm ocupa 700px dentro del dock */
 .projectpage-widget-root .dock-panel {
   flex: 0 0 700px;
   min-width: 700px;
@@ -218,26 +234,16 @@
   box-shadow: none;
   padding: 0;
 
-  pointer-events: auto;        /* contenido interactivo */
+  pointer-events: auto;
 }
 
-/* Asegura que el contenido del panel usa todo el ancho/alto */
 .projectpage-widget-root .dock-panel > * {
   width: 100%;
   height: 100%;
 }
 
-
 /* ─────────────────────────────────────────────
-   Table status highlight (running)
-   ───────────────────────────────────────────── */
-
-.projectpage-widget-root .pulsing-table {
-  animation: projectpage-widget-pulse 1.3s ease-in-out infinite;
-}
-
-/* ─────────────────────────────────────────────
-   Refresh button (table header and toolbar)
+   refreshButton
    ───────────────────────────────────────────── */
 
 .projectpage-widget-root .refresh-btn {
@@ -257,7 +263,7 @@
 }
 
 .projectpage-widget-root .refresh-btn:hover:not(:disabled) {
-  background-color: oklch(0.97 0 0); /* light gray */
+  background-color: oklch(0.97 0 0);
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
   transform: translateY(-0.5px);
 }
@@ -269,7 +275,7 @@
 }
 
 /* ─────────────────────────────────────────────
-   Scroll helpers used by the widget
+   scrollHelpers
    ───────────────────────────────────────────── */
 
 .projectpage-widget-root .no-scrollbar::-webkit-scrollbar {
@@ -293,7 +299,7 @@
 }
 
 /* ─────────────────────────────────────────────
-   Pulse animation (used by pulsing-table)
+   pulsingTableHalo
    ───────────────────────────────────────────── */
 
 .projectpage-widget-root .pulsing-table {
@@ -338,45 +344,49 @@
   }
 }
 
-.projectpage-widget-root {
-  --ppBrand: #3b82f6;
-  --ppBrandHover: #2563eb;
-  --ppRing: rgba(59, 130, 246, 0.35);
-  --ppShadowSm: 0 1px 2px rgba(15, 23, 42, 0.10);
-  --ppShadowMd: 0 10px 26px rgba(15, 23, 42, 0.18);
+/* ─────────────────────────────────────────────
+   headerLayout
+   ───────────────────────────────────────────── */
 
-  /* strongGrayInk */
-  --ppInk: #374151;        /* gray-700 (clearly gray, not black) */
-  --ppInkMuted: #4b5563;   /* gray-600 */
-
-  /* flowControlSizing */
-  --ppFlowBtnSize: 28px;
-  --ppFlowIconSize: 14px;
-}
-
-.projectpage-widget-root.dark {
-  --ppShadowSm: 0 1px 2px rgba(0, 0, 0, 0.35);
-  --ppShadowMd: 0 12px 30px rgba(0, 0, 0, 0.45);
-
-  --ppInk: #d1d5db;       /* gray-300 */
-  --ppInkMuted: #9ca3af;  /* gray-400 */
-}
-
-/* headerLayout */
 .projectpage-widget-root .pp-headerRow {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  padding: 0.25rem;
+  column-gap: 12px;
 }
 
-/* search */
+/* doNotStretchHeaderControls */
+.projectpage-widget-root .pp-headerLeft,
+.projectpage-widget-root .pp-headerCenter,
+.projectpage-widget-root .pp-headerRight {
+  align-items: center;
+}
+
+.projectpage-widget-root .pp-headerLeft {
+  display: flex;
+  gap: 12px;
+  min-width: 0;
+}
+
+.projectpage-widget-root .pp-headerCenter {
+  justify-self: center;
+  display: flex;
+}
+
+.projectpage-widget-root .pp-headerRight {
+  justify-self: end;
+  display: flex;
+}
+
+/* ─────────────────────────────────────────────
+   searchBox
+   ───────────────────────────────────────────── */
+
 .projectpage-widget-root .pp-searchBox {
-  position: relative;
-  flex: 1 1 auto;
-  max-width: 420px;
+  width: clamp(280px, 26vw, 420px);
   min-width: 260px;
+  margin-left: 3px;
+  position: relative;
 }
 
 .projectpage-widget-root .pp-searchIconWrap {
@@ -388,6 +398,7 @@
   align-items: center;
   pointer-events: none;
   color: var(--ppInkMuted);
+  margin-bottom: 0;
 }
 
 .projectpage-widget-root .pp-searchIcon {
@@ -399,7 +410,7 @@
 
 .projectpage-widget-root .pp-searchInput {
   width: 100%;
-  height: 38px;
+  height: var(--ppHeaderControlHeight);
   padding: 0 0.75rem 0 2.5rem;
   border-radius: 0.625rem;
   border: 1px solid var(--color-border, #e5e7eb);
@@ -407,7 +418,7 @@
   color: var(--ppInk) !important;
   box-shadow: var(--ppShadowSm);
   outline: none;
-  font-size: 0.875rem;
+  font-size: var(--ppHeaderControlFontSize);
   line-height: 1.2;
   -webkit-appearance: none;
   appearance: none;
@@ -416,7 +427,6 @@
 .projectpage-widget-root .pp-searchInput::placeholder {
   color: rgba(75, 85, 99, 0.78);
 }
-
 .projectpage-widget-root.dark .pp-searchInput::placeholder {
   color: rgba(156, 163, 175, 0.80);
 }
@@ -426,28 +436,33 @@
   box-shadow: 0 0 0 3px var(--ppRing), var(--ppShadowSm);
 }
 
-/* headerCards */
+/* ─────────────────────────────────────────────
+   headerCards
+   ───────────────────────────────────────────── */
+
 .projectpage-widget-root .pp-headerCard {
   display: inline-flex;
   align-items: center;
-  gap: 0.6rem;
-  padding: 0.45rem 0.55rem;
+  gap: 0.5rem;
+  padding: 0.28rem 0.45rem;
   border: 1px solid var(--color-border, #e5e7eb);
   border-radius: 0.75rem;
   background-color: var(--card) !important;
   box-shadow: var(--ppShadowSm);
   color: var(--ppInk) !important;
+  margin-bottom: 0.2rem;
 }
 
-/* viewModeLabel */
 .projectpage-widget-root .pp-viewLabel {
   font-size: 0.8rem;
-  opacity: 1;
   color: var(--ppInk) !important;
   white-space: nowrap;
 }
 
-/* buttonsBase (no hover grow) */
+/* ─────────────────────────────────────────────
+   buttonsBase
+   ───────────────────────────────────────────── */
+
 .projectpage-widget-root .pp-chipBtn,
 .projectpage-widget-root .pp-toggleBtn,
 .projectpage-widget-root .pp-flowControlBtn,
@@ -475,8 +490,8 @@
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  padding: 0.4rem 0.6rem;
-  font-size: 0.8rem;
+  padding: 0.28rem 0.55rem;
+  font-size: 0.78rem;
   white-space: nowrap;
 }
 
@@ -512,6 +527,7 @@
   box-shadow: none;
 }
 
+/* hoverOnlyBorder */
 .projectpage-widget-root .pp-chipBtn:hover:not(:disabled),
 .projectpage-widget-root .pp-flowControlBtn:hover:not(:disabled),
 .projectpage-widget-root .pp-protocolsTrigger :where(button, [role="button"]):hover:not(:disabled) {
@@ -519,7 +535,6 @@
   box-shadow: none;
 }
 
-/* inactiveToggleHoverOnlyBorder */
 .projectpage-widget-root .pp-toggleBtn:hover:not(:disabled):not([data-active="true"]) {
   border-color: rgba(59, 130, 246, 0.45) !important;
   background-color: rgba(148, 163, 184, 0.14) !important;
@@ -527,7 +542,6 @@
   box-shadow: none;
 }
 
-/* activeToggleHoverKeepBlueLighter */
 .projectpage-widget-root .pp-toggleBtn[data-active="true"]:hover:not(:disabled) {
   background-color: #60a5fa !important;
   border-color: #3b82f6 !important;
@@ -552,7 +566,10 @@
   transform: rotate(-90deg);
 }
 
-/* reactFlowControlsContainer */
+/* ─────────────────────────────────────────────
+   reactFlowControls
+   ───────────────────────────────────────────── */
+
 .projectpage-widget-root .pp-flowControlsWrap {
   position: absolute;
   top: 1rem;
@@ -571,7 +588,6 @@
   box-shadow: var(--ppShadowMd);
 }
 
-/* flowControlButtonsSmaller */
 .projectpage-widget-root .pp-flowControlBtn {
   width: var(--ppFlowBtnSize);
   height: var(--ppFlowBtnSize);
@@ -580,6 +596,7 @@
   align-items: center;
   justify-content: center;
   color: var(--ppInk) !important;
+  position: relative;
 }
 
 .projectpage-widget-root .pp-flowControlBtn svg {
@@ -587,7 +604,21 @@
   height: var(--ppFlowIconSize);
 }
 
-/* tableViewShell */
+.projectpage-widget-root .pp-flowControlBtn[aria-pressed="true"]::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow:
+    inset 0 3px 0 rgba(255, 255, 255, 0.10),
+    inset 0 -2px 6px rgba(0, 0, 0, 0.55);
+}
+
+/* ─────────────────────────────────────────────
+   tableViewShell
+   ───────────────────────────────────────────── */
+
 .projectpage-widget-root .pp-hidden {
   display: none !important;
 }
@@ -601,7 +632,6 @@
   background: transparent;
 }
 
-/* tableToolbar */
 .projectpage-widget-root .pp-tableToolbar {
   display: flex;
   justify-content: flex-end;
@@ -619,7 +649,7 @@
   border-radius: 9999px;
   border: 1px solid var(--color-border, #e5e7eb);
   background: var(--card);
-  color: var(--ppInk); /* gray ink (not black) */
+  color: var(--ppInk);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -665,10 +695,7 @@
   overflow: hidden;
 }
 
-
-/*-------------------*/
 /* tableBase */
-/*-------------------*/
 .projectpage-widget-root .pp-table {
   width: 100%;
   border-collapse: separate !important;
@@ -682,7 +709,6 @@
   color: var(--ppInk);
 }
 
-/* tableCellBgReset (prevents host/Bootstrap hover from painting cells) */
 .projectpage-widget-root .pp-table .pp-td,
 .projectpage-widget-root .pp-table .pp-th {
   background-color: transparent !important;
@@ -695,7 +721,6 @@
   z-index: 2;
   background: #e5e7eb;
 }
-
 .projectpage-widget-root.dark .pp-thead {
   background: #111827;
 }
@@ -726,26 +751,22 @@
 .projectpage-widget-root .pp-tr + .pp-tr .pp-td {
   border-top: 1px solid var(--color-border, #e5e7eb);
 }
-
 .projectpage-widget-root.dark .pp-tr + .pp-tr .pp-td {
   border-top: 1px solid rgba(255, 255, 255, 0.10);
 }
 
-/* optionalHover: keep it very subtle to avoid "weird" effects */
-/* applyToRowAndCells so the highlight does not require "moving the mouse" */
 .projectpage-widget-root .pp-tr:hover,
 .projectpage-widget-root .pp-tr:hover > .pp-td,
 .projectpage-widget-root .pp-tr:hover > * {
   background: rgba(59, 130, 246, 0.05) !important;
 }
-
 .projectpage-widget-root.dark .pp-tr:hover,
 .projectpage-widget-root.dark .pp-tr:hover > .pp-td,
 .projectpage-widget-root.dark .pp-tr:hover > * {
   background: rgba(59, 130, 246, 0.10) !important;
 }
 
-/* highlightedRow: must win over host cell-hover rules */
+/* highlightedRow */
 .projectpage-widget-root .pp-trHighlighted,
 .projectpage-widget-root .pp-trHighlighted > .pp-td,
 .projectpage-widget-root .pp-trHighlighted > *,
@@ -754,7 +775,6 @@
 .projectpage-widget-root .pp-trHighlighted:hover > * {
   background: rgba(252, 206, 98, 0.25) !important;
 }
-
 .projectpage-widget-root.dark .pp-trHighlighted,
 .projectpage-widget-root.dark .pp-trHighlighted > .pp-td,
 .projectpage-widget-root.dark .pp-trHighlighted > *,
@@ -791,7 +811,6 @@
   color: var(--ppInk);
   font-size: 0.75rem;
 }
-
 .projectpage-widget-root.dark .pp-idPill {
   color: var(--ppInk);
   background: rgba(148, 163, 184, 0.16);
@@ -814,10 +833,9 @@
   padding: 0.25rem 0.55rem;
   border-radius: 0.55rem;
   border: 1px solid rgba(15, 23, 42, 0.10);
-  color: #1f2937; /* gray-800 (intentional for contrast with status bg colors) */
+  color: #1f2937;
   white-space: nowrap;
 }
-
 .projectpage-widget-root.dark .pp-statusBadge {
   color: #111827;
   border: 1px solid rgba(255, 255, 255, 0.10);
@@ -867,36 +885,16 @@
 }
 
 @keyframes ppRunningHalo {
-  0% {
-    transform: scale(0.98);
-    opacity: 0.55;
-  }
-  45% {
-    transform: scale(1.05);
-    opacity: 0.95;
-  }
-  100% {
-    transform: scale(0.98);
-    opacity: 0.55;
-  }
+  0% { transform: scale(0.98); opacity: 0.55; }
+  45% { transform: scale(1.05); opacity: 0.95; }
+  100% { transform: scale(0.98); opacity: 0.55; }
 }
 
 @keyframes ppRunningSheen {
-  0% {
-    transform: translateX(-70%);
-    opacity: 0.00;
-  }
-  35% {
-    opacity: 0.55;
-  }
-  70% {
-    transform: translateX(70%);
-    opacity: 0.00;
-  }
-  100% {
-    transform: translateX(70%);
-    opacity: 0.00;
-  }
+  0% { transform: translateX(-70%); opacity: 0.00; }
+  35% { opacity: 0.55; }
+  70% { transform: translateX(70%); opacity: 0.00; }
+  100% { transform: translateX(70%); opacity: 0.00; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -905,7 +903,6 @@
     animation: none !important;
   }
 }
-
 
 /* progress */
 .projectpage-widget-root .pp-progressWrap {
@@ -983,10 +980,9 @@
   color: #60a5fa;
 }
 
-
-/* ---------------------------------------------
-   Portals inside widget: Dialog isolation
-   --------------------------------------------- */
+/* ─────────────────────────────────────────────
+   portalAndDialogIsolation
+   ───────────────────────────────────────────── */
 
 .projectpage-widget-root .pp-portalRoot {
   position: relative;
@@ -1005,15 +1001,12 @@
   background: rgba(0, 0, 0, 0.55);
 }
 
-/* Content shell */
-/* Ensure dialog card styles are not overridden by host CSS */
+/* ContentShell */
 .projectpage-widget-root .pp-dialogContent {
   background: var(--card) !important;
   color: var(--foreground) !important;
-
   border: 1px solid var(--color-border, #e5e7eb) !important;
   border-radius: 1rem !important;
-
   box-shadow: var(--ppShadowMd, 0 10px 26px rgba(15, 23, 42, 0.18)) !important;
 }
 
@@ -1022,7 +1015,7 @@
   border-color: rgba(255, 255, 255, 0.12) !important;
 }
 
-/* Close button */
+/* CloseButton */
 .projectpage-widget-root .pp-dialogClose {
   -webkit-appearance: none;
   appearance: none;
@@ -1043,14 +1036,93 @@
   color: var(--ppInk, #d1d5db);
 }
 
-/* Prevent host button rules from winning inside dialog */
 .projectpage-widget-root .pp-dialogContent :where(button, input, select, textarea) {
   font: inherit;
 }
 
-/* ---------------------------------------------
-   Canvas context menu isolation
-   --------------------------------------------- */
+/* dialogFooterButtons */
+.projectpage-widget-root .pp-dialogBtn {
+  -webkit-appearance: none !important;
+  appearance: none !important;
+
+  font: inherit !important;
+  font-size: 0.875rem !important;
+  line-height: 1.1 !important;
+
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 0.4rem !important;
+
+  min-height: 36px !important;
+  padding: 0.5rem 0.9rem !important;
+
+  border-radius: 0.625rem !important;
+  border: 1px solid var(--color-border, #e5e7eb) !important;
+
+  background: rgba(148, 163, 184, 0.14) !important;
+  color: var(--ppInk, #374151) !important;
+
+  box-shadow: none !important;
+  text-decoration: none !important;
+  white-space: nowrap !important;
+
+  transition: background-color 140ms ease, border-color 140ms ease !important;
+}
+
+.projectpage-widget-root .pp-dialogBtn:hover:not(:disabled) {
+  border-color: rgba(59, 130, 246, 0.35) !important;
+}
+
+.projectpage-widget-root .pp-dialogBtn:disabled {
+  opacity: 0.6 !important;
+  cursor: not-allowed !important;
+}
+
+.projectpage-widget-root .pp-dialogBtnPrimary {
+  background: #2563eb !important;
+  border-color: #1d4ed8 !important;
+  color: #ffffff !important;
+}
+
+.projectpage-widget-root .pp-dialogBtnPrimary:hover:not(:disabled) {
+  background: #1d4ed8 !important;
+  border-color: #1e40af !important;
+}
+
+.projectpage-widget-root.dark .pp-dialogBtn {
+  background: rgba(148, 163, 184, 0.16) !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  color: var(--ppInk, #d1d5db) !important;
+}
+
+/* dialogTitleReset */
+.projectpage-widget-root .pp-dialogContent h1,
+.projectpage-widget-root .pp-dialogContent h2,
+.projectpage-widget-root .pp-dialogContent h3 {
+  margin: 0 !important;
+  font-size: 16px !important;
+  line-height: 1.25 !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.2px !important;
+  color: inherit !important;
+}
+
+.projectpage-widget-root .pp-dialogContent p {
+  margin: 0 !important;
+}
+
+.projectpage-widget-root .pp-dialogTitle {
+  margin: 0 !important;
+  font-size: 16px !important;
+  line-height: 1.25 !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.2px !important;
+}
+
+/* ─────────────────────────────────────────────
+   canvasContextMenuIsolation
+   ───────────────────────────────────────────── */
 
 .projectpage-widget-root .pp-canvasMenu {
   position: absolute;
@@ -1127,105 +1199,17 @@
   padding: 0;
 }
 
-.projectpage-widget-root .pp-portalRoot {
-  position: relative;
-  z-index: 0;
-}
+/* ─────────────────────────────────────────────
+   searchDropdownUi
+   ───────────────────────────────────────────── */
 
-/* dialogFooterButtons: consistent look, ignore host (Bootstrap, etc.) */
-.projectpage-widget-root .pp-dialogBtn {
-  -webkit-appearance: none !important;
-  appearance: none !important;
-
-  font: inherit !important;
-  font-size: 0.875rem !important;
-  line-height: 1.1 !important;
-
-  display: inline-flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  gap: 0.4rem !important;
-
-  min-height: 36px !important;
-  padding: 0.5rem 0.9rem !important;
-
-  border-radius: 0.625rem !important;
-  border: 1px solid var(--color-border, #e5e7eb) !important;
-
-  background: rgba(148, 163, 184, 0.14) !important;
-  color: var(--ppInk, #374151) !important;
-
-  box-shadow: none !important;
-  text-decoration: none !important;
-  white-space: nowrap !important;
-
-  transition: background-color 140ms ease, border-color 140ms ease !important;
-}
-
-.projectpage-widget-root .pp-dialogBtn:hover:not(:disabled) {
-  border-color: rgba(59, 130, 246, 0.35) !important;
-}
-
-.projectpage-widget-root .pp-dialogBtn:disabled {
-  opacity: 0.6 !important;
-  cursor: not-allowed !important;
-}
-
-/* primary variant */
-.projectpage-widget-root .pp-dialogBtnPrimary {
-  background: #2563eb !important;
-  border-color: #1d4ed8 !important;
-  color: #ffffff !important;
-}
-
-.projectpage-widget-root .pp-dialogBtnPrimary:hover:not(:disabled) {
-  background: #1d4ed8 !important;
-  border-color: #1e40af !important;
-}
-
-/* dark mode adjustments */
-.projectpage-widget-root.dark .pp-dialogBtn {
-  background: rgba(148, 163, 184, 0.16) !important;
-  border-color: rgba(255, 255, 255, 0.12) !important;
-  color: var(--ppInk, #d1d5db) !important;
-}
-
-/* dialogTitleReset: prevent host (Bootstrap) from resizing h2 inside dialog */
-.projectpage-widget-root .pp-dialogContent h1,
-.projectpage-widget-root .pp-dialogContent h2,
-.projectpage-widget-root .pp-dialogContent h3 {
-  margin: 0 !important;
-  font-size: 16px !important;
-  line-height: 1.25 !important;
-  font-weight: 600 !important;
-  letter-spacing: 0.2px !important;
-  color: inherit !important;
-}
-
-/* dialogDescriptionReset */
-.projectpage-widget-root .pp-dialogContent p {
-  margin: 0 !important;
-}
-
-.projectpage-widget-root .pp-dialogTitle {
-  margin: 0 !important;
-  font-size: 16px !important;
-  line-height: 1.25 !important;
-  font-weight: 600 !important;
-  letter-spacing: 0.2px !important;
-}
-/* searchDropdownUi */
-.pp-searchBox {
-  position: relative;
-}
-
-.pp-searchDropdown {
+.projectpage-widget-root .pp-searchDropdown {
   position: absolute;
   top: calc(100% + 6px);
   left: 0;
   right: 0;
   z-index: 120;
-  max-height: 320px;
+  max-height: 220px;
   overflow: auto;
   border-radius: 12px;
   border: 1px solid rgba(0, 0, 0, 0.12);
@@ -1239,26 +1223,26 @@
   box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
 }
 
-.pp-searchEmpty {
-  padding: 10px 12px;
-  font-size: 12px;
+.projectpage-widget-root .pp-searchEmpty {
+  padding: 8px 10px;
+  font-size: 11px;
   opacity: 0.8;
 }
 
-.pp-searchItem {
+.projectpage-widget-root .pp-searchItem {
   width: 100%;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 10px 12px;
+  padding: 7px 10px;
   text-align: left;
   border: 0;
   background: transparent;
   cursor: pointer;
 }
 
-.pp-searchItem.is-active {
+.projectpage-widget-root .pp-searchItem.is-active {
   background: rgba(0, 112, 243, 0.10);
 }
 
@@ -1266,22 +1250,26 @@
   background: rgba(56, 189, 248, 0.14);
 }
 
-.pp-searchItemMain {
+.projectpage-widget-root .pp-searchItemMain {
   display: flex;
   align-items: baseline;
   gap: 10px;
   min-width: 0;
 }
 
-.pp-searchItemId {
-  font-size: 12px;
+.projectpage-widget-root .pp-searchItemId,
+.projectpage-widget-root .pp-searchItemLabel {
+  font-size: 11.5px;
+  line-height: 1.15;
+}
+
+.projectpage-widget-root .pp-searchItemId {
   font-weight: 600;
   opacity: 0.85;
   white-space: nowrap;
 }
 
-.pp-searchItemLabel {
-  font-size: 12px;
+.projectpage-widget-root .pp-searchItemLabel {
   opacity: 0.9;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1289,32 +1277,18 @@
   min-width: 0;
 }
 
-.pp-searchItemStatus {
-  font-size: 11px;
-  padding: 2px 8px;
+.projectpage-widget-root .pp-searchItemStatus {
+  font-size: 10px;
+  padding: 1px 6px;
   border-radius: 999px;
   white-space: nowrap;
 }
 
-.pp-flowControlBtn {
-  position: relative;
-}
+/* ─────────────────────────────────────────────
+   protocolFormHeaderInDialog
+   ───────────────────────────────────────────── */
 
-.pp-flowControlBtn[aria-pressed="true"]::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  pointer-events: none;
-
-  box-shadow:
-    inset 0 3px 0 rgba(255, 255, 255, 0.10),
-    inset 0 -2px 6px rgba(0, 0, 0, 0.55);
-}
-
-
-/* Used by DialogTitle to mimic the ProtocolForm header look */
-.pp-formHeader {
+.projectpage-widget-root .pp-formHeader {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1324,25 +1298,30 @@
   box-sizing: border-box;
 }
 
-.pp-helpDialog > button[aria-label="Close"] {
+.projectpage-widget-root .pp-helpDialog > button[aria-label="Close"] {
   color: #fff !important;
 }
 
-.pp-helpDialog > button[aria-label="Close"]:hover {
+.projectpage-widget-root .pp-helpDialog > button[aria-label="Close"]:hover {
   background-color: rgba(255, 255, 255, 0.10) !important;
 }
 
-/* ProjectPage.css */
-.pp-tagsPicker {
+/* ─────────────────────────────────────────────
+   tagPickerSizingAndDropdownCompact
+   ───────────────────────────────────────────── */
+
+/* tagsPickerShell */
+.projectpage-widget-root .pp-tagsPicker {
   width: 300px;
   min-width: 200px;
   max-width: 560px;
 }
 
-.pp-tagsPicker .MuiInputBase-root {
+/* inputRootCompact (avoid stretching and reduce height) */
+.projectpage-widget-root .pp-tagsPicker .MuiInputBase-root {
   width: 100%;
-  height: 100%;
-  padding: 0.25rem 0.75rem;
+  padding: 0 0.6rem;
+  min-height: var(--ppHeaderControlHeight);
   border-radius: 0.625rem;
   border: 1px solid var(--color-border, #e5e7eb);
   background-color: var(--card) !important;
@@ -1350,19 +1329,94 @@
   box-shadow: var(--ppShadowSm);
 }
 
-/* tagPickerSizing */
-.pp-tagsPicker .MuiAutocomplete-inputRoot {
-  min-height: 40px;
-  padding-top: 6px;
-  padding-bottom: 6px;
+/* muiAutocompleteInputRootCompact */
+.projectpage-widget-root .pp-tagsPicker .MuiAutocomplete-inputRoot {
+  min-height: var(--ppHeaderControlHeight);
+  padding-top: 2px;
+  padding-bottom: 2px;
 }
 
-.pp-tagsPicker .MuiChip-root {
-  height: 28px;
-  font-size: 0.85rem;
+/* chipCompact */
+.projectpage-widget-root .pp-tagsPicker .MuiChip-root {
+  height: 22px;
+  font-size: 0.78rem;
 }
 
-.pp-tagsPicker .MuiChip-label {
-  padding-left: 10px;
-  padding-right: 10px;
+.projectpage-widget-root .pp-tagsPicker .MuiChip-label {
+  padding-left: 8px;
+  padding-right: 8px;
+}
+
+/* tagPickerDropdownCompact (this is the annoying "Filter tags" dropdown height) */
+.projectpage-widget-root .pp-tagsPicker .MuiAutocomplete-popper .MuiPaper-root {
+  max-height: 200px;
+  overflow: hidden;
+}
+
+.projectpage-widget-root .pp-tagsPicker .MuiAutocomplete-listbox {
+  max-height: 200px;
+  padding: 4px;
+  overflow-y: auto;
+}
+
+.projectpage-widget-root .pp-tagsPicker .MuiAutocomplete-option {
+  min-height: 28px;
+  padding: 5px 10px;
+  font-size: 0.82rem;
+  line-height: 1.15;
+}
+
+/* tagPickerDropdownUltraCompact */
+.projectpage-widget-root {
+  --ppTagDropdownMaxHeight: 100px; /* reduce this: 120px looks even tighter */
+  --ppTagOptionMinHeight: 24px;
+  --ppTagOptionFontSize: 0.78rem;
+}
+
+/* A) make the "Filter tags" dropdown shorter */
+.projectpage-widget-root .pp-tagsPicker .MuiAutocomplete-popper .MuiPaper-root {
+  max-height: calc(var(--ppTagDropdownMaxHeight) + 36px) !important; /* paper cap */
+  overflow: hidden !important; /* listbox handles scrolling */
+}
+
+.projectpage-widget-root .pp-tagsPicker .MuiAutocomplete-listbox {
+  max-height: var(--ppTagDropdownMaxHeight) !important;
+  padding: 2px !important; /* less vertical padding */
+  overflow-y: auto !important;
+}
+
+.projectpage-widget-root .pp-tagsPicker .MuiAutocomplete-option {
+  min-height: var(--ppTagOptionMinHeight) !important;
+  padding: 4px 10px !important; /* tighter rows */
+  font-size: var(--ppTagOptionFontSize) !important;
+  line-height: 1.1 !important;
+}
+
+/* optional: reduce the "no options" / loading paddings inside dropdown */
+.projectpage-widget-root .pp-tagsPicker .MuiAutocomplete-noOptions,
+.projectpage-widget-root .pp-tagsPicker .MuiAutocomplete-loading {
+  padding: 6px 10px !important;
+  font-size: 0.75rem !important;
+}
+
+/* B) keep the header panel from growing taller when multiple tags are selected */
+.projectpage-widget-root .pp-tagsPicker .MuiAutocomplete-inputRoot {
+  flex-wrap: nowrap !important;  /* do not wrap chips into new rows */
+  overflow: hidden !important;   /* hide extra chips instead of growing height */
+  align-items: center !important;
+}
+
+/* shrink chips even more (helps keep everything short) */
+.projectpage-widget-root .pp-tagsPicker .MuiChip-root {
+  height: 20px !important;
+  font-size: 0.76rem !important;
+  max-width: 140px;              /* prevent huge chips from expanding */
+}
+
+.projectpage-widget-root .pp-tagsPicker .MuiChip-label {
+  padding-left: 7px !important;
+  padding-right: 7px !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
 }

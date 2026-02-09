@@ -126,7 +126,7 @@ export default function TagPicker({
                 backgroundColor: color,
                 color: "#0b1220",
                 fontWeight: 700,
-                border: "1px solid rgba(15,23,42,0.18)",
+                border: "1px solid rgba(42, 23, 15, 0.18)",
                 height: 22,
                 "& .MuiChip-label": { px: 1, fontSize: 12 },
               }}
@@ -151,7 +151,7 @@ export default function TagPicker({
               <Box
                 sx={{
                   width: 12,
-                  height: 12,
+                  height: 10,
                   borderRadius: "999px",
                   backgroundColor: color,
                   border: "1px solid rgba(15,23,42,0.22)",
@@ -166,7 +166,7 @@ export default function TagPicker({
                   overflow: "hidden",
                   textOverflow: "ellipsis",
                   whiteSpace: "nowrap",
-                  fontWeight: 600,
+                  fontSize: 13,
                 }}
               >
                 {String(option.title ?? option.id)}
@@ -188,7 +188,7 @@ export default function TagPicker({
       }}
       ListboxProps={{
         style: {
-          maxHeight: 280,
+          maxHeight: "var(--ppTagDropdownMaxHeight, 100px)",
         },
       }}
       renderInput={(params) => (
@@ -205,12 +205,15 @@ export default function TagPicker({
 
         // inputHeightDensity
         "& .MuiInputBase-root": {
-          minHeight: 34,
-          paddingTop: "2px",
-          paddingBottom: "2px",
+          minHeight: 1,
+          maxHeight: 3,
+          paddingTop: "0px",
+          paddingBottom: "0px",
+          marginTop: "-1px", // to visually center the input vertically within the smaller height
+          marginBottom: "-2px", // to visually center the input vertically within the smaller height
         },
         "& .MuiInputBase-input": {
-          fontSize: 13,
+          fontSize: 10,
           paddingTop: "6px",
           paddingBottom: "6px",
         },
@@ -221,7 +224,7 @@ export default function TagPicker({
 
         // optionsRowCompact
         "& .MuiAutocomplete-option": {
-          minHeight: 34,
+          minHeight: 5,
         },
       }}
     />

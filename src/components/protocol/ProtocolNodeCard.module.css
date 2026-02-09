@@ -549,7 +549,7 @@
   border: 1px solid rgba(15, 23, 42, 0.18);
   font-size: 30px;        /* bigger */
   line-height: 22px;      /* bigger */
-  color: #0b1220;
+  color: #fdfdfd;
 
   /* optional extra punch if still small due to zoom */
   transform: scale(1.06);

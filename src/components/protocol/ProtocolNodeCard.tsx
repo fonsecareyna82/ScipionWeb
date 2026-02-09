@@ -7,7 +7,7 @@ import type {
   SetStateAction,
 } from "react";
 
-import { Handle, Position } from "reactflow";
+import { Handle, Position, useReactFlow } from "reactflow";
 import styles from "./ProtocolNodeCard.module.css";
 
 import { useDrag } from "./DragContext";
@@ -623,6 +623,79 @@ export default function ProtocolNodeCard({
     },
     [data.projectId, data.id, isProjectNode]
   );
+
+    const reactFlow = useReactFlow();
+
+  type TagTarget = {
+    protocolId: string;
+    projectId: string | number | undefined;
+    rawTags: unknown;
+  };
+
+  const getSelectedTagTargets = useCallback((): TagTarget[] => {
+    // getSelectedTagTargets
+    try {
+      const nodes = reactFlow.getNodes?.() ?? [];
+
+      const selectedNodes = nodes.filter((n) => (n as any)?.selected === true);
+
+      const baseNodes =
+        selectedNodes.length > 0
+          ? selectedNodes
+          : nodes.filter((n) => String(n.id) === String(data.id));
+
+      return baseNodes
+        .filter((n) => String(n.id) !== "PROJECT")
+        .map((n) => ({
+          protocolId: String(n.id),
+          projectId: (n as any)?.data?.projectId ?? data.projectId,
+          rawTags: (n as any)?.data?.tags,
+        }));
+    } catch {
+      return [
+        {
+          protocolId: String(data.id),
+          projectId: data.projectId,
+          rawTags: (data as any)?.tags,
+        },
+      ];
+    }
+  }, [reactFlow, data.id, data.projectId, data]);
+
+  const toggleTagSelectionForSelection = useCallback(
+    (tagId: string) => {
+      // toggleTagSelectionForSelection
+      if (isProjectNode) return;
+
+      const defs = loadTagsFromStorage();
+      const normalizedTagId = normalizeTagIdCandidate(tagId, defs);
+      if (!normalizedTagId) return;
+
+      const targets = getSelectedTagTargets();
+      if (targets.length === 0) return;
+
+      const currentByTarget = targets.map((t) => ({
+        ...t,
+        current: readAssignedTagIds(t.projectId, t.protocolId, t.rawTags, defs),
+      }));
+
+      const allHaveTag = currentByTarget.every((t) =>
+        t.current.some((x) => String(x) === String(normalizedTagId))
+      );
+
+      for (const t of currentByTarget) {
+        const next = allHaveTag
+          ? t.current.filter((x) => String(x) !== String(normalizedTagId))
+          : uniqStrings([...t.current, normalizedTagId]);
+
+        writeAssignedTagIds(t.projectId, t.protocolId, next);
+      }
+
+      window.dispatchEvent(new Event("scipionTagsChanged"));
+    },
+    [getSelectedTagTargets, isProjectNode]
+  );
+
 
   const handleManageTags = useCallback(() => {
     // openTagsManager
@@ -1641,7 +1714,7 @@ export default function ProtocolNodeCard({
                       // toggleTagSelectionKeepMenuOpen
                       e.preventDefault();
                       e.stopPropagation();
-                      toggleTagSelection(String(tag.id));
+                      toggleTagSelectionForSelection(String(tag.id));
                     }}
                   >
                     <div className={styles.menuRow}>
