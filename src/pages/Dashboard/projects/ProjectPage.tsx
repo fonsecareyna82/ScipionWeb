@@ -51,6 +51,7 @@ import {
   LayoutGrid,
   MapIcon,
   FocusIcon,
+  TagsIcon
 } from "lucide-react";
 import { FitViewIcon, TableIcon, TreeIcon } from "../../../icons";
 
@@ -61,6 +62,11 @@ import { Input, Typography, Link } from "@mui/material";
 import toast from "react-hot-toast";
 import RemoteFileDialog from "@/components/files/RemoteFileDialog";
 import type { ExternalAnalyzeViewerService } from "@/components/protocol/ProtocolNodeCard";
+
+import TagPicker from "@/components/tags/TagPicker";
+import TagManager from "@/components/tags/TagManager";
+import type { ProtocolTag } from "@/components/tags/tagTypes";
+import TagsDialog from "@/components/tags/TagsDialog";
 
 
 /* --------------------- Types --------------------- */
@@ -88,6 +94,7 @@ interface StatusNodeData {
 
   // Optional color cache
   color?: string;
+  tagIds?: string[];
 }
 
 interface ContextMenuState {
@@ -108,6 +115,7 @@ type NodeActions = {
   onSelectFrom?: (id: string) => void;
   onSelectTo?: (id: string) => void;
   onStop?: (id: string) => void;
+  onManageTags?: () => void;
 };
 
 type OpenForm = { key: string; id: string; details: any; isClosing?: boolean };
@@ -330,6 +338,140 @@ function renderHelpText(helpText: string): JSX.Element {
 }
 
 
+// Tags
+
+const tagsStorageKey = "scipion.tags.v1";
+
+function loadTagsFromStorage(): ProtocolTag[] {
+  // loadTagsFromStorage
+  try {
+    if (typeof window === "undefined") return [];
+    const raw = window.localStorage.getItem(tagsStorageKey);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as ProtocolTag[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveTagsToStorage(tags: ProtocolTag[]): void {
+  // saveTagsToStorage
+  try {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(tagsStorageKey, JSON.stringify(tags ?? []));
+  } catch {
+    // ignoreStorageErrors
+  }
+}
+
+
+const tagsCatalogStorageKey = "scipion.tags.v1";
+
+type ProtocolTagAssignments = Record<string, string[]>;
+
+function safeParseJson<T = unknown>(raw: string | null): T | null {
+  // safeParseJson
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeTagIds(raw: unknown): string[] {
+  // normalizeTagIds
+  if (!raw) return [];
+  const arr = Array.isArray(raw) ? raw : [raw];
+
+  const ids = arr
+    .map((x) => {
+      if (typeof x === "string") return x;
+      if (x && typeof x === "object" && typeof (x as any).id === "string") return String((x as any).id);
+      return "";
+    })
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  return Array.from(new Set(ids));
+}
+
+function loadTagsCatalogFromStorage(): ProtocolTag[] {
+  // loadTagsCatalogFromStorage
+  const parsed = safeParseJson<any>(localStorage.getItem(tagsCatalogStorageKey));
+  if (!parsed) return [];
+
+  if (Array.isArray(parsed)) return parsed as ProtocolTag[];
+
+  // supports shapes like { tags: [...] } if you ever change it
+  if (parsed && typeof parsed === "object" && Array.isArray(parsed.tags)) {
+    return parsed.tags as ProtocolTag[];
+  }
+
+  return [];
+}
+
+function getAssignmentsStorageKey(projectName: string): string {
+  // getAssignmentsStorageKey
+  return `project-${projectName}-protocol-tags.v1`;
+}
+
+function loadTagAssignments(projectName: string): ProtocolTagAssignments {
+  // loadTagAssignments
+  const parsed = safeParseJson<any>(localStorage.getItem(getAssignmentsStorageKey(projectName)));
+  if (!parsed || typeof parsed !== "object") return {};
+  const out: ProtocolTagAssignments = {};
+
+  for (const [k, v] of Object.entries(parsed)) {
+    out[String(k)] = normalizeTagIds(v);
+  }
+  return out;
+}
+
+function saveTagAssignments(projectName: string, map: ProtocolTagAssignments): void {
+  // saveTagAssignments
+  localStorage.setItem(getAssignmentsStorageKey(projectName), JSON.stringify(map));
+}
+
+/**
+ * Try to read tag assignments from backend project payload if present.
+ * Accepts shapes like protocol.tagIds, protocol.tags (string[] or {id}[]).
+ */
+function pickFirstNonEmptyTagIds(...candidates: unknown[]): string[] {
+  // pickFirstNonEmptyTagIds
+  for (const c of candidates) {
+    const ids = normalizeTagIds(c);
+    if (ids.length) return ids;
+  }
+  return [];
+}
+
+/**
+ * Try to read tag assignments from backend project payload if present.
+ * Accepts shapes like protocol.tagIds, protocol.tags (string[] or {id}[]).
+ */
+function extractAssignmentsFromProjectProtocols(protocols: any): ProtocolTagAssignments {
+  // extractAssignmentsFromProjectProtocols
+  const out: ProtocolTagAssignments = {};
+  if (!protocols || typeof protocols !== "object") return out;
+
+  for (const [protocolId, proto] of Object.entries(protocols)) {
+    const p: any = proto ?? {};
+    const tagIds = pickFirstNonEmptyTagIds(
+      p.tagIds,
+      p.tags,
+      p.tag_ids
+    );
+
+    if (tagIds.length) out[String(protocolId)] = tagIds;
+  }
+
+  return out;
+}
+
+
+
 export default function ProjectPage() {
   const hostIsDark = useHostDarkMode();
   const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/.test(navigator.platform);
@@ -339,6 +481,48 @@ export default function ProjectPage() {
 
   const [project, setProject] = useState<Project | undefined>(undefined);
   const [isLoadingProject, setIsLoadingProject] = useState(true);
+
+  // Tags states
+  const [allTags, setAllTags] = useState<ProtocolTag[]>([]);
+  const [tagManagerOpen, setTagManagerOpen] = useState(false);
+  const [assignTagsOpen, setAssignTagsOpen] = useState(false);
+  const [tagFilterIds, setTagFilterIds] = useState<string[]>([]);
+  const [tagAssignments, setTagAssignments] = useState<ProtocolTagAssignments>({});
+  const [assignDraftTagIds, setAssignDraftTagIds] = useState<string[]>([]);
+
+  const [tagsDraft, setTagsDraft] = useState<ProtocolTag[]>(() => loadTagsFromStorage());
+
+  useEffect(() => {
+    saveTagsToStorage(tagsDraft);
+    setAllTags(tagsDraft);
+    window.dispatchEvent(new Event("scipionTagsChanged"));
+  }, [tagsDraft]);
+
+  useEffect(() => {
+    const syncTags = () => {
+      try {
+        setAllTags(loadTagsCatalogFromStorage());
+      } catch {
+        setAllTags([]);
+      }
+    };
+
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === tagsCatalogStorageKey) syncTags();
+    };
+
+    window.addEventListener("scipionTagsChanged", syncTags);
+    window.addEventListener("storage", onStorage);
+
+    syncTags();
+
+    return () => {
+      window.removeEventListener("scipionTagsChanged", syncTags);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, []);
+
+
 
   // Workflows loaded from API (lazy)
   const [workflows, setWorkflows] = useState<ProjectWorkflow[]>([]);
@@ -572,6 +756,18 @@ export default function ProjectPage() {
       return String(b?.id ?? "").localeCompare(String(a?.id ?? ""));
     });
   }, [tableData]);
+  const filteredTableData = useMemo(() => {
+    // filteredTableData
+    if (!tagFilterIds.length) return sortedTableData;
+
+    const filterSet = new Set(tagFilterIds);
+    return sortedTableData.filter((row) => {
+      const pid = String(row?.id ?? "");
+      const assigned = tagAssignments[pid] ?? normalizeTagIds((row as any)?.tagIds ?? (row as any)?.tags);
+      return assigned.some((tid) => filterSet.has(tid));
+    });
+  }, [sortedTableData, tagFilterIds, tagAssignments]);
+
   const [isRefreshing, setIsRefreshing] = useState(false);
   const delayedRefreshTimerRef = useRef<number | null>(null);
 
@@ -607,6 +803,124 @@ export default function ProjectPage() {
   }, [project]);
 
   const getProjectId = () => projectIdRef.current;
+
+  const [isTagsDialogOpen, setIsTagsDialogOpen] = useState(false);
+
+  const handleOpenTagsDialog = useCallback(() => {
+    setIsTagsDialogOpen(true);
+  }, []);
+
+  const handleCloseTagsDialog = useCallback(() => {
+    setIsTagsDialogOpen(false);
+  }, []);
+
+  //Tags 
+  const tagById = useMemo(() => {
+    // tagById
+    return new Map(allTags.map((t) => [t.id, t]));
+  }, [allTags]);
+
+  useEffect(() => {
+    // loadTagsCatalogOnMount
+    try {
+      setAllTags(loadTagsCatalogFromStorage());
+    } catch {
+      setAllTags([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    // loadTagAssignmentsOnProjectChange
+    if (!projectName) return;
+    try {
+      setTagAssignments(loadTagAssignments(projectName));
+    } catch {
+      setTagAssignments({});
+    }
+  }, [projectName]);
+
+  useEffect(() => {
+    // mergeAssignmentsFromProjectPayloadIfPresent
+    if (!projectName || !project?.protocols) return;
+
+    const fromApi = extractAssignmentsFromProjectProtocols(project.protocols);
+    const hasAny = Object.keys(fromApi).length > 0;
+    if (!hasAny) return;
+
+    setTagAssignments((prev) => {
+      const merged: ProtocolTagAssignments = { ...prev, ...fromApi };
+      try { saveTagAssignments(projectName, merged); } catch { /* noOp */ }
+      return merged;
+    });
+  }, [projectName, project?.protocols]);
+
+  useEffect(() => {
+    // refreshCatalogAfterClosingManager
+    if (tagManagerOpen) return;
+    try {
+      setAllTags(loadTagsCatalogFromStorage());
+    } catch {
+      // noOp
+    }
+  }, [tagManagerOpen]);
+
+  const selectedProtocolIds = useMemo(() => {
+    // selectedProtocolIds
+    return Array.from(unifiedSelectedIdsState)
+      .map(String)
+      .filter((id) => id && id !== "PROJECT");
+  }, [unifiedSelectedIdsState]);
+
+  const unionSelectedTagIds = useMemo(() => {
+    // unionSelectedTagIds
+    const s = new Set<string>();
+    for (const pid of selectedProtocolIds) {
+      for (const tid of (tagAssignments[pid] ?? [])) s.add(tid);
+    }
+    return Array.from(s);
+  }, [selectedProtocolIds, tagAssignments]);
+
+  useEffect(() => {
+    // seedAssignDraftOnOpen
+    if (!assignTagsOpen) return;
+    setAssignDraftTagIds(unionSelectedTagIds);
+  }, [assignTagsOpen, unionSelectedTagIds]);
+
+
+  const setTagsForProtocols = useCallback(
+    async (protocolIds: string[], nextTagIds: string[]) => {
+      // setTagsForProtocols
+      if (!projectName) return;
+
+      const cleanProtocolIds = Array.from(new Set(protocolIds.map(String)))
+        .filter((x) => x && x !== "PROJECT");
+
+      const cleanTagIds = normalizeTagIds(nextTagIds);
+
+      // optimisticLocalUpdate
+      setTagAssignments((prev) => {
+        const merged: ProtocolTagAssignments = { ...prev };
+        for (const pid of cleanProtocolIds) merged[pid] = cleanTagIds;
+
+        try { saveTagAssignments(projectName, merged); } catch { /* noOp */ }
+        return merged;
+      });
+
+      // optionalApiSyncIfAvailable
+      const svcAny: any = svc as any;
+      if (typeof svcAny.setProtocolTags === "function") {
+        try {
+          await svcAny.setProtocolTags(projectName, cleanProtocolIds, cleanTagIds);
+        } catch (e) {
+          // rollbackOnApiFail (optional)
+          toast.error(getErrorMsg(e));
+        }
+      }
+    },
+    [projectName, svc]
+  );
+
+  const [assignTagsBusy, setAssignTagsBusy] = useState(false);
 
 
   // Viewport state (used for hierarchical/table; grid uses fixed zoom)
@@ -1348,6 +1662,7 @@ export default function ProjectPage() {
       onSelectFrom: handleSelectFrom,
       onSelectTo: handleSelectTo,
       onStop: openStop,
+      onManageTags: () => setTagManagerOpen(true),
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [handleSelectFrom, handleSelectTo, handleNodeDoubleClick]);
@@ -2286,7 +2601,7 @@ export default function ProjectPage() {
     };
 
     if (viewMode === "table") {
-      for (const row of sortedTableData) {
+      for (const row of filteredTableData) {
         pushIfMatch(row?.id, row?.label, row?.status);
       }
     } else {
@@ -3526,30 +3841,79 @@ export default function ProjectPage() {
 
   const renderNodes = useMemo(() => {
     // deriveRenderNodes
-    if (!focusActive) return nodes;
+    const tagFilterSet = new Set(tagFilterIds);
+    const tagFilterActive = tagFilterSet.size > 0;
 
     const dimOpacity = 0.18;
 
-    return nodes.map((n) => {
-      const inFocus = unifiedSelectedIdsState.has(String(n.id));
+    let anyChanged = false;
+
+    const next = nodes.map((n) => {
+      const nodeId = String(n.id);
+
+      // keepProjectNodeAsIs
+      if (nodeId === "PROJECT") return n;
+
+      const assignedTagIds = tagAssignments[nodeId] ?? [];
+
+
+      const matchesTagFilter = !tagFilterActive
+        ? true
+        : assignedTagIds.some((tid) => tagFilterSet.has(tid));
+
+      const tagColor = assignedTagIds.length ? tagById.get(assignedTagIds[0])?.color : undefined;
+
+      const inFocus = focusActive ? unifiedSelectedIdsState.has(nodeId) : true;
+
+      const shouldDim = (focusActive && !inFocus) || (tagFilterActive && !matchesTagFilter);
+      const desiredOpacity = shouldDim ? dimOpacity : 1;
+
       const baseStyle: any = (n as any).style ?? {};
-      const desiredOpacity = inFocus ? 1 : dimOpacity;
+      const curOpacity = typeof baseStyle.opacity === "number" ? baseStyle.opacity : 1;
 
-      const currentOpacity =
-        typeof baseStyle.opacity === "number" ? baseStyle.opacity : 1;
+      const dataAny: any = (n as any).data ?? {};
+      const curColor = typeof dataAny.color === "string" ? dataAny.color : undefined;
 
-      if (currentOpacity === desiredOpacity) return n;
 
-      return {
-        ...n,
-        style: {
-          ...baseStyle,
-          opacity: desiredOpacity,
-          zIndex: inFocus ? 10 : 0,
-        },
-      };
+      const curTagIds = normalizeTagIds((dataAny as any).tagIds);
+      const sameTags =
+        curTagIds.length === assignedTagIds.length &&
+        curTagIds.every((x) => assignedTagIds.includes(x)) &&
+        assignedTagIds.every((x) => curTagIds.includes(x));
+
+      const nextDataWithTags = sameTags
+        ? dataAny
+        : { ...dataAny, tagIds: assignedTagIds }; // keepNodeDataInSyncWithAssignments
+
+
+      const nextStyle =
+        curOpacity === desiredOpacity && (!focusActive || baseStyle.zIndex === (inFocus ? 10 : 0))
+          ? baseStyle
+          : {
+            ...baseStyle,
+            opacity: desiredOpacity,
+            zIndex: focusActive ? (inFocus ? 10 : 0) : baseStyle.zIndex,
+          };
+
+      const baseData = nextDataWithTags;
+
+      const nextData =
+        tagColor && curColor !== tagColor
+          ? { ...baseData, color: tagColor }
+          : baseData; // deriveColorFromFirstTagIfPresent
+
+      const styleChanged = nextStyle !== baseStyle;
+      const dataChanged = nextData !== dataAny;
+
+      if (!styleChanged && !dataChanged) return n;
+
+      anyChanged = true;
+      return { ...n, style: nextStyle, data: nextData };
     });
-  }, [nodes, focusActive, unifiedSelectedIdsState]);
+
+    return anyChanged ? next : nodes;
+  }, [nodes, focusActive, unifiedSelectedIdsState, tagFilterIds, tagAssignments, tagById]);
+
 
   const renderEdges = useMemo(() => {
     // deriveRenderEdges
@@ -3677,6 +4041,29 @@ export default function ProjectPage() {
             )}
           </div>
 
+          <div className="pp-headerCard pp-tagsCard">
+            <div className="pp-tagsPicker">
+              <TagPicker
+                allTags={allTags}
+                selectedTagIds={tagFilterIds}
+                onChange={setTagFilterIds}
+                disabled={allTags.length === 0}
+              />
+            </div>
+
+            <div className="pp-tagsActions">
+              <button
+                type="button"
+                onClick={() => setTagManagerOpen(true)}
+                className="pp-chipBtn"
+                title="Manage tags"
+              >
+                <TagsIcon className="pp-btnIcon" />
+                <span>Tags</span>
+              </button>
+              
+            </div>
+          </div>
 
           <div className="pp-headerCard pp-actionsCard">
             <div className="pp-protocolsTrigger">
@@ -3759,6 +4146,9 @@ export default function ProjectPage() {
               </button>
             </div>
           </div>
+
+
+
         </div>
 
 
@@ -3815,7 +4205,7 @@ export default function ProjectPage() {
                 </thead>
 
                 <tbody className="pp-tbody">
-                  {sortedTableData.map((row) => (
+                  {filteredTableData.map((row) => (
                     <tr
                       key={row.id}
                       ref={(el) => {
@@ -4584,6 +4974,14 @@ export default function ProjectPage() {
           </DialogContent>
         </Dialog>
 
+        {/* tagsManagerDialog */}
+        <TagsDialog
+          open={tagManagerOpen}
+          onClose={() => setTagManagerOpen(false)}
+          title="Tags"
+        >
+          <TagManager title="Tags" tags={tagsDraft} onTagsChange={setTagsDraft} />
+        </TagsDialog>
 
         {/* ================= RemoteFileDialog ================= */}
         {canOpenFileDialog && (

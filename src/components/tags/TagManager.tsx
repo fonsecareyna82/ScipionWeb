@@ -610,7 +610,7 @@ export default function TagManager({ title, tags, onTagsChange, initialTags }: T
                                         size="small"
                                         variant="outlined"
                                         onClick={() => openEdit(t)}
-                                        sx={{ textTransform: "none" }}
+                                        sx={{ textTransform: "none", borderRadius: 2, backgroundColor: "#2b5ac0", color: "white", "&:hover": { backgroundColor: "#1a43b3" }  }}
                                     >
                                         Edit
                                     </Button>

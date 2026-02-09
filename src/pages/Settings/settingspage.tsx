@@ -15,6 +15,7 @@ import {
   Divider,
   FormControl,
   FormControlLabel,
+  InputAdornment,
   InputLabel,
   MenuItem,
   Paper,
@@ -26,7 +27,6 @@ import {
   Tabs,
   TextField,
   Typography,
-  InputAdornment,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 
@@ -89,6 +89,8 @@ const defaultInstanceSettings: InstanceSettings = {
 const wrapperMaxWidth = 980;
 
 const fieldFontSize = 12;
+
+const tagsStorageKey = "scipion.tags.v1";
 
 function safeStringify(value: unknown): string {
   // safeStringify
@@ -174,9 +176,7 @@ function sanitizeUserSettings(raw: any): UserSettings {
     graphMiniMapEnabled:
       typeof raw?.graphMiniMapEnabled === "boolean" ? raw.graphMiniMapEnabled : defaultUserSettings.graphMiniMapEnabled,
     graphFocusModeEnabled:
-      typeof raw?.graphFocusModeEnabled === "boolean"
-        ? raw.graphFocusModeEnabled
-        : defaultUserSettings.graphFocusModeEnabled,
+      typeof raw?.graphFocusModeEnabled === "boolean" ? raw.graphFocusModeEnabled : defaultUserSettings.graphFocusModeEnabled,
     workflowsAutoRefreshSec: clampNumber(raw?.workflowsAutoRefreshSec, defaultUserSettings.workflowsAutoRefreshSec, 0, 300),
   };
 }
@@ -257,7 +257,7 @@ function getTimeZoneOptions(): string[] {
       }
     }
   } catch {
-    // ignoreAndUseFallback
+    // ignore and use fallback
   }
 
   return fallback;
@@ -290,6 +290,30 @@ function getViewModeMeta(mode: WorkflowViewMode): { label: string; icon: React.R
   }
 }
 
+function loadTagsFromStorage(): ProtocolTag[] {
+  // loadTagsFromStorage
+  try {
+    if (typeof window === "undefined") return [];
+    const raw = window.localStorage.getItem(tagsStorageKey);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed as ProtocolTag[];
+  } catch {
+    return [];
+  }
+}
+
+function saveTagsToStorage(tags: ProtocolTag[]): void {
+  // saveTagsToStorage
+  try {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(tagsStorageKey, JSON.stringify(tags ?? []));
+  } catch {
+    // ignore storage errors
+  }
+}
+
 export default function SettingsPage() {
   const svc = useProjectService() as any;
 
@@ -315,8 +339,6 @@ export default function SettingsPage() {
 
   const [tab, setTab] = useState<TabKey>("user");
 
-  const [tags, setTags] = useState<ProtocolTag[]>([]);
-
   const [userLoading, setUserLoading] = useState(false);
   const [userError, setUserError] = useState<string | null>(null);
   const [userBase, setUserBase] = useState<UserSettings | null>(null);
@@ -328,6 +350,13 @@ export default function SettingsPage() {
   const [instanceBase, setInstanceBase] = useState<InstanceSettings | null>(null);
   const [instanceDraft, setInstanceDraft] = useState<InstanceSettings | null>(null);
   const [instanceLoadedOnce, setInstanceLoadedOnce] = useState(false);
+
+  const [tagsDraft, setTagsDraft] = useState<ProtocolTag[]>(() => loadTagsFromStorage());
+
+  useEffect(() => {
+    // persistTagsDraft
+    saveTagsToStorage(tagsDraft);
+  }, [tagsDraft]);
 
   const [showAdvanced, setShowAdvanced] = useState(false);
 
@@ -371,9 +400,7 @@ export default function SettingsPage() {
       "& .MuiOutlinedInput-notchedOutline": { borderColor: colors.border },
       "& .MuiOutlinedInput-root": {
         bgcolor: isDarkMode ? "rgba(255,255,255,0.02)" : "transparent",
-        "&:hover .MuiOutlinedInput-notchedOutline": {
-          borderColor: isDarkMode ? "rgba(255,255,255,0.22)" : colors.border,
-        },
+        "&:hover .MuiOutlinedInput-notchedOutline": { borderColor: isDarkMode ? "rgba(255,255,255,0.22)" : colors.border },
         "&.Mui-focused .MuiOutlinedInput-notchedOutline": { borderColor: colors.primary },
       },
       "& .MuiSvgIcon-root": { color: colors.muted },
@@ -632,17 +659,17 @@ export default function SettingsPage() {
     // handleCopyAdvanced
     try {
       const payload =
-        tab === "tags"
-          ? tags
-          : tab === "user"
-            ? (userDraft ?? userBase ?? {})
-            : (instanceDraft ?? instanceBase ?? {});
+        tab === "user"
+          ? (userDraft ?? userBase ?? {})
+          : tab === "instance"
+            ? (instanceDraft ?? instanceBase ?? {})
+            : (tagsDraft ?? []);
       await copyToClipboard(safeStringify(payload));
       toast.success("Copied.");
     } catch {
       toast.error("Copy failed.");
     }
-  }, [tab, tags, userDraft, userBase, instanceDraft, instanceBase]);
+  }, [tab, userDraft, userBase, instanceDraft, instanceBase, tagsDraft]);
 
   const headerRight = useMemo(() => {
     // headerRight
@@ -841,11 +868,7 @@ export default function SettingsPage() {
         </Card>
 
         <Card variant="outlined" sx={cardSx}>
-          <CardHeader
-            title="Workflow viewer"
-            subheader="Layout mode, navigation helpers, and refresh behavior."
-            sx={cardHeaderSx}
-          />
+          <CardHeader title="Workflow viewer" subheader="Layout mode, navigation helpers, and refresh behavior." sx={cardHeaderSx} />
           <CardContent sx={{ pt: 2 }}>
             <Grid container spacing={2} sx={{ width: "100%" }}>
               <Grid size={{ xs: 12, md: 4 }}>
@@ -869,9 +892,7 @@ export default function SettingsPage() {
                       );
                     }}
                     onChange={(e) =>
-                      setUserDraft((prev) =>
-                        prev ? { ...prev, workflowViewMode: e.target.value as WorkflowViewMode } : prev,
-                      )
+                      setUserDraft((prev) => (prev ? { ...prev, workflowViewMode: e.target.value as WorkflowViewMode } : prev))
                     }
                   >
                     {(["treeTb", "treeLr", "grid", "table"] as WorkflowViewMode[]).map((m) => {
@@ -914,9 +935,7 @@ export default function SettingsPage() {
                   control={
                     <Switch
                       checked={Boolean(userDraft.graphFocusModeEnabled)}
-                      onChange={(e) =>
-                        setUserDraft((prev) => (prev ? { ...prev, graphFocusModeEnabled: e.target.checked } : prev))
-                      }
+                      onChange={(e) => setUserDraft((prev) => (prev ? { ...prev, graphFocusModeEnabled: e.target.checked } : prev))}
                       size="small"
                     />
                   }
@@ -1075,9 +1094,7 @@ export default function SettingsPage() {
                       <Switch
                         checked={Boolean(instanceDraft.requireConfirmBeforeExecute)}
                         onChange={(e) =>
-                          setInstanceDraft((prev) =>
-                            prev ? { ...prev, requireConfirmBeforeExecute: e.target.checked } : prev,
-                          )
+                          setInstanceDraft((prev) => (prev ? { ...prev, requireConfirmBeforeExecute: e.target.checked } : prev))
                         }
                         size="small"
                       />
@@ -1089,9 +1106,7 @@ export default function SettingsPage() {
                       <Switch
                         checked={Boolean(instanceDraft.requireConfirmBeforeDelete)}
                         onChange={(e) =>
-                          setInstanceDraft((prev) =>
-                            prev ? { ...prev, requireConfirmBeforeDelete: e.target.checked } : prev,
-                          )
+                          setInstanceDraft((prev) => (prev ? { ...prev, requireConfirmBeforeDelete: e.target.checked } : prev))
                         }
                         size="small"
                       />
@@ -1112,13 +1127,12 @@ export default function SettingsPage() {
     return (
       <Stack spacing={1.75}>
         <Card variant="outlined" sx={cardSx}>
-          <CardHeader
-            title="Tags"
-            subheader="Create tags to classify protocols (local only, not persisted yet)."
-            sx={cardHeaderSx}
-          />
+          <CardHeader title="Tags" subheader="Create and manage protocol tags (stored locally for now)." sx={cardHeaderSx} />
           <CardContent sx={{ pt: 2 }}>
-            <TagManager title="Protocol tags" tags={tags} onTagsChange={setTags} />
+            <TagManager title="Tags" tags={tagsDraft} onTagsChange={setTagsDraft} />
+            <Typography sx={{ mt: 1.25, fontSize: 12, color: colors.muted }}>
+              Tags are stored in your browser local storage. Protocol assignment and backend persistence will be added later.
+            </Typography>
           </CardContent>
         </Card>
       </Stack>
@@ -1127,9 +1141,10 @@ export default function SettingsPage() {
 
   const advancedPayload = useMemo(() => {
     // advancedPayload
-    if (tab === "tags") return tags;
-    return tab === "user" ? (userDraft ?? userBase ?? {}) : (instanceDraft ?? instanceBase ?? {});
-  }, [tab, tags, userDraft, userBase, instanceDraft, instanceBase]);
+    if (tab === "user") return userDraft ?? userBase ?? {};
+    if (tab === "instance") return instanceDraft ?? instanceBase ?? {};
+    return tagsDraft ?? [];
+  }, [tab, userDraft, userBase, instanceDraft, instanceBase, tagsDraft]);
 
   return (
     <>

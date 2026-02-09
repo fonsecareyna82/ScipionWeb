@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   Dispatch,
   DragEvent as ReactDragEvent,
@@ -18,6 +18,9 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
 } from "../ui/dropdown-menu";
 
 import {
@@ -26,6 +29,9 @@ import {
   ContextMenuItem,
   ContextMenuSeparator,
   ContextMenuTrigger,
+  ContextMenuSub,
+  ContextMenuSubContent,
+  ContextMenuSubTrigger,
 } from "../ui/context-menu";
 
 import {
@@ -47,6 +53,9 @@ import {
   ArrowUp,
   Scan,
   Eye,
+  Tags,
+  Plus,
+  Check,
 } from "lucide-react";
 
 import AnalyzeOutputDialog from "@/components/analyze/analyze-output-dialog";
@@ -54,6 +63,8 @@ import type {
   AnalyzeViewerResolveContext,
   AnalyzeViewerResolveDecision,
 } from "@/services/ProjectService";
+
+import type { ProtocolTag } from "@/components/tags/tagTypes";
 
 const statusColors: Record<string, string> = {
   running: "#FCCE62",
@@ -104,6 +115,9 @@ type StatusNodeProps = {
     children?: string[];
     __pathVer?: number;
     projectId?: string | number;
+
+    // tags
+    tags?: any[];
   };
 
   selectedNodeId?: string;
@@ -127,6 +141,13 @@ type StatusNodeProps = {
   onSelectTo?: (id: string) => void;
   onStop?: (id: string) => void;
   onBrowse?: (
+    protocolId: string,
+    projectId?: string | number,
+    protocolLabel?: string
+  ) => void;
+
+  // opens the tag manager (create/edit tag definitions)
+  onManageTags?: (
     protocolId: string,
     projectId?: string | number,
     protocolLabel?: string
@@ -275,6 +296,155 @@ type ReactFlowSelectionEvent =
   | ReactMouseEvent
   | ReactPointerEvent<HTMLDivElement>;
 
+// tagsStorage
+const tagsStorageKey = "scipion.tags.v1";
+const tagAssignmentsStorageKey = "scipion.protocolTagAssignments.v1";
+
+type StoredTagAssignments = Record<string, Record<string, string[]>>;
+
+function safeParseJson<T>(raw: string | null, fallback: T): T {
+  // safeParseJson
+  try {
+    if (!raw) return fallback;
+    return JSON.parse(raw) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+function uniqStrings(values: string[]): string[] {
+  // uniqStrings
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const v of values) {
+    const s = String(v ?? "").trim();
+    if (!s) continue;
+    if (seen.has(s)) continue;
+    seen.add(s);
+    out.push(s);
+  }
+  return out;
+}
+
+function loadTagsFromStorage(): ProtocolTag[] {
+  // loadTagsFromStorage
+  try {
+    if (typeof window === "undefined") return [];
+    const raw = window.localStorage.getItem(tagsStorageKey);
+    const parsed = safeParseJson<any>(raw, []);
+    return Array.isArray(parsed) ? (parsed as ProtocolTag[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function loadTagAssignmentsFromStorage(): StoredTagAssignments {
+  // loadTagAssignmentsFromStorage
+  try {
+    if (typeof window === "undefined") return {};
+    const raw = window.localStorage.getItem(tagAssignmentsStorageKey);
+    const parsed = safeParseJson<any>(raw, {});
+    return parsed && typeof parsed === "object" ? (parsed as StoredTagAssignments) : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveTagAssignmentsToStorage(next: StoredTagAssignments): void {
+  // saveTagAssignmentsToStorage
+  try {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(tagAssignmentsStorageKey, JSON.stringify(next ?? {}));
+  } catch {
+    // ignore storage errors
+  }
+}
+
+function normalizeTagIdCandidate(raw: unknown, allTags: ProtocolTag[]): string {
+  // normalizeTagIdCandidate
+  const s = String(raw ?? "").trim();
+  if (!s) return "";
+
+  const byId = new Map(allTags.map((t) => [String(t.id), t]));
+  if (byId.has(s)) return s;
+
+  const lower = s.toLowerCase();
+  const byTitle = new Map(allTags.map((t) => [String(t.title ?? "").trim().toLowerCase(), t]));
+  const hit = byTitle.get(lower);
+  return hit ? String(hit.id) : s;
+}
+
+function normalizeTagIdsFromRaw(rawTags: unknown, allTags: ProtocolTag[]): string[] {
+  // normalizeTagIdsFromRaw
+  if (!Array.isArray(rawTags)) return [];
+
+  const out: string[] = [];
+
+  for (const item of rawTags) {
+    if (typeof item === "string" || typeof item === "number") {
+      const id = normalizeTagIdCandidate(item, allTags);
+      if (id) out.push(id);
+      continue;
+    }
+
+    if (item && typeof item === "object") {
+      const obj = item as Record<string, unknown>;
+      const directId = obj.id ?? obj.tagId ?? obj.tag_id;
+      if (directId != null) {
+        const id = normalizeTagIdCandidate(directId, allTags);
+        if (id) out.push(id);
+        continue;
+      }
+
+      const titleCandidate = obj.title ?? obj.name ?? obj.label;
+      if (titleCandidate != null) {
+        const id = normalizeTagIdCandidate(titleCandidate, allTags);
+        if (id) out.push(id);
+      }
+    }
+  }
+
+  return uniqStrings(out);
+}
+
+function readAssignedTagIds(
+  projectId: string | number | undefined,
+  protocolId: string | number | undefined,
+  rawTags: unknown,
+  allTags: ProtocolTag[]
+): string[] {
+  // readAssignedTagIds
+  const pid = String(projectId ?? "global");
+  const prId = String(protocolId ?? "");
+  const fromData = normalizeTagIdsFromRaw(rawTags, allTags);
+
+  if (!prId) return fromData;
+
+  const store = loadTagAssignmentsFromStorage();
+  const stored = store?.[pid]?.[prId] ?? [];
+  return uniqStrings([...(Array.isArray(stored) ? stored : []), ...fromData]);
+}
+
+function writeAssignedTagIds(
+  projectId: string | number | undefined,
+  protocolId: string | number | undefined,
+  nextTagIds: string[]
+): void {
+  // writeAssignedTagIds
+  const pid = String(projectId ?? "global");
+  const prId = String(protocolId ?? "");
+  if (!prId) return;
+
+  const store = loadTagAssignmentsFromStorage();
+  const next: StoredTagAssignments = { ...(store ?? {}) };
+
+  const projectMap = { ...(next[pid] ?? {}) };
+  projectMap[prId] = uniqStrings(nextTagIds ?? []);
+
+  next[pid] = projectMap;
+  saveTagAssignmentsToStorage(next);
+}
+
 export default function ProtocolNodeCard({
   data,
   selectedNodeId,
@@ -294,6 +464,7 @@ export default function ProtocolNodeCard({
   onSelectTo,
   onStop,
   onBrowse,
+  onManageTags,
   inPathSelection = false,
   pathSelectionActive = false,
   showHandles = true,
@@ -362,6 +533,102 @@ export default function ProtocolNodeCard({
   ]
     .filter(Boolean)
     .join(" ");
+
+  // tagsState
+  const [allTags, setAllTags] = useState<ProtocolTag[]>(() => loadTagsFromStorage());
+
+  const [selectedTagIds, setSelectedTagIds] = useState<string[]>(() => {
+    // initSelectedTagIds
+    const defs = loadTagsFromStorage();
+    return readAssignedTagIds(data.projectId, data.id, (data as any)?.tags, defs);
+  });
+
+  const syncTagsFromStorage = useCallback(() => {
+    // syncTagsFromStorage
+    const defs = loadTagsFromStorage();
+    setAllTags(defs);
+    setSelectedTagIds(readAssignedTagIds(data.projectId, data.id, (data as any)?.tags, defs));
+  }, [data.projectId, data.id, data]);
+
+  useEffect(() => {
+    // syncTagsOnNodeIdentityChange
+    syncTagsFromStorage();
+  }, [syncTagsFromStorage]);
+
+  useEffect(() => {
+    // syncTagsOnCrossTabStorageEvents
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === tagsStorageKey || e.key === tagAssignmentsStorageKey) {
+        syncTagsFromStorage();
+      }
+    };
+
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, [syncTagsFromStorage]);
+
+
+  useEffect(() => {
+    // syncTagsOnSameTabChanges
+    const onTagsChanged = () => syncTagsFromStorage();
+    window.addEventListener("scipionTagsChanged", onTagsChanged);
+    return () => window.removeEventListener("scipionTagsChanged", onTagsChanged);
+  }, [syncTagsFromStorage]);
+
+
+  const selectedTagSet = useMemo(() => {
+    // selectedTagSet
+    return new Set(selectedTagIds.map((t) => String(t)));
+  }, [selectedTagIds]);
+
+  const tagsById = useMemo(() => {
+    // tagsById
+    return new Map(allTags.map((t) => [String(t.id), t]));
+  }, [allTags]);
+
+  const selectedTags = useMemo(() => {
+    // selectedTags
+    return selectedTagIds
+      .map((id) => {
+        const key = String(id);
+        const def = tagsById.get(key);
+        if (def) return def;
+
+        // fallbackTag
+        return {
+          id: key,
+          title: key,
+          description: "",
+          color: "#9ca3af",
+        } as ProtocolTag;
+      })
+      .filter(Boolean);
+  }, [selectedTagIds, tagsById]);
+
+  const toggleTagSelection = useCallback(
+    (tagId: string) => {
+      // toggleTagSelection
+      if (isProjectNode) return;
+
+      const id = String(tagId);
+      setSelectedTagIds((prev) => {
+        const prevSet = new Set(prev.map((x) => String(x)));
+        const next = prevSet.has(id)
+          ? prev.filter((x) => String(x) !== id)
+          : [...prev, id];
+
+        writeAssignedTagIds(data.projectId, data.id, next);
+        return next;
+      });
+    },
+    [data.projectId, data.id, isProjectNode]
+  );
+
+  const handleManageTags = useCallback(() => {
+    // openTagsManager
+    if (isProjectNode) return;
+    onManageTags?.(data.id, data.projectId, data.label);
+  }, [data.id, data.projectId, data.label, isProjectNode, onManageTags]);
 
   const handleEdit = () => onEdit?.(data.id);
   const handleRename = () => onRename?.(data.id);
@@ -616,7 +883,10 @@ export default function ProtocolNodeCard({
     <ContextMenu
       onOpenChange={(open) => {
         // onContextMenuOpenChange
-        if (open) armContextMenuOpenGuard();
+        if (open) {
+          armContextMenuOpenGuard();
+          syncTagsFromStorage();
+        }
       }}
     >
       <ContextMenuTrigger asChild>
@@ -689,7 +959,12 @@ export default function ProtocolNodeCard({
 
             {!isProjectNode && (
               <div className={styles.headerRight}>
-                <DropdownMenu>
+                <DropdownMenu
+                  onOpenChange={(open) => {
+                    // onDropdownMenuOpenChange
+                    if (open) syncTagsFromStorage();
+                  }}
+                >
                   <DropdownMenuTrigger asChild>
                     <button
                       type="button"
@@ -780,7 +1055,6 @@ export default function ProtocolNodeCard({
                             </DropdownMenuItem>
                           )}
 
-
                         <DropdownMenuItem onSelect={(e) => runMenuAction(e, handleRestartAll)}>
                           <div className={styles.menuRow}>
                             <span className={styles.menuLeft}>
@@ -852,6 +1126,74 @@ export default function ProtocolNodeCard({
 
                     <DropdownMenuSeparator />
 
+                    <DropdownMenuSub>
+                      <DropdownMenuSubTrigger>
+                        <div className={styles.menuRow}>
+                          <span className={styles.menuLeft}>
+                            <Tags className={styles.menuItemIcon} />
+                            <span>Tags</span>
+                          </span>
+                        </div>
+                      </DropdownMenuSubTrigger>
+
+                      <DropdownMenuSubContent className={styles.menuContent} sideOffset={8}>
+                        <DropdownMenuItem onSelect={(e) => runMenuAction(e, handleManageTags)}>
+                          <div className={styles.menuRow}>
+                            <span className={styles.menuLeft}>
+                              <Plus className={styles.menuItemIcon} />
+                              <span>Add new tag</span>
+                            </span>
+                          </div>
+                        </DropdownMenuItem>
+
+                        <DropdownMenuSeparator />
+
+                        {allTags.length > 0 ? (
+                          allTags.map((tag) => {
+                            const isChecked = selectedTagSet.has(String(tag.id));
+                            return (
+                              <DropdownMenuItem
+                                key={String(tag.id)}
+                                onSelect={(e) => {
+                                  // toggleTagSelectionKeepMenuOpen
+                                  e.preventDefault();
+                                  runMenuAction(e, () => toggleTagSelection(String(tag.id)));
+                                }}
+                              >
+                                <div className={styles.menuRow}>
+                                  <span className={styles.menuLeft}>
+                                    <span
+                                      style={{
+                                        width: 10,
+                                        height: 10,
+                                        borderRadius: 999,
+                                        backgroundColor: tag.color,
+                                        border: "1px solid rgba(15,23,42,0.22)",
+                                        display: "inline-block",
+                                        marginRight: 8,
+                                      }}
+                                    />
+                                    <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                                      <span>{tag.title}</span>
+                                      {isChecked ? <Check className={styles.menuItemIcon} /> : null}
+                                    </span>
+                                  </span>
+                                </div>
+                              </DropdownMenuItem>
+                            );
+                          })
+                        ) : (
+                          <DropdownMenuItem disabled>
+                            <div className={styles.menuRow}>
+                              <span className={styles.menuLeft}>
+                                <span>No tags defined</span>
+                              </span>
+                            </div>
+                          </DropdownMenuItem>
+                        )}
+                      </DropdownMenuSubContent>
+                    </DropdownMenuSub>
+
                     <DropdownMenuItem>
                       <div className={styles.menuRow}>
                         <span className={styles.menuLeft}>
@@ -915,8 +1257,6 @@ export default function ProtocolNodeCard({
                             value.pointerClass ??
                             value.paramClass ??
                             "Output";
-
-                          const displayClass = value.pointerClass ?? value.paramClass ?? "PointerParam";
 
                           const pillKey =
                             value.value ?? `${String(value.parentId ?? "")}:${String(value.name ?? idx)}`;
@@ -1033,50 +1373,67 @@ export default function ProtocolNodeCard({
 
               {data.status && (
                 <div className={styles.footer}>
-                  <span
-                    className={styles.statusBadge}
-                    style={{
-                      backgroundColor: statusBadgeColors[data.status] || "#999",
-                    }}
-                  >
-                    {data.status}
-
-                    {(data.status === "running" ||
-                      data.status === "failed" ||
-                      data.status === "aborted") && (
-                        <span className={styles.progress}>
-                          <span className={styles.progressTrack}>
-                            <span
-                              className={styles.progressFill}
-                              style={{
-                                width: `${((data.stepsDone ?? 0) / (data.numberOfSteps ?? 1)) * 100}%`,
-                              }}
-                            />
-                          </span>
-                          <span className={styles.progressText}>
-                            {data.stepsDone}/{data.numberOfSteps}
-                          </span>
-                        </span>
-                      )}
-                  </span>
-
-                  <span className={styles.timeRow}>
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      className={styles.timeIcon}
-                      fill="none"
-                      viewBox="0 0 22 24"
-                      stroke="currentColor"
-                      strokeWidth={2}
+                  <div className={styles.footerTopRow}>
+                    <span
+                      className={styles.statusBadge}
+                      style={{
+                        backgroundColor: statusBadgeColors[data.status] || "#999",
+                      }}
                     >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                      />
-                    </svg>
-                    <span>{formatCpuTime(data.tick ?? Number(data.elapsedTime) ?? 0)}</span>
-                  </span>
+                      {data.status}
+
+                      {(data.status === "running" ||
+                        data.status === "failed" ||
+                        data.status === "aborted") && (
+                          <span className={styles.progress}>
+                            <span className={styles.progressTrack}>
+                              <span
+                                className={styles.progressFill}
+                                style={{
+                                  width: `${((data.stepsDone ?? 0) / (data.numberOfSteps ?? 1)) * 100}%`,
+                                }}
+                              />
+                            </span>
+                            <span className={styles.progressText}>
+                              {data.stepsDone}/{data.numberOfSteps}
+                            </span>
+                          </span>
+                        )}
+                    </span>
+
+                    <span className={styles.timeRow}>
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        className={styles.timeIcon}
+                        fill="none"
+                        viewBox="0 0 22 24"
+                        stroke="currentColor"
+                        strokeWidth={2}
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                        />
+                      </svg>
+                      <span>{formatCpuTime(data.tick ?? Number(data.elapsedTime) ?? 0)}</span>
+                    </span>
+                  </div>
+
+                  {selectedTags.length > 0 ? (
+                    <div className={styles.footerTagsRow} aria-label="Protocol tags">
+                      {selectedTags.map((t) => (
+                        <span
+                          key={String(t.id)}
+                          className={styles.tagChip}
+                          title={t.description || t.title}
+                          style={{ backgroundColor: t.color || "#9ca3af" }}
+                        >
+                          <span className={styles.tagChipText}>{t.title}</span>
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
               )}
             </div>
@@ -1165,7 +1522,7 @@ export default function ProtocolNodeCard({
             {(data.status === "running" ||
               data.status === "launched" ||
               data.status === "scheduled") && (
-                <DropdownMenuItem onSelect={(e) => runMenuAction(e, handleStop)}>
+                <ContextMenuItem onClick={handleStop}>
                   <div className={styles.menuRow}>
                     <span className={styles.menuLeft}>
                       <Square className={styles.menuItemIcon} />
@@ -1173,9 +1530,8 @@ export default function ProtocolNodeCard({
                     </span>
                     <ShortcutHint text={shortcuts.stop} />
                   </div>
-                </DropdownMenuItem>
+                </ContextMenuItem>
               )}
-
 
             <ContextMenuItem onClick={handleRestartAll}>
               <div className={styles.menuRow}>
@@ -1247,6 +1603,80 @@ export default function ProtocolNodeCard({
         </ContextMenuItem>
 
         <ContextMenuSeparator />
+
+        <ContextMenuSub>
+          <ContextMenuSubTrigger>
+            <div className={styles.menuRow}>
+              <span className={styles.menuLeft}>
+                <Tags className={styles.menuItemIcon} />
+                <span>Tags</span>
+              </span>
+            </div>
+          </ContextMenuSubTrigger>
+
+          <ContextMenuSubContent className={styles.menuContent} sideOffset={8}>
+            <ContextMenuItem
+              onClick={(e) => {
+                e.stopPropagation();
+                handleManageTags();
+              }}
+            >
+              <div className={styles.menuRow}>
+                <span className={styles.menuLeft}>
+                  <Plus className={styles.menuItemIcon} />
+                  <span>Add new tag</span>
+                </span>
+              </div>
+            </ContextMenuItem>
+
+            <ContextMenuSeparator />
+
+            {allTags.length > 0 ? (
+              allTags.map((tag) => {
+                const isChecked = selectedTagSet.has(String(tag.id));
+                return (
+                  <ContextMenuItem
+                    key={String(tag.id)}
+                    onSelect={(e: any) => {
+                      // toggleTagSelectionKeepMenuOpen
+                      e.preventDefault();
+                      e.stopPropagation();
+                      toggleTagSelection(String(tag.id));
+                    }}
+                  >
+                    <div className={styles.menuRow}>
+                      <span className={styles.menuLeft}>
+                        <span
+                          style={{
+                            width: 10,
+                            height: 10,
+                            borderRadius: 999,
+                            backgroundColor: tag.color,
+                            border: "1px solid rgba(15,23,42,0.22)",
+                            display: "inline-block",
+                            marginRight: 8,
+                          }}
+                        />
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                          <span>{tag.title}</span>
+                          {isChecked ? <Check className={styles.menuItemIcon} /> : null}
+                        </span>
+                      </span>
+                    </div>
+                  </ContextMenuItem>
+                );
+              })
+            ) : (
+              <ContextMenuItem disabled>
+                <div className={styles.menuRow}>
+                  <span className={styles.menuLeft}>
+                    <span>No tags defined</span>
+                  </span>
+                </div>
+              </ContextMenuItem>
+            )}
+          </ContextMenuSubContent>
+        </ContextMenuSub>
 
         <ContextMenuItem>
           <div className={styles.menuRow}>

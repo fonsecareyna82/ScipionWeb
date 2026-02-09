@@ -277,6 +277,7 @@ export function buildGraphElements(
       numberOfSteps: prot.numberOfSteps,
       elapsedTime: prot.elapsedTime,
       tick: Number(prot.elapsedTime) || 0,
+      tags: Array.isArray(prot.tags) ? prot.tags : [],
     }));
 
     return { nodes: [], edges: [], table: tableData };
@@ -364,6 +365,7 @@ export function buildGraphElements(
           outputs: prot?.outputs,
           inputs: prot?.inputs,
           tick: Number(prot?.elapsedTime) || 0,
+          tags: Array.isArray(prot?.tags) ? prot?.tags : [],
         },
         position: { x, y },
         draggable: true,
@@ -511,6 +513,7 @@ export function buildGraphElements(
           outputs: prot?.outputs,
           inputs: prot?.inputs,
           tick: Number(prot?.elapsedTime) || 0,
+          tags: Array.isArray(prot?.tags) ? prot?.tags : [],
         },
         position,
         draggable: true,

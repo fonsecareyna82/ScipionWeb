@@ -1,7 +1,10 @@
 // src/components/protocol/ProtocolNodeCardWrapper.tsx
 import type React from "react";
-import { NodeProps, useReactFlow } from "reactflow";
-import StatusNode, { type ExternalAnalyzeViewerService } from "./ProtocolNodeCard";
+import { useMemo } from "react";
+import type { NodeProps } from "reactflow";
+import { useReactFlow } from "reactflow";
+
+import ProtocolNodeCard, { type ExternalAnalyzeViewerService } from "./ProtocolNodeCard";
 
 type NodeActions = {
   onEdit?: (id: string) => void;
@@ -14,6 +17,12 @@ type NodeActions = {
   onSelectFrom?: (id: string) => void;
   onSelectTo?: (id: string) => void;
   onStop?: (id: string) => void;
+
+  onManageTags?: (
+    protocolId: string,
+    projectId?: string | number,
+    protocolLabel?: string
+  ) => void;
 };
 
 export const createStatusNodeWrapper = (
@@ -32,6 +41,7 @@ export const createStatusNodeWrapper = (
 ) => {
   return function StatusNodeWrapper(props: NodeProps) {
     const { data, id, ...rest } = props;
+
     const { getViewport } = useReactFlow();
     const { zoom } = getViewport();
 
@@ -44,6 +54,7 @@ export const createStatusNodeWrapper = (
     const handleMouseLeave = () => setHoveredNodeId?.(null);
 
     const actions = getNodeActions?.() ?? {};
+
     const pathSelectedSet = getPathSelectionNodeIds?.() ?? new Set<string>();
     const inPathSelection = pathSelectedSet.has(String(id));
     const pathSelectionActive = pathSelectedSet.size > 0;
@@ -51,19 +62,28 @@ export const createStatusNodeWrapper = (
     const resolvedProjectId = getProjectId?.();
     const analyzeViewerService = getAnalyzeViewerService?.();
 
+    const mergedData = useMemo(() => {
+      const d = (data as any) ?? {};
+      return {
+        ...d,
+        // injectProjectIdIntoData
+        projectId: d.projectId ?? resolvedProjectId,
+      };
+    }, [data, resolvedProjectId]);
+
     return (
-      <div onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave} style={{ display: "inline-block" }}>
-        <StatusNode
+      <div
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+        style={{ display: "inline-block" }}
+      >
+        <ProtocolNodeCard
           {...rest}
           id={String(id)}
-          data={{
-            ...(data as any),
-            // injectProjectIdIntoData
-            projectId: (data as any)?.projectId ?? resolvedProjectId,
-          }}
+          data={mergedData}
           selectedNodeId={selectedNodeId}
-          onClick={(evt?: React.MouseEvent) => onClick(data, evt)}
-          onDoubleClick={() => onDoubleClick(data)}
+          onClick={(evt?: React.MouseEvent) => onClick(mergedData, evt)}
+          onDoubleClick={() => onDoubleClick(mergedData)}
           graphDirection={graphDirection}
           zoomLevel={zoom}
           hoveredNodeId={hoveredNodeId}
@@ -79,6 +99,7 @@ export const createStatusNodeWrapper = (
           onSelectFrom={actions.onSelectFrom}
           onSelectTo={actions.onSelectTo}
           onStop={actions.onStop}
+          onManageTags={actions.onManageTags}
           inPathSelection={inPathSelection}
           pathSelectionActive={pathSelectionActive}
           onBrowse={onBrowse}

@@ -514,3 +514,48 @@
   width: 44px;
   height: 44px;
 }
+.footer {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch; /* key: prevents centering the whole row */
+  width: 100%;
+}
+
+.footerTopRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between; /* left vs right */
+  width: 100%;
+}
+
+.timeRow {
+  margin-left: auto; /* hard guarantee it goes to the right */
+}
+
+.footerTagsRow {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  width: 100%;
+  justify-content: flex-start;
+}
+
+.tagChip {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 16px;      /* bigger */
+  border-radius: 999px;
+  border: 1px solid rgba(15, 23, 42, 0.18);
+  font-size: 30px;        /* bigger */
+  line-height: 22px;      /* bigger */
+  color: #0b1220;
+
+  /* optional extra punch if still small due to zoom */
+  transform: scale(1.06);
+  transform-origin: left center;
+}
+
+.tagChipText {
+  white-space: nowrap;
+}
