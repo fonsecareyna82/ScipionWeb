@@ -254,7 +254,7 @@ export function buildGraphElements(
   viewportZoom?: number | null,
   nodeSizeMap?: NodeSizeMap | null
 ) {
-  const spacingX = direction === "TB" ? 300 : 1150;
+  const spacingX = direction === "TB" ? 430 : 1150;
   const spacingY = direction === "TB" ? 580 : 380;
 
   const nodes: Node[] = [];
