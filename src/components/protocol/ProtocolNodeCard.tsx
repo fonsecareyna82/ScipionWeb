@@ -101,6 +101,7 @@ type StatusNodeProps = {
   id?: string;
   data: {
     label: string;
+    title: string;
     status?: string;
     id: string;
     color?: string;
@@ -610,25 +611,6 @@ export default function ProtocolNodeCard({
       .filter(Boolean) as ProtocolTag[];
   }, [selectedTagIds, tagsById]);
 
-
-  const toggleTagSelection = useCallback(
-    (tagId: string) => {
-      // toggleTagSelection
-      if (isProjectNode) return;
-
-      const id = String(tagId);
-      setSelectedTagIds((prev) => {
-        const prevSet = new Set(prev.map((x) => String(x)));
-        const next = prevSet.has(id)
-          ? prev.filter((x) => String(x) !== id)
-          : [...prev, id];
-
-        writeAssignedTagIds(data.projectId, data.id, next);
-        return next;
-      });
-    },
-    [data.projectId, data.id, isProjectNode]
-  );
 
   const reactFlow = useReactFlow();
 
@@ -1324,6 +1306,24 @@ export default function ProtocolNodeCard({
             )}
           </div>
 
+          {isContentExpanded && selectedTags.length > 0 ? (
+            <div className={styles.footerTagsRow} aria-label="Protocol tags">
+              <Tags className={styles.tagsRowIcon} aria-hidden="true" />
+              <div className={styles.tagsChipsWrap}>
+                {selectedTags.map((t) => (
+                  <span
+                    key={String(t.id)}
+                    className={styles.tagChip}
+                    title={t.description || t.title}
+                    style={{ backgroundColor: t.color || "#9ca3af" }}
+                  >
+                    <span className={styles.tagChipText}>{t.title}</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
           {shouldRenderProtocolBody && (
             <div className={contentClassName} style={contentStyle} aria-hidden={!isContentExpanded}>
               <div className={styles.cardContent}>
@@ -1510,23 +1510,6 @@ export default function ProtocolNodeCard({
                     </span>
                   </div>
 
-                  {selectedTags.length > 0 ? (
-                    <div className={styles.footerTagsRow} aria-label="Protocol tags">
-                      <Tags className={styles.tagsRowIcon} aria-hidden="true" />
-                      <div className={styles.tagsChipsWrap}>
-                        {selectedTags.map((t) => (
-                          <span
-                            key={String(t.id)}
-                            className={styles.tagChip}
-                            title={t.description || t.title}
-                            style={{ backgroundColor: t.color || "#9ca3af" }}
-                          >
-                            <span className={styles.tagChipText}>{t.title}</span>
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
 
                 </div>
               )}

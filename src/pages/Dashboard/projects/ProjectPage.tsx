@@ -72,6 +72,7 @@ import TagsDialog from "@/components/tags/TagsDialog";
 /* --------------------- Types --------------------- */
 interface StatusNodeData {
   label: string;
+  title: string;
   status?: string;
   id: string;
 
@@ -425,11 +426,6 @@ function normalizeProtocolTagAssignments(raw: unknown): ProtocolTagAssignments {
   return out;
 }
 
-function getAssignmentsStorageKey(projectName: string): string {
-  // getAssignmentsStorageKey
-  return `project-${projectName}-protocol-tags.v1`;
-}
-
 function loadTagAssignments(projectName: string): ProtocolTagAssignments {
   // loadTagAssignments
   const legacyKey = `project-${projectName}-protocol-tags.v1`;
@@ -517,8 +513,6 @@ function extractAssignmentsFromProjectProtocols(protocols: any): ProtocolTagAssi
 
   return out;
 }
-
-
 
 export default function ProjectPage() {
   const hostIsDark = useHostDarkMode();
@@ -852,16 +846,6 @@ export default function ProjectPage() {
 
   const getProjectId = () => projectIdRef.current;
 
-  const [isTagsDialogOpen, setIsTagsDialogOpen] = useState(false);
-
-  const handleOpenTagsDialog = useCallback(() => {
-    setIsTagsDialogOpen(true);
-  }, []);
-
-  const handleCloseTagsDialog = useCallback(() => {
-    setIsTagsDialogOpen(false);
-  }, []);
-
   //Tags 
   const tagById = useMemo(() => {
     // tagById
@@ -952,43 +936,6 @@ export default function ProjectPage() {
     if (!assignTagsOpen) return;
     setAssignDraftTagIds(unionSelectedTagIds);
   }, [assignTagsOpen, unionSelectedTagIds]);
-
-
-  const setTagsForProtocols = useCallback(
-    async (protocolIds: string[], nextTagIds: string[]) => {
-      // setTagsForProtocols
-      if (!projectName) return;
-
-      const cleanProtocolIds = Array.from(new Set(protocolIds.map(String)))
-        .filter((x) => x && x !== "PROJECT");
-
-      const cleanTagIds = normalizeTagIds(nextTagIds);
-
-      // optimisticLocalUpdate
-      setTagAssignments((prev) => {
-        const merged: ProtocolTagAssignments = { ...prev };
-        for (const pid of cleanProtocolIds) merged[pid] = cleanTagIds;
-
-        try { saveTagAssignments(projectName, merged); } catch { /* noOp */ }
-        return merged;
-      });
-
-      // optionalApiSyncIfAvailable
-      const svcAny: any = svc as any;
-      if (typeof svcAny.setProtocolTags === "function") {
-        try {
-          await svcAny.setProtocolTags(projectName, cleanProtocolIds, cleanTagIds);
-        } catch (e) {
-          // rollbackOnApiFail (optional)
-          toast.error(getErrorMsg(e));
-        }
-      }
-    },
-    [projectName, svc]
-  );
-
-  const [assignTagsBusy, setAssignTagsBusy] = useState(false);
-
 
   // Viewport state (used for hierarchical/table; grid uses fixed zoom)
   const [viewport, setViewport] = useState<{ x: number; y: number; zoom: number }>({ x: 0, y: 0, zoom: 0.3464 });
@@ -2883,79 +2830,12 @@ export default function ProjectPage() {
     return ((n as any)?.data?.label as string) ?? id;
   };
 
-  /* --------------------- Pane context menu --------------------- */
-
-  // Save a position to localStorage for a given node id (only for hierarchical)
-  const persistPositionForId = (id: string, position: { x: number; y: number }) => {
-    if (viewMode !== "hierarchical") return;
-
-    try {
-      const key = storageKeyHier;
-
-      const saved = readPersistedPositions(key, graphDirection);
-      const idx = saved.findIndex((p) => p.id === id);
-
-      const next = [...saved];
-      if (idx >= 0) next[idx] = { id, position };
-      else next.push({ id, position });
-
-      writePersistedPositions(key, graphDirection, next);
-    } catch {
-      // ignore
-    }
-  };
-
-
   // layoutConstantsForHierarchical
   const hierSpacingX = (dir: "TB" | "LR") => (dir === "TB" ? 300 : 1150);
   const hierSpacingY = (dir: "TB" | "LR") => (dir === "TB" ? 580 : 380);
 
   // minGapBetweenSiblings is intentionally small; packing should be compact
   const minGapBetweenSiblings = 40;
-
-  // estimateLabelWidth matches graph_utils.ts to keep consistency
-  const estimateLabelWidth = (label: string, fontSize = 20): number => {
-    const text = String(label ?? "");
-    const avgCharWidth = fontSize * 0.58;
-    const fixedPaddingForNodeCard = 480;
-    const minNodeWidth = 620;
-    const maxNodeWidth = 980;
-    const estimated = Math.ceil(text.length * avgCharWidth + fixedPaddingForNodeCard);
-    return Math.max(minNodeWidth, Math.min(maxNodeWidth, estimated));
-  };
-
-  // estimateNodeHeight matches graph_utils.ts to keep consistency
-  const estimateNodeHeight = (label: string, fontSize = 20): number => {
-    const avgCharWidth = fontSize * 0.6;
-    const maxWidth = 240;
-    const text = String(label ?? "");
-    const charsPerLine = Math.max(1, Math.floor(maxWidth / avgCharWidth));
-    const lines = Math.ceil(text.length / charsPerLine) || 1;
-    const baseLineHeight = Math.round(fontSize * 1.2);
-    return Math.ceil(lines * baseLineHeight) + 180;
-  };
-
-  const getNodeLabelForEstimate = (n: Node<any>): string => {
-    const d: any = (n as any).data ?? {};
-    return String(d.label ?? n.id);
-  };
-
-  // getNodeSize tries measured sizes first, falls back to deterministic estimates
-  const getNodeSize = (n: Node<any>): { width: number; height: number } => {
-    const anyN: any = n as any;
-
-    const mw = Number(anyN.measured?.width ?? anyN.width);
-    const mh = Number(anyN.measured?.height ?? anyN.height);
-
-    const label = getNodeLabelForEstimate(n);
-
-    const width = Number.isFinite(mw) && mw > 0 ? Math.ceil(mw) : estimateLabelWidth(label);
-    const height = Number.isFinite(mh) && mh > 0 ? Math.ceil(mh) : estimateNodeHeight(label);
-
-    return { width, height };
-  };
-
-
   const getLevelCoord = (dir: "TB" | "LR", pos: { x: number; y: number }) => (dir === "TB" ? pos.y : pos.x);
   const setLevelCoord = (dir: "TB" | "LR", pos: { x: number; y: number }, v: number) =>
     dir === "TB" ? { x: pos.x, y: v } : { x: v, y: pos.y };
@@ -2964,8 +2844,6 @@ export default function ProjectPage() {
   const setAxisCoord = (dir: "TB" | "LR", pos: { x: number; y: number }, v: number) =>
     dir === "TB" ? { x: v, y: pos.y } : { x: pos.x, y: v };
 
-  // collisionGap controls packing distance between sibling bounding boxes
-  const collisionGap = 60;
 
   const getAxisSize = (dir: "TB" | "LR", n: Node<any>) => {
     const anyN: any = n as any;
@@ -2978,128 +2856,6 @@ export default function ProjectPage() {
 
     // addPadding to be safer with card shadows/margins
     return (dir === "TB" ? width : height) + 40;
-  };
-
-  const computeLevelTolerance = (dir: "TB" | "LR", nodesList: Node<any>[]) => {
-    // compute typical separation between levels and use a fraction as tolerance
-    const coords = nodesList
-      .map((n) => getLevelCoord(dir, n.position))
-      .filter((v) => Number.isFinite(v))
-      .sort((a, b) => a - b);
-
-    const diffs: number[] = [];
-    for (let i = 1; i < coords.length; i++) {
-      const d = coords[i] - coords[i - 1];
-      if (d > 5) diffs.push(d);
-    }
-    diffs.sort((a, b) => a - b);
-
-    const median = diffs.length ? diffs[Math.floor(diffs.length / 2)] : (dir === "TB" ? 650 : 1150);
-
-    // capTolerance prevents accidentally merging adjacent levels
-    const cap = dir === "TB" ? 320 : 520;
-    return Math.max(140, Math.min(cap, median * 0.45));
-  };
-
-  const resolveOverlapsAtAnchorLevel = (
-    dir: "TB" | "LR",
-    nodesList: Node<any>[],
-    anchorId: string
-  ): { nodes: Node<any>[]; changed: Array<{ id: string; position: { x: number; y: number } }> } => {
-    const anchor = nodesList.find((n) => String(n.id) === String(anchorId));
-    if (!anchor) return { nodes: nodesList, changed: [] };
-
-    const anchorLevel = getLevelCoord(dir, anchor.position);
-    const tol = computeLevelTolerance(dir, nodesList);
-
-    const sameLevel = nodesList.filter((n) => Math.abs(getLevelCoord(dir, n.position) - anchorLevel) <= tol);
-    if (sameLevel.length <= 1) {
-      // snapAnchorToLevelOnly
-      const snapped = nodesList.map((n) => {
-        if (n.id !== anchorId) return n;
-        const pos = setLevelCoord(dir, n.position, anchorLevel);
-        return (pos.x === n.position.x && pos.y === n.position.y) ? n : { ...n, position: pos };
-      });
-      const changed = snapped
-        .filter((n) => n.id === anchorId)
-        .map((n) => ({ id: n.id, position: n.position }));
-      return { nodes: snapped, changed };
-    }
-
-    // snapAllSameLevelToExactAnchorLevel for stability
-    const posMap = new Map<string, { x: number; y: number }>();
-    for (const n of sameLevel) posMap.set(n.id, setLevelCoord(dir, n.position, anchorLevel));
-
-    // sortByAxis
-    const sorted = [...sameLevel].sort(
-      (a, b) => getAxisCoord(dir, posMap.get(a.id)!) - getAxisCoord(dir, posMap.get(b.id)!)
-    );
-
-    const idx = sorted.findIndex((n) => n.id === anchorId);
-    if (idx < 0) return { nodes: nodesList, changed: [] };
-
-    // keepAnchorAxisFixed
-    const anchorPos = posMap.get(anchorId)!;
-    const anchorAxis = getAxisCoord(dir, anchorPos);
-    posMap.set(anchorId, setAxisCoord(dir, anchorPos, anchorAxis));
-
-    // packRight
-    for (let i = idx + 1; i < sorted.length; i++) {
-      const prevN = sorted[i - 1];
-      const curN = sorted[i];
-
-      const prevPos = posMap.get(prevN.id)!;
-      const curPos = posMap.get(curN.id)!;
-
-      const prevAxis = getAxisCoord(dir, prevPos);
-      const prevSize = getAxisSize(dir, prevN);
-
-      const curAxis = getAxisCoord(dir, curPos);
-      const curSize = getAxisSize(dir, curN);
-
-      const prevRight = prevAxis + prevSize / 2;
-      const minCenter = prevRight + collisionGap + curSize / 2;
-
-      if (curAxis < minCenter) {
-        posMap.set(curN.id, setAxisCoord(dir, curPos, minCenter));
-      }
-    }
-
-    // packLeft
-    for (let i = idx - 1; i >= 0; i--) {
-      const nextN = sorted[i + 1];
-      const curN = sorted[i];
-
-      const nextPos = posMap.get(nextN.id)!;
-      const curPos = posMap.get(curN.id)!;
-
-      const nextAxis = getAxisCoord(dir, nextPos);
-      const nextSize = getAxisSize(dir, nextN);
-
-      const curAxis = getAxisCoord(dir, curPos);
-      const curSize = getAxisSize(dir, curN);
-
-      const nextLeft = nextAxis - nextSize / 2;
-      const maxCenter = nextLeft - collisionGap - curSize / 2;
-
-      if (curAxis > maxCenter) {
-        posMap.set(curN.id, setAxisCoord(dir, curPos, maxCenter));
-      }
-    }
-
-    // applyBack
-    const sameLevelIds = new Set(sameLevel.map((n) => n.id));
-    const nextNodes = nodesList.map((n) => {
-      if (!sameLevelIds.has(n.id)) return n;
-      const np = posMap.get(n.id)!;
-      return (np.x === n.position.x && np.y === n.position.y) ? n : { ...n, position: np };
-    });
-
-    const changed = nextNodes
-      .filter((n) => sameLevelIds.has(n.id))
-      .map((n) => ({ id: n.id, position: n.position }));
-
-    return { nodes: nextNodes, changed };
   };
 
   const getLevelStep = (dir: "TB" | "LR") => (dir === "TB" ? hierSpacingY(dir) : hierSpacingX(dir));
@@ -3561,16 +3317,6 @@ export default function ProjectPage() {
     workflow: unknown[];
   };
 
-  const isApiWorkflowResponse = (v: any): v is ApiWorkflowResponse => {
-    return (
-      v != null &&
-      typeof v === "object" &&
-      typeof v.status === "number" &&
-      Array.isArray(v.errors) &&
-      Array.isArray(v.workflow)
-    );
-  };
-
   const showApiErrorsToast = (errors: unknown, fallbackMessage: string) => {
     const list = Array.isArray(errors) ? errors.map((x) => String(x)).filter(Boolean) : [];
     const msg = list.length ? list : [fallbackMessage];
@@ -3650,31 +3396,6 @@ export default function ProjectPage() {
     }
   };
 
-
-  const stopProtocolNow = async (ids: string[]) => {
-    if (!projectName) return;
-
-    const cleanIds = Array.from(new Set((ids ?? []).map(String)))
-      .filter((id) => id && id !== "PROJECT");
-
-    if (cleanIds.length === 0) return;
-
-    try {
-      await svc.stopProtocol(projectName, cleanIds);
-
-      toast.success(
-        cleanIds.length > 1
-          ? `Stop requested for ${cleanIds.length} protocols.`
-          : "Stop requested."
-      );
-
-      clearAllSelectionHard();
-      await Promise.resolve(handleRefreshRef.current?.());
-    } catch (e) {
-      console.error(e);
-      toast.error(getErrorMsg(e));
-    }
-  };
 
   const openRename = (id: string) => setDlgRename({ open: true, id, value: findNodeLabel(id) });
 

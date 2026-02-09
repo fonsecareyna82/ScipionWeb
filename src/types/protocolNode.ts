@@ -3,6 +3,7 @@ export interface ProtocolNode {
   parents: string[];
   children: string[];
   label: string;
+  title: string;
   status: string;
   parameters: Record<string, any>;
   cpuTime: string;

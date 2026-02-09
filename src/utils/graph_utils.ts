@@ -1,5 +1,6 @@
 // File: src/utils/graph_utils.ts
 import { ProtocolNode } from "@/types/protocolNode";
+import { title } from "process";
 import { Node, Edge, Position } from "reactflow";
 
 /**
@@ -269,6 +270,7 @@ export function buildGraphElements(
     const tableData = sorted.map(([id, prot]) => ({
       id,
       label: prot.label,
+      title: prot.title,
       status: prot.status,
       parameters: prot.parameters,
       children: prot.children,
@@ -355,6 +357,7 @@ export function buildGraphElements(
         type: "status",
         data: {
           label: prot?.label || id,
+          title: prot?.title,
           status: prot?.status,
           id,
           parameters: prot?.parameters,
@@ -503,6 +506,7 @@ export function buildGraphElements(
         type: "status",
         data: {
           label: id === "PROJECT" ? projectName : label,
+          title: prot?.title,
           status,
           id,
           parameters: prot?.parameters,
