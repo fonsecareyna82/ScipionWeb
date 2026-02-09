@@ -36,7 +36,10 @@ import { LayoutGrid, Table } from "lucide-react";
 import PageMeta from "@/components/common/PageMeta";
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 
-type TabKey = "user" | "instance";
+import TagManager from "@/components/tags/TagManager";
+import type { ProtocolTag } from "@/components/tags/tagTypes";
+
+type TabKey = "user" | "instance" | "tags";
 
 type WorkflowViewMode = "treeTb" | "treeLr" | "grid" | "table";
 
@@ -171,7 +174,9 @@ function sanitizeUserSettings(raw: any): UserSettings {
     graphMiniMapEnabled:
       typeof raw?.graphMiniMapEnabled === "boolean" ? raw.graphMiniMapEnabled : defaultUserSettings.graphMiniMapEnabled,
     graphFocusModeEnabled:
-      typeof raw?.graphFocusModeEnabled === "boolean" ? raw.graphFocusModeEnabled : defaultUserSettings.graphFocusModeEnabled,
+      typeof raw?.graphFocusModeEnabled === "boolean"
+        ? raw.graphFocusModeEnabled
+        : defaultUserSettings.graphFocusModeEnabled,
     workflowsAutoRefreshSec: clampNumber(raw?.workflowsAutoRefreshSec, defaultUserSettings.workflowsAutoRefreshSec, 0, 300),
   };
 }
@@ -252,7 +257,7 @@ function getTimeZoneOptions(): string[] {
       }
     }
   } catch {
-    // ignore and use fallback
+    // ignoreAndUseFallback
   }
 
   return fallback;
@@ -310,6 +315,8 @@ export default function SettingsPage() {
 
   const [tab, setTab] = useState<TabKey>("user");
 
+  const [tags, setTags] = useState<ProtocolTag[]>([]);
+
   const [userLoading, setUserLoading] = useState(false);
   const [userError, setUserError] = useState<string | null>(null);
   const [userBase, setUserBase] = useState<UserSettings | null>(null);
@@ -364,7 +371,9 @@ export default function SettingsPage() {
       "& .MuiOutlinedInput-notchedOutline": { borderColor: colors.border },
       "& .MuiOutlinedInput-root": {
         bgcolor: isDarkMode ? "rgba(255,255,255,0.02)" : "transparent",
-        "&:hover .MuiOutlinedInput-notchedOutline": { borderColor: isDarkMode ? "rgba(255,255,255,0.22)" : colors.border },
+        "&:hover .MuiOutlinedInput-notchedOutline": {
+          borderColor: isDarkMode ? "rgba(255,255,255,0.22)" : colors.border,
+        },
         "&.Mui-focused .MuiOutlinedInput-notchedOutline": { borderColor: colors.primary },
       },
       "& .MuiSvgIcon-root": { color: colors.muted },
@@ -622,16 +631,23 @@ export default function SettingsPage() {
   const handleCopyAdvanced = useCallback(async () => {
     // handleCopyAdvanced
     try {
-      const payload = tab === "user" ? (userDraft ?? userBase ?? {}) : (instanceDraft ?? instanceBase ?? {});
+      const payload =
+        tab === "tags"
+          ? tags
+          : tab === "user"
+            ? (userDraft ?? userBase ?? {})
+            : (instanceDraft ?? instanceBase ?? {});
       await copyToClipboard(safeStringify(payload));
       toast.success("Copied.");
     } catch {
       toast.error("Copy failed.");
     }
-  }, [tab, userDraft, userBase, instanceDraft, instanceBase]);
+  }, [tab, tags, userDraft, userBase, instanceDraft, instanceBase]);
 
   const headerRight = useMemo(() => {
     // headerRight
+    if (tab === "tags") return null;
+
     const isUser = tab === "user";
     const busy = isUser ? userLoading : instanceLoading;
     const patch = isUser ? userPatch : instancePatch;
@@ -825,7 +841,11 @@ export default function SettingsPage() {
         </Card>
 
         <Card variant="outlined" sx={cardSx}>
-          <CardHeader title="Workflow viewer" subheader="Layout mode, navigation helpers, and refresh behavior." sx={cardHeaderSx} />
+          <CardHeader
+            title="Workflow viewer"
+            subheader="Layout mode, navigation helpers, and refresh behavior."
+            sx={cardHeaderSx}
+          />
           <CardContent sx={{ pt: 2 }}>
             <Grid container spacing={2} sx={{ width: "100%" }}>
               <Grid size={{ xs: 12, md: 4 }}>
@@ -849,7 +869,9 @@ export default function SettingsPage() {
                       );
                     }}
                     onChange={(e) =>
-                      setUserDraft((prev) => (prev ? { ...prev, workflowViewMode: e.target.value as WorkflowViewMode } : prev))
+                      setUserDraft((prev) =>
+                        prev ? { ...prev, workflowViewMode: e.target.value as WorkflowViewMode } : prev,
+                      )
                     }
                   >
                     {(["treeTb", "treeLr", "grid", "table"] as WorkflowViewMode[]).map((m) => {
@@ -892,7 +914,9 @@ export default function SettingsPage() {
                   control={
                     <Switch
                       checked={Boolean(userDraft.graphFocusModeEnabled)}
-                      onChange={(e) => setUserDraft((prev) => (prev ? { ...prev, graphFocusModeEnabled: e.target.checked } : prev))}
+                      onChange={(e) =>
+                        setUserDraft((prev) => (prev ? { ...prev, graphFocusModeEnabled: e.target.checked } : prev))
+                      }
                       size="small"
                     />
                   }
@@ -1051,7 +1075,9 @@ export default function SettingsPage() {
                       <Switch
                         checked={Boolean(instanceDraft.requireConfirmBeforeExecute)}
                         onChange={(e) =>
-                          setInstanceDraft((prev) => (prev ? { ...prev, requireConfirmBeforeExecute: e.target.checked } : prev))
+                          setInstanceDraft((prev) =>
+                            prev ? { ...prev, requireConfirmBeforeExecute: e.target.checked } : prev,
+                          )
                         }
                         size="small"
                       />
@@ -1063,7 +1089,9 @@ export default function SettingsPage() {
                       <Switch
                         checked={Boolean(instanceDraft.requireConfirmBeforeDelete)}
                         onChange={(e) =>
-                          setInstanceDraft((prev) => (prev ? { ...prev, requireConfirmBeforeDelete: e.target.checked } : prev))
+                          setInstanceDraft((prev) =>
+                            prev ? { ...prev, requireConfirmBeforeDelete: e.target.checked } : prev,
+                          )
                         }
                         size="small"
                       />
@@ -1079,10 +1107,29 @@ export default function SettingsPage() {
     );
   };
 
+  const renderTagsContent = () => {
+    // renderTagsContent
+    return (
+      <Stack spacing={1.75}>
+        <Card variant="outlined" sx={cardSx}>
+          <CardHeader
+            title="Tags"
+            subheader="Create tags to classify protocols (local only, not persisted yet)."
+            sx={cardHeaderSx}
+          />
+          <CardContent sx={{ pt: 2 }}>
+            <TagManager title="Protocol tags" tags={tags} onTagsChange={setTags} />
+          </CardContent>
+        </Card>
+      </Stack>
+    );
+  };
+
   const advancedPayload = useMemo(() => {
     // advancedPayload
+    if (tab === "tags") return tags;
     return tab === "user" ? (userDraft ?? userBase ?? {}) : (instanceDraft ?? instanceBase ?? {});
-  }, [tab, userDraft, userBase, instanceDraft, instanceBase]);
+  }, [tab, tags, userDraft, userBase, instanceDraft, instanceBase]);
 
   return (
     <>
@@ -1133,12 +1180,13 @@ export default function SettingsPage() {
             >
               <Tab value="user" label="User" />
               <Tab value="instance" label="Instance" />
+              <Tab value="tags" label="Tags" />
             </Tabs>
 
             <Divider sx={dividerSx} />
 
             <Box sx={{ p: 2 }}>
-              {tab === "user" ? renderUserContent() : renderInstanceContent()}
+              {tab === "user" ? renderUserContent() : tab === "instance" ? renderInstanceContent() : renderTagsContent()}
 
               <Divider sx={{ my: 2, ...dividerSx }} />
 
