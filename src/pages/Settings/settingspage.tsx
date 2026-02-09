@@ -38,6 +38,7 @@ import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 
 import TagManager from "@/components/tags/TagManager";
 import type { ProtocolTag } from "@/components/tags/tagTypes";
+import { useTagStore } from "@/stores/tag_store";
 
 type TabKey = "user" | "instance" | "tags";
 
@@ -89,8 +90,6 @@ const defaultInstanceSettings: InstanceSettings = {
 const wrapperMaxWidth = 980;
 
 const fieldFontSize = 12;
-
-const tagsStorageKey = "scipion.tags.v1";
 
 function safeStringify(value: unknown): string {
   // safeStringify
@@ -290,29 +289,6 @@ function getViewModeMeta(mode: WorkflowViewMode): { label: string; icon: React.R
   }
 }
 
-function loadTagsFromStorage(): ProtocolTag[] {
-  // loadTagsFromStorage
-  try {
-    if (typeof window === "undefined") return [];
-    const raw = window.localStorage.getItem(tagsStorageKey);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed as ProtocolTag[];
-  } catch {
-    return [];
-  }
-}
-
-function saveTagsToStorage(tags: ProtocolTag[]): void {
-  // saveTagsToStorage
-  try {
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem(tagsStorageKey, JSON.stringify(tags ?? []));
-  } catch {
-    // ignore storage errors
-  }
-}
 
 export default function SettingsPage() {
   const svc = useProjectService() as any;
@@ -351,12 +327,7 @@ export default function SettingsPage() {
   const [instanceDraft, setInstanceDraft] = useState<InstanceSettings | null>(null);
   const [instanceLoadedOnce, setInstanceLoadedOnce] = useState(false);
 
-  const [tagsDraft, setTagsDraft] = useState<ProtocolTag[]>(() => loadTagsFromStorage());
-
-  useEffect(() => {
-    // persistTagsDraft
-    saveTagsToStorage(tagsDraft);
-  }, [tagsDraft]);
+  const { tags, setTags } = useTagStore();
 
   const [showAdvanced, setShowAdvanced] = useState(false);
 
@@ -663,13 +634,13 @@ export default function SettingsPage() {
           ? (userDraft ?? userBase ?? {})
           : tab === "instance"
             ? (instanceDraft ?? instanceBase ?? {})
-            : (tagsDraft ?? []);
+            : (tags ?? []);
       await copyToClipboard(safeStringify(payload));
       toast.success("Copied.");
     } catch {
       toast.error("Copy failed.");
     }
-  }, [tab, userDraft, userBase, instanceDraft, instanceBase, tagsDraft]);
+  }, [tab, userDraft, userBase, instanceDraft, instanceBase, tags]);
 
   const headerRight = useMemo(() => {
     // headerRight
@@ -1129,7 +1100,7 @@ export default function SettingsPage() {
         <Card variant="outlined" sx={cardSx}>
           <CardHeader title="Tags" subheader="Create and manage protocol tags (stored locally for now)." sx={cardHeaderSx} />
           <CardContent sx={{ pt: 2 }}>
-            <TagManager title="Tags" tags={tagsDraft} onTagsChange={setTagsDraft} />
+            <TagManager title="Tags" tags={tags} onTagsChange={setTags} />
             <Typography sx={{ mt: 1.25, fontSize: 12, color: colors.muted }}>
               Tags are stored in your browser local storage. Protocol assignment and backend persistence will be added later.
             </Typography>
@@ -1143,8 +1114,8 @@ export default function SettingsPage() {
     // advancedPayload
     if (tab === "user") return userDraft ?? userBase ?? {};
     if (tab === "instance") return instanceDraft ?? instanceBase ?? {};
-    return tagsDraft ?? [];
-  }, [tab, userDraft, userBase, instanceDraft, instanceBase, tagsDraft]);
+    return tags ?? [];
+  }, [tab, userDraft, userBase, instanceDraft, instanceBase, tags]);
 
   return (
     <>
