@@ -4162,15 +4162,6 @@ export default function ProjectPage() {
             </div>
 
             <div className="pp-headerCard pp-tagsCard">
-              <div className="pp-tagsPicker">
-                <TagPicker
-                  allTags={allTags}
-                  selectedTagIds={tagFilterIds}
-                  onChange={setTagFilterIds}
-                  disabled={allTags.length === 0}
-                />
-              </div>
-
               <div className="pp-tagsActions">
                 <button
                   type="button"
@@ -4182,6 +4173,14 @@ export default function ProjectPage() {
                   <span>Tags</span>
                 </button>
 
+              </div>
+              <div className="pp-tagsPicker">
+                <TagPicker
+                  allTags={allTags}
+                  selectedTagIds={tagFilterIds}
+                  onChange={setTagFilterIds}
+                  disabled={allTags.length === 0}
+                />
               </div>
             </div>
           </div>

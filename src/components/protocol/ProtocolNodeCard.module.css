@@ -559,3 +559,21 @@
 .tagChipText {
   white-space: nowrap;
 }
+
+.menuRight {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.menuCheckIcon {
+  width: 16px;
+  height: 16px;
+}
+
+.menuCheckPlaceholder {
+  width: 16px;
+  height: 16px;
+  display: inline-block;
+}

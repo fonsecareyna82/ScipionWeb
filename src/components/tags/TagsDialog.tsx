@@ -44,13 +44,17 @@ export default function TagsDialog({ open, onClose, title, children }: TagsDialo
         sx={{
           // overflowVisibleToAvoidAutocompleteClippingWhenDisablePortalIsUsedSomewhere
           overflow: "visible",
+          textTransform: "none",
         }}
       >
         {children}
       </DialogContent>
 
       <DialogActions>
-        <Button onClick={onClose} variant="outlined" sx={{ borderRadius: 2, backgroundColor: "#e0e0e0", color: "black", "&:hover": { backgroundColor: "#d5d5d5" }  }}>
+        <Button onClick={onClose} variant="outlined" sx={{ borderRadius: 2, 
+            backgroundColor: "#e0e0e0", 
+            color: "black", "&:hover": { backgroundColor: "#d5d5d5" },
+            textTransform: "none",  }}>
           Close
         </Button>
       </DialogActions>

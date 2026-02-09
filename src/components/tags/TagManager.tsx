@@ -306,10 +306,10 @@ function TagEditorDialog({
                         backgroundColor: "background.paper",
                     }}
                 >
-                    <Button variant="outlined" onClick={onClose} sx={{ textTransform: "none", minWidth: 112 }}>
+                    <Button variant="outlined" onClick={onClose} sx={{ textTransform: "none", minWidth: 112, borderRadius: 2 }}>
                         Cancel
                     </Button>
-                    <Button variant="contained" onClick={onSave} sx={{ textTransform: "none", minWidth: 112 }}>
+                    <Button variant="contained" onClick={onSave} sx={{ textTransform: "none", minWidth: 112, borderRadius: 2, }}>
                         Save
                     </Button>
                 </DialogActions>
@@ -383,7 +383,7 @@ function TagEditorDialog({
                         backgroundColor: "background.paper",
                     }}
                 >
-                    <Button variant="outlined" onClick={() => setOpenHelp(null)} sx={{ textTransform: "none", minWidth: 112 }}>
+                    <Button variant="outlined" onClick={() => setOpenHelp(null)} sx={{ textTransform: "none", minWidth: 112,  }}>
                         Close
                     </Button>
                 </DialogActions>
@@ -532,9 +532,11 @@ export default function TagManager({ title, tags, onTagsChange, initialTags }: T
                 <Button
                     variant="contained"
                     onClick={openCreate}
+                    
                     sx={{
                         textTransform: "none",
                         backgroundColor: "#25991a",
+                        borderRadius: 2,
                         "&:hover": { backgroundColor: "#176d0f" },
                     }}
                 >

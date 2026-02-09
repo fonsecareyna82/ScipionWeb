@@ -624,7 +624,7 @@ export default function ProtocolNodeCard({
     [data.projectId, data.id, isProjectNode]
   );
 
-    const reactFlow = useReactFlow();
+  const reactFlow = useReactFlow();
 
   type TagTarget = {
     protocolId: string;
@@ -1090,6 +1090,8 @@ export default function ProtocolNodeCard({
                           </div>
                         </DropdownMenuItem>
 
+
+
                         <DropdownMenuSeparator />
 
                         <DropdownMenuItem onSelect={(e) => runMenuAction(e, handleSelectFrom)}>
@@ -1230,7 +1232,7 @@ export default function ProtocolNodeCard({
                                 onSelect={(e) => {
                                   // toggleTagSelectionKeepMenuOpen
                                   e.preventDefault();
-                                  runMenuAction(e, () => toggleTagSelection(String(tag.id)));
+                                  runMenuAction(e, () => toggleTagSelectionForSelection(String(tag.id)));
                                 }}
                               >
                                 <div className={styles.menuRow}>
@@ -1246,10 +1248,15 @@ export default function ProtocolNodeCard({
                                         marginRight: 8,
                                       }}
                                     />
-                                    <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-                                      <span>{tag.title}</span>
-                                      {isChecked ? <Check className={styles.menuItemIcon} /> : null}
-                                    </span>
+                                    <span>{tag.title}</span>
+                                  </span>
+
+                                  <span className={styles.menuRight}>
+                                    {isChecked ? (
+                                      <Check className={styles.menuCheckIcon} />
+                                    ) : (
+                                      <span className={styles.menuCheckPlaceholder} />
+                                    )}
                                   </span>
                                 </div>
                               </DropdownMenuItem>
@@ -1568,6 +1575,8 @@ export default function ProtocolNodeCard({
               </div>
             </ContextMenuItem>
 
+
+
             <ContextMenuSeparator />
 
             <ContextMenuItem onClick={handleSelectFrom}>
@@ -1730,13 +1739,19 @@ export default function ProtocolNodeCard({
                             marginRight: 8,
                           }}
                         />
-                        <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-                          <span>{tag.title}</span>
-                          {isChecked ? <Check className={styles.menuItemIcon} /> : null}
-                        </span>
+                        <span>{tag.title}</span>
+                      </span>
+
+                      <span className={styles.menuRight}>
+                        {isChecked ? (
+                          <Check className={styles.menuCheckIcon} />
+                        ) : (
+                          <span className={styles.menuCheckPlaceholder} />
+                        )}
                       </span>
                     </div>
                   </ContextMenuItem>
+
                 );
               })
             ) : (
