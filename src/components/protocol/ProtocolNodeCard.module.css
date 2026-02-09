@@ -554,6 +554,7 @@
   /* optional extra punch if still small due to zoom */
   transform: scale(1.06);
   transform-origin: left center;
+  margin-left: 8px; /* to visually compensate the transform */
 }
 
 .tagChipText {
@@ -576,4 +577,25 @@
   width: 16px;
   height: 16px;
   display: inline-block;
+}
+
+.footerTagsRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tagsRowIcon {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  opacity: 0.85;
+}
+
+.tagsChipsWrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  min-width: 0;
 }

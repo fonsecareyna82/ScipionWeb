@@ -312,6 +312,13 @@ function safeParseJson<T>(raw: string | null, fallback: T): T {
   }
 }
 
+function filterExistingTagIds(tagIds: string[], defs: ProtocolTag[]): string[] {
+  // filterExistingTagIds
+  const allowed = new Set(defs.map((t) => String(t.id)));
+  return uniqStrings(tagIds).filter((id) => allowed.has(String(id)));
+}
+
+
 function uniqStrings(values: string[]): string[] {
   // uniqStrings
   const out: string[] = [];
@@ -547,8 +554,18 @@ export default function ProtocolNodeCard({
     // syncTagsFromStorage
     const defs = loadTagsFromStorage();
     setAllTags(defs);
-    setSelectedTagIds(readAssignedTagIds(data.projectId, data.id, (data as any)?.tags, defs));
+
+    const assigned = readAssignedTagIds(data.projectId, data.id, (data as any)?.tags, defs);
+    const filtered = filterExistingTagIds(assigned, defs);
+
+    setSelectedTagIds(filtered);
+
+    // If a tag definition was deleted, remove orphan ids from storage assignments
+    if (filtered.length !== assigned.length) {
+      writeAssignedTagIds(data.projectId, data.id, filtered);
+    }
   }, [data.projectId, data.id, data]);
+
 
   useEffect(() => {
     // syncTagsOnNodeIdentityChange
@@ -589,21 +606,10 @@ export default function ProtocolNodeCard({
   const selectedTags = useMemo(() => {
     // selectedTags
     return selectedTagIds
-      .map((id) => {
-        const key = String(id);
-        const def = tagsById.get(key);
-        if (def) return def;
-
-        // fallbackTag
-        return {
-          id: key,
-          title: key,
-          description: "",
-          color: "#9ca3af",
-        } as ProtocolTag;
-      })
-      .filter(Boolean);
+      .map((id) => tagsById.get(String(id)))
+      .filter(Boolean) as ProtocolTag[];
   }, [selectedTagIds, tagsById]);
+
 
   const toggleTagSelection = useCallback(
     (tagId: string) => {
@@ -674,10 +680,14 @@ export default function ProtocolNodeCard({
       const targets = getSelectedTagTargets();
       if (targets.length === 0) return;
 
-      const currentByTarget = targets.map((t) => ({
-        ...t,
-        current: readAssignedTagIds(t.projectId, t.protocolId, t.rawTags, defs),
-      }));
+      const currentByTarget = targets.map((t) => {
+        const current = readAssignedTagIds(t.projectId, t.protocolId, t.rawTags, defs);
+        return {
+          ...t,
+          current: filterExistingTagIds(current, defs),
+        };
+      });
+
 
       const allHaveTag = currentByTarget.every((t) =>
         t.current.some((x) => String(x) === String(normalizedTagId))
@@ -1502,18 +1512,22 @@ export default function ProtocolNodeCard({
 
                   {selectedTags.length > 0 ? (
                     <div className={styles.footerTagsRow} aria-label="Protocol tags">
-                      {selectedTags.map((t) => (
-                        <span
-                          key={String(t.id)}
-                          className={styles.tagChip}
-                          title={t.description || t.title}
-                          style={{ backgroundColor: t.color || "#9ca3af" }}
-                        >
-                          <span className={styles.tagChipText}>{t.title}</span>
-                        </span>
-                      ))}
+                      <Tags className={styles.tagsRowIcon} aria-hidden="true" />
+                      <div className={styles.tagsChipsWrap}>
+                        {selectedTags.map((t) => (
+                          <span
+                            key={String(t.id)}
+                            className={styles.tagChip}
+                            title={t.description || t.title}
+                            style={{ backgroundColor: t.color || "#9ca3af" }}
+                          >
+                            <span className={styles.tagChipText}>{t.title}</span>
+                          </span>
+                        ))}
+                      </div>
                     </div>
                   ) : null}
+
                 </div>
               )}
             </div>
