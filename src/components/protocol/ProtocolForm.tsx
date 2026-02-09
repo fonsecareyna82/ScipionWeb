@@ -30,6 +30,7 @@ import {
   CloseIcon,
   ExecuteIcon,
   SaveIcon,
+  HelpIcon,
 } from "../../icons";
 import WrapWithDrop from "./WrapWithDrop";
 import MultiParamRow from "./MultiParamRow";
@@ -263,6 +264,11 @@ function coerceReadOnlyFlag(raw: any): boolean {
   }
 
   return false;
+}
+
+function coerceCollapsedFlag(raw: any): boolean {
+  // coerceCollapsedFlag
+  return coerceReadOnlyFlag(raw);
 }
 
 
@@ -1100,6 +1106,15 @@ export default function ProtocolForm({
     stateKey: null,
     title: null,
   });
+
+  const [groupHelpDialog, setGroupHelpDialog] = useState<{
+    open: boolean;
+    text: string;
+  }>({
+    open: false,
+    text: "",
+  });
+
 
   const headerActionBtnSx = {
     // headerActionBtnSx
@@ -2880,14 +2895,27 @@ export default function ProtocolForm({
       }
 
       // Group (decorator, name optional)
+      // Group (decorator, name optional)
       if (defClass === "Group") {
         const groupKey = `${stableKey}|group`;
-        const expanded = expandedGroups[groupKey] ?? true;
+
+        const collapsedByDefault = coerceCollapsedFlag(def?.collapsed);
+        const expanded = expandedGroups[groupKey] ?? !collapsedByDefault;
 
         const toggleExpand = () => setExpandedGroups((prev) => ({ ...prev, [groupKey]: !expanded }));
 
         const groupLabel = String(def?.label || name || "Group").trim();
         const groupParams = Array.isArray(def?.params) ? def.params : [];
+
+        const groupHelpText = typeof def?.help === "string" ? def.help : "";
+        const hasGroupHelp = isNonEmptyString(groupHelpText);
+
+        const handleOpenGroupHelp = (e: React.MouseEvent) => {
+          // handleOpenGroupHelp
+          e.preventDefault();
+          e.stopPropagation();
+          setGroupHelpDialog({ open: true, text: groupHelpText });
+        };
 
         return (
           <Box
@@ -2907,6 +2935,21 @@ export default function ProtocolForm({
                 alignItems: "center",
                 cursor: "pointer",
                 mb: 1,
+
+                // headerBackground
+                px: 1,
+                py: 0.75,
+                borderRadius: 1,
+                backgroundColor: (theme) =>
+                  theme.palette.mode === "dark" ? "rgba(255,255,255,0.06)" : "#e2e2e4",
+                border: "1px solid",
+                borderColor: (theme) =>
+                  theme.palette.mode === "dark" ? "rgba(255,255,255,0.10)" : "#e2e2e4",
+
+                "&:hover": {
+                  backgroundColor: (theme) =>
+                    theme.palette.mode === "dark" ? "rgba(255,255,255,0.10)" : "#e2e2e4",
+                },
               }}
               onClick={toggleExpand}
             >
@@ -2919,7 +2962,19 @@ export default function ProtocolForm({
                 {groupLabel || "Group"}
               </Typography>
 
-              <IconButton size="small">{expanded ? <ChevronUpIcon fontSize="small" /> : <ChevronDownIcon fontSize="small" />}</IconButton>
+              <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
+                {hasGroupHelp && (
+                  <Tooltip title="Help">
+                    <IconButton size="small" onClick={handleOpenGroupHelp}>
+                      <HelpIcon fontSize="large" />
+                    </IconButton>
+                  </Tooltip>
+                )}
+
+                <IconButton size="small">
+                  {expanded ? <ChevronUpIcon fontSize="small" /> : <ChevronDownIcon fontSize="small" />}
+                </IconButton>
+              </Box>
             </Box>
 
             {expanded && (
@@ -2929,13 +2984,16 @@ export default function ProtocolForm({
                     No parameters.
                   </Typography>
                 ) : (
-                  groupParams.map((child: any, idx: number) => renderParam(child, sectionIdx, idx, "standard", stableKey))
+                  groupParams.map((child: any, idx: number) =>
+                    renderParam(child, sectionIdx, idx, "standard", stableKey)
+                  )
                 )}
               </>
             )}
           </Box>
         );
       }
+
 
       // BooleanParam (requires stateKey)
       if (defClass === "BooleanParam") {
@@ -4285,6 +4343,98 @@ export default function ProtocolForm({
           </Box>
         </Box>
       </div>
+
+
+      <Dialog
+        open={groupHelpDialog.open}
+        onClose={() => setGroupHelpDialog({ open: false, text: "" })}
+        maxWidth="sm"
+        fullWidth
+        slotProps={{
+          backdrop: {
+            sx: { backgroundColor: "transparent" },
+          },
+        }}
+        PaperProps={{
+          sx: {
+            borderRadius: 4,
+            overflow: "hidden",
+            border: "1px solid",
+            borderColor: "divider",
+            boxShadow: "0 18px 50px rgba(0,0,0,0.35)",
+          },
+        }}
+      >
+        <DialogTitle
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            backgroundColor: "#333d49",
+            color: "white",
+            px: 2,
+            py: 1.5,
+            boxSizing: "border-box",
+            m: 0,
+          }}
+        >
+          <Box sx={{ minWidth: 0, pr: 1 }}>
+            <Box
+              component="div"
+              sx={{
+                fontWeight: 600,
+                fontSize: 16,
+                lineHeight: 1.2,
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            >
+              Help
+            </Box>
+          </Box>
+
+          <IconButton
+            onClick={() => setGroupHelpDialog({ open: false, text: "" })}
+            aria-label="Close"
+            size="small"
+            sx={{
+              color: "white",
+              borderRadius: 1,
+              "&:hover": { backgroundColor: "rgba(255,255,255,0.10)" },
+              "&:focus-visible": { outline: "2px solid rgba(255,255,255,0.55)", outlineOffset: 2 },
+            }}
+          >
+            <CloseIcon fontSize="small" />
+          </IconButton>
+        </DialogTitle>
+
+        <DialogContent sx={{ px: 2, py: 1.5 }}>
+          <Box sx={{ maxHeight: "60vh", overflow: "auto", pr: 0.5 }}>
+            {renderRichHelpText(groupHelpDialog.text)}
+          </Box>
+        </DialogContent>
+
+        <DialogActions
+          sx={{
+            justifyContent: "center",
+            px: 2,
+            py: 1.5,
+            borderTop: "1px solid",
+            borderColor: "divider",
+            backgroundColor: "background.paper",
+          }}
+        >
+          <Button
+            variant="outlined"
+            onClick={() => setGroupHelpDialog({ open: false, text: "" })}
+            sx={{ textTransform: "none", minWidth: 112 }}
+          >
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
+
 
       {/* FOOTER */}
       <div className={styles.formFooter}>
