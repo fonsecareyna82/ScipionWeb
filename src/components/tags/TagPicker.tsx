@@ -1,6 +1,7 @@
 // src/components/tags/TagPicker.tsx
 import React, { useMemo } from "react";
 import { Autocomplete, Box, Chip, TextField, Typography } from "@mui/material";
+import Popper, { type PopperProps } from "@mui/material/Popper";
 import type { ProtocolTag } from "./tagTypes";
 
 type TagPickerProps = {
@@ -12,6 +13,10 @@ type TagPickerProps = {
   label?: string;
   helperText?: string;
   placeholder?: string;
+
+  disablePortal?: boolean;
+  popperContainer?: HTMLElement | null;
+  popperZIndex?: number;
 };
 
 function normalizeColor(color?: string): string {
@@ -53,6 +58,10 @@ export default function TagPicker({
   label,
   helperText,
   placeholder,
+
+  disablePortal = false,
+  popperContainer = null,
+  popperZIndex = 2000,
 }: TagPickerProps) {
   const normalizedAllTags = useMemo(() => {
     // normalizedAllTags
@@ -94,14 +103,28 @@ export default function TagPicker({
     return merged;
   }, [normalizedAllTags, selectedTags]);
 
+  const popperComponent = useMemo(() => {
+    // popperComponent
+    const Comp = (props: PopperProps) => {
+      const mergedStyle = { ...(props.style ?? {}), zIndex: popperZIndex };
+      return (
+        <Popper
+          {...props}
+          style={mergedStyle}
+          container={popperContainer ?? undefined}
+        />
+      );
+    };
+    return Comp;
+  }, [popperContainer, popperZIndex]);
+
   return (
     <Autocomplete<ProtocolTag, true, false, false>
       multiple
       disableCloseOnSelect
-
-      // disablePortal
-      // keepingThePopperInTheDialogTree avoids focusTrap infinite loops (contain/focus recursion)
-      disablePortal
+      disablePortal={disablePortal}
+      noOptionsText="No tags"
+      PopperComponent={popperComponent}
       options={mergedOptions}
       value={selectedTags}
       disabled={disabled}
@@ -204,29 +227,37 @@ export default function TagPicker({
         width: "100%",
 
         // inputHeightDensity
-        "& .MuiInputBase-root": {
-          minHeight: 1,
-          maxHeight: 3,
-          paddingTop: "0px",
-          paddingBottom: "0px",
-          marginTop: "-1px", // to visually center the input vertically within the smaller height
-          marginBottom: "-2px", // to visually center the input vertically within the smaller height
+        "& .MuiAutocomplete-inputRoot": {
+          minHeight: 32, // keepSmallButVisible
+          paddingTop: "2px",
+          paddingBottom: "2px",
         },
-        "& .MuiInputBase-input": {
-          fontSize: 10,
-          paddingTop: "6px",
-          paddingBottom: "6px",
+        "& .MuiAutocomplete-input": {
+          fontSize: 12,
+          paddingTop: "4px",
+          paddingBottom: "4px",
         },
         "& .MuiInputBase-input::placeholder": {
           fontSize: 12,
           opacity: 0.7,
         },
 
+        // chipsCompact
+        "& .MuiChip-root": {
+          height: 22,
+        },
+        "& .MuiChip-label": {
+          paddingLeft: "8px",
+          paddingRight: "8px",
+          fontSize: 12,
+        },
+
         // optionsRowCompact
         "& .MuiAutocomplete-option": {
-          minHeight: 5,
+          minHeight: 28,
         },
       }}
+
     />
   );
 }

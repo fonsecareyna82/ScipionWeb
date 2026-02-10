@@ -238,7 +238,21 @@ export function useTagStore() {
   const snap = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 
   return useMemo(() => {
+    // buildDerivedApiFromSnapshot
     const tagsById = buildTagsById(snap.tags);
+
+    const getAssignedTagIdsFromSnapshot = (
+      projectId: string | number | undefined,
+      protocolId: string | number | undefined
+    ): string[] => {
+      // getAssignedTagIdsFromSnapshot
+      const pid = String(projectId ?? "global");
+      const prId = String(protocolId ?? "");
+      if (!prId) return [];
+
+      const raw = snap.assignments?.[pid]?.[prId] ?? [];
+      return uniqStrings(raw).filter((x) => tagsById.has(String(x)));
+    };
 
     return {
       tags: snap.tags,
@@ -246,8 +260,9 @@ export function useTagStore() {
       tagsById,
       setTags,
       deleteTag,
-      getAssignedTagIds,
+      getAssignedTagIds: getAssignedTagIdsFromSnapshot,
       setAssignedTagIds,
     };
   }, [snap.tags, snap.assignments]);
 }
+

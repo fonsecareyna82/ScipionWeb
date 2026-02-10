@@ -1,3 +1,4 @@
+// src/components/protocol/ProtocolNodeCard.tsx
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   Dispatch,
@@ -59,12 +60,12 @@ import {
 } from "lucide-react";
 
 import AnalyzeOutputDialog from "@/components/analyze/analyze-output-dialog";
-import type {
-  AnalyzeViewerResolveContext,
-  AnalyzeViewerResolveDecision,
-} from "@/services/ProjectService";
+import type { AnalyzeViewerResolveContext, AnalyzeViewerResolveDecision } from "@/services/ProjectService";
 
 import type { ProtocolTag } from "@/components/tags/tagTypes";
+
+// Uses your tag store hook (no selector args)
+import { useTagStore } from "@/stores/tag_store";
 
 const statusColors: Record<string, string> = {
   running: "#FCCE62",
@@ -92,9 +93,7 @@ const statusBadgeColors: Record<string, string> = {
 };
 
 export type ExternalAnalyzeViewerService = {
-  resolveAnalyzeViewer?: (
-    ctx: AnalyzeViewerResolveContext
-  ) => Promise<AnalyzeViewerResolveDecision>;
+  resolveAnalyzeViewer?: (ctx: AnalyzeViewerResolveContext) => Promise<AnalyzeViewerResolveDecision>;
 };
 
 type StatusNodeProps = {
@@ -141,18 +140,10 @@ type StatusNodeProps = {
   onSelectFrom?: (id: string) => void;
   onSelectTo?: (id: string) => void;
   onStop?: (id: string) => void;
-  onBrowse?: (
-    protocolId: string,
-    projectId?: string | number,
-    protocolLabel?: string
-  ) => void;
+  onBrowse?: (protocolId: string, projectId?: string | number, protocolLabel?: string) => void;
 
   // opens the tag manager (create/edit tag definitions)
-  onManageTags?: (
-    protocolId: string,
-    projectId?: string | number,
-    protocolLabel?: string
-  ) => void;
+  onManageTags?: (protocolId: string, projectId?: string | number, protocolLabel?: string) => void;
 
   inPathSelection?: boolean;
   pathSelectionActive?: boolean;
@@ -188,10 +179,7 @@ const normalizeOutputItem = (outputObj: unknown): NormalizedOutput | null => {
 
   const flatCandidate = outputObj as Record<string, unknown>;
 
-  const hasAnyClassHint =
-    "paramClass" in flatCandidate ||
-    "pointerClass" in flatCandidate ||
-    "_class" in flatCandidate;
+  const hasAnyClassHint = "paramClass" in flatCandidate || "pointerClass" in flatCandidate || "_class" in flatCandidate;
 
   const looksLikeOutput =
     hasAnyClassHint &&
@@ -209,9 +197,7 @@ const normalizeOutputItem = (outputObj: unknown): NormalizedOutput | null => {
           ? (flatCandidate._class as string)
           : undefined;
 
-    const rawParamClass =
-      typeof flatCandidate.paramClass === "string" ? flatCandidate.paramClass : "";
-
+    const rawParamClass = typeof flatCandidate.paramClass === "string" ? flatCandidate.paramClass : "";
     const inferredParamClass = rawParamClass || (pointerClass ? "PointerParam" : "");
 
     const normalized: NormalizedOutput = {
@@ -240,8 +226,7 @@ const normalizeOutputItem = (outputObj: unknown): NormalizedOutput | null => {
     if (wrappedValue && typeof wrappedValue === "object") {
       const wrappedDef = wrappedValue as Record<string, unknown>;
 
-      const hasAnyWrappedClassHint =
-        "paramClass" in wrappedDef || "pointerClass" in wrappedDef || "_class" in wrappedDef;
+      const hasAnyWrappedClassHint = "paramClass" in wrappedDef || "pointerClass" in wrappedDef || "_class" in wrappedDef;
 
       if (hasAnyWrappedClassHint) {
         const pointerClass =
@@ -251,8 +236,7 @@ const normalizeOutputItem = (outputObj: unknown): NormalizedOutput | null => {
               ? (wrappedDef._class as string)
               : undefined;
 
-        const rawParamClass =
-          typeof wrappedDef.paramClass === "string" ? wrappedDef.paramClass : "";
+        const rawParamClass = typeof wrappedDef.paramClass === "string" ? wrappedDef.paramClass : "";
         const inferredParamClass = rawParamClass || (pointerClass ? "PointerParam" : "");
 
         const normalized: NormalizedOutput = {
@@ -293,32 +277,7 @@ const openDecisionUrl = (decision: AnalyzeViewerResolveDecision) => {
   return true;
 };
 
-type ReactFlowSelectionEvent =
-  | ReactMouseEvent
-  | ReactPointerEvent<HTMLDivElement>;
-
-// tagsStorage
-const tagsStorageKey = "scipion.tags.v1";
-const tagAssignmentsStorageKey = "scipion.protocolTagAssignments.v1";
-
-type StoredTagAssignments = Record<string, Record<string, string[]>>;
-
-function safeParseJson<T>(raw: string | null, fallback: T): T {
-  // safeParseJson
-  try {
-    if (!raw) return fallback;
-    return JSON.parse(raw) as T;
-  } catch {
-    return fallback;
-  }
-}
-
-function filterExistingTagIds(tagIds: string[], defs: ProtocolTag[]): string[] {
-  // filterExistingTagIds
-  const allowed = new Set(defs.map((t) => String(t.id)));
-  return uniqStrings(tagIds).filter((id) => allowed.has(String(id)));
-}
-
+type ReactFlowSelectionEvent = ReactMouseEvent | ReactPointerEvent<HTMLDivElement>;
 
 function uniqStrings(values: string[]): string[] {
   // uniqStrings
@@ -334,38 +293,10 @@ function uniqStrings(values: string[]): string[] {
   return out;
 }
 
-function loadTagsFromStorage(): ProtocolTag[] {
-  // loadTagsFromStorage
-  try {
-    if (typeof window === "undefined") return [];
-    const raw = window.localStorage.getItem(tagsStorageKey);
-    const parsed = safeParseJson<any>(raw, []);
-    return Array.isArray(parsed) ? (parsed as ProtocolTag[]) : [];
-  } catch {
-    return [];
-  }
-}
-
-function loadTagAssignmentsFromStorage(): StoredTagAssignments {
-  // loadTagAssignmentsFromStorage
-  try {
-    if (typeof window === "undefined") return {};
-    const raw = window.localStorage.getItem(tagAssignmentsStorageKey);
-    const parsed = safeParseJson<any>(raw, {});
-    return parsed && typeof parsed === "object" ? (parsed as StoredTagAssignments) : {};
-  } catch {
-    return {};
-  }
-}
-
-function saveTagAssignmentsToStorage(next: StoredTagAssignments): void {
-  // saveTagAssignmentsToStorage
-  try {
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem(tagAssignmentsStorageKey, JSON.stringify(next ?? {}));
-  } catch {
-    // ignore storage errors
-  }
+function filterExistingTagIds(tagIds: string[], defs: ProtocolTag[]): string[] {
+  // filterExistingTagIds
+  const allowed = new Set(defs.map((t) => String(t.id)));
+  return uniqStrings(tagIds).filter((id) => allowed.has(String(id)));
 }
 
 function normalizeTagIdCandidate(raw: unknown, allTags: ProtocolTag[]): string {
@@ -415,43 +346,16 @@ function normalizeTagIdsFromRaw(rawTags: unknown, allTags: ProtocolTag[]): strin
   return uniqStrings(out);
 }
 
-function readAssignedTagIds(
-  projectId: string | number | undefined,
-  protocolId: string | number | undefined,
-  rawTags: unknown,
-  allTags: ProtocolTag[]
-): string[] {
-  // readAssignedTagIds
-  const pid = String(projectId ?? "global");
-  const prId = String(protocolId ?? "");
-  const fromData = normalizeTagIdsFromRaw(rawTags, allTags);
+type TagAssignments = Record<string, Record<string, string[]>>;
 
-  if (!prId) return fromData;
-
-  const store = loadTagAssignmentsFromStorage();
-  const stored = store?.[pid]?.[prId] ?? [];
-  return uniqStrings([...(Array.isArray(stored) ? stored : []), ...fromData]);
-}
-
-function writeAssignedTagIds(
-  projectId: string | number | undefined,
-  protocolId: string | number | undefined,
-  nextTagIds: string[]
-): void {
-  // writeAssignedTagIds
-  const pid = String(projectId ?? "global");
-  const prId = String(protocolId ?? "");
-  if (!prId) return;
-
-  const store = loadTagAssignmentsFromStorage();
-  const next: StoredTagAssignments = { ...(store ?? {}) };
-
-  const projectMap = { ...(next[pid] ?? {}) };
-  projectMap[prId] = uniqStrings(nextTagIds ?? []);
-
-  next[pid] = projectMap;
-  saveTagAssignmentsToStorage(next);
-}
+type TagStoreApi = {
+  tags?: ProtocolTag[];
+  tagsById?: Map<string, ProtocolTag>;
+  assignments?: TagAssignments;
+  getAssignedTagIds?: (projectId: string | number | undefined, protocolId: string | number | undefined) => string[];
+  setAssignedTagIds?: (projectId: string | number | undefined, protocolId: string | number | undefined, nextTagIds: string[]) => void;
+  setAssignedTagIdsBatch?: (updates: Array<{ projectId: string | number | undefined; protocolId: string; tagIds: string[] }>) => void;
+};
 
 export default function ProtocolNodeCard({
   data,
@@ -500,8 +404,7 @@ export default function ProtocolNodeCard({
 
   const armContextMenuOpenGuard = useCallback(() => {
     // armContextMenuOpenGuard
-    contextMenuOpenedAtRef.current =
-      typeof performance !== "undefined" ? performance.now() : Date.now();
+    contextMenuOpenedAtRef.current = typeof performance !== "undefined" ? performance.now() : Date.now();
   }, []);
 
   const isInContextMenuOpenGuardWindow = useCallback(() => {
@@ -542,57 +445,45 @@ export default function ProtocolNodeCard({
     .filter(Boolean)
     .join(" ");
 
-  // tagsState
-  const [allTags, setAllTags] = useState<ProtocolTag[]>(() => loadTagsFromStorage());
+  // tagStateFromStore (no selector args)
+    const tagStore = useTagStore() as unknown as TagStoreApi;
 
-  const [selectedTagIds, setSelectedTagIds] = useState<string[]>(() => {
-    // initSelectedTagIds
-    const defs = loadTagsFromStorage();
-    return readAssignedTagIds(data.projectId, data.id, (data as any)?.tags, defs);
-  });
+  const allTags: ProtocolTag[] = Array.isArray(tagStore?.tags) ? (tagStore.tags as ProtocolTag[]) : [];
 
-  const syncTagsFromStorage = useCallback(() => {
-    // syncTagsFromStorage
-    const defs = loadTagsFromStorage();
-    setAllTags(defs);
+  const getAssignedTagIds = tagStore?.getAssignedTagIds;
+  const setAssignedTagIds = tagStore?.setAssignedTagIds;
+  const setAssignedTagIdsBatch = tagStore?.setAssignedTagIdsBatch;
 
-    const assigned = readAssignedTagIds(data.projectId, data.id, (data as any)?.tags, defs);
-    const filtered = filterExistingTagIds(assigned, defs);
+  const storedAssigned: string[] =
+    typeof getAssignedTagIds === "function"
+      ? uniqStrings(getAssignedTagIds(data.projectId, data.id) ?? [])
+      : [];
 
-    setSelectedTagIds(filtered);
 
-    // If a tag definition was deleted, remove orphan ids from storage assignments
-    if (filtered.length !== assigned.length) {
-      writeAssignedTagIds(data.projectId, data.id, filtered);
+  const fromDataAssigned = useMemo(() => {
+    // fromDataAssigned
+    return normalizeTagIdsFromRaw((data as any)?.tags, allTags);
+  }, [data, allTags]);
+
+  const assignedTagIds = useMemo(() => {
+    // assignedTagIds
+    return uniqStrings([...storedAssigned, ...fromDataAssigned]);
+  }, [storedAssigned, fromDataAssigned]);
+
+  const selectedTagIds = useMemo(() => {
+    // selectedTagIds
+    return filterExistingTagIds(assignedTagIds, allTags);
+  }, [assignedTagIds, allTags]);
+
+  useEffect(() => {
+    // pruneOrphanAssignments
+    if (typeof setAssignedTagIds !== "function") return;
+
+    // If tags were deleted, remove orphan ids from store
+    if (selectedTagIds.length !== assignedTagIds.length) {
+      setAssignedTagIds(data.projectId, data.id, selectedTagIds);
     }
-  }, [data.projectId, data.id, data]);
-
-
-  useEffect(() => {
-    // syncTagsOnNodeIdentityChange
-    syncTagsFromStorage();
-  }, [syncTagsFromStorage]);
-
-  useEffect(() => {
-    // syncTagsOnCrossTabStorageEvents
-    const onStorage = (e: StorageEvent) => {
-      if (e.key === tagsStorageKey || e.key === tagAssignmentsStorageKey) {
-        syncTagsFromStorage();
-      }
-    };
-
-    window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
-  }, [syncTagsFromStorage]);
-
-
-  useEffect(() => {
-    // syncTagsOnSameTabChanges
-    const onTagsChanged = () => syncTagsFromStorage();
-    window.addEventListener("scipionTagsChanged", onTagsChanged);
-    return () => window.removeEventListener("scipionTagsChanged", onTagsChanged);
-  }, [syncTagsFromStorage]);
-
+  }, [assignedTagIds, selectedTagIds, setAssignedTagIds, data.projectId, data.id]);
 
   const selectedTagSet = useMemo(() => {
     // selectedTagSet
@@ -606,11 +497,8 @@ export default function ProtocolNodeCard({
 
   const selectedTags = useMemo(() => {
     // selectedTags
-    return selectedTagIds
-      .map((id) => tagsById.get(String(id)))
-      .filter(Boolean) as ProtocolTag[];
+    return selectedTagIds.map((id) => tagsById.get(String(id))).filter(Boolean) as ProtocolTag[];
   }, [selectedTagIds, tagsById]);
-
 
   const reactFlow = useReactFlow();
 
@@ -624,13 +512,9 @@ export default function ProtocolNodeCard({
     // getSelectedTagTargets
     try {
       const nodes = reactFlow.getNodes?.() ?? [];
-
       const selectedNodes = nodes.filter((n) => (n as any)?.selected === true);
 
-      const baseNodes =
-        selectedNodes.length > 0
-          ? selectedNodes
-          : nodes.filter((n) => String(n.id) === String(data.id));
+      const baseNodes = selectedNodes.length > 0 ? selectedNodes : nodes.filter((n) => String(n.id) === String(data.id));
 
       return baseNodes
         .filter((n) => String(n.id) !== "PROJECT")
@@ -654,40 +538,59 @@ export default function ProtocolNodeCard({
     (tagId: string) => {
       // toggleTagSelectionForSelection
       if (isProjectNode) return;
+      if (typeof setAssignedTagIds !== "function" && typeof setAssignedTagIdsBatch !== "function") return;
 
-      const defs = loadTagsFromStorage();
-      const normalizedTagId = normalizeTagIdCandidate(tagId, defs);
+      const normalizedTagId = normalizeTagIdCandidate(tagId, allTags);
       if (!normalizedTagId) return;
 
       const targets = getSelectedTagTargets();
       if (targets.length === 0) return;
 
       const currentByTarget = targets.map((t) => {
-        const current = readAssignedTagIds(t.projectId, t.protocolId, t.rawTags, defs);
+        const stored =
+          typeof getAssignedTagIds === "function" ? uniqStrings(getAssignedTagIds(t.projectId, t.protocolId) ?? []) : [];
+
+        const fromNode = normalizeTagIdsFromRaw(t.rawTags, allTags);
+        const merged = uniqStrings([...stored, ...fromNode]);
+
         return {
           ...t,
-          current: filterExistingTagIds(current, defs),
+          current: filterExistingTagIds(merged, allTags),
         };
       });
 
+      const allHaveTag = currentByTarget.every((t) => t.current.some((x) => String(x) === String(normalizedTagId)));
 
-      const allHaveTag = currentByTarget.every((t) =>
-        t.current.some((x) => String(x) === String(normalizedTagId))
-      );
-
-      for (const t of currentByTarget) {
+      const updates = currentByTarget.map((t) => {
         const next = allHaveTag
           ? t.current.filter((x) => String(x) !== String(normalizedTagId))
           : uniqStrings([...t.current, normalizedTagId]);
 
-        writeAssignedTagIds(t.projectId, t.protocolId, next);
+        return {
+          projectId: t.projectId,
+          protocolId: String(t.protocolId),
+          tagIds: next,
+        };
+      });
+
+      if (typeof setAssignedTagIdsBatch === "function") {
+        setAssignedTagIdsBatch(updates);
+        return;
       }
 
-      window.dispatchEvent(new Event("scipionTagsChanged"));
+      for (const u of updates) {
+        setAssignedTagIds?.(u.projectId, u.protocolId, u.tagIds);
+      }
     },
-    [getSelectedTagTargets, isProjectNode]
+    [
+      isProjectNode,
+      setAssignedTagIds,
+      setAssignedTagIdsBatch,
+      allTags,
+      getSelectedTagTargets,
+      getAssignedTagIds,
+    ]
   );
-
 
   const handleManageTags = useCallback(() => {
     // openTagsManager
@@ -822,14 +725,12 @@ export default function ProtocolNodeCard({
     [isReactFlowNodeCurrentlySelected, selectNodeExclusivelyInReactFlow]
   );
 
-  const truncateLabel = (text: string = "", max: number = 120) =>
-    text.length > max ? `${text.slice(0, max)}…` : text;
+  const truncateLabel = (text: string = "", max: number = 120) => (text.length > max ? `${text.slice(0, max)}…` : text);
 
   const outputsArray = Array.isArray(data.outputs) ? data.outputs : [];
   const hasOutputs = outputsArray.length > 0;
 
-  const isMac =
-    typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/.test(navigator.platform);
+  const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/.test(navigator.platform);
 
   const handleContextMenuCapture = useCallback(
     (e: ReactMouseEvent) => {
@@ -867,16 +768,12 @@ export default function ProtocolNodeCard({
     selectTo: "Alt + ↑",
   } as const;
 
-  const ShortcutHint = ({ text }: { text?: string }) =>
-    text ? <span className={styles.shortcutHint}>{text}</span> : null;
+  const ShortcutHint = ({ text }: { text?: string }) => (text ? <span className={styles.shortcutHint}>{text}</span> : null);
 
   const shouldRenderProtocolBody = !isProjectNode;
   const isContentExpanded = !isCompactView;
 
-  const contentClassName = [
-    styles.content,
-    isContentExpanded ? styles.contentExpanded : styles.contentCollapsed,
-  ].join(" ");
+  const contentClassName = [styles.content, isContentExpanded ? styles.contentExpanded : styles.contentCollapsed].join(" ");
 
   const contentStyle: React.CSSProperties = {
     opacity: isContentExpanded ? 1 : 0,
@@ -913,6 +810,7 @@ export default function ProtocolNodeCard({
     async (outputName: string, outputRaw: any, normalized?: NormalizedOutput | null) => {
       // openOutputViewerWithBackendResolve
       if (!canOpenViewer) return;
+
       const maybeResolve = service?.resolveAnalyzeViewer;
       if (typeof maybeResolve === "function") {
         try {
@@ -948,10 +846,7 @@ export default function ProtocolNodeCard({
     <ContextMenu
       onOpenChange={(open) => {
         // onContextMenuOpenChange
-        if (open) {
-          armContextMenuOpenGuard();
-          syncTagsFromStorage();
-        }
+        if (open) armContextMenuOpenGuard();
       }}
     >
       <ContextMenuTrigger asChild>
@@ -963,7 +858,6 @@ export default function ProtocolNodeCard({
           onPointerDownCapture={(e: ReactPointerEvent<HTMLDivElement>) => {
             // suppressMenuMouseUpSelectingFirstItem
             if (e.button === 2) {
-              // If user right-clicks a non-selected node, make it the only selection.
               ensureRightClickSelectionIsUnambiguous(e);
               armSuppressNextMenuAction();
             }
@@ -976,7 +870,7 @@ export default function ProtocolNodeCard({
               return;
             }
             onClick?.(e);
-            if (e.button === 2) armContextMenuOpenGuard();
+            if ((e as any).button === 2) armContextMenuOpenGuard();
           }}
           onDoubleClick={(e: ReactMouseEvent) => {
             e.stopPropagation();
@@ -985,18 +879,11 @@ export default function ProtocolNodeCard({
           onMouseEnter={() => setIsHovered(true)}
           onMouseLeave={() => setIsHovered(false)}
         >
-          <div
-            className={[
-              styles.header,
-              isProjectNode ? styles.headerProject : styles.headerProtocol,
-            ].join(" ")}
-          >
+          <div className={[styles.header, isProjectNode ? styles.headerProject : styles.headerProtocol].join(" ")}>
             <div className={styles.headerLeft}>
               {!isProjectNode && (
                 <div
-                  className={[styles.nodeIdBadge, data.status === "running" ? styles.glowBadge : ""]
-                    .filter(Boolean)
-                    .join(" ")}
+                  className={[styles.nodeIdBadge, data.status === "running" ? styles.glowBadge : ""].filter(Boolean).join(" ")}
                   style={isCompactView ? { fontSize: "2.4rem" } : { fontSize: "2.3rem" }}
                 >
                   <span>{data.id}</span>
@@ -1004,17 +891,12 @@ export default function ProtocolNodeCard({
               )}
 
               {isProjectNode ? (
-                <div
-                  className={styles.projectLabelWrapper}
-                  style={isCompactView ? { fontSize: "2.8rem" } : {}}
-                >
+                <div className={styles.projectLabelWrapper} style={isCompactView ? { fontSize: "2.8rem" } : {}}>
                   <div title={data.label}>{truncateLabel(data.label, 120)}</div>
                 </div>
               ) : (
                 <div
-                  className={[styles.label, isCompactView ? styles.labelCompact : ""]
-                    .filter(Boolean)
-                    .join(" ")}
+                  className={[styles.label, isCompactView ? styles.labelCompact : ""].filter(Boolean).join(" ")}
                   title={data.label}
                 >
                   {truncateLabel(data.label, 120)}
@@ -1024,12 +906,7 @@ export default function ProtocolNodeCard({
 
             {!isProjectNode && (
               <div className={styles.headerRight}>
-                <DropdownMenu
-                  onOpenChange={(open) => {
-                    // onDropdownMenuOpenChange
-                    if (open) syncTagsFromStorage();
-                  }}
-                >
+                <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <button
                       type="button"
@@ -1046,10 +923,7 @@ export default function ProtocolNodeCard({
                     </button>
                   </DropdownMenuTrigger>
 
-                  <DropdownMenuContent
-                    className={styles.menuContent}
-                    onClick={(e) => e.stopPropagation()}
-                  >
+                  <DropdownMenuContent className={styles.menuContent} onClick={(e) => e.stopPropagation()}>
                     {!reduceMenus && (
                       <>
                         <DropdownMenuItem onSelect={(e) => runMenuAction(e, handleEdit)}>
@@ -1082,8 +956,6 @@ export default function ProtocolNodeCard({
                           </div>
                         </DropdownMenuItem>
 
-
-
                         <DropdownMenuSeparator />
 
                         <DropdownMenuItem onSelect={(e) => runMenuAction(e, handleSelectFrom)}>
@@ -1108,19 +980,17 @@ export default function ProtocolNodeCard({
 
                         <DropdownMenuSeparator />
 
-                        {(data.status === "running" ||
-                          data.status === "launched" ||
-                          data.status === "scheduled") && (
-                            <DropdownMenuItem onSelect={(e) => runMenuAction(e, handleStop)}>
-                              <div className={styles.menuRow}>
-                                <span className={styles.menuLeft}>
-                                  <Square className={styles.menuItemIcon} />
-                                  <span>Stop</span>
-                                </span>
-                                <ShortcutHint text={shortcuts.stop} />
-                              </div>
-                            </DropdownMenuItem>
-                          )}
+                        {(data.status === "running" || data.status === "launched" || data.status === "scheduled") && (
+                          <DropdownMenuItem onSelect={(e) => runMenuAction(e, handleStop)}>
+                            <div className={styles.menuRow}>
+                              <span className={styles.menuLeft}>
+                                <Square className={styles.menuItemIcon} />
+                                <span>Stop</span>
+                              </span>
+                              <ShortcutHint text={shortcuts.stop} />
+                            </div>
+                          </DropdownMenuItem>
+                        )}
 
                         <DropdownMenuItem onSelect={(e) => runMenuAction(e, handleRestartAll)}>
                           <div className={styles.menuRow}>
@@ -1156,20 +1026,17 @@ export default function ProtocolNodeCard({
                       </>
                     )}
 
-                    {reduceMenus &&
-                      (data.status === "running" ||
-                        data.status === "launched" ||
-                        data.status === "scheduled") && (
-                        <DropdownMenuItem onSelect={(e) => runMenuAction(e, handleStop)}>
-                          <div className={styles.menuRow}>
-                            <span className={styles.menuLeft}>
-                              <Square className={styles.menuItemIcon} />
-                              <span>Stop selection</span>
-                            </span>
-                            <ShortcutHint text={shortcuts.stop} />
-                          </div>
-                        </DropdownMenuItem>
-                      )}
+                    {reduceMenus && (data.status === "running" || data.status === "launched" || data.status === "scheduled") && (
+                      <DropdownMenuItem onSelect={(e) => runMenuAction(e, handleStop)}>
+                        <div className={styles.menuRow}>
+                          <span className={styles.menuLeft}>
+                            <Square className={styles.menuItemIcon} />
+                            <span>Stop selection</span>
+                          </span>
+                          <ShortcutHint text={shortcuts.stop} />
+                        </div>
+                      </DropdownMenuItem>
+                    )}
 
                     <DropdownMenuItem onSelect={(e) => runMenuAction(e, handleDelete)}>
                       <div className={styles.menuRow}>
@@ -1341,15 +1208,8 @@ export default function ProtocolNodeCard({
 
                           const isDragging = draggingIdx === idx;
 
-                          const labelText =
-                            value.info ??
-                            value.name ??
-                            value.pointerClass ??
-                            value.paramClass ??
-                            "Output";
-
-                          const pillKey =
-                            value.value ?? `${String(value.parentId ?? "")}:${String(value.name ?? idx)}`;
+                          const labelText = value.info ?? value.name ?? value.pointerClass ?? value.paramClass ?? "Output";
+                          const pillKey = value.value ?? `${String(value.parentId ?? "")}:${String(value.name ?? idx)}`;
 
                           const outputName = String(value.name ?? "");
                           const isViewerEnabled = canOpenViewer && !!outputName;
@@ -1357,11 +1217,7 @@ export default function ProtocolNodeCard({
                           return (
                             <div
                               key={pillKey}
-                              className={[
-                                styles.outputPill,
-                                isDragging ? styles.outputPillDragging : "",
-                                "nodrag",
-                              ]
+                              className={[styles.outputPill, isDragging ? styles.outputPillDragging : "", "nodrag"]
                                 .filter(Boolean)
                                 .join(" ")}
                               draggable
@@ -1381,8 +1237,7 @@ export default function ProtocolNodeCard({
                                 e.stopPropagation();
                                 setDraggingIdx(idx);
 
-                                const inferredParamClass =
-                                  value.paramClass || (value.pointerClass ? "PointerParam" : "");
+                                const inferredParamClass = value.paramClass || (value.pointerClass ? "PointerParam" : "");
 
                                 const output = {
                                   paramClass: inferredParamClass,
@@ -1395,10 +1250,7 @@ export default function ProtocolNodeCard({
                                 };
 
                                 setCurrentDraggedOutput(output);
-                                e.dataTransfer.setData(
-                                  "application/scipion-output",
-                                  JSON.stringify(output)
-                                );
+                                e.dataTransfer.setData("application/scipion-output", JSON.stringify(output));
 
                                 const ghost = document.createElement("div");
                                 ghost.style.position = "absolute";
@@ -1472,23 +1324,21 @@ export default function ProtocolNodeCard({
                     >
                       {data.status}
 
-                      {(data.status === "running" ||
-                        data.status === "failed" ||
-                        data.status === "aborted") && (
-                          <span className={styles.progress}>
-                            <span className={styles.progressTrack}>
-                              <span
-                                className={styles.progressFill}
-                                style={{
-                                  width: `${((data.stepsDone ?? 0) / (data.numberOfSteps ?? 1)) * 100}%`,
-                                }}
-                              />
-                            </span>
-                            <span className={styles.progressText}>
-                              {data.stepsDone}/{data.numberOfSteps}
-                            </span>
+                      {(data.status === "running" || data.status === "failed" || data.status === "aborted") && (
+                        <span className={styles.progress}>
+                          <span className={styles.progressTrack}>
+                            <span
+                              className={styles.progressFill}
+                              style={{
+                                width: `${((data.stepsDone ?? 0) / (data.numberOfSteps ?? 1)) * 100}%`,
+                              }}
+                            />
                           </span>
-                        )}
+                          <span className={styles.progressText}>
+                            {data.stepsDone}/{data.numberOfSteps}
+                          </span>
+                        </span>
+                      )}
                     </span>
 
                     <span className={styles.timeRow}>
@@ -1509,8 +1359,6 @@ export default function ProtocolNodeCard({
                       <span>{formatCpuTime(data.tick ?? Number(data.elapsedTime) ?? 0)}</span>
                     </span>
                   </div>
-
-
                 </div>
               )}
             </div>
@@ -1572,8 +1420,6 @@ export default function ProtocolNodeCard({
               </div>
             </ContextMenuItem>
 
-
-
             <ContextMenuSeparator />
 
             <ContextMenuItem onClick={handleSelectFrom}>
@@ -1598,19 +1444,17 @@ export default function ProtocolNodeCard({
 
             <ContextMenuSeparator />
 
-            {(data.status === "running" ||
-              data.status === "launched" ||
-              data.status === "scheduled") && (
-                <ContextMenuItem onClick={handleStop}>
-                  <div className={styles.menuRow}>
-                    <span className={styles.menuLeft}>
-                      <Square className={styles.menuItemIcon} />
-                      <span>Stop</span>
-                    </span>
-                    <ShortcutHint text={shortcuts.stop} />
-                  </div>
-                </ContextMenuItem>
-              )}
+            {(data.status === "running" || data.status === "launched" || data.status === "scheduled") && (
+              <ContextMenuItem onClick={handleStop}>
+                <div className={styles.menuRow}>
+                  <span className={styles.menuLeft}>
+                    <Square className={styles.menuItemIcon} />
+                    <span>Stop</span>
+                  </span>
+                  <ShortcutHint text={shortcuts.stop} />
+                </div>
+              </ContextMenuItem>
+            )}
 
             <ContextMenuItem onClick={handleRestartAll}>
               <div className={styles.menuRow}>
@@ -1646,20 +1490,17 @@ export default function ProtocolNodeCard({
           </>
         )}
 
-        {reduceMenus &&
-          (data.status === "running" ||
-            data.status === "launched" ||
-            data.status === "scheduled") && (
-            <ContextMenuItem onClick={handleStop}>
-              <div className={styles.menuRow}>
-                <span className={styles.menuLeft}>
-                  <Square className={styles.menuItemIcon} />
-                  <span>Stop selection</span>
-                </span>
-                <ShortcutHint text={shortcuts.stop} />
-              </div>
-            </ContextMenuItem>
-          )}
+        {reduceMenus && (data.status === "running" || data.status === "launched" || data.status === "scheduled") && (
+          <ContextMenuItem onClick={handleStop}>
+            <div className={styles.menuRow}>
+              <span className={styles.menuLeft}>
+                <Square className={styles.menuItemIcon} />
+                <span>Stop selection</span>
+              </span>
+              <ShortcutHint text={shortcuts.stop} />
+            </div>
+          </ContextMenuItem>
+        )}
 
         <ContextMenuItem onClick={handleDelete}>
           <div className={styles.menuRow}>
@@ -1748,7 +1589,6 @@ export default function ProtocolNodeCard({
                       </span>
                     </div>
                   </ContextMenuItem>
-
                 );
               })
             ) : (
@@ -1785,7 +1625,11 @@ export default function ProtocolNodeCard({
       {canOpenViewer && analyzeOpen && analyzeTarget ? (
         <AnalyzeOutputDialog
           open
-          onClose={handleAnalyzeClose}
+          onClose={() => {
+            // closeAnalyzeDialog
+            setAnalyzeOpen(false);
+            setAnalyzeTarget(null);
+          }}
           projectId={analyzeProjectId}
           protocolId={analyzeProtocolId}
           protocolLabel={data.label}

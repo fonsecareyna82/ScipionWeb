@@ -1,5 +1,5 @@
 // src/components/tags/TagManager.tsx
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
     Box,
     Button,
@@ -15,6 +15,7 @@ import {
 } from "@mui/material";
 import { TrashBinIcon, HelpIcon, CloseIcon } from "../../icons";
 import type { ProtocolTag } from "./tagTypes";
+import { useTagStore } from "@/stores/tag_store";
 
 type TagManagerProps = {
     title?: string;
@@ -163,7 +164,6 @@ function TagEditorDialog({
                                 outlineOffset: 2,
                             },
                         }}
-
                     >
                         <CloseIcon fontSize="small" />
                     </IconButton>
@@ -256,7 +256,7 @@ function TagEditorDialog({
                                             size="small"
                                             value={draft.color}
                                             onChange={(e) => onChange({ color: e.target.value })}
-                                            sx={{ width: 140}}
+                                            sx={{ width: 140 }}
                                             inputProps={{ "aria-label": "Custom color" }}
                                             margin="dense"
                                         />
@@ -306,10 +306,18 @@ function TagEditorDialog({
                         backgroundColor: "background.paper",
                     }}
                 >
-                    <Button variant="outlined" onClick={onClose} sx={{ textTransform: "none", minWidth: 112, borderRadius: 2 }}>
+                    <Button
+                        variant="outlined"
+                        onClick={onClose}
+                        sx={{ textTransform: "none", minWidth: 112, borderRadius: 2 }}
+                    >
                         Cancel
                     </Button>
-                    <Button variant="contained" onClick={onSave} sx={{ textTransform: "none", minWidth: 112, borderRadius: 2, }}>
+                    <Button
+                        variant="contained"
+                        onClick={onSave}
+                        sx={{ textTransform: "none", minWidth: 112, borderRadius: 2 }}
+                    >
                         Save
                     </Button>
                 </DialogActions>
@@ -340,7 +348,7 @@ function TagEditorDialog({
                         m: 0,
                     }}
                 >
-                    <Typography sx={{ fontWeight: 700, fontSize: 16, lineHeight: 1.2, display: "flex", alignItems: "center", gap: 1    }}>
+                    <Typography sx={{ fontWeight: 700, fontSize: 16, lineHeight: 1.2, display: "flex", alignItems: "center", gap: 1 }}>
                         Help
                     </Typography>
 
@@ -383,7 +391,7 @@ function TagEditorDialog({
                         backgroundColor: "background.paper",
                     }}
                 >
-                    <Button variant="outlined" onClick={() => setOpenHelp(null)} sx={{ textTransform: "none", minWidth: 112,  }}>
+                    <Button variant="outlined" onClick={() => setOpenHelp(null)} sx={{ textTransform: "none", minWidth: 112 }}>
                         Close
                     </Button>
                 </DialogActions>
@@ -395,17 +403,33 @@ function TagEditorDialog({
 export default function TagManager({ title, tags, onTagsChange, initialTags }: TagManagerProps) {
     const isControlled = Array.isArray(tags) && typeof onTagsChange === "function";
 
-    const [localTags, setLocalTags] = useState<ProtocolTag[]>(() => {
-        // initLocalTags
-        return Array.isArray(initialTags) ? initialTags : [];
-    });
+    const tagStore = useTagStore();
+    const storeTags: ProtocolTag[] = Array.isArray(tagStore?.tags) ? (tagStore.tags as ProtocolTag[]) : [];
 
-    const effectiveTags = isControlled ? (tags as ProtocolTag[]) : localTags;
+    useEffect(() => {
+        // seedStoreFromInitialTags
+        if (isControlled) return;
+        if (!Array.isArray(initialTags) || initialTags.length === 0) return;
+        if (storeTags.length > 0) return;
 
-    const setTags = (next: ProtocolTag[]) => {
-        // setTags
+        tagStore.setTags(initialTags);
+    }, [isControlled, initialTags, storeTags.length, tagStore]);
+
+    const effectiveTags: ProtocolTag[] = isControlled ? (tags as ProtocolTag[]) : storeTags;
+
+    const persistTags = (next: ProtocolTag[]) => {
+        // persistTags
         if (isControlled) onTagsChange?.(next);
-        else setLocalTags(next);
+        else tagStore.setTags(next);
+    };
+
+    const persistDeleteTag = (tagId: string) => {
+        // persistDeleteTag
+        if (isControlled) {
+            persistTags(effectiveTags.filter((t) => String(t.id) !== String(tagId)));
+            return;
+        }
+        tagStore.deleteTag(String(tagId));
     };
 
     const [editorOpen, setEditorOpen] = useState(false);
@@ -449,7 +473,7 @@ export default function TagManager({ title, tags, onTagsChange, initialTags }: T
 
         const normalizedTitle = draft.title.trim().toLowerCase();
         const conflict = effectiveTags.some((t) => {
-            if (editorMode === "edit" && draft.id && t.id === draft.id) return false;
+            if (editorMode === "edit" && draft.id && String(t.id) === String(draft.id)) return false;
             return String(t.title).trim().toLowerCase() === normalizedTitle;
         });
 
@@ -474,7 +498,8 @@ export default function TagManager({ title, tags, onTagsChange, initialTags }: T
                 description: draft.description.trim() ? draft.description.trim() : undefined,
                 color: draft.color,
             };
-            setTags([next, ...effectiveTags]);
+
+            persistTags([next, ...effectiveTags]);
             setEditorOpen(false);
             return;
         }
@@ -486,7 +511,7 @@ export default function TagManager({ title, tags, onTagsChange, initialTags }: T
         }
 
         const nextTags = effectiveTags.map((t) => {
-            if (t.id !== draft.id) return t;
+            if (String(t.id) !== String(draft.id)) return t;
             return {
                 ...t,
                 title: draft.title.trim(),
@@ -495,13 +520,8 @@ export default function TagManager({ title, tags, onTagsChange, initialTags }: T
             };
         });
 
-        setTags(nextTags);
+        persistTags(nextTags);
         setEditorOpen(false);
-    };
-
-    const deleteTag = (tagId: string) => {
-        // deleteTag
-        setTags(effectiveTags.filter((t) => t.id !== tagId));
     };
 
     return (
@@ -532,7 +552,6 @@ export default function TagManager({ title, tags, onTagsChange, initialTags }: T
                 <Button
                     variant="contained"
                     onClick={openCreate}
-                    
                     sx={{
                         textTransform: "none",
                         backgroundColor: "#25991a",
@@ -612,13 +631,19 @@ export default function TagManager({ title, tags, onTagsChange, initialTags }: T
                                         size="small"
                                         variant="outlined"
                                         onClick={() => openEdit(t)}
-                                        sx={{ textTransform: "none", borderRadius: 2, backgroundColor: "#2b5ac0", color: "white", "&:hover": { backgroundColor: "#1a43b3" }  }}
+                                        sx={{
+                                            textTransform: "none",
+                                            borderRadius: 2,
+                                            backgroundColor: "#2b5ac0",
+                                            color: "white",
+                                            "&:hover": { backgroundColor: "#1a43b3" },
+                                        }}
                                     >
                                         Edit
                                     </Button>
 
                                     <Tooltip title="Delete">
-                                        <IconButton size="small" onClick={() => deleteTag(t.id)}>
+                                        <IconButton size="small" onClick={() => persistDeleteTag(t.id)}>
                                             <TrashBinIcon fontSize="1.2rem" />
                                         </IconButton>
                                     </Tooltip>
