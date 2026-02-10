@@ -13,6 +13,10 @@ import {
   ProtocolLogChannelsResponse,
   ProtocolLogsChunkResponse,
   ProtocolLogOffsets,
+  ProtocolTag,
+  ProtocolTagCreatePayload,
+  ProtocolTagUpdatePayload,
+  ProtocolTagIdsResult,
 } from "@/services/ProjectService";
 
 const ACTION_LAUNCH = "launch";
@@ -224,6 +228,178 @@ export async function deleteProject(id: Id): Promise<void> {
   });
   if (!response.ok) throw await toApiError(response, "Failed to delete project");
 }
+
+/* ======================= TAGS ======================= */
+
+function normalizeProtocolTag(raw: any): ProtocolTag | null {
+  // normalizeProtocolTag
+  if (!raw || typeof raw !== "object") return null;
+
+  const id = String(raw.id ?? "").trim();
+  const title = String(raw.title ?? "").trim();
+
+  if (!id || !title) return null;
+
+  return {
+    id,
+    projectId: raw.projectId ?? raw["projectId"],
+    title,
+    description: raw.description ?? null,
+    color: raw.color ?? null,
+    createdAt: raw.createdAt ?? raw["createdAt"],
+    updatedAt: raw.updatedAt ?? raw["updatedAt"],
+  };
+}
+
+function normalizeProjectTagsResponse(raw: any): ProtocolTag[] {
+  // normalizeProjectTagsResponse
+  const arr = Array.isArray(raw) ? raw : Array.isArray(raw?.tags) ? raw.tags : [];
+  return arr.map(normalizeProtocolTag).filter(Boolean) as ProtocolTag[];
+}
+
+function normalizeProtocolTagIdsResult(raw: any): ProtocolTagIdsResult {
+  // normalizeProtocolTagIdsResult
+  const toStr = (v: any) => String(v).trim();
+
+  const uniq = new Set<string>();
+  const tagIds: string[] = [];
+
+  const pushId = (v: any) => {
+    // pushId
+    const s = toStr(v);
+    if (!s) return;
+    if (uniq.has(s)) return;
+    uniq.add(s);
+    tagIds.push(s);
+  };
+
+  const collectFromArray = (arr: any[]) => {
+    // collectFromArray
+    for (const item of arr) {
+      if (item == null) continue;
+
+      if (typeof item === "string" || typeof item === "number") {
+        pushId(item);
+        continue;
+      }
+
+      if (typeof item === "object") {
+        if ((item as any).id != null) pushId((item as any).id);
+        else if ((item as any).tagId != null) pushId((item as any).tagId);
+      }
+    }
+  };
+
+  let missingTagIds: string[] = [];
+
+  if (Array.isArray(raw)) {
+    collectFromArray(raw);
+  } else if (raw && typeof raw === "object") {
+    if (Array.isArray((raw as any).tagIds)) collectFromArray((raw as any).tagIds);
+    if (Array.isArray((raw as any).tags)) collectFromArray((raw as any).tags);
+
+    if (Array.isArray((raw as any).missingTagIds)) {
+      missingTagIds = (raw as any).missingTagIds.map(toStr).filter((s: string) => s.length > 0);
+    }
+  }
+
+  missingTagIds = Array.from(new Set(missingTagIds));
+
+  return { tagIds, missingTagIds };
+}
+
+export async function listProjectTags(projectId: Id): Promise<ProtocolTag[]> {
+  const res = await fetchWithAuth(`${BASE_URL}/projects/${projectId}/tags`, { method: "GET" });
+  if (!res.ok) throw await toApiError(res, "Failed to fetch project tags");
+
+  const raw = await safeJson<any>(res);
+  return normalizeProjectTagsResponse(raw);
+}
+
+export async function createProjectTag(
+  projectId: Id,
+  payload: ProtocolTagCreatePayload,
+): Promise<ProtocolTag> {
+  const res = await fetchWithAuth(`${BASE_URL}/projects/${projectId}/tags`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload ?? {}),
+  });
+  if (!res.ok) throw await toApiError(res, "Failed to create tag");
+
+  const raw = await safeJson<any>(res);
+  const tag = normalizeProtocolTag(raw);
+  if (!tag) throw new Error("Invalid tag response");
+  return tag;
+}
+
+export async function updateProjectTag(
+  projectId: Id,
+  tagId: string,
+  payload: ProtocolTagUpdatePayload,
+): Promise<ProtocolTag> {
+  const res = await fetchWithAuth(`${BASE_URL}/projects/${projectId}/tags/${encodeURIComponent(tagId)}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload ?? {}),
+  });
+  if (!res.ok) throw await toApiError(res, "Failed to update tag");
+
+  const raw = await safeJson<any>(res);
+  const tag = normalizeProtocolTag(raw);
+  if (!tag) throw new Error("Invalid tag response");
+  return tag;
+}
+
+export async function deleteProjectTag(
+  projectId: Id,
+  tagId: string,
+): Promise<{ success: boolean }> {
+  const res = await fetchWithAuth(`${BASE_URL}/projects/${projectId}/tags/${encodeURIComponent(tagId)}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) throw await toApiError(res, "Failed to delete tag");
+
+  const raw = await safeJson<any>(res);
+  if (raw && typeof raw === "object" && typeof (raw as any).success === "boolean") {
+    return { success: (raw as any).success };
+  }
+  return { success: true };
+}
+
+export async function listProtocolTagIds(
+  projectId: Id,
+  protocolId: Id,
+): Promise<string[]> {
+  const res = await fetchWithAuth(
+    `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/tags`,
+    { method: "GET" },
+  );
+  if (!res.ok) throw await toApiError(res, "Failed to fetch protocol tags");
+
+  const raw = await safeJson<any>(res);
+  return normalizeProtocolTagIdsResult(raw).tagIds;
+}
+
+export async function setProtocolTagIds(
+  projectId: Id,
+  protocolId: Id,
+  tagIds: string[],
+): Promise<ProtocolTagIdsResult> {
+  const res = await fetchWithAuth(
+    `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/tags`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tagIds: (tagIds ?? []).map((x) => String(x)) }),
+    },
+  );
+  if (!res.ok) throw await toApiError(res, "Failed to set protocol tags");
+
+  const raw = await safeJson<any>(res);
+  return normalizeProtocolTagIdsResult(raw);
+}
+
 
 /* ======================= PROJECT SHARING ======================= */
 
@@ -720,7 +896,7 @@ export async function fetchProtocolLogsChunk(
     signal: opts.signal,
   });
 
-  
+
 
   // Treat missing logs as empty
   if (res.status === 404 || res.status === 204) {

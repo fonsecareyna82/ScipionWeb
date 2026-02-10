@@ -5075,7 +5075,7 @@ export default function ProjectPage() {
           title="Manage tags"
         >
           <div style={{ paddingTop: 8 }}>
-            <TagManager />
+            <TagManager projectId={Number(projId)} />
           </div>
         </TagsDialog>
 

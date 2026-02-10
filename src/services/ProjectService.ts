@@ -303,18 +303,18 @@ export type AnalyzeViewerResolveContext = {
 
 export type AnalyzeViewerResolveDecision =
   | {
-      handled: false;
-    }
+    handled: false;
+  }
   | {
-      handled: true;
-      // Usually a Flask route that will render the viewer
-      url: string;
+    handled: true;
+    // Usually a Flask route that will render the viewer
+    url: string;
 
-      // Optional behavior hints for the frontend
-      target?: "_self" | "_blank";
-      kind?: "redirect" | "iframe";
-      title?: string;
-    };
+    // Optional behavior hints for the frontend
+    target?: "_self" | "_blank";
+    kind?: "redirect" | "iframe";
+    title?: string;
+  };
 
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -409,6 +409,39 @@ export type ProtocolLogsChunkResponse = {
   chunks?: Record<string, ProtocolLogChunk>;
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Protocol tags (project-level tags + protocol assignments)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type ProtocolTag = {
+  id: string;
+  projectId?: Id;
+
+  title: string;
+  description?: string | null;
+  color?: string | null;
+
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type ProtocolTagCreatePayload = {
+  title: string;
+  description?: string | null;
+  color?: string | null;
+};
+
+export type ProtocolTagUpdatePayload = {
+  title?: string;
+  description?: string | null;
+  color?: string | null;
+};
+
+export type ProtocolTagIdsResult = {
+  tagIds: string[];
+  missingTagIds: string[];
+};
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ProjectService interface
@@ -453,10 +486,10 @@ export interface ProjectService<
   /** Load all protocols for a project. */
   loadProtocols(projectId: Id): Promise<TProtocol[] | any>;
 
-   /**
-   * List predefined workflows / pipelines available for a project.
-   * Backend may filter them by project type, owner, or permissions.
-   */
+  /**
+  * List predefined workflows / pipelines available for a project.
+  * Backend may filter them by project type, owner, or permissions.
+  */
   fetchWorkflows(): Promise<WorkflowDescriptor[] | any>;
 
   loadWorkflow(
@@ -518,10 +551,10 @@ export interface ProjectService<
   // Analyze Results (Volumes) — used by the "Analyze Results" viewer.
   // ─────────────────────────────────────────────────────────────────────────────
 
-   /**
-   * Ask the backend whether an output should be handled by an external viewer (e.g., Flask).
-   * If handled is true, the frontend should not open the React modal and should open the returned url instead.
-   */
+  /**
+  * Ask the backend whether an output should be handled by an external viewer (e.g., Flask).
+  * If handled is true, the frontend should not open the React modal and should open the returned url instead.
+  */
   resolveAnalyzeViewer(
     ctx: AnalyzeViewerResolveContext
   ): Promise<AnalyzeViewerResolveDecision>;
@@ -752,7 +785,7 @@ export interface ProjectService<
     restack: boolean,
   ): Promise<void>;
 
-    // ─────────────────────────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────────────
   // Analyze Results (CTF tomography / CTF tilt series)
   // ─────────────────────────────────────────────────────────────────────────────
 
@@ -788,14 +821,14 @@ export interface ProjectService<
     exclusions: CTFTomoExclusionsPayload,
   ): Promise<void>;
 
-fetchCTFPsdImage(
-  projectId: Id,
-  protocolId: Id,
-  outputName: string,
-  psdPath: string,
-): Promise<any> 
+  fetchCTFPsdImage(
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    psdPath: string,
+  ): Promise<any>
 
-// ─────────────────────────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────────────
   // Project sharing / collaboration
   // ─────────────────────────────────────────────────────────────────────────────
 
@@ -837,7 +870,7 @@ fetchCTFPsdImage(
   patchInstanceSettings(patch: InstanceSettingsPatch): Promise<InstanceSettings>;
 
 
-    // ─────────────────────────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────────────
   // Protocol logs (dynamic channels)
   // ─────────────────────────────────────────────────────────────────────────────
 
@@ -857,5 +890,16 @@ fetchCTFPsdImage(
   ): Promise<ProtocolLogsChunkResponse>;
 
 
+   // ─────────────────────────────────────────────────────────────────────────────
+  // Protocol tags
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  listProjectTags(projectId: Id): Promise<ProtocolTag[]>;
+  createProjectTag(projectId: Id, payload: ProtocolTagCreatePayload): Promise<ProtocolTag>;
+  updateProjectTag(projectId: Id, tagId: string, payload: ProtocolTagUpdatePayload): Promise<ProtocolTag>;
+  deleteProjectTag(projectId: Id, tagId: string): Promise<{ success: boolean }>;
+
+  listProtocolTagIds(projectId: Id, protocolId: Id): Promise<string[]>;
+  setProtocolTagIds(projectId: Id, protocolId: Id, tagIds: string[]): Promise<ProtocolTagIdsResult>;
 
 }

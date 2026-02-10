@@ -18,6 +18,10 @@ import type {
   ProtocolLogChannelsResponse,
   ProtocolLogsChunkResponse,
   ProtocolLogOffsets,
+  ProtocolTag,
+  ProtocolTagCreatePayload,
+  ProtocolTagUpdatePayload,
+  ProtocolTagIdsResult,
 } from "@/services/ProjectService";
 
 
@@ -594,6 +598,35 @@ const defaultService: ProjectService = {
   fetchInstanceSettings: () => settingsApi.fetchInstanceSettings(),
   putInstanceSettings: (payload: InstanceSettings) => settingsApi.putInstanceSettings(payload),
   patchInstanceSettings: (patch: InstanceSettingsPatch) => settingsApi.patchInstanceSettings(patch),
+
+  // ──────────────────────────── Protocol tags ────────────────────────────
+
+  listProjectTags: (projectId: Id): Promise<ProtocolTag[]> =>
+    api.listProjectTags(toId(projectId)),
+
+  createProjectTag: (projectId: Id, payload: ProtocolTagCreatePayload): Promise<ProtocolTag> =>
+    api.createProjectTag(toId(projectId), payload),
+
+  updateProjectTag: (
+    projectId: Id,
+    tagId: string,
+    payload: ProtocolTagUpdatePayload,
+  ): Promise<ProtocolTag> =>
+    api.updateProjectTag(toId(projectId), tagId, payload),
+
+  deleteProjectTag: (projectId: Id, tagId: string): Promise<{ success: boolean }> =>
+    api.deleteProjectTag(toId(projectId), tagId),
+
+  listProtocolTagIds: (projectId: Id, protocolId: Id): Promise<string[]> =>
+    api.listProtocolTagIds(toId(projectId), toId(protocolId)),
+
+  setProtocolTagIds: (
+    projectId: Id,
+    protocolId: Id,
+    tagIds: string[],
+  ): Promise<ProtocolTagIdsResult> =>
+    api.setProtocolTagIds(toId(projectId), toId(protocolId), tagIds),
+
 
     // ──────────────────────────── Protocol logs (dynamic channels) ────────────────────────────
 

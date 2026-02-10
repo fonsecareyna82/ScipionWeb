@@ -194,7 +194,11 @@ function deleteTag(tagId: string): void {
   });
 }
 
-function setAssignedTagIds(projectId: string | number | undefined, protocolId: string | number | undefined, tagIds: string[]): void {
+function setAssignedTagIds(
+  projectId: string | number | undefined,
+  protocolId: string | number | undefined,
+  tagIds: string[],
+): void {
   // setAssignedTagIds
   const pid = String(projectId ?? "global");
   const prId = String(protocolId ?? "");
@@ -223,7 +227,10 @@ function setAssignedTagIds(projectId: string | number | undefined, protocolId: s
   });
 }
 
-function getAssignedTagIds(projectId: string | number | undefined, protocolId: string | number | undefined): string[] {
+function getAssignedTagIds(
+  projectId: string | number | undefined,
+  protocolId: string | number | undefined,
+): string[] {
   // getAssignedTagIds
   const pid = String(projectId ?? "global");
   const prId = String(protocolId ?? "");
@@ -231,6 +238,116 @@ function getAssignedTagIds(projectId: string | number | undefined, protocolId: s
   const raw = state.assignments?.[pid]?.[prId] ?? [];
   const tagsById = buildTagsById(state.tags);
   return uniqStrings(raw).filter((x) => tagsById.has(String(x)));
+}
+
+/**
+ * Replace all assignments for a given project.
+ * `projectMap` must be: { [protocolId]: [tagId, ...] }
+ */
+function setProjectAssignments(
+  projectId: string | number | undefined,
+  projectMap: Record<string, string[]>,
+): void {
+  // setProjectAssignments
+  const pid = String(projectId ?? "");
+  if (!pid || pid === "null" || pid === "undefined") return;
+
+  setState((prev) => {
+    const tagsById = buildTagsById(prev.tags);
+
+    const nextProjectMap: Record<string, string[]> = {};
+    for (const [protocolId, tagIds] of Object.entries(projectMap ?? {})) {
+      const prId = String(protocolId ?? "").trim();
+      if (!prId) continue;
+
+      const filtered = uniqStrings(tagIds ?? []).filter((x) => tagsById.has(String(x)));
+      if (filtered.length > 0) nextProjectMap[prId] = filtered;
+    }
+
+    const nextAssignments: StoredTagAssignments = { ...(prev.assignments ?? {}) };
+
+    if (Object.keys(nextProjectMap).length === 0) {
+      delete nextAssignments[pid];
+    } else {
+      nextAssignments[pid] = nextProjectMap;
+    }
+
+    // keepAssignmentsInSyncWithTags
+    const reconciled = reconcileAssignments(prev.tags, nextAssignments);
+
+    return { ...prev, updatedAt: Date.now(), assignments: reconciled };
+  });
+}
+
+/**
+ * Merge assignments for a given project (partial update).
+ * Only protocols present in `projectMap` are updated.
+ */
+function mergeProjectAssignments(
+  projectId: string | number | undefined,
+  projectMap: Record<string, string[]>,
+): void {
+  // mergeProjectAssignments
+  const pid = String(projectId ?? "");
+  if (!pid || pid === "null" || pid === "undefined") return;
+
+  setState((prev) => {
+    const tagsById = buildTagsById(prev.tags);
+    const prevAssignments = prev.assignments ?? {};
+    const prevProjectMap = { ...(prevAssignments[pid] ?? {}) };
+
+    for (const [protocolId, tagIds] of Object.entries(projectMap ?? {})) {
+      const prId = String(protocolId ?? "").trim();
+      if (!prId) continue;
+
+      const filtered = uniqStrings(tagIds ?? []).filter((x) => tagsById.has(String(x)));
+      if (filtered.length === 0) {
+        delete prevProjectMap[prId];
+      } else {
+        prevProjectMap[prId] = filtered;
+      }
+    }
+
+    const nextAssignments: StoredTagAssignments = { ...prevAssignments };
+    if (Object.keys(prevProjectMap).length === 0) {
+      delete nextAssignments[pid];
+    } else {
+      nextAssignments[pid] = prevProjectMap;
+    }
+
+    const reconciled = reconcileAssignments(prev.tags, nextAssignments);
+
+    return { ...prev, updatedAt: Date.now(), assignments: reconciled };
+  });
+}
+
+function clearProjectAssignments(projectId: string | number | undefined): void {
+  // clearProjectAssignments
+  const pid = String(projectId ?? "");
+  if (!pid || pid === "null" || pid === "undefined") return;
+
+  setState((prev) => {
+    const nextAssignments: StoredTagAssignments = { ...(prev.assignments ?? {}) };
+    delete nextAssignments[pid];
+
+    const reconciled = reconcileAssignments(prev.tags, nextAssignments);
+
+    return { ...prev, updatedAt: Date.now(), assignments: reconciled };
+  });
+}
+
+function toggleAssignedTagId(
+  projectId: string | number | undefined,
+  protocolId: string | number | undefined,
+  tagId: string,
+): string[] {
+  // toggleAssignedTagId
+  const current = getAssignedTagIds(projectId, protocolId);
+  const tid = String(tagId);
+  const has = current.some((x) => String(x) === tid);
+  const next = has ? current.filter((x) => String(x) !== tid) : [tid, ...current];
+  setAssignedTagIds(projectId, protocolId, next);
+  return next;
 }
 
 export function useTagStore() {
@@ -243,7 +360,7 @@ export function useTagStore() {
 
     const getAssignedTagIdsFromSnapshot = (
       projectId: string | number | undefined,
-      protocolId: string | number | undefined
+      protocolId: string | number | undefined,
     ): string[] => {
       // getAssignedTagIdsFromSnapshot
       const pid = String(projectId ?? "global");
@@ -258,11 +375,17 @@ export function useTagStore() {
       tags: snap.tags,
       assignments: snap.assignments,
       tagsById,
+
       setTags,
       deleteTag,
+
       getAssignedTagIds: getAssignedTagIdsFromSnapshot,
       setAssignedTagIds,
+
+      setProjectAssignments,
+      mergeProjectAssignments,
+      clearProjectAssignments,
+      toggleAssignedTagId,
     };
   }, [snap.tags, snap.assignments]);
 }
-

@@ -1100,7 +1100,7 @@ export default function SettingsPage() {
         <Card variant="outlined" sx={cardSx}>
           <CardHeader title="Tags" subheader="Create and manage protocol tags (stored locally for now)." sx={cardHeaderSx} />
           <CardContent sx={{ pt: 2 }}>
-            <TagManager title="Tags" tags={tags} onTagsChange={setTags} />
+            <TagManager projectId={15}title="Tags" tags={tags} onTagsChange={setTags} />
             <Typography sx={{ mt: 1.25, fontSize: 12, color: colors.muted }}>
               Tags are stored in your browser local storage. Protocol assignment and backend persistence will be added later.
             </Typography>

@@ -1,5 +1,6 @@
 // src/components/protocol/ProtocolNodeCard.tsx
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import toast from "react-hot-toast";
 import type {
   Dispatch,
   DragEvent as ReactDragEvent,
@@ -60,12 +61,18 @@ import {
 } from "lucide-react";
 
 import AnalyzeOutputDialog from "@/components/analyze/analyze-output-dialog";
-import type { AnalyzeViewerResolveContext, AnalyzeViewerResolveDecision } from "@/services/ProjectService";
+import type {
+  AnalyzeViewerResolveContext,
+  AnalyzeViewerResolveDecision,
+  Id,
+} from "@/services/ProjectService";
 
 import type { ProtocolTag } from "@/components/tags/tagTypes";
 
 // Uses your tag store hook (no selector args)
 import { useTagStore } from "@/stores/tag_store";
+
+import { useProjectService } from "@/ProjectServiceContext";
 
 const statusColors: Record<string, string> = {
   running: "#FCCE62",
@@ -346,6 +353,16 @@ function normalizeTagIdsFromRaw(rawTags: unknown, allTags: ProtocolTag[]): strin
   return uniqStrings(out);
 }
 
+function normalizeTagIdsList(raw: unknown): string[] {
+  // normalizeTagIdsList
+  if (!Array.isArray(raw)) return [];
+  return uniqStrings(
+    raw
+      .map((x) => String(x ?? "").trim())
+      .filter((s) => s.length > 0),
+  );
+}
+
 type TagAssignments = Record<string, Record<string, string[]>>;
 
 type TagStoreApi = {
@@ -353,7 +370,11 @@ type TagStoreApi = {
   tagsById?: Map<string, ProtocolTag>;
   assignments?: TagAssignments;
   getAssignedTagIds?: (projectId: string | number | undefined, protocolId: string | number | undefined) => string[];
-  setAssignedTagIds?: (projectId: string | number | undefined, protocolId: string | number | undefined, nextTagIds: string[]) => void;
+  setAssignedTagIds?: (
+    projectId: string | number | undefined,
+    protocolId: string | number | undefined,
+    nextTagIds: string[],
+  ) => void;
   setAssignedTagIdsBatch?: (updates: Array<{ projectId: string | number | undefined; protocolId: string; tagIds: string[] }>) => void;
 };
 
@@ -382,6 +403,13 @@ export default function ProtocolNodeCard({
   showHandles = true,
   service,
 }: StatusNodeProps) {
+  const svc = useProjectService();
+  const svcRef = useRef(svc);
+  useEffect(() => {
+    // syncSvcRef
+    svcRef.current = svc;
+  }, [svc]);
+
   const [isHovered, setIsHovered] = useState(false);
   const [draggingIdx, setDraggingIdx] = useState<number | null>(null);
   const isSelected = selectedNodeId === data.id;
@@ -422,7 +450,7 @@ export default function ProtocolNodeCard({
       if (isInContextMenuOpenGuardWindow()) return;
       fn?.();
     },
-    [isInContextMenuOpenGuardWindow]
+    [isInContextMenuOpenGuardWindow],
   );
 
   const isProjectNode = data.id === "PROJECT";
@@ -446,7 +474,7 @@ export default function ProtocolNodeCard({
     .join(" ");
 
   // tagStateFromStore (no selector args)
-    const tagStore = useTagStore() as unknown as TagStoreApi;
+  const tagStore = useTagStore() as unknown as TagStoreApi;
 
   const allTags: ProtocolTag[] = Array.isArray(tagStore?.tags) ? (tagStore.tags as ProtocolTag[]) : [];
 
@@ -454,11 +482,82 @@ export default function ProtocolNodeCard({
   const setAssignedTagIds = tagStore?.setAssignedTagIds;
   const setAssignedTagIdsBatch = tagStore?.setAssignedTagIdsBatch;
 
+  const normalizedProjectId = useMemo(() => {
+    // normalizedProjectId
+    const s = String(data.projectId ?? "").trim();
+    if (!s || s === "null" || s === "undefined") return null;
+    return data.projectId as Id;
+  }, [data.projectId]);
+
+  const normalizedProtocolId = useMemo(() => {
+    // normalizedProtocolId
+    const s = String(data.id ?? "").trim();
+    if (!s || s === "null" || s === "undefined") return null;
+    return data.id as Id;
+  }, [data.id]);
+
+  const backendAssignmentsEnabled =
+    normalizedProjectId != null &&
+    normalizedProtocolId != null &&
+    typeof (svcRef.current as any)?.listProtocolTagIds === "function" &&
+    typeof (svcRef.current as any)?.setProtocolTagIds === "function";
+
+  const loadedAssignmentsRef = useRef<Set<string>>(new Set());
+  const inFlightAssignmentsRef = useRef<Record<string, Promise<string[]> | null>>({});
+
+  const makeAssignmentKey = useCallback((projectId: string | number | undefined, protocolId: string | number | undefined) => {
+    // makeAssignmentKey
+    return `${String(projectId ?? "")}:${String(protocolId ?? "")}`;
+  }, []);
+
+  const loadProtocolTagIdsFromBackend = useCallback(
+    async (projectId: string | number | undefined, protocolId: string | number | undefined): Promise<string[]> => {
+      // loadProtocolTagIdsFromBackend
+      if (!backendAssignmentsEnabled) {
+        const local = typeof getAssignedTagIds === "function" ? getAssignedTagIds(projectId, protocolId) ?? [] : [];
+        return uniqStrings(local);
+      }
+
+      const key = makeAssignmentKey(projectId, protocolId);
+      if (!key || key === ":") return [];
+
+      const alreadyLoaded = loadedAssignmentsRef.current.has(key);
+      if (alreadyLoaded) {
+        const local = typeof getAssignedTagIds === "function" ? getAssignedTagIds(projectId, protocolId) ?? [] : [];
+        return uniqStrings(local);
+      }
+
+      const existingPromise = inFlightAssignmentsRef.current[key];
+      if (existingPromise) return existingPromise;
+
+      const p = (async () => {
+        // fetchAssignments
+        try {
+          const remote = await svcRef.current.listProtocolTagIds(projectId as Id, protocolId as Id);
+          const list = normalizeTagIdsList(remote);
+          if (typeof setAssignedTagIds === "function") {
+            setAssignedTagIds(projectId, protocolId, list);
+          }
+          loadedAssignmentsRef.current.add(key);
+          return list;
+        } catch (e: any) {
+          const local = typeof getAssignedTagIds === "function" ? getAssignedTagIds(projectId, protocolId) ?? [] : [];
+          return uniqStrings(local);
+        } finally {
+          inFlightAssignmentsRef.current[key] = null;
+        }
+      })();
+
+      inFlightAssignmentsRef.current[key] = p;
+      return p;
+    },
+    [backendAssignmentsEnabled, getAssignedTagIds, makeAssignmentKey, setAssignedTagIds],
+  );
+
   const storedAssigned: string[] =
     typeof getAssignedTagIds === "function"
       ? uniqStrings(getAssignedTagIds(data.projectId, data.id) ?? [])
       : [];
-
 
   const fromDataAssigned = useMemo(() => {
     // fromDataAssigned
@@ -476,14 +575,61 @@ export default function ProtocolNodeCard({
   }, [assignedTagIds, allTags]);
 
   useEffect(() => {
+    // loadCurrentProtocolAssignmentsOnce
+    if (!backendAssignmentsEnabled) return;
+    if (typeof setAssignedTagIds !== "function") return;
+    if (isProjectNode) return;
+
+    const key = makeAssignmentKey(normalizedProjectId as any, normalizedProtocolId as any);
+    if (!key || key === ":") return;
+    if (loadedAssignmentsRef.current.has(key)) return;
+
+    let cancelled = false;
+
+    const run = async () => {
+      // run
+      try {
+        const ids = await loadProtocolTagIdsFromBackend(normalizedProjectId as any, normalizedProtocolId as any);
+        if (cancelled) return;
+        setAssignedTagIds(normalizedProjectId as any, normalizedProtocolId as any, uniqStrings(ids));
+      } catch {
+        // ignore
+      }
+    };
+
+    void run();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    backendAssignmentsEnabled,
+    isProjectNode,
+    loadProtocolTagIdsFromBackend,
+    makeAssignmentKey,
+    normalizedProjectId,
+    normalizedProtocolId,
+    setAssignedTagIds,
+  ]);
+
+  useEffect(() => {
     // pruneOrphanAssignments
     if (typeof setAssignedTagIds !== "function") return;
+    if (allTags.length === 0) return;
 
     // If tags were deleted, remove orphan ids from store
     if (selectedTagIds.length !== assignedTagIds.length) {
       setAssignedTagIds(data.projectId, data.id, selectedTagIds);
+
+      if (backendAssignmentsEnabled) {
+        void svcRef.current
+          .setProtocolTagIds(data.projectId as Id, data.id as Id, selectedTagIds)
+          .catch(() => {
+            // ignore
+          });
+      }
     }
-  }, [assignedTagIds, selectedTagIds, setAssignedTagIds, data.projectId, data.id]);
+  }, [allTags.length, assignedTagIds, backendAssignmentsEnabled, data.id, data.projectId, selectedTagIds, setAssignedTagIds]);
 
   const selectedTagSet = useMemo(() => {
     // selectedTagSet
@@ -546,50 +692,83 @@ export default function ProtocolNodeCard({
       const targets = getSelectedTagTargets();
       if (targets.length === 0) return;
 
-      const currentByTarget = targets.map((t) => {
-        const stored =
-          typeof getAssignedTagIds === "function" ? uniqStrings(getAssignedTagIds(t.projectId, t.protocolId) ?? []) : [];
+      const run = async () => {
+        // run
+        try {
+          const currentByTarget = await Promise.all(
+            targets.map(async (t) => {
+              const stored =
+                typeof getAssignedTagIds === "function" ? uniqStrings(getAssignedTagIds(t.projectId, t.protocolId) ?? []) : [];
 
-        const fromNode = normalizeTagIdsFromRaw(t.rawTags, allTags);
-        const merged = uniqStrings([...stored, ...fromNode]);
+              const backendList = backendAssignmentsEnabled
+                ? await loadProtocolTagIdsFromBackend(t.projectId, t.protocolId)
+                : [];
 
-        return {
-          ...t,
-          current: filterExistingTagIds(merged, allTags),
-        };
-      });
+              const fromNode = normalizeTagIdsFromRaw(t.rawTags, allTags);
 
-      const allHaveTag = currentByTarget.every((t) => t.current.some((x) => String(x) === String(normalizedTagId)));
+              const mergedBase = backendAssignmentsEnabled
+                ? uniqStrings([...backendList, ...stored, ...fromNode])
+                : uniqStrings([...stored, ...fromNode]);
 
-      const updates = currentByTarget.map((t) => {
-        const next = allHaveTag
-          ? t.current.filter((x) => String(x) !== String(normalizedTagId))
-          : uniqStrings([...t.current, normalizedTagId]);
+              return {
+                ...t,
+                current: mergedBase,
+              };
+            }),
+          );
 
-        return {
-          projectId: t.projectId,
-          protocolId: String(t.protocolId),
-          tagIds: next,
-        };
-      });
+          const allHaveTag = currentByTarget.every((t) =>
+            t.current.some((x) => String(x) === String(normalizedTagId)),
+          );
 
-      if (typeof setAssignedTagIdsBatch === "function") {
-        setAssignedTagIdsBatch(updates);
-        return;
-      }
+          const updates = currentByTarget.map((t) => {
+            const next = allHaveTag
+              ? t.current.filter((x) => String(x) !== String(normalizedTagId))
+              : uniqStrings([...t.current, normalizedTagId]);
 
-      for (const u of updates) {
-        setAssignedTagIds?.(u.projectId, u.protocolId, u.tagIds);
-      }
+            return {
+              projectId: t.projectId,
+              protocolId: String(t.protocolId),
+              tagIds: next,
+            };
+          });
+
+          // optimistic local update
+          if (typeof setAssignedTagIdsBatch === "function") {
+            setAssignedTagIdsBatch(updates);
+          } else {
+            for (const u of updates) {
+              setAssignedTagIds?.(u.projectId, u.protocolId, u.tagIds);
+            }
+          }
+
+          if (backendAssignmentsEnabled) {
+            await Promise.all(
+              updates.map(async (u) => {
+                await svcRef.current.setProtocolTagIds(u.projectId as Id, u.protocolId as Id, u.tagIds);
+                const key = makeAssignmentKey(u.projectId, u.protocolId);
+                loadedAssignmentsRef.current.add(key);
+              }),
+            );
+          }
+        } catch (e: any) {
+          toast.error(typeof e?.message === "string" ? e.message : "Failed to update tags");
+        }
+      };
+
+      void run();
     },
     [
+      allTags,
+      backendAssignmentsEnabled,
+      getAssignedTagIds,
+      getSelectedTagTargets,
       isProjectNode,
+      loadProtocolTagIdsFromBackend,
+      makeAssignmentKey,
       setAssignedTagIds,
       setAssignedTagIdsBatch,
-      allTags,
-      getSelectedTagTargets,
-      getAssignedTagIds,
-    ]
+    ],
   );
 
   const handleManageTags = useCallback(() => {
@@ -669,7 +848,7 @@ export default function ProtocolNodeCard({
 
       return nodeEl as HTMLElement | null;
     },
-    [data.id]
+    [data.id],
   );
 
   const isReactFlowNodeCurrentlySelected = useCallback(
@@ -679,7 +858,7 @@ export default function ProtocolNodeCard({
       if (!nodeEl) return false;
       return nodeEl.classList.contains("selected");
     },
-    [getReactFlowNodeElement]
+    [getReactFlowNodeElement],
   );
 
   const selectNodeExclusivelyInReactFlow = useCallback(
@@ -712,7 +891,7 @@ export default function ProtocolNodeCard({
       nodeEl.dispatchEvent(new MouseEvent("mouseup", opts));
       nodeEl.dispatchEvent(new MouseEvent("click", opts));
     },
-    [getReactFlowNodeElement]
+    [getReactFlowNodeElement],
   );
 
   const ensureRightClickSelectionIsUnambiguous = useCallback(
@@ -722,7 +901,7 @@ export default function ProtocolNodeCard({
       if (alreadySelected) return;
       selectNodeExclusivelyInReactFlow(e);
     },
-    [isReactFlowNodeCurrentlySelected, selectNodeExclusivelyInReactFlow]
+    [isReactFlowNodeCurrentlySelected, selectNodeExclusivelyInReactFlow],
   );
 
   const truncateLabel = (text: string = "", max: number = 120) => (text.length > max ? `${text.slice(0, max)}…` : text);
@@ -748,7 +927,7 @@ export default function ProtocolNodeCard({
       // If user right-clicks a non-selected node, make it the only selection.
       ensureRightClickSelectionIsUnambiguous(e);
     },
-    [isMac, armSuppressNextMenuAction, ensureRightClickSelectionIsUnambiguous]
+    [isMac, armSuppressNextMenuAction, ensureRightClickSelectionIsUnambiguous],
   );
 
   const mod = isMac ? "⌘" : "Ctrl";
@@ -787,12 +966,6 @@ export default function ProtocolNodeCard({
     outputName: string;
     outputRaw: any;
   } | null>(null);
-
-  const handleAnalyzeClose = useCallback(() => {
-    // closeAnalyzeDialog
-    setAnalyzeOpen(false);
-    setAnalyzeTarget(null);
-  }, []);
 
   const analyzeProjectId = useMemo(() => {
     const n = Number(data.projectId);
@@ -839,7 +1012,7 @@ export default function ProtocolNodeCard({
       setAnalyzeTarget({ outputName, outputRaw });
       setAnalyzeOpen(true);
     },
-    [canOpenViewer, data.projectId, data.id, data.label, service]
+    [canOpenViewer, data.projectId, data.id, data.label, service],
   );
 
   return (
@@ -1111,11 +1284,7 @@ export default function ProtocolNodeCard({
                                   </span>
 
                                   <span className={styles.menuRight}>
-                                    {isChecked ? (
-                                      <Check className={styles.menuCheckIcon} />
-                                    ) : (
-                                      <span className={styles.menuCheckPlaceholder} />
-                                    )}
+                                    {isChecked ? <Check className={styles.menuCheckIcon} /> : <span className={styles.menuCheckPlaceholder} />}
                                   </span>
                                 </div>
                               </DropdownMenuItem>
@@ -1181,7 +1350,7 @@ export default function ProtocolNodeCard({
                   <span
                     key={String(t.id)}
                     className={styles.tagChip}
-                    title={t.description || t.title}
+                    title={(t as any)?.description || t.title}
                     style={{ backgroundColor: t.color || "#9ca3af" }}
                   >
                     <span className={styles.tagChipText}>{t.title}</span>
@@ -1581,11 +1750,7 @@ export default function ProtocolNodeCard({
                       </span>
 
                       <span className={styles.menuRight}>
-                        {isChecked ? (
-                          <Check className={styles.menuCheckIcon} />
-                        ) : (
-                          <span className={styles.menuCheckPlaceholder} />
-                        )}
+                        {isChecked ? <Check className={styles.menuCheckIcon} /> : <span className={styles.menuCheckPlaceholder} />}
                       </span>
                     </div>
                   </ContextMenuItem>
