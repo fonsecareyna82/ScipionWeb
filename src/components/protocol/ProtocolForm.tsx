@@ -1270,12 +1270,54 @@ export default function ProtocolForm({
     const key = `${sectionIdx}_${paramName}`;
     const state = protocolDetails.params?.[key];
     if (!state) return "";
-    if (getParamClass(state) === "EnumParam" && Array.isArray(state.choices)) {
-      const v = state.editableValue ?? state.default ?? "";
-      if (typeof v === "number") return v;
-      const idx = state.choices.indexOf(v);
-      return idx >= 0 ? idx : 0;
+    if (getParamClass(state) === "EnumParam" && state.choices) {
+      const choicesRaw = state.choices;
+
+      // arrayChoicesReturnIndexForLegacyConditions
+      if (Array.isArray(choicesRaw)) {
+        const v = state.editableValue ?? state.default ?? "";
+        if (typeof v === "number") return v;
+
+        if (typeof v === "string" && /^\d+$/.test(v.trim())) {
+          return Number(v.trim());
+        }
+
+        const idx = choicesRaw.indexOf(v);
+        return idx >= 0 ? idx : 0;
+      }
+
+      // dictChoicesReturnKey
+      if (choicesRaw && typeof choicesRaw === "object") {
+        const options = normalizeEnumOptions(choicesRaw);
+        const v = state.editableValue ?? state.default ?? "";
+
+        if (typeof v === "number" && Number.isFinite(v)) {
+          return options[v]?.value ?? options[0]?.value ?? "";
+        }
+
+        if (typeof v === "string") {
+          const trimmed = v.trim();
+
+          // ifKeyExistsReturnKey
+          if (Object.prototype.hasOwnProperty.call(choicesRaw, trimmed)) return trimmed;
+
+          // ifValueProvidedReturnMatchingKey
+          const byLabel = options.find((o) => o.label === trimmed);
+          if (byLabel) return byLabel.value;
+
+          // numericStringAsIndex
+          if (/^\d+$/.test(trimmed)) {
+            const idx = Number(trimmed);
+            return options[idx]?.value ?? options[0]?.value ?? "";
+          }
+
+          return options[0]?.value ?? "";
+        }
+
+        return options[0]?.value ?? "";
+      }
     }
+
     return state.editableValue ?? "";
   };
 
@@ -1440,26 +1482,64 @@ export default function ProtocolForm({
     return "";
   };
 
-  const normalizeEnumLabel = (raw: any, choices: string[] | undefined, fallback: any) => {
-    // normalizeEnumLabel
-    const parsed = parseFromJSONValue(raw);
-    if (!Array.isArray(choices) || choices.length === 0) return parsed ?? fallback ?? "";
+  type EnumOption = { value: string; label: string };
 
-    if (typeof parsed === "number") return choices[parsed] ?? (fallback ?? choices[0]);
-    if (typeof parsed === "string") {
-      const trimmed = parsed.trim();
-
-      // If backend sends "0"/"1" as string index
-      if (!choices.includes(trimmed) && /^\d+$/.test(trimmed)) {
-        const idx = Number(trimmed);
-        return choices[idx] ?? (fallback ?? choices[0]);
-      }
-
-      return choices.includes(trimmed) ? trimmed : fallback ?? choices[0];
+  function normalizeEnumOptions(choicesRaw: any): EnumOption[] {
+    // normalizeEnumOptions
+    if (Array.isArray(choicesRaw)) {
+      return choicesRaw.map((c) => {
+        const s = String(c ?? "");
+        return { value: s, label: s };
+      });
     }
 
-    return fallback ?? choices[0];
-  };
+    if (choicesRaw && typeof choicesRaw === "object") {
+      return Object.entries(choicesRaw as Record<string, any>).map(([k, v]) => ({
+        value: String(k ?? ""),
+        label: String(v ?? ""),
+      }));
+    }
+
+    return [];
+  }
+
+  function normalizeEnumSelection(raw: any, choicesRaw: any, fallbackRaw: any): string {
+    // normalizeEnumSelection
+    const options = normalizeEnumOptions(choicesRaw);
+    if (options.length === 0) return String(parseFromJSONValue(raw) ?? fallbackRaw ?? "");
+
+    const pickByIndex = (idx: number) => options[idx]?.value ?? options[0].value;
+
+    const resolveString = (s: string): string => {
+      const trimmed = s.trim();
+      if (!trimmed) return options[0].value;
+
+      // directMatchOnValue
+      if (options.some((o) => o.value === trimmed)) return trimmed;
+
+      // matchOnLabelToReturnValue
+      const byLabel = options.find((o) => o.label === trimmed);
+      if (byLabel) return byLabel.value;
+
+      // numericStringAsIndex
+      if (/^\d+$/.test(trimmed)) return pickByIndex(Number(trimmed));
+
+      return options[0].value;
+    };
+
+    const v = parseFromJSONValue(raw);
+
+    if (typeof v === "number" && Number.isFinite(v)) return pickByIndex(v);
+    if (typeof v === "string") return resolveString(v);
+
+    // fallbackHandling
+    const fb = parseFromJSONValue(fallbackRaw);
+    if (typeof fb === "number" && Number.isFinite(fb)) return pickByIndex(fb);
+    if (typeof fb === "string") return resolveString(fb);
+
+    return options[0].value;
+  }
+
 
   const normalizeMultiPointerValue = (raw: any) => {
     // normalizeMultiPointerValue
@@ -1615,14 +1695,15 @@ export default function ProtocolForm({
         return;
       }
 
-      if (cls === "EnumParam" && Array.isArray(def.choices)) {
-        const label = normalizeEnumLabel(rawFromApi, def.choices, def.default);
+      if (cls === "EnumParam" && def.choices) {
+        const selected = normalizeEnumSelection(rawFromApi, def.choices, def.default);
         params[key] = {
           ...defResolved,
-          editableValue: label,
+          editableValue: selected,
         };
         return;
       }
+
 
       params[key] = {
         ...defResolved,
@@ -2773,13 +2854,13 @@ export default function ProtocolForm({
       }
 
       // EnumParam (requires stateKey)
-      if (defClass === "EnumParam" && Array.isArray(def.choices)) {
+      if (defClass === "EnumParam" && def.choices) {
         if (!stateKey) return null;
 
-        let sel = value ?? def.default ?? "";
-        if (typeof sel === "number") sel = def.choices[sel] ?? "";
+        const options = normalizeEnumOptions(def.choices);
+        if (options.length === 0) return null;
 
-        const safeSel = def.choices.includes(sel) ? sel : def.choices[0] ?? "";
+        const safeSel = normalizeEnumSelection(value ?? def.default ?? "", def.choices, def.default);
 
         const onChange = (v: any) =>
           setProtocolDetails((prev: any) => ({
@@ -2790,12 +2871,12 @@ export default function ProtocolForm({
         const controlBase =
           def.display === 0 ? (
             <RadioGroup row value={safeSel} onChange={(e) => onChange(e.target.value)}>
-              {def.choices.map((ch: string, i: number) => (
+              {options.map((opt, i) => (
                 <FormControlLabel
                   key={i}
-                  value={ch}
+                  value={opt.value}
                   control={<Radio size="small" />}
-                  label={ch}
+                  label={opt.label}
                   sx={{ "& .MuiFormControlLabel-label": { fontSize: 12, lineHeight: 1.2 } }}
                 />
               ))}
@@ -2807,15 +2888,15 @@ export default function ProtocolForm({
               value={safeSel}
               onChange={(e) => onChange(e.target.value)}
               sx={{
-                width: "69%",
+                width: isInline ? fieldWidth : "69%",
                 minWidth: 0,
                 "& .MuiInputBase-input": { fontSize: 12 },
                 "& .MuiSelect-select": { fontSize: 12, display: "flex", alignItems: "center" },
               }}
             >
-              {def.choices.map((ch: string, i: number) => (
-                <MenuItem key={i} value={ch} sx={{ fontSize: 12 }}>
-                  {ch}
+              {options.map((opt, i) => (
+                <MenuItem key={i} value={opt.value} sx={{ fontSize: 12 }}>
+                  {opt.label}
                 </MenuItem>
               ))}
             </TextField>
@@ -2837,6 +2918,7 @@ export default function ProtocolForm({
           />
         );
       }
+
 
       // Line (decorator, name optional)
       if (defClass === "Line") {
