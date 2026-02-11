@@ -147,9 +147,8 @@ export default function TagPicker({
               label={String(tag.title ?? tag.id)}
               sx={{
                 backgroundColor: color,
-                color: "#0b1220",
-                fontWeight: 700,
-                border: "1px solid rgba(42, 23, 15, 0.18)",
+                color: "#f9fafc",
+                border: "1px solid rgba(19, 7, 2, 0.18)",
                 height: 22,
                 "& .MuiChip-label": { px: 1, fontSize: 12 },
               }}

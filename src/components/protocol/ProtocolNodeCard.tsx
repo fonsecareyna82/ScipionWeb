@@ -123,7 +123,7 @@ type StatusNodeProps = {
     __pathVer?: number;
     projectId?: string | number;
 
-    // tags
+    // tags (can be list of ids or objects; normalized later)
     tags?: any[];
   };
 
@@ -369,6 +369,7 @@ type TagStoreApi = {
   tags?: ProtocolTag[];
   tagsById?: Map<string, ProtocolTag>;
   assignments?: TagAssignments;
+
   getAssignedTagIds?: (projectId: string | number | undefined, protocolId: string | number | undefined) => string[];
   setAssignedTagIds?: (
     projectId: string | number | undefined,
@@ -377,6 +378,18 @@ type TagStoreApi = {
   ) => void;
   setAssignedTagIdsBatch?: (updates: Array<{ projectId: string | number | undefined; protocolId: string; tagIds: string[] }>) => void;
 };
+
+function hasStoreAssignment(assignments: TagAssignments | undefined, projectId: unknown, protocolId: unknown): boolean {
+  // hasStoreAssignment
+  const p = String(projectId ?? "").trim();
+  const pr = String(protocolId ?? "").trim();
+  if (!p || !pr) return false;
+
+  const byProject = assignments?.[p];
+  if (!byProject) return false;
+
+  return Object.prototype.hasOwnProperty.call(byProject, pr);
+}
 
 export default function ProtocolNodeCard({
   data,
@@ -478,6 +491,7 @@ export default function ProtocolNodeCard({
 
   const allTags: ProtocolTag[] = Array.isArray(tagStore?.tags) ? (tagStore.tags as ProtocolTag[]) : [];
 
+  const storeAssignments = tagStore?.assignments;
   const getAssignedTagIds = tagStore?.getAssignedTagIds;
   const setAssignedTagIds = tagStore?.setAssignedTagIds;
   const setAssignedTagIdsBatch = tagStore?.setAssignedTagIdsBatch;
@@ -496,63 +510,10 @@ export default function ProtocolNodeCard({
     return data.id as Id;
   }, [data.id]);
 
-  const backendAssignmentsEnabled =
+  const backendAssignmentsWriteEnabled =
     normalizedProjectId != null &&
     normalizedProtocolId != null &&
-    typeof (svcRef.current as any)?.listProtocolTagIds === "function" &&
     typeof (svcRef.current as any)?.setProtocolTagIds === "function";
-
-  const loadedAssignmentsRef = useRef<Set<string>>(new Set());
-  const inFlightAssignmentsRef = useRef<Record<string, Promise<string[]> | null>>({});
-
-  const makeAssignmentKey = useCallback((projectId: string | number | undefined, protocolId: string | number | undefined) => {
-    // makeAssignmentKey
-    return `${String(projectId ?? "")}:${String(protocolId ?? "")}`;
-  }, []);
-
-  const loadProtocolTagIdsFromBackend = useCallback(
-    async (projectId: string | number | undefined, protocolId: string | number | undefined): Promise<string[]> => {
-      // loadProtocolTagIdsFromBackend
-      if (!backendAssignmentsEnabled) {
-        const local = typeof getAssignedTagIds === "function" ? getAssignedTagIds(projectId, protocolId) ?? [] : [];
-        return uniqStrings(local);
-      }
-
-      const key = makeAssignmentKey(projectId, protocolId);
-      if (!key || key === ":") return [];
-
-      const alreadyLoaded = loadedAssignmentsRef.current.has(key);
-      if (alreadyLoaded) {
-        const local = typeof getAssignedTagIds === "function" ? getAssignedTagIds(projectId, protocolId) ?? [] : [];
-        return uniqStrings(local);
-      }
-
-      const existingPromise = inFlightAssignmentsRef.current[key];
-      if (existingPromise) return existingPromise;
-
-      const p = (async () => {
-        // fetchAssignments
-        try {
-          const remote = await svcRef.current.listProtocolTagIds(projectId as Id, protocolId as Id);
-          const list = normalizeTagIdsList(remote);
-          if (typeof setAssignedTagIds === "function") {
-            setAssignedTagIds(projectId, protocolId, list);
-          }
-          loadedAssignmentsRef.current.add(key);
-          return list;
-        } catch (e: any) {
-          const local = typeof getAssignedTagIds === "function" ? getAssignedTagIds(projectId, protocolId) ?? [] : [];
-          return uniqStrings(local);
-        } finally {
-          inFlightAssignmentsRef.current[key] = null;
-        }
-      })();
-
-      inFlightAssignmentsRef.current[key] = p;
-      return p;
-    },
-    [backendAssignmentsEnabled, getAssignedTagIds, makeAssignmentKey, setAssignedTagIds],
-  );
 
   const storedAssigned: string[] =
     typeof getAssignedTagIds === "function"
@@ -564,64 +525,57 @@ export default function ProtocolNodeCard({
     return normalizeTagIdsFromRaw((data as any)?.tags, allTags);
   }, [data, allTags]);
 
-  const assignedTagIds = useMemo(() => {
-    // assignedTagIds
-    return uniqStrings([...storedAssigned, ...fromDataAssigned]);
-  }, [storedAssigned, fromDataAssigned]);
-
-  const selectedTagIds = useMemo(() => {
-    // selectedTagIds
-    return filterExistingTagIds(assignedTagIds, allTags);
-  }, [assignedTagIds, allTags]);
+  const hasExplicitStoreAssignment = useMemo(() => {
+    // hasExplicitStoreAssignment
+    return hasStoreAssignment(storeAssignments, data.projectId, data.id);
+  }, [storeAssignments, data.projectId, data.id]);
 
   useEffect(() => {
-    // loadCurrentProtocolAssignmentsOnce
-    if (!backendAssignmentsEnabled) return;
-    if (typeof setAssignedTagIds !== "function") return;
+    // seedStoreAssignmentsFromNodeData
     if (isProjectNode) return;
+    if (typeof setAssignedTagIds !== "function") return;
 
-    const key = makeAssignmentKey(normalizedProjectId as any, normalizedProtocolId as any);
-    if (!key || key === ":") return;
-    if (loadedAssignmentsRef.current.has(key)) return;
-
-    let cancelled = false;
-
-    const run = async () => {
-      // run
-      try {
-        const ids = await loadProtocolTagIdsFromBackend(normalizedProjectId as any, normalizedProtocolId as any);
-        if (cancelled) return;
-        setAssignedTagIds(normalizedProjectId as any, normalizedProtocolId as any, uniqStrings(ids));
-      } catch {
-        // ignore
+    // If the store does not have an explicit assignment yet, seed it from data.tags (once per protocol)
+    if (!hasExplicitStoreAssignment) {
+      const initial = uniqStrings(fromDataAssigned);
+      if (initial.length > 0) {
+        setAssignedTagIds(data.projectId, data.id, initial);
+      } else {
+        // We do not seed empty assignments to avoid marking protocols unnecessarily
       }
-    };
-
-    void run();
-
-    return () => {
-      cancelled = true;
-    };
+    }
   }, [
-    backendAssignmentsEnabled,
+    data.id,
+    data.projectId,
+    fromDataAssigned,
+    hasExplicitStoreAssignment,
     isProjectNode,
-    loadProtocolTagIdsFromBackend,
-    makeAssignmentKey,
-    normalizedProjectId,
-    normalizedProtocolId,
     setAssignedTagIds,
   ]);
 
+  const effectiveAssignedTagIds = useMemo(() => {
+    // effectiveAssignedTagIds
+    // Critical: once the store has an explicit assignment, it overrides node data to make UI updates immediate
+    if (hasExplicitStoreAssignment) return uniqStrings(storedAssigned);
+    return uniqStrings(fromDataAssigned);
+  }, [fromDataAssigned, hasExplicitStoreAssignment, storedAssigned]);
+
+  const selectedTagIds = useMemo(() => {
+    // selectedTagIds
+    return filterExistingTagIds(effectiveAssignedTagIds, allTags);
+  }, [effectiveAssignedTagIds, allTags]);
+
   useEffect(() => {
     // pruneOrphanAssignments
+    if (isProjectNode) return;
     if (typeof setAssignedTagIds !== "function") return;
     if (allTags.length === 0) return;
 
     // If tags were deleted, remove orphan ids from store
-    if (selectedTagIds.length !== assignedTagIds.length) {
+    if (selectedTagIds.length !== effectiveAssignedTagIds.length) {
       setAssignedTagIds(data.projectId, data.id, selectedTagIds);
 
-      if (backendAssignmentsEnabled) {
+      if (backendAssignmentsWriteEnabled) {
         void svcRef.current
           .setProtocolTagIds(data.projectId as Id, data.id as Id, selectedTagIds)
           .catch(() => {
@@ -629,7 +583,16 @@ export default function ProtocolNodeCard({
           });
       }
     }
-  }, [allTags.length, assignedTagIds, backendAssignmentsEnabled, data.id, data.projectId, selectedTagIds, setAssignedTagIds]);
+  }, [
+    allTags.length,
+    backendAssignmentsWriteEnabled,
+    data.id,
+    data.projectId,
+    effectiveAssignedTagIds,
+    isProjectNode,
+    selectedTagIds,
+    setAssignedTagIds,
+  ]);
 
   const selectedTagSet = useMemo(() => {
     // selectedTagSet
@@ -680,6 +643,22 @@ export default function ProtocolNodeCard({
     }
   }, [reactFlow, data.id, data.projectId, data]);
 
+  const getEffectiveAssignedForTarget = useCallback(
+    (projectId: string | number | undefined, protocolId: string, rawTags: unknown): string[] => {
+      // getEffectiveAssignedForTarget
+      const storeHas = hasStoreAssignment(storeAssignments, projectId, protocolId);
+
+      const stored =
+        typeof getAssignedTagIds === "function" ? uniqStrings(getAssignedTagIds(projectId, protocolId) ?? []) : [];
+
+      if (storeHas) return stored;
+
+      const fromNode = normalizeTagIdsFromRaw(rawTags, allTags);
+      return uniqStrings(fromNode);
+    },
+    [allTags, getAssignedTagIds, storeAssignments],
+  );
+
   const toggleTagSelectionForSelection = useCallback(
     (tagId: string) => {
       // toggleTagSelectionForSelection
@@ -695,27 +674,11 @@ export default function ProtocolNodeCard({
       const run = async () => {
         // run
         try {
-          const currentByTarget = await Promise.all(
-            targets.map(async (t) => {
-              const stored =
-                typeof getAssignedTagIds === "function" ? uniqStrings(getAssignedTagIds(t.projectId, t.protocolId) ?? []) : [];
-
-              const backendList = backendAssignmentsEnabled
-                ? await loadProtocolTagIdsFromBackend(t.projectId, t.protocolId)
-                : [];
-
-              const fromNode = normalizeTagIdsFromRaw(t.rawTags, allTags);
-
-              const mergedBase = backendAssignmentsEnabled
-                ? uniqStrings([...backendList, ...stored, ...fromNode])
-                : uniqStrings([...stored, ...fromNode]);
-
-              return {
-                ...t,
-                current: mergedBase,
-              };
-            }),
-          );
+          const currentByTarget = targets.map((t) => {
+            // currentByTarget
+            const current = getEffectiveAssignedForTarget(t.projectId, String(t.protocolId), t.rawTags);
+            return { ...t, current };
+          });
 
           const allHaveTag = currentByTarget.every((t) =>
             t.current.some((x) => String(x) === String(normalizedTagId)),
@@ -733,7 +696,7 @@ export default function ProtocolNodeCard({
             };
           });
 
-          // optimistic local update
+          // optimistic local update (this makes UI immediate)
           if (typeof setAssignedTagIdsBatch === "function") {
             setAssignedTagIdsBatch(updates);
           } else {
@@ -742,12 +705,10 @@ export default function ProtocolNodeCard({
             }
           }
 
-          if (backendAssignmentsEnabled) {
+          if (backendAssignmentsWriteEnabled) {
             await Promise.all(
               updates.map(async (u) => {
                 await svcRef.current.setProtocolTagIds(u.projectId as Id, u.protocolId as Id, u.tagIds);
-                const key = makeAssignmentKey(u.projectId, u.protocolId);
-                loadedAssignmentsRef.current.add(key);
               }),
             );
           }
@@ -760,12 +721,10 @@ export default function ProtocolNodeCard({
     },
     [
       allTags,
-      backendAssignmentsEnabled,
-      getAssignedTagIds,
+      backendAssignmentsWriteEnabled,
+      getEffectiveAssignedForTarget,
       getSelectedTagTargets,
       isProjectNode,
-      loadProtocolTagIdsFromBackend,
-      makeAssignmentKey,
       setAssignedTagIds,
       setAssignedTagIdsBatch,
     ],
