@@ -588,6 +588,31 @@ function pickFirstNonEmptyTagIds(...candidates: unknown[]): string[] {
   return [];
 }
 
+function normalizeTagColor(raw: unknown): string {
+  // normalizeTagColor
+  const s = String(raw ?? "").trim();
+  if (!s) return "#9ca3af";
+  if (/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(s)) return s;
+  return "#9ca3af";
+}
+
+function getReadableTextColor(hexColor: string): string {
+  // getReadableTextColor
+  const hex = String(hexColor ?? "").trim();
+  const m = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.exec(hex);
+  if (!m) return "#111827";
+
+  const raw = m[1];
+  const full = raw.length === 3 ? raw.split("").map((c) => c + c).join("") : raw;
+  const r = Number.parseInt(full.slice(0, 2), 16);
+  const g = Number.parseInt(full.slice(2, 4), 16);
+  const b = Number.parseInt(full.slice(4, 6), 16);
+  if (![r, g, b].every((v) => Number.isFinite(v))) return "#111827";
+
+  const luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+  return luminance > 0.62 ? "#111827" : "#f9fafb";
+}
+
 export default function ProjectPage() {
   const hostIsDark = useHostDarkMode();
   const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/.test(navigator.platform);
@@ -1062,6 +1087,59 @@ export default function ProjectPage() {
     // tagById
     return new Map(allTags.map((t) => [t.id, t]));
   }, [allTags]);
+
+  const renderTableTagsCell = useCallback(
+    (row: any): JSX.Element => {
+      // renderTableTagsCell
+      const pid = String(row?.id ?? "");
+      const assignedTagIds = pickFirstNonEmptyTagIds(
+        tagAssignments[pid],
+        row?.tagIds,
+        row?.tags
+      );
+
+      if (!assignedTagIds.length) {
+        return <span style={{ opacity: 0.7 }}>—</span>;
+      }
+
+      const tags = assignedTagIds.map((id) => {
+        const hit = tagById.get(id);
+        if (hit) return hit;
+        return { id, title: id, color: "#9ca3af" } as ProtocolTag;
+      });
+
+      return (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+          {tags.map((t) => {
+            const bg = normalizeTagColor((t as any)?.color);
+            const fg = getReadableTextColor(bg);
+            return (
+              <span
+                key={t.id}
+                title={String((t as any)?.title ?? t.id)}
+                style={{
+                  backgroundColor: bg,
+                  color: fg,
+                  borderRadius: 9999,
+                  padding: "2px 8px",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  lineHeight: 1.2,
+                  maxWidth: 260,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {String((t as any)?.title ?? t.id)}
+              </span>
+            );
+          })}
+        </div>
+      );
+    },
+    [tagAssignments, tagById]
+  );
 
   useEffect(() => {
     // loadTagsCatalogOnMount
@@ -2764,19 +2842,10 @@ export default function ProjectPage() {
 
   const getMiniMapNodeColor = useCallback(
     (node: Node<StatusNodeData>) => {
+      // forceStatusOnly
       const dataAny: any = (node as any).data ?? {};
-      const nodeStyleAny: any = (node as any).style ?? {};
-
-      const dataColor = typeof dataAny.color === "string" ? dataAny.color.trim() : "";
-      if (dataColor) return dataColor;
-
-      const styleBg =
-        (typeof nodeStyleAny.background === "string" && nodeStyleAny.background.trim()) ||
-        (typeof nodeStyleAny.backgroundColor === "string" && nodeStyleAny.backgroundColor.trim()) ||
-        "";
-      if (styleBg) return styleBg;
-
       const status = String(dataAny.status ?? "").toLowerCase();
+
       const byStatus = statusColorMap[status];
       if (byStatus) return byStatus;
 
@@ -4293,6 +4362,7 @@ export default function ProjectPage() {
                     <th className="pp-th">Id</th>
                     <th className="pp-th">Protocol</th>
                     <th className="pp-th">State</th>
+                    <th className="pp-th">Tags</th>
                     <th className="pp-th">Elapsed</th>
                     <th className="pp-th">Dependent</th>
                   </tr>
@@ -4379,6 +4449,10 @@ export default function ProjectPage() {
                               </div>
                             )}
                         </div>
+                      </td>
+
+                      <td className="pp-td">
+                        {renderTableTagsCell(row)}
                       </td>
 
                       <td className="pp-td">

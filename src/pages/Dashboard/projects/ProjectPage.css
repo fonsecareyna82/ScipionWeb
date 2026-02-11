@@ -202,7 +202,7 @@
 
 .projectpage-widget-root .dock-scroll {
   display: flex;
-  flex-direction: row-reverse;
+  /*flex-direction: row-reverse;*/
   flex-wrap: nowrap;
   align-items: stretch;
   gap: 0.5rem;
