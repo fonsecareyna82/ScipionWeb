@@ -919,6 +919,12 @@ function sortLogChannels(channels: LogChannel[]): LogChannel[] {
   return arr.length > 0 ? arr : defaultLogChannels;
 }
 
+function getParamNameFromStateKey(stateKey: string): string {
+  // getParamNameFromStateKey
+  const firstUnderscore = stateKey.indexOf("_");
+  return firstUnderscore >= 0 ? stateKey.slice(firstUnderscore + 1) : stateKey;
+}
+
 
 export default function ProtocolForm({
   data,
@@ -2058,13 +2064,8 @@ export default function ProtocolForm({
 
   // Serialize protocol parameters before save/execute
 
-  // deriveParamNameFromStateKey
-  const getParamNameFromStateKey = (stateKey: string) => {
-    const firstUnderscore = stateKey.indexOf("_");
-    return firstUnderscore >= 0 ? stateKey.slice(firstUnderscore + 1) : stateKey;
-  };
-
-  const getSerializedParams = () => {
+  const getSerializedParams = useCallback(() => {
+    // getSerializedParams
     const out: any = {};
 
     Object.entries(protocolDetails.params || {}).forEach(([k, pRaw]: any) => {
@@ -2078,13 +2079,9 @@ export default function ProtocolForm({
         let normalized = "";
 
         const token = (p.value ?? "").toString().trim();
-        if (token) {
-          normalized = token;
-        } else if (editable) {
-          normalized = String(editable);
-        } else {
-          normalized = "";
-        }
+        if (token) normalized = token;
+        else if (editable) normalized = String(editable);
+        else normalized = "";
 
         out[newKey] = normalized;
         return;
@@ -2102,7 +2099,6 @@ export default function ProtocolForm({
 
       if (cls === "BooleanParam") {
         const boolVal = coerceBooleanValue(p.editableValue ?? p.value ?? p.value ?? p.default);
-
         out[newKey] = boolVal ? true : false;
         return;
       }
@@ -2117,7 +2113,35 @@ export default function ProtocolForm({
     });
 
     return out;
-  };
+  }, [protocolDetails.params]);
+
+  useEffect(() => {
+    // syncMetadataSnapshot
+    const liveValues = getSerializedParams();
+
+    setMetadataSnapshot(() => {
+      if (!data || typeof data !== "object") return data;
+
+      // shallowCopyBase
+      const snapshot: any = Array.isArray(data) ? [...data] : { ...(data as any) };
+
+      // patchValuesInMostLikelyPlace
+      if ("values" in snapshot) {
+        snapshot.values = liveValues;
+        return snapshot;
+      }
+
+      if (snapshot.form && typeof snapshot.form === "object") {
+        snapshot.form = { ...snapshot.form, values: liveValues };
+        return snapshot;
+      }
+
+      // fallbackExposeValuesAnyway
+      snapshot.values = liveValues;
+      return snapshot;
+    });
+  }, [data, getSerializedParams]);
+
 
   // Extract validation messages from backend error detail
   function extractValidationErrors(detail: string): string[] {
