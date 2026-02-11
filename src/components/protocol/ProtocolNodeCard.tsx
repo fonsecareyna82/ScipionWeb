@@ -1091,8 +1091,8 @@ export default function ProtocolNodeCard({
                         <DropdownMenuItem onSelect={() => handleEdit()}>
                           <div className={styles.menuRow}>
                             <span className={styles.menuLeft}>
-                              <Pencil className={styles.menuItemIcon} />
-                              <span>Edit</span>
+                              <Scan className={styles.menuItemIcon} />
+                              <span>Open</span>
                             </span>
                             <ShortcutHint text={shortcuts.edit} />
                           </div>
@@ -1551,8 +1551,8 @@ export default function ProtocolNodeCard({
             <ContextMenuItem onClick={handleEdit}>
               <div className={styles.menuRow}>
                 <span className={styles.menuLeft}>
-                  <Pencil className={styles.menuItemIcon} />
-                  <span>Edit</span>
+                  <Scan className={styles.menuItemIcon} />
+                  <span>Open</span>
                 </span>
                 <ShortcutHint text={shortcuts.edit} />
               </div>
