@@ -372,7 +372,7 @@ export default function ProtocolNodeCard({
   onClick,
   onDoubleClick,
   zoomLevel = 0.6,
-  compactThreshold = 0.25,
+  compactThreshold = 0.09,
   onEdit,
   onRename,
   onDuplicate,

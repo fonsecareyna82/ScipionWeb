@@ -1283,8 +1283,8 @@ export default function ProjectPage() {
 
   // Zoom rules
   const GRID_ZOOM = 0.347;
-  const MIN_ZOOM = 0.2;
-  const MAX_ZOOM = 0.6;
+  const MIN_ZOOM = 0.1;
+  const MAX_ZOOM = 0.8;
   const clampZoom = (z: number | undefined | null) => {
     const num = typeof z === "number" && !Number.isNaN(z) ? z : 0.347;
     return Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, num));
