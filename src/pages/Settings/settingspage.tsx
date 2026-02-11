@@ -67,6 +67,11 @@ type InstanceSettings = {
 type UserSettingsPatch = Partial<UserSettings>;
 type InstanceSettingsPatch = Partial<InstanceSettings>;
 
+type ProjectOption = {
+  id: string;
+  name: string;
+};
+
 const defaultUserSettings: UserSettings = {
   theme: "light",
   uiDensity: "comfortable",
@@ -88,7 +93,6 @@ const defaultInstanceSettings: InstanceSettings = {
 };
 
 const wrapperMaxWidth = 980;
-
 const fieldFontSize = 12;
 
 function safeStringify(value: unknown): string {
@@ -289,6 +293,23 @@ function getViewModeMeta(mode: WorkflowViewMode): { label: string; icon: React.R
   }
 }
 
+function readLocalStorageString(key: string): string {
+  // readLocalStorageString
+  try {
+    return localStorage.getItem(key) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function writeLocalStorageString(key: string, value: string): void {
+  // writeLocalStorageString
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // ignore
+  }
+}
 
 export default function SettingsPage() {
   const svc = useProjectService() as any;
@@ -330,6 +351,81 @@ export default function SettingsPage() {
   const { tags, setTags } = useTagStore();
 
   const [showAdvanced, setShowAdvanced] = useState(false);
+
+  // tagsProjectSelectorState
+  const tagsSelectedProjectKey = "scipion.settings.tagsProjectId.v1";
+
+  const [projectOptions, setProjectOptions] = useState<ProjectOption[]>([]);
+  const [projectsLoading, setProjectsLoading] = useState(false);
+  const [projectsError, setProjectsError] = useState<string | null>(null);
+  const [projectsLoadedOnce, setProjectsLoadedOnce] = useState(false);
+
+  const [selectedProject, setSelectedProject] = useState<ProjectOption | undefined>(undefined);
+
+  const selectedProjectId = useMemo(() => {
+    // selectedProjectId
+    const raw = String(selectedProject?.id ?? "").trim();
+    if (!raw) return null;
+
+    const asNumber = Number(raw);
+    if (Number.isFinite(asNumber)) return asNumber;
+
+    return raw;
+  }, [selectedProject?.id]);
+
+  const loadProjectsForTagsTab = useCallback(async () => {
+    // loadProjectsForTagsTab
+    if (projectsLoading) return;
+
+    setProjectsLoading(true);
+    setProjectsError(null);
+
+    try {
+      const data = await svc.fetchList();
+
+      const normalized: ProjectOption[] = Array.isArray(data)
+        ? data
+          .map((p: any) => ({
+            id: String(p?.id ?? p?.projectId ?? p?.name ?? "").trim(),
+            name: String(p?.name ?? p?.title ?? p?.id ?? p?.projectId ?? "").trim(),
+          }))
+          .filter((p: ProjectOption) => p.id.length > 0 && p.name.length > 0)
+        : [];
+
+      setProjectOptions(normalized);
+      setProjectsLoadedOnce(true);
+
+      if (!selectedProject && normalized.length > 0) {
+        const storedId = readLocalStorageString(tagsSelectedProjectKey);
+        const match = storedId ? normalized.find((x) => String(x.id) === String(storedId)) : undefined;
+        setSelectedProject(match ?? normalized[0]);
+      }
+    } catch (e: any) {
+      const msg = getErrorMsg(e);
+      setProjectsError(msg);
+      setProjectOptions([]);
+    } finally {
+      setProjectsLoading(false);
+    }
+  }, [projectsLoading, selectedProject, svc]);
+
+  useEffect(() => {
+    // lazyLoadProjectsOnTagsTabOpen
+    if (tab !== "tags") return;
+    if (projectsLoadedOnce) return;
+    void loadProjectsForTagsTab();
+  }, [tab, projectsLoadedOnce, loadProjectsForTagsTab]);
+
+  useEffect(() => {
+    // persistSelectedTagsProject
+    if (tab !== "tags") return;
+    if (!selectedProject?.id) return;
+
+    writeLocalStorageString(tagsSelectedProjectKey, String(selectedProject.id));
+
+    // clearTagsToAvoidShowingPreviousProjectTags
+    setTags([]);
+  }, [tab, selectedProject?.id, setTags]);
 
   const isDarkMode = useMemo(() => {
     // isDarkMode
@@ -1095,15 +1191,67 @@ export default function SettingsPage() {
 
   const renderTagsContent = () => {
     // renderTagsContent
+    const hasProjects = projectOptions.length > 0;
+
     return (
       <Stack spacing={1.75}>
         <Card variant="outlined" sx={cardSx}>
-          <CardHeader title="Tags" subheader="Create and manage protocol tags (stored locally for now)." sx={cardHeaderSx} />
+          <CardHeader title="Tags" subheader="Create and manage protocol tags per project." sx={cardHeaderSx} />
           <CardContent sx={{ pt: 2 }}>
-            <TagManager projectId={15}title="Tags" tags={tags} onTagsChange={setTags} />
-            <Typography sx={{ mt: 1.25, fontSize: 12, color: colors.muted }}>
-              Tags are stored in your browser local storage. Protocol assignment and backend persistence will be added later.
-            </Typography>
+            <Stack spacing={1.25}>
+              {projectsError && <Alert severity="error">{projectsError}</Alert>}
+
+              <Autocomplete
+                PaperComponent={autocompletePaperComponent}
+                options={projectOptions}
+                value={selectedProject}
+                loading={projectsLoading}
+                getOptionLabel={(o) => String((o as any)?.name ?? "")}
+                isOptionEqualToValue={(a, b) => String((a as any)?.id) === String((b as any)?.id)}
+                onChange={(_, next) => {
+                  // onProjectSelectionChange
+                  const nextSelected = next ?? projectOptions[0];
+                  setSelectedProject(nextSelected);
+                }}
+                renderOption={(props, option) => (
+                  <Box component="li" {...props} sx={{ fontSize: fieldFontSize, color: colors.text }}>
+                    {option.name}
+                  </Box>
+                )}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    sx={fieldSx}
+                    fullWidth
+                    label="Project"
+                    size="small"
+                    helperText={projectsLoading ? "Loading projects..." : "Select a project to manage its tags."}
+                  />
+                )}
+                disableClearable
+                disabled={projectsLoading || !!projectsError || projectOptions.length === 0}
+              />
+
+              {!projectsLoading && !projectsError && !hasProjects ? (
+                <Alert severity="info">No projects found.</Alert>
+              ) : !selectedProjectId ? (
+                <Alert severity="info">Select a project to manage tags.</Alert>
+              ) : (
+                <>
+                  <TagManager
+                    key={String(selectedProjectId)}
+                    projectId={selectedProjectId as any}
+                    title="Tags"
+                    tags={tags as ProtocolTag[]}
+                    onTagsChange={setTags}
+                  />
+
+                  <Typography sx={{ mt: 0.5, fontSize: 12, color: colors.muted }}>
+                    You can switch projects using the selector above.
+                  </Typography>
+                </>
+              )}
+            </Stack>
           </CardContent>
         </Card>
       </Stack>

@@ -61,11 +61,7 @@ import {
 } from "lucide-react";
 
 import AnalyzeOutputDialog from "@/components/analyze/analyze-output-dialog";
-import type {
-  AnalyzeViewerResolveContext,
-  AnalyzeViewerResolveDecision,
-  Id,
-} from "@/services/ProjectService";
+import type { AnalyzeViewerResolveContext, AnalyzeViewerResolveDecision, Id } from "@/services/ProjectService";
 
 import type { ProtocolTag } from "@/components/tags/tagTypes";
 
@@ -353,16 +349,6 @@ function normalizeTagIdsFromRaw(rawTags: unknown, allTags: ProtocolTag[]): strin
   return uniqStrings(out);
 }
 
-function normalizeTagIdsList(raw: unknown): string[] {
-  // normalizeTagIdsList
-  if (!Array.isArray(raw)) return [];
-  return uniqStrings(
-    raw
-      .map((x) => String(x ?? "").trim())
-      .filter((s) => s.length > 0),
-  );
-}
-
 type TagAssignments = Record<string, Record<string, string[]>>;
 
 type TagStoreApi = {
@@ -378,18 +364,6 @@ type TagStoreApi = {
   ) => void;
   setAssignedTagIdsBatch?: (updates: Array<{ projectId: string | number | undefined; protocolId: string; tagIds: string[] }>) => void;
 };
-
-function hasStoreAssignment(assignments: TagAssignments | undefined, projectId: unknown, protocolId: unknown): boolean {
-  // hasStoreAssignment
-  const p = String(projectId ?? "").trim();
-  const pr = String(protocolId ?? "").trim();
-  if (!p || !pr) return false;
-
-  const byProject = assignments?.[p];
-  if (!byProject) return false;
-
-  return Object.prototype.hasOwnProperty.call(byProject, pr);
-}
 
 export default function ProtocolNodeCard({
   data,
@@ -441,31 +415,6 @@ export default function ProtocolNodeCard({
     }, 0);
   }, []);
 
-  const contextMenuOpenedAtRef = useRef<number>(0);
-
-  const armContextMenuOpenGuard = useCallback(() => {
-    // armContextMenuOpenGuard
-    contextMenuOpenedAtRef.current = typeof performance !== "undefined" ? performance.now() : Date.now();
-  }, []);
-
-  const isInContextMenuOpenGuardWindow = useCallback(() => {
-    // isInContextMenuOpenGuardWindow
-    const now = typeof performance !== "undefined" ? performance.now() : Date.now();
-    return now - contextMenuOpenedAtRef.current < 120;
-  }, []);
-
-  const runMenuAction = useCallback(
-    (e: Event, fn?: () => void) => {
-      // runMenuAction
-      e.stopPropagation();
-
-      // Do not preventDefault here, otherwise Radix will keep the menu open
-      if (isInContextMenuOpenGuardWindow()) return;
-      fn?.();
-    },
-    [isInContextMenuOpenGuardWindow],
-  );
-
   const isProjectNode = data.id === "PROJECT";
   const isCompactView = zoomLevel <= compactThreshold;
 
@@ -490,8 +439,6 @@ export default function ProtocolNodeCard({
   const tagStore = useTagStore() as unknown as TagStoreApi;
 
   const allTags: ProtocolTag[] = Array.isArray(tagStore?.tags) ? (tagStore.tags as ProtocolTag[]) : [];
-
-  const storeAssignments = tagStore?.assignments;
   const getAssignedTagIds = tagStore?.getAssignedTagIds;
   const setAssignedTagIds = tagStore?.setAssignedTagIds;
   const setAssignedTagIdsBatch = tagStore?.setAssignedTagIdsBatch;
@@ -515,99 +462,9 @@ export default function ProtocolNodeCard({
     normalizedProtocolId != null &&
     typeof (svcRef.current as any)?.setProtocolTagIds === "function";
 
-  const storedAssigned: string[] =
-    typeof getAssignedTagIds === "function"
-      ? uniqStrings(getAssignedTagIds(data.projectId, data.id) ?? [])
-      : [];
-
-  const fromDataAssigned = useMemo(() => {
-    // fromDataAssigned
-    return normalizeTagIdsFromRaw((data as any)?.tags, allTags);
-  }, [data, allTags]);
-
-  const hasExplicitStoreAssignment = useMemo(() => {
-    // hasExplicitStoreAssignment
-    return hasStoreAssignment(storeAssignments, data.projectId, data.id);
-  }, [storeAssignments, data.projectId, data.id]);
-
-  useEffect(() => {
-    // seedStoreAssignmentsFromNodeData
-    if (isProjectNode) return;
-    if (typeof setAssignedTagIds !== "function") return;
-
-    // If the store does not have an explicit assignment yet, seed it from data.tags (once per protocol)
-    if (!hasExplicitStoreAssignment) {
-      const initial = uniqStrings(fromDataAssigned);
-      if (initial.length > 0) {
-        setAssignedTagIds(data.projectId, data.id, initial);
-      } else {
-        // We do not seed empty assignments to avoid marking protocols unnecessarily
-      }
-    }
-  }, [
-    data.id,
-    data.projectId,
-    fromDataAssigned,
-    hasExplicitStoreAssignment,
-    isProjectNode,
-    setAssignedTagIds,
-  ]);
-
-  const effectiveAssignedTagIds = useMemo(() => {
-    // effectiveAssignedTagIds
-    // Critical: once the store has an explicit assignment, it overrides node data to make UI updates immediate
-    if (hasExplicitStoreAssignment) return uniqStrings(storedAssigned);
-    return uniqStrings(fromDataAssigned);
-  }, [fromDataAssigned, hasExplicitStoreAssignment, storedAssigned]);
-
-  const selectedTagIds = useMemo(() => {
-    // selectedTagIds
-    return filterExistingTagIds(effectiveAssignedTagIds, allTags);
-  }, [effectiveAssignedTagIds, allTags]);
-
-  useEffect(() => {
-    // pruneOrphanAssignments
-    if (isProjectNode) return;
-    if (typeof setAssignedTagIds !== "function") return;
-    if (allTags.length === 0) return;
-
-    // If tags were deleted, remove orphan ids from store
-    if (selectedTagIds.length !== effectiveAssignedTagIds.length) {
-      setAssignedTagIds(data.projectId, data.id, selectedTagIds);
-
-      if (backendAssignmentsWriteEnabled) {
-        void svcRef.current
-          .setProtocolTagIds(data.projectId as Id, data.id as Id, selectedTagIds)
-          .catch(() => {
-            // ignore
-          });
-      }
-    }
-  }, [
-    allTags.length,
-    backendAssignmentsWriteEnabled,
-    data.id,
-    data.projectId,
-    effectiveAssignedTagIds,
-    isProjectNode,
-    selectedTagIds,
-    setAssignedTagIds,
-  ]);
-
-  const selectedTagSet = useMemo(() => {
-    // selectedTagSet
-    return new Set(selectedTagIds.map((t) => String(t)));
-  }, [selectedTagIds]);
-
-  const tagsById = useMemo(() => {
-    // tagsById
-    return new Map(allTags.map((t) => [String(t.id), t]));
-  }, [allTags]);
-
-  const selectedTags = useMemo(() => {
-    // selectedTags
-    return selectedTagIds.map((id) => tagsById.get(String(id))).filter(Boolean) as ProtocolTag[];
-  }, [selectedTagIds, tagsById]);
+  // optimisticTagIdsCache
+  const optimisticTagIdsByProtocolRef = useRef<Record<string, string[]>>({});
+  const [optimisticRevision, setOptimisticRevision] = useState(0);
 
   const reactFlow = useReactFlow();
 
@@ -617,13 +474,56 @@ export default function ProtocolNodeCard({
     rawTags: unknown;
   };
 
+  const updateReactFlowNodeTags = useCallback(
+    (updates: Array<{ protocolId: string; tagIds: string[] }>) => {
+      // updateReactFlowNodeTags
+      const setNodes = (reactFlow as any)?.setNodes;
+      if (typeof setNodes !== "function") return;
+
+      const byId = new Map(updates.map((u) => [String(u.protocolId), [...u.tagIds]]));
+      setNodes((prev: any[]) => {
+        if (!Array.isArray(prev)) return prev;
+
+        let changed = false;
+
+        const next = prev.map((n) => {
+          const id = String(n?.id ?? "");
+          const nextTagIds = byId.get(id);
+          if (!nextTagIds) return n;
+
+          changed = true;
+          const nextData = { ...(n?.data ?? {}), tags: nextTagIds };
+          return { ...n, data: nextData };
+        });
+
+        return changed ? next : prev;
+      });
+    },
+    [reactFlow],
+  );
+
   const getSelectedTagTargets = useCallback((): TagTarget[] => {
     // getSelectedTagTargets
     try {
       const nodes = reactFlow.getNodes?.() ?? [];
       const selectedNodes = nodes.filter((n) => (n as any)?.selected === true);
 
-      const baseNodes = selectedNodes.length > 0 ? selectedNodes : nodes.filter((n) => String(n.id) === String(data.id));
+      const currentId = String(data.id);
+      const currentNode = nodes.find((n) => String(n.id) === currentId);
+
+      // Critical: only apply to selection if the right-clicked node is part of the selection.
+      const currentIsSelected = selectedNodes.some((n) => String(n.id) === currentId);
+      const baseNodes = currentIsSelected ? selectedNodes : currentNode ? [currentNode] : [];
+
+      if (baseNodes.length === 0) {
+        return [
+          {
+            protocolId: String(data.id),
+            projectId: data.projectId,
+            rawTags: (data as any)?.tags,
+          },
+        ];
+      }
 
       return baseNodes
         .filter((n) => String(n.id) !== "PROJECT")
@@ -646,24 +546,82 @@ export default function ProtocolNodeCard({
   const getEffectiveAssignedForTarget = useCallback(
     (projectId: string | number | undefined, protocolId: string, rawTags: unknown): string[] => {
       // getEffectiveAssignedForTarget
-      const storeHas = hasStoreAssignment(storeAssignments, projectId, protocolId);
+      const optimistic = optimisticTagIdsByProtocolRef.current[String(protocolId)];
+      if (Array.isArray(optimistic)) return uniqStrings(optimistic);
 
-      const stored =
-        typeof getAssignedTagIds === "function" ? uniqStrings(getAssignedTagIds(projectId, protocolId) ?? []) : [];
+      // Prefer node data if present (even empty array means "explicitly no tags")
+      if (Array.isArray(rawTags)) return uniqStrings(normalizeTagIdsFromRaw(rawTags, allTags));
 
-      if (storeHas) return stored;
+      // Fallback to store
+      if (typeof getAssignedTagIds === "function") {
+        const stored = getAssignedTagIds(projectId, protocolId) ?? [];
+        return uniqStrings(stored);
+      }
 
-      const fromNode = normalizeTagIdsFromRaw(rawTags, allTags);
-      return uniqStrings(fromNode);
+      return [];
     },
-    [allTags, getAssignedTagIds, storeAssignments],
+    [allTags, getAssignedTagIds],
+  );
+
+  const applyTagUpdatesOptimistically = useCallback(
+    (updates: Array<{ projectId: string | number | undefined; protocolId: string; tagIds: string[] }>) => {
+      // applyTagUpdatesOptimistically
+      if (updates.length === 0) return;
+
+      // Update optimistic cache first (used for immediate UI / repeated toggles)
+      for (const u of updates) {
+        optimisticTagIdsByProtocolRef.current[String(u.protocolId)] = [...u.tagIds];
+      }
+      setOptimisticRevision((v) => v + 1);
+
+      // Update store if available
+      if (typeof setAssignedTagIdsBatch === "function") {
+        setAssignedTagIdsBatch(
+          updates.map((u) => ({
+            projectId: u.projectId,
+            protocolId: String(u.protocolId),
+            tagIds: [...u.tagIds],
+          })),
+        );
+      } else if (typeof setAssignedTagIds === "function") {
+        for (const u of updates) {
+          setAssignedTagIds(u.projectId, u.protocolId, [...u.tagIds]);
+        }
+      }
+
+      // Update ReactFlow node data.tags to force consistent re-render
+      updateReactFlowNodeTags(
+        updates.map((u) => ({
+          protocolId: String(u.protocolId),
+          tagIds: [...u.tagIds],
+        })),
+      );
+    },
+    [setAssignedTagIds, setAssignedTagIdsBatch, updateReactFlowNodeTags],
+  );
+
+  const persistTagUpdatesToBackend = useCallback(
+    async (updates: Array<{ projectId: string | number | undefined; protocolId: string; tagIds: string[] }>) => {
+      // persistTagUpdatesToBackend
+      if (!backendAssignmentsWriteEnabled) return;
+
+      await Promise.all(
+        updates.map(async (u) => {
+          await (svcRef.current as any).setProtocolTagIds(u.projectId as Id, u.protocolId as Id, u.tagIds);
+        }),
+      );
+    },
+    [backendAssignmentsWriteEnabled],
   );
 
   const toggleTagSelectionForSelection = useCallback(
     (tagId: string) => {
       // toggleTagSelectionForSelection
       if (isProjectNode) return;
-      if (typeof setAssignedTagIds !== "function" && typeof setAssignedTagIdsBatch !== "function") return;
+      if (typeof setAssignedTagIds !== "function" && typeof setAssignedTagIdsBatch !== "function") {
+        // Still allow UI via node data + optimistic cache if store is missing
+        // but avoid hard failure
+      }
 
       const normalizedTagId = normalizeTagIdCandidate(tagId, allTags);
       if (!normalizedTagId) return;
@@ -673,46 +631,39 @@ export default function ProtocolNodeCard({
 
       const run = async () => {
         // run
+        const currentByTarget = targets.map((t) => {
+          const current = getEffectiveAssignedForTarget(t.projectId, String(t.protocolId), t.rawTags);
+          return { ...t, current };
+        });
+
+        const allHaveTag = currentByTarget.every((t) => t.current.some((x) => String(x) === String(normalizedTagId)));
+
+        const updates = currentByTarget.map((t) => {
+          const next = allHaveTag
+            ? t.current.filter((x) => String(x) !== String(normalizedTagId))
+            : uniqStrings([...t.current, normalizedTagId]);
+
+          return {
+            projectId: t.projectId,
+            protocolId: String(t.protocolId),
+            tagIds: next,
+          };
+        });
+
+        const rollback = currentByTarget.map((t) => ({
+          projectId: t.projectId,
+          protocolId: String(t.protocolId),
+          tagIds: uniqStrings(t.current),
+        }));
+
+        // optimistic update
+        applyTagUpdatesOptimistically(updates);
+
         try {
-          const currentByTarget = targets.map((t) => {
-            // currentByTarget
-            const current = getEffectiveAssignedForTarget(t.projectId, String(t.protocolId), t.rawTags);
-            return { ...t, current };
-          });
-
-          const allHaveTag = currentByTarget.every((t) =>
-            t.current.some((x) => String(x) === String(normalizedTagId)),
-          );
-
-          const updates = currentByTarget.map((t) => {
-            const next = allHaveTag
-              ? t.current.filter((x) => String(x) !== String(normalizedTagId))
-              : uniqStrings([...t.current, normalizedTagId]);
-
-            return {
-              projectId: t.projectId,
-              protocolId: String(t.protocolId),
-              tagIds: next,
-            };
-          });
-
-          // optimistic local update (this makes UI immediate)
-          if (typeof setAssignedTagIdsBatch === "function") {
-            setAssignedTagIdsBatch(updates);
-          } else {
-            for (const u of updates) {
-              setAssignedTagIds?.(u.projectId, u.protocolId, u.tagIds);
-            }
-          }
-
-          if (backendAssignmentsWriteEnabled) {
-            await Promise.all(
-              updates.map(async (u) => {
-                await svcRef.current.setProtocolTagIds(u.projectId as Id, u.protocolId as Id, u.tagIds);
-              }),
-            );
-          }
+          await persistTagUpdatesToBackend(updates);
         } catch (e: any) {
+          // rollback on error
+          applyTagUpdatesOptimistically(rollback);
           toast.error(typeof e?.message === "string" ? e.message : "Failed to update tags");
         }
       };
@@ -721,13 +672,98 @@ export default function ProtocolNodeCard({
     },
     [
       allTags,
-      backendAssignmentsWriteEnabled,
+      applyTagUpdatesOptimistically,
       getEffectiveAssignedForTarget,
       getSelectedTagTargets,
       isProjectNode,
+      persistTagUpdatesToBackend,
       setAssignedTagIds,
       setAssignedTagIdsBatch,
     ],
+  );
+
+  // Effective assigned ids for THIS node (UI source of truth)
+  const rawNodeTags = (data as any)?.tags;
+  const effectiveAssignedTagIds = useMemo(() => {
+    // effectiveAssignedTagIds
+    const optimistic = optimisticTagIdsByProtocolRef.current[String(data.id)];
+    if (Array.isArray(optimistic)) return uniqStrings(optimistic);
+
+    // Prefer node data if it is an array (even empty is meaningful)
+    if (Array.isArray(rawNodeTags)) return uniqStrings(normalizeTagIdsFromRaw(rawNodeTags, allTags));
+
+    // Fallback to store
+    if (typeof getAssignedTagIds === "function") return uniqStrings(getAssignedTagIds(data.projectId, data.id) ?? []);
+
+    return [];
+  }, [allTags, data.id, data.projectId, getAssignedTagIds, rawNodeTags, optimisticRevision]);
+
+  const selectedTagIds = useMemo(() => {
+    // selectedTagIds
+    return filterExistingTagIds(effectiveAssignedTagIds, allTags);
+  }, [effectiveAssignedTagIds, allTags]);
+
+  useEffect(() => {
+    // pruneOrphanAssignments
+    if (isProjectNode) return;
+    if (allTags.length === 0) return;
+
+    if (selectedTagIds.length !== effectiveAssignedTagIds.length) {
+      applyTagUpdatesOptimistically([
+        {
+          projectId: data.projectId,
+          protocolId: String(data.id),
+          tagIds: selectedTagIds,
+        },
+      ]);
+
+      if (backendAssignmentsWriteEnabled) {
+        void persistTagUpdatesToBackend([
+          {
+            projectId: data.projectId,
+            protocolId: String(data.id),
+            tagIds: selectedTagIds,
+          },
+        ]).catch(() => {
+          // ignore
+        });
+      }
+    }
+  }, [
+    allTags.length,
+    applyTagUpdatesOptimistically,
+    backendAssignmentsWriteEnabled,
+    data.id,
+    data.projectId,
+    effectiveAssignedTagIds.length,
+    isProjectNode,
+    persistTagUpdatesToBackend,
+    selectedTagIds,
+  ]);
+
+  const selectedTagSet = useMemo(() => {
+    // selectedTagSet
+    return new Set(selectedTagIds.map((t) => String(t)));
+  }, [selectedTagIds]);
+
+  const tagsById = useMemo(() => {
+    // tagsById
+    return new Map(allTags.map((t) => [String(t.id), t]));
+  }, [allTags]);
+
+  const selectedTags = useMemo(() => {
+    // selectedTags
+    return selectedTagIds.map((id) => tagsById.get(String(id))).filter(Boolean) as ProtocolTag[];
+  }, [selectedTagIds, tagsById]);
+
+  const handleToggleTagFromMenu = useCallback(
+    (e: Event, tagId: string, keepOpen: boolean) => {
+      // handleToggleTagFromMenu
+      e.stopPropagation();
+      if (keepOpen) e.preventDefault();
+      toggleTagSelectionForSelection(String(tagId));
+    },
+    [toggleTagSelectionForSelection],
   );
 
   const handleManageTags = useCallback(() => {
@@ -975,12 +1011,7 @@ export default function ProtocolNodeCard({
   );
 
   return (
-    <ContextMenu
-      onOpenChange={(open) => {
-        // onContextMenuOpenChange
-        if (open) armContextMenuOpenGuard();
-      }}
-    >
+    <ContextMenu>
       <ContextMenuTrigger asChild>
         <div
           ref={rootRef}
@@ -1002,7 +1033,6 @@ export default function ProtocolNodeCard({
               return;
             }
             onClick?.(e);
-            if ((e as any).button === 2) armContextMenuOpenGuard();
           }}
           onDoubleClick={(e: ReactMouseEvent) => {
             e.stopPropagation();
@@ -1058,7 +1088,7 @@ export default function ProtocolNodeCard({
                   <DropdownMenuContent className={styles.menuContent} onClick={(e) => e.stopPropagation()}>
                     {!reduceMenus && (
                       <>
-                        <DropdownMenuItem onSelect={(e) => runMenuAction(e, handleEdit)}>
+                        <DropdownMenuItem onSelect={() => handleEdit()}>
                           <div className={styles.menuRow}>
                             <span className={styles.menuLeft}>
                               <Pencil className={styles.menuItemIcon} />
@@ -1068,7 +1098,7 @@ export default function ProtocolNodeCard({
                           </div>
                         </DropdownMenuItem>
 
-                        <DropdownMenuItem onSelect={(e) => runMenuAction(e, handleBrowse)}>
+                        <DropdownMenuItem onSelect={() => handleBrowse()}>
                           <div className={styles.menuRow}>
                             <span className={styles.menuLeft}>
                               <FolderOpen className={styles.menuItemIcon} />
@@ -1078,7 +1108,7 @@ export default function ProtocolNodeCard({
                           </div>
                         </DropdownMenuItem>
 
-                        <DropdownMenuItem onSelect={(e) => runMenuAction(e, handleRename)}>
+                        <DropdownMenuItem onSelect={() => handleRename()}>
                           <div className={styles.menuRow}>
                             <span className={styles.menuLeft}>
                               <Pencil className={styles.menuItemIcon} />
@@ -1090,7 +1120,7 @@ export default function ProtocolNodeCard({
 
                         <DropdownMenuSeparator />
 
-                        <DropdownMenuItem onSelect={(e) => runMenuAction(e, handleSelectFrom)}>
+                        <DropdownMenuItem onSelect={() => handleSelectFrom()}>
                           <div className={styles.menuRow}>
                             <span className={styles.menuLeft}>
                               <FromIcon className={styles.menuItemIcon} />
@@ -1100,7 +1130,7 @@ export default function ProtocolNodeCard({
                           </div>
                         </DropdownMenuItem>
 
-                        <DropdownMenuItem onSelect={(e) => runMenuAction(e, handleSelectTo)}>
+                        <DropdownMenuItem onSelect={() => handleSelectTo()}>
                           <div className={styles.menuRow}>
                             <span className={styles.menuLeft}>
                               <ToIcon className={styles.menuItemIcon} />
@@ -1113,7 +1143,7 @@ export default function ProtocolNodeCard({
                         <DropdownMenuSeparator />
 
                         {(data.status === "running" || data.status === "launched" || data.status === "scheduled") && (
-                          <DropdownMenuItem onSelect={(e) => runMenuAction(e, handleStop)}>
+                          <DropdownMenuItem onSelect={() => handleStop()}>
                             <div className={styles.menuRow}>
                               <span className={styles.menuLeft}>
                                 <Square className={styles.menuItemIcon} />
@@ -1124,7 +1154,7 @@ export default function ProtocolNodeCard({
                           </DropdownMenuItem>
                         )}
 
-                        <DropdownMenuItem onSelect={(e) => runMenuAction(e, handleRestartAll)}>
+                        <DropdownMenuItem onSelect={() => handleRestartAll()}>
                           <div className={styles.menuRow}>
                             <span className={styles.menuLeft}>
                               <RefreshCw className={styles.menuItemIcon} />
@@ -1134,7 +1164,7 @@ export default function ProtocolNodeCard({
                           </div>
                         </DropdownMenuItem>
 
-                        <DropdownMenuItem onSelect={(e) => runMenuAction(e, handleContinueAll)}>
+                        <DropdownMenuItem onSelect={() => handleContinueAll()}>
                           <div className={styles.menuRow}>
                             <span className={styles.menuLeft}>
                               <Play className={styles.menuItemIcon} />
@@ -1144,7 +1174,7 @@ export default function ProtocolNodeCard({
                           </div>
                         </DropdownMenuItem>
 
-                        <DropdownMenuItem onSelect={(e) => runMenuAction(e, handleResetFrom)}>
+                        <DropdownMenuItem onSelect={() => handleResetFrom()}>
                           <div className={styles.menuRow}>
                             <span className={styles.menuLeft}>
                               <RotateCcw className={styles.menuItemIcon} />
@@ -1159,7 +1189,7 @@ export default function ProtocolNodeCard({
                     )}
 
                     {reduceMenus && (data.status === "running" || data.status === "launched" || data.status === "scheduled") && (
-                      <DropdownMenuItem onSelect={(e) => runMenuAction(e, handleStop)}>
+                      <DropdownMenuItem onSelect={() => handleStop()}>
                         <div className={styles.menuRow}>
                           <span className={styles.menuLeft}>
                             <Square className={styles.menuItemIcon} />
@@ -1170,7 +1200,7 @@ export default function ProtocolNodeCard({
                       </DropdownMenuItem>
                     )}
 
-                    <DropdownMenuItem onSelect={(e) => runMenuAction(e, handleDelete)}>
+                    <DropdownMenuItem onSelect={() => handleDelete()}>
                       <div className={styles.menuRow}>
                         <span className={styles.menuLeft}>
                           <Trash2 className={styles.menuItemIcon} />
@@ -1180,7 +1210,7 @@ export default function ProtocolNodeCard({
                       </div>
                     </DropdownMenuItem>
 
-                    <DropdownMenuItem onSelect={(e) => runMenuAction(e, handleDuplicate)}>
+                    <DropdownMenuItem onSelect={() => handleDuplicate()}>
                       <div className={styles.menuRow}>
                         <span className={styles.menuLeft}>
                           <Copy className={styles.menuItemIcon} />
@@ -1203,7 +1233,7 @@ export default function ProtocolNodeCard({
                       </DropdownMenuSubTrigger>
 
                       <DropdownMenuSubContent className={styles.menuContent} sideOffset={8}>
-                        <DropdownMenuItem onSelect={(e) => runMenuAction(e, handleManageTags)}>
+                        <DropdownMenuItem onSelect={() => handleManageTags()}>
                           <div className={styles.menuRow}>
                             <span className={styles.menuLeft}>
                               <Plus className={styles.menuItemIcon} />
@@ -1220,11 +1250,7 @@ export default function ProtocolNodeCard({
                             return (
                               <DropdownMenuItem
                                 key={String(tag.id)}
-                                onSelect={(e) => {
-                                  // toggleTagSelectionKeepMenuOpen
-                                  e.preventDefault();
-                                  runMenuAction(e, () => toggleTagSelectionForSelection(String(tag.id)));
-                                }}
+                                onSelect={(e) => handleToggleTagFromMenu(e, String(tag.id), true)}
                               >
                                 <div className={styles.menuRow}>
                                   <span className={styles.menuLeft}>
@@ -1243,7 +1269,11 @@ export default function ProtocolNodeCard({
                                   </span>
 
                                   <span className={styles.menuRight}>
-                                    {isChecked ? <Check className={styles.menuCheckIcon} /> : <span className={styles.menuCheckPlaceholder} />}
+                                    {isChecked ? (
+                                      <Check className={styles.menuCheckIcon} />
+                                    ) : (
+                                      <span className={styles.menuCheckPlaceholder} />
+                                    )}
                                   </span>
                                 </div>
                               </DropdownMenuItem>
@@ -1685,12 +1715,7 @@ export default function ProtocolNodeCard({
                 return (
                   <ContextMenuItem
                     key={String(tag.id)}
-                    onSelect={(e: any) => {
-                      // toggleTagSelectionKeepMenuOpen
-                      e.preventDefault();
-                      e.stopPropagation();
-                      toggleTagSelectionForSelection(String(tag.id));
-                    }}
+                    onSelect={(e: any) => handleToggleTagFromMenu(e as Event, String(tag.id), true)}
                   >
                     <div className={styles.menuRow}>
                       <span className={styles.menuLeft}>
