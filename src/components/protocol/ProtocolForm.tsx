@@ -1031,6 +1031,19 @@ export default function ProtocolForm({
 
   // Logs (dynamic channels)
   const logsContainerRef = useRef<HTMLDivElement>(null);
+  const stickToBottomRef = useRef<boolean>(true);
+  const autoScrollThresholdPx = 24;
+
+  const updateStickToBottom = useCallback(() => {
+    // updateStickToBottom
+    const el = logsContainerRef.current;
+    if (!el) return;
+
+    const distanceToBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    stickToBottomRef.current = distanceToBottom <= autoScrollThresholdPx;
+  }, []);
+
+
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const [logChannels, setLogChannels] = useState<LogChannel[]>(defaultLogChannels);
@@ -1862,10 +1875,31 @@ export default function ProtocolForm({
   const activeLogText = logBuffers[activeLogChannelId] ?? "";
 
   useEffect(() => {
-    // autoscrollActiveLogChannel
-    if (!logsContainerRef.current) return;
-    logsContainerRef.current.scrollTop = logsContainerRef.current.scrollHeight;
-  }, [activeLogChannelId, activeLogText]);
+    // recomputeStickinessOnChannelChange
+    requestAnimationFrame(() => {
+      updateStickToBottom();
+
+      if (!stickToBottomRef.current) return;
+      const el = logsContainerRef.current;
+      if (!el) return;
+      el.scrollTop = el.scrollHeight;
+    });
+  }, [activeLogChannelId, updateStickToBottom]);
+
+  useEffect(() => {
+    // autoScrollOnlyWhenPinnedToBottom
+    if (!stickToBottomRef.current) return;
+
+    const el = logsContainerRef.current;
+    if (!el) return;
+
+    requestAnimationFrame(() => {
+      const el2 = logsContainerRef.current;
+      if (!el2) return;
+      el2.scrollTop = el2.scrollHeight;
+    });
+  }, [activeLogText]);
+
 
   // Live expected-class reader for pointer-like params
   const getExpectedClass = (def: any): string | string[] | null => {
@@ -4279,6 +4313,7 @@ export default function ProtocolForm({
 
                   <Box
                     ref={logsContainerRef}
+                    onScroll={updateStickToBottom}
                     sx={{
                       flex: 1,
                       minHeight: 0,
@@ -4291,12 +4326,8 @@ export default function ProtocolForm({
                       fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
                       fontSize: 12,
                       lineHeight: 1.4,
-
-                      // The scrollbars must live here, not in the whole form
                       overflowY: "auto",
                       overflowX: "auto",
-
-                      // Keep log formatting; horizontal scroll stays inside this panel
                       whiteSpace: "pre",
                     }}
                   >
