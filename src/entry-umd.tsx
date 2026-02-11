@@ -53,7 +53,11 @@ import type {
   ProtocolLogChannelsResponse,
   ProtocolLogOffsets,
   ProtocolLogsChunkResponse,
-  ProtocolLogChunk
+  ProtocolLogChunk,
+  ProtocolTag,
+  ProtocolTagCreatePayload,
+  ProtocolTagUpdatePayload,
+  ProtocolTagIdsResult,
 
 } from "./services/ProjectService";
 import type { WidgetGlobal } from "./types/global-widget";
@@ -278,11 +282,11 @@ const defaultMockService: ProjectService = {
     return { id: projectId, protocolId, path, entries: [] } as any;
   },
 
-  
+
   async resolveAnalyzeViewer() {
     return { handled: false } as any;
   },
-  
+
   async previewProtocolText(projectId: Id, id: string, path: string) {
     return { id: projectId, action: "previewProtocolText", protocolId: id, path, content: "Mock preview..." } as any;
   },
@@ -488,6 +492,50 @@ const defaultMockService: ProjectService = {
     return { success: true };
   },
 
+  // tagsApiMockImplementations
+  async listProjectTags(_projectId: Id): Promise<ProtocolTag[]> {
+    return [];
+  },
+
+  async createProjectTag(_projectId: Id, payload: ProtocolTagCreatePayload): Promise<ProtocolTag> {
+    return {
+      id: `tag-${Date.now()}`,
+      title: payload.title,
+      description: payload.description,
+      color: payload.color ?? "#9ca3af",
+    } as any;
+  },
+
+  async updateProjectTag(
+    _projectId: Id,
+    tagId: string,
+    payload: ProtocolTagUpdatePayload,
+  ): Promise<ProtocolTag> {
+    return {
+      id: tagId,
+      title: payload.title ?? "Updated tag",
+      description: payload.description,
+      color: payload.color ?? "#9ca3af",
+    } as any;
+  },
+
+  async deleteProjectTag(_projectId: Id, _tagId: string): Promise<{ success: boolean }> {
+    return { success: true };
+  },
+
+  async listProtocolTagIds(_projectId: Id, _protocolId: Id): Promise<string[]> {
+    return [];
+  },
+
+  async setProtocolTagIds(
+    _projectId: Id,
+    _protocolId: Id,
+    tagIds: string[],
+  ): Promise<ProtocolTagIdsResult> {
+    return { tagIds } as any;
+  },
+
+
   // settingsApiMockImplementations
   async fetchUserSettings(): Promise<UserSettings> {
     return { ...mockUserSettings };
@@ -517,14 +565,14 @@ const defaultMockService: ProjectService = {
     return { ...mockInstanceSettings };
   },
 
-   async fetchProtocolLogChannels(
+  async fetchProtocolLogChannels(
     _projectId: Id,
     _protocolId: Id,
   ): Promise<ProtocolLogChannelsResponse> {
     return { channels: [{ id: "default", label: "Default", order: 0 }] };
   },
 
-    async fetchProtocolLogsChunk(
+  async fetchProtocolLogsChunk(
     _projectId: Id,
     _protocolId: Id,
     offsets: ProtocolLogOffsets,
@@ -608,7 +656,7 @@ function normalizeServiceAPI(srv?: any): ProjectService {
   mapFn("resetFrom", "resetFrom");
   mapFn("stopProtocol", "stopProtocol");
 
-   mapFn(
+  mapFn(
     "resolveAnalyzeViewer",
     "resolveAnalyzeViewer",
     "resolveAnalyzeOutputViewer",
@@ -664,6 +712,64 @@ function normalizeServiceAPI(srv?: any): ProjectService {
   mapFn("listProjectShares", "listProjectShares");
   mapFn("revokeProjectShare", "revokeProjectShare");
 
+  // tagsApiAliases
+  mapFn(
+    "listProjectTags",
+    "listProjectTags",
+    "getProjectTags",
+    "fetchProjectTags",
+    "listTags",
+    "getTags",
+  );
+  mapFn(
+    "createProjectTag",
+    "createProjectTag",
+    "addProjectTag",
+    "createTag",
+    "postProjectTag",
+  );
+  mapFn(
+    "updateProjectTag",
+    "updateProjectTag",
+    "editProjectTag",
+    "patchProjectTag",
+    "updateTag",
+  );
+  mapFn(
+    "deleteProjectTag",
+    "deleteProjectTag",
+    "removeProjectTag",
+    "deleteTag",
+    "removeTag",
+  );
+
+  mapFn(
+    "listProtocolTagIds",
+    "listProtocolTagIds",
+    "getProtocolTagIds",
+    "fetchProtocolTagIds",
+  );
+  mapFn(
+    "setProtocolTagIds",
+    "setProtocolTagIds",
+    "setProtocolTags",
+    "updateProtocolTagIds",
+    "saveProtocolTagIds",
+  );
+
+
+  const ensureFn = (name: string, impl: (...args: any[]) => any) => {
+    // ensureFn
+    if (typeof normalized[name] !== "function") {
+      normalized[name] = impl;
+    }
+  };
+
+  const createMissingServiceMethodError = (methodName: string) => {
+    return new Error(`ProjectsWidget: service is missing required method '${methodName}'`);
+  };
+
+
   // executeProtocolSignatureAdapter
   if (typeof normalized.executeProtocol === "function") {
     const baseExec = normalized.executeProtocol;
@@ -696,6 +802,98 @@ function normalizeServiceAPI(srv?: any): ProjectService {
       return baseSave(protocolId, protocolClassName, params);
     };
   }
+  // tagsApiDefaultsSafeReadsStrictWrites
+  ensureFn("listProjectTags", async () => []);
+  ensureFn("listProtocolTagIds", async () => []);
+
+  ensureFn("createProjectTag", async () => {
+    throw createMissingServiceMethodError("createProjectTag");
+  });
+  ensureFn("updateProjectTag", async () => {
+    throw createMissingServiceMethodError("updateProjectTag");
+  });
+  ensureFn("deleteProjectTag", async () => {
+    throw createMissingServiceMethodError("deleteProjectTag");
+  });
+  ensureFn("setProtocolTagIds", async () => {
+    throw createMissingServiceMethodError("setProtocolTagIds");
+  });
+
+  // listProjectTagsSignatureAdapter
+  if (typeof normalized.listProjectTags === "function") {
+    const base = normalized.listProjectTags;
+    const len = meta.listProjectTags?.len ?? base.length;
+
+    normalized.listProjectTags = async (projectId: Id) => {
+      if (len >= 1) return base(projectId);
+      return base();
+    };
+  }
+
+  // createProjectTagSignatureAdapter
+  if (typeof normalized.createProjectTag === "function") {
+    const base = normalized.createProjectTag;
+    const len = meta.createProjectTag?.len ?? base.length;
+
+    normalized.createProjectTag = async (projectId: Id, payload: ProtocolTagCreatePayload) => {
+      if (len >= 2) return base(projectId, payload);
+      return base(payload);
+    };
+  }
+
+  // updateProjectTagSignatureAdapter
+  if (typeof normalized.updateProjectTag === "function") {
+    const base = normalized.updateProjectTag;
+    const len = meta.updateProjectTag?.len ?? base.length;
+
+    normalized.updateProjectTag = async (
+      projectId: Id,
+      tagId: string,
+      payload: ProtocolTagUpdatePayload,
+    ) => {
+      if (len >= 3) return base(projectId, tagId, payload);
+      return base(tagId, payload);
+    };
+  }
+
+  // deleteProjectTagSignatureAdapter
+  if (typeof normalized.deleteProjectTag === "function") {
+    const base = normalized.deleteProjectTag;
+    const len = meta.deleteProjectTag?.len ?? base.length;
+
+    normalized.deleteProjectTag = async (projectId: Id, tagId: string) => {
+      if (len >= 2) return base(projectId, tagId);
+      return base(tagId);
+    };
+  }
+
+  // listProtocolTagIdsSignatureAdapter
+  if (typeof normalized.listProtocolTagIds === "function") {
+    const base = normalized.listProtocolTagIds;
+    const len = meta.listProtocolTagIds?.len ?? base.length;
+
+    normalized.listProtocolTagIds = async (projectId: Id, protocolId: Id) => {
+      if (len >= 2) return base(projectId, protocolId);
+      return base(protocolId);
+    };
+  }
+
+  // setProtocolTagIdsSignatureAdapter
+  if (typeof normalized.setProtocolTagIds === "function") {
+    const base = normalized.setProtocolTagIds;
+    const len = meta.setProtocolTagIds?.len ?? base.length;
+
+    normalized.setProtocolTagIds = async (
+      projectId: Id,
+      protocolId: Id,
+      tagIds: string[],
+    ) => {
+      if (len >= 3) return base(projectId, protocolId, tagIds);
+      return base(protocolId, tagIds);
+    };
+  }
+
+
 
   return normalized as ProjectService;
 }

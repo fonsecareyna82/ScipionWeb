@@ -297,6 +297,172 @@ function normalizeServiceAPI(srv: any): ProjectService {
   mapFn("fetchInstanceSettings", "getInstanceSettings");
   mapFn("updateInstanceSettings", "patchInstanceSettings");
 
+    // tags
+  mapFn(
+    "listProjectTags",
+    "listProjectTags",
+    "getProjectTags",
+    "fetchProjectTags",
+    "listTags",
+    "getTags",
+  );
+  mapFn(
+    "createProjectTag",
+    "createProjectTag",
+    "addProjectTag",
+    "createTag",
+    "postProjectTag",
+  );
+  mapFn(
+    "updateProjectTag",
+    "updateProjectTag",
+    "editProjectTag",
+    "patchProjectTag",
+    "updateTag",
+  );
+  mapFn(
+    "deleteProjectTag",
+    "deleteProjectTag",
+    "removeProjectTag",
+    "deleteTag",
+    "removeTag",
+  );
+
+  mapFn(
+    "listProtocolTagIds",
+    "listProtocolTagIds",
+    "getProtocolTagIds",
+    "fetchProtocolTagIds",
+  );
+  mapFn(
+    "setProtocolTagIds",
+    "setProtocolTagIds",
+    "setProtocolTags",
+    "updateProtocolTagIds",
+    "saveProtocolTagIds",
+  );
+
+  const rawExecute =
+    typeof normalized.executeProtocol === "function"
+      ? normalized.executeProtocol
+      : null;
+  const rawSave =
+    typeof normalized.saveProtocol === "function"
+      ? normalized.saveProtocol
+      : null;
+
+  const rawListProjectTags =
+    typeof normalized.listProjectTags === "function"
+      ? normalized.listProjectTags
+      : null;
+  const rawCreateProjectTag =
+    typeof normalized.createProjectTag === "function"
+      ? normalized.createProjectTag
+      : null;
+  const rawUpdateProjectTag =
+    typeof normalized.updateProjectTag === "function"
+      ? normalized.updateProjectTag
+      : null;
+  const rawDeleteProjectTag =
+    typeof normalized.deleteProjectTag === "function"
+      ? normalized.deleteProjectTag
+      : null;
+
+  const rawListProtocolTagIds =
+    typeof normalized.listProtocolTagIds === "function"
+      ? normalized.listProtocolTagIds
+      : null;
+  const rawSetProtocolTagIds =
+    typeof normalized.setProtocolTagIds === "function"
+      ? normalized.setProtocolTagIds
+      : null;
+
+  const callWithFallbackArgs = async <T,>(
+    fn: (...args: any[]) => Promise<T>,
+    primaryArgs: any[],
+    fallbackArgs?: any[],
+  ): Promise<T> => {
+    // callWithFallbackArgs
+    try {
+      return await fn.apply(normalized, primaryArgs);
+    } catch (err) {
+      if (!fallbackArgs) throw err;
+      try {
+        return await fn.apply(normalized, fallbackArgs);
+      } catch {
+        throw err;
+      }
+    }
+  };
+
+  // These are optional features: safe reads, strict writes
+  ensureFn("listProjectTags", async () => []);
+  ensureFn("listProtocolTagIds", async () => []);
+
+  ensureFn("createProjectTag", async () => {
+    throw createMissingServiceMethodError("createProjectTag");
+  });
+  ensureFn("updateProjectTag", async () => {
+    throw createMissingServiceMethodError("updateProjectTag");
+  });
+  ensureFn("deleteProjectTag", async () => {
+    throw createMissingServiceMethodError("deleteProjectTag");
+  });
+  ensureFn("setProtocolTagIds", async () => {
+    throw createMissingServiceMethodError("setProtocolTagIds");
+  });
+
+  // Support both standard and legacy tag signatures
+  if (rawListProjectTags) {
+    normalized.listProjectTags = async (projectId: any) => {
+      const fn = rawListProjectTags;
+      return await callWithFallbackArgs(fn, [projectId], []);
+    };
+  }
+
+  if (rawCreateProjectTag) {
+    normalized.createProjectTag = async (projectId: any, payload: any) => {
+      const fn = rawCreateProjectTag;
+      return await callWithFallbackArgs(fn, [projectId, payload], [payload]);
+    };
+  }
+
+  if (rawUpdateProjectTag) {
+    normalized.updateProjectTag = async (
+      projectId: any,
+      tagId: string,
+      payload: any,
+    ) => {
+      const fn = rawUpdateProjectTag;
+      return await callWithFallbackArgs(fn, [projectId, tagId, payload], [tagId, payload]);
+    };
+  }
+
+  if (rawDeleteProjectTag) {
+    normalized.deleteProjectTag = async (projectId: any, tagId: string) => {
+      const fn = rawDeleteProjectTag;
+      return await callWithFallbackArgs(fn, [projectId, tagId], [tagId]);
+    };
+  }
+
+  if (rawListProtocolTagIds) {
+    normalized.listProtocolTagIds = async (projectId: any, protocolId: any) => {
+      const fn = rawListProtocolTagIds;
+      return await callWithFallbackArgs(fn, [projectId, protocolId], [protocolId]);
+    };
+  }
+
+  if (rawSetProtocolTagIds) {
+    normalized.setProtocolTagIds = async (
+      projectId: any,
+      protocolId: any,
+      tagIds: any,
+    ) => {
+      const fn = rawSetProtocolTagIds;
+      return await callWithFallbackArgs(fn, [projectId, protocolId, tagIds], [protocolId, tagIds]);
+    };
+  }
+
   // file / previews
   mapFn("resolveProtocolStartPath", "resolveProtocolStartPath");
   mapFn("listRemoteDirectory", "listRemoteDirectory");
@@ -317,15 +483,6 @@ function normalizeServiceAPI(srv: any): ProjectService {
     "resolveAnalyzeViewerDecision",
     "analyzeViewerResolve",
   );
-
-  const rawExecute =
-    typeof normalized.executeProtocol === "function"
-      ? normalized.executeProtocol
-      : null;
-  const rawSave =
-    typeof normalized.saveProtocol === "function"
-      ? normalized.saveProtocol
-      : null;
 
   ensureFn("executeProtocol", async () => {
     throw createMissingServiceMethodError("executeProtocol");
