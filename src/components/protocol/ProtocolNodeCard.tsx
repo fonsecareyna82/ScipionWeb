@@ -1,7 +1,7 @@
 // src/components/protocol/ProtocolNodeCard.tsx
 import { useCallback, useEffect, useMemo, useRef, useState, JSX } from "react";
 import toast from "react-hot-toast";
-import { Button, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, Typography, Link } from "@mui/material";
+import { Button, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, Typography, Link, Tooltip } from "@mui/material";
 import type {
   CSSProperties,
   Dispatch,
@@ -61,7 +61,7 @@ import {
   HelpCircle,
   Plus,
   Check,
-  X,
+  FileIcon,
 } from "lucide-react";
 
 import AnalyzeOutputDialog from "@/components/analyze/analyze-output-dialog";
@@ -1796,9 +1796,99 @@ export default function ProtocolNodeCard({
           {nextStepSuggestions.map((s) => {
             const installedValue = String(s.installed ?? "installed").trim() || "installed";
             const isInstalled = installedValue === "installed";
-            const disabledTooltip = !isInstalled ? installedValue : "";
-
             const showHelp = typeof s.help === "string" && s.help.trim().length > 0;
+
+            const row = (
+              <div
+                className={[
+                  styles.nextStepRow,
+                  !isInstalled ? styles.nextStepRowDisabled : "",
+                ].join(" ")}
+                aria-disabled={!isInstalled}
+              >
+                {/* leftSideDisabledButHelpClickable */}
+                <div
+                  className={styles.nextStepLeft}
+                  style={{
+                    pointerEvents: isInstalled ? "auto" : "none",
+                  }}
+                  onDoubleClick={(e) => {
+                    // openOnDoubleClick
+                    e.preventDefault();
+                    e.stopPropagation();
+                    openSuggestedProtocolClass(s);
+                  }}
+                  onKeyDown={(e) => {
+                    // openOnEnterKey
+                    if (!isInstalled) return;
+                    if (e.key !== "Enter") return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    openSuggestedProtocolClass(s);
+                  }}
+                  role="button"
+                  tabIndex={isInstalled ? 0 : -1}
+                >
+                  <FileIcon className={styles.nextStepItemIcon} />
+
+                    <Tooltip
+                    title={s.protocolName}
+                    placement="top"
+                    arrow
+                    enterDelay={450}
+                    disableInteractive
+                    PopperProps={{ sx: { zIndex: 26000 } }}
+                    componentsProps={{
+                      tooltip: {
+                        sx: {
+                          fontSize: "0.95rem", // changeThisToWhateverYouWant
+                          lineHeight: 1.35,
+                          maxWidth: 420,
+                        },
+                      },
+                      arrow: {
+                        sx: {
+                          "&::before": {
+                            // keepArrowInSyncWithTooltipBg
+                          },
+                        },
+                      },
+                    }}
+                  >
+                    <span className={styles.nextStepName}>
+                    {s.protocolName}
+                  </span>
+                  </Tooltip>
+                </div>
+
+                <div className={styles.nextStepRight}>
+                  {showHelp ? (
+                    <button
+                      type="button"
+                      className={styles.nextStepHelpBtn}
+                      aria-label={`Help for ${s.protocolName}`}
+                      onPointerDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                      }}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                      }}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        openNextStepHelp(s);
+                      }}
+                    >
+                      <HelpCircle className={styles.nextStepHelpIcon} />
+                    </button>
+                  ) : (
+                    <span className={styles.nextStepHelpPlaceholder} />
+                  )}
+                </div>
+              </div>
+            );
 
             return (
               <Item
@@ -1809,69 +1899,36 @@ export default function ProtocolNodeCard({
                   e.stopPropagation();
                 }}
               >
-                <div
-                  className={[
-                    styles.nextStepRow,
-                    !isInstalled ? styles.nextStepRowDisabled : "",
-                  ].join(" ")}
-                >
-                  {/* leftSideDisabledButHelpClickable */}
-                  <div
-                    className={styles.nextStepLeft}
-                    title={disabledTooltip || s.protocolClass}
-                    style={{
-                      pointerEvents: isInstalled ? "auto" : "none",
+                {!isInstalled ? (
+                  <Tooltip
+                    title={installedValue}
+                    placement="top"
+                    arrow
+                    enterDelay={450}
+                    disableInteractive
+                    PopperProps={{ sx: { zIndex: 26000 } }}
+                    componentsProps={{
+                      tooltip: {
+                        sx: {
+                          fontSize: "0.95rem", // changeThisToWhateverYouWant
+                          lineHeight: 1.35,
+                          maxWidth: 420,
+                        },
+                      },
+                      arrow: {
+                        sx: {
+                          "&::before": {
+                            // keepArrowInSyncWithTooltipBg
+                          },
+                        },
+                      },
                     }}
-                    onDoubleClick={(e) => {
-                      // openOnDoubleClick
-                      e.preventDefault();
-                      e.stopPropagation();
-                      openSuggestedProtocolClass(s);
-                    }}
-                    onKeyDown={(e) => {
-                      // openOnEnterKey
-                      if (!isInstalled) return;
-                      if (e.key !== "Enter") return;
-                      e.preventDefault();
-                      e.stopPropagation();
-                      openSuggestedProtocolClass(s);
-                    }}
-                    role="button"
-                    tabIndex={isInstalled ? 0 : -1}
                   >
-                    <ArrowRight className={styles.nextStepItemIcon} />
-                    <span className={styles.nextStepName} title={s.protocolName}>
-                      {s.protocolName}
-                    </span>
-                  </div>
-
-                  <div className={styles.nextStepRight}>
-                    {showHelp ? (
-                      <button
-                        type="button"
-                        className={styles.nextStepHelpBtn}
-                        aria-label={`Help for ${s.protocolName}`}
-                        onPointerDown={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                        }}
-                        onMouseDown={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                        }}
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          openNextStepHelp(s);
-                        }}
-                      >
-                        <HelpCircle className={styles.nextStepHelpIcon} />
-                      </button>
-                    ) : (
-                      <span className={styles.nextStepHelpPlaceholder} />
-                    )}
-                  </div>
-                </div>
+                    {row}
+                  </Tooltip>
+                ) : (
+                  row
+                )}
               </Item>
             );
           })}
@@ -2259,7 +2316,7 @@ export default function ProtocolNodeCard({
                         </div>
                       </DropdownMenuSubTrigger>
 
-                      <DropdownMenuSubContent className={styles.menuContent}
+                      <DropdownMenuSubContent className={styles.subMenuContent}
                         sideOffset={8}
                         onPointerDownOutside={preventMenuDismissWhileHelpOpen}
                         onFocusOutside={preventMenuDismissWhileHelpOpen}
@@ -2761,7 +2818,7 @@ export default function ProtocolNodeCard({
             </div>
           </ContextMenuSubTrigger>
 
-          <ContextMenuSubContent className={styles.menuContent}
+          <ContextMenuSubContent className={styles.subMenuContent}
             sideOffset={8}
             onPointerDownOutside={preventMenuDismissWhileHelpOpen}
             onFocusOutside={preventMenuDismissWhileHelpOpen}
@@ -2770,7 +2827,6 @@ export default function ProtocolNodeCard({
           </ContextMenuSubContent>
         </ContextMenuSub>
 
-        <ContextMenuSeparator />
 
       </ContextMenuContent>
 
@@ -2874,22 +2930,22 @@ export default function ProtocolNodeCard({
                 borderRadius: 2,
                 fontWeight: "bold",
                 boxShadow: "none",
-                
+
               }}
             >
               Open
             </Button>
 
             <Button onClick={closeNextStepHelp} variant="outlined" sx={{
-                textTransform: "none",
-                px: 3,
-                borderRadius: 2,
-                fontWeight: "bold",
-                boxShadow: "none",
-                "&:hover": {
-                  backgroundColor: "#f3ecec",
-                },
-              }}>
+              textTransform: "none",
+              px: 3,
+              borderRadius: 2,
+              fontWeight: "bold",
+              boxShadow: "none",
+              "&:hover": {
+                backgroundColor: "#f3ecec",
+              },
+            }}>
               Close
             </Button>
           </DialogActions>
