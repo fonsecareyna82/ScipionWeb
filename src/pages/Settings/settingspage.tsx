@@ -467,8 +467,6 @@ export default function SettingsPage() {
 
     writeLocalStorageString(tagsSelectedProjectKey, pid);
 
-    // clearTagsToAvoidShowingPreviousProjectTags
-    setTags([]);
   }, [tab, selectedProject?.id, setTags]);
 
 

@@ -462,7 +462,6 @@ const TagManager = memo(function TagManager({ title, projectId, tags, onTagsChan
         svcRef.current = svc;
     }, [svc]);
 
-    console.log(projectId)
 
     const isControlled = Array.isArray(tags) && typeof onTagsChange === "function";
 
@@ -498,6 +497,12 @@ const TagManager = memo(function TagManager({ title, projectId, tags, onTagsChan
     const [isSaving, setIsSaving] = useState(false);
     const [deletingIds, setDeletingIds] = useState<Record<string, boolean>>({});
 
+    useEffect(() => {
+        // logProjectIdWhenChanges
+        if (projectId == null) return;
+        // eslint-disable-next-line no-console
+        console.debug("TagManager projectId:", projectId);
+    }, [projectId]);
 
     useEffect(() => {
         // syncPropsTagsToStore

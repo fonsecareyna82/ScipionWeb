@@ -5,7 +5,7 @@ import Popper, { type PopperProps } from "@mui/material/Popper";
 import type { ProtocolTag } from "./tagTypes";
 
 type TagPickerProps = {
-  allTags: ProtocolTag[];
+  allTags?: ProtocolTag[];
   selectedTagIds: string[];
   onChange: (nextSelectedTagIds: string[]) => void;
   disabled?: boolean;

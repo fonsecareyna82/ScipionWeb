@@ -147,6 +147,8 @@ function notifyListeners(): void {
 function setState(updater: (prev: TagStateV2) => TagStateV2): void {
   // setState
   const next = updater(state);
+  if (next === state) return; // bailOutWhenNoChanges
+
   state = next;
   driver.save(state);
   notifyListeners();
@@ -179,10 +181,19 @@ function setTags(nextTags: ProtocolTag[]): void {
   // setTags
   setState((prev) => {
     const tags = Array.isArray(nextTags) ? nextTags : [];
+
+    const prevTagsEmpty = (prev.tags ?? []).length === 0;
+    const nextTagsEmpty = tags.length === 0;
+    const prevAssignmentsEmpty = Object.keys(prev.assignments ?? {}).length === 0;
+
+    // bailOutWhenClearingAlreadyEmpty
+    if (nextTagsEmpty && prevTagsEmpty && prevAssignmentsEmpty) return prev;
+
     const assignments = reconcileAssignments(tags, prev.assignments);
     return { ...prev, updatedAt: Date.now(), tags, assignments };
   });
 }
+
 
 function deleteTag(tagId: string): void {
   // deleteTag

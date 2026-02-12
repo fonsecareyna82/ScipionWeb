@@ -61,7 +61,13 @@ import {
 } from "lucide-react";
 
 import AnalyzeOutputDialog from "@/components/analyze/analyze-output-dialog";
-import type { AnalyzeViewerResolveContext, AnalyzeViewerResolveDecision, Id } from "@/services/ProjectService";
+import type {
+  AnalyzeViewerResolveContext,
+  AnalyzeViewerResolveDecision,
+  Id,
+  ProtocolTag as ServiceProtocolTag,
+} from "@/services/ProjectService";
+
 
 import type { ProtocolTag } from "@/components/tags/tagTypes";
 
@@ -355,6 +361,7 @@ type TagStoreApi = {
   tags?: ProtocolTag[];
   tagsById?: Map<string, ProtocolTag>;
   assignments?: TagAssignments;
+  setTags?: (nextTags: ProtocolTag[]) => void;
 
   getAssignedTagIds?: (projectId: string | number | undefined, protocolId: string | number | undefined) => string[];
   setAssignedTagIds?: (
@@ -364,6 +371,51 @@ type TagStoreApi = {
   ) => void;
   setAssignedTagIdsBatch?: (updates: Array<{ projectId: string | number | undefined; protocolId: string; tagIds: string[] }>) => void;
 };
+
+const tagDefsCacheByProjectId = new Map<string, ProtocolTag[]>();
+const tagDefsInFlightByProjectId = new Map<string, Promise<ProtocolTag[]>>();
+let tagDefsStoreProjectId: string | null = null;
+
+function coerceErrorMessage(e: any, fallback: string): string {
+  // coerceErrorMessage
+  const msg =
+    (typeof e?.data?.detail === "string" && e.data.detail) ||
+    (typeof e?.response?.data?.detail === "string" && e.response.data.detail) ||
+    (typeof e?.message === "string" && e.message) ||
+    String(e ?? "");
+  return msg.trim() ? msg : fallback;
+}
+
+function normalizeTagDef(raw: any): ProtocolTag | null {
+  // normalizeTagDef
+  const id = String(raw?.id ?? "").trim();
+  const title = String(raw?.title ?? "").trim();
+  if (!id || !title) return null;
+
+  const description =
+    typeof raw?.description === "string" && raw.description.trim()
+      ? raw.description.trim()
+      : undefined;
+
+  return {
+    id,
+    title,
+    description,
+    color: typeof raw?.color === "string" && raw.color.trim() ? raw.color.trim() : "#3b82f6",
+  };
+}
+
+function normalizeTagDefList(raw: unknown): ProtocolTag[] {
+  // normalizeTagDefList
+  if (!Array.isArray(raw)) return [];
+  const out: ProtocolTag[] = [];
+  for (const t of raw) {
+    const nt = normalizeTagDef(t);
+    if (nt) out.push(nt);
+  }
+  return out;
+}
+
 
 export default function ProtocolNodeCard({
   data,
@@ -438,10 +490,16 @@ export default function ProtocolNodeCard({
   // tagStateFromStore (no selector args)
   const tagStore = useTagStore() as unknown as TagStoreApi;
 
-  const allTags: ProtocolTag[] = Array.isArray(tagStore?.tags) ? (tagStore.tags as ProtocolTag[]) : [];
+  const storeTags: ProtocolTag[] = Array.isArray(tagStore?.tags) ? (tagStore.tags as ProtocolTag[]) : [];
+  const storeSetTags = typeof tagStore?.setTags === "function" ? tagStore.setTags : null;
+
   const getAssignedTagIds = tagStore?.getAssignedTagIds;
   const setAssignedTagIds = tagStore?.setAssignedTagIds;
   const setAssignedTagIdsBatch = tagStore?.setAssignedTagIdsBatch;
+
+  const [remoteTagDefs, setRemoteTagDefs] = useState<ProtocolTag[]>([]);
+  const [isTagDefsLoading, setIsTagDefsLoading] = useState(false);
+
 
   const normalizedProjectId = useMemo(() => {
     // normalizedProjectId
@@ -449,6 +507,76 @@ export default function ProtocolNodeCard({
     if (!s || s === "null" || s === "undefined") return null;
     return data.projectId as Id;
   }, [data.projectId]);
+
+  const canReadTagDefsFromBackend =
+    normalizedProjectId != null && typeof (svcRef.current as any)?.listProjectTags === "function";
+
+  useEffect(() => {
+    // loadTagDefinitionsFromBackend
+    if (!canReadTagDefsFromBackend) return;
+
+    const pidKey = String(normalizedProjectId);
+    if (!pidKey) return;
+
+    const storeTagsAreForThisProject = tagDefsStoreProjectId === pidKey;
+    const alreadyCached = tagDefsCacheByProjectId.get(pidKey);
+    if (alreadyCached && alreadyCached.length > 0) {
+      if (storeSetTags) {
+        tagDefsStoreProjectId = pidKey;
+        storeSetTags(alreadyCached);
+      } else {
+        setRemoteTagDefs(alreadyCached);
+      }
+      return;
+    }
+
+    if (storeTags.length > 0 && storeTagsAreForThisProject) return;
+
+    let cancelled = false;
+    setIsTagDefsLoading(true);
+
+    const existingPromise = tagDefsInFlightByProjectId.get(pidKey);
+    const promise =
+      existingPromise ??
+      (async () => {
+        const remote = await svcRef.current.listProjectTags(normalizedProjectId as Id);
+        const list = normalizeTagDefList(remote as ServiceProtocolTag[]);
+        tagDefsCacheByProjectId.set(pidKey, list);
+        return list;
+      })();
+
+    if (!existingPromise) {
+      tagDefsInFlightByProjectId.set(pidKey, promise);
+    }
+
+    promise
+      .then((list) => {
+        if (cancelled) return;
+        if (storeSetTags) {
+          tagDefsStoreProjectId = pidKey;
+          storeSetTags(list);
+        } else {
+          setRemoteTagDefs(list);
+        }
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        toast.error(coerceErrorMessage(e, "Failed to load tags"));
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setIsTagDefsLoading(false);
+        if (tagDefsInFlightByProjectId.get(pidKey) === promise) {
+          tagDefsInFlightByProjectId.delete(pidKey);
+        }
+      });
+
+    return () => {
+      // cleanup
+      cancelled = true;
+    };
+  }, [canReadTagDefsFromBackend, normalizedProjectId, storeTags.length, storeSetTags]);
+
 
   const normalizedProtocolId = useMemo(() => {
     // normalizedProtocolId
@@ -542,6 +670,17 @@ export default function ProtocolNodeCard({
       ];
     }
   }, [reactFlow, data.id, data.projectId, data]);
+
+  const allTags: ProtocolTag[] = useMemo(() => {
+    // allTags
+    const pidKey = normalizedProjectId != null ? String(normalizedProjectId) : "";
+    const cached = pidKey ? tagDefsCacheByProjectId.get(pidKey) : null;
+
+    if (cached && cached.length > 0) return cached;
+    if (storeTags.length > 0) return storeTags;
+    return remoteTagDefs;
+  }, [normalizedProjectId, storeTags, remoteTagDefs]);
+
 
   const getEffectiveAssignedForTarget = useCallback(
     (projectId: string | number | undefined, protocolId: string, rawTags: unknown): string[] => {
@@ -1269,16 +1408,20 @@ export default function ProtocolNodeCard({
                                   </span>
 
                                   <span className={styles.menuRight}>
-                                    {isChecked ? (
-                                      <Check className={styles.menuCheckIcon} />
-                                    ) : (
-                                      <span className={styles.menuCheckPlaceholder} />
-                                    )}
+                                    {isChecked ? <Check className={styles.menuCheckIcon} /> : <span className={styles.menuCheckPlaceholder} />}
                                   </span>
                                 </div>
                               </DropdownMenuItem>
                             );
                           })
+                        ) : isTagDefsLoading ? (
+                          <DropdownMenuItem disabled>
+                            <div className={styles.menuRow}>
+                              <span className={styles.menuLeft}>
+                                <span>Loading tags...</span>
+                              </span>
+                            </div>
+                          </DropdownMenuItem>
                         ) : (
                           <DropdownMenuItem disabled>
                             <div className={styles.menuRow}>
@@ -1290,6 +1433,7 @@ export default function ProtocolNodeCard({
                         )}
                       </DropdownMenuSubContent>
                     </DropdownMenuSub>
+
 
                     <DropdownMenuItem>
                       <div className={styles.menuRow}>
@@ -1740,6 +1884,14 @@ export default function ProtocolNodeCard({
                   </ContextMenuItem>
                 );
               })
+            ) : isTagDefsLoading ? (
+              <ContextMenuItem disabled>
+                <div className={styles.menuRow}>
+                  <span className={styles.menuLeft}>
+                    <span>Loading tags...</span>
+                  </span>
+                </div>
+              </ContextMenuItem>
             ) : (
               <ContextMenuItem disabled>
                 <div className={styles.menuRow}>
@@ -1751,6 +1903,7 @@ export default function ProtocolNodeCard({
             )}
           </ContextMenuSubContent>
         </ContextMenuSub>
+
 
         <ContextMenuItem>
           <div className={styles.menuRow}>
