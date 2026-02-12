@@ -1,7 +1,7 @@
 // src/components/protocol/ProtocolNodeCard.tsx
 import { useCallback, useEffect, useMemo, useRef, useState, JSX } from "react";
 import toast from "react-hot-toast";
-import { Button, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, Typography } from "@mui/material";
+import { Button, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, Typography, Link } from "@mui/material";
 import type {
   CSSProperties,
   Dispatch,
@@ -524,40 +524,6 @@ function linkifyTextToNodes(text: string, className: string): JSX.Element[] {
   return out;
 }
 
-function renderHelpBody(help: string, linkClassName: string, listClassName: string): JSX.Element {
-  // renderHelpBody
-  const raw = String(help ?? "").replace(/\r\n/g, "\n").trim();
-  if (!raw) return <div style={{ opacity: 0.75 }}>No help available.</div>;
-
-  const blocks = raw.split(/\n{2,}/g).map((b) => b.trim()).filter(Boolean);
-
-  const isBulletBlock = (b: string) => b.split("\n").every((l) => !l.trim() || /^(\-|\*|•)\s+/.test(l.trim()));
-  const stripBullet = (l: string) => l.trim().replace(/^(\-|\*|•)\s+/, "");
-
-  return (
-    <div className={styles.helpBody}>
-      {blocks.map((b, idx) => {
-        if (isBulletBlock(b)) {
-          const items = b.split("\n").map((l) => l.trim()).filter(Boolean).map(stripBullet);
-          return (
-            <ul key={`ul-${idx}`} className={listClassName}>
-              {items.map((it, i) => (
-                <li key={`li-${idx}-${i}`}>{linkifyTextToNodes(it, linkClassName)}</li>
-              ))}
-            </ul>
-          );
-        }
-
-        return (
-          <Typography key={`p-${idx}`} component="p" className={styles.helpParagraph}>
-            {linkifyTextToNodes(b, linkClassName)}
-          </Typography>
-        );
-      })}
-    </div>
-  );
-}
-
 function stripTrailingPunctuation(url: string): string {
   // stripTrailingPunctuation
   return url.replace(/[)\]}>,.;:!?]+$/g, "");
@@ -648,12 +614,202 @@ function renderInlineHelpNodes(textRaw: string, linkClassName: string, allowBold
   return out;
 }
 
+
+function renderBoldLabel(label: string, keyPrefix: string): Array<JSX.Element | string> {
+  // renderBoldLabel
+  const parts: Array<JSX.Element | string> = [];
+  const boldRegex = /\*[^*]+\*/g;
+
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  let segIndex = 0;
+
+  while ((match = boldRegex.exec(label)) !== null) {
+    const token = match[0];
+    const start = match.index;
+
+    if (start > lastIndex) {
+      parts.push(label.slice(lastIndex, start));
+    }
+
+    const boldText = token.slice(1, -1);
+    parts.push(<strong key={`${keyPrefix}-b-${segIndex++}`}>{boldText}</strong>);
+
+    lastIndex = boldRegex.lastIndex;
+  }
+
+  if (lastIndex < label.length) {
+    parts.push(label.slice(lastIndex));
+  }
+
+  return parts;
+}
+
 function normalizeHelpText(raw: string): string {
   // normalizeHelpText
-  return String(raw ?? "")
-    .replace(/\r\n/g, "\n")
-    .replace(/\t/g, "  ")
-    .trim();
+  return String(raw ?? "").replace(/\\n/g, "\n");
+}
+
+function sanitizeHref(rawUrl: string): string {
+  // sanitizeHref
+  let hrefToken = String(rawUrl ?? "").trim();
+
+  while (/[.,;:!?)]$/.test(hrefToken)) {
+    hrefToken = hrefToken.slice(0, -1);
+  }
+
+  if (!hrefToken) return "";
+
+  const href =
+    hrefToken.startsWith("http://") || hrefToken.startsWith("https://")
+      ? hrefToken
+      : `https://${hrefToken}`;
+
+  return href;
+}
+
+function sanitizeUrlToken(token: string): { display: string; href: string } {
+  // sanitizeUrlToken
+  const display = token;
+
+  let hrefToken = token;
+  while (/[.,;:!?)]$/.test(hrefToken)) {
+    hrefToken = hrefToken.slice(0, -1);
+  }
+
+  const href = sanitizeHref(hrefToken);
+  return { display, href };
+}
+
+function parseOrgLinkToken(token: string): { href: string; label: string } | null {
+  // parseOrgLinkToken
+  const orgRegex = /^\[\[([^\]]+)\](?:\[([^\]]+)\])?\]$/;
+  const match = orgRegex.exec(token);
+  if (!match) return null;
+
+  const rawUrl = match[1] ?? "";
+  const rawLabel = match[2];
+
+  const href = sanitizeHref(rawUrl);
+  const label = String(rawLabel ?? rawUrl);
+
+  if (!href) return null;
+  return { href, label };
+}
+
+function renderRichHelpText(helpText: string, linkClassName: string): JSX.Element {
+  // renderRichHelpText
+  const normalized = normalizeHelpText(helpText);
+  const lines = normalized.split("\n");
+
+  const tokenPattern =
+    /(\[\[[^\]]+\](?:\[[^\]]+\])?\]|\*[^*]+\*|https?:\/\/[^\s<>()]+|www\.[^\s<>()]+)/g;
+
+  const renderLineTokens = (line: string, lineIndex: number) => {
+    // renderLineTokens
+    const parts: JSX.Element[] = [];
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+    let keyIndex = 0;
+
+    const tokenRegex = new RegExp(tokenPattern.source, "g");
+
+    while ((match = tokenRegex.exec(line)) !== null) {
+      const token = match[0];
+      const start = match.index;
+
+      if (start > lastIndex) {
+        parts.push(<span key={`t-${lineIndex}-${keyIndex++}`}>{line.slice(lastIndex, start)}</span>);
+      }
+
+      if (token.startsWith("[[")) {
+        const orgLink = parseOrgLinkToken(token);
+        if (orgLink) {
+          const linkKey = `ol-${lineIndex}-${keyIndex++}`;
+          parts.push(
+            <Link
+              key={linkKey}
+              className={linkClassName}
+              href={orgLink.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              underline="hover"
+              sx={{ wordBreak: "break-word", fontWeight: 600 }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {renderBoldLabel(orgLink.label, linkKey)}
+            </Link>,
+          );
+        } else {
+          parts.push(<span key={`ot-${lineIndex}-${keyIndex++}`}>{token}</span>);
+        }
+      } else if (token.startsWith("*") && token.endsWith("*") && token.length >= 2) {
+        const boldText = token.slice(1, -1);
+        parts.push(<strong key={`b-${lineIndex}-${keyIndex++}`}>{boldText}</strong>);
+      } else {
+        const { display, href } = sanitizeUrlToken(token);
+        if (!href) {
+          parts.push(<span key={`u-${lineIndex}-${keyIndex++}`}>{display}</span>);
+        } else {
+          parts.push(
+            <Link
+              key={`l-${lineIndex}-${keyIndex++}`}
+              className={linkClassName}
+              href={href}
+              target="_blank"
+              rel="noopener noreferrer"
+              underline="hover"
+              sx={{ wordBreak: "break-word" }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {display}
+            </Link>,
+          );
+        }
+      }
+
+      lastIndex = tokenRegex.lastIndex;
+    }
+
+    if (lastIndex < line.length) {
+      parts.push(<span key={`t-${lineIndex}-${keyIndex++}`}>{line.slice(lastIndex)}</span>);
+    }
+
+    return parts;
+  };
+
+  if (!normalized.trim()) {
+    return (
+      <Typography variant="body2" component="div" sx={{ lineHeight: 1.6, mt: 1, opacity: 0.75 }}>
+        No help available.
+      </Typography>
+    );
+  }
+
+  return (
+    <Typography
+      variant="body2"
+      component="div"
+      sx={{
+        lineHeight: 1.6,
+        mt: 1,
+        whiteSpace: "normal",
+        wordBreak: "break-word",
+      }}
+    >
+      {lines.map((line, i) => (
+        <span key={`hl-${i}`}>
+          {renderLineTokens(line, i)}
+          {i < lines.length - 1 ? <br /> : null}
+        </span>
+      ))}
+    </Typography>
+  );
+}
+
+function renderHelpBody(help: string, linkClassName: string): JSX.Element {
+  // renderHelpBody
+  return renderRichHelpText(help, linkClassName);
 }
 
 function isBulletLine(line: string): boolean {
@@ -2696,30 +2852,9 @@ export default function ProtocolNodeCard({
 
           <DialogContent className={styles.helpDialogContent} dividers>
             {(() => {
-              const urls = extractUrls(nextStepHelpTarget.help ?? "");
               return (
                 <>
-                  {renderHelpBody(nextStepHelpTarget.help ?? "", styles.helpLink, styles.helpList)}
-
-                  {urls.length > 0 ? (
-                    <div className={styles.helpLinksSection}>
-                      <div className={styles.helpLinksTitle}>Links</div>
-                      <div className={styles.helpLinksRow}>
-                        {urls.map((u) => (
-                          <Button
-                            key={u}
-                            variant="outlined"
-                            size="small"
-                            className={styles.helpLinkBtn}
-                            onClick={() => openExternalUrl(u)}
-                            startIcon={<ArrowUpRight size={16} />}
-                          >
-                            Open
-                          </Button>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
+                  {renderHelpBody(nextStepHelpTarget.help ?? "", styles.helpLink)}
                 </>
               );
             })()}
@@ -2733,11 +2868,28 @@ export default function ProtocolNodeCard({
                 openSuggestedProtocolClass(nextStepHelpTarget);
               }}
               disabled={String(nextStepHelpTarget.installed ?? "installed").trim() !== "installed"}
+              sx={{
+                textTransform: "none",
+                px: 3,
+                borderRadius: 2,
+                fontWeight: "bold",
+                boxShadow: "none",
+                
+              }}
             >
               Open
             </Button>
 
-            <Button onClick={closeNextStepHelp} variant="outlined">
+            <Button onClick={closeNextStepHelp} variant="outlined" sx={{
+                textTransform: "none",
+                px: 3,
+                borderRadius: 2,
+                fontWeight: "bold",
+                boxShadow: "none",
+                "&:hover": {
+                  backgroundColor: "#f3ecec",
+                },
+              }}>
               Close
             </Button>
           </DialogActions>
