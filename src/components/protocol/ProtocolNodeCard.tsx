@@ -503,10 +503,17 @@ export default function ProtocolNodeCard({
     const cached = tagDefsCacheByProjectId.get(pidKey);
 
     if (cached && cached.length > 0) {
-      tagDefsStoreProjectId = pidKey;
-      storeSetTags?.(cached);
+      // doNotOverwriteStoreWithStaleCache
+      const storeHasDataForThisProject = Array.isArray(storeTagDefs) && storeTagDefs.length > 0 && storeTagsAreForThisProject;
+
+      if (!storeHasDataForThisProject) {
+        tagDefsStoreProjectId = pidKey;
+        storeSetTags?.(cached);
+      }
+
       return;
     }
+
 
     if (Array.isArray(storeTagDefs) && storeTagDefs.length > 0 && storeTagsAreForThisProject) return;
 
@@ -550,18 +557,37 @@ export default function ProtocolNodeCard({
     };
   }, [canReadTagDefsFromBackend, normalizedProjectId, storeSetTags, storeTagDefs]);
 
+
+  useEffect(() => {
+    // syncCacheWithStoreForProject
+    const pidKey = normalizedProjectId != null ? String(normalizedProjectId) : "";
+    if (!pidKey) return;
+
+    const storeTagsAreForThisProject = tagDefsStoreProjectId === pidKey;
+    if (!storeTagsAreForThisProject) return;
+
+    if (Array.isArray(storeTagDefs)) {
+      tagDefsCacheByProjectId.set(pidKey, [...storeTagDefs]);
+    }
+  }, [normalizedProjectId, storeTagDefs]);
+
   const tagDefs: ProtocolTag[] = useMemo(() => {
     // tagDefs
     const pidKey = normalizedProjectId != null ? String(normalizedProjectId) : "";
-    const cached = pidKey ? tagDefsCacheByProjectId.get(pidKey) : null;
-
-    if (cached && cached.length > 0) return cached;
-
     const storeTagsAreForThisProject = pidKey && tagDefsStoreProjectId === pidKey;
-    if (storeTagsAreForThisProject && Array.isArray(storeTagDefs) && storeTagDefs.length > 0) return storeTagDefs;
+
+    // storeIsSourceOfTruth
+    if (storeTagsAreForThisProject && Array.isArray(storeTagDefs) && storeTagDefs.length > 0) {
+      return storeTagDefs;
+    }
+
+    // cacheIsFallbackOnly
+    const cached = pidKey ? tagDefsCacheByProjectId.get(pidKey) : null;
+    if (cached && cached.length > 0) return cached;
 
     return remoteTagDefs;
   }, [normalizedProjectId, remoteTagDefs, storeTagDefs]);
+
 
   const backendAssignmentsWriteEnabled =
     normalizedProjectId != null &&

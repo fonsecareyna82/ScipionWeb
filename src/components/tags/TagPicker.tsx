@@ -50,6 +50,8 @@ function createPlaceholderTag(id: string): ProtocolTag {
   } as ProtocolTag;
 }
 
+type SpreadKeyFix<T> = T & { key?: React.Key };
+
 export default function TagPicker({
   allTags,
   selectedTagIds,
@@ -107,13 +109,7 @@ export default function TagPicker({
     // popperComponent
     const Comp = (props: PopperProps) => {
       const mergedStyle = { ...(props.style ?? {}), zIndex: popperZIndex };
-      return (
-        <Popper
-          {...props}
-          style={mergedStyle}
-          container={popperContainer ?? undefined}
-        />
-      );
+      return <Popper {...props} style={mergedStyle} container={popperContainer ?? undefined} />;
     };
     return Comp;
   }, [popperContainer, popperZIndex]);
@@ -137,11 +133,13 @@ export default function TagPicker({
       renderTags={(value, getTagProps) =>
         (value ?? []).map((tag, index) => {
           const color = normalizeColor(tag.color);
-          const props = getTagProps({ index });
+
+          const rawProps = getTagProps({ index }) as SpreadKeyFix<ReturnType<typeof getTagProps>>;
+          const { key: _key, ...chipProps } = rawProps;
 
           return (
             <Chip
-              {...props}
+              {...chipProps}
               key={String(tag.id)}
               size="small"
               label={String(tag.title ?? tag.id)}
@@ -159,8 +157,11 @@ export default function TagPicker({
       renderOption={(props, option) => {
         const color = normalizeColor(option.color);
 
+        const rawProps = props as SpreadKeyFix<React.HTMLAttributes<HTMLLIElement>>;
+        const { key: _key, ...liProps } = rawProps;
+
         return (
-          <li {...props} key={String(option.id)}>
+          <li {...liProps} key={String(option.id)}>
             <Box
               sx={{
                 display: "flex",
@@ -210,7 +211,7 @@ export default function TagPicker({
       }}
       ListboxProps={{
         style: {
-          maxHeight: "var(--ppTagDropdownMaxHeight, 100px)",
+          maxHeight: "var(--ppTagDropdownMaxHeight, 180px)", // ~6 rows (6*28=168) + padding
         },
       }}
       renderInput={(params) => (
@@ -224,10 +225,8 @@ export default function TagPicker({
       )}
       sx={{
         width: "100%",
-
-        // inputHeightDensity
         "& .MuiAutocomplete-inputRoot": {
-          minHeight: 32, // keepSmallButVisible
+          minHeight: 32,
           paddingTop: "2px",
           paddingBottom: "2px",
         },
@@ -240,8 +239,6 @@ export default function TagPicker({
           fontSize: 12,
           opacity: 0.7,
         },
-
-        // chipsCompact
         "& .MuiChip-root": {
           height: 22,
         },
@@ -250,13 +247,10 @@ export default function TagPicker({
           paddingRight: "8px",
           fontSize: 12,
         },
-
-        // optionsRowCompact
         "& .MuiAutocomplete-option": {
           minHeight: 28,
         },
       }}
-
     />
   );
 }

@@ -2078,7 +2078,7 @@ export default function ProjectPage() {
         const data = await svc.fetchProject(projectName);
         setProject(data);
         setTagAssignments(extractAssignmentsFromProjectProtocols((data as any)?.protocols));
-        
+
         if (!data.protocols) {
           disablePersistenceRef.current = false;
           setHideGraphDuringCenter(false);
@@ -4730,7 +4730,7 @@ export default function ProjectPage() {
           title="Manage tags"
         >
           <div style={{ paddingTop: 8 }}>
-            <TagManager projectId={Number(projId)} />
+            <TagManager projectId={Number(projId)} open={tagManagerOpen} />
           </div>
         </TagsDialog>
 
