@@ -1,5 +1,5 @@
 // src/pages/settingspage.tsx
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import Grid from "@mui/material/Grid";
 import {
@@ -360,7 +360,23 @@ export default function SettingsPage() {
   const [projectsError, setProjectsError] = useState<string | null>(null);
   const [projectsLoadedOnce, setProjectsLoadedOnce] = useState(false);
 
-  const [selectedProject, setSelectedProject] = useState<ProjectOption | undefined>(undefined);
+  const [selectedProject, setSelectedProject] = useState<ProjectOption | null>(null);
+
+  const projectAutocompleteValue = useMemo(() => {
+    // projectAutocompleteValue
+    if (projectOptions.length === 0) return null;
+
+    if (selectedProject && projectOptions.some((p) => String(p.id) === String(selectedProject.id))) {
+      return selectedProject;
+    }
+
+    return projectOptions[0];
+  }, [projectOptions, selectedProject]);
+
+
+  const projectsRequestInFlightRef = useRef(false);
+  const lastTagsProjectIdRef = useRef<string | null>(null);
+
 
   const selectedProjectId = useMemo(() => {
     // selectedProjectId
@@ -375,7 +391,8 @@ export default function SettingsPage() {
 
   const loadProjectsForTagsTab = useCallback(async () => {
     // loadProjectsForTagsTab
-    if (projectsLoading) return;
+    if (projectsRequestInFlightRef.current) return;
+    projectsRequestInFlightRef.current = true;
 
     setProjectsLoading(true);
     setProjectsError(null);
@@ -395,19 +412,38 @@ export default function SettingsPage() {
       setProjectOptions(normalized);
       setProjectsLoadedOnce(true);
 
-      if (!selectedProject && normalized.length > 0) {
-        const storedId = readLocalStorageString(tagsSelectedProjectKey);
-        const match = storedId ? normalized.find((x) => String(x.id) === String(storedId)) : undefined;
-        setSelectedProject(match ?? normalized[0]);
-      }
+      const storedId = readLocalStorageString(tagsSelectedProjectKey);
+
+      setSelectedProject((prev) => {
+        // computeNextSelectedProject
+        if (normalized.length === 0) return null;
+
+        if (prev && normalized.some((x) => String(x.id) === String(prev.id))) {
+          return prev;
+        }
+
+        if (storedId) {
+          const match = normalized.find((x) => String(x.id) === String(storedId));
+          return match ?? normalized[0];
+        }
+
+        return normalized[0];
+      });
     } catch (e: any) {
       const msg = getErrorMsg(e);
       setProjectsError(msg);
       setProjectOptions([]);
+      setSelectedProject(null);
+
+      // allowRetryOnTabSwitch
+      setProjectsLoadedOnce(false);
     } finally {
       setProjectsLoading(false);
+      projectsRequestInFlightRef.current = false;
     }
-  }, [projectsLoading, selectedProject, svc]);
+  }, [svc, tagsSelectedProjectKey]);
+
+
 
   useEffect(() => {
     // lazyLoadProjectsOnTagsTabOpen
@@ -419,13 +455,22 @@ export default function SettingsPage() {
   useEffect(() => {
     // persistSelectedTagsProject
     if (tab !== "tags") return;
-    if (!selectedProject?.id) return;
 
-    writeLocalStorageString(tagsSelectedProjectKey, String(selectedProject.id));
+    const pid = String(selectedProject?.id ?? "").trim();
+    if (!pid) {
+      lastTagsProjectIdRef.current = null;
+      return;
+    }
+
+    if (pid === lastTagsProjectIdRef.current) return;
+    lastTagsProjectIdRef.current = pid;
+
+    writeLocalStorageString(tagsSelectedProjectKey, pid);
 
     // clearTagsToAvoidShowingPreviousProjectTags
     setTags([]);
   }, [tab, selectedProject?.id, setTags]);
+
 
   const isDarkMode = useMemo(() => {
     // isDarkMode
@@ -904,31 +949,44 @@ export default function SettingsPage() {
           <CardContent sx={{ pt: 2 }}>
             <Grid container spacing={2} sx={{ width: "100%" }}>
               <Grid size={{ xs: 12 }}>
-                <Autocomplete
+                <Autocomplete<ProjectOption, false, boolean, false>
                   PaperComponent={autocompletePaperComponent}
-                  options={timeZoneOptions}
-                  value={userDraft.timeZone || defaultUserSettings.timeZone}
-                  onChange={(_, value) =>
-                    setUserDraft((prev) => (prev ? { ...prev, timeZone: value || defaultUserSettings.timeZone } : prev))
-                  }
-                  renderOption={(props, option) => (
-                    <Box component="li" {...props} sx={{ fontSize: fieldFontSize, color: colors.text }}>
-                      {option}
-                    </Box>
-                  )}
-                  renderInput={(params) => (
-                    <TextField
-                      {...params}
-                      sx={fieldSx}
-                      fullWidth
-                      label="Time zone"
-                      helperText="Type to search (IANA time zones)."
-                      size="small"
-                    />
-                  )}
-                  disableClearable
-                  autoHighlight
+                  options={projectOptions}
+                  value={projectAutocompleteValue}
+                  loading={projectsLoading}
+                  getOptionLabel={(o) => String((o as any)?.name ?? "")}
+                  isOptionEqualToValue={(a, b) => String((a as any)?.id) === String((b as any)?.id)}
+                  onChange={(_, next) => {
+                    // onProjectSelectionChange
+                    if (!next) return;
+                    setSelectedProject(next);
+                  }}
+                  renderOption={(props, option) => {
+                    // renderProjectOption
+                    return (
+                      <Box component="li" {...props} sx={{ fontSize: fieldFontSize, color: colors.text }}>
+                        {option.name}
+                      </Box>
+                    );
+                  }}
+                  renderInput={(params) => {
+                    // renderProjectInput
+                    return (
+                      <TextField
+                        {...params}
+                        sx={fieldSx}
+                        fullWidth
+                        label="Project"
+                        size="small"
+                        helperText={projectsLoading ? "Loading projects..." : "Select a project to manage its tags."}
+                      />
+                    );
+                  }}
+                  disableClearable={projectOptions.length > 0}
+                  disabled={projectsLoading || Boolean(projectsError) || projectOptions.length === 0}
                 />
+
+
               </Grid>
             </Grid>
           </CardContent>
@@ -1201,36 +1259,43 @@ export default function SettingsPage() {
             <Stack spacing={1.25}>
               {projectsError && <Alert severity="error">{projectsError}</Alert>}
 
-              <Autocomplete
+              <Autocomplete<ProjectOption, false, boolean, false>
                 PaperComponent={autocompletePaperComponent}
                 options={projectOptions}
-                value={selectedProject}
+                value={projectAutocompleteValue}
                 loading={projectsLoading}
                 getOptionLabel={(o) => String((o as any)?.name ?? "")}
                 isOptionEqualToValue={(a, b) => String((a as any)?.id) === String((b as any)?.id)}
                 onChange={(_, next) => {
                   // onProjectSelectionChange
-                  const nextSelected = next ?? projectOptions[0];
-                  setSelectedProject(nextSelected);
+                  if (!next) return;
+                  setSelectedProject(next);
                 }}
-                renderOption={(props, option) => (
-                  <Box component="li" {...props} sx={{ fontSize: fieldFontSize, color: colors.text }}>
-                    {option.name}
-                  </Box>
-                )}
-                renderInput={(params) => (
-                  <TextField
-                    {...params}
-                    sx={fieldSx}
-                    fullWidth
-                    label="Project"
-                    size="small"
-                    helperText={projectsLoading ? "Loading projects..." : "Select a project to manage its tags."}
-                  />
-                )}
-                disableClearable
-                disabled={projectsLoading || !!projectsError || projectOptions.length === 0}
+                renderOption={(props, option) => {
+                  // renderProjectOption
+                  return (
+                    <Box component="li" {...props} sx={{ fontSize: fieldFontSize, color: colors.text }}>
+                      {option.name}
+                    </Box>
+                  );
+                }}
+                renderInput={(params) => {
+                  // renderProjectInput
+                  return (
+                    <TextField
+                      {...params}
+                      sx={fieldSx}
+                      fullWidth
+                      label="Project"
+                      size="small"
+                      helperText={projectsLoading ? "Loading projects..." : "Select a project to manage its tags."}
+                    />
+                  );
+                }}
+                disableClearable={projectOptions.length > 0}
+                disabled={projectsLoading || Boolean(projectsError) || projectOptions.length === 0}
               />
+
 
               {!projectsLoading && !projectsError && !hasProjects ? (
                 <Alert severity="info">No projects found.</Alert>
@@ -1239,11 +1304,8 @@ export default function SettingsPage() {
               ) : (
                 <>
                   <TagManager
-                    key={String(selectedProjectId)}
                     projectId={selectedProjectId as any}
                     title="Tags"
-                    tags={tags as ProtocolTag[]}
-                    onTagsChange={setTags}
                   />
 
                   <Typography sx={{ mt: 0.5, fontSize: 12, color: colors.muted }}>
