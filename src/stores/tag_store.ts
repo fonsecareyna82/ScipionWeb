@@ -2,10 +2,6 @@
 import { useMemo, useSyncExternalStore } from "react";
 import type { ProtocolTag } from "@/components/tags/tagTypes";
 
-const tagsStorageKeyV1 = "scipion.tags.v1";
-const tagAssignmentsStorageKeyV1 = "scipion.protocolTagAssignments.v1";
-const tagsStorageKeyV2 = "scipion.tags.v2";
-
 type StoredTagAssignments = Record<string, Record<string, string[]>>;
 
 type TagStateV2 = {
@@ -15,20 +11,7 @@ type TagStateV2 = {
   assignments: StoredTagAssignments;
 };
 
-type TagPersistenceDriver = {
-  load: () => TagStateV2;
-  save: (next: TagStateV2) => void;
-};
-
-function safeParseJson<T>(raw: string | null, fallback: T): T {
-  // safeParseJson
-  try {
-    if (!raw) return fallback;
-    return JSON.parse(raw) as T;
-  } catch {
-    return fallback;
-  }
-}
+type TagStoreSnapshot = TagStateV2;
 
 function uniqStrings(values: string[]): string[] {
   // uniqStrings
@@ -66,75 +49,12 @@ function reconcileAssignments(tags: ProtocolTag[], assignments: StoredTagAssignm
   return next;
 }
 
-function migrateFromV1IfNeeded(): TagStateV2 | null {
-  // migrateFromV1IfNeeded
-  if (typeof window === "undefined") return null;
-
-  const existingV2 = window.localStorage.getItem(tagsStorageKeyV2);
-  if (existingV2) return null;
-
-  const tagsV1Raw = window.localStorage.getItem(tagsStorageKeyV1);
-  const assignmentsV1Raw = window.localStorage.getItem(tagAssignmentsStorageKeyV1);
-
-  const tags = Array.isArray(safeParseJson<any>(tagsV1Raw, []))
-    ? (safeParseJson<any>(tagsV1Raw, []) as ProtocolTag[])
-    : [];
-
-  const assignments = safeParseJson<any>(assignmentsV1Raw, {}) as StoredTagAssignments;
-
-  const migrated: TagStateV2 = {
-    version: 2,
-    updatedAt: Date.now(),
-    tags,
-    assignments: reconcileAssignments(tags, assignments),
-  };
-
-  return migrated;
-}
-
-function createLocalStorageDriver(): TagPersistenceDriver {
-  // createLocalStorageDriver
-  return {
-    load: () => {
-      if (typeof window === "undefined") {
-        return { version: 2, updatedAt: 0, tags: [], assignments: {} };
-      }
-
-      const migrated = migrateFromV1IfNeeded();
-      if (migrated) {
-        window.localStorage.setItem(tagsStorageKeyV2, JSON.stringify(migrated));
-        return migrated;
-      }
-
-      const raw = window.localStorage.getItem(tagsStorageKeyV2);
-      const parsed = safeParseJson<any>(raw, null);
-
-      const tags = Array.isArray(parsed?.tags) ? (parsed.tags as ProtocolTag[]) : [];
-      const assignments =
-        parsed?.assignments && typeof parsed.assignments === "object"
-          ? (parsed.assignments as StoredTagAssignments)
-          : {};
-
-      const normalized: TagStateV2 = {
-        version: 2,
-        updatedAt: typeof parsed?.updatedAt === "number" ? parsed.updatedAt : Date.now(),
-        tags,
-        assignments: reconcileAssignments(tags, assignments),
-      };
-
-      return normalized;
-    },
-    save: (next) => {
-      if (typeof window === "undefined") return;
-      window.localStorage.setItem(tagsStorageKeyV2, JSON.stringify(next));
-    },
-  };
-}
-
-type TagStoreSnapshot = TagStateV2;
-
-let driver: TagPersistenceDriver = createLocalStorageDriver();
-let state: TagStateV2 = driver.load();
+let state: TagStateV2 = {
+  version: 2,
+  updatedAt: 0,
+  tags: [],
+  assignments: {},
+};
 
 const listeners = new Set<() => void>();
 
@@ -150,7 +70,6 @@ function setState(updater: (prev: TagStateV2) => TagStateV2): void {
   if (next === state) return; // bailOutWhenNoChanges
 
   state = next;
-  driver.save(state);
   notifyListeners();
 }
 
@@ -162,18 +81,8 @@ function getSnapshot(): TagStoreSnapshot {
 function subscribe(listener: () => void): () => void {
   // subscribe
   listeners.add(listener);
-
-  const onStorage = (e: StorageEvent) => {
-    if (e.key !== tagsStorageKeyV2) return;
-    state = driver.load();
-    notifyListeners();
-  };
-
-  if (typeof window !== "undefined") window.addEventListener("storage", onStorage);
-
   return () => {
     listeners.delete(listener);
-    if (typeof window !== "undefined") window.removeEventListener("storage", onStorage);
   };
 }
 
@@ -193,7 +102,6 @@ function setTags(nextTags: ProtocolTag[]): void {
     return { ...prev, updatedAt: Date.now(), tags, assignments };
   });
 }
-
 
 function deleteTag(tagId: string): void {
   // deleteTag
@@ -238,14 +146,12 @@ function setAssignedTagIds(
   });
 }
 
-function getAssignedTagIds(
-  projectId: string | number | undefined,
-  protocolId: string | number | undefined,
-): string[] {
+function getAssignedTagIds(projectId: string | number | undefined, protocolId: string | number | undefined): string[] {
   // getAssignedTagIds
   const pid = String(projectId ?? "global");
   const prId = String(protocolId ?? "");
   if (!prId) return [];
+
   const raw = state.assignments?.[pid]?.[prId] ?? [];
   const tagsById = buildTagsById(state.tags);
   return uniqStrings(raw).filter((x) => tagsById.has(String(x)));
@@ -255,10 +161,7 @@ function getAssignedTagIds(
  * Replace all assignments for a given project.
  * `projectMap` must be: { [protocolId]: [tagId, ...] }
  */
-function setProjectAssignments(
-  projectId: string | number | undefined,
-  projectMap: Record<string, string[]>,
-): void {
+function setProjectAssignments(projectId: string | number | undefined, projectMap: Record<string, string[]>): void {
   // setProjectAssignments
   const pid = String(projectId ?? "");
   if (!pid || pid === "null" || pid === "undefined") return;
@@ -294,10 +197,7 @@ function setProjectAssignments(
  * Merge assignments for a given project (partial update).
  * Only protocols present in `projectMap` are updated.
  */
-function mergeProjectAssignments(
-  projectId: string | number | undefined,
-  projectMap: Record<string, string[]>,
-): void {
+function mergeProjectAssignments(projectId: string | number | undefined, projectMap: Record<string, string[]>): void {
   // mergeProjectAssignments
   const pid = String(projectId ?? "");
   if (!pid || pid === "null" || pid === "undefined") return;

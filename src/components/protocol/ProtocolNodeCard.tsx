@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import type {
+  CSSProperties,
   Dispatch,
   DragEvent as ReactDragEvent,
   MouseEvent as ReactMouseEvent,
@@ -68,12 +69,8 @@ import type {
   ProtocolTag as ServiceProtocolTag,
 } from "@/services/ProjectService";
 
-
 import type { ProtocolTag } from "@/components/tags/tagTypes";
-
-// Uses your tag store hook (no selector args)
 import { useTagStore } from "@/stores/tag_store";
-
 import { useProjectService } from "@/ProjectServiceContext";
 
 const statusColors: Record<string, string> = {
@@ -125,7 +122,8 @@ type StatusNodeProps = {
     __pathVer?: number;
     projectId?: string | number;
 
-    // tags (can be list of ids or objects; normalized later)
+    // tags assigned to this protocol (backend provides this)
+    // can be ids or objects; normalized later
     tags?: any[];
   };
 
@@ -188,7 +186,8 @@ const normalizeOutputItem = (outputObj: unknown): NormalizedOutput | null => {
 
   const flatCandidate = outputObj as Record<string, unknown>;
 
-  const hasAnyClassHint = "paramClass" in flatCandidate || "pointerClass" in flatCandidate || "_class" in flatCandidate;
+  const hasAnyClassHint =
+    "paramClass" in flatCandidate || "pointerClass" in flatCandidate || "_class" in flatCandidate;
 
   const looksLikeOutput =
     hasAnyClassHint &&
@@ -235,7 +234,8 @@ const normalizeOutputItem = (outputObj: unknown): NormalizedOutput | null => {
     if (wrappedValue && typeof wrappedValue === "object") {
       const wrappedDef = wrappedValue as Record<string, unknown>;
 
-      const hasAnyWrappedClassHint = "paramClass" in wrappedDef || "pointerClass" in wrappedDef || "_class" in wrappedDef;
+      const hasAnyWrappedClassHint =
+        "paramClass" in wrappedDef || "pointerClass" in wrappedDef || "_class" in wrappedDef;
 
       if (hasAnyWrappedClassHint) {
         const pointerClass =
@@ -355,27 +355,6 @@ function normalizeTagIdsFromRaw(rawTags: unknown, allTags: ProtocolTag[]): strin
   return uniqStrings(out);
 }
 
-type TagAssignments = Record<string, Record<string, string[]>>;
-
-type TagStoreApi = {
-  tags?: ProtocolTag[];
-  tagsById?: Map<string, ProtocolTag>;
-  assignments?: TagAssignments;
-  setTags?: (nextTags: ProtocolTag[]) => void;
-
-  getAssignedTagIds?: (projectId: string | number | undefined, protocolId: string | number | undefined) => string[];
-  setAssignedTagIds?: (
-    projectId: string | number | undefined,
-    protocolId: string | number | undefined,
-    nextTagIds: string[],
-  ) => void;
-  setAssignedTagIdsBatch?: (updates: Array<{ projectId: string | number | undefined; protocolId: string; tagIds: string[] }>) => void;
-};
-
-const tagDefsCacheByProjectId = new Map<string, ProtocolTag[]>();
-const tagDefsInFlightByProjectId = new Map<string, Promise<ProtocolTag[]>>();
-let tagDefsStoreProjectId: string | null = null;
-
 function coerceErrorMessage(e: any, fallback: string): string {
   // coerceErrorMessage
   const msg =
@@ -393,9 +372,7 @@ function normalizeTagDef(raw: any): ProtocolTag | null {
   if (!id || !title) return null;
 
   const description =
-    typeof raw?.description === "string" && raw.description.trim()
-      ? raw.description.trim()
-      : undefined;
+    typeof raw?.description === "string" && raw.description.trim() ? raw.description.trim() : undefined;
 
   return {
     id,
@@ -416,6 +393,9 @@ function normalizeTagDefList(raw: unknown): ProtocolTag[] {
   return out;
 }
 
+const tagDefsCacheByProjectId = new Map<string, ProtocolTag[]>();
+const tagDefsInFlightByProjectId = new Map<string, Promise<ProtocolTag[]>>();
+let tagDefsStoreProjectId: string | null = null;
 
 export default function ProtocolNodeCard({
   data,
@@ -444,6 +424,7 @@ export default function ProtocolNodeCard({
 }: StatusNodeProps) {
   const svc = useProjectService();
   const svcRef = useRef(svc);
+
   useEffect(() => {
     // syncSvcRef
     svcRef.current = svc;
@@ -459,7 +440,7 @@ export default function ProtocolNodeCard({
   const suppressNextMenuActionRef = useRef(false);
 
   const armSuppressNextMenuAction = useCallback(() => {
-    // suppressNextMenuAction
+    // armSuppressNextMenuAction
     suppressNextMenuActionRef.current = true;
 
     window.setTimeout(() => {
@@ -473,7 +454,7 @@ export default function ProtocolNodeCard({
   const bgColor = statusColors[data.status ?? "finished"] ?? statusColors.root;
   data.color = bgColor;
 
-  const nodeStyle: React.CSSProperties = {
+  const nodeStyle: CSSProperties = {
     backgroundColor: bgColor,
   };
 
@@ -487,19 +468,7 @@ export default function ProtocolNodeCard({
     .filter(Boolean)
     .join(" ");
 
-  // tagStateFromStore (no selector args)
-  const tagStore = useTagStore() as unknown as TagStoreApi;
-
-  const storeTags: ProtocolTag[] = Array.isArray(tagStore?.tags) ? (tagStore.tags as ProtocolTag[]) : [];
-  const storeSetTags = typeof tagStore?.setTags === "function" ? tagStore.setTags : null;
-
-  const getAssignedTagIds = tagStore?.getAssignedTagIds;
-  const setAssignedTagIds = tagStore?.setAssignedTagIds;
-  const setAssignedTagIdsBatch = tagStore?.setAssignedTagIdsBatch;
-
-  const [remoteTagDefs, setRemoteTagDefs] = useState<ProtocolTag[]>([]);
-  const [isTagDefsLoading, setIsTagDefsLoading] = useState(false);
-
+  const reactFlow = useReactFlow();
 
   const normalizedProjectId = useMemo(() => {
     // normalizedProjectId
@@ -508,6 +477,18 @@ export default function ProtocolNodeCard({
     return data.projectId as Id;
   }, [data.projectId]);
 
+  const normalizedProtocolId = useMemo(() => {
+    // normalizedProtocolId
+    const s = String(data.id ?? "").trim();
+    if (!s || s === "null" || s === "undefined") return null;
+    return data.id as Id;
+  }, [data.id]);
+
+  const { tags: storeTagDefs, setTags: storeSetTags } = useTagStore();
+
+  const [remoteTagDefs, setRemoteTagDefs] = useState<ProtocolTag[]>([]);
+  const [isTagDefsLoading, setIsTagDefsLoading] = useState(false);
+
   const canReadTagDefsFromBackend =
     normalizedProjectId != null && typeof (svcRef.current as any)?.listProjectTags === "function";
 
@@ -515,22 +496,19 @@ export default function ProtocolNodeCard({
     // loadTagDefinitionsFromBackend
     if (!canReadTagDefsFromBackend) return;
 
-    const pidKey = String(normalizedProjectId);
+    const pidKey = String(normalizedProjectId ?? "").trim();
     if (!pidKey) return;
 
     const storeTagsAreForThisProject = tagDefsStoreProjectId === pidKey;
-    const alreadyCached = tagDefsCacheByProjectId.get(pidKey);
-    if (alreadyCached && alreadyCached.length > 0) {
-      if (storeSetTags) {
-        tagDefsStoreProjectId = pidKey;
-        storeSetTags(alreadyCached);
-      } else {
-        setRemoteTagDefs(alreadyCached);
-      }
+    const cached = tagDefsCacheByProjectId.get(pidKey);
+
+    if (cached && cached.length > 0) {
+      tagDefsStoreProjectId = pidKey;
+      storeSetTags?.(cached);
       return;
     }
 
-    if (storeTags.length > 0 && storeTagsAreForThisProject) return;
+    if (Array.isArray(storeTagDefs) && storeTagDefs.length > 0 && storeTagsAreForThisProject) return;
 
     let cancelled = false;
     setIsTagDefsLoading(true);
@@ -545,19 +523,14 @@ export default function ProtocolNodeCard({
         return list;
       })();
 
-    if (!existingPromise) {
-      tagDefsInFlightByProjectId.set(pidKey, promise);
-    }
+    if (!existingPromise) tagDefsInFlightByProjectId.set(pidKey, promise);
 
     promise
       .then((list) => {
         if (cancelled) return;
-        if (storeSetTags) {
-          tagDefsStoreProjectId = pidKey;
-          storeSetTags(list);
-        } else {
-          setRemoteTagDefs(list);
-        }
+        tagDefsStoreProjectId = pidKey;
+        storeSetTags?.(list);
+        setRemoteTagDefs(list);
       })
       .catch((e) => {
         if (cancelled) return;
@@ -575,32 +548,28 @@ export default function ProtocolNodeCard({
       // cleanup
       cancelled = true;
     };
-  }, [canReadTagDefsFromBackend, normalizedProjectId, storeTags.length, storeSetTags]);
+  }, [canReadTagDefsFromBackend, normalizedProjectId, storeSetTags, storeTagDefs]);
 
+  const tagDefs: ProtocolTag[] = useMemo(() => {
+    // tagDefs
+    const pidKey = normalizedProjectId != null ? String(normalizedProjectId) : "";
+    const cached = pidKey ? tagDefsCacheByProjectId.get(pidKey) : null;
 
-  const normalizedProtocolId = useMemo(() => {
-    // normalizedProtocolId
-    const s = String(data.id ?? "").trim();
-    if (!s || s === "null" || s === "undefined") return null;
-    return data.id as Id;
-  }, [data.id]);
+    if (cached && cached.length > 0) return cached;
+
+    const storeTagsAreForThisProject = pidKey && tagDefsStoreProjectId === pidKey;
+    if (storeTagsAreForThisProject && Array.isArray(storeTagDefs) && storeTagDefs.length > 0) return storeTagDefs;
+
+    return remoteTagDefs;
+  }, [normalizedProjectId, remoteTagDefs, storeTagDefs]);
 
   const backendAssignmentsWriteEnabled =
     normalizedProjectId != null &&
     normalizedProtocolId != null &&
     typeof (svcRef.current as any)?.setProtocolTagIds === "function";
 
-  // optimisticTagIdsCache
   const optimisticTagIdsByProtocolRef = useRef<Record<string, string[]>>({});
   const [optimisticRevision, setOptimisticRevision] = useState(0);
-
-  const reactFlow = useReactFlow();
-
-  type TagTarget = {
-    protocolId: string;
-    projectId: string | number | undefined;
-    rawTags: unknown;
-  };
 
   const updateReactFlowNodeTags = useCallback(
     (updates: Array<{ protocolId: string; tagIds: string[] }>) => {
@@ -630,6 +599,12 @@ export default function ProtocolNodeCard({
     [reactFlow],
   );
 
+  type TagTarget = {
+    protocolId: string;
+    projectId: string | number | undefined;
+    rawTags: unknown;
+  };
+
   const getSelectedTagTargets = useCallback((): TagTarget[] => {
     // getSelectedTagTargets
     try {
@@ -639,7 +614,6 @@ export default function ProtocolNodeCard({
       const currentId = String(data.id);
       const currentNode = nodes.find((n) => String(n.id) === currentId);
 
-      // Critical: only apply to selection if the right-clicked node is part of the selection.
       const currentIsSelected = selectedNodes.some((n) => String(n.id) === currentId);
       const baseNodes = currentIsSelected ? selectedNodes : currentNode ? [currentNode] : [];
 
@@ -671,35 +645,23 @@ export default function ProtocolNodeCard({
     }
   }, [reactFlow, data.id, data.projectId, data]);
 
-  const allTags: ProtocolTag[] = useMemo(() => {
-    // allTags
-    const pidKey = normalizedProjectId != null ? String(normalizedProjectId) : "";
-    const cached = pidKey ? tagDefsCacheByProjectId.get(pidKey) : null;
-
-    if (cached && cached.length > 0) return cached;
-    if (storeTags.length > 0) return storeTags;
-    return remoteTagDefs;
-  }, [normalizedProjectId, storeTags, remoteTagDefs]);
-
+  const getTagIdsFromNodeRaw = useCallback(
+    (rawTags: unknown): string[] => {
+      // getTagIdsFromNodeRaw
+      if (!Array.isArray(rawTags)) return [];
+      return uniqStrings(normalizeTagIdsFromRaw(rawTags, tagDefs));
+    },
+    [tagDefs],
+  );
 
   const getEffectiveAssignedForTarget = useCallback(
-    (projectId: string | number | undefined, protocolId: string, rawTags: unknown): string[] => {
+    (protocolId: string, rawTags: unknown): string[] => {
       // getEffectiveAssignedForTarget
       const optimistic = optimisticTagIdsByProtocolRef.current[String(protocolId)];
       if (Array.isArray(optimistic)) return uniqStrings(optimistic);
-
-      // Prefer node data if present (even empty array means "explicitly no tags")
-      if (Array.isArray(rawTags)) return uniqStrings(normalizeTagIdsFromRaw(rawTags, allTags));
-
-      // Fallback to store
-      if (typeof getAssignedTagIds === "function") {
-        const stored = getAssignedTagIds(projectId, protocolId) ?? [];
-        return uniqStrings(stored);
-      }
-
-      return [];
+      return getTagIdsFromNodeRaw(rawTags);
     },
-    [allTags, getAssignedTagIds],
+    [getTagIdsFromNodeRaw],
   );
 
   const applyTagUpdatesOptimistically = useCallback(
@@ -707,28 +669,11 @@ export default function ProtocolNodeCard({
       // applyTagUpdatesOptimistically
       if (updates.length === 0) return;
 
-      // Update optimistic cache first (used for immediate UI / repeated toggles)
       for (const u of updates) {
         optimisticTagIdsByProtocolRef.current[String(u.protocolId)] = [...u.tagIds];
       }
       setOptimisticRevision((v) => v + 1);
 
-      // Update store if available
-      if (typeof setAssignedTagIdsBatch === "function") {
-        setAssignedTagIdsBatch(
-          updates.map((u) => ({
-            projectId: u.projectId,
-            protocolId: String(u.protocolId),
-            tagIds: [...u.tagIds],
-          })),
-        );
-      } else if (typeof setAssignedTagIds === "function") {
-        for (const u of updates) {
-          setAssignedTagIds(u.projectId, u.protocolId, [...u.tagIds]);
-        }
-      }
-
-      // Update ReactFlow node data.tags to force consistent re-render
       updateReactFlowNodeTags(
         updates.map((u) => ({
           protocolId: String(u.protocolId),
@@ -736,7 +681,7 @@ export default function ProtocolNodeCard({
         })),
       );
     },
-    [setAssignedTagIds, setAssignedTagIdsBatch, updateReactFlowNodeTags],
+    [updateReactFlowNodeTags],
   );
 
   const persistTagUpdatesToBackend = useCallback(
@@ -757,12 +702,8 @@ export default function ProtocolNodeCard({
     (tagId: string) => {
       // toggleTagSelectionForSelection
       if (isProjectNode) return;
-      if (typeof setAssignedTagIds !== "function" && typeof setAssignedTagIdsBatch !== "function") {
-        // Still allow UI via node data + optimistic cache if store is missing
-        // but avoid hard failure
-      }
 
-      const normalizedTagId = normalizeTagIdCandidate(tagId, allTags);
+      const normalizedTagId = normalizeTagIdCandidate(tagId, tagDefs);
       if (!normalizedTagId) return;
 
       const targets = getSelectedTagTargets();
@@ -771,11 +712,13 @@ export default function ProtocolNodeCard({
       const run = async () => {
         // run
         const currentByTarget = targets.map((t) => {
-          const current = getEffectiveAssignedForTarget(t.projectId, String(t.protocolId), t.rawTags);
+          const current = getEffectiveAssignedForTarget(String(t.protocolId), t.rawTags);
           return { ...t, current };
         });
 
-        const allHaveTag = currentByTarget.every((t) => t.current.some((x) => String(x) === String(normalizedTagId)));
+        const allHaveTag = currentByTarget.every((t) =>
+          t.current.some((x) => String(x) === String(normalizedTagId)),
+        );
 
         const updates = currentByTarget.map((t) => {
           const next = allHaveTag
@@ -795,81 +738,65 @@ export default function ProtocolNodeCard({
           tagIds: uniqStrings(t.current),
         }));
 
-        // optimistic update
         applyTagUpdatesOptimistically(updates);
 
         try {
           await persistTagUpdatesToBackend(updates);
         } catch (e: any) {
-          // rollback on error
           applyTagUpdatesOptimistically(rollback);
-          toast.error(typeof e?.message === "string" ? e.message : "Failed to update tags");
+          toast.error(coerceErrorMessage(e, "Failed to update tags"));
         }
       };
 
       void run();
     },
     [
-      allTags,
       applyTagUpdatesOptimistically,
       getEffectiveAssignedForTarget,
       getSelectedTagTargets,
       isProjectNode,
       persistTagUpdatesToBackend,
-      setAssignedTagIds,
-      setAssignedTagIdsBatch,
+      tagDefs,
     ],
   );
 
-  // Effective assigned ids for THIS node (UI source of truth)
   const rawNodeTags = (data as any)?.tags;
+
   const effectiveAssignedTagIds = useMemo(() => {
     // effectiveAssignedTagIds
     const optimistic = optimisticTagIdsByProtocolRef.current[String(data.id)];
     if (Array.isArray(optimistic)) return uniqStrings(optimistic);
-
-    // Prefer node data if it is an array (even empty is meaningful)
-    if (Array.isArray(rawNodeTags)) return uniqStrings(normalizeTagIdsFromRaw(rawNodeTags, allTags));
-
-    // Fallback to store
-    if (typeof getAssignedTagIds === "function") return uniqStrings(getAssignedTagIds(data.projectId, data.id) ?? []);
-
-    return [];
-  }, [allTags, data.id, data.projectId, getAssignedTagIds, rawNodeTags, optimisticRevision]);
+    return getTagIdsFromNodeRaw(rawNodeTags);
+  }, [data.id, getTagIdsFromNodeRaw, rawNodeTags, optimisticRevision]);
 
   const selectedTagIds = useMemo(() => {
     // selectedTagIds
-    return filterExistingTagIds(effectiveAssignedTagIds, allTags);
-  }, [effectiveAssignedTagIds, allTags]);
+    return filterExistingTagIds(effectiveAssignedTagIds, tagDefs);
+  }, [effectiveAssignedTagIds, tagDefs]);
 
   useEffect(() => {
     // pruneOrphanAssignments
     if (isProjectNode) return;
-    if (allTags.length === 0) return;
+    if (tagDefs.length === 0) return;
 
     if (selectedTagIds.length !== effectiveAssignedTagIds.length) {
-      applyTagUpdatesOptimistically([
+      const updates = [
         {
           projectId: data.projectId,
           protocolId: String(data.id),
           tagIds: selectedTagIds,
         },
-      ]);
+      ];
+
+      applyTagUpdatesOptimistically(updates);
 
       if (backendAssignmentsWriteEnabled) {
-        void persistTagUpdatesToBackend([
-          {
-            projectId: data.projectId,
-            protocolId: String(data.id),
-            tagIds: selectedTagIds,
-          },
-        ]).catch(() => {
+        void persistTagUpdatesToBackend(updates).catch(() => {
           // ignore
         });
       }
     }
   }, [
-    allTags.length,
     applyTagUpdatesOptimistically,
     backendAssignmentsWriteEnabled,
     data.id,
@@ -878,6 +805,7 @@ export default function ProtocolNodeCard({
     isProjectNode,
     persistTagUpdatesToBackend,
     selectedTagIds,
+    tagDefs.length,
   ]);
 
   const selectedTagSet = useMemo(() => {
@@ -887,8 +815,8 @@ export default function ProtocolNodeCard({
 
   const tagsById = useMemo(() => {
     // tagsById
-    return new Map(allTags.map((t) => [String(t.id), t]));
-  }, [allTags]);
+    return new Map(tagDefs.map((t) => [String(t.id), t]));
+  }, [tagDefs]);
 
   const selectedTags = useMemo(() => {
     // selectedTags
@@ -906,7 +834,7 @@ export default function ProtocolNodeCard({
   );
 
   const handleManageTags = useCallback(() => {
-    // openTagsManager
+    // handleManageTags
     if (isProjectNode) return;
     onManageTags?.(data.id, data.projectId, data.label);
   }, [data.id, data.projectId, data.label, isProjectNode, onManageTags]);
@@ -1088,13 +1016,12 @@ export default function ProtocolNodeCard({
 
   const contentClassName = [styles.content, isContentExpanded ? styles.contentExpanded : styles.contentCollapsed].join(" ");
 
-  const contentStyle: React.CSSProperties = {
+  const contentStyle: CSSProperties = {
     opacity: isContentExpanded ? 1 : 0,
     transition: "max-height 520ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 260ms ease-in-out",
     willChange: "max-height, opacity",
   };
 
-  // Output viewer state
   const [analyzeOpen, setAnalyzeOpen] = useState(false);
   const [analyzeTarget, setAnalyzeTarget] = useState<{
     outputName: string;
@@ -1115,7 +1042,7 @@ export default function ProtocolNodeCard({
 
   const openOutputViewer = useCallback(
     async (outputName: string, outputRaw: any, normalized?: NormalizedOutput | null) => {
-      // openOutputViewerWithBackendResolve
+      // openOutputViewer
       if (!canOpenViewer) return;
 
       const maybeResolve = service?.resolveAnalyzeViewer;
@@ -1136,7 +1063,7 @@ export default function ProtocolNodeCard({
           const decision = await maybeResolve(ctx);
           if (decision?.handled === true) {
             const opened = openDecisionUrl(decision);
-            if (opened) return; // handledByExternalViewer
+            if (opened) return;
           }
         } catch {
           // ignoreResolveErrorsAndFallbackToInternal
@@ -1383,8 +1310,8 @@ export default function ProtocolNodeCard({
 
                         <DropdownMenuSeparator />
 
-                        {allTags.length > 0 ? (
-                          allTags.map((tag) => {
+                        {tagDefs.length > 0 ? (
+                          tagDefs.map((tag) => {
                             const isChecked = selectedTagSet.has(String(tag.id));
                             return (
                               <DropdownMenuItem
@@ -1408,7 +1335,11 @@ export default function ProtocolNodeCard({
                                   </span>
 
                                   <span className={styles.menuRight}>
-                                    {isChecked ? <Check className={styles.menuCheckIcon} /> : <span className={styles.menuCheckPlaceholder} />}
+                                    {isChecked ? (
+                                      <Check className={styles.menuCheckIcon} />
+                                    ) : (
+                                      <span className={styles.menuCheckPlaceholder} />
+                                    )}
                                   </span>
                                 </div>
                               </DropdownMenuItem>
@@ -1433,7 +1364,6 @@ export default function ProtocolNodeCard({
                         )}
                       </DropdownMenuSubContent>
                     </DropdownMenuSub>
-
 
                     <DropdownMenuItem>
                       <div className={styles.menuRow}>
@@ -1594,7 +1524,7 @@ export default function ProtocolNodeCard({
                                   e.stopPropagation();
                                 }}
                                 onClick={(e) => {
-                                  // openViewerWithBackendResolve
+                                  // openViewer
                                   e.preventDefault();
                                   e.stopPropagation();
                                   if (!isViewerEnabled) return;
@@ -1853,8 +1783,8 @@ export default function ProtocolNodeCard({
 
             <ContextMenuSeparator />
 
-            {allTags.length > 0 ? (
-              allTags.map((tag) => {
+            {tagDefs.length > 0 ? (
+              tagDefs.map((tag) => {
                 const isChecked = selectedTagSet.has(String(tag.id));
                 return (
                   <ContextMenuItem
@@ -1903,7 +1833,6 @@ export default function ProtocolNodeCard({
             )}
           </ContextMenuSubContent>
         </ContextMenuSub>
-
 
         <ContextMenuItem>
           <div className={styles.menuRow}>

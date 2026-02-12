@@ -38,7 +38,6 @@ import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 
 import TagManager from "@/components/tags/TagManager";
 import type { ProtocolTag } from "@/components/tags/tagTypes";
-import { useTagStore } from "@/stores/tag_store";
 
 type TabKey = "user" | "instance" | "tags";
 
@@ -260,7 +259,7 @@ function getTimeZoneOptions(): string[] {
       }
     }
   } catch {
-    // ignore and use fallback
+    // ignoreAndUseFallback
   }
 
   return fallback;
@@ -293,27 +292,8 @@ function getViewModeMeta(mode: WorkflowViewMode): { label: string; icon: React.R
   }
 }
 
-function readLocalStorageString(key: string): string {
-  // readLocalStorageString
-  try {
-    return localStorage.getItem(key) ?? "";
-  } catch {
-    return "";
-  }
-}
-
-function writeLocalStorageString(key: string, value: string): void {
-  // writeLocalStorageString
-  try {
-    localStorage.setItem(key, value);
-  } catch {
-    // ignore
-  }
-}
-
 export default function SettingsPage() {
   const svc = useProjectService() as any;
-
   const muiTheme = useTheme();
 
   const [darkClassEnabled, setDarkClassEnabled] = useState(false);
@@ -348,12 +328,10 @@ export default function SettingsPage() {
   const [instanceDraft, setInstanceDraft] = useState<InstanceSettings | null>(null);
   const [instanceLoadedOnce, setInstanceLoadedOnce] = useState(false);
 
-  const { tags, setTags } = useTagStore();
-
   const [showAdvanced, setShowAdvanced] = useState(false);
 
-  // tagsProjectSelectorState
-  const tagsSelectedProjectKey = "scipion.settings.tagsProjectId.v1";
+  // tagsUiState
+  const [tagsDraft, setTagsDraft] = useState<ProtocolTag[]>([]);
 
   const [projectOptions, setProjectOptions] = useState<ProjectOption[]>([]);
   const [projectsLoading, setProjectsLoading] = useState(false);
@@ -373,10 +351,7 @@ export default function SettingsPage() {
     return projectOptions[0];
   }, [projectOptions, selectedProject]);
 
-
   const projectsRequestInFlightRef = useRef(false);
-  const lastTagsProjectIdRef = useRef<string | null>(null);
-
 
   const selectedProjectId = useMemo(() => {
     // selectedProjectId
@@ -402,17 +377,15 @@ export default function SettingsPage() {
 
       const normalized: ProjectOption[] = Array.isArray(data)
         ? data
-          .map((p: any) => ({
-            id: String(p?.id ?? p?.projectId ?? p?.name ?? "").trim(),
-            name: String(p?.name ?? p?.title ?? p?.id ?? p?.projectId ?? "").trim(),
-          }))
-          .filter((p: ProjectOption) => p.id.length > 0 && p.name.length > 0)
+            .map((p: any) => ({
+              id: String(p?.id ?? p?.projectId ?? p?.name ?? "").trim(),
+              name: String(p?.name ?? p?.title ?? p?.id ?? p?.projectId ?? "").trim(),
+            }))
+            .filter((p: ProjectOption) => p.id.length > 0 && p.name.length > 0)
         : [];
 
       setProjectOptions(normalized);
       setProjectsLoadedOnce(true);
-
-      const storedId = readLocalStorageString(tagsSelectedProjectKey);
 
       setSelectedProject((prev) => {
         // computeNextSelectedProject
@@ -420,11 +393,6 @@ export default function SettingsPage() {
 
         if (prev && normalized.some((x) => String(x.id) === String(prev.id))) {
           return prev;
-        }
-
-        if (storedId) {
-          const match = normalized.find((x) => String(x.id) === String(storedId));
-          return match ?? normalized[0];
         }
 
         return normalized[0];
@@ -441,9 +409,7 @@ export default function SettingsPage() {
       setProjectsLoading(false);
       projectsRequestInFlightRef.current = false;
     }
-  }, [svc, tagsSelectedProjectKey]);
-
-
+  }, [svc]);
 
   useEffect(() => {
     // lazyLoadProjectsOnTagsTabOpen
@@ -451,24 +417,6 @@ export default function SettingsPage() {
     if (projectsLoadedOnce) return;
     void loadProjectsForTagsTab();
   }, [tab, projectsLoadedOnce, loadProjectsForTagsTab]);
-
-  useEffect(() => {
-    // persistSelectedTagsProject
-    if (tab !== "tags") return;
-
-    const pid = String(selectedProject?.id ?? "").trim();
-    if (!pid) {
-      lastTagsProjectIdRef.current = null;
-      return;
-    }
-
-    if (pid === lastTagsProjectIdRef.current) return;
-    lastTagsProjectIdRef.current = pid;
-
-    writeLocalStorageString(tagsSelectedProjectKey, pid);
-
-  }, [tab, selectedProject?.id, setTags]);
-
 
   const isDarkMode = useMemo(() => {
     // isDarkMode
@@ -773,13 +721,13 @@ export default function SettingsPage() {
           ? (userDraft ?? userBase ?? {})
           : tab === "instance"
             ? (instanceDraft ?? instanceBase ?? {})
-            : (tags ?? []);
+            : (tagsDraft ?? []);
       await copyToClipboard(safeStringify(payload));
       toast.success("Copied.");
     } catch {
       toast.error("Copy failed.");
     }
-  }, [tab, userDraft, userBase, instanceDraft, instanceBase, tags]);
+  }, [tab, userDraft, userBase, instanceDraft, instanceBase, tagsDraft]);
 
   const headerRight = useMemo(() => {
     // headerRight
@@ -945,48 +893,31 @@ export default function SettingsPage() {
         <Card variant="outlined" sx={cardSx}>
           <CardHeader title="Time" subheader="Time zone used for formatting and scheduling." sx={cardHeaderSx} />
           <CardContent sx={{ pt: 2 }}>
-            <Grid container spacing={2} sx={{ width: "100%" }}>
-              <Grid size={{ xs: 12 }}>
-                <Autocomplete<ProjectOption, false, boolean, false>
-                  PaperComponent={autocompletePaperComponent}
-                  options={projectOptions}
-                  value={projectAutocompleteValue}
-                  loading={projectsLoading}
-                  getOptionLabel={(o) => String((o as any)?.name ?? "")}
-                  isOptionEqualToValue={(a, b) => String((a as any)?.id) === String((b as any)?.id)}
-                  onChange={(_, next) => {
-                    // onProjectSelectionChange
-                    if (!next) return;
-                    setSelectedProject(next);
-                  }}
-                  renderOption={(props, option) => {
-                    // renderProjectOption
-                    return (
-                      <Box component="li" {...props} sx={{ fontSize: fieldFontSize, color: colors.text }}>
-                        {option.name}
-                      </Box>
-                    );
-                  }}
-                  renderInput={(params) => {
-                    // renderProjectInput
-                    return (
-                      <TextField
-                        {...params}
-                        sx={fieldSx}
-                        fullWidth
-                        label="Project"
-                        size="small"
-                        helperText={projectsLoading ? "Loading projects..." : "Select a project to manage its tags."}
-                      />
-                    );
-                  }}
-                  disableClearable={projectOptions.length > 0}
-                  disabled={projectsLoading || Boolean(projectsError) || projectOptions.length === 0}
-                />
-
-
-              </Grid>
-            </Grid>
+            <Autocomplete<string, false, boolean, false>
+              PaperComponent={autocompletePaperComponent}
+              options={timeZoneOptions}
+              value={userDraft.timeZone}
+              loading={userLoading}
+              onChange={(_, next) => {
+                // onTimeZoneChange
+                if (!next) return;
+                setUserDraft((prev) => (prev ? { ...prev, timeZone: String(next) } : prev));
+              }}
+              renderInput={(params) => {
+                // renderTimeZoneInput
+                return (
+                  <TextField
+                    {...params}
+                    sx={fieldSx}
+                    fullWidth
+                    label="Time zone"
+                    size="small"
+                    helperText="Select the time zone used across the UI."
+                  />
+                );
+              }}
+              disableClearable
+            />
           </CardContent>
         </Card>
 
@@ -1294,7 +1225,6 @@ export default function SettingsPage() {
                 disabled={projectsLoading || Boolean(projectsError) || projectOptions.length === 0}
               />
 
-
               {!projectsLoading && !projectsError && !hasProjects ? (
                 <Alert severity="info">No projects found.</Alert>
               ) : !selectedProjectId ? (
@@ -1304,6 +1234,8 @@ export default function SettingsPage() {
                   <TagManager
                     projectId={selectedProjectId as any}
                     title="Tags"
+                    tags={tagsDraft}
+                    onTagsChange={setTagsDraft}
                   />
 
                   <Typography sx={{ mt: 0.5, fontSize: 12, color: colors.muted }}>
@@ -1322,8 +1254,8 @@ export default function SettingsPage() {
     // advancedPayload
     if (tab === "user") return userDraft ?? userBase ?? {};
     if (tab === "instance") return instanceDraft ?? instanceBase ?? {};
-    return tags ?? [];
-  }, [tab, userDraft, userBase, instanceDraft, instanceBase, tags]);
+    return tagsDraft ?? [];
+  }, [tab, userDraft, userBase, instanceDraft, instanceBase, tagsDraft]);
 
   return (
     <>

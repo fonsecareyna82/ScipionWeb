@@ -339,30 +339,9 @@ function renderHelpText(helpText: string): JSX.Element {
 }
 
 
-// Tags
-
-const tagsStorageKey = "scipion.tags.v2";
-const tagsCatalogStorageKey = tagsStorageKey;
+// Tags (backend-driven; no localStorage)
 
 type ProtocolTagAssignments = Record<string, string[]>;
-
-// tagsStorageV2Shape: { version, updatedAt, tags: ProtocolTag[], assignments: { [projectKey]: { [protocolId]: string[] } } }
-type TagsStorageV2 = {
-  version?: number;
-  updatedAt?: number;
-  tags?: unknown;
-  assignments?: unknown;
-};
-
-function safeParseJsonValue<T = unknown>(raw: string | null): T | null {
-  // safeParseJsonValue
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw) as T;
-  } catch {
-    return null;
-  }
-}
 
 function normalizeTagIds(raw: unknown): string[] {
   // normalizeTagIds
@@ -381,202 +360,9 @@ function normalizeTagIds(raw: unknown): string[] {
   return Array.from(new Set(ids));
 }
 
-function normalizeProtocolTagAssignments(raw: unknown): ProtocolTagAssignments {
-  // normalizeProtocolTagAssignments
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
-  const out: ProtocolTagAssignments = {};
-  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
-    out[String(k)] = normalizeTagIds(v);
-  }
-  return out;
-}
-
-function looksLikeFlatAssignments(raw: unknown): boolean {
-  // looksLikeFlatAssignments
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return false;
-  const values = Object.values(raw as Record<string, unknown>);
-  return values.some((v) => Array.isArray(v) || typeof v === "string");
-}
-
-function uniqueNonEmptyStrings(items: unknown[]): string[] {
-  // uniqueNonEmptyStrings
-  const out: string[] = [];
-  const seen = new Set<string>();
-  for (const it of items) {
-    const s = String(it ?? "").trim();
-    if (!s || seen.has(s)) continue;
-    seen.add(s);
-    out.push(s);
-  }
-  return out;
-}
-
-function loadTagsCatalogFromStorage(): ProtocolTag[] {
-  // loadTagsCatalogFromStorage
-  if (typeof window === "undefined") return [];
-
-  const parsed = safeParseJsonValue<TagsStorageV2 | unknown>(localStorage.getItem(tagsCatalogStorageKey));
-
-  // legacyArraySupport: scipion.tags.v1 could have been ProtocolTag[]
-  if (Array.isArray(parsed)) return parsed as ProtocolTag[];
-
-  // v2ShapeSupport: { tags: [...] }
-  if (parsed && typeof parsed === "object" && Array.isArray((parsed as any).tags)) {
-    return (parsed as any).tags as ProtocolTag[];
-  }
-
-  return [];
-}
-
-function loadTagsFromStorage(): ProtocolTag[] {
-  // loadTagsFromStorage
-  return loadTagsCatalogFromStorage();
-}
-
-function saveTagsToStorage(tags: ProtocolTag[]): void {
-  // saveTagsToStorage
-  try {
-    if (typeof window === "undefined") return;
-
-    const prev = safeParseJsonValue<TagsStorageV2>(localStorage.getItem(tagsStorageKey));
-    const prevAssignments =
-      prev && typeof prev === "object" && prev.assignments && typeof prev.assignments === "object" && !Array.isArray(prev.assignments)
-        ? prev.assignments
-        : {};
-
-    const nextPayload = {
-      version: 2,
-      updatedAt: Date.now(),
-      tags: Array.isArray(tags) ? tags : [],
-      assignments: prevAssignments,
-    };
-
-    localStorage.setItem(tagsStorageKey, JSON.stringify(nextPayload));
-
-    // notifySameTabListeners
-    window.dispatchEvent(new Event("scipionTagsChanged"));
-  } catch {
-    // ignoreStorageErrors
-  }
-}
-
-function readAssignmentsFromTagsStoreV2(projectKeys: string[]): ProtocolTagAssignments | null {
-  // readAssignmentsFromTagsStoreV2
-  if (typeof window === "undefined") return null;
-
-  const keys = uniqueNonEmptyStrings(projectKeys ?? []);
-  if (!keys.length) return null;
-
-  const parsed = safeParseJsonValue<TagsStorageV2>(localStorage.getItem(tagsStorageKey));
-  if (!parsed || typeof parsed !== "object") return null;
-
-  const assignmentsRaw = (parsed as any).assignments;
-  if (!assignmentsRaw || typeof assignmentsRaw !== "object" || Array.isArray(assignmentsRaw)) return null;
-
-  // tryNestedByProjectKey: assignments[projectKey] -> { protocolId: tagIds[] }
-  for (const k of keys) {
-    const maybePerProject = (assignmentsRaw as any)[k];
-    if (maybePerProject && typeof maybePerProject === "object" && !Array.isArray(maybePerProject)) {
-      const normalized = normalizeProtocolTagAssignments(maybePerProject);
-      if (Object.keys(normalized).length) return normalized;
-    }
-  }
-
-  // fallbackToFlatIfNeeded: assignments could be directly { protocolId: tagIds[] }
-  if (looksLikeFlatAssignments(assignmentsRaw)) {
-    const normalized = normalizeProtocolTagAssignments(assignmentsRaw);
-    if (Object.keys(normalized).length) return normalized;
-  }
-
-  return null;
-}
-
-// legacyFallbackKeys (kept for backward compatibility)
-const globalAssignmentsStorageKeyV2 = "scipion.protocolTagAssignments.v2";
-const globalAssignmentsStorageKeyV1 = "scipion.protocolTagAssignments.v1";
-
-function loadTagAssignments(projectKeys: string[]): ProtocolTagAssignments {
-  // loadTagAssignments
-  const keys = uniqueNonEmptyStrings(projectKeys ?? []);
-  if (!keys.length) return {};
-
-  // preferV2Store: scipion.tags.v2.assignments
-  const v2 = readAssignmentsFromTagsStoreV2(keys);
-  if (v2) return v2;
-
-  // legacyGlobals
-  const globalRaw =
-    safeParseJsonValue<any>(localStorage.getItem(globalAssignmentsStorageKeyV2)) ??
-    safeParseJsonValue<any>(localStorage.getItem(globalAssignmentsStorageKeyV1));
-
-  if (globalRaw && typeof globalRaw === "object" && !Array.isArray(globalRaw)) {
-    for (const k of keys) {
-      const maybeNested = (globalRaw as any)[k];
-      if (maybeNested && typeof maybeNested === "object" && !Array.isArray(maybeNested)) {
-        const normalized = normalizeProtocolTagAssignments(maybeNested);
-        if (Object.keys(normalized).length) return normalized;
-      }
-    }
-
-    if (looksLikeFlatAssignments(globalRaw)) {
-      return normalizeProtocolTagAssignments(globalRaw);
-    }
-  }
-
-  // legacyPerProjectKey
-  for (const k of keys) {
-    const legacyKeyV2 = `project-${k}-protocol-tags.v2`;
-    const legacyKeyV1 = `project-${k}-protocol-tags.v1`;
-    const legacyRaw =
-      safeParseJsonValue<any>(localStorage.getItem(legacyKeyV2)) ??
-      safeParseJsonValue<any>(localStorage.getItem(legacyKeyV1));
-    if (legacyRaw && typeof legacyRaw === "object") {
-      const normalized = normalizeProtocolTagAssignments(legacyRaw);
-      if (Object.keys(normalized).length) return normalized;
-    }
-  }
-
-  return {};
-}
-
-function saveTagAssignments(projectKeys: string[], map: ProtocolTagAssignments): void {
-  // saveTagAssignments
-  const keys = uniqueNonEmptyStrings(projectKeys ?? []);
-  if (!keys.length) return;
-
-  try {
-    const prev = safeParseJsonValue<TagsStorageV2>(localStorage.getItem(tagsStorageKey));
-    const prevTags = Array.isArray((prev as any)?.tags) ? ((prev as any).tags as ProtocolTag[]) : loadTagsCatalogFromStorage();
-
-    const prevAssignments =
-      prev && typeof prev === "object" && prev.assignments && typeof prev.assignments === "object" && !Array.isArray(prev.assignments)
-        ? { ...(prev.assignments as any) }
-        : {};
-
-    for (const k of keys) {
-      (prevAssignments as any)[k] = map;
-    }
-
-    const nextPayload = {
-      version: 2,
-      updatedAt: Date.now(),
-      tags: prevTags,
-      assignments: prevAssignments,
-    };
-
-    localStorage.setItem(tagsStorageKey, JSON.stringify(nextPayload));
-  } catch {
-    // ignoreStorageErrors
-  }
-
-  // notifySameTabListeners
-  try {
-    window.dispatchEvent(new Event("scipionProtocolTagAssignmentsChanged"));
-    window.dispatchEvent(new Event("scipionTagsChanged"));
-  } catch {
-    // ignoreDispatchErrors
-  }
-}
+/** Try to read tag assignments from backend project payload if present.
++ * Accepts shapes like protocol.tagIds, protocol.tags (string[] or {id}[]), protocol.tag_ids.
++ */
 
 /** * Try to read tag assignments from backend project payload if present. * Accepts shapes like protocol.tagIds, protocol.tags (string[] or {id}[]). */
 function pickFirstNonEmptyTagIds(...candidates: unknown[]): string[] {
@@ -624,165 +410,36 @@ export default function ProjectPage() {
   const [isLoadingProject, setIsLoadingProject] = useState(true);
 
   // Tags states
-  const [allTags, setAllTags] = useState<ProtocolTag[]>(() => loadTagsCatalogFromStorage());
+  const [allTags, setAllTags] = useState<ProtocolTag[]>([]);
   const [tagManagerOpen, setTagManagerOpen] = useState(false);
-  const [assignTagsOpen, setAssignTagsOpen] = useState(false);
   const [tagFilterIds, setTagFilterIds] = useState<string[]>([]);
   const [tagAssignments, setTagAssignments] = useState<ProtocolTagAssignments>({});
-  const [assignDraftTagIds, setAssignDraftTagIds] = useState<string[]>([]);
-
-  const refreshTags = useCallback(() => {
-    // refreshTags
-    setAllTags(loadTagsCatalogFromStorage());
-  }, []);
-
-  const getTagAssignmentScopeKeys = useCallback((): string[] => {
-    // getTagAssignmentScopeKeys
-    const p: any = project as any;
-
-    return uniqueNonEmptyStrings([
-      p?.id,
-      p?.projectId,
-      p?.shortName,
-      projectName,
-    ]);
-  }, [project, projectName]);
-
-  const tagsRawRef = useRef<string | null>(null);
-  const assignmentsFingerprintRef = useRef<string>("");
-
-  useEffect(() => {
-    // syncTagsFromLocalStorageSameTab
-    const readTags = () => {
-      try {
-        const raw = localStorage.getItem(tagsCatalogStorageKey);
-        if (raw === tagsRawRef.current) return;
-        tagsRawRef.current = raw;
-        setAllTags(loadTagsCatalogFromStorage());
-      } catch {
-        // ignoreLocalStorageErrors
-      }
-    };
-
-    readTags();
-
-    const onCustom = () => readTags();
-    const onStorage = (e: StorageEvent) => {
-      if (e.key === tagsCatalogStorageKey) readTags();
-    };
-
-    window.addEventListener("scipionTagsChanged", onCustom);
-    window.addEventListener("storage", onStorage);
-
-    const timerId = window.setInterval(readTags, 500);
-
-    return () => {
-      window.removeEventListener("scipionTagsChanged", onCustom);
-      window.removeEventListener("storage", onStorage);
-      window.clearInterval(timerId);
-    };
-  }, []);
-
-  useEffect(() => {
-    // syncAssignmentsFromLocalStorageSameTab
-    if (!projectName) return;
-
-    const readAssignments = () => {
-      try {
-        const scopeKeys = getTagAssignmentScopeKeys();
-
-        // computeAssignmentsFingerprint
-        const parts: string[] = [];
-        parts.push(localStorage.getItem(tagsStorageKey) ?? ""); // includeTagsV2StoreBecauseItContainsAssignments
-        parts.push(localStorage.getItem(globalAssignmentsStorageKeyV2) ?? "");
-        parts.push(localStorage.getItem(globalAssignmentsStorageKeyV1) ?? "");
-
-        for (const k of uniqueNonEmptyStrings(scopeKeys)) {
-          parts.push(localStorage.getItem(`project-${k}-protocol-tags.v2`) ?? "");
-          parts.push(localStorage.getItem(`project-${k}-protocol-tags.v1`) ?? "");
-        }
-
-        const fingerprint = parts.join("|#|");
-        if (fingerprint === assignmentsFingerprintRef.current) return;
-        assignmentsFingerprintRef.current = fingerprint;
-
-        setTagAssignments(loadTagAssignments(scopeKeys));
-      } catch {
-        // ignoreLocalStorageErrors
-      }
-    };
-
-    readAssignments();
-
-    const onCustom = () => readAssignments();
-    const onStorage = (e: StorageEvent) => {
-      if (!e.key) return;
-      if (
-        e.key === globalAssignmentsStorageKeyV2 ||
-        e.key === globalAssignmentsStorageKeyV1 ||
-        e.key.startsWith("project-")
-      ) {
-        readAssignments();
-      }
-      if (
-        e.key === tagsStorageKey ||
-        e.key === globalAssignmentsStorageKeyV2 ||
-        e.key === globalAssignmentsStorageKeyV1 ||
-        e.key.startsWith("project-")
-      ) {
-        readAssignments();
-      }
-
-    };
-
-    window.addEventListener("scipionProtocolTagAssignmentsChanged", onCustom);
-    window.addEventListener("storage", onStorage);
-
-    const timerId = window.setInterval(readAssignments, 500);
-
-    return () => {
-      window.removeEventListener("scipionProtocolTagAssignmentsChanged", onCustom);
-      window.removeEventListener("storage", onStorage);
-      window.clearInterval(timerId);
-    };
-  }, [projectName, getTagAssignmentScopeKeys]);
 
 
-  const tagPopperContainer = useMemo(() => {
-    // tagPopperContainer
-    if (typeof document === "undefined") return null;
-    return document.body;
-  }, []);
 
-  useEffect(() => {
-    // syncTagsCatalog
-    const syncTags = () => {
-      try {
-        setAllTags(loadTagsCatalogFromStorage());
-      } catch {
-        setAllTags([]);
-      }
-    };
+  const projectIdForTags = useMemo(() => {
+    // projectIdForTags
+    const raw: any = (project as any)?.id ?? (project as any)?.projectId;
+    if (raw == null) return undefined;
+    const n = typeof raw === "number" ? raw : Number(raw);
+    return Number.isFinite(n) ? n : undefined;
+  }, [project]);
 
-    syncTags();
+  const refreshTagsFromBackend = useCallback(async () => {
+    // refreshTagsFromBackend
+    if (!projectIdForTags) {
+      setAllTags([]);
+      return;
+    }
+    try {
+      const tags = await (svc as any).listProjectTags?.(projectIdForTags);
+      setAllTags(Array.isArray(tags) ? (tags as ProtocolTag[]) : []);
+    } catch (err) {
+      console.error("listProjectTags failed", err);
+      setAllTags([]);
+    }
+  }, [svc, projectIdForTags]);
 
-    const onCustom = () => syncTags();
-    const onStorage = (e: StorageEvent) => {
-      if (e.key === tagsCatalogStorageKey) syncTags();
-    };
-
-    window.addEventListener("scipionTagsChanged", onCustom);
-    window.addEventListener("storage", onStorage);
-
-    // optionalPollingSameTabSafetyNet
-    const timerId = window.setInterval(syncTags, 750);
-
-    return () => {
-      window.removeEventListener("scipionTagsChanged", onCustom);
-      window.removeEventListener("storage", onStorage);
-      window.clearInterval(timerId);
-    };
-  }, []);
 
   function extractAssignmentsFromProjectProtocols(protocols: any): ProtocolTagAssignments {
     // extractAssignmentsFromProjectProtocols 
@@ -1142,95 +799,15 @@ export default function ProjectPage() {
   );
 
   useEffect(() => {
-    // loadTagsCatalogOnMount
-    try {
-      setAllTags(loadTagsCatalogFromStorage());
-    } catch {
-      setAllTags([]);
-    }
-  }, []);
-
-  useEffect(() => {
-    // loadTagAssignmentsOnProjectScopeChange
-    if (!projectName) return;
-
-    try {
-      const keys = getTagAssignmentScopeKeys();
-      setTagAssignments(loadTagAssignments(keys));
-    } catch {
-      setTagAssignments({});
-    }
-  }, [projectName, project?.id, project?.shortName, getTagAssignmentScopeKeys]);
-
-
-  useEffect(() => {
-    // syncAssignmentsOnCustomEvent
-    if (!projectName) return;
-
-    const onAssignmentsChanged = () => {
-      try {
-        const keys = getTagAssignmentScopeKeys();
-        setTagAssignments(loadTagAssignments(keys));
-      } catch {
-        setTagAssignments({});
-      }
-    };
-
-    window.addEventListener("scipionProtocolTagAssignmentsChanged", onAssignmentsChanged);
-    return () =>
-      window.removeEventListener("scipionProtocolTagAssignmentsChanged", onAssignmentsChanged);
-  }, [projectName, getTagAssignmentScopeKeys]);
-
-
-  useEffect(() => {
-    // mergeAssignmentsFromProjectPayloadIfPresent
-    if (!projectName || !project?.protocols) return;
-
-    const fromApi = extractAssignmentsFromProjectProtocols(project.protocols);
-    const hasAny = Object.keys(fromApi).length > 0;
-    if (!hasAny) return;
-
-    setTagAssignments((prev) => {
-      const merged: ProtocolTagAssignments = { ...prev, ...fromApi };
-      try {
-        const keys = getTagAssignmentScopeKeys();
-        saveTagAssignments(keys, merged);
-      } catch { /* noOp */ }
-      return merged;
-    });
-  }, [projectName, project?.protocols]);
+    // loadTagsCatalogFromBackend
+    void refreshTagsFromBackend();
+  }, [refreshTagsFromBackend]);
 
   useEffect(() => {
     // refreshCatalogAfterClosingManager
     if (tagManagerOpen) return;
-    try {
-      setAllTags(loadTagsCatalogFromStorage());
-    } catch {
-      // noOp
-    }
-  }, [tagManagerOpen]);
-
-  const selectedProtocolIds = useMemo(() => {
-    // selectedProtocolIds
-    return Array.from(unifiedSelectedIdsState)
-      .map(String)
-      .filter((id) => id && id !== "PROJECT");
-  }, [unifiedSelectedIdsState]);
-
-  const unionSelectedTagIds = useMemo(() => {
-    // unionSelectedTagIds
-    const s = new Set<string>();
-    for (const pid of selectedProtocolIds) {
-      for (const tid of (tagAssignments[pid] ?? [])) s.add(tid);
-    }
-    return Array.from(s);
-  }, [selectedProtocolIds, tagAssignments]);
-
-  useEffect(() => {
-    // seedAssignDraftOnOpen
-    if (!assignTagsOpen) return;
-    setAssignDraftTagIds(unionSelectedTagIds);
-  }, [assignTagsOpen, unionSelectedTagIds]);
+    void refreshTagsFromBackend();
+  }, [tagManagerOpen, refreshTagsFromBackend]);
 
   // Viewport state (used for hierarchical/table; grid uses fixed zoom)
   const [viewport, setViewport] = useState<{ x: number; y: number; zoom: number }>({ x: 0, y: 0, zoom: 0.3464 });
@@ -2274,6 +1851,7 @@ export default function ProjectPage() {
     try {
       const data = await svc.fetchProject(projectName);
       setProject(data);
+      setTagAssignments(extractAssignmentsFromProjectProtocols((data as any)?.protocols));
 
       if (data.protocols) {
         const mode = viewModeRef.current;
@@ -2358,6 +1936,7 @@ export default function ProjectPage() {
     try {
       const data = await svc.fetchProject(projectName);
       setProject(data);
+      setTagAssignments(extractAssignmentsFromProjectProtocols((data as any)?.protocols));
 
       if (data.protocols) {
         const { nodes: loadedNodes, edges: loadedEdges, table } = buildGraphElements(
@@ -2498,6 +2077,8 @@ export default function ProjectPage() {
 
         const data = await svc.fetchProject(projectName);
         setProject(data);
+        setTagAssignments(extractAssignmentsFromProjectProtocols((data as any)?.protocols));
+        
         if (!data.protocols) {
           disablePersistenceRef.current = false;
           setHideGraphDuringCenter(false);
