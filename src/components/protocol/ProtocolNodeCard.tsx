@@ -1,7 +1,7 @@
 // src/components/protocol/ProtocolNodeCard.tsx
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, JSX } from "react";
 import toast from "react-hot-toast";
-import { Button, Dialog, DialogActions, DialogContent, DialogTitle } from "@mui/material";
+import { Button, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, Typography } from "@mui/material";
 import type {
   CSSProperties,
   Dispatch,
@@ -61,6 +61,7 @@ import {
   HelpCircle,
   Plus,
   Check,
+  X,
 } from "lucide-react";
 
 import AnalyzeOutputDialog from "@/components/analyze/analyze-output-dialog";
@@ -74,6 +75,7 @@ import type {
 import type { ProtocolTag } from "@/components/tags/tagTypes";
 import { useTagStore } from "@/stores/tag_store";
 import { useProjectService } from "@/ProjectServiceContext";
+import { CloseIcon } from "@/icons";
 
 const statusColors: Record<string, string> = {
   running: "#FCCE62",
@@ -153,6 +155,13 @@ type StatusNodeProps = {
 
   // opens the tag manager (create/edit tag definitions)
   onManageTags?: (protocolId: string, projectId?: string | number, protocolLabel?: string) => void;
+  // opens the protocol creation/open UI for a given protocolClass
+  onOpenProtocolClass?: (
+    protocolClass: string,
+    projectId?: string | number,
+    sourceProtocolId?: string,
+    sourceProtocolLabel?: string,
+  ) => void;
 
   inPathSelection?: boolean;
   pathSelectionActive?: boolean;
@@ -430,6 +439,313 @@ const tagDefsCacheByProjectId = new Map<string, ProtocolTag[]>();
 const tagDefsInFlightByProjectId = new Map<string, Promise<ProtocolTag[]>>();
 let tagDefsStoreProjectId: string | null = null;
 
+
+function extractUrls(text: string): string[] {
+  // extractUrls
+  const s = String(text ?? "");
+  const re = /\bhttps?:\/\/[^\s)<>"]+/gi;
+  const hits = s.match(re) ?? [];
+  const uniq = new Set<string>();
+  for (const h of hits) uniq.add(h.replace(/[.,;:]+$/g, ""));
+  return Array.from(uniq);
+}
+
+function openExternalUrl(url: string): void {
+  // openExternalUrl
+  const u = String(url ?? "").trim();
+  if (!u) return;
+  window.open(u, "_blank", "noopener,noreferrer");
+}
+
+async function copyTextToClipboard(text: string): Promise<boolean> {
+  // copyTextToClipboard
+  const value = String(text ?? "").trim();
+  if (!value) return false;
+
+  try {
+    await navigator.clipboard.writeText(value);
+    return true;
+  } catch {
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = value;
+      ta.style.position = "fixed";
+      ta.style.left = "-9999px";
+      ta.style.top = "-9999px";
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      const ok = document.execCommand("copy");
+      document.body.removeChild(ta);
+      return ok;
+    } catch {
+      return false;
+    }
+  }
+}
+
+function linkifyTextToNodes(text: string, className: string): JSX.Element[] {
+  // linkifyTextToNodes
+  const s = String(text ?? "");
+  const re = /\bhttps?:\/\/[^\s)<>"]+/gi;
+
+  const out: JSX.Element[] = [];
+  let last = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = re.exec(s))) {
+    const start = match.index;
+    const rawUrl = match[0];
+    const url = rawUrl.replace(/[.,;:]+$/g, "");
+
+    if (start > last) {
+      out.push(<span key={`t-${last}`}>{s.slice(last, start)}</span>);
+    }
+
+    out.push(
+      <a
+        key={`u-${start}`}
+        className={className}
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={(e) => {
+          e.stopPropagation();
+        }}
+      >
+        {url}
+      </a>,
+    );
+
+    last = start + rawUrl.length;
+  }
+
+  if (last < s.length) out.push(<span key={`t-end`}>{s.slice(last)}</span>);
+  return out;
+}
+
+function renderHelpBody(help: string, linkClassName: string, listClassName: string): JSX.Element {
+  // renderHelpBody
+  const raw = String(help ?? "").replace(/\r\n/g, "\n").trim();
+  if (!raw) return <div style={{ opacity: 0.75 }}>No help available.</div>;
+
+  const blocks = raw.split(/\n{2,}/g).map((b) => b.trim()).filter(Boolean);
+
+  const isBulletBlock = (b: string) => b.split("\n").every((l) => !l.trim() || /^(\-|\*|•)\s+/.test(l.trim()));
+  const stripBullet = (l: string) => l.trim().replace(/^(\-|\*|•)\s+/, "");
+
+  return (
+    <div className={styles.helpBody}>
+      {blocks.map((b, idx) => {
+        if (isBulletBlock(b)) {
+          const items = b.split("\n").map((l) => l.trim()).filter(Boolean).map(stripBullet);
+          return (
+            <ul key={`ul-${idx}`} className={listClassName}>
+              {items.map((it, i) => (
+                <li key={`li-${idx}-${i}`}>{linkifyTextToNodes(it, linkClassName)}</li>
+              ))}
+            </ul>
+          );
+        }
+
+        return (
+          <Typography key={`p-${idx}`} component="p" className={styles.helpParagraph}>
+            {linkifyTextToNodes(b, linkClassName)}
+          </Typography>
+        );
+      })}
+    </div>
+  );
+}
+
+function stripTrailingPunctuation(url: string): string {
+  // stripTrailingPunctuation
+  return url.replace(/[)\]}>,.;:!?]+$/g, "");
+}
+
+function renderInlineHelpNodes(textRaw: string, linkClassName: string, allowBold: boolean = true): JSX.Element[] {
+  // renderInlineHelpNodes
+  const text = String(textRaw ?? "");
+  const out: JSX.Element[] = [];
+
+  const urlRe = /\bhttps?:\/\/[^\s<>"']+/g;
+  let i = 0;
+
+  const pushText = (chunk: string, key: string) => {
+    // pushText
+    if (!chunk) return;
+    out.push(<span key={key}>{chunk}</span>);
+  };
+
+  while (i < text.length) {
+    const nextBold = allowBold ? text.indexOf("**", i) : -1;
+
+    urlRe.lastIndex = i;
+    const urlMatch = urlRe.exec(text);
+    const nextUrl = urlMatch ? urlMatch.index : -1;
+
+    let nextIdx = -1;
+    let kind: "bold" | "url" | null = null;
+
+    if (nextBold !== -1 && (nextUrl === -1 || nextBold < nextUrl)) {
+      nextIdx = nextBold;
+      kind = "bold";
+    } else if (nextUrl !== -1) {
+      nextIdx = nextUrl;
+      kind = "url";
+    }
+
+    if (nextIdx === -1 || kind == null) {
+      pushText(text.slice(i), `t-${i}`);
+      break;
+    }
+
+    if (nextIdx > i) {
+      pushText(text.slice(i, nextIdx), `t-${i}`);
+    }
+
+    if (kind === "url") {
+      const rawUrl = urlMatch?.[0] ?? "";
+      const url = stripTrailingPunctuation(rawUrl);
+
+      out.push(
+        <a
+          key={`u-${nextIdx}`}
+          className={linkClassName}
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {url}
+        </a>,
+      );
+
+      i = nextIdx + rawUrl.length;
+      continue;
+    }
+
+    // bold
+    const start = nextIdx;
+    const end = text.indexOf("**", start + 2);
+    if (end === -1) {
+      // unmatchedBoldTreatAsText
+      pushText("**", `t-${start}`);
+      i = start + 2;
+      continue;
+    }
+
+    const inner = text.slice(start + 2, end);
+    out.push(
+      <strong key={`b-${start}`} style={{ fontWeight: 700 }}>
+        {renderInlineHelpNodes(inner, linkClassName, false)}
+      </strong>,
+    );
+
+    i = end + 2;
+  }
+
+  return out;
+}
+
+function normalizeHelpText(raw: string): string {
+  // normalizeHelpText
+  return String(raw ?? "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\t/g, "  ")
+    .trim();
+}
+
+function isBulletLine(line: string): boolean {
+  // isBulletLine
+  return /^(\-|\*|•)\s+/.test(line.trim());
+}
+
+function isNumberedLine(line: string): boolean {
+  // isNumberedLine
+  return /^\d+(\.|\))\s+/.test(line.trim());
+}
+
+function looksLikeSectionHeader(line: string): boolean {
+  // looksLikeSectionHeader
+  const s = line.trim();
+  if (!s) return false;
+  if (!s.endsWith(":")) return false;
+  if (s.length > 60) return false;
+  return true;
+}
+
+function stripBulletPrefix(line: string): string {
+  // stripBulletPrefix
+  return line.trim().replace(/^(\-|\*|•)\s+/, "");
+}
+
+function stripNumberPrefix(line: string): string {
+  // stripNumberPrefix
+  return line.trim().replace(/^\d+(\.|\))\s+/, "");
+}
+
+function renderPrettyHelp(helpRaw: string, linkClassName: string): JSX.Element {
+  // renderPrettyHelp
+  const text = normalizeHelpText(helpRaw);
+  if (!text) return <div style={{ opacity: 0.75 }}>No help available.</div>;
+
+  const blocks = text.split(/\n{2,}/g).map((b) => b.trim()).filter(Boolean);
+
+  return (
+    <div className={styles.helpBody}>
+      {blocks.map((block, idx) => {
+        const lines = block.split("\n");
+
+        const allBullet = lines.length > 1 && lines.every((l) => !l.trim() || isBulletLine(l));
+        if (allBullet) {
+          const items = lines.filter((l) => l.trim()).map(stripBulletPrefix);
+          return (
+            <ul key={`b-${idx}`} className={styles.helpList}>
+              {items.map((it, i) => (
+                <li key={`bi-${idx}-${i}`} className={styles.helpListItem}>
+                  <span style={{ whiteSpace: "pre-wrap" }}>{renderInlineHelpNodes(it, linkClassName)}</span>
+                </li>
+              ))}
+            </ul>
+          );
+        }
+
+        const allNumbered = lines.length > 1 && lines.every((l) => !l.trim() || isNumberedLine(l));
+        if (allNumbered) {
+          const items = lines.filter((l) => l.trim()).map(stripNumberPrefix);
+          return (
+            <ol key={`n-${idx}`} className={styles.helpList}>
+              {items.map((it, i) => (
+                <li key={`ni-${idx}-${i}`} className={styles.helpListItem}>
+                  <span style={{ whiteSpace: "pre-wrap" }}>{renderInlineHelpNodes(it, linkClassName)}</span>
+                </li>
+              ))}
+            </ol>
+          );
+        }
+
+        const first = lines[0] ?? "";
+        if (lines.length === 1 && looksLikeSectionHeader(first)) {
+          return (
+            <div key={`h-${idx}`} className={styles.helpSectionHeader}>
+              {first.replace(/:$/, "")}
+            </div>
+          );
+        }
+
+        return (
+          <div key={`p-${idx}`} className={styles.helpParagraph} style={{ whiteSpace: "pre-wrap" }}>
+            {renderInlineHelpNodes(block, linkClassName)}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+
+
 export default function ProtocolNodeCard({
   data,
   selectedNodeId,
@@ -450,6 +766,7 @@ export default function ProtocolNodeCard({
   onStop,
   onBrowse,
   onManageTags,
+  onOpenProtocolClass, // addThis
   inPathSelection = false,
   pathSelectionActive = false,
   showHandles = true,
@@ -543,11 +860,38 @@ export default function ProtocolNodeCard({
     setNextStepHelpOpen(true);
   }, []);
 
+
+  const preventMenuDismissWhileHelpOpen = useCallback(
+    (e: any) => {
+      // preventMenuDismissWhileHelpOpen
+      if (!nextStepHelpOpen) return;
+      e.preventDefault();
+    },
+    [nextStepHelpOpen],
+  );
+
+
   const closeNextStepHelp = useCallback(() => {
     // closeNextStepHelp
     setNextStepHelpOpen(false);
     setNextStepHelpTarget(null);
   }, []);
+
+  function dismissRadixMenus(): void {
+    // dismissRadixMenus
+    const doc = document;
+    const evt = new KeyboardEvent("keydown", {
+      key: "Escape",
+      code: "Escape",
+      bubbles: true,
+      cancelable: true,
+    });
+
+    // Dispatch twice to close submenus + parent menus reliably
+    doc.dispatchEvent(evt);
+    window.setTimeout(() => doc.dispatchEvent(evt), 0);
+  }
+
 
   const resetNextStepSuggestions = useCallback(() => {
     // resetNextStepSuggestions
@@ -1183,6 +1527,31 @@ export default function ProtocolNodeCard({
 
   const canOpenViewer = !isProjectNode && data.projectId != null;
 
+  const openSuggestedProtocolClass = useCallback(
+    (suggestion: NextProtocolSuggestion) => {
+      // openSuggestedProtocolClass
+      if (isProjectNode) return;
+
+      const installedValue = String(suggestion.installed ?? "installed").trim() || "installed";
+      const isInstalled = installedValue === "installed";
+      if (!isInstalled) return;
+
+      if (typeof onOpenProtocolClass === "function") {
+        onOpenProtocolClass(
+          String(suggestion.protocolClass),
+          data.projectId,
+          String(data.id),
+          data.label,
+        );
+        return;
+      }
+
+      toast.error("Opening suggested protocols is not configured.");
+    },
+    [data.id, data.label, data.projectId, isProjectNode, onOpenProtocolClass],
+  );
+
+
   const renderNextStepSubContent = useCallback(
     (kind: "dropdown" | "context") => {
       // renderNextStepSubContent
@@ -1297,6 +1666,22 @@ export default function ProtocolNodeCard({
                     style={{
                       pointerEvents: isInstalled ? "auto" : "none",
                     }}
+                    onDoubleClick={(e) => {
+                      // openOnDoubleClick
+                      e.preventDefault();
+                      e.stopPropagation();
+                      openSuggestedProtocolClass(s);
+                    }}
+                    onKeyDown={(e) => {
+                      // openOnEnterKey
+                      if (!isInstalled) return;
+                      if (e.key !== "Enter") return;
+                      e.preventDefault();
+                      e.stopPropagation();
+                      openSuggestedProtocolClass(s);
+                    }}
+                    role="button"
+                    tabIndex={isInstalled ? 0 : -1}
                   >
                     <ArrowRight className={styles.nextStepItemIcon} />
                     <span className={styles.nextStepName} title={s.protocolName}>
@@ -1348,6 +1733,7 @@ export default function ProtocolNodeCard({
       nextStepSuggestions,
       openNextStepHelp,
       resetNextStepSuggestions,
+      openSuggestedProtocolClass,
     ],
   );
 
@@ -1389,7 +1775,7 @@ export default function ProtocolNodeCard({
   );
 
   return (
-    <ContextMenu>
+    <ContextMenu modal={false}>
       <ContextMenuTrigger asChild>
         <div
           ref={rootRef}
@@ -1446,7 +1832,7 @@ export default function ProtocolNodeCard({
 
             {!isProjectNode && (
               <div className={styles.headerRight}>
-                <DropdownMenu>
+                <DropdownMenu modal={false}>
                   <DropdownMenuTrigger asChild>
                     <button
                       type="button"
@@ -1463,7 +1849,11 @@ export default function ProtocolNodeCard({
                     </button>
                   </DropdownMenuTrigger>
 
-                  <DropdownMenuContent className={styles.menuContent} onClick={(e) => e.stopPropagation()}>
+                  <DropdownMenuContent className={styles.menuContent}
+                    onClick={(e) => e.stopPropagation()}
+                    onPointerDownOutside={preventMenuDismissWhileHelpOpen}
+                    onFocusOutside={preventMenuDismissWhileHelpOpen}
+                    onInteractOutside={preventMenuDismissWhileHelpOpen}>
                     {!reduceMenus && (
                       <>
                         <DropdownMenuItem onSelect={() => handleEdit()}>
@@ -1713,12 +2103,14 @@ export default function ProtocolNodeCard({
                         </div>
                       </DropdownMenuSubTrigger>
 
-                      <DropdownMenuSubContent className={styles.menuContent} sideOffset={8}>
+                      <DropdownMenuSubContent className={styles.menuContent}
+                        sideOffset={8}
+                        onPointerDownOutside={preventMenuDismissWhileHelpOpen}
+                        onFocusOutside={preventMenuDismissWhileHelpOpen}
+                        onInteractOutside={preventMenuDismissWhileHelpOpen}>
                         {renderNextStepSubContent("dropdown")}
                       </DropdownMenuSubContent>
                     </DropdownMenuSub>
-
-
 
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -1954,6 +2346,9 @@ export default function ProtocolNodeCard({
       <ContextMenuContent
         className={styles.menuContent}
         style={{ marginLeft: 8, marginTop: 8 }}
+        onPointerDownOutside={preventMenuDismissWhileHelpOpen}
+        onFocusOutside={preventMenuDismissWhileHelpOpen}
+        onInteractOutside={preventMenuDismissWhileHelpOpen}
         onPointerDown={(e) => e.stopPropagation()}
         onPointerUp={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
@@ -2210,7 +2605,11 @@ export default function ProtocolNodeCard({
             </div>
           </ContextMenuSubTrigger>
 
-          <ContextMenuSubContent className={styles.menuContent} sideOffset={8}>
+          <ContextMenuSubContent className={styles.menuContent}
+            sideOffset={8}
+            onPointerDownOutside={preventMenuDismissWhileHelpOpen}
+            onFocusOutside={preventMenuDismissWhileHelpOpen}
+            onInteractOutside={preventMenuDismissWhileHelpOpen}>
             {renderNextStepSubContent("context")}
           </ContextMenuSubContent>
         </ContextMenuSub>
@@ -2241,17 +2640,103 @@ export default function ProtocolNodeCard({
           onClose={closeNextStepHelp}
           maxWidth="sm"
           fullWidth
+          disableEnforceFocus
+          disableAutoFocus
+          disableRestoreFocus
+          PaperProps={{
+            sx: {
+              borderRadius: 4, // 16px
+              overflow: "hidden",
+              border: "1px solid",
+              borderColor: "divider",
+              boxShadow: "0 18px 50px rgba(0,0,0,0.35)",
+            },
+          }}
+          BackdropProps={{ sx: { backgroundColor: "transparent" } }}
+          sx={{
+            zIndex: 25000,
+            "& .MuiDialog-container": {
+              alignItems: "flex-start",
+              paddingTop: "16px",
+
+            },
+          }}
         >
-          <DialogTitle>{nextStepHelpTarget.protocolName}</DialogTitle>
-          <DialogContent>
-            <div style={{ marginBottom: 10, opacity: 0.8 }}>
-              <strong>Class:</strong> {nextStepHelpTarget.protocolClass}
-            </div>
-            <pre style={{ whiteSpace: "pre-wrap", margin: 0 }}>
-              {nextStepHelpTarget.help || "No help available."}
-            </pre>
+          <DialogTitle
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              backgroundColor: "#333d49",
+              color: "white",
+              px: 2,
+              py: 1.5,
+              boxSizing: "border-box",
+              m: 0,
+              gap: 1,
+            }}
+          >
+            <div className={styles.helpDialogTitleText}>{nextStepHelpTarget.protocolName}</div>
+
+            <IconButton
+              onClick={closeNextStepHelp}
+              aria-label="Close"
+              size="small"
+              sx={{
+                ml: "auto",
+                color: "white",
+                borderRadius: 1,
+                "&:hover": { backgroundColor: "rgba(255,255,255,0.10)" },
+                "&:focus-visible": { outline: "2px solid rgba(255,255,255,0.55)", outlineOffset: 2 },
+              }}
+            >
+              <CloseIcon fontSize="small" />
+            </IconButton>
+          </DialogTitle>
+
+
+          <DialogContent className={styles.helpDialogContent} dividers>
+            {(() => {
+              const urls = extractUrls(nextStepHelpTarget.help ?? "");
+              return (
+                <>
+                  {renderHelpBody(nextStepHelpTarget.help ?? "", styles.helpLink, styles.helpList)}
+
+                  {urls.length > 0 ? (
+                    <div className={styles.helpLinksSection}>
+                      <div className={styles.helpLinksTitle}>Links</div>
+                      <div className={styles.helpLinksRow}>
+                        {urls.map((u) => (
+                          <Button
+                            key={u}
+                            variant="outlined"
+                            size="small"
+                            className={styles.helpLinkBtn}
+                            onClick={() => openExternalUrl(u)}
+                            startIcon={<ArrowUpRight size={16} />}
+                          >
+                            Open
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </>
+              );
+            })()}
           </DialogContent>
-          <DialogActions>
+
+          <DialogActions className={styles.helpDialogActions}>
+            <Button
+              variant="contained"
+              onClick={() => {
+                // openSuggestedProtocolFromHelp
+                openSuggestedProtocolClass(nextStepHelpTarget);
+              }}
+              disabled={String(nextStepHelpTarget.installed ?? "installed").trim() !== "installed"}
+            >
+              Open
+            </Button>
+
             <Button onClick={closeNextStepHelp} variant="outlined">
               Close
             </Button>

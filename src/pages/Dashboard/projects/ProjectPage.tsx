@@ -117,6 +117,7 @@ type NodeActions = {
   onSelectTo?: (id: string) => void;
   onStop?: (id: string) => void;
   onManageTags?: () => void;
+  onOpenProtocolClass?: (protocolClass: string) => void;
 };
 
 type OpenForm = { key: string; id: string; details: any; isClosing?: boolean };
@@ -1422,6 +1423,75 @@ export default function ProjectPage() {
     syncUnifiedSelectedIds();
   };
 
+  // Open or focus a docked form for a protocol class (new protocol form)
+  const openFormForProtocolClass = useCallback(
+    async (protocolClass: string) => {
+      if (!projectName) return;
+
+      setDrawerOpen(false);
+      setWorkflowsOpen(false);
+
+      const key = `class:${String(protocolClass)}`;
+      const id = String(protocolClass);
+
+      // preventDuplicateOpensInFlight
+      if (openingFormIdsRef.current.has(key)) {
+        // bringToFrontIfAlreadyInDock
+        setOpenForms((prev) => {
+          const hitIndex = prev.findIndex((f) => f.key === key);
+          if (hitIndex < 0) return prev;
+          const hit = prev[hitIndex];
+          return [hit, ...prev.filter((_, i) => i !== hitIndex)];
+        });
+        return;
+      }
+
+      openingFormIdsRef.current.add(key);
+
+      // bringToFrontIfAlreadyOpen
+      let wasAlreadyOpen = false;
+      setOpenForms((prev) => {
+        const hitIndex = prev.findIndex((f) => f.key === key);
+        if (hitIndex >= 0) {
+          wasAlreadyOpen = true;
+          const hit = prev[hitIndex];
+          return [hit, ...prev.filter((_, i) => i !== hitIndex)];
+        }
+        return prev;
+      });
+
+      if (wasAlreadyOpen) {
+        openingFormIdsRef.current.delete(key);
+        return;
+      }
+
+      const dockEpoch = dockEpochRef.current;
+
+      try {
+        const details = await svc.fetchNewProtocolDetails(projectName, protocolClass);
+
+        if (dockEpochRef.current !== dockEpoch) {
+          // dockWasGloballyClosedWhileFetching
+          return;
+        }
+
+        captureDockPositions();
+        pendingFlipRef.current = true;
+
+        setOpenForms((prev) => [
+          { key, id, details },
+          ...prev.filter((f) => f.key !== key),
+        ]);
+      } catch (err) {
+        console.error("openFormForProtocolClass failed", err);
+      } finally {
+        openingFormIdsRef.current.delete(key);
+      }
+    },
+    [projectName, svc]
+  );
+
+
   // Open or focus a form for a node; fetch details only when needed
   // openFormForNode
   const openFormForNode = useCallback(
@@ -1604,9 +1674,7 @@ export default function ProjectPage() {
 
       setDrawerOpen(false);
 
-      await openFormForNode(String(protocolClass), () =>
-        svc.fetchNewProtocolDetails(projectName, protocolClass)
-      );
+      await openFormForProtocolClass(protocolClass);
     },
     [projectName, openFormForNode, svc, openProtocolHelp]
   );
@@ -1630,9 +1698,13 @@ export default function ProjectPage() {
       onSelectTo: handleSelectTo,
       onStop: openStop,
       onManageTags: () => setTagManagerOpen(true),
+
+      onOpenProtocolClass: (protocolClass) => {
+        void openFormForProtocolClass(protocolClass);
+      },
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [handleSelectFrom, handleSelectTo, handleNodeDoubleClick]);
+  }, [handleSelectFrom, handleSelectTo, handleNodeDoubleClick, openFormForProtocolClass]);
 
 
   /** State and handler for RemoteFileDialog */

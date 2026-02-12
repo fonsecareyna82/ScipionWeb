@@ -23,6 +23,13 @@ type NodeActions = {
     projectId?: string | number,
     protocolLabel?: string
   ) => void;
+
+  onOpenProtocolClass?: (
+    protocolClass: string,
+    projectId?: string | number,
+    sourceProtocolId?: string,
+    sourceProtocolLabel?: string
+  ) => void;
 };
 
 export const createStatusNodeWrapper = (
@@ -100,6 +107,7 @@ export const createStatusNodeWrapper = (
           onSelectTo={actions.onSelectTo}
           onStop={actions.onStop}
           onManageTags={actions.onManageTags}
+          onOpenProtocolClass={actions.onOpenProtocolClass}
           inPathSelection={inPathSelection}
           pathSelectionActive={pathSelectionActive}
           onBrowse={onBrowse}
