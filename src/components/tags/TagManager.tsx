@@ -522,10 +522,6 @@ const TagManager = memo(function TagManager({ title, projectId, open = true, tag
         storeSetTags(initialTags);
     }, [backendEnabled, isControlled, initialTags, storeSetTags, storeTags]);
 
-    const loadedProjectIdRef = useRef<string | null>(null);
-    const inFlightProjectIdRef = useRef<string | null>(null);
-    const clearedProjectIdRef = useRef<string | null>(null);
-
     useEffect(() => {
         // loadTagsFromBackend
         if (!backendEnabled) return;

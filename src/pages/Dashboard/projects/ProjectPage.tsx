@@ -1844,6 +1844,17 @@ export default function ProjectPage() {
     });
   };
 
+  useEffect(() => {
+    // resetFirstCenterOnProjectChange
+    firstLoadRef.current = true;
+    setNodesLoadedOnce(false);
+
+    // resetViewportForInitialPaint
+    const nextZoom = viewModeRef.current === "grid" ? GRID_ZOOM : clampZoom(viewportRef.current.zoom);
+    setViewport({ x: 0, y: 0, zoom: nextZoom });
+  }, [projectName]);
+
+
   /* ------------------------ Fetch & load (NO refetch on view change) ------------------------ */
   const fetchAndLoadProject = useCallback(async () => {
     if (!projectName) return;
