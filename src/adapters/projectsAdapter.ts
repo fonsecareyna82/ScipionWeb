@@ -6,6 +6,7 @@ import type {
   ProjectService,
   ProjectPayload,
   Id,
+  NextProtocolSuggestion,
   VolumeSliceObjectUrl,
   VolumeHistogram,
   VolumeHistogramOptions,
@@ -131,6 +132,13 @@ const defaultService: ProjectService = {
     opts?: { table?: string },
   ) => api.fetchOutputPreview(toId(projectId), toId(protocolId), path, opts),
 
+  getNextProtocolSuggestions: (
+    projectId: Id,
+    protocolId: Id,
+  ): Promise<NextProtocolSuggestion[]> => {
+    // getNextProtocolSuggestions
+    return api.getNextProtocolSuggestions(toId(projectId), toId(protocolId));
+  },
 
   resolveAnalyzeViewer: async (
     ctx: AnalyzeViewerResolveContext

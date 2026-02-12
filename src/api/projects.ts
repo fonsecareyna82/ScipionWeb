@@ -17,6 +17,7 @@ import {
   ProtocolTagCreatePayload,
   ProtocolTagUpdatePayload,
   ProtocolTagIdsResult,
+  NextProtocolSuggestion,
 } from "@/services/ProjectService";
 
 const ACTION_LAUNCH = "launch";
@@ -724,6 +725,77 @@ export async function stopProtocol(projectId: Id, protocolIds: Id[]): Promise<vo
     throw await toApiError(response, "Failed to stop protocol(s)");
   return safeJson<any>(response);
 }
+
+function normalizeNextProtocolSuggestions(raw: unknown): NextProtocolSuggestion[] {
+  // normalizeNextProtocolSuggestions
+  const arr = Array.isArray(raw)
+    ? raw
+    : (raw && typeof raw === "object" && Array.isArray((raw as any).suggestions))
+      ? (raw as any).suggestions
+      : [];
+
+  const normalizeOne = (item: any): NextProtocolSuggestion | null => {
+    // normalizeOne
+    if (!item || typeof item !== "object") return null;
+
+    const protocolName = String(
+      item.protocolName ?? item.name ?? item.label ?? item.title ?? "",
+    ).trim();
+
+    const protocolClass = String(
+      item.protocolClass ?? item.className ?? item.class ?? item.protocolClassName ?? "",
+    ).trim();
+
+    const helpValue = item.help ?? item.description ?? item.tooltip ?? null;
+    const help = helpValue == null ? undefined : String(helpValue).trim() || undefined;
+
+    const installed = String(
+      item.installed ?? item.installState ?? item.state ?? "installed",
+    ).trim() || "installed";
+
+    if (!protocolName || !protocolClass) return null;
+
+    return { protocolName, protocolClass, help, installed };
+  };
+
+  return arr.map(normalizeOne).filter(Boolean) as NextProtocolSuggestion[];
+}
+
+function isMissingId(value: Id): boolean {
+  // isMissingId
+  return value == null || value === "undefined" || value === "null";
+}
+
+/**
+ * Fetch "next protocol" suggestions for a given protocol node.
+ * Backend endpoint (recommended):
+ *   GET /projects/{projectId}/protocols/{protocolId}/suggestions/next
+ *
+ * Response can be:
+ *   - an array of suggestions
+ *   - or { suggestions: [...] }
+ */
+export async function getNextProtocolSuggestions(
+  projectId: Id,
+  protocolId: Id,
+): Promise<NextProtocolSuggestion[]> {
+  // getNextProtocolSuggestions
+  if (isMissingId(projectId) || isMissingId(protocolId)) return [];
+
+  const url = `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/suggestions/next`;
+  const res = await fetchWithAuth(url, { method: "GET" });
+
+  // Treat missing endpoint as "no suggestions"
+  if (res.status === 404 || res.status === 204) return [];
+
+  if (!res.ok) {
+    throw await toApiError(res, "Failed to fetch next protocol suggestions");
+  }
+
+  const raw = await safeJson<any>(res);
+  return normalizeNextProtocolSuggestions(raw);
+}
+
 
 /* ======================= PROTOCOL LOGS ======================= */
 

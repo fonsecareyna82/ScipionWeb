@@ -1,6 +1,7 @@
 // src/components/protocol/ProtocolNodeCard.tsx
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
+import { Button, Dialog, DialogActions, DialogContent, DialogTitle } from "@mui/material";
 import type {
   CSSProperties,
   Dispatch,
@@ -57,6 +58,7 @@ import {
   Scan,
   Eye,
   Tags,
+  HelpCircle,
   Plus,
   Check,
 } from "lucide-react";
@@ -171,6 +173,14 @@ const formatCpuTime = (seconds: number): string => {
   return `${pad(hours)}h:${pad(minutes)}m:${pad(secs)}s`;
 };
 
+
+type NextProtocolSuggestion = {
+  protocolName: string;
+  protocolClass: string;
+  help?: string;
+  installed?: string;
+};
+
 type NormalizedOutput = {
   name?: string; // outputKeyNameUsedByBackend
   info?: string;
@@ -267,6 +277,8 @@ const normalizeOutputItem = (outputObj: unknown): NormalizedOutput | null => {
 
   return null;
 };
+
+
 
 const openDecisionUrl = (decision: AnalyzeViewerResolveDecision) => {
   // openDecisionUrl
@@ -393,6 +405,27 @@ function normalizeTagDefList(raw: unknown): ProtocolTag[] {
   return out;
 }
 
+function normalizeNextProtocolSuggestion(raw: any): NextProtocolSuggestion | null {
+  // normalizeNextProtocolSuggestion
+  const protocolName = typeof raw?.protocolName === "string" ? raw.protocolName.trim() : "";
+  const protocolClass = typeof raw?.protocolClass === "string" ? raw.protocolClass.trim() : "";
+
+  const installedRaw =
+    typeof raw?.installed === "string" ? raw.installed.trim() : "installed";
+  const installed = installedRaw || "installed";
+
+  const help = typeof raw?.help === "string" ? raw.help.trim() : "";
+
+  if (!protocolName || !protocolClass) return null;
+
+  return {
+    protocolName,
+    protocolClass,
+    installed,
+    help: help ? help : undefined,
+  };
+}
+
 const tagDefsCacheByProjectId = new Map<string, ProtocolTag[]>();
 const tagDefsInFlightByProjectId = new Map<string, Promise<ProtocolTag[]>>();
 let tagDefsStoreProjectId: string | null = null;
@@ -483,6 +516,90 @@ export default function ProtocolNodeCard({
     if (!s || s === "null" || s === "undefined") return null;
     return data.id as Id;
   }, [data.id]);
+
+
+
+  const [nextStepSuggestions, setNextStepSuggestions] = useState<NextProtocolSuggestion[] | null>(null);
+  const [nextStepLoading, setNextStepLoading] = useState(false);
+  const [nextStepError, setNextStepError] = useState<string | null>(null);
+  const nextStepInFlightRef = useRef<Promise<void> | null>(null);
+
+  const [nextStepHelpOpen, setNextStepHelpOpen] = useState(false);
+  const [nextStepHelpTarget, setNextStepHelpTarget] = useState<NextProtocolSuggestion | null>(null);
+
+  useEffect(() => {
+    // resetNextStepOnNodeChange
+    setNextStepSuggestions(null);
+    setNextStepError(null);
+    setNextStepLoading(false);
+    nextStepInFlightRef.current = null;
+    setNextStepHelpOpen(false);
+    setNextStepHelpTarget(null);
+  }, [normalizedProjectId, normalizedProtocolId]);
+
+  const openNextStepHelp = useCallback((suggestion: NextProtocolSuggestion) => {
+    // openNextStepHelp
+    setNextStepHelpTarget(suggestion);
+    setNextStepHelpOpen(true);
+  }, []);
+
+  const closeNextStepHelp = useCallback(() => {
+    // closeNextStepHelp
+    setNextStepHelpOpen(false);
+    setNextStepHelpTarget(null);
+  }, []);
+
+  const resetNextStepSuggestions = useCallback(() => {
+    // resetNextStepSuggestions
+    setNextStepSuggestions(null);
+    setNextStepError(null);
+    setNextStepLoading(false);
+    nextStepInFlightRef.current = null;
+  }, []);
+
+  const loadNextStepSuggestionsIfNeeded = useCallback(() => {
+    // loadNextStepSuggestionsIfNeeded
+    if (nextStepSuggestions !== null) return;
+    if (nextStepLoading) return;
+    if (nextStepInFlightRef.current) return;
+    if (isProjectNode) return;
+
+    if (normalizedProjectId == null || normalizedProtocolId == null) {
+      setNextStepSuggestions([]);
+      return;
+    }
+
+    const fn = (svcRef.current as any)?.getNextProtocolSuggestions;
+    if (typeof fn !== "function") {
+      setNextStepSuggestions([]);
+      return;
+    }
+
+    setNextStepLoading(true);
+    setNextStepError(null);
+
+    const run = async () => {
+      const raw = await fn(normalizedProjectId as Id, normalizedProtocolId as Id);
+      const list = Array.isArray(raw) ? raw : [];
+      const normalized = list
+        .map((x: any) => normalizeNextProtocolSuggestion(x))
+        .filter(Boolean) as NextProtocolSuggestion[];
+      setNextStepSuggestions(normalized);
+    };
+
+    const p = run()
+      .catch((e: any) => {
+        setNextStepError(coerceErrorMessage(e, "Failed to load suggestions"));
+      })
+      .finally(() => {
+        nextStepInFlightRef.current = null;
+        setNextStepLoading(false);
+      });
+
+    nextStepInFlightRef.current = p;
+  }, [isProjectNode, nextStepLoading, nextStepSuggestions, normalizedProjectId, normalizedProtocolId]);
+
+
 
   const { tags: storeTagDefs, setTags: storeSetTags } = useTagStore();
 
@@ -1066,6 +1183,175 @@ export default function ProtocolNodeCard({
 
   const canOpenViewer = !isProjectNode && data.projectId != null;
 
+  const renderNextStepSubContent = useCallback(
+    (kind: "dropdown" | "context") => {
+      // renderNextStepSubContent
+      const Item: any = kind === "dropdown" ? DropdownMenuItem : ContextMenuItem;
+      const Sep: any = kind === "dropdown" ? DropdownMenuSeparator : ContextMenuSeparator;
+
+      if (isProjectNode) {
+        return (
+          <Item disabled>
+            <div className={styles.menuRow}>
+              <span className={styles.menuLeft}>
+                <span>Not available for project</span>
+              </span>
+            </div>
+          </Item>
+        );
+      }
+
+      if (nextStepLoading) {
+        return (
+          <Item disabled>
+            <div className={styles.menuRow}>
+              <span className={styles.menuLeft}>
+                <span>Loading suggestions...</span>
+              </span>
+            </div>
+          </Item>
+        );
+      }
+
+      if (nextStepError) {
+        return (
+          <>
+            <Item disabled>
+              <div className={styles.menuRow}>
+                <span className={styles.menuLeft}>
+                  <span>{nextStepError}</span>
+                </span>
+              </div>
+            </Item>
+            <Sep />
+            <Item
+              onSelect={(e: Event) => {
+                e.preventDefault();
+                e.stopPropagation();
+                resetNextStepSuggestions();
+                loadNextStepSuggestionsIfNeeded();
+              }}
+            >
+              <div className={styles.menuRow}>
+                <span className={styles.menuLeft}>
+                  <span>Retry</span>
+                </span>
+              </div>
+            </Item>
+          </>
+        );
+      }
+
+      if (nextStepSuggestions == null) {
+        return (
+          <Item disabled>
+            <div className={styles.menuRow}>
+              <span className={styles.menuLeft}>
+                <span>Open to load suggestions</span>
+              </span>
+            </div>
+          </Item>
+        );
+      }
+
+      if (nextStepSuggestions.length === 0) {
+        return (
+          <Item disabled>
+            <div className={styles.menuRow}>
+              <span className={styles.menuLeft}>
+                <span>No suggestions</span>
+              </span>
+            </div>
+          </Item>
+        );
+      }
+
+      const list = (
+        <div className={styles.nextStepList} data-next-step-scroll>
+          {nextStepSuggestions.map((s) => {
+            const installedValue = String(s.installed ?? "installed").trim() || "installed";
+            const isInstalled = installedValue === "installed";
+            const disabledTooltip = !isInstalled ? installedValue : "";
+
+            const showHelp = typeof s.help === "string" && s.help.trim().length > 0;
+
+            return (
+              <Item
+                key={`${s.protocolClass}:${s.protocolName}`}
+                onSelect={(e: Event) => {
+                  // keepMenuOpenNoRowActionYet
+                  e.preventDefault();
+                  e.stopPropagation();
+                }}
+              >
+                <div
+                  className={[
+                    styles.nextStepRow,
+                    !isInstalled ? styles.nextStepRowDisabled : "",
+                  ].join(" ")}
+                >
+                  {/* leftSideDisabledButHelpClickable */}
+                  <div
+                    className={styles.nextStepLeft}
+                    title={disabledTooltip || s.protocolClass}
+                    style={{
+                      pointerEvents: isInstalled ? "auto" : "none",
+                    }}
+                  >
+                    <ArrowRight className={styles.nextStepItemIcon} />
+                    <span className={styles.nextStepName} title={s.protocolName}>
+                      {s.protocolName}
+                    </span>
+                  </div>
+
+                  <div className={styles.nextStepRight}>
+                    {showHelp ? (
+                      <button
+                        type="button"
+                        className={styles.nextStepHelpBtn}
+                        aria-label={`Help for ${s.protocolName}`}
+                        onPointerDown={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                        }}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                        }}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          openNextStepHelp(s);
+                        }}
+                      >
+                        <HelpCircle className={styles.nextStepHelpIcon} />
+                      </button>
+                    ) : (
+                      <span className={styles.nextStepHelpPlaceholder} />
+                    )}
+                  </div>
+                </div>
+              </Item>
+            );
+          })}
+        </div>
+      );
+
+      return list;
+
+    },
+    [
+      isProjectNode,
+      loadNextStepSuggestionsIfNeeded,
+      nextStepError,
+      nextStepLoading,
+      nextStepSuggestions,
+      openNextStepHelp,
+      resetNextStepSuggestions,
+    ],
+  );
+
+
   const openOutputViewer = useCallback(
     async (outputName: string, outputRaw: any, normalized?: NormalizedOutput | null) => {
       // openOutputViewer
@@ -1408,6 +1694,32 @@ export default function ProtocolNodeCard({
                         </span>
                       </div>
                     </DropdownMenuItem>
+
+                    <DropdownMenuSub
+                      onOpenChange={(open) => {
+                        // loadNextStepOnOpen
+                        if (open) loadNextStepSuggestionsIfNeeded();
+                      }}>
+                      <DropdownMenuSubTrigger
+                        onPointerEnter={() => loadNextStepSuggestionsIfNeeded()}
+                        onFocus={() => loadNextStepSuggestionsIfNeeded()}
+                        onClick={() => loadNextStepSuggestionsIfNeeded()}
+                      >
+                        <div className={styles.menuRow}>
+                          <span className={styles.menuLeft}>
+                            <ArrowRight className={styles.menuItemIcon} />
+                            <span>Next step</span>
+                          </span>
+                        </div>
+                      </DropdownMenuSubTrigger>
+
+                      <DropdownMenuSubContent className={styles.menuContent} sideOffset={8}>
+                        {renderNextStepSubContent("dropdown")}
+                      </DropdownMenuSubContent>
+                    </DropdownMenuSub>
+
+
+
                   </DropdownMenuContent>
                 </DropdownMenu>
 
@@ -1877,6 +2189,34 @@ export default function ProtocolNodeCard({
             </span>
           </div>
         </ContextMenuItem>
+
+        <ContextMenuSeparator />
+
+        <ContextMenuSub
+          onOpenChange={(open) => {
+            // loadNextStepOnOpen
+            if (open) loadNextStepSuggestionsIfNeeded();
+          }}>
+          <ContextMenuSubTrigger
+            onPointerEnter={() => loadNextStepSuggestionsIfNeeded()}
+            onFocus={() => loadNextStepSuggestionsIfNeeded()}
+            onClick={() => loadNextStepSuggestionsIfNeeded()}
+          >
+            <div className={styles.menuRow}>
+              <span className={styles.menuLeft}>
+                <ArrowRight className={styles.menuItemIcon} />
+                <span>Next step</span>
+              </span>
+            </div>
+          </ContextMenuSubTrigger>
+
+          <ContextMenuSubContent className={styles.menuContent} sideOffset={8}>
+            {renderNextStepSubContent("context")}
+          </ContextMenuSubContent>
+        </ContextMenuSub>
+
+        <ContextMenuSeparator />
+
       </ContextMenuContent>
 
       {canOpenViewer && analyzeOpen && analyzeTarget ? (
@@ -1894,6 +2234,31 @@ export default function ProtocolNodeCard({
           outputRaw={analyzeTarget.outputRaw}
         />
       ) : null}
+
+      {nextStepHelpOpen && nextStepHelpTarget ? (
+        <Dialog
+          open
+          onClose={closeNextStepHelp}
+          maxWidth="sm"
+          fullWidth
+        >
+          <DialogTitle>{nextStepHelpTarget.protocolName}</DialogTitle>
+          <DialogContent>
+            <div style={{ marginBottom: 10, opacity: 0.8 }}>
+              <strong>Class:</strong> {nextStepHelpTarget.protocolClass}
+            </div>
+            <pre style={{ whiteSpace: "pre-wrap", margin: 0 }}>
+              {nextStepHelpTarget.help || "No help available."}
+            </pre>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={closeNextStepHelp} variant="outlined">
+              Close
+            </Button>
+          </DialogActions>
+        </Dialog>
+      ) : null}
+
     </ContextMenu>
   );
 }

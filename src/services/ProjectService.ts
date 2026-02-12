@@ -409,6 +409,17 @@ export type ProtocolLogsChunkResponse = {
   chunks?: Record<string, ProtocolLogChunk>;
 };
 
+export type NextProtocolSuggestion = {
+  protocolName: string;
+  protocolClass: string;
+  help?: string;
+  installed?: string;
+};
+
+export type NextProtocolSuggestionsOptions = {
+  signal?: AbortSignal;
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Protocol tags (project-level tags + protocol assignments)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -546,6 +557,12 @@ export interface ProjectService<
     path: string,
     opts?: { table?: string }
   ): Promise<any>;
+
+  getNextProtocolSuggestions(
+    projectId: Id,
+    protocolId: Id,
+    opts?: NextProtocolSuggestionsOptions
+  ): Promise<NextProtocolSuggestion[]>;
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Analyze Results (Volumes) — used by the "Analyze Results" viewer.

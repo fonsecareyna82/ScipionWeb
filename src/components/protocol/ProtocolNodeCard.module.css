@@ -604,3 +604,94 @@
   flex-wrap: wrap;
   min-width: 0;
 }
+
+.nextStepList {
+  max-height: 420px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 8px;
+  scrollbar-gutter: stable;
+  overscroll-behavior: contain;
+
+  /* Firefox */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(15, 23, 42, 0.45) rgba(15, 23, 42, 0.12);
+}
+
+/* Chromium/WebKit */
+.nextStepList::-webkit-scrollbar {
+  width: 10px;
+}
+.nextStepList::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.12);
+  border-radius: 999px;
+}
+.nextStepList::-webkit-scrollbar-thumb {
+  background: rgba(15, 23, 42, 0.45);
+  border-radius: 999px;
+}
+
+.nextStepRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+}
+
+.nextStepRowDisabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.nextStepLeft {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0; /* criticalForEllipsis */
+}
+
+.nextStepItemIcon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+}
+
+.nextStepName {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nextStepRight {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+}
+
+.nextStepHelpBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.nextStepHelpIcon {
+  width: 18px;
+  height: 18px;
+}
+
+.nextStepHelpPlaceholder {
+  width: 28px;
+  height: 28px;
+  display: inline-block;
+}
