@@ -1326,55 +1326,29 @@ export default function ProjectPage() {
   }, [paintEdgeHighlight, paintPathHighlight, setEdges]);
 
 
-  useEffect(() => {
-    // focusNodesMatchingTagFilter
-    if (!tagFilterIds.length) return;
+  const prevHadTagFilterRef = useRef(false);
 
-    // tableModeAlreadyFiltersRows; optional: scroll to first match
-    if (viewMode === "table") {
-      const filterSet = new Set(tagFilterIds);
-      const first = filteredTableData.find((row) => {
-        const pid = String(row?.id ?? "");
-        const assigned = pickFirstNonEmptyTagIds(
-          tagAssignments[pid],
-          (row as any)?.tagIds,
-          (row as any)?.tags
-        );
-        return assigned.some((tid) => filterSet.has(tid));
-      });
-      if (first) scrollToProtocol(String(first.id));
-      return;
-    }
+useEffect(() => {
+  // focusNodesMatchingTagFilter
+  // Important: tag filtering must not change graph selection.
+  const hadPrev = prevHadTagFilterRef.current;
+  const hasNow = tagFilterIds.length > 0;
+  prevHadTagFilterRef.current = hasNow;
 
-    const filterSet = new Set(tagFilterIds);
+  if (!hasNow) return;
 
-    const matches = nodesRef.current.filter((n) => {
-      const nodeId = String(n.id);
-      if (nodeId === "PROJECT") return false;
+  // In table mode, rows are already filtered; optional: scroll to the first match.
+  if (viewMode === "table") {
+    const first = filteredTableData[0];
+    if (first) scrollToProtocol(String(first.id));
+    return;
+  }
 
-      const dataAny: any = (n as any).data ?? {};
+  // No-op on graph modes: renderNodes already dims non-matching nodes via tagFilterIds.
+  // This prevents applyPathSelection() from selecting nodes while filtering.
+  void hadPrev;
+}, [tagFilterIds, viewMode, filteredTableData]);
 
-      // readAssignedTagIdsConsistently
-      const assigned = pickFirstNonEmptyTagIds(
-        tagAssignments[nodeId],
-        dataAny.tagIds,
-        dataAny.tags
-      );
-
-      return assigned.some((tid) => filterSet.has(tid));
-    });
-
-    if (!matches.length) return;
-
-    // selectAllMatchesSoTheyAreVisuallyFocused
-    applyPathSelection(matches.map((n) => String(n.id)));
-  }, [
-    tagFilterIds,
-    tagAssignments,
-    viewMode,
-    filteredTableData,
-    applyPathSelection,
-  ]);
 
 
   useEffect(() => {
