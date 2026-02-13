@@ -1796,99 +1796,28 @@ export default function ProtocolNodeCard({
           {nextStepSuggestions.map((s) => {
             const installedValue = String(s.installed ?? "installed").trim() || "installed";
             const isInstalled = installedValue === "installed";
+            const disabledTooltip = !isInstalled ? installedValue : "";
             const showHelp = typeof s.help === "string" && s.help.trim().length > 0;
 
-            const row = (
-              <div
-                className={[
-                  styles.nextStepRow,
-                  !isInstalled ? styles.nextStepRowDisabled : "",
-                ].join(" ")}
-                aria-disabled={!isInstalled}
-              >
-                {/* leftSideDisabledButHelpClickable */}
-                <div
-                  className={styles.nextStepLeft}
-                  style={{
-                    pointerEvents: isInstalled ? "auto" : "none",
-                  }}
-                  onDoubleClick={(e) => {
-                    // openOnDoubleClick
-                    e.preventDefault();
-                    e.stopPropagation();
-                    openSuggestedProtocolClass(s);
-                  }}
-                  onKeyDown={(e) => {
-                    // openOnEnterKey
-                    if (!isInstalled) return;
-                    if (e.key !== "Enter") return;
-                    e.preventDefault();
-                    e.stopPropagation();
-                    openSuggestedProtocolClass(s);
-                  }}
-                  role="button"
-                  tabIndex={isInstalled ? 0 : -1}
-                >
-                  <FileIcon className={styles.nextStepItemIcon} />
+            const swallowPointer = (e: any) => {
+              // swallowPointer
+              e.preventDefault();
+              e.stopPropagation();
+            };
 
-                    <Tooltip
-                    title={s.protocolName}
-                    placement="top"
-                    arrow
-                    enterDelay={450}
-                    disableInteractive
-                    PopperProps={{ sx: { zIndex: 26000 } }}
-                    componentsProps={{
-                      tooltip: {
-                        sx: {
-                          fontSize: "0.95rem", // changeThisToWhateverYouWant
-                          lineHeight: 1.35,
-                          maxWidth: 420,
-                        },
-                      },
-                      arrow: {
-                        sx: {
-                          "&::before": {
-                            // keepArrowInSyncWithTooltipBg
-                          },
-                        },
-                      },
-                    }}
-                  >
-                    <span className={styles.nextStepName}>
-                    {s.protocolName}
-                  </span>
-                  </Tooltip>
-                </div>
+            const handleRowDoubleClick = (e: any) => {
+              // handleRowDoubleClick
+              e.preventDefault();
+              e.stopPropagation();
+              if (!isInstalled) return;
 
-                <div className={styles.nextStepRight}>
-                  {showHelp ? (
-                    <button
-                      type="button"
-                      className={styles.nextStepHelpBtn}
-                      aria-label={`Help for ${s.protocolName}`}
-                      onPointerDown={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                      }}
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                      }}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        openNextStepHelp(s);
-                      }}
-                    >
-                      <HelpCircle className={styles.nextStepHelpIcon} />
-                    </button>
-                  ) : (
-                    <span className={styles.nextStepHelpPlaceholder} />
-                  )}
-                </div>
-              </div>
-            );
+              dismissRadixMenus();
+
+              window.setTimeout(() => {
+                openSuggestedProtocolClass(s);
+              }, 0);
+            };
+            
 
             return (
               <Item
@@ -1899,39 +1828,67 @@ export default function ProtocolNodeCard({
                   e.stopPropagation();
                 }}
               >
-                {!isInstalled ? (
-                  <Tooltip
-                    title={installedValue}
-                    placement="top"
-                    arrow
-                    enterDelay={450}
-                    disableInteractive
-                    PopperProps={{ sx: { zIndex: 26000 } }}
-                    componentsProps={{
-                      tooltip: {
-                        sx: {
-                          fontSize: "0.95rem", // changeThisToWhateverYouWant
-                          lineHeight: 1.35,
-                          maxWidth: 420,
-                        },
-                      },
-                      arrow: {
-                        sx: {
-                          "&::before": {
-                            // keepArrowInSyncWithTooltipBg
-                          },
-                        },
-                      },
+                <div
+                  className={[
+                    styles.nextStepRow,
+                    !isInstalled ? styles.nextStepRowDisabled : "",
+                  ].join(" ")}
+                  title={disabledTooltip || s.protocolClass}
+                  onPointerDown={swallowPointer}
+                  onMouseDown={swallowPointer}
+                  onClick={swallowPointer}
+                  onDoubleClick={handleRowDoubleClick}
+                >
+                  <div
+                    className={styles.nextStepLeft}
+                    role="button"
+                    tabIndex={isInstalled ? 0 : -1}
+                    onKeyDown={(e) => {
+                      // openOnEnterKey
+                      if (!isInstalled) return;
+                      if (e.key !== "Enter") return;
+                      e.preventDefault();
+                      e.stopPropagation();
+                      openSuggestedProtocolClass(s);
                     }}
                   >
-                    {row}
-                  </Tooltip>
-                ) : (
-                  row
-                )}
+                    <FileIcon className={styles.nextStepItemIcon} />
+                    <span className={styles.nextStepName} title={s.protocolName}>
+                      {s.protocolName}
+                    </span>
+                  </div>
+
+                  <div className={styles.nextStepRight}>
+                    {showHelp ? (
+                      <button
+                        type="button"
+                        className={styles.nextStepHelpBtn}
+                        aria-label={`Help for ${s.protocolName}`}
+                        onPointerDown={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                        }}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                        }}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          openNextStepHelp(s);
+                        }}
+                      >
+                        <HelpCircle className={styles.nextStepHelpIcon} />
+                      </button>
+                    ) : (
+                      <span className={styles.nextStepHelpPlaceholder} />
+                    )}
+                  </div>
+                </div>
               </Item>
             );
           })}
+
         </div>
       );
 
