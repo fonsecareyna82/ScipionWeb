@@ -1797,27 +1797,90 @@ export default function ProtocolNodeCard({
             const installedValue = String(s.installed ?? "installed").trim() || "installed";
             const isInstalled = installedValue === "installed";
             const disabledTooltip = !isInstalled ? installedValue : "";
+
             const showHelp = typeof s.help === "string" && s.help.trim().length > 0;
 
-            const swallowPointer = (e: any) => {
-              // swallowPointer
+            const swallowIfDisabled = (e: any) => {
+              // swallowIfDisabled
+              if (isInstalled) return;
               e.preventDefault();
               e.stopPropagation();
             };
 
-            const handleRowDoubleClick = (e: any) => {
-              // handleRowDoubleClick
-              e.preventDefault();
-              e.stopPropagation();
-              if (!isInstalled) return;
+            const left = (
+              <div
+                className={styles.nextStepLeft}
+                aria-disabled={!isInstalled}
+                onPointerDown={(e) => {
+                  // preventMenuCloseAndUnderlyingClicks
+                  e.preventDefault();
+                  e.stopPropagation();
+                }}
+                onMouseDown={(e) => {
+                  // preventMenuCloseAndUnderlyingMouseDown
+                  e.preventDefault();
+                  e.stopPropagation();
+                }}
+                onClick={(e) => {
+                  // preventSingleClickAction
+                  e.preventDefault();
+                  e.stopPropagation();
+                }}
+                onDoubleClick={(e) => {
+                  // openOnDoubleClickIfInstalled
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (!isInstalled) return;
+                  dismissRadixMenus();
+                  openSuggestedProtocolClass(s);
+                }}
+                onKeyDown={(e) => {
+                  // openOnEnterKeyIfInstalled
+                  if (e.key !== "Enter") return;
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (!isInstalled) return;
+                  dismissRadixMenus();
+                  openSuggestedProtocolClass(s);
+                }}
+                role="button"
+                tabIndex={isInstalled ? 0 : -1}
+              >
+                <FileIcon className={styles.nextStepItemIcon} />
 
-              dismissRadixMenus();
+                <Tooltip
+                  title={s.protocolName}
+                  placement="right"
+                  arrow
+                  enterDelay={250}
+                  slotProps={{
+                    popper: { sx: { zIndex: 26000 } },
+                    tooltip: { sx: { fontSize: "0.95rem", lineHeight: 1.35 } },
+                  }}
+                >
+                  <span style={{ display: "block" }}><span className={styles.nextStepName}>
+                    {s.protocolName}
+                  </span></span>
+                </Tooltip>
+              </div>
+            );
 
-              window.setTimeout(() => {
-                openSuggestedProtocolClass(s);
-              }, 0);
-            };
-            
+            const leftWithTooltip = disabledTooltip ? (
+              <Tooltip
+                title={disabledTooltip}
+                placement="right"
+                arrow
+                enterDelay={250}
+                slotProps={{
+                  popper: { sx: { zIndex: 26000 } },
+                  tooltip: { sx: { fontSize: "0.95rem", lineHeight: 1.35 } },
+                }}
+              >
+                <span style={{ display: "block" }}>{left}</span>
+              </Tooltip>
+            ) : (
+              left
+            );
 
             return (
               <Item
@@ -1829,34 +1892,13 @@ export default function ProtocolNodeCard({
                 }}
               >
                 <div
-                  className={[
-                    styles.nextStepRow,
-                    !isInstalled ? styles.nextStepRowDisabled : "",
-                  ].join(" ")}
-                  title={disabledTooltip || s.protocolClass}
-                  onPointerDown={swallowPointer}
-                  onMouseDown={swallowPointer}
-                  onClick={swallowPointer}
-                  onDoubleClick={handleRowDoubleClick}
+                  className={[styles.nextStepRow, !isInstalled ? styles.nextStepRowDisabled : ""].join(" ")}
+                  onPointerDown={swallowIfDisabled}
+                  onMouseDown={swallowIfDisabled}
+                  onClick={swallowIfDisabled}
+                  onDoubleClick={swallowIfDisabled}
                 >
-                  <div
-                    className={styles.nextStepLeft}
-                    role="button"
-                    tabIndex={isInstalled ? 0 : -1}
-                    onKeyDown={(e) => {
-                      // openOnEnterKey
-                      if (!isInstalled) return;
-                      if (e.key !== "Enter") return;
-                      e.preventDefault();
-                      e.stopPropagation();
-                      openSuggestedProtocolClass(s);
-                    }}
-                  >
-                    <FileIcon className={styles.nextStepItemIcon} />
-                    <span className={styles.nextStepName} title={s.protocolName}>
-                      {s.protocolName}
-                    </span>
-                  </div>
+                  {leftWithTooltip}
 
                   <div className={styles.nextStepRight}>
                     {showHelp ? (
@@ -1888,6 +1930,7 @@ export default function ProtocolNodeCard({
               </Item>
             );
           })}
+
 
         </div>
       );
