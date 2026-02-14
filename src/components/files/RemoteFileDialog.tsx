@@ -229,6 +229,7 @@ export default function RemoteFileDialog({
     if (entry.isDir) return false;
     const mimeLower = (entry.mime || "").toLowerCase();
     if (
+      mimeLower.startsWith("text") ||
       mimeLower.startsWith("text/") ||
       mimeLower === "application/json" ||
       mimeLower === "application/xml" ||
@@ -262,6 +263,7 @@ export default function RemoteFileDialog({
       ".stdout",
       ".out",
       ".err",
+      ".script"
     ];
     return textExts.some((ext) => lowerName.endsWith(ext));
   };
@@ -271,7 +273,7 @@ export default function RemoteFileDialog({
   // decideIfImageLike
   const looksImageLike = (entry: RemoteEntry): boolean => {
     if (entry.isDir) return false;
-    if (entry.mime && entry.mime.startsWith("image/")) return true;
+    if (entry.mime && entry.mime.startsWith("image")) return true;
     if (isImageExt(entry.name)) return true;
     return false;
   };

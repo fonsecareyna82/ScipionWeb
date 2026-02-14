@@ -18,6 +18,8 @@ import {
   ProtocolTagUpdatePayload,
   ProtocolTagIdsResult,
   NextProtocolSuggestion,
+  ContextMenuVisibilityPolicy,
+
 } from "@/services/ProjectService";
 
 const ACTION_LAUNCH = "launch";
@@ -760,6 +762,28 @@ function normalizeNextProtocolSuggestions(raw: unknown): NextProtocolSuggestion[
 
   return arr.map(normalizeOne).filter(Boolean) as NextProtocolSuggestion[];
 }
+
+
+export async function getContextMenuVisibilityPolicy(
+  projectId: Id,
+): Promise<any> {
+  // getContextMenuVisibilityPolicy
+  const url = `${BASE_URL}/projects/${projectId}/context-menu-visibility`;
+  const res = await fetchWithAuth(url, { method: "GET" });
+
+  // Treat missing endpoint as default "show everything"
+  if (res.status === 404 || res.status === 204) {
+    return { delete: true, nextSteps: true };
+  }
+
+  if (!res.ok) {
+    throw await toApiError(res, "Failed to fetch context menu visibility policy");
+  }
+
+  const raw = await safeJson<any>(res);
+  return raw;
+}
+
 
 function isMissingId(value: Id): boolean {
   // isMissingId

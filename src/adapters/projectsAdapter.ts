@@ -23,6 +23,7 @@ import type {
   ProtocolTagCreatePayload,
   ProtocolTagUpdatePayload,
   ProtocolTagIdsResult,
+  ContextMenuVisibilityPolicy,
 } from "@/services/ProjectService";
 
 
@@ -652,7 +653,11 @@ const defaultService: ProjectService = {
   ): Promise<ProtocolLogsChunkResponse> =>
     api.fetchProtocolLogsChunk(toId(projectId), toId(protocolId), offsets, opts),
 
-
+// ──────────────────────────── Context menu visibility policy ────────────────────────────
+    getContextMenuVisibilityPolicy: (
+    projectId: Id,
+  ): Promise<ContextMenuVisibilityPolicy> =>
+    api.getContextMenuVisibilityPolicy(toId(projectId)),
 
 };
 

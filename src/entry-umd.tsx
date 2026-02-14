@@ -599,6 +599,49 @@ const defaultMockService: ProjectService = {
 
     return { chunks };
   },
+
+  async getNextProtocolSuggestions(_projectId: Id, _protocolId: Id): Promise<any> {
+    return [
+      {
+        "protocolName": null,
+        "protocolClass": "ProtWarpTSTemplateMatch",
+        "help": null,
+        "installed": "Missing. Available in None plugin."
+      },
+      {
+        "protocolName": "CryoCARE Prediction",
+        "protocolClass": "ProtCryoCAREPrediction",
+        "help": "Generate the final restored tomogram by applying the cryoCARE trained network to bothtomograms followed by per-pixel averaging.",
+        "installed": "Missing. Available in scipion-em-cryocare plugin."
+      },
+      {
+        "protocolName": "vectorial picking",
+        "protocolClass": "DynamoBoxing",
+        "help": "Manual vectorial picker from Dynamo. After choosing the Tomogram to be picked, the tomo slicer from Dynamo will be    direclty loaded with all the models previously saved in the disk (if any).    This picking will only save the \"user points\" defined in a set of models. It is possible to    create several models at once in a given tomogram. Once the coordinates are defined,    the models are automatically saved in the catalogue and registered.    Currently the following Dynamo models are supported:        - Ellipsoidal Vesicle",
+        "installed": "Missing. Available in scipion-em-dynamo plugin."
+      }
+    ]
+  },
+
+  async getContextMenuVisibilityPolicy(_projectId: Id,): Promise<any> {
+    return {
+      "open": true,
+      "browse": true,
+      "rename": true,
+      "duplicate": true,
+      "delete": true,
+      "restart": true,
+      "continue": true,
+      "reset": true,
+      "stop": true,
+      "selectFrom": true,
+      "selectTo": true,
+      "manageTags": true,
+      "export": true,
+      "upload": true,
+      "nextSteps": true,
+    }
+  },
 };
 
 /** normalizeServiceApiAliasMappingAndSignatureAdapters */
@@ -757,6 +800,8 @@ function normalizeServiceAPI(srv?: any): ProjectService {
     "saveProtocolTagIds",
   );
 
+  mapFn("getNextProtocolSuggestions", "nextProtocolSuggestions",);
+  mapFn("getContextMenuVisibilityPolicy", "contextMenuVisibilityPolicy",);
 
   const ensureFn = (name: string, impl: (...args: any[]) => any) => {
     // ensureFn

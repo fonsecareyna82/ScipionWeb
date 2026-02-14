@@ -76,6 +76,7 @@ import type { ProtocolTag } from "@/components/tags/tagTypes";
 import { useTagStore } from "@/stores/tag_store";
 import { useProjectService } from "@/ProjectServiceContext";
 import { CloseIcon } from "@/icons";
+import type { NodeMenuItemId, NodeMenuVisibility } from "@/types/protocol-node-menu-items";
 
 const statusColors: Record<string, string> = {
   running: "#FCCE62",
@@ -172,7 +173,10 @@ type StatusNodeProps = {
   showHandles?: boolean;
 
   service?: ExternalAnalyzeViewerService;
+  contextMenuVisibility?: NodeMenuVisibility;
 };
+
+
 
 const formatCpuTime = (seconds: number): string => {
   const hours = Math.floor(seconds / 3600);
@@ -927,6 +931,7 @@ export default function ProtocolNodeCard({
   pathSelectionActive = false,
   showHandles = true,
   service,
+  contextMenuVisibility,
 }: StatusNodeProps) {
   const svc = useProjectService();
   const svcRef = useRef(svc);
@@ -1508,6 +1513,16 @@ export default function ProtocolNodeCard({
 
   const reduceMenus = pathSelectionActive || inPathSelection;
 
+  const isMenuItemVisible = useCallback(
+    (id: NodeMenuItemId) => {
+      // menuVisibilityDefaultVisible
+      return contextMenuVisibility?.[id] !== false;
+    },
+    [contextMenuVisibility],
+  );
+
+
+
   const FromIcon = graphDirection === "TB" ? ArrowDown : ArrowRight;
   const ToIcon = graphDirection === "TB" ? ArrowUp : ArrowLeft;
 
@@ -2069,61 +2084,70 @@ export default function ProtocolNodeCard({
                     onInteractOutside={preventMenuDismissWhileHelpOpen}>
                     {!reduceMenus && (
                       <>
-                        <DropdownMenuItem onSelect={() => handleEdit()}>
-                          <div className={styles.menuRow}>
-                            <span className={styles.menuLeft}>
-                              <Scan className={styles.menuItemIcon} />
-                              <span>Open</span>
-                            </span>
-                            <ShortcutHint text={shortcuts.edit} />
-                          </div>
-                        </DropdownMenuItem>
+                        {isMenuItemVisible("open") && (
+                          <DropdownMenuItem onSelect={() => handleEdit()}>
+                            <div className={styles.menuRow}>
+                              <span className={styles.menuLeft}>
+                                <Scan className={styles.menuItemIcon} />
+                                <span>Open</span>
+                              </span>
+                              <ShortcutHint text={shortcuts.edit} />
+                            </div>
+                          </DropdownMenuItem>)}
 
-                        <DropdownMenuItem onSelect={() => handleBrowse()}>
-                          <div className={styles.menuRow}>
-                            <span className={styles.menuLeft}>
-                              <FolderOpen className={styles.menuItemIcon} />
-                              <span>Browse</span>
-                            </span>
-                            <ShortcutHint text={shortcuts.browse} />
-                          </div>
-                        </DropdownMenuItem>
 
-                        <DropdownMenuItem onSelect={() => handleRename()}>
-                          <div className={styles.menuRow}>
-                            <span className={styles.menuLeft}>
-                              <Pencil className={styles.menuItemIcon} />
-                              <span>Rename</span>
-                            </span>
-                            <ShortcutHint text={shortcuts.rename} />
-                          </div>
-                        </DropdownMenuItem>
+                        {isMenuItemVisible("browse") && (
+                          <DropdownMenuItem onSelect={() => handleBrowse()}>
+                            <div className={styles.menuRow}>
+                              <span className={styles.menuLeft}>
+                                <FolderOpen className={styles.menuItemIcon} />
+                                <span>Browse</span>
+                              </span>
+                              <ShortcutHint text={shortcuts.browse} />
+                            </div>
+                          </DropdownMenuItem>)}
 
-                        <DropdownMenuSeparator />
+                        {isMenuItemVisible("rename") && (
+                          <DropdownMenuItem onSelect={() => handleRename()}>
+                            <div className={styles.menuRow}>
+                              <span className={styles.menuLeft}>
+                                <Pencil className={styles.menuItemIcon} />
+                                <span>Rename</span>
+                              </span>
+                              <ShortcutHint text={shortcuts.rename} />
+                            </div>
+                          </DropdownMenuItem>)}
 
-                        <DropdownMenuItem onSelect={() => handleSelectFrom()}>
-                          <div className={styles.menuRow}>
-                            <span className={styles.menuLeft}>
-                              <FromIcon className={styles.menuItemIcon} />
-                              <span>Select from</span>
-                            </span>
-                            <ShortcutHint text={shortcuts.selectFrom} />
-                          </div>
-                        </DropdownMenuItem>
+                        {(isMenuItemVisible("open") || isMenuItemVisible("rename") || isMenuItemVisible("rename")) && (
+                          <DropdownMenuSeparator />)}
 
-                        <DropdownMenuItem onSelect={() => handleSelectTo()}>
-                          <div className={styles.menuRow}>
-                            <span className={styles.menuLeft}>
-                              <ToIcon className={styles.menuItemIcon} />
-                              <span>Select to</span>
-                            </span>
-                            <ShortcutHint text={shortcuts.selectTo} />
-                          </div>
-                        </DropdownMenuItem>
+                        {isMenuItemVisible("selectFrom") && (
+                          <DropdownMenuItem onSelect={() => handleSelectFrom()}>
+                            <div className={styles.menuRow}>
+                              <span className={styles.menuLeft}>
+                                <FromIcon className={styles.menuItemIcon} />
+                                <span>Select from</span>
+                              </span>
+                              <ShortcutHint text={shortcuts.selectFrom} />
+                            </div>
+                          </DropdownMenuItem>)}
 
-                        <DropdownMenuSeparator />
 
-                        {(data.status === "running" || data.status === "launched" || data.status === "scheduled") && (
+                        {isMenuItemVisible("selectTo") && (
+                          <DropdownMenuItem onSelect={() => handleSelectTo()}>
+                            <div className={styles.menuRow}>
+                              <span className={styles.menuLeft}>
+                                <ToIcon className={styles.menuItemIcon} />
+                                <span>Select to</span>
+                              </span>
+                              <ShortcutHint text={shortcuts.selectTo} />
+                            </div>
+                          </DropdownMenuItem>)}
+
+                        {(isMenuItemVisible("selectFrom") || isMenuItemVisible("selectTo")) && (
+                          <DropdownMenuSeparator />)}
+
+                        {isMenuItemVisible("stop") && (data.status === "running" || data.status === "launched" || data.status === "scheduled") && (
                           <DropdownMenuItem onSelect={() => handleStop()}>
                             <div className={styles.menuRow}>
                               <span className={styles.menuLeft}>
@@ -2135,41 +2159,45 @@ export default function ProtocolNodeCard({
                           </DropdownMenuItem>
                         )}
 
-                        <DropdownMenuItem onSelect={() => handleRestartAll()}>
-                          <div className={styles.menuRow}>
-                            <span className={styles.menuLeft}>
-                              <RefreshCw className={styles.menuItemIcon} />
-                              <span>Restart all</span>
-                            </span>
-                            <ShortcutHint text={shortcuts.restartAll} />
-                          </div>
-                        </DropdownMenuItem>
+                        {isMenuItemVisible("restart") && (
+                          <DropdownMenuItem onSelect={() => handleRestartAll()}>
+                            <div className={styles.menuRow}>
+                              <span className={styles.menuLeft}>
+                                <RefreshCw className={styles.menuItemIcon} />
+                                <span>Restart all</span>
+                              </span>
+                              <ShortcutHint text={shortcuts.restartAll} />
+                            </div>
+                          </DropdownMenuItem>)}
 
-                        <DropdownMenuItem onSelect={() => handleContinueAll()}>
-                          <div className={styles.menuRow}>
-                            <span className={styles.menuLeft}>
-                              <Play className={styles.menuItemIcon} />
-                              <span>Continue all</span>
-                            </span>
-                            <ShortcutHint text={shortcuts.continueAll} />
-                          </div>
-                        </DropdownMenuItem>
+                        {isMenuItemVisible("continue") && (
+                          <DropdownMenuItem onSelect={() => handleContinueAll()}>
+                            <div className={styles.menuRow}>
+                              <span className={styles.menuLeft}>
+                                <Play className={styles.menuItemIcon} />
+                                <span>Continue all</span>
+                              </span>
+                              <ShortcutHint text={shortcuts.continueAll} />
+                            </div>
+                          </DropdownMenuItem>)}
 
-                        <DropdownMenuItem onSelect={() => handleResetFrom()}>
-                          <div className={styles.menuRow}>
-                            <span className={styles.menuLeft}>
-                              <RotateCcw className={styles.menuItemIcon} />
-                              <span>Reset from</span>
-                            </span>
-                            <ShortcutHint text={shortcuts.resetFrom} />
-                          </div>
-                        </DropdownMenuItem>
+                        {isMenuItemVisible("reset") && (
+                          <DropdownMenuItem onSelect={() => handleResetFrom()}>
+                            <div className={styles.menuRow}>
+                              <span className={styles.menuLeft}>
+                                <RotateCcw className={styles.menuItemIcon} />
+                                <span>Reset from</span>
+                              </span>
+                              <ShortcutHint text={shortcuts.resetFrom} />
+                            </div>
+                          </DropdownMenuItem>)}
 
-                        <DropdownMenuSeparator />
+                        {(isMenuItemVisible("reset") || isMenuItemVisible("continue") || isMenuItemVisible("restart") || isMenuItemVisible("stop")) && (
+                          <DropdownMenuSeparator />)}
                       </>
                     )}
 
-                    {reduceMenus && (data.status === "running" || data.status === "launched" || data.status === "scheduled") && (
+                    {reduceMenus && isMenuItemVisible("stop") && (data.status === "running" || data.status === "launched" || data.status === "scheduled") && (
                       <DropdownMenuItem onSelect={() => handleStop()}>
                         <div className={styles.menuRow}>
                           <span className={styles.menuLeft}>
@@ -2181,149 +2209,162 @@ export default function ProtocolNodeCard({
                       </DropdownMenuItem>
                     )}
 
-                    <DropdownMenuItem onSelect={() => handleDelete()}>
-                      <div className={styles.menuRow}>
-                        <span className={styles.menuLeft}>
-                          <Trash2 className={styles.menuItemIcon} />
-                          <span>Delete</span>
-                        </span>
-                        <ShortcutHint text={shortcuts.delete} />
-                      </div>
-                    </DropdownMenuItem>
-
-                    <DropdownMenuItem onSelect={() => handleDuplicate()}>
-                      <div className={styles.menuRow}>
-                        <span className={styles.menuLeft}>
-                          <Copy className={styles.menuItemIcon} />
-                          <span>Duplicate</span>
-                        </span>
-                        <ShortcutHint text={shortcuts.duplicate} />
-                      </div>
-                    </DropdownMenuItem>
-
-                    <DropdownMenuSeparator />
-
-                    <DropdownMenuSub>
-                      <DropdownMenuSubTrigger>
+                    {isMenuItemVisible("delete") && (
+                      <DropdownMenuItem onSelect={() => handleDelete()}>
                         <div className={styles.menuRow}>
                           <span className={styles.menuLeft}>
-                            <Tags className={styles.menuItemIcon} />
-                            <span>Tags</span>
+                            <Trash2 className={styles.menuItemIcon} />
+                            <span>Delete</span>
                           </span>
+                          <ShortcutHint text={shortcuts.delete} />
                         </div>
-                      </DropdownMenuSubTrigger>
+                      </DropdownMenuItem>)}
 
-                      <DropdownMenuSubContent className={styles.menuContent} sideOffset={8}>
-                        <DropdownMenuItem onSelect={() => handleManageTags()}>
+                    {isMenuItemVisible("duplicate") && (
+                      <DropdownMenuItem onSelect={() => handleDuplicate()}>
+                        <div className={styles.menuRow}>
+                          <span className={styles.menuLeft}>
+                            <Copy className={styles.menuItemIcon} />
+                            <span>Duplicate</span>
+                          </span>
+                          <ShortcutHint text={shortcuts.duplicate} />
+                        </div>
+                      </DropdownMenuItem>)}
+
+                    {(isMenuItemVisible("delete") || isMenuItemVisible("duplicate")) && (
+                      <DropdownMenuSeparator />)}
+
+                    {isMenuItemVisible("manageTags") && (
+                      <DropdownMenuSub>
+                        <DropdownMenuSubTrigger>
                           <div className={styles.menuRow}>
                             <span className={styles.menuLeft}>
-                              <Plus className={styles.menuItemIcon} />
-                              <span>Add new tag</span>
+                              <Tags className={styles.menuItemIcon} />
+                              <span>Tags</span>
                             </span>
                           </div>
-                        </DropdownMenuItem>
+                        </DropdownMenuSubTrigger>
 
-                        <DropdownMenuSeparator />
-
-                        {tagDefs.length > 0 ? (
-                          tagDefs.map((tag) => {
-                            const isChecked = selectedTagSet.has(String(tag.id));
-                            return (
-                              <DropdownMenuItem
-                                key={String(tag.id)}
-                                onSelect={(e) => handleToggleTagFromMenu(e, String(tag.id), true)}
-                              >
-                                <div className={styles.menuRow}>
-                                  <span className={styles.menuLeft}>
-                                    <span
-                                      style={{
-                                        width: 10,
-                                        height: 10,
-                                        borderRadius: 999,
-                                        backgroundColor: tag.color,
-                                        border: "1px solid rgba(15,23,42,0.22)",
-                                        display: "inline-block",
-                                        marginRight: 8,
-                                      }}
-                                    />
-                                    <span>{tag.title}</span>
-                                  </span>
-
-                                  <span className={styles.menuRight}>
-                                    {isChecked ? (
-                                      <Check className={styles.menuCheckIcon} />
-                                    ) : (
-                                      <span className={styles.menuCheckPlaceholder} />
-                                    )}
-                                  </span>
-                                </div>
-                              </DropdownMenuItem>
-                            );
-                          })
-                        ) : isTagDefsLoading ? (
-                          <DropdownMenuItem disabled>
+                        <DropdownMenuSubContent className={styles.menuContent} sideOffset={8}>
+                          <DropdownMenuItem onSelect={() => handleManageTags()}>
                             <div className={styles.menuRow}>
                               <span className={styles.menuLeft}>
-                                <span>Loading tags...</span>
+                                <Plus className={styles.menuItemIcon} />
+                                <span>Add new tag</span>
                               </span>
                             </div>
                           </DropdownMenuItem>
-                        ) : (
-                          <DropdownMenuItem disabled>
-                            <div className={styles.menuRow}>
-                              <span className={styles.menuLeft}>
-                                <span>No tags defined</span>
-                              </span>
-                            </div>
-                          </DropdownMenuItem>
-                        )}
-                      </DropdownMenuSubContent>
-                    </DropdownMenuSub>
 
-                    <DropdownMenuItem>
-                      <div className={styles.menuRow}>
-                        <span className={styles.menuLeft}>
-                          <FileUp className={styles.menuItemIcon} />
-                          <span>Export</span>
-                        </span>
-                      </div>
-                    </DropdownMenuItem>
 
-                    <DropdownMenuItem>
-                      <div className={styles.menuRow}>
-                        <span className={styles.menuLeft}>
-                          <Upload className={styles.menuItemIcon} />
-                          <span>Export & upload</span>
-                        </span>
-                      </div>
-                    </DropdownMenuItem>
+                          <DropdownMenuSeparator />
 
-                    <DropdownMenuSub
-                      onOpenChange={(open) => {
-                        // loadNextStepOnOpen
-                        if (open) loadNextStepSuggestionsIfNeeded();
-                      }}>
-                      <DropdownMenuSubTrigger
-                        onPointerEnter={() => loadNextStepSuggestionsIfNeeded()}
-                        onFocus={() => loadNextStepSuggestionsIfNeeded()}
-                        onClick={() => loadNextStepSuggestionsIfNeeded()}
-                      >
+                          {tagDefs.length > 0 ? (
+                            tagDefs.map((tag) => {
+                              const isChecked = selectedTagSet.has(String(tag.id));
+                              return (
+                                <DropdownMenuItem
+                                  key={String(tag.id)}
+                                  onSelect={(e) => handleToggleTagFromMenu(e, String(tag.id), true)}
+                                >
+                                  <div className={styles.menuRow}>
+                                    <span className={styles.menuLeft}>
+                                      <span
+                                        style={{
+                                          width: 10,
+                                          height: 10,
+                                          borderRadius: 999,
+                                          backgroundColor: tag.color,
+                                          border: "1px solid rgba(15,23,42,0.22)",
+                                          display: "inline-block",
+                                          marginRight: 8,
+                                        }}
+                                      />
+                                      <span>{tag.title}</span>
+                                    </span>
+
+                                    <span className={styles.menuRight}>
+                                      {isChecked ? (
+                                        <Check className={styles.menuCheckIcon} />
+                                      ) : (
+                                        <span className={styles.menuCheckPlaceholder} />
+                                      )}
+                                    </span>
+                                  </div>
+                                </DropdownMenuItem>
+                              );
+                            })
+                          ) : isTagDefsLoading ? (
+                            <DropdownMenuItem disabled>
+                              <div className={styles.menuRow}>
+                                <span className={styles.menuLeft}>
+                                  <span>Loading tags...</span>
+                                </span>
+                              </div>
+                            </DropdownMenuItem>
+                          ) : (
+                            <DropdownMenuItem disabled>
+                              <div className={styles.menuRow}>
+                                <span className={styles.menuLeft}>
+                                  <span>No tags defined</span>
+                                </span>
+                              </div>
+                            </DropdownMenuItem>
+                          )}
+                        </DropdownMenuSubContent>
+                      </DropdownMenuSub>)}
+
+                    {isMenuItemVisible("export") && (
+                      <DropdownMenuItem>
                         <div className={styles.menuRow}>
                           <span className={styles.menuLeft}>
-                            <ArrowRight className={styles.menuItemIcon} />
-                            <span>Next step</span>
+                            <FileUp className={styles.menuItemIcon} />
+                            <span>Export</span>
                           </span>
                         </div>
-                      </DropdownMenuSubTrigger>
+                      </DropdownMenuItem>
+                    )}
 
-                      <DropdownMenuSubContent className={styles.subMenuContent}
-                        sideOffset={8}
-                        onPointerDownOutside={preventMenuDismissWhileHelpOpen}
-                        onFocusOutside={preventMenuDismissWhileHelpOpen}
-                        onInteractOutside={preventMenuDismissWhileHelpOpen}>
-                        {renderNextStepSubContent("dropdown")}
-                      </DropdownMenuSubContent>
-                    </DropdownMenuSub>
+                    {isMenuItemVisible("upload") && (
+                      <DropdownMenuItem>
+                        <div className={styles.menuRow}>
+                          <span className={styles.menuLeft}>
+                            <Upload className={styles.menuItemIcon} />
+                            <span>Export & upload</span>
+                          </span>
+                        </div>
+                      </DropdownMenuItem>)}
+
+                    {(isMenuItemVisible("upload") || isMenuItemVisible("export") || isMenuItemVisible("manageTags")) && (
+                      <DropdownMenuSeparator />)}
+
+                    {isMenuItemVisible("nextSteps") && (
+                      <DropdownMenuSub
+                        onOpenChange={(open) => {
+                          // loadNextStepOnOpen
+                          if (open) loadNextStepSuggestionsIfNeeded();
+                        }}>
+                        <DropdownMenuSubTrigger
+                          onPointerEnter={() => loadNextStepSuggestionsIfNeeded()}
+                          onFocus={() => loadNextStepSuggestionsIfNeeded()}
+                          onClick={() => loadNextStepSuggestionsIfNeeded()}
+                        >
+                          <div className={styles.menuRow}>
+                            <span className={styles.menuLeft}>
+                              <ArrowRight className={styles.menuItemIcon} />
+                              <span>Next step</span>
+                            </span>
+                          </div>
+                        </DropdownMenuSubTrigger>
+
+                        <DropdownMenuSubContent className={styles.subMenuContent}
+                          sideOffset={8}
+                          onPointerDownOutside={preventMenuDismissWhileHelpOpen}
+                          onFocusOutside={preventMenuDismissWhileHelpOpen}
+                          onInteractOutside={preventMenuDismissWhileHelpOpen}>
+                          {renderNextStepSubContent("dropdown")}
+                        </DropdownMenuSubContent>
+                      </DropdownMenuSub>
+                    )}
 
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -2568,61 +2609,70 @@ export default function ProtocolNodeCard({
       >
         {!reduceMenus && (
           <>
-            <ContextMenuItem onClick={handleEdit}>
-              <div className={styles.menuRow}>
-                <span className={styles.menuLeft}>
-                  <Scan className={styles.menuItemIcon} />
-                  <span>Open</span>
-                </span>
-                <ShortcutHint text={shortcuts.edit} />
-              </div>
-            </ContextMenuItem>
+            {isMenuItemVisible("open") && (
+              <ContextMenuItem onClick={handleEdit}>
+                <div className={styles.menuRow}>
+                  <span className={styles.menuLeft}>
+                    <Scan className={styles.menuItemIcon} />
+                    <span>Open</span>
+                  </span>
+                  <ShortcutHint text={shortcuts.edit} />
+                </div>
+              </ContextMenuItem>)}
 
-            <ContextMenuItem onClick={handleBrowse}>
-              <div className={styles.menuRow}>
-                <span className={styles.menuLeft}>
-                  <FolderOpen className={styles.menuItemIcon} />
-                  <span>Browse</span>
-                </span>
-                <ShortcutHint text={shortcuts.browse} />
-              </div>
-            </ContextMenuItem>
+            {isMenuItemVisible("browse") && (
+              <ContextMenuItem onClick={handleBrowse}>
+                <div className={styles.menuRow}>
+                  <span className={styles.menuLeft}>
+                    <FolderOpen className={styles.menuItemIcon} />
+                    <span>Browse</span>
+                  </span>
+                  <ShortcutHint text={shortcuts.browse} />
+                </div>
+              </ContextMenuItem>)}
 
-            <ContextMenuItem onClick={handleRename}>
-              <div className={styles.menuRow}>
-                <span className={styles.menuLeft}>
-                  <Pencil className={styles.menuItemIcon} />
-                  <span>Rename</span>
-                </span>
-                <ShortcutHint text={shortcuts.rename} />
-              </div>
-            </ContextMenuItem>
+            {isMenuItemVisible("rename") && (
+              <ContextMenuItem onClick={handleRename}>
+                <div className={styles.menuRow}>
+                  <span className={styles.menuLeft}>
+                    <Pencil className={styles.menuItemIcon} />
+                    <span>Rename</span>
+                  </span>
+                  <ShortcutHint text={shortcuts.rename} />
+                </div>
+              </ContextMenuItem>)}
 
-            <ContextMenuSeparator />
+            {(isMenuItemVisible("rename") || isMenuItemVisible("browse") || isMenuItemVisible("open")) && (
+              <ContextMenuSeparator />)}
 
-            <ContextMenuItem onClick={handleSelectFrom}>
-              <div className={styles.menuRow}>
-                <span className={styles.menuLeft}>
-                  <FromIcon className={styles.menuItemIcon} />
-                  <span>Select from</span>
-                </span>
-                <ShortcutHint text={shortcuts.selectFrom} />
-              </div>
-            </ContextMenuItem>
 
-            <ContextMenuItem onClick={handleSelectTo}>
-              <div className={styles.menuRow}>
-                <span className={styles.menuLeft}>
-                  <ToIcon className={styles.menuItemIcon} />
-                  <span>Select to</span>
-                </span>
-                <ShortcutHint text={shortcuts.selectTo} />
-              </div>
-            </ContextMenuItem>
+            {isMenuItemVisible("selectFrom") && (
+              <ContextMenuItem onClick={handleSelectFrom}>
+                <div className={styles.menuRow}>
+                  <span className={styles.menuLeft}>
+                    <FromIcon className={styles.menuItemIcon} />
+                    <span>Select from</span>
+                  </span>
+                  <ShortcutHint text={shortcuts.selectFrom} />
+                </div>
+              </ContextMenuItem>)}
 
-            <ContextMenuSeparator />
+            {isMenuItemVisible("selectTo") && (
+              <ContextMenuItem onClick={handleSelectTo}>
+                <div className={styles.menuRow}>
+                  <span className={styles.menuLeft}>
+                    <ToIcon className={styles.menuItemIcon} />
+                    <span>Select to</span>
+                  </span>
+                  <ShortcutHint text={shortcuts.selectTo} />
+                </div>
+              </ContextMenuItem>)}
 
-            {(data.status === "running" || data.status === "launched" || data.status === "scheduled") && (
+
+            {(isMenuItemVisible("selectTo") || isMenuItemVisible("selectFrom")) && (
+              <ContextMenuSeparator />)}
+
+            {isMenuItemVisible("selectTo") && (data.status === "running" || data.status === "launched" || data.status === "scheduled") && (
               <ContextMenuItem onClick={handleStop}>
                 <div className={styles.menuRow}>
                   <span className={styles.menuLeft}>
@@ -2634,41 +2684,45 @@ export default function ProtocolNodeCard({
               </ContextMenuItem>
             )}
 
-            <ContextMenuItem onClick={handleRestartAll}>
-              <div className={styles.menuRow}>
-                <span className={styles.menuLeft}>
-                  <RefreshCw className={styles.menuItemIcon} />
-                  <span>Restart all</span>
-                </span>
-                <ShortcutHint text={shortcuts.restartAll} />
-              </div>
-            </ContextMenuItem>
+            {isMenuItemVisible("restart") && (
+              <ContextMenuItem onClick={handleRestartAll}>
+                <div className={styles.menuRow}>
+                  <span className={styles.menuLeft}>
+                    <RefreshCw className={styles.menuItemIcon} />
+                    <span>Restart all</span>
+                  </span>
+                  <ShortcutHint text={shortcuts.restartAll} />
+                </div>
+              </ContextMenuItem>)}
 
-            <ContextMenuItem onClick={handleContinueAll}>
-              <div className={styles.menuRow}>
-                <span className={styles.menuLeft}>
-                  <Play className={styles.menuItemIcon} />
-                  <span>Continue all</span>
-                </span>
-                <ShortcutHint text={shortcuts.continueAll} />
-              </div>
-            </ContextMenuItem>
+            {isMenuItemVisible("continue") && (
+              <ContextMenuItem onClick={handleContinueAll}>
+                <div className={styles.menuRow}>
+                  <span className={styles.menuLeft}>
+                    <Play className={styles.menuItemIcon} />
+                    <span>Continue all</span>
+                  </span>
+                  <ShortcutHint text={shortcuts.continueAll} />
+                </div>
+              </ContextMenuItem>)}
 
-            <ContextMenuItem onClick={handleResetFrom}>
-              <div className={styles.menuRow}>
-                <span className={styles.menuLeft}>
-                  <RotateCcw className={styles.menuItemIcon} />
-                  <span>Reset from</span>
-                </span>
-                <ShortcutHint text={shortcuts.resetFrom} />
-              </div>
-            </ContextMenuItem>
+            {isMenuItemVisible("reset") && (
+              <ContextMenuItem onClick={handleResetFrom}>
+                <div className={styles.menuRow}>
+                  <span className={styles.menuLeft}>
+                    <RotateCcw className={styles.menuItemIcon} />
+                    <span>Reset from</span>
+                  </span>
+                  <ShortcutHint text={shortcuts.resetFrom} />
+                </div>
+              </ContextMenuItem>)}
 
-            <ContextMenuSeparator />
+            {(isMenuItemVisible("reset") || isMenuItemVisible("continue")) && (
+              <ContextMenuSeparator />)}
           </>
         )}
 
-        {reduceMenus && (data.status === "running" || data.status === "launched" || data.status === "scheduled") && (
+        {reduceMenus && isMenuItemVisible("stop") && (data.status === "running" || data.status === "launched" || data.status === "scheduled") && (
           <ContextMenuItem onClick={handleStop}>
             <div className={styles.menuRow}>
               <span className={styles.menuLeft}>
@@ -2680,152 +2734,161 @@ export default function ProtocolNodeCard({
           </ContextMenuItem>
         )}
 
-        <ContextMenuItem onClick={handleDelete}>
-          <div className={styles.menuRow}>
-            <span className={styles.menuLeft}>
-              <Trash2 className={styles.menuItemIcon} />
-              <span>Delete</span>
-            </span>
-            <ShortcutHint text={shortcuts.delete} />
-          </div>
-        </ContextMenuItem>
-
-        <ContextMenuItem onClick={handleDuplicate}>
-          <div className={styles.menuRow}>
-            <span className={styles.menuLeft}>
-              <Copy className={styles.menuItemIcon} />
-              <span>Duplicate</span>
-            </span>
-            <ShortcutHint text={shortcuts.duplicate} />
-          </div>
-        </ContextMenuItem>
-
-        <ContextMenuSeparator />
-
-        <ContextMenuSub>
-          <ContextMenuSubTrigger>
+        {isMenuItemVisible("delete") && (
+          <ContextMenuItem onClick={handleDelete}>
             <div className={styles.menuRow}>
               <span className={styles.menuLeft}>
-                <Tags className={styles.menuItemIcon} />
-                <span>Tags</span>
+                <Trash2 className={styles.menuItemIcon} />
+                <span>Delete</span>
+              </span>
+              <ShortcutHint text={shortcuts.delete} />
+            </div>
+          </ContextMenuItem>)}
+
+        {isMenuItemVisible("duplicate") && (
+          <ContextMenuItem onClick={handleDuplicate}>
+            <div className={styles.menuRow}>
+              <span className={styles.menuLeft}>
+                <Copy className={styles.menuItemIcon} />
+                <span>Duplicate</span>
+              </span>
+              <ShortcutHint text={shortcuts.duplicate} />
+            </div>
+          </ContextMenuItem>)}
+
+        {(isMenuItemVisible("delete") || isMenuItemVisible("duplicate")) && (
+          <ContextMenuSeparator />)}
+
+        {isMenuItemVisible("manageTags") && (
+          <ContextMenuSub>
+            <ContextMenuSubTrigger>
+              <div className={styles.menuRow}>
+                <span className={styles.menuLeft}>
+                  <Tags className={styles.menuItemIcon} />
+                  <span>Tags</span>
+                </span>
+              </div>
+            </ContextMenuSubTrigger>
+
+            <ContextMenuSubContent className={styles.menuContent} sideOffset={8}>
+              <ContextMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleManageTags();
+                }}
+              >
+                <div className={styles.menuRow}>
+                  <span className={styles.menuLeft}>
+                    <Plus className={styles.menuItemIcon} />
+                    <span>Add new tag</span>
+                  </span>
+                </div>
+              </ContextMenuItem>
+
+              <ContextMenuSeparator />
+
+              {tagDefs.length > 0 ? (
+                tagDefs.map((tag) => {
+                  const isChecked = selectedTagSet.has(String(tag.id));
+                  return (
+                    <ContextMenuItem
+                      key={String(tag.id)}
+                      onSelect={(e: any) => handleToggleTagFromMenu(e as Event, String(tag.id), true)}
+                    >
+                      <div className={styles.menuRow}>
+                        <span className={styles.menuLeft}>
+                          <span
+                            style={{
+                              width: 10,
+                              height: 10,
+                              borderRadius: 999,
+                              backgroundColor: tag.color,
+                              border: "1px solid rgba(15,23,42,0.22)",
+                              display: "inline-block",
+                              marginRight: 8,
+                            }}
+                          />
+                          <span>{tag.title}</span>
+                        </span>
+
+                        <span className={styles.menuRight}>
+                          {isChecked ? <Check className={styles.menuCheckIcon} /> : <span className={styles.menuCheckPlaceholder} />}
+                        </span>
+                      </div>
+                    </ContextMenuItem>
+                  );
+                })
+              ) : isTagDefsLoading ? (
+                <ContextMenuItem disabled>
+                  <div className={styles.menuRow}>
+                    <span className={styles.menuLeft}>
+                      <span>Loading tags...</span>
+                    </span>
+                  </div>
+                </ContextMenuItem>
+              ) : (
+                <ContextMenuItem disabled>
+                  <div className={styles.menuRow}>
+                    <span className={styles.menuLeft}>
+                      <span>No tags defined</span>
+                    </span>
+                  </div>
+                </ContextMenuItem>
+              )}
+            </ContextMenuSubContent>
+          </ContextMenuSub>)}
+
+        {isMenuItemVisible("export") && (
+          <ContextMenuItem>
+            <div className={styles.menuRow}>
+              <span className={styles.menuLeft}>
+                <FileUp className={styles.menuItemIcon} />
+                <span>Export</span>
               </span>
             </div>
-          </ContextMenuSubTrigger>
+          </ContextMenuItem>)}
 
-          <ContextMenuSubContent className={styles.menuContent} sideOffset={8}>
-            <ContextMenuItem
-              onClick={(e) => {
-                e.stopPropagation();
-                handleManageTags();
-              }}
+        {isMenuItemVisible("upload") && (
+          <ContextMenuItem>
+            <div className={styles.menuRow}>
+              <span className={styles.menuLeft}>
+                <Upload className={styles.menuItemIcon} />
+                <span>Export & upload</span>
+              </span>
+            </div>
+          </ContextMenuItem>)}
+
+
+        {(isMenuItemVisible("upload") || isMenuItemVisible("upload")) && (
+          <ContextMenuSeparator />)}
+
+        {isMenuItemVisible("nextSteps") && (
+          <ContextMenuSub
+            onOpenChange={(open) => {
+              // loadNextStepOnOpen
+              if (open) loadNextStepSuggestionsIfNeeded();
+            }}>
+            <ContextMenuSubTrigger
+              onPointerEnter={() => loadNextStepSuggestionsIfNeeded()}
+              onFocus={() => loadNextStepSuggestionsIfNeeded()}
+              onClick={() => loadNextStepSuggestionsIfNeeded()}
             >
               <div className={styles.menuRow}>
                 <span className={styles.menuLeft}>
-                  <Plus className={styles.menuItemIcon} />
-                  <span>Add new tag</span>
+                  <ArrowRight className={styles.menuItemIcon} />
+                  <span>Next step</span>
                 </span>
               </div>
-            </ContextMenuItem>
+            </ContextMenuSubTrigger>
 
-            <ContextMenuSeparator />
-
-            {tagDefs.length > 0 ? (
-              tagDefs.map((tag) => {
-                const isChecked = selectedTagSet.has(String(tag.id));
-                return (
-                  <ContextMenuItem
-                    key={String(tag.id)}
-                    onSelect={(e: any) => handleToggleTagFromMenu(e as Event, String(tag.id), true)}
-                  >
-                    <div className={styles.menuRow}>
-                      <span className={styles.menuLeft}>
-                        <span
-                          style={{
-                            width: 10,
-                            height: 10,
-                            borderRadius: 999,
-                            backgroundColor: tag.color,
-                            border: "1px solid rgba(15,23,42,0.22)",
-                            display: "inline-block",
-                            marginRight: 8,
-                          }}
-                        />
-                        <span>{tag.title}</span>
-                      </span>
-
-                      <span className={styles.menuRight}>
-                        {isChecked ? <Check className={styles.menuCheckIcon} /> : <span className={styles.menuCheckPlaceholder} />}
-                      </span>
-                    </div>
-                  </ContextMenuItem>
-                );
-              })
-            ) : isTagDefsLoading ? (
-              <ContextMenuItem disabled>
-                <div className={styles.menuRow}>
-                  <span className={styles.menuLeft}>
-                    <span>Loading tags...</span>
-                  </span>
-                </div>
-              </ContextMenuItem>
-            ) : (
-              <ContextMenuItem disabled>
-                <div className={styles.menuRow}>
-                  <span className={styles.menuLeft}>
-                    <span>No tags defined</span>
-                  </span>
-                </div>
-              </ContextMenuItem>
-            )}
-          </ContextMenuSubContent>
-        </ContextMenuSub>
-
-        <ContextMenuItem>
-          <div className={styles.menuRow}>
-            <span className={styles.menuLeft}>
-              <FileUp className={styles.menuItemIcon} />
-              <span>Export</span>
-            </span>
-          </div>
-        </ContextMenuItem>
-
-        <ContextMenuItem>
-          <div className={styles.menuRow}>
-            <span className={styles.menuLeft}>
-              <Upload className={styles.menuItemIcon} />
-              <span>Export & upload</span>
-            </span>
-          </div>
-        </ContextMenuItem>
-
-        <ContextMenuSeparator />
-
-        <ContextMenuSub
-          onOpenChange={(open) => {
-            // loadNextStepOnOpen
-            if (open) loadNextStepSuggestionsIfNeeded();
-          }}>
-          <ContextMenuSubTrigger
-            onPointerEnter={() => loadNextStepSuggestionsIfNeeded()}
-            onFocus={() => loadNextStepSuggestionsIfNeeded()}
-            onClick={() => loadNextStepSuggestionsIfNeeded()}
-          >
-            <div className={styles.menuRow}>
-              <span className={styles.menuLeft}>
-                <ArrowRight className={styles.menuItemIcon} />
-                <span>Next step</span>
-              </span>
-            </div>
-          </ContextMenuSubTrigger>
-
-          <ContextMenuSubContent className={styles.subMenuContent}
-            sideOffset={8}
-            onPointerDownOutside={preventMenuDismissWhileHelpOpen}
-            onFocusOutside={preventMenuDismissWhileHelpOpen}
-            onInteractOutside={preventMenuDismissWhileHelpOpen}>
-            {renderNextStepSubContent("context")}
-          </ContextMenuSubContent>
-        </ContextMenuSub>
+            <ContextMenuSubContent className={styles.subMenuContent}
+              sideOffset={8}
+              onPointerDownOutside={preventMenuDismissWhileHelpOpen}
+              onFocusOutside={preventMenuDismissWhileHelpOpen}
+              onInteractOutside={preventMenuDismissWhileHelpOpen}>
+              {renderNextStepSubContent("context")}
+            </ContextMenuSubContent>
+          </ContextMenuSub>)}
 
 
       </ContextMenuContent>

@@ -342,6 +342,9 @@ function normalizeServiceAPI(srv: any): ProjectService {
     "saveProtocolTagIds",
   );
 
+  mapFn("getNextProtocolSuggestions", "nextProtocolSuggestions",);
+  mapFn("getContextMenuVisibilityPolicy", "contextMenuVisibilityPolicy",);
+
   const rawExecute =
     typeof normalized.executeProtocol === "function"
       ? normalized.executeProtocol
@@ -375,6 +378,11 @@ function normalizeServiceAPI(srv: any): ProjectService {
   const rawSetProtocolTagIds =
     typeof normalized.setProtocolTagIds === "function"
       ? normalized.setProtocolTagIds
+      : null;
+  
+  const rawGetNextProtocolSuggestions =
+    typeof normalized.getNextProtocolSuggestions === "function"
+      ? normalized.getNextProtocolSuggestions
       : null;
 
   const callWithFallbackArgs = async <T,>(
@@ -462,6 +470,19 @@ function normalizeServiceAPI(srv: any): ProjectService {
       return await callWithFallbackArgs(fn, [projectId, protocolId, tagIds], [protocolId, tagIds]);
     };
   }
+
+
+  if (rawGetNextProtocolSuggestions) {
+    normalized.getNextProtocolSuggestions = async (
+      projectId: any,
+      protocolId: any,
+    ) => {
+      const fn = rawGetNextProtocolSuggestions;
+      return await callWithFallbackArgs(fn, [projectId, protocolId], [protocolId]);
+    };
+  }
+
+
 
   // file / previews
   mapFn("resolveProtocolStartPath", "resolveProtocolStartPath");

@@ -5,6 +5,7 @@ import type { NodeProps } from "reactflow";
 import { useReactFlow } from "reactflow";
 
 import ProtocolNodeCard, { type ExternalAnalyzeViewerService } from "./ProtocolNodeCard";
+import type { NodeMenuVisibility } from "@/types/protocol-node-menu-items";
 
 type NodeActions = {
   onEdit?: (id: string) => void;
@@ -44,7 +45,8 @@ export const createStatusNodeWrapper = (
   getPathSelectionNodeIds?: () => Set<string>,
   onBrowse?: (protocolId: string, projectId?: string | number, protocolLabel?: string) => void,
   getProjectId?: () => string | number | undefined,
-  getAnalyzeViewerService?: () => ExternalAnalyzeViewerService | undefined
+  getAnalyzeViewerService?: () => ExternalAnalyzeViewerService | undefined,
+  getContextMenuVisibility?: () => NodeMenuVisibility | undefined,
 ) => {
   return function StatusNodeWrapper(props: NodeProps) {
     const { data, id, ...rest } = props;
@@ -68,6 +70,7 @@ export const createStatusNodeWrapper = (
 
     const resolvedProjectId = getProjectId?.();
     const analyzeViewerService = getAnalyzeViewerService?.();
+    const contextMenuVisibility = getContextMenuVisibility?.();
 
     const mergedData = useMemo(() => {
       const d = (data as any) ?? {};
@@ -113,6 +116,7 @@ export const createStatusNodeWrapper = (
           onBrowse={onBrowse}
           showHandles={viewMode !== "grid"}
           service={analyzeViewerService}
+          contextMenuVisibility={contextMenuVisibility}
         />
       </div>
     );

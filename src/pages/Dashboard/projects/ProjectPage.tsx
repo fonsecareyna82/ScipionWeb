@@ -67,6 +67,7 @@ import TagPicker from "@/components/tags/TagPicker";
 import TagManager from "@/components/tags/TagManager";
 import type { ProtocolTag } from "@/components/tags/tagTypes";
 import TagsDialog from "@/components/tags/TagsDialog";
+import { NodeMenuVisibility } from "@/types/protocol-node-menu-items";
 
 
 /* --------------------- Types --------------------- */
@@ -544,6 +545,77 @@ export default function ProjectPage() {
   );
 
 
+  // Default policy used until the service returns a value
+    const contextMenuVisibilityPolicyRef = useRef<NodeMenuVisibility>({
+        open: true,
+        browse: true,
+        continue: true,
+        delete: true,
+        duplicate: true,
+        export: true,
+        manageTags: true,
+        nextSteps: true,
+        rename: true,
+        reset: true,
+        restart: true,
+        selectFrom: true,
+        selectTo: true,
+        stop: true,
+        upload: true,
+  });
+
+  const projectId = useMemo(() => {
+    // deriveProjectIdFromProjectState
+    const raw: any = (project as any)?.id ?? (project as any)?.projectId;
+    if (raw == null) return undefined;
+
+    const n = typeof raw === "number" ? raw : Number(raw);
+    return Number.isFinite(n) ? n : undefined;
+  }, [project]);
+
+  // Bump this to force rerender when policy is loaded/changed
+  const [policyRevision, setPolicyRevision] = useState(0);
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    const loadContextMenuVisibilityPolicy = async () => {
+      if (!projectId) return;
+      try {
+        const remotePolicy = await svc.getContextMenuVisibilityPolicy(projectId);
+        if (isCancelled || !remotePolicy) return;
+        contextMenuVisibilityPolicyRef.current = {
+          delete: Boolean(remotePolicy.delete),
+          nextSteps: Boolean(remotePolicy.nextSteps),
+          open: Boolean(remotePolicy.open),
+          browse: Boolean(remotePolicy.browse),
+          continue: Boolean(remotePolicy.continue),
+          duplicate: Boolean(remotePolicy.duplicate),
+          export: Boolean(remotePolicy.export),
+          manageTags: Boolean(remotePolicy.manageTags),
+          rename: Boolean(remotePolicy.rename),
+          reset: Boolean(remotePolicy.reset),
+          restart: Boolean(remotePolicy.restart),
+          selectFrom: Boolean(remotePolicy.selectFrom),
+          selectTo: Boolean(remotePolicy.selectTo),
+          stop: Boolean(remotePolicy.stop),
+          upload: Boolean(remotePolicy.upload),
+        };
+
+        setPolicyRevision((v) => v + 1);
+      } catch (err) {
+        console.error("Failed to load contextMenuVisibilityPolicy", err);
+      }
+    };
+
+    loadContextMenuVisibilityPolicy();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [svc, projectId]);
+
+
   useEffect(() => {
     // loadFocusModeFromStorage
     if (!projectName) return;
@@ -730,6 +802,12 @@ export default function ProjectPage() {
     beforeIds: Set<string>;
   } | null>(null);
 
+
+  useEffect(() => {
+    // forceNodeRerenderAfterPolicyChange
+    if (policyRevision === 0) return;
+    setNodes((prev) => prev.map((n) => ({ ...n })));
+  }, [policyRevision, setNodes]);
 
   useEffect(() => {
     const raw = (project as any)?.projectId ?? (project as any)?.id;
@@ -1328,26 +1406,26 @@ export default function ProjectPage() {
 
   const prevHadTagFilterRef = useRef(false);
 
-useEffect(() => {
-  // focusNodesMatchingTagFilter
-  // Important: tag filtering must not change graph selection.
-  const hadPrev = prevHadTagFilterRef.current;
-  const hasNow = tagFilterIds.length > 0;
-  prevHadTagFilterRef.current = hasNow;
+  useEffect(() => {
+    // focusNodesMatchingTagFilter
+    // Important: tag filtering must not change graph selection.
+    const hadPrev = prevHadTagFilterRef.current;
+    const hasNow = tagFilterIds.length > 0;
+    prevHadTagFilterRef.current = hasNow;
 
-  if (!hasNow) return;
+    if (!hasNow) return;
 
-  // In table mode, rows are already filtered; optional: scroll to the first match.
-  if (viewMode === "table") {
-    const first = filteredTableData[0];
-    if (first) scrollToProtocol(String(first.id));
-    return;
-  }
+    // In table mode, rows are already filtered; optional: scroll to the first match.
+    if (viewMode === "table") {
+      const first = filteredTableData[0];
+      if (first) scrollToProtocol(String(first.id));
+      return;
+    }
 
-  // No-op on graph modes: renderNodes already dims non-matching nodes via tagFilterIds.
-  // This prevents applyPathSelection() from selecting nodes while filtering.
-  void hadPrev;
-}, [tagFilterIds, viewMode, filteredTableData]);
+    // No-op on graph modes: renderNodes already dims non-matching nodes via tagFilterIds.
+    // This prevents applyPathSelection() from selecting nodes while filtering.
+    void hadPrev;
+  }, [tagFilterIds, viewMode, filteredTableData]);
 
 
 
@@ -1717,6 +1795,7 @@ useEffect(() => {
           openBrowse(protocolId, projectId, protocolLabel),
         () => getProjectId(),
         () => getAnalyzeViewerService(),
+        () => contextMenuVisibilityPolicyRef.current,
       ),
     };
 

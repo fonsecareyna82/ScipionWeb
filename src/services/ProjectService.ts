@@ -453,6 +453,28 @@ export type ProtocolTagIdsResult = {
   missingTagIds: string[];
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// UI policies (project-level)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type ContextMenuVisibilityPolicy = {
+  delete: boolean;
+  nextSteps: boolean;
+  open: boolean,
+  browse: boolean,
+  continue: boolean,
+  duplicate: boolean,
+  export: boolean,
+  manageTags: boolean,
+  rename: boolean,
+  reset: boolean,
+  restart: boolean,
+  selectFrom: boolean,
+  selectTo: boolean,
+  stop: boolean,
+  upload: boolean,
+};
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ProjectService interface
@@ -918,5 +940,12 @@ export interface ProjectService<
 
   listProtocolTagIds(projectId: Id, protocolId: Id): Promise<string[]>;
   setProtocolTagIds(projectId: Id, protocolId: Id, tagIds: string[]): Promise<ProtocolTagIdsResult>;
+
+ // ─────────────────────────────────────────────────────────────────────────────
+  // Context menu visibility policy
+  // ─────────────────────────────────────────────────────────────────────────────
+  getContextMenuVisibilityPolicy(
+    projectId: Id,
+  ): Promise<ContextMenuVisibilityPolicy>;
 
 }
