@@ -4880,9 +4880,8 @@ export default function ProjectPage() {
             protocolId={pid}
             resolveBrowserPaths={() => svc.resolveBrowserPaths(projId, pid.toString())}
             listRemoteDirectory={(p) => svc.listRemoteDirectory(projId, pid.toString(), p)}
-            previewRemoteText={(p) => svc.previewProtocolText(projId, pid.toString(), p)}
+            previewRemoteEntry={(p) => svc.previewRemoteEntry(projectId, pid.toString(), p)}
             buildDownloadUrl={(p, inline) => svc.buildProtocolDownloadUrl(projId.toString(), pid.toString(), p, !!inline)}
-            fetchInlinePreviewBlob={(p) => svc.fetchProtocolInlinePreviewBlob(projId.toString(), pid.toString(), p)}
             onPick={() => {
               setFileDialogOpen(false);
             }}

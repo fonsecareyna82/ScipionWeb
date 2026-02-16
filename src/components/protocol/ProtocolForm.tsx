@@ -4648,12 +4648,9 @@ export default function ProtocolForm({
           protocolId={protocolId}
           resolveBrowserPaths={() => svc.resolveBrowserPaths(projectId, protocolId)}
           listRemoteDirectory={(p) => svc.listRemoteDirectory(projectId, protocolId, p)}
-          previewRemoteText={(p) => svc.previewProtocolText(projectId, protocolId, p)}
+          previewRemoteEntry={(p) => svc.previewRemoteEntry(projectId, protocolId, p)}
           buildDownloadUrl={(p, inline) =>
             svc.buildProtocolDownloadUrl(projectId, protocolId, p, !!inline)
-          }
-          fetchInlinePreviewBlob={(p) =>
-            svc.fetchProtocolInlinePreviewBlob(projectId, protocolId, p)
           }
           onPick={(relativePath) => {
             const stateKey = pathDialog.stateKey;

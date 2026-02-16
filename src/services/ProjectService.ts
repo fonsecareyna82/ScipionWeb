@@ -475,7 +475,6 @@ export type ContextMenuVisibilityPolicy = {
   upload: boolean,
 };
 
-
 // ─────────────────────────────────────────────────────────────────────────────
 // ProjectService interface
 // ─────────────────────────────────────────────────────────────────────────────  
@@ -579,6 +578,12 @@ export interface ProjectService<
     path: string,
     opts?: { table?: string }
   ): Promise<any>;
+  previewRemoteEntry(
+    projectId: Id,
+    protocolId: Id,
+    path: string,
+  ): Promise<any | null>;
+
 
   getNextProtocolSuggestions(
     projectId: Id,
@@ -929,7 +934,7 @@ export interface ProjectService<
   ): Promise<ProtocolLogsChunkResponse>;
 
 
-   // ─────────────────────────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────────────
   // Protocol tags
   // ─────────────────────────────────────────────────────────────────────────────
 
@@ -941,7 +946,7 @@ export interface ProjectService<
   listProtocolTagIds(projectId: Id, protocolId: Id): Promise<string[]>;
   setProtocolTagIds(projectId: Id, protocolId: Id, tagIds: string[]): Promise<ProtocolTagIdsResult>;
 
- // ─────────────────────────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────────────
   // Context menu visibility policy
   // ─────────────────────────────────────────────────────────────────────────────
   getContextMenuVisibilityPolicy(

@@ -1101,7 +1101,7 @@ export async function previewProtocolText(
   path: string,
 ): Promise<string> {
   const res = await fetchWithAuth(
-    `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/fs/preview?path=${encodeURIComponent(
+    `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/fs/preview2?path=${encodeURIComponent(
       path,
     )}`,
   );
@@ -1158,6 +1158,205 @@ export async function fetchProtocolInlinePreviewBlob(
     note,
   };
   return { blob, meta };
+}
+
+type PreviewKind = "text" | "image" | "volume" | "table" | "binary" | "none";
+
+
+export interface PreviewMeta {
+  mime?: string;
+  width?: number;
+  height?: number;
+  depth?: number;
+  sizeBytes?: number;
+  voxelSize?: number[];
+  note?: string;
+  type?: string;
+  mode?: string;
+  columnsHeader?: string;
+  rowCount?: number;
+}
+
+export interface PreviewSourceBlob {
+  sourceType: "blob";
+  blob: Blob;
+  objectUrl: string;
+}
+
+function inferKindFromContentType(contentType: string): PreviewKind {
+  const ct = normalizeMime(contentType);
+  if (ct.startsWith("image/")) return "image";
+  if (ct.startsWith("text/")) return "text";
+  if (ct === "application/json") return "table"; // bestEffortFallback
+  return "binary";
+}
+
+export interface RemoteEntryPreview {
+  kind: PreviewKind;
+
+  // semanticMime: what the file "is" (X-Preview-Mime preferred)
+  semanticMime: string;
+
+  // payloadMime: what the HTTP body actually is (Content-Type)
+  payloadMime: string;
+
+  meta: PreviewMeta;
+  truncated: boolean;
+
+  note?: string;
+
+  // Text payload
+  text?: string;
+  language?: string;
+
+  // Table payload
+  columns?: string[];
+  rows?: (string | number | null)[][];
+
+  // Blob payload (image/volume/binary)
+  source?: PreviewSourceBlob;
+}
+
+function normalizeMime(value: string): string {
+  return (value || "").split(";")[0].trim().toLowerCase();
+}
+
+function getTruncated(headers: Headers): boolean {
+  const v = (headers.get("X-Preview-Truncated") || "").toLowerCase().trim();
+  return v === "1" || v === "true" || v === "yes";
+}
+
+function inferKind(meta: PreviewMeta, payloadMime: string, semanticMime: string): PreviewKind {
+  // tableIsExplicit
+  if ((meta.type || "").toLowerCase() === "table") return "table";
+
+  // volumeIsSemantic
+  if (semanticMime === "volume/mrc") return "volume";
+
+  // imageIsPayload
+  if (payloadMime.startsWith("image/")) return "image";
+
+  // textIsPayloadOrSemantic
+  if (payloadMime.startsWith("text/") || semanticMime.startsWith("text/")) return "text";
+
+  // jsonFallback
+  if (payloadMime === "application/json" || semanticMime === "application/json") return "text";
+
+  return "binary";
+}
+
+
+export function disposeRemoteEntryPreview(preview: RemoteEntryPreview | null): void {
+  // revokeObjectUrlToAvoidLeaks
+  const objectUrl = preview?.source?.objectUrl;
+  if (objectUrl) URL.revokeObjectURL(objectUrl);
+}
+
+export async function previewRemoteEntry(
+  projectId: Id,
+  protocolId: Id,
+  path: string,
+): Promise<any> {
+  const enc = encodeURIComponent;
+  const url = `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/fs/preview?path=${enc(path)}`;
+
+  const res = await fetchWithAuth(url, { method: "GET", cache: "no-store" });
+
+  if (res.status === 404 || res.status === 204 || res.status === 415) return null;
+
+  if (!res.ok) {
+    throw await toApiError(res, "Failed to preview remote entry");
+  }
+
+  const contentTypeRaw = res.headers.get("Content-Type") || "application/octet-stream";
+  const payloadMime = normalizeMime(contentTypeRaw);
+
+  const meta = parseMeta(res.headers) as any;
+  const truncated = getTruncated(res.headers);
+
+  const kind: PreviewKind = (meta.kind as PreviewKind) || inferKindFromContentType(payloadMime);
+
+  const semanticMime = normalizeMime(meta.mime || "") || payloadMime;
+  const responseMime = normalizeMime(meta.responseMime || "") || payloadMime;
+
+
+  // kindDrivenHandling
+  if (kind === "none") {
+    return { kind, mime: semanticMime, meta, truncated, note: meta.note || "No preview available." };
+  }
+
+  if (responseMime === "application/pdf") {
+    return {
+      kind: "none",
+      mime: semanticMime,
+      meta,
+      truncated,
+      note: meta.note || "PDF preview is not available in this dialog.",
+    };
+  }
+
+  if (kind === "text") {
+    const text = await res.text();
+
+    const out = { kind, mime: semanticMime, meta, truncated, text }
+
+    console.log(out)
+
+
+    return { kind, mime: semanticMime, meta, truncated, text };
+  }
+
+  if (kind === "table") {
+    // expectsJsonTablePayload
+    const data = await safeJson<any>(res);
+
+    const columns =
+      Array.isArray(data?.columns)
+        ? data.columns.map((c: any) => String(c))
+        : typeof meta.columnsHeader === "string"
+          ? meta.columnsHeader.split(",").map((s: string) => s.trim()).filter(Boolean)
+          : [];
+
+    const rawRows: any[] = Array.isArray(data?.rows) ? data.rows : [];
+    const rows = rawRows.map((r: any) =>
+      Array.isArray(r)
+        ? r.map((cell: any) => {
+          if (cell == null) return null;
+          if (typeof cell === "number") return Number.isFinite(cell) ? cell : String(cell);
+          if (typeof cell === "string") return cell;
+          if (typeof cell === "boolean") return cell ? 1 : 0;
+          return String(cell);
+        })
+        : [],
+    );
+
+    const out = { kind, mime: semanticMime, meta, truncated, columns, rows }
+
+    console.log(out)
+
+    return { kind, mime: semanticMime, meta, truncated, columns, rows };
+  }
+
+  // image | volume | binary -> blob
+  const blob = await res.blob();
+
+  const out = {
+    kind,
+    mime: semanticMime,
+    meta,
+    truncated,
+    source: { sourceType: "blob", blob }
+  }
+  console.log(out)
+
+
+  return {
+    kind,
+    mime: semanticMime,
+    meta,
+    truncated,
+    source: { sourceType: "blob", blob },
+  };
 }
 
 // projects.ts
@@ -1222,22 +1421,38 @@ export type PreviewResult =
 
 function parseMeta(h: Headers) {
   const num = (v: string | null) => (v != null && v !== "" ? Number(v) : undefined);
-  const parseVoxel = (s: string | null) =>
-    s ? s.split(",").map((x) => Number(x)) : undefined;
+  const parseVoxel = (s: string | null) => (s ? s.split(",").map((x) => Number(x)) : undefined);
+
   return {
-    mime: h.get("X-Preview-Mime") || h.get("Content-Type") || undefined,
+    kind: h.get("X-Preview-Kind") || undefined,
+    name: h.get("X-Preview-Name") || undefined,
+
+    // semanticMime: what the file "is"
+    mime: h.get("X-Preview-Mime") || undefined,
+
+    // responseMime: what the HTTP body actually is (optional but very useful)
+    responseMime: h.get("X-Preview-ResponseMime") || undefined,
+
     width: num(h.get("X-Preview-Width")),
     height: num(h.get("X-Preview-Height")),
     depth: num(h.get("X-Preview-Depth")),
+
+    thumbWidth: num(h.get("X-Preview-ThumbWidth")),
+    thumbHeight: num(h.get("X-Preview-ThumbHeight")),
+
     sizeBytes: num(h.get("X-Preview-SizeBytes")),
     voxelSize: parseVoxel(h.get("X-Preview-VoxelSize")),
+
     note: h.get("X-Preview-Note") || undefined,
+
+    // keepTheseIfYouStillUseThemElseRemove
     type: h.get("X-Preview-Type") || undefined,
     mode: h.get("X-Preview-Mode") || undefined,
     columnsHeader: h.get("X-Preview-Columns") || undefined,
     rowCount: num(h.get("X-Preview-RowCount")),
   };
 }
+
 
 async function buildPreviewResult(
   res: Response,

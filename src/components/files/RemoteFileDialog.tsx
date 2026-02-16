@@ -40,6 +40,17 @@ type PreviewMeta = {
   note?: string;
 };
 
+export type RemotePreviewSource =
+  | { sourceType: "url"; url: string }
+  | { sourceType: "blob"; blob: Blob };
+
+export type RemotePreview =
+  | { kind: "none"; mime?: string; meta?: PreviewMeta; note?: string }
+  | { kind: "text"; mime?: string; meta?: PreviewMeta; text: string; truncated?: boolean; language?: string }
+  | { kind: "image"; mime?: string; meta?: PreviewMeta; source: RemotePreviewSource }
+  | { kind: "table"; mime?: string; meta?: PreviewMeta; columns: string[]; rows: Array<Array<string | number | null>>; truncated?: boolean }
+  | { kind: "error"; mime?: string; meta?: PreviewMeta; message: string };
+
 type ResolveBrowserPathsResult = {
   rootAbs?: string; // provided by backend, not needed by the new frontend contract
   startPath?: string; // relative-to-root preferred ("" means root)
@@ -61,8 +72,10 @@ type RemoteFileDialogProps = {
 
   // new backend: returns items only
   listRemoteDirectory: (relPath: string) => Promise<RemoteEntry[]>;
-  previewRemoteText?: (relPath: string) => Promise<string | null>;
-  fetchInlinePreviewBlob?: (relPath: string) => Promise<{ blob: Blob; meta: PreviewMeta }>;
+
+  // unifiedPreviewContract
+  previewRemoteEntry?: (relPath: string) => Promise<RemotePreview | null>;
+
   buildDownloadUrl?: (relPath: string, inline?: boolean) => string;
 
   // alwaysReceivesRelativePathToRootFileOrDirectory
@@ -78,10 +91,8 @@ export default function RemoteFileDialog({
   initialPath = "",
   resolveBrowserPaths,
   listRemoteDirectory,
-  previewRemoteText,
-  fetchInlinePreviewBlob,
+  previewRemoteEntry,
   protocolId,
-  projectId,
   buildDownloadUrl,
   onPick,
 }: RemoteFileDialogProps) {
@@ -101,14 +112,14 @@ export default function RemoteFileDialog({
   const [filterText, setFilterText] = useState<string>("");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
 
-  // textPreviewState
-  const [previewText, setPreviewText] = useState<string>("");
+  // unifiedPreviewState
+  const [preview, setPreview] = useState<RemotePreview | null>(null);
   const [previewLoading, setPreviewLoading] = useState<boolean>(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
 
-  // imagePreviewState
-  const [imgUrl, setImgUrl] = useState<string>("");
-  const [imgMeta, setImgMeta] = useState<PreviewMeta>({});
-  const [imgLoading, setImgLoading] = useState<boolean>(false);
+  // computedImageSrcForBlob
+  const [previewImageSrc, setPreviewImageSrc] = useState<string>("");
+  const previewObjectUrlRef = useRef<string>("");
 
   // portalContainer
   const [portalContainer, setPortalContainer] = useState<HTMLElement | null>(null);
@@ -116,9 +127,7 @@ export default function RemoteFileDialog({
   // hardening refs
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const refreshSeqRef = useRef<number>(0);
-  const textPreviewSeqRef = useRef<number>(0);
-  const imgPreviewSeqRef = useRef<number>(0);
-  const imgUrlRef = useRef<string>("");
+  const previewSeqRef = useRef<number>(0);
 
   // fixedLayoutSizes
   const dialogWidthClass = styles.dialogWidth;
@@ -178,7 +187,7 @@ export default function RemoteFileDialog({
       if (part === ".") continue;
       if (part === "..") {
         if (out.length > 0) out.pop();
-        continue; // clamp: never go above root
+        continue; // clampNeverGoAboveRoot
       }
       out.push(part);
     }
@@ -209,7 +218,7 @@ export default function RemoteFileDialog({
     const raw = normalizePosixPath(entry?.path || entry?.name || "");
     if (!raw) return "";
 
-    // new backend contract: entry.path is leaf (basename)
+    // newBackendContract: entry.path is leaf (basename)
     const safe = normalizeRelPath(raw);
     const leaf = safe.split("/").filter(Boolean).pop() || "";
     return joinRelPaths(cwdRel, leaf);
@@ -224,60 +233,6 @@ export default function RemoteFileDialog({
     }
   };
 
-  // decideIfTextLike
-  const looksTextLike = (entry: RemoteEntry): boolean => {
-    if (entry.isDir) return false;
-    const mimeLower = (entry.mime || "").toLowerCase();
-    if (
-      mimeLower.startsWith("text") ||
-      mimeLower.startsWith("text/") ||
-      mimeLower === "application/json" ||
-      mimeLower === "application/xml" ||
-      mimeLower === "application/x-yaml" ||
-      mimeLower === "text/x-log"
-    ) {
-      return true;
-    }
-    const lowerName = entry.name.toLowerCase();
-    const textExts = [
-      ".txt",
-      ".log",
-      ".json",
-      ".yaml",
-      ".yml",
-      ".md",
-      ".csv",
-      ".tsv",
-      ".xml",
-      ".star",
-      ".coords",
-      ".cbox",
-      ".mdoc",
-      ".tomostar",
-      ".settings",
-      ".com",
-      ".tlt",
-      ".xf",
-      ".xtilt",
-      ".stderr",
-      ".stdout",
-      ".out",
-      ".err",
-      ".script"
-    ];
-    return textExts.some((ext) => lowerName.endsWith(ext));
-  };
-
-  const isImageExt = (name: string | undefined) => !!name && /\.(mrc|mrcs|map|em|stk)$/i.test(name);
-
-  // decideIfImageLike
-  const looksImageLike = (entry: RemoteEntry): boolean => {
-    if (entry.isDir) return false;
-    if (entry.mime && entry.mime.startsWith("image")) return true;
-    if (isImageExt(entry.name)) return true;
-    return false;
-  };
-
   const humanBytes = (n?: number) => {
     if (!n && n !== 0) return undefined;
     if (n < 1024) return `${n} B`;
@@ -287,6 +242,75 @@ export default function RemoteFileDialog({
     if (mb < 1024) return `${mb.toFixed(1)} MB`;
     const gb = mb / 1024;
     return `${gb.toFixed(1)} GB`;
+  };
+
+  // buildMetaSummaryLine
+  const buildMetaSummaryLine = (meta: PreviewMeta | undefined, fallbackMime?: string, truncated?: boolean) => {
+    const m = meta || {};
+    const parts: string[] = [];
+
+    const sizeStr = m.sizeBytes !== undefined ? humanBytes(m.sizeBytes) : undefined;
+    const mimeStr = m.mime || fallbackMime;
+
+    if (sizeStr) parts.push(sizeStr);
+    if (mimeStr) parts.push(mimeStr);
+
+    const hasDims = m.width !== undefined || m.height !== undefined || m.depth !== undefined;
+    if (hasDims) {
+      const w = m.width ?? "?";
+      const h = m.height ?? "?";
+      const d = m.depth;
+      parts.push(d !== undefined ? `${w}×${h}×${d}` : `${w}×${h}`);
+    }
+
+    if (m.voxelSize && m.voxelSize.length === 3) {
+      const [vx, vy, vz] = m.voxelSize;
+      if ([vx, vy, vz].every((x) => typeof x === "number" && Number.isFinite(x))) {
+        parts.push(`sr ${vx.toFixed(1)}×${vy.toFixed(1)}×${vz.toFixed(1)}`);
+      }
+    }
+
+    if (truncated) parts.push("truncated");
+
+    return parts.join(" • ");
+  };
+
+  // renderMetaInlineFooter
+  const renderMetaInlineFooter = (meta: PreviewMeta | undefined, fileName: string, mime?: string, truncated?: boolean) => {
+    const summary = buildMetaSummaryLine(meta, mime, truncated);
+    const note = meta?.note;
+
+    if (!summary && !note) return null;
+
+    return (
+      <div
+        style={{
+          marginTop: 10,
+          paddingTop: 10,
+          borderTop: "1px solid rgba(148, 163, 184, 0.18)",
+          fontSize: 12,
+          opacity: 0.85,
+          lineHeight: 1.35,
+        }}
+      >
+        <div style={{ fontWeight: 600, opacity: 0.9 }}>{fileName}</div>
+        {!!summary && <div style={{ opacity: 0.8 }}>{summary}</div>}
+        {!!note && <div style={{ marginTop: 6, opacity: 0.75 }}>{note}</div>}
+      </div>
+    );
+  };
+
+
+  /** clearPreviewState */
+  const clearPreviewState = () => {
+    previewSeqRef.current += 1;
+    setPreview(null);
+    setPreviewLoading(false);
+    setPreviewError(null);
+
+    revokeObjectUrlSafe(previewObjectUrlRef.current);
+    previewObjectUrlRef.current = "";
+    setPreviewImageSrc("");
   };
 
   /** refresh */
@@ -306,19 +330,9 @@ export default function RemoteFileDialog({
       setItems(Array.isArray(listing) ? listing : []);
       setCwdRel(safeRel);
 
-      // resetSelectionAndPreviewsOnDirectoryChange
+      // resetSelectionAndPreviewOnDirectoryChange
       setSelected(null);
-      setPreviewText("");
-      setPreviewLoading(false);
-
-      textPreviewSeqRef.current += 1;
-      imgPreviewSeqRef.current += 1;
-
-      revokeObjectUrlSafe(imgUrlRef.current);
-      imgUrlRef.current = "";
-      setImgUrl("");
-      setImgMeta({});
-      setImgLoading(false);
+      clearPreviewState();
     } catch (e: unknown) {
       if (refreshSeqRef.current !== seq) return;
       const msg = e instanceof Error ? e.message : "Failed to list directory contents";
@@ -349,90 +363,48 @@ export default function RemoteFileDialog({
     void refresh(protocolRootRel);
   };
 
-  const loadTextPreview = async (entry: RemoteEntry) => {
-    if (!previewRemoteText) return;
-    if (entry.isDir) return;
-    if (!looksTextLike(entry)) return;
-
-    const seq = ++textPreviewSeqRef.current;
-
-    setPreviewText("");
-    setPreviewLoading(true);
-    try {
-      const relPath = buildRelPathForEntry(entry);
-      const text = await previewRemoteText(relPath);
-      if (textPreviewSeqRef.current !== seq) return;
-      setPreviewText(text || "");
-    } catch {
-      if (textPreviewSeqRef.current !== seq) return;
-      setPreviewText("");
-    } finally {
-      if (textPreviewSeqRef.current === seq) setPreviewLoading(false);
+  /** loadUnifiedPreview */
+  const loadUnifiedPreview = async (entry: RemoteEntry) => {
+    if (!previewRemoteEntry) {
+      clearPreviewState();
+      return;
     }
-  };
-
-  const loadImagePreview = async (entry: RemoteEntry) => {
-    if (!looksImageLike(entry)) return;
-    if (!fetchInlinePreviewBlob) {
-      revokeObjectUrlSafe(imgUrlRef.current);
-      imgUrlRef.current = "";
-      setImgUrl("");
-      setImgMeta({});
+    if (entry.isDir) {
+      clearPreviewState();
       return;
     }
 
-    const seq = ++imgPreviewSeqRef.current;
+    const seq = ++previewSeqRef.current;
 
-    revokeObjectUrlSafe(imgUrlRef.current);
-    imgUrlRef.current = "";
-    setImgUrl("");
-    setImgMeta({});
-    setImgLoading(true);
+    setPreview(null);
+    setPreviewLoading(true);
+    setPreviewError(null);
+
+    revokeObjectUrlSafe(previewObjectUrlRef.current);
+    previewObjectUrlRef.current = "";
+    setPreviewImageSrc("");
 
     try {
       const relPath = buildRelPathForEntry(entry);
-      const { blob, meta } = await fetchInlinePreviewBlob(relPath);
-      if (imgPreviewSeqRef.current !== seq) return;
+      const p = await previewRemoteEntry(relPath);
 
-      const objUrl = URL.createObjectURL(blob);
-      imgUrlRef.current = objUrl;
+      // ignoreStalePreviewResults
+      if (previewSeqRef.current !== seq) return;
 
-      setImgUrl(objUrl);
-      setImgMeta(meta || {});
-    } catch {
-      if (imgPreviewSeqRef.current !== seq) return;
-      revokeObjectUrlSafe(imgUrlRef.current);
-      imgUrlRef.current = "";
-      setImgUrl("");
-      setImgMeta({});
+      setPreview(p || { kind: "none", note: "No preview available." });
+    } catch (e: unknown) {
+      if (previewSeqRef.current !== seq) return;
+      const msg = e instanceof Error ? e.message : "Failed to load preview";
+      setPreviewError(msg);
+      setPreview({ kind: "error", message: msg });
     } finally {
-      if (imgPreviewSeqRef.current === seq) setImgLoading(false);
+      if (previewSeqRef.current === seq) setPreviewLoading(false);
     }
   };
 
   const handleSelectEntry = (entry: RemoteEntry) => {
     setSelected(entry);
-
-    // textBranch
-    if (!entry.isDir && looksTextLike(entry) && previewRemoteText) {
-      void loadTextPreview(entry);
-    } else {
-      textPreviewSeqRef.current += 1;
-      setPreviewText("");
-      setPreviewLoading(false);
-    }
-
-    // imageBranch
-    if (!entry.isDir && looksImageLike(entry)) {
-      void loadImagePreview(entry);
-    } else {
-      imgPreviewSeqRef.current += 1;
-      revokeObjectUrlSafe(imgUrlRef.current);
-      imgUrlRef.current = "";
-      setImgUrl("");
-      setImgMeta({});
-      setImgLoading(false);
-    }
+    void loadUnifiedPreview(entry);
   };
 
   const handlePick = () => {
@@ -486,22 +458,15 @@ export default function RemoteFileDialog({
       if (!open) {
         // resetStateWhenClosed
         refreshSeqRef.current += 1;
-        textPreviewSeqRef.current += 1;
-        imgPreviewSeqRef.current += 1;
+        previewSeqRef.current += 1;
 
         setItems([]);
         setCwdRel(normalizeRelPath(initialPath || ""));
         setProtocolRootRel("");
         setSelected(null);
         setFilterText("");
-        setPreviewText("");
-        setPreviewLoading(false);
 
-        revokeObjectUrlSafe(imgUrlRef.current);
-        imgUrlRef.current = "";
-        setImgUrl("");
-        setImgMeta({});
-        setImgLoading(false);
+        clearPreviewState();
         setError(null);
         return;
       }
@@ -532,10 +497,36 @@ export default function RemoteFileDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
+  useEffect(() => {
+    // syncPreviewImageSrcFromModel
+    if (!preview || preview.kind !== "image") {
+      revokeObjectUrlSafe(previewObjectUrlRef.current);
+      previewObjectUrlRef.current = "";
+      setPreviewImageSrc("");
+      return;
+    }
+
+    if (preview.source.sourceType === "url") {
+      revokeObjectUrlSafe(previewObjectUrlRef.current);
+      previewObjectUrlRef.current = "";
+      setPreviewImageSrc(preview.source.url);
+      return;
+    }
+
+    revokeObjectUrlSafe(previewObjectUrlRef.current);
+    const objUrl = URL.createObjectURL(preview.source.blob);
+    previewObjectUrlRef.current = objUrl;
+    setPreviewImageSrc(objUrl);
+
+    return () => {
+      revokeObjectUrlSafe(objUrl);
+      if (previewObjectUrlRef.current === objUrl) previewObjectUrlRef.current = "";
+    };
+  }, [preview]);
+
   const parentRel = getParentRelPath(cwdRel);
   const showParentEntry = parentRel !== null && !loading && !error;
   const parentEntry = useMemo<RemoteEntry>(() => ({ name: "..", path: "..", isDir: true }), []);
-
 
   const breadcrumbs = useMemo(() => {
     const rel = normalizeRelPath(cwdRel || "");
@@ -576,7 +567,10 @@ export default function RemoteFileDialog({
     // keepSelectionIfStillVisible
     if (!selected) return;
     const stillThere = visibleItems.some((e) => e.name === selected.name && e.path === selected.path);
-    if (!stillThere) setSelected(null);
+    if (!stillThere) {
+      setSelected(null);
+      clearPreviewState();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visibleItems]);
 
@@ -632,6 +626,222 @@ export default function RemoteFileDialog({
 
   const toggleSortDir = () => setSortDir((d) => (d === "asc" ? "desc" : "asc"));
   const SortDirIcon = sortDir === "asc" ? ArrowUp : ArrowDown;
+
+  const renderMetaBox = (meta: PreviewMeta | undefined, fileName: string) => {
+    const m = meta || {};
+    const hasAny =
+      m.sizeBytes !== undefined ||
+      m.width !== undefined ||
+      m.height !== undefined ||
+      m.depth !== undefined ||
+      !!m.voxelSize ||
+      !!m.note;
+
+    if (!hasAny) return null;
+
+    return (
+      <div className={styles.metaBox}>
+        <div className={styles.metaTitle}>{fileName}</div>
+
+        {m.sizeBytes !== undefined && (
+          <div className={styles.metaRow}>
+            <span className={styles.metaLabel}>Size:</span>
+            <span className={styles.metaValue}>{humanBytes(m.sizeBytes)}</span>
+          </div>
+        )}
+
+        {(m.width !== undefined || m.height !== undefined || m.depth !== undefined) && (
+          <div className={styles.metaRow}>
+            <span className={styles.metaLabel}>Dimensions:</span>
+            <span className={styles.metaValue}>
+              {m.width ?? "?"} × {m.height ?? "?"}
+              {m.depth !== undefined ? ` × ${m.depth}` : ""}
+            </span>
+          </div>
+        )}
+
+        {m.voxelSize && (
+          <div className={styles.metaRow}>
+            <span className={styles.metaLabel}>Sampling rate:</span>
+            <span className={styles.metaValue}>
+              {m.voxelSize[0].toFixed(1)} × {m.voxelSize[1].toFixed(1)} × {m.voxelSize[2].toFixed(1)}
+            </span>
+          </div>
+        )}
+
+        {m.note && (
+          <div className={styles.metaRow}>
+            <span className={styles.metaLabel}>Note:</span>
+            <span className={styles.metaValue}>{m.note}</span>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderPreviewBody = () => {
+    if (!selected) return <div className={styles.centerPlaceholder}>Select a file or folder.</div>;
+
+    if (selected.isDir) {
+      return (
+        <div className={styles.centerPlaceholder}>
+          Double-click a folder to enter it. Select to pick this folder.
+        </div>
+      );
+    }
+
+    if (previewLoading) {
+      return (
+        <div className={styles.inlineLoading}>
+          <Loader2 className={styles.iconSpinSm} />
+          <span>Loading preview…</span>
+        </div>
+      );
+    }
+
+    if (previewError) {
+      return (
+        <div className={styles.errorBox}>
+          <AlertCircle className={styles.iconSm} />
+          <span>{previewError}</span>
+        </div>
+      );
+    }
+
+    if (!preview || preview.kind === "none") {
+      return <div className={styles.centerPlaceholder}>No preview available.</div>;
+    }
+
+    if (preview.kind === "error") {
+      return (
+        <div className={styles.errorBox}>
+          <AlertCircle className={styles.iconSm} />
+          <span>{preview.message}</span>
+        </div>
+      );
+    }
+
+    if (preview.kind === "text") {
+      return (
+        <div className={styles.previewCol}>
+          {preview.text ? (
+            <div
+              className={styles.textPreviewBox}
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                height: "100%",
+              }}
+            >
+              <div
+                style={{
+                  flex: 1,
+                  overflow: "auto",
+                  whiteSpace: "pre-wrap",
+                }}
+              >
+                {preview.text}
+              </div>
+
+              {renderMetaInlineFooter(preview.meta, selected.name, preview.mime, preview.truncated)}
+            </div>
+          ) : (
+            <div className={styles.centerPlaceholder}>No text preview available.</div>
+          )}
+        </div>
+      );
+    }
+
+
+    if (preview.kind === "table") {
+      return (
+        <div className={styles.previewCol}>
+          <div
+            className={styles.textPreviewBox}
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              height: "100%",
+              padding: 0,
+            }}
+          >
+            <div style={{ flex: 1, overflow: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                <thead>
+                  <tr>
+                    {preview.columns.map((c) => (
+                      <th
+                        key={c}
+                        style={{
+                          textAlign: "left",
+                          padding: "8px 10px",
+                          borderBottom: "1px solid rgba(148, 163, 184, 0.18)",
+                          position: "sticky",
+                          top: 0,
+                          background: "rgba(15, 23, 42, 0.25)",
+                          backdropFilter: "blur(6px)",
+                          zIndex: 1,
+                        }}
+                      >
+                        {c}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {preview.rows.map((row, idx) => (
+                    <tr key={idx}>
+                      {row.map((cell, j) => (
+                        <td
+                          key={j}
+                          style={{
+                            padding: "8px 10px",
+                            borderBottom: "1px solid rgba(148, 163, 184, 0.10)",
+                            whiteSpace: "nowrap",
+                            textOverflow: "ellipsis",
+                            overflow: "hidden",
+                            maxWidth: 240,
+                          }}
+                          title={cell === null ? "" : String(cell)}
+                        >
+                          {cell === null ? "" : String(cell)}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div style={{ padding: "10px 12px" }}>
+              {renderMetaInlineFooter(preview.meta, selected.name, preview.mime, preview.truncated)}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+
+    if (preview.kind === "image") {
+      return (
+        <div className={styles.previewRow}>
+          <div className={styles.imageBlock}>
+            {!previewImageSrc && <div className={styles.centerPlaceholder}>No image preview available.</div>}
+
+            {!!previewImageSrc && (
+              <div className={styles.imageFrame}>
+                <img src={previewImageSrc} alt={selected.name} className={styles.previewImage} />
+              </div>
+            )}
+          </div>
+
+          {renderMetaBox(preview.meta, selected.name)}
+        </div>
+      );
+    }
+
+    return <div className={styles.centerPlaceholder}>No preview available.</div>;
+  };
 
   return (
     <Dialog
@@ -739,9 +949,7 @@ export default function RemoteFileDialog({
                           {c.label}
                         </button>
 
-                        {!isLast && (
-                          <span style={{ opacity: 0.55, padding: "0 2px", userSelect: "none" }}>/</span>
-                        )}
+                        {!isLast && <span style={{ opacity: 0.55, padding: "0 2px", userSelect: "none" }}>/</span>}
                       </React.Fragment>
                     );
                   })}
@@ -843,8 +1051,8 @@ export default function RemoteFileDialog({
                           return (
                             <button
                               className={[styles.rowBtn, isSel ? styles.rowBtnSelected : ""].join(" ")}
-                              onClick={() => handleSelectEntry(parentEntry)}     // singleClickSelectOnly
-                              onDoubleClick={goUp}                               // doubleClickToGoUp
+                              onClick={() => handleSelectEntry(parentEntry)} // singleClickSelectOnly
+                              onDoubleClick={goUp} // doubleClickToGoUp
                               type="button"
                               title="Double-click to go up"
                             >
@@ -900,109 +1108,7 @@ export default function RemoteFileDialog({
 
           {/* right */}
           <div className={styles.panel}>
-            <div className={styles.previewViewport + " " + previewHeightClass}>
-              {!selected && <div className={styles.centerPlaceholder}>Select a file or folder.</div>}
-
-              {selected && selected.isDir && (
-                <div className={styles.centerPlaceholder}>
-                  Double-click a folder to enter it. Select to pick this folder.
-                </div>
-              )}
-
-              {selected && !selected.isDir && (
-                <>
-                  {/* textPreview */}
-                  {looksTextLike(selected) && previewRemoteText && (
-                    <div className={styles.previewCol}>
-                      {previewLoading && (
-                        <div className={styles.inlineLoading}>
-                          <Loader2 className={styles.iconSpinSm} />
-                          <span>Loading preview…</span>
-                        </div>
-                      )}
-
-                      {!previewLoading && previewText && <div className={styles.textPreviewBox}>{previewText}</div>}
-
-                      {!previewLoading && !previewText && (
-                        <div className={styles.centerPlaceholder}>No text preview available.</div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* imagePreview */}
-                  {!looksTextLike(selected) && (
-                    <div className={styles.previewRow}>
-                      {(() => {
-                        const seemsImage = looksImageLike(selected);
-                        if (!seemsImage) {
-                          return <div className={styles.centerPlaceholder}>No preview available.</div>;
-                        }
-
-                        return (
-                          <>
-                            <div className={styles.imageBlock}>
-                              {imgLoading && (
-                                <div className={styles.inlineLoading}>
-                                  <Loader2 className={styles.iconSpinSm} />
-                                  <span>Loading image…</span>
-                                </div>
-                              )}
-
-                              {!imgLoading && imgUrl && (
-                                <div className={styles.imageFrame}>
-                                  <img src={imgUrl} alt={selected.name} className={styles.previewImage} />
-                                </div>
-                              )}
-
-                              {!imgLoading && !imgUrl && (
-                                <div className={styles.centerPlaceholder}>No image preview available.</div>
-                              )}
-                            </div>
-
-                            <div className={styles.metaBox}>
-                              <div className={styles.metaTitle}>{selected.name}</div>
-
-                              {imgMeta.sizeBytes !== undefined && (
-                                <div className={styles.metaRow}>
-                                  <span className={styles.metaLabel}>Size:</span>
-                                  <span className={styles.metaValue}>{humanBytes(imgMeta.sizeBytes)}</span>
-                                </div>
-                              )}
-
-                              {(imgMeta.width !== undefined ||
-                                imgMeta.height !== undefined ||
-                                imgMeta.depth !== undefined) && (
-                                  <div className={styles.metaRow}>
-                                    <span className={styles.metaLabel}>Dimensions:</span>
-                                    <span className={styles.metaValue}>
-                                      {imgMeta.width ?? "?"} × {imgMeta.height ?? "?"}
-                                      {imgMeta.depth !== undefined ? ` × ${imgMeta.depth}` : ""}
-                                    </span>
-                                  </div>
-                                )}
-
-                              {imgMeta.voxelSize && (
-                                <div className={styles.metaRow}>
-                                  <span className={styles.metaLabel}>Sampling rate:</span>
-                                  <span className={styles.metaValue}>{imgMeta.voxelSize[0].toFixed(1)}</span>
-                                </div>
-                              )}
-
-                              {imgMeta.note && (
-                                <div className={styles.metaRow}>
-                                  <span className={styles.metaLabel}>Note:</span>
-                                  <span className={styles.metaValue}>{imgMeta.note}</span>
-                                </div>
-                              )}
-                            </div>
-                          </>
-                        );
-                      })()}
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
+            <div className={styles.previewViewport + " " + previewHeightClass}>{renderPreviewBody()}</div>
           </div>
         </div>
 
