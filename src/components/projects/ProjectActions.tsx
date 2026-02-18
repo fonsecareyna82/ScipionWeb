@@ -13,6 +13,16 @@ interface Props {
   className?: string;
 }
 
+ const focusOnHoverIfEnabled =
+    (disabled: boolean) => (e: React.PointerEvent<HTMLLIElement>) => {
+      // focusOnHoverIfEnabled
+      if (disabled) return;
+      const el = e.currentTarget;
+      if (document.activeElement !== el) {
+        el.focus();
+      }
+    };
+
 const ProjectAction: React.FC<Props> = ({
   onOpen,
   onRename,
@@ -221,6 +231,7 @@ const ProjectAction: React.FC<Props> = ({
                   openDisabled ? disabledItemClass : enabledItemClass
                 }`}
                 onClick={openDisabled ? undefined : handleItemClick(onOpen)}
+                onPointerMove={focusOnHoverIfEnabled(openDisabled)}
                 onKeyDown={
                   openDisabled
                     ? undefined
@@ -256,6 +267,7 @@ const ProjectAction: React.FC<Props> = ({
                 onClick={
                   renameDisabled ? undefined : handleItemClick(onRename)
                 }
+                onPointerMove={focusOnHoverIfEnabled(renameDisabled)}
                 onKeyDown={
                   renameDisabled
                     ? undefined
@@ -291,6 +303,7 @@ const ProjectAction: React.FC<Props> = ({
                 onClick={
                   shareDisabled ? undefined : handleItemClick(onShare)
                 }
+                onPointerMove={focusOnHoverIfEnabled(shareDisabled)}
                 onKeyDown={
                   shareDisabled
                     ? undefined
@@ -326,6 +339,7 @@ const ProjectAction: React.FC<Props> = ({
                 onClick={
                   removeDisabled ? undefined : handleItemClick(onRemove)
                 }
+                onPointerMove={focusOnHoverIfEnabled(removeDisabled)}
                 onKeyDown={
                   removeDisabled
                     ? undefined

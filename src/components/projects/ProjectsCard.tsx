@@ -2,11 +2,13 @@
 import { useNavigate } from "react-router-dom";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { CalendarIcon, FolderIcon, StorageIcon } from "../../icons";
+import { CalendarIcon, FolderIcon, StorageIcon, OpenFolderIcon, RenameIcon, TrashBinIcon } from "../../icons";
 import ProjectAction from "./ProjectActions";
 import toast from "react-hot-toast";
 import { useProjectService } from "@/ProjectServiceContext";
 import * as React from "react";
+import { UserPlus2 } from "lucide-react";
+
 
 interface ProjectCardProps {
   id: string | number;
@@ -142,6 +144,207 @@ export default function ProjectCard({
 
   const showGuestBadge = Boolean(normalizedIsShared && !normalizedIsOwner);
 
+  type ContextMenuState = {
+    open: boolean;
+    x: number;
+    y: number;
+  };
+
+  const [contextMenu, setContextMenu] = useState<ContextMenuState>({ open: false, x: 0, y: 0 });
+  const contextMenuRef = useRef<HTMLDivElement | null>(null);
+  const contextItemRefs = useRef<Array<HTMLLIElement | null>>([]);
+
+  const closeContextMenu = useCallback(() => {
+    // closeContextMenu
+    setContextMenu((prev) => (prev.open ? { ...prev, open: false } : prev));
+  }, []);
+
+  const openContextMenu = useCallback(
+    (e: React.MouseEvent) => {
+      // openContextMenu
+      if (isRenaming || showDeleteModal) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+
+      onSelect?.();
+
+      setContextMenu({
+        open: true,
+        x: e.clientX,
+        y: e.clientY,
+      });
+    },
+    [isRenaming, showDeleteModal, onSelect],
+  );
+
+  const setContextItemRef = useCallback(
+    (idx: number) => (el: HTMLLIElement | null) => {
+      // setContextItemRef
+      contextItemRefs.current[idx] = el;
+    },
+    [],
+  );
+
+  const onContextMenuKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      // onContextMenuKeyDown
+      const items = contextItemRefs.current.filter(Boolean) as HTMLLIElement[];
+      if (!items.length) return;
+
+      const isDisabled = (el: HTMLLIElement | null) => el?.dataset.disabled === "true";
+      const currentIndex = items.findIndex((el) => el === document.activeElement);
+
+      const moveFocus = (direction: 1 | -1) => {
+        // moveFocus
+        let idx = currentIndex;
+        for (let i = 0; i < items.length; i++) {
+          idx = (idx + direction + items.length) % items.length;
+          if (!isDisabled(items[idx])) {
+            items[idx].focus();
+            break;
+          }
+        }
+      };
+
+      switch (e.key) {
+        case "ArrowDown":
+          e.preventDefault();
+          moveFocus(1);
+          break;
+        case "ArrowUp":
+          e.preventDefault();
+          moveFocus(-1);
+          break;
+        case "Home": {
+          e.preventDefault();
+          const first = items.find((el) => !isDisabled(el));
+          first?.focus();
+          break;
+        }
+        case "End": {
+          e.preventDefault();
+          for (let i = items.length - 1; i >= 0; i--) {
+            if (!isDisabled(items[i])) {
+              items[i].focus();
+              break;
+            }
+          }
+          break;
+        }
+        case "Escape":
+          e.preventDefault();
+          closeContextMenu();
+          break;
+      }
+    },
+    [closeContextMenu],
+  );
+
+  const runContextItem =
+    (disabled: boolean, fn?: () => void) =>
+      (e: React.MouseEvent) => {
+        // runContextItem
+        e.preventDefault();
+        e.stopPropagation();
+        if (disabled) return;
+        fn?.();
+        closeContextMenu();
+      };
+
+  useEffect(() => {
+    // closeContextMenuOnOverlays
+    if (isRenaming || showDeleteModal) closeContextMenu();
+  }, [isRenaming, showDeleteModal, closeContextMenu]);
+
+  useEffect(() => {
+    // closeContextMenuOnOutsideAndScroll
+    if (!contextMenu.open) return;
+
+    const onPointerDown = (ev: PointerEvent) => {
+      const target = ev.target as Node | null;
+      if (!target) return;
+      if (contextMenuRef.current && !contextMenuRef.current.contains(target)) {
+        closeContextMenu();
+      }
+    };
+
+    const onKeyDown = (ev: KeyboardEvent) => {
+      if (ev.key === "Escape") closeContextMenu();
+    };
+
+    const onAnyScroll = () => {
+      // onAnyScroll
+      closeContextMenu();
+    };
+
+    window.addEventListener("pointerdown", onPointerDown, true);
+    window.addEventListener("keydown", onKeyDown, true);
+    window.addEventListener("scroll", onAnyScroll, true);
+    window.addEventListener("wheel", onAnyScroll, true);
+    window.addEventListener("touchmove", onAnyScroll, true);
+
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown, true);
+      window.removeEventListener("keydown", onKeyDown, true);
+      window.removeEventListener("scroll", onAnyScroll, true);
+      window.removeEventListener("wheel", onAnyScroll, true);
+      window.removeEventListener("touchmove", onAnyScroll, true);
+    };
+  }, [contextMenu.open, closeContextMenu]);
+
+  useEffect(() => {
+    // focusFirstEnabledContextItemOnOpen
+    if (!contextMenu.open) return;
+
+    queueMicrotask(() => {
+      const items = contextItemRefs.current.filter(Boolean) as HTMLLIElement[];
+      const firstEnabled = items.find((el) => el.dataset.disabled !== "true");
+      firstEnabled?.focus();
+    });
+  }, [contextMenu.open]);
+
+  useEffect(() => {
+    // clampContextMenuToViewport
+    if (!contextMenu.open) return;
+
+    const raf = window.requestAnimationFrame(() => {
+      const el = contextMenuRef.current;
+      if (!el) return;
+
+      const rect = el.getBoundingClientRect();
+      const pad = 8;
+
+      let nextX = contextMenu.x;
+      let nextY = contextMenu.y;
+
+      if (rect.right > window.innerWidth - pad) {
+        nextX = Math.max(pad, window.innerWidth - rect.width - pad);
+      }
+      if (rect.bottom > window.innerHeight - pad) {
+        nextY = Math.max(pad, window.innerHeight - rect.height - pad);
+      }
+
+      if (nextX !== contextMenu.x || nextY !== contextMenu.y) {
+        setContextMenu((prev) => (prev.open ? { ...prev, x: nextX, y: nextY } : prev));
+      }
+    });
+
+    return () => window.cancelAnimationFrame(raf);
+  }, [contextMenu.open, contextMenu.x, contextMenu.y]);
+
+
+  const focusOnHoverIfEnabled =
+    (disabled: boolean) => (e: React.PointerEvent<HTMLLIElement>) => {
+      // focusOnHoverIfEnabled
+      if (disabled) return;
+      const el = e.currentTarget;
+      if (document.activeElement !== el) {
+        el.focus();
+      }
+    };
+
+
   return (
     <>
       <motion.div
@@ -154,6 +357,7 @@ export default function ProjectCard({
         <div
           onClick={onSelect}
           onDoubleClick={handleDoubleClick}
+          onContextMenu={openContextMenu}
           className={`relative cursor-pointer rounded-2xl border p-5 md:p-6 transition-transform duration-200 subpixel-antialiased
                       ${isSelected ? "border-blue-700 shadow-blue-100" : "border-gray-200 dark:border-gray-800"}
                       bg-gray-100 dark:bg-gray-900 hover:-translate-y-px hover:shadow-xl`}
@@ -337,7 +541,7 @@ export default function ProjectCard({
                       >
                         Save
                       </button>
-                      
+
                     </div>
                   </div>
                 </div>
@@ -346,6 +550,130 @@ export default function ProjectCard({
           </AnimatePresence>
         </div>
       </motion.div>
+
+      {contextMenu.open && (
+        <div
+          className="fixed inset-0 z-[9999]"
+          onClick={(e) => {
+            // closeContextMenuOnBackdropClick
+            e.preventDefault();
+            e.stopPropagation();
+            closeContextMenu();
+          }}
+          onContextMenu={(e) => {
+            // preventNativeContextMenuOnBackdrop
+            e.preventDefault();
+            e.stopPropagation();
+            closeContextMenu();
+          }}
+        >
+          <div
+            ref={contextMenuRef}
+            role="menu"
+            tabIndex={-1}
+            onKeyDown={onContextMenuKeyDown}
+            className="fixed w-44 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded shadow-lg"
+            style={{ left: contextMenu.x, top: contextMenu.y }}
+            onClick={(e) => {
+              // keepContextMenuOpenOnInnerClick
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            onContextMenu={(e) => {
+              // preventNativeContextMenuInside
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+          >
+            {(() => {
+              const openDisabled = false;
+              const renameDisabled = !canModify;
+              const shareDisabled = !canModify;
+              const removeDisabled = !canModify;
+
+              const baseItemClass = "px-4 py-2 outline-none flex items-center gap-2";
+              const enabledItemClass =
+                "cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 focus:bg-gray-100 dark:focus:bg-gray-700";
+              const disabledItemClass = "cursor-not-allowed opacity-50 text-gray-400 dark:text-gray-500";
+
+              const itemClass = (disabled: boolean) =>
+                `${baseItemClass} ${disabled ? disabledItemClass : enabledItemClass}`;
+
+              return (
+                <ul className="text-sm text-gray-700 dark:text-gray-200">
+                  <li
+                    ref={setContextItemRef(0)}
+                    tabIndex={-1}
+                    role="menuitem"
+                    aria-disabled={openDisabled}
+                    data-disabled={openDisabled ? "true" : "false"}
+                    className={itemClass(openDisabled)}
+                    onPointerMove={focusOnHoverIfEnabled(openDisabled)}
+                    onClick={runContextItem(openDisabled, handleOpen)}
+                  >
+                    <OpenFolderIcon
+                      className={`w-5 h-5 ${openDisabled ? "text-gray-400 dark:text-gray-500" : "text-gray-500 dark:text-white"
+                        }`}
+                    />
+                    <span>Open</span>
+                  </li>
+
+                  <li
+                    ref={setContextItemRef(1)}
+                    tabIndex={-1}
+                    role="menuitem"
+                    aria-disabled={renameDisabled}
+                    data-disabled={renameDisabled ? "true" : "false"}
+                    className={itemClass(renameDisabled)}
+                    onPointerMove={focusOnHoverIfEnabled(renameDisabled)}
+                    onClick={runContextItem(renameDisabled, handleRename)}
+                  >
+                    <RenameIcon
+                      className={`w-5 h-5 ${renameDisabled ? "text-gray-400 dark:text-gray-500" : "text-gray-500 dark:text-white"
+                        }`}
+                    />
+                    <span>Rename</span>
+                  </li>
+
+                  <li
+                    ref={setContextItemRef(2)}
+                    tabIndex={-1}
+                    role="menuitem"
+                    aria-disabled={shareDisabled}
+                    data-disabled={shareDisabled ? "true" : "false"}
+                    className={itemClass(shareDisabled)}
+                    onPointerMove={focusOnHoverIfEnabled(shareDisabled)}
+                    onClick={runContextItem(shareDisabled, handleShare)}
+                  >
+                    <UserPlus2
+                      className={`w-4 h-4 ${shareDisabled ? "text-gray-400 dark:text-gray-500" : "text-gray-500 dark:text-white"
+                        }`}
+                    />
+                    <span>Share</span>
+                  </li>
+
+                  <li
+                    ref={setContextItemRef(3)}
+                    tabIndex={-1}
+                    role="menuitem"
+                    aria-disabled={removeDisabled}
+                    data-disabled={removeDisabled ? "true" : "false"}
+                    className={itemClass(removeDisabled)}
+                    onPointerMove={focusOnHoverIfEnabled(removeDisabled)}
+                    onClick={runContextItem(removeDisabled, handleRemove)}
+                  >
+                    <TrashBinIcon
+                      className={`w-5 h-5 ${removeDisabled ? "text-gray-400 dark:text-gray-500" : "text-gray-500 dark:text-white"
+                        }`}
+                    />
+                    <span>Remove</span>
+                  </li>
+                </ul>
+              );
+            })()}
+          </div>
+        </div>
+      )}
 
       {/* Delete confirmation modal */}
       <AnimatePresence>
