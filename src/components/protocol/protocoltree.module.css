@@ -83,14 +83,22 @@
 }
 
 .iconDoc {
-  width: 46px;
-  height: 22px;
+  width: 18px;
+  height: 30px;
   flex: 0 0 auto;
   color: var(--ptInkMuted);
   stroke: currentColor;
 }
 
 .iconFolder {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  color: var(--ptInkMuted);
+  stroke: currentColor;
+}
+
+.iconOpenFolder {
   width: 22px;
   height: 22px;
   flex: 0 0 auto;

@@ -218,7 +218,7 @@ const ProtocolNodeItem: FC<{
 
     if (node.tag === "protocol_group" || node.tag === "section") {
       return expanded ? (
-        <OpenFolderIcon className={styles.iconFolder} />
+        <OpenFolderIcon className={styles.iconOpenFolder} />
       ) : (
         <FolderIcon className={styles.iconFolder} />
       );

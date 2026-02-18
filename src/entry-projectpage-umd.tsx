@@ -488,6 +488,7 @@ function normalizeServiceAPI(srv: any): ProjectService {
   mapFn("resolveProtocolStartPath", "resolveProtocolStartPath");
   mapFn("listRemoteDirectory", "listRemoteDirectory");
   mapFn("previewProtocolText", "previewProtocolText");
+  mapFn("previewRemoteEntry", "previewRemoteEntry");
   mapFn("buildProtocolDownloadUrl", "buildProtocolDownloadUrl");
   mapFn(
     "fetchProtocolInlinePreviewBlob",

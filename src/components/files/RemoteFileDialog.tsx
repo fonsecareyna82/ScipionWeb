@@ -31,10 +31,13 @@ export type RemoteEntry = {
 };
 
 type PreviewMeta = {
+  name?: string;
   mime?: string;
   width?: number;
   height?: number;
   depth?: number;
+  thumbWidth?: number;
+  thumbHeight?: number;
   sizeBytes?: number;
   voxelSize?: [number, number, number];
   note?: string;
@@ -42,7 +45,8 @@ type PreviewMeta = {
 
 export type RemotePreviewSource =
   | { sourceType: "url"; url: string }
-  | { sourceType: "blob"; blob: Blob };
+  | { sourceType: "blob"; blob: Blob }
+  | { sourceType: "base64"; dataBase64: string; mime?: string };
 
 export type RemotePreview =
   | { kind: "none"; mime?: string; meta?: PreviewMeta; note?: string }
@@ -506,23 +510,98 @@ export default function RemoteFileDialog({
       return;
     }
 
-    if (preview.source.sourceType === "url") {
+    const src = preview.source as any;
+
+    // urlSource
+    if (src?.sourceType === "url" && typeof src.url === "string") {
       revokeObjectUrlSafe(previewObjectUrlRef.current);
       previewObjectUrlRef.current = "";
-      setPreviewImageSrc(preview.source.url);
+      setPreviewImageSrc(src.url);
       return;
     }
 
-    revokeObjectUrlSafe(previewObjectUrlRef.current);
-    const objUrl = URL.createObjectURL(preview.source.blob);
-    previewObjectUrlRef.current = objUrl;
-    setPreviewImageSrc(objUrl);
+    // blobSource
+    if (src?.sourceType === "blob" && src.blob instanceof Blob) {
+      revokeObjectUrlSafe(previewObjectUrlRef.current);
+      const objUrl = URL.createObjectURL(src.blob);
+      previewObjectUrlRef.current = objUrl;
+      setPreviewImageSrc(objUrl);
 
-    return () => {
-      revokeObjectUrlSafe(objUrl);
-      if (previewObjectUrlRef.current === objUrl) previewObjectUrlRef.current = "";
-    };
+      return () => {
+        revokeObjectUrlSafe(objUrl);
+        if (previewObjectUrlRef.current === objUrl) previewObjectUrlRef.current = "";
+      };
+    }
+
+    // base64Source
+    if (src?.sourceType === "base64" && typeof src.dataBase64 === "string") {
+      const effectiveMime =
+        normalizeMimeValue(String(src.mime || preview.mime || "image/png")) || "image/png";
+
+      try {
+        const blob = base64ToBlob(src.dataBase64, effectiveMime);
+
+        revokeObjectUrlSafe(previewObjectUrlRef.current);
+        const objUrl = URL.createObjectURL(blob);
+        previewObjectUrlRef.current = objUrl;
+        setPreviewImageSrc(objUrl);
+
+        return () => {
+          revokeObjectUrlSafe(objUrl);
+          if (previewObjectUrlRef.current === objUrl) previewObjectUrlRef.current = "";
+        };
+      } catch (e) {
+        // keepUiStableOnBadPayload
+        revokeObjectUrlSafe(previewObjectUrlRef.current);
+        previewObjectUrlRef.current = "";
+        setPreviewImageSrc("");
+        return;
+      }
+    }
+
+    // unknownSourceTypeFallback
+    revokeObjectUrlSafe(previewObjectUrlRef.current);
+    previewObjectUrlRef.current = "";
+    setPreviewImageSrc("");
   }, [preview]);
+
+
+  function normalizeMimeValue(v: string): string {
+    // normalizeMimeLikeHeaderValue
+    const raw = (v || "").trim().toLowerCase();
+    if (!raw) return "";
+    return raw.split(";")[0].trim();
+  }
+
+  function base64ToBlob(dataBase64OrDataUrl: string, mime: string): Blob {
+    // extractBase64Payload
+    let base64 = (dataBase64OrDataUrl || "").trim();
+
+    // handleDataUrlPrefix
+    if (base64.startsWith("data:")) {
+      const commaIndex = base64.indexOf(",");
+      if (commaIndex >= 0) base64 = base64.slice(commaIndex + 1);
+    }
+
+    // normalizeUrlSafeBase64
+    base64 = base64.replace(/-/g, "+").replace(/_/g, "/");
+
+    // addPaddingIfNeeded
+    const mod = base64.length % 4;
+    if (mod === 2) base64 += "==";
+    else if (mod === 3) base64 += "=";
+
+    const binaryStr = atob(base64);
+    const len = binaryStr.length;
+    const bytes = new Uint8Array(len);
+
+    for (let i = 0; i < len; i++) {
+      bytes[i] = binaryStr.charCodeAt(i);
+    }
+
+    return new Blob([bytes], { type: mime || "application/octet-stream" });
+  }
+
 
   const parentRel = getParentRelPath(cwdRel);
   const showParentEntry = parentRel !== null && !loading && !error;

@@ -1160,9 +1160,6 @@ export async function fetchProtocolInlinePreviewBlob(
   return { blob, meta };
 }
 
-type PreviewKind = "text" | "image" | "volume" | "table" | "binary" | "none";
-
-
 export interface PreviewMeta {
   mime?: string;
   width?: number;
@@ -1226,31 +1223,15 @@ function getTruncated(headers: Headers): boolean {
   return v === "1" || v === "true" || v === "yes";
 }
 
-function inferKind(meta: PreviewMeta, payloadMime: string, semanticMime: string): PreviewKind {
-  // tableIsExplicit
-  if ((meta.type || "").toLowerCase() === "table") return "table";
-
-  // volumeIsSemantic
-  if (semanticMime === "volume/mrc") return "volume";
-
-  // imageIsPayload
-  if (payloadMime.startsWith("image/")) return "image";
-
-  // textIsPayloadOrSemantic
-  if (payloadMime.startsWith("text/") || semanticMime.startsWith("text/")) return "text";
-
-  // jsonFallback
-  if (payloadMime === "application/json" || semanticMime === "application/json") return "text";
-
-  return "binary";
-}
-
 
 export function disposeRemoteEntryPreview(preview: RemoteEntryPreview | null): void {
   // revokeObjectUrlToAvoidLeaks
   const objectUrl = preview?.source?.objectUrl;
   if (objectUrl) URL.revokeObjectURL(objectUrl);
 }
+
+// types.ts (or wherever previewRemoteEntry lives)
+type PreviewKind = "none" | "text" | "table" | "image" | "volume" | "binary";
 
 export async function previewRemoteEntry(
   projectId: Id,
@@ -1271,6 +1252,24 @@ export async function previewRemoteEntry(
   const contentTypeRaw = res.headers.get("Content-Type") || "application/octet-stream";
   const payloadMime = normalizeMime(contentTypeRaw);
 
+  const previewSchemaRaw = (res.headers.get("X-Preview-Schema") || "").trim();
+  const previewSchema = previewSchemaRaw.toLowerCase();
+
+  const hasPreviewHeaders = Boolean(
+    res.headers.get("X-Preview-Kind") ||
+    res.headers.get("X-Preview-Mime") ||
+    res.headers.get("X-Preview-ResponseMime") ||
+    res.headers.get("X-Preview-Name"),
+  );
+
+  // scipionIsTheGoodOne
+  const isScipionPreview = previewSchema === "scipion" || (previewSchema === "" && hasPreviewHeaders);
+
+  if (!isScipionPreview) {
+    const coerced = await coerceNonScipionResponse(res, payloadMime);    
+    return finalizePreviewForGui(coerced);
+  }
+
   const meta = parseMeta(res.headers) as any;
   const truncated = getTruncated(res.headers);
 
@@ -1279,35 +1278,33 @@ export async function previewRemoteEntry(
   const semanticMime = normalizeMime(meta.mime || "") || payloadMime;
   const responseMime = normalizeMime(meta.responseMime || "") || payloadMime;
 
-
   // kindDrivenHandling
   if (kind === "none") {
-    return { kind, mime: semanticMime, meta, truncated, note: meta.note || "No preview available." };
+    return finalizePreviewForGui({
+      kind,
+      mime: semanticMime,
+      meta,
+      truncated,
+      note: meta.note || "No preview available.",
+    });
   }
 
   if (responseMime === "application/pdf") {
-    return {
+    return finalizePreviewForGui({
       kind: "none",
       mime: semanticMime,
       meta,
       truncated,
       note: meta.note || "PDF preview is not available in this dialog.",
-    };
+    });
   }
 
   if (kind === "text") {
     const text = await res.text();
-
-    const out = { kind, mime: semanticMime, meta, truncated, text }
-
-    console.log(out)
-
-
-    return { kind, mime: semanticMime, meta, truncated, text };
+    return finalizePreviewForGui({ kind, mime: semanticMime, meta, truncated, text });
   }
 
   if (kind === "table") {
-    // expectsJsonTablePayload
     const data = await safeJson<any>(res);
 
     const columns =
@@ -1330,34 +1327,165 @@ export async function previewRemoteEntry(
         : [],
     );
 
-    const out = { kind, mime: semanticMime, meta, truncated, columns, rows }
-
-    console.log(out)
-
-    return { kind, mime: semanticMime, meta, truncated, columns, rows };
+    return finalizePreviewForGui({ kind, mime: semanticMime, meta, truncated, columns, rows });
   }
 
   // image | volume | binary -> blob
   const blob = await res.blob();
 
-  const out = {
-    kind,
-    mime: semanticMime,
-    meta,
-    truncated,
-    source: { sourceType: "blob", blob }
-  }
-  console.log(out)
-
-
-  return {
+  return finalizePreviewForGui({
     kind,
     mime: semanticMime,
     meta,
     truncated,
     source: { sourceType: "blob", blob },
+  });
+}
+
+async function coerceNonScipionResponse(res: Response, payloadMime: string): Promise<any> {
+  const normalized = normalizeMime(payloadMime) || "application/octet-stream";
+  const isJson = normalized === "application/json" || normalized.endsWith("+json");
+
+  // nonJsonFallback
+  if (!isJson) {
+    const isTextLike =
+      normalized.startsWith("text/") ||
+      normalized === "application/xml" ||
+      normalized === "application/x-yaml" ||
+      normalized === "text/x-log";
+
+    if (isTextLike) {
+      const text = await res.text();
+      return { kind: "text", mime: normalized || "text/plain", meta: {}, truncated: false, text };
+    }
+
+    const blob = await res.blob();
+    return {
+      kind: inferKindFromContentType(normalized),
+      mime: normalized,
+      meta: {},
+      truncated: false,
+      source: { sourceType: "blob", blob },
+    };
+  }
+  // jsonPureContract
+  const data = await safeJson<any>(res);
+
+  const kind: PreviewKind =
+    (typeof data?.kind === "string" ? (data.kind as PreviewKind) : null) ||
+    inferKindFromContentType(normalized);
+
+  const mime =
+    normalizeMime(data?.mime || "") ||
+    normalizeMime(data?.source?.mime || "") ||
+    normalized;
+
+  const meta = data?.meta && typeof data.meta === "object" ? data.meta : {};
+  const truncated = Boolean(data?.truncated);
+
+  if (kind === "none") {
+    return {
+      kind,
+      mime,
+      meta,
+      truncated,
+      note: typeof data?.note === "string" ? data.note : "No preview available.",
+    };
+  }
+
+  if (kind === "text") {
+    const text =
+      typeof data?.text === "string"
+        ? data.text
+        : data?.json != null
+          ? JSON.stringify(data.json, null, 2)
+          : JSON.stringify(data, null, 2);
+
+    return { kind, mime, meta, truncated, text };
+  }
+
+  if (kind === "table") {
+    const columns = Array.isArray(data?.columns) ? data.columns.map((c: any) => String(c)) : [];
+    const rows = Array.isArray(data?.rows) ? data.rows : [];
+    return { kind, mime, meta, truncated, columns, rows };
+  }
+
+  // image|volume|binary: keepSourceAsIsHere; finalizePreviewForGui will normalize base64->blob
+  return {
+    kind,
+    mime,
+    meta,
+    truncated,
+    source: data?.source,
   };
 }
+
+function finalizePreviewForGui(preview: any): any {
+  if (!preview || typeof preview !== "object") return preview;
+
+  const source = preview.source;
+  // base64ToBlobNormalization
+  if (!source || typeof source !== "object") return preview;
+
+  const sourceType = String(source.sourceType || "").toLowerCase();
+
+  // alreadyBlob
+  if (sourceType === "blob" && source.blob instanceof Blob) return preview;
+
+  if (sourceType === "base64" && typeof source.dataBase64 === "string") {
+    const effectiveMime =
+      normalizeMime(source.mime || "") ||
+      normalizeMime(preview.mime || "") ||
+      "application/octet-stream";
+
+    try {
+      const blob = base64ToBlob(source.dataBase64, effectiveMime);
+      return {
+        ...preview,
+        source: { sourceType: "blob", blob },
+      };
+    } catch (e: any) {
+      return {
+        ...preview,
+        kind: "none",
+        note: `Invalid base64 payload: ${String(e?.message || e)}`,
+        meta: { ...(preview.meta || {}), base64Error: true },
+      };
+    }
+  }
+
+  return preview;
+}
+
+function base64ToBlob(dataBase64OrDataUrl: string, mime: string): Blob {
+  // extractBase64Payload
+  let base64 = (dataBase64OrDataUrl || "").trim();
+
+  // handleDataUrlPrefix
+  if (base64.startsWith("data:")) {
+    const commaIndex = base64.indexOf(",");
+    if (commaIndex >= 0) base64 = base64.slice(commaIndex + 1);
+  }
+
+  // normalizeUrlSafeBase64
+  base64 = base64.replace(/-/g, "+").replace(/_/g, "/");
+
+  // addPaddingIfNeeded
+  const mod = base64.length % 4;
+  if (mod === 2) base64 += "==";
+  else if (mod === 3) base64 += "=";
+
+  const binaryStr = atob(base64);
+  const len = binaryStr.length;
+  const bytes = new Uint8Array(len);
+
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binaryStr.charCodeAt(i);
+  }
+
+  return new Blob([bytes], { type: mime || "application/octet-stream" });
+}
+
 
 // projects.ts
 

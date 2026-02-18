@@ -311,6 +311,11 @@ const defaultMockService: ProjectService = {
     return { blob, meta };
   },
 
+
+  async previewRemoteEntry(projectId: Id, id: string, path: string) {
+    return { id: projectId, action: "previewProtocolText", protocolId: id, path, content: "Mock preview..." } as any;
+  },
+
   async fetchOutputPreview(_projectId: Id, _protocolId: Id, outputName: string) {
     return { success: true, outputName } as any;
   },
@@ -711,6 +716,7 @@ function normalizeServiceAPI(srv?: any): ProjectService {
   mapFn("resolveProtocolStartPath", "resolveProtocolStartPath");
   mapFn("listRemoteDirectory", "listRemoteDirectory");
   mapFn("previewProtocolText", "previewProtocolText");
+  mapFn("previewRemoteEntry", "previewRemoteEntry");
   mapFn("buildProtocolDownloadUrl", "buildProtocolDownloadUrl");
   mapFn("fetchProtocolInlinePreviewBlob", "previewInlineBlob", "getInlinePreviewBlob", "downloadInlinePreviewBlob");
   mapFn("fetchOutputPreview", "previewOutput", "getOutputPreview", "requestOutputPreview");
