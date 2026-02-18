@@ -41,7 +41,12 @@ type PreviewMeta = {
   sizeBytes?: number;
   voxelSize?: [number, number, number];
   note?: string;
+
+  // allowArbitraryMetaKeys
+  [key: string]: unknown;
 };
+
+
 
 export type RemotePreviewSource =
   | { sourceType: "url"; url: string }
@@ -248,58 +253,178 @@ export default function RemoteFileDialog({
     return `${gb.toFixed(1)} GB`;
   };
 
-  // buildMetaSummaryLine
-  const buildMetaSummaryLine = (meta: PreviewMeta | undefined, fallbackMime?: string, truncated?: boolean) => {
-    const m = meta || {};
-    const parts: string[] = [];
 
-    const sizeStr = m.sizeBytes !== undefined ? humanBytes(m.sizeBytes) : undefined;
-    const mimeStr = m.mime || fallbackMime;
+  type MetaPair = { key: string; rawValue: unknown };
 
-    if (sizeStr) parts.push(sizeStr);
-    if (mimeStr) parts.push(mimeStr);
+  function isProbablyJsonString(s: string): boolean {
+  // bestEffortJsonStringHeuristic
+  const t = (s || "").trim();
+  if (!t) return false;
+  if ((t.startsWith("{") && t.endsWith("}")) || (t.startsWith("[") && t.endsWith("]"))) {
+    return true;
+  }
+  return false;
+}
 
-    const hasDims = m.width !== undefined || m.height !== undefined || m.depth !== undefined;
-    if (hasDims) {
-      const w = m.width ?? "?";
-      const h = m.height ?? "?";
-      const d = m.depth;
-      parts.push(d !== undefined ? `${w}×${h}×${d}` : `${w}×${h}`);
+function safeJsonStringify(v: unknown): string {
+  // safeJsonStringifyNoThrow
+  try {
+    return JSON.stringify(v, null, 2);
+  } catch {
+    return String(v);
+  }
+}
+
+function toInlineString(v: unknown): string {
+  // metaInlineString
+  if (v === undefined) return "";
+  if (v === null) return "null";
+  if (typeof v === "string") return v;
+  if (typeof v === "number") return Number.isFinite(v) ? String(v) : String(v);
+  if (typeof v === "boolean") return v ? "true" : "false";
+  if (Array.isArray(v)) return v.map((x) => toInlineString(x)).join(", ");
+  if (typeof v === "object") return "[object]";
+  return String(v);
+}
+
+function shouldCollapseMetaValue(v: unknown): boolean {
+  // collapseRule: objects/arrays or large json-like strings
+  if (v == null) return false;
+
+  if (typeof v === "object") return true;
+
+  if (typeof v === "string") {
+    const t = v.trim();
+    if (t.length < 120) return false;
+    return isProbablyJsonString(t);
+  }
+
+  return false;
+}
+
+function buildMetaPairs(meta: PreviewMeta | undefined): MetaPair[] {
+  // metaPairsFromMetaOnly
+  const raw = meta && typeof meta === "object" ? (meta as Record<string, unknown>) : {};
+  const keys = Object.keys(raw).sort((a, b) => a.localeCompare(b));
+
+  const out: MetaPair[] = [];
+  for (const k of keys) {
+    const v = raw[k];
+    if (v === undefined) continue;
+    out.push({ key: k, rawValue: v });
+  }
+
+  return out;
+}
+
+function buildMetaPreviewLabel(v: unknown): string {
+  // labelShownOnSummaryLine
+  if (v == null) return "null";
+  if (typeof v === "string") {
+    const t = v.trim();
+    if (!t) return '""';
+    // keepLabelCompact
+    return t.length > 80 ? `${t.slice(0, 80)}…` : t;
+  }
+  if (Array.isArray(v)) return `Array(${v.length})`;
+  if (typeof v === "object") {
+    try {
+      const keys = Object.keys(v as any);
+      return `Object(${keys.length})`;
+    } catch {
+      return "Object";
     }
+  }
+  return String(v);
+}
 
-    if (m.voxelSize && m.voxelSize.length === 3) {
-      const [vx, vy, vz] = m.voxelSize;
-      if ([vx, vy, vz].every((x) => typeof x === "number" && Number.isFinite(x))) {
-        parts.push(`sr ${vx.toFixed(1)}×${vy.toFixed(1)}×${vz.toFixed(1)}`);
+function MetaValueRenderer({ value }: { value: unknown }) {
+  const collapsible = shouldCollapseMetaValue(value);
+
+  if (!collapsible) {
+    return <span className={styles.metaValue}>{toInlineString(value)}</span>;
+  }
+
+  const previewLabel = buildMetaPreviewLabel(value);
+
+  // stringJsonCase: show parsed pretty if possible
+  let pretty = "";
+  if (typeof value === "string") {
+    const t = value.trim();
+    if (isProbablyJsonString(t)) {
+      try {
+        pretty = JSON.stringify(JSON.parse(t), null, 2);
+      } catch {
+        pretty = t;
+      }
+    } else {
+      pretty = value;
+    }
+  } else {
+    pretty = safeJsonStringify(value);
+  }
+
+  return (
+    <details className={styles.metaDetails}>
+      <summary className={styles.metaSummary}>
+        <span className={styles.metaChevron}>▸</span>
+        <span className={styles.metaSummaryText}>{previewLabel}</span>
+        <span className={styles.metaHint}>details</span>
+      </summary>
+
+      <pre className={styles.metaJsonBlock}>{pretty}</pre>
+    </details>
+  );
+}
+
+const renderMetaFooter = (meta: PreviewMeta | undefined) => {
+  const pairs = buildMetaPairs(meta);
+  if (!pairs.length) return null;
+
+  return (
+    <div className={styles.previewFooter}>
+      <div className={styles.metaGrid}>
+        {pairs.map((p) => (
+          <div key={p.key} className={styles.metaItem}>
+            <span className={styles.metaKey}>{p.key}:</span>
+            <MetaValueRenderer value={p.rawValue} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+
+  //----------------
+
+  function formatMetaValue(v: unknown): string {
+    // formatMetaValueBestEffort
+    if (v === undefined) return "";
+    if (v === null) return "null";
+
+    if (typeof v === "string") return v;
+    if (typeof v === "number") return Number.isFinite(v) ? String(v) : String(v);
+    if (typeof v === "boolean") return v ? "true" : "false";
+
+    if (Array.isArray(v)) return v.map((x) => formatMetaValue(x)).join(", ");
+
+    if (typeof v === "object") {
+      try {
+        return JSON.stringify(v);
+      } catch {
+        return String(v);
       }
     }
 
-    if (truncated) parts.push("truncated");
+    return String(v);
+  }
 
-    return parts.join(" • ");
-  };
-
-  // renderMetaInlineFooter
-  const renderMetaInlineFooter = (meta: PreviewMeta | undefined, fileName: string, mime?: string, truncated?: boolean) => {
-    const summary = buildMetaSummaryLine(meta, mime, truncated);
-    const note = meta?.note;
-
-    if (!summary && !note) return null;
-
+  const renderTwoRowPreview = (content: React.ReactNode, meta: PreviewMeta | undefined) => {
     return (
-      <div
-        style={{
-          marginTop: 10,
-          paddingTop: 10,
-          borderTop: "1px solid rgba(148, 163, 184, 0.18)",
-          fontSize: 12,
-          opacity: 0.85,
-          lineHeight: 1.35,
-        }}
-      >
-        <div style={{ fontWeight: 600, opacity: 0.9 }}>{fileName}</div>
-        {!!summary && <div style={{ opacity: 0.8 }}>{summary}</div>}
-        {!!note && <div style={{ marginTop: 6, opacity: 0.75 }}>{note}</div>}
+      <div className={styles.previewStack}>
+        <div className={styles.previewMain}>{content}</div>
+        {renderMetaFooter(meta)}
       </div>
     );
   };
@@ -706,57 +831,7 @@ export default function RemoteFileDialog({
   const toggleSortDir = () => setSortDir((d) => (d === "asc" ? "desc" : "asc"));
   const SortDirIcon = sortDir === "asc" ? ArrowUp : ArrowDown;
 
-  const renderMetaBox = (meta: PreviewMeta | undefined, fileName: string) => {
-    const m = meta || {};
-    const hasAny =
-      m.sizeBytes !== undefined ||
-      m.width !== undefined ||
-      m.height !== undefined ||
-      m.depth !== undefined ||
-      !!m.voxelSize ||
-      !!m.note;
 
-    if (!hasAny) return null;
-
-    return (
-      <div className={styles.metaBox}>
-        <div className={styles.metaTitle}>{fileName}</div>
-
-        {m.sizeBytes !== undefined && (
-          <div className={styles.metaRow}>
-            <span className={styles.metaLabel}>Size:</span>
-            <span className={styles.metaValue}>{humanBytes(m.sizeBytes)}</span>
-          </div>
-        )}
-
-        {(m.width !== undefined || m.height !== undefined || m.depth !== undefined) && (
-          <div className={styles.metaRow}>
-            <span className={styles.metaLabel}>Dimensions:</span>
-            <span className={styles.metaValue}>
-              {m.width ?? "?"} × {m.height ?? "?"}
-              {m.depth !== undefined ? ` × ${m.depth}` : ""}
-            </span>
-          </div>
-        )}
-
-        {m.voxelSize && (
-          <div className={styles.metaRow}>
-            <span className={styles.metaLabel}>Sampling rate:</span>
-            <span className={styles.metaValue}>
-              {m.voxelSize[0].toFixed(1)} × {m.voxelSize[1].toFixed(1)} × {m.voxelSize[2].toFixed(1)}
-            </span>
-          </div>
-        )}
-
-        {m.note && (
-          <div className={styles.metaRow}>
-            <span className={styles.metaLabel}>Note:</span>
-            <span className={styles.metaValue}>{m.note}</span>
-          </div>
-        )}
-      </div>
-    );
-  };
 
   const renderPreviewBody = () => {
     if (!selected) return <div className={styles.centerPlaceholder}>Select a file or folder.</div>;
@@ -788,8 +863,11 @@ export default function RemoteFileDialog({
     }
 
     if (!preview || preview.kind === "none") {
-      return <div className={styles.centerPlaceholder}>No preview available.</div>;
+      const note = (preview as any)?.note || "No preview available.";
+      return renderTwoRowPreview(<div className={styles.centerPlaceholder}>{note}</div>, (preview as any)?.meta);
     }
+
+
 
     if (preview.kind === "error") {
       return (
@@ -801,123 +879,95 @@ export default function RemoteFileDialog({
     }
 
     if (preview.kind === "text") {
-      return (
-        <div className={styles.previewCol}>
-          {preview.text ? (
-            <div
-              className={styles.textPreviewBox}
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                height: "100%",
-              }}
-            >
-              <div
-                style={{
-                  flex: 1,
-                  overflow: "auto",
-                  whiteSpace: "pre-wrap",
-                }}
-              >
-                {preview.text}
-              </div>
-
-              {renderMetaInlineFooter(preview.meta, selected.name, preview.mime, preview.truncated)}
-            </div>
-          ) : (
-            <div className={styles.centerPlaceholder}>No text preview available.</div>
-          )}
+      const content = preview.text ? (
+        <div className={styles.textPreviewBox} style={{ height: "100%" }}>
+          <div style={{ height: "100%", overflow: "auto", whiteSpace: "pre-wrap" }}>{preview.text}</div>
         </div>
+      ) : (
+        <div className={styles.centerPlaceholder}>No text preview available.</div>
       );
+
+      return renderTwoRowPreview(content, preview.meta);
     }
+
+
 
 
     if (preview.kind === "table") {
-      return (
-        <div className={styles.previewCol}>
-          <div
-            className={styles.textPreviewBox}
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              height: "100%",
-              padding: 0,
-            }}
-          >
-            <div style={{ flex: 1, overflow: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-                <thead>
-                  <tr>
-                    {preview.columns.map((c) => (
-                      <th
-                        key={c}
+      const content = (
+        <div className={styles.textPreviewBox} style={{ height: "100%", padding: 0 }}>
+          <div style={{ height: "100%", overflow: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+              <thead>
+                <tr>
+                  {preview.columns.map((c) => (
+                    <th
+                      key={c}
+                      style={{
+                        textAlign: "left",
+                        padding: "8px 10px",
+                        borderBottom: "1px solid rgba(148, 163, 184, 0.18)",
+                        position: "sticky",
+                        top: 0,
+                        background: "rgba(15, 23, 42, 0.25)",
+                        backdropFilter: "blur(6px)",
+                        zIndex: 1,
+                      }}
+                    >
+                      {c}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {preview.rows.map((row, idx) => (
+                  <tr key={idx}>
+                    {row.map((cell, j) => (
+                      <td
+                        key={j}
                         style={{
-                          textAlign: "left",
                           padding: "8px 10px",
-                          borderBottom: "1px solid rgba(148, 163, 184, 0.18)",
-                          position: "sticky",
-                          top: 0,
-                          background: "rgba(15, 23, 42, 0.25)",
-                          backdropFilter: "blur(6px)",
-                          zIndex: 1,
+                          borderBottom: "1px solid rgba(148, 163, 184, 0.10)",
+                          whiteSpace: "nowrap",
+                          textOverflow: "ellipsis",
+                          overflow: "hidden",
+                          maxWidth: 240,
                         }}
+                        title={cell === null ? "" : String(cell)}
                       >
-                        {c}
-                      </th>
+                        {cell === null ? "" : String(cell)}
+                      </td>
                     ))}
                   </tr>
-                </thead>
-                <tbody>
-                  {preview.rows.map((row, idx) => (
-                    <tr key={idx}>
-                      {row.map((cell, j) => (
-                        <td
-                          key={j}
-                          style={{
-                            padding: "8px 10px",
-                            borderBottom: "1px solid rgba(148, 163, 184, 0.10)",
-                            whiteSpace: "nowrap",
-                            textOverflow: "ellipsis",
-                            overflow: "hidden",
-                            maxWidth: 240,
-                          }}
-                          title={cell === null ? "" : String(cell)}
-                        >
-                          {cell === null ? "" : String(cell)}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            <div style={{ padding: "10px 12px" }}>
-              {renderMetaInlineFooter(preview.meta, selected.name, preview.mime, preview.truncated)}
-            </div>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       );
+
+      return renderTwoRowPreview(content, preview.meta);
     }
+
+
 
 
     if (preview.kind === "image") {
-      return (
-        <div className={styles.previewRow}>
-          <div className={styles.imageBlock}>
-            {!previewImageSrc && <div className={styles.centerPlaceholder}>No image preview available.</div>}
+      const content = (
+        <div className={styles.imageCanvas}>
+          {!previewImageSrc && <div className={styles.centerPlaceholder}>No image preview available.</div>}
 
-            {!!previewImageSrc && (
-              <div className={styles.imageFrame}>
-                <img src={previewImageSrc} alt={selected.name} className={styles.previewImage} />
-              </div>
-            )}
-          </div>
-
-          {renderMetaBox(preview.meta, selected.name)}
+          {!!previewImageSrc && (
+            <div className={styles.imageFrameResponsive}>
+              <img src={previewImageSrc} alt={selected.name} className={styles.previewImage} />
+            </div>
+          )}
         </div>
       );
+
+      return renderTwoRowPreview(content, preview.meta);
     }
+
 
     return <div className={styles.centerPlaceholder}>No preview available.</div>;
   };
