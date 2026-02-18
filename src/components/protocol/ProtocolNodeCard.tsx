@@ -1005,6 +1005,36 @@ export default function ProtocolNodeCard({
   const [nextStepHelpOpen, setNextStepHelpOpen] = useState(false);
   const [nextStepHelpTarget, setNextStepHelpTarget] = useState<NextProtocolSuggestion | null>(null);
 
+  const [nextStepTooltipEpoch, setNextStepTooltipEpoch] = useState(0);
+  const [nextStepTooltipsSuppressed, setNextStepTooltipsSuppressed] = useState(false);
+  const nextStepTooltipsTimerRef = useRef<number | null>(null);
+
+  const suppressNextStepTooltips = useCallback(() => {
+    // suppressNextStepTooltips
+    setNextStepTooltipEpoch((v) => v + 1);
+    setNextStepTooltipsSuppressed(true);
+
+    if (nextStepTooltipsTimerRef.current != null) {
+      window.clearTimeout(nextStepTooltipsTimerRef.current);
+    }
+
+    nextStepTooltipsTimerRef.current = window.setTimeout(() => {
+      setNextStepTooltipsSuppressed(false);
+      nextStepTooltipsTimerRef.current = null;
+    }, 180);
+  }, []);
+
+  useEffect(() => {
+    // cleanupNextStepTooltipTimer
+    return () => {
+      if (nextStepTooltipsTimerRef.current != null) {
+        window.clearTimeout(nextStepTooltipsTimerRef.current);
+        nextStepTooltipsTimerRef.current = null;
+      }
+    };
+  }, []);
+
+
   useEffect(() => {
     // resetNextStepOnNodeChange
     setNextStepSuggestions(null);
@@ -1807,7 +1837,11 @@ export default function ProtocolNodeCard({
       }
 
       const list = (
-        <div className={styles.nextStepList} data-next-step-scroll>
+        <div className={styles.nextStepList}
+          data-next-step-scroll
+          onScrollCapture={suppressNextStepTooltips}
+          onWheelCapture={suppressNextStepTooltips}
+          onTouchMoveCapture={suppressNextStepTooltips}>
           {nextStepSuggestions.map((s) => {
             const installedValue = String(s.installed ?? "installed").trim() || "installed";
             const isInstalled = installedValue === "installed";
@@ -1864,28 +1898,36 @@ export default function ProtocolNodeCard({
                 <FileIcon className={styles.nextStepItemIcon} />
 
                 <Tooltip
+                  key={`nextStepNameTooltip-${s.protocolClass}-${nextStepTooltipEpoch}`}
                   title={s.protocolName}
                   placement="right"
                   arrow
                   enterDelay={250}
+                  disableHoverListener={nextStepTooltipsSuppressed}
+                  disableFocusListener={nextStepTooltipsSuppressed}
+                  disableTouchListener={nextStepTooltipsSuppressed}
                   slotProps={{
                     popper: { sx: { zIndex: 26000 } },
                     tooltip: { sx: { fontSize: "0.95rem", lineHeight: 1.35 } },
                   }}
                 >
-                  <span style={{ display: "block" }}><span className={styles.nextStepName}>
-                    {s.protocolName}
-                  </span></span>
+                  <span style={{ display: "block" }}>
+                    <span className={styles.nextStepName}>{s.protocolName}</span>
+                  </span>
                 </Tooltip>
               </div>
             );
 
             const leftWithTooltip = disabledTooltip ? (
               <Tooltip
+                key={`nextStepDisabledTooltip-${s.protocolClass}-${nextStepTooltipEpoch}`}
                 title={disabledTooltip}
                 placement="right"
                 arrow
                 enterDelay={250}
+                disableHoverListener={nextStepTooltipsSuppressed}
+                disableFocusListener={nextStepTooltipsSuppressed}
+                disableTouchListener={nextStepTooltipsSuppressed}
                 slotProps={{
                   popper: { sx: { zIndex: 26000 } },
                   tooltip: { sx: { fontSize: "0.95rem", lineHeight: 1.35 } },
@@ -1893,6 +1935,7 @@ export default function ProtocolNodeCard({
               >
                 <span style={{ display: "block" }}>{left}</span>
               </Tooltip>
+
             ) : (
               left
             );
@@ -1962,6 +2005,9 @@ export default function ProtocolNodeCard({
       openNextStepHelp,
       resetNextStepSuggestions,
       openSuggestedProtocolClass,
+      nextStepTooltipEpoch,
+      nextStepTooltipsSuppressed,
+      suppressNextStepTooltips,
     ],
   );
 

@@ -300,6 +300,16 @@ export default function RemoteFileDialog({
     const raw = meta && typeof meta === "object" ? (meta as Record<string, unknown>) : {};
     const view: Record<string, unknown> = { ...raw };
 
+    // hideMimeFieldsInUi
+    for (const k of Object.keys(view)) {
+      const kLower = k.toLowerCase();
+
+      // hide "mime" and any "*Mime" variants (payloadMime, responseMime, semanticMime, etc.)
+      if (kLower === "mime" || kLower.endsWith("mime")) {
+        delete view[k];
+      }
+    }
+
     // sizeBytes -> size (humanReadable) and hideRaw
     const sizeBytesRaw = view.sizeBytes;
     const sizeBytesNum =
