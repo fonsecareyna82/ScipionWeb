@@ -243,157 +243,224 @@ export default function RemoteFileDialog({
   };
 
   const humanBytes = (n?: number) => {
-    if (!n && n !== 0) return undefined;
-    if (n < 1024) return `${n} B`;
-    const kb = n / 1024;
-    if (kb < 1024) return `${kb.toFixed(1)} KB`;
-    const mb = kb / 1024;
-    if (mb < 1024) return `${mb.toFixed(1)} MB`;
-    const gb = mb / 1024;
-    return `${gb.toFixed(1)} GB`;
+    // humanBytesBinaryUnits
+    if (n == null || !Number.isFinite(n)) return undefined;
+
+    const abs = Math.abs(n);
+
+    const kb = 1024;
+    const mb = kb * 1024;
+    const gb = mb * 1024;
+    const tb = gb * 1024;
+
+    const fmt = (value: number, unit: string) => {
+      const decimals = value >= 10 ? 1 : 2;
+      return `${value.toFixed(decimals)} ${unit}`;
+    };
+
+    if (abs < kb) return `${Math.round(n)} B`;
+    if (abs < mb) return fmt(n / kb, "KB");
+    if (abs < gb) return fmt(n / mb, "MB");
+    if (abs < tb) return fmt(n / gb, "GB");
+    return fmt(n / tb, "TB");
   };
 
 
   type MetaPair = { key: string; rawValue: unknown };
 
-  function isProbablyJsonString(s: string): boolean {
-  // bestEffortJsonStringHeuristic
-  const t = (s || "").trim();
-  if (!t) return false;
-  if ((t.startsWith("{") && t.endsWith("}")) || (t.startsWith("[") && t.endsWith("]"))) {
-    return true;
-  }
-  return false;
-}
+  function extractPixelSize(value: unknown): number | undefined {
+    // extractPixelSizeBestEffort
+    if (value == null) return undefined;
 
-function safeJsonStringify(v: unknown): string {
-  // safeJsonStringifyNoThrow
-  try {
-    return JSON.stringify(v, null, 2);
-  } catch {
+    if (typeof value === "number") {
+      return Number.isFinite(value) ? value : undefined;
+    }
+
+    if (Array.isArray(value)) {
+      const first = value.length > 0 ? Number((value as any)[0]) : NaN;
+      return Number.isFinite(first) ? first : undefined;
+    }
+
+    if (typeof value === "string") {
+      const s = value.trim();
+      if (!s) return undefined;
+
+      // allowCommaSeparatedLikeHeader
+      const firstToken = s.split(",")[0]?.trim() ?? "";
+      const num = Number(firstToken);
+      return Number.isFinite(num) ? num : undefined;
+    }
+
+    return undefined;
+  }
+
+
+  function buildMetaPairs(meta: PreviewMeta | undefined): MetaPair[] {
+    // metaPairsWithUiTransforms
+    const raw = meta && typeof meta === "object" ? (meta as Record<string, unknown>) : {};
+    const view: Record<string, unknown> = { ...raw };
+
+    // sizeBytes -> size (humanReadable) and hideRaw
+    const sizeBytesRaw = view.sizeBytes;
+    const sizeBytesNum =
+      typeof sizeBytesRaw === "number"
+        ? sizeBytesRaw
+        : typeof sizeBytesRaw === "string"
+          ? Number(sizeBytesRaw)
+          : undefined;
+
+    if (typeof sizeBytesNum === "number" && Number.isFinite(sizeBytesNum)) {
+      const h = humanBytes(sizeBytesNum);
+      if (h) view.size = h;
+      delete view.sizeBytes;
+    }
+
+    // voxelSize -> pixelSize (singleValue) and hideRaw
+    const pixelSize = extractPixelSize(view.voxelSize);
+    if (typeof pixelSize === "number" && Number.isFinite(pixelSize)) {
+      // keepReasonablePrecisionForDisplay
+      const rounded = Math.round(pixelSize * 1e6) / 1e6;
+      view.pixelSize = rounded;
+      delete view.voxelSize;
+    }
+
+    const keys = Object.keys(view).sort((a, b) => a.localeCompare(b));
+
+    const out: MetaPair[] = [];
+    for (const k of keys) {
+      const v = view[k];
+      if (v === undefined) continue;
+      out.push({ key: k, rawValue: v });
+    }
+
+    return out;
+  }
+
+
+  function isProbablyJsonString(s: string): boolean {
+    // bestEffortJsonStringHeuristic
+    const t = (s || "").trim();
+    if (!t) return false;
+    if ((t.startsWith("{") && t.endsWith("}")) || (t.startsWith("[") && t.endsWith("]"))) {
+      return true;
+    }
+    return false;
+  }
+
+  function safeJsonStringify(v: unknown): string {
+    // safeJsonStringifyNoThrow
+    try {
+      return JSON.stringify(v, null, 2);
+    } catch {
+      return String(v);
+    }
+  }
+
+  function toInlineString(v: unknown): string {
+    // metaInlineString
+    if (v === undefined) return "";
+    if (v === null) return "null";
+    if (typeof v === "string") return v;
+    if (typeof v === "number") return Number.isFinite(v) ? String(v) : String(v);
+    if (typeof v === "boolean") return v ? "true" : "false";
+    if (Array.isArray(v)) return v.map((x) => toInlineString(x)).join(", ");
+    if (typeof v === "object") return "[object]";
     return String(v);
   }
-}
 
-function toInlineString(v: unknown): string {
-  // metaInlineString
-  if (v === undefined) return "";
-  if (v === null) return "null";
-  if (typeof v === "string") return v;
-  if (typeof v === "number") return Number.isFinite(v) ? String(v) : String(v);
-  if (typeof v === "boolean") return v ? "true" : "false";
-  if (Array.isArray(v)) return v.map((x) => toInlineString(x)).join(", ");
-  if (typeof v === "object") return "[object]";
-  return String(v);
-}
+  function shouldCollapseMetaValue(v: unknown): boolean {
+    // collapseRule: objects/arrays or large json-like strings
+    if (v == null) return false;
 
-function shouldCollapseMetaValue(v: unknown): boolean {
-  // collapseRule: objects/arrays or large json-like strings
-  if (v == null) return false;
+    if (typeof v === "object") return true;
 
-  if (typeof v === "object") return true;
-
-  if (typeof v === "string") {
-    const t = v.trim();
-    if (t.length < 120) return false;
-    return isProbablyJsonString(t);
-  }
-
-  return false;
-}
-
-function buildMetaPairs(meta: PreviewMeta | undefined): MetaPair[] {
-  // metaPairsFromMetaOnly
-  const raw = meta && typeof meta === "object" ? (meta as Record<string, unknown>) : {};
-  const keys = Object.keys(raw).sort((a, b) => a.localeCompare(b));
-
-  const out: MetaPair[] = [];
-  for (const k of keys) {
-    const v = raw[k];
-    if (v === undefined) continue;
-    out.push({ key: k, rawValue: v });
-  }
-
-  return out;
-}
-
-function buildMetaPreviewLabel(v: unknown): string {
-  // labelShownOnSummaryLine
-  if (v == null) return "null";
-  if (typeof v === "string") {
-    const t = v.trim();
-    if (!t) return '""';
-    // keepLabelCompact
-    return t.length > 80 ? `${t.slice(0, 80)}…` : t;
-  }
-  if (Array.isArray(v)) return `Array(${v.length})`;
-  if (typeof v === "object") {
-    try {
-      const keys = Object.keys(v as any);
-      return `Object(${keys.length})`;
-    } catch {
-      return "Object";
+    if (typeof v === "string") {
+      const t = v.trim();
+      if (t.length < 120) return false;
+      return isProbablyJsonString(t);
     }
-  }
-  return String(v);
-}
 
-function MetaValueRenderer({ value }: { value: unknown }) {
-  const collapsible = shouldCollapseMetaValue(value);
-
-  if (!collapsible) {
-    return <span className={styles.metaValue}>{toInlineString(value)}</span>;
+    return false;
   }
 
-  const previewLabel = buildMetaPreviewLabel(value);
 
-  // stringJsonCase: show parsed pretty if possible
-  let pretty = "";
-  if (typeof value === "string") {
-    const t = value.trim();
-    if (isProbablyJsonString(t)) {
+  function buildMetaPreviewLabel(v: unknown): string {
+    // labelShownOnSummaryLine
+    if (v == null) return "null";
+    if (typeof v === "string") {
+      const t = v.trim();
+      if (!t) return '""';
+      // keepLabelCompact
+      return t.length > 80 ? `${t.slice(0, 80)}…` : t;
+    }
+    if (Array.isArray(v)) return `Array(${v.length})`;
+    if (typeof v === "object") {
       try {
-        pretty = JSON.stringify(JSON.parse(t), null, 2);
+        const keys = Object.keys(v as any);
+        return `Object(${keys.length})`;
       } catch {
-        pretty = t;
+        return "Object";
+      }
+    }
+    return String(v);
+  }
+
+  function MetaValueRenderer({ value }: { value: unknown }) {
+    const collapsible = shouldCollapseMetaValue(value);
+
+    if (!collapsible) {
+      return <span className={styles.metaValue}>{toInlineString(value)}</span>;
+    }
+
+    const previewLabel = buildMetaPreviewLabel(value);
+
+    // stringJsonCase: show parsed pretty if possible
+    let pretty = "";
+    if (typeof value === "string") {
+      const t = value.trim();
+      if (isProbablyJsonString(t)) {
+        try {
+          pretty = JSON.stringify(JSON.parse(t), null, 2);
+        } catch {
+          pretty = t;
+        }
+      } else {
+        pretty = value;
       }
     } else {
-      pretty = value;
+      pretty = safeJsonStringify(value);
     }
-  } else {
-    pretty = safeJsonStringify(value);
+
+    return (
+      <details className={styles.metaDetails}>
+        <summary className={styles.metaSummary}>
+          <span className={styles.metaChevron}>▸</span>
+          <span className={styles.metaSummaryText}>{previewLabel}</span>
+          <span className={styles.metaHint}>details</span>
+        </summary>
+
+        <pre className={styles.metaJsonBlock}>{pretty}</pre>
+      </details>
+    );
   }
 
-  return (
-    <details className={styles.metaDetails}>
-      <summary className={styles.metaSummary}>
-        <span className={styles.metaChevron}>▸</span>
-        <span className={styles.metaSummaryText}>{previewLabel}</span>
-        <span className={styles.metaHint}>details</span>
-      </summary>
+  const renderMetaFooter = (meta: PreviewMeta | undefined) => {
+    const pairs = buildMetaPairs(meta);
+    if (!pairs.length) return null;
 
-      <pre className={styles.metaJsonBlock}>{pretty}</pre>
-    </details>
-  );
-}
-
-const renderMetaFooter = (meta: PreviewMeta | undefined) => {
-  const pairs = buildMetaPairs(meta);
-  if (!pairs.length) return null;
-
-  return (
-    <div className={styles.previewFooter}>
-      <div className={styles.metaGrid}>
-        {pairs.map((p) => (
-          <div key={p.key} className={styles.metaItem}>
-            <span className={styles.metaKey}>{p.key}:</span>
-            <MetaValueRenderer value={p.rawValue} />
-          </div>
-        ))}
+    return (
+      <div className={styles.previewFooter}>
+        <div className={styles.metaGrid}>
+          {pairs.map((p) => (
+            <div key={p.key} className={styles.metaItem}>
+              <span className={styles.metaKey}>{p.key}:</span>
+              <MetaValueRenderer value={p.rawValue} />
+            </div>
+          ))}
+        </div>
       </div>
-    </div>
-  );
-};
+    );
+  };
 
 
   //----------------
@@ -1221,7 +1288,7 @@ const renderMetaFooter = (meta: PreviewMeta | undefined) => {
                                   <FileIcon className={styles.iconSmMut} />
                                   <span className={styles.truncate}>{entry.name}</span>
                                   <span className={styles.fileSize}>
-                                    {typeof entry.size === "number" ? `${entry.size.toLocaleString()} bytes` : ""}
+                                    {typeof entry.size === "number" ? humanBytes(entry.size) ?? "" : ""}
                                   </span>
                                 </>
                               )}
