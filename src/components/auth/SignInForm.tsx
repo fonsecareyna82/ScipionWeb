@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { EyeCloseIcon, EyeIcon } from "../../icons";
 import Label from "../form/Label";
 import Input from "../form/input/InputField";
@@ -24,7 +24,7 @@ export default function SignInForm() {
       navigate("/home");
     } catch (err: any) {
       let errorMessage = "Unexpected error during login";
-    
+
       if (err instanceof Error) {
         if (err.message === "Invalid credentials") {
           errorMessage = "Invalid credentials. Check your email and password.";
@@ -34,7 +34,7 @@ export default function SignInForm() {
           errorMessage = err.message;
         }
       }
-    
+
       setError(errorMessage);
     }
   }
@@ -96,12 +96,12 @@ export default function SignInForm() {
                     Keep me logged in
                   </span>
                 </div>
-                <a
-                  href="/reset-password"
+                <Link
+                  to="/reset-password"
                   className="text-sm text-brand-500 hover:text-brand-600 dark:text-brand-400"
                 >
                   Forgot password?
-                </a>
+                </Link>
               </div>
               <div>
                 <Button className="w-full" size="sm" type="submit">
@@ -117,12 +117,12 @@ export default function SignInForm() {
           <div className="mt-5">
             <p className="text-sm font-normal text-center text-gray-700 dark:text-gray-400 sm:text-start">
               Don&apos;t have an account?{" "}
-              <a
-                href="/signup"
+              <Link
+                to="/signup"
                 className="text-brand-500 hover:text-brand-600 dark:text-brand-400"
               >
                 Sign Up
-              </a>
+              </Link>
             </p>
           </div>
         </div>

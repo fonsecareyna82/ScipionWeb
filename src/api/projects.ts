@@ -18,7 +18,6 @@ import {
   ProtocolTagUpdatePayload,
   ProtocolTagIdsResult,
   NextProtocolSuggestion,
-  ContextMenuVisibilityPolicy,
 
 } from "@/services/ProjectService";
 
