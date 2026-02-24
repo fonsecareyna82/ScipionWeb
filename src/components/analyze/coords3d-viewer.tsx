@@ -899,18 +899,25 @@ export default function Coords3dViewer({
   ]);
 
   const handlePickPoint3d = useCallback(
-    (p: Coords3dPointExt | null) => {
+    (
+      p: Coords3dPointExt | null,
+      mappedSliceIndices?: { x: number; y: number; z: number },
+    ) => {
       setPickedPoint3d(p);
       if (!p || !syncPick3dToSlices) return;
 
+      const targetZ = mappedSliceIndices?.z ?? Math.round(Number((p as any).z));
+      const targetX = mappedSliceIndices?.x ?? Math.round(Number((p as any).x));
+      const targetY = mappedSliceIndices?.y ?? Math.round(Number((p as any).y));
+
       if (maxSliceZ != null) {
-        setSliceIndex(clampInt(Math.round(Number((p as any).z)), 0, maxSliceZ));
+        setSliceIndex(clampInt(targetZ, 0, maxSliceZ));
       }
       if (maxSliceX != null) {
-        setSliceIndexX(clampInt(Math.round(Number((p as any).x)), 0, maxSliceX));
+        setSliceIndexX(clampInt(targetX, 0, maxSliceX));
       }
       if (maxSliceY != null) {
-        setSliceIndexY(clampInt(Math.round(Number((p as any).y)), 0, maxSliceY));
+        setSliceIndexY(clampInt(targetY, 0, maxSliceY));
       }
     },
     [syncPick3dToSlices, maxSliceX, maxSliceY, maxSliceZ],
@@ -2466,7 +2473,10 @@ type Coords3dMap3dViewProps = {
   showBox3d: boolean;
   showAxes3d: boolean;
   resetCameraNonce: number;
-  onPickPoint?: (p: Coords3dPointExt | null) => void;
+  onPickPoint?: (
+    p: Coords3dPointExt | null,
+    mappedSliceIndices?: { x: number; y: number; z: number },
+  ) => void;
 };
 
 type AxisMapperMode =
@@ -3124,7 +3134,13 @@ function Coords3dMap3dView({
       mapPointAxisToLocal(Number((p as any).z), mapper.z),
     );
 
-    onPickPoint?.(p);
+    const mappedSliceIndices = {
+      x: pointAxisToNearestSliceIndex(Number((p as any).x), mapper.x),
+      y: pointAxisToNearestSliceIndex(Number((p as any).y), mapper.y),
+      z: pointAxisToNearestSliceIndex(Number((p as any).z), mapper.z),
+    };
+
+    onPickPoint?.(p, mappedSliceIndices);
   };
 
   if (initError) {
@@ -3391,19 +3407,21 @@ function chooseAxisMapper(values: number[], dim: number): AxisMapper {
     }
   }
 
-  if (fracOne >= 0.85 && min >= 0.5) {
-    return { mode: "oneBased", min: 1, max: dim, dim };
-  }
 
-  if (fracZero >= 0.8 || fracZero >= fracOne + 0.1) {
+
+  if (fracZero >= 0.85 && fracZero >= fracOne + 0.08) {
     if (dim > 4 && span < 2.0 && fracNorm01 > 0.8) {
       return { mode: "normalized01", min: 0, max: 1, dim };
     }
     return { mode: "zeroBased", min: 0, max: dim - 1, dim };
   }
 
-  if (fracOne >= 0.7 || fracOne > fracZero) {
+  if (fracOne >= 0.9 && fracOne >= fracZero + 0.15 && min >= 0.5) {
     return { mode: "oneBased", min: 1, max: dim, dim };
+  }
+
+  if (fracZero >= 0.7 || fracOne >= 0.7) {
+    return { mode: "zeroBased", min: 0, max: dim - 1, dim };
   }
 
   const margin = span * 0.03;
@@ -3429,6 +3447,21 @@ function mapPointAxisToLocal(v: number, mapper: AxisMapper): number {
   const t = (v - mapper.min) / denom;
   return clampFloatNum(t, 0, 1) - 0.5;
 }
+
+
+function pointAxisToNearestSliceIndex(v: number, mapper: AxisMapper): number {
+  if (!Number.isFinite(v)) return 0;
+  const local = mapPointAxisToLocal(v, mapper);
+  return localToNearestVoxelIndex(local, mapper.dim);
+}
+
+function localToNearestVoxelIndex(local: number, dim: number): number {
+  if (!Number.isFinite(local)) return 0;
+  if (!Number.isFinite(dim) || dim <= 1) return 0;
+  const t = clampFloatNum(local + 0.5, 0, 1);
+  return clampInt(Math.round(t * dim - 0.5), 0, Math.max(0, dim - 1));
+}
+
 
 function voxelToLocalZeroBased(v: number, dim: number): number {
   if (!Number.isFinite(v)) return 0;
