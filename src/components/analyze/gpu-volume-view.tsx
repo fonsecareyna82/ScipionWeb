@@ -287,9 +287,13 @@ function buildUint8Texture(
     out[i] = Math.max(0, Math.min(255, Math.round((v - vmin) * scale)));
   }
 
-  // three@0.160 exports Data3DTexture (not DataTexture3D).
   const Tex3D = (THREE as any).Data3DTexture as
-    | (new (data: Uint8Array, width: number, height: number, depth: number) => THREE.Data3DTexture)
+    | (new (
+        data: Uint8Array,
+        width: number,
+        height: number,
+        depth: number,
+      ) => THREE.Data3DTexture)
     | undefined;
 
   if (!Tex3D) {
@@ -308,7 +312,6 @@ function buildUint8Texture(
   tex.unpackAlignment = 1;
   tex.needsUpdate = true;
 
-  // Force a single-channel 8-bit internal format for WebGL2.
   (tex as any).internalFormat = "R8";
 
   return tex;
@@ -339,6 +342,8 @@ export default function GpuVolumeView({
   const uInvModelRef = useRef<THREE.Matrix4 | null>(null);
   const rafRef = useRef<number | null>(null);
   const cleanupRef = useRef<(() => void) | null>(null);
+
+  const prevTexRef = useRef<THREE.Data3DTexture | null>(null);
 
   const [webgl2Ok, setWebgl2Ok] = useState(true);
 
@@ -386,45 +391,43 @@ export default function GpuVolumeView({
       powerPreference: "high-performance",
     });
     renderer.setClearColor(0x000000, 0);
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
     rendererRef.current = renderer;
     mount.appendChild(renderer.domElement);
 
     const isWebgl2 = (renderer.capabilities as any).isWebGL2;
     setWebgl2Ok(isWebgl2);
+
     if (!isWebgl2) {
       onError?.("WebGL2 is required for GPU volume rendering.");
+
+      cleanupRef.current = () => {
+        if (renderer.domElement.parentElement === mount) {
+          mount.removeChild(renderer.domElement);
+        }
+        renderer.dispose();
+        rendererRef.current = null;
+        sceneRef.current = null;
+        cameraRef.current = null;
+      };
       return;
     }
 
     const controls = new OrbitControls(camera, renderer.domElement);
+    controls.target.set(0, 0, 0);
     controls.enableDamping = true;
-    controls.dampingFactor = 0.08;
-    controls.rotateSpeed = 0.6;
-    controls.zoomSpeed = 0.8;
+    controls.dampingFactor = 0.12;
+    controls.rotateSpeed = 0.7;
+    controls.panSpeed = 0.9;
+    controls.screenSpacePanning = true;
+    controls.zoomSpeed = 1.0;
     controls.enableZoom = false;
+    controls.enablePan = true;
+    controls.enableRotate = true;
+    controls.minDistance = 0.12;
+    controls.maxDistance = 8.0;
+    controls.update();
     controlsRef.current = controls;
-
-    const onWheel = (e: WheelEvent) => {
-      e.preventDefault();
-
-      const cam = cameraRef.current;
-      const ctrls = controlsRef.current;
-      if (!cam || !ctrls) return;
-
-      const zoomFactor = 1.1;
-      const scale = e.deltaY < 0 ? 1 / zoomFactor : zoomFactor;
-
-      const dir = new THREE.Vector3().subVectors(cam.position, ctrls.target);
-      const dist = dir.length();
-      const newDist = Math.max(0.05, dist * scale);
-
-      dir.setLength(newDist);
-      cam.position.copy(ctrls.target).add(dir);
-      cam.updateProjectionMatrix();
-      ctrls.update();
-    };
-
-    renderer.domElement.addEventListener("wheel", onWheel, { passive: false });
 
     const geometry = new THREE.BoxGeometry(1, 1, 1);
 
@@ -458,41 +461,212 @@ export default function GpuVolumeView({
     meshRef.current = mesh;
     scene.add(mesh);
 
+    const clock = new THREE.Clock();
+
+    const zoomState = {
+      targetDistance: 0,
+      hasTarget: false,
+    };
+
+    const interactionState = {
+      isDragging: false,
+      lastWheelAt: 0,
+      dprApplied: -1,
+    };
+
+    const tmpDir = new THREE.Vector3();
+    const tmpCamDir = new THREE.Vector3();
+    const tmpTarget = new THREE.Vector3();
+
+    const baseDpr = Math.max(1, Math.min(window.devicePixelRatio || 1, 2));
+
+    const setRendererQuality = (force = false) => {
+      const now = performance.now();
+      const wheelActive = now - interactionState.lastWheelAt < 160;
+      const interactionActive = interactionState.isDragging || wheelActive;
+      const desiredDpr = interactionActive ? Math.min(baseDpr, 1.25) : baseDpr;
+
+      if (!force && Math.abs(desiredDpr - interactionState.dprApplied) < 1e-6) {
+        return;
+      }
+
+      interactionState.dprApplied = desiredDpr;
+      renderer.setPixelRatio(desiredDpr);
+
+      const w = mount.clientWidth;
+      const h = mount.clientHeight;
+      if (w > 0 && h > 0) {
+        renderer.setSize(w, h, false);
+      }
+    };
+
     const resize = () => {
       const w = mount.clientWidth;
       const h = mount.clientHeight;
       if (w <= 0 || h <= 0) return;
-      renderer.setSize(w, h, false);
+      setRendererQuality(true);
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
     };
 
-    resize();
     const ro = new ResizeObserver(resize);
     ro.observe(mount);
 
+    controls.addEventListener("start", () => {
+      interactionState.isDragging = true;
+    });
+    controls.addEventListener("end", () => {
+      interactionState.isDragging = false;
+    });
+
+    const onPointerDown = () => {
+      interactionState.isDragging = true;
+    };
+    const onPointerUp = () => {
+      interactionState.isDragging = false;
+    };
+
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+
+      const cam = cameraRef.current;
+      const ctrls = controlsRef.current;
+      if (!cam || !ctrls) return;
+
+      interactionState.lastWheelAt = performance.now();
+
+      tmpDir.copy(cam.position).sub(ctrls.target);
+      let currentDistance = tmpDir.length();
+      if (!Number.isFinite(currentDistance) || currentDistance <= 1e-6) {
+        currentDistance = 1;
+        tmpDir.set(1, 0, 0);
+      }
+
+      if (!zoomState.hasTarget) {
+        zoomState.targetDistance = currentDistance;
+        zoomState.hasTarget = true;
+      }
+
+      const deltaNormalized =
+        e.deltaMode === 1
+          ? e.deltaY * 16
+          : e.deltaMode === 2
+            ? e.deltaY * 120
+            : e.deltaY;
+
+      const deltaClamped = Math.max(-240, Math.min(240, deltaNormalized));
+
+      const zoomSensitivity = 0.0016;
+      const factor = Math.exp(deltaClamped * zoomSensitivity);
+
+      zoomState.targetDistance = clampFloat(
+        zoomState.targetDistance * factor,
+        ctrls.minDistance,
+        ctrls.maxDistance,
+      );
+    };
+
+    const onDoubleClick = () => {
+      const cam = cameraRef.current;
+      const ctrls = controlsRef.current;
+      if (!cam || !ctrls) return;
+
+      ctrls.target.set(0, 0, 0);
+      cam.position.set(1.8, 1.2, 1.8);
+      cam.updateProjectionMatrix();
+      zoomState.hasTarget = false;
+      ctrls.update();
+    };
+
+    renderer.domElement.addEventListener("wheel", onWheel, { passive: false });
+    renderer.domElement.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("pointerup", onPointerUp);
+    renderer.domElement.addEventListener("dblclick", onDoubleClick);
+
+    resize();
+
     const animate = () => {
-      if (!rendererRef.current || !sceneRef.current || !cameraRef.current) return;
+      const rendererNow = rendererRef.current;
+      const sceneNow = sceneRef.current;
+      const cameraNow = cameraRef.current;
+      const controlsNow = controlsRef.current;
+      if (!rendererNow || !sceneNow || !cameraNow || !controlsNow) return;
+
+      const dt = Math.min(0.05, clock.getDelta());
+
+      setRendererQuality(false);
+
+      controlsNow.update();
+
+      if (zoomState.hasTarget) {
+        tmpCamDir.copy(cameraNow.position).sub(controlsNow.target);
+        let distance = tmpCamDir.length();
+
+        if (distance > 1e-6) {
+          const targetDistance = clampFloat(
+            zoomState.targetDistance,
+            controlsNow.minDistance,
+            controlsNow.maxDistance,
+          );
+          const smoothLambda = 14;
+          const alpha = 1 - Math.exp(-smoothLambda * dt);
+          const nextDistance = distance + (targetDistance - distance) * alpha;
+
+          tmpCamDir.setLength(nextDistance);
+          tmpTarget.copy(controlsNow.target);
+          cameraNow.position.copy(tmpTarget).add(tmpCamDir);
+          cameraNow.updateProjectionMatrix();
+
+          if (Math.abs(targetDistance - nextDistance) < 0.0005) {
+            zoomState.targetDistance = targetDistance;
+          }
+        } else {
+          zoomState.hasTarget = false;
+        }
+      }
+
       if (meshRef.current && uInvModelRef.current) {
         meshRef.current.updateMatrixWorld();
         uInvModelRef.current.copy(meshRef.current.matrixWorld).invert();
       }
-      controls.update();
-      renderer.render(scene, camera);
+
+      rendererNow.render(sceneNow, cameraNow);
       rafRef.current = requestAnimationFrame(animate);
     };
+
     animate();
 
     cleanupRef.current = () => {
-      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      if (rafRef.current != null) {
+        cancelAnimationFrame(rafRef.current);
+      }
+
       ro.disconnect();
+
       renderer.domElement.removeEventListener("wheel", onWheel);
+      renderer.domElement.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("pointerup", onPointerUp);
+      renderer.domElement.removeEventListener("dblclick", onDoubleClick);
+
       controls.dispose();
       geometry.dispose();
       material.dispose();
-      tex.dispose();
+
+      if (prevTexRef.current) {
+        try {
+          prevTexRef.current.dispose();
+        } catch {
+          // Ignore dispose errors.
+        }
+        prevTexRef.current = null;
+      }
+
       scene.clear();
-      mount.removeChild(renderer.domElement);
+
+      if (renderer.domElement.parentElement === mount) {
+        mount.removeChild(renderer.domElement);
+      }
+
       renderer.dispose();
 
       rendererRef.current = null;
@@ -504,13 +678,23 @@ export default function GpuVolumeView({
       uInvModelRef.current = null;
       rafRef.current = null;
     };
-  }, [tex, scaleVec, dims, onError, renderMode, shellClamped, isoMinNorm, isoMaxNorm, opacity, cmapId]);
+  }, [
+    tex,
+    scaleVec,
+    dims,
+    onError,
+    renderMode,
+    shellClamped,
+    isoMinNorm,
+    isoMaxNorm,
+    opacity,
+    cmapId,
+  ]);
 
   useEffect(() => {
     return () => cleanupRef.current?.();
   }, []);
 
-  const prevTexRef = useRef<THREE.Data3DTexture | null>(null);
   useEffect(() => {
     const mat = materialRef.current;
     if (!tex || !mat) return;
@@ -519,7 +703,13 @@ export default function GpuVolumeView({
     mat.uniforms.uTex.value = tex;
     mat.uniforms.uTexSize.value.set(dims.x, dims.y, dims.z);
 
-    prevTexRef.current?.dispose();
+    if (prevTexRef.current) {
+      try {
+        prevTexRef.current.dispose();
+      } catch {
+        // Ignore dispose errors.
+      }
+    }
     prevTexRef.current = tex;
   }, [tex, dims]);
 
@@ -561,4 +751,9 @@ export default function GpuVolumeView({
       <div ref={mountRef} style={{ width: "100%", height: "100%" }} />
     </div>
   );
+}
+
+function clampFloat(v: number, lo: number, hi: number) {
+  if (!Number.isFinite(v)) return lo;
+  return Math.max(lo, Math.min(hi, v));
 }

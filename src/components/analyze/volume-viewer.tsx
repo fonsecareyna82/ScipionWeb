@@ -42,6 +42,13 @@ type ThrMode = "percentile" | "absolute";
 type RightTab = "ctrl" | "hist";
 type Interp2d = "nearest" | "linear" | "high";
 type RenderMode3d = "surface" | "volume";
+type SliceLayoutMode = "single" | "triple";
+
+type SliceImageState = {
+  url: string | null;
+  loading: boolean;
+  error: string | null;
+};
 
 const DEFAULT_AXIS: "z" | "y" | "x" = "z";
 const CMAP_OPTIONS = [
@@ -75,7 +82,12 @@ const HELP_TEXT: Record<string, string> = {
   surfaceThickness3d:
     "Thickness of the surface shell as a fraction of the iso band width.",
   axis: "Slice axis. Z/Y/X correspond to the 3D volume axes.",
+  sliceLayout:
+    "Single shows one slice view at a time. Triple shows synchronized orthogonal Z/Y/X views at once.",
   sliceIndex: "Slice index along the selected axis.",
+  sliceIndexZ: "Z slice index (XY plane).",
+  sliceIndexY: "Y slice index (XZ plane).",
+  sliceIndexX: "X slice index (YZ plane).",
   colormap2d: "Colormap used for 2D slice rendering.",
   histogram: "Shows the intensity distribution of the selected volume.",
   interp2d:
@@ -87,9 +99,9 @@ const HELP_TEXT: Record<string, string> = {
   contrast2d:
     "Adjust contrast for slice display only (percentage around 100% neutral). Does not refetch the slice.",
   pan2d:
-    "Pan slices with Ctrl+drag or middle mouse. Reset with Fit.",
+    "Pan single-view slices with Ctrl+drag or middle mouse. Reset with Fit.",
   zoom2d:
-    "Mouse wheel zooms slices. Double-click fits and resets pan.",
+    "Mouse wheel zooms single-view slices. Double-click fits and resets pan.",
 };
 
 const SliceSlider = styled(Slider)(({ theme }) => ({
@@ -136,15 +148,24 @@ export default function VolumeViewer({
   const [viewMode, setViewMode] = useState<ViewMode>("slices");
   const [rightTab, setRightTab] = useState<RightTab>("ctrl");
 
+  const [sliceLayoutMode, setSliceLayoutMode] =
+    useState<SliceLayoutMode>("triple");
+
   const [axis, setAxis] = useState<"z" | "y" | "x">(DEFAULT_AXIS);
   const [sliceIndex, setSliceIndex] = useState(0);
-  // Throttled slice index used for backend fetches: updates at most every 50ms
   const throttledSliceIndex = useThrottledValue(sliceIndex, 200);
+
+  const [sliceIndexZ, setSliceIndexZ] = useState(0);
+  const [sliceIndexY, setSliceIndexY] = useState(0);
+  const [sliceIndexX, setSliceIndexX] = useState(0);
+
+  const throttledSliceIndexZ = useThrottledValue(sliceIndexZ, 200);
+  const throttledSliceIndexY = useThrottledValue(sliceIndexY, 200);
+  const throttledSliceIndexX = useThrottledValue(sliceIndexX, 200);
 
   const [colormap, setColormap] = useState<string>("viridis");
   const [interp2d, setInterp2d] = useState<Interp2d>("linear");
   const [sharpen2d, setSharpen2d] = useState(false);
-  // brightness2d is an offset around 0 (0 = 100%), contrast2d is a factor (1 = 100%)
   const [brightness2d, setBrightness2d] = useState(0);
   const [contrast2d, setContrast2d] = useState(1);
 
@@ -325,18 +346,32 @@ export default function VolumeViewer({
   }, [showHistogram, selectedId, projectId, protocolId, outputName, svc]);
 
   const dims = useMemo(() => getDimsZYXtoXYZ(meta), [meta]);
+
   const maxSlice = Math.max(0, dims[axis] - 1);
+  const maxSliceZ = Math.max(0, dims.z - 1);
+  const maxSliceY = Math.max(0, dims.y - 1);
+  const maxSliceX = Math.max(0, dims.x - 1);
 
   useEffect(() => {
     const mid = Math.max(0, Math.floor(maxSlice / 2));
     setSliceIndex(mid);
   }, [selectedId, axis, maxSlice]);
 
+  useEffect(() => {
+    setSliceIndexZ(Math.max(0, Math.floor(maxSliceZ / 2)));
+    setSliceIndexY(Math.max(0, Math.floor(maxSliceY / 2)));
+    setSliceIndexX(Math.max(0, Math.floor(maxSliceX / 2)));
+  }, [selectedId, maxSliceZ, maxSliceY, maxSliceX]);
+
   const readySlices = selectedId != null && !!meta && dims[axis] > 0;
+  const readyTripleSlices =
+    selectedId != null && !!meta && dims.x > 0 && dims.y > 0 && dims.z > 0;
 
   useEffect(() => {
-    if (viewMode === "slices" && readySlices) bumpSliceReload();
-  }, [viewMode, readySlices, bumpSliceReload]);
+    if (viewMode === "slices" && (readySlices || readyTripleSlices)) {
+      bumpSliceReload();
+    }
+  }, [viewMode, readySlices, readyTripleSlices, bumpSliceReload]);
 
   useEffect(() => {
     setZoomMul(1);
@@ -344,7 +379,11 @@ export default function VolumeViewer({
   }, [selectedId, axis]);
 
   useEffect(() => {
-    if (!readySlices || viewMode !== "slices") {
+    if (
+      !readySlices ||
+      viewMode !== "slices" ||
+      sliceLayoutMode !== "single"
+    ) {
       setImgError(null);
       return;
     }
@@ -397,6 +436,7 @@ export default function VolumeViewer({
   }, [
     readySlices,
     viewMode,
+    sliceLayoutMode,
     throttledSliceIndex,
     axis,
     colormap,
@@ -408,6 +448,48 @@ export default function VolumeViewer({
     svc,
     sliceReloadNonce,
   ]);
+
+  const zSlice = useVolumeSliceImage({
+    enabled: viewMode === "slices" && sliceLayoutMode === "triple" && readyTripleSlices,
+    svc,
+    projectId,
+    protocolId,
+    outputName,
+    volumeId: selectedId,
+    axis: "z",
+    sliceIndex: throttledSliceIndexZ,
+    maxSlice: maxSliceZ,
+    colormap,
+    reloadKey: sliceReloadNonce,
+  });
+
+  const ySlice = useVolumeSliceImage({
+    enabled: viewMode === "slices" && sliceLayoutMode === "triple" && readyTripleSlices,
+    svc,
+    projectId,
+    protocolId,
+    outputName,
+    volumeId: selectedId,
+    axis: "y",
+    sliceIndex: throttledSliceIndexY,
+    maxSlice: maxSliceY,
+    colormap,
+    reloadKey: sliceReloadNonce,
+  });
+
+  const xSlice = useVolumeSliceImage({
+    enabled: viewMode === "slices" && sliceLayoutMode === "triple" && readyTripleSlices,
+    svc,
+    projectId,
+    protocolId,
+    outputName,
+    volumeId: selectedId,
+    axis: "x",
+    sliceIndex: throttledSliceIndexX,
+    maxSlice: maxSliceX,
+    colormap,
+    reloadKey: sliceReloadNonce,
+  });
 
   const load3d = useCallback(async () => {
     if (selectedId == null) return;
@@ -544,7 +626,13 @@ export default function VolumeViewer({
     if (!el) return;
 
     const onWheel = (e: WheelEvent) => {
-      if (viewMode !== "slices" || !frontUrl) return;
+      if (
+        viewMode !== "slices" ||
+        sliceLayoutMode !== "single" ||
+        !frontUrl
+      ) {
+        return;
+      }
       e.preventDefault();
       const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
       stepZoom(factor);
@@ -552,7 +640,7 @@ export default function VolumeViewer({
 
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
-  }, [viewMode, frontUrl, zoomMul]);
+  }, [viewMode, sliceLayoutMode, frontUrl, zoomMul]);
 
   useEffect(() => {
     const el = viewerRef.current;
@@ -563,7 +651,13 @@ export default function VolumeViewer({
     let lastY = 0;
 
     const onPointerDown = (e: PointerEvent) => {
-      if (viewMode !== "slices" || !frontUrl) return;
+      if (
+        viewMode !== "slices" ||
+        sliceLayoutMode !== "single" ||
+        !frontUrl
+      ) {
+        return;
+      }
       const isMiddle = e.button === 1;
       if (!e.ctrlKey && !isMiddle) return;
 
@@ -603,7 +697,7 @@ export default function VolumeViewer({
       el.removeEventListener("pointercancel", onPointerUp);
       el.removeEventListener("pointerleave", onPointerUp);
     };
-  }, [viewMode, frontUrl]);
+  }, [viewMode, sliceLayoutMode, frontUrl]);
 
   const panelBasis = 340;
 
@@ -689,7 +783,11 @@ export default function VolumeViewer({
           overflow: "hidden",
         }}
       >
-        <Paper elevation={0} square sx={{ p: 0.75, borderBottom: "1px solid #eee", flexShrink: 0 }}>
+        <Paper
+          elevation={0}
+          square
+          sx={{ p: 0.75, borderBottom: "1px solid #eee", flexShrink: 0 }}
+        >
           <Box
             sx={{
               display: "grid",
@@ -728,7 +826,10 @@ export default function VolumeViewer({
                   alignItems: "center",
                   gap: 0.5,
                   cursor: "default",
-                  opacity: viewMode === "slices" ? 1 : 0.4,
+                  opacity:
+                    viewMode === "slices" && sliceLayoutMode === "single"
+                      ? 1
+                      : 0.4,
                 }}
               >
                 <ZoomIn size={14} style={{ opacity: 0.6 }} />
@@ -745,10 +846,19 @@ export default function VolumeViewer({
         </Paper>
 
         <Box sx={{ flex: 1, display: "flex", minHeight: 0, minWidth: 0, overflow: "hidden" }}>
-          <Box sx={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0, overflow: "hidden" }}>
+          <Box
+            sx={{
+              flex: 1,
+              display: "flex",
+              flexDirection: "column",
+              minWidth: 0,
+              minHeight: 0,
+              overflow: "hidden",
+            }}
+          >
             <Box
               ref={viewerRef}
-              onDoubleClick={fitZoom}
+              onDoubleClick={sliceLayoutMode === "single" ? fitZoom : undefined}
               sx={{
                 flex: 1,
                 minHeight: 0,
@@ -762,7 +872,7 @@ export default function VolumeViewer({
                 bgcolor: "background.default",
               }}
               title={
-                viewMode === "slices"
+                viewMode === "slices" && sliceLayoutMode === "single"
                   ? "Wheel: zoom | Ctrl+drag: pan | Double-click: fit"
                   : undefined
               }
@@ -781,7 +891,19 @@ export default function VolumeViewer({
                   Select a volume
                 </Typography>
               ) : viewMode === "slices" ? (
-                imgError ? (
+                sliceLayoutMode === "triple" ? (
+                  <OrthoSlicesGrid
+                    dims={dims}
+                    zSlice={zSlice}
+                    ySlice={ySlice}
+                    xSlice={xSlice}
+                    sliceIndexX={sliceIndexX}
+                    sliceIndexY={sliceIndexY}
+                    sliceIndexZ={sliceIndexZ}
+                    brightness={brightness2d}
+                    contrast={contrast2d}
+                  />
+                ) : imgError ? (
                   <Typography variant="body2" color="error">
                     {imgError}
                   </Typography>
@@ -819,74 +941,72 @@ export default function VolumeViewer({
                     No image
                   </Typography>
                 )
-              ) : (
-                mapLoading ? (
-                  <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
-                    <CircularProgress size={18} />
-                    <Typography variant="body2">Loading 3D volume…</Typography>
-                  </Box>
-                ) : mapError ? (
-                  <Typography variant="body2" color="error">
-                    {mapError}
-                  </Typography>
-                ) : mapData && stats3d && isoRange3d && !gpuError ? (
-                  <GpuVolumeView
-                    values={mapData.values}
-                    dims={mapData.dims}
-                    order={mapData.order}
-                    spacing={meta?.spacing}
-                    rangeMin={stats3d.min}
-                    rangeMax={stats3d.max}
-                    isoMin={isoRange3d[0]}
-                    isoMax={isoRange3d[1]}
-                    opacity={opacity3d}
-                    colormap={colormap3d}
-                    renderMode={renderMode3d}
-                    shell={surfaceThickness3d}
-                    onError={(msg) => setGpuError(msg)}
-                  />
-                ) : mapData && stats3d && isoRange3d ? (
-                  <Box sx={{ width: "100%", height: "100%" }}>
-                    {(() => {
-                      const plotProps: any = {
-                        data: [
-                          {
-                            type: "isosurface",
-                            value: mapData.values,
-                            isomin: isoRange3d[0],
-                            isomax: isoRange3d[1],
-                            surface: { count: surfaceCount },
-                            caps: { x: { show: false }, y: { show: false }, z: { show: false } },
-                            opacity: opacity3d,
-                            colorscale: toPlotlyColorscale(colormap3d),
-                            showscale: false,
-                          } as any,
-                        ],
-                        layout: {
-                          autosize: true,
-                          margin: { l: 0, r: 0, t: 0, b: 0 },
-                          scene: {
-                            aspectmode: "data",
-                            xaxis: { visible: false },
-                            yaxis: { visible: false },
-                            zaxis: { visible: false },
-                            camera: plotlyCameraRef.current ?? undefined,
-                          },
-                          showlegend: false,
+              ) : mapLoading ? (
+                <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
+                  <CircularProgress size={18} />
+                  <Typography variant="body2">Loading 3D volume…</Typography>
+                </Box>
+              ) : mapError ? (
+                <Typography variant="body2" color="error">
+                  {mapError}
+                </Typography>
+              ) : mapData && stats3d && isoRange3d && !gpuError ? (
+                <GpuVolumeView
+                  values={mapData.values}
+                  dims={mapData.dims}
+                  order={mapData.order}
+                  spacing={meta?.spacing}
+                  rangeMin={stats3d.min}
+                  rangeMax={stats3d.max}
+                  isoMin={isoRange3d[0]}
+                  isoMax={isoRange3d[1]}
+                  opacity={opacity3d}
+                  colormap={colormap3d}
+                  renderMode={renderMode3d}
+                  shell={surfaceThickness3d}
+                  onError={(msg) => setGpuError(msg)}
+                />
+              ) : mapData && stats3d && isoRange3d ? (
+                <Box sx={{ width: "100%", height: "100%" }}>
+                  {(() => {
+                    const plotProps: any = {
+                      data: [
+                        {
+                          type: "isosurface",
+                          value: mapData.values,
+                          isomin: isoRange3d[0],
+                          isomax: isoRange3d[1],
+                          surface: { count: surfaceCount },
+                          caps: { x: { show: false }, y: { show: false }, z: { show: false } },
+                          opacity: opacity3d,
+                          colorscale: toPlotlyColorscale(colormap3d),
+                          showscale: false,
+                        } as any,
+                      ],
+                      layout: {
+                        autosize: true,
+                        margin: { l: 0, r: 0, t: 0, b: 0 },
+                        scene: {
+                          aspectmode: "data",
+                          xaxis: { visible: false },
+                          yaxis: { visible: false },
+                          zaxis: { visible: false },
+                          camera: plotlyCameraRef.current ?? undefined,
                         },
-                        style: { width: "100%", height: "100%" },
-                        useResizeHandler: true,
-                        config: { displaylogo: false, responsive: true, scrollZoom: true },
-                        onRelayout: handleRelayout,
-                      };
-                      return <Plot {...plotProps} />;
-                    })()}
-                  </Box>
-                ) : (
-                  <Typography variant="body2" color="text.secondary">
-                    No 3D data. Press Reload.
-                  </Typography>
-                )
+                        showlegend: false,
+                      },
+                      style: { width: "100%", height: "100%" },
+                      useResizeHandler: true,
+                      config: { displaylogo: false, responsive: true, scrollZoom: true },
+                      onRelayout: handleRelayout,
+                    };
+                    return <Plot {...plotProps} />;
+                  })()}
+                </Box>
+              ) : (
+                <Typography variant="body2" color="text.secondary">
+                  No 3D data. Press Reload.
+                </Typography>
               )}
             </Box>
 
@@ -938,7 +1058,6 @@ export default function VolumeViewer({
                 <ToggleButton value="hist">Histogram</ToggleButton>
               </ToggleButtonGroup>
 
-              {/* Fix: no horizontal scrollbar when slider labels overflow */}
               <Box
                 sx={{
                   flex: 1,
@@ -955,51 +1074,87 @@ export default function VolumeViewer({
                     <SectionTitle title="Slices" />
 
                     <ParamRow
-                      label="Axis"
-                      helpKey="axis"
+                      label="Layout"
+                      helpKey="sliceLayout"
                       onHelp={openHelp}
                       control={
                         <ToggleButtonGroup
                           size="small"
-                          value={axis}
                           exclusive
-                          onChange={(_, v) => v && setAxis(v)}
+                          value={sliceLayoutMode}
+                          onChange={(_, v) => v && setSliceLayoutMode(v)}
                         >
-                          <ToggleButton value="z">Z</ToggleButton>
-                          <ToggleButton value="y">Y</ToggleButton>
-                          <ToggleButton value="x">X</ToggleButton>
+                          <ToggleButton value="single">single</ToggleButton>
+                          <ToggleButton value="triple">3 Views</ToggleButton>
                         </ToggleButtonGroup>
                       }
                     />
 
-                    <Box sx={{ mt: 0.5 }}>
-                      <Box sx={{ display: "inline-flex", gap: 0.5, alignItems: "center" }}>
-                        <Typography variant="caption" color="text.secondary">
-                          Slice
-                        </Typography>
-                        <IconButton size="small" onClick={openHelp("sliceIndex")}>
-                          <HelpCircle size={14} />
-                        </IconButton>
-                      </Box>
+                    {sliceLayoutMode === "single" ? (
+                      <>
+                        <ParamRow
+                          label="Axis"
+                          helpKey="axis"
+                          onHelp={openHelp}
+                          control={
+                            <ToggleButtonGroup
+                              size="small"
+                              value={axis}
+                              exclusive
+                              onChange={(_, v) => v && setAxis(v)}
+                            >
+                              <ToggleButton value="z">Z</ToggleButton>
+                              <ToggleButton value="y">Y</ToggleButton>
+                              <ToggleButton value="x">X</ToggleButton>
+                            </ToggleButtonGroup>
+                          }
+                        />
 
-                      <SliceSlider
-                        size="small"
-                        value={Math.min(sliceIndex, maxSlice)}
-                        min={0}
-                        max={maxSlice}
-                        step={1}
-                        onChange={(_, v) => setSliceIndex(v as number)}
-                        disabled={!readySlices}
-                        valueLabelDisplay="auto"
-                        valueLabelFormat={(v) => `${(v as number) + 1}`}
-                      />
-                      <Box sx={{ display: "flex", justifyContent: "space-between" }}>
-                        <Typography variant="caption" color="text.secondary">1</Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          {maxSlice + 1}
-                        </Typography>
-                      </Box>
-                    </Box>
+                        <AxisSliceSliderControl
+                          title="Slice"
+                          helpKey="sliceIndex"
+                          onHelp={openHelp}
+                          value={Math.min(sliceIndex, maxSlice)}
+                          min={0}
+                          max={maxSlice}
+                          onChange={(v) => setSliceIndex(v)}
+                          disabled={!readySlices}
+                        />
+                      </>
+                    ) : (
+                      <>
+                        <AxisSliceSliderControl
+                          title="Slice Z"
+                          helpKey="sliceIndexZ"
+                          onHelp={openHelp}
+                          value={Math.min(sliceIndexZ, maxSliceZ)}
+                          min={0}
+                          max={maxSliceZ}
+                          onChange={(v) => setSliceIndexZ(v)}
+                          disabled={!readyTripleSlices}
+                        />
+                        <AxisSliceSliderControl
+                          title="Slice Y"
+                          helpKey="sliceIndexY"
+                          onHelp={openHelp}
+                          value={Math.min(sliceIndexY, maxSliceY)}
+                          min={0}
+                          max={maxSliceY}
+                          onChange={(v) => setSliceIndexY(v)}
+                          disabled={!readyTripleSlices}
+                        />
+                        <AxisSliceSliderControl
+                          title="Slice X"
+                          helpKey="sliceIndexX"
+                          onHelp={openHelp}
+                          value={Math.min(sliceIndexX, maxSliceX)}
+                          min={0}
+                          max={maxSliceX}
+                          onChange={(v) => setSliceIndexX(v)}
+                          disabled={!readyTripleSlices}
+                        />
+                      </>
+                    )}
 
                     <ParamRow
                       label="Colormap"
@@ -1029,6 +1184,7 @@ export default function VolumeViewer({
                           size="small"
                           select
                           value={interp2d}
+                          disabled={sliceLayoutMode === "triple"}
                           onChange={(e) => setInterp2d(e.target.value as Interp2d)}
                           SelectProps={{ MenuProps: { disablePortal: true } }}
                         >
@@ -1048,6 +1204,7 @@ export default function VolumeViewer({
                           size="small"
                           exclusive
                           value={sharpen2d ? "on" : "off"}
+                          disabled={sliceLayoutMode === "triple"}
                           onChange={(_, v) => {
                             if (v === "on") setSharpen2d(true);
                             if (v === "off") setSharpen2d(false);
@@ -1063,7 +1220,6 @@ export default function VolumeViewer({
 
                     <SectionTitle title="Display" />
 
-                    {/* Intensity group with Reset, like in coords3d viewer */}
                     <Box
                       sx={{
                         display: "flex",
@@ -1138,13 +1294,16 @@ export default function VolumeViewer({
                       size="small"
                       variant="outlined"
                       onClick={fitZoom}
+                      disabled={sliceLayoutMode !== "single"}
                       sx={{ textTransform: "none" }}
                     >
                       Fit + reset pan
                     </Button>
 
                     <Typography variant="caption" color="text.secondary">
-                      Pan: Ctrl+drag or middle mouse
+                      {sliceLayoutMode === "single"
+                        ? "Pan: Ctrl+drag or middle mouse"
+                        : "Triple view: synchronized orthogonal slices (Z/Y/X)"}
                     </Typography>
                   </Box>
                 )}
@@ -1431,6 +1590,547 @@ export default function VolumeViewer({
   );
 }
 
+function AxisSliceSliderControl({
+  title,
+  helpKey,
+  onHelp,
+  value,
+  min,
+  max,
+  onChange,
+  disabled,
+}: {
+  title: string;
+  helpKey: string;
+  onHelp: (key: string) => (e: React.MouseEvent<HTMLElement>) => void;
+  value: number;
+  min: number;
+  max: number;
+  onChange: (value: number) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <Box sx={{ mt: 0.5 }}>
+      <Box sx={{ display: "inline-flex", gap: 0.5, alignItems: "center" }}>
+        <Typography variant="caption" color="text.secondary">
+          {title}
+        </Typography>
+        <IconButton size="small" onClick={onHelp(helpKey)}>
+          <HelpCircle size={14} />
+        </IconButton>
+      </Box>
+
+      <SliceSlider
+        size="small"
+        value={Math.max(min, Math.min(value, max))}
+        min={min}
+        max={Math.max(min, max)}
+        step={1}
+        onChange={(_, v) => onChange(v as number)}
+        disabled={disabled}
+        valueLabelDisplay="auto"
+        valueLabelFormat={(v) => `${(v as number) + 1}`}
+      />
+      <Box sx={{ display: "flex", justifyContent: "space-between" }}>
+        <Typography variant="caption" color="text.secondary">
+          {min + 1}
+        </Typography>
+        <Typography variant="caption" color="text.secondary">
+          {Math.max(min, max) + 1}
+        </Typography>
+      </Box>
+    </Box>
+  );
+}
+
+function OrthoSlicesGrid({
+  dims,
+  zSlice,
+  ySlice,
+  xSlice,
+  sliceIndexX,
+  sliceIndexY,
+  sliceIndexZ,
+  brightness,
+  contrast,
+}: {
+  dims: Record<"x" | "y" | "z", number>;
+  zSlice: SliceImageState;
+  ySlice: SliceImageState;
+  xSlice: SliceImageState;
+  sliceIndexX: number;
+  sliceIndexY: number;
+  sliceIndexZ: number;
+  brightness: number;
+  contrast: number;
+}) {
+  const colX = "#ef4444";
+  const colY = "#22c55e";
+  const colZ = "#3b82f6";
+
+  const gx = Math.max(1, dims.x || 1);
+  const gy = Math.max(1, dims.y || 1);
+  const gz = Math.max(1, dims.z || 1);
+
+  return (
+    <Box
+      sx={{
+        width: "100%",
+        height: "100%",
+        display: "grid",
+        gridTemplateColumns: `${gx}fr ${gz}fr`,
+        gridTemplateRows: `${gz}fr ${gy}fr`,
+        gap: 0.5,
+        minWidth: 0,
+        minHeight: 0,
+      }}
+    >
+      <OrthoSlicePanel
+        label="Y (XZ)"
+        gridArea={{ col: "1 / 2", row: "1 / 2" }}
+        imageUrl={ySlice.url}
+        loading={ySlice.loading}
+        error={ySlice.error}
+        imageWidth={Math.max(1, dims.x)}
+        imageHeight={Math.max(1, dims.z)}
+        brightness={brightness}
+        contrast={contrast}
+        crossV={{
+          pos: clampInt(sliceIndexX, 0, Math.max(0, dims.x - 1)),
+          color: colX,
+          max: Math.max(1, dims.x),
+        }}
+        crossH={{
+          pos: clampInt(sliceIndexZ, 0, Math.max(0, dims.z - 1)),
+          color: colZ,
+          max: Math.max(1, dims.z),
+        }}
+      />
+
+      <Box
+        sx={{
+          gridColumn: "2 / 3",
+          gridRow: "1 / 2",
+          borderRadius: 1,
+          border: "1px solid",
+          borderColor: "divider",
+          bgcolor: "background.paper",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          minWidth: 0,
+          minHeight: 0,
+          overflow: "hidden",
+          p: 1,
+        }}
+      >
+        <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
+          <Typography variant="caption" color="text.secondary">
+            Triple orthogonal views
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            X: red
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            Y: green
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            Z: blue
+          </Typography>
+        </Box>
+      </Box>
+
+      <OrthoSlicePanel
+        label="Z (XY)"
+        gridArea={{ col: "1 / 2", row: "2 / 3" }}
+        imageUrl={zSlice.url}
+        loading={zSlice.loading}
+        error={zSlice.error}
+        imageWidth={Math.max(1, dims.x)}
+        imageHeight={Math.max(1, dims.y)}
+        brightness={brightness}
+        contrast={contrast}
+        crossV={{
+          pos: clampInt(sliceIndexX, 0, Math.max(0, dims.x - 1)),
+          color: colX,
+          max: Math.max(1, dims.x),
+        }}
+        crossH={{
+          pos: clampInt(sliceIndexY, 0, Math.max(0, dims.y - 1)),
+          color: colY,
+          max: Math.max(1, dims.y),
+        }}
+      />
+
+      <OrthoSlicePanel
+        label="X (YZ)"
+        gridArea={{ col: "2 / 3", row: "2 / 3" }}
+        imageUrl={xSlice.url}
+        loading={xSlice.loading}
+        error={xSlice.error}
+        imageWidth={Math.max(1, dims.y)}
+        imageHeight={Math.max(1, dims.z)}
+        brightness={brightness}
+        contrast={contrast}
+        rotate90
+        crossV={{
+          pos: clampInt(sliceIndexY, 0, Math.max(0, dims.y - 1)),
+          color: colY,
+          max: Math.max(1, dims.y),
+        }}
+        crossH={{
+          pos: clampInt(sliceIndexZ, 0, Math.max(0, dims.z - 1)),
+          color: colZ,
+          max: Math.max(1, dims.z),
+        }}
+      />
+    </Box>
+  );
+}
+
+function OrthoSlicePanel({
+  label,
+  gridArea,
+  imageUrl,
+  loading,
+  error,
+  imageWidth,
+  imageHeight,
+  brightness,
+  contrast,
+  rotate90 = false,
+  crossV,
+  crossH,
+}: {
+  label: string;
+  gridArea: { col: string; row: string };
+  imageUrl: string | null;
+  loading: boolean;
+  error: string | null;
+  imageWidth: number;
+  imageHeight: number;
+  brightness: number;
+  contrast: number;
+  rotate90?: boolean;
+  crossV?: { pos: number; color: string; max: number };
+  crossH?: { pos: number; color: string; max: number };
+}) {
+  const viewBoxW = rotate90 ? imageHeight : imageWidth;
+  const viewBoxH = rotate90 ? imageWidth : imageHeight;
+
+  const filterCss = `brightness(${1 + brightness}) contrast(${contrast})`;
+
+  const strokeW = Math.max(1, Math.min(viewBoxW, viewBoxH) * 0.0025);
+
+  const renderContent = () => {
+    if (loading && !imageUrl) {
+      return (
+        <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
+          <CircularProgress size={16} />
+          <Typography variant="caption">Loading…</Typography>
+        </Box>
+      );
+    }
+
+    if (error && !imageUrl) {
+      return (
+        <Typography variant="caption" color="error" sx={{ textAlign: "center", px: 1 }}>
+          {error}
+        </Typography>
+      );
+    }
+
+    if (!imageUrl) {
+      return (
+        <Typography variant="caption" color="text.secondary">
+          No image
+        </Typography>
+      );
+    }
+
+    return (
+      <svg
+        viewBox={`0 0 ${viewBoxW} ${viewBoxH}`}
+        preserveAspectRatio="xMidYMid meet"
+        style={{ width: "100%", height: "100%", display: "block" }}
+      >
+        {rotate90 ? (
+          <g transform={`translate(${imageHeight}, 0) rotate(90)`}>
+            <image
+              href={imageUrl}
+              x={0}
+              y={0}
+              width={imageWidth}
+              height={imageHeight}
+              preserveAspectRatio="none"
+              style={{ filter: filterCss }}
+            />
+            {crossV && (
+              <line
+                x1={clampFloat(crossV.pos, 0, Math.max(0, imageWidth - 1))}
+                y1={0}
+                x2={clampFloat(crossV.pos, 0, Math.max(0, imageWidth - 1))}
+                y2={imageHeight}
+                stroke={crossV.color}
+                strokeWidth={strokeW}
+                opacity={0.95}
+              />
+            )}
+            {crossH && (
+              <line
+                x1={0}
+                y1={clampFloat(crossH.pos, 0, Math.max(0, imageHeight - 1))}
+                x2={imageWidth}
+                y2={clampFloat(crossH.pos, 0, Math.max(0, imageHeight - 1))}
+                stroke={crossH.color}
+                strokeWidth={strokeW}
+                opacity={0.95}
+              />
+            )}
+          </g>
+        ) : (
+          <>
+            <image
+              href={imageUrl}
+              x={0}
+              y={0}
+              width={imageWidth}
+              height={imageHeight}
+              preserveAspectRatio="none"
+              style={{ filter: filterCss }}
+            />
+            {crossV && (
+              <line
+                x1={clampFloat(crossV.pos, 0, Math.max(0, imageWidth - 1))}
+                y1={0}
+                x2={clampFloat(crossV.pos, 0, Math.max(0, imageWidth - 1))}
+                y2={imageHeight}
+                stroke={crossV.color}
+                strokeWidth={strokeW}
+                opacity={0.95}
+              />
+            )}
+            {crossH && (
+              <line
+                x1={0}
+                y1={clampFloat(crossH.pos, 0, Math.max(0, imageHeight - 1))}
+                x2={imageWidth}
+                y2={clampFloat(crossH.pos, 0, Math.max(0, imageHeight - 1))}
+                stroke={crossH.color}
+                strokeWidth={strokeW}
+                opacity={0.95}
+              />
+            )}
+          </>
+        )}
+      </svg>
+    );
+  };
+
+  return (
+    <Box
+      sx={{
+        gridColumn: gridArea.col,
+        gridRow: gridArea.row,
+        borderRadius: 1,
+        border: "1px solid",
+        borderColor: "divider",
+        bgcolor: "background.paper",
+        position: "relative",
+        minWidth: 0,
+        minHeight: 0,
+        overflow: "hidden",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      {renderContent()}
+
+      <Box
+        sx={{
+          position: "absolute",
+          top: 6,
+          left: 6,
+          px: 0.75,
+          py: 0.25,
+          borderRadius: 0.75,
+          bgcolor: "rgba(0,0,0,0.55)",
+          color: "common.white",
+          pointerEvents: "none",
+        }}
+      >
+        <Typography variant="caption" sx={{ color: "inherit" }}>
+          {label}
+        </Typography>
+      </Box>
+
+      {loading && imageUrl && (
+        <Box
+          sx={{
+            position: "absolute",
+            top: 6,
+            right: 6,
+            width: 18,
+            height: 18,
+            borderRadius: "50%",
+            bgcolor: "rgba(255,255,255,0.9)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <CircularProgress size={12} />
+        </Box>
+      )}
+
+      {error && imageUrl && (
+        <Box
+          sx={{
+            position: "absolute",
+            bottom: 6,
+            left: 6,
+            right: 6,
+            px: 0.75,
+            py: 0.5,
+            borderRadius: 0.75,
+            bgcolor: "rgba(239,68,68,0.12)",
+            border: "1px solid rgba(239,68,68,0.35)",
+            backdropFilter: "blur(2px)",
+          }}
+        >
+          <Typography variant="caption" color="error" noWrap>
+            {error}
+          </Typography>
+        </Box>
+      )}
+    </Box>
+  );
+}
+
+function useVolumeSliceImage({
+  enabled,
+  svc,
+  projectId,
+  protocolId,
+  outputName,
+  volumeId,
+  axis,
+  sliceIndex,
+  maxSlice,
+  colormap,
+  reloadKey,
+}: {
+  enabled: boolean;
+  svc: any;
+  projectId: string | number;
+  protocolId: string | number;
+  outputName: string;
+  volumeId: string | number | null;
+  axis: "x" | "y" | "z";
+  sliceIndex: number | null;
+  maxSlice: number;
+  colormap: string;
+  reloadKey?: number;
+}): SliceImageState {
+  const [url, setUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const abortRef = useRef<AbortController | null>(null);
+  const reqIdRef = useRef(0);
+  const revokeRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    if (!enabled || volumeId == null || sliceIndex == null) {
+      abortRef.current?.abort();
+      setLoading(false);
+      setError(null);
+      return;
+    }
+
+    const clampedIndex = Math.max(0, Math.min(sliceIndex, maxSlice));
+
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    const reqId = ++reqIdRef.current;
+
+    (async () => {
+      try {
+        setLoading(true);
+        setError(null);
+
+        const result = await svc.fetchVolumeSliceObjectUrl(
+          projectId,
+          protocolId,
+          outputName,
+          volumeId,
+          clampedIndex,
+          {
+            axis,
+            cmap: colormap,
+            signal: controller.signal,
+          },
+        );
+
+        if (controller.signal.aborted || reqIdRef.current !== reqId) {
+          result?.revoke?.();
+          return;
+        }
+
+        if (revokeRef.current) {
+          try {
+            revokeRef.current();
+          } catch {
+            // Ignore revoke errors.
+          }
+        }
+
+        revokeRef.current = result?.revoke ?? null;
+        setUrl(result?.url ?? null);
+      } catch (e: any) {
+        if (controller.signal.aborted || reqIdRef.current !== reqId) return;
+        setError(e?.message || `Failed to load ${axis.toUpperCase()} slice`);
+        setUrl(null);
+      } finally {
+        if (reqIdRef.current === reqId) setLoading(false);
+      }
+    })();
+
+    return () => {
+      controller.abort();
+    };
+  }, [
+    enabled,
+    svc,
+    projectId,
+    protocolId,
+    outputName,
+    volumeId,
+    axis,
+    sliceIndex,
+    maxSlice,
+    colormap,
+    reloadKey,
+  ]);
+
+  useEffect(() => {
+    return () => {
+      if (revokeRef.current) {
+        try {
+          revokeRef.current();
+        } catch {
+          // Ignore revoke errors.
+        }
+      }
+    };
+  }, []);
+
+  return { url, loading, error };
+}
+
 /**
  * Throttle a value so it only updates at most once every `intervalMs` milliseconds.
  * Unlike debounce, this still updates while the user is moving the slider.
@@ -1494,8 +2194,8 @@ function SlicesCanvas({
   pan: { x: number; y: number };
   interp: Interp2d;
   sharpen: boolean;
-  brightness: number; // offset, 0 = neutral
-  contrast: number;   // factor, 1 = neutral
+  brightness: number;
+  contrast: number;
   onNaturalSize: (w: number, h: number) => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -1568,7 +2268,6 @@ function SlicesCanvas({
     const x0 = cx - drawW / 2;
     const y0 = cy - drawH / 2;
 
-    // brightness is offset [-1,1], contrast is factor
     const b = 1 + brightness;
     const c = contrast;
 
@@ -1673,8 +2372,8 @@ function SlicesStatusBar({
   colormap: string;
   interp: Interp2d;
   sharpen: boolean;
-  brightness: number; // offset
-  contrast: number;   // factor
+  brightness: number;
+  contrast: number;
 }) {
   const bPct = Math.round((1 + brightness) * 100);
   const cPct = Math.round(contrast * 100);
