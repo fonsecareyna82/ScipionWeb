@@ -1687,6 +1687,7 @@ function OrthoSlicesGrid({
     >
       <OrthoSlicePanel
         label="Y (XZ)"
+        labelDotColor={colY}
         gridArea={{ col: "1 / 2", row: "1 / 2" }}
         imageUrl={ySlice.url}
         loading={ySlice.loading}
@@ -1707,41 +1708,11 @@ function OrthoSlicesGrid({
         }}
       />
 
-      <Box
-        sx={{
-          gridColumn: "2 / 3",
-          gridRow: "1 / 2",
-          borderRadius: 1,
-          border: "1px solid",
-          borderColor: "divider",
-          bgcolor: "background.paper",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          minWidth: 0,
-          minHeight: 0,
-          overflow: "hidden",
-          p: 1,
-        }}
-      >
-        <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
-          <Typography variant="caption" color="text.secondary">
-            Triple orthogonal views
-          </Typography>
-          <Typography variant="caption" color="text.secondary">
-            X: red
-          </Typography>
-          <Typography variant="caption" color="text.secondary">
-            Y: green
-          </Typography>
-          <Typography variant="caption" color="text.secondary">
-            Z: blue
-          </Typography>
-        </Box>
-      </Box>
+
 
       <OrthoSlicePanel
         label="Z (XY)"
+        labelDotColor={colZ}
         gridArea={{ col: "1 / 2", row: "2 / 3" }}
         imageUrl={zSlice.url}
         loading={zSlice.loading}
@@ -1764,6 +1735,7 @@ function OrthoSlicesGrid({
 
       <OrthoSlicePanel
         label="X (YZ)"
+        labelDotColor={colX}
         gridArea={{ col: "2 / 3", row: "2 / 3" }}
         imageUrl={xSlice.url}
         loading={xSlice.loading}
@@ -1790,6 +1762,7 @@ function OrthoSlicesGrid({
 
 function OrthoSlicePanel({
   label,
+  labelDotColor,
   gridArea,
   imageUrl,
   loading,
@@ -1803,6 +1776,7 @@ function OrthoSlicePanel({
   crossH,
 }: {
   label: string;
+  labelDotColor?: string;
   gridArea: { col: string; row: string };
   imageUrl: string | null;
   loading: boolean;
@@ -1958,9 +1932,24 @@ function OrthoSlicePanel({
           bgcolor: "rgba(0,0,0,0.55)",
           color: "common.white",
           pointerEvents: "none",
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 0.6,
         }}
       >
-        <Typography variant="caption" sx={{ color: "inherit" }}>
+        {labelDotColor && (
+          <Box
+            sx={{
+              width: 7,
+              height: 7,
+              borderRadius: "50%",
+              bgcolor: labelDotColor,
+              flexShrink: 0,
+              boxShadow: "0 0 0 1px rgba(255,255,255,0.35)",
+            }}
+          />
+        )}
+        <Typography variant="caption" sx={{ color: "inherit", lineHeight: 1.2 }}>
           {label}
         </Typography>
       </Box>
