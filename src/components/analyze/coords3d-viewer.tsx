@@ -530,7 +530,7 @@ export default function Coords3dViewer({
   const tomoDimsY = tomoDims ? tomoDims[1] : null;
   const tomoDimsZ = tomoDims ? tomoDims[2] : null;
 
-    const tripleSliceGridFractions = useMemo(() => {
+  const tripleSliceGridFractions = useMemo(() => {
     if (!tomoDims) return null;
 
     const [dimX, dimY, dimZ] = tomoDims;
@@ -1195,12 +1195,12 @@ export default function Coords3dViewer({
                   )
                 ) : sliceLayoutMode === "triple" ? (
                   !tomoDims ||
-                  maxSliceZ == null ||
-                  maxSliceX == null ||
-                  maxSliceY == null ||
-                  sliceIndex == null ||
-                  sliceIndexX == null ||
-                  sliceIndexY == null ? (
+                    maxSliceZ == null ||
+                    maxSliceX == null ||
+                    maxSliceY == null ||
+                    sliceIndex == null ||
+                    sliceIndexX == null ||
+                    sliceIndexY == null ? (
                     <Box sx={{ m: "auto" }}>
                       <Typography variant="body2" color="text.secondary">
                         Tomogram dimensions are not available for orthogonal views.
@@ -2570,6 +2570,17 @@ function Coords3dMap3dView({
     [dims],
   );
 
+
+  const axisSigns = useMemo(
+    () =>
+      ({
+        x: 1,
+        y: -1,
+        z: -1,
+      }) as const,
+    [],
+  );
+
   const scaleVec = useMemo(() => {
     const spacing = voxelSize ?? [1, 1, 1];
     const dx = dimsObj.x * (spacing[0] ?? 1);
@@ -2921,26 +2932,26 @@ function Coords3dMap3dView({
 
     if (px) {
       px.visible = planeVisibleX;
-      px.position.x = voxelToLocalZeroBased(sliceIndexX ?? 0, dimsObj.x);
+      px.position.x = voxelToLocalZeroBasedSigned(sliceIndexX ?? 0, dimsObj.x, axisSigns.x);
       const mat = px.material as THREE.MeshBasicMaterial;
       mat.opacity = slicePlanesOpacity3d;
     }
     if (py) {
       py.visible = planeVisibleY;
-      py.position.y = voxelToLocalZeroBased(sliceIndexY ?? 0, dimsObj.y);
+      py.position.y = voxelToLocalZeroBasedSigned(sliceIndexY ?? 0, dimsObj.y, axisSigns.y);
       const mat = py.material as THREE.MeshBasicMaterial;
       mat.opacity = slicePlanesOpacity3d;
     }
     if (pz) {
       pz.visible = planeVisibleZ;
-      pz.position.z = voxelToLocalZeroBased(sliceIndexZ ?? 0, dimsObj.z);
+      pz.position.z = voxelToLocalZeroBasedSigned(sliceIndexZ ?? 0, dimsObj.z, axisSigns.z);
       const mat = pz.material as THREE.MeshBasicMaterial;
       mat.opacity = slicePlanesOpacity3d;
     }
 
     if (ex) {
       ex.visible = planeVisibleX;
-      ex.position.x = voxelToLocalZeroBased(sliceIndexX ?? 0, dimsObj.x);
+      ex.position.x = voxelToLocalZeroBasedSigned(sliceIndexX ?? 0, dimsObj.x, axisSigns.x);
       ((ex.material as THREE.LineBasicMaterial).opacity = Math.max(
         0.25,
         Math.min(1, slicePlanesOpacity3d * 2.2),
@@ -2948,7 +2959,7 @@ function Coords3dMap3dView({
     }
     if (ey) {
       ey.visible = planeVisibleY;
-      ey.position.y = voxelToLocalZeroBased(sliceIndexY ?? 0, dimsObj.y);
+      ey.position.y = voxelToLocalZeroBasedSigned(sliceIndexY ?? 0, dimsObj.y, axisSigns.y);
       ((ey.material as THREE.LineBasicMaterial).opacity = Math.max(
         0.25,
         Math.min(1, slicePlanesOpacity3d * 2.2),
@@ -2956,7 +2967,7 @@ function Coords3dMap3dView({
     }
     if (ez) {
       ez.visible = planeVisibleZ;
-      ez.position.z = voxelToLocalZeroBased(sliceIndexZ ?? 0, dimsObj.z);
+      ez.position.z = voxelToLocalZeroBasedSigned(sliceIndexZ ?? 0, dimsObj.z, axisSigns.z);
       ((ez.material as THREE.LineBasicMaterial).opacity = Math.max(
         0.25,
         Math.min(1, slicePlanesOpacity3d * 2.2),
@@ -2971,6 +2982,7 @@ function Coords3dMap3dView({
     dimsObj.x,
     dimsObj.y,
     dimsObj.z,
+    axisSigns
   ]);
 
   useEffect(() => {
@@ -3014,9 +3026,9 @@ function Coords3dMap3dView({
       const y = Number(p.y);
       const z = Number(p.z);
 
-      positions[i * 3 + 0] = mapPointAxisToLocal(x, mapper.x);
-      positions[i * 3 + 1] = mapPointAxisToLocal(y, mapper.y);
-      positions[i * 3 + 2] = mapPointAxisToLocal(z, mapper.z);
+      positions[i * 3 + 0] = mapPointAxisToLocalSigned(x, mapper.x, axisSigns.x);
+      positions[i * 3 + 1] = mapPointAxisToLocalSigned(y, mapper.y, axisSigns.y);
+      positions[i * 3 + 2] = mapPointAxisToLocalSigned(z, mapper.z, axisSigns.z);
 
       const c =
         pointColorMode3d === "fixed"
@@ -3045,7 +3057,7 @@ function Coords3dMap3dView({
       if (pickedMarkerRef.current) pickedMarkerRef.current.visible = false;
       onPickPoint?.(null);
     }
-  }, [points, pointColor, pointColorMode3d, dimsObj, onPickPoint]);
+  }, [points, pointColor, pointColorMode3d, dimsObj, onPickPoint, axisSigns]);
 
   useEffect(() => {
     const mat = pointsMaterialRef.current;
@@ -3129,9 +3141,9 @@ function Coords3dMap3dView({
     pickedIndexRef.current = index;
     marker.visible = true;
     marker.position.set(
-      mapPointAxisToLocal(Number((p as any).x), mapper.x),
-      mapPointAxisToLocal(Number((p as any).y), mapper.y),
-      mapPointAxisToLocal(Number((p as any).z), mapper.z),
+      mapPointAxisToLocalSigned(Number((p as any).x), mapper.x, axisSigns.x),
+      mapPointAxisToLocalSigned(Number((p as any).y), mapper.y, axisSigns.y),
+      mapPointAxisToLocalSigned(Number((p as any).z), mapper.z, axisSigns.z),
     );
 
     const mappedSliceIndices = {
@@ -3448,6 +3460,18 @@ function mapPointAxisToLocal(v: number, mapper: AxisMapper): number {
   return clampFloatNum(t, 0, 1) - 0.5;
 }
 
+function applyAxisSignToLocal(localValue: number, axisSign: number): number {
+  return axisSign < 0 ? -localValue : localValue;
+}
+
+function voxelToLocalZeroBasedSigned(v: number, dim: number, axisSign: number): number {
+  return applyAxisSignToLocal(voxelToLocalZeroBased(v, dim), axisSign);
+}
+
+function mapPointAxisToLocalSigned(v: number, mapper: AxisMapper, axisSign: number): number {
+  return applyAxisSignToLocal(mapPointAxisToLocal(v, mapper), axisSign);
+}
+
 
 function pointAxisToNearestSliceIndex(v: number, mapper: AxisMapper): number {
   if (!Number.isFinite(v)) return 0;
@@ -3538,9 +3562,9 @@ function hexToRgba(hex: string, alpha: number) {
   const normalized =
     h.length === 3
       ? h
-          .split("")
-          .map((c) => c + c)
-          .join("")
+        .split("")
+        .map((c) => c + c)
+        .join("")
       : h;
   const num = parseInt(normalized, 16);
   const r = (num >> 16) & 255;
