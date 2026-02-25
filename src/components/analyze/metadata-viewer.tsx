@@ -52,13 +52,8 @@ import type {
   MetadataTableInfo,
   MetadataTableSchema,
 } from "@/api/projects";
-import {
-  fetchOutputMetadataTables,
-  fetchMetadataTableSchema,
-  fetchMetadataTableWindow,
-  fetchMetadataImageCellObjectUrl,
-} from "@/api/projects";
 import { CloseIcon } from "@/icons";
+import { useProjectService } from "@/ProjectServiceContext";
 
 type MetadataViewerProps = {
   projectId: number;
@@ -571,6 +566,7 @@ function useMetadataTables(
   const [tablesLoading, setTablesLoading] = useState(false);
   const [tablesError, setTablesError] = useState<string | null>(null);
   const [selectedTable, setSelectedTable] = useState<string | "">("");
+  const svc = useProjectService();
 
   useEffect(() => {
     let cancelled = false;
@@ -580,7 +576,7 @@ function useMetadataTables(
         setTablesLoading(true);
         setTablesError(null);
 
-        const list = await fetchOutputMetadataTables(projectId, protocolId, outputName);
+        const list = await svc.fetchOutputMetadataTables(projectId, protocolId, outputName);
         if (cancelled || !isMountedRef.current) return;
 
         const safeList = list || [];
@@ -628,6 +624,7 @@ function useMetadataSchema(
   const [schema, setSchema] = useState<MetadataTableSchema | null>(null);
   const [schemaLoading, setSchemaLoading] = useState(false);
   const [schemaError, setSchemaError] = useState<string | null>(null);
+  const svc = useProjectService();
 
   useEffect(() => {
     if (!selectedTable) {
@@ -644,7 +641,7 @@ function useMetadataSchema(
         setSchemaLoading(true);
         setSchemaError(null);
 
-        const nextSchema = await fetchMetadataTableSchema(
+        const nextSchema = await svc.fetchMetadataTableSchema(
           projectId,
           protocolId,
           outputName,
@@ -749,6 +746,7 @@ function useVirtualTableWindow(params: {
   const windowEpochRef = useRef(0);
 
   const desiredWindowSizeRef = useRef(desiredWindowSize);
+  const svc = useProjectService();
 
   useEffect(() => {
     desiredWindowSizeRef.current = desiredWindowSize;
@@ -784,7 +782,7 @@ function useVirtualTableWindow(params: {
       setWindowError(null);
 
       try {
-        const response = (await fetchMetadataTableWindow(
+        const response = (await svc.fetchMetadataTableWindow(
           projectId,
           protocolId,
           outputName,
@@ -984,6 +982,7 @@ function useMetadataGalleryRows(params: {
 
   const galleryRequestInFlightRef = useRef(false);
   const galleryEpochRef = useRef(0);
+  const svc = useProjectService();
 
   const invalidateGalleryState = useCallback(() => {
     galleryEpochRef.current += 1;
@@ -1014,7 +1013,7 @@ function useMetadataGalleryRows(params: {
       setGalleryError(null);
 
       try {
-        const response = (await fetchMetadataTableWindow(
+        const response = (await svc.fetchMetadataTableWindow(
           projectId,
           protocolId,
           outputName,
@@ -1269,6 +1268,7 @@ function MetadataImageCell({
   const [thumbUrl, setThumbUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const svc = useProjectService();
 
   useEffect(() => {
     const cache = imageCacheRef.current;
@@ -1301,7 +1301,7 @@ function MetadataImageCell({
     const job: ImageJob = {
       isCancelled: () => cancelled,
       run: () =>
-        fetchMetadataImageCellObjectUrl(
+        svc.fetchMetadataImageCellObjectUrl(
           projectId,
           protocolId,
           outputName,
