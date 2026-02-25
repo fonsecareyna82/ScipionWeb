@@ -21,7 +21,9 @@ import {
   DialogTitle,
   FormControl,
   InputLabel,
+  Menu,
   MenuItem,
+  ListItemText,
   Divider,
   Paper,
   Select,
@@ -36,7 +38,13 @@ import {
   Tooltip,
   IconButton,
 } from "@mui/material";
-import { LayoutGrid, TableIcon, Check, ColumnsSettingsIcon } from "lucide-react";
+import {
+  LayoutGrid,
+  TableIcon,
+  Check,
+  ColumnsSettingsIcon,
+  ChevronRight,
+} from "lucide-react";
 import type {
   MetadataCell,
   MetadataColumn,
@@ -90,6 +98,27 @@ interface ImageJob {
   isCancelled: () => boolean;
 }
 
+type IndexRange = {
+  start: number;
+  end: number;
+};
+
+type RowSelectionState = {
+  /**
+   * baseMode="none": ranges are selected ranges
+   * baseMode="all": ranges are excluded ranges
+   */
+  baseMode: "none" | "all";
+  ranges: IndexRange[];
+  anchorIndex: number | null;
+};
+
+type TableContextMenuState = {
+  mouseX: number;
+  mouseY: number;
+  rowIndex: number;
+} | null;
+
 type MetadataImageCellProps = {
   projectId: number;
   protocolId: number;
@@ -100,7 +129,7 @@ type MetadataImageCellProps = {
   cell: { kind: "image"; path: string };
   size: number;
   isSelected?: boolean;
-  onClick?: () => void;
+  onClick?: (event: ReactMouseEvent<HTMLDivElement>) => void;
   imageCacheRef: MutableRefObject<Map<string, ImageCacheEntry>>;
 };
 
@@ -122,6 +151,9 @@ type MetadataTablePanelProps = {
   hasData: boolean;
   scrollRef: MutableRefObject<HTMLDivElement | null>;
   handleScroll: UIEventHandler<HTMLDivElement>;
+  isRowSelected: (rowIndex: number) => boolean;
+  onPrimaryRowClick: (rowIndex: number, event: ReactMouseEvent<Element>) => void;
+  onRowContextMenu: (rowIndex: number, event: ReactMouseEvent<Element>) => void;
   selectedRowIndex: number | null;
   selectedImageCell: SelectedImageCell | null;
   setSelectedRowIndex: (value: number | null) => void;
@@ -141,7 +173,8 @@ type MetadataGalleryPanelProps = {
   galleryError: string | null;
   galleryScrollRef: MutableRefObject<HTMLDivElement | null>;
   handleGalleryScroll: UIEventHandler<HTMLDivElement>;
-  selectedRowIndex: number | null;
+  isRowSelected: (rowIndex: number) => boolean;
+  onPrimaryRowClick: (rowIndex: number, event: ReactMouseEvent<Element>) => void;
   selectedImageCell: SelectedImageCell | null;
   setSelectedRowIndex: (value: number | null) => void;
   setSelectedImageCell: (value: SelectedImageCell | null) => void;
@@ -324,6 +357,111 @@ function formatCellValue(value: MetadataCell): ReactNode {
   } catch {
     return String(value);
   }
+}
+
+/* ======================= Selection helpers ======================= */
+
+function clampIndex(value: number, minValue: number, maxValue: number): number {
+  if (value < minValue) return minValue;
+  if (value > maxValue) return maxValue;
+  return value;
+}
+
+function normalizeRange(start: number, end: number): IndexRange {
+  return start <= end ? { start, end } : { start: end, end: start };
+}
+
+function mergeRanges(ranges: IndexRange[]): IndexRange[] {
+  if (!ranges.length) return [];
+
+  const sorted = [...ranges].sort((a, b) => a.start - b.start || a.end - b.end);
+  const merged: IndexRange[] = [{ ...sorted[0] }];
+
+  for (let index = 1; index < sorted.length; index += 1) {
+    const current = sorted[index];
+    const last = merged[merged.length - 1];
+
+    if (current.start <= last.end + 1) {
+      last.end = Math.max(last.end, current.end);
+    } else {
+      merged.push({ ...current });
+    }
+  }
+
+  return merged;
+}
+
+function addRangeToRanges(ranges: IndexRange[], nextRange: IndexRange): IndexRange[] {
+  return mergeRanges([...ranges, nextRange]);
+}
+
+function isIndexInRanges(ranges: IndexRange[], index: number): boolean {
+  for (const range of ranges) {
+    if (index < range.start) return false;
+    if (index <= range.end) return true;
+  }
+  return false;
+}
+
+function toggleSingleIndexInRanges(ranges: IndexRange[], index: number): IndexRange[] {
+  const next: IndexRange[] = [];
+
+  for (let rangeIndex = 0; rangeIndex < ranges.length; rangeIndex += 1) {
+    const range = ranges[rangeIndex];
+
+    if (index < range.start || index > range.end) {
+      next.push({ ...range });
+      continue;
+    }
+
+    if (range.start === range.end && range.start === index) {
+      // Remove exact single range
+    } else if (index === range.start) {
+      next.push({ start: range.start + 1, end: range.end });
+    } else if (index === range.end) {
+      next.push({ start: range.start, end: range.end - 1 });
+    } else {
+      next.push({ start: range.start, end: index - 1 });
+      next.push({ start: index + 1, end: range.end });
+    }
+
+    for (let tailIndex = rangeIndex + 1; tailIndex < ranges.length; tailIndex += 1) {
+      next.push({ ...ranges[tailIndex] });
+    }
+
+    return next;
+  }
+
+  return addRangeToRanges(next, { start: index, end: index });
+}
+
+function countIndicesInRanges(ranges: IndexRange[]): number {
+  let total = 0;
+  for (const range of ranges) {
+    total += range.end - range.start + 1;
+  }
+  return total;
+}
+
+function isRowIndexSelected(selectionState: RowSelectionState, rowIndex: number): boolean {
+  const inRanges = isIndexInRanges(selectionState.ranges, rowIndex);
+  return selectionState.baseMode === "all" ? !inRanges : inRanges;
+}
+
+function getSelectionCount(selectionState: RowSelectionState, totalRows: number): number {
+  const covered = countIndicesInRanges(selectionState.ranges);
+  if (selectionState.baseMode === "all") {
+    return Math.max(0, totalRows - covered);
+  }
+  return covered;
+}
+
+function createEmptySelectionState(): RowSelectionState {
+  return {
+    baseMode: "none",
+    ranges: [],
+    anchorIndex: null,
+  };
 }
 
 /* ======================= Cache helpers ======================= */
@@ -684,14 +822,7 @@ function useVirtualTableWindow(params: {
         }
       }
     },
-    [
-      isMountedRef,
-      outputName,
-      projectId,
-      protocolId,
-      selectedTable,
-      totalRows,
-    ],
+    [isMountedRef, outputName, projectId, protocolId, selectedTable, totalRows],
   );
 
   useEffect(() => {
@@ -917,15 +1048,7 @@ function useMetadataGalleryRows(params: {
         galleryRequestInFlightRef.current = false;
       }
     },
-    [
-      isMountedRef,
-      outputName,
-      projectId,
-      protocolId,
-      schema,
-      selectedTable,
-      totalRows,
-    ],
+    [isMountedRef, outputName, projectId, protocolId, schema, selectedTable, totalRows],
   );
 
   useEffect(() => {
@@ -989,6 +1112,142 @@ function useMetadataGalleryRows(params: {
     galleryHasMore,
     handleGalleryScroll,
     invalidateGalleryState,
+  };
+}
+
+function useRowSelection(totalRows: number) {
+  const [selectionState, setSelectionState] = useState<RowSelectionState>(
+    createEmptySelectionState(),
+  );
+
+  const isRowSelected = useCallback(
+    (rowIndex: number) => isRowIndexSelected(selectionState, rowIndex),
+    [selectionState],
+  );
+
+  const selectedCount = useMemo(
+    () => getSelectionCount(selectionState, totalRows),
+    [selectionState, totalRows],
+  );
+
+  const clearSelection = useCallback(() => {
+    setSelectionState(createEmptySelectionState());
+  }, []);
+
+  const selectOnly = useCallback((rowIndex: number) => {
+    setSelectionState({
+      baseMode: "none",
+      ranges: [{ start: rowIndex, end: rowIndex }],
+      anchorIndex: rowIndex,
+    });
+  }, []);
+
+  const handlePrimaryRowClick = useCallback(
+    (rowIndex: number, event: ReactMouseEvent<Element>) => {
+      if (totalRows <= 0) return;
+
+      const maxIndex = Math.max(0, totalRows - 1);
+      const safeIndex = clampIndex(rowIndex, 0, maxIndex);
+
+      const isToggle = event.ctrlKey || event.metaKey;
+      const isRange = event.shiftKey;
+
+      setSelectionState((prev) => {
+        const anchor = prev.anchorIndex ?? safeIndex;
+
+        if (isRange) {
+          const nextRange = normalizeRange(anchor, safeIndex);
+
+          if (isToggle && prev.baseMode === "none") {
+            return {
+              ...prev,
+              ranges: addRangeToRanges(prev.ranges, nextRange),
+              anchorIndex: anchor,
+            };
+          }
+
+          return {
+            baseMode: "none",
+            ranges: [nextRange],
+            anchorIndex: anchor,
+          };
+        }
+
+        if (isToggle) {
+          return {
+            ...prev,
+            ranges: toggleSingleIndexInRanges(prev.ranges, safeIndex),
+            anchorIndex: safeIndex,
+          };
+        }
+
+        return {
+          baseMode: "none",
+          ranges: [{ start: safeIndex, end: safeIndex }],
+          anchorIndex: safeIndex,
+        };
+      });
+    },
+    [totalRows],
+  );
+
+  const selectAll = useCallback(() => {
+    setSelectionState((prev) => ({
+      baseMode: "all",
+      ranges: [],
+      anchorIndex: prev.anchorIndex,
+    }));
+  }, []);
+
+  const selectFromHere = useCallback(
+    (rowIndex: number) => {
+      if (totalRows <= 0) return;
+      const maxIndex = Math.max(0, totalRows - 1);
+      const safeIndex = clampIndex(rowIndex, 0, maxIndex);
+
+      setSelectionState({
+        baseMode: "none",
+        ranges: [{ start: safeIndex, end: maxIndex }],
+        anchorIndex: safeIndex,
+      });
+    },
+    [totalRows],
+  );
+
+  const selectToHere = useCallback(
+    (rowIndex: number) => {
+      if (totalRows <= 0) return;
+      const maxIndex = Math.max(0, totalRows - 1);
+      const safeIndex = clampIndex(rowIndex, 0, maxIndex);
+
+      setSelectionState({
+        baseMode: "none",
+        ranges: [{ start: 0, end: safeIndex }],
+        anchorIndex: safeIndex,
+      });
+    },
+    [totalRows],
+  );
+
+  const invertSelection = useCallback(() => {
+    setSelectionState((prev) => ({
+      ...prev,
+      baseMode: prev.baseMode === "all" ? "none" : "all",
+    }));
+  }, []);
+
+  return {
+    selectionState,
+    isRowSelected,
+    selectedCount,
+    clearSelection,
+    selectOnly,
+    handlePrimaryRowClick,
+    selectAll,
+    selectFromHere,
+    selectToHere,
+    invertSelection,
+    setSelectionState,
   };
 }
 
@@ -1091,7 +1350,7 @@ function MetadataImageCell({
   const handleClick = (event: ReactMouseEvent<HTMLDivElement>) => {
     if (!onClick) return;
     event.stopPropagation();
-    onClick();
+    onClick(event);
   };
 
   return (
@@ -1149,6 +1408,9 @@ function MetadataTablePanel({
   hasData,
   scrollRef,
   handleScroll,
+  isRowSelected,
+  onPrimaryRowClick,
+  onRowContextMenu,
   selectedRowIndex,
   selectedImageCell,
   setSelectedRowIndex,
@@ -1245,16 +1507,19 @@ function MetadataTablePanel({
 
             {windowRows.map((row, rowIndexInWindow) => {
               const displayRowIndex = windowOffset + rowIndexInWindow;
-              const isHighlightedRow =
-                selectedRowIndex !== null && selectedRowIndex === displayRowIndex;
+              const isHighlightedRow = isRowSelected(displayRowIndex);
 
               return (
                 <TableRow
                   key={row.id ?? `${windowOffset}-${rowIndexInWindow}`}
                   hover
-                  onClick={() => {
+                  onClick={(event) => {
+                    onPrimaryRowClick(displayRowIndex, event);
                     setSelectedRowIndex(displayRowIndex);
                     setSelectedImageCell(null);
+                  }}
+                  onContextMenu={(event) => {
+                    onRowContextMenu(displayRowIndex, event);
                   }}
                   sx={{
                     height: rowHeight,
@@ -1348,7 +1613,8 @@ function MetadataTablePanel({
                             cell={imageCell}
                             size={BASE_THUMB_SIZE}
                             isSelected={isSelectedImage}
-                            onClick={() => {
+                            onClick={(event) => {
+                              onPrimaryRowClick(displayRowIndex, event);
                               setSelectedRowIndex(displayRowIndex);
                               setSelectedImageCell({
                                 rowIndexInTable: displayRowIndex,
@@ -1440,6 +1706,8 @@ function MetadataGalleryPanel({
   galleryError,
   galleryScrollRef,
   handleGalleryScroll,
+  isRowSelected,
+  onPrimaryRowClick,
   selectedImageCell,
   setSelectedRowIndex,
   setSelectedImageCell,
@@ -1512,7 +1780,9 @@ function MetadataGalleryPanel({
                 ? (cellValue as { kind: "image"; path: string })
                 : null;
 
-              const isSelected =
+              const isSelected = isRowSelected(globalRowIndex);
+
+              const isFocusedImageCell =
                 !!selectedImageCell &&
                 selectedImageCell.rowIndexInTable === globalRowIndex &&
                 selectedImageCell.columnName === firstImageColumn.name;
@@ -1528,7 +1798,8 @@ function MetadataGalleryPanel({
               return (
                 <Box
                   key={row.id ?? `${index}`}
-                  onClick={() => {
+                  onClick={(event) => {
+                    onPrimaryRowClick(globalRowIndex, event);
                     setSelectedRowIndex(globalRowIndex);
                     setSelectedImageCell({
                       rowIndexInTable: globalRowIndex,
@@ -1562,7 +1833,7 @@ function MetadataGalleryPanel({
                       columnName={firstImageColumn.name}
                       cell={imageCell}
                       size={BASE_THUMB_SIZE}
-                      isSelected={isSelected}
+                      isSelected={isFocusedImageCell || isSelected}
                       imageCacheRef={imageCacheRef}
                     />
                   ) : (
@@ -1786,6 +2057,9 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
   const [draftColumnSettings, setDraftColumnSettings] =
     useState<Record<string, ColumnSettings> | null>(null);
 
+  const [tableContextMenu, setTableContextMenu] = useState<TableContextMenuState>(null);
+  const [selectSubmenuAnchorEl, setSelectSubmenuAnchorEl] = useState<HTMLElement | null>(null);
+
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const galleryScrollRef = useRef<HTMLDivElement | null>(null);
   const { height: viewportHeight } = useElementSize(scrollRef);
@@ -1816,6 +2090,18 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
   }, [tables, selectedTable]);
 
   const totalRows = tableInfo?.rowCount ?? 0;
+
+  const {
+    isRowSelected,
+    selectedCount,
+    clearSelection,
+    selectOnly,
+    handlePrimaryRowClick,
+    selectAll,
+    selectFromHere,
+    selectToHere,
+    invertSelection,
+  } = useRowSelection(totalRows);
 
   const allColumns: MetadataColumnWithVisibility[] = useMemo(
     () => (schema?.columns ?? []) as MetadataColumnWithVisibility[],
@@ -1959,9 +2245,77 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
   }, [schema, visibleColumns]);
 
   const resetSelection = useCallback(() => {
+    clearSelection();
     setSelectedRowIndex(null);
     setSelectedImageCell(null);
+  }, [clearSelection]);
+
+  const closeTableContextMenus = useCallback(() => {
+    setTableContextMenu(null);
+    setSelectSubmenuAnchorEl(null);
   }, []);
+
+  const handleTableRowContextMenu = useCallback(
+    (rowIndex: number, event: ReactMouseEvent<Element>) => {
+      event.preventDefault();
+      event.stopPropagation();
+
+      if (!isRowSelected(rowIndex)) {
+        selectOnly(rowIndex);
+      }
+
+      setSelectedRowIndex(rowIndex);
+      setSelectedImageCell(null);
+
+      setTableContextMenu({
+        mouseX: event.clientX + 2,
+        mouseY: event.clientY - 6,
+        rowIndex,
+      });
+
+      setSelectSubmenuAnchorEl(null);
+    },
+    [isRowSelected, selectOnly],
+  );
+
+  const runContextSelectionAction = useCallback(
+    (action: "all" | "fromHere" | "toHere" | "invert") => {
+      const contextRowIndex = tableContextMenu?.rowIndex ?? null;
+
+      if (action === "all") {
+        selectAll();
+        closeTableContextMenus();
+        return;
+      }
+
+      if (action === "invert") {
+        invertSelection();
+        closeTableContextMenus();
+        return;
+      }
+
+      if (contextRowIndex == null) {
+        closeTableContextMenus();
+        return;
+      }
+
+      if (action === "fromHere") {
+        selectFromHere(contextRowIndex);
+      } else if (action === "toHere") {
+        selectToHere(contextRowIndex);
+      }
+
+      closeTableContextMenus();
+    },
+    [
+      closeTableContextMenus,
+      invertSelection,
+      selectAll,
+      selectFromHere,
+      selectToHere,
+      tableContextMenu,
+    ],
+  );
 
   const handleTableChange = useCallback(
     (event: SelectChangeEvent<string>) => {
@@ -1975,9 +2329,11 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
       invalidateGalleryState();
       resetSelection();
       clearImageCache();
+      closeTableContextMenus();
     },
     [
       clearImageCache,
+      closeTableContextMenus,
       invalidateGalleryState,
       invalidateWindowState,
       resetSelection,
@@ -1986,6 +2342,11 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
       setSelectedTable,
     ],
   );
+
+  useEffect(() => {
+    resetSelection();
+    closeTableContextMenus();
+  }, [projectId, protocolId, outputName, resetSelection, closeTableContextMenus]);
 
   const openColumnsDialog = useCallback(() => {
     if (!schema) return;
@@ -2205,6 +2566,9 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
           <Typography variant="caption" color="text.secondary">
             Rows: <strong>{totalRows}</strong>
           </Typography>
+          <Typography variant="caption" color="text.secondary">
+            Selected: <strong>{selectedCount}</strong>
+          </Typography>
         </Box>
       </Box>
 
@@ -2264,6 +2628,9 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
         hasData={hasData}
         scrollRef={scrollRef}
         handleScroll={handleScroll}
+        isRowSelected={isRowSelected}
+        onPrimaryRowClick={handlePrimaryRowClick}
+        onRowContextMenu={handleTableRowContextMenu}
         selectedRowIndex={selectedRowIndex}
         selectedImageCell={selectedImageCell}
         setSelectedRowIndex={setSelectedRowIndex}
@@ -2284,7 +2651,8 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
           galleryError={galleryError}
           galleryScrollRef={galleryScrollRef}
           handleGalleryScroll={handleGalleryScroll}
-          selectedRowIndex={selectedRowIndex}
+          isRowSelected={isRowSelected}
+          onPrimaryRowClick={handlePrimaryRowClick}
           selectedImageCell={selectedImageCell}
           setSelectedRowIndex={setSelectedRowIndex}
           setSelectedImageCell={setSelectedImageCell}
@@ -2307,6 +2675,45 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
         draftColumnSettings={draftColumnSettings}
         updateDraftColumnSettings={updateDraftColumnSettings}
       />
+
+      <Menu
+        open={!!tableContextMenu}
+        onClose={closeTableContextMenus}
+        anchorReference="anchorPosition"
+        anchorPosition={
+          tableContextMenu
+            ? { top: tableContextMenu.mouseY, left: tableContextMenu.mouseX }
+            : undefined
+        }
+        transformOrigin={{ horizontal: "left", vertical: "top" }}
+      >
+        <MenuItem
+          onClick={(event) => {
+            setSelectSubmenuAnchorEl(event.currentTarget);
+          }}
+        >
+          <ListItemText>Select</ListItemText>
+          <ChevronRight size={16} />
+        </MenuItem>
+      </Menu>
+
+      <Menu
+        open={!!tableContextMenu && !!selectSubmenuAnchorEl}
+        anchorEl={selectSubmenuAnchorEl}
+        onClose={() => setSelectSubmenuAnchorEl(null)}
+        anchorOrigin={{ horizontal: "right", vertical: "top" }}
+        transformOrigin={{ horizontal: "left", vertical: "top" }}
+      >
+        <MenuItem onClick={() => runContextSelectionAction("all")}>All</MenuItem>
+        <MenuItem onClick={() => runContextSelectionAction("fromHere")}>
+          From here
+        </MenuItem>
+        <MenuItem onClick={() => runContextSelectionAction("toHere")}>To here</MenuItem>
+        <Divider />
+        <MenuItem onClick={() => runContextSelectionAction("invert")}>
+          Invert selection
+        </MenuItem>
+      </Menu>
     </Box>
   );
 }
