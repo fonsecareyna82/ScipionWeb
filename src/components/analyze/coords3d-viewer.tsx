@@ -2534,7 +2534,7 @@ function Coords3dMap3dView({
   );
   const pointsMaterialRef = useRef<THREE.PointsMaterial | null>(null);
 
-  const pickedMarkerRef = useRef<THREE.Mesh | null>(null);
+  const pickedMarkerRef = useRef<THREE.Group | null>(null);
 
   const boxLineRef = useRef<THREE.LineSegments | null>(null);
   const axesGroupRef = useRef<THREE.Group | null>(null);
@@ -2755,21 +2755,59 @@ function Coords3dMap3dView({
       pointsRef.current = pointsCloud;
       root.add(pointsCloud);
 
-      const marker = new THREE.Mesh(
-        new THREE.SphereGeometry(0.01, 14, 14),
-        new THREE.MeshStandardMaterial({
-          color: 0xffffff,
-          emissive: 0xffffff,
-          emissiveIntensity: 0.35,
-          transparent: true,
-          opacity: 0.95,
-          depthWrite: false,
+      const markerGroup = new THREE.Group();
+
+      const markerSphere = new THREE.Mesh(
+        new THREE.SphereGeometry(0.008, 8, 8),
+        new THREE.MeshPhongMaterial({
+          color: 0xf59e0b,
+          specular: 0xffffff,
+          shininess: 110,
+          emissive: 0x000000,
+          transparent: false,
+          depthWrite: true,
+          depthTest: true,
         }),
       );
-      marker.visible = false;
-      marker.renderOrder = 7;
-      pickedMarkerRef.current = marker;
-      root.add(marker);
+
+      const ringRadius = 0.00; // Rings over the sphere
+      const ringTube = 0.000;
+
+      const ringMat = new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        transparent: true,
+        opacity: 0.85,
+        depthWrite: false,
+        depthTest: true,
+      });
+
+      const ringXy = new THREE.Mesh(
+        new THREE.TorusGeometry(ringRadius, ringTube, 12, 64),
+        ringMat.clone(),
+      );
+
+      const ringXz = new THREE.Mesh(
+        new THREE.TorusGeometry(ringRadius, ringTube, 12, 64),
+        ringMat.clone(),
+      );
+      ringXz.rotation.x = Math.PI / 2;
+
+      const ringYz = new THREE.Mesh(
+        new THREE.TorusGeometry(ringRadius, ringTube, 12, 64),
+        ringMat.clone(),
+      );
+      ringYz.rotation.y = Math.PI / 2;
+
+      markerGroup.add(markerSphere);
+      markerGroup.add(ringXy);
+      markerGroup.add(ringXz);
+      markerGroup.add(ringYz);
+
+      markerGroup.visible = false;
+      markerGroup.renderOrder = 20;
+
+      pickedMarkerRef.current = markerGroup;
+      scene.add(markerGroup);
 
       const resize = () => {
         if (!rendererRef.current || !cameraRef.current || !mountRef.current) return;
@@ -2800,13 +2838,6 @@ function Coords3dMap3dView({
         if (!rendererNow || !sceneNow || !cameraNow || !controlsNow) return;
 
         controlsNow.update();
-
-        const markerNow = pickedMarkerRef.current;
-        if (markerNow && markerNow.visible) {
-          const t = performance.now() * 0.004;
-          const pulse = 1 + 0.12 * Math.sin(t * 3.0);
-          markerNow.scale.setScalar(pulse);
-        }
 
         rendererNow.render(sceneNow, cameraNow);
         rafRef.current = requestAnimationFrame(animate);
@@ -2839,10 +2870,25 @@ function Coords3dMap3dView({
       planeTextureZRef.current?.dispose();
 
       if (pickedMarkerRef.current) {
-        pickedMarkerRef.current.geometry.dispose();
-        (pickedMarkerRef.current.material as THREE.Material).dispose();
+        pickedMarkerRef.current.traverse((obj) => {
+          const anyObj = obj as any;
+          if (anyObj.geometry?.dispose) {
+            try {
+              anyObj.geometry.dispose();
+            } catch {
+              // ignore
+            }
+          }
+          if (anyObj.material) {
+            const mat = anyObj.material;
+            if (Array.isArray(mat)) {
+              mat.forEach((m) => m?.dispose?.());
+            } else {
+              mat.dispose?.();
+            }
+          }
+        });
       }
-
       if (boxLineRef.current) {
         boxLineRef.current.geometry.dispose();
         (boxLineRef.current.material as THREE.Material).dispose();
@@ -3140,11 +3186,18 @@ function Coords3dMap3dView({
 
     pickedIndexRef.current = index;
     marker.visible = true;
-    marker.position.set(
+
+    const localPickedPos = new THREE.Vector3(
       mapPointAxisToLocalSigned(Number((p as any).x), mapper.x, axisSigns.x),
       mapPointAxisToLocalSigned(Number((p as any).y), mapper.y, axisSigns.y),
       mapPointAxisToLocalSigned(Number((p as any).z), mapper.z, axisSigns.z),
     );
+
+    const worldPickedPos = rootRef.current
+      ? rootRef.current.localToWorld(localPickedPos.clone())
+      : localPickedPos;
+
+    marker.position.copy(worldPickedPos);
 
     const mappedSliceIndices = {
       x: pointAxisToNearestSliceIndex(Number((p as any).x), mapper.x),
