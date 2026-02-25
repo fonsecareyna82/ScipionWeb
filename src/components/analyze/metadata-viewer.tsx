@@ -1,9 +1,14 @@
 // src/components/analyze/metadata-viewer.tsx
-import { useEffect, useMemo, useRef, useState } from "react";
-import type {
-  MutableRefObject,
-  MouseEvent as ReactMouseEvent,
-  UIEventHandler,
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MutableRefObject,
+  type MouseEvent as ReactMouseEvent,
+  type ReactNode,
+  type UIEventHandler,
 } from "react";
 import {
   Box,
@@ -20,7 +25,7 @@ import {
   Divider,
   Paper,
   Select,
-  SelectChangeEvent,
+  type SelectChangeEvent,
   Table,
   TableBody,
   TableCell,
@@ -56,12 +61,10 @@ type MetadataViewerProps = {
 type ViewMode = "table" | "gallery";
 
 type SelectedImageCell = {
-  /** Global row index in the table (0-based, matches vertical header) */
   rowIndexInTable: number;
   columnName: string;
 };
 
-// Local extension to support column visibility flag
 type MetadataColumnWithVisibility = MetadataColumn & {
   visible?: boolean;
 };
@@ -76,32 +79,111 @@ type ImageCacheEntry = {
   revoke: () => void;
 };
 
+type MetadataWindowResponse = MetadataRow[] | { rows?: MetadataRow[]; offset?: number };
+
+type ImageJobResult = { url: string; revoke: () => void };
+
+interface ImageJob {
+  run: () => Promise<ImageJobResult>;
+  onSuccess: (result: ImageJobResult) => void;
+  onError: (error: unknown) => void;
+  isCancelled: () => boolean;
+}
+
+type MetadataImageCellProps = {
+  projectId: number;
+  protocolId: number;
+  outputName: string;
+  tableName: string;
+  rowIndexInTable: number;
+  columnName: string;
+  cell: { kind: "image"; path: string };
+  size: number;
+  isSelected?: boolean;
+  onClick?: () => void;
+  imageCacheRef: MutableRefObject<Map<string, ImageCacheEntry>>;
+};
+
+type MetadataTablePanelProps = {
+  viewMode: ViewMode;
+  schema: MetadataTableSchema | null;
+  totalRows: number;
+  visibleColumns: MetadataColumnWithVisibility[];
+  columnSettings: Record<string, ColumnSettings>;
+  rowHeight: number;
+  rowSizeForScroll: number;
+  tableMinWidth?: number;
+  windowRows: MetadataRow[];
+  windowOffset: number;
+  windowLoading: boolean;
+  windowError: string | null;
+  topSpacerHeight: number;
+  bottomSpacerHeight: number;
+  hasData: boolean;
+  scrollRef: MutableRefObject<HTMLDivElement | null>;
+  handleScroll: UIEventHandler<HTMLDivElement>;
+  selectedRowIndex: number | null;
+  selectedImageCell: SelectedImageCell | null;
+  setSelectedRowIndex: (value: number | null) => void;
+  setSelectedImageCell: (value: SelectedImageCell | null) => void;
+  projectId: number;
+  protocolId: number;
+  outputName: string;
+  selectedTable: string;
+  imageCacheRef: MutableRefObject<Map<string, ImageCacheEntry>>;
+};
+
+type MetadataGalleryPanelProps = {
+  viewMode: ViewMode;
+  firstImageColumn: MetadataColumnWithVisibility | null;
+  galleryRows: MetadataRow[];
+  galleryLoading: boolean;
+  galleryError: string | null;
+  galleryScrollRef: MutableRefObject<HTMLDivElement | null>;
+  handleGalleryScroll: UIEventHandler<HTMLDivElement>;
+  selectedRowIndex: number | null;
+  selectedImageCell: SelectedImageCell | null;
+  setSelectedRowIndex: (value: number | null) => void;
+  setSelectedImageCell: (value: SelectedImageCell | null) => void;
+  projectId: number;
+  protocolId: number;
+  outputName: string;
+  selectedTable: string;
+  imageCacheRef: MutableRefObject<Map<string, ImageCacheEntry>>;
+  showSizeLabel: boolean;
+  sizeColumn: MetadataColumnWithVisibility | null;
+};
+
+type ColumnsDialogProps = {
+  open: boolean;
+  onClose: () => void;
+  onApply: () => void;
+  allColumns: MetadataColumnWithVisibility[];
+  columnSettings: Record<string, ColumnSettings>;
+  draftColumnSettings: Record<string, ColumnSettings> | null;
+  updateDraftColumnSettings: (colName: string, partial: Partial<ColumnSettings>) => void;
+};
+
+/* ======================= Constants ======================= */
+
 const BASE_THUMB_SIZE = 160;
 const NORMAL_ROW_HEIGHT = 32;
 const IMAGE_ROW_HEIGHT = BASE_THUMB_SIZE + 16;
 const EXTRA_BUFFER_ROWS = 10;
 
-// To avoid Chrome/Chromium scroll height limit (~33.5M px), cap virtual height below that.
 const MAX_VIRTUAL_SCROLL_HEIGHT = 30_000_000;
 
-// Widths for table layout
 const ROW_INDEX_COL_WIDTH = 52;
 const MIN_TEXT_COL_WIDTH = 140;
 const IMAGE_COL_MIN_WIDTH = BASE_THUMB_SIZE + 24;
 
-// Gallery paging
 const GALLERY_PAGE_SIZE = 120;
 
-// Limit concurrent image requests to avoid killing the API
 const MAX_CONCURRENT_IMAGE_REQUESTS = 4;
-
-// Limit cached object URLs per viewer to avoid unbounded memory growth
 const MAX_IMAGE_CACHE_ENTRIES = 400;
 
-// Header background color (light gray)
 const HEADER_BG = "#f3f4f6";
 
-// Dialog styles
 const DIALOG_HEADER_BG = "#e5e7eb";
 const DIALOG_ROW_ODD_BG = "#f9fafb";
 const DIALOG_ROW_EVEN_BG = "#ffffff";
@@ -148,42 +230,11 @@ const closeBtnSx = {
   },
 };
 
-/** Observe a DOM element size (content box). */
-function useElementSize<T extends Element>(ref: { current: T | null }) {
-  const [size, setSize] = useState({ width: 0, height: 0 });
-
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-
-    const ro = new ResizeObserver((entries) => {
-      const rect = entries[0]?.contentRect;
-      if (!rect) return;
-      setSize({ width: rect.width, height: rect.height });
-    });
-
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [ref]);
-
-  return size;
-}
-
-/* ======================= Global image request queue ======================= */
-
-type ImageJobResult = { url: string; revoke: () => void };
-
-interface ImageJob {
-  run: () => Promise<ImageJobResult>;
-  onSuccess: (result: ImageJobResult) => void;
-  onError: (error: unknown) => void;
-  isCancelled: () => boolean;
-}
+/* ======================= Global image queue ======================= */
 
 const imageJobQueue: ImageJob[] = [];
 let activeImageJobs = 0;
 
-/** Schedule next image job, respecting max concurrency and skipping cancelled jobs. */
 function scheduleNextImageJob() {
   if (activeImageJobs >= MAX_CONCURRENT_IMAGE_REQUESTS) {
     return;
@@ -192,7 +243,6 @@ function scheduleNextImageJob() {
   const job = imageJobQueue.shift();
   if (!job) return;
 
-  // Skip jobs cancelled before they start.
   if (job.isCancelled()) {
     scheduleNextImageJob();
     return;
@@ -200,14 +250,13 @@ function scheduleNextImageJob() {
 
   activeImageJobs += 1;
 
-  (async () => {
+  void (async () => {
     try {
       const result = await job.run();
 
       if (!job.isCancelled()) {
         job.onSuccess(result);
       } else {
-        // If the component got cancelled after fetch completion, release the object URL immediately.
         result.revoke();
       }
     } catch (error) {
@@ -221,13 +270,64 @@ function scheduleNextImageJob() {
   })();
 }
 
-/** Enqueue an image job to be processed with global concurrency limit. */
 function enqueueImageJob(job: ImageJob) {
   imageJobQueue.push(job);
   scheduleNextImageJob();
 }
 
-/** Read cache entry and move it to the end (LRU touch). */
+/* ======================= Generic helpers ======================= */
+
+function getErrorMessage(error: unknown, fallbackMessage: string): string {
+  if (typeof error === "object" && error && "message" in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === "string" && message.trim()) return message;
+  }
+  return fallbackMessage;
+}
+
+function parseWindowResponse(response: MetadataWindowResponse): {
+  rows: MetadataRow[];
+  offset?: number;
+} {
+  if (Array.isArray(response)) {
+    return { rows: response };
+  }
+
+  return {
+    rows: Array.isArray(response.rows) ? response.rows : [],
+    offset: typeof response.offset === "number" ? response.offset : undefined,
+  };
+}
+
+function formatCellValue(value: MetadataCell): ReactNode {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "number") return value;
+  if (typeof value === "boolean") return value ? "true" : "false";
+  if (typeof value === "string") return value;
+
+  if (typeof value === "object" && "kind" in value) {
+    if ((value as { kind?: string }).kind === "matrix") {
+      const matrixValue = (value as { value?: unknown }).value;
+      if (Array.isArray(matrixValue) && matrixValue.length > 0 && Array.isArray(matrixValue[0])) {
+        return `matrix ${matrixValue.length}×${matrixValue[0].length}`;
+      }
+      return "matrix";
+    }
+
+    if ((value as { kind?: string }).kind === "image") {
+      return "[image]";
+    }
+  }
+
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+/* ======================= Cache helpers ======================= */
+
 function getImageCacheEntry(
   cache: Map<string, ImageCacheEntry>,
   key: string,
@@ -240,7 +340,6 @@ function getImageCacheEntry(
   return entry;
 }
 
-/** Insert or replace cache entry and evict oldest items (LRU). */
 function setImageCacheEntry(
   cache: Map<string, ImageCacheEntry>,
   key: string,
@@ -258,28 +357,642 @@ function setImageCacheEntry(
     const oldestKey = cache.keys().next().value as string | undefined;
     if (!oldestKey) break;
 
-    const oldest = cache.get(oldestKey);
+    const oldestEntry = cache.get(oldestKey);
     cache.delete(oldestKey);
-    if (oldest) {
-      oldest.revoke();
+    if (oldestEntry) {
+      oldestEntry.revoke();
     }
   }
 }
 
-type MetadataImageCellProps = {
+/* ======================= Shared hooks ======================= */
+
+function useIsMountedRef() {
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  return isMountedRef;
+}
+
+function useElementSize<T extends Element>(ref: { current: T | null }) {
+  const [size, setSize] = useState({ width: 0, height: 0 });
+
+  useEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+
+    const resizeObserver = new ResizeObserver((entries) => {
+      const rect = entries[0]?.contentRect;
+      if (!rect) return;
+      setSize({ width: rect.width, height: rect.height });
+    });
+
+    resizeObserver.observe(element);
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, [ref]);
+
+  return size;
+}
+
+function useImageCache() {
+  const imageCacheRef = useRef<Map<string, ImageCacheEntry>>(new Map());
+
+  const clearImageCache = useCallback(() => {
+    for (const [, entry] of imageCacheRef.current) {
+      entry.revoke();
+    }
+    imageCacheRef.current.clear();
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      clearImageCache();
+    };
+  }, [clearImageCache]);
+
+  return { imageCacheRef, clearImageCache };
+}
+
+/* ======================= Data hooks ======================= */
+
+function useMetadataTables(
+  projectId: number,
+  protocolId: number,
+  outputName: string,
+  isMountedRef: MutableRefObject<boolean>,
+) {
+  const [tables, setTables] = useState<MetadataTableInfo[] | null>(null);
+  const [tablesLoading, setTablesLoading] = useState(false);
+  const [tablesError, setTablesError] = useState<string | null>(null);
+  const [selectedTable, setSelectedTable] = useState<string | "">("");
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        setTablesLoading(true);
+        setTablesError(null);
+
+        const list = await fetchOutputMetadataTables(projectId, protocolId, outputName);
+        if (cancelled || !isMountedRef.current) return;
+
+        const safeList = list || [];
+        setTables(safeList);
+
+        setSelectedTable((prev) => {
+          if (!safeList.length) return "";
+          if (prev && safeList.some((table) => table.name === prev)) return prev;
+          return safeList[0].name;
+        });
+      } catch (error) {
+        if (cancelled || !isMountedRef.current) return;
+
+        setTables([]);
+        setTablesError(getErrorMessage(error, "Failed to load metadata tables"));
+        setSelectedTable("");
+      } finally {
+        if (!cancelled && isMountedRef.current) {
+          setTablesLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, protocolId, outputName, isMountedRef]);
+
+  return {
+    tables,
+    tablesLoading,
+    tablesError,
+    selectedTable,
+    setSelectedTable,
+  };
+}
+
+function useMetadataSchema(
+  projectId: number,
+  protocolId: number,
+  outputName: string,
+  selectedTable: string,
+  isMountedRef: MutableRefObject<boolean>,
+) {
+  const [schema, setSchema] = useState<MetadataTableSchema | null>(null);
+  const [schemaLoading, setSchemaLoading] = useState(false);
+  const [schemaError, setSchemaError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!selectedTable) {
+      setSchema(null);
+      setSchemaLoading(false);
+      setSchemaError(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        setSchemaLoading(true);
+        setSchemaError(null);
+
+        const nextSchema = await fetchMetadataTableSchema(
+          projectId,
+          protocolId,
+          outputName,
+          selectedTable,
+        );
+
+        if (cancelled || !isMountedRef.current) return;
+        setSchema(nextSchema);
+      } catch (error) {
+        if (cancelled || !isMountedRef.current) return;
+
+        setSchema(null);
+        setSchemaError(getErrorMessage(error, "Failed to load metadata schema"));
+      } finally {
+        if (!cancelled && isMountedRef.current) {
+          setSchemaLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, protocolId, outputName, selectedTable, isMountedRef]);
+
+  return {
+    schema,
+    setSchema,
+    schemaLoading,
+    schemaError,
+    setSchemaError,
+  };
+}
+
+function useColumnSettings(schema: MetadataTableSchema | null, selectedTable: string) {
+  const [columnSettings, setColumnSettings] = useState<Record<string, ColumnSettings>>({});
+
+  useEffect(() => {
+    if (!schema) {
+      setColumnSettings({});
+      return;
+    }
+
+    setColumnSettings((prev) => {
+      const next: Record<string, ColumnSettings> = {};
+      const columns = (schema.columns ?? []) as MetadataColumnWithVisibility[];
+
+      for (const column of columns) {
+        const previousEntry = prev[column.name];
+        const defaultVisible = column.visible !== false;
+        const defaultRenderAsImage = column.rendererType === "image";
+
+        next[column.name] = {
+          visible: previousEntry?.visible ?? defaultVisible,
+          renderAsImage: previousEntry?.renderAsImage ?? defaultRenderAsImage,
+        };
+      }
+
+      return next;
+    });
+  }, [schema, selectedTable]);
+
+  return { columnSettings, setColumnSettings };
+}
+
+function useVirtualTableWindow(params: {
   projectId: number;
   protocolId: number;
   outputName: string;
-  tableName: string;
-  /** Global row index in the table (0-based) */
-  rowIndexInTable: number;
-  columnName: string;
-  cell: { kind: "image"; path: string };
-  size: number;
-  isSelected?: boolean;
-  onClick?: () => void;
-  imageCacheRef: MutableRefObject<Map<string, ImageCacheEntry>>;
-};
+  selectedTable: string;
+  schema: MetadataTableSchema | null;
+  totalRows: number;
+  viewMode: ViewMode;
+  rowHeight: number;
+  rowSizeForScroll: number;
+  desiredWindowSize: number;
+  scrollRef: MutableRefObject<HTMLDivElement | null>;
+  isMountedRef: MutableRefObject<boolean>;
+}) {
+  const {
+    projectId,
+    protocolId,
+    outputName,
+    selectedTable,
+    schema,
+    totalRows,
+    viewMode,
+    rowHeight,
+    rowSizeForScroll,
+    desiredWindowSize,
+    scrollRef,
+    isMountedRef,
+  } = params;
+
+  const [windowRows, setWindowRows] = useState<MetadataRow[]>([]);
+  const [windowOffset, setWindowOffset] = useState(0);
+  const [windowLoading, setWindowLoading] = useState(false);
+  const [windowError, setWindowError] = useState<string | null>(null);
+
+  const windowRequestInFlightRef = useRef(false);
+  const pendingWindowOffsetRef = useRef<number | null>(null);
+  const windowEpochRef = useRef(0);
+
+  const desiredWindowSizeRef = useRef(desiredWindowSize);
+
+  useEffect(() => {
+    desiredWindowSizeRef.current = desiredWindowSize;
+  }, [desiredWindowSize]);
+
+  const invalidateWindowState = useCallback(() => {
+    windowEpochRef.current += 1;
+    windowRequestInFlightRef.current = false;
+    pendingWindowOffsetRef.current = null;
+    setWindowRows([]);
+    setWindowOffset(0);
+    setWindowLoading(false);
+    setWindowError(null);
+  }, []);
+
+  const loadWindow = useCallback(
+    async (requestedOffset: number) => {
+      if (!selectedTable || totalRows <= 0) return;
+
+      const limit = desiredWindowSizeRef.current || 60;
+      const maxOffset = Math.max(0, totalRows - limit);
+      const clampedOffset = Math.min(Math.max(0, requestedOffset), maxOffset);
+
+      if (windowRequestInFlightRef.current) {
+        pendingWindowOffsetRef.current = clampedOffset;
+        return;
+      }
+
+      const requestEpoch = windowEpochRef.current;
+
+      windowRequestInFlightRef.current = true;
+      setWindowLoading(true);
+      setWindowError(null);
+
+      try {
+        const response = (await fetchMetadataTableWindow(
+          projectId,
+          protocolId,
+          outputName,
+          selectedTable,
+          { offset: clampedOffset, limit, selectionOnly: false },
+        )) as MetadataWindowResponse;
+
+        if (!isMountedRef.current || requestEpoch !== windowEpochRef.current) {
+          return;
+        }
+
+        const parsed = parseWindowResponse(response);
+        setWindowRows(parsed.rows);
+        setWindowOffset(parsed.offset ?? clampedOffset);
+      } catch (error) {
+        if (!isMountedRef.current || requestEpoch !== windowEpochRef.current) {
+          return;
+        }
+
+        setWindowRows([]);
+        setWindowError(getErrorMessage(error, "Failed to load rows"));
+      } finally {
+        if (!isMountedRef.current || requestEpoch !== windowEpochRef.current) {
+          return;
+        }
+
+        setWindowLoading(false);
+        windowRequestInFlightRef.current = false;
+
+        const pendingOffset = pendingWindowOffsetRef.current;
+        pendingWindowOffsetRef.current = null;
+
+        if (pendingOffset != null && totalRows > 0) {
+          void loadWindow(pendingOffset);
+        }
+      }
+    },
+    [
+      isMountedRef,
+      outputName,
+      projectId,
+      protocolId,
+      selectedTable,
+      totalRows,
+    ],
+  );
+
+  useEffect(() => {
+    invalidateWindowState();
+
+    if (!schema || !selectedTable || totalRows === 0) return;
+    if (viewMode === "table") {
+      void loadWindow(0);
+    }
+  }, [
+    schema,
+    selectedTable,
+    totalRows,
+    projectId,
+    protocolId,
+    outputName,
+    viewMode,
+    loadWindow,
+    invalidateWindowState,
+  ]);
+
+  useEffect(() => {
+    if (
+      viewMode === "table" &&
+      schema &&
+      selectedTable &&
+      totalRows > 0 &&
+      windowRows.length === 0 &&
+      !windowLoading &&
+      !windowError
+    ) {
+      void loadWindow(0);
+    }
+  }, [
+    viewMode,
+    schema,
+    selectedTable,
+    totalRows,
+    windowRows.length,
+    windowLoading,
+    windowError,
+    loadWindow,
+  ]);
+
+  useEffect(() => {
+    if (
+      viewMode !== "table" ||
+      !schema ||
+      !selectedTable ||
+      totalRows <= 0 ||
+      windowRows.length > 0 ||
+      windowLoading ||
+      windowError
+    ) {
+      return;
+    }
+
+    const container = scrollRef.current;
+    const scrollTop = container?.scrollTop ?? 0;
+    const effectiveRowSize = rowSizeForScroll || rowHeight || NORMAL_ROW_HEIGHT;
+    const firstVisible = Math.floor(scrollTop / effectiveRowSize);
+
+    const limit = desiredWindowSizeRef.current || 60;
+    const buffer = Math.floor(limit / 3);
+    const maxOffset = Math.max(0, totalRows - limit);
+
+    let targetOffset = firstVisible - buffer;
+    if (targetOffset < 0) targetOffset = 0;
+    if (targetOffset > maxOffset) targetOffset = maxOffset;
+
+    void loadWindow(targetOffset);
+  }, [
+    viewMode,
+    schema,
+    selectedTable,
+    totalRows,
+    windowRows.length,
+    windowLoading,
+    windowError,
+    rowSizeForScroll,
+    rowHeight,
+    scrollRef,
+    loadWindow,
+  ]);
+
+  const handleScroll = useCallback<UIEventHandler<HTMLDivElement>>(
+    (event) => {
+      if (!schema || !selectedTable || totalRows === 0) return;
+
+      const effectiveRowSize = rowSizeForScroll || rowHeight || NORMAL_ROW_HEIGHT;
+      if (effectiveRowSize <= 0) return;
+
+      const element = event.currentTarget;
+      const firstVisible = Math.floor(element.scrollTop / effectiveRowSize);
+
+      const limit = desiredWindowSizeRef.current || windowRows.length || 60;
+      const buffer = Math.floor(limit / 3);
+      const maxOffset = Math.max(0, totalRows - limit);
+
+      let targetOffset = firstVisible - buffer;
+      if (targetOffset < 0) targetOffset = 0;
+      if (targetOffset > maxOffset) targetOffset = maxOffset;
+
+      const distance = Math.abs(targetOffset - windowOffset);
+      if (distance < Math.max(5, Math.floor(buffer / 2))) {
+        return;
+      }
+
+      void loadWindow(targetOffset);
+    },
+    [
+      schema,
+      selectedTable,
+      totalRows,
+      rowSizeForScroll,
+      rowHeight,
+      windowRows.length,
+      windowOffset,
+      loadWindow,
+    ],
+  );
+
+  return {
+    windowRows,
+    windowOffset,
+    windowLoading,
+    windowError,
+    handleScroll,
+    invalidateWindowState,
+  };
+}
+
+function useMetadataGalleryRows(params: {
+  projectId: number;
+  protocolId: number;
+  outputName: string;
+  selectedTable: string;
+  schema: MetadataTableSchema | null;
+  totalRows: number;
+  viewMode: ViewMode;
+  isMountedRef: MutableRefObject<boolean>;
+}) {
+  const {
+    projectId,
+    protocolId,
+    outputName,
+    selectedTable,
+    schema,
+    totalRows,
+    viewMode,
+    isMountedRef,
+  } = params;
+
+  const [galleryRows, setGalleryRows] = useState<MetadataRow[]>([]);
+  const [galleryNextOffset, setGalleryNextOffset] = useState(0);
+  const [galleryLoading, setGalleryLoading] = useState(false);
+  const [galleryError, setGalleryError] = useState<string | null>(null);
+  const [galleryHasMore, setGalleryHasMore] = useState(false);
+
+  const galleryRequestInFlightRef = useRef(false);
+  const galleryEpochRef = useRef(0);
+
+  const invalidateGalleryState = useCallback(() => {
+    galleryEpochRef.current += 1;
+    galleryRequestInFlightRef.current = false;
+    setGalleryRows([]);
+    setGalleryNextOffset(0);
+    setGalleryLoading(false);
+    setGalleryError(null);
+    setGalleryHasMore(false);
+  }, []);
+
+  const loadGalleryChunk = useCallback(
+    async (offset: number) => {
+      if (!selectedTable || !schema || totalRows === 0) return;
+      if (galleryRequestInFlightRef.current) return;
+
+      const remaining = totalRows - offset;
+      if (remaining <= 0) {
+        setGalleryHasMore(false);
+        return;
+      }
+
+      const limit = Math.min(GALLERY_PAGE_SIZE, remaining);
+      const requestEpoch = galleryEpochRef.current;
+
+      galleryRequestInFlightRef.current = true;
+      setGalleryLoading(true);
+      setGalleryError(null);
+
+      try {
+        const response = (await fetchMetadataTableWindow(
+          projectId,
+          protocolId,
+          outputName,
+          selectedTable,
+          { offset, limit, selectionOnly: false },
+        )) as MetadataWindowResponse;
+
+        if (!isMountedRef.current || requestEpoch !== galleryEpochRef.current) {
+          return;
+        }
+
+        const parsed = parseWindowResponse(response);
+
+        setGalleryRows((prev) => (offset === 0 ? parsed.rows : [...prev, ...parsed.rows]));
+
+        const nextOffset = offset + parsed.rows.length;
+        setGalleryNextOffset(nextOffset);
+        setGalleryHasMore(nextOffset < totalRows);
+      } catch (error) {
+        if (!isMountedRef.current || requestEpoch !== galleryEpochRef.current) {
+          return;
+        }
+
+        setGalleryError(getErrorMessage(error, "Failed to load gallery images"));
+      } finally {
+        if (!isMountedRef.current || requestEpoch !== galleryEpochRef.current) {
+          return;
+        }
+
+        setGalleryLoading(false);
+        galleryRequestInFlightRef.current = false;
+      }
+    },
+    [
+      isMountedRef,
+      outputName,
+      projectId,
+      protocolId,
+      schema,
+      selectedTable,
+      totalRows,
+    ],
+  );
+
+  useEffect(() => {
+    invalidateGalleryState();
+
+    if (!schema || !selectedTable || totalRows === 0) return;
+    if (viewMode === "gallery") {
+      void loadGalleryChunk(0);
+    }
+  }, [
+    schema,
+    selectedTable,
+    totalRows,
+    projectId,
+    protocolId,
+    outputName,
+    viewMode,
+    invalidateGalleryState,
+    loadGalleryChunk,
+  ]);
+
+  useEffect(() => {
+    if (
+      viewMode === "gallery" &&
+      schema &&
+      selectedTable &&
+      totalRows > 0 &&
+      galleryRows.length === 0 &&
+      !galleryLoading &&
+      !galleryError
+    ) {
+      void loadGalleryChunk(0);
+    }
+  }, [
+    viewMode,
+    schema,
+    selectedTable,
+    totalRows,
+    galleryRows.length,
+    galleryLoading,
+    galleryError,
+    loadGalleryChunk,
+  ]);
+
+  const handleGalleryScroll = useCallback<UIEventHandler<HTMLDivElement>>(
+    (event) => {
+      if (!galleryHasMore || galleryLoading) return;
+
+      const element = event.currentTarget;
+      if (element.scrollTop + element.clientHeight >= element.scrollHeight - 400) {
+        void loadGalleryChunk(galleryNextOffset);
+      }
+    },
+    [galleryHasMore, galleryLoading, galleryNextOffset, loadGalleryChunk],
+  );
+
+  return {
+    galleryRows,
+    galleryLoading,
+    galleryError,
+    galleryHasMore,
+    handleGalleryScroll,
+    invalidateGalleryState,
+  };
+}
+
+/* ======================= UI subcomponents ======================= */
 
 function MetadataImageCell({
   projectId,
@@ -322,7 +1035,6 @@ function MetadataImageCell({
 
     let cancelled = false;
 
-    // Clear stale thumbnail when the source changes.
     setThumbUrl(null);
     setLoading(true);
     setError(null);
@@ -350,14 +1062,9 @@ function MetadataImageCell({
         setError(null);
         setLoading(false);
       },
-      onError: (err: unknown) => {
+      onError: (requestError) => {
         if (cancelled) return;
-        const message =
-          typeof err === "object" && err && "message" in err
-            ? String((err as { message?: unknown }).message ?? "Failed to load image")
-            : "Failed to load image";
-
-        setError(message);
+        setError(getErrorMessage(requestError, "Failed to load image"));
         setLoading(false);
       },
     };
@@ -381,12 +1088,10 @@ function MetadataImageCell({
 
   const borderColor = isSelected ? "#2563eb" : "rgba(148,163,184,0.6)";
 
-  const handleClick = (ev: ReactMouseEvent<HTMLDivElement>) => {
-    // Only stop propagation when this component handles the click itself.
-    if (onClick) {
-      ev.stopPropagation();
-      onClick();
-    }
+  const handleClick = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if (!onClick) return;
+    event.stopPropagation();
+    onClick();
   };
 
   return (
@@ -426,262 +1131,712 @@ function MetadataImageCell({
   );
 }
 
+function MetadataTablePanel({
+  viewMode,
+  schema,
+  totalRows,
+  visibleColumns,
+  columnSettings,
+  rowHeight,
+  rowSizeForScroll,
+  tableMinWidth,
+  windowRows,
+  windowOffset,
+  windowLoading,
+  windowError,
+  topSpacerHeight,
+  bottomSpacerHeight,
+  hasData,
+  scrollRef,
+  handleScroll,
+  selectedRowIndex,
+  selectedImageCell,
+  setSelectedRowIndex,
+  setSelectedImageCell,
+  projectId,
+  protocolId,
+  outputName,
+  selectedTable,
+  imageCacheRef,
+}: MetadataTablePanelProps) {
+  if (!schema || totalRows <= 0) return null;
+
+  return (
+    <Paper
+      variant="outlined"
+      sx={{
+        mt: 0,
+        minHeight: 660,
+        maxHeight: 660,
+        minWidth: 840,
+        flexShrink: 0,
+        display: viewMode === "table" ? "flex" : "none",
+        flexDirection: "column",
+        borderColor: "rgba(148,163,184,0.4)",
+        backgroundColor: "background.paper",
+      }}
+    >
+      <TableContainer
+        ref={scrollRef}
+        onScroll={handleScroll}
+        sx={{
+          flex: 1,
+          overflow: "auto",
+        }}
+      >
+        <Table
+          size="small"
+          stickyHeader
+          sx={{
+            minWidth: tableMinWidth || 700,
+            tableLayout: "fixed",
+            borderCollapse: "collapse",
+            borderSpacing: 0,
+          }}
+        >
+          <TableHead>
+            <TableRow>
+              <TableCell
+                sx={{
+                  ...headerCellSx,
+                  width: ROW_INDEX_COL_WIDTH,
+                  minWidth: ROW_INDEX_COL_WIDTH,
+                  maxWidth: ROW_INDEX_COL_WIDTH,
+                  textAlign: "right",
+                  pr: 1,
+                  left: 0,
+                  zIndex: 3,
+                  borderRight: "1px solid rgba(148,163,184,0.6)",
+                }}
+              >
+                #
+              </TableCell>
+
+              {visibleColumns.map((column) => (
+                <TableCell
+                  key={column.name}
+                  sx={{
+                    ...headerCellSx,
+                    minWidth:
+                      column.rendererType === "image"
+                        ? IMAGE_COL_MIN_WIDTH
+                        : MIN_TEXT_COL_WIDTH,
+                    width:
+                      column.rendererType === "image"
+                        ? IMAGE_COL_MIN_WIDTH
+                        : MIN_TEXT_COL_WIDTH,
+                  }}
+                >
+                  {column.alias || column.name}
+                </TableCell>
+              ))}
+            </TableRow>
+          </TableHead>
+
+          <TableBody>
+            {topSpacerHeight > 0 && (
+              <TableRow style={{ height: topSpacerHeight }}>
+                <TableCell
+                  colSpan={visibleColumns.length + 1}
+                  sx={{ padding: 0, borderBottom: "none" }}
+                />
+              </TableRow>
+            )}
+
+            {windowRows.map((row, rowIndexInWindow) => {
+              const displayRowIndex = windowOffset + rowIndexInWindow;
+              const isHighlightedRow =
+                selectedRowIndex !== null && selectedRowIndex === displayRowIndex;
+
+              return (
+                <TableRow
+                  key={row.id ?? `${windowOffset}-${rowIndexInWindow}`}
+                  hover
+                  onClick={() => {
+                    setSelectedRowIndex(displayRowIndex);
+                    setSelectedImageCell(null);
+                  }}
+                  sx={{
+                    height: rowHeight,
+                    backgroundColor: isHighlightedRow
+                      ? "rgba(219,234,254,0.9)"
+                      : "background.paper",
+                    transition: "background-color 120ms ease-out",
+                    "&:hover": {
+                      backgroundColor: isHighlightedRow
+                        ? "rgba(191,219,254,0.95)"
+                        : "rgba(248,250,252,1)",
+                    },
+                    "&:hover td": {
+                      transition: "background-color 120ms ease-out",
+                    },
+                    "& > td": {
+                      borderRight: "1px solid rgba(148,163,184,0.25)",
+                    },
+                    "& > td:last-of-type": {
+                      borderRight: "none",
+                    },
+                  }}
+                >
+                  <TableCell
+                    sx={{
+                      ...baseCellSx,
+                      height: rowHeight,
+                      width: ROW_INDEX_COL_WIDTH,
+                      minWidth: ROW_INDEX_COL_WIDTH,
+                      maxWidth: ROW_INDEX_COL_WIDTH,
+                      textAlign: "right",
+                      pr: 1,
+                      position: "sticky",
+                      left: 0,
+                      zIndex: 2,
+                      borderRight: "1px solid rgba(148,163,184,0.3)",
+                      backgroundColor: HEADER_BG,
+                    }}
+                  >
+                    {displayRowIndex + 1}
+                  </TableCell>
+
+                  {visibleColumns.map((column) => {
+                    const cellValue = row.values[column.index];
+                    const isImageColumn = column.rendererType === "image";
+                    const renderAsImage =
+                      isImageColumn && (columnSettings[column.name]?.renderAsImage ?? true);
+
+                    const isSelectedImage =
+                      !!selectedImageCell &&
+                      isImageColumn &&
+                      renderAsImage &&
+                      selectedImageCell.rowIndexInTable === displayRowIndex &&
+                      selectedImageCell.columnName === column.name;
+
+                    const cellWidth =
+                      column.rendererType === "image"
+                        ? IMAGE_COL_MIN_WIDTH
+                        : MIN_TEXT_COL_WIDTH;
+
+                    if (
+                      renderAsImage &&
+                      cellValue &&
+                      typeof cellValue === "object" &&
+                      (cellValue as { kind?: string }).kind === "image"
+                    ) {
+                      const imageCell = cellValue as { kind: "image"; path: string };
+
+                      return (
+                        <TableCell
+                          key={column.name}
+                          sx={{
+                            ...baseCellSx,
+                            height: rowHeight,
+                            verticalAlign: "middle",
+                            width: cellWidth,
+                            minWidth: cellWidth,
+                            maxWidth: cellWidth,
+                            backgroundColor: isHighlightedRow
+                              ? "rgba(219,234,254,0.9)"
+                              : "background.paper",
+                          }}
+                        >
+                          <MetadataImageCell
+                            projectId={projectId}
+                            protocolId={protocolId}
+                            outputName={outputName}
+                            tableName={selectedTable}
+                            rowIndexInTable={displayRowIndex}
+                            columnName={column.name}
+                            cell={imageCell}
+                            size={BASE_THUMB_SIZE}
+                            isSelected={isSelectedImage}
+                            onClick={() => {
+                              setSelectedRowIndex(displayRowIndex);
+                              setSelectedImageCell({
+                                rowIndexInTable: displayRowIndex,
+                                columnName: column.name,
+                              });
+                            }}
+                            imageCacheRef={imageCacheRef}
+                          />
+                        </TableCell>
+                      );
+                    }
+
+                    return (
+                      <TableCell
+                        key={column.name}
+                        sx={{
+                          ...baseCellSx,
+                          height: rowHeight,
+                          verticalAlign: "middle",
+                          width: cellWidth,
+                          minWidth: cellWidth,
+                          maxWidth: cellWidth,
+                          backgroundColor: isHighlightedRow
+                            ? "rgba(219,234,254,0.9)"
+                            : "background.paper",
+                        }}
+                        title={typeof cellValue === "string" ? cellValue : undefined}
+                      >
+                        {formatCellValue(cellValue as MetadataCell)}
+                      </TableCell>
+                    );
+                  })}
+                </TableRow>
+              );
+            })}
+
+            {bottomSpacerHeight > 0 && (
+              <TableRow style={{ height: bottomSpacerHeight }}>
+                <TableCell
+                  colSpan={visibleColumns.length + 1}
+                  sx={{ padding: 0, borderBottom: "none" }}
+                />
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </TableContainer>
+
+      {windowLoading && hasData && (
+        <Box
+          sx={{
+            py: 0.5,
+            px: 1.5,
+            borderTop: "1px solid rgba(148,163,184,0.4)",
+            display: "flex",
+            alignItems: "center",
+            gap: 1,
+          }}
+        >
+          <CircularProgress size={14} />
+          <Typography variant="caption" color="text.secondary">
+            Loading rows…
+          </Typography>
+        </Box>
+      )}
+
+      {windowError && (
+        <Box
+          sx={{
+            py: 0.5,
+            px: 1.5,
+            borderTop: "1px solid rgba(148,163,184,0.4)",
+          }}
+        >
+          <Typography variant="caption" color="error">
+            {windowError}
+          </Typography>
+        </Box>
+      )}
+    </Paper>
+  );
+}
+
+function MetadataGalleryPanel({
+  viewMode,
+  firstImageColumn,
+  galleryRows,
+  galleryLoading,
+  galleryError,
+  galleryScrollRef,
+  handleGalleryScroll,
+  selectedImageCell,
+  setSelectedRowIndex,
+  setSelectedImageCell,
+  projectId,
+  protocolId,
+  outputName,
+  selectedTable,
+  imageCacheRef,
+  showSizeLabel,
+  sizeColumn,
+}: MetadataGalleryPanelProps) {
+  return (
+    <Paper
+      variant="outlined"
+      sx={{
+        mt: 1,
+        minHeight: 660,
+        maxHeight: 660,
+        minWidth: 840,
+        flexShrink: 0,
+        display: viewMode === "gallery" ? "flex" : "none",
+        flexDirection: "column",
+        borderColor: "rgba(148,163,184,0.4)",
+        backgroundColor: "background.paper",
+      }}
+    >
+      <Box
+        ref={galleryScrollRef}
+        onScroll={handleGalleryScroll}
+        sx={{
+          flex: 1,
+          overflow: "auto",
+        }}
+      >
+        {!firstImageColumn && (
+          <Box
+            sx={{
+              py: 4,
+              px: 3,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Typography variant="body2" color="text.secondary">
+              This table has no image columns to display in gallery mode.
+            </Typography>
+          </Box>
+        )}
+
+        {firstImageColumn && (
+          <Box
+            sx={{
+              p: 1,
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fill, minmax(170px, 1fr))",
+              gap: 0,
+            }}
+          >
+            {galleryRows.map((row, index) => {
+              const globalRowIndex = index;
+
+              const cellValue = row.values[firstImageColumn.index];
+              const isImageCell =
+                cellValue &&
+                typeof cellValue === "object" &&
+                (cellValue as { kind?: string }).kind === "image";
+
+              const imageCell = isImageCell
+                ? (cellValue as { kind: "image"; path: string })
+                : null;
+
+              const isSelected =
+                !!selectedImageCell &&
+                selectedImageCell.rowIndexInTable === globalRowIndex &&
+                selectedImageCell.columnName === firstImageColumn.name;
+
+              let sizeLabel: string | null = null;
+              if (showSizeLabel && sizeColumn) {
+                const sizeValue = row.values[sizeColumn.index];
+                if (sizeValue !== null && sizeValue !== undefined && sizeValue !== "") {
+                  sizeLabel = `size=${sizeValue}`;
+                }
+              }
+
+              return (
+                <Box
+                  key={row.id ?? `${index}`}
+                  onClick={() => {
+                    setSelectedRowIndex(globalRowIndex);
+                    setSelectedImageCell({
+                      rowIndexInTable: globalRowIndex,
+                      columnName: firstImageColumn.name,
+                    });
+                  }}
+                  sx={{
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    gap: 0.5,
+                    p: 0.75,
+                    borderRadius: 1.5,
+                    border: isSelected
+                      ? "2px solid #2563eb"
+                      : "1px solid rgba(148,163,184,0.45)",
+                    background: isSelected ? "#e0f2fe" : "#f9fafb",
+                    boxShadow: isSelected ? "0 0 0 1px rgba(37,99,235,0.3)" : "none",
+                    transition:
+                      "background-color 120ms ease-out, border-color 120ms ease-out, box-shadow 120ms ease-out",
+                    cursor: "pointer",
+                  }}
+                >
+                  {imageCell ? (
+                    <MetadataImageCell
+                      projectId={projectId}
+                      protocolId={protocolId}
+                      outputName={outputName}
+                      tableName={selectedTable}
+                      rowIndexInTable={globalRowIndex}
+                      columnName={firstImageColumn.name}
+                      cell={imageCell}
+                      size={BASE_THUMB_SIZE}
+                      isSelected={isSelected}
+                      imageCacheRef={imageCacheRef}
+                    />
+                  ) : (
+                    <Box
+                      sx={{
+                        width: BASE_THUMB_SIZE,
+                        height: BASE_THUMB_SIZE,
+                        borderRadius: 1,
+                        border: "1px dashed rgba(148,163,184,0.6)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      <Typography variant="caption" color="text.secondary">
+                        no image
+                      </Typography>
+                    </Box>
+                  )}
+
+                  <Box sx={{ minHeight: 18 }}>
+                    {sizeLabel && (
+                      <Typography variant="caption" color="text.secondary">
+                        {sizeLabel}
+                      </Typography>
+                    )}
+                  </Box>
+                </Box>
+              );
+            })}
+          </Box>
+        )}
+
+        {galleryLoading && (
+          <Box
+            sx={{
+              py: 1,
+              px: 2,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 1,
+            }}
+          >
+            <CircularProgress size={16} />
+            <Typography variant="caption" color="text.secondary">
+              Loading images…
+            </Typography>
+          </Box>
+        )}
+
+        {galleryError && (
+          <Box sx={{ py: 1, px: 2 }}>
+            <Typography variant="caption" color="error">
+              {galleryError}
+            </Typography>
+          </Box>
+        )}
+
+        {!galleryLoading && firstImageColumn && galleryRows.length === 0 && !galleryError && (
+          <Box
+            sx={{
+              py: 4,
+              px: 3,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Typography variant="body2" color="text.secondary">
+              No images to display yet.
+            </Typography>
+          </Box>
+        )}
+      </Box>
+    </Paper>
+  );
+}
+
+function ColumnsDialog({
+  open,
+  onClose,
+  onApply,
+  allColumns,
+  columnSettings,
+  draftColumnSettings,
+  updateDraftColumnSettings,
+}: ColumnsDialogProps) {
+  return (
+    <Dialog
+      open={open}
+      onClose={onClose}
+      maxWidth="sm"
+      fullWidth
+      BackdropProps={{
+        sx: { backgroundColor: "transparent" },
+      }}
+    >
+      <DialogTitle sx={headerColumnDialogSx}>
+        Columns
+        <IconButton
+          onClick={onClose}
+          aria-label="Close columns dialog"
+          size="small"
+          sx={closeBtnSx}
+        >
+          <CloseIcon fontSize="small" />
+        </IconButton>
+      </DialogTitle>
+
+      <DialogContent dividers>
+        <Table size="small">
+          <TableHead>
+            <TableRow
+              sx={{
+                backgroundColor: DIALOG_HEADER_BG,
+              }}
+            >
+              <TableCell sx={{ fontWeight: 600, fontSize: "0.8rem" }}>Label</TableCell>
+              <TableCell align="center" sx={{ fontWeight: 600, fontSize: "0.8rem" }}>
+                Visible
+              </TableCell>
+              <TableCell align="center" sx={{ fontWeight: 600, fontSize: "0.8rem" }}>
+                Render
+              </TableCell>
+            </TableRow>
+          </TableHead>
+
+          <TableBody>
+            {allColumns.map((column, index) => {
+              const draft = draftColumnSettings?.[column.name];
+              const current = columnSettings[column.name];
+
+              const effectiveVisible =
+                draft?.visible ?? current?.visible ?? (column.visible !== false);
+
+              const canRender = column.rendererType === "image";
+              const effectiveRenderAsImage =
+                draft?.renderAsImage ??
+                current?.renderAsImage ??
+                (column.rendererType === "image");
+
+              return (
+                <TableRow
+                  key={column.name}
+                  sx={{
+                    backgroundColor:
+                      index % 2 === 0 ? DIALOG_ROW_EVEN_BG : DIALOG_ROW_ODD_BG,
+                  }}
+                >
+                  <TableCell sx={{ fontSize: "0.8rem" }}>
+                    {column.alias || column.name}
+                  </TableCell>
+
+                  <TableCell align="center">
+                    <Checkbox
+                      size="small"
+                      checked={effectiveVisible}
+                      onChange={(event) =>
+                        updateDraftColumnSettings(column.name, {
+                          visible: event.target.checked,
+                        })
+                      }
+                    />
+                  </TableCell>
+
+                  <TableCell align="center">
+                    <Checkbox
+                      size="small"
+                      checked={canRender && effectiveRenderAsImage}
+                      disabled={!canRender}
+                      onChange={(event) =>
+                        updateDraftColumnSettings(column.name, {
+                          renderAsImage: event.target.checked,
+                        })
+                      }
+                    />
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </DialogContent>
+
+      <DialogActions>
+        <Button
+          variant="contained"
+          startIcon={<CloseIcon />}
+          onClick={onClose}
+          sx={{ textTransform: "none" }}
+          color="error"
+        >
+          Close
+        </Button>
+
+        <Button
+          variant="contained"
+          startIcon={<Check size={16} />}
+          onClick={onApply}
+          sx={{ textTransform: "none" }}
+        >
+          Ok
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+/* ======================= Main component ======================= */
+
 export function MetadataViewer({ projectId, protocolId, outputName }: MetadataViewerProps) {
+  const isMountedRef = useIsMountedRef();
+
   const [viewMode, setViewMode] = useState<ViewMode>("table");
 
-  // Tables list
-  const [tables, setTables] = useState<MetadataTableInfo[] | null>(null);
-  const [tablesLoading, setTablesLoading] = useState(false);
-  const [tablesError, setTablesError] = useState<string | null>(null);
-  const [selectedTable, setSelectedTable] = useState<string | "">("");
+  const [selectedRowIndex, setSelectedRowIndex] = useState<number | null>(null);
+  const [selectedImageCell, setSelectedImageCell] = useState<SelectedImageCell | null>(null);
 
-  // Schema
-  const [schema, setSchema] = useState<MetadataTableSchema | null>(null);
-  const [schemaLoading, setSchemaLoading] = useState(false);
-  const [schemaError, setSchemaError] = useState<string | null>(null);
-
-  // Column settings (visibility + render-as-image)
-  const [columnSettings, setColumnSettings] = useState<Record<string, ColumnSettings>>({});
-
-  // Column settings dialog
   const [columnsDialogOpen, setColumnsDialogOpen] = useState(false);
   const [draftColumnSettings, setDraftColumnSettings] =
     useState<Record<string, ColumnSettings> | null>(null);
 
-  // Virtual window of rows for table mode
-  const [windowRows, setWindowRows] = useState<MetadataRow[]>([]);
-  const [windowOffset, setWindowOffset] = useState(0);
-  const [windowLoading, setWindowLoading] = useState(false);
-  const [windowError, setWindowError] = useState<string | null>(null);
-
-  // Single in-flight request and pending offset to avoid API overload
-  const windowRequestInFlightRef = useRef(false);
-  const pendingWindowOffsetRef = useRef<number | null>(null);
-
-  // Epoch to invalidate stale window responses on table/schema/context changes
-  const windowEpochRef = useRef(0);
-
-  // Gallery mode data
-  const [galleryRows, setGalleryRows] = useState<MetadataRow[]>([]);
-  const [galleryNextOffset, setGalleryNextOffset] = useState(0);
-  const [galleryLoading, setGalleryLoading] = useState(false);
-  const [galleryError, setGalleryError] = useState<string | null>(null);
-  const [galleryHasMore, setGalleryHasMore] = useState(false);
-  const galleryRequestInFlightRef = useRef(false);
-
-  // Epoch to invalidate stale gallery responses on table/schema/context changes
-  const galleryEpochRef = useRef(0);
-
-  // Component mounted guard for async safety
-  const isMountedRef = useRef(true);
-
-  // Selection
-  const [selectedRowIndex, setSelectedRowIndex] = useState<number | null>(null);
-  const [selectedImageCell, setSelectedImageCell] = useState<SelectedImageCell | null>(null);
-
-  // Image cache: shared between all image cells in this viewer
-  const imageCacheRef = useRef<Map<string, ImageCacheEntry>>(new Map());
-
-  const clearImageCache = () => {
-    for (const [, entry] of imageCacheRef.current) {
-      entry.revoke();
-    }
-    imageCacheRef.current.clear();
-  };
-
-  const invalidateWindowState = () => {
-    windowEpochRef.current += 1;
-    windowRequestInFlightRef.current = false;
-    pendingWindowOffsetRef.current = null;
-    setWindowRows([]);
-    setWindowOffset(0);
-    setWindowLoading(false);
-    setWindowError(null);
-  };
-
-  const invalidateGalleryState = () => {
-    galleryEpochRef.current += 1;
-    galleryRequestInFlightRef.current = false;
-    setGalleryRows([]);
-    setGalleryNextOffset(0);
-    setGalleryLoading(false);
-    setGalleryError(null);
-    setGalleryHasMore(false);
-  };
-
-  useEffect(() => {
-    return () => {
-      isMountedRef.current = false;
-      clearImageCache();
-      windowEpochRef.current += 1;
-      galleryEpochRef.current += 1;
-    };
-  }, []);
-
-  // Scroll container refs and size
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const galleryScrollRef = useRef<HTMLDivElement | null>(null);
   const { height: viewportHeight } = useElementSize(scrollRef);
 
-  // Load tables list using the API client
-  useEffect(() => {
-    let cancelled = false;
+  const { imageCacheRef, clearImageCache } = useImageCache();
 
-    (async () => {
-      try {
-        setTablesLoading(true);
-        setTablesError(null);
+  const {
+    tables,
+    tablesLoading,
+    tablesError,
+    selectedTable,
+    setSelectedTable,
+  } = useMetadataTables(projectId, protocolId, outputName, isMountedRef);
 
-        const list = await fetchOutputMetadataTables(projectId, protocolId, outputName);
-        if (cancelled || !isMountedRef.current) return;
+  const {
+    schema,
+    setSchema,
+    schemaLoading,
+    schemaError,
+    setSchemaError,
+  } = useMetadataSchema(projectId, protocolId, outputName, selectedTable, isMountedRef);
 
-        const safeList = list || [];
-        setTables(safeList);
+  const { columnSettings, setColumnSettings } = useColumnSettings(schema, selectedTable);
 
-        setSelectedTable((prev) => {
-          if (!safeList.length) return "";
-          if (prev && safeList.some((t) => t.name === prev)) return prev;
-          return safeList[0].name;
-        });
-      } catch (e: unknown) {
-        if (!cancelled && isMountedRef.current) {
-          const message =
-            typeof e === "object" && e && "message" in e
-              ? String((e as { message?: unknown }).message ?? "Failed to load metadata tables")
-              : "Failed to load metadata tables";
-          setTablesError(message);
-          setTables([]);
-          setSelectedTable("");
-        }
-      } finally {
-        if (!cancelled && isMountedRef.current) {
-          setTablesLoading(false);
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [projectId, protocolId, outputName]);
-
-  const handleTableChange = (ev: SelectChangeEvent<string>) => {
-    const value = ev.target.value;
-
-    setSelectedTable(value);
-    setSchema(null);
-    setSchemaError(null);
-
-    invalidateWindowState();
-    invalidateGalleryState();
-
-    setSelectedRowIndex(null);
-    setSelectedImageCell(null);
-
-    clearImageCache();
-  };
-
-  const tableInfo: MetadataTableInfo | null = useMemo(() => {
+  const tableInfo = useMemo<MetadataTableInfo | null>(() => {
     if (!tables || !selectedTable) return null;
-    return tables.find((t) => t.name === selectedTable) || null;
+    return tables.find((table) => table.name === selectedTable) || null;
   }, [tables, selectedTable]);
 
   const totalRows = tableInfo?.rowCount ?? 0;
 
-  // Load schema for selected table
-  useEffect(() => {
-    if (!selectedTable) {
-      setSchema(null);
-      return;
-    }
-
-    let cancelled = false;
-
-    (async () => {
-      try {
-        setSchemaLoading(true);
-        setSchemaError(null);
-
-        const nextSchema = await fetchMetadataTableSchema(
-          projectId,
-          protocolId,
-          outputName,
-          selectedTable,
-        );
-
-        if (cancelled || !isMountedRef.current) return;
-        setSchema(nextSchema);
-      } catch (e: unknown) {
-        if (!cancelled && isMountedRef.current) {
-          const message =
-            typeof e === "object" && e && "message" in e
-              ? String((e as { message?: unknown }).message ?? "Failed to load metadata schema")
-              : "Failed to load metadata schema";
-
-          setSchema(null);
-          setSchemaError(message);
-        }
-      } finally {
-        if (!cancelled && isMountedRef.current) {
-          setSchemaLoading(false);
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [projectId, protocolId, outputName, selectedTable]);
-
-  // Initialize or update column settings when schema changes
-  useEffect(() => {
-    if (!schema) {
-      setColumnSettings({});
-      return;
-    }
-
-    setColumnSettings((prev) => {
-      const next: Record<string, ColumnSettings> = {};
-      const cols = (schema.columns ?? []) as MetadataColumnWithVisibility[];
-
-      for (const col of cols) {
-        const prevEntry = prev[col.name];
-        const defaultVisible = col.visible !== false;
-        const defaultRender = col.rendererType === "image";
-
-        next[col.name] = {
-          visible: prevEntry?.visible ?? defaultVisible,
-          renderAsImage: prevEntry?.renderAsImage ?? defaultRender,
-        };
-      }
-
-      return next;
-    });
-  }, [schema, selectedTable]);
-
-  // All columns from schema
   const allColumns: MetadataColumnWithVisibility[] = useMemo(
     () => (schema?.columns ?? []) as MetadataColumnWithVisibility[],
     [schema],
   );
 
-  // Columns that should actually be rendered (by visibility flag)
   const visibleColumns: MetadataColumnWithVisibility[] = useMemo(
     () =>
-      allColumns.filter((c) => {
-        const settings = columnSettings[c.name];
+      allColumns.filter((column) => {
+        const settings = columnSettings[column.name];
         if (settings) return settings.visible;
-        return c.visible !== false;
+        return column.visible !== false;
       }),
     [allColumns, columnSettings],
   );
 
-  // Image columns that are both visible and rendered as images
   const imageColumns = useMemo(
     () =>
-      visibleColumns.filter((c) => {
-        if (c.rendererType !== "image") return false;
-        const settings = columnSettings[c.name];
+      visibleColumns.filter((column) => {
+        if (column.rendererType !== "image") return false;
+        const settings = columnSettings[column.name];
         return settings?.renderAsImage ?? true;
       }),
     [visibleColumns, columnSettings],
@@ -693,14 +1848,12 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
   const sizeColumn = useMemo(() => {
     if (!allColumns.length) return null;
 
-    const col = allColumns.find((c) => c.name === "_size");
-    if (!col) return null;
+    const column = allColumns.find((item) => item.name === "_size");
+    if (!column) return null;
 
-    const settings = columnSettings[col.name];
-    const visible = settings?.visible ?? (col.visible !== false);
-    if (!visible) return null;
-
-    return col;
+    const settings = columnSettings[column.name];
+    const visible = settings?.visible ?? (column.visible !== false);
+    return visible ? column : null;
   }, [allColumns, columnSettings]);
 
   const isClassTable = useMemo(() => {
@@ -713,7 +1866,6 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
 
   const rowHeight = hasImageColumns ? IMAGE_ROW_HEIGHT : NORMAL_ROW_HEIGHT;
 
-  // Virtual scroll: cap total scrollable height to avoid Chrome scroll limit
   const virtualContentHeight = useMemo(() => {
     if (!totalRows || !rowHeight) return 0;
     const fullHeight = totalRows * rowHeight;
@@ -731,298 +1883,57 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
     [pixelsPerRow, rowHeight],
   );
 
-  // Force view back to table if current table has no renderable images
   useEffect(() => {
     if (viewMode === "gallery" && !hasImageColumns) {
       setViewMode("table");
     }
-  }, [hasImageColumns, viewMode]);
+  }, [viewMode, hasImageColumns]);
 
-  // Desired window size (rows that can be visible + buffer)
   const desiredWindowSize = useMemo(() => {
     if (!rowHeight || viewportHeight <= 0) return 60;
     const approxVisible = Math.ceil(viewportHeight / rowHeight);
     return approxVisible * 2 + EXTRA_BUFFER_ROWS;
   }, [viewportHeight, rowHeight]);
 
-  const desiredWindowSizeRef = useRef(desiredWindowSize);
-  useEffect(() => {
-    desiredWindowSizeRef.current = desiredWindowSize;
-  }, [desiredWindowSize]);
-
-  const loadWindow = async (offset: number) => {
-    if (!selectedTable || totalRows <= 0) return;
-
-    const limit = desiredWindowSizeRef.current || 60;
-    const total = totalRows;
-    const maxOffset = total > 0 ? Math.max(0, total - limit) : 0;
-    const clampedOffset = total > 0 ? Math.min(Math.max(0, offset), maxOffset) : 0;
-
-    // If there is already a request in flight, remember the latest offset we want.
-    if (windowRequestInFlightRef.current) {
-      pendingWindowOffsetRef.current = clampedOffset;
-      return;
-    }
-
-    const requestEpoch = windowEpochRef.current;
-
-    windowRequestInFlightRef.current = true;
-    setWindowLoading(true);
-    setWindowError(null);
-
-    try {
-      const win = await fetchMetadataTableWindow(
-        projectId,
-        protocolId,
-        outputName,
-        selectedTable,
-        { offset: clampedOffset, limit, selectionOnly: false },
-      );
-
-      // Ignore stale responses from previous table/schema/context epochs.
-      if (!isMountedRef.current || requestEpoch !== windowEpochRef.current) {
-        return;
-      }
-
-      const rows: MetadataRow[] = Array.isArray(win)
-        ? (win as MetadataRow[])
-        : ((win as { rows?: MetadataRow[] }).rows ?? []);
-
-      setWindowRows(rows);
-
-      if (!Array.isArray(win) && typeof (win as { offset?: unknown }).offset === "number") {
-        setWindowOffset((win as { offset: number }).offset);
-      } else {
-        setWindowOffset(clampedOffset);
-      }
-    } catch (e: unknown) {
-      if (!isMountedRef.current || requestEpoch !== windowEpochRef.current) {
-        return;
-      }
-
-      const message =
-        typeof e === "object" && e && "message" in e
-          ? String((e as { message?: unknown }).message ?? "Failed to load rows")
-          : "Failed to load rows";
-
-      setWindowRows([]);
-      setWindowError(message);
-    } finally {
-      // Never let stale requests touch in-flight flags or loading state for the new epoch.
-      if (!isMountedRef.current || requestEpoch !== windowEpochRef.current) {
-        return;
-      }
-
-      setWindowLoading(false);
-      windowRequestInFlightRef.current = false;
-
-      // If there was a newer offset requested while loading, process it now.
-      const pending = pendingWindowOffsetRef.current;
-      pendingWindowOffsetRef.current = null;
-
-      if (pending != null && totalRows > 0) {
-        void loadWindow(pending);
-      }
-    }
-  };
-
-  // Initial window load when schema and table info are ready
-  useEffect(() => {
-    invalidateWindowState();
-
-    if (!schema || !selectedTable || totalRows === 0) return;
-    if (viewMode === "table") {
-      void loadWindow(0);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [schema, selectedTable, totalRows, projectId, protocolId, outputName]);
-
-  // Ensure data loaded when switching back to table view
-  useEffect(() => {
-    if (
-      viewMode === "table" &&
-      schema &&
-      selectedTable &&
-      totalRows > 0 &&
-      windowRows.length === 0 &&
-      !windowLoading &&
-      !windowError
-    ) {
-      void loadWindow(0);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewMode]);
-
-  // Self-recovery: if the table has rows but the current window is empty, load the window
-  // corresponding to the current scroll position.
-  useEffect(() => {
-    if (
-      viewMode !== "table" ||
-      !schema ||
-      !selectedTable ||
-      totalRows <= 0 ||
-      windowRows.length > 0 ||
-      windowLoading ||
-      windowError
-    ) {
-      return;
-    }
-
-    const container = scrollRef.current;
-    const scrollTop = container?.scrollTop ?? 0;
-    const rowSize = rowSizeForScroll || rowHeight || NORMAL_ROW_HEIGHT;
-    const firstVisible = Math.floor(scrollTop / rowSize);
-
-    const limit = desiredWindowSizeRef.current || 60;
-    const buffer = Math.floor(limit / 3);
-    const total = totalRows;
-    const maxOffset = Math.max(0, total - limit);
-
-    let targetOffset = firstVisible - buffer;
-    if (targetOffset < 0) targetOffset = 0;
-    if (targetOffset > maxOffset) targetOffset = maxOffset;
-
-    void loadWindow(targetOffset);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    viewMode,
-    schema,
-    selectedTable,
-    totalRows,
-    windowRows.length,
+  const {
+    windowRows,
+    windowOffset,
     windowLoading,
     windowError,
+    handleScroll,
+    invalidateWindowState,
+  } = useVirtualTableWindow({
+    projectId,
+    protocolId,
+    outputName,
+    selectedTable,
+    schema,
+    totalRows,
+    viewMode,
+    rowHeight,
     rowSizeForScroll,
-  ]);
+    desiredWindowSize,
+    scrollRef,
+    isMountedRef,
+  });
 
-  const handleScroll: UIEventHandler<HTMLDivElement> = (e) => {
-    if (!schema || !selectedTable || totalRows === 0) return;
+  const {
+    galleryRows,
+    galleryLoading,
+    galleryError,
+    handleGalleryScroll,
+    invalidateGalleryState,
+  } = useMetadataGalleryRows({
+    projectId,
+    protocolId,
+    outputName,
+    selectedTable,
+    schema,
+    totalRows,
+    viewMode,
+    isMountedRef,
+  });
 
-    const rowSize = rowSizeForScroll || rowHeight || NORMAL_ROW_HEIGHT;
-    if (rowSize <= 0) return;
-
-    const el = e.currentTarget;
-    const scrollTop = el.scrollTop;
-
-    // Map scrollTop to the first visible row using the virtual row size.
-    const firstVisible = Math.floor(scrollTop / rowSize);
-
-    const limit = desiredWindowSizeRef.current || windowRows.length || 60;
-    const buffer = Math.floor(limit / 3);
-    const total = totalRows;
-    const maxOffset = Math.max(0, total - limit);
-
-    let targetOffset = firstVisible - buffer;
-    if (targetOffset < 0) targetOffset = 0;
-    if (targetOffset > maxOffset) targetOffset = maxOffset;
-
-    const distance = Math.abs(targetOffset - windowOffset);
-    if (distance < Math.max(5, Math.floor(buffer / 2))) {
-      return;
-    }
-
-    void loadWindow(targetOffset);
-  };
-
-  const loadGalleryChunk = async (offset: number) => {
-    if (!selectedTable || !schema || totalRows === 0) return;
-
-    // Avoid concurrent gallery requests.
-    if (galleryRequestInFlightRef.current) return;
-
-    const remaining = totalRows - offset;
-    if (remaining <= 0) {
-      setGalleryHasMore(false);
-      return;
-    }
-
-    const limit = Math.min(GALLERY_PAGE_SIZE, remaining);
-    const requestEpoch = galleryEpochRef.current;
-
-    galleryRequestInFlightRef.current = true;
-    setGalleryLoading(true);
-    setGalleryError(null);
-
-    try {
-      const win = await fetchMetadataTableWindow(
-        projectId,
-        protocolId,
-        outputName,
-        selectedTable,
-        { offset, limit, selectionOnly: false },
-      );
-
-      if (!isMountedRef.current || requestEpoch !== galleryEpochRef.current) {
-        return;
-      }
-
-      const rows: MetadataRow[] = Array.isArray(win)
-        ? (win as MetadataRow[])
-        : ((win as { rows?: MetadataRow[] }).rows ?? []);
-
-      setGalleryRows((prev) => (offset === 0 ? rows : [...prev, ...rows]));
-
-      const nextOffset = offset + rows.length;
-      setGalleryNextOffset(nextOffset);
-      setGalleryHasMore(nextOffset < totalRows);
-    } catch (e: unknown) {
-      if (!isMountedRef.current || requestEpoch !== galleryEpochRef.current) {
-        return;
-      }
-
-      const message =
-        typeof e === "object" && e && "message" in e
-          ? String((e as { message?: unknown }).message ?? "Failed to load gallery images")
-          : "Failed to load gallery images";
-
-      setGalleryError(message);
-    } finally {
-      if (!isMountedRef.current || requestEpoch !== galleryEpochRef.current) {
-        return;
-      }
-
-      setGalleryLoading(false);
-      galleryRequestInFlightRef.current = false;
-    }
-  };
-
-  // Reset gallery when schema/table changes and load if we are in gallery view
-  useEffect(() => {
-    invalidateGalleryState();
-
-    if (!schema || !selectedTable || totalRows === 0) return;
-    if (viewMode === "gallery") {
-      void loadGalleryChunk(0);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [schema, selectedTable, totalRows, projectId, protocolId, outputName]);
-
-  // Ensure gallery data is loaded when switching to gallery view
-  useEffect(() => {
-    if (
-      viewMode === "gallery" &&
-      schema &&
-      selectedTable &&
-      totalRows > 0 &&
-      galleryRows.length === 0 &&
-      !galleryLoading &&
-      !galleryError
-    ) {
-      void loadGalleryChunk(0);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewMode]);
-
-  const handleGalleryScroll: UIEventHandler<HTMLDivElement> = (e) => {
-    if (!galleryHasMore || galleryLoading) return;
-
-    const el = e.currentTarget;
-    if (el.scrollTop + el.clientHeight >= el.scrollHeight - 400) {
-      void loadGalleryChunk(galleryNextOffset);
-    }
-  };
-
-  // Spacers use the virtual row size to keep total scroll height within limits.
   const topSpacerHeight = totalRows > 0 ? windowOffset * rowSizeForScroll : 0;
 
   const bottomSpacerHeight =
@@ -1030,105 +1941,106 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
       ? Math.max(0, (totalRows - windowOffset - windowRows.length) * rowSizeForScroll)
       : 0;
 
-  // Helper for non-image cells
-  const formatCellValue = (value: MetadataCell): React.ReactNode => {
-    if (value === null || value === undefined) return "";
-    if (typeof value === "number") return value;
-    if (typeof value === "boolean") return value ? "true" : "false";
-    if (typeof value === "string") return value;
-
-    if (typeof value === "object" && "kind" in value) {
-      if ((value as { kind?: string }).kind === "matrix") {
-        const matrixValue = (value as { value?: unknown }).value;
-        if (
-          Array.isArray(matrixValue) &&
-          matrixValue.length > 0 &&
-          Array.isArray(matrixValue[0])
-        ) {
-          return `matrix ${matrixValue.length}×${matrixValue[0].length}`;
-        }
-        return "matrix";
-      }
-
-      if ((value as { kind?: string }).kind === "image") {
-        return "[image]";
-      }
-    }
-
-    try {
-      return JSON.stringify(value);
-    } catch {
-      return String(value);
-    }
-  };
-
   const hasData = !!schema && totalRows > 0;
 
-  // Compute min width for the table so all visible columns have enough space.
   const tableMinWidth = useMemo(() => {
     if (!schema) return undefined;
 
-    const imageCols = visibleColumns.filter((c) => c.rendererType === "image").length;
-    const textCols = visibleColumns.length - imageCols;
+    const imageColumnCount = visibleColumns.filter(
+      (column) => column.rendererType === "image",
+    ).length;
+    const textColumnCount = visibleColumns.length - imageColumnCount;
 
     return (
       ROW_INDEX_COL_WIDTH +
-      textCols * MIN_TEXT_COL_WIDTH +
-      imageCols * IMAGE_COL_MIN_WIDTH
+      textColumnCount * MIN_TEXT_COL_WIDTH +
+      imageColumnCount * IMAGE_COL_MIN_WIDTH
     );
   }, [schema, visibleColumns]);
 
-  // Column dialog helpers
-  const openColumnsDialog = () => {
+  const resetSelection = useCallback(() => {
+    setSelectedRowIndex(null);
+    setSelectedImageCell(null);
+  }, []);
+
+  const handleTableChange = useCallback(
+    (event: SelectChangeEvent<string>) => {
+      const value = event.target.value;
+
+      setSelectedTable(value);
+      setSchema(null);
+      setSchemaError(null);
+
+      invalidateWindowState();
+      invalidateGalleryState();
+      resetSelection();
+      clearImageCache();
+    },
+    [
+      clearImageCache,
+      invalidateGalleryState,
+      invalidateWindowState,
+      resetSelection,
+      setSchema,
+      setSchemaError,
+      setSelectedTable,
+    ],
+  );
+
+  const openColumnsDialog = useCallback(() => {
     if (!schema) return;
 
-    const cols = (schema.columns ?? []) as MetadataColumnWithVisibility[];
+    const columns = (schema.columns ?? []) as MetadataColumnWithVisibility[];
     const draft: Record<string, ColumnSettings> = {};
 
-    for (const col of cols) {
+    for (const column of columns) {
       const current =
-        columnSettings[col.name] ?? {
-          visible: col.visible !== false,
-          renderAsImage: col.rendererType === "image",
+        columnSettings[column.name] ?? {
+          visible: column.visible !== false,
+          renderAsImage: column.rendererType === "image",
         };
 
-      draft[col.name] = { ...current };
+      draft[column.name] = { ...current };
     }
 
     setDraftColumnSettings(draft);
     setColumnsDialogOpen(true);
-  };
+  }, [schema, columnSettings]);
 
-  const closeColumnsDialog = () => {
+  const closeColumnsDialog = useCallback(() => {
     setColumnsDialogOpen(false);
     setDraftColumnSettings(null);
-  };
+  }, []);
 
-  const applyColumnsDialog = () => {
+  const applyColumnsDialog = useCallback(() => {
     if (draftColumnSettings) {
       setColumnSettings(draftColumnSettings);
     }
     setColumnsDialogOpen(false);
     setDraftColumnSettings(null);
-  };
+  }, [draftColumnSettings, setColumnSettings]);
 
-  const updateDraftColumnSettings = (
-    colName: string,
-    partial: Partial<ColumnSettings>,
-  ) => {
-    setDraftColumnSettings((prev) => {
-      if (!prev) return prev;
+  const updateDraftColumnSettings = useCallback(
+    (columnName: string, partial: Partial<ColumnSettings>) => {
+      setDraftColumnSettings((prev) => {
+        if (!prev) return prev;
 
-      const current = prev[colName] ?? { visible: true, renderAsImage: false };
-      return {
-        ...prev,
-        [colName]: {
-          ...current,
-          ...partial,
-        },
-      };
-    });
-  };
+        const current = prev[columnName] ?? {
+          visible: true,
+          renderAsImage: false,
+        };
+
+        return {
+          ...prev,
+          [columnName]: {
+            ...current,
+            ...partial,
+          },
+        };
+      });
+    },
+    [],
+  );
 
   return (
     <Box
@@ -1140,7 +2052,7 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
         mt: 2,
       }}
     >
-      {/* Header: view mode buttons + table selector + info */}
+      {/* Header */}
       <Box
         className="ml-4 mr-4 p-1 border rounded-lg shadow-sm bg-white dark:bg-gray-800 flex items-center gap-1"
         sx={{
@@ -1151,7 +2063,6 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
           flexWrap: "wrap",
         }}
       >
-        {/* Left: view mode buttons + column manager */}
         <Box
           className="ml-0 mr-4 p-0 border rounded-lg shadow-sm bg-white dark:bg-gray-800 flex items-center"
           sx={{
@@ -1234,7 +2145,6 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
           )}
         </Box>
 
-        {/* Center: table selector */}
         <Box
           sx={{
             flex: 1,
@@ -1252,8 +2162,8 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
               disabled={tablesLoading || !tables || tables.length === 0}
               renderValue={(value) => {
                 if (!value) return "";
-                const t = tables?.find((tbl) => tbl.name === value);
-                const label = t?.alias || t?.name || value;
+                const table = tables?.find((item) => item.name === value);
+                const label = table?.alias || table?.name || value;
 
                 return (
                   <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
@@ -1263,10 +2173,10 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
                 );
               }}
             >
-              {tables?.map((t) => {
-                const label = t.alias || t.name;
+              {tables?.map((table) => {
+                const label = table.alias || table.name;
                 return (
-                  <MenuItem key={t.name} value={t.name}>
+                  <MenuItem key={table.name} value={table.name}>
                     <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
                       <TableIcon size={14} />
                       <span>{label}</span>
@@ -1278,7 +2188,6 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
           </FormControl>
         </Box>
 
-        {/* Right: output info */}
         <Box
           className="mr-2"
           sx={{
@@ -1337,590 +2246,67 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
         </Typography>
       )}
 
+      <MetadataTablePanel
+        viewMode={viewMode}
+        schema={schema}
+        totalRows={totalRows}
+        visibleColumns={visibleColumns}
+        columnSettings={columnSettings}
+        rowHeight={rowHeight}
+        rowSizeForScroll={rowSizeForScroll}
+        tableMinWidth={tableMinWidth}
+        windowRows={windowRows}
+        windowOffset={windowOffset}
+        windowLoading={windowLoading}
+        windowError={windowError}
+        topSpacerHeight={topSpacerHeight}
+        bottomSpacerHeight={bottomSpacerHeight}
+        hasData={hasData}
+        scrollRef={scrollRef}
+        handleScroll={handleScroll}
+        selectedRowIndex={selectedRowIndex}
+        selectedImageCell={selectedImageCell}
+        setSelectedRowIndex={setSelectedRowIndex}
+        setSelectedImageCell={setSelectedImageCell}
+        projectId={projectId}
+        protocolId={protocolId}
+        outputName={outputName}
+        selectedTable={selectedTable}
+        imageCacheRef={imageCacheRef}
+      />
+
       {selectedTable && schema && totalRows > 0 && (
-        <>
-          {/* TABLE VIEW */}
-          <Paper
-            variant="outlined"
-            sx={{
-              mt: 0,
-              minHeight: 660,
-              maxHeight: 660,
-              minWidth: 840,
-              flexShrink: 0,
-              display: viewMode === "table" ? "flex" : "none",
-              flexDirection: "column",
-              borderColor: "rgba(148,163,184,0.4)",
-              backgroundColor: "background.paper",
-            }}
-          >
-            <TableContainer
-              ref={scrollRef}
-              onScroll={handleScroll}
-              sx={{
-                flex: 1,
-                overflow: "auto",
-              }}
-            >
-              <Table
-                size="small"
-                stickyHeader
-                sx={{
-                  minWidth: tableMinWidth || 700,
-                  tableLayout: "fixed",
-                  borderCollapse: "collapse",
-                  borderSpacing: 0,
-                }}
-              >
-                <TableHead>
-                  <TableRow>
-                    {/* Row index column header */}
-                    <TableCell
-                      sx={{
-                        ...headerCellSx,
-                        width: ROW_INDEX_COL_WIDTH,
-                        minWidth: ROW_INDEX_COL_WIDTH,
-                        maxWidth: ROW_INDEX_COL_WIDTH,
-                        textAlign: "right",
-                        pr: 1,
-                        left: 0,
-                        zIndex: 3,
-                        borderRight: "1px solid rgba(148,163,184,0.6)",
-                      }}
-                    >
-                      #
-                    </TableCell>
-
-                    {visibleColumns.map((col) => (
-                      <TableCell
-                        key={col.name}
-                        sx={{
-                          ...headerCellSx,
-                          minWidth:
-                            col.rendererType === "image"
-                              ? IMAGE_COL_MIN_WIDTH
-                              : MIN_TEXT_COL_WIDTH,
-                          width:
-                            col.rendererType === "image"
-                              ? IMAGE_COL_MIN_WIDTH
-                              : MIN_TEXT_COL_WIDTH,
-                        }}
-                      >
-                        {col.alias || col.name}
-                      </TableCell>
-                    ))}
-                  </TableRow>
-                </TableHead>
-
-                <TableBody>
-                  {topSpacerHeight > 0 && (
-                    <TableRow style={{ height: topSpacerHeight }}>
-                      <TableCell
-                        colSpan={visibleColumns.length + 1}
-                        sx={{ padding: 0, borderBottom: "none" }}
-                      />
-                    </TableRow>
-                  )}
-
-                  {windowRows.map((row: MetadataRow, rowIndexInWindow: number) => {
-                    const displayRowIndex = windowOffset + rowIndexInWindow;
-                    const isHighlightedRow =
-                      selectedRowIndex !== null && selectedRowIndex === displayRowIndex;
-
-                    return (
-                      <TableRow
-                        key={row.id ?? `${windowOffset}-${rowIndexInWindow}`}
-                        hover
-                        onClick={() => {
-                          setSelectedRowIndex(displayRowIndex);
-                          setSelectedImageCell(null);
-                        }}
-                        sx={{
-                          height: rowHeight,
-                          backgroundColor: isHighlightedRow
-                            ? "rgba(219,234,254,0.9)"
-                            : "background.paper",
-                          transition: "background-color 120ms ease-out",
-                          "&:hover": {
-                            backgroundColor: isHighlightedRow
-                              ? "rgba(191,219,254,0.95)"
-                              : "rgba(248,250,252,1)",
-                          },
-                          "&:hover td": {
-                            transition: "background-color 120ms ease-out",
-                          },
-                          "& > td": {
-                            borderRight: "1px solid rgba(148,163,184,0.25)",
-                          },
-                          "& > td:last-of-type": {
-                            borderRight: "none",
-                          },
-                        }}
-                      >
-                        {/* Row index sticky cell */}
-                        <TableCell
-                          sx={{
-                            ...baseCellSx,
-                            height: rowHeight,
-                            width: ROW_INDEX_COL_WIDTH,
-                            minWidth: ROW_INDEX_COL_WIDTH,
-                            maxWidth: ROW_INDEX_COL_WIDTH,
-                            textAlign: "right",
-                            pr: 1,
-                            position: "sticky",
-                            left: 0,
-                            zIndex: 2,
-                            borderRight: "1px solid rgba(148,163,184,0.3)",
-                            backgroundColor: HEADER_BG,
-                          }}
-                        >
-                          {displayRowIndex + 1}
-                        </TableCell>
-
-                        {visibleColumns.map((col) => {
-                          const v = row.values[col.index];
-                          const isImageColumn = col.rendererType === "image";
-                          const renderAsImage =
-                            isImageColumn &&
-                            (columnSettings[col.name]?.renderAsImage ?? true);
-
-                          const isSelectedImage =
-                            !!selectedImageCell &&
-                            isImageColumn &&
-                            renderAsImage &&
-                            selectedImageCell.rowIndexInTable === displayRowIndex &&
-                            selectedImageCell.columnName === col.name;
-
-                          const cellWidth =
-                            col.rendererType === "image"
-                              ? IMAGE_COL_MIN_WIDTH
-                              : MIN_TEXT_COL_WIDTH;
-
-                          if (
-                            renderAsImage &&
-                            v &&
-                            typeof v === "object" &&
-                            (v as { kind?: string }).kind === "image"
-                          ) {
-                            const cell = v as { kind: "image"; path: string };
-
-                            return (
-                              <TableCell
-                                key={col.name}
-                                sx={{
-                                  ...baseCellSx,
-                                  height: rowHeight,
-                                  verticalAlign: "middle",
-                                  width: cellWidth,
-                                  minWidth: cellWidth,
-                                  maxWidth: cellWidth,
-                                  backgroundColor: isHighlightedRow
-                                    ? "rgba(219,234,254,0.9)"
-                                    : "background.paper",
-                                }}
-                              >
-                                <MetadataImageCell
-                                  projectId={projectId}
-                                  protocolId={protocolId}
-                                  outputName={outputName}
-                                  tableName={selectedTable}
-                                  rowIndexInTable={displayRowIndex}
-                                  columnName={col.name}
-                                  cell={cell}
-                                  size={BASE_THUMB_SIZE}
-                                  isSelected={isSelectedImage}
-                                  onClick={() => {
-                                    setSelectedRowIndex(displayRowIndex);
-                                    setSelectedImageCell({
-                                      rowIndexInTable: displayRowIndex,
-                                      columnName: col.name,
-                                    });
-                                  }}
-                                  imageCacheRef={imageCacheRef}
-                                />
-                              </TableCell>
-                            );
-                          }
-
-                          return (
-                            <TableCell
-                              key={col.name}
-                              sx={{
-                                ...baseCellSx,
-                                height: rowHeight,
-                                verticalAlign: "middle",
-                                width: cellWidth,
-                                minWidth: cellWidth,
-                                maxWidth: cellWidth,
-                                backgroundColor: isHighlightedRow
-                                  ? "rgba(219,234,254,0.9)"
-                                  : "background.paper",
-                              }}
-                              title={typeof v === "string" ? v : undefined}
-                            >
-                              {formatCellValue(v as MetadataCell)}
-                            </TableCell>
-                          );
-                        })}
-                      </TableRow>
-                    );
-                  })}
-
-                  {bottomSpacerHeight > 0 && (
-                    <TableRow style={{ height: bottomSpacerHeight }}>
-                      <TableCell
-                        colSpan={visibleColumns.length + 1}
-                        sx={{ padding: 0, borderBottom: "none" }}
-                      />
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </TableContainer>
-
-            {windowLoading && hasData && (
-              <Box
-                sx={{
-                  py: 0.5,
-                  px: 1.5,
-                  borderTop: "1px solid rgba(148,163,184,0.4)",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 1,
-                }}
-              >
-                <CircularProgress size={14} />
-                <Typography variant="caption" color="text.secondary">
-                  Loading rows…
-                </Typography>
-              </Box>
-            )}
-
-            {windowError && (
-              <Box
-                sx={{
-                  py: 0.5,
-                  px: 1.5,
-                  borderTop: "1px solid rgba(148,163,184,0.4)",
-                }}
-              >
-                <Typography variant="caption" color="error">
-                  {windowError}
-                </Typography>
-              </Box>
-            )}
-          </Paper>
-
-          {/* GALLERY VIEW */}
-          <Paper
-            variant="outlined"
-            sx={{
-              mt: 1,
-              minHeight: 660,
-              maxHeight: 660,
-              minWidth: 840,
-              flexShrink: 0,
-              display: viewMode === "gallery" ? "flex" : "none",
-              flexDirection: "column",
-              borderColor: "rgba(148,163,184,0.4)",
-              backgroundColor: "background.paper",
-            }}
-          >
-            <Box
-              ref={galleryScrollRef}
-              onScroll={handleGalleryScroll}
-              sx={{
-                flex: 1,
-                overflow: "auto",
-              }}
-            >
-              {!firstImageColumn && (
-                <Box
-                  sx={{
-                    py: 4,
-                    px: 3,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <Typography variant="body2" color="text.secondary">
-                    This table has no image columns to display in gallery mode.
-                  </Typography>
-                </Box>
-              )}
-
-              {firstImageColumn && (
-                <Box
-                  sx={{
-                    p: 1,
-                    display: "grid",
-                    gridTemplateColumns: "repeat(auto-fill, minmax(170px, 1fr))",
-                    gap: 0,
-                  }}
-                >
-                  {galleryRows.map((row, idx) => {
-                    // galleryRows are loaded sequentially from offset 0 in the current implementation
-                    const globalRowIndex = idx;
-
-                    const v = row.values[firstImageColumn.index];
-                    const isImageCell =
-                      v && typeof v === "object" && (v as { kind?: string }).kind === "image";
-                    const cell = isImageCell
-                      ? (v as { kind: "image"; path: string })
-                      : null;
-
-                    const isSelected =
-                      !!selectedImageCell &&
-                      selectedImageCell.rowIndexInTable === globalRowIndex &&
-                      selectedImageCell.columnName === firstImageColumn.name;
-
-                    let sizeLabel: string | null = null;
-                    if (showSizeLabel && sizeColumn) {
-                      const sizeValue = row.values[sizeColumn.index];
-                      if (sizeValue !== null && sizeValue !== undefined && sizeValue !== "") {
-                        sizeLabel = `size=${sizeValue}`;
-                      }
-                    }
-
-                    return (
-                      <Box
-                        key={row.id ?? `${idx}`}
-                        onClick={() => {
-                          setSelectedRowIndex(globalRowIndex);
-                          setSelectedImageCell({
-                            rowIndexInTable: globalRowIndex,
-                            columnName: firstImageColumn.name,
-                          });
-                        }}
-                        sx={{
-                          display: "flex",
-                          flexDirection: "column",
-                          alignItems: "center",
-                          gap: 0.5,
-                          p: 0.75,
-                          borderRadius: 1.5,
-                          border: isSelected
-                            ? "2px solid #2563eb"
-                            : "1px solid rgba(148,163,184,0.45)",
-                          background: isSelected ? "#e0f2fe" : "#f9fafb",
-                          boxShadow: isSelected
-                            ? "0 0 0 1px rgba(37,99,235,0.3)"
-                            : "none",
-                          transition:
-                            "background-color 120ms ease-out, border-color 120ms ease-out, box-shadow 120ms ease-out",
-                          cursor: "pointer",
-                        }}
-                      >
-                        {cell ? (
-                          <MetadataImageCell
-                            projectId={projectId}
-                            protocolId={protocolId}
-                            outputName={outputName}
-                            tableName={selectedTable}
-                            rowIndexInTable={globalRowIndex}
-                            columnName={firstImageColumn.name}
-                            cell={cell}
-                            size={BASE_THUMB_SIZE}
-                            isSelected={isSelected}
-                            imageCacheRef={imageCacheRef}
-                          />
-                        ) : (
-                          <Box
-                            sx={{
-                              width: BASE_THUMB_SIZE,
-                              height: BASE_THUMB_SIZE,
-                              borderRadius: 1,
-                              border: "1px dashed rgba(148,163,184,0.6)",
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                            }}
-                          >
-                            <Typography variant="caption" color="text.secondary">
-                              no image
-                            </Typography>
-                          </Box>
-                        )}
-
-                        {/* Optional size label only for Class2D/Class3D with _size column */}
-                        <Box sx={{ minHeight: 18 }}>
-                          {sizeLabel && (
-                            <Typography variant="caption" color="text.secondary">
-                              {sizeLabel}
-                            </Typography>
-                          )}
-                        </Box>
-                      </Box>
-                    );
-                  })}
-                </Box>
-              )}
-
-              {galleryLoading && (
-                <Box
-                  sx={{
-                    py: 1,
-                    px: 2,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: 1,
-                  }}
-                >
-                  <CircularProgress size={16} />
-                  <Typography variant="caption" color="text.secondary">
-                    Loading images…
-                  </Typography>
-                </Box>
-              )}
-
-              {galleryError && (
-                <Box sx={{ py: 1, px: 2 }}>
-                  <Typography variant="caption" color="error">
-                    {galleryError}
-                  </Typography>
-                </Box>
-              )}
-
-              {!galleryLoading && firstImageColumn && galleryRows.length === 0 && !galleryError && (
-                <Box
-                  sx={{
-                    py: 4,
-                    px: 3,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <Typography variant="body2" color="text.secondary">
-                    No images to display yet.
-                  </Typography>
-                </Box>
-              )}
-            </Box>
-          </Paper>
-        </>
+        <MetadataGalleryPanel
+          viewMode={viewMode}
+          firstImageColumn={firstImageColumn}
+          galleryRows={galleryRows}
+          galleryLoading={galleryLoading}
+          galleryError={galleryError}
+          galleryScrollRef={galleryScrollRef}
+          handleGalleryScroll={handleGalleryScroll}
+          selectedRowIndex={selectedRowIndex}
+          selectedImageCell={selectedImageCell}
+          setSelectedRowIndex={setSelectedRowIndex}
+          setSelectedImageCell={setSelectedImageCell}
+          projectId={projectId}
+          protocolId={protocolId}
+          outputName={outputName}
+          selectedTable={selectedTable}
+          imageCacheRef={imageCacheRef}
+          showSizeLabel={showSizeLabel}
+          sizeColumn={sizeColumn}
+        />
       )}
 
-      {/* Columns dialog */}
-      <Dialog
+      <ColumnsDialog
         open={columnsDialogOpen}
         onClose={closeColumnsDialog}
-        maxWidth="sm"
-        fullWidth
-        BackdropProps={{
-          sx: { backgroundColor: "transparent" },
-        }}
-      >
-        <DialogTitle sx={headerColumnDialogSx}>
-          Columns
-          <IconButton
-            onClick={closeColumnsDialog}
-            aria-label="Close columns dialog"
-            size="small"
-            sx={closeBtnSx}
-          >
-            <CloseIcon fontSize="small" />
-          </IconButton>
-        </DialogTitle>
-
-        <DialogContent dividers>
-          <Table size="small">
-            <TableHead>
-              <TableRow
-                sx={{
-                  backgroundColor: DIALOG_HEADER_BG,
-                }}
-              >
-                <TableCell sx={{ fontWeight: 600, fontSize: "0.8rem" }}>Label</TableCell>
-                <TableCell align="center" sx={{ fontWeight: 600, fontSize: "0.8rem" }}>
-                  Visible
-                </TableCell>
-                <TableCell align="center" sx={{ fontWeight: 600, fontSize: "0.8rem" }}>
-                  Render
-                </TableCell>
-              </TableRow>
-            </TableHead>
-
-            <TableBody>
-              {allColumns.map((col, idx) => {
-                const draft = draftColumnSettings?.[col.name];
-                const settings = columnSettings[col.name];
-
-                const effectiveVisible =
-                  draft?.visible ?? settings?.visible ?? (col.visible !== false);
-
-                const canRender = col.rendererType === "image";
-                const effectiveRenderAsImage =
-                  draft?.renderAsImage ??
-                  settings?.renderAsImage ??
-                  (col.rendererType === "image");
-
-                return (
-                  <TableRow
-                    key={col.name}
-                    sx={{
-                      backgroundColor:
-                        idx % 2 === 0 ? DIALOG_ROW_EVEN_BG : DIALOG_ROW_ODD_BG,
-                    }}
-                  >
-                    <TableCell sx={{ fontSize: "0.8rem" }}>
-                      {col.alias || col.name}
-                    </TableCell>
-
-                    <TableCell align="center">
-                      <Checkbox
-                        size="small"
-                        checked={effectiveVisible}
-                        onChange={(e) =>
-                          updateDraftColumnSettings(col.name, {
-                            visible: e.target.checked,
-                          })
-                        }
-                      />
-                    </TableCell>
-
-                    <TableCell align="center">
-                      <Checkbox
-                        size="small"
-                        checked={canRender && effectiveRenderAsImage}
-                        disabled={!canRender}
-                        onChange={(e) =>
-                          updateDraftColumnSettings(col.name, {
-                            renderAsImage: e.target.checked,
-                          })
-                        }
-                      />
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </DialogContent>
-
-        <DialogActions>
-          <Button
-            variant="contained"
-            startIcon={<CloseIcon />}
-            onClick={closeColumnsDialog}
-            sx={{ textTransform: "none" }}
-            color="error"
-          >
-            Close
-          </Button>
-
-          <Button
-            variant="contained"
-            startIcon={<Check size={16} />}
-            onClick={applyColumnsDialog}
-            sx={{ textTransform: "none" }}
-          >
-            Ok
-          </Button>
-        </DialogActions>
-      </Dialog>
+        onApply={applyColumnsDialog}
+        allColumns={allColumns}
+        columnSettings={columnSettings}
+        draftColumnSettings={draftColumnSettings}
+        updateDraftColumnSettings={updateDraftColumnSettings}
+      />
     </Box>
   );
 }
