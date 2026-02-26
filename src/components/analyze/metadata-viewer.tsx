@@ -50,6 +50,7 @@ import {
   List,
   ArrowDown,
   ArrowUp,
+  ArrowUpDown,
   RefreshCcw,
   Plus,
 } from "lucide-react";
@@ -137,6 +138,13 @@ type MetadataImageCellProps = {
   imageCacheRef: MutableRefObject<Map<string, ImageCacheEntry>>;
 };
 
+type SortDirection = "asc" | "desc";
+
+type SortState = {
+  columnName: string | null;
+  direction: SortDirection;
+};
+
 type MetadataTablePanelProps = {
   viewMode: ViewMode;
   schema: MetadataTableSchema | null;
@@ -167,6 +175,9 @@ type MetadataTablePanelProps = {
   outputName: string;
   selectedTable: string;
   imageCacheRef: MutableRefObject<Map<string, ImageCacheEntry>>;
+  sortBy: string | null;
+  sortAsc: boolean;
+  onToggleSort: (column: MetadataColumnWithVisibility) => void;
 };
 
 type MetadataGalleryPanelProps = {
@@ -454,7 +465,7 @@ function toggleSingleIndexInRanges(ranges: IndexRange[], index: number): IndexRa
     }
 
     if (range.start === range.end && range.start === index) {
-      // Remove exact single range
+      // removeExactSingleRange
     } else if (index === range.start) {
       next.push({ start: range.start + 1, end: range.end });
     } else if (index === range.end) {
@@ -764,6 +775,8 @@ function useVirtualTableWindow(params: {
   desiredWindowSize: number;
   scrollRef: MutableRefObject<HTMLDivElement | null>;
   isMountedRef: MutableRefObject<boolean>;
+  sortBy: string | null;
+  sortAsc: boolean;
 }) {
   const {
     projectId,
@@ -778,6 +791,8 @@ function useVirtualTableWindow(params: {
     desiredWindowSize,
     scrollRef,
     isMountedRef,
+    sortBy,
+    sortAsc,
   } = params;
 
   const [windowRows, setWindowRows] = useState<MetadataRow[]>([]);
@@ -831,7 +846,13 @@ function useVirtualTableWindow(params: {
           protocolId,
           outputName,
           selectedTable,
-          { offset: clampedOffset, limit, selectionOnly: false },
+          {
+            offset: clampedOffset,
+            limit,
+            selectionOnly: false,
+            sortBy: sortBy ?? undefined,
+            asc: sortBy ? sortAsc : undefined,
+          },
         )) as MetadataWindowResponse;
 
         if (!isMountedRef.current || requestEpoch !== windowEpochRef.current) {
@@ -864,7 +885,17 @@ function useVirtualTableWindow(params: {
         }
       }
     },
-    [isMountedRef, outputName, projectId, protocolId, selectedTable, totalRows, svc],
+    [
+      isMountedRef,
+      outputName,
+      projectId,
+      protocolId,
+      selectedTable,
+      totalRows,
+      svc,
+      sortBy,
+      sortAsc,
+    ],
   );
 
   useEffect(() => {
@@ -882,6 +913,8 @@ function useVirtualTableWindow(params: {
     protocolId,
     outputName,
     viewMode,
+    sortBy,
+    sortAsc,
     loadWindow,
     invalidateWindowState,
   ]);
@@ -1006,6 +1039,8 @@ function useMetadataGalleryRows(params: {
   totalRows: number;
   viewMode: ViewMode;
   isMountedRef: MutableRefObject<boolean>;
+  sortBy: string | null;
+  sortAsc: boolean;
 }) {
   const {
     projectId,
@@ -1016,6 +1051,8 @@ function useMetadataGalleryRows(params: {
     totalRows,
     viewMode,
     isMountedRef,
+    sortBy,
+    sortAsc,
   } = params;
 
   const [galleryRows, setGalleryRows] = useState<MetadataRow[]>([]);
@@ -1062,7 +1099,13 @@ function useMetadataGalleryRows(params: {
           protocolId,
           outputName,
           selectedTable,
-          { offset, limit, selectionOnly: false },
+          {
+            offset,
+            limit,
+            selectionOnly: false,
+            sortBy: sortBy ?? undefined,
+            asc: sortBy ? sortAsc : undefined,
+          },
         )) as MetadataWindowResponse;
 
         if (!isMountedRef.current || requestEpoch !== galleryEpochRef.current) {
@@ -1091,7 +1134,18 @@ function useMetadataGalleryRows(params: {
         galleryRequestInFlightRef.current = false;
       }
     },
-    [isMountedRef, outputName, projectId, protocolId, schema, selectedTable, totalRows, svc],
+    [
+      isMountedRef,
+      outputName,
+      projectId,
+      protocolId,
+      schema,
+      selectedTable,
+      totalRows,
+      svc,
+      sortBy,
+      sortAsc,
+    ],
   );
 
   useEffect(() => {
@@ -1109,6 +1163,8 @@ function useMetadataGalleryRows(params: {
     protocolId,
     outputName,
     viewMode,
+    sortBy,
+    sortAsc,
     invalidateGalleryState,
     loadGalleryChunk,
   ]);
@@ -1465,6 +1521,9 @@ function MetadataTablePanel({
   outputName,
   selectedTable,
   imageCacheRef,
+  sortBy,
+  sortAsc,
+  onToggleSort,
 }: MetadataTablePanelProps) {
   if (!schema || totalRows <= 0) return null;
 
@@ -1519,24 +1578,81 @@ function MetadataTablePanel({
                 #
               </TableCell>
 
-              {visibleColumns.map((column) => (
-                <TableCell
-                  key={column.name}
-                  sx={{
-                    ...headerCellSx,
-                    minWidth:
-                      column.rendererType === "image"
-                        ? IMAGE_COL_MIN_WIDTH
-                        : MIN_TEXT_COL_WIDTH,
-                    width:
-                      column.rendererType === "image"
-                        ? IMAGE_COL_MIN_WIDTH
-                        : MIN_TEXT_COL_WIDTH,
-                  }}
-                >
-                  {column.alias || column.name}
-                </TableCell>
-              ))}
+              {visibleColumns.map((column) => {
+                const label = column.alias || column.name;
+                const isSortable = Boolean(column.sortable);
+                const isActive = !!sortBy && sortBy === column.name;
+
+                const iconNode = !isSortable ? null : isActive ? (
+                  sortAsc ? (
+                    <ArrowUp size={14} />
+                  ) : (
+                    <ArrowDown size={14} />
+                  )
+                ) : (
+                  <ArrowUpDown size={14} />
+                );
+
+                const tooltipTitle = !isSortable
+                  ? ""
+                  : isActive
+                    ? `Sorted ${sortAsc ? "ascending" : "descending"}`
+                    : "Sort";
+
+                return (
+                  <TableCell
+                    key={column.name}
+                    onClick={() => {
+                      if (!isSortable) return;
+                      onToggleSort(column);
+                    }}
+                    sx={{
+                      ...headerCellSx,
+                      minWidth:
+                        column.rendererType === "image"
+                          ? IMAGE_COL_MIN_WIDTH
+                          : MIN_TEXT_COL_WIDTH,
+                      width:
+                        column.rendererType === "image"
+                          ? IMAGE_COL_MIN_WIDTH
+                          : MIN_TEXT_COL_WIDTH,
+                      cursor: isSortable ? "pointer" : "default",
+                      userSelect: "none",
+                    }}
+                  >
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, minWidth: 0 }}>
+                      <Box
+                        sx={{
+                          flex: 1,
+                          minWidth: 0,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                      >
+                        {label}
+                      </Box>
+
+                      {isSortable && (
+                        <Tooltip title={tooltipTitle}>
+                          <Box
+                            sx={{
+                              display: "flex",
+                              alignItems: "center",
+                              color: isActive ? "#1d4ed8" : "rgba(15,23,42,0.55)",
+                            }}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              onToggleSort(column);
+                            }}
+                          >
+                            {iconNode}
+                          </Box>
+                        </Tooltip>
+                      )}
+                    </Box>
+                  </TableCell>
+                );
+              })}
             </TableRow>
           </TableHead>
 
@@ -1992,11 +2108,7 @@ function ColumnsDialog({
       <DialogContent dividers>
         <Table size="small">
           <TableHead>
-            <TableRow
-              sx={{
-                backgroundColor: DIALOG_HEADER_BG,
-              }}
-            >
+            <TableRow sx={{ backgroundColor: DIALOG_HEADER_BG }}>
               <TableCell sx={{ fontWeight: 600, fontSize: "0.8rem" }}>Label</TableCell>
               <TableCell align="center" sx={{ fontWeight: 600, fontSize: "0.8rem" }}>
                 Visible
@@ -2101,6 +2213,14 @@ export function MetadataViewer({
 
   const [viewMode, setViewMode] = useState<ViewMode>("table");
 
+  const [sortState, setSortState] = useState<SortState>({
+    columnName: null,
+    direction: "asc",
+  });
+
+  const sortBy = sortState.columnName;
+  const sortAsc = sortState.direction === "asc";
+
   const [selectedRowIndex, setSelectedRowIndex] = useState<number | null>(null);
   const [selectedImageCell, setSelectedImageCell] = useState<SelectedImageCell | null>(null);
 
@@ -2167,6 +2287,12 @@ export function MetadataViewer({
     () => (schema?.columns ?? []) as MetadataColumnWithVisibility[],
     [schema],
   );
+
+  const activeSortLabel = useMemo(() => {
+    if (!sortBy) return null;
+    const col = allColumns.find((c) => c.name === sortBy);
+    return col?.alias || col?.name || sortBy;
+  }, [allColumns, sortBy]);
 
   const visibleColumns: MetadataColumnWithVisibility[] = useMemo(
     () =>
@@ -2263,6 +2389,8 @@ export function MetadataViewer({
     desiredWindowSize,
     scrollRef,
     isMountedRef,
+    sortBy,
+    sortAsc,
   });
 
   const {
@@ -2280,6 +2408,8 @@ export function MetadataViewer({
     totalRows,
     viewMode,
     isMountedRef,
+    sortBy,
+    sortAsc,
   });
 
   const topSpacerHeight = totalRows > 0 ? windowOffset * rowSizeForScroll : 0;
@@ -2311,6 +2441,44 @@ export function MetadataViewer({
     setSelectedRowIndex(null);
     setSelectedImageCell(null);
   }, [clearSelection]);
+
+  const resetSort = useCallback(() => {
+    setSortState({ columnName: null, direction: "asc" });
+  }, []);
+
+  const toggleSortForColumn = useCallback((column: MetadataColumnWithVisibility) => {
+    // toggleSortForColumn
+    if (!column.sortable) return;
+
+    setSortState((prev) => {
+      if (prev.columnName !== column.name) {
+        return { columnName: column.name, direction: "asc" };
+      }
+      return {
+        columnName: column.name,
+        direction: prev.direction === "asc" ? "desc" : "asc",
+      };
+    });
+  }, []);
+
+  useEffect(() => {
+    // keepSortValid
+    if (!sortBy) return;
+
+    const col = allColumns.find((c) => c.name === sortBy);
+    if (!col || !col.sortable) {
+      setSortState({ columnName: null, direction: "asc" });
+    }
+  }, [allColumns, sortBy]);
+
+  useEffect(() => {
+    // resetScrollOnSortChange
+    const el = scrollRef.current;
+    if (el) el.scrollTop = 0;
+
+    const galleryEl = galleryScrollRef.current;
+    if (galleryEl) galleryEl.scrollTop = 0;
+  }, [sortBy, sortAsc]);
 
   const closeTableContextMenus = useCallback(() => {
     setTableContextMenu(null);
@@ -2403,6 +2571,7 @@ export function MetadataViewer({
       invalidateWindowState();
       invalidateGalleryState();
       resetSelection();
+      resetSort();
       clearImageCache();
       closeTableContextMenus();
       closeActionDialog();
@@ -2414,6 +2583,7 @@ export function MetadataViewer({
       invalidateGalleryState,
       invalidateWindowState,
       resetSelection,
+      resetSort,
       setSchema,
       setSchemaError,
       setSelectedTable,
@@ -2424,7 +2594,16 @@ export function MetadataViewer({
     resetSelection();
     closeTableContextMenus();
     closeActionDialog();
-  }, [projectId, protocolId, outputName, resetSelection, closeTableContextMenus, closeActionDialog]);
+    resetSort();
+  }, [
+    projectId,
+    protocolId,
+    outputName,
+    resetSelection,
+    closeTableContextMenus,
+    closeActionDialog,
+    resetSort,
+  ]);
 
   const openColumnsDialog = useCallback(() => {
     if (!schema) return;
@@ -2502,6 +2681,8 @@ export function MetadataViewer({
           offset,
           limit: Math.min(SELECTION_IDS_SCAN_PAGE_SIZE, totalRows - offset),
           selectionOnly: false,
+          sortBy: sortBy ?? undefined,
+          asc: sortBy ? sortAsc : undefined,
         },
       )) as MetadataWindowResponse;
 
@@ -2533,6 +2714,8 @@ export function MetadataViewer({
     selectionState,
     svc,
     totalRows,
+    sortBy,
+    sortAsc,
   ]);
 
   const invokeMetadataAction = useCallback(
@@ -2548,7 +2731,7 @@ export function MetadataViewer({
         throw new Error("Missing selected row ids");
       }
 
-      const subsetName = (payload.subsetName || "").trim();
+      const subsetNameValue = (payload.subsetName || "").trim();
 
       return svc.runMetadataTableAction(
         payload.projectId,
@@ -2557,7 +2740,7 @@ export function MetadataViewer({
         payload.tableName,
         {
           action,
-          subsetName,
+          subsetName: subsetNameValue,
           ids,
         },
       );
@@ -2593,7 +2776,8 @@ export function MetadataViewer({
         tableName: selectedTable,
       });
 
-      const success = typeof (result as any)?.success === "boolean" ? (result as any).success : true;
+      const success =
+        typeof (result as any)?.success === "boolean" ? (result as any).success : true;
 
       if (!success) {
         const msg =
@@ -2864,6 +3048,9 @@ export function MetadataViewer({
         outputName={outputName}
         selectedTable={selectedTable}
         imageCacheRef={imageCacheRef}
+        sortBy={sortBy}
+        sortAsc={sortAsc}
+        onToggleSort={toggleSortForColumn}
       />
 
       {selectedTable && schema && totalRows > 0 && (
@@ -2891,7 +3078,6 @@ export function MetadataViewer({
       )}
 
       {/* Footer */}
-      {/* Footer */}
       <Paper
         variant="outlined"
         sx={{
@@ -2908,7 +3094,7 @@ export function MetadataViewer({
         }}
       >
         {/* Left side info */}
-        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
           <Typography
             variant="caption"
             sx={{
@@ -2921,6 +3107,22 @@ export function MetadataViewer({
             }}
           >
             Selected rows: <strong>{selectedCount}</strong>
+          </Typography>
+
+          <Typography
+            variant="caption"
+            sx={{
+              color: "#334155",
+              px: 1,
+              py: 0.5,
+              borderRadius: 1,
+              backgroundColor: "rgba(148,163,184,0.12)",
+              border: "1px solid rgba(148,163,184,0.22)",
+            }}
+          >
+            Sort:{" "}
+            <strong>{activeSortLabel ?? "default"}</strong>
+            {activeSortLabel ? ` (${sortAsc ? "asc" : "desc"})` : ""}
           </Typography>
         </Box>
 
@@ -2948,13 +3150,11 @@ export function MetadataViewer({
                 fontWeight: 600,
                 color: "#e2e8f0",
                 border: "1px solid rgba(255,255,255,0.08)",
-                background:
-                  "linear-gradient(180deg, #1e293b 0%, #0f172a 100%)",
+                background: "linear-gradient(180deg, #1e293b 0%, #0f172a 100%)",
                 boxShadow:
                   "0 1px 2px rgba(15,23,42,0.25), inset 0 1px 0 rgba(255,255,255,0.06)",
                 "&:hover": {
-                  background:
-                    "linear-gradient(180deg, #334155 0%, #1e293b 100%)",
+                  background: "linear-gradient(180deg, #334155 0%, #1e293b 100%)",
                   boxShadow:
                     "0 2px 6px rgba(15,23,42,0.28), inset 0 1px 0 rgba(255,255,255,0.08)",
                 },
@@ -3069,7 +3269,6 @@ export function MetadataViewer({
       </Menu>
 
       {/* Action dialog */}
-      {/* Action dialog */}
       <Dialog
         open={actionDialogState.open}
         onClose={(_event, reason) => {
@@ -3096,14 +3295,11 @@ export function MetadataViewer({
             display: "flex",
             alignItems: "center",
             gap: 1.25,
-            background:
-              "linear-gradient(135deg, #0f172a 0%, #1e293b 55%, #334155 100%)",
+            background: "linear-gradient(135deg, #0f172a 0%, #1e293b 55%, #334155 100%)",
             color: "#e2e8f0",
             borderBottom: "1px solid rgba(255,255,255,0.08)",
           }}
         >
-
-
           <Box sx={{ minWidth: 0, flex: 1 }}>
             <Typography
               variant="subtitle1"
@@ -3160,7 +3356,6 @@ export function MetadataViewer({
           }}
         >
           <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-
             <TextField
               autoFocus
               label="Subset name"
@@ -3172,11 +3367,7 @@ export function MetadataViewer({
               placeholder={DEFAULT_SUBSET_NAME}
               helperText="Name used to create the subset in the backend."
               onKeyDown={(event) => {
-                if (
-                  event.key === "Enter" &&
-                  !actionSubmitting &&
-                  selectedCount > 0
-                ) {
+                if (event.key === "Enter" && !actionSubmitting && selectedCount > 0) {
                   event.preventDefault();
                   handleAcceptAction();
                 }
@@ -3247,11 +3438,7 @@ export function MetadataViewer({
             <Button
               variant="contained"
               startIcon={
-                actionSubmitting ? (
-                  <CircularProgress size={14} color="inherit" />
-                ) : (
-                  <Check size={16} />
-                )
+                actionSubmitting ? <CircularProgress size={14} color="inherit" /> : <Check size={16} />
               }
               onClick={handleAcceptAction}
               disabled={actionSubmitting || selectedCount <= 0}

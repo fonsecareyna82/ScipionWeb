@@ -2359,14 +2359,31 @@ export async function fetchMetadataTableWindow(
     offset?: number;
     limit?: number;
     selectionOnly?: boolean;
+
+    // addSortParams
+    sortBy?: string;
+    asc?: boolean;
   } = {},
 ): Promise<MetadataWindow> {
-  const { offset = 0, limit = 100, selectionOnly = false } = opts;
+  const {
+    offset = 0,
+    limit = 100,
+    selectionOnly = false,
+    sortBy,
+    asc,
+  } = opts;
 
   const params = new URLSearchParams();
   params.set("offset", String(offset));
   params.set("limit", String(limit));
   params.set("selectionOnly", String(selectionOnly));
+
+  if (typeof sortBy === "string" && sortBy.trim()) {
+    params.set("sortBy", sortBy.trim());
+  }
+  if (typeof asc === "boolean") {
+    params.set("asc", String(asc));
+  }
 
   const enc = encodeURIComponent;
   const base = `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/outputs/${enc(
@@ -2381,19 +2398,14 @@ export async function fetchMetadataTableWindow(
   const data = await safeJson<any>(res);
 
   if (Array.isArray(data)) {
-    return {
-      offset,
-      limit,
-      rows: data as MetadataRow[],
-    };
+    return { offset, limit, rows: data as MetadataRow[] };
   }
 
   if (data && Array.isArray(data.rows)) {
     return {
       offset: typeof data.offset === "number" ? data.offset : offset,
       limit: typeof data.limit === "number" ? data.limit : limit,
-      totalRows:
-        typeof data.totalRows === "number" ? data.totalRows : undefined,
+      totalRows: typeof data.totalRows === "number" ? data.totalRows : undefined,
       rows: data.rows as MetadataRow[],
     };
   }

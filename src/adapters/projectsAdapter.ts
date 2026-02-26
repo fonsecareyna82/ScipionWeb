@@ -410,16 +410,32 @@ const defaultService: ProjectService = {
     tableName: string,
     opts = {},
   ) => {
-    const { offset = 0, limit = 100, selectionOnly = false } = opts as {
+    const {
+      offset = 0,
+      limit = 100,
+      selectionOnly = false,
+      sortBy,
+      asc,
+    } = opts as {
       offset?: number;
       limit?: number;
       selectionOnly?: boolean;
+      sortBy?: string;
+      asc?: boolean;
     };
 
     const params = new URLSearchParams();
     params.set("offset", String(offset));
     params.set("limit", String(limit));
     params.set("selectionOnly", String(selectionOnly));
+
+    // addSortParams
+    if (typeof sortBy === "string" && sortBy.trim()) {
+      params.set("sortBy", sortBy.trim());
+    }
+    if (typeof asc === "boolean") {
+      params.set("asc", String(asc));
+    }
 
     const enc = encodeURIComponent;
     const base = `${BASE_URL}/projects/${toId(projectId)}/protocols/${toId(

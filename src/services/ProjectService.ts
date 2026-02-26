@@ -773,6 +773,8 @@ export interface ProjectService<
       offset?: number;
       limit?: number;
       selectionOnly?: boolean;
+      sortBy?: string;
+      asc?: boolean;
     }
   ): Promise<{
     offset: number;
