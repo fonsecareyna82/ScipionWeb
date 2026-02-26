@@ -835,6 +835,7 @@ function useVirtualTableWindow(params: {
 
   const windowRequestInFlightRef = useRef(false);
   const pendingWindowOffsetRef = useRef<number | null>(null);
+  const inFlightOffsetRef = useRef<number | null>(null); // preventDuplicateFetchOnSameOffset
   const windowEpochRef = useRef(0);
 
   const desiredWindowSizeRef = useRef(desiredWindowSize);
@@ -848,6 +849,7 @@ function useVirtualTableWindow(params: {
     windowEpochRef.current += 1;
     windowRequestInFlightRef.current = false;
     pendingWindowOffsetRef.current = null;
+    inFlightOffsetRef.current = null;
     setWindowRows([]);
     setWindowOffset(0);
     setWindowLoading(false);
@@ -863,6 +865,13 @@ function useVirtualTableWindow(params: {
       const clampedOffset = Math.min(Math.max(0, requestedOffset), maxOffset);
 
       if (windowRequestInFlightRef.current) {
+        // avoidQueuingSameOffsetTwice
+        if (inFlightOffsetRef.current === clampedOffset) {
+          return;
+        }
+        if (pendingWindowOffsetRef.current === clampedOffset) {
+          return;
+        }
         pendingWindowOffsetRef.current = clampedOffset;
         return;
       }
@@ -870,6 +879,7 @@ function useVirtualTableWindow(params: {
       const requestEpoch = windowEpochRef.current;
 
       windowRequestInFlightRef.current = true;
+      inFlightOffsetRef.current = clampedOffset; // trackInFlightOffset
       setWindowLoading(true);
       setWindowError(null);
 
@@ -909,6 +919,7 @@ function useVirtualTableWindow(params: {
 
         setWindowLoading(false);
         windowRequestInFlightRef.current = false;
+        inFlightOffsetRef.current = null; // clearInFlightOffset
 
         const pendingOffset = pendingWindowOffsetRef.current;
         pendingWindowOffsetRef.current = null;
