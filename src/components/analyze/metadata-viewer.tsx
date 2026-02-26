@@ -2537,148 +2537,36 @@ export function MetadataViewer({
 
   const invokeMetadataAction = useCallback(
     async (payload: MetadataActionRequestPayload) => {
-      const svcAny = svc as unknown as Record<string, unknown>;
-
-      const candidateCalls: Array<() => Promise<unknown>> = [];
-
-      const runMetadataTableAction = svcAny.runMetadataTableAction;
-      if (typeof runMetadataTableAction === "function") {
-        candidateCalls.push(() =>
-          (
-            runMetadataTableAction as (
-              projectId: number,
-              protocolId: number,
-              outputName: string,
-              tableName: string,
-              payload: Record<string, unknown>,
-            ) => Promise<unknown>
-          )(
-            payload.projectId,
-            payload.protocolId,
-            payload.outputName,
-            payload.tableName,
-            {
-              action: payload.action,
-              subsetName: payload.subsetName,
-              rowIds: payload.rowIds,
-            },
-          ),
-        );
-
-        candidateCalls.push(() =>
-          (
-            runMetadataTableAction as (payload: Record<string, unknown>) => Promise<unknown>
-          )({
-            projectId: payload.projectId,
-            protocolId: payload.protocolId,
-            outputName: payload.outputName,
-            tableName: payload.tableName,
-            action: payload.action,
-            subsetName: payload.subsetName,
-            rowIds: payload.rowIds,
-          }),
-        );
+      // invokeMetadataAction
+      const action = (payload.action || "").trim();
+      if (!action) {
+        throw new Error("Missing action");
       }
 
-      const executeMetadataTableAction = svcAny.executeMetadataTableAction;
-      if (typeof executeMetadataTableAction === "function") {
-        candidateCalls.push(() =>
-          (
-            executeMetadataTableAction as (
-              projectId: number,
-              protocolId: number,
-              outputName: string,
-              tableName: string,
-              payload: Record<string, unknown>,
-            ) => Promise<unknown>
-          )(
-            payload.projectId,
-            payload.protocolId,
-            payload.outputName,
-            payload.tableName,
-            {
-              action: payload.action,
-              subsetName: payload.subsetName,
-              rowIds: payload.rowIds,
-            },
-          ),
-        );
+      const ids = payload.rowIds ?? [];
+      if (!Array.isArray(ids) || ids.length === 0) {
+        throw new Error("Missing selected row ids");
       }
 
-      const createMetadataSubsetFromSelection = svcAny.createMetadataSubsetFromSelection;
-      if (typeof createMetadataSubsetFromSelection === "function") {
-        candidateCalls.push(() =>
-          (
-            createMetadataSubsetFromSelection as (
-              projectId: number,
-              protocolId: number,
-              outputName: string,
-              tableName: string,
-              payload: Record<string, unknown>,
-            ) => Promise<unknown>
-          )(
-            payload.projectId,
-            payload.protocolId,
-            payload.outputName,
-            payload.tableName,
-            {
-              action: payload.action,
-              name: payload.subsetName,
-              subsetName: payload.subsetName,
-              rowIds: payload.rowIds,
-            },
-          ),
-        );
-      }
+      const subsetName = (payload.subsetName || "").trim();
 
-      const createMetadataSubset = svcAny.createMetadataSubset;
-      if (typeof createMetadataSubset === "function") {
-        candidateCalls.push(() =>
-          (
-            createMetadataSubset as (
-              projectId: number,
-              protocolId: number,
-              outputName: string,
-              tableName: string,
-              payload: Record<string, unknown>,
-            ) => Promise<unknown>
-          )(
-            payload.projectId,
-            payload.protocolId,
-            payload.outputName,
-            payload.tableName,
-            {
-              action: payload.action,
-              name: payload.subsetName,
-              subsetName: payload.subsetName,
-              rowIds: payload.rowIds,
-            },
-          ),
-        );
-      }
-
-      if (candidateCalls.length === 0) {
-        throw new Error(
-          "No metadata action method found in ProjectService. Add one (for example: runMetadataTableAction).",
-        );
-      }
-
-      let lastError: unknown = null;
-
-      for (const candidateCall of candidateCalls) {
-        try {
-          return await candidateCall();
-        } catch (error) {
-          lastError = error;
-        }
-      }
-
-      throw lastError ?? new Error("Failed to execute metadata action");
+      return svc.runMetadataTableAction(
+        payload.projectId,
+        payload.protocolId,
+        payload.outputName,
+        payload.tableName,
+        {
+          action,
+          subsetName,
+          ids,
+        },
+      );
     },
     [svc],
   );
 
   const handleAcceptAction = useCallback(async () => {
+    // handleAcceptAction
     if (!schema || !selectedTable || !actionDialogState.actionLabel) {
       return;
     }
@@ -2695,7 +2583,7 @@ export function MetadataViewer({
         throw new Error("No selected rows with valid ids were found");
       }
 
-      await invokeMetadataAction({
+      const result = await invokeMetadataAction({
         action: actionDialogState.actionLabel,
         subsetName: safeSubsetName,
         rowIds,
@@ -2704,6 +2592,17 @@ export function MetadataViewer({
         outputName,
         tableName: selectedTable,
       });
+
+      const success = typeof (result as any)?.success === "boolean" ? (result as any).success : true;
+
+      if (!success) {
+        const msg =
+          (result as any)?.message ||
+          (Array.isArray((result as any)?.errors) ? (result as any).errors.join("\n") : "") ||
+          "Action did not generate a new subset";
+        setActionDialogError(msg);
+        return;
+      }
 
       setActionDialogState({ open: false, actionLabel: "" });
       setSubsetName(DEFAULT_SUBSET_NAME);
@@ -2992,7 +2891,7 @@ export function MetadataViewer({
       )}
 
       {/* Footer */}
-            {/* Footer */}
+      {/* Footer */}
       <Paper
         variant="outlined"
         sx={{
@@ -3170,7 +3069,7 @@ export function MetadataViewer({
       </Menu>
 
       {/* Action dialog */}
-            {/* Action dialog */}
+      {/* Action dialog */}
       <Dialog
         open={actionDialogState.open}
         onClose={(_event, reason) => {
@@ -3203,7 +3102,7 @@ export function MetadataViewer({
             borderBottom: "1px solid rgba(255,255,255,0.08)",
           }}
         >
-          
+
 
           <Box sx={{ minWidth: 0, flex: 1 }}>
             <Typography
