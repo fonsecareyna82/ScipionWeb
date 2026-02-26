@@ -118,10 +118,17 @@ type RowSelectionState = {
   anchorIndex: number | null;
 };
 
+type RowId = string | number;
+
+type RowIdKey = string;
+
+type SelectionMode = "index" | "ids";
+
 type TableContextMenuState = {
   mouseX: number;
   mouseY: number;
   rowIndex: number;
+  rowId: RowId | null;
 } | null;
 
 type MetadataImageCellProps = {
@@ -163,9 +170,17 @@ type MetadataTablePanelProps = {
   hasData: boolean;
   scrollRef: MutableRefObject<HTMLDivElement | null>;
   handleScroll: UIEventHandler<HTMLDivElement>;
-  isRowSelected: (rowIndex: number) => boolean;
-  onPrimaryRowClick: (rowIndex: number, event: ReactMouseEvent<Element>) => void;
-  onRowContextMenu: (rowIndex: number, event: ReactMouseEvent<Element>) => void;
+  isRowSelected: (rowIndex: number, rowId: RowId | null) => boolean;
+  onPrimaryRowClick: (
+    rowIndex: number,
+    rowId: RowId | null,
+    event: ReactMouseEvent<Element>,
+  ) => void;
+  onRowContextMenu: (
+    rowIndex: number,
+    rowId: RowId | null,
+    event: ReactMouseEvent<Element>,
+  ) => void;
   selectedRowIndex: number | null;
   selectedImageCell: SelectedImageCell | null;
   setSelectedRowIndex: (value: number | null) => void;
@@ -182,14 +197,19 @@ type MetadataTablePanelProps = {
 
 type MetadataGalleryPanelProps = {
   viewMode: ViewMode;
+  schema: MetadataTableSchema | null;
   firstImageColumn: MetadataColumnWithVisibility | null;
   galleryRows: MetadataRow[];
   galleryLoading: boolean;
   galleryError: string | null;
   galleryScrollRef: MutableRefObject<HTMLDivElement | null>;
   handleGalleryScroll: UIEventHandler<HTMLDivElement>;
-  isRowSelected: (rowIndex: number) => boolean;
-  onPrimaryRowClick: (rowIndex: number, event: ReactMouseEvent<Element>) => void;
+  isRowSelected: (rowIndex: number, rowId: RowId | null) => boolean;
+  onPrimaryRowClick: (
+    rowIndex: number,
+    rowId: RowId | null,
+    event: ReactMouseEvent<Element>,
+  ) => void;
   selectedImageCell: SelectedImageCell | null;
   setSelectedRowIndex: (value: number | null) => void;
   setSelectedImageCell: (value: SelectedImageCell | null) => void;
@@ -392,11 +412,24 @@ function formatCellValue(value: MetadataCell): ReactNode {
   }
 }
 
-function getMetadataRowId(row: MetadataRow): string | number | null {
-  const rawId = (row as { id?: unknown }).id;
-  if (typeof rawId === "string" || typeof rawId === "number") {
-    return rawId;
+function rowIdToKey(rowId: RowId): RowIdKey {
+  // keepRowIdTypeStableInSetKeys
+  return typeof rowId === "number" ? `n:${rowId}` : `s:${rowId}`;
+}
+
+function resolveMetadataRowId(schema: MetadataTableSchema | null, row: MetadataRow): RowId | null {
+  // resolveStableRowIdFromIdColumn
+  if (!schema) return null;
+
+  const columns = (schema.columns ?? []) as MetadataColumnWithVisibility[];
+  const idColumn = columns.find((c) => c.name === "id");
+  if (!idColumn) return null;
+
+  const value = row.values?.[idColumn.index];
+  if (typeof value === "string" || typeof value === "number") {
+    return value;
   }
+
   return null;
 }
 
@@ -1346,7 +1379,6 @@ function useRowSelection(totalRows: number) {
     selectFromHere,
     selectToHere,
     invertSelection,
-    setSelectionState,
   };
 }
 
@@ -1668,19 +1700,20 @@ function MetadataTablePanel({
 
             {windowRows.map((row, rowIndexInWindow) => {
               const displayRowIndex = windowOffset + rowIndexInWindow;
-              const isHighlightedRow = isRowSelected(displayRowIndex);
+              const rowId = resolveMetadataRowId(schema, row);
+              const isHighlightedRow = isRowSelected(displayRowIndex, rowId);
 
               return (
                 <TableRow
-                  key={row.id ?? `${windowOffset}-${rowIndexInWindow}`}
+                  key={rowId ?? `${windowOffset}-${rowIndexInWindow}`}
                   hover
                   onClick={(event) => {
-                    onPrimaryRowClick(displayRowIndex, event);
+                    onPrimaryRowClick(displayRowIndex, rowId, event);
                     setSelectedRowIndex(displayRowIndex);
                     setSelectedImageCell(null);
                   }}
                   onContextMenu={(event) => {
-                    onRowContextMenu(displayRowIndex, event);
+                    onRowContextMenu(displayRowIndex, rowId, event);
                   }}
                   sx={{
                     height: rowHeight,
@@ -1775,7 +1808,7 @@ function MetadataTablePanel({
                             size={BASE_THUMB_SIZE}
                             isSelected={isSelectedImage}
                             onClick={(event) => {
-                              onPrimaryRowClick(displayRowIndex, event);
+                              onPrimaryRowClick(displayRowIndex, rowId, event);
                               setSelectedRowIndex(displayRowIndex);
                               setSelectedImageCell({
                                 rowIndexInTable: displayRowIndex,
@@ -1861,6 +1894,7 @@ function MetadataTablePanel({
 
 function MetadataGalleryPanel({
   viewMode,
+  schema,
   firstImageColumn,
   galleryRows,
   galleryLoading,
@@ -1930,6 +1964,7 @@ function MetadataGalleryPanel({
           >
             {galleryRows.map((row, index) => {
               const globalRowIndex = index;
+              const rowId = resolveMetadataRowId(schema, row);
 
               const cellValue = row.values[firstImageColumn.index];
               const isImageCell =
@@ -1941,7 +1976,7 @@ function MetadataGalleryPanel({
                 ? (cellValue as { kind: "image"; path: string })
                 : null;
 
-              const isSelected = isRowSelected(globalRowIndex);
+              const isSelected = isRowSelected(globalRowIndex, rowId);
 
               const isFocusedImageCell =
                 !!selectedImageCell &&
@@ -1958,9 +1993,9 @@ function MetadataGalleryPanel({
 
               return (
                 <Box
-                  key={row.id ?? `${index}`}
+                  key={rowId ?? row.id ?? `${index}`}
                   onClick={(event) => {
-                    onPrimaryRowClick(globalRowIndex, event);
+                    onPrimaryRowClick(globalRowIndex, rowId, event);
                     setSelectedRowIndex(globalRowIndex);
                     setSelectedImageCell({
                       rowIndexInTable: globalRowIndex,
@@ -2137,8 +2172,7 @@ function ColumnsDialog({
                 <TableRow
                   key={column.name}
                   sx={{
-                    backgroundColor:
-                      index % 2 === 0 ? DIALOG_ROW_EVEN_BG : DIALOG_ROW_ODD_BG,
+                    backgroundColor: index % 2 === 0 ? DIALOG_ROW_EVEN_BG : DIALOG_ROW_ODD_BG,
                   }}
                 >
                   <TableCell sx={{ fontSize: "0.8rem" }}>
@@ -2202,12 +2236,7 @@ function ColumnsDialog({
 
 /* ======================= Main component ======================= */
 
-export function MetadataViewer({
-  projectId,
-  protocolId,
-  outputName,
-  onClose,
-}: MetadataViewerProps) {
+export function MetadataViewer({ projectId, protocolId, outputName, onClose }: MetadataViewerProps) {
   const isMountedRef = useIsMountedRef();
   const svc = useProjectService();
 
@@ -2220,6 +2249,10 @@ export function MetadataViewer({
 
   const sortBy = sortState.columnName;
   const sortAsc = sortState.direction === "asc";
+
+  const [selectionMode, setSelectionMode] = useState<SelectionMode>("index");
+  const [selectedRowIdKeys, setSelectedRowIdKeys] = useState<Set<RowIdKey>>(() => new Set());
+  const selectedRowIdValuesRef = useRef<Map<RowIdKey, RowId>>(new Map());
 
   const [selectedRowIndex, setSelectedRowIndex] = useState<number | null>(null);
   const [selectedImageCell, setSelectedImageCell] = useState<SelectedImageCell | null>(null);
@@ -2239,27 +2272,28 @@ export function MetadataViewer({
   const [actionSubmitting, setActionSubmitting] = useState(false);
   const [actionDialogError, setActionDialogError] = useState<string | null>(null);
 
+  const [sortInProgress, setSortInProgress] = useState(false);
+
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const galleryScrollRef = useRef<HTMLDivElement | null>(null);
   const { height: viewportHeight } = useElementSize(scrollRef);
 
   const { imageCacheRef, clearImageCache } = useImageCache();
 
-  const {
-    tables,
-    tablesLoading,
-    tablesError,
-    selectedTable,
-    setSelectedTable,
-  } = useMetadataTables(projectId, protocolId, outputName, isMountedRef);
+  const { tables, tablesLoading, tablesError, selectedTable, setSelectedTable } = useMetadataTables(
+    projectId,
+    protocolId,
+    outputName,
+    isMountedRef,
+  );
 
-  const {
-    schema,
-    setSchema,
-    schemaLoading,
-    schemaError,
-    setSchemaError,
-  } = useMetadataSchema(projectId, protocolId, outputName, selectedTable, isMountedRef);
+  const { schema, setSchema, schemaLoading, schemaError, setSchemaError } = useMetadataSchema(
+    projectId,
+    protocolId,
+    outputName,
+    selectedTable,
+    isMountedRef,
+  );
 
   const { columnSettings, setColumnSettings } = useColumnSettings(schema, selectedTable);
 
@@ -2272,11 +2306,11 @@ export function MetadataViewer({
 
   const {
     selectionState,
-    isRowSelected,
-    selectedCount,
+    isRowSelected: isRowSelectedByIndex,
+    selectedCount: selectedCountByIndex,
     clearSelection,
     selectOnly,
-    handlePrimaryRowClick,
+    handlePrimaryRowClick: handlePrimaryRowClickByIndex,
     selectAll,
     selectFromHere,
     selectToHere,
@@ -2287,12 +2321,6 @@ export function MetadataViewer({
     () => (schema?.columns ?? []) as MetadataColumnWithVisibility[],
     [schema],
   );
-
-  const activeSortLabel = useMemo(() => {
-    if (!sortBy) return null;
-    const col = allColumns.find((c) => c.name === sortBy);
-    return col?.alias || col?.name || sortBy;
-  }, [allColumns, sortBy]);
 
   const visibleColumns: MetadataColumnWithVisibility[] = useMemo(
     () =>
@@ -2424,9 +2452,8 @@ export function MetadataViewer({
   const tableMinWidth = useMemo(() => {
     if (!schema) return undefined;
 
-    const imageColumnCount = visibleColumns.filter(
-      (column) => column.rendererType === "image",
-    ).length;
+    const imageColumnCount = visibleColumns.filter((column) => column.rendererType === "image")
+      .length;
     const textColumnCount = visibleColumns.length - imageColumnCount;
 
     return (
@@ -2436,18 +2463,125 @@ export function MetadataViewer({
     );
   }, [schema, visibleColumns]);
 
+  const clearIdSelection = useCallback(() => {
+    selectedRowIdValuesRef.current.clear();
+    setSelectedRowIdKeys(new Set());
+  }, []);
+
+  const effectiveSelectedCount = useMemo(() => {
+    return selectionMode === "ids" ? selectedRowIdKeys.size : selectedCountByIndex;
+  }, [selectionMode, selectedRowIdKeys, selectedCountByIndex]);
+
+  const isRowSelected = useCallback(
+    (rowIndex: number, rowId: RowId | null) => {
+      if (selectionMode === "ids") {
+        if (rowId == null) return false;
+        return selectedRowIdKeys.has(rowIdToKey(rowId));
+      }
+      return isRowSelectedByIndex(rowIndex);
+    },
+    [selectionMode, selectedRowIdKeys, isRowSelectedByIndex],
+  );
+
   const resetSelection = useCallback(() => {
     clearSelection();
+    clearIdSelection();
+    setSelectionMode("index");
     setSelectedRowIndex(null);
     setSelectedImageCell(null);
-  }, [clearSelection]);
+  }, [clearIdSelection, clearSelection]);
 
   const resetSort = useCallback(() => {
     setSortState({ columnName: null, direction: "asc" });
   }, []);
 
-  const toggleSortForColumn = useCallback((column: MetadataColumnWithVisibility) => {
-    // toggleSortForColumn
+  const materializeSingleIndexSelectionToIds = useCallback(async (): Promise<boolean> => {
+    // materializeSingleIndexSelectionToIds
+    if (!schema || !selectedTable) return false;
+    if (selectionState.baseMode !== "none") return false;
+    if (selectionState.ranges.length !== 1) return false;
+
+    const range = selectionState.ranges[0];
+    if (range.start !== range.end) return false;
+
+    const targetIndex = range.start;
+
+    // Try from current window first (no network).
+    if (targetIndex >= windowOffset && targetIndex < windowOffset + windowRows.length) {
+      const row = windowRows[targetIndex - windowOffset];
+      const rowId = resolveMetadataRowId(schema, row);
+      if (rowId == null) return false;
+
+      const key = rowIdToKey(rowId);
+      selectedRowIdValuesRef.current.clear();
+      selectedRowIdValuesRef.current.set(key, rowId);
+      setSelectedRowIdKeys(new Set([key]));
+      setSelectionMode("ids");
+      return true;
+    }
+
+    // Fallback: fetch the row by absolute index in the current sort order.
+    try {
+      const response = (await svc.fetchMetadataTableWindow(
+        projectId,
+        protocolId,
+        outputName,
+        selectedTable,
+        {
+          offset: targetIndex,
+          limit: 1,
+          selectionOnly: false,
+          sortBy: sortBy ?? undefined,
+          asc: sortBy ? sortAsc : undefined,
+        },
+      )) as MetadataWindowResponse;
+
+      const parsed = parseWindowResponse(response);
+      const row = parsed.rows[0];
+      if (!row) return false;
+
+      const rowId = resolveMetadataRowId(schema, row);
+      if (rowId == null) return false;
+
+      const key = rowIdToKey(rowId);
+      selectedRowIdValuesRef.current.clear();
+      selectedRowIdValuesRef.current.set(key, rowId);
+      setSelectedRowIdKeys(new Set([key]));
+      setSelectionMode("ids");
+      return true;
+    } catch {
+      return false;
+    }
+  }, [
+    schema,
+    selectedTable,
+    selectionState,
+    windowOffset,
+    windowRows,
+    svc,
+    projectId,
+    protocolId,
+    outputName,
+    sortBy,
+    sortAsc,
+  ]);
+
+  const ensureStableSelectionBeforeSort = useCallback(async () => {
+    // ensureStableSelectionBeforeSort
+    if (selectionMode === "ids") return;
+
+    if (selectedCountByIndex <= 0) return;
+
+    // For this bug report, we only need to guarantee single-row stability.
+    // If selection is a single index, we can materialize the row id cheaply.
+    const ok = await materializeSingleIndexSelectionToIds();
+    if (ok) return;
+
+    // If not a single row, keep index mode (range selection semantics depend on sort order).
+  }, [materializeSingleIndexSelectionToIds, selectedCountByIndex, selectionMode]);
+
+  const applyToggleSort = useCallback((column: MetadataColumnWithVisibility) => {
+    // applyToggleSort
     if (!column.sortable) return;
 
     setSortState((prev) => {
@@ -2460,6 +2594,25 @@ export function MetadataViewer({
       };
     });
   }, []);
+
+  const toggleSortForColumn = useCallback(
+    (column: MetadataColumnWithVisibility) => {
+      // toggleSortForColumn
+      if (!column.sortable) return;
+      if (sortInProgress) return;
+
+      void (async () => {
+        setSortInProgress(true);
+        try {
+          await ensureStableSelectionBeforeSort();
+          applyToggleSort(column);
+        } finally {
+          setSortInProgress(false);
+        }
+      })();
+    },
+    [applyToggleSort, ensureStableSelectionBeforeSort, sortInProgress],
+  );
 
   useEffect(() => {
     // keepSortValid
@@ -2478,7 +2631,16 @@ export function MetadataViewer({
 
     const galleryEl = galleryScrollRef.current;
     if (galleryEl) galleryEl.scrollTop = 0;
+
+    setSelectedImageCell(null);
+    setSelectedRowIndex(null);
   }, [sortBy, sortAsc]);
+
+  const activeSortLabel = useMemo(() => {
+    if (!sortBy) return null;
+    const col = allColumns.find((c) => c.name === sortBy);
+    return col?.alias || col?.name || sortBy;
+  }, [allColumns, sortBy]);
 
   const closeTableContextMenus = useCallback(() => {
     setTableContextMenu(null);
@@ -2498,13 +2660,69 @@ export function MetadataViewer({
     setActionDialogError(null);
   }, []);
 
+  const handlePrimaryRowClick = useCallback(
+    (rowIndex: number, rowId: RowId | null, event: ReactMouseEvent<Element>) => {
+      // handlePrimaryRowClick
+      handlePrimaryRowClickByIndex(rowIndex, event);
+
+      if (event.shiftKey) {
+        setSelectionMode("index");
+        clearIdSelection();
+        return;
+      }
+
+      if (rowId == null) {
+        setSelectionMode("index");
+        clearIdSelection();
+        return;
+      }
+
+      const key = rowIdToKey(rowId);
+
+      setSelectionMode("ids");
+      setSelectedRowIdKeys((prev) => {
+        const next = new Set(prev);
+        const map = selectedRowIdValuesRef.current;
+
+        const isToggle = event.ctrlKey || event.metaKey;
+
+        if (isToggle) {
+          if (next.has(key)) {
+            next.delete(key);
+            map.delete(key);
+          } else {
+            next.add(key);
+            map.set(key, rowId);
+          }
+          return next;
+        }
+
+        next.clear();
+        map.clear();
+        next.add(key);
+        map.set(key, rowId);
+        return next;
+      });
+    },
+    [clearIdSelection, handlePrimaryRowClickByIndex],
+  );
+
   const handleTableRowContextMenu = useCallback(
-    (rowIndex: number, event: ReactMouseEvent<Element>) => {
+    (rowIndex: number, rowId: RowId | null, event: ReactMouseEvent<Element>) => {
       event.preventDefault();
       event.stopPropagation();
 
-      if (!isRowSelected(rowIndex)) {
-        selectOnly(rowIndex);
+      if (selectionMode === "ids" && rowId != null) {
+        const key = rowIdToKey(rowId);
+        if (!selectedRowIdKeys.has(key)) {
+          selectedRowIdValuesRef.current.clear();
+          selectedRowIdValuesRef.current.set(key, rowId);
+          setSelectedRowIdKeys(new Set([key]));
+        }
+      } else {
+        if (!isRowSelectedByIndex(rowIndex)) {
+          selectOnly(rowIndex);
+        }
       }
 
       setSelectedRowIndex(rowIndex);
@@ -2514,16 +2732,20 @@ export function MetadataViewer({
         mouseX: event.clientX + 2,
         mouseY: event.clientY - 6,
         rowIndex,
+        rowId,
       });
 
       setSelectSubmenuAnchorEl(null);
     },
-    [isRowSelected, selectOnly],
+    [isRowSelectedByIndex, selectOnly, selectionMode, selectedRowIdKeys],
   );
 
   const runContextSelectionAction = useCallback(
     (action: "all" | "fromHere" | "toHere" | "invert") => {
       const contextRowIndex = tableContextMenu?.rowIndex ?? null;
+
+      setSelectionMode("index");
+      clearIdSelection();
 
       if (action === "all") {
         selectAll();
@@ -2551,6 +2773,7 @@ export function MetadataViewer({
       closeTableContextMenus();
     },
     [
+      clearIdSelection,
       closeTableContextMenus,
       invertSelection,
       selectAll,
@@ -2595,15 +2818,7 @@ export function MetadataViewer({
     closeTableContextMenus();
     closeActionDialog();
     resetSort();
-  }, [
-    projectId,
-    protocolId,
-    outputName,
-    resetSelection,
-    closeTableContextMenus,
-    closeActionDialog,
-    resetSort,
-  ]);
+  }, [projectId, protocolId, outputName, resetSelection, closeTableContextMenus, closeActionDialog, resetSort]);
 
   const openColumnsDialog = useCallback(() => {
     if (!schema) return;
@@ -2661,11 +2876,16 @@ export function MetadataViewer({
   );
 
   const resolveSelectedRowIds = useCallback(async (): Promise<Array<string | number>> => {
+    // resolveSelectedRowIds
+    if (selectionMode === "ids") {
+      return Array.from(selectedRowIdValuesRef.current.values());
+    }
+
     if (!selectedTable || !schema || totalRows <= 0) {
       return [];
     }
 
-    if (selectedCount <= 0) {
+    if (selectedCountByIndex <= 0) {
       return [];
     }
 
@@ -2696,7 +2916,7 @@ export function MetadataViewer({
           continue;
         }
 
-        const rowId = getMetadataRowId(parsed.rows[rowIndex]);
+        const rowId = resolveMetadataRowId(schema, parsed.rows[rowIndex]);
         if (rowId != null) {
           rowIds.push(rowId);
         }
@@ -2705,17 +2925,18 @@ export function MetadataViewer({
 
     return rowIds;
   }, [
-    outputName,
+    selectionMode,
+    selectedTable,
+    schema,
+    totalRows,
+    selectedCountByIndex,
+    svc,
     projectId,
     protocolId,
-    schema,
-    selectedCount,
-    selectedTable,
-    selectionState,
-    svc,
-    totalRows,
+    outputName,
     sortBy,
     sortAsc,
+    selectionState,
   ]);
 
   const invokeMetadataAction = useCallback(
@@ -2799,16 +3020,16 @@ export function MetadataViewer({
       }
     }
   }, [
-    actionDialogState.actionLabel,
-    invokeMetadataAction,
-    isMountedRef,
-    outputName,
-    projectId,
-    protocolId,
-    resolveSelectedRowIds,
     schema,
     selectedTable,
+    actionDialogState.actionLabel,
     subsetName,
+    resolveSelectedRowIds,
+    invokeMetadataAction,
+    projectId,
+    protocolId,
+    outputName,
+    isMountedRef,
   ]);
 
   return (
@@ -2843,10 +3064,7 @@ export function MetadataViewer({
             py: 0.5,
           }}
         >
-          <Typography
-            variant="caption"
-            sx={{ mr: 0.5, color: "text.secondary", fontWeight: 500 }}
-          >
+          <Typography variant="caption" sx={{ mr: 0.5, color: "text.secondary", fontWeight: 500 }}>
             View mode:
           </Typography>
 
@@ -2884,14 +3102,7 @@ export function MetadataViewer({
             </span>
           </Tooltip>
 
-          <Divider
-            orientation="vertical"
-            flexItem
-            sx={{
-              mx: 1,
-              borderColor: "rgba(148,163,184,0.6)",
-            }}
-          />
+          <Divider orientation="vertical" flexItem sx={{ mx: 1, borderColor: "rgba(148,163,184,0.6)" }} />
 
           {viewMode === "table" && schema && (
             <Tooltip title="Manage columns">
@@ -2914,13 +3125,7 @@ export function MetadataViewer({
           )}
         </Box>
 
-        <Box
-          sx={{
-            flex: 1,
-            display: "flex",
-            justifyContent: "center",
-          }}
-        >
+        <Box sx={{ flex: 1, display: "flex", justifyContent: "center" }}>
           <FormControl size="small" sx={{ minWidth: 240 }}>
             <InputLabel id="metadata-table-select-label">Metadata table</InputLabel>
             <Select
@@ -2975,7 +3180,7 @@ export function MetadataViewer({
             Rows: <strong>{totalRows}</strong>
           </Typography>
           <Typography variant="caption" color="text.secondary">
-            Selected: <strong>{selectedCount}</strong>
+            Selected: <strong>{effectiveSelectedCount}</strong>
           </Typography>
         </Box>
       </Box>
@@ -3056,6 +3261,7 @@ export function MetadataViewer({
       {selectedTable && schema && totalRows > 0 && (
         <MetadataGalleryPanel
           viewMode={viewMode}
+          schema={schema}
           firstImageColumn={firstImageColumn}
           galleryRows={galleryRows}
           galleryLoading={galleryLoading}
@@ -3093,7 +3299,6 @@ export function MetadataViewer({
             "linear-gradient(180deg, rgba(248,250,252,0.95) 0%, rgba(241,245,249,0.95) 100%)",
         }}
       >
-        {/* Left side info */}
         <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
           <Typography
             variant="caption"
@@ -3106,7 +3311,7 @@ export function MetadataViewer({
               border: "1px solid rgba(148,163,184,0.22)",
             }}
           >
-            Selected rows: <strong>{selectedCount}</strong>
+            Selected rows: <strong>{effectiveSelectedCount}</strong>
           </Typography>
 
           <Typography
@@ -3120,13 +3325,17 @@ export function MetadataViewer({
               border: "1px solid rgba(148,163,184,0.22)",
             }}
           >
-            Sort:{" "}
-            <strong>{activeSortLabel ?? "default"}</strong>
+            Sort: <strong>{activeSortLabel ?? "default"}</strong>
             {activeSortLabel ? ` (${sortAsc ? "asc" : "desc"})` : ""}
           </Typography>
+
+          {sortInProgress && (
+            <Typography variant="caption" color="text.secondary">
+              Sorting…
+            </Typography>
+          )}
         </Box>
 
-        {/* Right side actions + close */}
         <Box
           sx={{
             display: "flex",
@@ -3144,7 +3353,7 @@ export function MetadataViewer({
               variant="contained"
               startIcon={<Plus size={14} />}
               onClick={() => openActionDialog(actionLabel)}
-              disabled={!schema || selectedCount <= 0 || actionSubmitting}
+              disabled={!schema || effectiveSelectedCount <= 0 || actionSubmitting}
               sx={{
                 textTransform: "none",
                 fontWeight: 600,
@@ -3367,7 +3576,7 @@ export function MetadataViewer({
               placeholder={DEFAULT_SUBSET_NAME}
               helperText="Name used to create the subset in the backend."
               onKeyDown={(event) => {
-                if (event.key === "Enter" && !actionSubmitting && selectedCount > 0) {
+                if (event.key === "Enter" && !actionSubmitting && effectiveSelectedCount > 0) {
                   event.preventDefault();
                   handleAcceptAction();
                 }
@@ -3409,8 +3618,8 @@ export function MetadataViewer({
           }}
         >
           <Typography variant="caption" color="text.secondary">
-            {selectedCount > 0
-              ? `${selectedCount} row${selectedCount === 1 ? "" : "s"} selected`
+            {effectiveSelectedCount > 0
+              ? `${effectiveSelectedCount} row${effectiveSelectedCount === 1 ? "" : "s"} selected`
               : "No rows selected"}
           </Typography>
 
@@ -3441,7 +3650,7 @@ export function MetadataViewer({
                 actionSubmitting ? <CircularProgress size={14} color="inherit" /> : <Check size={16} />
               }
               onClick={handleAcceptAction}
-              disabled={actionSubmitting || selectedCount <= 0}
+              disabled={actionSubmitting || effectiveSelectedCount <= 0}
               sx={{
                 textTransform: "none",
                 borderRadius: 2,
