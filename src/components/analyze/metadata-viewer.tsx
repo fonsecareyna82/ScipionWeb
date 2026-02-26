@@ -1,4 +1,3 @@
-// src/components/analyze/metadata-viewer.tsx
 import {
   useCallback,
   useEffect,
@@ -20,6 +19,7 @@ import {
   DialogContent,
   DialogTitle,
   FormControl,
+  FormControlLabel,
   InputLabel,
   Menu,
   MenuItem,
@@ -45,7 +45,6 @@ import {
   TableIcon,
   Check,
   ColumnsSettingsIcon,
-  ChevronRight,
   CheckSquare,
   List,
   ArrowDown,
@@ -53,6 +52,10 @@ import {
   ArrowUpDown,
   RefreshCcw,
   Plus,
+  Filter,
+  Hash,
+  Sigma,
+  Bookmark,
 } from "lucide-react";
 import type {
   MetadataCell,
@@ -124,12 +127,72 @@ type RowIdKey = string;
 
 type SelectionMode = "index" | "ids";
 
-type TableContextMenuState = {
-  mouseX: number;
-  mouseY: number;
-  rowIndex: number;
-  rowId: RowId | null;
-} | null;
+type ContextMenuState =
+  | {
+      kind: "row";
+      mouseX: number;
+      mouseY: number;
+      rowIndex: number;
+      rowId: RowId | null;
+    }
+  | {
+      kind: "header";
+      mouseX: number;
+      mouseY: number;
+      columnName: string;
+    }
+  | null;
+
+type CriteriaOperator =
+  | "equals"
+  | "notEquals"
+  | "gt"
+  | "gte"
+  | "lt"
+  | "lte"
+  | "between"
+  | "contains"
+  | "startsWith"
+  | "endsWith"
+  | "regex"
+  | "isEmpty"
+  | "isNotEmpty"
+  | "isImage"
+  | "isNotImage";
+
+type SelectionScope = "allRows" | "currentSelection";
+type SelectionSetOp = "replace" | "add" | "remove" | "intersect";
+
+type SelectionDialogState =
+  | { open: false }
+  | {
+      open: true;
+      kind: "range";
+      title: string;
+      startValue: string; // oneBasedInclusive
+      endValue: string; // oneBasedInclusive
+    }
+  | {
+      open: true;
+      kind: "indexCompare";
+      title: string;
+      mode: "gte" | "lte" | "gt" | "lt";
+      value: string; // oneBased
+    }
+  | {
+      open: true;
+      kind: "criteria";
+      title: string;
+      columnName: string;
+      operator: CriteriaOperator;
+      value1: string;
+      value2: string;
+      caseSensitive: boolean;
+      treatAsNumber: boolean;
+      negate: boolean;
+      scope: SelectionScope;
+      setOp: SelectionSetOp;
+    };
 
 type MetadataImageCellProps = {
   projectId: number;
@@ -179,6 +242,10 @@ type MetadataTablePanelProps = {
   onRowContextMenu: (
     rowIndex: number,
     rowId: RowId | null,
+    event: ReactMouseEvent<Element>,
+  ) => void;
+  onHeaderContextMenu: (
+    column: MetadataColumnWithVisibility,
     event: ReactMouseEvent<Element>,
   ) => void;
   selectedRowIndex: number | null;
@@ -442,6 +509,37 @@ function getSchemaActions(schema: MetadataTableSchema | null): string[] {
   );
 }
 
+function getOperatorLabel(op: CriteriaOperator): string {
+  if (op === "equals") return "Equals";
+  if (op === "notEquals") return "Not equals";
+  if (op === "contains") return "Contains";
+  if (op === "startsWith") return "Starts with";
+  if (op === "endsWith") return "Ends with";
+  if (op === "regex") return "Regex";
+  if (op === "isEmpty") return "Is empty";
+  if (op === "isNotEmpty") return "Is not empty";
+  if (op === "isImage") return "Is image";
+  if (op === "isNotImage") return "Is not image";
+  if (op === "gt") return "Greater than";
+  if (op === "gte") return "Greater or equal";
+  if (op === "lt") return "Less than";
+  if (op === "lte") return "Less or equal";
+  if (op === "between") return "Between";
+  return op;
+}
+
+function getSetOpLabel(op: SelectionSetOp): string {
+  if (op === "replace") return "Replace selection";
+  if (op === "add") return "Add to selection";
+  if (op === "remove") return "Remove from selection";
+  return "Intersect with selection";
+}
+
+function getScopeLabel(scope: SelectionScope): string {
+  if (scope === "allRows") return "All rows";
+  return "Current selection only";
+}
+
 /* ======================= Selection helpers ======================= */
 
 function clampIndex(value: number, minValue: number, maxValue: number): number {
@@ -545,6 +643,177 @@ function createEmptySelectionState(): RowSelectionState {
     ranges: [],
     anchorIndex: null,
   };
+}
+
+function parsePositiveInt(value: string): number | null {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed)) return null;
+  if (parsed <= 0) return null;
+  return parsed;
+}
+
+function isCellEmpty(cell: MetadataCell): boolean {
+  if (cell === null || cell === undefined) return true;
+  if (cell === "") return true;
+  return false;
+}
+
+function isImageCell(cell: MetadataCell): boolean {
+  return (
+    typeof cell === "object" &&
+    !!cell &&
+    "kind" in (cell as any) &&
+    (cell as any).kind === "image"
+  );
+}
+
+function cellToComparableString(cell: MetadataCell): string {
+  if (cell === null || cell === undefined) return "";
+  if (typeof cell === "string") return cell;
+  if (typeof cell === "number") return String(cell);
+  if (typeof cell === "boolean") return cell ? "true" : "false";
+
+  if (typeof cell === "object" && cell && "kind" in (cell as any)) {
+    const kind = (cell as any).kind;
+    if (kind === "image") return "[image]";
+    if (kind === "matrix") return "[matrix]";
+  }
+
+  try {
+    return JSON.stringify(cell);
+  } catch {
+    return String(cell);
+  }
+}
+
+function cellToNumber(cell: MetadataCell): number | null {
+  if (cell === null || cell === undefined) return null;
+  if (typeof cell === "number") return Number.isFinite(cell) ? cell : null;
+  if (typeof cell === "string") {
+    const trimmed = cell.trim();
+    if (!trimmed) return null;
+    const num = Number(trimmed);
+    return Number.isFinite(num) ? num : null;
+  }
+  return null;
+}
+
+function isNumericOperator(op: CriteriaOperator): boolean {
+  return op === "gt" || op === "gte" || op === "lt" || op === "lte" || op === "between";
+}
+
+function evaluateCriteria(
+  cell: MetadataCell,
+  operator: CriteriaOperator,
+  value1: string,
+  value2: string,
+  options: { caseSensitive: boolean; treatAsNumber: boolean; negate: boolean },
+): boolean {
+  const { caseSensitive, treatAsNumber, negate } = options;
+
+  const evalBase = (): boolean => {
+    if (operator === "isEmpty") return isCellEmpty(cell);
+    if (operator === "isNotEmpty") return !isCellEmpty(cell);
+    if (operator === "isImage") return isImageCell(cell);
+    if (operator === "isNotImage") return !isImageCell(cell);
+
+    if (isNumericOperator(operator)) {
+      if (!treatAsNumber) return false;
+
+      const cellNum = cellToNumber(cell);
+      if (cellNum == null) return false;
+
+      const v1 = Number(value1);
+      if (!Number.isFinite(v1)) return false;
+
+      if (operator === "between") {
+        const v2 = Number(value2);
+        if (!Number.isFinite(v2)) return false;
+        const min = Math.min(v1, v2);
+        const max = Math.max(v1, v2);
+        return cellNum >= min && cellNum <= max;
+      }
+
+      if (operator === "gt") return cellNum > v1;
+      if (operator === "gte") return cellNum >= v1;
+      if (operator === "lt") return cellNum < v1;
+      return cellNum <= v1;
+    }
+
+    const cellStrRaw = cellToComparableString(cell);
+    const a = caseSensitive ? cellStrRaw : cellStrRaw.toLowerCase();
+    const b1 = caseSensitive ? value1 : value1.toLowerCase();
+
+    if (operator === "equals") return a === b1;
+    if (operator === "notEquals") return a !== b1;
+    if (operator === "contains") return a.includes(b1);
+    if (operator === "startsWith") return a.startsWith(b1);
+    if (operator === "endsWith") return a.endsWith(b1);
+
+    if (operator === "regex") {
+      try {
+        const re = new RegExp(value1, caseSensitive ? "" : "i");
+        return re.test(cellStrRaw);
+      } catch {
+        return false;
+      }
+    }
+
+    return false;
+  };
+
+  const result = evalBase();
+  return negate ? !result : result;
+}
+
+function applySetOperationToIdMaps(params: {
+  prevKeys: Set<RowIdKey>;
+  prevMap: Map<RowIdKey, RowId>;
+  matchKeys: Set<RowIdKey>;
+  matchMap: Map<RowIdKey, RowId>;
+  setOp: SelectionSetOp;
+}): { keys: Set<RowIdKey>; map: Map<RowIdKey, RowId> } {
+  const { prevKeys, prevMap, matchKeys, matchMap, setOp } = params;
+
+  if (setOp === "replace") {
+    return { keys: new Set(matchKeys), map: new Map(matchMap) };
+  }
+
+  if (setOp === "add") {
+    const keys = new Set(prevKeys);
+    const map = new Map(prevMap);
+    for (const key of matchKeys) {
+      keys.add(key);
+      const id = matchMap.get(key);
+      if (id != null) map.set(key, id);
+    }
+    return { keys, map };
+  }
+
+  if (setOp === "remove") {
+    const keys = new Set<RowIdKey>();
+    const map = new Map<RowIdKey, RowId>();
+    for (const key of prevKeys) {
+      if (!matchKeys.has(key)) {
+        keys.add(key);
+        const id = prevMap.get(key);
+        if (id != null) map.set(key, id);
+      }
+    }
+    return { keys, map };
+  }
+
+  // intersect
+  const keys = new Set<RowIdKey>();
+  const map = new Map<RowIdKey, RowId>();
+  for (const key of prevKeys) {
+    if (matchKeys.has(key)) {
+      keys.add(key);
+      const id = prevMap.get(key) ?? matchMap.get(key);
+      if (id != null) map.set(key, id);
+    }
+  }
+  return { keys, map };
 }
 
 /* ======================= Cache helpers ======================= */
@@ -1259,9 +1528,7 @@ function useMetadataGalleryRows(params: {
 }
 
 function useRowSelection(totalRows: number) {
-  const [selectionState, setSelectionState] = useState<RowSelectionState>(
-    createEmptySelectionState(),
-  );
+  const [selectionState, setSelectionState] = useState<RowSelectionState>(createEmptySelectionState());
 
   const isRowSelected = useCallback(
     (rowIndex: number) => isRowIndexSelected(selectionState, rowIndex),
@@ -1379,6 +1646,58 @@ function useRowSelection(totalRows: number) {
     }));
   }, []);
 
+  const selectRange = useCallback(
+    (startIndex: number, endIndex: number) => {
+      if (totalRows <= 0) return;
+      const maxIndex = Math.max(0, totalRows - 1);
+
+      const safeStart = clampIndex(startIndex, 0, maxIndex);
+      const safeEnd = clampIndex(endIndex, 0, maxIndex);
+
+      const range = normalizeRange(safeStart, safeEnd);
+
+      setSelectionState({
+        baseMode: "none",
+        ranges: [range],
+        anchorIndex: range.start,
+      });
+    },
+    [totalRows],
+  );
+
+  const selectIndexCompare = useCallback(
+    (mode: "gte" | "lte" | "gt" | "lt", valueOneBased: number) => {
+      if (totalRows <= 0) return;
+      const maxIndex = Math.max(0, totalRows - 1);
+
+      const v = clampIndex(valueOneBased - 1, 0, maxIndex);
+
+      if (mode === "gte") {
+        setSelectionState({ baseMode: "none", ranges: [{ start: v, end: maxIndex }], anchorIndex: v });
+        return;
+      }
+
+      if (mode === "gt") {
+        const start = clampIndex(v + 1, 0, maxIndex);
+        setSelectionState({
+          baseMode: "none",
+          ranges: [{ start, end: maxIndex }],
+          anchorIndex: start,
+        });
+        return;
+      }
+
+      if (mode === "lte") {
+        setSelectionState({ baseMode: "none", ranges: [{ start: 0, end: v }], anchorIndex: v });
+        return;
+      }
+
+      const end = clampIndex(v - 1, 0, maxIndex);
+      setSelectionState({ baseMode: "none", ranges: [{ start: 0, end }], anchorIndex: end });
+    },
+    [totalRows],
+  );
+
   return {
     selectionState,
     isRowSelected,
@@ -1390,6 +1709,8 @@ function useRowSelection(totalRows: number) {
     selectFromHere,
     selectToHere,
     invertSelection,
+    selectRange,
+    selectIndexCompare,
   };
 }
 
@@ -1555,6 +1876,7 @@ function MetadataTablePanel({
   isRowSelected,
   onPrimaryRowClick,
   onRowContextMenu,
+  onHeaderContextMenu,
   selectedRowIndex,
   selectedImageCell,
   setSelectedRowIndex,
@@ -1648,6 +1970,9 @@ function MetadataTablePanel({
                     onClick={() => {
                       if (!isSortable) return;
                       onToggleSort(column);
+                    }}
+                    onContextMenu={(event) => {
+                      onHeaderContextMenu(column, event);
                     }}
                     sx={{
                       ...headerCellSx,
@@ -1978,12 +2303,12 @@ function MetadataGalleryPanel({
               const rowId = resolveMetadataRowId(schema, row);
 
               const cellValue = row.values[firstImageColumn.index];
-              const isImageCell =
+              const isImageCellValue =
                 cellValue &&
                 typeof cellValue === "object" &&
                 (cellValue as { kind?: string }).kind === "image";
 
-              const imageCell = isImageCell
+              const imageCell = isImageCellValue
                 ? (cellValue as { kind: "image"; path: string })
                 : null;
 
@@ -2272,8 +2597,14 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose }: M
   const [draftColumnSettings, setDraftColumnSettings] =
     useState<Record<string, ColumnSettings> | null>(null);
 
-  const [tableContextMenu, setTableContextMenu] = useState<TableContextMenuState>(null);
-  const [selectSubmenuAnchorEl, setSelectSubmenuAnchorEl] = useState<HTMLElement | null>(null);
+  const [contextMenu, setContextMenu] = useState<ContextMenuState>(null);
+
+  const [selectionDialog, setSelectionDialog] = useState<SelectionDialogState>({ open: false });
+  const [selectionBusy, setSelectionBusy] = useState(false);
+  const [selectionProgress, setSelectionProgress] = useState<{ done: number; total: number } | null>(
+    null,
+  );
+  const [selectionDialogError, setSelectionDialogError] = useState<string | null>(null);
 
   const [actionDialogState, setActionDialogState] = useState<MetadataActionDialogState>({
     open: false,
@@ -2326,6 +2657,8 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose }: M
     selectFromHere,
     selectToHere,
     invertSelection,
+    selectRange,
+    selectIndexCompare,
   } = useRowSelection(totalRows);
 
   const allColumns: MetadataColumnWithVisibility[] = useMemo(
@@ -2517,7 +2850,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose }: M
 
     const targetIndex = range.start;
 
-    // Try from current window first (no network).
+    // tryFromCurrentWindowFirst
     if (targetIndex >= windowOffset && targetIndex < windowOffset + windowRows.length) {
       const row = windowRows[targetIndex - windowOffset];
       const rowId = resolveMetadataRowId(schema, row);
@@ -2531,7 +2864,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose }: M
       return true;
     }
 
-    // Fallback: fetch the row by absolute index in the current sort order.
+    // fallbackFetchSingleRowByIndex
     try {
       const response = (await svc.fetchMetadataTableWindow(
         projectId,
@@ -2580,15 +2913,10 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose }: M
   const ensureStableSelectionBeforeSort = useCallback(async () => {
     // ensureStableSelectionBeforeSort
     if (selectionMode === "ids") return;
-
     if (selectedCountByIndex <= 0) return;
 
-    // For this bug report, we only need to guarantee single-row stability.
-    // If selection is a single index, we can materialize the row id cheaply.
     const ok = await materializeSingleIndexSelectionToIds();
     if (ok) return;
-
-    // If not a single row, keep index mode (range selection semantics depend on sort order).
   }, [materializeSingleIndexSelectionToIds, selectedCountByIndex, selectionMode]);
 
   const applyToggleSort = useCallback((column: MetadataColumnWithVisibility) => {
@@ -2653,10 +2981,16 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose }: M
     return col?.alias || col?.name || sortBy;
   }, [allColumns, sortBy]);
 
-  const closeTableContextMenus = useCallback(() => {
-    setTableContextMenu(null);
-    setSelectSubmenuAnchorEl(null);
+  const closeContextMenu = useCallback(() => {
+    setContextMenu(null);
   }, []);
+
+  const closeSelectionDialog = useCallback(() => {
+    if (selectionBusy) return;
+    setSelectionDialog({ open: false });
+    setSelectionDialogError(null);
+    setSelectionProgress(null);
+  }, [selectionBusy]);
 
   const closeActionDialog = useCallback(() => {
     if (actionSubmitting) return;
@@ -2739,59 +3073,30 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose }: M
       setSelectedRowIndex(rowIndex);
       setSelectedImageCell(null);
 
-      setTableContextMenu({
+      setContextMenu({
+        kind: "row",
         mouseX: event.clientX + 2,
         mouseY: event.clientY - 6,
         rowIndex,
         rowId,
       });
-
-      setSelectSubmenuAnchorEl(null);
     },
     [isRowSelectedByIndex, selectOnly, selectionMode, selectedRowIdKeys],
   );
 
-  const runContextSelectionAction = useCallback(
-    (action: "all" | "fromHere" | "toHere" | "invert") => {
-      const contextRowIndex = tableContextMenu?.rowIndex ?? null;
+  const handleHeaderContextMenu = useCallback(
+    (column: MetadataColumnWithVisibility, event: ReactMouseEvent<Element>) => {
+      event.preventDefault();
+      event.stopPropagation();
 
-      setSelectionMode("index");
-      clearIdSelection();
-
-      if (action === "all") {
-        selectAll();
-        closeTableContextMenus();
-        return;
-      }
-
-      if (action === "invert") {
-        invertSelection();
-        closeTableContextMenus();
-        return;
-      }
-
-      if (contextRowIndex == null) {
-        closeTableContextMenus();
-        return;
-      }
-
-      if (action === "fromHere") {
-        selectFromHere(contextRowIndex);
-      } else if (action === "toHere") {
-        selectToHere(contextRowIndex);
-      }
-
-      closeTableContextMenus();
+      setContextMenu({
+        kind: "header",
+        mouseX: event.clientX + 2,
+        mouseY: event.clientY - 6,
+        columnName: column.name,
+      });
     },
-    [
-      clearIdSelection,
-      closeTableContextMenus,
-      invertSelection,
-      selectAll,
-      selectFromHere,
-      selectToHere,
-      tableContextMenu,
-    ],
+    [],
   );
 
   const handleTableChange = useCallback(
@@ -2807,13 +3112,15 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose }: M
       resetSelection();
       resetSort();
       clearImageCache();
-      closeTableContextMenus();
+      closeContextMenu();
+      closeSelectionDialog();
       closeActionDialog();
     },
     [
       clearImageCache,
       closeActionDialog,
-      closeTableContextMenus,
+      closeContextMenu,
+      closeSelectionDialog,
       invalidateGalleryState,
       invalidateWindowState,
       resetSelection,
@@ -2826,10 +3133,20 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose }: M
 
   useEffect(() => {
     resetSelection();
-    closeTableContextMenus();
+    closeContextMenu();
+    closeSelectionDialog();
     closeActionDialog();
     resetSort();
-  }, [projectId, protocolId, outputName, resetSelection, closeTableContextMenus, closeActionDialog, resetSort]);
+  }, [
+    projectId,
+    protocolId,
+    outputName,
+    resetSelection,
+    closeContextMenu,
+    closeSelectionDialog,
+    closeActionDialog,
+    resetSort,
+  ]);
 
   const openColumnsDialog = useCallback(() => {
     if (!schema) return;
@@ -3043,6 +3360,307 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose }: M
     isMountedRef,
   ]);
 
+  const materializeIndexSelectionToIds = useCallback(async () => {
+    // materializeIndexSelectionToIds
+    if (selectionMode === "ids") return;
+    if (!schema || !selectedTable || totalRows <= 0) return;
+    if (selectedCountByIndex <= 0) return;
+
+    setSelectionBusy(true);
+    setSelectionDialogError(null);
+    setSelectionProgress({ done: 0, total: selectedCountByIndex });
+
+    const nextKeys = new Set<RowIdKey>();
+    const nextMap = new Map<RowIdKey, RowId>();
+    let done = 0;
+
+    try {
+      for (let offset = 0; offset < totalRows; offset += SELECTION_IDS_SCAN_PAGE_SIZE) {
+        const response = (await svc.fetchMetadataTableWindow(
+          projectId,
+          protocolId,
+          outputName,
+          selectedTable,
+          {
+            offset,
+            limit: Math.min(SELECTION_IDS_SCAN_PAGE_SIZE, totalRows - offset),
+            selectionOnly: false,
+            sortBy: sortBy ?? undefined,
+            asc: sortBy ? sortAsc : undefined,
+          },
+        )) as MetadataWindowResponse;
+
+        const parsed = parseWindowResponse(response);
+        const actualOffset = parsed.offset ?? offset;
+
+        for (let i = 0; i < parsed.rows.length; i += 1) {
+          const globalRowIndex = actualOffset + i;
+          if (!isRowIndexSelected(selectionState, globalRowIndex)) continue;
+
+          const rowId = resolveMetadataRowId(schema, parsed.rows[i]);
+          if (rowId == null) continue;
+
+          const key = rowIdToKey(rowId);
+          if (!nextKeys.has(key)) {
+            nextKeys.add(key);
+            nextMap.set(key, rowId);
+            done += 1;
+          }
+        }
+
+        setSelectionProgress({ done, total: selectedCountByIndex });
+      }
+
+      selectedRowIdValuesRef.current = nextMap;
+      setSelectedRowIdKeys(nextKeys);
+      setSelectionMode("ids");
+
+      clearSelection();
+      setSelectedRowIndex(null);
+      setSelectedImageCell(null);
+    } catch (error) {
+      setSelectionDialogError(getErrorMessage(error, "Failed to freeze selection"));
+    } finally {
+      if (isMountedRef.current) {
+        setSelectionBusy(false);
+        setSelectionProgress(null);
+      }
+    }
+  }, [
+    selectionMode,
+    schema,
+    selectedTable,
+    totalRows,
+    selectedCountByIndex,
+    svc,
+    projectId,
+    protocolId,
+    outputName,
+    sortBy,
+    sortAsc,
+    selectionState,
+    clearSelection,
+    isMountedRef,
+  ]);
+
+  const runColumnCriteriaSelection = useCallback(async () => {
+    // runColumnCriteriaSelection
+    if (!schema || !selectedTable || totalRows <= 0) return;
+    if (!selectionDialog.open || selectionDialog.kind !== "criteria") return;
+
+    const column = allColumns.find((c) => c.name === selectionDialog.columnName);
+    if (!column) {
+      setSelectionDialogError("Selected column not found");
+      return;
+    }
+
+    if (isNumericOperator(selectionDialog.operator) && !selectionDialog.treatAsNumber) {
+      setSelectionDialogError("Numeric operators require 'Compare as: Number'");
+      return;
+    }
+
+    const prevKeys = selectedRowIdKeys;
+    const prevMap = selectedRowIdValuesRef.current;
+
+    const targetScopeTotal =
+      selectionDialog.scope === "allRows"
+        ? totalRows
+        : selectionMode === "ids"
+          ? prevKeys.size
+          : selectedCountByIndex;
+
+    setSelectionBusy(true);
+    setSelectionDialogError(null);
+    setSelectionProgress({ done: 0, total: Math.max(0, targetScopeTotal) });
+
+    const matchKeys = new Set<RowIdKey>();
+    const matchMap = new Map<RowIdKey, RowId>();
+
+    let done = 0;
+    let remainingIdsToScan = selectionDialog.scope === "currentSelection" && selectionMode === "ids"
+      ? prevKeys.size
+      : null;
+
+    const shouldIncludeRow = (globalRowIndex: number, rowId: RowId | null): boolean => {
+      if (selectionDialog.scope === "allRows") return true;
+
+      if (selectionMode === "ids") {
+        if (rowId == null) return false;
+        return prevKeys.has(rowIdToKey(rowId));
+      }
+
+      return isRowIndexSelected(selectionState, globalRowIndex);
+    };
+
+    const offsetsToScan: Array<{ offset: number; limit: number }> = [];
+
+    if (selectionDialog.scope === "currentSelection" && selectionMode === "index" && selectionState.baseMode === "none") {
+      const merged = mergeRanges(selectionState.ranges);
+      for (const range of merged) {
+        let offset = range.start;
+        while (offset <= range.end) {
+          const limit = Math.min(SELECTION_IDS_SCAN_PAGE_SIZE, range.end - offset + 1);
+          offsetsToScan.push({ offset, limit });
+          offset += limit;
+        }
+      }
+    } else {
+      for (let offset = 0; offset < totalRows; offset += SELECTION_IDS_SCAN_PAGE_SIZE) {
+        offsetsToScan.push({
+          offset,
+          limit: Math.min(SELECTION_IDS_SCAN_PAGE_SIZE, totalRows - offset),
+        });
+      }
+    }
+
+    try {
+      for (const { offset, limit } of offsetsToScan) {
+        const response = (await svc.fetchMetadataTableWindow(
+          projectId,
+          protocolId,
+          outputName,
+          selectedTable,
+          {
+            offset,
+            limit,
+            selectionOnly: false,
+            sortBy: sortBy ?? undefined,
+            asc: sortBy ? sortAsc : undefined,
+          },
+        )) as MetadataWindowResponse;
+
+        const parsed = parseWindowResponse(response);
+        const actualOffset = parsed.offset ?? offset;
+
+        for (let i = 0; i < parsed.rows.length; i += 1) {
+          const row = parsed.rows[i];
+          const globalRowIndex = actualOffset + i;
+          const rowId = resolveMetadataRowId(schema, row);
+
+          if (!shouldIncludeRow(globalRowIndex, rowId)) continue;
+
+          if (selectionDialog.scope === "currentSelection") {
+            done += 1;
+          } else {
+            // allRows progress uses fetched scan position for smoother UI
+            done = Math.min(totalRows, globalRowIndex + 1);
+          }
+
+          if (remainingIdsToScan != null && selectionMode === "ids" && rowId != null) {
+            const key = rowIdToKey(rowId);
+            if (prevKeys.has(key)) {
+              remainingIdsToScan -= 1;
+            }
+          }
+
+          const cell = row.values?.[column.index] as MetadataCell;
+
+          const ok = evaluateCriteria(cell, selectionDialog.operator, selectionDialog.value1, selectionDialog.value2, {
+            caseSensitive: selectionDialog.caseSensitive,
+            treatAsNumber: selectionDialog.treatAsNumber,
+            negate: selectionDialog.negate,
+          });
+
+          if (!ok) continue;
+          if (rowId == null) continue;
+
+          const key = rowIdToKey(rowId);
+          if (!matchKeys.has(key)) {
+            matchKeys.add(key);
+            matchMap.set(key, rowId);
+          }
+        }
+
+        setSelectionProgress({ done, total: Math.max(0, targetScopeTotal) });
+
+        if (remainingIdsToScan != null && remainingIdsToScan <= 0) {
+          break;
+        }
+      }
+
+      const applied = applySetOperationToIdMaps({
+        prevKeys,
+        prevMap,
+        matchKeys,
+        matchMap,
+        setOp: selectionDialog.setOp,
+      });
+
+      selectedRowIdValuesRef.current = applied.map;
+      setSelectedRowIdKeys(applied.keys);
+      setSelectionMode("ids");
+
+      clearSelection();
+      setSelectedRowIndex(null);
+      setSelectedImageCell(null);
+
+      closeSelectionDialog();
+      closeContextMenu();
+    } catch (error) {
+      setSelectionDialogError(getErrorMessage(error, "Failed to apply selection criteria"));
+    } finally {
+      if (isMountedRef.current) {
+        setSelectionBusy(false);
+        setSelectionProgress(null);
+      }
+    }
+  }, [
+    schema,
+    selectedTable,
+    totalRows,
+    selectionDialog,
+    allColumns,
+    svc,
+    projectId,
+    protocolId,
+    outputName,
+    sortBy,
+    sortAsc,
+    selectedRowIdKeys,
+    selectionMode,
+    selectedCountByIndex,
+    selectionState,
+    clearSelection,
+    closeSelectionDialog,
+    closeContextMenu,
+    isMountedRef,
+  ]);
+
+  const openCriteriaDialogForColumn = useCallback(
+    (params: {
+      columnName: string;
+      operator?: CriteriaOperator;
+      treatAsNumber?: boolean;
+    }) => {
+      const operator = params.operator ?? "equals";
+      const numeric = isNumericOperator(operator);
+      const treatAsNumber = params.treatAsNumber ?? (numeric ? true : false);
+
+      setSelectionDialog({
+        open: true,
+        kind: "criteria",
+        title: "Select where…",
+        columnName: params.columnName,
+        operator,
+        value1: "",
+        value2: "",
+        caseSensitive: false,
+        treatAsNumber,
+        negate: false,
+        scope: "allRows",
+        setOp: "replace",
+      });
+      setSelectionDialogError(null);
+    },
+    [],
+  );
+
+  const contextMenuColumnLabel = useMemo(() => {
+    if (!contextMenu || contextMenu.kind !== "header") return null;
+    const col = allColumns.find((c) => c.name === contextMenu.columnName);
+    return col?.alias || col?.name || contextMenu.columnName;
+  }, [allColumns, contextMenu]);
+
   return (
     <Box
       sx={{
@@ -3113,7 +3731,11 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose }: M
             </span>
           </Tooltip>
 
-          <Divider orientation="vertical" flexItem sx={{ mx: 1, borderColor: "rgba(148,163,184,0.6)" }} />
+          <Divider
+            orientation="vertical"
+            flexItem
+            sx={{ mx: 1, borderColor: "rgba(148,163,184,0.6)" }}
+          />
 
           {viewMode === "table" && schema && (
             <Tooltip title="Manage columns">
@@ -3255,6 +3877,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose }: M
         isRowSelected={isRowSelected}
         onPrimaryRowClick={handlePrimaryRowClick}
         onRowContextMenu={handleTableRowContextMenu}
+        onHeaderContextMenu={handleHeaderContextMenu}
         selectedRowIndex={selectedRowIndex}
         selectedImageCell={selectedImageCell}
         setSelectedRowIndex={setSelectedRowIndex}
@@ -3345,6 +3968,12 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose }: M
               Sorting…
             </Typography>
           )}
+
+          {selectionBusy && (
+            <Typography variant="caption" color="text.secondary">
+              Selecting…
+            </Typography>
+          )}
         </Box>
 
         <Box
@@ -3425,68 +4054,646 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose }: M
         updateDraftColumnSettings={updateDraftColumnSettings}
       />
 
-      {/* Context menu */}
+      {/* Context menu (direct, small typography) */}
       <Menu
-        open={!!tableContextMenu}
-        onClose={closeTableContextMenus}
+        open={!!contextMenu}
+        onClose={closeContextMenu}
         anchorReference="anchorPosition"
         anchorPosition={
-          tableContextMenu
-            ? { top: tableContextMenu.mouseY, left: tableContextMenu.mouseX }
-            : undefined
+          contextMenu ? { top: contextMenu.mouseY, left: contextMenu.mouseX } : undefined
         }
         transformOrigin={{ horizontal: "left", vertical: "top" }}
+        PaperProps={{
+          sx: {
+            "& .MuiMenuItem-root": { fontSize: "0.78rem", py: 0.6 },
+            "& .MuiListItemIcon-root": { minWidth: 26 },
+            "& .MuiListItemText-primary": { fontSize: "0.78rem" },
+            minWidth: 260,
+          },
+        }}
+        MenuListProps={{ dense: true, sx: { py: 0.25 } }}
       >
-        <MenuItem
-          onClick={(event) => {
-            setSelectSubmenuAnchorEl(event.currentTarget);
-          }}
-        >
-          <ListItemIcon sx={{ minWidth: 28 }}>
-            <CheckSquare size={16} />
-          </ListItemIcon>
-          <ListItemText>Select</ListItemText>
-          <ChevronRight size={16} />
-        </MenuItem>
+        {contextMenu?.kind === "row" && (
+          <>
+            <MenuItem
+              onClick={() => {
+                setSelectionMode("index");
+                clearIdSelection();
+                selectAll();
+                closeContextMenu();
+              }}
+            >
+              <ListItemIcon>
+                <List size={16} />
+              </ListItemIcon>
+              <ListItemText primary="All" />
+            </MenuItem>
+
+            <MenuItem
+              onClick={() => {
+                resetSelection();
+                closeContextMenu();
+              }}
+            >
+              <ListItemIcon>
+                <CloseIcon fontSize="small" />
+              </ListItemIcon>
+              <ListItemText primary="Clear selection" />
+            </MenuItem>
+
+            <MenuItem
+              onClick={() => {
+                void materializeIndexSelectionToIds();
+                closeContextMenu();
+              }}
+              disabled={selectionMode === "ids" || selectedCountByIndex <= 0 || !schema}
+            >
+              <ListItemIcon>
+                <Bookmark size={16} />
+              </ListItemIcon>
+              <ListItemText primary="Freeze selection (ids)" />
+            </MenuItem>
+
+            <Divider />
+
+            <MenuItem
+              onClick={() => {
+                setSelectionMode("index");
+                clearIdSelection();
+                selectFromHere(contextMenu.rowIndex);
+                closeContextMenu();
+              }}
+            >
+              <ListItemIcon>
+                <ArrowDown size={16} />
+              </ListItemIcon>
+              <ListItemText primary="From here" />
+            </MenuItem>
+
+            <MenuItem
+              onClick={() => {
+                setSelectionMode("index");
+                clearIdSelection();
+                selectToHere(contextMenu.rowIndex);
+                closeContextMenu();
+              }}
+            >
+              <ListItemIcon>
+                <ArrowUp size={16} />
+              </ListItemIcon>
+              <ListItemText primary="To here" />
+            </MenuItem>
+
+            <MenuItem
+              onClick={() => {
+                setSelectionMode("index");
+                clearIdSelection();
+                invertSelection();
+                closeContextMenu();
+              }}
+            >
+              <ListItemIcon>
+                <RefreshCcw size={16} />
+              </ListItemIcon>
+              <ListItemText primary="Invert selection" />
+            </MenuItem>
+
+            <Divider />
+
+            <MenuItem
+              onClick={() => {
+                const start = String(contextMenu.rowIndex + 1);
+                setSelectionDialog({
+                  open: true,
+                  kind: "range",
+                  title: "Select range (row numbers)",
+                  startValue: start,
+                  endValue: start,
+                });
+                setSelectionDialogError(null);
+              }}
+            >
+              <ListItemIcon>
+                <CheckSquare size={16} />
+              </ListItemIcon>
+              <ListItemText primary="Range…" />
+            </MenuItem>
+
+            <MenuItem
+              onClick={() => {
+                setSelectionDialog({
+                  open: true,
+                  kind: "indexCompare",
+                  title: "Select rows with index ≥ … (row number)",
+                  mode: "gte",
+                  value: String(contextMenu.rowIndex + 1),
+                });
+                setSelectionDialogError(null);
+              }}
+            >
+              <ListItemIcon>
+                <Hash size={16} />
+              </ListItemIcon>
+              <ListItemText primary="Index ≥ …" />
+            </MenuItem>
+
+            <MenuItem
+              onClick={() => {
+                setSelectionDialog({
+                  open: true,
+                  kind: "indexCompare",
+                  title: "Select rows with index ≤ … (row number)",
+                  mode: "lte",
+                  value: String(contextMenu.rowIndex + 1),
+                });
+                setSelectionDialogError(null);
+              }}
+            >
+              <ListItemIcon>
+                <Hash size={16} />
+              </ListItemIcon>
+              <ListItemText primary="Index ≤ …" />
+            </MenuItem>
+
+            <MenuItem
+              onClick={() => {
+                setSelectionDialog({
+                  open: true,
+                  kind: "indexCompare",
+                  title: "Select rows with index > … (row number)",
+                  mode: "gt",
+                  value: String(contextMenu.rowIndex + 1),
+                });
+                setSelectionDialogError(null);
+              }}
+            >
+              <ListItemIcon>
+                <Hash size={16} />
+              </ListItemIcon>
+              <ListItemText primary="Index > …" />
+            </MenuItem>
+
+            <MenuItem
+              onClick={() => {
+                setSelectionDialog({
+                  open: true,
+                  kind: "indexCompare",
+                  title: "Select rows with index < … (row number)",
+                  mode: "lt",
+                  value: String(contextMenu.rowIndex + 1),
+                });
+                setSelectionDialogError(null);
+              }}
+            >
+              <ListItemIcon>
+                <Hash size={16} />
+              </ListItemIcon>
+              <ListItemText primary="Index < …" />
+            </MenuItem>
+          </>
+        )}
+
+        {contextMenu?.kind === "header" && (
+          <>
+            <MenuItem disabled sx={{ opacity: 0.9 }}>
+              <ListItemText primary={`Column: ${contextMenuColumnLabel ?? contextMenu.columnName}`} />
+            </MenuItem>
+
+            <Divider />
+
+            <MenuItem
+              onClick={() => {
+                openCriteriaDialogForColumn({ columnName: contextMenu.columnName });
+                closeContextMenu();
+              }}
+            >
+              <ListItemIcon>
+                <Filter size={16} />
+              </ListItemIcon>
+              <ListItemText primary="Select where…" />
+            </MenuItem>
+
+            <MenuItem
+              onClick={() => {
+                openCriteriaDialogForColumn({
+                  columnName: contextMenu.columnName,
+                  operator: "contains",
+                });
+                closeContextMenu();
+              }}
+            >
+              <ListItemIcon>
+                <Filter size={16} />
+              </ListItemIcon>
+              <ListItemText primary="Contains…" />
+            </MenuItem>
+
+            <MenuItem
+              onClick={() => {
+                openCriteriaDialogForColumn({
+                  columnName: contextMenu.columnName,
+                  operator: "gt",
+                  treatAsNumber: true,
+                });
+                closeContextMenu();
+              }}
+            >
+              <ListItemIcon>
+                <Sigma size={16} />
+              </ListItemIcon>
+              <ListItemText primary="Greater than…" />
+            </MenuItem>
+
+            <MenuItem
+              onClick={() => {
+                openCriteriaDialogForColumn({
+                  columnName: contextMenu.columnName,
+                  operator: "lt",
+                  treatAsNumber: true,
+                });
+                closeContextMenu();
+              }}
+            >
+              <ListItemIcon>
+                <Sigma size={16} />
+              </ListItemIcon>
+              <ListItemText primary="Less than…" />
+            </MenuItem>
+
+            <MenuItem
+              onClick={() => {
+                openCriteriaDialogForColumn({
+                  columnName: contextMenu.columnName,
+                  operator: "between",
+                  treatAsNumber: true,
+                });
+                closeContextMenu();
+              }}
+            >
+              <ListItemIcon>
+                <Sigma size={16} />
+              </ListItemIcon>
+              <ListItemText primary="Between…" />
+            </MenuItem>
+
+            <Divider />
+
+            <MenuItem
+              onClick={() => {
+                resetSelection();
+                closeContextMenu();
+              }}
+            >
+              <ListItemIcon>
+                <CloseIcon fontSize="small" />
+              </ListItemIcon>
+              <ListItemText primary="Clear selection" />
+            </MenuItem>
+          </>
+        )}
       </Menu>
 
-      <Menu
-        open={!!tableContextMenu && !!selectSubmenuAnchorEl}
-        anchorEl={selectSubmenuAnchorEl}
-        onClose={() => setSelectSubmenuAnchorEl(null)}
-        anchorOrigin={{ horizontal: "right", vertical: "top" }}
-        transformOrigin={{ horizontal: "left", vertical: "top" }}
+      {/* Selection dialog */}
+      <Dialog
+        open={selectionDialog.open}
+        onClose={(_event, reason) => {
+          if (selectionBusy) return;
+          if (reason === "backdropClick") return;
+          closeSelectionDialog();
+        }}
+        maxWidth="sm"
+        fullWidth
       >
-        <MenuItem onClick={() => runContextSelectionAction("all")}>
-          <ListItemIcon sx={{ minWidth: 28 }}>
-            <List size={16} />
-          </ListItemIcon>
-          <ListItemText>All</ListItemText>
-        </MenuItem>
+        <DialogTitle sx={{ fontSize: "0.95rem", fontWeight: 700 }}>
+          {selectionDialog.open ? selectionDialog.title : "Selection"}
+        </DialogTitle>
 
-        <MenuItem onClick={() => runContextSelectionAction("fromHere")}>
-          <ListItemIcon sx={{ minWidth: 28 }}>
-            <ArrowDown size={16} />
-          </ListItemIcon>
-          <ListItemText>From here</ListItemText>
-        </MenuItem>
+        <DialogContent dividers>
+          {selectionDialogError && (
+            <Box sx={{ mb: 1.5 }}>
+              <Typography variant="body2" color="error" sx={{ fontWeight: 600 }}>
+                {selectionDialogError}
+              </Typography>
+            </Box>
+          )}
 
-        <MenuItem onClick={() => runContextSelectionAction("toHere")}>
-          <ListItemIcon sx={{ minWidth: 28 }}>
-            <ArrowUp size={16} />
-          </ListItemIcon>
-          <ListItemText>To here</ListItemText>
-        </MenuItem>
+          {selectionProgress && (
+            <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1 }}>
+              Selecting… {selectionProgress.done}/{selectionProgress.total}
+            </Typography>
+          )}
 
-        <Divider />
+          {selectionDialog.open && selectionDialog.kind === "range" && (
+            <Box sx={{ display: "flex", gap: 1.5 }}>
+              <TextField
+                label="Start (row #)"
+                size="small"
+                value={selectionDialog.startValue}
+                onChange={(e) =>
+                  setSelectionDialog((prev) =>
+                    prev.open && prev.kind === "range" ? { ...prev, startValue: e.target.value } : prev,
+                  )
+                }
+                disabled={selectionBusy}
+                fullWidth
+              />
+              <TextField
+                label="End (row #)"
+                size="small"
+                value={selectionDialog.endValue}
+                onChange={(e) =>
+                  setSelectionDialog((prev) =>
+                    prev.open && prev.kind === "range" ? { ...prev, endValue: e.target.value } : prev,
+                  )
+                }
+                disabled={selectionBusy}
+                fullWidth
+              />
+            </Box>
+          )}
 
-        <MenuItem onClick={() => runContextSelectionAction("invert")}>
-          <ListItemIcon sx={{ minWidth: 28 }}>
-            <RefreshCcw size={16} />
-          </ListItemIcon>
-          <ListItemText>Invert selection</ListItemText>
-        </MenuItem>
-      </Menu>
+          {selectionDialog.open && selectionDialog.kind === "indexCompare" && (
+            <TextField
+              label="Row #"
+              size="small"
+              value={selectionDialog.value}
+              onChange={(e) =>
+                setSelectionDialog((prev) =>
+                  prev.open && prev.kind === "indexCompare" ? { ...prev, value: e.target.value } : prev,
+                )
+              }
+              disabled={selectionBusy}
+              fullWidth
+            />
+          )}
+
+          {selectionDialog.open && selectionDialog.kind === "criteria" && (
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
+              <Typography variant="caption" color="text.secondary">
+                Column: <strong>{contextMenuColumnLabel ?? selectionDialog.columnName}</strong>
+              </Typography>
+
+              <Box sx={{ display: "flex", gap: 1.5, flexWrap: "wrap" }}>
+                <FormControl size="small" sx={{ minWidth: 240, flex: 1 }}>
+                  <InputLabel id="criteria-operator-label">Operator</InputLabel>
+                  <Select
+                    labelId="criteria-operator-label"
+                    label="Operator"
+                    value={selectionDialog.operator}
+                    onChange={(e) => {
+                      const nextOp = e.target.value as CriteriaOperator;
+                      setSelectionDialog((prev) =>
+                        prev.open && prev.kind === "criteria"
+                          ? {
+                              ...prev,
+                              operator: nextOp,
+                              treatAsNumber: isNumericOperator(nextOp) ? true : prev.treatAsNumber,
+                            }
+                          : prev,
+                      );
+                    }}
+                    disabled={selectionBusy}
+                  >
+                    <MenuItem value="equals">Equals</MenuItem>
+                    <MenuItem value="notEquals">Not equals</MenuItem>
+                    <Divider />
+                    <MenuItem value="contains">Contains</MenuItem>
+                    <MenuItem value="startsWith">Starts with</MenuItem>
+                    <MenuItem value="endsWith">Ends with</MenuItem>
+                    <MenuItem value="regex">Regex</MenuItem>
+                    <Divider />
+                    <MenuItem value="isEmpty">Is empty</MenuItem>
+                    <MenuItem value="isNotEmpty">Is not empty</MenuItem>
+                    <MenuItem value="isImage">Is image</MenuItem>
+                    <MenuItem value="isNotImage">Is not image</MenuItem>
+                    <Divider />
+                    <MenuItem value="gt">Greater than</MenuItem>
+                    <MenuItem value="gte">Greater or equal</MenuItem>
+                    <MenuItem value="lt">Less than</MenuItem>
+                    <MenuItem value="lte">Less or equal</MenuItem>
+                    <MenuItem value="between">Between</MenuItem>
+                  </Select>
+                </FormControl>
+
+                <FormControl size="small" sx={{ minWidth: 240, flex: 1 }}>
+                  <InputLabel id="criteria-setop-label">Apply as</InputLabel>
+                  <Select
+                    labelId="criteria-setop-label"
+                    label="Apply as"
+                    value={selectionDialog.setOp}
+                    onChange={(e) =>
+                      setSelectionDialog((prev) =>
+                        prev.open && prev.kind === "criteria"
+                          ? { ...prev, setOp: e.target.value as SelectionSetOp }
+                          : prev,
+                      )
+                    }
+                    disabled={selectionBusy}
+                  >
+                    <MenuItem value="replace">{getSetOpLabel("replace")}</MenuItem>
+                    <MenuItem value="add">{getSetOpLabel("add")}</MenuItem>
+                    <MenuItem value="remove">{getSetOpLabel("remove")}</MenuItem>
+                    <MenuItem value="intersect">{getSetOpLabel("intersect")}</MenuItem>
+                  </Select>
+                </FormControl>
+              </Box>
+
+              <Box sx={{ display: "flex", gap: 1.5, flexWrap: "wrap" }}>
+                <FormControl size="small" sx={{ minWidth: 240, flex: 1 }}>
+                  <InputLabel id="criteria-scope-label">Scope</InputLabel>
+                  <Select
+                    labelId="criteria-scope-label"
+                    label="Scope"
+                    value={selectionDialog.scope}
+                    onChange={(e) =>
+                      setSelectionDialog((prev) =>
+                        prev.open && prev.kind === "criteria"
+                          ? { ...prev, scope: e.target.value as SelectionScope }
+                          : prev,
+                      )
+                    }
+                    disabled={selectionBusy}
+                  >
+                    <MenuItem value="allRows">{getScopeLabel("allRows")}</MenuItem>
+                    <MenuItem value="currentSelection">{getScopeLabel("currentSelection")}</MenuItem>
+                  </Select>
+                </FormControl>
+
+                <FormControl size="small" sx={{ minWidth: 240, flex: 1 }}>
+                  <InputLabel id="criteria-type-label">Compare as</InputLabel>
+                  <Select
+                    labelId="criteria-type-label"
+                    label="Compare as"
+                    value={selectionDialog.treatAsNumber ? "number" : "text"}
+                    onChange={(e) =>
+                      setSelectionDialog((prev) =>
+                        prev.open && prev.kind === "criteria"
+                          ? { ...prev, treatAsNumber: e.target.value === "number" }
+                          : prev,
+                      )
+                    }
+                    disabled={selectionBusy}
+                  >
+                    <MenuItem value="text">Text</MenuItem>
+                    <MenuItem value="number">Number</MenuItem>
+                  </Select>
+                </FormControl>
+              </Box>
+
+              <Box sx={{ display: "flex", gap: 1.5, flexWrap: "wrap" }}>
+                <TextField
+                  label="Value"
+                  size="small"
+                  value={selectionDialog.value1}
+                  onChange={(e) =>
+                    setSelectionDialog((prev) =>
+                      prev.open && prev.kind === "criteria" ? { ...prev, value1: e.target.value } : prev,
+                    )
+                  }
+                  disabled={
+                    selectionBusy ||
+                    ["isEmpty", "isNotEmpty", "isImage", "isNotImage"].includes(selectionDialog.operator)
+                  }
+                  fullWidth
+                />
+
+                <TextField
+                  label="Value 2"
+                  size="small"
+                  value={selectionDialog.value2}
+                  onChange={(e) =>
+                    setSelectionDialog((prev) =>
+                      prev.open && prev.kind === "criteria" ? { ...prev, value2: e.target.value } : prev,
+                    )
+                  }
+                  disabled={selectionBusy || selectionDialog.operator !== "between"}
+                  fullWidth
+                />
+              </Box>
+
+              <Box sx={{ display: "flex", gap: 2, alignItems: "center", flexWrap: "wrap" }}>
+                <FormControl size="small" sx={{ minWidth: 240 }}>
+                  <InputLabel id="criteria-case-label">Case</InputLabel>
+                  <Select
+                    labelId="criteria-case-label"
+                    label="Case"
+                    value={selectionDialog.caseSensitive ? "sensitive" : "insensitive"}
+                    onChange={(e) =>
+                      setSelectionDialog((prev) =>
+                        prev.open && prev.kind === "criteria"
+                          ? { ...prev, caseSensitive: e.target.value === "sensitive" }
+                          : prev,
+                      )
+                    }
+                    disabled={selectionBusy}
+                  >
+                    <MenuItem value="insensitive">Case-insensitive</MenuItem>
+                    <MenuItem value="sensitive">Case-sensitive</MenuItem>
+                  </Select>
+                </FormControl>
+
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      size="small"
+                      checked={selectionDialog.negate}
+                      onChange={(e) =>
+                        setSelectionDialog((prev) =>
+                          prev.open && prev.kind === "criteria"
+                            ? { ...prev, negate: e.target.checked }
+                            : prev,
+                        )
+                      }
+                      disabled={selectionBusy}
+                    />
+                  }
+                  label={
+                    <Typography variant="caption" sx={{ fontWeight: 600 }}>
+                      Negate (NOT)
+                    </Typography>
+                  }
+                />
+              </Box>
+
+              <Box
+                sx={{
+                  borderRadius: 2,
+                  px: 1.25,
+                  py: 1,
+                  border: "1px solid rgba(148,163,184,0.24)",
+                  backgroundColor: "rgba(248,250,252,0.8)",
+                }}
+              >
+                <Typography variant="caption" color="text.secondary">
+                  Result will use <strong>row ids</strong> for stable selection across sorting.
+                </Typography>
+                <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.25 }}>
+                  Operator: <strong>{getOperatorLabel(selectionDialog.operator)}</strong>, Apply as:{" "}
+                  <strong>{getSetOpLabel(selectionDialog.setOp)}</strong>, Scope:{" "}
+                  <strong>{getScopeLabel(selectionDialog.scope)}</strong>
+                </Typography>
+              </Box>
+            </Box>
+          )}
+        </DialogContent>
+
+        <DialogActions>
+          <Button
+            variant="outlined"
+            onClick={closeSelectionDialog}
+            disabled={selectionBusy}
+            sx={{ textTransform: "none" }}
+          >
+            Cancel
+          </Button>
+
+          <Button
+            variant="contained"
+            onClick={async () => {
+              setSelectionDialogError(null);
+
+              if (!selectionDialog.open) return;
+
+              if (selectionDialog.kind === "range") {
+                const start = parsePositiveInt(selectionDialog.startValue);
+                const end = parsePositiveInt(selectionDialog.endValue);
+                if (start == null || end == null) {
+                  setSelectionDialogError("Start/end must be positive integers");
+                  return;
+                }
+
+                setSelectionMode("index");
+                clearIdSelection();
+                selectRange(start - 1, end - 1);
+                closeSelectionDialog();
+                closeContextMenu();
+                return;
+              }
+
+              if (selectionDialog.kind === "indexCompare") {
+                const value = parsePositiveInt(selectionDialog.value);
+                if (value == null) {
+                  setSelectionDialogError("Value must be a positive integer");
+                  return;
+                }
+
+                setSelectionMode("index");
+                clearIdSelection();
+                selectIndexCompare(selectionDialog.mode, value);
+                closeSelectionDialog();
+                closeContextMenu();
+                return;
+              }
+
+              await runColumnCriteriaSelection();
+            }}
+            disabled={selectionBusy}
+            sx={{ textTransform: "none", fontWeight: 700 }}
+          >
+            {selectionBusy ? "Applying…" : "Apply"}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Action dialog */}
       <Dialog
@@ -3503,8 +4710,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose }: M
             borderRadius: 3,
             overflow: "hidden",
             border: "1px solid rgba(15,23,42,0.08)",
-            boxShadow:
-              "0 20px 40px rgba(15,23,42,0.18), 0 8px 16px rgba(15,23,42,0.10)",
+            boxShadow: "0 20px 40px rgba(15,23,42,0.18), 0 8px 16px rgba(15,23,42,0.10)",
           },
         }}
       >
@@ -3669,15 +4875,11 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose }: M
                 minWidth: 118,
                 color: "#e2e8f0",
                 border: "1px solid rgba(255,255,255,0.06)",
-                background:
-                  "linear-gradient(180deg, #2563eb 0%, #1d4ed8 55%, #1e40af 100%)",
-                boxShadow:
-                  "0 8px 18px rgba(37,99,235,0.22), inset 0 1px 0 rgba(255,255,255,0.12)",
+                background: "linear-gradient(180deg, #2563eb 0%, #1d4ed8 55%, #1e40af 100%)",
+                boxShadow: "0 8px 18px rgba(37,99,235,0.22), inset 0 1px 0 rgba(255,255,255,0.12)",
                 "&:hover": {
-                  background:
-                    "linear-gradient(180deg, #3b82f6 0%, #2563eb 55%, #1d4ed8 100%)",
-                  boxShadow:
-                    "0 10px 20px rgba(37,99,235,0.28), inset 0 1px 0 rgba(255,255,255,0.14)",
+                  background: "linear-gradient(180deg, #3b82f6 0%, #2563eb 55%, #1d4ed8 100%)",
+                  boxShadow: "0 10px 20px rgba(37,99,235,0.28), inset 0 1px 0 rgba(255,255,255,0.14)",
                 },
                 "&.Mui-disabled": {
                   color: "rgba(226,232,240,0.55)",
