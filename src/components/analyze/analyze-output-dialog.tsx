@@ -227,7 +227,7 @@ function AnalyzeOutputDialog({
     }
 
     if (isSetOfMetadataKind(pointerClass)) {
-      return <MetadataViewer projectId={projectIdNum} protocolId={protocolIdNum} outputName={outputName} />;
+      return <MetadataViewer projectId={projectIdNum} protocolId={protocolIdNum} outputName={outputName} onClose={onClose}/>;
     }
 
     // noViewerFallback

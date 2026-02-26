@@ -24,9 +24,11 @@ import {
   Menu,
   MenuItem,
   ListItemText,
+  ListItemIcon,
   Divider,
   Paper,
   Select,
+  TextField,
   type SelectChangeEvent,
   Table,
   TableBody,
@@ -44,6 +46,12 @@ import {
   Check,
   ColumnsSettingsIcon,
   ChevronRight,
+  CheckSquare,
+  List,
+  ArrowDown,
+  ArrowUp,
+  RefreshCcw,
+  Plus,
 } from "lucide-react";
 import type {
   MetadataCell,
@@ -59,6 +67,7 @@ type MetadataViewerProps = {
   projectId: number;
   protocolId: number;
   outputName: string;
+  onClose?: () => void;
 };
 
 type ViewMode = "table" | "gallery";
@@ -192,6 +201,21 @@ type ColumnsDialogProps = {
   updateDraftColumnSettings: (colName: string, partial: Partial<ColumnSettings>) => void;
 };
 
+type MetadataActionDialogState = {
+  open: boolean;
+  actionLabel: string;
+};
+
+type MetadataActionRequestPayload = {
+  action: string;
+  subsetName: string;
+  rowIds: Array<string | number>;
+  projectId: number;
+  protocolId: number;
+  outputName: string;
+  tableName: string;
+};
+
 /* ======================= Constants ======================= */
 
 const BASE_THUMB_SIZE = 160;
@@ -206,6 +230,7 @@ const MIN_TEXT_COL_WIDTH = 140;
 const IMAGE_COL_MIN_WIDTH = BASE_THUMB_SIZE + 24;
 
 const GALLERY_PAGE_SIZE = 120;
+const SELECTION_IDS_SCAN_PAGE_SIZE = 500;
 
 const MAX_CONCURRENT_IMAGE_REQUESTS = 4;
 const MAX_IMAGE_CACHE_ENTRIES = 400;
@@ -215,6 +240,8 @@ const HEADER_BG = "#f3f4f6";
 const DIALOG_HEADER_BG = "#e5e7eb";
 const DIALOG_ROW_ODD_BG = "#f9fafb";
 const DIALOG_ROW_EVEN_BG = "#ffffff";
+
+const DEFAULT_SUBSET_NAME = "create subset";
 
 const baseCellSx = {
   padding: "4px 8px",
@@ -352,6 +379,23 @@ function formatCellValue(value: MetadataCell): ReactNode {
   } catch {
     return String(value);
   }
+}
+
+function getMetadataRowId(row: MetadataRow): string | number | null {
+  const rawId = (row as { id?: unknown }).id;
+  if (typeof rawId === "string" || typeof rawId === "number") {
+    return rawId;
+  }
+  return null;
+}
+
+function getSchemaActions(schema: MetadataTableSchema | null): string[] {
+  if (!schema) return [];
+  const rawActions = (schema as MetadataTableSchema & { actions?: unknown }).actions;
+  if (!Array.isArray(rawActions)) return [];
+  return rawActions.filter(
+    (item): item is string => typeof item === "string" && item.trim().length > 0,
+  );
 }
 
 /* ======================= Selection helpers ======================= */
@@ -603,7 +647,7 @@ function useMetadataTables(
     return () => {
       cancelled = true;
     };
-  }, [projectId, protocolId, outputName, isMountedRef]);
+  }, [projectId, protocolId, outputName, isMountedRef, svc]);
 
   return {
     tables,
@@ -665,7 +709,7 @@ function useMetadataSchema(
     return () => {
       cancelled = true;
     };
-  }, [projectId, protocolId, outputName, selectedTable, isMountedRef]);
+  }, [projectId, protocolId, outputName, selectedTable, isMountedRef, svc]);
 
   return {
     schema,
@@ -820,7 +864,7 @@ function useVirtualTableWindow(params: {
         }
       }
     },
-    [isMountedRef, outputName, projectId, protocolId, selectedTable, totalRows],
+    [isMountedRef, outputName, projectId, protocolId, selectedTable, totalRows, svc],
   );
 
   useEffect(() => {
@@ -1047,7 +1091,7 @@ function useMetadataGalleryRows(params: {
         galleryRequestInFlightRef.current = false;
       }
     },
-    [isMountedRef, outputName, projectId, protocolId, schema, selectedTable, totalRows],
+    [isMountedRef, outputName, projectId, protocolId, schema, selectedTable, totalRows, svc],
   );
 
   useEffect(() => {
@@ -1343,6 +1387,7 @@ function MetadataImageCell({
     rowIndexInTable,
     size,
     tableName,
+    svc,
   ]);
 
   const borderColor = isSelected ? "#2563eb" : "rgba(148,163,184,0.6)";
@@ -2045,8 +2090,14 @@ function ColumnsDialog({
 
 /* ======================= Main component ======================= */
 
-export function MetadataViewer({ projectId, protocolId, outputName }: MetadataViewerProps) {
+export function MetadataViewer({
+  projectId,
+  protocolId,
+  outputName,
+  onClose,
+}: MetadataViewerProps) {
   const isMountedRef = useIsMountedRef();
+  const svc = useProjectService();
 
   const [viewMode, setViewMode] = useState<ViewMode>("table");
 
@@ -2059,6 +2110,14 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
 
   const [tableContextMenu, setTableContextMenu] = useState<TableContextMenuState>(null);
   const [selectSubmenuAnchorEl, setSelectSubmenuAnchorEl] = useState<HTMLElement | null>(null);
+
+  const [actionDialogState, setActionDialogState] = useState<MetadataActionDialogState>({
+    open: false,
+    actionLabel: "",
+  });
+  const [subsetName, setSubsetName] = useState(DEFAULT_SUBSET_NAME);
+  const [actionSubmitting, setActionSubmitting] = useState(false);
+  const [actionDialogError, setActionDialogError] = useState<string | null>(null);
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const galleryScrollRef = useRef<HTMLDivElement | null>(null);
@@ -2092,6 +2151,7 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
   const totalRows = tableInfo?.rowCount ?? 0;
 
   const {
+    selectionState,
     isRowSelected,
     selectedCount,
     clearSelection,
@@ -2141,6 +2201,8 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
     const visible = settings?.visible ?? (column.visible !== false);
     return visible ? column : null;
   }, [allColumns, columnSettings]);
+
+  const schemaActions = useMemo(() => getSchemaActions(schema), [schema]);
 
   const isClassTable = useMemo(() => {
     if (!tableInfo) return false;
@@ -2255,6 +2317,19 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
     setSelectSubmenuAnchorEl(null);
   }, []);
 
+  const closeActionDialog = useCallback(() => {
+    if (actionSubmitting) return;
+    setActionDialogState({ open: false, actionLabel: "" });
+    setSubsetName(DEFAULT_SUBSET_NAME);
+    setActionDialogError(null);
+  }, [actionSubmitting]);
+
+  const openActionDialog = useCallback((actionLabel: string) => {
+    setActionDialogState({ open: true, actionLabel });
+    setSubsetName(DEFAULT_SUBSET_NAME);
+    setActionDialogError(null);
+  }, []);
+
   const handleTableRowContextMenu = useCallback(
     (rowIndex: number, event: ReactMouseEvent<Element>) => {
       event.preventDefault();
@@ -2330,9 +2405,11 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
       resetSelection();
       clearImageCache();
       closeTableContextMenus();
+      closeActionDialog();
     },
     [
       clearImageCache,
+      closeActionDialog,
       closeTableContextMenus,
       invalidateGalleryState,
       invalidateWindowState,
@@ -2346,7 +2423,8 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
   useEffect(() => {
     resetSelection();
     closeTableContextMenus();
-  }, [projectId, protocolId, outputName, resetSelection, closeTableContextMenus]);
+    closeActionDialog();
+  }, [projectId, protocolId, outputName, resetSelection, closeTableContextMenus, closeActionDialog]);
 
   const openColumnsDialog = useCallback(() => {
     if (!schema) return;
@@ -2402,6 +2480,253 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
     },
     [],
   );
+
+  const resolveSelectedRowIds = useCallback(async (): Promise<Array<string | number>> => {
+    if (!selectedTable || !schema || totalRows <= 0) {
+      return [];
+    }
+
+    if (selectedCount <= 0) {
+      return [];
+    }
+
+    const rowIds: Array<string | number> = [];
+
+    for (let offset = 0; offset < totalRows; offset += SELECTION_IDS_SCAN_PAGE_SIZE) {
+      const response = (await svc.fetchMetadataTableWindow(
+        projectId,
+        protocolId,
+        outputName,
+        selectedTable,
+        {
+          offset,
+          limit: Math.min(SELECTION_IDS_SCAN_PAGE_SIZE, totalRows - offset),
+          selectionOnly: false,
+        },
+      )) as MetadataWindowResponse;
+
+      const parsed = parseWindowResponse(response);
+      const actualOffset = parsed.offset ?? offset;
+
+      for (let rowIndex = 0; rowIndex < parsed.rows.length; rowIndex += 1) {
+        const globalRowIndex = actualOffset + rowIndex;
+
+        if (!isRowIndexSelected(selectionState, globalRowIndex)) {
+          continue;
+        }
+
+        const rowId = getMetadataRowId(parsed.rows[rowIndex]);
+        if (rowId != null) {
+          rowIds.push(rowId);
+        }
+      }
+    }
+
+    return rowIds;
+  }, [
+    outputName,
+    projectId,
+    protocolId,
+    schema,
+    selectedCount,
+    selectedTable,
+    selectionState,
+    svc,
+    totalRows,
+  ]);
+
+  const invokeMetadataAction = useCallback(
+    async (payload: MetadataActionRequestPayload) => {
+      const svcAny = svc as unknown as Record<string, unknown>;
+
+      const candidateCalls: Array<() => Promise<unknown>> = [];
+
+      const runMetadataTableAction = svcAny.runMetadataTableAction;
+      if (typeof runMetadataTableAction === "function") {
+        candidateCalls.push(() =>
+          (
+            runMetadataTableAction as (
+              projectId: number,
+              protocolId: number,
+              outputName: string,
+              tableName: string,
+              payload: Record<string, unknown>,
+            ) => Promise<unknown>
+          )(
+            payload.projectId,
+            payload.protocolId,
+            payload.outputName,
+            payload.tableName,
+            {
+              action: payload.action,
+              subsetName: payload.subsetName,
+              rowIds: payload.rowIds,
+            },
+          ),
+        );
+
+        candidateCalls.push(() =>
+          (
+            runMetadataTableAction as (payload: Record<string, unknown>) => Promise<unknown>
+          )({
+            projectId: payload.projectId,
+            protocolId: payload.protocolId,
+            outputName: payload.outputName,
+            tableName: payload.tableName,
+            action: payload.action,
+            subsetName: payload.subsetName,
+            rowIds: payload.rowIds,
+          }),
+        );
+      }
+
+      const executeMetadataTableAction = svcAny.executeMetadataTableAction;
+      if (typeof executeMetadataTableAction === "function") {
+        candidateCalls.push(() =>
+          (
+            executeMetadataTableAction as (
+              projectId: number,
+              protocolId: number,
+              outputName: string,
+              tableName: string,
+              payload: Record<string, unknown>,
+            ) => Promise<unknown>
+          )(
+            payload.projectId,
+            payload.protocolId,
+            payload.outputName,
+            payload.tableName,
+            {
+              action: payload.action,
+              subsetName: payload.subsetName,
+              rowIds: payload.rowIds,
+            },
+          ),
+        );
+      }
+
+      const createMetadataSubsetFromSelection = svcAny.createMetadataSubsetFromSelection;
+      if (typeof createMetadataSubsetFromSelection === "function") {
+        candidateCalls.push(() =>
+          (
+            createMetadataSubsetFromSelection as (
+              projectId: number,
+              protocolId: number,
+              outputName: string,
+              tableName: string,
+              payload: Record<string, unknown>,
+            ) => Promise<unknown>
+          )(
+            payload.projectId,
+            payload.protocolId,
+            payload.outputName,
+            payload.tableName,
+            {
+              action: payload.action,
+              name: payload.subsetName,
+              subsetName: payload.subsetName,
+              rowIds: payload.rowIds,
+            },
+          ),
+        );
+      }
+
+      const createMetadataSubset = svcAny.createMetadataSubset;
+      if (typeof createMetadataSubset === "function") {
+        candidateCalls.push(() =>
+          (
+            createMetadataSubset as (
+              projectId: number,
+              protocolId: number,
+              outputName: string,
+              tableName: string,
+              payload: Record<string, unknown>,
+            ) => Promise<unknown>
+          )(
+            payload.projectId,
+            payload.protocolId,
+            payload.outputName,
+            payload.tableName,
+            {
+              action: payload.action,
+              name: payload.subsetName,
+              subsetName: payload.subsetName,
+              rowIds: payload.rowIds,
+            },
+          ),
+        );
+      }
+
+      if (candidateCalls.length === 0) {
+        throw new Error(
+          "No metadata action method found in ProjectService. Add one (for example: runMetadataTableAction).",
+        );
+      }
+
+      let lastError: unknown = null;
+
+      for (const candidateCall of candidateCalls) {
+        try {
+          return await candidateCall();
+        } catch (error) {
+          lastError = error;
+        }
+      }
+
+      throw lastError ?? new Error("Failed to execute metadata action");
+    },
+    [svc],
+  );
+
+  const handleAcceptAction = useCallback(async () => {
+    if (!schema || !selectedTable || !actionDialogState.actionLabel) {
+      return;
+    }
+
+    const safeSubsetName = subsetName.trim() || DEFAULT_SUBSET_NAME;
+
+    try {
+      setActionSubmitting(true);
+      setActionDialogError(null);
+
+      const rowIds = await resolveSelectedRowIds();
+
+      if (rowIds.length === 0) {
+        throw new Error("No selected rows with valid ids were found");
+      }
+
+      await invokeMetadataAction({
+        action: actionDialogState.actionLabel,
+        subsetName: safeSubsetName,
+        rowIds,
+        projectId,
+        protocolId,
+        outputName,
+        tableName: selectedTable,
+      });
+
+      setActionDialogState({ open: false, actionLabel: "" });
+      setSubsetName(DEFAULT_SUBSET_NAME);
+      setActionDialogError(null);
+    } catch (error) {
+      setActionDialogError(getErrorMessage(error, "Failed to execute action"));
+    } finally {
+      if (isMountedRef.current) {
+        setActionSubmitting(false);
+      }
+    }
+  }, [
+    actionDialogState.actionLabel,
+    invokeMetadataAction,
+    isMountedRef,
+    outputName,
+    projectId,
+    protocolId,
+    resolveSelectedRowIds,
+    schema,
+    selectedTable,
+    subsetName,
+  ]);
 
   return (
     <Box
@@ -2666,6 +2991,111 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
         />
       )}
 
+      {/* Footer */}
+            {/* Footer */}
+      <Paper
+        variant="outlined"
+        sx={{
+          mt: 1,
+          p: 1,
+          borderColor: "rgba(148,163,184,0.4)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 1,
+          flexWrap: "wrap",
+          background:
+            "linear-gradient(180deg, rgba(248,250,252,0.95) 0%, rgba(241,245,249,0.95) 100%)",
+        }}
+      >
+        {/* Left side info */}
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+          <Typography
+            variant="caption"
+            sx={{
+              color: "#334155",
+              px: 1,
+              py: 0.5,
+              borderRadius: 1,
+              backgroundColor: "rgba(148,163,184,0.12)",
+              border: "1px solid rgba(148,163,184,0.22)",
+            }}
+          >
+            Selected rows: <strong>{selectedCount}</strong>
+          </Typography>
+        </Box>
+
+        {/* Right side actions + close */}
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            gap: 1,
+            flexWrap: "wrap",
+            justifyContent: "flex-end",
+            ml: "auto",
+          }}
+        >
+          {schemaActions.map((actionLabel) => (
+            <Button
+              key={actionLabel}
+              size="small"
+              variant="contained"
+              startIcon={<Plus size={14} />}
+              onClick={() => openActionDialog(actionLabel)}
+              disabled={!schema || selectedCount <= 0 || actionSubmitting}
+              sx={{
+                textTransform: "none",
+                fontWeight: 600,
+                color: "#e2e8f0",
+                border: "1px solid rgba(255,255,255,0.08)",
+                background:
+                  "linear-gradient(180deg, #1e293b 0%, #0f172a 100%)",
+                boxShadow:
+                  "0 1px 2px rgba(15,23,42,0.25), inset 0 1px 0 rgba(255,255,255,0.06)",
+                "&:hover": {
+                  background:
+                    "linear-gradient(180deg, #334155 0%, #1e293b 100%)",
+                  boxShadow:
+                    "0 2px 6px rgba(15,23,42,0.28), inset 0 1px 0 rgba(255,255,255,0.08)",
+                },
+                "&.Mui-disabled": {
+                  color: "rgba(226,232,240,0.55)",
+                  background: "rgba(15,23,42,0.35)",
+                  borderColor: "rgba(148,163,184,0.18)",
+                },
+              }}
+            >
+              {actionLabel}
+            </Button>
+          ))}
+
+          {schemaActions.length === 0 && (
+            <Typography variant="caption" color="text.secondary">
+              No actions available for this table.
+            </Typography>
+          )}
+
+          <Button
+            size="small"
+            variant="contained"
+            color="error"
+            startIcon={<CloseIcon />}
+            onClick={() => {
+              onClose?.();
+            }}
+            disabled={!onClose}
+            sx={{
+              textTransform: "none",
+              fontWeight: 600,
+              boxShadow: "0 1px 3px rgba(127,29,29,0.25)",
+            }}
+          >
+            Close
+          </Button>
+        </Box>
+      </Paper>
+
       <ColumnsDialog
         open={columnsDialogOpen}
         onClose={closeColumnsDialog}
@@ -2676,6 +3106,7 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
         updateDraftColumnSettings={updateDraftColumnSettings}
       />
 
+      {/* Context menu */}
       <Menu
         open={!!tableContextMenu}
         onClose={closeTableContextMenus}
@@ -2692,6 +3123,9 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
             setSelectSubmenuAnchorEl(event.currentTarget);
           }}
         >
+          <ListItemIcon sx={{ minWidth: 28 }}>
+            <CheckSquare size={16} />
+          </ListItemIcon>
           <ListItemText>Select</ListItemText>
           <ChevronRight size={16} />
         </MenuItem>
@@ -2704,16 +3138,253 @@ export function MetadataViewer({ projectId, protocolId, outputName }: MetadataVi
         anchorOrigin={{ horizontal: "right", vertical: "top" }}
         transformOrigin={{ horizontal: "left", vertical: "top" }}
       >
-        <MenuItem onClick={() => runContextSelectionAction("all")}>All</MenuItem>
-        <MenuItem onClick={() => runContextSelectionAction("fromHere")}>
-          From here
+        <MenuItem onClick={() => runContextSelectionAction("all")}>
+          <ListItemIcon sx={{ minWidth: 28 }}>
+            <List size={16} />
+          </ListItemIcon>
+          <ListItemText>All</ListItemText>
         </MenuItem>
-        <MenuItem onClick={() => runContextSelectionAction("toHere")}>To here</MenuItem>
+
+        <MenuItem onClick={() => runContextSelectionAction("fromHere")}>
+          <ListItemIcon sx={{ minWidth: 28 }}>
+            <ArrowDown size={16} />
+          </ListItemIcon>
+          <ListItemText>From here</ListItemText>
+        </MenuItem>
+
+        <MenuItem onClick={() => runContextSelectionAction("toHere")}>
+          <ListItemIcon sx={{ minWidth: 28 }}>
+            <ArrowUp size={16} />
+          </ListItemIcon>
+          <ListItemText>To here</ListItemText>
+        </MenuItem>
+
         <Divider />
+
         <MenuItem onClick={() => runContextSelectionAction("invert")}>
-          Invert selection
+          <ListItemIcon sx={{ minWidth: 28 }}>
+            <RefreshCcw size={16} />
+          </ListItemIcon>
+          <ListItemText>Invert selection</ListItemText>
         </MenuItem>
       </Menu>
+
+      {/* Action dialog */}
+            {/* Action dialog */}
+      <Dialog
+        open={actionDialogState.open}
+        onClose={(_event, reason) => {
+          if (actionSubmitting) return;
+          if (reason === "backdropClick") return;
+          closeActionDialog();
+        }}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 3,
+            overflow: "hidden",
+            border: "1px solid rgba(15,23,42,0.08)",
+            boxShadow:
+              "0 20px 40px rgba(15,23,42,0.18), 0 8px 16px rgba(15,23,42,0.10)",
+          },
+        }}
+      >
+        <DialogTitle
+          sx={{
+            px: 2,
+            py: 1.4,
+            display: "flex",
+            alignItems: "center",
+            gap: 1.25,
+            background:
+              "linear-gradient(135deg, #0f172a 0%, #1e293b 55%, #334155 100%)",
+            color: "#e2e8f0",
+            borderBottom: "1px solid rgba(255,255,255,0.08)",
+          }}
+        >
+          
+
+          <Box sx={{ minWidth: 0, flex: 1 }}>
+            <Typography
+              variant="subtitle1"
+              sx={{
+                fontWeight: 700,
+                lineHeight: 1.15,
+                color: "#f8fafc",
+              }}
+            >
+              {actionDialogState.actionLabel || "Action"}
+            </Typography>
+            <Typography
+              variant="caption"
+              sx={{
+                color: "rgba(226,232,240,0.82)",
+                display: "block",
+                mt: 0.25,
+              }}
+            >
+              Create subset from selected rows
+            </Typography>
+          </Box>
+
+          <IconButton
+            size="small"
+            onClick={closeActionDialog}
+            disabled={actionSubmitting}
+            aria-label="Close action dialog"
+            sx={{
+              color: "#e2e8f0",
+              border: "1px solid rgba(255,255,255,0.18)",
+              background: "rgba(255,255,255,0.06)",
+              "&:hover": {
+                background: "rgba(255,255,255,0.12)",
+                borderColor: "rgba(255,255,255,0.28)",
+              },
+              "&.Mui-disabled": {
+                color: "rgba(226,232,240,0.4)",
+                borderColor: "rgba(255,255,255,0.08)",
+              },
+            }}
+          >
+            <CloseIcon fontSize="small" />
+          </IconButton>
+        </DialogTitle>
+
+        <DialogContent
+          dividers
+          sx={{
+            px: 2,
+            py: 2,
+            background:
+              "linear-gradient(180deg, rgba(248,250,252,0.96) 0%, rgba(241,245,249,0.96) 100%)",
+          }}
+        >
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+
+            <TextField
+              autoFocus
+              label="Subset name"
+              value={subsetName}
+              onChange={(event) => setSubsetName(event.target.value)}
+              fullWidth
+              size="small"
+              disabled={actionSubmitting}
+              placeholder={DEFAULT_SUBSET_NAME}
+              helperText="Name used to create the subset in the backend."
+              onKeyDown={(event) => {
+                if (
+                  event.key === "Enter" &&
+                  !actionSubmitting &&
+                  selectedCount > 0
+                ) {
+                  event.preventDefault();
+                  handleAcceptAction();
+                }
+              }}
+              sx={{
+                "& .MuiOutlinedInput-root": {
+                  borderRadius: 2,
+                  backgroundColor: "#fff",
+                },
+              }}
+            />
+
+            {actionDialogError && (
+              <Box
+                sx={{
+                  borderRadius: 2,
+                  px: 1.25,
+                  py: 1,
+                  border: "1px solid rgba(239,68,68,0.25)",
+                  backgroundColor: "rgba(254,242,242,0.9)",
+                }}
+              >
+                <Typography variant="body2" color="error" sx={{ fontWeight: 500 }}>
+                  {actionDialogError}
+                </Typography>
+              </Box>
+            )}
+          </Box>
+        </DialogContent>
+
+        <DialogActions
+          sx={{
+            px: 2,
+            py: 1.25,
+            justifyContent: "space-between",
+            gap: 1,
+            backgroundColor: "rgba(248,250,252,0.72)",
+            borderTop: "1px solid rgba(148,163,184,0.18)",
+          }}
+        >
+          <Typography variant="caption" color="text.secondary">
+            {selectedCount > 0
+              ? `${selectedCount} row${selectedCount === 1 ? "" : "s"} selected`
+              : "No rows selected"}
+          </Typography>
+
+          <Box sx={{ display: "flex", gap: 1 }}>
+            <Button
+              variant="outlined"
+              startIcon={<CloseIcon />}
+              onClick={closeActionDialog}
+              disabled={actionSubmitting}
+              sx={{
+                textTransform: "none",
+                borderRadius: 2,
+                fontWeight: 600,
+                borderColor: "rgba(148,163,184,0.35)",
+                color: "#334155",
+                "&:hover": {
+                  borderColor: "rgba(100,116,139,0.55)",
+                  backgroundColor: "rgba(148,163,184,0.06)",
+                },
+              }}
+            >
+              Cancel
+            </Button>
+
+            <Button
+              variant="contained"
+              startIcon={
+                actionSubmitting ? (
+                  <CircularProgress size={14} color="inherit" />
+                ) : (
+                  <Check size={16} />
+                )
+              }
+              onClick={handleAcceptAction}
+              disabled={actionSubmitting || selectedCount <= 0}
+              sx={{
+                textTransform: "none",
+                borderRadius: 2,
+                fontWeight: 700,
+                minWidth: 118,
+                color: "#e2e8f0",
+                border: "1px solid rgba(255,255,255,0.06)",
+                background:
+                  "linear-gradient(180deg, #2563eb 0%, #1d4ed8 55%, #1e40af 100%)",
+                boxShadow:
+                  "0 8px 18px rgba(37,99,235,0.22), inset 0 1px 0 rgba(255,255,255,0.12)",
+                "&:hover": {
+                  background:
+                    "linear-gradient(180deg, #3b82f6 0%, #2563eb 55%, #1d4ed8 100%)",
+                  boxShadow:
+                    "0 10px 20px rgba(37,99,235,0.28), inset 0 1px 0 rgba(255,255,255,0.14)",
+                },
+                "&.Mui-disabled": {
+                  color: "rgba(226,232,240,0.55)",
+                  background: "rgba(30,64,175,0.35)",
+                  borderColor: "rgba(148,163,184,0.18)",
+                },
+              }}
+            >
+              {actionSubmitting ? "Creating..." : "Accept"}
+            </Button>
+          </Box>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

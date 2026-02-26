@@ -24,6 +24,8 @@ import type {
   ProtocolTagUpdatePayload,
   ProtocolTagIdsResult,
   ContextMenuVisibilityPolicy,
+  MetadataTableActionPayload,
+  MetadataTableActionResult,
 } from "@/services/ProjectService";
 
 
@@ -134,7 +136,7 @@ const defaultService: ProjectService = {
   ) => api.fetchOutputPreview(toId(projectId), toId(protocolId), path, opts),
 
   previewRemoteEntry: (projectId: Id, protocolId: Id, path: string) =>
-  api.previewRemoteEntry(toId(projectId), toId(protocolId), path),
+    api.previewRemoteEntry(toId(projectId), toId(protocolId), path),
 
 
   getNextProtocolSuggestions: (
@@ -471,6 +473,21 @@ const defaultService: ProjectService = {
       opts ?? {},
     ),
 
+  runMetadataTableAction: (
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    tableName: string,
+    payload: MetadataTableActionPayload,
+  ): Promise<MetadataTableActionResult> =>
+    api.runMetadataTableAction(
+      toId(projectId),
+      toId(protocolId),
+      outputName,
+      tableName,
+      payload,
+    ),
+
   // ──────────────────────────── Analyze Results: Tilt series ────────────────────────────
 
   listOutputTiltSeries: (
@@ -641,7 +658,7 @@ const defaultService: ProjectService = {
     api.setProtocolTagIds(toId(projectId), toId(protocolId), tagIds),
 
 
-    // ──────────────────────────── Protocol logs (dynamic channels) ────────────────────────────
+  // ──────────────────────────── Protocol logs (dynamic channels) ────────────────────────────
 
   fetchProtocolLogChannels: (
     projectId: Id,
@@ -657,8 +674,8 @@ const defaultService: ProjectService = {
   ): Promise<ProtocolLogsChunkResponse> =>
     api.fetchProtocolLogsChunk(toId(projectId), toId(protocolId), offsets, opts),
 
-// ──────────────────────────── Context menu visibility policy ────────────────────────────
-    getContextMenuVisibilityPolicy: (
+  // ──────────────────────────── Context menu visibility policy ────────────────────────────
+  getContextMenuVisibilityPolicy: (
     projectId: Id,
   ): Promise<ContextMenuVisibilityPolicy> =>
     api.getContextMenuVisibilityPolicy(toId(projectId)),

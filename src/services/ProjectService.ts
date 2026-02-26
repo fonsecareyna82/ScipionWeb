@@ -189,7 +189,29 @@ export interface MetadataTableSchema {
   alias: string;
   hasColumnId: boolean;
   columns: MetadataColumn[];
+
+  /** Optional actions advertised by the backend for this table (UI will render buttons). */
+  actions?: string[];
 }
+
+export type MetadataTableActionPayload = {
+  /** Action label as provided by schema.actions */
+  action: string;
+
+  /** Subset name or action-specific label */
+  subsetName?: string;
+
+  /** Selected row ids */
+  ids: Array<number | string>;
+};
+
+export type MetadataTableActionResult = {
+  success: boolean;
+  message?: string;
+
+  /** Optional backend payload for caller-specific follow-ups */
+  data?: unknown;
+};
 
 export type MetadataCell =
   | number
@@ -209,6 +231,7 @@ export interface MetadataPage {
   totalRows: number;
   rows: MetadataRow[];
 }
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Analyze Results (Tilt series)
@@ -787,6 +810,14 @@ export interface ProjectService<
       format?: string;
     }
   ): string;
+
+  runMetadataTableAction(
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    tableName: string,
+    payload: MetadataTableActionPayload,
+  ): Promise<MetadataTableActionResult>;
 
 
   // ─────────────────────────────────────────────────────────────────────────────

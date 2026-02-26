@@ -1265,7 +1265,7 @@ export async function previewRemoteEntry(
   const isScipionPreview = previewSchema === "scipion" || (previewSchema === "" && hasPreviewHeaders);
 
   if (!isScipionPreview) {
-    const coerced = await coerceNonScipionResponse(res, payloadMime);    
+    const coerced = await coerceNonScipionResponse(res, payloadMime);
     return finalizePreviewForGui(coerced);
   }
 
@@ -2065,6 +2065,44 @@ export interface MetadataTableSchema {
   columns: MetadataColumn[];
 }
 
+export interface MetadataTableSchema {
+  name: string;
+  alias: string;
+  hasColumnId: boolean;
+  columns: MetadataColumn[];
+
+  /** Optional action buttons to display in the metadata viewer */
+  actions?: string[];
+}
+
+export type MetadataTableActionPayload = {
+  action: string;
+  subsetName?: string;
+  ids: Array<number | string>;
+};
+
+export type MetadataTableActionResult = {
+  success: boolean;
+  message?: string;
+  data?: unknown;
+};
+
+function normalizeMetadataTableActionResult(raw: unknown): MetadataTableActionResult {
+  // normalizeMetadataTableActionResult
+  if (raw && typeof raw === "object") {
+    const success =
+      typeof (raw as any).success === "boolean" ? (raw as any).success : true;
+
+    const message =
+      typeof (raw as any).message === "string" ? (raw as any).message : undefined;
+
+    return { success, message, data: raw };
+  }
+
+  // Empty response or non-object payload
+  return { success: true, data: raw };
+}
+
 // Cells and rows
 export type MetadataCell =
   | number
@@ -2120,6 +2158,46 @@ export async function fetchMetadataTableSchema(
   if (!res.ok)
     throw await toApiError(res, "Failed to fetch metadata schema");
   return safeJson<MetadataTableSchema>(res);
+}
+
+
+export async function runMetadataTableAction(
+  projectId: Id,
+  protocolId: Id,
+  outputName: string,
+  tableName: string,
+  payload: MetadataTableActionPayload,
+): Promise<MetadataTableActionResult> {
+  // runMetadataTableAction
+  const enc = encodeURIComponent;
+
+  const url = `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/outputs/${enc(
+    outputName,
+  )}/metadata/tables/${enc(tableName)}/actions`;
+
+  const body = {
+    action: String(payload?.action ?? "").trim(),
+    subsetName: (payload?.subsetName ?? "").trim() || undefined,
+    ids: Array.isArray(payload?.ids) ? payload.ids : [],
+  };
+
+  const res = await fetchWithAuth(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+  // Allow 204 to mean "ok"
+  if (res.status === 204) {
+    return { success: true };
+  }
+
+  if (!res.ok) {
+    throw await toApiError(res, "Failed to run metadata table action");
+  }
+
+  const raw = await safeJson<any>(res);
+  return normalizeMetadataTableActionResult(raw);
 }
 
 export async function fetchMetadataTablePage(
