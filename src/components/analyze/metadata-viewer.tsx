@@ -56,6 +56,7 @@ import {
   Hash,
   Sigma,
   Bookmark,
+  LineChart as PlotterIcon,
 } from "lucide-react";
 import type {
   MetadataCell,
@@ -66,7 +67,7 @@ import type {
 } from "@/api/projects";
 import { CloseIcon } from "@/icons";
 import { useProjectService } from "@/ProjectServiceContext";
-
+import { MetadataPlotterDialog } from "./metadata-plotter-dialog"
 type MetadataViewerProps = {
   projectId: number;
   protocolId: number;
@@ -2786,6 +2787,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose }: M
   const [actionDialogError, setActionDialogError] = useState<string | null>(null);
 
   const [sortInProgress, setSortInProgress] = useState(false);
+  const [plotterOpen, setPlotterOpen] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const galleryScrollRef = useRef<HTMLDivElement | null>(null);
@@ -3970,6 +3972,20 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose }: M
             </Tooltip>
           )}
 
+          {viewMode === "table" && schema && (
+            <Tooltip title="Plotter">
+              <span>
+                <IconButton
+                  size="small"
+                  onClick={() => setPlotterOpen(true)}
+                  disabled={!schema || totalRows <= 0}
+                >
+                  <PlotterIcon size={16} />
+                </IconButton>
+              </span>
+            </Tooltip>
+          )}
+
           {viewMode === "gallery" && schema && (
             <Tooltip title="Manage columns">
               <span>
@@ -4275,6 +4291,25 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose }: M
         columnSettings={columnSettings}
         draftColumnSettings={draftColumnSettings}
         updateDraftColumnSettings={updateDraftColumnSettings}
+      />
+
+
+      <MetadataPlotterDialog
+        open={plotterOpen}
+        onClose={() => setPlotterOpen(false)}
+        projectId={projectId}
+        protocolId={protocolId}
+        outputName={outputName}
+        selectedTable={selectedTable}
+        schema={schema}
+        totalRows={totalRows}
+        allColumns={allColumns}
+        schemaActions={schemaActions}
+        sortBy={sortBy}
+        sortAsc={sortAsc}
+        svcRef={svcRef as any}
+        isRowSelectedInViewer={isRowSelected}
+        viewerSelectedCount={effectiveSelectedCount}
       />
 
       {/* Context menu (direct, small typography) */}
