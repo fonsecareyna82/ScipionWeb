@@ -129,18 +129,18 @@ type SelectionMode = "index" | "ids";
 
 type ContextMenuState =
   | {
-      kind: "row";
-      mouseX: number;
-      mouseY: number;
-      rowIndex: number;
-      rowId: RowId | null;
-    }
+    kind: "row";
+    mouseX: number;
+    mouseY: number;
+    rowIndex: number;
+    rowId: RowId | null;
+  }
   | {
-      kind: "header";
-      mouseX: number;
-      mouseY: number;
-      columnName: string;
-    }
+    kind: "header";
+    mouseX: number;
+    mouseY: number;
+    columnName: string;
+  }
   | null;
 
 type CriteriaOperator =
@@ -166,33 +166,33 @@ type SelectionSetOp = "replace" | "add" | "remove" | "intersect";
 type SelectionDialogState =
   | { open: false }
   | {
-      open: true;
-      kind: "range";
-      title: string;
-      startValue: string; // oneBasedInclusive
-      endValue: string; // oneBasedInclusive
-    }
+    open: true;
+    kind: "range";
+    title: string;
+    startValue: string; // oneBasedInclusive
+    endValue: string; // oneBasedInclusive
+  }
   | {
-      open: true;
-      kind: "indexCompare";
-      title: string;
-      mode: "gte" | "lte" | "gt" | "lt";
-      value: string; // oneBased
-    }
+    open: true;
+    kind: "indexCompare";
+    title: string;
+    mode: "gte" | "lte" | "gt" | "lt";
+    value: string; // oneBased
+  }
   | {
-      open: true;
-      kind: "criteria";
-      title: string;
-      columnName: string;
-      operator: CriteriaOperator;
-      value1: string;
-      value2: string;
-      caseSensitive: boolean;
-      treatAsNumber: boolean;
-      negate: boolean;
-      scope: SelectionScope;
-      setOp: SelectionSetOp;
-    };
+    open: true;
+    kind: "criteria";
+    title: string;
+    columnName: string;
+    operator: CriteriaOperator;
+    value1: string;
+    value2: string;
+    caseSensitive: boolean;
+    treatAsNumber: boolean;
+    negate: boolean;
+    scope: SelectionScope;
+    setOp: SelectionSetOp;
+  };
 
 type MetadataImageCellProps = {
   projectId: number;
@@ -480,24 +480,48 @@ function formatCellValue(value: MetadataCell): ReactNode {
 }
 
 function rowIdToKey(rowId: RowId): RowIdKey {
-  // keepRowIdTypeStableInSetKeys
-  return typeof rowId === "number" ? `n:${rowId}` : `s:${rowId}`;
+  // normalizeRowIdKeyAcrossStringAndNumber
+  return `k:${String(rowId).trim()}`;
 }
 
-function resolveMetadataRowId(schema: MetadataTableSchema | null, row: MetadataRow): RowId | null {
-  // resolveStableRowIdFromIdColumn
-  if (!schema) return null;
+function normalizeRowId(raw: unknown): RowId | null {
+  // normalizeRowIdFromApi
+  if (typeof raw === "number") return Number.isFinite(raw) ? raw : null;
 
-  const columns = (schema.columns ?? []) as MetadataColumnWithVisibility[];
-  const idColumn = columns.find((c) => c.name === "id");
-  if (!idColumn) return null;
-
-  const value = row.values?.[idColumn.index];
-  if (typeof value === "string" || typeof value === "number") {
-    return value;
+  if (typeof raw === "string") {
+    const s = raw.trim();
+    if (!s) return null;
+    if (/^-?\d+$/.test(s)) {
+      const n = Number(s);
+      if (Number.isSafeInteger(n)) return n;
+    }
+    return s;
   }
 
   return null;
+}
+
+function resolveMetadataRowId(_schema: MetadataTableSchema | null, row: MetadataRow): RowId | null {
+  // preferBackendRowIdForStableSelectionAcrossSortingAndVirtualization
+  const backendRowId = normalizeRowId((row as any)?.rowId);
+  if (backendRowId != null) return backendRowId;
+
+  // fallbackToIdColumnValueIfRowIdMissing
+  if (_schema) {
+    const columns = (_schema.columns ?? []) as MetadataColumnWithVisibility[];
+    const idColumn =
+      columns.find((c) => c.name === "id") ??
+      columns.find((c) => (c.name || "").toLowerCase() === "id");
+
+    if (idColumn) {
+      const candidate = row.values?.[idColumn.index];
+      const normalized = normalizeRowId(candidate);
+      if (normalized != null) return normalized;
+    }
+  }
+
+  // lastResortFallback
+  return normalizeRowId((row as any)?.id);
 }
 
 function getSchemaActions(schema: MetadataTableSchema | null): string[] {
@@ -541,6 +565,126 @@ function getScopeLabel(scope: SelectionScope): string {
 }
 
 /* ======================= Selection helpers ======================= */
+
+function useProjectServiceRef() {
+  const svc = useProjectService();
+  const svcRef = useRef(svc);
+
+  useEffect(() => {
+    // keepServiceRefUpdated
+    svcRef.current = svc;
+  }, [svc]);
+
+  return svcRef;
+}
+
+function indicesToRanges(indices: number[]): IndexRange[] {
+  // indicesToRangesMerged
+  if (indices.length === 0) return [];
+
+  const sorted = Array.from(new Set(indices)).sort((a, b) => a - b);
+  const ranges: IndexRange[] = [];
+
+  let start = sorted[0];
+  let end = sorted[0];
+
+  for (let i = 1; i < sorted.length; i += 1) {
+    const v = sorted[i];
+    if (v === end + 1) {
+      end = v;
+    } else {
+      ranges.push({ start, end });
+      start = v;
+      end = v;
+    }
+  }
+
+  ranges.push({ start, end });
+  return ranges;
+}
+
+function selectionStateToSelectedRanges(selectionState: RowSelectionState, totalRows: number): IndexRange[] {
+  // selectionStateToSelectedRanges
+  const base = mergeRanges(selectionState.ranges);
+
+  if (selectionState.baseMode === "none") {
+    return base;
+  }
+
+  // baseMode="all": selected = [0..totalRows-1] minus excluded(base)
+  if (totalRows <= 0) return [];
+
+  const selected: IndexRange[] = [];
+  let cursor = 0;
+
+  for (const ex of base) {
+    if (cursor < ex.start) {
+      selected.push({ start: cursor, end: ex.start - 1 });
+    }
+    cursor = ex.end + 1;
+    if (cursor >= totalRows) break;
+  }
+
+  if (cursor <= totalRows - 1) {
+    selected.push({ start: cursor, end: totalRows - 1 });
+  }
+
+  return selected;
+}
+
+function intersectRanges(a: IndexRange[], b: IndexRange[]): IndexRange[] {
+  // intersectRanges
+  const out: IndexRange[] = [];
+  let i = 0;
+  let j = 0;
+
+  while (i < a.length && j < b.length) {
+    const A = a[i];
+    const B = b[j];
+
+    const start = Math.max(A.start, B.start);
+    const end = Math.min(A.end, B.end);
+
+    if (start <= end) out.push({ start, end });
+
+    if (A.end < B.end) i += 1;
+    else j += 1;
+  }
+
+  return out;
+}
+
+function subtractRanges(base: IndexRange[], remove: IndexRange[]): IndexRange[] {
+  // subtractRanges
+  const out: IndexRange[] = [];
+  let j = 0;
+
+  for (const A of base) {
+    let cursor = A.start;
+
+    while (j < remove.length && remove[j].end < cursor) j += 1;
+
+    let k = j;
+    while (k < remove.length && remove[k].start <= A.end) {
+      const R = remove[k];
+
+      if (R.start > cursor) {
+        out.push({ start: cursor, end: Math.min(A.end, R.start - 1) });
+      }
+
+      cursor = Math.max(cursor, R.end + 1);
+      if (cursor > A.end) break;
+
+      k += 1;
+    }
+
+    if (cursor <= A.end) {
+      out.push({ start: cursor, end: A.end });
+    }
+  }
+
+  return out;
+}
 
 function clampIndex(value: number, minValue: number, maxValue: number): number {
   if (value < minValue) return minValue;
@@ -689,13 +833,36 @@ function cellToComparableString(cell: MetadataCell): string {
 function cellToNumber(cell: MetadataCell): number | null {
   if (cell === null || cell === undefined) return null;
   if (typeof cell === "number") return Number.isFinite(cell) ? cell : null;
+
   if (typeof cell === "string") {
-    const trimmed = cell.trim();
-    if (!trimmed) return null;
-    const num = Number(trimmed);
-    return Number.isFinite(num) ? num : null;
+    const parsed = parseNumberInput(cell);
+    return parsed;
   }
+
   return null;
+}
+
+function parseNumberInput(raw: string): number | null {
+  // parseNumberInputSupportsCommaDecimal
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+
+  const noSpaces = trimmed.replace(/\s+/g, "");
+
+  // If both "," and "." exist, assume "," is thousands separator: "1,234.56"
+  if (noSpaces.includes(",") && noSpaces.includes(".")) {
+    const n = Number(noSpaces.replace(/,/g, ""));
+    return Number.isFinite(n) ? n : null;
+  }
+
+  // If only "," exists, treat as decimal separator: "1,23"
+  if (noSpaces.includes(",") && !noSpaces.includes(".")) {
+    const n = Number(noSpaces.replace(",", "."));
+    return Number.isFinite(n) ? n : null;
+  }
+
+  const n = Number(noSpaces);
+  return Number.isFinite(n) ? n : null;
 }
 
 function isNumericOperator(op: CriteriaOperator): boolean {
@@ -723,12 +890,12 @@ function evaluateCriteria(
       const cellNum = cellToNumber(cell);
       if (cellNum == null) return false;
 
-      const v1 = Number(value1);
-      if (!Number.isFinite(v1)) return false;
+      const v1 = parseNumberInput(value1);
+      if (v1 == null) return false;
 
       if (operator === "between") {
-        const v2 = Number(value2);
-        if (!Number.isFinite(v2)) return false;
+        const v2 = parseNumberInput(value2);
+        if (v2 == null) return false;
         const min = Math.min(v1, v2);
         const max = Math.max(v1, v2);
         return cellNum >= min && cellNum <= max;
@@ -740,9 +907,10 @@ function evaluateCriteria(
       return cellNum <= v1;
     }
 
-    const cellStrRaw = cellToComparableString(cell);
+    const cellStrRaw = cellToComparableString(cell).trim();
+    const v1Raw = value1.trim();
     const a = caseSensitive ? cellStrRaw : cellStrRaw.toLowerCase();
-    const b1 = caseSensitive ? value1 : value1.toLowerCase();
+    const b1 = caseSensitive ? v1Raw : v1Raw.toLowerCase();
 
     if (operator === "equals") return a === b1;
     if (operator === "notEquals") return a !== b1;
@@ -923,7 +1091,7 @@ function useMetadataTables(
   const [tablesLoading, setTablesLoading] = useState(false);
   const [tablesError, setTablesError] = useState<string | null>(null);
   const [selectedTable, setSelectedTable] = useState<string | "">("");
-  const svc = useProjectService();
+  const svcRef = useProjectServiceRef();
 
   useEffect(() => {
     let cancelled = false;
@@ -933,7 +1101,7 @@ function useMetadataTables(
         setTablesLoading(true);
         setTablesError(null);
 
-        const list = await svc.fetchOutputMetadataTables(projectId, protocolId, outputName);
+        const list = await svcRef.current.fetchOutputMetadataTables(projectId, protocolId, outputName);
         if (cancelled || !isMountedRef.current) return;
 
         const safeList = list || [];
@@ -960,7 +1128,7 @@ function useMetadataTables(
     return () => {
       cancelled = true;
     };
-  }, [projectId, protocolId, outputName, isMountedRef, svc]);
+  }, [projectId, protocolId, outputName, isMountedRef, svcRef]);
 
   return {
     tables,
@@ -981,7 +1149,7 @@ function useMetadataSchema(
   const [schema, setSchema] = useState<MetadataTableSchema | null>(null);
   const [schemaLoading, setSchemaLoading] = useState(false);
   const [schemaError, setSchemaError] = useState<string | null>(null);
-  const svc = useProjectService();
+  const svcRef = useProjectServiceRef();
 
   useEffect(() => {
     if (!selectedTable) {
@@ -998,7 +1166,7 @@ function useMetadataSchema(
         setSchemaLoading(true);
         setSchemaError(null);
 
-        const nextSchema = await svc.fetchMetadataTableSchema(
+        const nextSchema = await svcRef.current.fetchMetadataTableSchema(
           projectId,
           protocolId,
           outputName,
@@ -1022,7 +1190,7 @@ function useMetadataSchema(
     return () => {
       cancelled = true;
     };
-  }, [projectId, protocolId, outputName, selectedTable, isMountedRef, svc]);
+  }, [projectId, protocolId, outputName, selectedTable, isMountedRef, svcRef]);
 
   return {
     schema,
@@ -1108,21 +1276,25 @@ function useVirtualTableWindow(params: {
   const windowEpochRef = useRef(0);
 
   const desiredWindowSizeRef = useRef(desiredWindowSize);
-  const svc = useProjectService();
+  const svcRef = useProjectServiceRef();
 
   useEffect(() => {
     desiredWindowSizeRef.current = desiredWindowSize;
   }, [desiredWindowSize]);
 
-  const invalidateWindowState = useCallback(() => {
+  const invalidateWindowState = useCallback((options?: { keepRows?: boolean }) => {
     windowEpochRef.current += 1;
     windowRequestInFlightRef.current = false;
     pendingWindowOffsetRef.current = null;
     inFlightOffsetRef.current = null;
-    setWindowRows([]);
-    setWindowOffset(0);
+
     setWindowLoading(false);
     setWindowError(null);
+
+    if (!options?.keepRows) {
+      setWindowRows([]);
+      setWindowOffset(0);
+    }
   }, []);
 
   const loadWindow = useCallback(
@@ -1153,7 +1325,7 @@ function useVirtualTableWindow(params: {
       setWindowError(null);
 
       try {
-        const response = (await svc.fetchMetadataTableWindow(
+        const response = (await svcRef.current.fetchMetadataTableWindow(
           projectId,
           protocolId,
           outputName,
@@ -1205,32 +1377,19 @@ function useVirtualTableWindow(params: {
       protocolId,
       selectedTable,
       totalRows,
-      svc,
+      svcRef,
       sortBy,
       sortAsc,
     ],
   );
 
   useEffect(() => {
-    invalidateWindowState();
+    invalidateWindowState({ keepRows: true });
 
     if (!schema || !selectedTable || totalRows === 0) return;
-    if (viewMode === "table") {
-      void loadWindow(0);
-    }
-  }, [
-    schema,
-    selectedTable,
-    totalRows,
-    projectId,
-    protocolId,
-    outputName,
-    viewMode,
-    sortBy,
-    sortAsc,
-    loadWindow,
-    invalidateWindowState,
-  ]);
+    if (viewMode === "table") void loadWindow(0);
+  }, [schema, selectedTable, totalRows, viewMode, sortBy, sortAsc, loadWindow, invalidateWindowState]);
+
 
   useEffect(() => {
     if (
@@ -1376,7 +1535,7 @@ function useMetadataGalleryRows(params: {
 
   const galleryRequestInFlightRef = useRef(false);
   const galleryEpochRef = useRef(0);
-  const svc = useProjectService();
+  const svcRef = useProjectServiceRef();
 
   const invalidateGalleryState = useCallback(() => {
     galleryEpochRef.current += 1;
@@ -1407,7 +1566,7 @@ function useMetadataGalleryRows(params: {
       setGalleryError(null);
 
       try {
-        const response = (await svc.fetchMetadataTableWindow(
+        const response = (await svcRef.current.fetchMetadataTableWindow(
           projectId,
           protocolId,
           outputName,
@@ -1455,7 +1614,7 @@ function useMetadataGalleryRows(params: {
       schema,
       selectedTable,
       totalRows,
-      svc,
+      svcRef,
       sortBy,
       sortAsc,
     ],
@@ -1529,6 +1688,17 @@ function useMetadataGalleryRows(params: {
 
 function useRowSelection(totalRows: number) {
   const [selectionState, setSelectionState] = useState<RowSelectionState>(createEmptySelectionState());
+
+  const setSelectionRanges = useCallback((ranges: IndexRange[]) => {
+    // setSelectionRangesReplace
+    const merged = mergeRanges(ranges);
+    setSelectionState({
+      baseMode: "none",
+      ranges: merged,
+      anchorIndex: merged.length ? merged[0].start : null,
+    });
+  }, []);
+
 
   const isRowSelected = useCallback(
     (rowIndex: number) => isRowIndexSelected(selectionState, rowIndex),
@@ -1711,6 +1881,7 @@ function useRowSelection(totalRows: number) {
     invertSelection,
     selectRange,
     selectIndexCompare,
+    setSelectionRanges,
   };
 }
 
@@ -1732,7 +1903,7 @@ function MetadataImageCell({
   const [thumbUrl, setThumbUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const svc = useProjectService();
+  const svcRef = useProjectServiceRef();
 
   useEffect(() => {
     const cache = imageCacheRef.current;
@@ -1765,7 +1936,7 @@ function MetadataImageCell({
     const job: ImageJob = {
       isCancelled: () => cancelled,
       run: () =>
-        svc.fetchMetadataImageCellObjectUrl(
+        svcRef.current.fetchMetadataImageCellObjectUrl(
           projectId,
           protocolId,
           outputName,
@@ -1807,7 +1978,7 @@ function MetadataImageCell({
     rowIndexInTable,
     size,
     tableName,
-    svc,
+    svcRef,
   ]);
 
   const borderColor = isSelected ? "#2563eb" : "rgba(148,163,184,0.6)";
@@ -2574,7 +2745,7 @@ function ColumnsDialog({
 
 export function MetadataViewer({ projectId, protocolId, outputName, onClose }: MetadataViewerProps) {
   const isMountedRef = useIsMountedRef();
-  const svc = useProjectService();
+  const svcRef = useProjectServiceRef();
 
   const [viewMode, setViewMode] = useState<ViewMode>("table");
 
@@ -2659,6 +2830,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose }: M
     invertSelection,
     selectRange,
     selectIndexCompare,
+    setSelectionRanges,
   } = useRowSelection(totalRows);
 
   const allColumns: MetadataColumnWithVisibility[] = useMemo(
@@ -2866,7 +3038,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose }: M
 
     // fallbackFetchSingleRowByIndex
     try {
-      const response = (await svc.fetchMetadataTableWindow(
+      const response = (await svcRef.current.fetchMetadataTableWindow(
         projectId,
         protocolId,
         outputName,
@@ -2902,7 +3074,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose }: M
     selectionState,
     windowOffset,
     windowRows,
-    svc,
+    svcRef,
     projectId,
     protocolId,
     outputName,
@@ -2985,19 +3157,33 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose }: M
     setContextMenu(null);
   }, []);
 
+  const selectionBusyRef = useRef(selectionBusy);
+  useEffect(() => {
+    // keepSelectionBusyRefUpdated
+    selectionBusyRef.current = selectionBusy;
+  }, [selectionBusy]);
+
+  const actionSubmittingRef = useRef(actionSubmitting);
+  useEffect(() => {
+    // keepActionSubmittingRefUpdated
+    actionSubmittingRef.current = actionSubmitting;
+  }, [actionSubmitting]);
+
   const closeSelectionDialog = useCallback(() => {
-    if (selectionBusy) return;
+    // closeSelectionDialogStable
+    if (selectionBusyRef.current) return;
     setSelectionDialog({ open: false });
     setSelectionDialogError(null);
     setSelectionProgress(null);
-  }, [selectionBusy]);
+  }, []);
 
   const closeActionDialog = useCallback(() => {
-    if (actionSubmitting) return;
+    // closeActionDialogStable
+    if (actionSubmittingRef.current) return;
     setActionDialogState({ open: false, actionLabel: "" });
     setSubsetName(DEFAULT_SUBSET_NAME);
     setActionDialogError(null);
-  }, [actionSubmitting]);
+  }, []);
 
   const openActionDialog = useCallback((actionLabel: string) => {
     setActionDialogState({ open: true, actionLabel });
@@ -3141,11 +3327,6 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose }: M
     projectId,
     protocolId,
     outputName,
-    resetSelection,
-    closeContextMenu,
-    closeSelectionDialog,
-    closeActionDialog,
-    resetSort,
   ]);
 
   const openColumnsDialog = useCallback(() => {
@@ -3220,7 +3401,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose }: M
     const rowIds: Array<string | number> = [];
 
     for (let offset = 0; offset < totalRows; offset += SELECTION_IDS_SCAN_PAGE_SIZE) {
-      const response = (await svc.fetchMetadataTableWindow(
+      const response = (await svcRef.current.fetchMetadataTableWindow(
         projectId,
         protocolId,
         outputName,
@@ -3258,7 +3439,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose }: M
     schema,
     totalRows,
     selectedCountByIndex,
-    svc,
+    svcRef,
     projectId,
     protocolId,
     outputName,
@@ -3282,7 +3463,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose }: M
 
       const subsetNameValue = (payload.subsetName || "").trim();
 
-      return svc.runMetadataTableAction(
+      return svcRef.current.runMetadataTableAction(
         payload.projectId,
         payload.protocolId,
         payload.outputName,
@@ -3294,7 +3475,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose }: M
         },
       );
     },
-    [svc],
+    [svcRef],
   );
 
   const handleAcceptAction = useCallback(async () => {
@@ -3376,7 +3557,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose }: M
 
     try {
       for (let offset = 0; offset < totalRows; offset += SELECTION_IDS_SCAN_PAGE_SIZE) {
-        const response = (await svc.fetchMetadataTableWindow(
+        const response = (await svcRef.current.fetchMetadataTableWindow(
           projectId,
           protocolId,
           outputName,
@@ -3432,7 +3613,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose }: M
     selectedTable,
     totalRows,
     selectedCountByIndex,
-    svc,
+    svcRef,
     projectId,
     protocolId,
     outputName,
@@ -3445,6 +3626,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose }: M
 
   const runColumnCriteriaSelection = useCallback(async () => {
     // runColumnCriteriaSelection
+    if (selectionBusyRef.current) return;
     if (!schema || !selectedTable || totalRows <= 0) return;
     if (!selectionDialog.open || selectionDialog.kind !== "criteria") return;
 
@@ -3475,6 +3657,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose }: M
 
     const matchKeys = new Set<RowIdKey>();
     const matchMap = new Map<RowIdKey, RowId>();
+    const matchedIndices: number[] = [];
 
     let done = 0;
     let remainingIdsToScan = selectionDialog.scope === "currentSelection" && selectionMode === "ids"
@@ -3515,7 +3698,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose }: M
 
     try {
       for (const { offset, limit } of offsetsToScan) {
-        const response = (await svc.fetchMetadataTableWindow(
+        const response = (await svcRef.current.fetchMetadataTableWindow(
           projectId,
           protocolId,
           outputName,
@@ -3562,7 +3745,11 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose }: M
           });
 
           if (!ok) continue;
-          if (rowId == null) continue;
+
+          if (rowId == null) {
+            matchedIndices.push(globalRowIndex);
+            continue;
+          }
 
           const key = rowIdToKey(rowId);
           if (!matchKeys.has(key)) {
@@ -3576,6 +3763,42 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose }: M
         if (remainingIdsToScan != null && remainingIdsToScan <= 0) {
           break;
         }
+      }
+
+      if (matchKeys.size === 0 && matchedIndices.length > 0) {
+        // fallbackToIndexSelectionWhenNoRowIds
+        const matchedRanges = indicesToRanges(matchedIndices);
+
+        const prevRanges =
+          selectionMode === "index"
+            ? selectionStateToSelectedRanges(selectionState, totalRows)
+            : [];
+
+        let nextRanges: IndexRange[] = matchedRanges;
+
+        if (selectionDialog.setOp === "add") {
+          nextRanges = mergeRanges([...prevRanges, ...matchedRanges]);
+        } else if (selectionDialog.setOp === "intersect") {
+          nextRanges = intersectRanges(prevRanges, matchedRanges);
+        } else if (selectionDialog.setOp === "remove") {
+          nextRanges = subtractRanges(prevRanges, matchedRanges);
+        }
+
+        setSelectionMode("index");
+        clearIdSelection();
+        setSelectionRanges(nextRanges);
+
+        setSelectedRowIndex(null);
+        setSelectedImageCell(null);
+
+        closeSelectionDialog();
+        closeContextMenu();
+        return;
+      }
+
+      if (matchKeys.size === 0) {
+        setSelectionDialogError("No rows matched the criteria.");
+        return;
       }
 
       const applied = applySetOperationToIdMaps({
@@ -3610,7 +3833,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose }: M
     totalRows,
     selectionDialog,
     allColumns,
-    svc,
+    svcRef,
     projectId,
     protocolId,
     outputName,
@@ -4157,99 +4380,6 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose }: M
               </ListItemIcon>
               <ListItemText primary="Invert selection" />
             </MenuItem>
-
-            <Divider />
-
-            <MenuItem
-              onClick={() => {
-                const start = String(contextMenu.rowIndex + 1);
-                setSelectionDialog({
-                  open: true,
-                  kind: "range",
-                  title: "Select range (row numbers)",
-                  startValue: start,
-                  endValue: start,
-                });
-                setSelectionDialogError(null);
-              }}
-            >
-              <ListItemIcon>
-                <CheckSquare size={16} />
-              </ListItemIcon>
-              <ListItemText primary="Range…" />
-            </MenuItem>
-
-            <MenuItem
-              onClick={() => {
-                setSelectionDialog({
-                  open: true,
-                  kind: "indexCompare",
-                  title: "Select rows with index ≥ … (row number)",
-                  mode: "gte",
-                  value: String(contextMenu.rowIndex + 1),
-                });
-                setSelectionDialogError(null);
-              }}
-            >
-              <ListItemIcon>
-                <Hash size={16} />
-              </ListItemIcon>
-              <ListItemText primary="Index ≥ …" />
-            </MenuItem>
-
-            <MenuItem
-              onClick={() => {
-                setSelectionDialog({
-                  open: true,
-                  kind: "indexCompare",
-                  title: "Select rows with index ≤ … (row number)",
-                  mode: "lte",
-                  value: String(contextMenu.rowIndex + 1),
-                });
-                setSelectionDialogError(null);
-              }}
-            >
-              <ListItemIcon>
-                <Hash size={16} />
-              </ListItemIcon>
-              <ListItemText primary="Index ≤ …" />
-            </MenuItem>
-
-            <MenuItem
-              onClick={() => {
-                setSelectionDialog({
-                  open: true,
-                  kind: "indexCompare",
-                  title: "Select rows with index > … (row number)",
-                  mode: "gt",
-                  value: String(contextMenu.rowIndex + 1),
-                });
-                setSelectionDialogError(null);
-              }}
-            >
-              <ListItemIcon>
-                <Hash size={16} />
-              </ListItemIcon>
-              <ListItemText primary="Index > …" />
-            </MenuItem>
-
-            <MenuItem
-              onClick={() => {
-                setSelectionDialog({
-                  open: true,
-                  kind: "indexCompare",
-                  title: "Select rows with index < … (row number)",
-                  mode: "lt",
-                  value: String(contextMenu.rowIndex + 1),
-                });
-                setSelectionDialogError(null);
-              }}
-            >
-              <ListItemIcon>
-                <Hash size={16} />
-              </ListItemIcon>
-              <ListItemText primary="Index < …" />
-            </MenuItem>
           </>
         )}
 
@@ -4445,10 +4575,10 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose }: M
                       setSelectionDialog((prev) =>
                         prev.open && prev.kind === "criteria"
                           ? {
-                              ...prev,
-                              operator: nextOp,
-                              treatAsNumber: isNumericOperator(nextOp) ? true : prev.treatAsNumber,
-                            }
+                            ...prev,
+                            operator: nextOp,
+                            treatAsNumber: isNumericOperator(nextOp) ? true : prev.treatAsNumber,
+                          }
                           : prev,
                       );
                     }}
@@ -4651,7 +4781,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose }: M
             variant="contained"
             onClick={async () => {
               setSelectionDialogError(null);
-
+              if (selectionBusyRef.current) return;
               if (!selectionDialog.open) return;
 
               if (selectionDialog.kind === "range") {
@@ -4665,21 +4795,6 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose }: M
                 setSelectionMode("index");
                 clearIdSelection();
                 selectRange(start - 1, end - 1);
-                closeSelectionDialog();
-                closeContextMenu();
-                return;
-              }
-
-              if (selectionDialog.kind === "indexCompare") {
-                const value = parsePositiveInt(selectionDialog.value);
-                if (value == null) {
-                  setSelectionDialogError("Value must be a positive integer");
-                  return;
-                }
-
-                setSelectionMode("index");
-                clearIdSelection();
-                selectIndexCompare(selectionDialog.mode, value);
                 closeSelectionDialog();
                 closeContextMenu();
                 return;
