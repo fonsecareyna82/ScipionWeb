@@ -52,7 +52,6 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip as RechartsTooltip,
-  Legend,
   BarChart as ReBarChart,
   Bar,
   ScatterChart as ReScatterChart,
@@ -110,6 +109,7 @@ type PlotRow = {
 
 type PolygonPoint = { x: number; y: number };
 type Domain = { min: number; max: number };
+type ChartOffset = { left: number; top: number; width: number; height: number };
 
 type MetadataPlotterDialogProps = {
   open: boolean;
@@ -282,17 +282,43 @@ function PlotTypeIcon({ plotType }: { plotType: PlotType }) {
   return <LineChartIcon size={16} />;
 }
 
-function ScatterOffsetProbe(props: {
-  onOffset: (offset: { left: number; top: number; width: number; height: number } | null) => void;
-}) {
+function padDomain(domain: Domain, ratio: number): Domain {
+  // padDomainByRatio
+  const span = domain.max - domain.min;
+  if (!Number.isFinite(span) || Math.abs(span) < 1e-12) {
+    return { min: domain.min - 1, max: domain.max + 1 };
+  }
+  const pad = span * ratio;
+  return { min: domain.min - pad, max: domain.max + pad };
+}
+
+function mapValueToPx(params: {
+  value: number;
+  domain: Domain;
+  plotStart: number;
+  plotSize: number;
+  invert?: boolean;
+}): number | null {
+  // mapValueToPx
+  const { value, domain, plotStart, plotSize, invert } = params;
+
+  const den = domain.max - domain.min;
+  if (!Number.isFinite(den) || Math.abs(den) < 1e-12) return null;
+
+  const tRaw = (value - domain.min) / den;
+  const t = Math.max(0, Math.min(1, tRaw));
+
+  if (invert) return plotStart + (1 - t) * plotSize;
+  return plotStart + t * plotSize;
+}
+
+function ChartOffsetProbe(props: { onOffset: (offset: ChartOffset | null) => void }) {
   const { onOffset } = props;
 
   return (
     <Customized
       component={(chartProps: any) => {
-        const off = chartProps?.offset as
-          | { left: number; top: number; width: number; height: number }
-          | undefined;
+        const off = chartProps?.offset as ChartOffset | undefined;
 
         if (
           off &&
@@ -307,7 +333,7 @@ function ScatterOffsetProbe(props: {
           off.width > 0 &&
           off.height > 0
         ) {
-          onOffset({ left: off.left, top: off.top, width: off.width, height: off.height });
+          onOffset(off);
         } else {
           onOffset(null);
         }
@@ -321,7 +347,7 @@ function ScatterOffsetProbe(props: {
 function ScatterLassoOverlay(props: {
   xDomain: Domain | null;
   yDomain: Domain | null;
-  offset: { left: number; top: number; width: number; height: number } | null;
+  offset: ChartOffset | null;
 
   data: Array<{ rowId: RowId; x: number; y: number }>;
 
@@ -333,8 +359,6 @@ function ScatterLassoOverlay(props: {
   onClear: () => void;
 
   onSelectionPreview: (rowIds: Array<RowId>) => void;
-
-  pointPxMapRef: MutableRefObject<Map<string, { rowId: RowId; x: number; y: number }>>;
 }) {
   const {
     xDomain,
@@ -347,7 +371,6 @@ function ScatterLassoOverlay(props: {
     onClosePolygon,
     onClear,
     onSelectionPreview,
-    pointPxMapRef,
   } = props;
 
   const svgRef = useRef<SVGSVGElement | null>(null);
@@ -364,49 +387,16 @@ function ScatterLassoOverlay(props: {
   }, [polygon, polygonClosed]);
 
   const computeSelectionPreview = useCallback(() => {
-    // computeSelectionPreviewUsingRealRenderedPointCoordsFirst
-    if (polygon.length < 3) {
-      onSelectionPreview([]);
-      return;
-    }
-
-    const pointsFromChart = Array.from(pointPxMapRef.current.values());
-    if (pointsFromChart.length > 0) {
-      const selected: RowId[] = [];
-      for (const p of pointsFromChart) {
-        if (isPointInPolygon({ x: p.x, y: p.y }, polygon)) {
-          selected.push(p.rowId);
-        }
-      }
-      onSelectionPreview(Array.from(new Set(selected)));
-      return;
-    }
-
-    // fallbackToDomainMappingIfPointMapNotReadyYet
+    // computeSelectionPreview
     if (!xDomain || !yDomain || !offset) {
       onSelectionPreview([]);
       return;
     }
 
-    const mapValueToPx = (params: {
-      value: number;
-      domain: Domain;
-      plotStart: number;
-      plotSize: number;
-      invert?: boolean;
-    }): number | null => {
-      // mapValueToPx
-      const { value, domain, plotStart, plotSize, invert } = params;
-
-      const den = domain.max - domain.min;
-      if (!Number.isFinite(den) || Math.abs(den) < 1e-12) return null;
-
-      const tRaw = (value - domain.min) / den;
-      const t = Math.max(0, Math.min(1, tRaw));
-
-      if (invert) return plotStart + (1 - t) * plotSize;
-      return plotStart + t * plotSize;
-    };
+    if (polygon.length < 3) {
+      onSelectionPreview([]);
+      return;
+    }
 
     const selected: RowId[] = [];
 
@@ -431,7 +421,7 @@ function ScatterLassoOverlay(props: {
     }
 
     onSelectionPreview(Array.from(new Set(selected)));
-  }, [data, offset, onSelectionPreview, pointPxMapRef, polygon, xDomain, yDomain]);
+  }, [data, offset, onSelectionPreview, polygon, xDomain, yDomain]);
 
   useEffect(() => {
     // throttleSelectionPreviewToAnimationFrame
@@ -537,7 +527,7 @@ function ScatterLassoOverlay(props: {
         {polygonPath && (
           <path
             d={polygonPath}
-            fill={polygonClosed ? "rgba(148,163,184,0.24)" : "rgba(148,163,184,0.08)"}
+            fill={polygonClosed ? "rgba(148,163,184,0.22)" : "rgba(148,163,184,0.08)"}
             stroke="rgba(51,65,85,0.9)"
             strokeWidth={2}
             pointerEvents="none"
@@ -555,6 +545,11 @@ function ScatterLassoOverlay(props: {
           />
         ))}
       </svg>
+
+      {/* Hidden action hooks (kept for keyboard wiring if you add later) */}
+      <Box sx={{ display: "none" }}>
+        <Button onClick={onClear} />
+      </Box>
     </Box>
   );
 }
@@ -605,16 +600,8 @@ export function MetadataPlotterDialog(props: MetadataPlotterDialogProps) {
   const [subsetSubmitting, setSubsetSubmitting] = useState(false);
   const [subsetError, setSubsetError] = useState<string | null>(null);
 
-  const [scatterOffset, setScatterOffset] = useState<{
-    left: number;
-    top: number;
-    width: number;
-    height: number;
-  } | null>(null);
-
-  const scatterPointPxMapRef = useRef<Map<string, { rowId: RowId; x: number; y: number }>>(
-    new Map(),
-  );
+  const [chartOffset, setChartOffset] = useState<ChartOffset | null>(null);
+  const lastOffsetRef = useRef<ChartOffset | null>(null);
 
   const loadEpochRef = useRef(0);
 
@@ -635,6 +622,23 @@ export function MetadataPlotterDialog(props: MetadataPlotterDialogProps) {
     () => selectionYKey || selectedSeriesArray[0] || "",
     [selectionYKey, selectedSeriesArray],
   );
+
+  const setChartOffsetStable = useCallback((off: ChartOffset | null) => {
+    // setChartOffsetStableAvoidRenderLoops
+    const prev = lastOffsetRef.current;
+    const eq =
+      (!prev && !off) ||
+      (!!prev &&
+        !!off &&
+        Math.abs(prev.left - off.left) < 0.5 &&
+        Math.abs(prev.top - off.top) < 0.5 &&
+        Math.abs(prev.width - off.width) < 0.5 &&
+        Math.abs(prev.height - off.height) < 0.5);
+
+    if (eq) return;
+    lastOffsetRef.current = off;
+    setChartOffset(off);
+  }, []);
 
   const clearLasso = useCallback(() => {
     // clearLasso
@@ -691,8 +695,7 @@ export function MetadataPlotterDialog(props: MetadataPlotterDialogProps) {
       setSubsetError(null);
 
       if (plotType === "scatter") {
-        scatterPointPxMapRef.current.clear();
-        setScatterOffset(null);
+        setChartOffset(null);
         clearLasso();
       }
     },
@@ -726,8 +729,9 @@ export function MetadataPlotterDialog(props: MetadataPlotterDialogProps) {
     setSelectionRange(null);
     setSelectedFromPlot([]);
 
-    scatterPointPxMapRef.current.clear();
-    setScatterOffset(null);
+    setChartOffset(null);
+    lastOffsetRef.current = null;
+
     setLassoPolygon([]);
     setLassoClosed(false);
   }, [open]);
@@ -752,8 +756,9 @@ export function MetadataPlotterDialog(props: MetadataPlotterDialogProps) {
     setSelectedFromPlot([]);
     setSubsetError(null);
 
-    scatterPointPxMapRef.current.clear();
-    setScatterOffset(null);
+    setChartOffset(null);
+    lastOffsetRef.current = null;
+
     setLassoPolygon([]);
     setLassoClosed(false);
 
@@ -852,7 +857,7 @@ export function MetadataPlotterDialog(props: MetadataPlotterDialogProps) {
     void loadPlotRows();
   }, [open, schema, selectedTable, loadPlotRows]);
 
-  const xDomain = useMemo<Domain | null>(() => {
+  const xDomainRaw = useMemo<Domain | null>(() => {
     const key = xAxisKey;
     if (plotRows.length === 0) return null;
 
@@ -871,7 +876,7 @@ export function MetadataPlotterDialog(props: MetadataPlotterDialogProps) {
     return { min, max };
   }, [plotRows, xAxisKey]);
 
-  const yDomain = useMemo<Domain | null>(() => {
+  const yDomainActiveRaw = useMemo<Domain | null>(() => {
     const yKey = activeYKey;
     if (!yKey || plotRows.length === 0) return null;
 
@@ -889,6 +894,39 @@ export function MetadataPlotterDialog(props: MetadataPlotterDialogProps) {
     if (min === max) return { min, max: max + 1 };
     return { min, max };
   }, [plotRows, activeYKey]);
+
+  const yDomainPlotRaw = useMemo<Domain | null>(() => {
+    // yDomainAcrossSelectedSeriesForDisplay
+    if (plotType !== "plot") return null;
+    const series = selectedSeriesArray.length ? selectedSeriesArray : activeYKey ? [activeYKey] : [];
+    if (!series.length || plotRows.length === 0) return null;
+
+    let min = Infinity;
+    let max = -Infinity;
+
+    for (const r of plotRows) {
+      for (const s of series) {
+        const v = r.values[s];
+        if (v == null || !Number.isFinite(v)) continue;
+        min = Math.min(min, v);
+        max = Math.max(max, v);
+      }
+    }
+
+    if (!Number.isFinite(min) || !Number.isFinite(max)) return null;
+    if (min === max) return { min, max: max + 1 };
+    return { min, max };
+  }, [activeYKey, plotRows, plotType, selectedSeriesArray]);
+
+  const xDomain = useMemo(() => (xDomainRaw ? padDomain(xDomainRaw, 0.02) : null), [xDomainRaw]);
+  const yDomainScatter = useMemo(
+    () => (yDomainActiveRaw ? padDomain(yDomainActiveRaw, 0.03) : null),
+    [yDomainActiveRaw],
+  );
+  const yDomainPlot = useMemo(
+    () => (yDomainPlotRaw ? padDomain(yDomainPlotRaw, 0.03) : null),
+    [yDomainPlotRaw],
+  );
 
   const chartData = useMemo(() => {
     // buildChartDataForPlotAndScatter
@@ -945,7 +983,8 @@ export function MetadataPlotterDialog(props: MetadataPlotterDialogProps) {
     }
 
     const { bins, min, max } = buildHistogram(values, 50);
-    return { bins, min, max, colName, values };
+    const dom = padDomain({ min, max }, 0.02);
+    return { bins, min: dom.min, max: dom.max, colName, values };
   }, [plotRows, plotType, selectedSeriesArray, activeYKey]);
 
   const selectionDomain = useMemo<Domain | null>(() => {
@@ -957,13 +996,19 @@ export function MetadataPlotterDialog(props: MetadataPlotterDialogProps) {
       return { min: histogram.min, max: histogram.max };
     }
 
-    if (selectionAxis === "x") return xDomain;
-    return yDomain;
-  }, [histogram, plotType, selectionAxis, xDomain, yDomain]);
+    if (plotType === "plot") {
+      if (selectionAxis === "x") return xDomain;
+      // align Y selection scale with displayed Y axis (feels much more consistent)
+      return yDomainPlot;
+    }
+
+    return null;
+  }, [histogram, plotType, selectionAxis, xDomain, yDomainPlot]);
 
   useEffect(() => {
     // initializeSelectionRangeWhenNeeded
     if (!open) return;
+
     if (plotType === "scatter") {
       setSelectionRange(null);
       return;
@@ -1031,6 +1076,7 @@ export function MetadataPlotterDialog(props: MetadataPlotterDialogProps) {
       return;
     }
 
+    // yAxisSelection (uses activeYKey values, but slider is aligned with displayed Y axis)
     const yKey = activeYKey;
     if (!yKey) {
       setSelectedFromPlot([]);
@@ -1080,12 +1126,6 @@ export function MetadataPlotterDialog(props: MetadataPlotterDialogProps) {
     return pts;
   }, [chartData, plotType]);
 
-  useEffect(() => {
-    // clearPointMapWhenScatterDataChanges
-    if (plotType !== "scatter") return;
-    scatterPointPxMapRef.current.clear();
-  }, [plotType, scatterPoints.length]);
-
   const selectedIdsUnique = useMemo(() => Array.from(new Set(selectedFromPlot)), [selectedFromPlot]);
   const selectionCount = selectedIdsUnique.length;
 
@@ -1112,7 +1152,11 @@ export function MetadataPlotterDialog(props: MetadataPlotterDialogProps) {
           protocolId,
           outputName,
           selectedTable,
-          { action: actionLabel, subsetName: safeName, ids },
+          {
+            action: actionLabel,
+            subsetName: safeName,
+            ids,
+          },
         );
 
         const success = typeof (result as any)?.success === "boolean" ? (result as any).success : true;
@@ -1170,6 +1214,7 @@ export function MetadataPlotterDialog(props: MetadataPlotterDialogProps) {
         valueLabelDisplay="auto"
         valueLabelFormat={(v) => formatNumberCompact(Number(v))}
         size="small"
+        sx={{ px: 0 }}
       />
     );
   }, [plotType, selectionDomain, selectionRange]);
@@ -1204,17 +1249,13 @@ export function MetadataPlotterDialog(props: MetadataPlotterDialogProps) {
 
   const scatterPointShape = useCallback(
     (shapeProps: any) => {
-      // scatterPointShapeStoresRealCxCyForSelection
+      // scatterPointShape
       const cx = shapeProps?.cx as number | undefined;
       const cy = shapeProps?.cy as number | undefined;
       const payload = shapeProps?.payload as any;
       const rowId = payload?.rowId as RowId | undefined;
 
       if (!Number.isFinite(cx) || !Number.isFinite(cy)) return null;
-
-      if (rowId != null) {
-        scatterPointPxMapRef.current.set(String(rowId), { rowId, x: cx as number, y: cy as number });
-      }
 
       const key = rowId != null ? String(rowId) : "";
       const isSelected = !!key && selectedKeySet.has(key);
@@ -1229,12 +1270,23 @@ export function MetadataPlotterDialog(props: MetadataPlotterDialogProps) {
           fill={isSelected ? "rgba(37,99,235,0.9)" : "rgba(15,23,42,0.50)"}
           stroke={isSelected ? "rgba(30,64,175,0.95)" : "none"}
           strokeWidth={isSelected ? 1 : 0}
-          pointerEvents="none"
         />
       );
     },
     [selectedKeySet],
   );
+
+  const seriesSummary = useMemo(() => {
+    if (plotType === "scatter") {
+      return selectedSeriesArray[0] ? `Y: ${selectedSeriesArray[0]}` : "";
+    }
+    if (plotType === "histogram") {
+      return selectedSeriesArray[0] ? `Column: ${selectedSeriesArray[0]}` : "";
+    }
+    if (selectedSeriesArray.length === 0) return "";
+    if (selectedSeriesArray.length <= 3) return `Series: ${selectedSeriesArray.join(", ")}`;
+    return `Series: ${selectedSeriesArray.slice(0, 3).join(", ")} +${selectedSeriesArray.length - 3}`;
+  }, [plotType, selectedSeriesArray]);
 
   return (
     <Dialog
@@ -1314,7 +1366,6 @@ export function MetadataPlotterDialog(props: MetadataPlotterDialogProps) {
               gap: 1.5,
             }}
           >
-            {/* ... left panel unchanged ... */}
             <Paper
               variant="outlined"
               sx={{
@@ -1347,8 +1398,9 @@ export function MetadataPlotterDialog(props: MetadataPlotterDialogProps) {
                       setSelectedFromPlot([]);
                       setSubsetError(null);
 
-                      scatterPointPxMapRef.current.clear();
-                      setScatterOffset(null);
+                      setChartOffset(null);
+                      lastOffsetRef.current = null;
+
                       clearLasso();
                       setSelectionRange(null);
                     }}
@@ -1396,12 +1448,10 @@ export function MetadataPlotterDialog(props: MetadataPlotterDialogProps) {
                       setSelectedFromPlot([]);
                       setSubsetError(null);
 
-                      if (plotType === "scatter") {
-                        scatterPointPxMapRef.current.clear();
-                        setScatterOffset(null);
-                        clearLasso();
-                      }
+                      setChartOffset(null);
+                      lastOffsetRef.current = null;
 
+                      if (plotType === "scatter") clearLasso();
                       if (plotType === "plot" && selectionAxis === "x") setSelectionRange(null);
                     }}
                   >
@@ -1440,22 +1490,30 @@ export function MetadataPlotterDialog(props: MetadataPlotterDialogProps) {
                       setSelectedFromPlot([]);
                       setSubsetError(null);
 
-                      scatterPointPxMapRef.current.clear();
-                      setScatterOffset(null);
-                      clearLasso();
+                      setChartOffset(null);
+                      lastOffsetRef.current = null;
 
+                      clearLasso();
                       void loadPlotRows();
                     }}
                   >
                     <FormControlLabel
                       value="yes"
                       control={<Radio size="small" />}
-                      label={<Typography variant="caption" sx={{ fontWeight: 700 }}>Yes</Typography>}
+                      label={
+                        <Typography variant="caption" sx={{ fontWeight: 700 }}>
+                          Yes
+                        </Typography>
+                      }
                     />
                     <FormControlLabel
                       value="no"
                       control={<Radio size="small" />}
-                      label={<Typography variant="caption" sx={{ fontWeight: 700 }}>No</Typography>}
+                      label={
+                        <Typography variant="caption" sx={{ fontWeight: 700 }}>
+                          No
+                        </Typography>
+                      }
                     />
                   </RadioGroup>
 
@@ -1575,6 +1633,7 @@ export function MetadataPlotterDialog(props: MetadataPlotterDialogProps) {
                 display: "flex",
                 flexDirection: "column",
                 minHeight: 560,
+                minWidth: 0,
               }}
             >
               <Box
@@ -1593,6 +1652,29 @@ export function MetadataPlotterDialog(props: MetadataPlotterDialogProps) {
                   {rightPlotTitle}
                 </Typography>
 
+                {seriesSummary && (
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      ml: 1,
+                      fontWeight: 800,
+                      color: "rgba(71,85,105,0.95)",
+                      px: 1,
+                      py: 0.35,
+                      borderRadius: 2,
+                      border: "1px solid rgba(148,163,184,0.25)",
+                      background: "rgba(248,250,252,0.8)",
+                      maxWidth: 420,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                    title={seriesSummary}
+                  >
+                    {seriesSummary}
+                  </Typography>
+                )}
+
                 <Box sx={{ flex: 1 }} />
 
                 {plotType === "plot" && (
@@ -1608,6 +1690,9 @@ export function MetadataPlotterDialog(props: MetadataPlotterDialogProps) {
                         setSelectedFromPlot([]);
                         setSubsetError(null);
                         setSelectionRange(null);
+
+                        setChartOffset(null);
+                        lastOffsetRef.current = null;
                       }}
                     >
                       <MenuItem value="y">Y range</MenuItem>
@@ -1640,20 +1725,14 @@ export function MetadataPlotterDialog(props: MetadataPlotterDialogProps) {
                 )}
 
                 {plotType === "scatter" && (
-                  <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
+                  <>
                     <Tooltip title="Clear polygon">
                       <span>
                         <IconButton
                           size="small"
                           onClick={() => {
-                            scatterPointPxMapRef.current.clear();
-                            setScatterOffset(null);
                             clearLasso();
                             setSubsetError(null);
-                          }}
-                          sx={{
-                            border: "1px solid rgba(148,163,184,0.28)",
-                            background: "rgba(248,250,252,0.9)",
                           }}
                         >
                           <Trash2 size={16} />
@@ -1661,16 +1740,20 @@ export function MetadataPlotterDialog(props: MetadataPlotterDialogProps) {
                       </span>
                     </Tooltip>
 
-                    <Tooltip title="Close polygon">
+                    <Tooltip
+                      title={
+                        lassoClosed
+                          ? "Polygon is already closed."
+                          : lassoPolygon.length < 3
+                            ? "Add at least 3 points first."
+                            : "Close polygon and finalize selection."
+                      }
+                    >
                       <span>
                         <IconButton
                           size="small"
+                          onClick={closeLasso}
                           disabled={lassoClosed || lassoPolygon.length < 3}
-                          onClick={() => closeLasso()}
-                          sx={{
-                            border: "1px solid rgba(148,163,184,0.28)",
-                            background: "rgba(248,250,252,0.9)",
-                          }}
                         >
                           <Check size={16} />
                         </IconButton>
@@ -1681,18 +1764,31 @@ export function MetadataPlotterDialog(props: MetadataPlotterDialogProps) {
                       title={
                         lassoClosed
                           ? "Polygon is closed. You can create subsets."
-                          : "Click to add vertices. Double click (or click the first vertex) to close."
+                          : "Draw polygon to preview selection."
                       }
                     >
-                      <Typography variant="caption" sx={{ fontWeight: 900, color: "rgba(51,65,85,0.9)" }}>
+                      <Typography
+                        variant="caption"
+                        sx={{ fontWeight: 900, color: "rgba(51,65,85,0.9)", ml: 0.5 }}
+                      >
                         {lassoClosed ? "Polygon: closed" : "Polygon: drawing"}
                       </Typography>
                     </Tooltip>
-                  </Box>
+                  </>
                 )}
               </Box>
 
-              <Box sx={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", p: 1.5, gap: 1 }}>
+              <Box
+                sx={{
+                  flex: 1,
+                  minHeight: 0,
+                  display: "flex",
+                  flexDirection: "column",
+                  p: 1.5,
+                  gap: 1,
+                  minWidth: 0,
+                }}
+              >
                 {plotLoading && (
                   <Typography variant="body2" color="text.secondary">
                     Loading plot data…
@@ -1716,50 +1812,45 @@ export function MetadataPlotterDialog(props: MetadataPlotterDialogProps) {
                     <Box
                       sx={{
                         flex: 1,
-                        minHeight: 440,
+                        minHeight: 0,
                         display: "grid",
-                        gridTemplateColumns: isYRangeMode ? "54px 1fr" : "1fr",
+                        gridTemplateColumns: isYRangeMode ? "76px 1fr" : "1fr",
                         gap: 1,
                         alignItems: "stretch",
+                        minWidth: 0,
                       }}
                     >
                       {isYRangeMode && (
-                        <Box sx={{ display: "flex", alignItems: "stretch", justifyContent: "center", pt: 0.5 }}>
-                          <Box
-                            sx={{
-                              height: 420,
-                              display: "flex",
-                              flexDirection: "column",
-                              alignItems: "center",
-                              gap: 0.75,
-                              px: 0.5,
-                            }}
-                          >
-                            <Typography variant="caption" sx={{ fontWeight: 900, color: "rgba(51,65,85,0.9)" }}>
-                              Y Range
-                            </Typography>
-
-                            <Slider
-                              orientation="vertical"
-                              value={
-                                selectionRange ??
-                                (selectionDomain ? [selectionDomain.min, selectionDomain.max] : [0, 1])
-                              }
-                              onChange={(_e, v) => {
-                                const next = v as number[];
-                                if (next.length === 2) setSelectionRange([next[0], next[1]]);
+                        <Box sx={{ position: "relative", minHeight: 0 }}>
+                          {selectionDomain && (
+                            <Box
+                              sx={{
+                                position: "absolute",
+                                left: "50%",
+                                transform: "translateX(-50%)",
+                                top: (chartOffset?.top ?? 34) as number,
+                                height: (chartOffset?.height ?? 360) as number,
+                                display: "flex",
+                                alignItems: "stretch",
                               }}
-                              min={(selectionDomain?.min ?? 0) as number}
-                              max={(selectionDomain?.max ?? 1) as number}
-                              step={
-                                selectionDomain ? (selectionDomain.max - selectionDomain.min) / 300 : undefined
-                              }
-                              valueLabelDisplay="auto"
-                              valueLabelFormat={(v) => formatNumberCompact(Number(v))}
-                              size="small"
-                              sx={{ height: 360 }}
-                            />
-                          </Box>
+                            >
+                              <Slider
+                                orientation="vertical"
+                                value={selectionRange ?? [selectionDomain.min, selectionDomain.max]}
+                                onChange={(_e, v) => {
+                                  const next = v as number[];
+                                  if (next.length === 2) setSelectionRange([next[0], next[1]]);
+                                }}
+                                min={selectionDomain.min}
+                                max={selectionDomain.max}
+                                step={(selectionDomain.max - selectionDomain.min) / 300}
+                                valueLabelDisplay="auto"
+                                valueLabelFormat={(v) => formatNumberCompact(Number(v))}
+                                size="small"
+                                sx={{ height: "97%" }}
+                              />
+                            </Box>
+                          )}
                         </Box>
                       )}
 
@@ -1774,17 +1865,28 @@ export function MetadataPlotterDialog(props: MetadataPlotterDialogProps) {
                           display: "flex",
                           flexDirection: "column",
                           minWidth: 0,
+                          minHeight: 0,
                         }}
                       >
-                        <Box sx={{ width: "100%", height: 420, position: "relative" }}>
+                        <Box sx={{ position: "relative", flex: 1, minHeight: 420, minWidth: 0 }}>
                           {plotType === "plot" && (
                             <ResponsiveContainer width="100%" height="100%">
-                              <ReLineChart data={chartData}>
+                              <ReLineChart
+                                data={chartData}
+                                margin={{ top: 10, right: 18, left: 6, bottom: 10 }}
+                              >
                                 <CartesianGrid strokeDasharray="3 3" />
-                                <XAxis dataKey="x" type="number" tickFormatter={formatNumberCompact} />
-                                <YAxis tickFormatter={formatNumberCompact} />
+                                <XAxis
+                                  dataKey="x"
+                                  type="number"
+                                  tickFormatter={formatNumberCompact}
+                                  domain={xDomain ? [xDomain.min, xDomain.max] : undefined}
+                                />
+                                <YAxis
+                                  tickFormatter={formatNumberCompact}
+                                  domain={yDomainPlot ? [yDomainPlot.min, yDomainPlot.max] : undefined}
+                                />
                                 <RechartsTooltip />
-                                <Legend />
                                 {selectedSeriesArray.map((s) => (
                                   <Line key={s} type="monotone" dataKey={s} dot={false} isAnimationActive={false} />
                                 ))}
@@ -1797,20 +1899,25 @@ export function MetadataPlotterDialog(props: MetadataPlotterDialogProps) {
                                   />
                                 )}
 
-                                {selectionAxis === "y" && selectionRange && yDomain && (
+                                {selectionAxis === "y" && selectionRange && yDomainPlot && (
                                   <ReferenceArea
                                     y1={Math.min(selectionRange[0], selectionRange[1])}
                                     y2={Math.max(selectionRange[0], selectionRange[1])}
                                     strokeOpacity={0.25}
                                   />
                                 )}
+
+                                <ChartOffsetProbe onOffset={setChartOffsetStable} />
                               </ReLineChart>
                             </ResponsiveContainer>
                           )}
 
                           {plotType === "histogram" && histogram && (
                             <ResponsiveContainer width="100%" height="100%">
-                              <ReBarChart data={histogram.bins}>
+                              <ReBarChart
+                                data={histogram.bins}
+                                margin={{ top: 10, right: 18, left: 6, bottom: 10 }}
+                              >
                                 <CartesianGrid strokeDasharray="3 3" />
                                 <XAxis
                                   dataKey="binMid"
@@ -1820,7 +1927,6 @@ export function MetadataPlotterDialog(props: MetadataPlotterDialogProps) {
                                 />
                                 <YAxis />
                                 <RechartsTooltip />
-                                <Legend />
                                 <Bar dataKey="count" isAnimationActive={false} />
 
                                 {selectionRange && (
@@ -1830,6 +1936,8 @@ export function MetadataPlotterDialog(props: MetadataPlotterDialogProps) {
                                     strokeOpacity={0.25}
                                   />
                                 )}
+
+                                <ChartOffsetProbe onOffset={setChartOffsetStable} />
                               </ReBarChart>
                             </ResponsiveContainer>
                           )}
@@ -1837,7 +1945,7 @@ export function MetadataPlotterDialog(props: MetadataPlotterDialogProps) {
                           {plotType === "scatter" && (
                             <>
                               <ResponsiveContainer width="100%" height="100%">
-                                <ReScatterChart>
+                                <ReScatterChart margin={{ top: 10, right: 18, left: 6, bottom: 10 }}>
                                   <CartesianGrid strokeDasharray="3 3" />
                                   <XAxis
                                     dataKey="x"
@@ -1849,10 +1957,9 @@ export function MetadataPlotterDialog(props: MetadataPlotterDialogProps) {
                                     dataKey="y"
                                     type="number"
                                     tickFormatter={formatNumberCompact}
-                                    domain={yDomain ? [yDomain.min, yDomain.max] : undefined}
+                                    domain={yDomainScatter ? [yDomainScatter.min, yDomainScatter.max] : undefined}
                                   />
                                   <RechartsTooltip />
-                                  <Legend />
 
                                   <Scatter
                                     name={selectedSeriesArray[0] || "Y"}
@@ -1861,14 +1968,14 @@ export function MetadataPlotterDialog(props: MetadataPlotterDialogProps) {
                                     shape={scatterPointShape as any}
                                   />
 
-                                  <ScatterOffsetProbe onOffset={(off) => setScatterOffset(off)} />
+                                  <ChartOffsetProbe onOffset={setChartOffsetStable} />
                                 </ReScatterChart>
                               </ResponsiveContainer>
 
                               <ScatterLassoOverlay
                                 xDomain={xDomain}
-                                yDomain={yDomain}
-                                offset={scatterOffset}
+                                yDomain={yDomainScatter}
+                                offset={chartOffset}
                                 data={scatterPoints}
                                 polygon={lassoPolygon}
                                 polygonClosed={lassoClosed}
@@ -1877,14 +1984,11 @@ export function MetadataPlotterDialog(props: MetadataPlotterDialogProps) {
                                   setLassoClosed(false);
                                 }}
                                 onClosePolygon={closeLasso}
-                                onClear={() => {
-                                  clearLasso();
-                                  setSubsetError(null);
-                                }}
+                                onClear={clearLasso}
                                 onSelectionPreview={(rowIds) => {
+                                  // showSelectionAsYouDraw
                                   setSelectedFromPlot(rowIds);
                                 }}
-                                pointPxMapRef={scatterPointPxMapRef}
                               />
                             </>
                           )}
@@ -1893,18 +1997,20 @@ export function MetadataPlotterDialog(props: MetadataPlotterDialogProps) {
                         {plotType !== "scatter" && isXRangeMode && (
                           <Box
                             sx={{
-                              px: 2,
-                              py: 1,
+                              position: "relative",
+                              height: 76,
                               borderTop: "1px solid rgba(148,163,184,0.18)",
                               background: "rgba(248,250,252,0.9)",
                             }}
                           >
                             <Box
                               sx={{
+                                px: 2,
+                                pt: 1,
                                 display: "flex",
                                 alignItems: "center",
                                 justifyContent: "space-between",
-                                mb: 0.5,
+                                gap: 1,
                               }}
                             >
                               <Typography variant="caption" sx={{ fontWeight: 900, color: "rgba(51,65,85,0.9)" }}>
@@ -1918,7 +2024,17 @@ export function MetadataPlotterDialog(props: MetadataPlotterDialogProps) {
                               </Typography>
                             </Box>
 
-                            {selectionSlider}
+                            <Box
+                              sx={{
+                                position: "absolute",
+                                left: (chartOffset?.left ?? 16) as number,
+                                width: chartOffset ? `${chartOffset.width}px` : "calc(93% - 32px)",
+                                bottom: 12,
+                                ml:6,
+                              }}
+                            >
+                              {selectionSlider}
+                            </Box>
                           </Box>
                         )}
                       </Paper>
@@ -1996,7 +2112,9 @@ export function MetadataPlotterDialog(props: MetadataPlotterDialogProps) {
                                 background: "linear-gradient(180deg, #1e293b 0%, #0f172a 100%)",
                                 boxShadow:
                                   "0 1px 2px rgba(15,23,42,0.25), inset 0 1px 0 rgba(255,255,255,0.06)",
-                                "&:hover": { background: "linear-gradient(180deg, #334155 0%, #1e293b 100%)" },
+                                "&:hover": {
+                                  background: "linear-gradient(180deg, #334155 0%, #1e293b 100%)",
+                                },
                                 "&.Mui-disabled": {
                                   color: "rgba(226,232,240,0.55)",
                                   background: "rgba(15,23,42,0.35)",
@@ -2035,7 +2153,7 @@ export function MetadataPlotterDialog(props: MetadataPlotterDialogProps) {
               }}
             >
               <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
-                Tip: Plot selection supports X/Y range. Histogram uses X range. Scatter uses polygon selection (points highlight in-place).
+                Tip: Sliders are aligned to the chart inner plotting area (same offset used by Recharts).
               </Typography>
 
               <Button
