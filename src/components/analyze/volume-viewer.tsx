@@ -20,14 +20,16 @@ import {
 import { styled } from "@mui/material/styles";
 import Plot from "react-plotly.js";
 import { useProjectService } from "@/ProjectServiceContext";
-import { ZoomIn, Layers3, HelpCircle, BoxIcon } from "lucide-react";
+import { ZoomIn, Layers3, HelpCircle, BoxIcon, Table as TableLucide } from "lucide-react";
 import GpuVolumeView from "./gpu-volume-view";
+import { MetadataViewer } from "./metadata-viewer";
 
 type VolumeViewerProps = {
   projectId: string | number;
   protocolId: string | number;
   outputName: string;
   protocolLabel?: string;
+  pointerClass?: string
 };
 
 type VolumeLite = { id: string | number; label?: string; name?: string };
@@ -37,7 +39,7 @@ type HistogramData = {
   counts: number[];
 };
 
-type ViewMode = "slices" | "map3d";
+type ViewMode = "slices" | "map3d" | "metadata";
 type ThrMode = "percentile" | "absolute";
 type RightTab = "ctrl" | "hist";
 type Interp2d = "nearest" | "linear" | "high";
@@ -128,8 +130,17 @@ export default function VolumeViewer({
   projectId,
   protocolId,
   outputName,
+  pointerClass,
 }: VolumeViewerProps) {
   const svc = useProjectService();
+
+  const projectIdNum = useMemo(() => Number(projectId), [projectId]);
+  const protocolIdNum = useMemo(() => Number(protocolId), [protocolId]);
+  const pClass = useMemo(() => String(pointerClass), [pointerClass]);
+
+  const canOpenMetadata = useMemo(() => {
+    return Number.isFinite(projectIdNum) && Number.isFinite(protocolIdNum);
+  }, [projectIdNum, protocolIdNum]);
 
   const [loadingList, setLoadingList] = useState(true);
   const [listError, setListError] = useState<string | null>(null);
@@ -816,6 +827,15 @@ export default function VolumeViewer({
                     3D Map
                   </Box>
                 </ToggleButton>
+                {pClass.toLowerCase().startsWith('setof') && (
+                  <ToggleButton value="metadata" disabled={!canOpenMetadata}>
+                    <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
+                      <TableLucide size={14} />
+                      Metadata
+                    </Box>
+                  </ToggleButton>
+                )}
+
               </ToggleButtonGroup>
             </Box>
 
@@ -863,10 +883,10 @@ export default function VolumeViewer({
                 flex: 1,
                 minHeight: 0,
                 display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                p: 1.0,
-                overflow: "hidden",
+                alignItems: viewMode === "metadata" ? "stretch" : "center",
+                justifyContent: viewMode === "metadata" ? "stretch" : "center",
+                p: viewMode === "metadata" ? 0 : 1.0,
+                overflow: viewMode === "metadata" ? "auto" : "hidden",
                 position: "relative",
                 cursor: "default",
                 bgcolor: "background.default",
@@ -890,6 +910,22 @@ export default function VolumeViewer({
                 <Typography variant="body2" color="text.secondary">
                   Select a volume
                 </Typography>
+              ) : viewMode === "metadata" ? (
+                <Box sx={{ width: "100%", height: "100%", minHeight: 0 }}>
+                  {canOpenMetadata ? (
+                    <MetadataViewer
+                      projectId={projectIdNum}
+                      protocolId={protocolIdNum}
+                      outputName={outputName}
+                      onClose={() => setViewMode("slices")}
+                      embedded={true}
+                    />
+                  ) : (
+                    <Typography variant="body2" color="text.secondary">
+                      Metadata view requires numeric projectId/protocolId.
+                    </Typography>
+                  )}
+                </Box>
               ) : viewMode === "slices" ? (
                 sliceLayoutMode === "triple" ? (
                   <OrthoSlicesGrid
@@ -1009,564 +1045,569 @@ export default function VolumeViewer({
                 </Typography>
               )}
             </Box>
-
-            <Divider />
-            <Box sx={{ p: 1.0, display: "flex", gap: 3, flexWrap: "wrap", flexShrink: 0 }}>
-              <MetaItem label="Dims" value={dimsToStringXYZ(dims)} />
-              {"min" in (meta || {}) && <MetaItem label="Min" value={num(meta?.min)} />}
-              {"max" in (meta || {}) && <MetaItem label="Max" value={num(meta?.max)} />}
-              {"mean" in (meta || {}) && <MetaItem label="Mean" value={num(meta?.mean)} />}
-              {"std" in (meta || {}) && <MetaItem label="Std" value={num(meta?.std)} />}
-              {viewMode === "map3d" && mapData?.dims && (
-                <MetaItem
-                  label="Downsampled"
-                  value={`${mapData.dims.x} × ${mapData.dims.y} × ${mapData.dims.z}`}
-                />
-              )}
-            </Box>
+            {viewMode !== "metadata" && (
+              <>
+                <Divider />
+                <Box sx={{ p: 1.0, display: "flex", gap: 3, flexWrap: "wrap", flexShrink: 0 }}>
+                  <MetaItem label="Dims" value={dimsToStringXYZ(dims)} />
+                  {"min" in (meta || {}) && <MetaItem label="Min" value={num(meta?.min)} />}
+                  {"max" in (meta || {}) && <MetaItem label="Max" value={num(meta?.max)} />}
+                  {"mean" in (meta || {}) && <MetaItem label="Mean" value={num(meta?.mean)} />}
+                  {"std" in (meta || {}) && <MetaItem label="Std" value={num(meta?.std)} />}
+                  {viewMode === "map3d" && mapData?.dims && (
+                    <MetaItem
+                      label="Downsampled"
+                      value={`${mapData.dims.x} × ${mapData.dims.y} × ${mapData.dims.z}`}
+                    />
+                  )}
+                </Box>
+              </>
+            )}
           </Box>
 
-          <>
-            <Divider orientation="vertical" flexItem />
-            <Box
-              sx={{
-                flexBasis: panelBasis,
-                flexShrink: 0,
-                minWidth: panelBasis,
-                maxWidth: panelBasis,
-                p: 1.25,
-                display: "flex",
-                flexDirection: "column",
-                bgcolor: "background.paper",
-                gap: 1,
-                minHeight: 0,
-                overflow: "hidden",
-              }}
-            >
-              <ToggleButtonGroup
-                size="small"
-                exclusive
-                value={rightTab}
-                onChange={(_, v) => {
-                  if (!v) return;
-                  setRightTab(v);
-                  setShowHistogram(v === "hist");
-                }}
-                sx={{ flexShrink: 0 }}
-              >
-                <ToggleButton value="ctrl">Controls</ToggleButton>
-                <ToggleButton value="hist">Histogram</ToggleButton>
-              </ToggleButtonGroup>
-
+          {viewMode !== "metadata" && (
+            <>
+              <Divider orientation="vertical" flexItem />
               <Box
                 sx={{
-                  flex: 1,
+                  flexBasis: panelBasis,
+                  flexShrink: 0,
+                  minWidth: panelBasis,
+                  maxWidth: panelBasis,
+                  p: 1.25,
+                  display: "flex",
+                  flexDirection: "column",
+                  bgcolor: "background.paper",
+                  gap: 1,
                   minHeight: 0,
-                  overflowY: "auto",
-                  overflowX: "hidden",
-                  pr: 1,
-                  pb: 2,
-                  mt: 1,
+                  overflow: "hidden",
                 }}
               >
-                {rightTab === "ctrl" && viewMode === "slices" && (
-                  <Box sx={{ display: "flex", flexDirection: "column", gap: 1.25, ml: 1 }}>
-                    <SectionTitle title="Slices" />
+                <ToggleButtonGroup
+                  size="small"
+                  exclusive
+                  value={rightTab}
+                  onChange={(_, v) => {
+                    if (!v) return;
+                    setRightTab(v);
+                    setShowHistogram(v === "hist");
+                  }}
+                  sx={{ flexShrink: 0 }}
+                >
+                  <ToggleButton value="ctrl">Controls</ToggleButton>
+                  <ToggleButton value="hist">Histogram</ToggleButton>
+                </ToggleButtonGroup>
 
-                    <ParamRow
-                      label="Layout"
-                      helpKey="sliceLayout"
-                      onHelp={openHelp}
-                      control={
-                        <ToggleButtonGroup
-                          size="small"
-                          exclusive
-                          value={sliceLayoutMode}
-                          onChange={(_, v) => v && setSliceLayoutMode(v)}
-                        >
-                          <ToggleButton value="single">single</ToggleButton>
-                          <ToggleButton value="triple">3 Views</ToggleButton>
-                        </ToggleButtonGroup>
-                      }
-                    />
+                <Box
+                  sx={{
+                    flex: 1,
+                    minHeight: 0,
+                    overflowY: "auto",
+                    overflowX: "hidden",
+                    pr: 1,
+                    pb: 2,
+                    mt: 1,
+                  }}
+                >
+                  {rightTab === "ctrl" && viewMode === "slices" && (
+                    <Box sx={{ display: "flex", flexDirection: "column", gap: 1.25, ml: 1 }}>
+                      <SectionTitle title="Slices" />
 
-                    {sliceLayoutMode === "single" ? (
-                      <>
-                        <ParamRow
-                          label="Axis"
-                          helpKey="axis"
-                          onHelp={openHelp}
-                          control={
-                            <ToggleButtonGroup
-                              size="small"
-                              value={axis}
-                              exclusive
-                              onChange={(_, v) => v && setAxis(v)}
-                            >
-                              <ToggleButton value="z">Z</ToggleButton>
-                              <ToggleButton value="y">Y</ToggleButton>
-                              <ToggleButton value="x">X</ToggleButton>
-                            </ToggleButtonGroup>
-                          }
-                        />
+                      <ParamRow
+                        label="Layout"
+                        helpKey="sliceLayout"
+                        onHelp={openHelp}
+                        control={
+                          <ToggleButtonGroup
+                            size="small"
+                            exclusive
+                            value={sliceLayoutMode}
+                            onChange={(_, v) => v && setSliceLayoutMode(v)}
+                          >
+                            <ToggleButton value="single">single</ToggleButton>
+                            <ToggleButton value="triple">3 Views</ToggleButton>
+                          </ToggleButtonGroup>
+                        }
+                      />
 
-                        <AxisSliceSliderControl
-                          title="Slice"
-                          helpKey="sliceIndex"
-                          onHelp={openHelp}
-                          value={Math.min(sliceIndex, maxSlice)}
-                          min={0}
-                          max={maxSlice}
-                          onChange={(v) => setSliceIndex(v)}
-                          disabled={!readySlices}
-                        />
-                      </>
-                    ) : (
-                      <>
-                        <AxisSliceSliderControl
-                          title="Slice Z"
-                          helpKey="sliceIndexZ"
-                          onHelp={openHelp}
-                          value={Math.min(sliceIndexZ, maxSliceZ)}
-                          min={0}
-                          max={maxSliceZ}
-                          onChange={(v) => setSliceIndexZ(v)}
-                          disabled={!readyTripleSlices}
-                        />
-                        <AxisSliceSliderControl
-                          title="Slice Y"
-                          helpKey="sliceIndexY"
-                          onHelp={openHelp}
-                          value={Math.min(sliceIndexY, maxSliceY)}
-                          min={0}
-                          max={maxSliceY}
-                          onChange={(v) => setSliceIndexY(v)}
-                          disabled={!readyTripleSlices}
-                        />
-                        <AxisSliceSliderControl
-                          title="Slice X"
-                          helpKey="sliceIndexX"
-                          onHelp={openHelp}
-                          value={Math.min(sliceIndexX, maxSliceX)}
-                          min={0}
-                          max={maxSliceX}
-                          onChange={(v) => setSliceIndexX(v)}
-                          disabled={!readyTripleSlices}
-                        />
-                      </>
-                    )}
+                      {sliceLayoutMode === "single" ? (
+                        <>
+                          <ParamRow
+                            label="Axis"
+                            helpKey="axis"
+                            onHelp={openHelp}
+                            control={
+                              <ToggleButtonGroup
+                                size="small"
+                                value={axis}
+                                exclusive
+                                onChange={(_, v) => v && setAxis(v)}
+                              >
+                                <ToggleButton value="z">Z</ToggleButton>
+                                <ToggleButton value="y">Y</ToggleButton>
+                                <ToggleButton value="x">X</ToggleButton>
+                              </ToggleButtonGroup>
+                            }
+                          />
 
-                    <ParamRow
-                      label="Colormap"
-                      helpKey="colormap2d"
-                      onHelp={openHelp}
-                      control={
-                        <TextField
-                          size="small"
-                          select
-                          value={colormap}
-                          onChange={(e) => setColormap(e.target.value)}
-                          SelectProps={{ MenuProps: { disablePortal: true } }}
-                        >
-                          {CMAP_OPTIONS.map((cm) => (
-                            <MenuItem key={cm} value={cm}>{cm}</MenuItem>
-                          ))}
-                        </TextField>
-                      }
-                    />
+                          <AxisSliceSliderControl
+                            title="Slice"
+                            helpKey="sliceIndex"
+                            onHelp={openHelp}
+                            value={Math.min(sliceIndex, maxSlice)}
+                            min={0}
+                            max={maxSlice}
+                            onChange={(v) => setSliceIndex(v)}
+                            disabled={!readySlices}
+                          />
+                        </>
+                      ) : (
+                        <>
+                          <AxisSliceSliderControl
+                            title="Slice Z"
+                            helpKey="sliceIndexZ"
+                            onHelp={openHelp}
+                            value={Math.min(sliceIndexZ, maxSliceZ)}
+                            min={0}
+                            max={maxSliceZ}
+                            onChange={(v) => setSliceIndexZ(v)}
+                            disabled={!readyTripleSlices}
+                          />
+                          <AxisSliceSliderControl
+                            title="Slice Y"
+                            helpKey="sliceIndexY"
+                            onHelp={openHelp}
+                            value={Math.min(sliceIndexY, maxSliceY)}
+                            min={0}
+                            max={maxSliceY}
+                            onChange={(v) => setSliceIndexY(v)}
+                            disabled={!readyTripleSlices}
+                          />
+                          <AxisSliceSliderControl
+                            title="Slice X"
+                            helpKey="sliceIndexX"
+                            onHelp={openHelp}
+                            value={Math.min(sliceIndexX, maxSliceX)}
+                            min={0}
+                            max={maxSliceX}
+                            onChange={(v) => setSliceIndexX(v)}
+                            disabled={!readyTripleSlices}
+                          />
+                        </>
+                      )}
 
-                    <ParamRow
-                      label="Interpolation"
-                      helpKey="interp2d"
-                      onHelp={openHelp}
-                      control={
-                        <TextField
-                          size="small"
-                          select
-                          value={interp2d}
-                          disabled={sliceLayoutMode === "triple"}
-                          onChange={(e) => setInterp2d(e.target.value as Interp2d)}
-                          SelectProps={{ MenuProps: { disablePortal: true } }}
-                        >
-                          <MenuItem value="nearest">nearest</MenuItem>
-                          <MenuItem value="linear">linear</MenuItem>
-                          <MenuItem value="high">high</MenuItem>
-                        </TextField>
-                      }
-                    />
+                      <ParamRow
+                        label="Colormap"
+                        helpKey="colormap2d"
+                        onHelp={openHelp}
+                        control={
+                          <TextField
+                            size="small"
+                            select
+                            value={colormap}
+                            onChange={(e) => setColormap(e.target.value)}
+                            SelectProps={{ MenuProps: { disablePortal: true } }}
+                          >
+                            {CMAP_OPTIONS.map((cm) => (
+                              <MenuItem key={cm} value={cm}>{cm}</MenuItem>
+                            ))}
+                          </TextField>
+                        }
+                      />
 
-                    <ParamRow
-                      label="Sharpen"
-                      helpKey="sharpen2d"
-                      onHelp={openHelp}
-                      control={
-                        <ToggleButtonGroup
-                          size="small"
-                          exclusive
-                          value={sharpen2d ? "on" : "off"}
-                          disabled={sliceLayoutMode === "triple"}
-                          onChange={(_, v) => {
-                            if (v === "on") setSharpen2d(true);
-                            if (v === "off") setSharpen2d(false);
-                          }}
-                        >
-                          <ToggleButton value="off">off</ToggleButton>
-                          <ToggleButton value="on">on</ToggleButton>
-                        </ToggleButtonGroup>
-                      }
-                    />
+                      <ParamRow
+                        label="Interpolation"
+                        helpKey="interp2d"
+                        onHelp={openHelp}
+                        control={
+                          <TextField
+                            size="small"
+                            select
+                            value={interp2d}
+                            disabled={sliceLayoutMode === "triple"}
+                            onChange={(e) => setInterp2d(e.target.value as Interp2d)}
+                            SelectProps={{ MenuProps: { disablePortal: true } }}
+                          >
+                            <MenuItem value="nearest">nearest</MenuItem>
+                            <MenuItem value="linear">linear</MenuItem>
+                            <MenuItem value="high">high</MenuItem>
+                          </TextField>
+                        }
+                      />
 
-                    <Divider />
+                      <ParamRow
+                        label="Sharpen"
+                        helpKey="sharpen2d"
+                        onHelp={openHelp}
+                        control={
+                          <ToggleButtonGroup
+                            size="small"
+                            exclusive
+                            value={sharpen2d ? "on" : "off"}
+                            disabled={sliceLayoutMode === "triple"}
+                            onChange={(_, v) => {
+                              if (v === "on") setSharpen2d(true);
+                              if (v === "off") setSharpen2d(false);
+                            }}
+                          >
+                            <ToggleButton value="off">off</ToggleButton>
+                            <ToggleButton value="on">on</ToggleButton>
+                          </ToggleButtonGroup>
+                        }
+                      />
 
-                    <SectionTitle title="Display" />
+                      <Divider />
 
-                    <Box
-                      sx={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        mt: 0.5,
-                      }}
-                    >
-                      <Typography variant="caption" color="text.secondary">
-                        Intensity
-                      </Typography>
-                      <Button
-                        size="small"
-                        onClick={() => {
-                          setBrightness2d(0);
-                          setContrast2d(1);
+                      <SectionTitle title="Display" />
+
+                      <Box
+                        sx={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          mt: 0.5,
                         }}
                       >
-                        Reset
-                      </Button>
-                    </Box>
-
-                    <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
-                      <Box sx={{ display: "inline-flex", gap: 0.5, alignItems: "center" }}>
                         <Typography variant="caption" color="text.secondary">
-                          Brightness
+                          Intensity
                         </Typography>
-                        <IconButton size="small" onClick={openHelp("brightness2d")}>
-                          <HelpCircle size={14} />
-                        </IconButton>
+                        <Button
+                          size="small"
+                          onClick={() => {
+                            setBrightness2d(0);
+                            setContrast2d(1);
+                          }}
+                        >
+                          Reset
+                        </Button>
                       </Box>
-                      <Slider
-                        size="small"
-                        value={brightness2d}
-                        min={-1}
-                        max={1}
-                        step={0.02}
-                        onChange={(_, v) => setBrightness2d(v as number)}
-                        valueLabelDisplay="auto"
-                        valueLabelFormat={(v) =>
-                          `${Math.round((1 + (v as number)) * 100)}%`
-                        }
-                      />
-                    </Box>
 
-                    <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
-                      <Box sx={{ display: "inline-flex", gap: 0.5, alignItems: "center" }}>
-                        <Typography variant="caption" color="text.secondary">
-                          Contrast
-                        </Typography>
-                        <IconButton size="small" onClick={openHelp("contrast2d")}>
-                          <HelpCircle size={14} />
-                        </IconButton>
-                      </Box>
-                      <Slider
-                        size="small"
-                        value={contrast2d}
-                        min={0.5}
-                        max={2}
-                        step={0.02}
-                        onChange={(_, v) => setContrast2d(v as number)}
-                        valueLabelDisplay="auto"
-                        valueLabelFormat={(v) =>
-                          `${Math.round((v as number) * 100)}%`
-                        }
-                      />
-                    </Box>
-
-                    <Divider />
-
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      onClick={fitZoom}
-                      disabled={sliceLayoutMode !== "single"}
-                      sx={{ textTransform: "none" }}
-                    >
-                      Fit + reset pan
-                    </Button>
-
-                    <Typography variant="caption" color="text.secondary">
-                      {sliceLayoutMode === "single"
-                        ? "Pan: Ctrl+drag or middle mouse"
-                        : "Triple view: synchronized orthogonal slices (Z/Y/X)"}
-                    </Typography>
-                  </Box>
-                )}
-
-                {rightTab === "ctrl" && viewMode === "map3d" && (
-                  <Box sx={{ display: "flex", flexDirection: "column", gap: 1.25, marginRight: "12px" }}>
-                    <SectionTitle title="Data" />
-                    <ParamRow
-                      label="maxDim"
-                      helpKey="maxDim3d"
-                      onHelp={openHelp}
-                      control={
-                        <TextField
-                          size="small"
-                          type="number"
-                          value={maxDim3d}
-                          onChange={(e) => setMaxDim3d(clampInt(e.target.value, 48, 256))}
-                          inputProps={{ min: 48, max: 256, step: 8 }}
-                        />
-                      }
-                    />
-                    <ParamRow
-                      label="Method"
-                      helpKey="method3d"
-                      onHelp={openHelp}
-                      control={
-                        <TextField
-                          size="small"
-                          select
-                          value={method3d}
-                          onChange={(e) => setMethod3d(e.target.value as any)}
-                          SelectProps={{ MenuProps: { disablePortal: true } }}
-                        >
-                          <MenuItem value="binning">binning</MenuItem>
-                          <MenuItem value="stride">stride</MenuItem>
-                          <MenuItem value="none">none</MenuItem>
-                        </TextField>
-                      }
-                    />
-                    <Button
-                      size="small"
-                      variant={dataDirty ? "contained" : "outlined"}
-                      onClick={load3d}
-                      disabled={selectedId == null || mapLoading}
-                      sx={{ textTransform: "none", borderRadius: 1.5 }}
-                    >
-                      Reload data
-                    </Button>
-
-                    <Divider />
-
-                    <SectionTitle title="Appearance" />
-                    <ParamRow
-                      label="Colormap"
-                      helpKey="colormap3d"
-                      onHelp={openHelp}
-                      control={
-                        <TextField
-                          size="small"
-                          select
-                          value={colormap3d}
-                          onChange={(e) => setColormap3d(e.target.value)}
-                          SelectProps={{ MenuProps: { disablePortal: true } }}
-                        >
-                          {CMAP_OPTIONS.map((cm) => (
-                            <MenuItem key={cm} value={cm}>{cm}</MenuItem>
-                          ))}
-                        </TextField>
-                      }
-                    />
-
-                    <ParamRow
-                      label="Opacity"
-                      helpKey="opacity3d"
-                      onHelp={openHelp}
-                      control={
-                        <TextField
-                          size="small"
-                          type="number"
-                          value={opacity3d}
-                          onChange={(e) => setOpacity3d(clampFloat(e.target.value, 0.05, 1))}
-                          inputProps={{ min: 0.05, max: 1, step: 0.05 }}
-                        />
-                      }
-                    />
-
-                    <ParamRow
-                      label="Surfaces"
-                      helpKey="surfaceCount"
-                      onHelp={openHelp}
-                      control={
-                        <TextField
-                          size="small"
-                          type="number"
-                          value={surfaceCount}
-                          onChange={(e) => setSurfaceCount(clampInt(e.target.value, 1, 8))}
-                          inputProps={{ min: 1, max: 8, step: 1 }}
-                        />
-                      }
-                    />
-
-                    <Divider />
-
-                    <SectionTitle title="Iso rendering" />
-                    <ParamRow
-                      label="Iso mode"
-                      helpKey="isoRenderMode3d"
-                      onHelp={openHelp}
-                      control={
-                        <ToggleButtonGroup
-                          size="small"
-                          exclusive
-                          value={renderMode3d}
-                          onChange={(_, v) => v && setRenderMode3d(v)}
-                        >
-                          <ToggleButton value="surface">surface</ToggleButton>
-                          <ToggleButton value="volume">volume</ToggleButton>
-                        </ToggleButtonGroup>
-                      }
-                    />
-
-                    {renderMode3d === "surface" && (
                       <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
                         <Box sx={{ display: "inline-flex", gap: 0.5, alignItems: "center" }}>
                           <Typography variant="caption" color="text.secondary">
-                            Surface thickness
+                            Brightness
                           </Typography>
-                          <IconButton size="small" onClick={openHelp("surfaceThickness3d")}>
+                          <IconButton size="small" onClick={openHelp("brightness2d")}>
                             <HelpCircle size={14} />
                           </IconButton>
                         </Box>
                         <Slider
                           size="small"
-                          value={surfaceThickness3d}
-                          min={0.02}
-                          max={0.6}
-                          step={0.01}
-                          onChange={(_, v) => setSurfaceThickness3d(v as number)}
+                          value={brightness2d}
+                          min={-1}
+                          max={1}
+                          step={0.02}
+                          onChange={(_, v) => setBrightness2d(v as number)}
                           valueLabelDisplay="auto"
-                          valueLabelFormat={(v) => (v as number).toFixed(2)}
+                          valueLabelFormat={(v) =>
+                            `${Math.round((1 + (v as number)) * 100)}%`
+                          }
                         />
                       </Box>
-                    )}
 
-                    <Box sx={{ mt: 0.5 }}>
-                      <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-                        <Typography variant="caption" color="text.secondary">
-                          Threshold
-                        </Typography>
-                        <IconButton size="small" onClick={openHelp("thrMode")}>
-                          <HelpCircle size={14} />
-                        </IconButton>
-                      </Box>
-
-                      <ToggleButtonGroup
-                        size="small"
-                        exclusive
-                        value={thrMode}
-                        onChange={(_, v) => v && setThrMode(v)}
-                        sx={{ mb: 0.75 }}
-                      >
-                        <ToggleButton value="percentile">Percentile</ToggleButton>
-                        <ToggleButton value="absolute">Absolute</ToggleButton>
-                      </ToggleButtonGroup>
-
-                      {thrMode === "percentile" && (
-                        <>
-                          <Slider
-                            size="small"
-                            value={thrPct}
-                            min={0}
-                            max={100}
-                            step={1}
-                            onChange={(_, v) => {
-                              const arr = v as number[];
-                              const lo = Math.min(arr[0], arr[1]);
-                              const hi = Math.max(arr[0], arr[1]);
-                              setThrPct([lo, Math.max(lo + 1, hi)] as [number, number]);
-                            }}
-                            valueLabelDisplay="auto"
-                            disabled={!sortedValues}
-                          />
-                          {thrPctAbs && (
-                            <Typography variant="caption" color="text.secondary">
-                              ≈ {formatSci(thrPctAbs[0])} – {formatSci(thrPctAbs[1])}
-                            </Typography>
-                          )}
-                        </>
-                      )}
-
-                      {thrMode === "absolute" && (
+                      <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
+                        <Box sx={{ display: "inline-flex", gap: 0.5, alignItems: "center" }}>
+                          <Typography variant="caption" color="text.secondary">
+                            Contrast
+                          </Typography>
+                          <IconButton size="small" onClick={openHelp("contrast2d")}>
+                            <HelpCircle size={14} />
+                          </IconButton>
+                        </Box>
                         <Slider
                           size="small"
-                          value={thrAbs}
-                          min={stats3d?.min ?? 0}
-                          max={stats3d?.max ?? 1}
-                          step={stats3d ? (stats3d.max - stats3d.min) / 400 : 0.001}
-                          onChange={(_, v) => {
-                            const [lo, hi] = v as number[];
-                            setThrAbs([Math.min(lo, hi), Math.max(lo, hi)] as [number, number]);
-                          }}
+                          value={contrast2d}
+                          min={0.5}
+                          max={2}
+                          step={0.02}
+                          onChange={(_, v) => setContrast2d(v as number)}
                           valueLabelDisplay="auto"
-                          valueLabelFormat={(v) => formatSci(v as number)}
-                          disabled={!stats3d}
+                          valueLabelFormat={(v) =>
+                            `${Math.round((v as number) * 100)}%`
+                          }
                         />
+                      </Box>
+
+                      <Divider />
+
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        onClick={fitZoom}
+                        disabled={sliceLayoutMode !== "single"}
+                        sx={{ textTransform: "none" }}
+                      >
+                        Fit + reset pan
+                      </Button>
+
+                      <Typography variant="caption" color="text.secondary">
+                        {sliceLayoutMode === "single"
+                          ? "Pan: Ctrl+drag or middle mouse"
+                          : "Triple view: synchronized orthogonal slices (Z/Y/X)"}
+                      </Typography>
+                    </Box>
+                  )}
+
+                  {rightTab === "ctrl" && viewMode === "map3d" && (
+                    <Box sx={{ display: "flex", flexDirection: "column", gap: 1.25, marginRight: "12px" }}>
+                      <SectionTitle title="Data" />
+                      <ParamRow
+                        label="maxDim"
+                        helpKey="maxDim3d"
+                        onHelp={openHelp}
+                        control={
+                          <TextField
+                            size="small"
+                            type="number"
+                            value={maxDim3d}
+                            onChange={(e) => setMaxDim3d(clampInt(e.target.value, 48, 256))}
+                            inputProps={{ min: 48, max: 256, step: 8 }}
+                          />
+                        }
+                      />
+                      <ParamRow
+                        label="Method"
+                        helpKey="method3d"
+                        onHelp={openHelp}
+                        control={
+                          <TextField
+                            size="small"
+                            select
+                            value={method3d}
+                            onChange={(e) => setMethod3d(e.target.value as any)}
+                            SelectProps={{ MenuProps: { disablePortal: true } }}
+                          >
+                            <MenuItem value="binning">binning</MenuItem>
+                            <MenuItem value="stride">stride</MenuItem>
+                            <MenuItem value="none">none</MenuItem>
+                          </TextField>
+                        }
+                      />
+                      <Button
+                        size="small"
+                        variant={dataDirty ? "contained" : "outlined"}
+                        onClick={load3d}
+                        disabled={selectedId == null || mapLoading}
+                        sx={{ textTransform: "none", borderRadius: 1.5 }}
+                      >
+                        Reload data
+                      </Button>
+
+                      <Divider />
+
+                      <SectionTitle title="Appearance" />
+                      <ParamRow
+                        label="Colormap"
+                        helpKey="colormap3d"
+                        onHelp={openHelp}
+                        control={
+                          <TextField
+                            size="small"
+                            select
+                            value={colormap3d}
+                            onChange={(e) => setColormap3d(e.target.value)}
+                            SelectProps={{ MenuProps: { disablePortal: true } }}
+                          >
+                            {CMAP_OPTIONS.map((cm) => (
+                              <MenuItem key={cm} value={cm}>{cm}</MenuItem>
+                            ))}
+                          </TextField>
+                        }
+                      />
+
+                      <ParamRow
+                        label="Opacity"
+                        helpKey="opacity3d"
+                        onHelp={openHelp}
+                        control={
+                          <TextField
+                            size="small"
+                            type="number"
+                            value={opacity3d}
+                            onChange={(e) => setOpacity3d(clampFloat(e.target.value, 0.05, 1))}
+                            inputProps={{ min: 0.05, max: 1, step: 0.05 }}
+                          />
+                        }
+                      />
+
+                      <ParamRow
+                        label="Surfaces"
+                        helpKey="surfaceCount"
+                        onHelp={openHelp}
+                        control={
+                          <TextField
+                            size="small"
+                            type="number"
+                            value={surfaceCount}
+                            onChange={(e) => setSurfaceCount(clampInt(e.target.value, 1, 8))}
+                            inputProps={{ min: 1, max: 8, step: 1 }}
+                          />
+                        }
+                      />
+
+                      <Divider />
+
+                      <SectionTitle title="Iso rendering" />
+                      <ParamRow
+                        label="Iso mode"
+                        helpKey="isoRenderMode3d"
+                        onHelp={openHelp}
+                        control={
+                          <ToggleButtonGroup
+                            size="small"
+                            exclusive
+                            value={renderMode3d}
+                            onChange={(_, v) => v && setRenderMode3d(v)}
+                          >
+                            <ToggleButton value="surface">surface</ToggleButton>
+                            <ToggleButton value="volume">volume</ToggleButton>
+                          </ToggleButtonGroup>
+                        }
+                      />
+
+                      {renderMode3d === "surface" && (
+                        <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
+                          <Box sx={{ display: "inline-flex", gap: 0.5, alignItems: "center" }}>
+                            <Typography variant="caption" color="text.secondary">
+                              Surface thickness
+                            </Typography>
+                            <IconButton size="small" onClick={openHelp("surfaceThickness3d")}>
+                              <HelpCircle size={14} />
+                            </IconButton>
+                          </Box>
+                          <Slider
+                            size="small"
+                            value={surfaceThickness3d}
+                            min={0.02}
+                            max={0.6}
+                            step={0.01}
+                            onChange={(_, v) => setSurfaceThickness3d(v as number)}
+                            valueLabelDisplay="auto"
+                            valueLabelFormat={(v) => (v as number).toFixed(2)}
+                          />
+                        </Box>
+                      )}
+
+                      <Box sx={{ mt: 0.5 }}>
+                        <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                          <Typography variant="caption" color="text.secondary">
+                            Threshold
+                          </Typography>
+                          <IconButton size="small" onClick={openHelp("thrMode")}>
+                            <HelpCircle size={14} />
+                          </IconButton>
+                        </Box>
+
+                        <ToggleButtonGroup
+                          size="small"
+                          exclusive
+                          value={thrMode}
+                          onChange={(_, v) => v && setThrMode(v)}
+                          sx={{ mb: 0.75 }}
+                        >
+                          <ToggleButton value="percentile">Percentile</ToggleButton>
+                          <ToggleButton value="absolute">Absolute</ToggleButton>
+                        </ToggleButtonGroup>
+
+                        {thrMode === "percentile" && (
+                          <>
+                            <Slider
+                              size="small"
+                              value={thrPct}
+                              min={0}
+                              max={100}
+                              step={1}
+                              onChange={(_, v) => {
+                                const arr = v as number[];
+                                const lo = Math.min(arr[0], arr[1]);
+                                const hi = Math.max(arr[0], arr[1]);
+                                setThrPct([lo, Math.max(lo + 1, hi)] as [number, number]);
+                              }}
+                              valueLabelDisplay="auto"
+                              disabled={!sortedValues}
+                            />
+                            {thrPctAbs && (
+                              <Typography variant="caption" color="text.secondary">
+                                ≈ {formatSci(thrPctAbs[0])} – {formatSci(thrPctAbs[1])}
+                              </Typography>
+                            )}
+                          </>
+                        )}
+
+                        {thrMode === "absolute" && (
+                          <Slider
+                            size="small"
+                            value={thrAbs}
+                            min={stats3d?.min ?? 0}
+                            max={stats3d?.max ?? 1}
+                            step={stats3d ? (stats3d.max - stats3d.min) / 400 : 0.001}
+                            onChange={(_, v) => {
+                              const [lo, hi] = v as number[];
+                              setThrAbs([Math.min(lo, hi), Math.max(lo, hi)] as [number, number]);
+                            }}
+                            valueLabelDisplay="auto"
+                            valueLabelFormat={(v) => formatSci(v as number)}
+                            disabled={!stats3d}
+                          />
+                        )}
+                      </Box>
+                    </Box>
+                  )}
+
+                  {rightTab === "hist" && (
+                    <Box sx={{ display: "flex", flexDirection: "column", minHeight: 0, flex: 1 }}>
+                      <Typography variant="caption" color="text.secondary">
+                        Intensity histogram
+                      </Typography>
+
+                      {selectedId == null ? (
+                        <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
+                          Select a volume to see the histogram.
+                        </Typography>
+                      ) : histLoading ? (
+                        <Box sx={{ display: "flex", gap: 1, alignItems: "center", mt: 1 }}>
+                          <CircularProgress size={16} />
+                          <Typography variant="caption">Loading histogram…</Typography>
+                        </Box>
+                      ) : histError ? (
+                        <Typography variant="caption" color="error" sx={{ mt: 1 }}>
+                          {histError}
+                        </Typography>
+                      ) : histogram && histogram.binEdges.length > 1 ? (
+                        <Box sx={{ mt: 1, flex: 1, minHeight: 240 }}>
+                          <Plot
+                            data={[
+                              {
+                                type: "bar",
+                                x: histogram.binEdges
+                                  .slice(0, -1)
+                                  .map((b, i) => 0.5 * (b + histogram.binEdges[i + 1])),
+                                y: histogram.counts,
+                              },
+                            ]}
+                            layout={{
+                              margin: { l: 40, r: 10, t: 10, b: 30 },
+                              autosize: true,
+                              showlegend: false,
+                              xaxis: { title: "Intensity" },
+                              yaxis: { title: "Count" },
+                            }}
+                            style={{ width: "100%", height: "100%" }}
+                            useResizeHandler
+                            config={{ displaylogo: false, responsive: true }}
+                          />
+                        </Box>
+                      ) : (
+                        <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
+                          No histogram data.
+                        </Typography>
                       )}
                     </Box>
-                  </Box>
-                )}
-
-                {rightTab === "hist" && (
-                  <Box sx={{ display: "flex", flexDirection: "column", minHeight: 0, flex: 1 }}>
-                    <Typography variant="caption" color="text.secondary">
-                      Intensity histogram
-                    </Typography>
-
-                    {selectedId == null ? (
-                      <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
-                        Select a volume to see the histogram.
-                      </Typography>
-                    ) : histLoading ? (
-                      <Box sx={{ display: "flex", gap: 1, alignItems: "center", mt: 1 }}>
-                        <CircularProgress size={16} />
-                        <Typography variant="caption">Loading histogram…</Typography>
-                      </Box>
-                    ) : histError ? (
-                      <Typography variant="caption" color="error" sx={{ mt: 1 }}>
-                        {histError}
-                      </Typography>
-                    ) : histogram && histogram.binEdges.length > 1 ? (
-                      <Box sx={{ mt: 1, flex: 1, minHeight: 240 }}>
-                        <Plot
-                          data={[
-                            {
-                              type: "bar",
-                              x: histogram.binEdges
-                                .slice(0, -1)
-                                .map((b, i) => 0.5 * (b + histogram.binEdges[i + 1])),
-                              y: histogram.counts,
-                            },
-                          ]}
-                          layout={{
-                            margin: { l: 40, r: 10, t: 10, b: 30 },
-                            autosize: true,
-                            showlegend: false,
-                            xaxis: { title: "Intensity" },
-                            yaxis: { title: "Count" },
-                          }}
-                          style={{ width: "100%", height: "100%" }}
-                          useResizeHandler
-                          config={{ displaylogo: false, responsive: true }}
-                        />
-                      </Box>
-                    ) : (
-                      <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
-                        No histogram data.
-                      </Typography>
-                    )}
-                  </Box>
-                )}
+                  )}
+                </Box>
               </Box>
-            </Box>
-          </>
+            </>
+          )}
         </Box>
       </Box>
 

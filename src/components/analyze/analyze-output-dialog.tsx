@@ -203,6 +203,7 @@ function AnalyzeOutputDialog({
           protocolId={protocolIdNum}
           protocolLabel={protocolLabel}
           outputName={outputName}
+          pointerClass={pointerClass}
         />
       );
     }

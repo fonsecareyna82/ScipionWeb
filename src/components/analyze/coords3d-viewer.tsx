@@ -28,11 +28,12 @@ import {
   MenuItem,
   Chip,
 } from "@mui/material";
-import { HelpCircle, Layers as Layers3, Box as BoxIcon } from "lucide-react";
+import { HelpCircle, Layers as Layers3, Box as BoxIcon, Table as TableLucide } from "lucide-react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { useProjectService } from "@/ProjectServiceContext";
 import type { Id, Coordinates3dTomogramPoints } from "@/services/ProjectService";
+import { MetadataViewer } from "./metadata-viewer";
 
 type Coords3dViewerProps = {
   projectId: Id;
@@ -53,7 +54,7 @@ type TomogramItem = {
   nCoords?: number;
 };
 
-type ViewMode = "slice" | "map3d";
+type ViewMode = "slice" | "map3d" | "metadata";
 type SliceAxis = "x" | "y" | "z";
 type RightPanelTab = "filters" | "appearance";
 type PointColorMode3d = "fixed" | "class" | "score";
@@ -228,6 +229,13 @@ export default function Coords3dViewer({
   outputName,
 }: Coords3dViewerProps) {
   const svc = useProjectService();
+
+  const projectIdNum = useMemo(() => Number(projectId), [projectId]);
+  const protocolIdNum = useMemo(() => Number(protocolId), [protocolId]);
+
+  const canOpenMetadata = useMemo(() => {
+    return Number.isFinite(projectIdNum) && Number.isFinite(protocolIdNum);
+  }, [projectIdNum, protocolIdNum]);
 
   const [tomos, setTomos] = useState<TomogramItem[]>([]);
   const [tomosLoading, setTomosLoading] = useState(false);
@@ -1052,6 +1060,13 @@ export default function Coords3dViewer({
                       3D Map
                     </Box>
                   </ToggleButton>
+
+                  <ToggleButton value="metadata" disabled={!canOpenMetadata}>
+                    <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
+                      <TableLucide size={14} />
+                      Metadata
+                    </Box>
+                  </ToggleButton>
                 </ToggleButtonGroup>
 
                 {viewMode === "map3d" && (
@@ -1133,12 +1148,30 @@ export default function Coords3dViewer({
                   display: "flex",
                   alignItems: "stretch",
                   justifyContent: "stretch",
-                  p: 1,
+                  p: viewMode === "metadata" ? 0 : 1,
                   bgcolor: (theme) =>
                     theme.palette.mode === "dark" ? "#0b1220" : "#f8fafc",
                 }}
               >
-                {pointsLoading ? (
+                {viewMode === "metadata" ? (
+                  <Box sx={{ width: "100%", height: "100%", minHeight: 0, minWidth: 0 }}>
+                    {canOpenMetadata ? (
+                      <MetadataViewer
+                        projectId={projectIdNum}
+                        protocolId={protocolIdNum}
+                        outputName={outputName}
+                        embedded={true}
+                        onClose={() => setViewMode("slice")}
+                      />
+                    ) : (
+                      <Box sx={{ m: "auto", px: 2 }}>
+                        <Typography variant="body2" color="text.secondary" align="center">
+                          Metadata view requires numeric projectId/protocolId.
+                        </Typography>
+                      </Box>
+                    )}
+                  </Box>
+                ) : pointsLoading ? (
                   <Box sx={{ m: "auto", display: "flex", gap: 1, alignItems: "center" }}>
                     <CircularProgress size={18} />
                     <Typography variant="body2">Loading coordinates…</Typography>
@@ -1495,9 +1528,11 @@ export default function Coords3dViewer({
                 )}
               </Box>
 
-              {!(viewMode === "slice" && sliceLayoutMode === "triple") && <Divider />}
+              {viewMode !== "metadata" && !(viewMode === "slice" && sliceLayoutMode === "triple") && (
+                <Divider />
+              )}
 
-              {!(viewMode === "slice" && sliceLayoutMode === "triple") && (
+              {viewMode !== "metadata" && !(viewMode === "slice" && sliceLayoutMode === "triple") && (
                 <Box
                   sx={{
                     p: 1,
@@ -1554,6 +1589,7 @@ export default function Coords3dViewer({
               )}
             </Box>
 
+          {viewMode !== "metadata" && (
             <>
               <Divider orientation="vertical" flexItem />
               <Box
@@ -2057,6 +2093,7 @@ export default function Coords3dViewer({
                 </Box>
               </Box>
             </>
+          )}
           </Box>
         </Box>
       </Box>

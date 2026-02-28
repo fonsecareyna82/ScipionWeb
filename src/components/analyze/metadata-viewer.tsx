@@ -75,6 +75,7 @@ type MetadataViewerProps = {
   protocolId: number;
   outputName: string;
   onClose?: () => void;
+  embedded?: boolean;
 };
 
 type ViewMode = "table" | "gallery";
@@ -266,6 +267,7 @@ type MetadataTablePanelProps = {
   sortAsc: boolean;
   onToggleSort: (column: MetadataColumnWithVisibility) => void;
   matrixColumnNames: Set<string>;
+  embedded: boolean;
 };
 
 type MetadataGalleryPanelProps = {
@@ -295,6 +297,7 @@ type MetadataGalleryPanelProps = {
   sizeColumn: MetadataColumnWithVisibility | null;
   imageThumbSize: number;
   galleryBaseOffset: number;
+  embedded: boolean;
 };
 
 type ColumnsDialogProps = {
@@ -2213,6 +2216,7 @@ function MetadataTablePanel({
   sortAsc,
   onToggleSort,
   matrixColumnNames,
+  embedded
 }: MetadataTablePanelProps) {
   if (!schema || totalRows <= 0) return null;
 
@@ -2221,8 +2225,8 @@ function MetadataTablePanel({
       variant="outlined"
       sx={{
         mt: 0,
-        minHeight: 660,
-        maxHeight: 660,
+        minHeight: embedded ? 630 : 660,
+        maxHeight: embedded ? 630 : 660,
         minWidth: 840,
         flexShrink: 0,
         display: viewMode === "table" ? "flex" : "none",
@@ -2640,14 +2644,15 @@ function MetadataGalleryPanel({
   sizeColumn,
   imageThumbSize,
   galleryBaseOffset,
+  embedded=false,
 }: MetadataGalleryPanelProps) {
   return (
     <Paper
       variant="outlined"
       sx={{
         mt: 0,
-        minHeight: 660,
-        maxHeight: 660,
+        minHeight: embedded ? 630 : 660,
+        maxHeight: embedded ? 630 : 660,
         minWidth: 840,
         flexShrink: 0,
         display: viewMode === "gallery" ? "flex" : "none",
@@ -2968,7 +2973,7 @@ function ColumnsDialog({
 
 /* ======================= Main component ======================= */
 
-export function MetadataViewer({ projectId, protocolId, outputName, onClose }: MetadataViewerProps) {
+export function MetadataViewer({ projectId, protocolId, outputName, onClose, embedded = false }: MetadataViewerProps) {
   const isMountedRef = useIsMountedRef();
   const svcRef = useProjectServiceRef();
 
@@ -4390,9 +4395,12 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose }: M
       sx={{
         display: "flex",
         flexDirection: "column",
-        flexShrink: 0,
-        minHeight: 480,
-        mt: 2,
+        flex: embedded ? 1 : undefined,
+        flexShrink: embedded ? 1 : 0,
+        minHeight: embedded ? 0 : 480,
+        height: embedded ? "100%" : undefined,
+        mt: embedded ? 0 : 2,
+
       }}
     >
       {/* Header */}
@@ -4702,6 +4710,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose }: M
         sortAsc={sortAsc}
         onToggleSort={toggleSortForColumn}
         matrixColumnNames={matrixColumnNames}
+        embedded={embedded}
       />
 
       {selectedTable && schema && totalRows > 0 && (
@@ -4728,6 +4737,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose }: M
           sizeColumn={sizeColumn}
           imageThumbSize={imageThumbSize}
           galleryBaseOffset={galleryBaseOffset}
+          embedded={embedded}
         />
       )}
 
@@ -4838,6 +4848,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose }: M
             </Typography>
           )}
 
+          {!embedded && (
           <Button
             size="small"
             variant="contained"
@@ -4855,6 +4866,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose }: M
           >
             Close
           </Button>
+          )}
         </Box>
       </Paper>
 
