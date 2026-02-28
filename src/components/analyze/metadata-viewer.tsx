@@ -2645,7 +2645,7 @@ function MetadataGalleryPanel({
     <Paper
       variant="outlined"
       sx={{
-        mt: 1,
+        mt: 0,
         minHeight: 660,
         maxHeight: 660,
         minWidth: 840,
@@ -4735,7 +4735,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose }: M
       <Paper
         variant="outlined"
         sx={{
-          mt: 1,
+          mt: 0,
           p: 1,
           borderColor: "rgba(148,163,184,0.4)",
           display: "flex",
