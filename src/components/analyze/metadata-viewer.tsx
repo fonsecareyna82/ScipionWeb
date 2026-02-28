@@ -293,6 +293,7 @@ type MetadataGalleryPanelProps = {
   showSizeLabel: boolean;
   sizeColumn: MetadataColumnWithVisibility | null;
   imageThumbSize: number;
+  galleryBaseOffset: number;
 };
 
 type ColumnsDialogProps = {
@@ -322,7 +323,7 @@ type MetadataActionRequestPayload = {
 
 /* ======================= Constants ======================= */
 
-const BASE_THUMB_SIZE = 160;
+const BASE_THUMB_SIZE = 200;
 const NORMAL_ROW_HEIGHT = 32;
 const IMAGE_ROW_PADDING = 16;
 const EXTRA_BUFFER_ROWS = 10;
@@ -1560,6 +1561,7 @@ function useMetadataGalleryRows(params: {
   isMountedRef: MutableRefObject<boolean>;
   sortBy: string | null;
   sortAsc: boolean;
+  anchorRowIndex: number | null;
 }) {
   const {
     projectId,
@@ -1580,6 +1582,14 @@ function useMetadataGalleryRows(params: {
   const [galleryError, setGalleryError] = useState<string | null>(null);
   const [galleryHasMore, setGalleryHasMore] = useState(false);
 
+  const [galleryBaseOffset, setGalleryBaseOffset] = useState(0);
+  const galleryBaseOffsetRef = useRef(0);
+
+  useEffect(() => {
+    // keepGalleryBaseOffsetRefUpdated
+    galleryBaseOffsetRef.current = galleryBaseOffset;
+  }, [galleryBaseOffset]);
+
   const galleryRequestInFlightRef = useRef(false);
   const galleryEpochRef = useRef(0);
   const svcRef = useProjectServiceRef();
@@ -1592,6 +1602,7 @@ function useMetadataGalleryRows(params: {
     setGalleryLoading(false);
     setGalleryError(null);
     setGalleryHasMore(false);
+    setGalleryBaseOffset(0);
   }, []);
 
   const loadGalleryChunk = useCallback(
@@ -1633,7 +1644,8 @@ function useMetadataGalleryRows(params: {
 
         const parsed = parseWindowResponse(response);
 
-        setGalleryRows((prev) => (offset === 0 ? parsed.rows : [...prev, ...parsed.rows]));
+        const baseOffset = galleryBaseOffsetRef.current;
+        setGalleryRows((prev) => (offset === baseOffset ? parsed.rows : [...prev, ...parsed.rows]));
 
         const nextOffset = offset + parsed.rows.length;
         setGalleryNextOffset(nextOffset);
@@ -1671,19 +1683,29 @@ function useMetadataGalleryRows(params: {
     invalidateGalleryState();
 
     if (!schema || !selectedTable || totalRows === 0) return;
-    if (viewMode === "gallery") {
-      void loadGalleryChunk(0);
-    }
+    if (viewMode !== "gallery") return;
+
+    const maxIndex = Math.max(0, totalRows - 1);
+    const safeAnchor =
+      params.anchorRowIndex == null ? 0 : clampIndex(params.anchorRowIndex, 0, maxIndex);
+
+    const buffer = Math.floor(GALLERY_PAGE_SIZE / 2);
+    const maxStartOffset = Math.max(0, totalRows - GALLERY_PAGE_SIZE);
+
+    let startOffset = safeAnchor - buffer;
+    if (startOffset < 0) startOffset = 0;
+    if (startOffset > maxStartOffset) startOffset = maxStartOffset;
+
+    setGalleryBaseOffset(startOffset);
+    void loadGalleryChunk(startOffset);
   }, [
     schema,
     selectedTable,
     totalRows,
-    projectId,
-    protocolId,
-    outputName,
     viewMode,
     sortBy,
     sortAsc,
+    params.anchorRowIndex,
     invalidateGalleryState,
     loadGalleryChunk,
   ]);
@@ -1698,7 +1720,7 @@ function useMetadataGalleryRows(params: {
       !galleryLoading &&
       !galleryError
     ) {
-      void loadGalleryChunk(0);
+      void loadGalleryChunk(galleryBaseOffsetRef.current);
     }
   }, [
     viewMode,
@@ -1730,6 +1752,7 @@ function useMetadataGalleryRows(params: {
     galleryHasMore,
     handleGalleryScroll,
     invalidateGalleryState,
+    galleryBaseOffset,
   };
 }
 
@@ -2470,6 +2493,7 @@ function MetadataGalleryPanel({
   showSizeLabel,
   sizeColumn,
   imageThumbSize,
+  galleryBaseOffset,
 }: MetadataGalleryPanelProps) {
   return (
     <Paper
@@ -2520,7 +2544,7 @@ function MetadataGalleryPanel({
             }}
           >
             {galleryRows.map((row, index) => {
-              const globalRowIndex = index;
+              const globalRowIndex = galleryBaseOffset + index;
               const rowId = resolveMetadataRowId(schema, row);
 
               const cellValue = row.values[firstImageColumn.index];
@@ -2551,6 +2575,7 @@ function MetadataGalleryPanel({
               return (
                 <Box
                   key={rowId ?? row.id ?? `${index}`}
+                  data-row-index={globalRowIndex}
                   onClick={(event) => {
                     onPrimaryRowClick(globalRowIndex, rowId, event);
                     setSelectedRowIndex(globalRowIndex);
@@ -2848,6 +2873,16 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose }: M
 
   const { imageCacheRef, clearImageCache } = useImageCache();
 
+  const [galleryAnchorRowIndex, setGalleryAnchorRowIndex] = useState<number | null>(null);
+  const pendingGalleryScrollIndexRef = useRef<number | null>(null);
+
+  const focusedRowIndex = useMemo(() => {
+    return selectedImageCell?.rowIndexInTable ?? selectedRowIndex ?? null;
+  }, [selectedImageCell, selectedRowIndex]);
+
+  const prevViewModeRef = useRef<ViewMode>(viewMode);
+
+
   const { tables, tablesLoading, tablesError, selectedTable, setSelectedTable } = useMetadataTables(
     projectId,
     protocolId,
@@ -3028,6 +3063,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose }: M
     galleryError,
     handleGalleryScroll,
     invalidateGalleryState,
+    galleryBaseOffset,
   } = useMetadataGalleryRows({
     projectId,
     protocolId,
@@ -3039,6 +3075,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose }: M
     isMountedRef,
     sortBy,
     sortAsc,
+    anchorRowIndex: viewMode === "gallery" ? galleryAnchorRowIndex : null,
   });
 
   const topSpacerHeight = totalRows > 0 ? windowOffset * rowSizeForScroll : 0;
@@ -3392,6 +3429,66 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose }: M
     // keepActionSubmittingRefUpdated
     actionSubmittingRef.current = actionSubmitting;
   }, [actionSubmitting]);
+
+  useEffect(() => {
+    const prev = prevViewModeRef.current;
+    if (prev === viewMode) return;
+
+    prevViewModeRef.current = viewMode;
+
+    if (viewMode === "gallery") {
+      if (focusedRowIndex != null) {
+        setGalleryAnchorRowIndex(focusedRowIndex);
+        pendingGalleryScrollIndexRef.current = focusedRowIndex;
+      } else {
+        setGalleryAnchorRowIndex(0);
+      }
+      return;
+    }
+
+    if (viewMode === "table" && focusedRowIndex != null) {
+      jumpToRowIndex(focusedRowIndex);
+    }
+  }, [viewMode, focusedRowIndex, jumpToRowIndex]);
+
+
+  useEffect(() => {
+    if (viewMode !== "gallery") return;
+
+    const targetIndex = pendingGalleryScrollIndexRef.current;
+    if (targetIndex == null) return;
+
+    const container = galleryScrollRef.current;
+    if (!container) return;
+
+    const selector = `[data-row-index="${targetIndex}"]`;
+    const el = container.querySelector(selector) as HTMLElement | null;
+
+    if (!el) return;
+
+    el.scrollIntoView({ block: "center", inline: "nearest" });
+    pendingGalleryScrollIndexRef.current = null;
+  }, [viewMode, galleryRows.length, galleryBaseOffset, imageThumbSize]);
+
+  const focusRowAfterSelection = useCallback(
+    (rowIndex: number | null) => {
+      if (rowIndex == null) return;
+
+      setSelectedRowIndex(rowIndex);
+      setSelectedImageCell(null);
+
+      if (viewMode === "table") {
+        jumpToRowIndex(rowIndex);
+        return;
+      }
+
+      if (viewMode === "gallery") {
+        setGalleryAnchorRowIndex(rowIndex);
+        pendingGalleryScrollIndexRef.current = rowIndex;
+      }
+    },
+    [jumpToRowIndex, viewMode],
+  );
 
   const closeSelectionDialog = useCallback(() => {
     // closeSelectionDialogStable
@@ -3850,6 +3947,8 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose }: M
 
   const runColumnCriteriaSelection = useCallback(async () => {
     // runColumnCriteriaSelection
+    // trackFirstMatchedRowForAutoFocus
+    let firstMatchIndex: number | null = null;
     if (selectionBusyRef.current) return;
     if (!schema || !selectedTable || totalRows <= 0) return;
     if (!selectionDialog.open || selectionDialog.kind !== "criteria") return;
@@ -3970,6 +4069,10 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose }: M
 
           if (!ok) continue;
 
+          if (firstMatchIndex == null || globalRowIndex < firstMatchIndex) {
+            firstMatchIndex = globalRowIndex;
+          }
+
           if (rowId == null) {
             matchedIndices.push(globalRowIndex);
             continue;
@@ -4012,8 +4115,8 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose }: M
         clearIdSelection();
         setSelectionRanges(nextRanges);
 
-        setSelectedRowIndex(null);
-        setSelectedImageCell(null);
+        const firstSelected = nextRanges.length ? nextRanges[0].start : null;
+        focusRowAfterSelection(firstSelected);
 
         closeSelectionDialog();
         closeContextMenu();
@@ -4038,8 +4141,9 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose }: M
       setSelectionMode("ids");
 
       clearSelection();
-      setSelectedRowIndex(null);
-      setSelectedImageCell(null);
+      if (selectionDialog.setOp !== "remove") {
+        focusRowAfterSelection(firstMatchIndex);
+      }
 
       closeSelectionDialog();
       closeContextMenu();
@@ -4255,7 +4359,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose }: M
             </Select>
           </FormControl>
 
-          <Tooltip title="Zoom">
+          <Tooltip title="Zoom in %">
             <span>
               <TextField
                 size="small"
@@ -4449,6 +4553,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose }: M
           showSizeLabel={showSizeLabel}
           sizeColumn={sizeColumn}
           imageThumbSize={imageThumbSize}
+          galleryBaseOffset={galleryBaseOffset}
         />
       )}
 
@@ -5126,6 +5231,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose }: M
                 setSelectionMode("index");
                 clearIdSelection();
                 selectRange(start - 1, end - 1);
+                focusRowAfterSelection(start - 1);
                 closeSelectionDialog();
                 closeContextMenu();
                 return;
