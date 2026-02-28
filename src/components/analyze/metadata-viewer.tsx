@@ -541,7 +541,7 @@ function buildPrettyMatrixText(matrix: Array<Array<number | string>>): string {
       return cell.toString().padStart(colWidths[c], " ");
     }).join(" ");
 
-    return `  [ ${padded} ]`;
+    return `[ ${padded} ]`;
   });
 
   return [...rowLines].join("\n");
@@ -2454,31 +2454,44 @@ function MetadataTablePanel({
                             width: cellWidth,
                             minWidth: cellWidth,
                             maxWidth: cellWidth,
+                            padding: 0,
                             backgroundColor: isHighlightedRow
                               ? "rgba(219,234,254,0.9)"
                               : "background.paper",
                           }}
                         >
-                          <MetadataImageCell
-                            projectId={projectId}
-                            protocolId={protocolId}
-                            outputName={outputName}
-                            tableName={selectedTable}
-                            rowIndexInTable={displayRowIndex}
-                            columnName={column.name}
-                            cell={imageCell}
-                            size={imageThumbSize}
-                            isSelected={isSelectedImage}
-                            onClick={(event) => {
-                              onPrimaryRowClick(displayRowIndex, rowId, event);
-                              setSelectedRowIndex(displayRowIndex);
-                              setSelectedImageCell({
-                                rowIndexInTable: displayRowIndex,
-                                columnName: column.name,
-                              });
+                          <Box
+                            sx={{
+                              // centerImageInCell
+                              width: "100%",
+                              height: "100%",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              padding: "4px 8px",
                             }}
-                            imageCacheRef={imageCacheRef}
-                          />
+                          >
+                            <MetadataImageCell
+                              projectId={projectId}
+                              protocolId={protocolId}
+                              outputName={outputName}
+                              tableName={selectedTable}
+                              rowIndexInTable={displayRowIndex}
+                              columnName={column.name}
+                              cell={imageCell}
+                              size={imageThumbSize}
+                              isSelected={isSelectedImage}
+                              onClick={(event) => {
+                                onPrimaryRowClick(displayRowIndex, rowId, event);
+                                setSelectedRowIndex(displayRowIndex);
+                                setSelectedImageCell({
+                                  rowIndexInTable: displayRowIndex,
+                                  columnName: column.name,
+                                });
+                              }}
+                              imageCacheRef={imageCacheRef}
+                            />
+                          </Box>
                         </TableCell>
                       );
                     }
@@ -2492,23 +2505,35 @@ function MetadataTablePanel({
                             ...baseCellSx,
                             height: rowHeight,
                             verticalAlign: "middle",
-                            width: Math.max(MIN_TEXT_COL_WIDTH, 200),
-                            minWidth: Math.max(MIN_TEXT_COL_WIDTH, 200),
-                            maxWidth: Math.max(MIN_TEXT_COL_WIDTH, 200),
+                            width: Math.max(MIN_TEXT_COL_WIDTH, 260),
+                            minWidth: Math.max(MIN_TEXT_COL_WIDTH, 260),
+                            maxWidth: Math.max(MIN_TEXT_COL_WIDTH, 260),
                             whiteSpace: "normal",
                             overflow: "visible",
                             textOverflow: "clip",
                             backgroundColor: isHighlightedRow ? "rgba(219,234,254,0.9)" : "background.paper",
+                            // centerMatrixCellLikeImages
+                            textAlign: "center",
                           }}
                         >
-                          <Box sx={{ display: "inline-block", maxWidth: "100%" }}>
-                            {matrixValue ? (
-                              <MatrixInlineCell matrix={matrixValue} />
-                            ) : (
-                              <Typography variant="caption" color="text.secondary">
-                                matrix
-                              </Typography>
-                            )}
+                          <Box
+                            sx={{
+                              // centerMatrixContent
+                              width: "100%",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                            }}
+                          >
+                            <Box sx={{ display: "inline-block", maxWidth: "100%" }}>
+                              {matrixValue ? (
+                                <MatrixInlineCell matrix={matrixValue} />
+                              ) : (
+                                <Typography variant="caption" color="text.secondary">
+                                  matrix
+                                </Typography>
+                              )}
+                            </Box>
                           </Box>
                         </TableCell>
                       );
