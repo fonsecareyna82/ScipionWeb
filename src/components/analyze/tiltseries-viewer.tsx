@@ -26,11 +26,14 @@ import {
   ExpandMore,
   ChevronRight,
   Transform as TransformIcon,
+  TableView as MetadataIcon,
+  ArrowBack,
 } from "@mui/icons-material";
 import { useProjectService } from "@/ProjectServiceContext";
 import type { Id } from "@/services/ProjectService";
 import { CloseIcon } from "@/icons";
 import toast from "react-hot-toast";
+import { MetadataViewer } from "./metadata-viewer";
 
 type TiltSeriesViewerProps = {
   projectId: Id;
@@ -97,6 +100,23 @@ export default function TiltSeriesViewer({
   outputName,
 }: TiltSeriesViewerProps) {
   const svc = useProjectService();
+
+  // viewerModeSwitchBetweenTiltViewerAndMetadata
+  const [mainMode, setMainMode] = useState<"viewer" | "metadata">("viewer");
+
+  const projectIdNum = useMemo(() => Number(projectId), [projectId]);
+  const protocolIdNum = useMemo(() => Number(protocolId), [protocolId]);
+
+  const canOpenMetadata = useMemo(() => {
+    return Number.isFinite(projectIdNum) && Number.isFinite(protocolIdNum);
+  }, [projectIdNum, protocolIdNum]);
+
+  useEffect(() => {
+    // stopAutoplayWhenLeavingTiltViewer
+    if (mainMode === "metadata") {
+      setIsPlaying(false);
+    }
+  }, [mainMode]);
 
   const [series, setSeries] = useState<TiltSeriesSummary[]>([]);
   const [seriesLoading, setSeriesLoading] = useState(false);
@@ -523,6 +543,13 @@ export default function TiltSeriesViewer({
 
   // previewImageForSelectedViewOnlyWhenFramesAreAlreadyLoaded
   useEffect(() => {
+
+    if (mainMode === "metadata") {
+      previewAbortRef.current?.abort();
+      setPreviewLoading(false);
+      return;
+    }
+
     if (selectedSeriesId == null || selectedRowIndex == null || !selectedFrame) {
       previewAbortRef.current?.abort();
       setPreviewUrl(null);
@@ -602,6 +629,7 @@ export default function TiltSeriesViewer({
       controller.abort();
     };
   }, [
+    mainMode,
     selectedSeriesId,
     selectedRowIndex,
     selectedFrame,
@@ -840,6 +868,65 @@ export default function TiltSeriesViewer({
       }
     };
   }, [isPlaying, framesData?.frames?.length]);
+
+  if (mainMode === "metadata") {
+    return (
+      <Box
+        sx={{
+          display: "flex",
+          flexDirection: "column",
+          height: "100%",
+          width: "100%",
+          minHeight: 0,
+          minWidth: 0,
+          overflow: "hidden",
+        }}
+      >
+        <Paper
+          square
+          elevation={0}
+          sx={{
+            p: 1.5,
+            borderBottom: "1px solid #e5e7eb",
+            display: "flex",
+            alignItems: "center",
+            gap: 1,
+            flexShrink: 0,
+          }}
+        >
+          <Tooltip title="Back">
+            <IconButton size="small" onClick={() => setMainMode("viewer")}>
+              <ArrowBack fontSize="small" />
+            </IconButton>
+          </Tooltip>
+
+          <Box sx={{ minWidth: 0, flex: 1 }}>
+            <Typography variant="caption" color="text.secondary" noWrap>
+              {outputName} viewer
+            </Typography>
+          </Box>
+        </Paper>
+
+        <Box sx={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
+          {canOpenMetadata ? (
+            <MetadataViewer
+              projectId={projectIdNum}
+              protocolId={protocolIdNum}
+              outputName={outputName}
+              embedded
+              onClose={() => setMainMode("viewer")}
+            />
+          ) : (
+            <Box sx={{ p: 2 }}>
+              <Typography variant="body2" color="text.secondary">
+                Metadata view requires numeric projectId/protocolId.
+              </Typography>
+            </Box>
+          )}
+        </Box>
+      </Box>
+    );
+  }
 
   return (
     <>
@@ -1154,6 +1241,21 @@ export default function TiltSeriesViewer({
                   : "No view selected"}
               </Typography>
             </Box>
+
+            <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+              <Tooltip title="Metadata viewer">
+                <span>
+                  <IconButton
+                    size="small"
+                    onClick={() => setMainMode("metadata")}
+                    disabled={!canOpenMetadata}
+                  >
+                    <MetadataIcon fontSize="small" />
+                  </IconButton>
+                </span>
+              </Tooltip>
+            </Box>
+
           </Paper>
 
           {/* smallerBrightnessContrastPanel */}

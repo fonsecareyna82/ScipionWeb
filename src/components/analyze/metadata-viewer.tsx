@@ -2644,7 +2644,7 @@ function MetadataGalleryPanel({
   sizeColumn,
   imageThumbSize,
   galleryBaseOffset,
-  embedded=false,
+  embedded = false,
 }: MetadataGalleryPanelProps) {
   return (
     <Paper
@@ -4849,23 +4849,23 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
           )}
 
           {!embedded && (
-          <Button
-            size="small"
-            variant="contained"
-            color="error"
-            startIcon={<CloseIcon />}
-            onClick={() => {
-              onClose?.();
-            }}
-            disabled={!onClose}
-            sx={{
-              textTransform: "none",
-              fontWeight: 600,
-              boxShadow: "0 1px 3px rgba(127,29,29,0.25)",
-            }}
-          >
-            Close
-          </Button>
+            <Button
+              size="small"
+              variant="contained"
+              color="error"
+              startIcon={<CloseIcon />}
+              onClick={() => {
+                onClose?.();
+              }}
+              disabled={!onClose}
+              sx={{
+                textTransform: "none",
+                fontWeight: 600,
+                boxShadow: "0 1px 3px rgba(127,29,29,0.25)",
+              }}
+            >
+              Close
+            </Button>
           )}
         </Box>
       </Paper>

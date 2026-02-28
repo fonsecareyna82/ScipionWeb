@@ -19,12 +19,14 @@ import {
   Menu,
   MenuItem,
   Divider,
+  Tooltip,
 } from "@mui/material";
-import { ExpandMore, ChevronRight } from "@mui/icons-material";
+import { ExpandMore, ChevronRight, ArrowBack, TableView as MetadataIcon } from "@mui/icons-material";
 import Plot from "react-plotly.js";
 import { useProjectService } from "@/ProjectServiceContext";
 import type { Id } from "@/services/ProjectService";
 import toast from "react-hot-toast";
+import { MetadataViewer } from "./metadata-viewer";
 
 type CTFTomoViewerProps = {
   projectId: Id;
@@ -75,6 +77,8 @@ function formatNumber(value: number | null | undefined, decimals = 2): string {
 
 export default function CTFTomoViewer({ projectId, protocolId, outputName }: CTFTomoViewerProps) {
   const svc = useProjectService();
+
+  const [mainMode, setMainMode] = useState<"viewer" | "metadata">("viewer");
 
   const [series, setSeries] = useState<CTFTomoSeriesSummary[]>([]);
   const [seriesLoading, setSeriesLoading] = useState(false);
@@ -145,11 +149,29 @@ export default function CTFTomoViewer({ projectId, protocolId, outputName }: CTF
     setPsdImageUrl(null);
   };
 
+  const projectIdNum = useMemo(() => Number(projectId), [projectId]);
+  const protocolIdNum = useMemo(() => Number(protocolId), [protocolId]);
+  const canOpenMetadata = useMemo(
+    () => Number.isFinite(projectIdNum) && Number.isFinite(protocolIdNum),
+    [projectIdNum, protocolIdNum],
+  );
+
   useEffect(() => {
     return () => {
       disposePsdImageUrl();
     };
   }, []);
+
+  useEffect(() => {
+    if (mainMode !== "metadata") return;
+    // resetRightPanelStateWhenOpeningMetadata
+    setViewMode("seriesChart");
+    setPsdError(null);
+    setPsdLoading(false);
+    disposePsdImageUrl();
+    setChartMenuPos(null);
+    setChartMenuTargetViewId(null);
+  }, [mainMode]);
 
   useEffect(() => {
     const nextMap: Record<string, boolean> = {};
@@ -365,6 +387,7 @@ export default function CTFTomoViewer({ projectId, protocolId, outputName }: CTF
   const isPsdMode = viewMode === "psdView";
 
   const loadPsdForRow = async (row: CTFViewRow) => {
+    if (mainMode === "metadata") return;
     if (!row.psdFile) {
       setViewMode("seriesChart");
       setPsdError(null);
@@ -851,6 +874,7 @@ export default function CTFTomoViewer({ projectId, protocolId, outputName }: CTF
   };
 
   const handlePlotClick = (e: any) => {
+    if (mainMode === "metadata") return;
     const mouseButton = e?.event?.button;
     if (mouseButton != null && mouseButton !== 0) return;
     if (chartMenuPos) return;
@@ -873,6 +897,62 @@ export default function CTFTomoViewer({ projectId, protocolId, outputName }: CTF
       disposePsdImageUrl();
     }
   };
+
+  if (mainMode === "metadata") {
+    return (
+      <Box
+        sx={{
+          display: "flex",
+          flexDirection: "column",
+          height: "100%",
+          width: "100%",
+          minHeight: 0,
+          minWidth: 0,
+          overflow: "hidden",
+          bgcolor: "background.paper",
+        }}
+      >
+        <Paper
+          square
+          elevation={0}
+          sx={{
+            p: 0.75,
+            borderBottom: "1px solid #e5e7eb",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 1,
+            flexShrink: 0,
+          }}
+        >
+          <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, minWidth: 0 }}>
+            <Tooltip title="Back to viewer">
+              <IconButton size="small" onClick={() => setMainMode("viewer")}>
+                <ArrowBack fontSize="small" />
+              </IconButton>
+            </Tooltip>
+            <Typography variant="subtitle2" sx={{ fontSize: "0.85rem" }} noWrap>
+              CTF Tomo viewer
+            </Typography>
+          </Box>
+          <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.7rem" }} noWrap>
+            {outputName}
+          </Typography>
+        </Paper>
+
+        <Box sx={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
+          <MetadataViewer
+            projectId={projectIdNum}
+            protocolId={protocolIdNum}
+            outputName={outputName}
+            embedded
+            onClose={() => setMainMode("viewer")}
+          />
+        </Box>
+      </Box>
+    );
+  }
+
 
   return (
     <>
@@ -1169,6 +1249,35 @@ export default function CTFTomoViewer({ projectId, protocolId, outputName }: CTF
                 </Typography>
               </Box>
             )}
+
+            <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
+              {selectedFrame && (
+                <Box sx={{ textAlign: "right" }}>
+                  <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.7rem" }}>
+                    Selected tilt: {selectedFrame.tiltAngle != null ? `${selectedFrame.tiltAngle.toFixed(2)}°` : "-"}
+                  </Typography>
+                </Box>
+              )}
+              <Tooltip title={canOpenMetadata ? "Metadata viewer" : "Metadata requires numeric project/protocol id"}>
+                <span>
+                  <IconButton
+                    size="small"
+                    onClick={() => setMainMode("metadata")}
+                    disabled={!canOpenMetadata}
+                    sx={{
+                      color: canOpenMetadata ? "primary.main" : "text.disabled",
+                      bgcolor: canOpenMetadata ? "rgba(59,130,246,0.10)" : "transparent",
+                      "&:hover": {
+                        bgcolor: canOpenMetadata ? "rgba(59,130,246,0.18)" : "transparent",
+                      },
+                    }}
+                  >
+                    <MetadataIcon fontSize="small" />
+                  </IconButton>
+                </span>
+              </Tooltip>
+            </Box>
+
           </Paper>
 
           <Box sx={{ borderBottom: "1px solid #e5e7eb", px: 1 }}>
