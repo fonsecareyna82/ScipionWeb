@@ -2367,6 +2367,12 @@ function MetadataTablePanel({
                 <TableRow
                   key={rowId ?? `${windowOffset}-${rowIndexInWindow}`}
                   hover
+                  onMouseDown={(event) => {
+                    // preventBrowserTextSelectionDuringShiftRangeSelection
+                    if (event.shiftKey) {
+                      event.preventDefault();
+                    }
+                  }}
                   onClick={(event) => {
                     onPrimaryRowClick(displayRowIndex, rowId, event);
                     setSelectedRowIndex(displayRowIndex);
