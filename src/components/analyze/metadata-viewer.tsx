@@ -2742,10 +2742,10 @@ function MetadataGalleryPanel({
                     p: 0.75,
                     borderRadius: 1.5,
                     border: isSelected
-                      ? "2px solid #2563eb"
+                      ? "2px dashed #dc2626"
                       : "1px solid rgba(148,163,184,0.45)",
-                    background: isSelected ? "#e0f2fe" : "#f9fafb",
-                    boxShadow: isSelected ? "0 0 0 1px rgba(37,99,235,0.3)" : "none",
+                    background: isSelected ? "rgba(254,226,226,0.55)" : "#f9fafb",
+                    boxShadow: isSelected ? "0 0 0 1px rgba(220,38,38,0.25)" : "none",
                     transition:
                       "background-color 120ms ease-out, border-color 120ms ease-out, box-shadow 120ms ease-out",
                     cursor: "pointer",
