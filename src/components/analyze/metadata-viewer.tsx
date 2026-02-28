@@ -20,6 +20,7 @@ import {
   DialogTitle,
   FormControl,
   FormControlLabel,
+  InputAdornment,
   InputLabel,
   Menu,
   MenuItem,
@@ -54,6 +55,7 @@ import {
   Plus,
   Filter,
   Hash,
+  Search,
   Sigma,
   Bookmark,
   LineChart as PlotterIcon,
@@ -224,6 +226,8 @@ type MetadataTablePanelProps = {
   columnSettings: Record<string, ColumnSettings>;
   rowHeight: number;
   rowSizeForScroll: number;
+  imageThumbSize: number;
+  imageColMinWidth: number;
   tableMinWidth?: number;
   windowRows: MetadataRow[];
   windowOffset: number;
@@ -288,6 +292,7 @@ type MetadataGalleryPanelProps = {
   imageCacheRef: MutableRefObject<Map<string, ImageCacheEntry>>;
   showSizeLabel: boolean;
   sizeColumn: MetadataColumnWithVisibility | null;
+  imageThumbSize: number;
 };
 
 type ColumnsDialogProps = {
@@ -319,14 +324,20 @@ type MetadataActionRequestPayload = {
 
 const BASE_THUMB_SIZE = 160;
 const NORMAL_ROW_HEIGHT = 32;
-const IMAGE_ROW_HEIGHT = BASE_THUMB_SIZE + 16;
+const IMAGE_ROW_PADDING = 16;
 const EXTRA_BUFFER_ROWS = 10;
 
 const MAX_VIRTUAL_SCROLL_HEIGHT = 30_000_000;
 
 const ROW_INDEX_COL_WIDTH = 52;
 const MIN_TEXT_COL_WIDTH = 140;
-const IMAGE_COL_MIN_WIDTH = BASE_THUMB_SIZE + 24;
+const IMAGE_COL_PADDING = 24;
+
+const MIN_THUMB_SIZE = 80;
+const MAX_THUMB_SIZE = 640;
+const ZOOM_STEP_PERCENT = 25;
+const ZOOM_MIN_PERCENT = Math.round((MIN_THUMB_SIZE / BASE_THUMB_SIZE) * 100);
+const ZOOM_MAX_PERCENT = Math.round((MAX_THUMB_SIZE / BASE_THUMB_SIZE) * 100);
 
 const GALLERY_PAGE_SIZE = 120;
 const SELECTION_IDS_SCAN_PAGE_SIZE = 500;
@@ -1493,6 +1504,40 @@ function useVirtualTableWindow(params: {
     ],
   );
 
+  const jumpToRowIndex = useCallback(
+    (rowIndex: number) => {
+      if (!schema || !selectedTable || totalRows <= 0) return;
+
+      const effectiveRowSize = rowSizeForScroll || rowHeight || NORMAL_ROW_HEIGHT;
+      const limit = desiredWindowSizeRef.current || windowRows.length || 60;
+      const buffer = Math.floor(limit / 3);
+      const maxOffset = Math.max(0, totalRows - limit);
+
+      const safeRowIndex = Math.min(Math.max(0, rowIndex), Math.max(0, totalRows - 1));
+
+      let targetOffset = safeRowIndex - buffer;
+      if (targetOffset < 0) targetOffset = 0;
+      if (targetOffset > maxOffset) targetOffset = maxOffset;
+
+      const container = scrollRef.current;
+      if (container && effectiveRowSize > 0) {
+        container.scrollTop = safeRowIndex * effectiveRowSize;
+      }
+
+      void loadWindow(targetOffset);
+    },
+    [
+      schema,
+      selectedTable,
+      totalRows,
+      rowSizeForScroll,
+      rowHeight,
+      windowRows.length,
+      scrollRef,
+      loadWindow,
+    ],
+  );
+
   return {
     windowRows,
     windowOffset,
@@ -1500,6 +1545,7 @@ function useVirtualTableWindow(params: {
     windowError,
     handleScroll,
     invalidateWindowState,
+    jumpToRowIndex,
   };
 }
 
@@ -2035,6 +2081,8 @@ function MetadataTablePanel({
   columnSettings,
   rowHeight,
   rowSizeForScroll,
+  imageThumbSize,
+  imageColMinWidth,
   tableMinWidth,
   windowRows,
   windowOffset,
@@ -2150,11 +2198,11 @@ function MetadataTablePanel({
                       ...headerCellSx,
                       minWidth:
                         column.rendererType === "image"
-                          ? IMAGE_COL_MIN_WIDTH
+                          ? imageColMinWidth
                           : MIN_TEXT_COL_WIDTH,
                       width:
                         column.rendererType === "image"
-                          ? IMAGE_COL_MIN_WIDTH
+                          ? imageColMinWidth
                           : MIN_TEXT_COL_WIDTH,
                       cursor: isSortable ? "pointer" : "default",
                       userSelect: "none",
@@ -2279,7 +2327,7 @@ function MetadataTablePanel({
 
                     const cellWidth =
                       column.rendererType === "image"
-                        ? IMAGE_COL_MIN_WIDTH
+                        ? imageColMinWidth
                         : MIN_TEXT_COL_WIDTH;
 
                     if (
@@ -2313,7 +2361,7 @@ function MetadataTablePanel({
                             rowIndexInTable={displayRowIndex}
                             columnName={column.name}
                             cell={imageCell}
-                            size={BASE_THUMB_SIZE}
+                            size={imageThumbSize}
                             isSelected={isSelectedImage}
                             onClick={(event) => {
                               onPrimaryRowClick(displayRowIndex, rowId, event);
@@ -2421,6 +2469,7 @@ function MetadataGalleryPanel({
   imageCacheRef,
   showSizeLabel,
   sizeColumn,
+  imageThumbSize,
 }: MetadataGalleryPanelProps) {
   return (
     <Paper
@@ -2466,7 +2515,7 @@ function MetadataGalleryPanel({
             sx={{
               p: 1,
               display: "grid",
-              gridTemplateColumns: "repeat(auto-fill, minmax(170px, 1fr))",
+              gridTemplateColumns: `repeat(auto-fill, minmax(${Math.max(170, imageThumbSize + 10)}px, 1fr))`,
               gap: 0,
             }}
           >
@@ -2505,10 +2554,14 @@ function MetadataGalleryPanel({
                   onClick={(event) => {
                     onPrimaryRowClick(globalRowIndex, rowId, event);
                     setSelectedRowIndex(globalRowIndex);
-                    setSelectedImageCell({
-                      rowIndexInTable: globalRowIndex,
-                      columnName: firstImageColumn.name,
-                    });
+                    if (imageCell) {
+                      setSelectedImageCell({
+                        rowIndexInTable: globalRowIndex,
+                        columnName: firstImageColumn.name,
+                      });
+                    } else {
+                      setSelectedImageCell(null);
+                    }
                   }}
                   sx={{
                     display: "flex",
@@ -2536,15 +2589,15 @@ function MetadataGalleryPanel({
                       rowIndexInTable={globalRowIndex}
                       columnName={firstImageColumn.name}
                       cell={imageCell}
-                      size={BASE_THUMB_SIZE}
+                      size={imageThumbSize}
                       isSelected={isFocusedImageCell || isSelected}
                       imageCacheRef={imageCacheRef}
                     />
                   ) : (
                     <Box
                       sx={{
-                        width: BASE_THUMB_SIZE,
-                        height: BASE_THUMB_SIZE,
+                        width: imageThumbSize,
+                        height: imageThumbSize,
                         borderRadius: 1,
                         border: "1px dashed rgba(148,163,184,0.6)",
                         display: "flex",
@@ -2613,7 +2666,7 @@ function MetadataGalleryPanel({
           </Box>
         )}
       </Box>
-    </Paper>
+    </Paper >
   );
 }
 
@@ -2863,6 +2916,35 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose }: M
   const hasImageColumns = imageColumns.length > 0;
   const firstImageColumn = imageColumns[0] ?? null;
 
+  const [zoomPercent, setZoomPercent] = useState<number>(100);
+
+  const imageThumbSize = useMemo(() => {
+    const scaled = Math.round((BASE_THUMB_SIZE * zoomPercent) / 100);
+    return Math.min(MAX_THUMB_SIZE, Math.max(MIN_THUMB_SIZE, scaled));
+  }, [zoomPercent]);
+
+  const imageColMinWidth = useMemo(() => imageThumbSize + IMAGE_COL_PADDING, [imageThumbSize]);
+
+  const zoomEnabled = useMemo(() => {
+    if (!hasImageColumns) return false;
+    return selectedImageCell != null;
+  }, [hasImageColumns, selectedImageCell]);
+
+  const [goToIdInput, setGoToIdInput] = useState<string>("");
+  const [goToBusy, setGoToBusy] = useState(false);
+  const [goToError, setGoToError] = useState<string | null>(null);
+  const goToTimeoutRef = useRef<number | null>(null);
+  const goToEpochRef = useRef(0);
+
+  useEffect(() => {
+    return () => {
+      if (goToTimeoutRef.current != null) {
+        window.clearTimeout(goToTimeoutRef.current);
+        goToTimeoutRef.current = null;
+      }
+    };
+  }, []);
+
   const sizeColumn = useMemo(() => {
     if (!allColumns.length) return null;
 
@@ -2884,7 +2966,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose }: M
 
   const showSizeLabel = isClassTable && !!sizeColumn;
 
-  const rowHeight = hasImageColumns ? IMAGE_ROW_HEIGHT : NORMAL_ROW_HEIGHT;
+  const rowHeight = hasImageColumns ? imageThumbSize + IMAGE_ROW_PADDING : NORMAL_ROW_HEIGHT;
 
   const virtualContentHeight = useMemo(() => {
     if (!totalRows || !rowHeight) return 0;
@@ -2922,6 +3004,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose }: M
     windowError,
     handleScroll,
     invalidateWindowState,
+    jumpToRowIndex,
   } = useVirtualTableWindow({
     projectId,
     protocolId,
@@ -2977,7 +3060,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose }: M
     return (
       ROW_INDEX_COL_WIDTH +
       textColumnCount * MIN_TEXT_COL_WIDTH +
-      imageColumnCount * IMAGE_COL_MIN_WIDTH
+      imageColumnCount * imageColMinWidth
     );
   }, [schema, visibleColumns]);
 
@@ -3012,6 +3095,145 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose }: M
   const resetSort = useCallback(() => {
     setSortState({ columnName: null, direction: "asc" });
   }, []);
+
+  const goToItemById = useCallback(
+    async (rawValue?: string) => {
+      if (!schema || !selectedTable || totalRows <= 0) return;
+
+      const value = (rawValue ?? goToIdInput).trim();
+      if (!value) return;
+
+      const targetId = normalizeRowId(value);
+      if (targetId == null) {
+        setGoToError("Invalid id");
+        return;
+      }
+
+      goToEpochRef.current += 1;
+      const epoch = goToEpochRef.current;
+
+      setGoToBusy(true);
+      setGoToError(null);
+
+      try {
+        // Ensure table mode so scrollRef is relevant
+        if (viewMode !== "table") {
+          setViewMode("table");
+        }
+
+        const targetKey = rowIdToKey(targetId);
+
+        const columns = (schema.columns ?? []) as MetadataColumnWithVisibility[];
+        const idColumn =
+          columns.find((c) => c.name === "id") ??
+          columns.find((c) => (c.name || "").toLowerCase() === "id");
+
+        const idColumnIndex = typeof idColumn?.index === "number" ? idColumn.index : null;
+
+        const pageSize = Math.max(200, SELECTION_IDS_SCAN_PAGE_SIZE);
+
+        for (let offset = 0; offset < totalRows; offset += pageSize) {
+          if (!isMountedRef.current || goToEpochRef.current !== epoch) return;
+
+          const response = (await svcRef.current.fetchMetadataTableWindow(
+            projectId,
+            protocolId,
+            outputName,
+            selectedTable,
+            {
+              offset,
+              limit: Math.min(pageSize, totalRows - offset),
+              selectionOnly: false,
+              sortBy: sortBy ?? undefined,
+              asc: sortBy ? sortAsc : undefined,
+            },
+          )) as MetadataWindowResponse;
+
+          const parsed = parseWindowResponse(response);
+          const actualOffset = parsed.offset ?? offset;
+
+          for (let i = 0; i < parsed.rows.length; i += 1) {
+            const row = parsed.rows[i];
+            const globalRowIndex = actualOffset + i;
+
+            const resolved = resolveMetadataRowId(schema, row);
+            const resolvedKey = resolved != null ? rowIdToKey(resolved) : null;
+
+            let idColKey: string | null = null;
+            let idColValue: RowId | null = null;
+
+            if (idColumnIndex != null) {
+              const candidate = normalizeRowId(row.values?.[idColumnIndex]);
+              if (candidate != null) {
+                idColValue = candidate;
+                idColKey = rowIdToKey(candidate);
+              }
+            }
+
+            if (resolvedKey === targetKey || idColKey === targetKey) {
+              const chosenRowId = resolved ?? idColValue ?? targetId;
+              const chosenKey = rowIdToKey(chosenRowId);
+
+              // Set stable selection (ids)
+              clearSelection();
+              selectedRowIdValuesRef.current.clear();
+              selectedRowIdValuesRef.current.set(chosenKey, chosenRowId);
+              setSelectedRowIdKeys(new Set([chosenKey]));
+              setSelectionMode("ids");
+
+              setSelectedRowIndex(globalRowIndex);
+              setSelectedImageCell(null);
+
+              jumpToRowIndex(globalRowIndex);
+              setGoToError(null);
+              return;
+            }
+          }
+        }
+
+        setGoToError("Item not found");
+      } catch (error) {
+        setGoToError(getErrorMessage(error, "Failed to go to item"));
+      } finally {
+        if (isMountedRef.current && goToEpochRef.current === epoch) {
+          setGoToBusy(false);
+        }
+      }
+    },
+    [
+      schema,
+      selectedTable,
+      totalRows,
+      goToIdInput,
+      viewMode,
+      svcRef,
+      projectId,
+      protocolId,
+      outputName,
+      sortBy,
+      sortAsc,
+      isMountedRef,
+      clearSelection,
+      jumpToRowIndex,
+    ],
+  );
+
+  const scheduleGoTo = useCallback(
+    (nextValue: string) => {
+      if (goToTimeoutRef.current) {
+        window.clearTimeout(goToTimeoutRef.current);
+        goToTimeoutRef.current = null;
+      }
+
+      if (!nextValue.trim()) return;
+
+      goToTimeoutRef.current = window.setTimeout(() => {
+        void goToItemById(nextValue);
+      }, 450);
+    },
+    [goToItemById],
+  );
+
 
   const materializeSingleIndexSelectionToIds = useCallback(async (): Promise<boolean> => {
     // materializeSingleIndexSelectionToIds
@@ -3997,7 +4219,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose }: M
           )}
         </Box>
 
-        <Box sx={{ flex: 1, display: "flex", justifyContent: "center" }}>
+        <Box sx={{ flex: 1, display: "flex", justifyContent: "center", alignItems: "center", gap: 1, flexWrap: "wrap", }}>
           <FormControl size="small" sx={{ minWidth: 240 }}>
             <InputLabel id="metadata-table-select-label">Metadata table</InputLabel>
             <Select
@@ -4032,6 +4254,77 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose }: M
               })}
             </Select>
           </FormControl>
+
+          <Tooltip title="Zoom">
+            <span>
+              <TextField
+                size="small"
+                type="number"
+                label="Zoom"
+                value={zoomPercent}
+                onChange={(e) => {
+                  const raw = Number(e.target.value);
+                  if (!Number.isFinite(raw)) return;
+                  const next = Math.min(ZOOM_MAX_PERCENT, Math.max(ZOOM_MIN_PERCENT, raw));
+                  setZoomPercent(next);
+                }}
+                disabled={!zoomEnabled}
+                sx={{ width: 120 }}
+                inputProps={{ step: ZOOM_STEP_PERCENT, min: ZOOM_MIN_PERCENT, max: ZOOM_MAX_PERCENT }}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <Search size={16} />
+                    </InputAdornment>
+                  ),
+                }}
+              />
+            </span>
+          </Tooltip>
+
+          <Tooltip title={goToError ?? "Go to item"}>
+            <span>
+              <TextField
+                size="small"
+                type="number"
+                label="Go to item"
+                value={goToIdInput}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  setGoToIdInput(next);
+                  setGoToError(null);
+                  scheduleGoTo(next);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    void goToItemById();
+                  }
+                }}
+                onBlur={() => {
+                  void goToItemById();
+                }}
+                disabled={!schema || !selectedTable || totalRows <= 0 || goToBusy}
+                error={!!goToError}
+                sx={{ width: 150 }}
+                inputProps={{ step: 1, min: 0 }}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <Hash size={16} />
+                    </InputAdornment>
+                  ),
+                  endAdornment: goToBusy ? (
+                    <InputAdornment position="end">
+                      <CircularProgress size={14} />
+                    </InputAdornment>
+                  ) : null,
+                }}
+              />
+            </span>
+          </Tooltip>
+
+
         </Box>
 
         <Box
@@ -4103,6 +4396,8 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose }: M
         columnSettings={columnSettings}
         rowHeight={rowHeight}
         rowSizeForScroll={rowSizeForScroll}
+        imageThumbSize={imageThumbSize}
+        imageColMinWidth={imageColMinWidth}
         tableMinWidth={tableMinWidth}
         windowRows={windowRows}
         windowOffset={windowOffset}
@@ -4153,6 +4448,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose }: M
           imageCacheRef={imageCacheRef}
           showSizeLabel={showSizeLabel}
           sizeColumn={sizeColumn}
+          imageThumbSize={imageThumbSize}
         />
       )}
 
