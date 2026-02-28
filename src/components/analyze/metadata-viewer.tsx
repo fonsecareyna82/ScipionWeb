@@ -265,6 +265,7 @@ type MetadataTablePanelProps = {
   sortBy: string | null;
   sortAsc: boolean;
   onToggleSort: (column: MetadataColumnWithVisibility) => void;
+  matrixColumnNames: Set<string>;
 };
 
 type MetadataGalleryPanelProps = {
@@ -332,6 +333,7 @@ const MAX_VIRTUAL_SCROLL_HEIGHT = 30_000_000;
 
 const ROW_INDEX_COL_WIDTH = 52;
 const MIN_TEXT_COL_WIDTH = 140;
+const MATRIX_COL_MIN_WIDTH = 250;
 const IMAGE_COL_PADDING = 24;
 
 const MIN_THUMB_SIZE = 80;
@@ -491,6 +493,84 @@ function formatCellValue(value: MetadataCell): ReactNode {
     return String(value);
   }
 }
+
+type MatrixCellValue = Extract<MetadataCell, { kind: "matrix" }>;
+
+function isMatrixCell(cell: MetadataCell): cell is MatrixCellValue {
+  return typeof cell === "object" && cell !== null && (cell as any).kind === "matrix";
+}
+
+function normalizeMatrix2d(value: unknown): Array<Array<number | string>> | null {
+  if (!Array.isArray(value)) return null;
+
+  // normalizeTo2dArrayAndClampTo4x4
+  const rows = value.slice(0, 4).map((row) => (Array.isArray(row) ? row.slice(0, 4) : []));
+  if (!rows.length) return null;
+
+  return rows.map((row) =>
+    row.map((v) => {
+      if (typeof v === "number" && Number.isFinite(v)) return v;
+      if (typeof v === "string") return v;
+      return String(v);
+    }),
+  );
+}
+
+function formatMatrixEntry(v: number | string): string {
+  if (typeof v === "number") {
+    // compactNumberFormattingForTinyMatrices
+    const abs = Math.abs(v);
+    if (abs !== 0 && (abs >= 1000 || abs < 0.001)) return v.toExponential(2);
+    return Number.isInteger(v) ? String(v) : v.toFixed(3).replace(/\.?0+$/, "");
+  }
+  return v;
+}
+
+function buildPrettyMatrixText(matrix: Array<Array<number | string>>): string {
+  // buildPrettyMatrixTextAlignColumnsWithBrackets
+  const formatted = matrix.map((row) => row.map((v) => formatMatrixEntry(v)));
+
+  const cols = Math.max(1, ...formatted.map((r) => r.length));
+  const colWidths = Array.from({ length: cols }, (_, c) =>
+    Math.max(1, ...formatted.map((r) => (r[c] ?? "").length)),
+  );
+
+  const rowLines = formatted.map((row) => {
+    const padded = Array.from({ length: cols }, (_, c) => {
+      const cell = row[c] ?? "";
+      return cell.toString().padStart(colWidths[c], " ");
+    }).join(" ");
+
+    return `  [ ${padded} ]`;
+  });
+
+  return [...rowLines].join("\n");
+}
+
+function MatrixInlineCell({ matrix }: { matrix: Array<Array<number | string>> }) {
+  const text = buildPrettyMatrixText(matrix);
+
+  return (
+    <Box
+      sx={{
+        fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+        fontSize: "0.72rem",
+        lineHeight: 1.25,
+        whiteSpace: "pre",
+        color: "#0f172a",
+        px: 1,
+        py: 0.75,
+        borderRadius: 1.5,
+        border: "1px solid rgba(148,163,184,0.25)",
+        backgroundColor: "rgba(248,250,252,0.9)",
+        fontVariantNumeric: "tabular-nums",
+      }}
+    >
+      {text}
+    </Box>
+  );
+}
+
 
 function rowIdToKey(rowId: RowId): RowIdKey {
   // normalizeRowIdKeyAcrossStringAndNumber
@@ -2132,6 +2212,7 @@ function MetadataTablePanel({
   sortBy,
   sortAsc,
   onToggleSort,
+  matrixColumnNames,
 }: MetadataTablePanelProps) {
   if (!schema || totalRows <= 0) return null;
 
@@ -2190,6 +2271,12 @@ function MetadataTablePanel({
                 const label = column.alias || column.name;
                 const isSortable = Boolean(column.sortable);
                 const isActive = !!sortBy && sortBy === column.name;
+                const isMatrixColumn = matrixColumnNames.has(column.name);
+                const colWidth = isMatrixColumn
+                  ? MATRIX_COL_MIN_WIDTH
+                  : column.rendererType === "image"
+                    ? imageColMinWidth
+                    : MIN_TEXT_COL_WIDTH;
 
                 const iconNode = !isSortable ? null : isActive ? (
                   sortAsc ? (
@@ -2219,14 +2306,8 @@ function MetadataTablePanel({
                     }}
                     sx={{
                       ...headerCellSx,
-                      minWidth:
-                        column.rendererType === "image"
-                          ? imageColMinWidth
-                          : MIN_TEXT_COL_WIDTH,
-                      width:
-                        column.rendererType === "image"
-                          ? imageColMinWidth
-                          : MIN_TEXT_COL_WIDTH,
+                      minWidth: colWidth,
+                      width: colWidth,
                       cursor: isSortable ? "pointer" : "default",
                       userSelect: "none",
                     }}
@@ -2349,9 +2430,11 @@ function MetadataTablePanel({
                       selectedImageCell.columnName === column.name;
 
                     const cellWidth =
-                      column.rendererType === "image"
-                        ? imageColMinWidth
-                        : MIN_TEXT_COL_WIDTH;
+                      matrixColumnNames.has(column.name)
+                        ? MATRIX_COL_MIN_WIDTH
+                        : column.rendererType === "image"
+                          ? imageColMinWidth : MIN_TEXT_COL_WIDTH;
+
 
                     if (
                       renderAsImage &&
@@ -2400,6 +2483,37 @@ function MetadataTablePanel({
                       );
                     }
 
+                    if (isMatrixCell(cellValue as MetadataCell)) {
+                      const matrixValue = normalizeMatrix2d((cellValue as any).value);
+                      return (
+                        <TableCell
+                          key={column.name}
+                          sx={{
+                            ...baseCellSx,
+                            height: rowHeight,
+                            verticalAlign: "middle",
+                            width: Math.max(MIN_TEXT_COL_WIDTH, 200),
+                            minWidth: Math.max(MIN_TEXT_COL_WIDTH, 200),
+                            maxWidth: Math.max(MIN_TEXT_COL_WIDTH, 200),
+                            whiteSpace: "normal",
+                            overflow: "visible",
+                            textOverflow: "clip",
+                            backgroundColor: isHighlightedRow ? "rgba(219,234,254,0.9)" : "background.paper",
+                          }}
+                        >
+                          <Box sx={{ display: "inline-block", maxWidth: "100%" }}>
+                            {matrixValue ? (
+                              <MatrixInlineCell matrix={matrixValue} />
+                            ) : (
+                              <Typography variant="caption" color="text.secondary">
+                                matrix
+                              </Typography>
+                            )}
+                          </Box>
+                        </TableCell>
+                      );
+                    }
+
                     return (
                       <TableCell
                         key={column.name}
@@ -2413,6 +2527,7 @@ function MetadataTablePanel({
                           backgroundColor: isHighlightedRow
                             ? "rgba(219,234,254,0.9)"
                             : "background.paper",
+                          textAlign: "right"
                         }}
                         title={typeof cellValue === "string" ? cellValue : undefined}
                       >
@@ -3078,6 +3193,35 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose }: M
     anchorRowIndex: viewMode === "gallery" ? galleryAnchorRowIndex : null,
   });
 
+  const [matrixColumnNames, setMatrixColumnNames] = useState<Set<string>>(() => new Set());
+  const matrixColumnNamesRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    // detectMatrixColumnsFromLoadedWindowRowsAndKeepSticky
+    if (!schema || windowRows.length === 0) return;
+
+    const next = new Set(matrixColumnNamesRef.current);
+    let changed = false;
+
+    for (const col of allColumns) {
+      for (const row of windowRows) {
+        const cell = row.values?.[col.index] as MetadataCell;
+        if (cell && isMatrixCell(cell)) {
+          if (!next.has(col.name)) {
+            next.add(col.name);
+            changed = true;
+          }
+          break;
+        }
+      }
+    }
+
+    if (changed) {
+      matrixColumnNamesRef.current = next;
+      setMatrixColumnNames(new Set(next));
+    }
+  }, [schema, windowRows, allColumns]);
+
   const topSpacerHeight = totalRows > 0 ? windowOffset * rowSizeForScroll : 0;
 
   const bottomSpacerHeight =
@@ -3089,17 +3233,15 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose }: M
 
   const tableMinWidth = useMemo(() => {
     if (!schema) return undefined;
+    const colsWidth = visibleColumns.reduce((acc, column) => {
+      if (matrixColumnNames.has(column.name)) return acc + MATRIX_COL_MIN_WIDTH;
+      if (column.rendererType === "image") return acc + imageColMinWidth;
+      return acc + MIN_TEXT_COL_WIDTH;
+    }, 0);
 
-    const imageColumnCount = visibleColumns.filter((column) => column.rendererType === "image")
-      .length;
-    const textColumnCount = visibleColumns.length - imageColumnCount;
+    return ROW_INDEX_COL_WIDTH + colsWidth;
 
-    return (
-      ROW_INDEX_COL_WIDTH +
-      textColumnCount * MIN_TEXT_COL_WIDTH +
-      imageColumnCount * imageColMinWidth
-    );
-  }, [schema, visibleColumns]);
+  }, [schema, visibleColumns, matrixColumnNames]);
 
   const clearIdSelection = useCallback(() => {
     selectedRowIdValuesRef.current.clear();
@@ -4528,6 +4670,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose }: M
         sortBy={sortBy}
         sortAsc={sortAsc}
         onToggleSort={toggleSortForColumn}
+        matrixColumnNames={matrixColumnNames}
       />
 
       {selectedTable && schema && totalRows > 0 && (
