@@ -15,6 +15,8 @@ export type GpuVolumeViewProps = {
   colormap: string;
   shell?: number;
   renderMode?: "volume" | "surface";
+  autoRotate?: boolean;
+  autoRotateSpeed?: number;
   onError?: (msg: string) => void;
 };
 
@@ -289,11 +291,11 @@ function buildUint8Texture(
 
   const Tex3D = (THREE as any).Data3DTexture as
     | (new (
-        data: Uint8Array,
-        width: number,
-        height: number,
-        depth: number,
-      ) => THREE.Data3DTexture)
+      data: Uint8Array,
+      width: number,
+      height: number,
+      depth: number,
+    ) => THREE.Data3DTexture)
     | undefined;
 
   if (!Tex3D) {
@@ -329,6 +331,8 @@ export default function GpuVolumeView({
   colormap,
   shell = 0.12,
   renderMode = "surface",
+  autoRotate = false,
+  autoRotateSpeed = 0.8,
   onError,
 }: GpuVolumeViewProps) {
   const mountRef = useRef<HTMLDivElement | null>(null);
@@ -370,7 +374,6 @@ export default function GpuVolumeView({
   }, [isoMax, rangeMin, rangeMax]);
 
   const cmapId = useMemo(() => cmapToId(colormap), [colormap]);
-
   const shellClamped = useMemo(() => Math.max(0.02, Math.min(1, shell)), [shell]);
 
   useEffect(() => {
@@ -426,6 +429,11 @@ export default function GpuVolumeView({
     controls.enableRotate = true;
     controls.minDistance = 0.12;
     controls.maxDistance = 8.0;
+
+    // setAutoRotateInitialState
+    controls.autoRotate = Boolean(autoRotate);
+    controls.autoRotateSpeed = Number.isFinite(autoRotateSpeed) ? autoRotateSpeed : 0.8;
+
     controls.update();
     controlsRef.current = controls;
 
@@ -689,11 +697,21 @@ export default function GpuVolumeView({
     isoMaxNorm,
     opacity,
     cmapId,
+    autoRotate,
+    autoRotateSpeed,
   ]);
 
   useEffect(() => {
     return () => cleanupRef.current?.();
   }, []);
+
+  // updateAutoRotateWhenPropsChange
+  useEffect(() => {
+    const ctrls = controlsRef.current;
+    if (!ctrls) return;
+    ctrls.autoRotate = Boolean(autoRotate);
+    ctrls.autoRotateSpeed = Number.isFinite(autoRotateSpeed) ? autoRotateSpeed : 0.8;
+  }, [autoRotate, autoRotateSpeed]);
 
   useEffect(() => {
     const mat = materialRef.current;

@@ -16,11 +16,12 @@ import {
   Slider,
   IconButton,
   Popover,
+  Tooltip,
 } from "@mui/material";
 import { styled } from "@mui/material/styles";
 import Plot from "react-plotly.js";
 import { useProjectService } from "@/ProjectServiceContext";
-import { ZoomIn, Layers3, HelpCircle, BoxIcon, Table as TableLucide } from "lucide-react";
+import { ZoomIn, Layers3, HelpCircle, BoxIcon, Table as TableLucide, Pause, Play } from "lucide-react";
 import GpuVolumeView from "./gpu-volume-view";
 import { MetadataViewer } from "./metadata-viewer";
 
@@ -241,6 +242,68 @@ export default function VolumeViewer({
     setHelpAnchor(null);
     setHelpKey(null);
   };
+
+  const [autoRotate3d, setAutoRotate3d] = useState(false);
+
+  // stopAutoRotateWhenLeaving3d
+  useEffect(() => {
+    if (viewMode !== "map3d") {
+      setAutoRotate3d(false);
+    }
+  }, [viewMode]);
+
+  const plotlyAnimHandleRef = useRef<number | null>(null);
+  const plotlyAnimAngleRef = useRef(0);
+  const [plotlyAnimTick, setPlotlyAnimTick] = useState(0);
+
+  useEffect(() => {
+    const shouldAnimatePlotly =
+      viewMode === "map3d" && autoRotate3d && (gpuError || !mapData);
+
+    if (!shouldAnimatePlotly) {
+      if (plotlyAnimHandleRef.current != null) {
+        window.clearInterval(plotlyAnimHandleRef.current);
+        plotlyAnimHandleRef.current = null;
+      }
+      return;
+    }
+
+    if (plotlyAnimHandleRef.current != null) {
+      window.clearInterval(plotlyAnimHandleRef.current);
+    }
+
+    plotlyAnimHandleRef.current = window.setInterval(() => {
+      plotlyAnimAngleRef.current += 0.03;
+
+      const prev = plotlyCameraRef.current ?? {};
+      const prevEye = prev?.eye ?? { x: 1.6, y: 1.2, z: 1.4 };
+
+      const r = Math.max(
+        0.8,
+        Math.sqrt((prevEye.x ?? 0) * (prevEye.x ?? 0) + (prevEye.y ?? 0) * (prevEye.y ?? 0)) || 1.8,
+      );
+      const z = Number.isFinite(prevEye.z) ? prevEye.z : 1.4;
+
+      const a = plotlyAnimAngleRef.current;
+      plotlyCameraRef.current = {
+        ...prev,
+        eye: {
+          x: r * Math.cos(a),
+          y: r * Math.sin(a),
+          z,
+        },
+      };
+
+      setPlotlyAnimTick((t) => (t + 1) % 1000000);
+    }, 33);
+
+    return () => {
+      if (plotlyAnimHandleRef.current != null) {
+        window.clearInterval(plotlyAnimHandleRef.current);
+        plotlyAnimHandleRef.current = null;
+      }
+    };
+  }, [viewMode, autoRotate3d, gpuError, mapData]);
 
   useEffect(() => {
     setRightTab("ctrl");
@@ -839,27 +902,47 @@ export default function VolumeViewer({
               </ToggleButtonGroup>
             </Box>
 
-            <Box sx={{ display: "flex", alignItems: "center", gap: 1.25 }}>
-              <Box
-                sx={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 0.5,
-                  cursor: "default",
-                  opacity:
-                    viewMode === "slices" && sliceLayoutMode === "single"
-                      ? 1
-                      : 0.4,
-                }}
-              >
-                <ZoomIn size={14} style={{ opacity: 0.6 }} />
-                <Typography
-                  variant="caption"
-                  color="text.secondary"
-                  sx={{ fontVariantNumeric: "tabular-nums", minWidth: "5ch", textAlign: "right" }}
+            <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
+              {viewMode === "map3d" && (
+                <Tooltip title={autoRotate3d ? "Pause rotation" : "Play rotation"}>
+                  <span>
+                    <IconButton
+                      size="small"
+                      onClick={() => setAutoRotate3d((v) => !v)}
+                      sx={{
+                        border: "1px solid",
+                        borderColor: "divider",
+                        borderRadius: 1.5,
+                      }}
+                    >
+                      {autoRotate3d ? <Pause size={16} /> : <Play size={16} />}
+                    </IconButton>
+                  </span>
+                </Tooltip>
+              )}
+
+              <Box sx={{ display: "flex", alignItems: "center", gap: 1.25 }}>
+                <Box
+                  sx={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 0.5,
+                    cursor: "default",
+                    opacity:
+                      viewMode === "slices" && sliceLayoutMode === "single"
+                        ? 1
+                        : 0.4,
+                  }}
                 >
-                  {Math.round(zoomMul * 100)}%
-                </Typography>
+                  <ZoomIn size={14} style={{ opacity: 0.6 }} />
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    sx={{ fontVariantNumeric: "tabular-nums", minWidth: "5ch", textAlign: "right" }}
+                  >
+                    {Math.round(zoomMul * 100)}%
+                  </Typography>
+                </Box>
               </Box>
             </Box>
           </Box>
@@ -1000,6 +1083,8 @@ export default function VolumeViewer({
                   colormap={colormap3d}
                   renderMode={renderMode3d}
                   shell={surfaceThickness3d}
+                  autoRotate={autoRotate3d}
+                  autoRotateSpeed={3.8}
                   onError={(msg) => setGpuError(msg)}
                 />
               ) : mapData && stats3d && isoRange3d ? (
@@ -1036,6 +1121,8 @@ export default function VolumeViewer({
                       config: { displaylogo: false, responsive: true, scrollZoom: true },
                       onRelayout: handleRelayout,
                     };
+                    // forceRerenderWhileAutoRotatingPlotly
+                    void plotlyAnimTick;
                     return <Plot {...plotProps} />;
                   })()}
                 </Box>
