@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import type { ReactNode } from "react";
 import {
   Box,
   CircularProgress,
@@ -277,7 +278,39 @@ export default function Coords3dViewer({
   const [editMode, setEditMode] = useState<boolean>(false);
 
   const newPointSeqRef = useRef(0);
-  const dragRef = useRef<{ pointId: string; axis: "x" | "y" | "z"; pointerId: number } | null>(null);
+  const dragRef = useRef<{ pointId: string; axis: "x" | "y" | "z"; pointerId: number } | null>(
+    null,
+  );
+  const hotkeyScopeRef = useRef<HTMLDivElement | null>(null);
+  const lastViewerInteractAtRef = useRef<number>(0);
+
+  const singlePanRef = useRef<{
+    pointerId: number;
+    startClientX: number;
+    startClientY: number;
+    startViewBox: { x: number; y: number; w: number; h: number };
+    moved: boolean;
+  } | null>(null);
+  const [singleIsPanning, setSingleIsPanning] = useState<boolean>(false);
+
+
+  const suppressSingleClickRef = useRef<boolean>(false);
+
+  const markViewerActive = useCallback(() => {
+    lastViewerInteractAtRef.current = performance.now();
+    const el = hotkeyScopeRef.current;
+    if (!el) return;
+    try {
+      el.focus({ preventScroll: true });
+    } catch {
+      try {
+        el.focus();
+      } catch {
+        // ignore
+      }
+    }
+  }, []);
+
 
   const [viewMode, setViewMode] = useState<ViewMode>("slice");
   const [sliceLayoutMode, setSliceLayoutMode] = useState<SliceLayoutMode>("single");
@@ -628,6 +661,191 @@ export default function Coords3dViewer({
     setSliceIndexY(Math.round(maxSliceY / 2));
   }, [selectedTomoId, maxSliceY]);
 
+  const [singleViewBox, setSingleViewBox] = useState<{ x: number; y: number; w: number; h: number } | null>(
+    null,
+  );
+
+  useEffect(() => {
+    if (
+      viewMode !== "slice" ||
+      sliceLayoutMode !== "single" ||
+      tomoDimsX == null ||
+      tomoDimsY == null
+    ) {
+      setSingleViewBox(null);
+      singlePanRef.current = null;
+      return;
+    }
+
+    setSingleViewBox({ x: 0, y: 0, w: tomoDimsX, h: tomoDimsY });
+    singlePanRef.current = null;
+  }, [viewMode, sliceLayoutMode, selectedTomoId, tomoDimsX, tomoDimsY]);
+
+  const singleSliceViewBoxStr = useMemo(() => {
+    const w = tomoDimsX ?? 1;
+    const h = tomoDimsY ?? 1;
+    const vb = singleViewBox ?? { x: 0, y: 0, w, h };
+    return `${vb.x} ${vb.y} ${vb.w} ${vb.h}`;
+  }, [singleViewBox, tomoDimsX, tomoDimsY]);
+
+  const clampSingleViewBox = useCallback(
+    (box: { x: number; y: number; w: number; h: number }) => {
+      if (tomoDimsX == null || tomoDimsY == null) return box;
+
+      const w = Math.max(1, Math.min(tomoDimsX, box.w));
+      const h = Math.max(1, Math.min(tomoDimsY, box.h));
+      const maxX = Math.max(0, tomoDimsX - w);
+      const maxY = Math.max(0, tomoDimsY - h);
+      const x = Math.max(0, Math.min(maxX, box.x));
+      const y = Math.max(0, Math.min(maxY, box.y));
+      return { x, y, w, h };
+    },
+    [tomoDimsX, tomoDimsY],
+  );
+
+  const handleSingleSliceDoubleClick = useCallback(() => {
+    if (tomoDimsX == null || tomoDimsY == null) return;
+    setSingleViewBox({ x: 0, y: 0, w: tomoDimsX, h: tomoDimsY });
+  }, [tomoDimsX, tomoDimsY]);
+
+  const handleSingleSliceWheel = useCallback(
+    (e: React.WheelEvent<SVGSVGElement>) => {
+      if (viewMode !== "slice" || sliceLayoutMode !== "single") return;
+      if (tomoDimsX == null || tomoDimsY == null) return;
+
+      markViewerActive();
+      e.preventDefault();
+      e.stopPropagation();
+      (e.nativeEvent as any).stopImmediatePropagation?.();
+
+      const local = getSvgLocalPoint(e.clientX, e.clientY, e.currentTarget as any);
+      const cx = local?.x ?? tomoDimsX / 2;
+      const cy = local?.y ?? tomoDimsY / 2;
+
+      const delta = Math.max(-300, Math.min(300, e.deltaY));
+      const zoomFactor = Math.exp(delta * 0.0016);
+
+      setSingleViewBox((prev) => {
+        const current = prev ?? { x: 0, y: 0, w: tomoDimsX, h: tomoDimsY };
+        const aspect = current.w / Math.max(1e-6, current.h);
+
+        const minW = Math.max(16, Math.min(tomoDimsX, tomoDimsY) * 0.01);
+        let newW = current.w * zoomFactor;
+        newW = Math.max(minW, Math.min(tomoDimsX, newW));
+        let newH = newW / Math.max(1e-6, aspect);
+
+        if (newH > tomoDimsY) {
+          newH = tomoDimsY;
+          newW = newH * aspect;
+        }
+
+        const rx = (cx - current.x) / Math.max(1e-6, current.w);
+        const ry = (cy - current.y) / Math.max(1e-6, current.h);
+
+        const next = {
+          x: cx - rx * newW,
+          y: cy - ry * newH,
+          w: newW,
+          h: newH,
+        };
+
+        return clampSingleViewBox(next);
+      });
+    },
+    [viewMode, sliceLayoutMode, tomoDimsX, tomoDimsY, clampSingleViewBox, markViewerActive],
+  );
+
+  const handleSingleSlicePointerDown = useCallback(
+    (e: React.PointerEvent<SVGSVGElement>) => {
+      if (viewMode !== "slice" || sliceLayoutMode !== "single") return;
+      if (tomoDimsX == null || tomoDimsY == null) return;
+
+      const tag = ((e.target as any)?.tagName || "").toString().toLowerCase();
+      const isCircleTarget = tag === "circle";
+      const isRightButton = e.button === 2;
+      const isMiddleButton = e.button === 1;
+      const isLeftButton = e.button === 0;
+      const isShiftPan = isLeftButton && e.shiftKey;
+      const isLeftPan = isLeftButton && !editMode && !isCircleTarget;
+
+      if (!isRightButton && !isMiddleButton && !isShiftPan && !isLeftPan) return;
+
+      markViewerActive();
+      e.preventDefault();
+      e.stopPropagation();
+      (e.nativeEvent as any).stopImmediatePropagation?.();
+
+      const currentBox = singleViewBox ?? { x: 0, y: 0, w: tomoDimsX, h: tomoDimsY };
+
+      singlePanRef.current = {
+        pointerId: e.pointerId,
+        startClientX: e.clientX,
+        startClientY: e.clientY,
+        startViewBox: currentBox,
+        moved: false,
+      };
+      setSingleIsPanning(true);
+
+      try {
+        (e.currentTarget as any).setPointerCapture?.(e.pointerId);
+      } catch {
+        // ignore
+      }
+    },
+    [viewMode, sliceLayoutMode, tomoDimsX, tomoDimsY, singleViewBox, editMode, markViewerActive, setSingleIsPanning],
+  );
+
+  const handleSingleSlicePointerMove = useCallback(
+    (e: React.PointerEvent<SVGSVGElement>) => {
+      const drag = singlePanRef.current;
+      if (!drag) return;
+      if (drag.pointerId !== e.pointerId) return;
+      if (tomoDimsX == null || tomoDimsY == null) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+      (e.nativeEvent as any).stopImmediatePropagation?.();
+
+      const rect = (e.currentTarget as any).getBoundingClientRect?.();
+      if (!rect || rect.width <= 0 || rect.height <= 0) return;
+
+      const dxPx = e.clientX - drag.startClientX;
+      const dyPx = e.clientY - drag.startClientY;
+
+      if (Math.abs(dxPx) + Math.abs(dyPx) > 3) drag.moved = true;
+
+      const dxSvg = (dxPx / rect.width) * drag.startViewBox.w;
+      const dySvg = (dyPx / rect.height) * drag.startViewBox.h;
+
+      const next = clampSingleViewBox({
+        x: drag.startViewBox.x - dxSvg,
+        y: drag.startViewBox.y - dySvg,
+        w: drag.startViewBox.w,
+        h: drag.startViewBox.h,
+      });
+
+      setSingleViewBox(next);
+    },
+    [tomoDimsX, tomoDimsY, clampSingleViewBox],
+  );
+
+  const handleSingleSlicePointerUp = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
+    const drag = singlePanRef.current;
+    if (!drag) return;
+    if (drag.pointerId !== e.pointerId) return;
+
+    if (drag.moved) suppressSingleClickRef.current = true;
+    singlePanRef.current = null;
+    setSingleIsPanning(false);
+
+    try {
+      (e.currentTarget as any).releasePointerCapture?.(e.pointerId);
+    } catch {
+      // ignore
+    }
+  }, [setSingleIsPanning]);
+
+
   const slicePoints = useMemo(() => {
     if (!filteredPoints.length || sliceIndex == null) return [];
     const target = sliceIndex;
@@ -939,6 +1157,7 @@ export default function Coords3dViewer({
       p: Coords3dPointExt | null,
       mappedSliceIndices?: { x: number; y: number; z: number },
     ) => {
+      markViewerActive();
       setPickedPoint3d(p);
       if (!p || !syncPick3dToSlices) return;
 
@@ -956,8 +1175,13 @@ export default function Coords3dViewer({
         setSliceIndexY(clampInt(targetY, 0, maxSliceY));
       }
     },
-    [syncPick3dToSlices, maxSliceX, maxSliceY, maxSliceZ],
+    [markViewerActive, syncPick3dToSlices, maxSliceX, maxSliceY, maxSliceZ],
   );
+
+
+  useEffect(() => {
+    if (pickedPoint3d) markViewerActive();
+  }, [pickedPoint3d, markViewerActive]);
 
   const showXAxisSlider =
     viewMode === "map3d" || (viewMode === "slice" && sliceLayoutMode === "triple");
@@ -982,10 +1206,24 @@ export default function Coords3dViewer({
     });
   }, []);
 
+
   useEffect(() => {
-    const onKeyDown = (ev: KeyboardEvent) => {
-      if (!pickedPoint3d) return;
-      if (ev.key !== "Delete" && ev.key !== "Backspace") return;
+    const isViewerHotkeyActive = () => {
+      const now = Date.now();
+      if (now - lastViewerInteractAtRef.current < 8000) return true;
+
+      const scope = hotkeyScopeRef.current;
+      const active = document.activeElement;
+      return !!(scope && active && scope.contains(active));
+    };
+
+    const onKeyDownCapture = (ev: KeyboardEvent) => {
+        if (!isViewerHotkeyActive()) return;
+
+      const key = ev.key;
+      const isDelete = key === "Delete" || key === "Backspace";
+      const isSpace = ev.code === "Space" || key === " " || key === "Spacebar";
+      if (!isDelete && !isSpace) return;
 
       const active = document.activeElement as HTMLElement | null;
       if (
@@ -998,12 +1236,18 @@ export default function Coords3dViewer({
       }
 
       ev.preventDefault();
+      ev.stopPropagation();
+      (ev as any).stopImmediatePropagation?.();
+
+      if (pickedPoint3d) {
       removePointById(String((pickedPoint3d as any).id));
+    }
     };
 
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    window.addEventListener("keydown", onKeyDownCapture, true);
+    return () => window.removeEventListener("keydown", onKeyDownCapture, true);
   }, [pickedPoint3d, removePointById]);
+
 
   const addPointFromSlice = useCallback(
     (axis: "x" | "y" | "z", localX: number, localY: number) => {
@@ -1014,7 +1258,9 @@ export default function Coords3dViewer({
 
       const id = createNewPointId();
 
-      let x = 0, y = 0, z = 0;
+      let x = 0;
+      let y = 0;
+      let z = 0;
 
       if (axis === "z") {
         if (sliceIndex == null) return;
@@ -1099,6 +1345,7 @@ export default function Coords3dViewer({
 
   const handleSliceCirclePick = useCallback(
     (circle: SliceCircle) => {
+      markViewerActive();
       const hit = filteredPoints.find((pt: any) => String(pt?.id) === String(circle.pointId));
       if (!hit) return;
 
@@ -1108,12 +1355,13 @@ export default function Coords3dViewer({
         z: Math.round(Number((hit as any).z)),
       });
     },
-    [filteredPoints, handlePickPoint3d],
+    [filteredPoints, handlePickPoint3d, markViewerActive],
   );
 
   const onPointPointerDown = useCallback(
     (circle: SliceCircle, axis: "x" | "y" | "z") =>
       (e: React.PointerEvent<SVGCircleElement>) => {
+        markViewerActive();
         e.stopPropagation();
         if (!editMode) return;
 
@@ -1129,7 +1377,7 @@ export default function Coords3dViewer({
           pointerId: e.pointerId,
         };
       },
-    [editMode],
+    [editMode, markViewerActive],
   );
 
   const onPointPointerMove = useCallback(
@@ -1163,7 +1411,12 @@ export default function Coords3dViewer({
   return (
     <>
       <Box
+        ref={hotkeyScopeRef}
+        tabIndex={0}
+                onPointerDownCapture={markViewerActive}
         sx={{
+          outline: "none",
+          "&:focus-visible": { outline: "none" },
           display: "flex",
           height: "100%",
           width: "100%",
@@ -1212,8 +1465,7 @@ export default function Coords3dViewer({
               <List dense disablePadding>
                 {tomos.map((t) => {
                   const selected =
-                    selectedTomoId != null &&
-                    String(selectedTomoId) === String(t.tomoId);
+                    selectedTomoId != null && String(selectedTomoId) === String(t.tomoId);
                   return (
                     <ListItemButton
                       key={String(t.tomoId)}
@@ -1384,8 +1636,7 @@ export default function Coords3dViewer({
                   alignItems: "stretch",
                   justifyContent: "stretch",
                   p: viewMode === "metadata" ? 0 : 1,
-                  bgcolor: (theme) =>
-                    theme.palette.mode === "dark" ? "#0b1220" : "#f8fafc",
+                  bgcolor: (theme) => (theme.palette.mode === "dark" ? "#0b1220" : "#f8fafc"),
                 }}
               >
                 {viewMode === "metadata" ? (
@@ -1510,7 +1761,11 @@ export default function Coords3dViewer({
                               style={{ width: "100%", height: "100%", display: "block" }}
                               onClick={(e) => {
                                 if (!editMode) return;
-                                const local = getSvgLocalPoint(e.clientX, e.clientY, e.currentTarget as any);
+                                const local = getSvgLocalPoint(
+                                  e.clientX,
+                                  e.clientY,
+                                  e.currentTarget as any,
+                                );
                                 if (!local) return;
                                 addPointFromSlice("y", local.x, local.y);
                               }}
@@ -1553,7 +1808,9 @@ export default function Coords3dViewer({
                                 />
                               )}
                               {slicePointsSvgY.map((p) => {
-                                const isPicked = pickedPointKey != null && String(p.pointId) === String(pickedPointKey);
+                                const isPicked =
+                                  pickedPointKey != null &&
+                                  String(p.pointId) === String(pickedPointKey);
                                 const hitStroke = Math.max(10, p.strokeWidth * 10);
 
                                 return (
@@ -1583,7 +1840,9 @@ export default function Coords3dViewer({
                                       r={p.radius * 2.2 * pointSizeFactor}
                                       fill="none"
                                       stroke={isPicked ? "#f59e0b" : pointColor}
-                                      strokeWidth={isPicked ? Math.max(2, p.strokeWidth * 2.2) : p.strokeWidth}
+                                      strokeWidth={
+                                        isPicked ? Math.max(2, p.strokeWidth * 2.2) : p.strokeWidth
+                                      }
                                       opacity={isPicked ? 1 : p.opacity}
                                       pointerEvents="none"
                                     />
@@ -1618,12 +1877,40 @@ export default function Coords3dViewer({
                             <CenteredHint text="No Z slice image." />
                           ) : (
                             <svg
-                              viewBox={`0 0 ${tomoDimsX} ${tomoDimsY}`}
+                              viewBox={singleSliceViewBoxStr}
                               preserveAspectRatio="xMidYMid meet"
-                              style={{ width: "100%", height: "100%", display: "block" }}
+                              style={{
+                                width: "100%",
+                                height: "100%",
+                                display: "block",
+                                touchAction: "none",
+                                cursor: singleIsPanning ? "grabbing" : editMode ? "crosshair" : "grab",
+                              }}
+                              onWheel={handleSingleSliceWheel}
+                              onDoubleClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                handleSingleSliceDoubleClick();
+                              }}
+                              onPointerDown={handleSingleSlicePointerDown}
+                              onPointerMove={handleSingleSlicePointerMove}
+                              onPointerUp={handleSingleSlicePointerUp}
+                              onPointerCancel={handleSingleSlicePointerUp}
+                              onContextMenu={(e) => {
+                                e.preventDefault();
+                              }}
                               onClick={(e) => {
+                                markViewerActive();
+                                if (suppressSingleClickRef.current) {
+                                  suppressSingleClickRef.current = false;
+                                  return;
+                                }
                                 if (!editMode) return;
-                                const local = getSvgLocalPoint(e.clientX, e.clientY, e.currentTarget as any);
+                                const local = getSvgLocalPoint(
+                                  e.clientX,
+                                  e.clientY,
+                                  e.currentTarget as any,
+                                );
                                 if (!local) return;
                                 addPointFromSlice("z", local.x, local.y);
                               }}
@@ -1666,7 +1953,9 @@ export default function Coords3dViewer({
                                 />
                               )}
                               {slicePointsSvgZ.map((p) => {
-                                const isPicked = pickedPointKey != null && String(p.pointId) === String(pickedPointKey);
+                                const isPicked =
+                                  pickedPointKey != null &&
+                                  String(p.pointId) === String(pickedPointKey);
                                 const hitStroke = Math.max(10, p.strokeWidth * 10);
 
                                 return (
@@ -1696,7 +1985,9 @@ export default function Coords3dViewer({
                                       r={p.radius * 2.2 * pointSizeFactor}
                                       fill="none"
                                       stroke={isPicked ? "#f59e0b" : pointColor}
-                                      strokeWidth={isPicked ? Math.max(2, p.strokeWidth * 2.2) : p.strokeWidth}
+                                      strokeWidth={
+                                        isPicked ? Math.max(2, p.strokeWidth * 2.2) : p.strokeWidth
+                                      }
                                       opacity={isPicked ? 1 : p.opacity}
                                       pointerEvents="none"
                                     />
@@ -1740,7 +2031,11 @@ export default function Coords3dViewer({
                                 onClick={(e) => {
                                   if (!editMode) return;
                                   e.stopPropagation();
-                                  const local = getSvgLocalPoint(e.clientX, e.clientY, e.currentTarget as any);
+                                  const local = getSvgLocalPoint(
+                                    e.clientX,
+                                    e.clientY,
+                                    e.currentTarget as any,
+                                  );
                                   if (!local) return;
                                   addPointFromSlice("x", local.x, local.y);
                                 }}
@@ -1783,7 +2078,9 @@ export default function Coords3dViewer({
                                   />
                                 )}
                                 {slicePointsSvgX.map((p) => {
-                                  const isPicked = pickedPointKey != null && String(p.pointId) === String(pickedPointKey);
+                                  const isPicked =
+                                    pickedPointKey != null &&
+                                    String(p.pointId) === String(pickedPointKey);
                                   const hitStroke = Math.max(10, p.strokeWidth * 10);
 
                                   return (
@@ -1813,7 +2110,11 @@ export default function Coords3dViewer({
                                         r={p.radius * 2.2 * pointSizeFactor}
                                         fill="none"
                                         stroke={isPicked ? "#f59e0b" : pointColor}
-                                        strokeWidth={isPicked ? Math.max(2, p.strokeWidth * 2.2) : p.strokeWidth}
+                                        strokeWidth={
+                                          isPicked
+                                            ? Math.max(2, p.strokeWidth * 2.2)
+                                            : p.strokeWidth
+                                        }
                                         opacity={isPicked ? 1 : p.opacity}
                                         pointerEvents="none"
                                       />
@@ -1858,12 +2159,33 @@ export default function Coords3dViewer({
                         <CenteredHint text="No slice image." />
                       ) : (
                         <svg
-                          viewBox={`0 0 ${tomoDimsX} ${tomoDimsY}`}
+                          viewBox={singleSliceViewBoxStr}
                           preserveAspectRatio="xMidYMid meet"
-                          style={{ width: "100%", height: "100%", display: "block" }}
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                            display: "block",
+                            touchAction: "none",
+                          }}
+                          onWheel={handleSingleSliceWheel}
+                          onPointerDown={handleSingleSlicePointerDown}
+                          onPointerMove={handleSingleSlicePointerMove}
+                          onPointerUp={handleSingleSlicePointerUp}
+                          onPointerCancel={handleSingleSlicePointerUp}
+                          onContextMenu={(e) => {
+                            e.preventDefault();
+                          }}
                           onClick={(e) => {
+                            if (suppressSingleClickRef.current) {
+                              suppressSingleClickRef.current = false;
+                              return;
+                            }
                             if (!editMode) return;
-                            const local = getSvgLocalPoint(e.clientX, e.clientY, e.currentTarget as any);
+                            const local = getSvgLocalPoint(
+                              e.clientX,
+                              e.clientY,
+                              e.currentTarget as any,
+                            );
                             if (!local) return;
                             addPointFromSlice("z", local.x, local.y);
                           }}
@@ -1884,7 +2206,9 @@ export default function Coords3dViewer({
                             />
                           )}
                           {slicePointsSvgZ.map((p) => {
-                            const isPicked = pickedPointKey != null && String(p.pointId) === String(pickedPointKey);
+                            const isPicked =
+                              pickedPointKey != null &&
+                              String(p.pointId) === String(pickedPointKey);
                             const hitStroke = Math.max(10, p.strokeWidth * 10);
 
                             return (
@@ -1914,7 +2238,9 @@ export default function Coords3dViewer({
                                   r={p.radius * 2.2 * pointSizeFactor}
                                   fill="none"
                                   stroke={isPicked ? "#f59e0b" : pointColor}
-                                  strokeWidth={isPicked ? Math.max(2, p.strokeWidth * 2.2) : p.strokeWidth}
+                                  strokeWidth={
+                                    isPicked ? Math.max(2, p.strokeWidth * 2.2) : p.strokeWidth
+                                  }
                                   opacity={isPicked ? 1 : p.opacity}
                                   pointerEvents="none"
                                 />
@@ -1955,23 +2281,14 @@ export default function Coords3dViewer({
                   }}
                 >
                   {tomoMeta && (
-                    <MetaItem
-                      label="Tomogram"
-                      value={tomoMeta.label ?? String(selectedTomoId)}
-                    />
+                    <MetaItem label="Tomogram" value={tomoMeta.label ?? String(selectedTomoId)} />
                   )}
                   {tomoDims && (
-                    <MetaItem
-                      label="Dims"
-                      value={`${tomoDims[0]} × ${tomoDims[1]} × ${tomoDims[2]}`}
-                    />
+                    <MetaItem label="Dims" value={`${tomoDims[0]} × ${tomoDims[1]} × ${tomoDims[2]}`} />
                   )}
                   <MetaItem label="Points" value={totalCoords.toLocaleString("en-US")} />
                   {filteredPoints.length !== totalCoords && (
-                    <MetaItem
-                      label="Shown"
-                      value={filteredPoints.length.toLocaleString("en-US")}
-                    />
+                    <MetaItem label="Shown" value={filteredPoints.length.toLocaleString("en-US")} />
                   )}
                   {viewMode === "slice" && sliceIndex != null && maxSliceZ != null && (
                     <MetaItem label="Slice (Z)" value={`${sliceIndex + 1} / ${maxSliceZ + 1}`} />
@@ -1983,10 +2300,7 @@ export default function Coords3dViewer({
                     <MetaItem label="Slice (Y)" value={`${sliceIndexY + 1} / ${maxSliceY + 1}`} />
                   )}
                   {viewMode === "slice" && slicePoints.length > 0 && (
-                    <MetaItem
-                      label="Slice points"
-                      value={slicePoints.length.toLocaleString("en-US")}
-                    />
+                    <MetaItem label="Slice points" value={slicePoints.length.toLocaleString("en-US")} />
                   )}
                   {viewMode === "map3d" && pickedPoint3d && (
                     <MetaItem
@@ -2024,16 +2338,8 @@ export default function Coords3dViewer({
                     variant="fullWidth"
                     sx={{ minHeight: 36 }}
                   >
-                    <Tab
-                      value="filters"
-                      label="Filters"
-                      sx={{ fontSize: "0.75rem", minHeight: 36, py: 0.5 }}
-                    />
-                    <Tab
-                      value="appearance"
-                      label="Appearance"
-                      sx={{ fontSize: "0.75rem", minHeight: 36, py: 0.5 }}
-                    />
+                    <Tab value="filters" label="Filters" sx={{ fontSize: "0.75rem", minHeight: 36, py: 0.5 }} />
+                    <Tab value="appearance" label="Appearance" sx={{ fontSize: "0.75rem", minHeight: 36, py: 0.5 }} />
                   </Tabs>
 
                   <Box
@@ -2082,34 +2388,20 @@ export default function Coords3dViewer({
                         {viewMode === "slice" && (
                           <FormControlLabel
                             control={
-                              <Switch
-                                size="small"
-                                checked={editMode}
-                                onChange={(_, checked) => setEditMode(checked)}
-                              />
+                              <Switch size="small" checked={editMode} onChange={(_, checked) => setEditMode(checked)} />
                             }
                             label="Edit points (add/move)"
-                            sx={{
-                              mt: 0.25,
-                              "& .MuiFormControlLabel-label": { fontSize: "0.8rem" },
-                            }}
+                            sx={{ mt: 0.25, "& .MuiFormControlLabel-label": { fontSize: "0.8rem" } }}
                           />
                         )}
 
                         {viewMode === "slice" && (
                           <FormControlLabel
                             control={
-                              <Switch
-                                size="small"
-                                checked={debugGrid}
-                                onChange={(_, checked) => setDebugGrid(checked)}
-                              />
+                              <Switch size="small" checked={debugGrid} onChange={(_, checked) => setDebugGrid(checked)} />
                             }
                             label="Debug synthetic grid"
-                            sx={{
-                              mt: 0.25,
-                              "& .MuiFormControlLabel-label": { fontSize: "0.75rem" },
-                            }}
+                            sx={{ mt: 0.25, "& .MuiFormControlLabel-label": { fontSize: "0.75rem" } }}
                           />
                         )}
 
@@ -2118,35 +2410,14 @@ export default function Coords3dViewer({
                             {viewMode === "map3d" ? "Slices / planes" : "Slices"}
                           </Typography>
 
-                          <SliderField
-                            label="Slice (Z)"
-                            helpKey="sliceIndex"
-                            openHelp={openHelp}
-                            value={sliceIndex}
-                            max={maxSliceZ}
-                            onChange={setSliceIndex}
-                          />
+                          <SliderField label="Slice (Z)" helpKey="sliceIndex" openHelp={openHelp} value={sliceIndex} max={maxSliceZ} onChange={setSliceIndex} />
 
                           {showXAxisSlider && (
-                            <SliderField
-                              label="Slice (X)"
-                              helpKey="sliceIndex"
-                              openHelp={openHelp}
-                              value={sliceIndexX}
-                              max={maxSliceX}
-                              onChange={setSliceIndexX}
-                            />
+                            <SliderField label="Slice (X)" helpKey="sliceIndex" openHelp={openHelp} value={sliceIndexX} max={maxSliceX} onChange={setSliceIndexX} />
                           )}
 
                           {showYAxisSlider && (
-                            <SliderField
-                              label="Slice (Y)"
-                              helpKey="sliceIndex"
-                              openHelp={openHelp}
-                              value={sliceIndexY}
-                              max={maxSliceY}
-                              onChange={setSliceIndexY}
-                            />
+                            <SliderField label="Slice (Y)" helpKey="sliceIndex" openHelp={openHelp} value={sliceIndexY} max={maxSliceY} onChange={setSliceIndexY} />
                           )}
                         </Box>
 
@@ -2231,86 +2502,12 @@ export default function Coords3dViewer({
                             onChange={(_, v) => setMaxPoints(v as number)}
                             valueLabelDisplay="auto"
                             valueLabelFormat={(v) =>
-                              (v as number).toLocaleString("en-US", {
-                                maximumFractionDigits: 0,
-                              })
+                              (v as number).toLocaleString("en-US", { maximumFractionDigits: 0 })
                             }
                           />
                         </Box>
 
-                        {viewMode === "slice" && (
-                          <>
-                            <Divider />
-                            <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-                              <Box
-                                sx={{
-                                  display: "flex",
-                                  justifyContent: "space-between",
-                                  alignItems: "center",
-                                }}
-                              >
-                                <Typography variant="caption" color="text.secondary">
-                                  Intensity
-                                </Typography>
-                                <Button
-                                  size="small"
-                                  onClick={() => {
-                                    setBrightness(1.0);
-                                    setContrast(1.0);
-                                  }}
-                                >
-                                  Reset
-                                </Button>
-                              </Box>
-
-                              <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
-                                <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
-                                  <Typography variant="caption" color="text.secondary">
-                                    Brightness
-                                  </Typography>
-                                  <IconButton size="small" onClick={() => openHelp("brightness")}>
-                                    <HelpCircle size={14} />
-                                  </IconButton>
-                                </Box>
-                                <Slider
-                                  size="small"
-                                  value={brightness}
-                                  min={0.3}
-                                  max={2.5}
-                                  step={0.05}
-                                  onChange={(_, v) => setBrightness(v as number)}
-                                  valueLabelDisplay="auto"
-                                  valueLabelFormat={(v) =>
-                                    `${Math.round((v as number) * 100)}%`
-                                  }
-                                />
-                              </Box>
-
-                              <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
-                                <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
-                                  <Typography variant="caption" color="text.secondary">
-                                    Contrast
-                                  </Typography>
-                                  <IconButton size="small" onClick={() => openHelp("contrast")}>
-                                    <HelpCircle size={14} />
-                                  </IconButton>
-                                </Box>
-                                <Slider
-                                  size="small"
-                                  value={contrast}
-                                  min={0.3}
-                                  max={2.5}
-                                  step={0.05}
-                                  onChange={(_, v) => setContrast(v as number)}
-                                  valueLabelDisplay="auto"
-                                  valueLabelFormat={(v) =>
-                                    `${Math.round((v as number) * 100)}%`
-                                  }
-                                />
-                              </Box>
-                            </Box>
-                          </>
-                        )}
+                        
                       </Box>
                     ) : (
                       <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5, ml: 1 }}>
@@ -2337,9 +2534,7 @@ export default function Coords3dViewer({
                                     height: 20,
                                     borderRadius: "50%",
                                     cursor: "pointer",
-                                    border: isSelected
-                                      ? "2px solid #111827"
-                                      : "1px solid #d1d5db",
+                                    border: isSelected ? "2px solid #111827" : "1px solid #d1d5db",
                                     boxShadow: isSelected ? 1 : "none",
                                     backgroundColor: c.value,
                                   }}
@@ -2359,19 +2554,49 @@ export default function Coords3dViewer({
                               <HelpCircle size={14} />
                             </IconButton>
                           </Box>
-                          <Slider
-                            size="small"
-                            value={pointSizeFactor}
-                            min={0.3}
-                            max={3}
-                            step={0.05}
-                            onChange={(_, v) => setPointSizeFactor(v as number)}
-                            valueLabelDisplay="auto"
-                            valueLabelFormat={(v) => `${(v as number).toFixed(2)}×`}
-                          />
+                          <Slider size="small" value={pointSizeFactor} min={0.3} max={3} step={0.05} onChange={(_, v) => setPointSizeFactor(v as number)} valueLabelDisplay="auto" valueLabelFormat={(v) => `${(v as number).toFixed(2)}×`} />
                         </Box>
 
-                        {viewMode === "map3d" && (
+                        {viewMode === "slice" && (
+                          <>
+                            <Divider />
+                            <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                              <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                <Typography variant="caption" color="text.secondary">
+                                  Intensity
+                                </Typography>
+                                <Button size="small" onClick={() => { setBrightness(1.0); setContrast(1.0); }}>
+                                  Reset
+                                </Button>
+                              </Box>
+
+                              <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
+                                <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
+                                  <Typography variant="caption" color="text.secondary">
+                                    Brightness
+                                  </Typography>
+                                  <IconButton size="small" onClick={() => openHelp("brightness")}>
+                                    <HelpCircle size={14} />
+                                  </IconButton>
+                                </Box>
+                                <Slider size="small" value={brightness} min={0.3} max={2.5} step={0.05} onChange={(_, v) => setBrightness(v as number)} valueLabelDisplay="auto" valueLabelFormat={(v) => `${Math.round((v as number) * 100)}%`} />
+                              </Box>
+
+                              <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
+                                <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
+                                  <Typography variant="caption" color="text.secondary">
+                                    Contrast
+                                  </Typography>
+                                  <IconButton size="small" onClick={() => openHelp("contrast")}>
+                                    <HelpCircle size={14} />
+                                  </IconButton>
+                                </Box>
+                                <Slider size="small" value={contrast} min={0.3} max={2.5} step={0.05} onChange={(_, v) => setContrast(v as number)} valueLabelDisplay="auto" valueLabelFormat={(v) => `${Math.round((v as number) * 100)}%`} />
+                              </Box>
+                            </Box>
+                          </>
+                        )}
+{viewMode === "map3d" && (
                           <>
                             <Divider />
                             <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
@@ -2379,22 +2604,11 @@ export default function Coords3dViewer({
                                 <Typography variant="caption" color="text.secondary">
                                   3D color mode
                                 </Typography>
-                                <IconButton
-                                  size="small"
-                                  onClick={() => openHelp("pointColorMode3d")}
-                                >
+                                <IconButton size="small" onClick={() => openHelp("pointColorMode3d")}>
                                   <HelpCircle size={14} />
                                 </IconButton>
                               </Box>
-                              <TextField
-                                size="small"
-                                select
-                                value={pointColorMode3d}
-                                onChange={(e) =>
-                                  setPointColorMode3d(e.target.value as PointColorMode3d)
-                                }
-                                SelectProps={{ MenuProps: { disablePortal: true } }}
-                              >
+                              <TextField size="small" select value={pointColorMode3d} onChange={(e) => setPointColorMode3d(e.target.value as PointColorMode3d)} SelectProps={{ MenuProps: { disablePortal: true } }}>
                                 <MenuItem value="fixed">Fixed</MenuItem>
                                 <MenuItem value="class">Class</MenuItem>
                                 <MenuItem value="score">Score</MenuItem>
@@ -2410,15 +2624,7 @@ export default function Coords3dViewer({
                                   <HelpCircle size={14} />
                                 </IconButton>
                               </Box>
-                              <Slider
-                                size="small"
-                                value={pointSize3d}
-                                min={1}
-                                max={18}
-                                step={0.25}
-                                onChange={(_, v) => setPointSize3d(v as number)}
-                                valueLabelDisplay="auto"
-                              />
+                              <Slider size="small" value={pointSize3d} min={1} max={18} step={0.25} onChange={(_, v) => setPointSize3d(v as number)} valueLabelDisplay="auto" />
                             </Box>
 
                             <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
@@ -2430,88 +2636,21 @@ export default function Coords3dViewer({
                                   <HelpCircle size={14} />
                                 </IconButton>
                               </Box>
-                              <Slider
-                                size="small"
-                                value={pointOpacity3d}
-                                min={0.05}
-                                max={1}
-                                step={0.02}
-                                onChange={(_, v) => setPointOpacity3d(v as number)}
-                                valueLabelDisplay="auto"
-                                valueLabelFormat={(v) => `${Math.round((v as number) * 100)}%`}
-                              />
+                              <Slider size="small" value={pointOpacity3d} min={0.05} max={1} step={0.02} onChange={(_, v) => setPointOpacity3d(v as number)} valueLabelDisplay="auto" valueLabelFormat={(v) => `${Math.round((v as number) * 100)}%`} />
                             </Box>
 
                             <Divider />
 
-                            <FormControlLabel
-                              control={
-                                <Switch
-                                  size="small"
-                                  checked={showSlicePlanes3d}
-                                  onChange={(_, checked) => setShowSlicePlanes3d(checked)}
-                                />
-                              }
-                              label="Show slice planes"
-                              sx={{ "& .MuiFormControlLabel-label": { fontSize: "0.8rem" } }}
-                            />
+                            <FormControlLabel control={<Switch size="small" checked={showSlicePlanes3d} onChange={(_, checked) => setShowSlicePlanes3d(checked)} />} label="Show slice planes" sx={{ "& .MuiFormControlLabel-label": { fontSize: "0.8rem" } }} />
 
-                            <IconRowHelp
-                              label="Plane opacity"
-                              onHelp={() => openHelp("slicePlanesOpacity3d")}
-                            />
-                            <Slider
-                              size="small"
-                              value={slicePlanesOpacity3d}
-                              min={0.03}
-                              max={0.65}
-                              step={0.01}
-                              onChange={(_, v) => setSlicePlanesOpacity3d(v as number)}
-                              disabled={!showSlicePlanes3d}
-                              valueLabelDisplay="auto"
-                              valueLabelFormat={(v) => `${Math.round((v as number) * 100)}%`}
-                            />
+                            <IconRowHelp label="Plane opacity" onHelp={() => openHelp("slicePlanesOpacity3d")} />
+                            <Slider size="small" value={slicePlanesOpacity3d} min={0.03} max={0.65} step={0.01} onChange={(_, v) => setSlicePlanesOpacity3d(v as number)} disabled={!showSlicePlanes3d} valueLabelDisplay="auto" valueLabelFormat={(v) => `${Math.round((v as number) * 100)}%`} />
 
-                            <FormControlLabel
-                              control={
-                                <Switch
-                                  size="small"
-                                  checked={showBox3d}
-                                  onChange={(_, checked) => setShowBox3d(checked)}
-                                />
-                              }
-                              label="Show volume box"
-                              sx={{ "& .MuiFormControlLabel-label": { fontSize: "0.8rem" } }}
-                            />
-                            <FormControlLabel
-                              control={
-                                <Switch
-                                  size="small"
-                                  checked={showAxes3d}
-                                  onChange={(_, checked) => setShowAxes3d(checked)}
-                                />
-                              }
-                              label="Show axes"
-                              sx={{ "& .MuiFormControlLabel-label": { fontSize: "0.8rem" } }}
-                            />
-                            <FormControlLabel
-                              control={
-                                <Switch
-                                  size="small"
-                                  checked={syncPick3dToSlices}
-                                  onChange={(_, checked) => setSyncPick3dToSlices(checked)}
-                                />
-                              }
-                              label="Sync 3D click to slices"
-                              sx={{ "& .MuiFormControlLabel-label": { fontSize: "0.8rem" } }}
-                            />
+                            <FormControlLabel control={<Switch size="small" checked={showBox3d} onChange={(_, checked) => setShowBox3d(checked)} />} label="Show volume box" sx={{ "& .MuiFormControlLabel-label": { fontSize: "0.8rem" } }} />
+                            <FormControlLabel control={<Switch size="small" checked={showAxes3d} onChange={(_, checked) => setShowAxes3d(checked)} />} label="Show axes" sx={{ "& .MuiFormControlLabel-label": { fontSize: "0.8rem" } }} />
+                            <FormControlLabel control={<Switch size="small" checked={syncPick3dToSlices} onChange={(_, checked) => setSyncPick3dToSlices(checked)} />} label="Sync 3D click to slices" sx={{ "& .MuiFormControlLabel-label": { fontSize: "0.8rem" } }} />
 
-                            <Button
-                              size="small"
-                              variant="outlined"
-                              onClick={() => setReset3dCameraNonce((n) => n + 1)}
-                              sx={{ textTransform: "none", mt: 0.25 }}
-                            >
+                            <Button size="small" variant="outlined" onClick={() => setReset3dCameraNonce((n) => n + 1)} sx={{ textTransform: "none", mt: 0.25 }}>
                               Reset 3D camera
                             </Button>
                           </>
@@ -2565,9 +2704,7 @@ export default function Coords3dViewer({
                                             : "Help"}
         </DialogTitle>
         <DialogContent>
-          <DialogContentText>
-            {helpKey ? HELP_TEXT[helpKey] ?? "No help available." : ""}
-          </DialogContentText>
+          <DialogContentText>{helpKey ? HELP_TEXT[helpKey] ?? "No help available." : ""}</DialogContentText>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setHelpOpen(false)} autoFocus>
@@ -2975,7 +3112,9 @@ function Coords3dMap3dView({
   const controlsRef = useRef<OrbitControls | null>(null);
   const rootRef = useRef<THREE.Group | null>(null);
 
-  const pointsRef = useRef<THREE.Points<THREE.BufferGeometry, THREE.PointsMaterial> | null>(null);
+  const pointsRef = useRef<THREE.Points<THREE.BufferGeometry, THREE.PointsMaterial> | null>(
+    null,
+  );
   const pointsMaterialRef = useRef<THREE.PointsMaterial | null>(null);
 
   const pickedMarkerRef = useRef<THREE.Group | null>(null);
@@ -3009,10 +3148,7 @@ function Coords3dMap3dView({
   const [initError, setInitError] = useState<string | null>(null);
   const [mappingSummary, setMappingSummary] = useState<string>("");
 
-  const dimsObj = useMemo(
-    () => ({ x: dims[0], y: dims[1], z: dims[2] }),
-    [dims],
-  );
+  const dimsObj = useMemo(() => ({ x: dims[0], y: dims[1], z: dims[2] }), [dims]);
 
   const axisSigns = useMemo(
     () =>
@@ -3214,6 +3350,7 @@ function Coords3dMap3dView({
       );
 
       markerGroup.add(markerSphere);
+
       markerGroup.visible = false;
       markerGroup.renderOrder = 20;
 
