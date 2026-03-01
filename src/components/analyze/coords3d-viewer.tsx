@@ -1,6 +1,4 @@
-// src/components/analyze/coords3d-viewer.tsx
-import { useEffect, useMemo, useRef, useState, useCallback } from "react";
-import type { ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Box,
   CircularProgress,
@@ -125,6 +123,25 @@ const HELP_TEXT: Record<string, string> = {
   pointSize3d:
     "Base sprite size for points in the 3D map before applying the global point size factor.",
 };
+
+function clampCoord(v: number, dim: number) {
+  const hi = Math.max(0, (Number.isFinite(dim) ? dim : 0) - 1);
+  if (!Number.isFinite(v)) return 0;
+  return Math.max(0, Math.min(hi, v));
+}
+
+function getSvgLocalPoint(
+  clientX: number,
+  clientY: number,
+  el: SVGGraphicsElement,
+): { x: number; y: number } | null {
+  const ctm = el.getScreenCTM();
+  if (!ctm) return null;
+  const inv = ctm.inverse();
+  const p = new DOMPoint(clientX, clientY).matrixTransform(inv);
+  if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) return null;
+  return { x: p.x, y: p.y };
+}
 
 function getSlicePlaneDims(
   dims: [number, number, number] | null,
@@ -252,11 +269,15 @@ export default function Coords3dViewer({
   const [tomosError, setTomosError] = useState<string | null>(null);
   const [selectedTomoId, setSelectedTomoId] = useState<Id | null>(null);
 
-  const [pointsData, setPointsData] = useState<Coordinates3dTomogramPoints | null>(
-    null,
-  );
+  const [pointsData, setPointsData] = useState<Coordinates3dTomogramPoints | null>(null);
   const [pointsLoading, setPointsLoading] = useState(false);
   const [pointsError, setPointsError] = useState<string | null>(null);
+
+  const [coordsDraft, setCoordsDraft] = useState<Coords3dPointExt[]>([]);
+  const [editMode, setEditMode] = useState<boolean>(false);
+
+  const newPointSeqRef = useRef(0);
+  const dragRef = useRef<{ pointId: string; axis: "x" | "y" | "z"; pointerId: number } | null>(null);
 
   const [viewMode, setViewMode] = useState<ViewMode>("slice");
   const [sliceLayoutMode, setSliceLayoutMode] = useState<SliceLayoutMode>("single");
@@ -272,8 +293,7 @@ export default function Coords3dViewer({
   const [pointColor, setPointColor] = useState<string>("#ef4444");
   const [pointSizeFactor, setPointSizeFactor] = useState<number>(1.0);
 
-  const [pointColorMode3d, setPointColorMode3d] =
-    useState<PointColorMode3d>("class");
+  const [pointColorMode3d, setPointColorMode3d] = useState<PointColorMode3d>("class");
   const [pointOpacity3d, setPointOpacity3d] = useState<number>(0.9);
   const [pointSize3d, setPointSize3d] = useState<number>(5.5);
   const [showSlicePlanes3d, setShowSlicePlanes3d] = useState<boolean>(true);
@@ -333,11 +353,7 @@ export default function Coords3dViewer({
         setTomos([]);
         setSelectedTomoId(null);
 
-        const raw = await (svc as any).listCoords3dTomograms(
-          projectId,
-          protocolId,
-          outputName,
-        );
+        const raw = await (svc as any).listCoords3dTomograms(projectId, protocolId, outputName);
         if (cancelled) return;
 
         const items: TomogramItem[] = (raw || []).map((t: any) => {
@@ -371,6 +387,7 @@ export default function Coords3dViewer({
   useEffect(() => {
     if (selectedTomoId == null) {
       setPointsData(null);
+      setCoordsDraft([]);
       setPointsError(null);
       return;
     }
@@ -381,6 +398,7 @@ export default function Coords3dViewer({
         setPointsLoading(true);
         setPointsError(null);
         setPointsData(null);
+        setCoordsDraft([]);
         setPickedPoint3d(null);
 
         const data = await (svc as any).fetchCoords3dForTomogram(
@@ -449,12 +467,13 @@ export default function Coords3dViewer({
 
         const normalized: Coordinates3dTomogramPoints = {
           tomoId: tomoIdOut,
-          coords: coordsNorm,
+          coords: coordsNorm as any,
         };
 
         setPointsData(normalized);
+        setCoordsDraft(coordsNorm);
 
-        const scores = normalized.coords
+        const scores = coordsNorm
           .map((p: any) => p.score)
           .filter((v: any): v is number => typeof v === "number" && Number.isFinite(v));
 
@@ -479,7 +498,7 @@ export default function Coords3dViewer({
 
   const classOptions = useMemo(() => {
     const set = new Set<string>();
-    for (const p of (pointsData?.coords as any[]) || []) {
+    for (const p of (coordsDraft as any[]) || []) {
       const key =
         p?.classId === null || p?.classId === undefined
           ? "unclassified"
@@ -487,20 +506,19 @@ export default function Coords3dViewer({
       set.add(key);
     }
     return ["all", ...Array.from(set).sort((a, b) => a.localeCompare(b))];
-  }, [pointsData]);
+  }, [coordsDraft]);
 
   const scoreMinMax = useMemo(() => {
-    if (!pointsData?.coords?.length) return null;
-    const scores = (pointsData.coords as any[])
+    if (!coordsDraft.length) return null;
+    const scores = (coordsDraft as any[])
       .map((p) => p.score)
       .filter((v): v is number => typeof v === "number" && Number.isFinite(v));
     if (scores.length === 0) return null;
     return [Math.min(...scores), Math.max(...scores)] as [number, number];
-  }, [pointsData]);
+  }, [coordsDraft]);
 
   const filteredPoints = useMemo<Coords3dPointExt[]>(() => {
-    if (!pointsData?.coords) return [];
-    let pts = pointsData.coords as Coords3dPointExt[];
+    let pts = coordsDraft;
 
     if (selectedClass !== "all") {
       pts = pts.filter((p) => {
@@ -526,7 +544,7 @@ export default function Coords3dViewer({
     const out: Coords3dPointExt[] = [];
     for (let i = 0; i < pts.length; i += step) out.push(pts[i]);
     return out;
-  }, [pointsData, selectedClass, scoreRange, maxPoints]);
+  }, [coordsDraft, selectedClass, scoreRange, maxPoints]);
 
   const tomoMeta = useMemo(() => {
     if (!selectedTomoId) return null;
@@ -543,17 +561,6 @@ export default function Coords3dViewer({
     }
     return null;
   }, [tomos, selectedTomoId]);
-
-  const tomoDimsObj = useMemo(() => {
-    if (!tomoDims) return null;
-    return { x: tomoDims[0], y: tomoDims[1], z: tomoDims[2] };
-  }, [tomoDims]);
-
-  const slicePointMapper = useMemo(() => {
-    if (!tomoDimsObj) return null;
-    return buildPointMapper(filteredPoints, tomoDimsObj);
-  }, [filteredPoints, tomoDimsObj]);
-
 
   const tomoDimsX = tomoDims ? tomoDims[0] : null;
   const tomoDimsY = tomoDims ? tomoDims[1] : null;
@@ -643,7 +650,7 @@ export default function Coords3dViewer({
     [filteredPoints, sliceIndexY, tomoDims],
   );
 
-  const totalCoords = pointsData?.coords?.length ?? 0;
+  const totalCoords = coordsDraft.length;
 
   const coordsReadyForSelectedTomo = useMemo(() => {
     if (!pointsData || selectedTomoId == null) return false;
@@ -957,20 +964,201 @@ export default function Coords3dViewer({
   const showYAxisSlider =
     viewMode === "map3d" || (viewMode === "slice" && sliceLayoutMode === "triple");
 
-  const pickedPointId = useMemo(() => {
+  const pickedPointKey = useMemo(() => {
     const id = (pickedPoint3d as any)?.id;
     return id == null ? null : String(id);
   }, [pickedPoint3d]);
 
+  const createNewPointId = () => {
+    newPointSeqRef.current += 1;
+    return `new-${Date.now()}-${newPointSeqRef.current}`;
+  };
+
+  const removePointById = useCallback((pointId: string) => {
+    setCoordsDraft((prev) => prev.filter((p: any) => String(p?.id) !== String(pointId)));
+    setPickedPoint3d((prev) => {
+      if (!prev) return prev;
+      return String((prev as any).id) === String(pointId) ? null : prev;
+    });
+  }, []);
+
+  useEffect(() => {
+    const onKeyDown = (ev: KeyboardEvent) => {
+      if (!pickedPoint3d) return;
+      if (ev.key !== "Delete" && ev.key !== "Backspace") return;
+
+      const active = document.activeElement as HTMLElement | null;
+      if (
+        active &&
+        (active.tagName === "INPUT" ||
+          active.tagName === "TEXTAREA" ||
+          (active as any).isContentEditable)
+      ) {
+        return;
+      }
+
+      ev.preventDefault();
+      removePointById(String((pickedPoint3d as any).id));
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [pickedPoint3d, removePointById]);
+
+  const addPointFromSlice = useCallback(
+    (axis: "x" | "y" | "z", localX: number, localY: number) => {
+      if (!editMode) return;
+      if (!tomoDims) return;
+
+      const [dimX, dimY, dimZ] = tomoDims;
+
+      const id = createNewPointId();
+
+      let x = 0, y = 0, z = 0;
+
+      if (axis === "z") {
+        if (sliceIndex == null) return;
+        x = clampCoord(localX, dimX);
+        y = clampCoord(localY, dimY);
+        z = clampCoord(sliceIndex, dimZ);
+      } else if (axis === "y") {
+        if (sliceIndexY == null) return;
+        x = clampCoord(localX, dimX);
+        y = clampCoord(sliceIndexY, dimY);
+        z = clampCoord(localY, dimZ);
+      } else {
+        if (sliceIndexX == null) return;
+        x = clampCoord(sliceIndexX, dimX);
+        y = clampCoord(localX, dimY);
+        z = clampCoord(localY, dimZ);
+      }
+
+      const nextClassId =
+        selectedClass === "all" || selectedClass === "unclassified" ? undefined : selectedClass;
+
+      const newPoint: Coords3dPointExt = {
+        id,
+        x,
+        y,
+        z,
+        classId: nextClassId,
+      } as any;
+
+      setCoordsDraft((prev) => [...prev, newPoint]);
+      handlePickPoint3d(newPoint, { x: Math.round(x), y: Math.round(y), z: Math.round(z) });
+    },
+    [editMode, tomoDims, sliceIndex, sliceIndexX, sliceIndexY, selectedClass, handlePickPoint3d],
+  );
+
+  const updatePointFromSlice = useCallback(
+    (pointId: string, axis: "x" | "y" | "z", localX: number, localY: number) => {
+      if (!editMode) return;
+      if (!tomoDims) return;
+
+      const [dimX, dimY, dimZ] = tomoDims;
+
+      let patch: Partial<Coords3dPointExt> | null = null;
+
+      if (axis === "z") {
+        if (sliceIndex == null) return;
+        patch = {
+          x: clampCoord(localX, dimX),
+          y: clampCoord(localY, dimY),
+          z: clampCoord(sliceIndex, dimZ),
+        };
+      } else if (axis === "y") {
+        if (sliceIndexY == null) return;
+        patch = {
+          x: clampCoord(localX, dimX),
+          y: clampCoord(sliceIndexY, dimY),
+          z: clampCoord(localY, dimZ),
+        };
+      } else {
+        if (sliceIndexX == null) return;
+        patch = {
+          x: clampCoord(sliceIndexX, dimX),
+          y: clampCoord(localX, dimY),
+          z: clampCoord(localY, dimZ),
+        };
+      }
+
+      if (!patch) return;
+
+      setCoordsDraft((prev) =>
+        prev.map((p: any) => (String(p?.id) === String(pointId) ? { ...p, ...patch } : p)),
+      );
+
+      setPickedPoint3d((prev) => {
+        if (!prev) return prev;
+        if (String((prev as any).id) !== String(pointId)) return prev;
+        return { ...(prev as any), ...patch } as any;
+      });
+    },
+    [editMode, tomoDims, sliceIndex, sliceIndexX, sliceIndexY],
+  );
+
   const handleSliceCirclePick = useCallback(
-    (circle: Pick<SliceCircle, "pointId">) => {
+    (circle: SliceCircle) => {
       const hit = filteredPoints.find((pt: any) => String(pt?.id) === String(circle.pointId));
       if (!hit) return;
 
-      handlePickPoint3d(hit);
+      handlePickPoint3d(hit, {
+        x: Math.round(Number((hit as any).x)),
+        y: Math.round(Number((hit as any).y)),
+        z: Math.round(Number((hit as any).z)),
+      });
     },
     [filteredPoints, handlePickPoint3d],
   );
+
+  const onPointPointerDown = useCallback(
+    (circle: SliceCircle, axis: "x" | "y" | "z") =>
+      (e: React.PointerEvent<SVGCircleElement>) => {
+        e.stopPropagation();
+        if (!editMode) return;
+
+        try {
+          (e.currentTarget as any).setPointerCapture?.(e.pointerId);
+        } catch {
+          // ignore
+        }
+
+        dragRef.current = {
+          pointId: circle.pointId,
+          axis,
+          pointerId: e.pointerId,
+        };
+      },
+    [editMode],
+  );
+
+  const onPointPointerMove = useCallback(
+    (e: React.PointerEvent<SVGCircleElement>) => {
+      const drag = dragRef.current;
+      if (!drag) return;
+      if (drag.pointerId !== e.pointerId) return;
+
+      const local = getSvgLocalPoint(e.clientX, e.clientY, e.currentTarget as any);
+      if (!local) return;
+
+      updatePointFromSlice(drag.pointId, drag.axis, local.x, local.y);
+    },
+    [updatePointFromSlice],
+  );
+
+  const onPointPointerUp = useCallback((e: React.PointerEvent<SVGCircleElement>) => {
+    const drag = dragRef.current;
+    if (!drag) return;
+    if (drag.pointerId !== e.pointerId) return;
+
+    dragRef.current = null;
+
+    try {
+      (e.currentTarget as any).releasePointerCapture?.(e.pointerId);
+    } catch {
+      // ignore
+    }
+  }, []);
 
   return (
     <>
@@ -1154,6 +1342,17 @@ export default function Coords3dViewer({
                     )}, ${fmtCoord((pickedPoint3d as any).z)})`}
                   />
                 )}
+                {pickedPoint3d && (
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    color="error"
+                    onClick={() => removePointById(String((pickedPoint3d as any).id))}
+                    sx={{ textTransform: "none" }}
+                  >
+                    Remove picked
+                  </Button>
+                )}
               </Box>
             </Box>
           </Paper>
@@ -1265,12 +1464,12 @@ export default function Coords3dViewer({
                   )
                 ) : sliceLayoutMode === "triple" ? (
                   !tomoDims ||
-                    maxSliceZ == null ||
-                    maxSliceX == null ||
-                    maxSliceY == null ||
-                    sliceIndex == null ||
-                    sliceIndexX == null ||
-                    sliceIndexY == null ? (
+                  maxSliceZ == null ||
+                  maxSliceX == null ||
+                  maxSliceY == null ||
+                  sliceIndex == null ||
+                  sliceIndexX == null ||
+                  sliceIndexY == null ? (
                     <Box sx={{ m: "auto" }}>
                       <Typography variant="body2" color="text.secondary">
                         Tomogram dimensions are not available for orthogonal views.
@@ -1309,6 +1508,12 @@ export default function Coords3dViewer({
                               viewBox={`0 0 ${tomoDimsX} ${tomoDimsZ}`}
                               preserveAspectRatio="xMidYMid meet"
                               style={{ width: "100%", height: "100%", display: "block" }}
+                              onClick={(e) => {
+                                if (!editMode) return;
+                                const local = getSvgLocalPoint(e.clientX, e.clientY, e.currentTarget as any);
+                                if (!local) return;
+                                addPointFromSlice("y", local.x, local.y);
+                              }}
                             >
                               {debugGrid ? (
                                 <SyntheticGrid width={tomoDimsX} height={tomoDimsZ} />
@@ -1348,7 +1553,7 @@ export default function Coords3dViewer({
                                 />
                               )}
                               {slicePointsSvgY.map((p) => {
-                                const isPicked = pickedPointId != null && String(p.pointId) === String(pickedPointId);
+                                const isPicked = pickedPointKey != null && String(p.pointId) === String(pickedPointKey);
                                 const hitStroke = Math.max(10, p.strokeWidth * 10);
 
                                 return (
@@ -1361,11 +1566,15 @@ export default function Coords3dViewer({
                                       stroke="transparent"
                                       strokeWidth={hitStroke}
                                       pointerEvents="stroke"
-                                      style={{ cursor: "pointer" }}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
+                                      style={{ cursor: editMode ? "move" : "pointer" }}
+                                      onClick={(ev) => {
+                                        ev.stopPropagation();
                                         handleSliceCirclePick(p);
                                       }}
+                                      onPointerDown={onPointPointerDown(p, "y")}
+                                      onPointerMove={onPointPointerMove}
+                                      onPointerUp={onPointPointerUp}
+                                      onPointerCancel={onPointPointerUp}
                                     />
 
                                     <circle
@@ -1412,6 +1621,12 @@ export default function Coords3dViewer({
                               viewBox={`0 0 ${tomoDimsX} ${tomoDimsY}`}
                               preserveAspectRatio="xMidYMid meet"
                               style={{ width: "100%", height: "100%", display: "block" }}
+                              onClick={(e) => {
+                                if (!editMode) return;
+                                const local = getSvgLocalPoint(e.clientX, e.clientY, e.currentTarget as any);
+                                if (!local) return;
+                                addPointFromSlice("z", local.x, local.y);
+                              }}
                             >
                               {debugGrid ? (
                                 <SyntheticGrid width={tomoDimsX} height={tomoDimsY} />
@@ -1424,7 +1639,7 @@ export default function Coords3dViewer({
                                   height={tomoDimsY}
                                   preserveAspectRatio="none"
                                   style={{
-                                    filter: `brightness(${brightness}) contrast(${contrast})`, pointerEvents: "none",
+                                    filter: `brightness(${brightness}) contrast(${contrast})`,
                                   }}
                                 />
                               )}
@@ -1451,7 +1666,7 @@ export default function Coords3dViewer({
                                 />
                               )}
                               {slicePointsSvgZ.map((p) => {
-                                const isPicked = pickedPointId != null && String(p.pointId) === String(pickedPointId);
+                                const isPicked = pickedPointKey != null && String(p.pointId) === String(pickedPointKey);
                                 const hitStroke = Math.max(10, p.strokeWidth * 10);
 
                                 return (
@@ -1461,15 +1676,18 @@ export default function Coords3dViewer({
                                       cy={p.y}
                                       r={p.radius * 2.2 * pointSizeFactor}
                                       fill="none"
-                                      stroke="white"
-                                      strokeOpacity={0}
+                                      stroke="transparent"
                                       strokeWidth={hitStroke}
                                       pointerEvents="stroke"
-                                      style={{ cursor: "pointer" }}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
+                                      style={{ cursor: editMode ? "move" : "pointer" }}
+                                      onClick={(ev) => {
+                                        ev.stopPropagation();
                                         handleSliceCirclePick(p);
                                       }}
+                                      onPointerDown={onPointPointerDown(p, "z")}
+                                      onPointerMove={onPointPointerMove}
+                                      onPointerUp={onPointPointerUp}
+                                      onPointerCancel={onPointPointerUp}
                                     />
 
                                     <circle
@@ -1517,7 +1735,16 @@ export default function Coords3dViewer({
                               preserveAspectRatio="xMidYMid meet"
                               style={{ width: "100%", height: "100%", display: "block" }}
                             >
-                              <g transform={`translate(${tomoDimsZ}, 0) rotate(90)`}>
+                              <g
+                                transform={`translate(${tomoDimsZ}, 0) rotate(90)`}
+                                onClick={(e) => {
+                                  if (!editMode) return;
+                                  e.stopPropagation();
+                                  const local = getSvgLocalPoint(e.clientX, e.clientY, e.currentTarget as any);
+                                  if (!local) return;
+                                  addPointFromSlice("x", local.x, local.y);
+                                }}
+                              >
                                 {debugGrid ? (
                                   <SyntheticGrid width={tomoDimsY} height={tomoDimsZ} />
                                 ) : (
@@ -1556,7 +1783,7 @@ export default function Coords3dViewer({
                                   />
                                 )}
                                 {slicePointsSvgX.map((p) => {
-                                  const isPicked = pickedPointId != null && String(p.pointId) === String(pickedPointId);
+                                  const isPicked = pickedPointKey != null && String(p.pointId) === String(pickedPointKey);
                                   const hitStroke = Math.max(10, p.strokeWidth * 10);
 
                                   return (
@@ -1569,11 +1796,15 @@ export default function Coords3dViewer({
                                         stroke="transparent"
                                         strokeWidth={hitStroke}
                                         pointerEvents="stroke"
-                                        style={{ cursor: "pointer" }}
-                                        onClick={(e) => {
-                                          e.stopPropagation();
+                                        style={{ cursor: editMode ? "move" : "pointer" }}
+                                        onClick={(ev) => {
+                                          ev.stopPropagation();
                                           handleSliceCirclePick(p);
                                         }}
+                                        onPointerDown={onPointPointerDown(p, "x")}
+                                        onPointerMove={onPointPointerMove}
+                                        onPointerUp={onPointPointerUp}
+                                        onPointerCancel={onPointPointerUp}
                                       />
 
                                       <circle
@@ -1630,6 +1861,12 @@ export default function Coords3dViewer({
                           viewBox={`0 0 ${tomoDimsX} ${tomoDimsY}`}
                           preserveAspectRatio="xMidYMid meet"
                           style={{ width: "100%", height: "100%", display: "block" }}
+                          onClick={(e) => {
+                            if (!editMode) return;
+                            const local = getSvgLocalPoint(e.clientX, e.clientY, e.currentTarget as any);
+                            if (!local) return;
+                            addPointFromSlice("z", local.x, local.y);
+                          }}
                         >
                           {debugGrid ? (
                             <SyntheticGrid width={tomoDimsX} height={tomoDimsY} />
@@ -1642,13 +1879,12 @@ export default function Coords3dViewer({
                               height={tomoDimsY}
                               preserveAspectRatio="none"
                               style={{
-                                filter: `brightness(${brightness}) contrast(${contrast})`, pointerEvents: "none",
-
+                                filter: `brightness(${brightness}) contrast(${contrast})`,
                               }}
                             />
                           )}
                           {slicePointsSvgZ.map((p) => {
-                            const isPicked = pickedPointId != null && String(p.pointId) === String(pickedPointId);
+                            const isPicked = pickedPointKey != null && String(p.pointId) === String(pickedPointKey);
                             const hitStroke = Math.max(10, p.strokeWidth * 10);
 
                             return (
@@ -1658,15 +1894,18 @@ export default function Coords3dViewer({
                                   cy={p.y}
                                   r={p.radius * 2.2 * pointSizeFactor}
                                   fill="none"
-                                  stroke="white"
-                                  strokeOpacity={0}
+                                  stroke="transparent"
                                   strokeWidth={hitStroke}
                                   pointerEvents="stroke"
-                                  style={{ cursor: "pointer" }}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
+                                  style={{ cursor: editMode ? "move" : "pointer" }}
+                                  onClick={(ev) => {
+                                    ev.stopPropagation();
                                     handleSliceCirclePick(p);
                                   }}
+                                  onPointerDown={onPointPointerDown(p, "z")}
+                                  onPointerMove={onPointPointerMove}
+                                  onPointerUp={onPointPointerUp}
+                                  onPointerCancel={onPointPointerUp}
                                 />
 
                                 <circle
@@ -1838,6 +2077,23 @@ export default function Coords3dViewer({
                               <ToggleButton value="triple">3 Views</ToggleButton>
                             </ToggleButtonGroup>
                           </Box>
+                        )}
+
+                        {viewMode === "slice" && (
+                          <FormControlLabel
+                            control={
+                              <Switch
+                                size="small"
+                                checked={editMode}
+                                onChange={(_, checked) => setEditMode(checked)}
+                              />
+                            }
+                            label="Edit points (add/move)"
+                            sx={{
+                              mt: 0.25,
+                              "& .MuiFormControlLabel-label": { fontSize: "0.8rem" },
+                            }}
+                          />
                         )}
 
                         {viewMode === "slice" && (
@@ -2534,27 +2790,6 @@ function FullSlicePanel({
   );
 }
 
-function OverlayLabel({ text }: { text: string }) {
-  return (
-    <Box
-      sx={{
-        position: "absolute",
-        top: 4,
-        left: 6,
-        px: 0.5,
-        py: 0.25,
-        borderRadius: 0.5,
-        bgcolor: "rgba(0,0,0,0.45)",
-        zIndex: 1,
-      }}
-    >
-      <Typography variant="caption" sx={{ color: "common.white" }}>
-        {text}
-      </Typography>
-    </Box>
-  );
-}
-
 function CenteredProgress({ text }: { text: string }) {
   return (
     <Box sx={{ m: "auto", display: "flex", gap: 1, alignItems: "center" }}>
@@ -2740,9 +2975,7 @@ function Coords3dMap3dView({
   const controlsRef = useRef<OrbitControls | null>(null);
   const rootRef = useRef<THREE.Group | null>(null);
 
-  const pointsRef = useRef<THREE.Points<THREE.BufferGeometry, THREE.PointsMaterial> | null>(
-    null,
-  );
+  const pointsRef = useRef<THREE.Points<THREE.BufferGeometry, THREE.PointsMaterial> | null>(null);
   const pointsMaterialRef = useRef<THREE.PointsMaterial | null>(null);
 
   const pickedMarkerRef = useRef<THREE.Group | null>(null);
@@ -2780,7 +3013,6 @@ function Coords3dMap3dView({
     () => ({ x: dims[0], y: dims[1], z: dims[2] }),
     [dims],
   );
-
 
   const axisSigns = useMemo(
     () =>
@@ -2981,39 +3213,7 @@ function Coords3dMap3dView({
         }),
       );
 
-      const ringRadius = 0.00; // Rings over the sphere
-      const ringTube = 0.000;
-
-      const ringMat = new THREE.MeshBasicMaterial({
-        color: 0xffffff,
-        transparent: true,
-        opacity: 0.85,
-        depthWrite: false,
-        depthTest: true,
-      });
-
-      const ringXy = new THREE.Mesh(
-        new THREE.TorusGeometry(ringRadius, ringTube, 12, 64),
-        ringMat.clone(),
-      );
-
-      const ringXz = new THREE.Mesh(
-        new THREE.TorusGeometry(ringRadius, ringTube, 12, 64),
-        ringMat.clone(),
-      );
-      ringXz.rotation.x = Math.PI / 2;
-
-      const ringYz = new THREE.Mesh(
-        new THREE.TorusGeometry(ringRadius, ringTube, 12, 64),
-        ringMat.clone(),
-      );
-      ringYz.rotation.y = Math.PI / 2;
-
       markerGroup.add(markerSphere);
-      markerGroup.add(ringXy);
-      markerGroup.add(ringXz);
-      markerGroup.add(ringYz);
-
       markerGroup.visible = false;
       markerGroup.renderOrder = 20;
 
@@ -3049,7 +3249,6 @@ function Coords3dMap3dView({
         if (!rendererNow || !sceneNow || !cameraNow || !controlsNow) return;
 
         controlsNow.update();
-
         rendererNow.render(sceneNow, cameraNow);
         rafRef.current = requestAnimationFrame(animate);
       };
@@ -3239,7 +3438,7 @@ function Coords3dMap3dView({
     dimsObj.x,
     dimsObj.y,
     dimsObj.z,
-    axisSigns
+    axisSigns,
   ]);
 
   useEffect(() => {
@@ -3533,8 +3732,6 @@ function Coords3dMap3dView({
           {mappingSummary}
         </Typography>
       </Box>
-
-      <OverlayLabel text="3D Map" />
     </Box>
   );
 }
@@ -3599,7 +3796,7 @@ function applyPlaneTexture(args: {
     },
     undefined,
     () => {
-      // ignore texture loading errors and keep colored plane fallback
+      // ignore texture loading errors
     },
   );
 }
@@ -3720,8 +3917,6 @@ function chooseAxisMapper(values: number[], dim: number): AxisMapper {
     }
   }
 
-
-
   if (fracZero >= 0.85 && fracZero >= fracOne + 0.08) {
     if (dim > 4 && span < 2.0 && fracNorm01 > 0.8) {
       return { mode: "normalized01", min: 0, max: 1, dim };
@@ -3773,7 +3968,6 @@ function mapPointAxisToLocalSigned(v: number, mapper: AxisMapper, axisSign: numb
   return applyAxisSignToLocal(mapPointAxisToLocal(v, mapper), axisSign);
 }
 
-
 function pointAxisToNearestSliceIndex(v: number, mapper: AxisMapper): number {
   if (!Number.isFinite(v)) return 0;
   const local = mapPointAxisToLocal(v, mapper);
@@ -3786,7 +3980,6 @@ function localToNearestVoxelIndex(local: number, dim: number): number {
   const t = clampFloatNum(local + 0.5, 0, 1);
   return clampInt(Math.round(t * dim - 0.5), 0, Math.max(0, dim - 1));
 }
-
 
 function voxelToLocalZeroBased(v: number, dim: number): number {
   if (!Number.isFinite(v)) return 0;
@@ -3863,9 +4056,9 @@ function hexToRgba(hex: string, alpha: number) {
   const normalized =
     h.length === 3
       ? h
-        .split("")
-        .map((c) => c + c)
-        .join("")
+          .split("")
+          .map((c) => c + c)
+          .join("")
       : h;
   const num = parseInt(normalized, 16);
   const r = (num >> 16) & 255;
