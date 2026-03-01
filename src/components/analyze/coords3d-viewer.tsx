@@ -281,36 +281,6 @@ export default function Coords3dViewer({
   const dragRef = useRef<{ pointId: string; axis: "x" | "y" | "z"; pointerId: number } | null>(
     null,
   );
-  const hotkeyScopeRef = useRef<HTMLDivElement | null>(null);
-  const lastViewerInteractAtRef = useRef<number>(0);
-
-  const singlePanRef = useRef<{
-    pointerId: number;
-    startClientX: number;
-    startClientY: number;
-    startViewBox: { x: number; y: number; w: number; h: number };
-    moved: boolean;
-  } | null>(null);
-  const [singleIsPanning, setSingleIsPanning] = useState<boolean>(false);
-
-
-  const suppressSingleClickRef = useRef<boolean>(false);
-
-  const markViewerActive = useCallback(() => {
-    lastViewerInteractAtRef.current = performance.now();
-    const el = hotkeyScopeRef.current;
-    if (!el) return;
-    try {
-      el.focus({ preventScroll: true });
-    } catch {
-      try {
-        el.focus();
-      } catch {
-        // ignore
-      }
-    }
-  }, []);
-
 
   const [viewMode, setViewMode] = useState<ViewMode>("slice");
   const [sliceLayoutMode, setSliceLayoutMode] = useState<SliceLayoutMode>("single");
@@ -348,6 +318,18 @@ export default function Coords3dViewer({
   const [sliceLoading, setSliceLoading] = useState(false);
   const sliceAbortRef = useRef<AbortController | null>(null);
   const sliceReqIdRef = useRef(0);
+
+  const [singleViewBox, setSingleViewBox] = useState<{ x: number; y: number; w: number; h: number } | null>(
+    null,
+  );
+  const [isSinglePanning, setIsSinglePanning] = useState<boolean>(false);
+  const singlePanRef = useRef<{
+    pointerId: number;
+    clientX: number;
+    clientY: number;
+    startViewBox: { x: number; y: number; w: number; h: number };
+  } | null>(null);
+  const singleSuppressClickRef = useRef<boolean>(false);
 
   const [sliceIndexX, setSliceIndexX] = useState<number | null>(null);
   const [sliceIndexY, setSliceIndexY] = useState<number | null>(null);
@@ -661,189 +643,24 @@ export default function Coords3dViewer({
     setSliceIndexY(Math.round(maxSliceY / 2));
   }, [selectedTomoId, maxSliceY]);
 
-  const [singleViewBox, setSingleViewBox] = useState<{ x: number; y: number; w: number; h: number } | null>(
-    null,
-  );
-
   useEffect(() => {
-    if (
-      viewMode !== "slice" ||
-      sliceLayoutMode !== "single" ||
-      tomoDimsX == null ||
-      tomoDimsY == null
-    ) {
+    if (!tomoDims) {
       setSingleViewBox(null);
-      singlePanRef.current = null;
       return;
     }
 
-    setSingleViewBox({ x: 0, y: 0, w: tomoDimsX, h: tomoDimsY });
-    singlePanRef.current = null;
-  }, [viewMode, sliceLayoutMode, selectedTomoId, tomoDimsX, tomoDimsY]);
+    // initSingleViewBoxToFullExtent
+    setSingleViewBox((prev) => {
+      const full = { x: 0, y: 0, w: tomoDims[0], h: tomoDims[1] };
+      if (!prev) return full;
 
-  const singleSliceViewBoxStr = useMemo(() => {
-    const w = tomoDimsX ?? 1;
-    const h = tomoDimsY ?? 1;
-    const vb = singleViewBox ?? { x: 0, y: 0, w, h };
-    return `${vb.x} ${vb.y} ${vb.w} ${vb.h}`;
-  }, [singleViewBox, tomoDimsX, tomoDimsY]);
-
-  const clampSingleViewBox = useCallback(
-    (box: { x: number; y: number; w: number; h: number }) => {
-      if (tomoDimsX == null || tomoDimsY == null) return box;
-
-      const w = Math.max(1, Math.min(tomoDimsX, box.w));
-      const h = Math.max(1, Math.min(tomoDimsY, box.h));
-      const maxX = Math.max(0, tomoDimsX - w);
-      const maxY = Math.max(0, tomoDimsY - h);
-      const x = Math.max(0, Math.min(maxX, box.x));
-      const y = Math.max(0, Math.min(maxY, box.y));
+      const w = clampFloatNum(prev.w, 20, full.w);
+      const h = clampFloatNum(prev.h, 20, full.h);
+      const x = clampFloatNum(prev.x, 0, Math.max(0, full.w - w));
+      const y = clampFloatNum(prev.y, 0, Math.max(0, full.h - h));
       return { x, y, w, h };
-    },
-    [tomoDimsX, tomoDimsY],
-  );
-
-  const handleSingleSliceDoubleClick = useCallback(() => {
-    if (tomoDimsX == null || tomoDimsY == null) return;
-    setSingleViewBox({ x: 0, y: 0, w: tomoDimsX, h: tomoDimsY });
-  }, [tomoDimsX, tomoDimsY]);
-
-  const handleSingleSliceWheel = useCallback(
-    (e: React.WheelEvent<SVGSVGElement>) => {
-      if (viewMode !== "slice" || sliceLayoutMode !== "single") return;
-      if (tomoDimsX == null || tomoDimsY == null) return;
-
-      markViewerActive();
-      e.preventDefault();
-      e.stopPropagation();
-      (e.nativeEvent as any).stopImmediatePropagation?.();
-
-      const local = getSvgLocalPoint(e.clientX, e.clientY, e.currentTarget as any);
-      const cx = local?.x ?? tomoDimsX / 2;
-      const cy = local?.y ?? tomoDimsY / 2;
-
-      const delta = Math.max(-300, Math.min(300, e.deltaY));
-      const zoomFactor = Math.exp(delta * 0.0016);
-
-      setSingleViewBox((prev) => {
-        const current = prev ?? { x: 0, y: 0, w: tomoDimsX, h: tomoDimsY };
-        const aspect = current.w / Math.max(1e-6, current.h);
-
-        const minW = Math.max(16, Math.min(tomoDimsX, tomoDimsY) * 0.01);
-        let newW = current.w * zoomFactor;
-        newW = Math.max(minW, Math.min(tomoDimsX, newW));
-        let newH = newW / Math.max(1e-6, aspect);
-
-        if (newH > tomoDimsY) {
-          newH = tomoDimsY;
-          newW = newH * aspect;
-        }
-
-        const rx = (cx - current.x) / Math.max(1e-6, current.w);
-        const ry = (cy - current.y) / Math.max(1e-6, current.h);
-
-        const next = {
-          x: cx - rx * newW,
-          y: cy - ry * newH,
-          w: newW,
-          h: newH,
-        };
-
-        return clampSingleViewBox(next);
-      });
-    },
-    [viewMode, sliceLayoutMode, tomoDimsX, tomoDimsY, clampSingleViewBox, markViewerActive],
-  );
-
-  const handleSingleSlicePointerDown = useCallback(
-    (e: React.PointerEvent<SVGSVGElement>) => {
-      if (viewMode !== "slice" || sliceLayoutMode !== "single") return;
-      if (tomoDimsX == null || tomoDimsY == null) return;
-
-      const tag = ((e.target as any)?.tagName || "").toString().toLowerCase();
-      const isCircleTarget = tag === "circle";
-      const isRightButton = e.button === 2;
-      const isMiddleButton = e.button === 1;
-      const isLeftButton = e.button === 0;
-      const isShiftPan = isLeftButton && e.shiftKey;
-      const isLeftPan = isLeftButton && !editMode && !isCircleTarget;
-
-      if (!isRightButton && !isMiddleButton && !isShiftPan && !isLeftPan) return;
-
-      markViewerActive();
-      e.preventDefault();
-      e.stopPropagation();
-      (e.nativeEvent as any).stopImmediatePropagation?.();
-
-      const currentBox = singleViewBox ?? { x: 0, y: 0, w: tomoDimsX, h: tomoDimsY };
-
-      singlePanRef.current = {
-        pointerId: e.pointerId,
-        startClientX: e.clientX,
-        startClientY: e.clientY,
-        startViewBox: currentBox,
-        moved: false,
-      };
-      setSingleIsPanning(true);
-
-      try {
-        (e.currentTarget as any).setPointerCapture?.(e.pointerId);
-      } catch {
-        // ignore
-      }
-    },
-    [viewMode, sliceLayoutMode, tomoDimsX, tomoDimsY, singleViewBox, editMode, markViewerActive, setSingleIsPanning],
-  );
-
-  const handleSingleSlicePointerMove = useCallback(
-    (e: React.PointerEvent<SVGSVGElement>) => {
-      const drag = singlePanRef.current;
-      if (!drag) return;
-      if (drag.pointerId !== e.pointerId) return;
-      if (tomoDimsX == null || tomoDimsY == null) return;
-
-      e.preventDefault();
-      e.stopPropagation();
-      (e.nativeEvent as any).stopImmediatePropagation?.();
-
-      const rect = (e.currentTarget as any).getBoundingClientRect?.();
-      if (!rect || rect.width <= 0 || rect.height <= 0) return;
-
-      const dxPx = e.clientX - drag.startClientX;
-      const dyPx = e.clientY - drag.startClientY;
-
-      if (Math.abs(dxPx) + Math.abs(dyPx) > 3) drag.moved = true;
-
-      const dxSvg = (dxPx / rect.width) * drag.startViewBox.w;
-      const dySvg = (dyPx / rect.height) * drag.startViewBox.h;
-
-      const next = clampSingleViewBox({
-        x: drag.startViewBox.x - dxSvg,
-        y: drag.startViewBox.y - dySvg,
-        w: drag.startViewBox.w,
-        h: drag.startViewBox.h,
-      });
-
-      setSingleViewBox(next);
-    },
-    [tomoDimsX, tomoDimsY, clampSingleViewBox],
-  );
-
-  const handleSingleSlicePointerUp = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
-    const drag = singlePanRef.current;
-    if (!drag) return;
-    if (drag.pointerId !== e.pointerId) return;
-
-    if (drag.moved) suppressSingleClickRef.current = true;
-    singlePanRef.current = null;
-    setSingleIsPanning(false);
-
-    try {
-      (e.currentTarget as any).releasePointerCapture?.(e.pointerId);
-    } catch {
-      // ignore
-    }
-  }, [setSingleIsPanning]);
+    });
+  }, [tomoDims]);
 
 
   const slicePoints = useMemo(() => {
@@ -1175,13 +992,8 @@ export default function Coords3dViewer({
         setSliceIndexY(clampInt(targetY, 0, maxSliceY));
       }
     },
-    [markViewerActive, syncPick3dToSlices, maxSliceX, maxSliceY, maxSliceZ],
+    [syncPick3dToSlices, maxSliceX, maxSliceY, maxSliceZ],
   );
-
-
-  useEffect(() => {
-    if (pickedPoint3d) markViewerActive();
-  }, [pickedPoint3d, markViewerActive]);
 
   const showXAxisSlider =
     viewMode === "map3d" || (viewMode === "slice" && sliceLayoutMode === "triple");
@@ -1198,6 +1010,25 @@ export default function Coords3dViewer({
     return `new-${Date.now()}-${newPointSeqRef.current}`;
   };
 
+  const hotkeyScopeRef = useRef<HTMLDivElement | null>(null);
+  const singleSvgRef = useRef<SVGSVGElement | null>(null);
+  const lastViewerInteractAtRef = useRef<number>(0);
+
+  const markViewerActive = useCallback(() => {
+    lastViewerInteractAtRef.current = Date.now();
+    const el = hotkeyScopeRef.current;
+    if (!el) return;
+    try {
+      el.focus({ preventScroll: true } as any);
+    } catch {
+      try {
+        el.focus();
+      } catch {
+        // ignore
+      }
+    }
+  }, []);
+
   const removePointById = useCallback((pointId: string) => {
     setCoordsDraft((prev) => prev.filter((p: any) => String(p?.id) !== String(pointId)));
     setPickedPoint3d((prev) => {
@@ -1206,47 +1037,66 @@ export default function Coords3dViewer({
     });
   }, []);
 
+useEffect(() => {
+    const isEditableTarget = (el: HTMLElement | null) => {
+      if (!el) return false;
+      const tag = el.tagName?.toUpperCase?.() ?? "";
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+      return Boolean((el as any).isContentEditable);
+    };
 
-  useEffect(() => {
-    const isViewerHotkeyActive = () => {
-      const now = Date.now();
-      if (now - lastViewerInteractAtRef.current < 8000) return true;
+    const isActionKey = (key: string) => {
+      return (
+        key === "Delete" ||
+        key === "Backspace" ||
+        key === " " ||
+        key === "Space" ||
+        key === "Spacebar"
+      );
+    };
 
-      const scope = hotkeyScopeRef.current;
-      const active = document.activeElement;
-      return !!(scope && active && scope.contains(active));
+    const swallowEvent = (ev: KeyboardEvent) => {
+      // keepHotkeysInsideViewer
+      ev.preventDefault();
+      ev.stopPropagation();
+      ev.stopImmediatePropagation();
     };
 
     const onKeyDownCapture = (ev: KeyboardEvent) => {
-        if (!isViewerHotkeyActive()) return;
-
-      const key = ev.key;
-      const isDelete = key === "Delete" || key === "Backspace";
-      const isSpace = ev.code === "Space" || key === " " || key === "Spacebar";
-      if (!isDelete && !isSpace) return;
+      if (!isHotkeyWindowActive(hotkeyScopeRef.current, lastViewerInteractAtRef.current, document.activeElement as HTMLElement | null)) return;
+      if (!isActionKey(ev.key)) return;
 
       const active = document.activeElement as HTMLElement | null;
-      if (
-        active &&
-        (active.tagName === "INPUT" ||
-          active.tagName === "TEXTAREA" ||
-          (active as any).isContentEditable)
-      ) {
-        return;
-      }
+      if (isEditableTarget(active)) return;
 
-      ev.preventDefault();
-      ev.stopPropagation();
-      (ev as any).stopImmediatePropagation?.();
+      swallowEvent(ev);
 
-      if (pickedPoint3d) {
+      if (!pickedPoint3d) return;
       removePointById(String((pickedPoint3d as any).id));
-    }
+      markViewerActive();
+    };
+
+    const onKeyUpCapture = (ev: KeyboardEvent) => {
+      if (!isHotkeyWindowActive(hotkeyScopeRef.current, lastViewerInteractAtRef.current, document.activeElement as HTMLElement | null)) return;
+      if (!isActionKey(ev.key)) return;
+
+      const active = document.activeElement as HTMLElement | null;
+      if (isEditableTarget(active)) return;
+
+      swallowEvent(ev);
+      markViewerActive();
     };
 
     window.addEventListener("keydown", onKeyDownCapture, true);
-    return () => window.removeEventListener("keydown", onKeyDownCapture, true);
-  }, [pickedPoint3d, removePointById]);
+    window.addEventListener("keyup", onKeyUpCapture, true);
+
+    return () => {
+      window.removeEventListener("keydown", onKeyDownCapture, true);
+      window.removeEventListener("keyup", onKeyUpCapture, true);
+    };
+  }, [pickedPoint3d, removePointById, markViewerActive]);
+
+  
 
 
   const addPointFromSlice = useCallback(
@@ -1355,13 +1205,178 @@ export default function Coords3dViewer({
         z: Math.round(Number((hit as any).z)),
       });
     },
-    [filteredPoints, handlePickPoint3d, markViewerActive],
+    [filteredPoints, handlePickPoint3d],
   );
+
+  const clampSingleViewBox = useCallback(
+    (vb: { x: number; y: number; w: number; h: number }) => {
+      if (!tomoDims) return vb;
+      const fullW = tomoDims[0];
+      const fullH = tomoDims[1];
+
+      const minSize = 20;
+      const w = clampFloatNum(vb.w, minSize, fullW);
+      const h = clampFloatNum(vb.h, minSize, fullH);
+
+      const x = clampFloatNum(vb.x, 0, Math.max(0, fullW - w));
+      const y = clampFloatNum(vb.y, 0, Math.max(0, fullH - h));
+      return { x, y, w, h };
+    },
+    [tomoDims],
+  );
+
+  const handleSingleSliceWheel = useCallback(
+    (e: React.WheelEvent<SVGSVGElement>) => {
+      markViewerActive();
+      if (!singleViewBox || !tomoDims) return;
+
+      // preventPageScrollWhileZooming
+      e.preventDefault();
+      e.stopPropagation();
+
+      const local = getSvgLocalPoint(e.clientX, e.clientY, e.currentTarget as any);
+      if (!local) return;
+
+      const zoomIntensity = 0.0015;
+      const delta = e.deltaY;
+      const factor = Math.exp(delta * zoomIntensity);
+
+      const newW = singleViewBox.w * factor;
+      const newH = singleViewBox.h * factor;
+
+      const tx = (local.x - singleViewBox.x) / Math.max(1e-6, singleViewBox.w);
+      const ty = (local.y - singleViewBox.y) / Math.max(1e-6, singleViewBox.h);
+
+      const next = clampSingleViewBox({
+        x: local.x - tx * newW,
+        y: local.y - ty * newH,
+        w: newW,
+        h: newH,
+      });
+
+      setSingleViewBox(next);
+    },
+    [markViewerActive, singleViewBox, tomoDims, clampSingleViewBox],
+  );
+
+  const handleSingleSliceDoubleClick = useCallback((e?: React.MouseEvent<SVGSVGElement>) => {
+    e?.preventDefault();
+    e?.stopPropagation();
+    markViewerActive();
+    if (!tomoDimsX || !tomoDimsY) return;
+
+    singlePanRef.current = null;
+    setIsSinglePanning(false);
+
+    setSingleViewBox(
+      clampSingleViewBox({
+        x: 0,
+        y: 0,
+        w: tomoDimsX,
+        h: tomoDimsY,
+      }),
+    );
+
+    singleSuppressClickRef.current = true;
+    window.setTimeout(() => {
+      singleSuppressClickRef.current = false;
+    }, 0);
+  }, [markViewerActive, tomoDimsX, tomoDimsY, clampSingleViewBox]);
+
+  const handleSingleSlicePointerDown = useCallback(
+    (e: React.PointerEvent<SVGSVGElement>) => {
+      markViewerActive();
+      if (!singleViewBox) return;
+
+      const isLeft = e.button === 0;
+      const isRight = e.button === 2;
+      const isMiddle = e.button === 1;
+      const panAllowed = editMode ? isRight || isMiddle : isLeft || isRight || isMiddle;
+      if (!panAllowed) {
+        // preventReactFlowNodeSelectionOnSimpleClicks
+        e.stopPropagation();
+        return;
+      }
+
+      // preventContextMenuAndDragConflicts
+      e.preventDefault();
+      e.stopPropagation();
+
+      singleSuppressClickRef.current = false;
+      singlePanRef.current = {
+        pointerId: e.pointerId,
+        clientX: e.clientX,
+        clientY: e.clientY,
+        startViewBox: singleViewBox,
+      };
+
+      setIsSinglePanning(true);
+
+      try {
+        (e.currentTarget as any).setPointerCapture?.(e.pointerId);
+      } catch {
+        // ignore
+      }
+    },
+    [markViewerActive, singleViewBox, editMode],
+  );
+
+  const handleSingleSlicePointerMove = useCallback(
+    (e: React.PointerEvent<SVGSVGElement>) => {
+      const pan = singlePanRef.current;
+      if (!pan || pan.pointerId !== e.pointerId) return;
+
+      const localStart = getSvgLocalPoint(pan.clientX, pan.clientY, e.currentTarget as any);
+      const localNow = getSvgLocalPoint(e.clientX, e.clientY, e.currentTarget as any);
+      if (!localStart || !localNow) return;
+
+      const dx = localNow.x - localStart.x;
+      const dy = localNow.y - localStart.y;
+
+      const movedClient =
+        Math.abs(e.clientX - pan.clientX) + Math.abs(e.clientY - pan.clientY);
+      if (movedClient > 3) singleSuppressClickRef.current = true;
+
+      const next = clampSingleViewBox({
+        x: pan.startViewBox.x - dx,
+        y: pan.startViewBox.y - dy,
+        w: pan.startViewBox.w,
+        h: pan.startViewBox.h,
+      });
+
+      setSingleViewBox(next);
+    },
+    [clampSingleViewBox],
+  );
+
+  const handleSingleSlicePointerUp = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
+    const pan = singlePanRef.current;
+    if (!pan || pan.pointerId !== e.pointerId) return;
+
+    singlePanRef.current = null;
+    setIsSinglePanning(false);
+
+    try {
+      (e.currentTarget as any).releasePointerCapture?.(e.pointerId);
+    } catch {
+      // ignore
+    }
+
+    // releaseSuppressFlagSoon
+    window.setTimeout(() => {
+      singleSuppressClickRef.current = false;
+    }, 0);
+  }, []);
+
+  const handleSingleSliceContextMenu = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
+    if (!editMode && !singlePanRef.current) return;
+    e.preventDefault();
+    e.stopPropagation();
+  }, [editMode]);
 
   const onPointPointerDown = useCallback(
     (circle: SliceCircle, axis: "x" | "y" | "z") =>
       (e: React.PointerEvent<SVGCircleElement>) => {
-        markViewerActive();
         e.stopPropagation();
         if (!editMode) return;
 
@@ -1377,7 +1392,7 @@ export default function Coords3dViewer({
           pointerId: e.pointerId,
         };
       },
-    [editMode, markViewerActive],
+    [editMode],
   );
 
   const onPointPointerMove = useCallback(
@@ -1413,10 +1428,8 @@ export default function Coords3dViewer({
       <Box
         ref={hotkeyScopeRef}
         tabIndex={0}
-                onPointerDownCapture={markViewerActive}
+        onPointerDownCapture={() => markViewerActive()}
         sx={{
-          outline: "none",
-          "&:focus-visible": { outline: "none" },
           display: "flex",
           height: "100%",
           width: "100%",
@@ -1877,35 +1890,28 @@ export default function Coords3dViewer({
                             <CenteredHint text="No Z slice image." />
                           ) : (
                             <svg
-                              viewBox={singleSliceViewBoxStr}
-                              preserveAspectRatio="xMidYMid meet"
-                              style={{
-                                width: "100%",
-                                height: "100%",
-                                display: "block",
-                                touchAction: "none",
-                                cursor: singleIsPanning ? "grabbing" : editMode ? "crosshair" : "grab",
-                              }}
-                              onWheel={handleSingleSliceWheel}
-                              onDoubleClick={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                handleSingleSliceDoubleClick();
-                              }}
-                              onPointerDown={handleSingleSlicePointerDown}
-                              onPointerMove={handleSingleSlicePointerMove}
-                              onPointerUp={handleSingleSlicePointerUp}
-                              onPointerCancel={handleSingleSlicePointerUp}
-                              onContextMenu={(e) => {
-                                e.preventDefault();
-                              }}
-                              onClick={(e) => {
-                                markViewerActive();
-                                if (suppressSingleClickRef.current) {
-                                  suppressSingleClickRef.current = false;
-                                  return;
-                                }
-                                if (!editMode) return;
+                          viewBox={
+                            singleViewBox
+                              ? `${singleViewBox.x} ${singleViewBox.y} ${singleViewBox.w} ${singleViewBox.h}`
+                              : `0 0 ${tomoDimsX} ${tomoDimsY}`
+                          }
+                          preserveAspectRatio="xMidYMid meet"
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                            display: "block",
+                            cursor: isSinglePanning ? "grabbing" : editMode ? "crosshair" : "grab",
+                            touchAction: "none",
+                          }}
+                          onWheel={handleSingleSliceWheel}
+                          onPointerDown={handleSingleSlicePointerDown}
+                          onPointerMove={handleSingleSlicePointerMove}
+                          onPointerUp={handleSingleSlicePointerUp}
+                          onPointerCancel={handleSingleSlicePointerUp}
+                          onContextMenu={handleSingleSliceContextMenu}
+                          onClick={(e) => {
+                            if (singleSuppressClickRef.current) return;
+                            if (!editMode) return;
                                 const local = getSvgLocalPoint(
                                   e.clientX,
                                   e.clientY,
@@ -2159,28 +2165,35 @@ export default function Coords3dViewer({
                         <CenteredHint text="No slice image." />
                       ) : (
                         <svg
-                          viewBox={singleSliceViewBoxStr}
+                          ref={singleSvgRef}
+                          viewBox={
+                            singleViewBox
+                              ? `${singleViewBox.x} ${singleViewBox.y} ${singleViewBox.w} ${singleViewBox.h}`
+                              : `0 0 ${tomoDimsX} ${tomoDimsY}`
+                          }
                           preserveAspectRatio="xMidYMid meet"
                           style={{
                             width: "100%",
                             height: "100%",
                             display: "block",
                             touchAction: "none",
+                            cursor: isSinglePanning ? "grabbing" : editMode ? "crosshair" : "grab",
                           }}
                           onWheel={handleSingleSliceWheel}
                           onPointerDown={handleSingleSlicePointerDown}
                           onPointerMove={handleSingleSlicePointerMove}
                           onPointerUp={handleSingleSlicePointerUp}
                           onPointerCancel={handleSingleSlicePointerUp}
-                          onContextMenu={(e) => {
-                            e.preventDefault();
-                          }}
+                          onContextMenu={handleSingleSliceContextMenu}
+                          onDoubleClick={handleSingleSliceDoubleClick}
                           onClick={(e) => {
-                            if (suppressSingleClickRef.current) {
-                              suppressSingleClickRef.current = false;
+                            e.stopPropagation();
+                            markViewerActive();
+                            if (singleSuppressClickRef.current) return;
+                            if (!editMode) {
+                              setPickedPoint3d(null);
                               return;
                             }
-                            if (!editMode) return;
                             const local = getSvgLocalPoint(
                               e.clientX,
                               e.clientY,
@@ -2507,8 +2520,7 @@ export default function Coords3dViewer({
                           />
                         </Box>
 
-                        
-                      </Box>
+                        </Box>
                     ) : (
                       <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5, ml: 1 }}>
                         <Typography variant="subtitle2">Appearance</Typography>
@@ -2561,11 +2573,23 @@ export default function Coords3dViewer({
                           <>
                             <Divider />
                             <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-                              <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                              <Box
+                                sx={{
+                                  display: "flex",
+                                  justifyContent: "space-between",
+                                  alignItems: "center",
+                                }}
+                              >
                                 <Typography variant="caption" color="text.secondary">
-                                  Intensity
+                                  Slice intensity
                                 </Typography>
-                                <Button size="small" onClick={() => { setBrightness(1.0); setContrast(1.0); }}>
+                                <Button
+                                  size="small"
+                                  onClick={() => {
+                                    setBrightness(1.0);
+                                    setContrast(1.0);
+                                  }}
+                                >
                                   Reset
                                 </Button>
                               </Box>
@@ -2579,7 +2603,16 @@ export default function Coords3dViewer({
                                     <HelpCircle size={14} />
                                   </IconButton>
                                 </Box>
-                                <Slider size="small" value={brightness} min={0.3} max={2.5} step={0.05} onChange={(_, v) => setBrightness(v as number)} valueLabelDisplay="auto" valueLabelFormat={(v) => `${Math.round((v as number) * 100)}%`} />
+                                <Slider
+                                  size="small"
+                                  value={brightness}
+                                  min={0.3}
+                                  max={2.5}
+                                  step={0.05}
+                                  onChange={(_, v) => setBrightness(v as number)}
+                                  valueLabelDisplay="auto"
+                                  valueLabelFormat={(v) => `${Math.round((v as number) * 100)}%`}
+                                />
                               </Box>
 
                               <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
@@ -2591,12 +2624,22 @@ export default function Coords3dViewer({
                                     <HelpCircle size={14} />
                                   </IconButton>
                                 </Box>
-                                <Slider size="small" value={contrast} min={0.3} max={2.5} step={0.05} onChange={(_, v) => setContrast(v as number)} valueLabelDisplay="auto" valueLabelFormat={(v) => `${Math.round((v as number) * 100)}%`} />
+                                <Slider
+                                  size="small"
+                                  value={contrast}
+                                  min={0.3}
+                                  max={2.5}
+                                  step={0.05}
+                                  onChange={(_, v) => setContrast(v as number)}
+                                  valueLabelDisplay="auto"
+                                  valueLabelFormat={(v) => `${Math.round((v as number) * 100)}%`}
+                                />
                               </Box>
                             </Box>
                           </>
                         )}
-{viewMode === "map3d" && (
+
+                        {viewMode === "map3d" && (
                           <>
                             <Divider />
                             <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
@@ -3374,6 +3417,7 @@ function Coords3dMap3dView({
 
       localPointerDownHandler = (e: PointerEvent) => {
         if (e.button !== 0) return;
+        e.stopPropagation();
         pickPointAtEvent(e);
       };
       renderer.domElement.addEventListener("pointerdown", localPointerDownHandler);
@@ -4203,6 +4247,33 @@ function hexToRgba(hex: string, alpha: number) {
   const b = num & 255;
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
+
+function isHotkeyWindowActive(
+  scopeEl: HTMLElement | null,
+  lastInteractAt: number,
+  activeEl: HTMLElement | null,
+): boolean {
+  if (!scopeEl) return false;
+
+  if (activeEl && scopeEl.contains(activeEl)) return true;
+
+  // Do not steal global hotkeys while typing in an input/textarea/contenteditable element.
+  if (
+    activeEl &&
+    (activeEl.tagName === "INPUT" ||
+      activeEl.tagName === "TEXTAREA" ||
+      (activeEl as any).isContentEditable)
+  ) {
+    return false;
+  }
+
+  // Grace window: after interacting with the viewer, keep hotkeys routed here briefly,
+  // even if focus is temporarily stolen by the surrounding ReactFlow node.
+  const graceMs = 2500;
+  const now = performance.now();
+  return now - lastInteractAt < graceMs;
+}
+
 
 function useThrottledValue<T>(value: T, delayMs: number): T {
   const [throttled, setThrottled] = useState<T>(value);
