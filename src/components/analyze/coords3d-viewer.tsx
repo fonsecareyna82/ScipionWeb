@@ -62,6 +62,11 @@ type SliceLayoutMode = "single" | "triple";
 
 type SliceCircle = {
   key: string;
+  pointId: string;
+  sourceIndex: number;
+  rawX: number;
+  rawY: number;
+  rawZ: number;
   x: number;
   y: number;
   radius: number;
@@ -210,6 +215,11 @@ function computeSlicePointsSvg(
 
     neighbors.push({
       key: String(p.id ?? `${idx}-${p.x}-${p.y}-${p.z}`),
+      pointId: String(p.id ?? idx),
+      sourceIndex: idx,
+      rawX: Number(p.x),
+      rawY: Number(p.y),
+      rawZ: Number(p.z),
       x: cx,
       y: cy,
       radius: rFinal,
@@ -533,6 +543,17 @@ export default function Coords3dViewer({
     }
     return null;
   }, [tomos, selectedTomoId]);
+
+  const tomoDimsObj = useMemo(() => {
+    if (!tomoDims) return null;
+    return { x: tomoDims[0], y: tomoDims[1], z: tomoDims[2] };
+  }, [tomoDims]);
+
+  const slicePointMapper = useMemo(() => {
+    if (!tomoDimsObj) return null;
+    return buildPointMapper(filteredPoints, tomoDimsObj);
+  }, [filteredPoints, tomoDimsObj]);
+
 
   const tomoDimsX = tomoDims ? tomoDims[0] : null;
   const tomoDimsY = tomoDims ? tomoDims[1] : null;
@@ -936,6 +957,21 @@ export default function Coords3dViewer({
   const showYAxisSlider =
     viewMode === "map3d" || (viewMode === "slice" && sliceLayoutMode === "triple");
 
+  const pickedPointId = useMemo(() => {
+    const id = (pickedPoint3d as any)?.id;
+    return id == null ? null : String(id);
+  }, [pickedPoint3d]);
+
+  const handleSliceCirclePick = useCallback(
+    (circle: Pick<SliceCircle, "pointId">) => {
+      const hit = filteredPoints.find((pt: any) => String(pt?.id) === String(circle.pointId));
+      if (!hit) return;
+
+      handlePickPoint3d(hit);
+    },
+    [filteredPoints, handlePickPoint3d],
+  );
+
   return (
     <>
       <Box
@@ -1224,6 +1260,7 @@ export default function Coords3dViewer({
                       showAxes3d={showAxes3d}
                       resetCameraNonce={reset3dCameraNonce}
                       onPickPoint={handlePickPoint3d}
+                      pickedPoint={pickedPoint3d}
                     />
                   )
                 ) : sliceLayoutMode === "triple" ? (
@@ -1310,18 +1347,51 @@ export default function Coords3dViewer({
                                   opacity={0.95}
                                 />
                               )}
-                              {slicePointsSvgY.map((p) => (
-                                <circle
-                                  key={p.key}
-                                  cx={p.x}
-                                  cy={p.y}
-                                  r={p.radius * 2.2 * pointSizeFactor}
-                                  fill="none"
-                                  stroke={pointColor}
-                                  strokeWidth={p.strokeWidth}
-                                  opacity={p.opacity}
-                                />
-                              ))}
+                              {slicePointsSvgY.map((p) => {
+                                const isPicked = pickedPointId != null && String(p.pointId) === String(pickedPointId);
+                                const hitStroke = Math.max(10, p.strokeWidth * 10);
+
+                                return (
+                                  <g key={p.key}>
+                                    <circle
+                                      cx={p.x}
+                                      cy={p.y}
+                                      r={p.radius * 2.2 * pointSizeFactor}
+                                      fill="none"
+                                      stroke="transparent"
+                                      strokeWidth={hitStroke}
+                                      pointerEvents="stroke"
+                                      style={{ cursor: "pointer" }}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleSliceCirclePick(p);
+                                      }}
+                                    />
+
+                                    <circle
+                                      cx={p.x}
+                                      cy={p.y}
+                                      r={p.radius * 2.2 * pointSizeFactor}
+                                      fill="none"
+                                      stroke={isPicked ? "#f59e0b" : pointColor}
+                                      strokeWidth={isPicked ? Math.max(2, p.strokeWidth * 2.2) : p.strokeWidth}
+                                      opacity={isPicked ? 1 : p.opacity}
+                                      pointerEvents="none"
+                                    />
+
+                                    {isPicked && (
+                                      <circle
+                                        cx={p.x}
+                                        cy={p.y}
+                                        r={Math.max(2.2, p.radius * 0.65 * pointSizeFactor)}
+                                        fill="#f59e0b"
+                                        opacity={0.95}
+                                        pointerEvents="none"
+                                      />
+                                    )}
+                                  </g>
+                                );
+                              })}
                             </svg>
                           )}
                         </SlicePanelCard>
@@ -1354,7 +1424,7 @@ export default function Coords3dViewer({
                                   height={tomoDimsY}
                                   preserveAspectRatio="none"
                                   style={{
-                                    filter: `brightness(${brightness}) contrast(${contrast})`,
+                                    filter: `brightness(${brightness}) contrast(${contrast})`, pointerEvents: "none",
                                   }}
                                 />
                               )}
@@ -1380,18 +1450,52 @@ export default function Coords3dViewer({
                                   opacity={0.95}
                                 />
                               )}
-                              {slicePointsSvgZ.map((p) => (
-                                <circle
-                                  key={p.key}
-                                  cx={p.x}
-                                  cy={p.y}
-                                  r={p.radius * 2.2 * pointSizeFactor}
-                                  fill="none"
-                                  stroke={pointColor}
-                                  strokeWidth={p.strokeWidth}
-                                  opacity={p.opacity}
-                                />
-                              ))}
+                              {slicePointsSvgZ.map((p) => {
+                                const isPicked = pickedPointId != null && String(p.pointId) === String(pickedPointId);
+                                const hitStroke = Math.max(10, p.strokeWidth * 10);
+
+                                return (
+                                  <g key={p.key}>
+                                    <circle
+                                      cx={p.x}
+                                      cy={p.y}
+                                      r={p.radius * 2.2 * pointSizeFactor}
+                                      fill="none"
+                                      stroke="white"
+                                      strokeOpacity={0}
+                                      strokeWidth={hitStroke}
+                                      pointerEvents="stroke"
+                                      style={{ cursor: "pointer" }}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleSliceCirclePick(p);
+                                      }}
+                                    />
+
+                                    <circle
+                                      cx={p.x}
+                                      cy={p.y}
+                                      r={p.radius * 2.2 * pointSizeFactor}
+                                      fill="none"
+                                      stroke={isPicked ? "#f59e0b" : pointColor}
+                                      strokeWidth={isPicked ? Math.max(2, p.strokeWidth * 2.2) : p.strokeWidth}
+                                      opacity={isPicked ? 1 : p.opacity}
+                                      pointerEvents="none"
+                                    />
+
+                                    {isPicked && (
+                                      <circle
+                                        cx={p.x}
+                                        cy={p.y}
+                                        r={Math.max(2.2, p.radius * 0.65 * pointSizeFactor)}
+                                        fill="#f59e0b"
+                                        opacity={0.95}
+                                        pointerEvents="none"
+                                      />
+                                    )}
+                                  </g>
+                                );
+                              })}
                             </svg>
                           )}
                         </SlicePanelCard>
@@ -1451,18 +1555,51 @@ export default function Coords3dViewer({
                                     opacity={0.95}
                                   />
                                 )}
-                                {slicePointsSvgX.map((p) => (
-                                  <circle
-                                    key={p.key}
-                                    cx={p.x}
-                                    cy={p.y}
-                                    r={p.radius * 2.2 * pointSizeFactor}
-                                    fill="none"
-                                    stroke={pointColor}
-                                    strokeWidth={p.strokeWidth}
-                                    opacity={p.opacity}
-                                  />
-                                ))}
+                                {slicePointsSvgX.map((p) => {
+                                  const isPicked = pickedPointId != null && String(p.pointId) === String(pickedPointId);
+                                  const hitStroke = Math.max(10, p.strokeWidth * 10);
+
+                                  return (
+                                    <g key={p.key}>
+                                      <circle
+                                        cx={p.x}
+                                        cy={p.y}
+                                        r={p.radius * 2.2 * pointSizeFactor}
+                                        fill="none"
+                                        stroke="transparent"
+                                        strokeWidth={hitStroke}
+                                        pointerEvents="stroke"
+                                        style={{ cursor: "pointer" }}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleSliceCirclePick(p);
+                                        }}
+                                      />
+
+                                      <circle
+                                        cx={p.x}
+                                        cy={p.y}
+                                        r={p.radius * 2.2 * pointSizeFactor}
+                                        fill="none"
+                                        stroke={isPicked ? "#f59e0b" : pointColor}
+                                        strokeWidth={isPicked ? Math.max(2, p.strokeWidth * 2.2) : p.strokeWidth}
+                                        opacity={isPicked ? 1 : p.opacity}
+                                        pointerEvents="none"
+                                      />
+
+                                      {isPicked && (
+                                        <circle
+                                          cx={p.x}
+                                          cy={p.y}
+                                          r={Math.max(2.2, p.radius * 0.65 * pointSizeFactor)}
+                                          fill="#f59e0b"
+                                          opacity={0.95}
+                                          pointerEvents="none"
+                                        />
+                                      )}
+                                    </g>
+                                  );
+                                })}
                               </g>
                             </svg>
                           )}
@@ -1505,22 +1642,57 @@ export default function Coords3dViewer({
                               height={tomoDimsY}
                               preserveAspectRatio="none"
                               style={{
-                                filter: `brightness(${brightness}) contrast(${contrast})`,
+                                filter: `brightness(${brightness}) contrast(${contrast})`, pointerEvents: "none",
+
                               }}
                             />
                           )}
-                          {slicePointsSvgZ.map((p) => (
-                            <circle
-                              key={p.key}
-                              cx={p.x}
-                              cy={p.y}
-                              r={p.radius * 2.2 * pointSizeFactor}
-                              fill="none"
-                              stroke={pointColor}
-                              strokeWidth={p.strokeWidth}
-                              opacity={p.opacity}
-                            />
-                          ))}
+                          {slicePointsSvgZ.map((p) => {
+                            const isPicked = pickedPointId != null && String(p.pointId) === String(pickedPointId);
+                            const hitStroke = Math.max(10, p.strokeWidth * 10);
+
+                            return (
+                              <g key={p.key}>
+                                <circle
+                                  cx={p.x}
+                                  cy={p.y}
+                                  r={p.radius * 2.2 * pointSizeFactor}
+                                  fill="none"
+                                  stroke="white"
+                                  strokeOpacity={0}
+                                  strokeWidth={hitStroke}
+                                  pointerEvents="stroke"
+                                  style={{ cursor: "pointer" }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleSliceCirclePick(p);
+                                  }}
+                                />
+
+                                <circle
+                                  cx={p.x}
+                                  cy={p.y}
+                                  r={p.radius * 2.2 * pointSizeFactor}
+                                  fill="none"
+                                  stroke={isPicked ? "#f59e0b" : pointColor}
+                                  strokeWidth={isPicked ? Math.max(2, p.strokeWidth * 2.2) : p.strokeWidth}
+                                  opacity={isPicked ? 1 : p.opacity}
+                                  pointerEvents="none"
+                                />
+
+                                {isPicked && (
+                                  <circle
+                                    cx={p.x}
+                                    cy={p.y}
+                                    r={Math.max(2.2, p.radius * 0.65 * pointSizeFactor)}
+                                    fill="#f59e0b"
+                                    opacity={0.95}
+                                    pointerEvents="none"
+                                  />
+                                )}
+                              </g>
+                            );
+                          })}
                         </svg>
                       )}
                     </FullSlicePanel>
@@ -1589,511 +1761,511 @@ export default function Coords3dViewer({
               )}
             </Box>
 
-          {viewMode !== "metadata" && (
-            <>
-              <Divider orientation="vertical" flexItem />
-              <Box
-                sx={{
-                  flexBasis: 340,
-                  flexShrink: 0,
-                  minWidth: 340,
-                  maxWidth: 340,
-                  p: 1.25,
-                  display: "flex",
-                  flexDirection: "column",
-                  bgcolor: "background.paper",
-                  gap: 1,
-                  minHeight: 0,
-                  overflow: "hidden",
-                }}
-              >
-                <Tabs
-                  value={rightPanelTab}
-                  onChange={(_, v) => setRightPanelTab(v as RightPanelTab)}
-                  variant="fullWidth"
-                  sx={{ minHeight: 36 }}
-                >
-                  <Tab
-                    value="filters"
-                    label="Filters"
-                    sx={{ fontSize: "0.75rem", minHeight: 36, py: 0.5 }}
-                  />
-                  <Tab
-                    value="appearance"
-                    label="Appearance"
-                    sx={{ fontSize: "0.75rem", minHeight: 36, py: 0.5 }}
-                  />
-                </Tabs>
-
+            {viewMode !== "metadata" && (
+              <>
+                <Divider orientation="vertical" flexItem />
                 <Box
                   sx={{
-                    flex: 1,
-                    minHeight: 0,
-                    overflowY: "auto",
-                    overflowX: "hidden",
-                    pr: 1,
-                    pb: 2,
-                    mt: 0.5,
+                    flexBasis: 340,
+                    flexShrink: 0,
+                    minWidth: 340,
+                    maxWidth: 340,
+                    p: 1.25,
                     display: "flex",
                     flexDirection: "column",
-                    gap: 1.5,
+                    bgcolor: "background.paper",
+                    gap: 1,
+                    minHeight: 0,
+                    overflow: "hidden",
                   }}
                 >
-                  <Divider />
+                  <Tabs
+                    value={rightPanelTab}
+                    onChange={(_, v) => setRightPanelTab(v as RightPanelTab)}
+                    variant="fullWidth"
+                    sx={{ minHeight: 36 }}
+                  >
+                    <Tab
+                      value="filters"
+                      label="Filters"
+                      sx={{ fontSize: "0.75rem", minHeight: 36, py: 0.5 }}
+                    />
+                    <Tab
+                      value="appearance"
+                      label="Appearance"
+                      sx={{ fontSize: "0.75rem", minHeight: 36, py: 0.5 }}
+                    />
+                  </Tabs>
 
-                  {rightPanelTab === "filters" ? (
-                    <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5, ml: 1 }}>
-                      <Typography variant="subtitle2">Filters</Typography>
+                  <Box
+                    sx={{
+                      flex: 1,
+                      minHeight: 0,
+                      overflowY: "auto",
+                      overflowX: "hidden",
+                      pr: 1,
+                      pb: 2,
+                      mt: 0.5,
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 1.5,
+                    }}
+                  >
+                    <Divider />
 
-                      {viewMode === "slice" && (
+                    {rightPanelTab === "filters" ? (
+                      <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5, ml: 1 }}>
+                        <Typography variant="subtitle2">Filters</Typography>
+
+                        {viewMode === "slice" && (
+                          <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
+                            <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
+                              <Typography variant="caption" color="text.secondary">
+                                Slice layout
+                              </Typography>
+                              <IconButton size="small" onClick={() => openHelp("sliceLayout")}>
+                                <HelpCircle size={14} />
+                              </IconButton>
+                            </Box>
+                            <ToggleButtonGroup
+                              size="small"
+                              exclusive
+                              fullWidth
+                              value={sliceLayoutMode}
+                              onChange={(_, v) => v && setSliceLayoutMode(v)}
+                            >
+                              <ToggleButton value="single">Single</ToggleButton>
+                              <ToggleButton value="triple">3 Views</ToggleButton>
+                            </ToggleButtonGroup>
+                          </Box>
+                        )}
+
+                        {viewMode === "slice" && (
+                          <FormControlLabel
+                            control={
+                              <Switch
+                                size="small"
+                                checked={debugGrid}
+                                onChange={(_, checked) => setDebugGrid(checked)}
+                              />
+                            }
+                            label="Debug synthetic grid"
+                            sx={{
+                              mt: 0.25,
+                              "& .MuiFormControlLabel-label": { fontSize: "0.75rem" },
+                            }}
+                          />
+                        )}
+
+                        <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                          <Typography variant="caption" color="text.secondary">
+                            {viewMode === "map3d" ? "Slices / planes" : "Slices"}
+                          </Typography>
+
+                          <SliderField
+                            label="Slice (Z)"
+                            helpKey="sliceIndex"
+                            openHelp={openHelp}
+                            value={sliceIndex}
+                            max={maxSliceZ}
+                            onChange={setSliceIndex}
+                          />
+
+                          {showXAxisSlider && (
+                            <SliderField
+                              label="Slice (X)"
+                              helpKey="sliceIndex"
+                              openHelp={openHelp}
+                              value={sliceIndexX}
+                              max={maxSliceX}
+                              onChange={setSliceIndexX}
+                            />
+                          )}
+
+                          {showYAxisSlider && (
+                            <SliderField
+                              label="Slice (Y)"
+                              helpKey="sliceIndex"
+                              openHelp={openHelp}
+                              value={sliceIndexY}
+                              max={maxSliceY}
+                              onChange={setSliceIndexY}
+                            />
+                          )}
+                        </Box>
+
+                        <Divider />
+
                         <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
                           <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
                             <Typography variant="caption" color="text.secondary">
-                              Slice layout
+                              Class filter
                             </Typography>
-                            <IconButton size="small" onClick={() => openHelp("sliceLayout")}>
+                            <IconButton size="small" onClick={() => openHelp("classFilter")}>
                               <HelpCircle size={14} />
                             </IconButton>
                           </Box>
-                          <ToggleButtonGroup
+                          <TextField
                             size="small"
-                            exclusive
-                            fullWidth
-                            value={sliceLayoutMode}
-                            onChange={(_, v) => v && setSliceLayoutMode(v)}
+                            select
+                            value={selectedClass}
+                            onChange={(e) => setSelectedClass(e.target.value)}
+                            SelectProps={{ MenuProps: { disablePortal: true } }}
                           >
-                            <ToggleButton value="single">Single</ToggleButton>
-                            <ToggleButton value="triple">3 Views</ToggleButton>
-                          </ToggleButtonGroup>
+                            {classOptions.map((opt) => (
+                              <MenuItem key={opt} value={opt}>
+                                {opt === "all" ? "All" : opt}
+                              </MenuItem>
+                            ))}
+                          </TextField>
                         </Box>
-                      )}
 
-                      {viewMode === "slice" && (
-                        <FormControlLabel
-                          control={
-                            <Switch
-                              size="small"
-                              checked={debugGrid}
-                              onChange={(_, checked) => setDebugGrid(checked)}
-                            />
-                          }
-                          label="Debug synthetic grid"
-                          sx={{
-                            mt: 0.25,
-                            "& .MuiFormControlLabel-label": { fontSize: "0.75rem" },
-                          }}
-                        />
-                      )}
+                        <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
+                          <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
+                            <Typography variant="caption" color="text.secondary">
+                              Score range
+                            </Typography>
+                            <IconButton size="small" onClick={() => openHelp("scoreFilter")}>
+                              <HelpCircle size={14} />
+                            </IconButton>
+                          </Box>
+                          {scoreMinMax ? (
+                            <>
+                              <Slider
+                                size="small"
+                                value={scoreRange ?? [scoreMinMax[0], scoreMinMax[1]]}
+                                min={scoreMinMax[0]}
+                                max={scoreMinMax[1]}
+                                step={(scoreMinMax[1] - scoreMinMax[0]) / 200 || 0.001}
+                                onChange={(_, v) => setScoreRange(v as [number, number])}
+                                valueLabelDisplay="auto"
+                                valueLabelFormat={(v) => (v as number).toFixed(3)}
+                              />
+                              <Box sx={{ display: "flex", justifyContent: "space-between" }}>
+                                <Typography variant="caption" color="text.secondary">
+                                  {scoreMinMax[0].toFixed(3)}
+                                </Typography>
+                                <Typography variant="caption" color="text.secondary">
+                                  {scoreMinMax[1].toFixed(3)}
+                                </Typography>
+                              </Box>
+                            </>
+                          ) : (
+                            <Typography variant="caption" color="text.secondary">
+                              No numeric scores available.
+                            </Typography>
+                          )}
+                        </Box>
 
-                      <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-                        <Typography variant="caption" color="text.secondary">
-                          {viewMode === "map3d" ? "Slices / planes" : "Slices"}
-                        </Typography>
-
-                        <SliderField
-                          label="Slice (Z)"
-                          helpKey="sliceIndex"
-                          openHelp={openHelp}
-                          value={sliceIndex}
-                          max={maxSliceZ}
-                          onChange={setSliceIndex}
-                        />
-
-                        {showXAxisSlider && (
-                          <SliderField
-                            label="Slice (X)"
-                            helpKey="sliceIndex"
-                            openHelp={openHelp}
-                            value={sliceIndexX}
-                            max={maxSliceX}
-                            onChange={setSliceIndexX}
+                        <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
+                          <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
+                            <Typography variant="caption" color="text.secondary">
+                              Max points
+                            </Typography>
+                            <IconButton size="small" onClick={() => openHelp("maxPoints")}>
+                              <HelpCircle size={14} />
+                            </IconButton>
+                          </Box>
+                          <Slider
+                            size="small"
+                            value={maxPoints}
+                            min={1000}
+                            max={200000}
+                            step={1000}
+                            onChange={(_, v) => setMaxPoints(v as number)}
+                            valueLabelDisplay="auto"
+                            valueLabelFormat={(v) =>
+                              (v as number).toLocaleString("en-US", {
+                                maximumFractionDigits: 0,
+                              })
+                            }
                           />
-                        )}
-
-                        {showYAxisSlider && (
-                          <SliderField
-                            label="Slice (Y)"
-                            helpKey="sliceIndex"
-                            openHelp={openHelp}
-                            value={sliceIndexY}
-                            max={maxSliceY}
-                            onChange={setSliceIndexY}
-                          />
-                        )}
-                      </Box>
-
-                      <Divider />
-
-                      <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
-                        <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
-                          <Typography variant="caption" color="text.secondary">
-                            Class filter
-                          </Typography>
-                          <IconButton size="small" onClick={() => openHelp("classFilter")}>
-                            <HelpCircle size={14} />
-                          </IconButton>
                         </Box>
-                        <TextField
-                          size="small"
-                          select
-                          value={selectedClass}
-                          onChange={(e) => setSelectedClass(e.target.value)}
-                          SelectProps={{ MenuProps: { disablePortal: true } }}
-                        >
-                          {classOptions.map((opt) => (
-                            <MenuItem key={opt} value={opt}>
-                              {opt === "all" ? "All" : opt}
-                            </MenuItem>
-                          ))}
-                        </TextField>
-                      </Box>
 
-                      <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
-                        <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
-                          <Typography variant="caption" color="text.secondary">
-                            Score range
-                          </Typography>
-                          <IconButton size="small" onClick={() => openHelp("scoreFilter")}>
-                            <HelpCircle size={14} />
-                          </IconButton>
-                        </Box>
-                        {scoreMinMax ? (
+                        {viewMode === "slice" && (
                           <>
-                            <Slider
-                              size="small"
-                              value={scoreRange ?? [scoreMinMax[0], scoreMinMax[1]]}
-                              min={scoreMinMax[0]}
-                              max={scoreMinMax[1]}
-                              step={(scoreMinMax[1] - scoreMinMax[0]) / 200 || 0.001}
-                              onChange={(_, v) => setScoreRange(v as [number, number])}
-                              valueLabelDisplay="auto"
-                              valueLabelFormat={(v) => (v as number).toFixed(3)}
-                            />
-                            <Box sx={{ display: "flex", justifyContent: "space-between" }}>
-                              <Typography variant="caption" color="text.secondary">
-                                {scoreMinMax[0].toFixed(3)}
-                              </Typography>
-                              <Typography variant="caption" color="text.secondary">
-                                {scoreMinMax[1].toFixed(3)}
-                              </Typography>
+                            <Divider />
+                            <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                              <Box
+                                sx={{
+                                  display: "flex",
+                                  justifyContent: "space-between",
+                                  alignItems: "center",
+                                }}
+                              >
+                                <Typography variant="caption" color="text.secondary">
+                                  Intensity
+                                </Typography>
+                                <Button
+                                  size="small"
+                                  onClick={() => {
+                                    setBrightness(1.0);
+                                    setContrast(1.0);
+                                  }}
+                                >
+                                  Reset
+                                </Button>
+                              </Box>
+
+                              <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
+                                <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
+                                  <Typography variant="caption" color="text.secondary">
+                                    Brightness
+                                  </Typography>
+                                  <IconButton size="small" onClick={() => openHelp("brightness")}>
+                                    <HelpCircle size={14} />
+                                  </IconButton>
+                                </Box>
+                                <Slider
+                                  size="small"
+                                  value={brightness}
+                                  min={0.3}
+                                  max={2.5}
+                                  step={0.05}
+                                  onChange={(_, v) => setBrightness(v as number)}
+                                  valueLabelDisplay="auto"
+                                  valueLabelFormat={(v) =>
+                                    `${Math.round((v as number) * 100)}%`
+                                  }
+                                />
+                              </Box>
+
+                              <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
+                                <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
+                                  <Typography variant="caption" color="text.secondary">
+                                    Contrast
+                                  </Typography>
+                                  <IconButton size="small" onClick={() => openHelp("contrast")}>
+                                    <HelpCircle size={14} />
+                                  </IconButton>
+                                </Box>
+                                <Slider
+                                  size="small"
+                                  value={contrast}
+                                  min={0.3}
+                                  max={2.5}
+                                  step={0.05}
+                                  onChange={(_, v) => setContrast(v as number)}
+                                  valueLabelDisplay="auto"
+                                  valueLabelFormat={(v) =>
+                                    `${Math.round((v as number) * 100)}%`
+                                  }
+                                />
+                              </Box>
                             </Box>
                           </>
-                        ) : (
-                          <Typography variant="caption" color="text.secondary">
-                            No numeric scores available.
-                          </Typography>
                         )}
                       </Box>
+                    ) : (
+                      <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5, ml: 1 }}>
+                        <Typography variant="subtitle2">Appearance</Typography>
 
-                      <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
-                        <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
-                          <Typography variant="caption" color="text.secondary">
-                            Max points
-                          </Typography>
-                          <IconButton size="small" onClick={() => openHelp("maxPoints")}>
-                            <HelpCircle size={14} />
-                          </IconButton>
-                        </Box>
-                        <Slider
-                          size="small"
-                          value={maxPoints}
-                          min={1000}
-                          max={200000}
-                          step={1000}
-                          onChange={(_, v) => setMaxPoints(v as number)}
-                          valueLabelDisplay="auto"
-                          valueLabelFormat={(v) =>
-                            (v as number).toLocaleString("en-US", {
-                              maximumFractionDigits: 0,
-                            })
-                          }
-                        />
-                      </Box>
-
-                      {viewMode === "slice" && (
-                        <>
-                          <Divider />
-                          <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-                            <Box
-                              sx={{
-                                display: "flex",
-                                justifyContent: "space-between",
-                                alignItems: "center",
-                              }}
-                            >
-                              <Typography variant="caption" color="text.secondary">
-                                Intensity
-                              </Typography>
-                              <Button
-                                size="small"
-                                onClick={() => {
-                                  setBrightness(1.0);
-                                  setContrast(1.0);
-                                }}
-                              >
-                                Reset
-                              </Button>
-                            </Box>
-
-                            <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
-                              <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
-                                <Typography variant="caption" color="text.secondary">
-                                  Brightness
-                                </Typography>
-                                <IconButton size="small" onClick={() => openHelp("brightness")}>
-                                  <HelpCircle size={14} />
-                                </IconButton>
-                              </Box>
-                              <Slider
-                                size="small"
-                                value={brightness}
-                                min={0.3}
-                                max={2.5}
-                                step={0.05}
-                                onChange={(_, v) => setBrightness(v as number)}
-                                valueLabelDisplay="auto"
-                                valueLabelFormat={(v) =>
-                                  `${Math.round((v as number) * 100)}%`
-                                }
-                              />
-                            </Box>
-
-                            <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
-                              <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
-                                <Typography variant="caption" color="text.secondary">
-                                  Contrast
-                                </Typography>
-                                <IconButton size="small" onClick={() => openHelp("contrast")}>
-                                  <HelpCircle size={14} />
-                                </IconButton>
-                              </Box>
-                              <Slider
-                                size="small"
-                                value={contrast}
-                                min={0.3}
-                                max={2.5}
-                                step={0.05}
-                                onChange={(_, v) => setContrast(v as number)}
-                                valueLabelDisplay="auto"
-                                valueLabelFormat={(v) =>
-                                  `${Math.round((v as number) * 100)}%`
-                                }
-                              />
-                            </Box>
+                        <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
+                          <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
+                            <Typography variant="caption" color="text.secondary">
+                              Point color
+                            </Typography>
+                            <IconButton size="small" onClick={() => openHelp("pointColor")}>
+                              <HelpCircle size={14} />
+                            </IconButton>
                           </Box>
-                        </>
-                      )}
-                    </Box>
-                  ) : (
-                    <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5, ml: 1 }}>
-                      <Typography variant="subtitle2">Appearance</Typography>
-
-                      <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
-                        <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
-                          <Typography variant="caption" color="text.secondary">
-                            Point color
-                          </Typography>
-                          <IconButton size="small" onClick={() => openHelp("pointColor")}>
-                            <HelpCircle size={14} />
-                          </IconButton>
+                          <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.75 }}>
+                            {POINT_COLOR_PALETTE.map((c) => {
+                              const isSelected = c.value === pointColor;
+                              return (
+                                <Box
+                                  key={c.value}
+                                  onClick={() => setPointColor(c.value)}
+                                  sx={{
+                                    width: 20,
+                                    height: 20,
+                                    borderRadius: "50%",
+                                    cursor: "pointer",
+                                    border: isSelected
+                                      ? "2px solid #111827"
+                                      : "1px solid #d1d5db",
+                                    boxShadow: isSelected ? 1 : "none",
+                                    backgroundColor: c.value,
+                                  }}
+                                  title={c.label}
+                                />
+                              );
+                            })}
+                          </Box>
                         </Box>
-                        <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.75 }}>
-                          {POINT_COLOR_PALETTE.map((c) => {
-                            const isSelected = c.value === pointColor;
-                            return (
-                              <Box
-                                key={c.value}
-                                onClick={() => setPointColor(c.value)}
-                                sx={{
-                                  width: 20,
-                                  height: 20,
-                                  borderRadius: "50%",
-                                  cursor: "pointer",
-                                  border: isSelected
-                                    ? "2px solid #111827"
-                                    : "1px solid #d1d5db",
-                                  boxShadow: isSelected ? 1 : "none",
-                                  backgroundColor: c.value,
-                                }}
-                                title={c.label}
-                              />
-                            );
-                          })}
-                        </Box>
-                      </Box>
 
-                      <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
-                        <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
-                          <Typography variant="caption" color="text.secondary">
-                            Point size (global)
-                          </Typography>
-                          <IconButton size="small" onClick={() => openHelp("pointSize")}>
-                            <HelpCircle size={14} />
-                          </IconButton>
+                        <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
+                          <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
+                            <Typography variant="caption" color="text.secondary">
+                              Point size (global)
+                            </Typography>
+                            <IconButton size="small" onClick={() => openHelp("pointSize")}>
+                              <HelpCircle size={14} />
+                            </IconButton>
+                          </Box>
+                          <Slider
+                            size="small"
+                            value={pointSizeFactor}
+                            min={0.3}
+                            max={3}
+                            step={0.05}
+                            onChange={(_, v) => setPointSizeFactor(v as number)}
+                            valueLabelDisplay="auto"
+                            valueLabelFormat={(v) => `${(v as number).toFixed(2)}×`}
+                          />
                         </Box>
-                        <Slider
-                          size="small"
-                          value={pointSizeFactor}
-                          min={0.3}
-                          max={3}
-                          step={0.05}
-                          onChange={(_, v) => setPointSizeFactor(v as number)}
-                          valueLabelDisplay="auto"
-                          valueLabelFormat={(v) => `${(v as number).toFixed(2)}×`}
-                        />
-                      </Box>
 
-                      {viewMode === "map3d" && (
-                        <>
-                          <Divider />
-                          <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
-                            <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
-                              <Typography variant="caption" color="text.secondary">
-                                3D color mode
-                              </Typography>
-                              <IconButton
+                        {viewMode === "map3d" && (
+                          <>
+                            <Divider />
+                            <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
+                              <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
+                                <Typography variant="caption" color="text.secondary">
+                                  3D color mode
+                                </Typography>
+                                <IconButton
+                                  size="small"
+                                  onClick={() => openHelp("pointColorMode3d")}
+                                >
+                                  <HelpCircle size={14} />
+                                </IconButton>
+                              </Box>
+                              <TextField
                                 size="small"
-                                onClick={() => openHelp("pointColorMode3d")}
+                                select
+                                value={pointColorMode3d}
+                                onChange={(e) =>
+                                  setPointColorMode3d(e.target.value as PointColorMode3d)
+                                }
+                                SelectProps={{ MenuProps: { disablePortal: true } }}
                               >
-                                <HelpCircle size={14} />
-                              </IconButton>
+                                <MenuItem value="fixed">Fixed</MenuItem>
+                                <MenuItem value="class">Class</MenuItem>
+                                <MenuItem value="score">Score</MenuItem>
+                              </TextField>
                             </Box>
-                            <TextField
-                              size="small"
-                              select
-                              value={pointColorMode3d}
-                              onChange={(e) =>
-                                setPointColorMode3d(e.target.value as PointColorMode3d)
+
+                            <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
+                              <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
+                                <Typography variant="caption" color="text.secondary">
+                                  3D point size
+                                </Typography>
+                                <IconButton size="small" onClick={() => openHelp("pointSize3d")}>
+                                  <HelpCircle size={14} />
+                                </IconButton>
+                              </Box>
+                              <Slider
+                                size="small"
+                                value={pointSize3d}
+                                min={1}
+                                max={18}
+                                step={0.25}
+                                onChange={(_, v) => setPointSize3d(v as number)}
+                                valueLabelDisplay="auto"
+                              />
+                            </Box>
+
+                            <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
+                              <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
+                                <Typography variant="caption" color="text.secondary">
+                                  3D point opacity
+                                </Typography>
+                                <IconButton size="small" onClick={() => openHelp("pointOpacity3d")}>
+                                  <HelpCircle size={14} />
+                                </IconButton>
+                              </Box>
+                              <Slider
+                                size="small"
+                                value={pointOpacity3d}
+                                min={0.05}
+                                max={1}
+                                step={0.02}
+                                onChange={(_, v) => setPointOpacity3d(v as number)}
+                                valueLabelDisplay="auto"
+                                valueLabelFormat={(v) => `${Math.round((v as number) * 100)}%`}
+                              />
+                            </Box>
+
+                            <Divider />
+
+                            <FormControlLabel
+                              control={
+                                <Switch
+                                  size="small"
+                                  checked={showSlicePlanes3d}
+                                  onChange={(_, checked) => setShowSlicePlanes3d(checked)}
+                                />
                               }
-                              SelectProps={{ MenuProps: { disablePortal: true } }}
-                            >
-                              <MenuItem value="fixed">Fixed</MenuItem>
-                              <MenuItem value="class">Class</MenuItem>
-                              <MenuItem value="score">Score</MenuItem>
-                            </TextField>
-                          </Box>
-
-                          <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
-                            <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
-                              <Typography variant="caption" color="text.secondary">
-                                3D point size
-                              </Typography>
-                              <IconButton size="small" onClick={() => openHelp("pointSize3d")}>
-                                <HelpCircle size={14} />
-                              </IconButton>
-                            </Box>
-                            <Slider
-                              size="small"
-                              value={pointSize3d}
-                              min={1}
-                              max={18}
-                              step={0.25}
-                              onChange={(_, v) => setPointSize3d(v as number)}
-                              valueLabelDisplay="auto"
+                              label="Show slice planes"
+                              sx={{ "& .MuiFormControlLabel-label": { fontSize: "0.8rem" } }}
                             />
-                          </Box>
 
-                          <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
-                            <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
-                              <Typography variant="caption" color="text.secondary">
-                                3D point opacity
-                              </Typography>
-                              <IconButton size="small" onClick={() => openHelp("pointOpacity3d")}>
-                                <HelpCircle size={14} />
-                              </IconButton>
-                            </Box>
+                            <IconRowHelp
+                              label="Plane opacity"
+                              onHelp={() => openHelp("slicePlanesOpacity3d")}
+                            />
                             <Slider
                               size="small"
-                              value={pointOpacity3d}
-                              min={0.05}
-                              max={1}
-                              step={0.02}
-                              onChange={(_, v) => setPointOpacity3d(v as number)}
+                              value={slicePlanesOpacity3d}
+                              min={0.03}
+                              max={0.65}
+                              step={0.01}
+                              onChange={(_, v) => setSlicePlanesOpacity3d(v as number)}
+                              disabled={!showSlicePlanes3d}
                               valueLabelDisplay="auto"
                               valueLabelFormat={(v) => `${Math.round((v as number) * 100)}%`}
                             />
-                          </Box>
 
-                          <Divider />
+                            <FormControlLabel
+                              control={
+                                <Switch
+                                  size="small"
+                                  checked={showBox3d}
+                                  onChange={(_, checked) => setShowBox3d(checked)}
+                                />
+                              }
+                              label="Show volume box"
+                              sx={{ "& .MuiFormControlLabel-label": { fontSize: "0.8rem" } }}
+                            />
+                            <FormControlLabel
+                              control={
+                                <Switch
+                                  size="small"
+                                  checked={showAxes3d}
+                                  onChange={(_, checked) => setShowAxes3d(checked)}
+                                />
+                              }
+                              label="Show axes"
+                              sx={{ "& .MuiFormControlLabel-label": { fontSize: "0.8rem" } }}
+                            />
+                            <FormControlLabel
+                              control={
+                                <Switch
+                                  size="small"
+                                  checked={syncPick3dToSlices}
+                                  onChange={(_, checked) => setSyncPick3dToSlices(checked)}
+                                />
+                              }
+                              label="Sync 3D click to slices"
+                              sx={{ "& .MuiFormControlLabel-label": { fontSize: "0.8rem" } }}
+                            />
 
-                          <FormControlLabel
-                            control={
-                              <Switch
-                                size="small"
-                                checked={showSlicePlanes3d}
-                                onChange={(_, checked) => setShowSlicePlanes3d(checked)}
-                              />
-                            }
-                            label="Show slice planes"
-                            sx={{ "& .MuiFormControlLabel-label": { fontSize: "0.8rem" } }}
-                          />
-
-                          <IconRowHelp
-                            label="Plane opacity"
-                            onHelp={() => openHelp("slicePlanesOpacity3d")}
-                          />
-                          <Slider
-                            size="small"
-                            value={slicePlanesOpacity3d}
-                            min={0.03}
-                            max={0.65}
-                            step={0.01}
-                            onChange={(_, v) => setSlicePlanesOpacity3d(v as number)}
-                            disabled={!showSlicePlanes3d}
-                            valueLabelDisplay="auto"
-                            valueLabelFormat={(v) => `${Math.round((v as number) * 100)}%`}
-                          />
-
-                          <FormControlLabel
-                            control={
-                              <Switch
-                                size="small"
-                                checked={showBox3d}
-                                onChange={(_, checked) => setShowBox3d(checked)}
-                              />
-                            }
-                            label="Show volume box"
-                            sx={{ "& .MuiFormControlLabel-label": { fontSize: "0.8rem" } }}
-                          />
-                          <FormControlLabel
-                            control={
-                              <Switch
-                                size="small"
-                                checked={showAxes3d}
-                                onChange={(_, checked) => setShowAxes3d(checked)}
-                              />
-                            }
-                            label="Show axes"
-                            sx={{ "& .MuiFormControlLabel-label": { fontSize: "0.8rem" } }}
-                          />
-                          <FormControlLabel
-                            control={
-                              <Switch
-                                size="small"
-                                checked={syncPick3dToSlices}
-                                onChange={(_, checked) => setSyncPick3dToSlices(checked)}
-                              />
-                            }
-                            label="Sync 3D click to slices"
-                            sx={{ "& .MuiFormControlLabel-label": { fontSize: "0.8rem" } }}
-                          />
-
-                          <Button
-                            size="small"
-                            variant="outlined"
-                            onClick={() => setReset3dCameraNonce((n) => n + 1)}
-                            sx={{ textTransform: "none", mt: 0.25 }}
-                          >
-                            Reset 3D camera
-                          </Button>
-                        </>
-                      )}
-                    </Box>
-                  )}
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              onClick={() => setReset3dCameraNonce((n) => n + 1)}
+                              sx={{ textTransform: "none", mt: 0.25 }}
+                            >
+                              Reset 3D camera
+                            </Button>
+                          </>
+                        )}
+                      </Box>
+                    )}
+                  </Box>
                 </Box>
-              </Box>
-            </>
-          )}
+              </>
+            )}
           </Box>
         </Box>
       </Box>
@@ -2510,6 +2682,7 @@ type Coords3dMap3dViewProps = {
   showBox3d: boolean;
   showAxes3d: boolean;
   resetCameraNonce: number;
+  pickedPoint?: Coords3dPointExt | null;
   onPickPoint?: (
     p: Coords3dPointExt | null,
     mappedSliceIndices?: { x: number; y: number; z: number },
@@ -2556,6 +2729,7 @@ function Coords3dMap3dView({
   showBox3d,
   showAxes3d,
   resetCameraNonce,
+  pickedPoint,
   onPickPoint,
 }: Coords3dMap3dViewProps) {
   const mountRef = useRef<HTMLDivElement | null>(null);
@@ -3244,6 +3418,43 @@ function Coords3dMap3dView({
 
     onPickPoint?.(p, mappedSliceIndices);
   };
+
+  useEffect(() => {
+    const marker = pickedMarkerRef.current;
+    const mapper = mapperRef.current;
+
+    if (!marker) return;
+
+    if (!pickedPoint || !mapper) {
+      marker.visible = false;
+      pickedIndexRef.current = null;
+      return;
+    }
+
+    const raw = rawPointsRef.current;
+    const idx = raw.findIndex((pp: any) => String(pp?.id) === String((pickedPoint as any).id));
+
+    if (idx < 0) {
+      marker.visible = false;
+      pickedIndexRef.current = null;
+      return;
+    }
+
+    pickedIndexRef.current = idx;
+    marker.visible = true;
+
+    const localPickedPos = new THREE.Vector3(
+      mapPointAxisToLocalSigned(Number((pickedPoint as any).x), mapper.x, axisSigns.x),
+      mapPointAxisToLocalSigned(Number((pickedPoint as any).y), mapper.y, axisSigns.y),
+      mapPointAxisToLocalSigned(Number((pickedPoint as any).z), mapper.z, axisSigns.z),
+    );
+
+    const worldPickedPos = rootRef.current
+      ? rootRef.current.localToWorld(localPickedPos.clone())
+      : localPickedPos;
+
+    marker.position.copy(worldPickedPos);
+  }, [pickedPoint, axisSigns.x, axisSigns.y, axisSigns.z]);
 
   if (initError) {
     return (
