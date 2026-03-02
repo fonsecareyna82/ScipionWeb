@@ -344,6 +344,39 @@ function ChartOffsetProbe(props: { onOffset: (offset: ChartOffset | null) => voi
   );
 }
 
+
+function readChartOffsetFromDom(host: HTMLElement | null): ChartOffset | null {
+  // readChartOffsetFromDomViaLargestClipRect
+  if (!host) return null;
+
+  const svg = host.querySelector("svg.recharts-surface") as SVGSVGElement | null;
+  if (!svg) return null;
+
+  const rects = Array.from(svg.querySelectorAll("defs clipPath rect")) as SVGRectElement[];
+  if (rects.length === 0) return null;
+
+  let best: ChartOffset | null = null;
+  let bestArea = 0;
+
+  for (const r of rects) {
+    const x = Number(r.getAttribute("x"));
+    const y = Number(r.getAttribute("y"));
+    const w = Number(r.getAttribute("width"));
+    const h = Number(r.getAttribute("height"));
+
+    if (![x, y, w, h].every(Number.isFinite)) continue;
+    if (w <= 0 || h <= 0) continue;
+
+    const area = w * h;
+    if (area > bestArea) {
+      bestArea = area;
+      best = { left: x, top: y, width: w, height: h };
+    }
+  }
+
+  return best;
+}
+
 function ScatterLassoOverlay(props: {
   xDomain: Domain | null;
   yDomain: Domain | null;
@@ -359,6 +392,8 @@ function ScatterLassoOverlay(props: {
   onClear: () => void;
 
   onSelectionPreview: (rowIds: Array<RowId>) => void;
+
+  chartHostRef: MutableRefObject<HTMLDivElement | null>;
 }) {
   const {
     xDomain,
@@ -387,41 +422,68 @@ function ScatterLassoOverlay(props: {
   }, [polygon, polygonClosed]);
 
   const computeSelectionPreview = useCallback(() => {
-    // computeSelectionPreview
-    if (!xDomain || !yDomain || !offset) {
-      onSelectionPreview([]);
-      return;
-    }
-
+    // computeSelectionPreviewFromRenderedPoints
     if (polygon.length < 3) {
       onSelectionPreview([]);
       return;
     }
 
-    const selected: RowId[] = [];
+    const overlaySvg = svgRef.current;
+    const host = props.chartHostRef.current;
 
-    for (const p of data) {
-      const px = mapValueToPx({
-        value: p.x,
-        domain: xDomain,
-        plotStart: offset.left,
-        plotSize: offset.width,
-      });
-
-      const py = mapValueToPx({
-        value: p.y,
-        domain: yDomain,
-        plotStart: offset.top,
-        plotSize: offset.height,
-        invert: true,
-      });
-
-      if (px == null || py == null) continue;
-      if (isPointInPolygon({ x: px, y: py }, polygon)) selected.push(p.rowId);
+    if (!overlaySvg || !host) {
+      onSelectionPreview([]);
+      return;
     }
 
+    const overlayRect = overlaySvg.getBoundingClientRect();
+    const chartSvg = host.querySelector("svg.recharts-surface") as SVGSVGElement | null;
+
+    if (!chartSvg) {
+      onSelectionPreview([]);
+      return;
+    }
+
+    const ctm = chartSvg.getScreenCTM();
+    if (!ctm) {
+      onSelectionPreview([]);
+      return;
+    }
+
+    const circles = chartSvg.querySelectorAll("circle[data-row-id]");
+    if (circles.length === 0) {
+      onSelectionPreview([]);
+      return;
+    }
+
+    const pt = chartSvg.createSVGPoint();
+    const selected: RowId[] = [];
+
+    circles.forEach((node) => {
+      const el = node as SVGCircleElement;
+
+      const idRaw = el.getAttribute("data-row-id");
+      const rowId = normalizeRowId(idRaw);
+      if (rowId == null) return;
+
+      const cx = Number(el.getAttribute("cx"));
+      const cy = Number(el.getAttribute("cy"));
+      if (!Number.isFinite(cx) || !Number.isFinite(cy)) return;
+
+      pt.x = cx;
+      pt.y = cy;
+
+      const sp = pt.matrixTransform(ctm);
+      const x = sp.x - overlayRect.left;
+      const y = sp.y - overlayRect.top;
+
+      if (isPointInPolygon({ x, y }, polygon)) {
+        selected.push(rowId);
+      }
+    });
+
     onSelectionPreview(Array.from(new Set(selected)));
-  }, [data, offset, onSelectionPreview, polygon, xDomain, yDomain]);
+  }, [onSelectionPreview, polygon, props.chartHostRef]);
 
   useEffect(() => {
     // throttleSelectionPreviewToAnimationFrame
@@ -603,6 +665,8 @@ export function MetadataPlotterDialog(props: MetadataPlotterDialogProps) {
   const [chartOffset, setChartOffset] = useState<ChartOffset | null>(null);
   const lastOffsetRef = useRef<ChartOffset | null>(null);
 
+  const chartHostRef = useRef<HTMLDivElement | null>(null);
+
   const loadEpochRef = useRef(0);
 
   const plotterBackdropProps: ImageFreeBackdrop = useMemo(
@@ -639,6 +703,7 @@ export function MetadataPlotterDialog(props: MetadataPlotterDialogProps) {
     lastOffsetRef.current = off;
     setChartOffset(off);
   }, []);
+
 
   const clearLasso = useCallback(() => {
     // clearLasso
@@ -1005,6 +1070,30 @@ export function MetadataPlotterDialog(props: MetadataPlotterDialogProps) {
     return null;
   }, [histogram, plotType, selectionAxis, xDomain, yDomainPlot]);
 
+
+  useEffect(() => {
+    // syncChartOffsetFromDomAsFallbackForAllChartTypes
+    if (!open) return;
+
+    let raf1: number | null = null;
+    let raf2: number | null = null;
+
+    const run = () => {
+      const off = readChartOffsetFromDom(chartHostRef.current);
+      if (off) setChartOffsetStable(off);
+    };
+
+    raf1 = requestAnimationFrame(() => {
+      run();
+      raf2 = requestAnimationFrame(run);
+    });
+
+    return () => {
+      if (raf1 != null) cancelAnimationFrame(raf1);
+      if (raf2 != null) cancelAnimationFrame(raf2);
+    };
+  }, [open, plotType, chartData.length, histogram?.bins.length, setChartOffsetStable]);
+
   useEffect(() => {
     // initializeSelectionRangeWhenNeeded
     if (!open) return;
@@ -1270,6 +1359,7 @@ export function MetadataPlotterDialog(props: MetadataPlotterDialogProps) {
           fill={isSelected ? "rgba(37,99,235,0.9)" : "rgba(15,23,42,0.50)"}
           stroke={isSelected ? "rgba(30,64,175,0.95)" : "none"}
           strokeWidth={isSelected ? 1 : 0}
+          data-row-id={rowId != null ? String(rowId) : ""}
         />
       );
     },
@@ -1868,7 +1958,7 @@ export function MetadataPlotterDialog(props: MetadataPlotterDialogProps) {
                           minHeight: 0,
                         }}
                       >
-                        <Box sx={{ position: "relative", flex: 1, minHeight: 420, minWidth: 0 }}>
+                        <Box ref={chartHostRef} sx={{ position: "relative", flex: 1, minHeight: 420, minWidth: 0 }}>
                           {plotType === "plot" && (
                             <ResponsiveContainer width="100%" height="100%">
                               <ReLineChart
@@ -1985,10 +2075,8 @@ export function MetadataPlotterDialog(props: MetadataPlotterDialogProps) {
                                 }}
                                 onClosePolygon={closeLasso}
                                 onClear={clearLasso}
-                                onSelectionPreview={(rowIds) => {
-                                  // showSelectionAsYouDraw
-                                  setSelectedFromPlot(rowIds);
-                                }}
+                                onSelectionPreview={(rowIds) => setSelectedFromPlot(rowIds)}
+                                chartHostRef={chartHostRef}
                               />
                             </>
                           )}
@@ -2027,10 +2115,17 @@ export function MetadataPlotterDialog(props: MetadataPlotterDialogProps) {
                             <Box
                               sx={{
                                 position: "absolute",
-                                left: (chartOffset?.left ?? 16) as number,
-                                width: chartOffset ? `${chartOffset.width}px` : "calc(93% - 32px)",
                                 bottom: 12,
-                                ml:6,
+                                left: (() => {
+                                  const inset = 8;
+                                  const left = (chartOffset?.left ?? 16) + inset;
+                                  return left;
+                                })(),
+                                width: (() => {
+                                  const inset = 8;
+                                  if (chartOffset) return `${Math.max(0, chartOffset.width - inset * 2)}px`;
+                                  return "calc(100% - 64px)";
+                                })(),
                               }}
                             >
                               {selectionSlider}
