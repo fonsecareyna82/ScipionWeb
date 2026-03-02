@@ -26,6 +26,8 @@ import {
   TextField,
   MenuItem,
   Chip,
+  Snackbar,
+  Alert,
 } from "@mui/material";
 import { HelpCircle, Layers as Layers3, Box as BoxIcon, Table as TableLucide } from "lucide-react";
 import * as THREE from "three";
@@ -124,6 +126,13 @@ const HELP_TEXT: Record<string, string> = {
   pointSize3d:
     "Base sprite size for points in the 3D map before applying the global point size factor.",
 };
+
+
+function cloneCoordsPoints(points: Coords3dPointExt[]): Coords3dPointExt[] {
+  // Ensure we never mutate the original points array
+  return points.map((p) => ({ ...(p as any) }));
+}
+
 
 function clampCoord(v: number, dim: number) {
   const hi = Math.max(0, (Number.isFinite(dim) ? dim : 0) - 1);
@@ -275,6 +284,17 @@ export default function Coords3dViewer({
   const [pointsError, setPointsError] = useState<string | null>(null);
 
   const [coordsDraft, setCoordsDraft] = useState<Coords3dPointExt[]>([]);
+
+  const loadedCoordsRef = useRef<Coords3dPointExt[]>([]);
+  const baselineCoordsRef = useRef<Coords3dPointExt[]>([]);
+  const [coordsDirty, setCoordsDirty] = useState<boolean>(false);
+
+  const [saveDialogOpen, setSaveDialogOpen] = useState<boolean>(false);
+  const [newOutputName, setNewOutputName] = useState<string>("");
+  const [saveBusy, setSaveBusy] = useState<boolean>(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveToast, setSaveToast] = useState<string | null>(null);
+
   const [editMode, setEditMode] = useState<boolean>(false);
 
   const newPointSeqRef = useRef(0);
@@ -403,6 +423,9 @@ export default function Coords3dViewer({
     if (selectedTomoId == null) {
       setPointsData(null);
       setCoordsDraft([]);
+      loadedCoordsRef.current = [];
+      baselineCoordsRef.current = [];
+      setCoordsDirty(false);
       setPointsError(null);
       return;
     }
@@ -484,9 +507,13 @@ export default function Coords3dViewer({
           tomoId: tomoIdOut,
           coords: coordsNorm as any,
         };
-
         setPointsData(normalized);
-        setCoordsDraft(coordsNorm);
+
+        const draftSnapshot = cloneCoordsPoints(coordsNorm);
+        setCoordsDraft(draftSnapshot);
+        loadedCoordsRef.current = draftSnapshot;
+        baselineCoordsRef.current = draftSnapshot;
+        setCoordsDirty(false);
 
         const scores = coordsNorm
           .map((p: any) => p.score)
@@ -1010,6 +1037,87 @@ export default function Coords3dViewer({
     return `new-${Date.now()}-${newPointSeqRef.current}`;
   };
 
+  const getDefaultNewOutputName = useCallback(() => {
+    const iso = new Date().toISOString();
+    const stamp = iso.replace(/[-:]/g, "").replace("T", "_").slice(0, 15);
+    return `${outputName}_edited_${stamp}`;
+  }, [outputName]);
+
+  const buildCoords3dOutputPayload = useCallback(() => {
+    const tomoId = effectiveTomoId ?? (selectedTomoId as Id | null);
+    if (tomoId == null) return null;
+
+    const coords = coordsDraft.map((p: any) => ({
+      id: p?.id,
+      x: Number(p?.x),
+      y: Number(p?.y),
+      z: Number(p?.z),
+      score: typeof p?.score === "number" && Number.isFinite(p.score) ? p.score : undefined,
+      radius: typeof p?.radius === "number" && Number.isFinite(p.radius) ? p.radius : undefined,
+      classId: p?.classId,
+      tomoId,
+    }));
+
+    return { tomoId, coords };
+  }, [coordsDraft, effectiveTomoId, selectedTomoId]);
+
+  const openSaveDialog = useCallback(() => {
+    if (!coordsDirty || saveBusy) return;
+    setSaveError(null);
+    setNewOutputName(getDefaultNewOutputName());
+    setSaveDialogOpen(true);
+  }, [coordsDirty, saveBusy, getDefaultNewOutputName]);
+
+  const restoreOriginalCoords = useCallback(() => {
+    const snap = cloneCoordsPoints(loadedCoordsRef.current);
+    setCoordsDraft(snap);
+    baselineCoordsRef.current = snap;
+    setCoordsDirty(false);
+    setPickedPoint3d(null);
+  }, []);
+
+  const saveAsNewOutput = useCallback(async () => {
+    const name = newOutputName.trim();
+    if (!name) {
+      setSaveError("Output name is required.");
+      return;
+    }
+
+    const payload = buildCoords3dOutputPayload();
+    if (!payload) {
+      setSaveError("Tomogram id is not available.");
+      return;
+    }
+
+    setSaveBusy(true);
+    setSaveError(null);
+
+    try {
+      await svc.createCoords3dOutputFromPoints(projectId, protocolId, outputName, {
+        newOutputName: name,
+        ...payload,
+      });
+
+      baselineCoordsRef.current = cloneCoordsPoints(coordsDraft);
+      setCoordsDirty(false);
+      setSaveDialogOpen(false);
+      setSaveToast(`Saved new output: ${name}`);
+    } catch (e: any) {
+      setSaveError(e?.message || "Failed to save new output.");
+    } finally {
+      setSaveBusy(false);
+    }
+  }, [
+    newOutputName,
+    buildCoords3dOutputPayload,
+    svc,
+    projectId,
+    protocolId,
+    outputName,
+    coordsDraft,
+  ]);
+
+
   const hotkeyScopeRef = useRef<HTMLDivElement | null>(null);
   const singleSvgRef = useRef<SVGSVGElement | null>(null);
   const lastViewerInteractAtRef = useRef<number>(0);
@@ -1031,6 +1139,7 @@ export default function Coords3dViewer({
 
   const removePointById = useCallback((pointId: string) => {
     setCoordsDraft((prev) => prev.filter((p: any) => String(p?.id) !== String(pointId)));
+    setCoordsDirty(true);
     setPickedPoint3d((prev) => {
       if (!prev) return prev;
       return String((prev as any).id) === String(pointId) ? null : prev;
@@ -1141,6 +1250,7 @@ useEffect(() => {
       } as any;
 
       setCoordsDraft((prev) => [...prev, newPoint]);
+      setCoordsDirty(true);
       handlePickPoint3d(newPoint, { x: Math.round(x), y: Math.round(y), z: Math.round(z) });
     },
     [editMode, tomoDims, sliceIndex, sliceIndexX, sliceIndexY, selectedClass, handlePickPoint3d],
@@ -1183,6 +1293,7 @@ useEffect(() => {
       setCoordsDraft((prev) =>
         prev.map((p: any) => (String(p?.id) === String(pointId) ? { ...p, ...patch } : p)),
       );
+      setCoordsDirty(true);
 
       setPickedPoint3d((prev) => {
         if (!prev) return prev;
@@ -1607,6 +1718,37 @@ useEffect(() => {
                     )}, ${fmtCoord((pickedPoint3d as any).z)})`}
                   />
                 )}
+
+                {coordsDirty && (
+                  <Chip
+                    size="small"
+                    color="warning"
+                    variant="filled"
+                    label="Unsaved changes"
+                  />
+                )}
+
+                <Button
+                  size="small"
+                  variant="contained"
+                  disabled={!coordsDirty || saveBusy}
+                  onClick={openSaveDialog}
+                  sx={{ textTransform: "none" }}
+                >
+                  {saveBusy ? <CircularProgress size={14} sx={{ mr: 1 }} /> : null}
+                  Save as new output
+                </Button>
+
+                <Button
+                  size="small"
+                  variant="outlined"
+                  disabled={!coordsDirty}
+                  onClick={restoreOriginalCoords}
+                  sx={{ textTransform: "none" }}
+                >
+                  Restore
+                </Button>
+
                 {pickedPoint3d && (
                   <Button
                     size="small"
@@ -2707,6 +2849,74 @@ useEffect(() => {
           </Box>
         </Box>
       </Box>
+      <Dialog
+        open={saveDialogOpen}
+        onClose={() => {
+          if (saveBusy) return;
+          setSaveDialogOpen(false);
+        }}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Save as new output</DialogTitle>
+        <DialogContent sx={{ pt: 1.5 }}>
+          <DialogContentText sx={{ mb: 1.5 }}>
+            This will create a new coordinates output from the current draft points.
+          </DialogContentText>
+
+          <TextField
+            autoFocus
+            fullWidth
+            size="small"
+            label="New output name"
+            value={newOutputName}
+            onChange={(e) => setNewOutputName(e.target.value)}
+            disabled={saveBusy}
+          />
+
+          {saveError && (
+            <Alert severity="error" sx={{ mt: 1.5 }}>
+              {saveError}
+            </Alert>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => setSaveDialogOpen(false)}
+            disabled={saveBusy}
+            sx={{ textTransform: "none" }}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={saveAsNewOutput}
+            disabled={saveBusy || !newOutputName.trim()}
+            variant="contained"
+            sx={{ textTransform: "none" }}
+          >
+            {saveBusy ? <CircularProgress size={16} sx={{ mr: 1 }} /> : null}
+            Save
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Snackbar
+        open={Boolean(saveToast)}
+        autoHideDuration={2500}
+        onClose={() => setSaveToast(null)}
+        anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
+      >
+        <Alert
+          onClose={() => setSaveToast(null)}
+          severity="success"
+          variant="filled"
+          sx={{ width: "100%" }}
+        >
+          {saveToast}
+        </Alert>
+      </Snackbar>
+
+
 
       <Dialog open={helpOpen} onClose={() => setHelpOpen(false)} maxWidth="xs" fullWidth>
         <DialogTitle>

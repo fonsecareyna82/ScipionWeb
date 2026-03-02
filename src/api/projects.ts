@@ -18,6 +18,9 @@ import {
   ProtocolTagUpdatePayload,
   ProtocolTagIdsResult,
   NextProtocolSuggestion,
+  CreateCoords3dOutputFromPointsPayload,
+  CreateCoords3dOutputFromPointsResult,
+  CreateCoords3dOutputFromPointsOptions,
 
 } from "@/services/ProjectService";
 
@@ -2025,6 +2028,53 @@ export async function fetchCoords3dTomogramSliceObjectUrl(
   const revoke = () => URL.revokeObjectURL(objUrl);
 
   return { url: objUrl, meta, revoke };
+}
+
+export async function createCoords3dOutputFromPoints(
+  projectId: Id,
+  protocolId: Id,
+  coordsOutputName: string,
+  payload: CreateCoords3dOutputFromPointsPayload,
+  opts: CreateCoords3dOutputFromPointsOptions = {},
+): Promise<CreateCoords3dOutputFromPointsResult> {
+  // createCoords3dOutputFromPoints
+  const enc = encodeURIComponent;
+
+  const url = `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/outputs/${enc(coordsOutputName,)}/coords3d/new-output`;
+
+  const res = await fetchWithAuth(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload ?? {}),
+    signal: opts.signal,
+  });
+
+  // Allow 204 to mean "ok"
+  if (res.status === 204) {
+    return {
+      success: true,
+      outputName: String(payload?.newOutputName ?? "").trim() || "new-output",
+    };
+  }
+
+  if (!res.ok) {
+    throw await toApiError(res, "Failed to create coords3d output from points");
+  }
+
+  const raw = await safeJson<any>(res);
+
+  const success =
+    raw && typeof raw === "object" && typeof raw.success === "boolean" ? raw.success : true;
+
+  const outputName =
+    raw && typeof raw === "object" && raw.outputName != null
+      ? String(raw.outputName)
+      : String(payload?.newOutputName ?? "").trim();
+
+  const message =
+    raw && typeof raw === "object" && typeof raw.message === "string" ? raw.message : undefined;
+
+  return { success, outputName, message, data: raw };
 }
 
 

@@ -26,6 +26,9 @@ import type {
   ContextMenuVisibilityPolicy,
   MetadataTableActionPayload,
   MetadataTableActionResult,
+  CreateCoords3dOutputFromPointsPayload,
+  CreateCoords3dOutputFromPointsResult,
+  CreateCoords3dOutputFromPointsOptions,
 } from "@/services/ProjectService";
 
 
@@ -351,6 +354,21 @@ const defaultService: ProjectService = {
       coordsOutputName,
       toId(tomoId),
       sliceIndex,
+      opts,
+    ),
+
+    createCoords3dOutputFromPoints: (
+    projectId: Id,
+    protocolId: Id,
+    coordsOutputName: string,
+    payload: CreateCoords3dOutputFromPointsPayload,
+    opts?: CreateCoords3dOutputFromPointsOptions,
+  ): Promise<CreateCoords3dOutputFromPointsResult> =>
+    api.createCoords3dOutputFromPoints(
+      toId(projectId),
+      toId(protocolId),
+      coordsOutputName,
+      payload,
       opts,
     ),
 

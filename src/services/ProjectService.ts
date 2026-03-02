@@ -160,6 +160,50 @@ export type Coordinates3dTomogramPoints = {
   coords: Coordinates3dPoint[];
 };
 
+/**
+ * Payload to create a new SetOfCoordinates3D output from an edited list of points.
+ * The backend should interpret `coords` as a full replacement for the selected tomogram.
+ */
+export type CreateCoords3dOutputFromPointsPayload = {
+  /** Name for the newly created output. */
+  newOutputName: string;
+
+  /** Tomogram identifier within the source SetOfCoordinates3D. */
+  tomoId: Id;
+
+  /**
+   * Full coordinates list for this tomogram.
+   * Each item is expected to keep x/y/z and may include score/radius/classId/id/tomoId.
+   */
+  coords: Array<
+    Coordinates3dPoint & {
+      /** Optional class id used by the UI. */
+      classId?: string | number | null;
+      /** Optional radius used by the UI. */
+      radius?: number;
+      /** Optional tomo id per point (kept for round-tripping). */
+      tomoId?: Id;
+    }
+  >;
+
+  /** Optional tomogram dimensions [X, Y, Z] for backend validation. */
+  dims?: [number, number, number];
+
+  /** Optional voxel size [sx, sy, sz] for backend bookkeeping. */
+  voxelSize?: [number, number, number];
+};
+
+export type CreateCoords3dOutputFromPointsResult = {
+  success: boolean;
+  outputName: string;
+  message?: string;
+  data?: unknown;
+};
+
+export type CreateCoords3dOutputFromPointsOptions = {
+  signal?: AbortSignal;
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Metadata table basic types (en paralelo a los de api/projects.ts)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -720,6 +764,17 @@ export interface ProjectService<
       signal?: AbortSignal;
     }
   ): Promise<VolumeSliceObjectUrl>;
+
+  /**
+ * Create a new SetOfCoordinates3D output from an edited point list for a given tomogram.
+ * `coordsOutputName` is the source output currently being edited/viewed.
+ */
+  createCoords3dOutputFromPoints(
+    projectId: Id,
+    protocolId: Id,
+    coordsOutputName: string,
+    payload: CreateCoords3dOutputFromPointsPayload,
+  ): Promise<CreateCoords3dOutputFromPointsResult>;
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Analyze Results (Metadata tables + thumbnails)
