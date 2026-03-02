@@ -127,12 +127,10 @@ const HELP_TEXT: Record<string, string> = {
     "Base sprite size for points in the 3D map before applying the global point size factor.",
 };
 
-
 function cloneCoordsPoints(points: Coords3dPointExt[]): Coords3dPointExt[] {
   // Ensure we never mutate the original points array
   return points.map((p) => ({ ...(p as any) }));
 }
-
 
 function clampCoord(v: number, dim: number) {
   const hi = Math.max(0, (Number.isFinite(dim) ? dim : 0) - 1);
@@ -284,13 +282,20 @@ export default function Coords3dViewer({
   const [pointsError, setPointsError] = useState<string | null>(null);
 
   const [coordsDraft, setCoordsDraft] = useState<Coords3dPointExt[]>([]);
-
-  const loadedCoordsRef = useRef<Coords3dPointExt[]>([]);
-  const baselineCoordsRef = useRef<Coords3dPointExt[]>([]);
   const [coordsDirty, setCoordsDirty] = useState<boolean>(false);
 
+  type TomoDraftEntry = {
+    tomoId: Id;
+    base: Coords3dPointExt[];
+    draft: Coords3dPointExt[];
+    dirty: boolean;
+    scoreRange: [number, number] | null;
+  };
+
+  const coordsByTomoRef = useRef<Map<string, TomoDraftEntry>>(new Map());
+  const [hasAnyDirty, setHasAnyDirty] = useState<boolean>(false);
+
   const [saveDialogOpen, setSaveDialogOpen] = useState<boolean>(false);
-  const [newOutputName, setNewOutputName] = useState<string>("");
   const [saveBusy, setSaveBusy] = useState<boolean>(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveToast, setSaveToast] = useState<string | null>(null);
@@ -373,6 +378,67 @@ export default function Coords3dViewer({
     setHelpOpen(true);
   };
 
+  const computeHasAnyDirty = useCallback(() => {
+    // computeHasAnyDirty
+    for (const entry of coordsByTomoRef.current.values()) {
+      if (entry.dirty) return true;
+    }
+    return false;
+  }, []);
+
+  const persistCurrentTomoDraft = useCallback(() => {
+    // persistCurrentTomoDraft
+    if (selectedTomoId == null) return;
+    const key = String(selectedTomoId);
+    const entry = coordsByTomoRef.current.get(key);
+    if (!entry) return;
+
+    coordsByTomoRef.current.set(key, {
+      ...entry,
+      draft: coordsDraft,
+      dirty: coordsDirty,
+      scoreRange,
+    });
+
+    setHasAnyDirty(coordsDirty ? true : computeHasAnyDirty());
+  }, [coordsDraft, coordsDirty, computeHasAnyDirty, scoreRange, selectedTomoId]);
+
+  const selectTomogram = useCallback(
+    (tomoId: Id) => {
+      // selectTomogram
+      persistCurrentTomoDraft();
+      setSelectedTomoId(tomoId);
+    },
+    [persistCurrentTomoDraft],
+  );
+
+  const selectedTomoIdRef = useRef<Id | null>(null);
+  useEffect(() => {
+    // syncSelectedTomoIdRef
+    selectedTomoIdRef.current = selectedTomoId;
+  }, [selectedTomoId]);
+
+  useEffect(() => {
+    // syncDraftIntoCache
+    // Important: do not depend on selectedTomoId directly, to avoid overwriting caches during tomogram switches
+    // while coordsDraft still belongs to the previous selection.
+    const activeTomoId = selectedTomoIdRef.current;
+    if (activeTomoId == null) return;
+
+    const key = String(activeTomoId);
+    const entry = coordsByTomoRef.current.get(key);
+    if (!entry) return;
+
+    coordsByTomoRef.current.set(key, {
+      ...entry,
+      draft: coordsDraft,
+      dirty: coordsDirty,
+      scoreRange,
+    });
+
+    setHasAnyDirty(coordsDirty ? true : computeHasAnyDirty());
+  }, [coordsDraft, coordsDirty, scoreRange, computeHasAnyDirty]);
+
   useEffect(() => {
     setBrightness(1.0);
     setContrast(1.0);
@@ -387,6 +453,8 @@ export default function Coords3dViewer({
         setTomosError(null);
         setTomos([]);
         setSelectedTomoId(null);
+        coordsByTomoRef.current.clear();
+        setHasAnyDirty(false);
 
         const raw = await (svc as any).listCoords3dTomograms(projectId, protocolId, outputName);
         if (cancelled) return;
@@ -423,10 +491,21 @@ export default function Coords3dViewer({
     if (selectedTomoId == null) {
       setPointsData(null);
       setCoordsDraft([]);
-      loadedCoordsRef.current = [];
-      baselineCoordsRef.current = [];
       setCoordsDirty(false);
       setPointsError(null);
+      return;
+    }
+
+    const cacheKey = String(selectedTomoId);
+    const cached = coordsByTomoRef.current.get(cacheKey);
+    if (cached) {
+      setPointsData({ tomoId: cached.tomoId, coords: cached.draft as any });
+      setCoordsDraft(cached.draft);
+      setCoordsDirty(cached.dirty);
+      setScoreRange(cached.scoreRange);
+      setSelectedClass("all");
+      setPickedPoint3d(null);
+      setHasAnyDirty(computeHasAnyDirty());
       return;
     }
 
@@ -509,21 +588,29 @@ export default function Coords3dViewer({
         };
         setPointsData(normalized);
 
-        const draftSnapshot = cloneCoordsPoints(coordsNorm);
-        setCoordsDraft(draftSnapshot);
-        loadedCoordsRef.current = draftSnapshot;
-        baselineCoordsRef.current = draftSnapshot;
-        setCoordsDirty(false);
-
         const scores = coordsNorm
           .map((p: any) => p.score)
           .filter((v: any): v is number => typeof v === "number" && Number.isFinite(v));
 
-        if (scores.length > 0) {
-          setScoreRange([Math.min(...scores), Math.max(...scores)]);
-        } else {
-          setScoreRange(null);
-        }
+        const nextScoreRange =
+          scores.length > 0
+            ? ([Math.min(...scores), Math.max(...scores)] as [number, number])
+            : null;
+
+        const entry: TomoDraftEntry = {
+          tomoId: tomoIdOut,
+          base: cloneCoordsPoints(coordsNorm),
+          draft: cloneCoordsPoints(coordsNorm),
+          dirty: false,
+          scoreRange: nextScoreRange,
+        };
+
+        coordsByTomoRef.current.set(cacheKey, entry);
+
+        setCoordsDraft(entry.draft);
+        setCoordsDirty(false);
+        setScoreRange(nextScoreRange);
+        setHasAnyDirty(computeHasAnyDirty());
 
         setSelectedClass("all");
       } catch (e: any) {
@@ -536,7 +623,7 @@ export default function Coords3dViewer({
     return () => {
       cancelled = true;
     };
-  }, [selectedTomoId, projectId, protocolId, outputName, svc]);
+  }, [selectedTomoId, projectId, protocolId, outputName, svc, computeHasAnyDirty]);
 
   const classOptions = useMemo(() => {
     const set = new Set<string>();
@@ -688,7 +775,6 @@ export default function Coords3dViewer({
       return { x, y, w, h };
     });
   }, [tomoDims]);
-
 
   const slicePoints = useMemo(() => {
     if (!filteredPoints.length || sliceIndex == null) return [];
@@ -996,6 +1082,25 @@ export default function Coords3dViewer({
     svc,
   ]);
 
+  const hotkeyScopeRef = useRef<HTMLDivElement | null>(null);
+  const singleSvgRef = useRef<SVGSVGElement | null>(null);
+  const lastViewerInteractAtRef = useRef<number>(0);
+
+  const markViewerActive = useCallback(() => {
+    lastViewerInteractAtRef.current = Date.now();
+    const el = hotkeyScopeRef.current;
+    if (!el) return;
+    try {
+      el.focus({ preventScroll: true } as any);
+    } catch {
+      try {
+        el.focus();
+      } catch {
+        // ignore
+      }
+    }
+  }, []);
+
   const handlePickPoint3d = useCallback(
     (
       p: Coords3dPointExt | null,
@@ -1019,7 +1124,7 @@ export default function Coords3dViewer({
         setSliceIndexY(clampInt(targetY, 0, maxSliceY));
       }
     },
-    [syncPick3dToSlices, maxSliceX, maxSliceY, maxSliceZ],
+    [markViewerActive, syncPick3dToSlices, maxSliceX, maxSliceY, maxSliceZ],
   );
 
   const showXAxisSlider =
@@ -1037,55 +1142,62 @@ export default function Coords3dViewer({
     return `new-${Date.now()}-${newPointSeqRef.current}`;
   };
 
-  const getDefaultNewOutputName = useCallback(() => {
-    const iso = new Date().toISOString();
-    const stamp = iso.replace(/[-:]/g, "").replace("T", "_").slice(0, 15);
-    return `${outputName}_edited_${stamp}`;
-  }, [outputName]);
+  const buildSavePayload = useCallback(() => {
+    // buildSavePayload
+    persistCurrentTomoDraft();
 
-  const buildCoords3dOutputPayload = useCallback(() => {
-    const tomoId = effectiveTomoId ?? (selectedTomoId as Id | null);
-    if (tomoId == null) return null;
+    const tomograms: Array<{ tomoId: Id; coords: any[] }> = [];
+    for (const entry of coordsByTomoRef.current.values()) {
+      if (!entry.dirty) continue;
 
-    const coords = coordsDraft.map((p: any) => ({
-      id: p?.id,
-      x: Number(p?.x),
-      y: Number(p?.y),
-      z: Number(p?.z),
-      score: typeof p?.score === "number" && Number.isFinite(p.score) ? p.score : undefined,
-      radius: typeof p?.radius === "number" && Number.isFinite(p.radius) ? p.radius : undefined,
-      classId: p?.classId,
-      tomoId,
-    }));
+      const coords = entry.draft.map((p: any) => ({
+        id: p?.id,
+        x: Number(p?.x),
+        y: Number(p?.y),
+        z: Number(p?.z),
+        score:
+          typeof p?.score === "number" && Number.isFinite(p.score) ? p.score : undefined,
+        radius:
+          typeof p?.radius === "number" && Number.isFinite(p.radius) ? p.radius : undefined,
+        classId: p?.classId,
+        tomoId: entry.tomoId,
+      }));
 
-    return { tomoId, coords };
-  }, [coordsDraft, effectiveTomoId, selectedTomoId]);
-
-  const openSaveDialog = useCallback(() => {
-    if (!coordsDirty || saveBusy) return;
-    setSaveError(null);
-    setNewOutputName(getDefaultNewOutputName());
-    setSaveDialogOpen(true);
-  }, [coordsDirty, saveBusy, getDefaultNewOutputName]);
-
-  const restoreOriginalCoords = useCallback(() => {
-    const snap = cloneCoordsPoints(loadedCoordsRef.current);
-    setCoordsDraft(snap);
-    baselineCoordsRef.current = snap;
-    setCoordsDirty(false);
-    setPickedPoint3d(null);
-  }, []);
-
-  const saveAsNewOutput = useCallback(async () => {
-    const name = newOutputName.trim();
-    if (!name) {
-      setSaveError("Output name is required.");
-      return;
+      tomograms.push({ tomoId: entry.tomoId, coords });
     }
 
-    const payload = buildCoords3dOutputPayload();
-    if (!payload) {
-      setSaveError("Tomogram id is not available.");
+    return { tomograms };
+  }, [persistCurrentTomoDraft]);
+
+  const openSaveDialog = useCallback(() => {
+    // openSaveDialog
+    if (!hasAnyDirty || saveBusy) return;
+    setSaveError(null);
+    setSaveDialogOpen(true);
+  }, [hasAnyDirty, saveBusy]);
+
+  const restoreOriginalCoords = useCallback(() => {
+    // restoreOriginalCoords
+    if (selectedTomoId == null) return;
+    const key = String(selectedTomoId);
+    const entry = coordsByTomoRef.current.get(key);
+    if (!entry) return;
+
+    const snap = cloneCoordsPoints(entry.base);
+    coordsByTomoRef.current.set(key, { ...entry, draft: snap, dirty: false });
+
+    setCoordsDraft(snap);
+    setCoordsDirty(false);
+    setPickedPoint3d(null);
+
+    setHasAnyDirty(computeHasAnyDirty());
+  }, [computeHasAnyDirty, selectedTomoId]);
+
+  const saveChanges = useCallback(async () => {
+    const payload = buildSavePayload();
+    if (!payload.tomograms.length) {
+      setSaveDialogOpen(false);
+      setHasAnyDirty(false);
       return;
     }
 
@@ -1093,49 +1205,24 @@ export default function Coords3dViewer({
     setSaveError(null);
 
     try {
-      await svc.createCoords3dOutputFromPoints(projectId, protocolId, outputName, {
-        newOutputName: name,
-        ...payload,
-      });
+      await (svc as any).createCoords3dOutputFromPoints(projectId, protocolId, outputName, payload);
 
-      baselineCoordsRef.current = cloneCoordsPoints(coordsDraft);
+      for (const entry of coordsByTomoRef.current.values()) {
+        if (!entry.dirty) continue;
+        entry.base = cloneCoordsPoints(entry.draft);
+        entry.dirty = false;
+      }
+
       setCoordsDirty(false);
+      setHasAnyDirty(false);
       setSaveDialogOpen(false);
-      setSaveToast(`Saved new output: ${name}`);
+      setSaveToast("Changes saved.");
     } catch (e: any) {
-      setSaveError(e?.message || "Failed to save new output.");
+      setSaveError(e?.message || "Failed to save changes.");
     } finally {
       setSaveBusy(false);
     }
-  }, [
-    newOutputName,
-    buildCoords3dOutputPayload,
-    svc,
-    projectId,
-    protocolId,
-    outputName,
-    coordsDraft,
-  ]);
-
-
-  const hotkeyScopeRef = useRef<HTMLDivElement | null>(null);
-  const singleSvgRef = useRef<SVGSVGElement | null>(null);
-  const lastViewerInteractAtRef = useRef<number>(0);
-
-  const markViewerActive = useCallback(() => {
-    lastViewerInteractAtRef.current = Date.now();
-    const el = hotkeyScopeRef.current;
-    if (!el) return;
-    try {
-      el.focus({ preventScroll: true } as any);
-    } catch {
-      try {
-        el.focus();
-      } catch {
-        // ignore
-      }
-    }
-  }, []);
+  }, [buildSavePayload, outputName, projectId, protocolId, svc]);
 
   const removePointById = useCallback((pointId: string) => {
     setCoordsDraft((prev) => prev.filter((p: any) => String(p?.id) !== String(pointId)));
@@ -1146,7 +1233,7 @@ export default function Coords3dViewer({
     });
   }, []);
 
-useEffect(() => {
+  useEffect(() => {
     const isEditableTarget = (el: HTMLElement | null) => {
       if (!el) return false;
       const tag = el.tagName?.toUpperCase?.() ?? "";
@@ -1204,9 +1291,6 @@ useEffect(() => {
       window.removeEventListener("keyup", onKeyUpCapture, true);
     };
   }, [pickedPoint3d, removePointById, markViewerActive]);
-
-  
-
 
   const addPointFromSlice = useCallback(
     (axis: "x" | "y" | "z", localX: number, localY: number) => {
@@ -1316,7 +1400,7 @@ useEffect(() => {
         z: Math.round(Number((hit as any).z)),
       });
     },
-    [filteredPoints, handlePickPoint3d],
+    [filteredPoints, handlePickPoint3d, markViewerActive],
   );
 
   const clampSingleViewBox = useCallback(
@@ -1590,11 +1674,12 @@ useEffect(() => {
                 {tomos.map((t) => {
                   const selected =
                     selectedTomoId != null && String(selectedTomoId) === String(t.tomoId);
+                  const isDirty = Boolean(coordsByTomoRef.current.get(String(t.tomoId))?.dirty);
                   return (
                     <ListItemButton
                       key={String(t.tomoId)}
                       selected={selected}
-                      onClick={() => setSelectedTomoId(t.tomoId)}
+                      onClick={() => selectTomogram(t.tomoId)}
                       sx={{ px: 1.5, py: 1 }}
                     >
                       <ListItemText
@@ -1606,7 +1691,9 @@ useEffect(() => {
                         }}
                         primary={t.label}
                         secondary={
-                          t.nCoords != null ? `${t.nCoords} coords` : t.name ?? undefined
+                          t.nCoords != null
+                            ? `${t.nCoords} coords${isDirty ? " · modified" : ""}`
+                            : (t.name ?? undefined)
                         }
                       />
                     </ListItemButton>
@@ -1719,7 +1806,7 @@ useEffect(() => {
                   />
                 )}
 
-                {coordsDirty && (
+                {hasAnyDirty && (
                   <Chip
                     size="small"
                     color="warning"
@@ -1731,12 +1818,12 @@ useEffect(() => {
                 <Button
                   size="small"
                   variant="contained"
-                  disabled={!coordsDirty || saveBusy}
+                  disabled={!hasAnyDirty || saveBusy}
                   onClick={openSaveDialog}
                   sx={{ textTransform: "none" }}
                 >
                   {saveBusy ? <CircularProgress size={14} sx={{ mr: 1 }} /> : null}
-                  Save as new output
+                  Save
                 </Button>
 
                 <Button
@@ -1870,12 +1957,12 @@ useEffect(() => {
                   )
                 ) : sliceLayoutMode === "triple" ? (
                   !tomoDims ||
-                  maxSliceZ == null ||
-                  maxSliceX == null ||
-                  maxSliceY == null ||
-                  sliceIndex == null ||
-                  sliceIndexX == null ||
-                  sliceIndexY == null ? (
+                    maxSliceZ == null ||
+                    maxSliceX == null ||
+                    maxSliceY == null ||
+                    sliceIndex == null ||
+                    sliceIndexX == null ||
+                    sliceIndexY == null ? (
                     <Box sx={{ m: "auto" }}>
                       <Typography variant="body2" color="text.secondary">
                         Tomogram dimensions are not available for orthogonal views.
@@ -2032,28 +2119,28 @@ useEffect(() => {
                             <CenteredHint text="No Z slice image." />
                           ) : (
                             <svg
-                          viewBox={
-                            singleViewBox
-                              ? `${singleViewBox.x} ${singleViewBox.y} ${singleViewBox.w} ${singleViewBox.h}`
-                              : `0 0 ${tomoDimsX} ${tomoDimsY}`
-                          }
-                          preserveAspectRatio="xMidYMid meet"
-                          style={{
-                            width: "100%",
-                            height: "100%",
-                            display: "block",
-                            cursor: isSinglePanning ? "grabbing" : editMode ? "crosshair" : "grab",
-                            touchAction: "none",
-                          }}
-                          onWheel={handleSingleSliceWheel}
-                          onPointerDown={handleSingleSlicePointerDown}
-                          onPointerMove={handleSingleSlicePointerMove}
-                          onPointerUp={handleSingleSlicePointerUp}
-                          onPointerCancel={handleSingleSlicePointerUp}
-                          onContextMenu={handleSingleSliceContextMenu}
-                          onClick={(e) => {
-                            if (singleSuppressClickRef.current) return;
-                            if (!editMode) return;
+                              viewBox={
+                                singleViewBox
+                                  ? `${singleViewBox.x} ${singleViewBox.y} ${singleViewBox.w} ${singleViewBox.h}`
+                                  : `0 0 ${tomoDimsX} ${tomoDimsY}`
+                              }
+                              preserveAspectRatio="xMidYMid meet"
+                              style={{
+                                width: "100%",
+                                height: "100%",
+                                display: "block",
+                                cursor: isSinglePanning ? "grabbing" : editMode ? "crosshair" : "grab",
+                                touchAction: "none",
+                              }}
+                              onWheel={handleSingleSliceWheel}
+                              onPointerDown={handleSingleSlicePointerDown}
+                              onPointerMove={handleSingleSlicePointerMove}
+                              onPointerUp={handleSingleSlicePointerUp}
+                              onPointerCancel={handleSingleSlicePointerUp}
+                              onContextMenu={handleSingleSliceContextMenu}
+                              onClick={(e) => {
+                                if (singleSuppressClickRef.current) return;
+                                if (!editMode) return;
                                 const local = getSvgLocalPoint(
                                   e.clientX,
                                   e.clientY,
@@ -2662,7 +2749,7 @@ useEffect(() => {
                           />
                         </Box>
 
-                        </Box>
+                      </Box>
                     ) : (
                       <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5, ml: 1 }}>
                         <Typography variant="subtitle2">Appearance</Typography>
@@ -2858,21 +2945,11 @@ useEffect(() => {
         maxWidth="sm"
         fullWidth
       >
-        <DialogTitle>Save as new output</DialogTitle>
+        <DialogTitle>Save changes</DialogTitle>
         <DialogContent sx={{ pt: 1.5 }}>
           <DialogContentText sx={{ mb: 1.5 }}>
-            This will create a new coordinates output from the current draft points.
+            This will create a new coordinates output from your modified tomograms. Continue?
           </DialogContentText>
-
-          <TextField
-            autoFocus
-            fullWidth
-            size="small"
-            label="New output name"
-            value={newOutputName}
-            onChange={(e) => setNewOutputName(e.target.value)}
-            disabled={saveBusy}
-          />
 
           {saveError && (
             <Alert severity="error" sx={{ mt: 1.5 }}>
@@ -2889,8 +2966,8 @@ useEffect(() => {
             Cancel
           </Button>
           <Button
-            onClick={saveAsNewOutput}
-            disabled={saveBusy || !newOutputName.trim()}
+            onClick={saveChanges}
+            disabled={saveBusy}
             variant="contained"
             sx={{ textTransform: "none" }}
           >
@@ -2915,8 +2992,6 @@ useEffect(() => {
           {saveToast}
         </Alert>
       </Snackbar>
-
-
 
       <Dialog open={helpOpen} onClose={() => setHelpOpen(false)} maxWidth="xs" fullWidth>
         <DialogTitle>
@@ -4447,9 +4522,9 @@ function hexToRgba(hex: string, alpha: number) {
   const normalized =
     h.length === 3
       ? h
-          .split("")
-          .map((c) => c + c)
-          .join("")
+        .split("")
+        .map((c) => c + c)
+        .join("")
       : h;
   const num = parseInt(normalized, 16);
   const r = (num >> 16) & 255;
