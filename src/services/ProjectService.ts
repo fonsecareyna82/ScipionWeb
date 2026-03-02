@@ -773,7 +773,7 @@ export interface ProjectService<
     projectId: Id,
     protocolId: Id,
     coordsOutputName: string,
-    payload: CreateCoords3dOutputFromPointsPayload,
+    payload: any,
   ): Promise<CreateCoords3dOutputFromPointsResult>;
 
   // ─────────────────────────────────────────────────────────────────────────────

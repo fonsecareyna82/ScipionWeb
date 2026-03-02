@@ -361,7 +361,7 @@ const defaultService: ProjectService = {
     projectId: Id,
     protocolId: Id,
     coordsOutputName: string,
-    payload: CreateCoords3dOutputFromPointsPayload,
+    payload: any,
     opts?: CreateCoords3dOutputFromPointsOptions,
   ): Promise<CreateCoords3dOutputFromPointsResult> =>
     api.createCoords3dOutputFromPoints(

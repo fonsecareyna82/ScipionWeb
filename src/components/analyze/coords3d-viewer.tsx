@@ -1205,7 +1205,7 @@ export default function Coords3dViewer({
     setSaveError(null);
 
     try {
-      await (svc as any).createCoords3dOutputFromPoints(projectId, protocolId, outputName, payload);
+      await svc.createCoords3dOutputFromPoints(projectId, protocolId, outputName, payload);
 
       for (const entry of coordsByTomoRef.current.values()) {
         if (!entry.dirty) continue;
