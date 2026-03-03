@@ -1933,6 +1933,7 @@ export async function fetchCoords3dForTomogram(
     x: p.x ?? p.X,
     y: p.y ?? p.Y,
     z: p.z ?? p.Z,
+    matrix: p.matrix ?? [],
     classId: p.classId ?? p.class ?? p.class_id,
     score:
       typeof p.score === "number" && Number.isFinite(p.score)

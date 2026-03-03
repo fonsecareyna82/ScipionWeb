@@ -120,6 +120,7 @@ export type Coordinates3dPoint = {
   label?: number | string;
   score?: number;
   [key: string]: unknown;
+  matrix?: any |  [];
 };
 
 /**

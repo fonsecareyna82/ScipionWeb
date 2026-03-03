@@ -2225,8 +2225,8 @@ function MetadataTablePanel({
       variant="outlined"
       sx={{
         mt: 0,
-        minHeight: embedded ? 630 : 660,
-        maxHeight: embedded ? 630 : 660,
+        minHeight: embedded ? 630 : 667,
+        maxHeight: embedded ? 630 : 667,
         minWidth: 840,
         flexShrink: 0,
         display: viewMode === "table" ? "flex" : "none",
@@ -2651,8 +2651,8 @@ function MetadataGalleryPanel({
       variant="outlined"
       sx={{
         mt: 0,
-        minHeight: embedded ? 630 : 660,
-        maxHeight: embedded ? 630 : 660,
+        minHeight: embedded ? 630 : 667,
+        maxHeight: embedded ? 630 : 667,
         minWidth: 840,
         flexShrink: 0,
         display: viewMode === "gallery" ? "flex" : "none",

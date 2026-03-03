@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import type { ReactNode } from "react";
+import toast from "react-hot-toast";
 import {
   Box,
   CircularProgress,
@@ -578,6 +579,7 @@ export default function Coords3dViewer({
               classId: p.classId ?? p.class ?? p.class_id,
               score: scoreVal,
               radius,
+              matrix: p.matrix ?? [],
             } as Coords3dPointExt;
           })
           .filter((p): p is Coords3dPointExt => p !== null);
@@ -1161,6 +1163,7 @@ export default function Coords3dViewer({
           typeof p?.radius === "number" && Number.isFinite(p.radius) ? p.radius : undefined,
         classId: p?.classId,
         tomoId: entry.tomoId,
+        matrix: p?.matrix,
       }));
 
       tomograms.push({ tomoId: entry.tomoId, coords });
@@ -1216,7 +1219,7 @@ export default function Coords3dViewer({
       setCoordsDirty(false);
       setHasAnyDirty(false);
       setSaveDialogOpen(false);
-      setSaveToast("Changes saved.");
+      toast.success("The new output has been created successfully.");
     } catch (e: any) {
       setSaveError(e?.message || "Failed to save changes.");
     } finally {
@@ -2976,22 +2979,6 @@ export default function Coords3dViewer({
           </Button>
         </DialogActions>
       </Dialog>
-
-      <Snackbar
-        open={Boolean(saveToast)}
-        autoHideDuration={2500}
-        onClose={() => setSaveToast(null)}
-        anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
-      >
-        <Alert
-          onClose={() => setSaveToast(null)}
-          severity="success"
-          variant="filled"
-          sx={{ width: "100%" }}
-        >
-          {saveToast}
-        </Alert>
-      </Snackbar>
 
       <Dialog open={helpOpen} onClose={() => setHelpOpen(false)} maxWidth="xs" fullWidth>
         <DialogTitle>
