@@ -212,6 +212,12 @@ export default function Plugins() {
                                 {t.status}
                               </span>
 
+                              {t.step ? (
+                                <div className="mt-1 text-xs text-gray-600 dark:text-gray-400 break-all">
+                                  {t.step}
+                                </div>
+                              ) : null}
+
                               {t.error ? (
                                 <div className="mt-1 text-xs text-red-500 break-all">{t.error}</div>
                               ) : null}

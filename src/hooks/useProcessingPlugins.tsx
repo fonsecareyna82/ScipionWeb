@@ -12,6 +12,7 @@ export type PluginTask = {
   operation: PluginTaskOperation;
   status: string;
   error?: string | null;
+  step?: string | null;
   startedAtMs: number;
   updatedAtMs: number;
 };
@@ -167,6 +168,7 @@ export function ProcessingProvider({ children }: { children: React.ReactNode }) 
           operation: t.operation,
           status: initialStatus,
           error: null,
+          step: null,
           startedAtMs: now,
           updatedAtMs: now,
         },
@@ -233,10 +235,18 @@ export function ProcessingProvider({ children }: { children: React.ReactNode }) 
             if (settled.status === "fulfilled") {
               const status = settled.value;
 
+              let step: string | null = null;
+              if (status && typeof status.meta === "object" && status.meta != null) {
+                const metaObj = status.meta as Record<string, unknown>;
+                const rawStep = metaObj["step"];
+                if (typeof rawStep === "string") step = rawStep;
+              }
+
               const next: PluginTask = {
                 ...existingTask,
                 status: status.status,
                 error: status.error ?? null,
+                step,
                 updatedAtMs: Date.now(),
               };
 

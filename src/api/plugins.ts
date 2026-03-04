@@ -46,6 +46,7 @@ export type TaskStatusResponse = {
   status: string;
   result?: unknown;
   error?: string | null;
+  meta?: unknown;
 };
 
 export async function fetchPlugins(): Promise<Plugin[]> {
