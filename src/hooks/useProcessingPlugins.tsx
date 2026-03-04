@@ -1,6 +1,7 @@
 // src/hooks/useProcessingPlugins.tsx
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { getTaskStatus, type TaskStatusResponse } from "@/api/plugins";
+import { useQueryClient } from "@tanstack/react-query";
 
 export type PluginTaskOperation = "install" | "uninstall";
 
@@ -72,6 +73,8 @@ export function ProcessingProvider({ children }: { children: React.ReactNode }) 
   const tasksRef = useRef<PluginTask[]>([]);
   const deferredByIdRef = useRef<Map<string, Deferred>>(new Map());
   const pollingInFlightRef = useRef(false);
+
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     tasksRef.current = tasks;
@@ -202,6 +205,21 @@ export function ProcessingProvider({ children }: { children: React.ReactNode }) 
 
         const results = await Promise.allSettled(active.map((t) => getTaskStatus(t.taskId)));
 
+        // New: if any task reaches terminal state, refresh plugins list via react-query
+        let shouldInvalidatePlugins = false;
+
+        for (let i = 0; i < active.length; i++) {
+          const settled = results[i];
+          if (settled.status === "fulfilled") {
+            if (isTerminalStatus(settled.value.status)) {
+              shouldInvalidatePlugins = true;
+            }
+          } else {
+            // A polling error effectively means the task is no longer reliable -> refresh list
+            shouldInvalidatePlugins = true;
+          }
+        }
+
         setTasks((prev) => {
           const prevMap = new Map(prev.map((t) => [t.taskId, t]));
           const updated: PluginTask[] = [];
@@ -232,7 +250,6 @@ export function ProcessingProvider({ children }: { children: React.ReactNode }) 
                 if (next.operation === "install") finishInstall(next.pipName);
                 if (next.operation === "uninstall") finishRemove(next.pipName);
 
-                // Remove finished tasks immediately
                 prevMap.delete(task.taskId);
                 continue;
               }
@@ -255,7 +272,6 @@ export function ProcessingProvider({ children }: { children: React.ReactNode }) 
             }
           }
 
-          // Keep any remaining non-terminal tasks
           for (const t of prevMap.values()) {
             if (isTerminalStatus(t.status)) continue;
             updated.push(t);
@@ -264,6 +280,10 @@ export function ProcessingProvider({ children }: { children: React.ReactNode }) 
           updated.sort((a, b) => b.updatedAtMs - a.updatedAtMs);
           return updated;
         });
+
+        if (shouldInvalidatePlugins) {
+          void queryClient.invalidateQueries({ queryKey: ["plugins"] });
+        }
       } finally {
         pollingInFlightRef.current = false;
       }
@@ -278,6 +298,7 @@ export function ProcessingProvider({ children }: { children: React.ReactNode }) 
     setTasks([]);
     localStorage.removeItem(LS_KEY_V2);
     deferredByIdRef.current.clear();
+    void queryClient.invalidateQueries({ queryKey: ["plugins"] });
   };
 
   const value = useMemo<ProcessingContextType>(

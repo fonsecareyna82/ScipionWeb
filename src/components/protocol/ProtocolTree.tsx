@@ -197,7 +197,7 @@ const ProtocolNodeItem: FC<{
       setExpanded(
         !!(
           hasChildren &&
-          (node.tag === "section" || node.tag === "protocol_group" || isRoot)
+          (node.tag === "section" || node.tag === "protocol_group" || node.tag === "package" || isRoot)
         )
       );
     } else {
@@ -206,17 +206,22 @@ const ProtocolNodeItem: FC<{
   }, [searchText, hasChildren, node.openItem, node.tag, isRoot]);
 
   const tagIcon = () => {
-    if (node.tag === "protocol" && node.icon?.name) {
-      const key = node.icon.name.split(".")[0];
-      const IconComponent = ProtocolIcons[key];
-      return IconComponent ? (
-        <IconComponent className={styles.iconWideBadge} />
-      ) : (
-        <DocsIcon className={styles.iconDoc} />
-      );
+    if (node.tag?.startsWith("protocol") && node.tag != "protocol_group") {
+
+      if (!node.icon?.name) { return <DocsIcon className={styles.iconDoc} />; }
+
+      if (node.icon?.name) {
+        const key = node.icon.name.split(".")[0];
+        const IconComponent = ProtocolIcons[key];
+        return IconComponent ? (
+          <IconComponent className={styles.iconWideBadge} />
+        ) : (
+          <DocsIcon className={styles.iconDoc} />
+        );
+      }
     }
 
-    if (node.tag === "protocol_group" || node.tag === "section") {
+    if (node.tag === "protocol_group" || node.tag === "section" || node.tag === "package") {
       return expanded ? (
         <OpenFolderIcon className={styles.iconOpenFolder} />
       ) : (
