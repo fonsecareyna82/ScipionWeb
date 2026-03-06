@@ -218,13 +218,15 @@ export async function renameProject(
   id: Id,
   newName: string,
   newDescription: string,
-): Promise<Project> {
+): Promise<any> {
   const response = await fetchWithAuth(`${BASE_URL}/projects/${id}`, {
     method: "PUT",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name: newName, description: newDescription }),
   });
+  console.log(response);
   if (!response.ok) throw await toApiError(response, "Failed to rename project");
-  return safeJson<Project>(response);
+  return safeJson<any>(response);
 }
 
 export async function deleteProject(id: Id): Promise<void> {
