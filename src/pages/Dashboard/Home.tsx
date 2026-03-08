@@ -11,7 +11,6 @@ import {
   BookOpen,
   FolderKanban,
   RefreshCw,
-  Settings as SettingsIcon,
   Pin,
   PinOff,
   ArrowRight,
@@ -20,6 +19,7 @@ import {
   LifeBuoy,
   Folder,
   Plus,
+  LucideSettings2,
 } from "lucide-react";
 import { TreeIcon } from "@/icons";
 
@@ -375,6 +375,38 @@ export default function Home() {
       <PageBreadcrumb pageTitle="Home" />
 
       <div className="grid grid-cols-12 gap-4 md:gap-6">
+
+        {/* Hero: Welcome */}
+        <div className="col-span-12">
+          <CardShell
+            title="Welcome"
+            subtitle="Scipion v4.0.0 — Flavius"
+            right={
+              <a
+                href="https://scipion-em.github.io/docs/release-3.0.0/index.html"
+                target="_blank"
+                rel="noreferrer"
+                className={classNames(
+                  "inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-white shadow-sm transition",
+                  "bg-gradient-to-r from-indigo-600 via-sky-600 to-cyan-600 hover:shadow-md hover:brightness-[0.98]",
+                )}
+              >
+                <BookOpen className="h-4 w-4" />
+                Release notes
+              </a>
+            }
+          >
+            <Alert
+              variant="success"
+              title="Welcome to Scipion v4.0.0 - Flavius"
+              message="To learn more about Scipion you can go to our documentation"
+              showLink={true}
+              linkHref="https://scipion-em.github.io/docs/release-3.0.0/index.html"
+              linkText="Learn more"
+            />
+          </CardShell>
+        </div>
+
         {/* Top: Quick actions */}
         <div className="col-span-12 xl:col-span-8">
           <CardShell
@@ -420,7 +452,7 @@ export default function Home() {
               <ActionButton
                 title="Settings"
                 description="User preferences, instance configuration, tags, and environment variables."
-                icon={<SettingsIcon className="h-4 w-4" />}
+                icon={<LucideSettings2 className="h-4 w-4" />}
                 to="/settings"
               />
               <ActionButton
@@ -468,16 +500,7 @@ export default function Home() {
 
         {/* Top right: What's new */}
         <div className="col-span-12 xl:col-span-4">
-          <CardShell title="What’s new" subtitle="Release notes and useful links.">
-            <Alert
-              variant="success"
-              title="Welcome to Scipion v4.0.0 - Flavius"
-              message="To learn more about Scipion you can go to our documentation"
-              showLink={true}
-              linkHref="https://scipion-em.github.io/docs/release-3.0.0/index.html"
-              linkText="Learn more"
-            />
-
+          <CardShell title="" >
             <div
               className={classNames(
                 "mt-4 rounded-xl border p-4 text-sm shadow-sm",
