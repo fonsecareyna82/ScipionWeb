@@ -442,6 +442,18 @@ export type InstanceSettings = {
 
 export type InstanceSettingsPatch = Partial<InstanceSettings>;
 
+export type EnvironmentVariable = {
+  name: string;
+  value: string;
+  default?: string;
+  description?: string;
+  source?: string;
+  isDefault?: boolean;
+  type?: string;
+};
+
+export type EnvironmentVariablesPatch = Record<string, string>;
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Protocol logs (dynamic channels)
@@ -1002,6 +1014,8 @@ export interface ProjectService<
   putInstanceSettings(payload: InstanceSettings): Promise<InstanceSettings>;
   patchInstanceSettings(patch: InstanceSettingsPatch): Promise<InstanceSettings>;
 
+  fetchEnvironmentVariables: () => Promise<EnvironmentVariable[]>;
+  patchEnvironmentVariables: (patch: EnvironmentVariablesPatch) => Promise<EnvironmentVariable[]>;
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Protocol logs (dynamic channels)

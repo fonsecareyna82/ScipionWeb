@@ -28,6 +28,18 @@ export type InstanceSettings = {
 
 export type InstanceSettingsPatch = Partial<InstanceSettings>;
 
+export type EnvironmentVariable = {
+  name: string;
+  value: string;
+  default?: string;
+  description?: string;
+  source?: string;
+  isDefault?: boolean;
+  type?: string;
+};
+
+export type EnvironmentVariablesPatch = Record<string, string>;
+
 type ApiErrorShape = { message?: string; detail?: unknown; [k: string]: unknown };
 
 class ApiError extends Error {
@@ -136,4 +148,26 @@ export async function patchInstanceSettings(patch: InstanceSettingsPatch): Promi
   });
   if (!res.ok) throw await toApiError(res, "Failed to patch instance settings");
   return safeJson<InstanceSettings>(res);
+}
+
+/* ======================= environmentVariables ======================= */
+
+export async function fetchEnvironmentVariables(): Promise<EnvironmentVariable[]> {
+  // fetchEnvironmentVariables
+  const res = await fetchWithAuth(`${BASE_URL}/settings/environment`, { method: "GET" });
+  if (!res.ok) throw await toApiError(res, "Failed to load environment variables");
+  return safeJson<EnvironmentVariable[]>(res);
+}
+
+export async function patchEnvironmentVariables(
+  patch: EnvironmentVariablesPatch,
+): Promise<EnvironmentVariable[]> {
+  // patchEnvironmentVariables
+  const res = await fetchWithAuth(`${BASE_URL}/settings/environment`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+  if (!res.ok) throw await toApiError(res, "Failed to patch environment variables");
+  return safeJson<EnvironmentVariable[]>(res);
 }

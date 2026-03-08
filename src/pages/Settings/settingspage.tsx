@@ -27,19 +27,25 @@ import {
   Tabs,
   TextField,
   Typography,
+  Table as MuiTable,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 
 import { useProjectService } from "@/ProjectServiceContext";
 import { TreeIcon } from "@/icons";
-import { LayoutGrid, Table } from "lucide-react";
+import { LayoutGrid, Table, Search, Save, RotateCcw, RefreshCw } from "lucide-react";
 import PageMeta from "@/components/common/PageMeta";
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 
 import TagManager from "@/components/tags/TagManager";
 import type { ProtocolTag } from "@/components/tags/tagTypes";
 
-type TabKey = "user" | "instance" | "tags";
+type TabKey = "user" | "instance" | "tags" | "environment";
 
 type WorkflowViewMode = "treeTb" | "treeLr" | "grid" | "table";
 
@@ -63,8 +69,14 @@ type InstanceSettings = {
   requireConfirmBeforeDelete: boolean;
 };
 
+type EnvironmentRow = {
+  name: string;
+  value: string;
+};
+
 type UserSettingsPatch = Partial<UserSettings>;
 type InstanceSettingsPatch = Partial<InstanceSettings>;
+type EnvironmentPatch = Record<string, string>;
 
 type ProjectOption = {
   id: string;
@@ -146,6 +158,46 @@ function buildInstancePatch(base: InstanceSettings, next: InstanceSettings): Ins
   (Object.keys(base) as (keyof InstanceSettings)[]).forEach((k) => {
     if (base[k] !== next[k]) patch[k] = next[k] as any;
   });
+  return patch;
+}
+
+function normalizeEnvironmentRows(raw: any): EnvironmentRow[] {
+  // normalizeEnvironmentRows
+  if (Array.isArray(raw)) {
+    return raw
+      .map((item: any) => ({
+        name: String(item?.name ?? item?.key ?? item?.variable ?? "").trim(),
+        value: String(item?.value ?? ""),
+      }))
+      .filter((item: EnvironmentRow) => item.name.length > 0)
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  if (raw && typeof raw === "object") {
+    return Object.entries(raw)
+      .map(([name, value]) => ({
+        name: String(name).trim(),
+        value: value == null ? "" : String(value),
+      }))
+      .filter((item: EnvironmentRow) => item.name.length > 0)
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  return [];
+}
+
+function buildEnvironmentPatch(base: EnvironmentRow[], next: EnvironmentRow[]): EnvironmentPatch {
+  // buildEnvironmentPatch
+  const baseMap = new Map(base.map((row) => [row.name, row.value]));
+  const patch: EnvironmentPatch = {};
+
+  next.forEach((row) => {
+    const prev = baseMap.get(row.name);
+    if (prev !== row.value) {
+      patch[row.name] = row.value;
+    }
+  });
+
   return patch;
 }
 
@@ -328,6 +380,14 @@ export default function SettingsPage() {
   const [instanceDraft, setInstanceDraft] = useState<InstanceSettings | null>(null);
   const [instanceLoadedOnce, setInstanceLoadedOnce] = useState(false);
 
+  const [environmentLoading, setEnvironmentLoading] = useState(false);
+  const [environmentError, setEnvironmentError] = useState<string | null>(null);
+  const [environmentAvailable, setEnvironmentAvailable] = useState(true);
+  const [environmentBase, setEnvironmentBase] = useState<EnvironmentRow[]>([]);
+  const [environmentDraft, setEnvironmentDraft] = useState<EnvironmentRow[]>([]);
+  const [environmentLoadedOnce, setEnvironmentLoadedOnce] = useState(false);
+  const [environmentFilter, setEnvironmentFilter] = useState("");
+
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   // tagsUiState
@@ -377,11 +437,11 @@ export default function SettingsPage() {
 
       const normalized: ProjectOption[] = Array.isArray(data)
         ? data
-            .map((p: any) => ({
-              id: String(p?.id ?? p?.projectId ?? p?.name ?? "").trim(),
-              name: String(p?.name ?? p?.title ?? p?.id ?? p?.projectId ?? "").trim(),
-            }))
-            .filter((p: ProjectOption) => p.id.length > 0 && p.name.length > 0)
+          .map((p: any) => ({
+            id: String(p?.id ?? p?.projectId ?? p?.name ?? "").trim(),
+            name: String(p?.name ?? p?.title ?? p?.id ?? p?.projectId ?? "").trim(),
+          }))
+          .filter((p: ProjectOption) => p.id.length > 0 && p.name.length > 0)
         : [];
 
       setProjectOptions(normalized);
@@ -541,31 +601,50 @@ export default function SettingsPage() {
 
   const actionButtonSx = useMemo(() => {
     // actionButtonSx
+    const bg = isDarkMode ? "rgba(255,255,255,0.04)" : "rgba(17,24,39,0.03)";
+    const bgHover = isDarkMode ? "rgba(255,255,255,0.07)" : "rgba(17,24,39,0.06)";
+    const inset = isDarkMode ? "0 1px 0 rgba(255,255,255,0.06) inset" : "0 1px 0 rgba(255,255,255,0.7) inset";
+    const shadow = isDarkMode ? "0 8px 18px rgba(0,0,0,0.28)" : "0 10px 22px rgba(17,24,39,0.10)";
+
     return {
       textTransform: "none",
       fontSize: 12,
       color: colors.text,
       borderColor: colors.border,
+      borderRadius: 3,
+      bgcolor: bg,
+      backgroundImage: isDarkMode
+        ? "linear-gradient(180deg, rgba(255,255,255,0.10), rgba(255,255,255,0.00))"
+        : "linear-gradient(180deg, rgba(255,255,255,0.80), rgba(255,255,255,0.10))",
+      boxShadow: `${inset}, ${shadow}`,
       "&:hover": {
         borderColor: isDarkMode ? "rgba(255,255,255,0.22)" : colors.border,
-        bgcolor: colors.hover,
+        bgcolor: bgHover,
+        boxShadow: `${inset}, ${isDarkMode ? "0 10px 22px rgba(0,0,0,0.34)" : "0 12px 26px rgba(17,24,39,0.14)"}`,
       },
     } as const;
-  }, [colors.border, colors.hover, colors.text, isDarkMode]);
+  }, [colors.border, colors.text, isDarkMode]);
 
   const saveButtonSx = useMemo(() => {
     // saveButtonSx
+    const inset = "0 1px 0 rgba(255,255,255,0.18) inset";
+    const shadow = isDarkMode ? "0 12px 26px rgba(0,0,0,0.30)" : "0 12px 26px rgba(17,24,39,0.16)";
+
     return {
       textTransform: "none",
       fontSize: 12,
+      borderRadius: 3,
       bgcolor: colors.primary,
       color: colors.primaryContrast,
+      backgroundImage: "linear-gradient(180deg, rgba(255,255,255,0.16), rgba(255,255,255,0.00))",
+      boxShadow: `${inset}, ${shadow}`,
       "&:hover": {
         bgcolor: colors.primary,
-        filter: "brightness(0.95)",
+        filter: "brightness(0.96)",
+        boxShadow: `${inset}, ${isDarkMode ? "0 14px 30px rgba(0,0,0,0.36)" : "0 14px 30px rgba(17,24,39,0.20)"}`,
       },
     } as const;
-  }, [colors.primary, colors.primaryContrast]);
+  }, [colors.primary, colors.primaryContrast, isDarkMode]);
 
   const timeZoneOptions = useMemo(() => {
     // timeZoneOptions
@@ -588,6 +667,24 @@ export default function SettingsPage() {
     const patch = buildInstancePatch(instanceBase, instanceDraft);
     return Object.keys(patch).length ? patch : null;
   }, [instanceBase, instanceDraft]);
+
+  const environmentPatch = useMemo(() => {
+    // environmentPatch
+    const patch = buildEnvironmentPatch(environmentBase, environmentDraft);
+    return Object.keys(patch).length ? patch : null;
+  }, [environmentBase, environmentDraft]);
+
+  const filteredEnvironmentRows = useMemo(() => {
+    // filteredEnvironmentRows
+    const q = environmentFilter.trim().toLowerCase();
+    if (!q) return environmentDraft;
+
+    return environmentDraft.filter((row) => {
+      const name = row.name.toLowerCase();
+      const value = row.value.toLowerCase();
+      return name.includes(q) || value.includes(q);
+    });
+  }, [environmentDraft, environmentFilter]);
 
   const loadUserSettings = useCallback(async () => {
     // loadUserSettings
@@ -636,6 +733,34 @@ export default function SettingsPage() {
     }
   }, [svc]);
 
+  const loadEnvironmentVariables = useCallback(async () => {
+    // loadEnvironmentVariables
+    setEnvironmentLoading(true);
+    setEnvironmentError(null);
+
+    try {
+      const raw = await svc.fetchEnvironmentVariables();
+      const data = normalizeEnvironmentRows(raw);
+      setEnvironmentAvailable(true);
+      setEnvironmentBase(data);
+      setEnvironmentDraft(data);
+    } catch (e: any) {
+      if (isForbidden(e)) {
+        setEnvironmentAvailable(false);
+        setEnvironmentBase([]);
+        setEnvironmentDraft([]);
+        setEnvironmentLoadedOnce(true);
+        return;
+      }
+      const msg = getErrorMsg(e);
+      setEnvironmentError(msg);
+      toast.error(msg);
+    } finally {
+      setEnvironmentLoading(false);
+      setEnvironmentLoadedOnce(true);
+    }
+  }, [svc]);
+
   useEffect(() => {
     // initialLoad
     void loadUserSettings();
@@ -647,6 +772,13 @@ export default function SettingsPage() {
     if (instanceLoadedOnce) return;
     void loadInstanceSettings();
   }, [tab, instanceLoadedOnce, loadInstanceSettings]);
+
+  useEffect(() => {
+    // lazyLoadEnvironmentOnFirstOpen
+    if (tab !== "environment") return;
+    if (environmentLoadedOnce) return;
+    void loadEnvironmentVariables();
+  }, [tab, environmentLoadedOnce, loadEnvironmentVariables]);
 
   const handleSaveUser = useCallback(async () => {
     // handleSaveUser
@@ -703,6 +835,36 @@ export default function SettingsPage() {
     }
   }, [svc, instanceAvailable, instanceBase, instanceDraft]);
 
+  const handleSaveEnvironment = useCallback(async () => {
+    // handleSaveEnvironment
+    if (!environmentAvailable) return;
+
+    const patch = buildEnvironmentPatch(environmentBase, environmentDraft);
+    if (!Object.keys(patch).length) return;
+
+    setEnvironmentLoading(true);
+    setEnvironmentError(null);
+
+    try {
+      const savedRaw = await svc.patchEnvironmentVariables(patch as EnvironmentPatch);
+      const saved = normalizeEnvironmentRows(savedRaw);
+      setEnvironmentBase(saved);
+      setEnvironmentDraft(saved);
+      toast.success("Environment variables saved.");
+    } catch (e: any) {
+      if (isForbidden(e)) {
+        setEnvironmentAvailable(false);
+        toast.error("Forbidden: admin permissions required.");
+        return;
+      }
+      const msg = getErrorMsg(e);
+      setEnvironmentError(msg);
+      toast.error(msg);
+    } finally {
+      setEnvironmentLoading(false);
+    }
+  }, [svc, environmentAvailable, environmentBase, environmentDraft]);
+
   const handleResetUser = useCallback(() => {
     // handleResetUser
     if (userBase) setUserDraft(userBase);
@@ -713,6 +875,11 @@ export default function SettingsPage() {
     if (instanceBase) setInstanceDraft(instanceBase);
   }, [instanceBase]);
 
+  const handleResetEnvironment = useCallback(() => {
+    // handleResetEnvironment
+    setEnvironmentDraft(environmentBase);
+  }, [environmentBase]);
+
   const handleCopyAdvanced = useCallback(async () => {
     // handleCopyAdvanced
     try {
@@ -721,51 +888,71 @@ export default function SettingsPage() {
           ? (userDraft ?? userBase ?? {})
           : tab === "instance"
             ? (instanceDraft ?? instanceBase ?? {})
-            : (tagsDraft ?? []);
+            : tab === "environment"
+              ? (environmentDraft ?? [])
+              : (tagsDraft ?? []);
       await copyToClipboard(safeStringify(payload));
       toast.success("Copied.");
     } catch {
       toast.error("Copy failed.");
     }
-  }, [tab, userDraft, userBase, instanceDraft, instanceBase, tagsDraft]);
+  }, [tab, userDraft, userBase, instanceDraft, instanceBase, environmentDraft, tagsDraft]);
 
   const headerRight = useMemo(() => {
     // headerRight
     if (tab === "tags") return null;
 
     const isUser = tab === "user";
-    const busy = isUser ? userLoading : instanceLoading;
-    const patch = isUser ? userPatch : instancePatch;
+    const isInstance = tab === "instance";
+    const isEnvironment = tab === "environment";
+
+    const busy = isUser ? userLoading : isInstance ? instanceLoading : environmentLoading;
+    const patch = isUser ? userPatch : isInstance ? instancePatch : environmentPatch;
     const hasChanges = Boolean(patch);
-    const canSave = isUser ? Boolean(userDraft) : instanceAvailable && Boolean(instanceDraft);
+
+    const canSave = isUser
+      ? Boolean(userDraft)
+      : isInstance
+        ? instanceAvailable && Boolean(instanceDraft)
+        : environmentAvailable;
+
+    const onReload = isUser ? loadUserSettings : isInstance ? loadInstanceSettings : loadEnvironmentVariables;
+    const onReset = isUser ? handleResetUser : isInstance ? handleResetInstance : handleResetEnvironment;
+    const onSave = isUser ? handleSaveUser : isInstance ? handleSaveInstance : handleSaveEnvironment;
 
     return (
       <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" justifyContent="flex-end">
         {hasChanges && <Chip size="small" label="Unsaved changes" />}
+
         <Button
           sx={actionButtonSx}
           variant="outlined"
-          onClick={isUser ? loadUserSettings : loadInstanceSettings}
+          onClick={onReload}
           disabled={busy}
           size="small"
+          startIcon={<RefreshCw size={16} />}
         >
           Reload
         </Button>
+
         <Button
           sx={actionButtonSx}
           variant="outlined"
-          onClick={isUser ? handleResetUser : handleResetInstance}
+          onClick={onReset}
           disabled={busy || !hasChanges}
           size="small"
+          startIcon={<RotateCcw size={16} />}
         >
           Reset
         </Button>
+
         <Button
           sx={saveButtonSx}
           variant="contained"
-          onClick={isUser ? handleSaveUser : handleSaveInstance}
+          onClick={onSave}
           disabled={busy || !canSave || !hasChanges}
           size="small"
+          startIcon={<Save size={16} />}
         >
           Save
         </Button>
@@ -775,17 +962,23 @@ export default function SettingsPage() {
     tab,
     userLoading,
     instanceLoading,
+    environmentLoading,
     userPatch,
     instancePatch,
+    environmentPatch,
     instanceAvailable,
+    environmentAvailable,
     userDraft,
     instanceDraft,
     loadUserSettings,
     loadInstanceSettings,
+    loadEnvironmentVariables,
     handleResetUser,
     handleResetInstance,
+    handleResetEnvironment,
     handleSaveUser,
     handleSaveInstance,
+    handleSaveEnvironment,
     actionButtonSx,
     saveButtonSx,
   ]);
@@ -1250,12 +1443,169 @@ export default function SettingsPage() {
     );
   };
 
+  const renderEnvironmentContent = () => {
+    // renderEnvironmentContent
+    if (!environmentAvailable) {
+      return <Alert severity="info">Environment variables are restricted to admin users.</Alert>;
+    }
+
+    if (environmentLoading && environmentDraft.length === 0) {
+      return (
+        <Stack spacing={1.75}>
+          <Skeleton variant="rounded" height={64} />
+          <Skeleton variant="rounded" height={340} />
+        </Stack>
+      );
+    }
+
+    return (
+      <Stack spacing={1.75}>
+        {environmentError && <Alert severity="error">{environmentError}</Alert>}
+
+        <Card variant="outlined" sx={cardSx}>
+          <CardHeader
+            title="Environment"
+            subheader="Inspect and edit backend environment variables exposed by the server."
+            sx={cardHeaderSx}
+          />
+          <CardContent sx={{ pt: 2 }}>
+            <Stack spacing={1.5}>
+              <Grid container spacing={2} sx={{ width: "100%" }}>
+                <Grid size={{ xs: 12, md: 8 }}>
+                  <TextField
+                    sx={fieldSx}
+                    fullWidth
+                    size="small"
+                    label="Filter"
+                    value={environmentFilter}
+                    onChange={(e) => setEnvironmentFilter(e.target.value)}
+                    placeholder="Filter by variable name or value"
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <Search size={16} />
+                        </InputAdornment>
+                      ),
+                    }}
+                    helperText="Use this to quickly find specific variables."
+                  />
+                </Grid>
+
+                <Grid size={{ xs: 12, md: 4 }}>
+                  <Box sx={{ p: 1.25, borderRadius: 2, bgcolor: colors.hover, border: "1px solid", borderColor: colors.border }}>
+                    <Typography sx={{ fontSize: 12.5, fontWeight: 800, mb: 0.25, color: colors.text }}>Rows</Typography>
+                    <Typography sx={{ fontSize: fieldFontSize, color: colors.muted }}>
+                      Showing {filteredEnvironmentRows.length} of {environmentDraft.length} variables.
+                    </Typography>
+                  </Box>
+                </Grid>
+              </Grid>
+
+              {environmentDraft.length === 0 ? (
+                <Alert severity="info">No environment variables returned by the backend.</Alert>
+              ) : (
+                <TableContainer
+                  component={Paper}
+                  variant="outlined"
+                  sx={{
+                    bgcolor: "transparent",
+                    borderColor: colors.border,
+                    borderRadius: 2,
+                    overflow: "auto",
+                    maxHeight: { xs: 360, md: 360 },
+                  }}
+                >
+                  <MuiTable size="small" stickyHeader>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell
+                          sx={{
+                            minWidth: 280,
+                            bgcolor: colors.surface,
+                            color: colors.text,
+                            borderColor: colors.border,
+                            fontSize: 12,
+                            fontWeight: 900,
+                          }}
+                        >
+                          Variable
+                        </TableCell>
+                        <TableCell
+                          sx={{
+                            bgcolor: colors.surface,
+                            color: colors.text,
+                            borderColor: colors.border,
+                            fontSize: 12,
+                            fontWeight: 900,
+                          }}
+                        >
+                          Value
+                        </TableCell>
+                      </TableRow>
+                    </TableHead>
+
+                    <TableBody>
+                      {filteredEnvironmentRows.map((row) => {
+                        const originalIndex = environmentDraft.findIndex((item) => item.name === row.name);
+
+                        return (
+                          <TableRow key={row.name} hover>
+                            <TableCell
+                              sx={{
+                                verticalAlign: "top",
+                                borderColor: colors.border,
+                                color: colors.text,
+                                fontSize: 12,
+                                fontWeight: 800,
+                                fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+                              }}
+                            >
+                              {row.name}
+                            </TableCell>
+
+                            <TableCell sx={{ borderColor: colors.border }}>
+                              <TextField
+                                sx={fieldSx}
+                                fullWidth
+                                multiline
+                                minRows={1}
+                                maxRows={8}
+                                size="small"
+                                value={row.value}
+                                onChange={(e) => {
+                                  const nextValue = e.target.value;
+                                  setEnvironmentDraft((prev) => {
+                                    const next = [...prev];
+                                    if (originalIndex >= 0 && originalIndex < next.length) {
+                                      next[originalIndex] = { ...next[originalIndex], value: nextValue };
+                                    }
+                                    return next;
+                                  });
+                                }}
+                                placeholder="Variable value"
+                              />
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </MuiTable>
+                </TableContainer>
+              )}
+            </Stack>
+          </CardContent>
+        </Card>
+      </Stack>
+    );
+  };
+
   const advancedPayload = useMemo(() => {
     // advancedPayload
     if (tab === "user") return userDraft ?? userBase ?? {};
     if (tab === "instance") return instanceDraft ?? instanceBase ?? {};
+    if (tab === "environment") return environmentDraft ?? [];
     return tagsDraft ?? [];
-  }, [tab, userDraft, userBase, instanceDraft, instanceBase, tagsDraft]);
+  }, [tab, userDraft, userBase, instanceDraft, instanceBase, environmentDraft, tagsDraft]);
 
   return (
     <>
@@ -1307,12 +1657,19 @@ export default function SettingsPage() {
               <Tab value="user" label="User" />
               <Tab value="instance" label="Instance" />
               <Tab value="tags" label="Tags" />
+              <Tab value="environment" label="Environment" />
             </Tabs>
 
             <Divider sx={dividerSx} />
 
             <Box sx={{ p: 2 }}>
-              {tab === "user" ? renderUserContent() : tab === "instance" ? renderInstanceContent() : renderTagsContent()}
+              {tab === "user"
+                ? renderUserContent()
+                : tab === "instance"
+                  ? renderInstanceContent()
+                  : tab === "tags"
+                    ? renderTagsContent()
+                    : renderEnvironmentContent()}
 
               <Divider sx={{ my: 2, ...dividerSx }} />
 

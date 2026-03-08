@@ -653,7 +653,7 @@ const defaultService: ProjectService = {
     api.revokeProjectShare(toId(projectId), userId),
 
 
-  // ──────────────────────────── Settings (user + instance) ────────────────────────────
+  // ──────────────────────────── Settings (user + instance + environment) ────────────────────────────
 
   fetchUserSettings: () => settingsApi.fetchUserSettings(),
   putUserSettings: (payload: UserSettings) => settingsApi.putUserSettings(payload),
@@ -662,6 +662,10 @@ const defaultService: ProjectService = {
   fetchInstanceSettings: () => settingsApi.fetchInstanceSettings(),
   putInstanceSettings: (payload: InstanceSettings) => settingsApi.putInstanceSettings(payload),
   patchInstanceSettings: (patch: InstanceSettingsPatch) => settingsApi.patchInstanceSettings(patch),
+
+  fetchEnvironmentVariables: () => settingsApi.fetchEnvironmentVariables(),
+  patchEnvironmentVariables: (patch: Record<string, string>) =>
+    settingsApi.patchEnvironmentVariables(patch),
 
   // ──────────────────────────── Protocol tags ────────────────────────────
 
