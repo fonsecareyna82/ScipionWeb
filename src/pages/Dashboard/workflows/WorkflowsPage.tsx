@@ -1,9 +1,105 @@
-import { useCallback, useEffect, useState } from "react";
-import { RefreshCw, X, Search } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { ArrowRight, RefreshCw, Search, X } from "lucide-react";
 import toast from "react-hot-toast";
 
 import { useProjectService } from "@/ProjectServiceContext";
 import type { ProjectWorkflow } from "@/components/projects/workflows-panel";
+
+function classNames(...xs: Array<string | false | null | undefined>): string {
+  return xs.filter(Boolean).join(" ");
+}
+
+function CardShell(props: { title: string; subtitle?: string; right?: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <div
+      className={classNames(
+        "relative overflow-hidden rounded-2xl border p-5 shadow-sm backdrop-blur",
+        "border-gray-200/70 bg-white/80",
+        "dark:border-gray-800/80 dark:bg-white/[0.03]",
+        "lg:p-6",
+      )}
+    >
+      <div className="relative">
+        <div className="mb-4 flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <h3 className="text-base font-semibold text-gray-800 dark:text-white/90">{props.title}</h3>
+            {props.subtitle ? <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{props.subtitle}</p> : null}
+          </div>
+          {props.right ? <div className="shrink-0">{props.right}</div> : null}
+        </div>
+        {props.children}
+      </div>
+    </div>
+  );
+}
+
+function StatPill(props: { label: string; value: React.ReactNode; accent?: "indigo" | "sky" | "cyan" }) {
+  return (
+    <div
+      className={classNames(
+        "inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold",
+        "border-gray-200/70 bg-white/70 text-gray-700",
+        "dark:border-gray-800/80 dark:bg-white/[0.02] dark:text-gray-200",
+      )}
+    >
+      <span className="text-gray-600 dark:text-gray-300">{props.label}</span>
+      <span>{props.value}</span>
+    </div>
+  );
+}
+
+function PrimaryButton(props: {
+  children: React.ReactNode;
+  onClick?: () => void;
+  disabled?: boolean;
+  className?: string;
+  title?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={props.onClick}
+      disabled={props.disabled}
+      title={props.title}
+      className={classNames(
+        "inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition",
+        "text-white shadow-sm",
+        "bg-gradient-to-r from-indigo-600 via-sky-600 to-cyan-600",
+        "hover:brightness-[0.98] hover:shadow-md",
+        "disabled:opacity-60 disabled:cursor-not-allowed",
+        props.className,
+      )}
+    >
+      {props.children}
+    </button>
+  );
+}
+
+function SecondaryButton(props: {
+  children: React.ReactNode;
+  onClick?: () => void;
+  disabled?: boolean;
+  className?: string;
+  title?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={props.onClick}
+      disabled={props.disabled}
+      title={props.title}
+      className={classNames(
+        "inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-2 text-sm font-semibold transition",
+        "border-gray-200/70 bg-white/70 text-gray-800 shadow-sm hover:border-gray-300/80 hover:shadow-md",
+        "dark:border-gray-800/80 dark:bg-white/[0.02] dark:text-white/90 dark:hover:border-gray-700",
+        "disabled:opacity-60 disabled:cursor-not-allowed",
+        props.className,
+      )}
+    >
+      {props.children}
+    </button>
+  );
+}
 
 export default function WorkflowsPage() {
   const svc = useProjectService();
@@ -12,14 +108,12 @@ export default function WorkflowsPage() {
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const [selectedWorkflow, setSelectedWorkflow] =
-    useState<ProjectWorkflow | null>(null);
+  const [selectedWorkflow, setSelectedWorkflow] = useState<ProjectWorkflow | null>(null);
   const [applyDialogOpen, setApplyDialogOpen] = useState(false);
 
   const [searchTerm, setSearchTerm] = useState("");
 
   const loadWorkflows = useCallback(async () => {
-    // loadWorkflowsHandler
     setLoading(true);
     setErrorMessage(null);
 
@@ -34,6 +128,8 @@ export default function WorkflowsPage() {
           }))
         : [];
 
+      normalized.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+
       setWorkflows(normalized);
     } catch (err: any) {
       console.error("[WorkflowsPage] loadWorkflows error:", err);
@@ -45,125 +141,198 @@ export default function WorkflowsPage() {
   }, [svc]);
 
   useEffect(() => {
-    // initialLoadEffect
     void loadWorkflows();
   }, [loadWorkflows]);
 
-  const handleWorkflowClick = (workflow: ProjectWorkflow) => {
-    // workflowClickHandlerPlaceholder
-    //console.log("workflowClicked", workflow);
-  };
-
-  const handleWorkflowDoubleClick = (workflow: ProjectWorkflow) => {
-    setSelectedWorkflow(workflow);
-    setApplyDialogOpen(true);
-  };
-
   const normalizedSearch = searchTerm.trim().toLowerCase();
-  const filteredWorkflows =
-    normalizedSearch === ""
-      ? workflows
-      : workflows.filter((wf) =>
-          wf.name.toLowerCase().includes(normalizedSearch),
-        );
+
+  const filteredWorkflows = useMemo(() => {
+    if (!normalizedSearch) return workflows;
+    return workflows.filter((wf) => (wf.name ?? "").toLowerCase().includes(normalizedSearch));
+  }, [workflows, normalizedSearch]);
 
   const hasAnyWorkflows = workflows.length > 0;
   const hasFilteredWorkflows = filteredWorkflows.length > 0;
 
+  const stats = useMemo(() => {
+    return {
+      total: workflows.length,
+      shown: filteredWorkflows.length,
+      selected: selectedWorkflow ? 1 : 0,
+    };
+  }, [filteredWorkflows.length, selectedWorkflow, workflows.length]);
+
+  const openApply = useCallback((wf: ProjectWorkflow) => {
+    setSelectedWorkflow(wf);
+    setApplyDialogOpen(true);
+  }, []);
+
+  const onRowClick = useCallback((wf: ProjectWorkflow) => {
+    setSelectedWorkflow(wf);
+  }, []);
+
+  const onRowDoubleClick = useCallback(
+    (wf: ProjectWorkflow) => {
+      openApply(wf);
+    },
+    [openApply],
+  );
+
   return (
-    <div className="h-app min-h-0 flex flex-col px-2 py-1">
-      {/* headerSection */}
-      <div className="flex items-start justify-between mb-4 gap-4">
-        <div className="flex-1">
-          <h1 className="text-xl text-gray-900 dark:text-gray-50">
-            Workflows
-          </h1>
-          <div className="mt-2 flex items-center gap-2">
-            <div className="relative w-80 max-w-full">
-              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
-              <input
-                type="text"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Search workflow..."
-                className="w-full rounded-sm border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 pl-8 pr-3 py-1.5 text-sm text-gray-800 dark:text-gray-100 shadow-sm focus:outline-none focus:ring-2 focus:ring-slate-500 focus:border-slate-500"
-              />
+    <div className="h-app min-h-0 flex flex-col px-2 py-2">
+      <div className="grid grid-cols-12 gap-4 md:gap-6">
+        <div className="col-span-12 xl:col-span-8">
+          <CardShell
+            title="Workflows"
+            subtitle="Browse templates and load them into a project."
+            right={
+              <SecondaryButton onClick={() => void loadWorkflows()} disabled={loading} title="Reload workflows">
+                <RefreshCw className={classNames("h-4 w-4", loading ? "animate-spin" : "")} />
+                Refresh
+              </SecondaryButton>
+            }
+          >
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="relative w-full sm:max-w-[420px]">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
+                <input
+                  type="text"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  placeholder="Search workflow…"
+                  className={classNames(
+                    "w-full rounded-xl border py-2 pl-9 pr-3 text-sm font-semibold outline-none transition",
+                    "border-gray-200/70 bg-white/70 text-gray-800 placeholder:text-gray-400",
+                    "focus:border-indigo-500/40 focus:ring-2 focus:ring-indigo-500/10",
+                    "dark:border-gray-800/80 dark:bg-white/[0.02] dark:text-white/90 dark:placeholder:text-gray-500",
+                    "dark:focus:border-indigo-400/40 dark:focus:ring-indigo-400/15",
+                  )}
+                />
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <StatPill label="Total" value={stats.total} />
+                <StatPill label="Shown" value={stats.shown} />
+                {selectedWorkflow ? (
+                  <StatPill label="Selected" value={(selectedWorkflow.name ?? "").slice(0, 18)} />
+                ) : null}
+              </div>
             </div>
-          </div>
+
+            <div className="mt-4 overflow-hidden rounded-2xl border border-gray-200/70 bg-white/70 shadow-sm dark:border-gray-800/80 dark:bg-white/[0.01]">
+              <div
+                className={classNames(
+                  "grid grid-cols-12 gap-3 px-4 py-3 text-xs font-semibold",
+                  "bg-gray-200/80 text-gray-600",
+                  "dark:bg-white/[0.02] dark:text-gray-300",
+                  "border-b border-gray-200/70 dark:border-gray-800/70",
+                )}
+              >
+                <div className="col-span-4">Workflow</div>
+                <div className="col-span-6 hidden md:block">Description</div>
+                <div className="col-span-8 md:col-span-2 text-right">Action</div>
+              </div>
+
+              <div className="max-h-[62vh] overflow-y-auto divide-y divide-gray-200/70 dark:divide-gray-800/70">
+                {loading ? (
+                  <div className="px-4 py-4 text-sm text-gray-600 dark:text-gray-300">Loading workflows…</div>
+                ) : errorMessage ? (
+                  <div className="px-4 py-4 text-sm text-red-600 dark:text-red-300">{errorMessage}</div>
+                ) : !hasAnyWorkflows ? (
+                  <div className="px-4 py-4 text-sm text-gray-500 dark:text-gray-400">No workflows defined yet.</div>
+                ) : !hasFilteredWorkflows ? (
+                  <div className="px-4 py-4 text-sm text-gray-500 dark:text-gray-400">
+                    No workflows found matching your search.
+                  </div>
+                ) : (
+                  filteredWorkflows.map((wf) => {
+                    const isSelected = selectedWorkflow && String(selectedWorkflow.id) === String(wf.id);
+
+                    return (
+                      <div
+                        key={wf.id}
+                        className={classNames(
+                          "grid grid-cols-12 gap-3 px-4 py-3 transition",
+                          "hover:bg-gray-50/80 dark:hover:bg-white/[0.02]",
+                          isSelected ? "bg-gray-50 dark:bg-white/[0.03]" : "",
+                        )}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => onRowClick(wf)}
+                          onDoubleClick={() => onRowDoubleClick(wf)}
+                          className="col-span-4 min-w-0 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/30 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-950"
+                          title="Click to select, double-click to load"
+                        >
+                          <div className="truncate text-sm font-semibold text-gray-900 dark:text-white/90" title={wf.name}>
+                            {wf.name}
+                          </div>
+                          <div className="mt-1 line-clamp-2 text-xs text-gray-500 dark:text-gray-400 md:hidden">
+                            {wf.description || "—"}
+                          </div>
+                        </button>
+
+                        <div className="col-span-6 hidden md:block">
+                          <div className="line-clamp-2 whitespace-pre-line text-xs text-gray-600 dark:text-gray-300">
+                            {wf.description || "—"}
+                          </div>
+                        </div>
+
+                        <div className="col-span-8 md:col-span-2 flex items-center justify-end">
+                          <PrimaryButton
+                            onClick={() => openApply(wf)}
+                            className="px-3 py-2 text-xs"
+                            title="Load this workflow"
+                          >
+                            Load
+                            <ArrowRight className="h-4 w-4" />
+                          </PrimaryButton>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+
+            <div className="mt-3 text-xs text-gray-500 dark:text-gray-400">
+              Tip: double-click a workflow row to load it.
+            </div>
+          </CardShell>
         </div>
 
-        <button
-          type="button"
-          onClick={loadWorkflows}
-          disabled={loading}
-          className="inline-flex items-center gap-2 rounded-sm border border-gray-200 dark:border-gray-700 px-4 py-2 text-sm text-gray-800 dark:text-gray-100 bg-white dark:bg-gray-900 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-60 disabled:cursor-not-allowed shadow-sm"
-        >
-          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-          Refresh
-        </button>
-      </div>
-
-      {/* contentSection */}
-      <div className="flex-1 min-h-0">
-        <div className="border border-gray-200 dark:border-gray-800 rounded-xl bg-white/80 dark:bg-slate-950/60 shadow-sm overflow-hidden flex flex-col h-full">
-          {/* tableHeader */}
-          <div className="grid grid-cols-[minmax(220px,1.1fr)_minmax(360px,1.9fr)] gap-x-3 text-xs font-semibold text-gray-700 dark:text-gray-300 bg-gradient-to-r from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-900 border-b border-gray-200 dark:border-gray-800 px-4 py-2">
-            <span>Workflow</span>
-            <span>Description</span>
-          </div>
-
-          {/* tableBody */}
-          <div className="flex-1 max-h-[calc(100vh-220px)] overflow-y-auto text-sm divide-y divide-gray-200 dark:divide-gray-800">
-            {loading && (
-              <div className="px-4 py-4 text-base text-gray-700 dark:text-gray-200">
-                Loading workflows…
+        <div className="col-span-12 xl:col-span-4">
+          <CardShell
+            title="Details"
+            subtitle={selectedWorkflow ? "Selected workflow overview." : "Select a workflow to preview it."}
+          >
+            {!selectedWorkflow ? (
+              <div className="rounded-2xl border border-gray-200/70 bg-white/70 p-4 text-sm text-gray-600 dark:border-gray-800/80 dark:bg-white/[0.02] dark:text-gray-300">
+                No workflow selected.
               </div>
-            )}
-
-            {!loading && errorMessage && (
-              <div className="px-4 py-4 text-base text-red-500">
-                {errorMessage}
-              </div>
-            )}
-
-            {!loading && !errorMessage && !hasAnyWorkflows && (
-              <div className="px-4 py-4 text-base text-gray-500 dark:text-gray-400">
-                No workflows defined yet.
-              </div>
-            )}
-
-            {!loading &&
-              !errorMessage &&
-              hasAnyWorkflows &&
-              !hasFilteredWorkflows && (
-                <div className="px-4 py-4 text-base text-gray-500 dark:text-gray-400">
-                  No workflows found matching your search.
+            ) : (
+              <div className="space-y-3">
+                <div className="rounded-2xl border border-gray-200/70 bg-white/70 p-4 dark:border-gray-800/80 dark:bg-white/[0.02]">
+                  <div className="text-xs font-semibold text-gray-500 dark:text-gray-400">Name</div>
+                  <div className="mt-1 text-sm font-semibold text-gray-900 dark:text-white/90">
+                    {selectedWorkflow.name}
+                  </div>
                 </div>
-              )}
 
-            {!loading &&
-              !errorMessage &&
-              hasFilteredWorkflows &&
-              filteredWorkflows.map((wf) => (
-                <button
-                  key={wf.id}
-                  type="button"
-                  onClick={() => handleWorkflowClick(wf)}
-                  onDoubleClick={() => handleWorkflowDoubleClick(wf)}
-                  className="w-full grid grid-cols-[minmax(220px,1.1fr)_minmax(360px,1.9fr)] gap-x-3 gap-y-1 px-4 py-3 text-left cursor-pointer transition-colors hover:bg-slate-100 dark:hover:bg-slate-800/80 active:bg-slate-200 dark:active:bg-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-slate-500 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-950 h-[120px]"
-                >
-                  <div
-                    className="font-semibold text-gray-900 dark:text-gray-50 text-[14px] truncate"
-                    title={wf.name}
-                  >
-                    {wf.name}
+                <div className="rounded-2xl border border-gray-200/70 bg-white/70 p-4 dark:border-gray-800/80 dark:bg-white/[0.02]">
+                  <div className="text-xs font-semibold text-gray-500 dark:text-gray-400">Description</div>
+                  <div className="mt-1 whitespace-pre-line text-sm text-gray-700 dark:text-gray-300">
+                    {selectedWorkflow.description || "—"}
                   </div>
-                  <div className="text-gray-700 dark:text-gray-300 text-sm leading-snug whitespace-pre-line h-[84px] overflow-y-auto pr-1">
-                    {wf.description}
-                  </div>
-                </button>
-              ))}
-          </div>
+                </div>
+
+                <PrimaryButton onClick={() => openApply(selectedWorkflow)} className="w-full">
+                  Load workflow
+                  <ArrowRight className="h-4 w-4" />
+                </PrimaryButton>
+              </div>
+            )}
+          </CardShell>
         </div>
       </div>
 
@@ -184,20 +353,14 @@ interface ApplyWorkflowDialogProps {
 
 type ApplyWorkflowMode = "create" | "select";
 
-function ApplyWorkflowDialog({
-  open,
-  workflow,
-  onClose,
-}: ApplyWorkflowDialogProps) {
+function ApplyWorkflowDialog({ open, workflow, onClose }: ApplyWorkflowDialogProps) {
   const svc = useProjectService();
 
   const [mode, setMode] = useState<ApplyWorkflowMode>("create");
   const [newProjectTitle, setNewProjectTitle] = useState("");
   const [newProjectDescription, setNewProjectDescription] = useState("");
 
-  const [projectOptions, setProjectOptions] = useState<
-    Array<{ id: string; name: string }>
-  >([]);
+  const [projectOptions, setProjectOptions] = useState<Array<{ id: string; name: string }>>([]);
   const [projectsLoading, setProjectsLoading] = useState(false);
   const [projectsError, setProjectsError] = useState<string | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<string>("");
@@ -226,41 +389,32 @@ function ApplyWorkflowDialog({
 
       try {
         const data = await svc.fetchList();
-        const normalized: Array<{ id: string; name: string }> = Array.isArray(
-          data,
-        )
+        const normalized: Array<{ id: string; name: string }> = Array.isArray(data)
           ? data.map((p: any) => ({
               id: String(p.id ?? p.name),
               name: p.name ?? String(p.id ?? ""),
             }))
           : [];
 
-        if (!cancelled) {
-          setProjectOptions(normalized);
-        }
+        if (!cancelled) setProjectOptions(normalized);
       } catch (err: any) {
         console.error("[ApplyWorkflowDialog] loadProjects error:", err);
         if (!cancelled) {
-          setProjectsError(
-            err?.message || "Failed to load projects for selection.",
-          );
+          setProjectsError(err?.message || "Failed to load projects for selection.");
           setProjectOptions([]);
         }
       } finally {
-        if (!cancelled) {
-          setProjectsLoading(false);
-        }
+        if (!cancelled) setProjectsLoading(false);
       }
     };
 
     void loadProjects();
-
     return () => {
       cancelled = true;
     };
   }, [open, svc]);
 
-  const handleApply = async () => {
+  const handleApply = useCallback(async () => {
     if (!workflow) {
       onClose();
       return;
@@ -287,44 +441,28 @@ function ApplyWorkflowDialog({
           createdProject?.project?.id ??
           createdProject?.data?.id;
 
-        targetProjectName =
-          createdProject?.name ??
-          createdProject?.project?.name ??
-          payload.name;
+        targetProjectName = createdProject?.name ?? createdProject?.project?.name ?? payload.name;
 
-        if (!targetProjectId) {
-          throw new Error("Project id not returned by backend.");
-        }
+        if (!targetProjectId) throw new Error("Project id not returned by backend.");
       } else {
-        if (!selectedProjectId) {
-          throw new Error("No project selected.");
-        }
-        targetProjectId = selectedProjectId;
+        if (!selectedProjectId) throw new Error("No project selected.");
 
-        const match = projectOptions.find(
-          (p) => String(p.id) === String(selectedProjectId),
-        );
+        targetProjectId = selectedProjectId;
+        const match = projectOptions.find((p) => String(p.id) === String(selectedProjectId));
         targetProjectName = match?.name ?? selectedProjectId;
       }
 
-      await svc.loadWorkflow(targetProjectId, {
-        workflowId: String(workflow.id),
-      });
+      await svc.loadWorkflow(targetProjectId, { workflowId: String(workflow.id) });
 
-      toast.success(
-        `Workflow "${workflow.name}" applied to project "${targetProjectName}".`,
-      );
-
+      toast.success(`Workflow "${workflow.name}" applied to project "${targetProjectName}".`);
       onClose();
     } catch (err: any) {
       console.error("[ApplyWorkflowDialog] handleApply error:", err);
-      setSubmitError(
-        err?.message || "Failed to apply workflow. Please try again.",
-      );
+      setSubmitError(err?.message || "Failed to apply workflow. Please try again.");
     } finally {
       setSubmitting(false);
     }
-  };
+  }, [mode, newProjectDescription, newProjectTitle, onClose, projectOptions, selectedProjectId, svc, workflow]);
 
   if (!open || !workflow) return null;
 
@@ -335,162 +473,163 @@ function ApplyWorkflowDialog({
       : !selectedProjectId || projectsLoading || !!projectsError);
 
   return (
-    <div className="fixed inset-0 z-[90] flex items-center justify-center">
-      {/* dialogCard */}
-      <div className="relative z-10 w-full max-w-md min-h-[510px] max-h-[90vh] rounded-2xl bg-gray-100 dark:bg-slate-950 shadow-2xl border border-slate-200 dark:border-slate-800 px-6 pt-10 pb-5 flex flex-col">
-        {/* closeButton */}
-        <button
-          type="button"
-          onClick={onClose}
-          className="absolute right-3 top-3 inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-900/80 text-slate-500 hover:text-slate-900 dark:hover:text-slate-100 shadow-sm"
-        >
-          <X className="h-4 w-4" />
-        </button>
+    <div
+      className={classNames(
+        "fixed inset-0 z-[90] flex items-center justify-center",
+        "bg-black/[0.02] dark:bg-white/[0.02]",
+      )}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") onClose();
+      }}
+      role="dialog"
+      aria-modal="true"
+    >
+      <div
+        className={classNames(
+          "relative z-10 w-full max-w-md overflow-hidden rounded-2xl border shadow-2xl",
+          "min-h-[480px] max-h-[90vh]",
+          "border-gray-300/90 bg-white/92 backdrop-blur",
+          "ring-1 ring-inset ring-black/[0.10]",
+          "dark:border-gray-600 dark:bg-gray-900/92 dark:ring-white/[0.10]",
+        )}
+      >
+        <div className="relative flex h-full flex-col px-6 pt-6 pb-5">
+          <button
+            type="button"
+            onClick={onClose}
+            className={classNames(
+              "absolute right-3 top-3 inline-flex h-9 w-9 items-center justify-center rounded-xl border transition",
+              "border-gray-200/70 bg-white/70 text-gray-700 hover:shadow-sm",
+              "dark:border-gray-800/80 dark:bg-white/[0.02] dark:text-gray-200",
+            )}
+            aria-label="Close"
+          >
+            <X className="h-4 w-4" />
+          </button>
 
-        {/* mainContent */}
-        <div className="flex-1 flex flex-col mt-1">
-          {/* titleSection */}
-          <div className="text-center mb-2">
-            <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-50">
-              Workflow
-            </h2>
-            <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-              {workflow.name}
-            </p>
+          <div className="mb-4">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white/90">Load workflow</h2>
+            <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">{workflow.name}</p>
           </div>
 
-          {/* tabs + form */}
-          <div className="mt-3 flex-1 flex flex-col">
-            {/* tabs */}
-            <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 p-1 flex mt-2 mb-2">
+          <div className="rounded-xl border border-gray-300/80 bg-white/70 p-1 dark:border-gray-700/80 dark:bg-white/[0.02]">
+            <div className="grid grid-cols-2 gap-1">
               <button
                 type="button"
                 onClick={() => setMode("create")}
-                className={[
-                  "flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                className={classNames(
+                  "rounded-lg px-3 py-2 text-sm font-semibold transition",
                   mode === "create"
-                    ? "bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-50 shadow-sm"
-                    : "text-slate-700 dark:text-slate-300 hover:bg-slate-100/80 dark:hover:bg-slate-800/60",
-                ].join(" ")}
+                    ? "bg-white text-gray-900 shadow-sm dark:bg-gray-950 dark:text-white"
+                    : "text-gray-700 hover:bg-gray-50/80 dark:text-gray-200 dark:hover:bg-gray-800/40",
+                )}
               >
-                Create new project
+                Create new
               </button>
               <button
                 type="button"
                 onClick={() => setMode("select")}
-                className={[
-                  "flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                className={classNames(
+                  "rounded-lg px-3 py-2 text-sm font-semibold transition",
                   mode === "select"
-                    ? "bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-50 shadow-sm"
-                    : "text-slate-700 dark:text-slate-300 hover:bg-slate-100/80 dark:hover:bg-slate-800/60",
-                ].join(" ")}
+                    ? "bg-white text-gray-900 shadow-sm dark:bg-gray-950 dark:text-white"
+                    : "text-gray-700 hover:bg-gray-50/80 dark:text-gray-200 dark:hover:bg-gray-800/40",
+                )}
               >
                 Select project
               </button>
             </div>
+          </div>
 
-            {/* formContent */}
-            <div className="mt-4 space-y-4 text-sm flex-1 mb-2">
+          <div className="mt-4 min-h-0 flex-1">
+            <div className="mt-4 min-h-0 flex-1">
               {mode === "create" ? (
                 <>
                   <div className="space-y-1.5">
-                    <label className="text-sm font-medium text-slate-800 dark:text-slate-200">
-                      New project name
-                    </label>
+                    <label className="text-sm font-semibold text-gray-800 dark:text-gray-200">New project name</label>
                     <input
                       type="text"
                       value={newProjectTitle}
                       onChange={(e) => setNewProjectTitle(e.target.value)}
                       placeholder="Enter a title"
-                      className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-sm text-slate-900 dark:text-slate-50 shadow-inner focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-violet-500"
+                      className={classNames(
+                        "w-full rounded-xl border px-3 py-2 text-sm font-semibold outline-none transition",
+                        "border-gray-200/70 bg-white/70 text-gray-900 placeholder:text-gray-400",
+                        "focus:border-indigo-500/40 focus:ring-2 focus:ring-indigo-500/10",
+                        "dark:border-gray-800/80 dark:bg-white/[0.02] dark:text-white dark:placeholder:text-gray-500",
+                      )}
                     />
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-sm font-medium text-slate-800 dark:text-slate-200">
-                      Project description
-                    </label>
+                    <label className="text-sm font-semibold text-gray-800 dark:text-gray-200">Project description</label>
                     <textarea
                       rows={4}
                       value={newProjectDescription}
-                      onChange={(e) =>
-                        setNewProjectDescription(e.target.value)
-                      }
+                      onChange={(e) => setNewProjectDescription(e.target.value)}
                       placeholder="Optional description for this project"
-                      className="w-full resize-none rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-sm text-slate-900 dark:text-slate-50 shadow-inner focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-violet-500"
+                      className={classNames(
+                        "w-full resize-none rounded-xl border px-3 py-2 text-sm outline-none transition",
+                        "border-gray-200/70 bg-white/70 text-gray-900 placeholder:text-gray-400",
+                        "focus:border-indigo-500/40 focus:ring-2 focus:ring-indigo-500/10",
+                        "dark:border-gray-800/80 dark:bg-white/[0.02] dark:text-white dark:placeholder:text-gray-500",
+                      )}
                     />
-                    <p className="text-xs text-slate-500 dark:text-slate-400">
-                      A new Scipion project will be created and this workflow
-                      will be loaded to it.
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      A new project will be created and this workflow will be loaded into it.
                     </p>
                   </div>
                 </>
               ) : (
-                <>
-                  <div className="space-y-1.5">
-                    <label className="text-sm font-medium text-slate-800 dark:text-slate-200">
-                      Project
-                    </label>
-                    <select
-                      value={selectedProjectId}
-                      onChange={(e) => setSelectedProjectId(e.target.value)}
-                      className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-sm text-slate-900 dark:text-slate-50 shadow-inner focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-violet-500"
-                      disabled={projectsLoading || !!projectsError}
-                    >
-                      <option value="">
-                        {projectsLoading
-                          ? "Loading projects…"
-                          : projectsError
-                          ? "Could not load projects"
-                          : "Select a project"}
-                      </option>
-                      {!projectsLoading &&
-                        !projectsError &&
-                        projectOptions.map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {p.name}
-                          </option>
-                        ))}
-                    </select>
-                    {projectsError ? (
-                      <p className="text-xs text-red-500">
-                        {projectsError}
-                      </p>
-                    ) : (
-                      <p className="text-xs text-slate-500 dark:text-slate-400">
-                        The workflow will be loaded inside the selected
-                        existing project.
-                      </p>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-semibold text-gray-800 dark:text-gray-200">Project</label>
+                  <select
+                    value={selectedProjectId}
+                    onChange={(e) => setSelectedProjectId(e.target.value)}
+                    className={classNames(
+                      "w-full rounded-xl border px-3 py-2 text-sm font-semibold outline-none transition",
+                      "border-gray-200/70 bg-white/70 text-gray-900",
+                      "focus:border-indigo-500/40 focus:ring-2 focus:ring-indigo-500/10",
+                      "dark:border-gray-800/80 dark:bg-white/[0.02] dark:text-white",
                     )}
-                  </div>
-                </>
+                    disabled={projectsLoading || !!projectsError}
+                  >
+                    <option value="">
+                      {projectsLoading ? "Loading projects…" : projectsError ? "Could not load projects" : "Select a project"}
+                    </option>
+                    {!projectsLoading &&
+                      !projectsError &&
+                      projectOptions.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                        </option>
+                      ))}
+                  </select>
+
+                  {projectsError ? (
+                    <p className="text-xs text-red-600 dark:text-red-300">{projectsError}</p>
+                  ) : (
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      The workflow will be loaded inside the selected existing project.
+                    </p>
+                  )}
+                </div>
               )}
 
-              {submitError && (
-                <div className="pt-1 text-xs text-red-500">{submitError}</div>
-              )}
+              {submitError ? <div className="text-xs text-red-600 dark:text-red-300">{submitError}</div> : null}
             </div>
           </div>
-        </div>
 
-        {/* actions */}
-        <div className="mt-6 flex items-center justify-between gap-3">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={submitting}
-            className="inline-flex min-w-[96px] items-center justify-center rounded-md border border-red-500 px-4 py-2 text-sm font-medium text-red-600 bg-white hover:bg-red-50 dark:bg-slate-950 dark:hover:bg-slate-900 disabled:opacity-60"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={handleApply}
-            disabled={applyDisabled}
-            className="inline-flex min-w-[96px] items-center justify-center rounded-md px-4 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed shadow-sm"
-          >
-            {submitting ? "Loading…" : "Load"}
-          </button>
+          <div className="mt-6 flex items-center justify-between gap-3">
+            <SecondaryButton onClick={onClose} disabled={submitting} className="min-w-[110px]">
+              Cancel
+            </SecondaryButton>
+
+            <PrimaryButton onClick={() => void handleApply()} disabled={applyDisabled} className="min-w-[110px]">
+              {submitting ? "Loading…" : "Load"}
+              <ArrowRight className="h-4 w-4" />
+            </PrimaryButton>
+          </div>
         </div>
       </div>
     </div>

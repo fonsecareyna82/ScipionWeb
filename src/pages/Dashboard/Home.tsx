@@ -142,11 +142,6 @@ function CardShell(props: { title: string; subtitle?: string; right?: React.Reac
         "border-gray-200/70 bg-white/80",
         "dark:border-gray-800/80 dark:bg-white/[0.03]",
         "lg:p-6",
-        "before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-[1px] before:content-['']",
-        "before:bg-gradient-to-r before:from-indigo-500/40 before:via-sky-500/30 before:to-cyan-500/40",
-        "after:pointer-events-none after:absolute after:inset-0 after:content-['']",
-        "after:bg-gradient-to-br after:from-indigo-500/[0.06] after:via-transparent after:to-cyan-500/[0.06]",
-        "dark:after:from-indigo-400/[0.10] dark:after:to-cyan-400/[0.10]",
       )}
     >
       <div className="relative">
@@ -181,17 +176,13 @@ function ActionButton(props: {
         "border-gray-200/70 bg-white/70 shadow-sm hover:border-gray-300/80 hover:shadow-md",
         "dark:border-gray-800/80 dark:bg-white/[0.02] dark:hover:border-gray-700",
         props.disabled ? "pointer-events-none opacity-60" : "",
-        "hover:bg-gradient-to-br hover:from-indigo-500/[0.05] hover:via-transparent hover:to-cyan-500/[0.05]",
-        "dark:hover:from-indigo-400/[0.10] dark:hover:to-cyan-400/[0.10]",
       )}
     >
       <div
         className={classNames(
           "mt-0.5 flex h-9 w-9 items-center justify-center rounded-lg",
-          "bg-gradient-to-br from-indigo-500/20 via-sky-500/15 to-cyan-500/20",
-          "ring-1 ring-indigo-500/20",
-          "text-gray-800 dark:text-white/85",
-          "dark:ring-indigo-400/20",
+          "bg-gray-100 ring-1 ring-gray-200",
+          "text-gray-800 dark:bg-white/[0.04] dark:ring-gray-800 dark:text-white/85",
         )}
       >
         {props.icon}
@@ -239,10 +230,10 @@ function StatCard(props: { label: string; value: React.ReactNode; accent: "indig
   // StatCard
   const accentClasses =
     props.accent === "indigo"
-      ? "border-indigo-500/20 bg-gradient-to-br from-indigo-500/[0.08] via-transparent to-transparent dark:from-indigo-400/[0.12]"
+      ? "border-gray-200/70 dark:border-gray-800/80"
       : props.accent === "sky"
-        ? "border-sky-500/20 bg-gradient-to-br from-sky-500/[0.08] via-transparent to-transparent dark:from-sky-400/[0.12]"
-        : "border-cyan-500/20 bg-gradient-to-br from-cyan-500/[0.08] via-transparent to-transparent dark:from-cyan-400/[0.12]";
+        ? "border-gray-200/70 dark:border-gray-800/80"
+        : "border-gray-200/70 dark:border-gray-800/80";
 
   return (
     <div
@@ -375,7 +366,6 @@ export default function Home() {
       <PageBreadcrumb pageTitle="Home" />
 
       <div className="grid grid-cols-12 gap-4 md:gap-6">
-
         {/* Hero: Welcome */}
         <div className="col-span-12">
           <CardShell
@@ -420,8 +410,6 @@ export default function Home() {
                   "inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold transition",
                   "border-gray-200/70 bg-white/70 text-gray-800 shadow-sm hover:border-gray-300/80 hover:shadow-md",
                   "dark:border-gray-800/80 dark:bg-white/[0.02] dark:text-white/90 dark:hover:border-gray-700",
-                  "hover:bg-gradient-to-br hover:from-indigo-500/[0.06] hover:via-transparent hover:to-cyan-500/[0.06]",
-                  "dark:hover:from-indigo-400/[0.12] dark:hover:to-cyan-400/[0.12]",
                   projectsLoading ? "pointer-events-none opacity-70" : "",
                 )}
               >
@@ -472,7 +460,6 @@ export default function Home() {
                   "rounded-xl border p-4 shadow-sm",
                   "border-gray-200/70 bg-white/70",
                   "dark:border-gray-800/80 dark:bg-white/[0.02]",
-                  "border-cyan-500/20 bg-gradient-to-br from-cyan-500/[0.08] via-transparent to-transparent dark:from-cyan-400/[0.12]",
                 )}
               >
                 <div className="text-xs font-semibold text-gray-500 dark:text-gray-400">Last update</div>
@@ -500,14 +487,12 @@ export default function Home() {
 
         {/* Top right: What's new */}
         <div className="col-span-12 xl:col-span-4">
-          <CardShell title="" >
+          <CardShell title="">
             <div
               className={classNames(
                 "mt-4 rounded-xl border p-4 text-sm shadow-sm",
                 "border-gray-200/70 bg-white/70 text-gray-700",
                 "dark:border-gray-800/80 dark:bg-white/[0.02] dark:text-gray-300",
-                "bg-gradient-to-br from-indigo-500/[0.06] via-transparent to-cyan-500/[0.06]",
-                "dark:from-indigo-400/[0.10] dark:to-cyan-400/[0.10]",
               )}
             >
               <div className="font-semibold text-gray-800 dark:text-white/90">Instance snapshot</div>
@@ -541,11 +526,10 @@ export default function Home() {
                   "group flex items-center justify-between rounded-xl border p-4 text-sm font-semibold transition",
                   "border-gray-200/70 bg-white/70 text-gray-800 shadow-sm hover:border-gray-300/80 hover:shadow-md",
                   "dark:border-gray-800/80 dark:bg-white/[0.02] dark:text-white/90 dark:hover:border-gray-700",
-                  "hover:bg-gradient-to-br hover:from-indigo-500/[0.06] hover:via-transparent hover:to-cyan-500/[0.06]",
                 )}
               >
                 <div className="flex items-center gap-3">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500/20 via-sky-500/15 to-cyan-500/20 ring-1 ring-indigo-500/20">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gray-100 ring-1 ring-gray-200 dark:bg-white/[0.04] dark:ring-gray-800">
                     <GraduationCap className="h-4 w-4" />
                   </div>
                   Quickstart
@@ -561,11 +545,10 @@ export default function Home() {
                   "group flex items-center justify-between rounded-xl border p-4 text-sm font-semibold transition",
                   "border-gray-200/70 bg-white/70 text-gray-800 shadow-sm hover:border-gray-300/80 hover:shadow-md",
                   "dark:border-gray-800/80 dark:bg-white/[0.02] dark:text-white/90 dark:hover:border-gray-700",
-                  "hover:bg-gradient-to-br hover:from-indigo-500/[0.06] hover:via-transparent hover:to-cyan-500/[0.06]",
                 )}
               >
                 <div className="flex items-center gap-3">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500/20 via-sky-500/15 to-cyan-500/20 ring-1 ring-indigo-500/20">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gray-100 ring-1 ring-gray-200 dark:bg-white/[0.04] dark:ring-gray-800">
                     <BookOpen className="h-4 w-4" />
                   </div>
                   Tutorials
@@ -579,11 +562,10 @@ export default function Home() {
                   "group flex items-center justify-between rounded-xl border p-4 text-sm font-semibold transition",
                   "border-gray-200/70 bg-white/70 text-gray-800 shadow-sm hover:border-gray-300/80 hover:shadow-md",
                   "dark:border-gray-800/80 dark:bg-white/[0.02] dark:text-white/90 dark:hover:border-gray-700",
-                  "hover:bg-gradient-to-br hover:from-indigo-500/[0.06] hover:via-transparent hover:to-cyan-500/[0.06]",
                 )}
               >
                 <div className="flex items-center gap-3">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500/20 via-sky-500/15 to-cyan-500/20 ring-1 ring-indigo-500/20">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gray-100 ring-1 ring-gray-200 dark:bg-white/[0.04] dark:ring-gray-800">
                     <LifeBuoy className="h-4 w-4" />
                   </div>
                   Support & diagnostics
@@ -665,8 +647,6 @@ export default function Home() {
                       "rounded-xl border p-4 shadow-sm transition",
                       "border-gray-200/70 bg-white/70 hover:shadow-md",
                       "dark:border-gray-800/80 dark:bg-white/[0.02] dark:hover:border-gray-700",
-                      "hover:bg-gradient-to-br hover:from-indigo-500/[0.05] hover:via-transparent hover:to-cyan-500/[0.05]",
-                      "dark:hover:from-indigo-400/[0.10] dark:hover:to-cyan-400/[0.10]",
                     )}
                   >
                     <div className="flex items-start justify-between gap-3">
@@ -755,8 +735,8 @@ export default function Home() {
                 <div
                   className={classNames(
                     "grid grid-cols-12 gap-0 px-4 py-3 text-xs font-semibold",
-                    "bg-gradient-to-r from-gray-50/80 via-white/60 to-gray-50/80 text-gray-600",
-                    "dark:from-white/[0.02] dark:via-white/[0.01] dark:to-white/[0.02] dark:text-gray-300",
+                    "bg-gray-50/80 text-gray-600",
+                    "dark:bg-white/[0.02] dark:text-gray-300",
                   )}
                 >
                   <div className="col-span-5">Project</div>
@@ -772,8 +752,7 @@ export default function Home() {
                         key={p.id}
                         className={classNames(
                           "grid grid-cols-12 items-center gap-0 px-4 py-3 transition",
-                          "hover:bg-gradient-to-r hover:from-indigo-500/[0.03] hover:via-transparent hover:to-cyan-500/[0.03]",
-                          "dark:hover:from-indigo-400/[0.06] dark:hover:to-cyan-400/[0.06]",
+                          "hover:bg-gray-50/80 dark:hover:bg-white/[0.02]",
                         )}
                       >
                         <div className="col-span-5 min-w-0">

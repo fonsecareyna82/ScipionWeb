@@ -165,19 +165,14 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
       <PageMeta title="Scipion | Projects" description="Projects page" />
       <PageBreadcrumb pageTitle="Projects" />
 
-      <div
-        className={classNames(
-          "relative overflow-hidden rounded-2xl border p-5 shadow-sm backdrop-blur",
-          "border-gray-200/70 bg-white/80",
-          "dark:border-gray-800/80 dark:bg-white/[0.03]",
-          "lg:p-6",
-          "before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-[1px] before:content-['']",
-          "before:bg-gradient-to-r before:from-indigo-500/40 before:via-sky-500/30 before:to-cyan-500/40",
-          "after:pointer-events-none after:absolute after:inset-0 after:content-['']",
-          "after:bg-gradient-to-br after:from-indigo-500/[0.06] after:via-transparent after:to-cyan-500/[0.06]",
-          "dark:after:from-indigo-400/[0.10] dark:after:to-cyan-400/[0.10]",
-        )}
-      >
+     <div
+  className={classNames(
+    "relative overflow-hidden rounded-2xl border p-5 shadow-sm backdrop-blur",
+    "border-gray-200/70 bg-white/80",
+    "dark:border-gray-800/80 dark:bg-white/[0.03]",
+    "lg:p-6",
+  )}
+>
         <div className="relative">
           {/* Header row */}
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
