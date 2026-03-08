@@ -18,7 +18,7 @@ import { useSidebar } from "../context/SidebarContext";
 import SidebarWidget from "./SidebarWidget";
 import * as React from "react";
 import * as TooltipPrimitive from "@radix-ui/react-tooltip";
-import { LucideSettings2, TreesIcon} from "lucide-react";
+import { FolderKanban, LucideSettings2, TreesIcon} from "lucide-react";
 
 export const TooltipProvider = TooltipPrimitive.Provider;
 export const Tooltip = TooltipPrimitive.Root;
@@ -35,7 +35,7 @@ type NavItem = {
 
 const navItems: NavItem[] = [
   { icon: <GridIcon />, name: "Home", path: "/home" },
-  { icon: <FolderIcon />, name: "Projects", path: "/projects" },
+  { icon: <FolderKanban />, name: "Projects", path: "/projects" },
   { icon: <TreeIcon />, name: "Workflows", path: "/workflows" },
   { icon: <PlugInIcon />, name: "Plugins", path: "/plugins" },
   { separator: true },
