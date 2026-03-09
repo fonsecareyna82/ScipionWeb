@@ -176,8 +176,6 @@ export default function Plugins() {
   return (
     <>
       <PageMeta title="Scipion | Plugins" description="Plugins page" />
-      <PageBreadcrumb pageTitle="Plugins" />
-
       <CardShell
         title="Plugins"
         subtitle="Install, remove, and monitor Scipion plugins and background tasks."

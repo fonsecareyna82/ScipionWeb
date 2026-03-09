@@ -39,8 +39,7 @@ const navItems: NavItem[] = [
   { icon: <TreeIcon />, name: "Workflows", path: "/workflows" },
   { icon: <PlugInIcon />, name: "Plugins", path: "/plugins" },
   { separator: true },
-  { icon: <UserCircleIcon />, name: "User profile", path: "/profile"},
-  { icon: <CalenderIcon />,   name: "Calendar", path: "/calendar",},
+  { icon: <UserCircleIcon />, name: "User profile", path: "/profile"},  
   { icon: <LucideSettings2/>, name: "Settings", path: "/settings",}
   
 ];
@@ -82,6 +81,7 @@ const othersItems: NavItem[] = [
       { name: "Bar Chart", path: "/bar-chart", pro: false },
     ],
   },
+  { icon: <CalenderIcon />,   name: "Calendar", path: "/calendar",},
   {
     icon: <BoxCubeIcon />,
     name: "UI Elements",

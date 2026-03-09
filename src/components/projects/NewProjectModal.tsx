@@ -14,6 +14,8 @@ function classNames(...xs: Array<string | false | null | undefined>): string {
   return xs.filter(Boolean).join(" ");
 }
 
+const crispText = "subpixel-antialiased [text-rendering:optimizeLegibility]";
+
 export default function NewProjectModal({ open, onClose, onCreate }: NewProjectModalProps) {
   const svc = useProjectService();
   const [name, setName] = useState("");
@@ -106,7 +108,7 @@ export default function NewProjectModal({ open, onClose, onCreate }: NewProjectM
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+      className={classNames(crispText, "fixed inset-0 z-50 flex items-center justify-center")}
       onMouseDown={onOverlayClick}
       onKeyDown={onKeyDown}
       role="dialog"
@@ -117,28 +119,32 @@ export default function NewProjectModal({ open, onClose, onCreate }: NewProjectM
       <div
         ref={dialogRef}
         className={classNames(
+          crispText,
           "relative w-full max-w-md overflow-hidden rounded-2xl border p-5 shadow-2xl",
-          "border-gray-200/70 bg-white/90 backdrop-blur",
-          "dark:border-gray-800/80 dark:bg-gray-900/90",
-          "before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-[1px] before:content-['']",
-          "before:bg-gradient-to-r before:from-indigo-500/40 before:via-sky-500/30 before:to-cyan-500/40",
-          "after:pointer-events-none after:absolute after:inset-0 after:content-['']",
-          "after:bg-gradient-to-br after:from-indigo-500/[0.06] after:via-transparent after:to-cyan-500/[0.06]",
-          "dark:after:from-indigo-400/[0.10] dark:after:to-cyan-400/[0.10]",
+          "border-gray-300/90 bg-white",
+          "ring-1 ring-inset ring-black/[0.08]",
+          "dark:border-gray-700 dark:bg-slate-900",
+          "dark:ring-white/[0.08]",
         )}
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="relative">
           <div className="mb-4 flex items-start justify-between gap-3">
             <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-indigo-500/20 bg-gradient-to-br from-indigo-500/15 via-sky-500/10 to-cyan-500/15 text-indigo-700 dark:text-indigo-200">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-gray-300/80 bg-gray-100 text-gray-800 dark:border-gray-700 dark:bg-slate-800 dark:text-gray-200">
                 <PlusCircle className="h-5 w-5" />
               </div>
               <div>
-                <h3 id="new-project-title" className="text-base font-semibold text-gray-900 dark:text-white">
+                <h3
+                  id="new-project-title"
+                  className="text-[15px] font-semibold tracking-[0.01em] text-gray-950 dark:text-white"
+                >
                   New project
                 </h3>
-                <p id="new-project-desc" className="text-sm text-gray-600 dark:text-gray-300">
+                <p
+                  id="new-project-desc"
+                  className="text-sm leading-6 text-gray-700 dark:text-gray-300"
+                >
                   Create a new project with a name and optional description.
                 </p>
               </div>
@@ -150,8 +156,8 @@ export default function NewProjectModal({ open, onClose, onCreate }: NewProjectM
               disabled={loading}
               className={classNames(
                 "inline-flex items-center justify-center rounded-xl border p-2 transition",
-                "border-gray-200/70 bg-white/70 text-gray-700 hover:shadow-sm",
-                "dark:border-gray-800/80 dark:bg-white/[0.02] dark:text-gray-200",
+                "border-gray-300/80 bg-white text-gray-800 hover:shadow-sm",
+                "dark:border-gray-700 dark:bg-slate-900 dark:text-gray-200",
                 loading ? "opacity-60" : "",
               )}
               aria-label="Close"
@@ -161,7 +167,7 @@ export default function NewProjectModal({ open, onClose, onCreate }: NewProjectM
           </div>
 
           <div className="flex flex-col gap-3">
-            <label className="text-sm font-semibold text-gray-700 dark:text-gray-200">
+            <label className="text-sm font-medium text-gray-800 dark:text-gray-200">
               Name <span className="text-red-500">*</span>
               <input
                 ref={nameInputRef}
@@ -170,10 +176,11 @@ export default function NewProjectModal({ open, onClose, onCreate }: NewProjectM
                 onKeyDown={onInputKeyDown}
                 placeholder="Project name"
                 className={classNames(
-                  "mt-1 w-full rounded-xl border px-3 py-2 text-sm font-semibold outline-none transition",
-                  "border-gray-200/70 bg-white/80 text-gray-900 placeholder:text-gray-400",
+                  crispText,
+                  "mt-1 w-full rounded-xl border px-3 py-2.5 text-sm font-medium outline-none transition",
+                  "border-gray-300/80 bg-white text-gray-950 placeholder:text-gray-400",
                   "focus:border-indigo-500/40 focus:ring-2 focus:ring-indigo-500/10",
-                  "dark:border-gray-800/80 dark:bg-white/[0.02] dark:text-white dark:placeholder:text-gray-500",
+                  "dark:border-gray-700 dark:bg-slate-900 dark:text-white dark:placeholder:text-gray-500",
                 )}
                 aria-invalid={!!errorMsg}
                 aria-describedby={errorMsg ? "new-project-error" : undefined}
@@ -181,18 +188,19 @@ export default function NewProjectModal({ open, onClose, onCreate }: NewProjectM
               />
             </label>
 
-            <label className="text-sm font-semibold text-gray-700 dark:text-gray-200">
-              Description <span className="text-gray-400 font-medium">(optional)</span>
+            <label className="text-sm font-medium text-gray-800 dark:text-gray-200">
+              Description <span className="font-medium text-gray-400">(optional)</span>
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 onKeyDown={onInputKeyDown}
                 placeholder="A short description"
                 className={classNames(
-                  "mt-1 w-full rounded-xl border px-3 py-2 text-sm outline-none transition",
-                  "border-gray-200/70 bg-white/80 text-gray-900 placeholder:text-gray-400",
+                  crispText,
+                  "mt-1 w-full rounded-xl border px-3 py-2.5 text-sm leading-6 outline-none transition",
+                  "border-gray-300/80 bg-white text-gray-950 placeholder:text-gray-400",
                   "focus:border-indigo-500/40 focus:ring-2 focus:ring-indigo-500/10",
-                  "dark:border-gray-800/80 dark:bg-white/[0.02] dark:text-white dark:placeholder:text-gray-500",
+                  "dark:border-gray-700 dark:bg-slate-900 dark:text-white dark:placeholder:text-gray-500",
                 )}
                 rows={3}
                 maxLength={2000}
@@ -200,7 +208,10 @@ export default function NewProjectModal({ open, onClose, onCreate }: NewProjectM
             </label>
 
             {errorMsg && (
-              <div id="new-project-error" className="text-sm text-red-600 dark:text-red-300">
+              <div
+                id="new-project-error"
+                className="rounded-xl border border-red-200/80 bg-red-50 px-3 py-2 text-sm leading-6 text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200"
+              >
                 {errorMsg}
               </div>
             )}
@@ -212,8 +223,8 @@ export default function NewProjectModal({ open, onClose, onCreate }: NewProjectM
                 disabled={loading}
                 className={classNames(
                   "rounded-xl border px-4 py-2 text-sm font-semibold transition disabled:opacity-60",
-                  "border-gray-200/70 bg-white/70 text-gray-700 hover:shadow-sm",
-                  "dark:border-gray-800/80 dark:bg-white/[0.02] dark:text-gray-200",
+                  "border-gray-300/80 bg-white text-gray-800 hover:shadow-sm",
+                  "dark:border-gray-700 dark:bg-slate-900 dark:text-gray-200",
                 )}
               >
                 Cancel

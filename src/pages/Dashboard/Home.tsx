@@ -2,7 +2,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
-import PageBreadcrumb from "../../components/common/PageBreadCrumb";
 import PageMeta from "../../components/common/PageMeta";
 import Alert from "../../components/ui/alert/Alert";
 
@@ -133,22 +132,29 @@ function classNames(...xs: Array<string | false | null | undefined>): string {
   return xs.filter(Boolean).join(" ");
 }
 
+const crispText = "subpixel-antialiased [text-rendering:optimizeLegibility]";
+
 function CardShell(props: { title: string; subtitle?: string; right?: React.ReactNode; children: React.ReactNode }) {
   // CardShell
   return (
     <div
       className={classNames(
-        "relative overflow-hidden rounded-2xl border p-5 shadow-sm backdrop-blur",
-        "border-gray-200/70 bg-white/80",
-        "dark:border-gray-800/80 dark:bg-white/[0.03]",
+        crispText,
+        "relative overflow-hidden rounded-2xl border p-5 shadow-sm",
+        "border-gray-300/90 bg-white",
+        "dark:border-gray-700 dark:bg-slate-900",
         "lg:p-6",
       )}
     >
       <div className="relative">
         <div className="mb-4 flex items-start justify-between gap-4">
           <div>
-            <h3 className="text-base font-semibold text-gray-800 dark:text-white/90">{props.title}</h3>
-            {props.subtitle ? <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{props.subtitle}</p> : null}
+            <h3 className="text-[15px] font-semibold tracking-[0.01em] text-gray-950 dark:text-white">
+              {props.title}
+            </h3>
+            {props.subtitle ? (
+              <p className="mt-1 text-sm leading-6 text-gray-700 dark:text-gray-300">{props.subtitle}</p>
+            ) : null}
           </div>
           {props.right ? <div className="shrink-0">{props.right}</div> : null}
         </div>
@@ -172,27 +178,30 @@ function ActionButton(props: {
   const content = (
     <div
       className={classNames(
+        crispText,
         "group relative flex w-full items-start gap-3 rounded-xl border p-4 text-left transition",
-        "border-gray-200/70 bg-white/70 shadow-sm hover:border-gray-300/80 hover:shadow-md",
-        "dark:border-gray-800/80 dark:bg-white/[0.02] dark:hover:border-gray-700",
+        "border-gray-300/80 bg-white shadow-sm hover:border-gray-400 hover:shadow-md",
+        "dark:border-gray-700 dark:bg-slate-900 dark:hover:border-gray-600",
         props.disabled ? "pointer-events-none opacity-60" : "",
       )}
     >
       <div
         className={classNames(
-          "mt-0.5 flex h-9 w-9 items-center justify-center rounded-lg",
+          "mt-0.5 flex h-10 w-10 items-center justify-center rounded-lg",
           "bg-gray-100 ring-1 ring-gray-200",
-          "text-gray-800 dark:bg-white/[0.04] dark:ring-gray-800 dark:text-white/85",
+          "text-gray-900 dark:bg-slate-800 dark:ring-gray-700 dark:text-white",
         )}
       >
         {props.icon}
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex items-center justify-between gap-3">
-          <div className="truncate text-sm font-semibold text-gray-800 dark:text-white/90">{props.title}</div>
-          <ArrowRight className="h-4 w-4 text-gray-400 transition group-hover:translate-x-0.5 group-hover:text-gray-600 dark:text-gray-500 dark:group-hover:text-gray-300" />
+          <div className="truncate text-sm font-medium text-gray-950 dark:text-white">{props.title}</div>
+          <ArrowRight className="h-4 w-4 text-gray-500 transition group-hover:translate-x-0.5 group-hover:text-gray-700 dark:text-gray-400 dark:group-hover:text-gray-200" />
         </div>
-        <div className="mt-1 line-clamp-2 text-xs text-gray-500 dark:text-gray-400">{props.description}</div>
+        <div className="mt-1 line-clamp-2 text-sm leading-6 text-gray-700 dark:text-gray-300">
+          {props.description}
+        </div>
       </div>
     </div>
   );
@@ -230,22 +239,23 @@ function StatCard(props: { label: string; value: React.ReactNode; accent: "indig
   // StatCard
   const accentClasses =
     props.accent === "indigo"
-      ? "border-gray-200/70 dark:border-gray-800/80"
+      ? "border-gray-300/80 dark:border-gray-700"
       : props.accent === "sky"
-        ? "border-gray-200/70 dark:border-gray-800/80"
-        : "border-gray-200/70 dark:border-gray-800/80";
+        ? "border-gray-300/80 dark:border-gray-700"
+        : "border-gray-300/80 dark:border-gray-700";
 
   return (
     <div
       className={classNames(
+        crispText,
         "rounded-xl border p-4 shadow-sm",
-        "border-gray-200/70 bg-white/70",
-        "dark:border-gray-800/80 dark:bg-white/[0.02]",
+        "border-gray-300/80 bg-white",
+        "dark:border-gray-700 dark:bg-slate-900",
         accentClasses,
       )}
     >
-      <div className="text-xs font-semibold text-gray-500 dark:text-gray-400">{props.label}</div>
-      <div className="mt-1 text-2xl font-bold text-gray-800 dark:text-white/90">{props.value}</div>
+      <div className="text-sm font-medium text-gray-700 dark:text-gray-300">{props.label}</div>
+      <div className="mt-1 text-2xl font-bold tracking-[-0.01em] text-gray-950 dark:text-white">{props.value}</div>
     </div>
   );
 }
@@ -363,10 +373,8 @@ export default function Home() {
   return (
     <>
       <PageMeta title="Scipion" description="Scipion Home" />
-      <PageBreadcrumb pageTitle="Home" />
 
-      <div className="grid grid-cols-12 gap-4 md:gap-6">
-        {/* Hero: Welcome */}
+      <div className={classNames(crispText, "grid grid-cols-12 gap-4 md:gap-6")}>
         <div className="col-span-12">
           <CardShell
             title="Welcome"
@@ -397,7 +405,6 @@ export default function Home() {
           </CardShell>
         </div>
 
-        {/* Top: Quick actions */}
         <div className="col-span-12 xl:col-span-8">
           <CardShell
             title="Quick actions"
@@ -407,9 +414,10 @@ export default function Home() {
                 type="button"
                 onClick={() => void loadProjects()}
                 className={classNames(
-                  "inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold transition",
-                  "border-gray-200/70 bg-white/70 text-gray-800 shadow-sm hover:border-gray-300/80 hover:shadow-md",
-                  "dark:border-gray-800/80 dark:bg-white/[0.02] dark:text-white/90 dark:hover:border-gray-700",
+                  crispText,
+                  "inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition",
+                  "border-gray-300/80 bg-white text-gray-950 shadow-sm hover:border-gray-400 hover:shadow-md",
+                  "dark:border-gray-700 dark:bg-slate-900 dark:text-white dark:hover:border-gray-600",
                   projectsLoading ? "pointer-events-none opacity-70" : "",
                 )}
               >
@@ -457,13 +465,14 @@ export default function Home() {
               <StatCard label="Pinned" value={stats.pinned} accent="sky" />
               <div
                 className={classNames(
+                  crispText,
                   "rounded-xl border p-4 shadow-sm",
-                  "border-gray-200/70 bg-white/70",
-                  "dark:border-gray-800/80 dark:bg-white/[0.02]",
+                  "border-gray-300/80 bg-white",
+                  "dark:border-gray-700 dark:bg-slate-900",
                 )}
               >
-                <div className="text-xs font-semibold text-gray-500 dark:text-gray-400">Last update</div>
-                <div className="mt-1 text-sm font-semibold text-gray-800 dark:text-white/90">{stats.lastUpdated}</div>
+                <div className="text-sm font-medium text-gray-700 dark:text-gray-300">Last update</div>
+                <div className="mt-1 text-sm font-medium leading-6 text-gray-950 dark:text-white">{stats.lastUpdated}</div>
               </div>
             </div>
 
@@ -472,6 +481,7 @@ export default function Home() {
                 type="button"
                 onClick={() => (lastProjectId ? openProject(lastProjectId) : navigate("/project/load"))}
                 className={classNames(
+                  crispText,
                   "inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition",
                   "text-white shadow-sm",
                   "bg-gradient-to-r from-indigo-600 via-sky-600 to-cyan-600",
@@ -485,56 +495,58 @@ export default function Home() {
           </CardShell>
         </div>
 
-        {/* Top right: What's new */}
         <div className="col-span-12 xl:col-span-4">
           <CardShell title="">
             <div
               className={classNames(
+                crispText,
                 "mt-4 rounded-xl border p-4 text-sm shadow-sm",
-                "border-gray-200/70 bg-white/70 text-gray-700",
-                "dark:border-gray-800/80 dark:bg-white/[0.02] dark:text-gray-300",
+                "border-gray-300/80 bg-white text-gray-800",
+                "dark:border-gray-700 dark:bg-slate-900 dark:text-gray-200",
               )}
             >
-              <div className="font-semibold text-gray-800 dark:text-white/90">Instance snapshot</div>
-              <div className="mt-2 space-y-1">
+              <div className="font-semibold text-gray-950 dark:text-white">Instance snapshot</div>
+              <div className="mt-2 space-y-2">
                 <div className="flex items-center justify-between gap-3">
-                  <span className="text-gray-500 dark:text-gray-400">API</span>
-                  <span className="font-semibold text-gray-800 dark:text-white/90">{projectsError ? "Degraded" : "OK"}</span>
+                  <span className="text-sm text-gray-700 dark:text-gray-300">API</span>
+                  <span className="text-sm font-medium text-gray-950 dark:text-white">
+                    {projectsError ? "Degraded" : "OK"}
+                  </span>
                 </div>
                 <div className="flex items-center justify-between gap-3">
-                  <span className="text-gray-500 dark:text-gray-400">Projects loaded</span>
-                  <span className="font-semibold text-gray-800 dark:text-white/90">
+                  <span className="text-sm text-gray-700 dark:text-gray-300">Projects loaded</span>
+                  <span className="text-sm font-medium text-gray-950 dark:text-white">
                     {projectsLoading ? "Loading…" : String(projects.length)}
                   </span>
                 </div>
               </div>
 
               {projectsError ? (
-                <div className="mt-3 rounded-lg border border-red-200/70 bg-red-50/80 p-3 text-xs text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200">
+                <div className="mt-3 rounded-lg border border-red-200/80 bg-red-50 p-3 text-sm leading-6 text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200">
                   {projectsError}
                 </div>
               ) : null}
             </div>
 
-            {/* Docs shortcuts */}
             <div className="mt-4 grid grid-cols-1 gap-3">
               <a
                 href="https://scipion-em.github.io/docs/release-3.0.0/index.html"
                 target="_blank"
                 rel="noreferrer"
                 className={classNames(
-                  "group flex items-center justify-between rounded-xl border p-4 text-sm font-semibold transition",
-                  "border-gray-200/70 bg-white/70 text-gray-800 shadow-sm hover:border-gray-300/80 hover:shadow-md",
-                  "dark:border-gray-800/80 dark:bg-white/[0.02] dark:text-white/90 dark:hover:border-gray-700",
+                  crispText,
+                  "group flex items-center justify-between rounded-xl border p-4 text-sm font-medium transition",
+                  "border-gray-300/80 bg-white text-gray-950 shadow-sm hover:border-gray-400 hover:shadow-md",
+                  "dark:border-gray-700 dark:bg-slate-900 dark:text-white dark:hover:border-gray-600",
                 )}
               >
                 <div className="flex items-center gap-3">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gray-100 ring-1 ring-gray-200 dark:bg-white/[0.04] dark:ring-gray-800">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gray-100 ring-1 ring-gray-200 dark:bg-slate-800 dark:ring-gray-700">
                     <GraduationCap className="h-4 w-4" />
                   </div>
                   Quickstart
                 </div>
-                <ArrowRight className="h-4 w-4 text-gray-400 group-hover:text-gray-600 dark:text-gray-500 dark:group-hover:text-gray-300" />
+                <ArrowRight className="h-4 w-4 text-gray-500 group-hover:text-gray-700 dark:text-gray-400 dark:group-hover:text-gray-200" />
               </a>
 
               <a
@@ -542,41 +554,42 @@ export default function Home() {
                 target="_blank"
                 rel="noreferrer"
                 className={classNames(
-                  "group flex items-center justify-between rounded-xl border p-4 text-sm font-semibold transition",
-                  "border-gray-200/70 bg-white/70 text-gray-800 shadow-sm hover:border-gray-300/80 hover:shadow-md",
-                  "dark:border-gray-800/80 dark:bg-white/[0.02] dark:text-white/90 dark:hover:border-gray-700",
+                  crispText,
+                  "group flex items-center justify-between rounded-xl border p-4 text-sm font-medium transition",
+                  "border-gray-300/80 bg-white text-gray-950 shadow-sm hover:border-gray-400 hover:shadow-md",
+                  "dark:border-gray-700 dark:bg-slate-900 dark:text-white dark:hover:border-gray-600",
                 )}
               >
                 <div className="flex items-center gap-3">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gray-100 ring-1 ring-gray-200 dark:bg-white/[0.04] dark:ring-gray-800">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gray-100 ring-1 ring-gray-200 dark:bg-slate-800 dark:ring-gray-700">
                     <BookOpen className="h-4 w-4" />
                   </div>
                   Tutorials
                 </div>
-                <ArrowRight className="h-4 w-4 text-gray-400 group-hover:text-gray-600 dark:text-gray-500 dark:group-hover:text-gray-300" />
+                <ArrowRight className="h-4 w-4 text-gray-500 group-hover:text-gray-700 dark:text-gray-400 dark:group-hover:text-gray-200" />
               </a>
 
               <Link
                 to="/settings"
                 className={classNames(
-                  "group flex items-center justify-between rounded-xl border p-4 text-sm font-semibold transition",
-                  "border-gray-200/70 bg-white/70 text-gray-800 shadow-sm hover:border-gray-300/80 hover:shadow-md",
-                  "dark:border-gray-800/80 dark:bg-white/[0.02] dark:text-white/90 dark:hover:border-gray-700",
+                  crispText,
+                  "group flex items-center justify-between rounded-xl border p-4 text-sm font-medium transition",
+                  "border-gray-300/80 bg-white text-gray-950 shadow-sm hover:border-gray-400 hover:shadow-md",
+                  "dark:border-gray-700 dark:bg-slate-900 dark:text-white dark:hover:border-gray-600",
                 )}
               >
                 <div className="flex items-center gap-3">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gray-100 ring-1 ring-gray-200 dark:bg-white/[0.04] dark:ring-gray-800">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gray-100 ring-1 ring-gray-200 dark:bg-slate-800 dark:ring-gray-700">
                     <LifeBuoy className="h-4 w-4" />
                   </div>
                   Support & diagnostics
                 </div>
-                <ArrowRight className="h-4 w-4 text-gray-400 group-hover:text-gray-600 dark:text-gray-500 dark:group-hover:text-gray-300" />
+                <ArrowRight className="h-4 w-4 text-gray-500 group-hover:text-gray-700 dark:text-gray-400 dark:group-hover:text-gray-200" />
               </Link>
             </div>
           </CardShell>
         </div>
 
-        {/* If no projects: guided empty state */}
         {!hasAnyProjects ? (
           <div className="col-span-12">
             <CardShell
@@ -586,6 +599,7 @@ export default function Home() {
                 <Link
                   to="/project/new"
                   className={classNames(
+                    crispText,
                     "inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-white shadow-sm transition",
                     "bg-gradient-to-r from-indigo-600 via-sky-600 to-cyan-600 hover:shadow-md hover:brightness-[0.98]",
                   )}
@@ -596,24 +610,23 @@ export default function Home() {
               }
             >
               <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-                <div className="rounded-xl border border-gray-200/70 bg-white/70 p-4 text-sm text-gray-600 shadow-sm dark:border-gray-800/80 dark:bg-white/[0.02] dark:text-gray-400">
-                  <div className="font-semibold text-gray-800 dark:text-white/90">1) Create a project</div>
-                  <div className="mt-1 text-xs">Define a name and description for your dataset.</div>
+                <div className="rounded-xl border border-gray-300/80 bg-white p-4 text-sm text-gray-700 shadow-sm dark:border-gray-700 dark:bg-slate-900 dark:text-gray-300">
+                  <div className="font-medium text-gray-950 dark:text-white">1) Create a project</div>
+                  <div className="mt-1 text-sm leading-6">Define a name and description for your dataset.</div>
                 </div>
-                <div className="rounded-xl border border-gray-200/70 bg-white/70 p-4 text-sm text-gray-600 shadow-sm dark:border-gray-800/80 dark:bg-white/[0.02] dark:text-gray-400">
-                  <div className="font-semibold text-gray-800 dark:text-white/90">2) Import data</div>
-                  <div className="mt-1 text-xs">Upload or browse remote files and configure inputs.</div>
+                <div className="rounded-xl border border-gray-300/80 bg-white p-4 text-sm text-gray-700 shadow-sm dark:border-gray-700 dark:bg-slate-900 dark:text-gray-300">
+                  <div className="font-medium text-gray-950 dark:text-white">2) Import data</div>
+                  <div className="mt-1 text-sm leading-6">Upload or browse remote files and configure inputs.</div>
                 </div>
-                <div className="rounded-xl border border-gray-200/70 bg-white/70 p-4 text-sm text-gray-600 shadow-sm dark:border-gray-800/80 dark:bg-white/[0.02] dark:text-gray-400">
-                  <div className="font-semibold text-gray-800 dark:text-white/90">3) Run protocols</div>
-                  <div className="mt-1 text-xs">Build a workflow and inspect results in viewers.</div>
+                <div className="rounded-xl border border-gray-300/80 bg-white p-4 text-sm text-gray-700 shadow-sm dark:border-gray-700 dark:bg-slate-900 dark:text-gray-300">
+                  <div className="font-medium text-gray-950 dark:text-white">3) Run protocols</div>
+                  <div className="mt-1 text-sm leading-6">Build a workflow and inspect results in viewers.</div>
                 </div>
               </div>
             </CardShell>
           </div>
         ) : null}
 
-        {/* Pinned projects */}
         <div className="col-span-12">
           <CardShell
             title="Pinned projects"
@@ -623,9 +636,10 @@ export default function Home() {
                 <Link
                   to="/projects"
                   className={classNames(
-                    "inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold transition",
-                    "border-gray-200/70 bg-white/70 text-gray-800 shadow-sm hover:border-gray-300/80 hover:shadow-md",
-                    "dark:border-gray-800/80 dark:bg-white/[0.02] dark:text-white/90 dark:hover:border-gray-700",
+                    crispText,
+                    "inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition",
+                    "border-gray-300/80 bg-white text-gray-950 shadow-sm hover:border-gray-400 hover:shadow-md",
+                    "dark:border-gray-700 dark:bg-slate-900 dark:text-white dark:hover:border-gray-600",
                   )}
                 >
                   <FolderKanban className="h-4 w-4" />
@@ -635,7 +649,7 @@ export default function Home() {
             }
           >
             {pinnedProjects.length === 0 ? (
-              <div className="rounded-xl border border-gray-200/70 bg-white/70 p-4 text-sm text-gray-600 dark:border-gray-800/80 dark:bg-white/[0.02] dark:text-gray-400">
+              <div className="rounded-xl border border-gray-300/80 bg-white p-4 text-sm leading-6 text-gray-700 dark:border-gray-700 dark:bg-slate-900 dark:text-gray-300">
                 No pinned projects yet. Pin a project from the list below.
               </div>
             ) : (
@@ -644,15 +658,18 @@ export default function Home() {
                   <div
                     key={p.id}
                     className={classNames(
+                      crispText,
                       "rounded-xl border p-4 shadow-sm transition",
-                      "border-gray-200/70 bg-white/70 hover:shadow-md",
-                      "dark:border-gray-800/80 dark:bg-white/[0.02] dark:hover:border-gray-700",
+                      "border-gray-300/80 bg-white hover:border-gray-400 hover:shadow-md",
+                      "dark:border-gray-700 dark:bg-slate-900 dark:hover:border-gray-600",
                     )}
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <div className="truncate text-sm font-semibold text-gray-800 dark:text-white/90">{p.name}</div>
-                        <div className="mt-1 line-clamp-2 text-xs text-gray-500 dark:text-gray-400">
+                        <div className="truncate text-[15px] font-medium leading-6 text-gray-950 dark:text-white">
+                          {p.name}
+                        </div>
+                        <div className="mt-1 line-clamp-2 text-sm leading-6 text-gray-700 dark:text-gray-300">
                           {p.description?.trim() ? p.description : "No description"}
                         </div>
                       </div>
@@ -661,19 +678,19 @@ export default function Home() {
                         onClick={() => togglePin(p.id)}
                         className={classNames(
                           "inline-flex items-center justify-center rounded-lg border p-2 transition",
-                          "border-gray-200/70 bg-white/70 shadow-sm hover:border-gray-300/80 hover:shadow-md",
-                          "dark:border-gray-800/80 dark:bg-white/[0.02] dark:hover:border-gray-700",
+                          "border-gray-300/80 bg-white shadow-sm hover:border-gray-400 hover:shadow-md",
+                          "dark:border-gray-700 dark:bg-slate-900 dark:hover:border-gray-600",
                         )}
                         title="Unpin"
                       >
-                        <PinOff className="h-4 w-4 text-gray-600 dark:text-gray-300" />
+                        <PinOff className="h-4 w-4 text-gray-700 dark:text-gray-300" />
                       </button>
                     </div>
 
                     <div className="mt-3 flex items-center justify-between gap-3">
-                      <div className="text-xs text-gray-500 dark:text-gray-400">
+                      <div className="text-sm leading-6 text-gray-700 dark:text-gray-300">
                         Updated:{" "}
-                        <span className="font-semibold text-gray-700 dark:text-gray-200">
+                        <span className="font-medium text-gray-950 dark:text-white">
                           {formatDateTime(p.updatedAt ?? p.createdAt)}
                         </span>
                       </div>
@@ -697,7 +714,6 @@ export default function Home() {
           </CardShell>
         </div>
 
-        {/* Recent projects + search */}
         <div className="col-span-12">
           <CardShell
             title="Recent projects"
@@ -705,16 +721,17 @@ export default function Home() {
             right={
               <div className="w-full max-w-[360px]">
                 <div className="relative">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500 dark:text-gray-400" />
                   <input
                     value={filter}
                     onChange={(e) => setFilter(e.target.value)}
                     placeholder="Search projects…"
                     className={classNames(
-                      "w-full rounded-xl border py-2 pl-9 pr-3 text-sm font-semibold outline-none transition",
-                      "border-gray-200/70 bg-white/70 text-gray-800 placeholder:text-gray-400",
+                      crispText,
+                      "w-full rounded-xl border py-2.5 pl-9 pr-3 text-sm font-medium outline-none transition",
+                      "border-gray-300/80 bg-white text-gray-950 placeholder:text-gray-400",
                       "focus:border-indigo-500/40 focus:ring-2 focus:ring-indigo-500/10",
-                      "dark:border-gray-800/80 dark:bg-white/[0.02] dark:text-white/90 dark:placeholder:text-gray-500",
+                      "dark:border-gray-700 dark:bg-slate-900 dark:text-white dark:placeholder:text-gray-500",
                       "dark:focus:border-indigo-400/40 dark:focus:ring-indigo-400/15",
                     )}
                   />
@@ -723,36 +740,37 @@ export default function Home() {
             }
           >
             {projectsLoading && projects.length === 0 ? (
-              <div className="rounded-xl border border-gray-200/70 bg-white/70 p-4 text-sm text-gray-600 dark:border-gray-800/80 dark:bg-white/[0.02] dark:text-gray-400">
+              <div className="rounded-xl border border-gray-300/80 bg-white p-4 text-sm leading-6 text-gray-700 dark:border-gray-700 dark:bg-slate-900 dark:text-gray-300">
                 Loading projects…
               </div>
             ) : recentProjects.length === 0 && pinnedProjects.length === 0 ? (
-              <div className="rounded-xl border border-gray-200/70 bg-white/70 p-4 text-sm text-gray-600 dark:border-gray-800/80 dark:bg-white/[0.02] dark:text-gray-400">
+              <div className="rounded-xl border border-gray-300/80 bg-white p-4 text-sm leading-6 text-gray-700 dark:border-gray-700 dark:bg-slate-900 dark:text-gray-300">
                 No projects match your search.
               </div>
             ) : (
-              <div className="overflow-hidden rounded-xl border border-gray-200/70 bg-white/70 shadow-sm dark:border-gray-800/80 dark:bg-white/[0.01]">
+              <div className="overflow-hidden rounded-xl border border-gray-300/90 bg-white shadow-sm dark:border-gray-700 dark:bg-slate-900">
                 <div
                   className={classNames(
-                    "grid grid-cols-12 gap-0 px-4 py-3 text-xs font-semibold",
-                    "bg-gray-50/80 text-gray-600",
-                    "dark:bg-white/[0.02] dark:text-gray-300",
+                    crispText,
+                    "grid grid-cols-12 gap-0 px-4 py-3.5",
+                    "bg-gray-100 text-gray-800",
+                    "dark:bg-slate-800 dark:text-gray-200",
                   )}
                 >
-                  <div className="col-span-5">Project</div>
-                  <div className="col-span-4 hidden md:block">Description</div>
-                  <div className="col-span-3 text-right">Updated</div>
+                  <div className="col-span-5 text-sm font-semibold tracking-[0.01em]">Project</div>
+                  <div className="col-span-4 hidden text-sm font-semibold tracking-[0.01em] md:block">Description</div>
+                  <div className="col-span-3 text-right text-sm font-semibold tracking-[0.01em]">Updated</div>
                 </div>
 
-                <div className="divide-y divide-gray-200/70 dark:divide-gray-800/70">
+                <div className="divide-y divide-gray-200/90 dark:divide-gray-700">
                   {recentProjects.map((p) => {
                     const isPinned = pinnedIds.some((x) => String(x) === String(p.id));
                     return (
                       <div
                         key={p.id}
                         className={classNames(
-                          "grid grid-cols-12 items-center gap-0 px-4 py-3 transition",
-                          "hover:bg-gray-50/80 dark:hover:bg-white/[0.02]",
+                          "grid grid-cols-12 items-center gap-0 px-4 py-3.5 transition",
+                          "hover:bg-gray-50 dark:hover:bg-slate-800/70",
                         )}
                       >
                         <div className="col-span-5 min-w-0">
@@ -762,22 +780,22 @@ export default function Home() {
                               onClick={() => togglePin(p.id)}
                               className={classNames(
                                 "inline-flex items-center justify-center rounded-lg border p-1.5 transition",
-                                "border-gray-200/70 bg-white/70 shadow-sm hover:border-gray-300/80 hover:shadow-md",
-                                "dark:border-gray-800/80 dark:bg-white/[0.02] dark:hover:border-gray-700",
+                                "border-gray-300/80 bg-white shadow-sm hover:border-gray-400 hover:shadow-md",
+                                "dark:border-gray-700 dark:bg-slate-900 dark:hover:border-gray-600",
                               )}
                               title={isPinned ? "Unpin" : "Pin"}
                             >
                               {isPinned ? (
-                                <PinOff className="h-4 w-4 text-gray-600 dark:text-gray-300" />
+                                <PinOff className="h-4 w-4 text-gray-700 dark:text-gray-300" />
                               ) : (
-                                <Pin className="h-4 w-4 text-gray-600 dark:text-gray-300" />
+                                <Pin className="h-4 w-4 text-gray-700 dark:text-gray-300" />
                               )}
                             </button>
 
                             <button
                               type="button"
                               onClick={() => openProject(p.id)}
-                              className="min-w-0 truncate text-sm font-semibold text-gray-800 hover:underline dark:text-white/90"
+                              className="min-w-0 truncate text-[15px] font-medium leading-6 text-gray-950 hover:underline dark:text-white"
                             >
                               {p.name}
                             </button>
@@ -785,13 +803,13 @@ export default function Home() {
                         </div>
 
                         <div className="col-span-4 hidden min-w-0 md:block">
-                          <div className="line-clamp-1 text-xs text-gray-500 dark:text-gray-400">
+                          <div className="line-clamp-1 text-sm leading-6 text-gray-700 dark:text-gray-300">
                             {p.description?.trim() ? p.description : "—"}
                           </div>
                         </div>
 
                         <div className="col-span-3 text-right">
-                          <div className="text-xs font-semibold text-gray-700 dark:text-gray-200">
+                          <div className="text-sm font-medium leading-6 text-gray-800 dark:text-gray-200">
                             {formatDateTime(p.updatedAt ?? p.createdAt)}
                           </div>
                         </div>

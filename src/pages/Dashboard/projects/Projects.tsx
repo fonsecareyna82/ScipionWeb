@@ -1,6 +1,5 @@
 // src/pages/projects/Projects.tsx
 import { useEffect, useState, useRef, useCallback, useMemo } from "react";
-import PageBreadcrumb from "../../../components/common/PageBreadCrumb";
 import PageMeta from "../../../components/common/PageMeta";
 import ProjectCard from "../../../components/projects/ProjectsCard";
 import { ChevronDownIcon } from "@/icons";
@@ -8,7 +7,7 @@ import NewProjectModal from "@/components/projects/NewProjectModal";
 import { useProjectService } from "@/ProjectServiceContext";
 import type { ProjectService } from "@/services/ProjectService";
 import { Project } from "@/types/project";
-import { CloudDownload, Download, PlusCircle, Search, RefreshCw } from "lucide-react";
+import { CloudDownload, Download, PlusCircle, Search } from "lucide-react";
 import ShareProjectModal from "@/components/projects/ShareProjectModal";
 
 /** Tweak this if your header/breadcrumb/top paddings differ */
@@ -17,6 +16,8 @@ const GRID_VPORT_OFFSET_PX = 250;
 function classNames(...xs: Array<string | false | null | undefined>): string {
   return xs.filter(Boolean).join(" ");
 }
+
+const crispText = "subpixel-antialiased [text-rendering:optimizeLegibility]";
 
 /** Normalize any backend project shape into our internal Project type. */
 function normalizeProject(raw: any): Project {
@@ -54,6 +55,24 @@ function normalizeProject(raw: any): Project {
 interface ProjectsPageProps {
   service?: ProjectService;
   fetchList?: () => Promise<Project[]>;
+}
+
+function StatCard(props: { label: string; value: React.ReactNode }) {
+  return (
+    <div
+      className={classNames(
+        crispText,
+        "rounded-xl border p-3 shadow-sm",
+        "border-gray-300/80 bg-white",
+        "dark:border-gray-700 dark:bg-slate-900",
+      )}
+    >
+      <div className="text-sm font-medium text-gray-700 dark:text-gray-300">{props.label}</div>
+      <div className="mt-1 text-xl font-bold tracking-[-0.01em] text-gray-950 dark:text-white">
+        {props.value}
+      </div>
+    </div>
+  );
 }
 
 export default function Projects({ service, fetchList }: ProjectsPageProps) {
@@ -96,7 +115,6 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
     }
   }, [fetchList, svc]);
 
-  // Close dropdown on outside click
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -107,7 +125,6 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Fetch projects on mount
   useEffect(() => {
     void loadProjects();
   }, [loadProjects]);
@@ -131,12 +148,10 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
     return { total, shared, owned };
   }, [projects]);
 
-  // Local removal after backend deletion
   const handleDeleteProject = useCallback((id: number | string) => {
     setProjects((prev) => prev.filter((p) => String(p.id) !== String(id)));
   }, []);
 
-  // Local rename after backend rename
   const handleRenameProject = useCallback(
     (id: number | string, newName: string, newDescription: string) => {
       setProjects((prev) =>
@@ -148,7 +163,6 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
     [],
   );
 
-  // After modal created a project successfully (modal already calls svc.createProject)
   const handleCreateProject = useCallback((rawCreated: any) => {
     const unwrapped = (rawCreated && (rawCreated.project || rawCreated.data || rawCreated.result)) ?? rawCreated;
     const normalized = normalizeProject(unwrapped);
@@ -156,58 +170,43 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
     setSearch("");
   }, []);
 
-  const handleShareProject = useCallback((id: number | string, name: string, projectOwnerId: number | string | null) => {
-    setShareProject({ id, name, projectOwnerId: projectOwnerId ?? null });
-  }, []);
+  const handleShareProject = useCallback(
+    (id: number | string, name: string, projectOwnerId: number | string | null) => {
+      setShareProject({ id, name, projectOwnerId: projectOwnerId ?? null });
+    },
+    [],
+  );
 
   return (
     <>
       <PageMeta title="Scipion | Projects" description="Projects page" />
-      <PageBreadcrumb pageTitle="Projects" />
 
-     <div
-  className={classNames(
-    "relative overflow-hidden rounded-2xl border p-5 shadow-sm backdrop-blur",
-    "border-gray-200/70 bg-white/80",
-    "dark:border-gray-800/80 dark:bg-white/[0.03]",
-    "lg:p-6",
-  )}
->
+      <div
+        className={classNames(
+          crispText,
+          "relative overflow-hidden rounded-2xl border p-5 shadow-sm",
+          "border-gray-300/90 bg-white",
+          "dark:border-gray-700 dark:bg-slate-900",
+          "lg:p-6",
+        )}
+      >
         <div className="relative">
-          {/* Header row */}
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <h3 className="text-base font-semibold text-gray-800 dark:text-white/90">Projects</h3>
-                <span className="rounded-full border border-indigo-500/20 bg-indigo-500/[0.08] px-2 py-0.5 text-xs font-semibold text-indigo-800 dark:bg-indigo-400/[0.12] dark:text-indigo-200">
+                <h3 className="text-[15px] font-semibold tracking-[0.01em] text-gray-950 dark:text-white">
+                  Projects
+                </h3>
+                <span className="rounded-full border border-gray-300/80 bg-gray-100 px-2 py-0.5 text-xs font-semibold text-gray-800 dark:border-gray-700 dark:bg-slate-800 dark:text-gray-200">
                   {stats.total}
                 </span>
               </div>
-              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              <p className="mt-1 text-sm leading-6 text-gray-700 dark:text-gray-300">
                 Browse your projects, open workflows, and manage sharing.
               </p>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2 justify-start sm:justify-end">
-              {/*
-              <button
-                type="button"
-                onClick={() => void loadProjects()}
-                className={classNames(
-                  "inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold transition",
-                  "border-gray-200/70 bg-white/70 text-gray-800 shadow-sm hover:border-gray-300/80 hover:shadow-md",
-                  "dark:border-gray-800/80 dark:bg-white/[0.02] dark:text-white/90 dark:hover:border-gray-700",
-                  "hover:bg-gradient-to-br hover:from-indigo-500/[0.06] hover:via-transparent hover:to-cyan-500/[0.06]",
-                  loading ? "pointer-events-none opacity-70" : "",
-                )}
-                title="Reload projects"
-              >
-                <RefreshCw className={classNames("h-4 w-4", loading ? "animate-spin" : "")} />
-                Reload
-              </button>
-              */}
-
-              {/* Actions dropdown */}
+            <div className="flex flex-wrap items-center justify-start gap-2 sm:justify-end">
               <div className="relative" ref={dropdownRef}>
                 <button
                   type="button"
@@ -225,19 +224,19 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
                 {showDropdown && (
                   <div
                     className={classNames(
-                      "absolute right-0 mt-2 w-56 overflow-hidden rounded-xl border shadow-xl z-50",
-                      "border-gray-200/70 bg-white/90 backdrop-blur",
-                      "dark:border-gray-800/80 dark:bg-gray-900/90",
+                      crispText,
+                      "absolute right-0 z-50 mt-2 w-56 overflow-hidden rounded-xl border shadow-xl",
+                      "border-gray-300/90 bg-white",
+                      "dark:border-gray-700 dark:bg-slate-900",
                     )}
                   >
-                    <ul className="text-sm text-gray-700 dark:text-gray-200">
+                    <ul className="text-sm text-gray-800 dark:text-gray-200">
                       <li>
                         <button
                           type="button"
                           className={classNames(
-                            "w-full px-4 py-3 flex items-center gap-2 text-left transition",
-                            "hover:bg-gradient-to-r hover:from-indigo-500/[0.06] hover:via-transparent hover:to-cyan-500/[0.06]",
-                            "dark:hover:from-indigo-400/[0.10] dark:hover:to-cyan-400/[0.10]",
+                            "flex w-full items-center gap-2 px-4 py-3 text-left transition",
+                            "hover:bg-gray-50 dark:hover:bg-slate-800/70",
                           )}
                           onClick={() => {
                             setShowDropdown(false);
@@ -253,9 +252,8 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
                         <button
                           type="button"
                           className={classNames(
-                            "w-full px-4 py-3 flex items-center gap-2 text-left transition",
-                            "hover:bg-gradient-to-r hover:from-indigo-500/[0.06] hover:via-transparent hover:to-cyan-500/[0.06]",
-                            "dark:hover:from-indigo-400/[0.10] dark:hover:to-cyan-400/[0.10]",
+                            "flex w-full items-center gap-2 px-4 py-3 text-left transition",
+                            "hover:bg-gray-50 dark:hover:bg-slate-800/70",
                           )}
                           onClick={() => {
                             setShowDropdown(false);
@@ -271,9 +269,8 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
                         <button
                           type="button"
                           className={classNames(
-                            "w-full px-4 py-3 flex items-center gap-2 text-left transition",
-                            "hover:bg-gradient-to-r hover:from-indigo-500/[0.06] hover:via-transparent hover:to-cyan-500/[0.06]",
-                            "dark:hover:from-indigo-400/[0.10] dark:hover:to-cyan-400/[0.10]",
+                            "flex w-full items-center gap-2 px-4 py-3 text-left transition",
+                            "hover:bg-gray-50 dark:hover:bg-slate-800/70",
                           )}
                           onClick={() => {
                             setShowDropdown(false);
@@ -291,67 +288,34 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
             </div>
           </div>
 
-          {/* Search + stats */}
           <div className="mb-4 grid grid-cols-1 gap-3 lg:grid-cols-12">
             <div className="lg:col-span-6">
               <div className="relative">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500 dark:text-gray-400" />
                 <input
                   type="text"
                   placeholder="Search projects…"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   className={classNames(
-                    "w-full rounded-xl border py-2 pl-9 pr-3 text-sm font-semibold outline-none transition",
-                    "border-gray-200/70 bg-white/70 text-gray-800 placeholder:text-gray-400",
+                    crispText,
+                    "w-full rounded-xl border py-2.5 pl-9 pr-3 text-sm font-medium outline-none transition",
+                    "border-gray-300/80 bg-white text-gray-950 placeholder:text-gray-400",
                     "focus:border-indigo-500/40 focus:ring-2 focus:ring-indigo-500/10",
-                    "dark:border-gray-800/80 dark:bg-white/[0.02] dark:text-white/90 dark:placeholder:text-gray-500",
+                    "dark:border-gray-700 dark:bg-slate-900 dark:text-white dark:placeholder:text-gray-500",
                     "dark:focus:border-indigo-400/40 dark:focus:ring-indigo-400/15",
                   )}
                 />
               </div>
             </div>
 
-            <div className="lg:col-span-6 grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div
-                className={classNames(
-                  "rounded-xl border p-3 shadow-sm",
-                  "border-gray-200/70 bg-white/70",
-                  "dark:border-gray-800/80 dark:bg-white/[0.02]",
-                  "border-indigo-500/20 bg-gradient-to-br from-indigo-500/[0.08] via-transparent to-transparent dark:from-indigo-400/[0.12]",
-                )}
-              >
-                <div className="text-xs font-semibold text-gray-500 dark:text-gray-400">Total</div>
-                <div className="mt-1 text-lg font-bold text-gray-800 dark:text-white/90">{stats.total}</div>
-              </div>
-
-              <div
-                className={classNames(
-                  "rounded-xl border p-3 shadow-sm",
-                  "border-gray-200/70 bg-white/70",
-                  "dark:border-gray-800/80 dark:bg-white/[0.02]",
-                  "border-sky-500/20 bg-gradient-to-br from-sky-500/[0.08] via-transparent to-transparent dark:from-sky-400/[0.12]",
-                )}
-              >
-                <div className="text-xs font-semibold text-gray-500 dark:text-gray-400">Owned</div>
-                <div className="mt-1 text-lg font-bold text-gray-800 dark:text-white/90">{stats.owned}</div>
-              </div>
-
-              <div
-                className={classNames(
-                  "rounded-xl border p-3 shadow-sm",
-                  "border-gray-200/70 bg-white/70",
-                  "dark:border-gray-800/80 dark:bg-white/[0.02]",
-                  "border-cyan-500/20 bg-gradient-to-br from-cyan-500/[0.08] via-transparent to-transparent dark:from-cyan-400/[0.12]",
-                )}
-              >
-                <div className="text-xs font-semibold text-gray-500 dark:text-gray-400">Shared</div>
-                <div className="mt-1 text-lg font-bold text-gray-800 dark:text-white/90">{stats.shared}</div>
-              </div>
+            <div className="grid grid-cols-1 gap-3 lg:col-span-6 sm:grid-cols-3">
+              <StatCard label="Total" value={stats.total} />
+              <StatCard label="Owned" value={stats.owned} />
+              <StatCard label="Shared" value={stats.shared} />
             </div>
           </div>
 
-          {/* Scroll container */}
           <div
             className="overscroll-contain"
             style={{
@@ -361,46 +325,45 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
               paddingRight: 4,
             }}
           >
-            {/* States */}
             {loading && (
-              <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 items-start">
+              <div className="grid grid-cols-1 items-start gap-6 sm:grid-cols-2 lg:grid-cols-3">
                 {Array.from({ length: 6 }).map((_, i) => (
                   <div
                     key={i}
                     className={classNames(
-                      "h-[210px] rounded-2xl border p-5 shadow-sm animate-pulse",
-                      "border-gray-200/70 bg-white/70",
-                      "dark:border-gray-800/80 dark:bg-white/[0.02]",
+                      "h-[210px] animate-pulse rounded-2xl border p-5 shadow-sm",
+                      "border-gray-300/80 bg-white",
+                      "dark:border-gray-700 dark:bg-slate-900",
                     )}
                   >
-                    <div className="h-5 w-2/3 rounded bg-gray-200/70 dark:bg-gray-800/70" />
-                    <div className="mt-3 h-3 w-1/2 rounded bg-gray-200/70 dark:bg-gray-800/70" />
-                    <div className="mt-6 h-12 rounded bg-gray-200/50 dark:bg-gray-800/50" />
-                    <div className="mt-3 h-3 w-1/3 rounded bg-gray-200/70 dark:bg-gray-800/70" />
+                    <div className="h-5 w-2/3 rounded bg-gray-200 dark:bg-slate-700" />
+                    <div className="mt-3 h-4 w-1/2 rounded bg-gray-200 dark:bg-slate-700" />
+                    <div className="mt-6 h-12 rounded bg-gray-100 dark:bg-slate-800" />
+                    <div className="mt-3 h-4 w-1/3 rounded bg-gray-200 dark:bg-slate-700" />
                   </div>
                 ))}
               </div>
             )}
 
             {!loading && loadError && (
-              <div className="rounded-2xl border border-red-200/70 bg-red-50/80 p-4 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200">
+              <div className="rounded-2xl border border-red-200/80 bg-red-50 p-4 text-sm leading-6 text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200">
                 Error loading projects: {loadError}
               </div>
             )}
 
             {!loading && !loadError && filteredProjects.length === 0 && (
-              <div className="rounded-2xl border border-gray-200/70 bg-white/70 p-6 text-sm text-gray-600 dark:border-gray-800/80 dark:bg-white/[0.02] dark:text-gray-400">
+              <div className="rounded-2xl border border-gray-300/80 bg-white p-6 text-sm leading-6 text-gray-700 dark:border-gray-700 dark:bg-slate-900 dark:text-gray-300">
                 No projects found.
               </div>
             )}
 
             {!loading && !loadError && filteredProjects.length > 0 && (
               <div
-                className="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 items-start"
+                className="grid grid-cols-1 items-start gap-6 sm:grid-cols-2 lg:grid-cols-3"
                 aria-label="Projects list"
               >
                 {filteredProjects.map((project) => (
-                  <div key={String(project.id)} className="h-full mt-2">
+                  <div key={String(project.id)} className="mt-2 h-full">
                     <ProjectCard
                       id={project.id}
                       label={project.name}

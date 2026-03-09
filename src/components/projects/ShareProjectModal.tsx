@@ -28,6 +28,8 @@ function classNames(...xs: Array<string | false | null | undefined>): string {
   return xs.filter(Boolean).join(" ");
 }
 
+const crispText = "subpixel-antialiased [text-rendering:optimizeLegibility]";
+
 export default function ShareProjectModal({
   open,
   projectId,
@@ -223,6 +225,7 @@ export default function ShareProjectModal({
   return (
     <div
       className={classNames(
+        crispText,
         "fixed inset-0 z-50 flex items-center justify-center",
         "bg-black/[0.02] dark:bg-white/[0.02]",
       )}
@@ -236,252 +239,259 @@ export default function ShareProjectModal({
       <div
         ref={dialogRef}
         className={classNames(
-          "relative w-full max-w-xl overflow-hidden rounded-2xl border shadow-2xl flex flex-col max-h-[82vh]",
-          // stronger separation from background
-          "border-gray-400/80 bg-white/92 backdrop-blur",
-          "ring-1 ring-inset ring-black/[0.06]",
-          "dark:border-gray-700/90 dark:bg-gray-900/92",
-          "dark:ring-white/[0.06]",
-          "before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-[1px] before:content-['']",
-          "before:bg-gradient-to-r before:from-indigo-500/40 before:via-sky-500/30 before:to-cyan-500/40",
-          "after:pointer-events-none after:absolute after:inset-0 after:content-['']",
-          "after:bg-gradient-to-br after:from-indigo-500/[0.06] after:via-transparent after:to-cyan-500/[0.06]",
-          "dark:after:from-indigo-400/[0.10] dark:after:to-cyan-400/[0.10]",
+          crispText,
+          "relative flex max-h-[82vh] w-full max-w-xl flex-col overflow-hidden rounded-2xl border shadow-2xl",
+          "border-gray-300/90 bg-white",
+          "ring-1 ring-inset ring-black/[0.08]",
+          "dark:border-gray-700 dark:bg-slate-900",
+          "dark:ring-white/[0.08]",
         )}
-          
-      onMouseDown={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
       >
-      <div className="relative flex flex-col h-full">
-        {/* Header */}
-        <div className="flex items-start justify-between border-b border-gray-200/80 dark:border-gray-800 px-5 pt-4 pb-3">
-          <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-indigo-500/20 bg-gradient-to-br from-indigo-500/15 via-sky-500/10 to-cyan-500/15 text-indigo-700 dark:text-indigo-200">
-              <Users className="h-5 w-5" />
-            </div>
-            <div>
-              <h3 id="share-project-title" className="text-base font-semibold text-gray-900 dark:text-white">
-                Share project
-              </h3>
-              <p id="share-project-desc" className="mt-1 text-sm text-gray-600 dark:text-gray-300">
-                Share access to <span className="font-semibold">{projectName || "this project"}</span>.
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <div className="hidden sm:inline-flex items-center gap-2 rounded-full border border-amber-200/70 bg-amber-50/80 px-3 py-1 text-xs font-semibold text-amber-800 dark:border-amber-800/70 dark:bg-amber-900/40 dark:text-amber-100">
-              <ShieldCheck className="h-4 w-4" />
-              Owner only
+        <div className="relative flex h-full flex-col">
+          <div className="flex items-start justify-between border-b border-gray-300/80 px-5 pb-3 pt-4 dark:border-gray-700">
+            <div className="flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-gray-300/80 bg-gray-100 text-gray-800 dark:border-gray-700 dark:bg-slate-800 dark:text-gray-200">
+                <Users className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 id="share-project-title" className="text-[15px] font-semibold tracking-[0.01em] text-gray-950 dark:text-white">
+                  Share project
+                </h3>
+                <p id="share-project-desc" className="mt-1 text-sm leading-6 text-gray-700 dark:text-gray-300">
+                  Share access to <span className="font-semibold">{projectName || "this project"}</span>.
+                </p>
+              </div>
             </div>
 
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={submitting}
-              className={classNames(
-                "inline-flex items-center justify-center rounded-xl border p-2 transition",
-                "border-gray-200/70 bg-white/70 text-gray-700 hover:shadow-sm",
-                "dark:border-gray-800/80 dark:bg-white/[0.02] dark:text-gray-200",
-                submitting ? "opacity-60" : "",
-              )}
-              aria-label="Close"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
+            <div className="flex items-center gap-2">
+              <div className="hidden items-center gap-2 rounded-full border border-amber-300/80 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-200 sm:inline-flex">
+                <ShieldCheck className="h-4 w-4" />
+                Owner only
+              </div>
 
-        {/* Search + info */}
-        <div className="border-b border-gray-200/80 px-5 py-3 dark:border-gray-800">
-          <div className="flex items-center gap-3">
-            <div className="relative flex-1">
-              <span className="pointer-events-none absolute inset-y-0 left-2 flex items-center">
-                <Search className="h-4 w-4 text-gray-400" />
-              </span>
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search users…"
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={submitting}
                 className={classNames(
-                  "w-full rounded-xl border px-8 py-2 text-sm font-semibold outline-none transition",
-                  "border-gray-200/70 bg-white/70 text-gray-900 placeholder:text-gray-400",
-                  "focus:border-indigo-500/40 focus:ring-2 focus:ring-indigo-500/10",
-                  "dark:border-gray-800/80 dark:bg-white/[0.02] dark:text-white dark:placeholder:text-gray-500",
+                  "inline-flex items-center justify-center rounded-xl border p-2 transition",
+                  "border-gray-300/80 bg-white text-gray-800 hover:shadow-sm",
+                  "dark:border-gray-700 dark:bg-slate-900 dark:text-gray-200",
+                  submitting ? "opacity-60" : "",
                 )}
-              />
-            </div>
-
-            <div className="hidden md:flex items-center gap-2 rounded-xl border border-amber-200/70 bg-amber-50/80 px-3 py-2 text-xs font-semibold text-amber-800 dark:border-amber-800/70 dark:bg-amber-900/40 dark:text-amber-100">
-              <ShieldCheck className="h-4 w-4" />
-              <span>Only the owner can change access.</span>
+                aria-label="Close"
+              >
+                <X className="h-4 w-4" />
+              </button>
             </div>
           </div>
-        </div>
 
-        {/* Users list */}
-        <div className="flex-1 overflow-y-auto px-5 py-3">
-          <div className="rounded-2xl border border-gray-200/70 bg-white/60 shadow-sm dark:border-gray-800/80 dark:bg-white/[0.02]">
-            {loadingUsers && (
-              <div className="py-6 text-center text-sm text-gray-500 dark:text-gray-300">Loading users...</div>
-            )}
+          <div className="border-b border-gray-300/80 px-5 py-3 dark:border-gray-700">
+            <div className="flex items-center gap-3">
+              <div className="relative flex-1">
+                <span className="pointer-events-none absolute inset-y-0 left-2 flex items-center">
+                  <Search className="h-4 w-4 text-gray-500 dark:text-gray-400" />
+                </span>
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search users…"
+                  className={classNames(
+                    crispText,
+                    "w-full rounded-xl border px-8 py-2.5 text-sm font-medium outline-none transition",
+                    "border-gray-300/80 bg-white text-gray-950 placeholder:text-gray-400",
+                    "focus:border-indigo-500/40 focus:ring-2 focus:ring-indigo-500/10",
+                    "dark:border-gray-700 dark:bg-slate-900 dark:text-white dark:placeholder:text-gray-500",
+                  )}
+                />
+              </div>
 
-            {!loadingUsers && !filteredUsers.length && (
-              <div className="py-6 text-center text-sm text-gray-500 dark:text-gray-300">No users found.</div>
-            )}
+              <div className="hidden items-center gap-2 rounded-xl border border-amber-300/80 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-200 md:flex">
+                <ShieldCheck className="h-4 w-4" />
+                <span>Only the owner can change access.</span>
+              </div>
+            </div>
+          </div>
 
-            {!loadingUsers && filteredUsers.length > 0 && (
-              <ul className="divide-y divide-gray-200/70 dark:divide-gray-800/70">
-                {filteredUsers.map((u) => {
-                  const checked = selectedIds.includes(u.id);
-                  const disabled = Boolean(u.isOwner || u.alreadyShared);
+          <div className="flex-1 overflow-y-auto px-5 py-3">
+            <div className="rounded-2xl border border-gray-300/80 bg-white shadow-sm dark:border-gray-700 dark:bg-slate-900">
+              {loadingUsers && (
+                <div className="py-6 text-center text-sm leading-6 text-gray-700 dark:text-gray-300">
+                  Loading users...
+                </div>
+              )}
 
-                  const statusLabel = u.isOwner ? "Owner" : u.alreadyShared ? "Shared" : "Invite";
+              {!loadingUsers && !filteredUsers.length && (
+                <div className="py-6 text-center text-sm leading-6 text-gray-700 dark:text-gray-300">
+                  No users found.
+                </div>
+              )}
 
-                  const statusClasses = u.isOwner
-                    ? "border-emerald-500/20 bg-emerald-500/[0.08] text-emerald-900 dark:bg-emerald-400/[0.12] dark:text-emerald-200"
-                    : u.alreadyShared
-                      ? "border-sky-500/20 bg-sky-500/[0.08] text-sky-900 dark:bg-sky-400/[0.12] dark:text-sky-200"
-                      : "border-gray-200/70 bg-white/60 text-gray-700 dark:border-gray-800/80 dark:bg-white/[0.02] dark:text-gray-200";
+              {!loadingUsers && filteredUsers.length > 0 && (
+                <ul className="divide-y divide-gray-200/90 dark:divide-gray-700">
+                  {filteredUsers.map((u) => {
+                    const checked = selectedIds.includes(u.id);
+                    const disabled = Boolean(u.isOwner || u.alreadyShared);
 
-                  const canRevoke = Boolean(u.alreadyShared && !u.isOwner);
+                    const statusLabel = u.isOwner ? "Owner" : u.alreadyShared ? "Shared" : "Invite";
 
-                  return (
-                    <li key={String(u.id)} className="flex items-center justify-between px-4 py-3 text-sm">
-                      <label
-                        className={classNames(
-                          "flex items-center gap-3 flex-1 min-w-0",
-                          disabled ? "opacity-60 cursor-default" : "cursor-pointer",
-                        )}
-                      >
-                        <input
-                          type="checkbox"
-                          className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                          checked={checked}
-                          disabled={disabled || submitting}
-                          onChange={() => !disabled && !submitting && toggleUser(u.id)}
-                        />
-                        <div className="flex flex-col flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="font-semibold text-gray-900 dark:text-gray-100 truncate">{u.name}</span>
-                            <span className={classNames("inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold", statusClasses)}>
-                              {statusLabel}
-                            </span>
-                          </div>
-                          <span className="mt-1 text-xs text-gray-500 dark:text-gray-400 truncate">{u.email}</span>
-                        </div>
-                      </label>
+                    const statusClasses = u.isOwner
+                      ? "border-emerald-300/80 bg-emerald-50 text-emerald-800 dark:border-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-200"
+                      : u.alreadyShared
+                        ? "border-sky-300/80 bg-sky-50 text-sky-800 dark:border-sky-700 dark:bg-sky-950/30 dark:text-sky-200"
+                        : "border-gray-300/80 bg-gray-100 text-gray-700 dark:border-gray-700 dark:bg-slate-800 dark:text-gray-200";
 
-                      {canRevoke && (
-                        <button
-                          type="button"
-                          onClick={() => openRevokeDialog(u)}
-                          disabled={submitting}
+                    const canRevoke = Boolean(u.alreadyShared && !u.isOwner);
+
+                    return (
+                      <li key={String(u.id)} className="flex items-center justify-between px-4 py-3 text-sm">
+                        <label
                           className={classNames(
-                            "ml-3 shrink-0 rounded-xl px-3 py-2 text-xs font-semibold text-white transition disabled:opacity-60",
-                            "bg-gradient-to-r from-red-600 via-rose-600 to-orange-600 hover:brightness-[0.98] hover:shadow-md",
+                            "flex min-w-0 flex-1 items-center gap-3",
+                            disabled ? "cursor-default opacity-60" : "cursor-pointer",
                           )}
                         >
-                          Remove
-                        </button>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </div>
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                            checked={checked}
+                            disabled={disabled || submitting}
+                            onChange={() => !disabled && !submitting && toggleUser(u.id)}
+                          />
+                          <div className="flex min-w-0 flex-1 flex-col">
+                            <div className="flex items-center gap-2">
+                              <span className="truncate text-sm font-medium text-gray-950 dark:text-white">
+                                {u.name}
+                              </span>
+                              <span
+                                className={classNames(
+                                  "inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold",
+                                  statusClasses,
+                                )}
+                              >
+                                {statusLabel}
+                              </span>
+                            </div>
+                            <span className="mt-1 truncate text-sm leading-6 text-gray-700 dark:text-gray-300">
+                              {u.email}
+                            </span>
+                          </div>
+                        </label>
 
-          {errorMsg && <div className="mt-2 text-sm text-red-600 dark:text-red-300">{errorMsg}</div>}
-        </div>
-
-        {/* Footer */}
-        <div className="border-t border-gray-200/80 px-5 py-3 flex items-center justify-between text-sm text-gray-500 dark:border-gray-800 dark:text-gray-400">
-          <div>
-            {selectedCount > 0
-              ? `${selectedCount} user${selectedCount > 1 ? "s" : ""} selected.`
-              : "No new users selected."}
-          </div>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={submitting}
-              className={classNames(
-                "rounded-xl border px-4 py-2 text-sm font-semibold transition disabled:opacity-60",
-                "border-gray-200/70 bg-white/70 text-gray-700 hover:shadow-sm",
-                "dark:border-gray-800/80 dark:bg-white/[0.02] dark:text-gray-200",
+                        {canRevoke && (
+                          <button
+                            type="button"
+                            onClick={() => openRevokeDialog(u)}
+                            disabled={submitting}
+                            className={classNames(
+                              "ml-3 shrink-0 rounded-xl px-3 py-2 text-xs font-semibold text-white transition disabled:opacity-60",
+                              "bg-gradient-to-r from-red-600 via-rose-600 to-orange-600 hover:brightness-[0.98] hover:shadow-md",
+                            )}
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
               )}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={handleSubmit}
-              disabled={submitting || selectedCount === 0}
-              className={classNames(
-                "rounded-xl px-4 py-2 text-sm font-semibold text-white transition disabled:opacity-60",
-                "bg-gradient-to-r from-indigo-600 via-sky-600 to-cyan-600 hover:brightness-[0.98] hover:shadow-md",
-              )}
-            >
-              {submitting ? "Sharing..." : selectedCount > 0 ? `Share (${selectedCount})` : "Share"}
-            </button>
+            </div>
+
+            {errorMsg ? (
+              <div className="mt-2 text-sm leading-6 text-red-600 dark:text-red-300">{errorMsg}</div>
+            ) : null}
           </div>
-        </div>
 
-        {/* Revoke access confirmation dialog */}
-        {revokeTarget && (
-          <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/30 backdrop-blur-[1px]">
-            <div className="w-full max-w-sm overflow-hidden rounded-2xl border border-red-200/70 bg-white/90 shadow-2xl dark:border-red-900/60 dark:bg-gray-900/90 px-5 py-4 text-sm">
-              <div className="flex items-start gap-3">
-                <div className="mt-0.5 flex h-10 w-10 items-center justify-center rounded-xl bg-red-500/[0.10] text-red-700 dark:bg-red-400/[0.12] dark:text-red-200">
-                  <UserMinus className="h-4 w-4" />
-                </div>
-                <div className="flex-1">
-                  <h4 className="text-base font-semibold text-gray-900 dark:text-white">Remove access</h4>
-                  <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
-                    Remove access to <span className="font-semibold">{projectName || "this project"}</span> for:
-                  </p>
-                  <p className="mt-2 text-sm font-semibold text-gray-900 dark:text-gray-100">{revokeTarget.name}</p>
-                  {revokeTarget.email ? (
-                    <span className="text-xs text-gray-500 dark:text-gray-400 block">{revokeTarget.email}</span>
-                  ) : null}
-                  <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                    The user will no longer see this project or its data.
-                  </p>
-                </div>
-              </div>
-
-              <div className="mt-4 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={cancelRevoke}
-                  disabled={submitting}
-                  className={classNames(
-                    "rounded-xl border px-4 py-2 text-sm font-semibold transition disabled:opacity-60",
-                    "border-gray-200/70 bg-white/70 text-gray-700 hover:shadow-sm",
-                    "dark:border-gray-800/80 dark:bg-white/[0.02] dark:text-gray-200",
-                  )}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={confirmRevokeAccess}
-                  disabled={submitting}
-                  className={classNames(
-                    "rounded-xl px-4 py-2 text-sm font-semibold text-white transition disabled:opacity-60",
-                    "bg-gradient-to-r from-red-600 via-rose-600 to-orange-600 hover:brightness-[0.98] hover:shadow-md",
-                  )}
-                >
-                  {submitting ? "Removing..." : "Remove access"}
-                </button>
-              </div>
+          <div className="flex items-center justify-between border-t border-gray-300/80 px-5 py-3 text-sm text-gray-700 dark:border-gray-700 dark:text-gray-300">
+            <div className="leading-6">
+              {selectedCount > 0
+                ? `${selectedCount} user${selectedCount > 1 ? "s" : ""} selected.`
+                : "No new users selected."}
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={submitting}
+                className={classNames(
+                  "rounded-xl border px-4 py-2 text-sm font-semibold transition disabled:opacity-60",
+                  "border-gray-300/80 bg-white text-gray-800 hover:shadow-sm",
+                  "dark:border-gray-700 dark:bg-slate-900 dark:text-gray-200",
+                )}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSubmit}
+                disabled={submitting || selectedCount === 0}
+                className={classNames(
+                  "rounded-xl px-4 py-2 text-sm font-semibold text-white transition disabled:opacity-60",
+                  "bg-gradient-to-r from-indigo-600 via-sky-600 to-cyan-600 hover:brightness-[0.98] hover:shadow-md",
+                )}
+              >
+                {submitting ? "Sharing..." : selectedCount > 0 ? `Share (${selectedCount})` : "Share"}
+              </button>
             </div>
           </div>
-        )}
+
+          {revokeTarget && (
+            <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/35">
+              <div className="w-full max-w-sm overflow-hidden rounded-2xl border border-red-300/80 bg-white px-5 py-4 text-sm shadow-2xl dark:border-red-800/70 dark:bg-slate-900">
+                <div className="flex items-start gap-3">
+                  <div className="mt-0.5 flex h-10 w-10 items-center justify-center rounded-xl bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-200">
+                    <UserMinus className="h-4 w-4" />
+                  </div>
+                  <div className="flex-1">
+                    <h4 className="text-base font-semibold text-gray-950 dark:text-white">Remove access</h4>
+                    <p className="mt-1 text-sm leading-6 text-gray-700 dark:text-gray-300">
+                      Remove access to <span className="font-semibold">{projectName || "this project"}</span> for:
+                    </p>
+                    <p className="mt-2 text-sm font-semibold text-gray-950 dark:text-white">{revokeTarget.name}</p>
+                    {revokeTarget.email ? (
+                      <span className="block text-sm leading-6 text-gray-700 dark:text-gray-300">
+                        {revokeTarget.email}
+                      </span>
+                    ) : null}
+                    <p className="mt-2 text-sm leading-6 text-gray-700 dark:text-gray-300">
+                      The user will no longer see this project or its data.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-4 flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={cancelRevoke}
+                    disabled={submitting}
+                    className={classNames(
+                      "rounded-xl border px-4 py-2 text-sm font-semibold transition disabled:opacity-60",
+                      "border-gray-300/80 bg-white text-gray-800 hover:shadow-sm",
+                      "dark:border-gray-700 dark:bg-slate-900 dark:text-gray-200",
+                    )}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={confirmRevokeAccess}
+                    disabled={submitting}
+                    className={classNames(
+                      "rounded-xl px-4 py-2 text-sm font-semibold text-white transition disabled:opacity-60",
+                      "bg-gradient-to-r from-red-600 via-rose-600 to-orange-600 hover:brightness-[0.98] hover:shadow-md",
+                    )}
+                  >
+                    {submitting ? "Removing..." : "Remove access"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
-    </div >
   );
 }

@@ -75,6 +75,8 @@ function formatDateShort(raw?: string): string {
   }
 }
 
+const crispText = "subpixel-antialiased [text-rendering:optimizeLegibility]";
+
 export default function ProjectCard(props: ProjectCardProps) {
   const {
     id,
@@ -87,7 +89,7 @@ export default function ProjectCard(props: ProjectCardProps) {
     isExpanded,
     onToggleExpand,
     description = "",
-    icon = <FolderIcon className="w-5 h-5 text-gray-900 dark:text-white" />,
+    icon = <FolderIcon className="h-5 w-5 text-gray-900 dark:text-white" />,
     onDelete,
     onRename,
     onShare,
@@ -105,7 +107,6 @@ export default function ProjectCard(props: ProjectCardProps) {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
-  // Context menu (right click)
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({ open: false, x: 0, y: 0 });
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
   const contextItemRefs = useRef<Array<HTMLLIElement | null>>([]);
@@ -184,8 +185,6 @@ export default function ProjectCard(props: ProjectCardProps) {
     }
   }, [svc, id, newLabel, newDescription, onRename]);
 
-  // ───────────────────────── Context menu helpers ─────────────────────────
-
   const closeContextMenu = useCallback(() => {
     setContextMenu((prev) => (prev.open ? { ...prev, open: false } : prev));
   }, []);
@@ -198,10 +197,9 @@ export default function ProjectCard(props: ProjectCardProps) {
       e.stopPropagation();
       onSelect?.();
 
-      // Clamp position to viewport
       const pad = 8;
-      const menuW = 192; // w-48
-      const menuH = 196; // approx
+      const menuW = 192;
+      const menuH = 196;
       const vw = window.innerWidth;
       const vh = window.innerHeight;
 
@@ -337,26 +335,15 @@ export default function ProjectCard(props: ProjectCardProps) {
     });
   }, [contextMenu.open]);
 
-  // ───────────────────────── Styles ─────────────────────────
-
   const cardClass = classNames(
-    "relative cursor-pointer rounded-2xl border p-5 md:p-6 subpixel-antialiased transition overflow-hidden",
-    "bg-white/80 border-gray-200/70 shadow-sm backdrop-blur",
-    "dark:bg-white/[0.03] dark:border-gray-800/80",
-    // Hover should NOT override selected border
-    !isSelected ? "hover:border-gray-300/80 dark:hover:border-gray-700/80" : "",
-    // Disable lift while renaming; also don't lift selected cards (feels cleaner)
+    crispText,
+    "relative min-h-[200px] cursor-pointer overflow-hidden rounded-2xl border p-5 transition md:p-6",
+    "border-gray-300/90 bg-white shadow-sm",
+    "dark:border-gray-700 dark:bg-slate-900",
+    !isSelected ? "hover:border-gray-400 dark:hover:border-gray-600" : "",
     !isRenaming && !isSelected ? "hover:-translate-y-px hover:shadow-lg" : "",
-    // Immediate feedback on click (even before state update)
     "active:border-indigo-500/40 active:ring-2 active:ring-inset active:ring-indigo-500/15",
-    "after:pointer-events-none after:absolute after:content-['']",
-    "after:inset-px after:rounded-[15px]",
-    "after:bg-gradient-to-br after:from-indigo-500/[0.04] after:via-transparent after:to-cyan-500/[0.04]",
-    "dark:after:from-indigo-400/[0.10] dark:after:to-cyan-400/[0.10]",
-
-    // Selected must win ALWAYS (even on hover)
-    isSelected ? "border-indigo-500/50 ring-2 ring-inset ring-indigo-500/18" : "",
-    "min-h-[200px]",
+    isSelected ? "border-indigo-500/60 ring-2 ring-inset ring-indigo-500/18" : "",
   );
 
   return (
@@ -367,7 +354,7 @@ export default function ProjectCard(props: ProjectCardProps) {
         transition={{ duration: 0.22, ease: "easeOut" }}
         className="relative"
       >
-         <div
+        <div
           tabIndex={0}
           onClick={onSelect}
           onDoubleClick={handleDoubleClick}
@@ -375,53 +362,55 @@ export default function ProjectCard(props: ProjectCardProps) {
           className={cardClass}
         >
           <div className="relative">
-            {/* Header */}
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex min-w-0 items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-indigo-500/20 bg-gradient-to-br from-indigo-500/15 via-sky-500/10 to-cyan-500/15">
-                  {icon}
-                </div>
+            <div className="flex items-start justify-between gap-4">
+  <div className="flex min-w-0 flex-1 items-start gap-3">
+    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-gray-300/80 bg-gray-100 shadow-sm dark:border-gray-700 dark:bg-slate-800">
+      {icon}
+    </div>
 
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="truncate text-base font-semibold text-gray-900 dark:text-white/90" title={label}>
-                      {newLabel}
-                    </span>
+    <div className="min-w-0 flex-1">
+      <div className="flex min-w-0 items-center gap-2">
+        <span
+          className="truncate text-[16px] font-semibold leading-6 tracking-[0.01em] text-gray-950 dark:text-white"
+          title={label}
+        >
+          {newLabel}
+        </span>
 
-                    {showGuestBadge ? (
-                      <span className="shrink-0 rounded-full border border-sky-500/20 bg-sky-500/[0.10] px-2 py-0.5 text-xs font-semibold text-sky-900 dark:bg-sky-400/[0.12] dark:text-sky-200">
-                        Guest
-                      </span>
-                    ) : null}
+        {showGuestBadge ? (
+          <span className="shrink-0 rounded-full border border-sky-300/80 bg-sky-50 px-2.5 py-0.5 text-[11px] font-semibold text-sky-800 dark:border-sky-700 dark:bg-sky-950/30 dark:text-sky-200">
+            Guest
+          </span>
+        ) : null}
 
-                    {permission ? (
-                      <span className="shrink-0 rounded-full border border-gray-200/70 bg-white/60 px-2 py-0.5 text-xs font-semibold text-gray-700 dark:border-gray-800/80 dark:bg-white/[0.02] dark:text-gray-200">
-                        {permission}
-                      </span>
-                    ) : null}
-                  </div>
+        {permission ? (
+          <span className="shrink-0 rounded-full border border-gray-300/80 bg-white px-2.5 py-0.5 text-[11px] font-semibold text-gray-700 dark:border-gray-700 dark:bg-slate-800 dark:text-gray-200">
+            {permission}
+          </span>
+        ) : null}
+      </div>
 
-                  <div className="mt-0.5 text-xs font-semibold text-gray-500 dark:text-gray-400">
-                    {String(value)} protocols
-                  </div>
-                </div>
-              </div>
+      <div className="mt-1 flex items-center gap-2">
+        <span className="inline-flex items-center rounded-full border border-indigo-300/70 bg-indigo-50 px-2.5 py-0.5 text-[11px] font-semibold text-indigo-800 dark:border-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-200">
+          {String(value)} protocols
+        </span>
+      </div>
+    </div>
+  </div>
 
-              {/* ... actions */}
-              <div className="shrink-0">
-                <ProjectAction
-                  icon={null}
-                  label=""
-                  onOpen={handleOpen}
-                  onRename={canModify ? handleRename : undefined}
-                  onRemove={canModify ? handleRemove : undefined}
-                  onShare={canModify ? handleShare : undefined}
-                />
-              </div>
-            </div>
+  <div className="shrink-0 pt-0.5">
+    <ProjectAction
+      icon={null}
+      label=""
+      onOpen={handleOpen}
+      onRename={canModify ? handleRename : undefined}
+      onRemove={canModify ? handleRemove : undefined}
+      onShare={canModify ? handleShare : undefined}
+    />
+  </div>
+</div>
 
-            {/* Description */}
-            <div className="mt-3 text-sm text-gray-600 dark:text-gray-300">
+            <div className="mt-3 text-sm leading-6 text-gray-700 dark:text-gray-300">
               <div className={classNames(isExpanded ? "" : "line-clamp-2")}>
                 {description?.trim() ? description : "No description available."}
               </div>
@@ -429,7 +418,7 @@ export default function ProjectCard(props: ProjectCardProps) {
               {canToggleExpand ? (
                 <button
                   type="button"
-                  className="mt-2 inline-flex items-center gap-1 rounded-lg border border-gray-200/70 bg-white/70 px-2 py-1 text-xs font-semibold text-gray-700 hover:shadow-sm dark:border-gray-800/80 dark:bg-white/[0.02] dark:text-gray-200"
+                  className="mt-2 inline-flex items-center gap-1 rounded-lg border border-gray-300/80 bg-white px-2 py-1 text-sm font-medium text-gray-800 hover:shadow-sm dark:border-gray-700 dark:bg-slate-900 dark:text-gray-200"
                   onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
@@ -441,25 +430,23 @@ export default function ProjectCard(props: ProjectCardProps) {
               ) : null}
             </div>
 
-            {/* Meta */}
-            <div className="mt-16 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-gray-500 dark:text-gray-400">
+            <div className="mt-16 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm leading-6 text-gray-700 dark:text-gray-300">
               {createdAt ? (
                 <span className="inline-flex items-center gap-1.5">
-                  <CalendarIcon className="h-4 w-4 text-indigo-600 dark:text-indigo-200" />
-                  <span className="font-semibold text-gray-700 dark:text-gray-200">{formatDateShort(createdAt)}</span>
+                  <CalendarIcon className="h-4 w-4 text-indigo-600 dark:text-indigo-300" />
+                  <span className="font-medium text-gray-800 dark:text-gray-200">{formatDateShort(createdAt)}</span>
                 </span>
               ) : null}
 
               {diskUsage ? (
                 <span className="inline-flex items-center gap-1.5">
-                  <StorageIcon className="h-4 w-4 text-cyan-700 dark:text-cyan-200" />
-                  <span className="font-semibold text-gray-700 dark:text-gray-200">{diskUsage}</span>
+                  <StorageIcon className="h-4 w-4 text-cyan-700 dark:text-cyan-300" />
+                  <span className="font-medium text-gray-800 dark:text-gray-200">{diskUsage}</span>
                 </span>
               ) : null}
             </div>
           </div>
 
-          {/* Rename: FULL-CARD editor (always fits) */}
           <AnimatePresence>
             {isRenaming && (
               <motion.div
@@ -468,9 +455,10 @@ export default function ProjectCard(props: ProjectCardProps) {
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.15 }}
                 className={classNames(
-                  "absolute inset-0 z-20 rounded-2xl border overflow-hidden",
-                  "bg-white/95 dark:bg-gray-900/95",
-                  "border-gray-200/70 dark:border-gray-800/80",
+                  crispText,
+                  "absolute inset-0 z-20 overflow-hidden rounded-2xl border",
+                  "border-gray-300/90 bg-white",
+                  "dark:border-gray-700 dark:bg-slate-900",
                 )}
                 role="dialog"
                 aria-modal="true"
@@ -485,15 +473,14 @@ export default function ProjectCard(props: ProjectCardProps) {
                 }}
               >
                 <div className="flex h-full flex-col">
-                  {/* Header */}
-                  <div className="flex items-center justify-between gap-3 border-b border-gray-200/70 px-4 py-3 dark:border-gray-800/70">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-indigo-500/20 bg-gradient-to-br from-indigo-500/15 via-sky-500/10 to-cyan-500/15">
+                  <div className="flex items-center justify-between gap-3 border-b border-gray-300/80 px-4 py-3 dark:border-gray-700">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-gray-300/80 bg-gray-100 dark:border-gray-700 dark:bg-slate-800">
                         {icon}
                       </div>
                       <div className="min-w-0">
-                        <div className="text-sm font-semibold text-gray-900 dark:text-white">Rename project</div>
-                        <div className="truncate text-xs text-gray-500 dark:text-gray-400">{label}</div>
+                        <div className="text-sm font-semibold text-gray-950 dark:text-white">Rename project</div>
+                        <div className="truncate text-sm text-gray-700 dark:text-gray-300">{label}</div>
                       </div>
                     </div>
 
@@ -502,8 +489,8 @@ export default function ProjectCard(props: ProjectCardProps) {
                       onClick={() => setIsRenaming(false)}
                       className={classNames(
                         "inline-flex h-9 w-9 items-center justify-center rounded-xl border transition",
-                        "border-gray-200/70 bg-white/70 text-gray-700 hover:shadow-sm",
-                        "dark:border-gray-800/80 dark:bg-white/[0.02] dark:text-gray-200",
+                        "border-gray-300/80 bg-white text-gray-800 hover:shadow-sm",
+                        "dark:border-gray-700 dark:bg-slate-900 dark:text-gray-200",
                       )}
                       aria-label="Close"
                     >
@@ -511,10 +498,9 @@ export default function ProjectCard(props: ProjectCardProps) {
                     </button>
                   </div>
 
-                  {/* Body (scrollable if needed) */}
                   <div className="min-h-0 flex-1 overflow-auto px-4 py-4">
                     <div className="flex flex-col gap-3">
-                      <label className="text-xs font-semibold text-gray-600 dark:text-gray-300">
+                      <label className="text-sm font-medium text-gray-800 dark:text-gray-300">
                         Name
                         <input
                           type="text"
@@ -522,16 +508,17 @@ export default function ProjectCard(props: ProjectCardProps) {
                           onChange={(e) => setNewLabel(e.target.value)}
                           placeholder="Project name"
                           className={classNames(
-                            "mt-1 w-full rounded-xl border px-3 py-2 text-sm font-semibold outline-none",
-                            "border-gray-200/70 bg-white text-gray-900",
+                            crispText,
+                            "mt-1 w-full rounded-xl border px-3 py-2.5 text-sm font-medium outline-none",
+                            "border-gray-300/80 bg-white text-gray-950",
                             "focus:border-indigo-500/40 focus:ring-2 focus:ring-indigo-500/10",
-                            "dark:border-gray-800/80 dark:bg-white/[0.02] dark:text-white",
+                            "dark:border-gray-700 dark:bg-slate-900 dark:text-white",
                           )}
                           autoFocus
                         />
                       </label>
 
-                      <label className="text-xs font-semibold text-gray-600 dark:text-gray-300">
+                      <label className="text-sm font-medium text-gray-800 dark:text-gray-300">
                         Description
                         <textarea
                           value={newDescription}
@@ -539,31 +526,31 @@ export default function ProjectCard(props: ProjectCardProps) {
                           placeholder="Project description"
                           rows={4}
                           className={classNames(
-                            "mt-1 w-full rounded-xl border px-3 py-2 text-sm outline-none",
-                            "border-gray-200/70 bg-white text-gray-900",
+                            crispText,
+                            "mt-1 w-full rounded-xl border px-3 py-2.5 text-sm leading-6 outline-none",
+                            "border-gray-300/80 bg-white text-gray-950",
                             "focus:border-indigo-500/40 focus:ring-2 focus:ring-indigo-500/10",
-                            "dark:border-gray-800/80 dark:bg-white/[0.02] dark:text-white",
+                            "dark:border-gray-700 dark:bg-slate-900 dark:text-white",
                           )}
                         />
                       </label>
 
                       {errorMessage ? (
-                        <div className="rounded-xl border border-red-200/70 bg-red-50/80 px-3 py-2 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200">
+                        <div className="rounded-xl border border-red-200/80 bg-red-50 px-3 py-2 text-sm leading-6 text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200">
                           {errorMessage}
                         </div>
                       ) : null}
                     </div>
                   </div>
 
-                  {/* Footer (always visible) */}
-                  <div className="flex items-center justify-end gap-2 border-t border-gray-200/70 bg-white/80 px-4 py-3 dark:border-gray-800/70 dark:bg-gray-900/70">
+                  <div className="flex items-center justify-end gap-2 border-t border-gray-300/80 bg-white px-4 py-3 dark:border-gray-700 dark:bg-slate-900">
                     <button
                       type="button"
                       onClick={() => setIsRenaming(false)}
                       className={classNames(
                         "rounded-xl border px-4 py-2 text-sm font-semibold transition",
-                        "border-gray-200/70 bg-white/70 text-gray-700 hover:shadow-sm",
-                        "dark:border-gray-800/80 dark:bg-white/[0.02] dark:text-gray-200",
+                        "border-gray-300/80 bg-white text-gray-800 hover:shadow-sm",
+                        "dark:border-gray-700 dark:bg-slate-900 dark:text-gray-200",
                       )}
                     >
                       Cancel
@@ -572,7 +559,7 @@ export default function ProjectCard(props: ProjectCardProps) {
                     <button
                       type="button"
                       onClick={handleRenameSubmit}
-                      className="rounded-xl px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:shadow-md hover:brightness-[0.98] bg-gradient-to-r from-indigo-600 via-sky-600 to-cyan-600"
+                      className="rounded-xl bg-gradient-to-r from-indigo-600 via-sky-600 to-cyan-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:brightness-[0.98] hover:shadow-md"
                     >
                       Save
                     </button>
@@ -584,7 +571,6 @@ export default function ProjectCard(props: ProjectCardProps) {
         </div>
       </motion.div>
 
-      {/* Right-click context menu (PORTAL) */}
       {contextMenu.open && portalRoot
         ? createPortal(
           <div
@@ -605,7 +591,7 @@ export default function ProjectCard(props: ProjectCardProps) {
               role="menu"
               tabIndex={-1}
               onKeyDown={onContextMenuKeyDown}
-              className="fixed w-48 overflow-hidden rounded-xl border border-gray-200/70 bg-white/95 shadow-2xl backdrop-blur dark:border-gray-800/80 dark:bg-gray-900/90"
+              className="fixed w-48 overflow-hidden rounded-xl border border-gray-300/90 bg-white shadow-2xl dark:border-gray-700 dark:bg-slate-900"
               style={{ left: contextMenu.x, top: contextMenu.y }}
               onClick={(e) => {
                 e.preventDefault();
@@ -622,16 +608,16 @@ export default function ProjectCard(props: ProjectCardProps) {
                 const shareDisabled = !canModify;
                 const removeDisabled = !canModify;
 
-                const baseItemClass = "px-4 py-2.5 outline-none flex items-center gap-2";
+                const baseItemClass = "flex items-center gap-2 px-4 py-2.5 outline-none text-sm";
                 const enabledItemClass =
-                  "cursor-pointer transition hover:bg-gradient-to-r hover:from-indigo-500/[0.06] hover:via-transparent hover:to-cyan-500/[0.06] focus:bg-gray-100/80 dark:focus:bg-gray-800/70";
+                  "cursor-pointer transition hover:bg-gray-50 focus:bg-gray-100 dark:hover:bg-slate-800/70 dark:focus:bg-slate-800/70";
                 const disabledItemClass = "cursor-not-allowed opacity-50 text-gray-400 dark:text-gray-500";
 
                 const itemClass = (disabled: boolean) =>
                   classNames(baseItemClass, disabled ? disabledItemClass : enabledItemClass);
 
                 return (
-                  <ul className="py-1 text-sm text-gray-700 dark:text-gray-200">
+                  <ul className="py-1 text-gray-800 dark:text-gray-200">
                     <li
                       ref={setContextItemRef(0)}
                       tabIndex={-1}
@@ -642,7 +628,7 @@ export default function ProjectCard(props: ProjectCardProps) {
                       onPointerMove={focusOnHoverIfEnabled(openDisabled)}
                       onClick={runContextItem(openDisabled, handleOpen)}
                     >
-                      <OpenFolderIcon className="w-5 h-5 text-gray-600 dark:text-gray-200" />
+                      <OpenFolderIcon className="h-5 w-5 text-gray-700 dark:text-gray-200" />
                       <span>Open</span>
                     </li>
 
@@ -658,8 +644,8 @@ export default function ProjectCard(props: ProjectCardProps) {
                     >
                       <RenameIcon
                         className={classNames(
-                          "w-5 h-5",
-                          renameDisabled ? "text-gray-400 dark:text-gray-500" : "text-gray-600 dark:text-gray-200",
+                          "h-5 w-5",
+                          renameDisabled ? "text-gray-400 dark:text-gray-500" : "text-gray-700 dark:text-gray-200",
                         )}
                       />
                       <span>Rename</span>
@@ -677,8 +663,8 @@ export default function ProjectCard(props: ProjectCardProps) {
                     >
                       <UserPlus2
                         className={classNames(
-                          "w-4 h-4",
-                          shareDisabled ? "text-gray-400 dark:text-gray-500" : "text-gray-600 dark:text-gray-200",
+                          "h-4 w-4",
+                          shareDisabled ? "text-gray-400 dark:text-gray-500" : "text-gray-700 dark:text-gray-200",
                         )}
                       />
                       <span>Share</span>
@@ -692,17 +678,18 @@ export default function ProjectCard(props: ProjectCardProps) {
                       data-disabled={removeDisabled ? "true" : "false"}
                       className={classNames(
                         itemClass(removeDisabled),
-                        !removeDisabled ? "hover:from-red-500/[0.08] hover:to-orange-500/[0.06]" : "",
+                        !removeDisabled ? "hover:bg-red-50 focus:bg-red-50 dark:hover:bg-red-950/20 dark:focus:bg-red-950/20" : "",
                       )}
                       onPointerMove={focusOnHoverIfEnabled(removeDisabled)}
                       onClick={runContextItem(removeDisabled, handleRemove)}
                     >
                       <TrashBinIcon
                         className={classNames(
-                          "w-5 h-5"
+                          "h-5 w-5",
+                          removeDisabled ? "text-gray-400 dark:text-gray-500" : "text-red-700 dark:text-red-300",
                         )}
                       />
-                      <span>Remove</span>
+                      <span className={!removeDisabled ? "text-red-700 dark:text-red-300" : undefined}>Remove</span>
                     </li>
                   </ul>
                 );
@@ -713,14 +700,13 @@ export default function ProjectCard(props: ProjectCardProps) {
         )
         : null}
 
-      {/* Delete confirmation modal */}
       <AnimatePresence>
         {showDeleteModal && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-[1px]"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/35"
             role="dialog"
             aria-modal="true"
             onClick={() => setShowDeleteModal(false)}
@@ -730,25 +716,25 @@ export default function ProjectCard(props: ProjectCardProps) {
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.96, opacity: 0 }}
               transition={{ duration: 0.18 }}
-              className="bg-white dark:bg-gray-900 rounded-2xl p-6 shadow-2xl max-w-sm w-full subpixel-antialiased border border-gray-200/70 dark:border-gray-800/80"
+              className="w-full max-w-sm rounded-2xl border border-gray-300/90 bg-white p-6 shadow-2xl subpixel-antialiased dark:border-gray-700 dark:bg-slate-900"
               onClick={(e: React.MouseEvent<HTMLDivElement>) => e.stopPropagation()}
             >
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Delete project?</h2>
-              <p className="text-sm text-gray-700 dark:text-gray-200 mb-6">
+              <h2 className="mb-4 text-lg font-semibold text-gray-950 dark:text-white">Delete project?</h2>
+              <p className="mb-6 text-sm leading-6 text-gray-800 dark:text-gray-200">
                 This action cannot be undone. Are you sure you want to delete <strong>{label}</strong>?
               </p>
               <div className="flex justify-end gap-3">
                 <button
                   type="button"
                   onClick={() => setShowDeleteModal(false)}
-                  className="rounded-xl border border-gray-200/70 bg-white/70 px-4 py-2 text-sm font-semibold text-gray-700 hover:shadow-sm dark:border-gray-800/80 dark:bg-white/[0.02] dark:text-gray-200"
+                  className="rounded-xl border border-gray-300/80 bg-white px-4 py-2 text-sm font-semibold text-gray-800 hover:shadow-sm dark:border-gray-700 dark:bg-slate-900 dark:text-gray-200"
                 >
                   Cancel
                 </button>
                 <button
                   type="button"
                   onClick={confirmRemove}
-                  className="rounded-xl px-4 py-2 text-sm font-semibold text-white bg-gradient-to-r from-red-600 via-rose-600 to-orange-600 hover:brightness-[0.98] hover:shadow-md transition"
+                  className="rounded-xl bg-gradient-to-r from-red-600 via-rose-600 to-orange-600 px-4 py-2 text-sm font-semibold text-white transition hover:brightness-[0.98] hover:shadow-md"
                 >
                   Delete
                 </button>

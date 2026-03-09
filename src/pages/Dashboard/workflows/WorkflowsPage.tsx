@@ -9,21 +9,28 @@ function classNames(...xs: Array<string | false | null | undefined>): string {
   return xs.filter(Boolean).join(" ");
 }
 
+const crispText = "subpixel-antialiased [text-rendering:optimizeLegibility]";
+
 function CardShell(props: { title: string; subtitle?: string; right?: React.ReactNode; children: React.ReactNode }) {
   return (
     <div
       className={classNames(
-        "relative overflow-hidden rounded-2xl border p-5 shadow-sm backdrop-blur",
-        "border-gray-200/70 bg-white/80",
-        "dark:border-gray-800/80 dark:bg-white/[0.03]",
+        crispText,
+        "relative overflow-hidden rounded-2xl border p-5 shadow-sm",
+        "border-gray-300/90 bg-white",
+        "dark:border-gray-700 dark:bg-slate-900",
         "lg:p-6",
       )}
     >
       <div className="relative">
         <div className="mb-4 flex items-start justify-between gap-4">
           <div className="min-w-0">
-            <h3 className="text-base font-semibold text-gray-800 dark:text-white/90">{props.title}</h3>
-            {props.subtitle ? <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{props.subtitle}</p> : null}
+            <h3 className="text-[15px] font-semibold tracking-[0.01em] text-gray-950 dark:text-white">
+              {props.title}
+            </h3>
+            {props.subtitle ? (
+              <p className="mt-1 text-sm leading-6 text-gray-700 dark:text-gray-300">{props.subtitle}</p>
+            ) : null}
           </div>
           {props.right ? <div className="shrink-0">{props.right}</div> : null}
         </div>
@@ -37,13 +44,14 @@ function StatPill(props: { label: string; value: React.ReactNode; accent?: "indi
   return (
     <div
       className={classNames(
-        "inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold",
-        "border-gray-200/70 bg-white/70 text-gray-700",
-        "dark:border-gray-800/80 dark:bg-white/[0.02] dark:text-gray-200",
+        crispText,
+        "inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium",
+        "border-gray-300/80 bg-white text-gray-900",
+        "dark:border-gray-700 dark:bg-slate-900 dark:text-white",
       )}
     >
-      <span className="text-gray-600 dark:text-gray-300">{props.label}</span>
-      <span>{props.value}</span>
+      <span className="text-gray-700 dark:text-gray-300">{props.label}</span>
+      <span className="font-semibold">{props.value}</span>
     </div>
   );
 }
@@ -62,11 +70,12 @@ function PrimaryButton(props: {
       disabled={props.disabled}
       title={props.title}
       className={classNames(
+        crispText,
         "inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition",
         "text-white shadow-sm",
         "bg-gradient-to-r from-indigo-600 via-sky-600 to-cyan-600",
         "hover:brightness-[0.98] hover:shadow-md",
-        "disabled:opacity-60 disabled:cursor-not-allowed",
+        "disabled:cursor-not-allowed disabled:opacity-60",
         props.className,
       )}
     >
@@ -89,10 +98,11 @@ function SecondaryButton(props: {
       disabled={props.disabled}
       title={props.title}
       className={classNames(
-        "inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-2 text-sm font-semibold transition",
-        "border-gray-200/70 bg-white/70 text-gray-800 shadow-sm hover:border-gray-300/80 hover:shadow-md",
-        "dark:border-gray-800/80 dark:bg-white/[0.02] dark:text-white/90 dark:hover:border-gray-700",
-        "disabled:opacity-60 disabled:cursor-not-allowed",
+        crispText,
+        "inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition",
+        "border-gray-300/80 bg-white text-gray-900 shadow-sm hover:border-gray-400 hover:shadow-md",
+        "dark:border-gray-700 dark:bg-slate-900 dark:text-white dark:hover:border-gray-600",
+        "disabled:cursor-not-allowed disabled:opacity-60",
         props.className,
       )}
     >
@@ -179,7 +189,7 @@ export default function WorkflowsPage() {
   );
 
   return (
-    <div className="h-app min-h-0 flex flex-col px-2 py-2">
+    <div className={classNames(crispText, "h-app min-h-0 flex flex-col px-2 py-2")}>
       <div className="grid grid-cols-12 gap-4 md:gap-6">
         <div className="col-span-12 xl:col-span-8">
           <CardShell
@@ -194,17 +204,18 @@ export default function WorkflowsPage() {
           >
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="relative w-full sm:max-w-[420px]">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500 dark:text-gray-400" />
                 <input
                   type="text"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   placeholder="Search workflow…"
                   className={classNames(
-                    "w-full rounded-xl border py-2 pl-9 pr-3 text-sm font-semibold outline-none transition",
-                    "border-gray-200/70 bg-white/70 text-gray-800 placeholder:text-gray-400",
+                    crispText,
+                    "w-full rounded-xl border py-2.5 pl-9 pr-3 text-sm font-medium outline-none transition",
+                    "border-gray-300/80 bg-white text-gray-950 placeholder:text-gray-400",
                     "focus:border-indigo-500/40 focus:ring-2 focus:ring-indigo-500/10",
-                    "dark:border-gray-800/80 dark:bg-white/[0.02] dark:text-white/90 dark:placeholder:text-gray-500",
+                    "dark:border-gray-700 dark:bg-slate-900 dark:text-white dark:placeholder:text-gray-500",
                     "dark:focus:border-indigo-400/40 dark:focus:ring-indigo-400/15",
                   )}
                 />
@@ -219,29 +230,33 @@ export default function WorkflowsPage() {
               </div>
             </div>
 
-            <div className="mt-4 overflow-hidden rounded-2xl border border-gray-200/70 bg-white/70 shadow-sm dark:border-gray-800/80 dark:bg-white/[0.01]">
+            <div className="mt-4 overflow-hidden rounded-2xl border border-gray-300/90 bg-white shadow-sm dark:border-gray-700 dark:bg-slate-900">
               <div
                 className={classNames(
-                  "grid grid-cols-12 gap-3 px-4 py-3 text-xs font-semibold",
-                  "bg-gray-200/80 text-gray-600",
-                  "dark:bg-white/[0.02] dark:text-gray-300",
-                  "border-b border-gray-200/70 dark:border-gray-800/70",
+                  crispText,
+                  "grid grid-cols-12 gap-3 border-b px-4 py-3.5",
+                  "border-gray-300/80 bg-gray-100 text-gray-800",
+                  "dark:border-gray-700 dark:bg-slate-800 dark:text-gray-200",
                 )}
               >
-                <div className="col-span-4">Workflow</div>
-                <div className="col-span-6 hidden md:block">Description</div>
-                <div className="col-span-8 md:col-span-2 text-right">Action</div>
+                <div className="col-span-4 text-sm font-semibold tracking-[0.01em]">Workflow</div>
+                <div className="col-span-6 hidden text-sm font-semibold tracking-[0.01em] md:block">Description</div>
+                <div className="col-span-8 text-right text-sm font-semibold tracking-[0.01em] md:col-span-2">Action</div>
               </div>
 
-              <div className="max-h-[62vh] overflow-y-auto divide-y divide-gray-200/70 dark:divide-gray-800/70">
+              <div className="max-h-[62vh] overflow-y-auto divide-y divide-gray-200/90 dark:divide-gray-700">
                 {loading ? (
-                  <div className="px-4 py-4 text-sm text-gray-600 dark:text-gray-300">Loading workflows…</div>
+                  <div className="px-4 py-4 text-sm leading-6 text-gray-700 dark:text-gray-200">
+                    Loading workflows…
+                  </div>
                 ) : errorMessage ? (
-                  <div className="px-4 py-4 text-sm text-red-600 dark:text-red-300">{errorMessage}</div>
+                  <div className="px-4 py-4 text-sm leading-6 text-red-600 dark:text-red-300">{errorMessage}</div>
                 ) : !hasAnyWorkflows ? (
-                  <div className="px-4 py-4 text-sm text-gray-500 dark:text-gray-400">No workflows defined yet.</div>
+                  <div className="px-4 py-4 text-sm leading-6 text-gray-700 dark:text-gray-300">
+                    No workflows defined yet.
+                  </div>
                 ) : !hasFilteredWorkflows ? (
-                  <div className="px-4 py-4 text-sm text-gray-500 dark:text-gray-400">
+                  <div className="px-4 py-4 text-sm leading-6 text-gray-700 dark:text-gray-300">
                     No workflows found matching your search.
                   </div>
                 ) : (
@@ -252,9 +267,9 @@ export default function WorkflowsPage() {
                       <div
                         key={wf.id}
                         className={classNames(
-                          "grid grid-cols-12 gap-3 px-4 py-3 transition",
-                          "hover:bg-gray-50/80 dark:hover:bg-white/[0.02]",
-                          isSelected ? "bg-gray-50 dark:bg-white/[0.03]" : "",
+                          "grid grid-cols-12 gap-3 px-4 py-3.5 transition",
+                          "hover:bg-gray-50 dark:hover:bg-slate-800/70",
+                          isSelected ? "bg-gray-100 dark:bg-slate-800" : "",
                         )}
                       >
                         <button
@@ -264,21 +279,24 @@ export default function WorkflowsPage() {
                           className="col-span-4 min-w-0 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/30 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-950"
                           title="Click to select, double-click to load"
                         >
-                          <div className="truncate text-sm font-semibold text-gray-900 dark:text-white/90" title={wf.name}>
+                          <div
+                            className="truncate text-[15px] font-medium leading-6 text-gray-950 dark:text-white"
+                            title={wf.name}
+                          >
                             {wf.name}
                           </div>
-                          <div className="mt-1 line-clamp-2 text-xs text-gray-500 dark:text-gray-400 md:hidden">
+                          <div className="mt-1 line-clamp-2 text-sm leading-6 text-gray-700 dark:text-gray-300 md:hidden">
                             {wf.description || "—"}
                           </div>
                         </button>
 
                         <div className="col-span-6 hidden md:block">
-                          <div className="line-clamp-2 whitespace-pre-line text-xs text-gray-600 dark:text-gray-300">
+                          <div className="line-clamp-2 whitespace-pre-line text-sm leading-6 text-gray-800 dark:text-gray-200">
                             {wf.description || "—"}
                           </div>
                         </div>
 
-                        <div className="col-span-8 md:col-span-2 flex items-center justify-end">
+                        <div className="col-span-8 flex items-center justify-end md:col-span-2">
                           <PrimaryButton
                             onClick={() => openApply(wf)}
                             className="px-3 py-2 text-xs"
@@ -295,7 +313,7 @@ export default function WorkflowsPage() {
               </div>
             </div>
 
-            <div className="mt-3 text-xs text-gray-500 dark:text-gray-400">
+            <div className="mt-3 text-sm leading-6 text-gray-700 dark:text-gray-300">
               Tip: double-click a workflow row to load it.
             </div>
           </CardShell>
@@ -307,21 +325,21 @@ export default function WorkflowsPage() {
             subtitle={selectedWorkflow ? "Selected workflow overview." : "Select a workflow to preview it."}
           >
             {!selectedWorkflow ? (
-              <div className="rounded-2xl border border-gray-200/70 bg-white/70 p-4 text-sm text-gray-600 dark:border-gray-800/80 dark:bg-white/[0.02] dark:text-gray-300">
+              <div className="rounded-2xl border border-gray-300/80 bg-white p-4 text-sm leading-6 text-gray-700 dark:border-gray-700 dark:bg-slate-900 dark:text-gray-200">
                 No workflow selected.
               </div>
             ) : (
               <div className="space-y-3">
-                <div className="rounded-2xl border border-gray-200/70 bg-white/70 p-4 dark:border-gray-800/80 dark:bg-white/[0.02]">
-                  <div className="text-xs font-semibold text-gray-500 dark:text-gray-400">Name</div>
-                  <div className="mt-1 text-sm font-semibold text-gray-900 dark:text-white/90">
+                <div className="rounded-2xl border border-gray-300/80 bg-white p-4 dark:border-gray-700 dark:bg-slate-900">
+                  <div className="text-sm font-medium text-gray-700 dark:text-gray-300">Name</div>
+                  <div className="mt-1 text-[15px] font-medium leading-6 text-gray-950 dark:text-white">
                     {selectedWorkflow.name}
                   </div>
                 </div>
 
-                <div className="rounded-2xl border border-gray-200/70 bg-white/70 p-4 dark:border-gray-800/80 dark:bg-white/[0.02]">
-                  <div className="text-xs font-semibold text-gray-500 dark:text-gray-400">Description</div>
-                  <div className="mt-1 whitespace-pre-line text-sm text-gray-700 dark:text-gray-300">
+                <div className="rounded-2xl border border-gray-300/80 bg-white p-4 dark:border-gray-700 dark:bg-slate-900">
+                  <div className="text-sm font-medium text-gray-700 dark:text-gray-300">Description</div>
+                  <div className="mt-1 whitespace-pre-line text-sm leading-6 text-gray-800 dark:text-gray-200">
                     {selectedWorkflow.description || "—"}
                   </div>
                 </div>
@@ -475,6 +493,7 @@ function ApplyWorkflowDialog({ open, workflow, onClose }: ApplyWorkflowDialogPro
   return (
     <div
       className={classNames(
+        crispText,
         "fixed inset-0 z-[90] flex items-center justify-center",
         "bg-black/[0.02] dark:bg-white/[0.02]",
       )}
@@ -487,10 +506,10 @@ function ApplyWorkflowDialog({ open, workflow, onClose }: ApplyWorkflowDialogPro
       <div
         className={classNames(
           "relative z-10 w-full max-w-md overflow-hidden rounded-2xl border shadow-2xl",
-          "min-h-[480px] max-h-[90vh]",
-          "border-gray-300/90 bg-white/92 backdrop-blur",
+          "min-h-[520px] max-h-[520px]",
+          "border-gray-300/90 bg-white",
           "ring-1 ring-inset ring-black/[0.10]",
-          "dark:border-gray-600 dark:bg-gray-900/92 dark:ring-white/[0.10]",
+          "dark:border-gray-600 dark:bg-slate-900 dark:ring-white/[0.10]",
         )}
       >
         <div className="relative flex h-full flex-col px-6 pt-6 pb-5">
@@ -499,8 +518,8 @@ function ApplyWorkflowDialog({ open, workflow, onClose }: ApplyWorkflowDialogPro
             onClick={onClose}
             className={classNames(
               "absolute right-3 top-3 inline-flex h-9 w-9 items-center justify-center rounded-xl border transition",
-              "border-gray-200/70 bg-white/70 text-gray-700 hover:shadow-sm",
-              "dark:border-gray-800/80 dark:bg-white/[0.02] dark:text-gray-200",
+              "border-gray-300/80 bg-white text-gray-800 hover:shadow-sm",
+              "dark:border-gray-700 dark:bg-slate-900 dark:text-gray-200",
             )}
             aria-label="Close"
           >
@@ -508,20 +527,20 @@ function ApplyWorkflowDialog({ open, workflow, onClose }: ApplyWorkflowDialogPro
           </button>
 
           <div className="mb-4">
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-white/90">Load workflow</h2>
-            <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">{workflow.name}</p>
+            <h2 className="text-lg font-semibold tracking-[0.01em] text-gray-950 dark:text-white">Load workflow</h2>
+            <p className="mt-1 text-sm leading-6 text-gray-700 dark:text-gray-300">{workflow.name}</p>
           </div>
 
-          <div className="rounded-xl border border-gray-300/80 bg-white/70 p-1 dark:border-gray-700/80 dark:bg-white/[0.02]">
+          <div className="rounded-xl border border-gray-300/80 bg-white p-1 dark:border-gray-700 dark:bg-slate-900">
             <div className="grid grid-cols-2 gap-1">
               <button
                 type="button"
                 onClick={() => setMode("create")}
                 className={classNames(
-                  "rounded-lg px-3 py-2 text-sm font-semibold transition",
+                  "rounded-lg px-3 py-2 text-sm font-medium transition",
                   mode === "create"
-                    ? "bg-white text-gray-900 shadow-sm dark:bg-gray-950 dark:text-white"
-                    : "text-gray-700 hover:bg-gray-50/80 dark:text-gray-200 dark:hover:bg-gray-800/40",
+                    ? "bg-gray-100 text-gray-950 shadow-sm dark:bg-slate-800 dark:text-white"
+                    : "text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-slate-800/60",
                 )}
               >
                 Create new
@@ -530,10 +549,10 @@ function ApplyWorkflowDialog({ open, workflow, onClose }: ApplyWorkflowDialogPro
                 type="button"
                 onClick={() => setMode("select")}
                 className={classNames(
-                  "rounded-lg px-3 py-2 text-sm font-semibold transition",
+                  "rounded-lg px-3 py-2 text-sm font-medium transition",
                   mode === "select"
-                    ? "bg-white text-gray-900 shadow-sm dark:bg-gray-950 dark:text-white"
-                    : "text-gray-700 hover:bg-gray-50/80 dark:text-gray-200 dark:hover:bg-gray-800/40",
+                    ? "bg-gray-100 text-gray-950 shadow-sm dark:bg-slate-800 dark:text-white"
+                    : "text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-slate-800/60",
                 )}
               >
                 Select project
@@ -546,51 +565,54 @@ function ApplyWorkflowDialog({ open, workflow, onClose }: ApplyWorkflowDialogPro
               {mode === "create" ? (
                 <>
                   <div className="space-y-1.5">
-                    <label className="text-sm font-semibold text-gray-800 dark:text-gray-200">New project name</label>
+                    <label className="text-sm font-medium text-gray-900 dark:text-gray-200">New project name</label>
                     <input
                       type="text"
                       value={newProjectTitle}
                       onChange={(e) => setNewProjectTitle(e.target.value)}
                       placeholder="Enter a title"
                       className={classNames(
-                        "w-full rounded-xl border px-3 py-2 text-sm font-semibold outline-none transition",
-                        "border-gray-200/70 bg-white/70 text-gray-900 placeholder:text-gray-400",
+                        crispText,
+                        "w-full rounded-xl border px-3 py-2.5 text-sm font-medium outline-none transition",
+                        "border-gray-300/80 bg-white text-gray-950 placeholder:text-gray-400",
                         "focus:border-indigo-500/40 focus:ring-2 focus:ring-indigo-500/10",
-                        "dark:border-gray-800/80 dark:bg-white/[0.02] dark:text-white dark:placeholder:text-gray-500",
+                        "dark:border-gray-700 dark:bg-slate-900 dark:text-white dark:placeholder:text-gray-500",
                       )}
                     />
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-sm font-semibold text-gray-800 dark:text-gray-200">Project description</label>
+                    <label className="text-sm font-medium text-gray-900 dark:text-gray-200">Project description</label>
                     <textarea
                       rows={4}
                       value={newProjectDescription}
                       onChange={(e) => setNewProjectDescription(e.target.value)}
                       placeholder="Optional description for this project"
                       className={classNames(
-                        "w-full resize-none rounded-xl border px-3 py-2 text-sm outline-none transition",
-                        "border-gray-200/70 bg-white/70 text-gray-900 placeholder:text-gray-400",
+                        crispText,
+                        "w-full resize-none rounded-xl border px-3 py-2.5 text-sm leading-6 text-gray-900 outline-none transition placeholder:text-gray-400",
+                        "border-gray-300/80 bg-white",
                         "focus:border-indigo-500/40 focus:ring-2 focus:ring-indigo-500/10",
-                        "dark:border-gray-800/80 dark:bg-white/[0.02] dark:text-white dark:placeholder:text-gray-500",
+                        "dark:border-gray-700 dark:bg-slate-900 dark:text-white dark:placeholder:text-gray-500",
                       )}
                     />
-                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                    <p className="text-sm leading-6 text-gray-700 dark:text-gray-300">
                       A new project will be created and this workflow will be loaded into it.
                     </p>
                   </div>
                 </>
               ) : (
                 <div className="space-y-1.5">
-                  <label className="text-sm font-semibold text-gray-800 dark:text-gray-200">Project</label>
+                  <label className="text-sm font-medium text-gray-900 dark:text-gray-200">Project</label>
                   <select
                     value={selectedProjectId}
                     onChange={(e) => setSelectedProjectId(e.target.value)}
                     className={classNames(
-                      "w-full rounded-xl border px-3 py-2 text-sm font-semibold outline-none transition",
-                      "border-gray-200/70 bg-white/70 text-gray-900",
+                      crispText,
+                      "w-full rounded-xl border px-3 py-2.5 text-sm font-medium outline-none transition",
+                      "border-gray-300/80 bg-white text-gray-950",
                       "focus:border-indigo-500/40 focus:ring-2 focus:ring-indigo-500/10",
-                      "dark:border-gray-800/80 dark:bg-white/[0.02] dark:text-white",
+                      "dark:border-gray-700 dark:bg-slate-900 dark:text-white",
                     )}
                     disabled={projectsLoading || !!projectsError}
                   >
@@ -607,16 +629,16 @@ function ApplyWorkflowDialog({ open, workflow, onClose }: ApplyWorkflowDialogPro
                   </select>
 
                   {projectsError ? (
-                    <p className="text-xs text-red-600 dark:text-red-300">{projectsError}</p>
+                    <p className="text-sm leading-6 text-red-600 dark:text-red-300">{projectsError}</p>
                   ) : (
-                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                    <p className="text-sm leading-6 text-gray-700 dark:text-gray-300 mb-43">
                       The workflow will be loaded inside the selected existing project.
                     </p>
                   )}
                 </div>
               )}
 
-              {submitError ? <div className="text-xs text-red-600 dark:text-red-300">{submitError}</div> : null}
+              {submitError ? <div className="text-sm leading-6 text-red-600 dark:text-red-300">{submitError}</div> : null}
             </div>
           </div>
 
