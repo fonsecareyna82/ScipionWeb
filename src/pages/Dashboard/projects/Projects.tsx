@@ -369,6 +369,7 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
                       label={project.name}
                       value={project.protocolsCount ?? "0"}
                       createdAt={project.createdAt ? String(project.createdAt) : undefined}
+                      updatedAt={project.updatedAt ? String(project.updatedAt) : undefined}
                       diskUsage={project.diskUsage?.toString()}
                       isSelected={selectedLabel === project.name}
                       onSelect={() => setSelectedLabel(project.name)}

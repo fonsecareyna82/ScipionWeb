@@ -31,6 +31,8 @@ type ProjectRow = {
   status?: string;
 };
 
+type IconTone = "indigo" | "violet" | "emerald" | "amber" | "sky" | "rose";
+
 const PIN_STORAGE_KEY = "scipion.home.pins.v1";
 const LAST_OPEN_STORAGE_KEY = "scipion.home.lastOpenedProjectId.v1";
 
@@ -132,6 +134,47 @@ function classNames(...xs: Array<string | false | null | undefined>): string {
   return xs.filter(Boolean).join(" ");
 }
 
+function getIconToneClasses(tone: IconTone): string {
+  // getIconToneClasses
+  switch (tone) {
+    case "indigo":
+      return classNames(
+        "bg-indigo-50 ring-indigo-200 text-indigo-700",
+        "dark:bg-indigo-950/30 dark:ring-indigo-800 dark:text-indigo-200",
+      );
+    case "violet":
+      return classNames(
+        "bg-violet-50 ring-violet-200 text-violet-700",
+        "dark:bg-violet-950/30 dark:ring-violet-800 dark:text-violet-200",
+      );
+    case "emerald":
+      return classNames(
+        "bg-emerald-50 ring-emerald-200 text-emerald-700",
+        "dark:bg-emerald-950/30 dark:ring-emerald-800 dark:text-emerald-200",
+      );
+    case "amber":
+      return classNames(
+        "bg-amber-50 ring-amber-200 text-amber-700",
+        "dark:bg-amber-950/30 dark:ring-amber-800 dark:text-amber-200",
+      );
+    case "sky":
+      return classNames(
+        "bg-sky-50 ring-sky-200 text-sky-700",
+        "dark:bg-sky-950/30 dark:ring-sky-800 dark:text-sky-200",
+      );
+    case "rose":
+      return classNames(
+        "bg-rose-50 ring-rose-200 text-rose-700",
+        "dark:bg-rose-950/30 dark:ring-rose-800 dark:text-rose-200",
+      );
+    default:
+      return classNames(
+        "bg-gray-100 ring-gray-200 text-gray-900",
+        "dark:bg-slate-800 dark:ring-gray-700 dark:text-white",
+      );
+  }
+}
+
 const crispText = "subpixel-antialiased [text-rendering:optimizeLegibility]";
 
 function CardShell(props: { title: string; subtitle?: string; right?: React.ReactNode; children: React.ReactNode }) {
@@ -168,6 +211,7 @@ function ActionButton(props: {
   title: string;
   description: string;
   icon: React.ReactNode;
+  tone: IconTone;
   onClick?: () => void;
   to?: string;
   href?: string;
@@ -187,9 +231,8 @@ function ActionButton(props: {
     >
       <div
         className={classNames(
-          "mt-0.5 flex h-10 w-10 items-center justify-center rounded-lg",
-          "bg-gray-100 ring-1 ring-gray-200",
-          "text-gray-900 dark:bg-slate-800 dark:ring-gray-700 dark:text-white",
+          "mt-0.5 flex h-10 w-10 items-center justify-center rounded-lg ring-1",
+          getIconToneClasses(props.tone),
         )}
       >
         {props.icon}
@@ -421,7 +464,7 @@ export default function Home() {
                   projectsLoading ? "pointer-events-none opacity-70" : "",
                 )}
               >
-                <RefreshCw className={classNames("h-4 w-4", projectsLoading ? "animate-spin" : "")} />
+                <RefreshCw className={classNames("h-4 w-4 text-sky-700 dark:text-sky-300", projectsLoading ? "animate-spin" : "")} />
                 Refresh
               </button>
             }
@@ -431,30 +474,35 @@ export default function Home() {
                 title="Projects"
                 description="Browse your projects, open a workflow, or manage tags."
                 icon={<FolderKanban className="h-4 w-4" />}
+                tone="indigo"
                 to="/projects"
               />
               <ActionButton
                 title="Workflows"
                 description="Load workflow templates"
                 icon={<TreeIcon className="h-4 w-4" />}
+                tone="violet"
                 to="/workflows"
               />
               <ActionButton
                 title="Plugins"
                 description="Install, uninstall or update available Scipion plugins"
                 icon={<Folder className="h-4 w-4" />}
+                tone="emerald"
                 to="/plugins"
               />
               <ActionButton
                 title="Settings"
                 description="User preferences, instance configuration, tags, and environment variables."
                 icon={<LucideSettings2 className="h-4 w-4" />}
+                tone="amber"
                 to="/settings"
               />
               <ActionButton
                 title="Documentation"
                 description="Learn how to use Scipion workflows and protocols."
                 icon={<BookOpen className="h-4 w-4" />}
+                tone="sky"
                 href="https://scipion-em.github.io/docs/release-3.0.0/index.html"
                 openInNewTab
               />
@@ -541,7 +589,7 @@ export default function Home() {
                 )}
               >
                 <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gray-100 ring-1 ring-gray-200 dark:bg-slate-800 dark:ring-gray-700">
+                  <div className={classNames("flex h-10 w-10 items-center justify-center rounded-lg ring-1", getIconToneClasses("violet"))}>
                     <GraduationCap className="h-4 w-4" />
                   </div>
                   Quickstart
@@ -561,7 +609,7 @@ export default function Home() {
                 )}
               >
                 <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gray-100 ring-1 ring-gray-200 dark:bg-slate-800 dark:ring-gray-700">
+                  <div className={classNames("flex h-10 w-10 items-center justify-center rounded-lg ring-1", getIconToneClasses("sky"))}>
                     <BookOpen className="h-4 w-4" />
                   </div>
                   Tutorials
@@ -579,7 +627,7 @@ export default function Home() {
                 )}
               >
                 <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gray-100 ring-1 ring-gray-200 dark:bg-slate-800 dark:ring-gray-700">
+                  <div className={classNames("flex h-10 w-10 items-center justify-center rounded-lg ring-1", getIconToneClasses("rose"))}>
                     <LifeBuoy className="h-4 w-4" />
                   </div>
                   Support & diagnostics
@@ -642,7 +690,7 @@ export default function Home() {
                     "dark:border-gray-700 dark:bg-slate-900 dark:text-white dark:hover:border-gray-600",
                   )}
                 >
-                  <FolderKanban className="h-4 w-4" />
+                  <FolderKanban className="h-4 w-4 text-indigo-700 dark:text-indigo-300" />
                   View all
                 </Link>
               ) : null
@@ -678,12 +726,12 @@ export default function Home() {
                         onClick={() => togglePin(p.id)}
                         className={classNames(
                           "inline-flex items-center justify-center rounded-lg border p-2 transition",
-                          "border-gray-300/80 bg-white shadow-sm hover:border-gray-400 hover:shadow-md",
-                          "dark:border-gray-700 dark:bg-slate-900 dark:hover:border-gray-600",
+                          "border-amber-300/70 bg-amber-50 shadow-sm hover:border-amber-400 hover:shadow-md",
+                          "dark:border-amber-700 dark:bg-amber-950/20 dark:hover:border-amber-600",
                         )}
                         title="Unpin"
                       >
-                        <PinOff className="h-4 w-4 text-gray-700 dark:text-gray-300" />
+                        <PinOff className="h-4 w-4 text-amber-700 dark:text-amber-300" />
                       </button>
                     </div>
 
@@ -780,13 +828,14 @@ export default function Home() {
                               onClick={() => togglePin(p.id)}
                               className={classNames(
                                 "inline-flex items-center justify-center rounded-lg border p-1.5 transition",
-                                "border-gray-300/80 bg-white shadow-sm hover:border-gray-400 hover:shadow-md",
-                                "dark:border-gray-700 dark:bg-slate-900 dark:hover:border-gray-600",
+                                isPinned
+                                  ? "border-amber-300/70 bg-amber-50 shadow-sm hover:border-amber-400 hover:shadow-md dark:border-amber-700 dark:bg-amber-950/20 dark:hover:border-amber-600"
+                                  : "border-gray-300/80 bg-white shadow-sm hover:border-gray-400 hover:shadow-md dark:border-gray-700 dark:bg-slate-900 dark:hover:border-gray-600",
                               )}
                               title={isPinned ? "Unpin" : "Pin"}
                             >
                               {isPinned ? (
-                                <PinOff className="h-4 w-4 text-gray-700 dark:text-gray-300" />
+                                <PinOff className="h-4 w-4 text-amber-700 dark:text-amber-300" />
                               ) : (
                                 <Pin className="h-4 w-4 text-gray-700 dark:text-gray-300" />
                               )}

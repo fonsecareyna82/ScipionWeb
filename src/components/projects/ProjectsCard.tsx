@@ -25,6 +25,7 @@ interface ProjectCardProps {
   badgeValue?: string;
   icon?: React.ReactNode;
   createdAt?: string;
+  updatedAt?: string;
   diskUsage?: string;
   isSelected?: boolean;
   onSelect?: () => void;
@@ -83,6 +84,7 @@ export default function ProjectCard(props: ProjectCardProps) {
     label,
     value,
     createdAt,
+    updatedAt,
     diskUsage,
     isSelected,
     onSelect,
@@ -352,7 +354,7 @@ export default function ProjectCard(props: ProjectCardProps) {
         initial={{ opacity: 0, y: 14 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.22, ease: "easeOut" }}
-        className="relative"
+        className="relative "
       >
         <div
           tabIndex={0}
@@ -363,52 +365,52 @@ export default function ProjectCard(props: ProjectCardProps) {
         >
           <div className="relative">
             <div className="flex items-start justify-between gap-4">
-  <div className="flex min-w-0 flex-1 items-start gap-3">
-    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-gray-300/80 bg-gray-100 shadow-sm dark:border-gray-700 dark:bg-slate-800">
-      {icon}
-    </div>
+              <div className="flex min-w-0 flex-1 items-start gap-3">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-gray-300/80 bg-gray-100 shadow-sm dark:border-gray-700 dark:bg-slate-800">
+                  {icon}
+                </div>
 
-    <div className="min-w-0 flex-1">
-      <div className="flex min-w-0 items-center gap-2">
-        <span
-          className="truncate text-[16px] font-semibold leading-6 tracking-[0.01em] text-gray-950 dark:text-white"
-          title={label}
-        >
-          {newLabel}
-        </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span
+                      className="truncate text-[16px] font-semibold leading-6 tracking-[0.01em] text-gray-950 dark:text-white"
+                      title={label}
+                    >
+                      {newLabel}
+                    </span>
 
-        {showGuestBadge ? (
-          <span className="shrink-0 rounded-full border border-sky-300/80 bg-sky-50 px-2.5 py-0.5 text-[11px] font-semibold text-sky-800 dark:border-sky-700 dark:bg-sky-950/30 dark:text-sky-200">
-            Guest
-          </span>
-        ) : null}
+                    {showGuestBadge ? (
+                      <span className="shrink-0 rounded-full border border-sky-300/80 bg-sky-50 px-2.5 py-0.5 text-[11px] font-semibold text-sky-800 dark:border-sky-700 dark:bg-sky-950/30 dark:text-sky-200">
+                        Guest
+                      </span>
+                    ) : null}
 
-        {permission ? (
-          <span className="shrink-0 rounded-full border border-gray-300/80 bg-white px-2.5 py-0.5 text-[11px] font-semibold text-gray-700 dark:border-gray-700 dark:bg-slate-800 dark:text-gray-200">
-            {permission}
-          </span>
-        ) : null}
-      </div>
+                    {permission ? (
+                      <span className="shrink-0 rounded-full border border-gray-300/80 bg-white px-2.5 py-0.5 text-[11px] font-semibold text-gray-700 dark:border-gray-700 dark:bg-slate-800 dark:text-gray-200">
+                        {permission}
+                      </span>
+                    ) : null}
+                  </div>
 
-      <div className="mt-1 flex items-center gap-2">
-        <span className="inline-flex items-center rounded-full border border-indigo-300/70 bg-indigo-50 px-2.5 py-0.5 text-[11px] font-semibold text-indigo-800 dark:border-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-200">
-          {String(value)} protocols
-        </span>
-      </div>
-    </div>
-  </div>
+                  <div className="mt-1 flex items-center gap-2">
+                    <span className="inline-flex items-center rounded-full border border-indigo-300/70 bg-indigo-50 px-2.5 py-0.5 text-[11px] font-semibold text-indigo-800 dark:border-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-200">
+                      {String(value)} protocols
+                    </span>
+                  </div>
+                </div>
+              </div>
 
-  <div className="shrink-0 pt-0.5">
-    <ProjectAction
-      icon={null}
-      label=""
-      onOpen={handleOpen}
-      onRename={canModify ? handleRename : undefined}
-      onRemove={canModify ? handleRemove : undefined}
-      onShare={canModify ? handleShare : undefined}
-    />
-  </div>
-</div>
+              <div className="shrink-0 pt-0.5">
+                <ProjectAction
+                  icon={null}
+                  label=""
+                  onOpen={handleOpen}
+                  onRename={canModify ? handleRename : undefined}
+                  onRemove={canModify ? handleRemove : undefined}
+                  onShare={canModify ? handleShare : undefined}
+                />
+              </div>
+            </div>
 
             <div className="mt-3 text-sm leading-6 text-gray-700 dark:text-gray-300">
               <div className={classNames(isExpanded ? "" : "line-clamp-2")}>
@@ -431,9 +433,16 @@ export default function ProjectCard(props: ProjectCardProps) {
             </div>
 
             <div className="mt-16 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm leading-6 text-gray-700 dark:text-gray-300">
-              {createdAt ? (
+              {updatedAt ? (
+                <span className="inline-flex items-center gap-1.5">
+                  <CalendarIcon className="h-4 w-4 text-violet-600 dark:text-violet-300" />
+                  <span className="text-gray-600 dark:text-gray-400">Updated: </span>
+                  <span className="font-medium text-gray-800 dark:text-gray-200">{formatDateShort(updatedAt)}</span>
+                </span>
+              ) : createdAt ? (
                 <span className="inline-flex items-center gap-1.5">
                   <CalendarIcon className="h-4 w-4 text-indigo-600 dark:text-indigo-300" />
+                  <span className="text-gray-600 dark:text-gray-400">Created:</span>
                   <span className="font-medium text-gray-800 dark:text-gray-200">{formatDateShort(createdAt)}</span>
                 </span>
               ) : null}
