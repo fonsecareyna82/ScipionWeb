@@ -25,7 +25,7 @@ import {
   ExecuteIcon,
   SaveIcon,
   HelpIcon,
-} from "../../icons";
+} from "@/icons";
 import WrapWithDrop from "./WrapWithDrop";
 import MultiParamRow from "./MultiParamRow";
 import ParamRow from "./ParamRow";
@@ -41,7 +41,6 @@ import ProtocolHelpDialog from "./ProtocolHelpDialog";
 import ExecErrorDialog from "./ExecErrorDialog";
 import ValidationErrorsDialog from "./ValidationErrorsDialog";
 import {
-  UnwrappedParam,
   getParamClass,
   isNonEmptyString,
   resolveParamClass,
@@ -57,15 +56,27 @@ import {
   normalizeEnumOptions,
   normalizeEnumSelection,
   normalizeMultiPointerValue,
-} from "../../../src/utils/protocolform.utils";
+} from "@/utils/protocolform.utils";
 
 import {
   getBackendPayloadFromError,
   getHttpStatusFromError,
   getErrorsFromBackendPayload,
   formatErrorsForDialog,
-} from "../../../src/utils/protocolform.errors";
+} from "@/utils/protocolform.errors";
 
+import {
+  buildPointerSelectionItem,
+  clearParamValue,
+  removeMultiPointerItemAndPad,
+  replaceMultiPointerItem,
+  setMultiPointerSelection,
+  setParamEditableValue,
+  setParamValueAndEditableValue,
+  setPointerSelection,
+  setParamFields,
+  updateMultiPointerItem,
+} from "@/utils/protocolform.state";
 
 type ProtocolFormProps = {
   data: any;
@@ -161,8 +172,6 @@ export default function ProtocolForm({
       return keys[0];
     });
   }, [executeModeMap]);
-
-
 
 
   const [topTab, setTopTab] = useState(0);
@@ -924,45 +933,15 @@ export default function ProtocolForm({
 
         // onRowEdit
         const onRowEdit = (rowIndexInner: number, patch: { object?: string; info?: string }) => {
-          setProtocolDetails((prev: any) => {
-            const existing = prev.params?.[stateKey];
-            const list = Array.isArray(existing?.editableValue) ? [...existing.editableValue] : [];
-
-            while (list.length <= rowIndexInner) list.push({ object: "", value: "", info: "" });
-
-            const current = list[rowIndexInner] ?? { object: "", value: "", info: "" };
-            const nextItem = { ...current, ...patch };
-
-            // keepObjectValueSynced
-            if (typeof patch.object === "string") nextItem.value = patch.object;
-
-            list[rowIndexInner] = nextItem;
-
-            return {
-              ...prev,
-              params: {
-                ...prev.params,
-                [stateKey]: { ...existing, editableValue: list },
-              },
-            };
-          });
+          setProtocolDetails((prev: any) =>
+            updateMultiPointerItem(prev, stateKey, rowIndexInner, patch, {
+              syncObjectToValue: true,
+            })
+          );
         };
 
         const onClear = (i: number) => {
-          setProtocolDetails((prev: any) => {
-            const existing = prev.params?.[stateKey];
-            const list = Array.isArray(existing?.editableValue) ? [...existing.editableValue] : [];
-            list.splice(i, 1);
-            list.push({ object: "", info: "" });
-
-            return {
-              ...prev,
-              params: {
-                ...prev.params,
-                [stateKey]: { ...existing, editableValue: list },
-              },
-            };
-          });
+          setProtocolDetails((prev: any) => removeMultiPointerItemAndPad(prev, stateKey, i));
         };
 
         const onRowDrop = (i: number, dragged: any) => {
@@ -980,52 +959,15 @@ export default function ProtocolForm({
 
           if (!matches) return;
 
-          setProtocolDetails((prev: any) => {
-            const existing = prev.params?.[stateKey];
-            const list = Array.isArray(existing?.editableValue) ? [...existing.editableValue] : [];
-            while (list.length <= i) list.push({ object: "", info: "" });
-
-            list[i] = {
-              object: dragged.value ?? "",
-              value: dragged.value ?? "",
-              info: dragged.info ?? "",
-              pointerClass: dragged.pointerClass ?? "",
-              parentId: dragged.parentId ?? null,
-            };
-
-            return {
-              ...prev,
-              params: {
-                ...prev.params,
-                [stateKey]: { ...existing, editableValue: list },
-              },
-            };
-          });
+          setProtocolDetails((prev: any) =>
+            replaceMultiPointerItem(prev, stateKey, i, buildPointerSelectionItem(dragged))
+          );
         };
 
         const handlePickFromDialog = (rowIndexInner: number, picked: any) => {
-          setProtocolDetails((prev: any) => {
-            const existing = prev.params?.[stateKey];
-            const list = Array.isArray(existing?.editableValue) ? [...existing.editableValue] : [];
-
-            while (list.length <= rowIndexInner) list.push({ object: "", info: "" });
-
-            list[rowIndexInner] = {
-              object: picked.value ?? "",
-              value: picked.value ?? "",
-              info: picked.info ?? "",
-              pointerClass: picked.pointerClass ?? "",
-              parentId: picked.protocolId ?? picked.parentId ?? null,
-            };
-
-            return {
-              ...prev,
-              params: {
-                ...prev.params,
-                [stateKey]: { ...existing, editableValue: list },
-              },
-            };
-          });
+          setProtocolDetails((prev: any) =>
+            replaceMultiPointerItem(prev, stateKey, rowIndexInner, buildPointerSelectionItem(picked))
+          );
         };
 
         const liveDef = {
@@ -1076,13 +1018,7 @@ export default function ProtocolForm({
         };
 
         const onClear = () =>
-          setProtocolDetails((prev: any) => ({
-            ...prev,
-            params: {
-              ...prev.params,
-              [stateKey]: { ...prev.params[stateKey], editableValue: "", value: "" },
-            },
-          }));
+          setProtocolDetails((prev: any) => clearParamValue(prev, stateKey));
 
         const handleOpenFind = (targetKey: string) => {
           const liveParam = protocolDetails.params?.[targetKey];
@@ -1111,17 +1047,9 @@ export default function ProtocolForm({
               isReadOnly
                 ? undefined
                 : (e) =>
-                  setProtocolDetails((prev: any) => ({
-                    ...prev,
-                    params: {
-                      ...prev.params,
-                      [stateKey]: {
-                        ...prev.params[stateKey],
-                        editableValue: e.target.value,
-                        value: e.target.value,
-                      },
-                    },
-                  }))
+                  setProtocolDetails((prev: any) =>
+                    setParamValueAndEditableValue(prev, stateKey, e.target.value)
+                  )
             }
             InputProps={isReadOnly ? { readOnly: true } : undefined}
             onClick={isReadOnly ? () => handleOpenFind(stateKey) : undefined}
@@ -1200,20 +1128,7 @@ export default function ProtocolForm({
         };
 
         const handleClear = () => {
-          setProtocolDetails((prev: any) => {
-            if (!prev?.params?.[stateKey]) return prev;
-            return {
-              ...prev,
-              params: {
-                ...prev.params,
-                [stateKey]: {
-                  ...prev.params[stateKey],
-                  editableValue: "",
-                  value: "",
-                },
-              },
-            };
-          });
+          setProtocolDetails((prev: any) => clearParamValue(prev, stateKey));
         };
 
         const handleOpenFind = (targetKey: string) => {
@@ -1234,20 +1149,9 @@ export default function ProtocolForm({
             name={stateKey}
             value={textValue}
             onChange={(e) =>
-              setProtocolDetails((prev: any) => {
-                if (!prev?.params?.[stateKey]) return prev;
-                return {
-                  ...prev,
-                  params: {
-                    ...prev.params,
-                    [stateKey]: {
-                      ...prev.params[stateKey],
-                      editableValue: e.target.value,
-                      value: e.target.value,
-                    },
-                  },
-                };
-              })
+              setProtocolDetails((prev: any) =>
+                setParamValueAndEditableValue(prev, stateKey, e.target.value)
+              )
             }
             sx={{
               width: isInline ? fieldWidth : "98%",
@@ -1309,10 +1213,7 @@ export default function ProtocolForm({
         const safeSel = normalizeEnumSelection(value ?? def.default ?? "", def.choices, def.default);
 
         const onChange = (v: any) =>
-          setProtocolDetails((prev: any) => ({
-            ...prev,
-            params: { ...prev.params, [stateKey]: { ...prev.params[stateKey], editableValue: v } },
-          }));
+          setProtocolDetails((prev: any) => setParamEditableValue(prev, stateKey, v));
 
         const controlBase =
           def.display === 0 ? (
@@ -1584,17 +1485,9 @@ export default function ProtocolForm({
                   <Switch
                     checked={checked}
                     onChange={(e) =>
-                      setProtocolDetails((prev: any) => ({
-                        ...prev,
-                        params: {
-                          ...prev.params,
-                          [stateKey]: {
-                            ...prev.params[stateKey],
-                            editableValue: e.target.checked,
-                            value: e.target.checked,
-                          },
-                        },
-                      }))
+                      setProtocolDetails((prev: any) =>
+                        setParamValueAndEditableValue(prev, stateKey, e.target.checked)
+                      )
                     }
                     color="primary"
                     sx={{ m: 0 }}
@@ -1637,16 +1530,9 @@ export default function ProtocolForm({
               name={stateKey}
               value={value ?? def.default ?? ""}
               onChange={(e) =>
-                setProtocolDetails((prev: any) => ({
-                  ...prev,
-                  params: {
-                    ...prev.params,
-                    [stateKey]: {
-                      ...prev.params[stateKey],
-                      editableValue: e.target.value,
-                    },
-                  },
-                }))
+                setProtocolDetails((prev: any) =>
+                  setParamEditableValue(prev, stateKey, e.target.value)
+                )
               }
               sx={{
                 width: isInline ? fieldWidth : "100%",
@@ -1727,45 +1613,13 @@ export default function ProtocolForm({
     const picks = Array.isArray(selected) ? selected : [selected];
 
     setProtocolDetails((prev: any) => {
-      const prevParam = prev.params[key];
       const defClass = resolveParamClass(def);
 
       if (defClass === "MultiPointerParam") {
-        const newItems = picks.map((pick) => ({
-          object: pick?.value ?? "",
-          value: pick?.value ?? "",
-          info: pick?.info ?? "",
-          pointerClass: pick?.pointerClass ?? "",
-          parentId: pick?.protocolId ?? pick?.parentId ?? null,
-        }));
-
-        return {
-          ...prev,
-          params: {
-            ...prev.params,
-            [key]: {
-              ...prevParam,
-              editableValue: newItems,
-            },
-          },
-        };
+        return setMultiPointerSelection(prev, key, picks);
       }
 
-      const pick = picks[0];
-      return {
-        ...prev,
-        params: {
-          ...prev.params,
-          [key]: {
-            ...prevParam,
-            editableValue: pick?.value ?? "",
-            value: pick?.value ?? "",
-            info: pick?.info ?? "",
-            pointerClass: pick?.pointerClass ?? "",
-            parentId: pick?.protocolId ?? pick?.parentId ?? null,
-          },
-        },
-      };
+      return setPointerSelection(prev, key, picks[0]);
     });
 
     setOpenSelector(false);
@@ -1977,7 +1831,6 @@ export default function ProtocolForm({
         </Box>
       </div>
 
-
       <ProtocolHelpDialog
         open={groupHelpDialog.open}
         onClose={() => setGroupHelpDialog({ open: false, text: "" })}
@@ -2069,21 +1922,9 @@ export default function ProtocolForm({
             const stateKey = pathDialog.stateKey;
 
             if (stateKey) {
-              setProtocolDetails((prev: any) => {
-                if (!prev?.params?.[stateKey]) return prev;
-
-                return {
-                  ...prev,
-                  params: {
-                    ...prev.params,
-                    [stateKey]: {
-                      ...prev.params[stateKey],
-                      editableValue: relativePath,
-                      value: relativePath,
-                    },
-                  },
-                };
-              });
+              setProtocolDetails((prev: any) =>
+                setParamValueAndEditableValue(prev, stateKey, relativePath)
+              );
             }
 
             setPathDialog({
