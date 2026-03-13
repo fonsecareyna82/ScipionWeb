@@ -7,12 +7,6 @@ import {
   Box,
   Typography,
   Button,
-  TextField,
-  MenuItem,
-  RadioGroup,
-  FormControlLabel,
-  Radio,
-  Switch,
   Tooltip,
   CircularProgress,
   IconButton,
@@ -26,7 +20,6 @@ import {
   SaveIcon,
   HelpIcon,
 } from "@/icons";
-import WrapWithDrop from "./WrapWithDrop";
 import MultiParamRow from "./MultiParamRow";
 import ParamRow from "./ParamRow";
 import OutputSelectorDialog from "./outputSelectorDialog";
@@ -67,16 +60,21 @@ import {
 
 import {
   buildPointerSelectionItem,
-  clearParamValue,
   removeMultiPointerItemAndPad,
   replaceMultiPointerItem,
   setMultiPointerSelection,
-  setParamEditableValue,
   setParamValueAndEditableValue,
   setPointerSelection,
-  setParamFields,
   updateMultiPointerItem,
 } from "@/utils/protocolform.state";
+
+import {
+  renderBooleanParamRow,
+  renderDefaultParamRow,
+  renderEnumParamRow,
+  renderPathParamRow,
+  renderPointerParamRow,
+} from "./ProtocolFormRenderers"
 
 type ProtocolFormProps = {
   data: any;
@@ -1011,15 +1009,6 @@ export default function ProtocolForm({
       if (defClass === "PointerParam") {
         if (!stateKey) return null;
 
-        const liveDef = {
-          ...defResolved,
-          ...(protocolDetails.params?.[stateKey] || {}),
-          paramClass: "PointerParam",
-        };
-
-        const onClear = () =>
-          setProtocolDetails((prev: any) => clearParamValue(prev, stateKey));
-
         const handleOpenFind = (targetKey: string) => {
           const liveParam = protocolDetails.params?.[targetKey];
           const expected = getExpectedClass(liveParam);
@@ -1031,79 +1020,25 @@ export default function ProtocolForm({
           setOpenSelector(true);
         };
 
-        const isReadOnly = coerceReadOnlyFlag(def?.readOnly);
-
-        const field = (
-          <TextField
-            size="small"
-            fullWidth={!isInline}
-            value={String(
-              protocolDetails.params?.[stateKey]?.editableValue ??
-              protocolDetails.params?.[stateKey]?.value ??
-              def.default ??
-              ""
-            )}
-            onChange={
-              isReadOnly
-                ? undefined
-                : (e) =>
-                  setProtocolDetails((prev: any) =>
-                    setParamValueAndEditableValue(prev, stateKey, e.target.value)
-                  )
-            }
-            InputProps={isReadOnly ? { readOnly: true } : undefined}
-            onClick={isReadOnly ? () => handleOpenFind(stateKey) : undefined}
-            sx={{
-              width: isInline ? fieldWidth : "100%",
-              minWidth: 0,
-              "& .MuiInputBase-root": { minHeight: 36 },
-              "& .MuiInputBase-input, & input, & input[readonly]": {
-                fontSize: 12,
-                padding: "8px 10px",
-                lineHeight: 1.2,
-                color: "#111827",
-                WebkitTextFillColor: "#111827",
-                opacity: 1,
-                userSelect: isReadOnly ? "none" : "text",
-                cursor: isReadOnly ? "pointer" : "text",
-              },
-            }}
-          />
-        );
-
-        return (
-          <ParamRow
-            key={stableKey}
-            label={def.label || name || ""}
-            control={
-              <Box sx={{ display: "flex", alignItems: "center", gap: 1, minWidth: 0, width: "100%" }}>
-                {advancedSlot}
-                <Box
-                  sx={{
-                    width: "100%",
-                    maxWidth: fieldWidth,
-                    minWidth: 0,
-                  }}
-                >
-                  <WrapWithDrop
-                    control={field}
-                    def={liveDef}
-                    paramKey={stateKey}
-                    setProtocolDetails={setProtocolDetails}
-                    setDragOverKey={setDragOverKey}
-                    dragOverKey={dragOverKey}
-                  />
-                </Box>
-              </Box>
-            }
-            helpText={def.help}
-            isPointerParam
-            onClear={onClear}
-            rowIndex={rowIndex}
-            onOpenFind={() => handleOpenFind(stateKey)}
-            layoutVariant={layoutVariant}
-          />
-        );
+        return renderPointerParamRow({
+          stableKey,
+          label: def.label || name || "",
+          helpText: def.help,
+          rowIndex,
+          layoutVariant,
+          isInline,
+          fieldWidth,
+          fieldContainerSx,
+          advancedSlot,
+          stateKey,
+          protocolDetails,
+          setProtocolDetails,
+          def,
+          defResolved,
+          dragOverKey,
+          setDragOverKey,
+          onOpenFind: handleOpenFind,
+        });
       }
 
       // PathParam (requires stateKey)
@@ -1111,13 +1046,7 @@ export default function ProtocolForm({
         if (!stateKey) return null;
 
         const current = protocolDetails.params?.[stateKey] || {};
-        const textValue = current.editableValue ?? current.value ?? def.value ?? def.default ?? "";
         const label = current["label"] ?? def.label ?? name ?? "";
-
-        const isPointerEnabled =
-          typeof current.pointerClass === "string"
-            ? current.pointerClass.trim().length > 0
-            : typeof def.pointerClass === "string" && def.pointerClass.trim().length > 0;
 
         const handleBrowsePath = () => {
           if (!projectId) {
@@ -1127,10 +1056,6 @@ export default function ProtocolForm({
           setPathDialog({ open: true, stateKey, title: label });
         };
 
-        const handleClear = () => {
-          setProtocolDetails((prev: any) => clearParamValue(prev, stateKey));
-        };
-
         const handleOpenFind = (targetKey: string) => {
           const liveParam = protocolDetails.params?.[targetKey];
           const expected = getExpectedClass(liveParam);
@@ -1142,128 +1067,47 @@ export default function ProtocolForm({
           setOpenSelector(true);
         };
 
-        const field = (
-          <TextField
-            size="small"
-            fullWidth={!isInline}
-            name={stateKey}
-            value={textValue}
-            onChange={(e) =>
-              setProtocolDetails((prev: any) =>
-                setParamValueAndEditableValue(prev, stateKey, e.target.value)
-              )
-            }
-            sx={{
-              width: isInline ? fieldWidth : "98%",
-              minWidth: 0,
-              "& .MuiInputBase-root": { minHeight: 36 },
-              "& .MuiInputBase-input": { fontSize: 12, padding: "8px 10px", lineHeight: 1.2 },
-            }}
-          />
-        );
-
-        return (
-          <ParamRow
-            key={stableKey}
-            label={def.label || name || ""}
-            control={
-              <Box sx={{ display: "flex", alignItems: "center", gap: 1, minWidth: 0, width: "100%" }}>
-                {advancedSlot}
-                <Box
-                  sx={{
-                    width: "100%",
-                    maxWidth: fieldWidth,
-                    minWidth: 0,
-                  }}
-                >
-                  {isPointerEnabled ? (
-                    <WrapWithDrop
-                      control={field}
-                      def={{ ...def, ...current }}
-                      paramKey={stateKey}
-                      setProtocolDetails={setProtocolDetails}
-                      setDragOverKey={setDragOverKey}
-                      dragOverKey={dragOverKey}
-                    />
-                  ) : (
-                    field
-                  )}
-                </Box>
-              </Box>
-            }
-            helpText={def.help}
-            isPathParam
-            onBrowsePath={handleBrowsePath}
-            onClear={handleClear}
-            isPointerParam={isPointerEnabled}
-            onOpenFind={isPointerEnabled ? () => handleOpenFind(stateKey) : undefined}
-            rowIndex={rowIndex}
-            layoutVariant={layoutVariant}
-          />
-        );
+        return renderPathParamRow({
+          stableKey,
+          label: def.label || name || "",
+          helpText: def.help,
+          rowIndex,
+          layoutVariant,
+          isInline,
+          fieldWidth,
+          fieldContainerSx,
+          advancedSlot,
+          stateKey,
+          protocolDetails,
+          setProtocolDetails,
+          def,
+          dragOverKey,
+          setDragOverKey,
+          onBrowsePath: handleBrowsePath,
+          onOpenFind: handleOpenFind,
+        });
       }
 
       // EnumParam (requires stateKey)
       if (defClass === "EnumParam" && def.choices) {
         if (!stateKey) return null;
 
-        const options = normalizeEnumOptions(def.choices);
-        if (options.length === 0) return null;
-
-        const safeSel = normalizeEnumSelection(value ?? def.default ?? "", def.choices, def.default);
-
-        const onChange = (v: any) =>
-          setProtocolDetails((prev: any) => setParamEditableValue(prev, stateKey, v));
-
-        const controlBase =
-          def.display === 0 ? (
-            <RadioGroup row value={safeSel} onChange={(e) => onChange(e.target.value)}>
-              {options.map((opt, i) => (
-                <FormControlLabel
-                  key={i}
-                  value={opt.value}
-                  control={<Radio size="small" />}
-                  label={opt.label}
-                  sx={{ "& .MuiFormControlLabel-label": { fontSize: 12, lineHeight: 1.2 } }}
-                />
-              ))}
-            </RadioGroup>
-          ) : (
-            <TextField
-              select
-              size="small"
-              value={safeSel}
-              onChange={(e) => onChange(e.target.value)}
-              sx={{
-                width: isInline ? fieldWidth : "69%",
-                minWidth: 0,
-                "& .MuiInputBase-input": { fontSize: 12 },
-                "& .MuiSelect-select": { fontSize: 12, display: "flex", alignItems: "center" },
-              }}
-            >
-              {options.map((opt, i) => (
-                <MenuItem key={i} value={opt.value} sx={{ fontSize: 12 }}>
-                  {opt.label}
-                </MenuItem>
-              ))}
-            </TextField>
-          );
-
-        return (
-          <ParamRow
-            key={stableKey}
-            label={def.label || name || ""}
-            control={
-              <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                {advancedSlot}
-                {controlBase}
-              </Box>
-            }
-            helpText={def.help}
-            rowIndex={rowIndex}
-            layoutVariant={layoutVariant}
-          />
-        );
+        return renderEnumParamRow({
+          stableKey,
+          label: def.label || name || "",
+          helpText: def.help,
+          rowIndex,
+          layoutVariant,
+          isInline,
+          fieldWidth,
+          fieldContainerSx,
+          advancedSlot,
+          stateKey,
+          protocolDetails,
+          setProtocolDetails,
+          def,
+          value,
+        });
       }
 
 
@@ -1462,44 +1306,22 @@ export default function ProtocolForm({
       if (defClass === "BooleanParam") {
         if (!stateKey) return null;
 
-        const checked = coerceBooleanValue(
-          value !== undefined ? value : protocolDetails.params?.[stateKey]?.value ?? def.value ?? def.default
-        );
-
-        return (
-          <ParamRow
-            key={stableKey}
-            label={def.label || name || ""}
-            control={
-              <Box
-                sx={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 1,
-                  minWidth: 0,
-                  width: isInline ? fieldWidth : "100%",
-                }}
-              >
-                {advancedSlot}
-                <Box sx={fieldContainerSx}>
-                  <Switch
-                    checked={checked}
-                    onChange={(e) =>
-                      setProtocolDetails((prev: any) =>
-                        setParamValueAndEditableValue(prev, stateKey, e.target.checked)
-                      )
-                    }
-                    color="primary"
-                    sx={{ m: 0 }}
-                  />
-                </Box>
-              </Box>
-            }
-            helpText={def.help}
-            rowIndex={rowIndex}
-            layoutVariant={layoutVariant}
-          />
-        );
+        return renderBooleanParamRow({
+          stableKey,
+          label: def.label || name || "",
+          helpText: def.help,
+          rowIndex,
+          layoutVariant,
+          isInline,
+          fieldWidth,
+          fieldContainerSx,
+          advancedSlot,
+          stateKey,
+          protocolDetails,
+          setProtocolDetails,
+          def,
+          value,
+        });
       }
 
 
@@ -1520,41 +1342,22 @@ export default function ProtocolForm({
       // Default text param (requires stateKey)
       if (!stateKey) return null;
 
-      const defaultControl = (
-        <Box sx={{ display: "flex", alignItems: "center", gap: 1, minWidth: 0, width: "77%" }}>
-          {advancedSlot}
-          <Box sx={fieldContainerSx}>
-            <TextField
-              size="small"
-              fullWidth={!isInline}
-              name={stateKey}
-              value={value ?? def.default ?? ""}
-              onChange={(e) =>
-                setProtocolDetails((prev: any) =>
-                  setParamEditableValue(prev, stateKey, e.target.value)
-                )
-              }
-              sx={{
-                width: isInline ? fieldWidth : "100%",
-                minWidth: 0,
-                "& .MuiInputBase-root": { minHeight: 36 },
-                "& .MuiInputBase-input": { fontSize: 12, padding: "8px 10px", lineHeight: 1.2 },
-              }}
-            />
-          </Box>
-        </Box>
-      );
-
-      return (
-        <ParamRow
-          key={stableKey}
-          label={def.label || name || ""}
-          control={defaultControl}
-          helpText={def.help}
-          rowIndex={rowIndex}
-          layoutVariant={layoutVariant}
-        />
-      );
+      return renderDefaultParamRow({
+        stableKey,
+        label: def.label || name || "",
+        helpText: def.help,
+        rowIndex,
+        layoutVariant,
+        isInline,
+        fieldWidth,
+        fieldContainerSx,
+        advancedSlot,
+        stateKey,
+        protocolDetails,
+        setProtocolDetails,
+        def,
+        value,
+      });
     },
     [
       protocolDetails.params,
