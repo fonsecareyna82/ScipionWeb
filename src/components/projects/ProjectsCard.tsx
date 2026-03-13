@@ -76,6 +76,110 @@ function formatDateShort(raw?: string): string {
   }
 }
 
+function getStatusToneClasses(raw?: string): string {
+  const value = String(raw ?? "")
+    .trim()
+    .toLowerCase();
+
+  if (!value) {
+    return classNames(
+      "border-gray-300/80 bg-white/90 text-gray-700",
+      "dark:border-gray-700 dark:bg-slate-800 dark:text-gray-200",
+    );
+  }
+
+  if (
+    value.includes("done") ||
+    value.includes("finished") ||
+    value.includes("complete") ||
+    value.includes("success")
+  ) {
+    return classNames(
+      "border-emerald-300/80 bg-emerald-50 text-emerald-800",
+      "dark:border-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-200",
+    );
+  }
+
+  if (
+    value.includes("run") ||
+    value.includes("active") ||
+    value.includes("progress") ||
+    value.includes("queue")
+  ) {
+    return classNames(
+      "border-sky-300/80 bg-sky-50 text-sky-800",
+      "dark:border-sky-700 dark:bg-sky-950/30 dark:text-sky-200",
+    );
+  }
+
+  if (
+    value.includes("warn") ||
+    value.includes("hold") ||
+    value.includes("pending") ||
+    value.includes("pause")
+  ) {
+    return classNames(
+      "border-amber-300/80 bg-amber-50 text-amber-800",
+      "dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-200",
+    );
+  }
+
+  if (
+    value.includes("fail") ||
+    value.includes("error") ||
+    value.includes("stopped") ||
+    value.includes("abort")
+  ) {
+    return classNames(
+      "border-rose-300/80 bg-rose-50 text-rose-800",
+      "dark:border-rose-700 dark:bg-rose-950/30 dark:text-rose-200",
+    );
+  }
+
+  return classNames(
+    "border-violet-300/80 bg-violet-50 text-violet-800",
+    "dark:border-violet-700 dark:bg-violet-950/30 dark:text-violet-200",
+  );
+}
+
+function MetaTile(props: {
+  title: string;
+  value: React.ReactNode;
+  icon: React.ReactNode;
+  tone: "indigo" | "sky" | "cyan";
+}) {
+  const toneClasses =
+    props.tone === "indigo"
+      ? classNames(
+        "border-indigo-200/80 bg-gradient-to-br from-white to-indigo-50/80",
+        "dark:border-indigo-900/60 dark:bg-gradient-to-br dark:from-slate-900 dark:to-indigo-950/20",
+      )
+      : props.tone === "sky"
+        ? classNames(
+          "border-sky-200/80 bg-gradient-to-br from-white to-sky-50/80",
+          "dark:border-sky-900/60 dark:bg-gradient-to-br dark:from-slate-900 dark:to-sky-950/20",
+        )
+        : classNames(
+          "border-cyan-200/80 bg-gradient-to-br from-white to-cyan-50/80",
+          "dark:border-cyan-900/60 dark:bg-gradient-to-br dark:from-slate-900 dark:to-cyan-950/20",
+        );
+
+  return (
+    <div
+      className={classNames(
+        "rounded-2xl border px-3.5 py-3",
+        toneClasses,
+      )}
+    >
+      <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-500 dark:text-gray-400">
+        <span className="text-gray-500 dark:text-gray-400">{props.icon}</span>
+        <span>{props.title}</span>
+      </div>
+      <div className="mt-2 line-clamp-2 text-sm font-semibold text-gray-950 dark:text-white">{props.value}</div>
+    </div>
+  );
+}
+
 const crispText = "subpixel-antialiased [text-rendering:optimizeLegibility]";
 
 export default function ProjectCard(props: ProjectCardProps) {
@@ -83,6 +187,7 @@ export default function ProjectCard(props: ProjectCardProps) {
     id,
     label,
     value,
+    badgeValue,
     createdAt,
     updatedAt,
     diskUsage,
@@ -91,6 +196,7 @@ export default function ProjectCard(props: ProjectCardProps) {
     isExpanded,
     onToggleExpand,
     description = "",
+    status,
     icon = <FolderIcon className="h-5 w-5 text-gray-900 dark:text-white" />,
     onDelete,
     onRename,
@@ -123,6 +229,24 @@ export default function ProjectCard(props: ProjectCardProps) {
     const d = (description ?? "").trim();
     return d.length > 140 && typeof onToggleExpand === "function";
   }, [description, onToggleExpand]);
+
+  const projectIdLabel = useMemo(() => `P${String(id)}`, [id]);
+
+  const accessLabel = useMemo(() => {
+    if (showGuestBadge) {
+      return permission?.trim() ? `Shared · ${permission}` : "Shared";
+    }
+    if (permission?.trim()) return permission;
+    return normalizedIsOwner ? "Owner" : "Private";
+  }, [showGuestBadge, permission, normalizedIsOwner]);
+
+  const statusLabel = useMemo(() => {
+    const raw = String(status ?? badgeValue ?? "").trim();
+    return raw || null;
+  }, [status, badgeValue]);
+
+  const mainDate = updatedAt ?? createdAt;
+  const mainDateTitle = updatedAt ? "Updated" : "Created";
 
   useEffect(() => {
     setNewLabel(label);
@@ -339,13 +463,14 @@ export default function ProjectCard(props: ProjectCardProps) {
 
   const cardClass = classNames(
     crispText,
-    "relative min-h-[200px] cursor-pointer overflow-hidden rounded-2xl border p-5 transition md:p-6",
-    "border-gray-300/90 bg-white shadow-sm",
-    "dark:border-gray-700 dark:bg-slate-900",
+    "relative min-h-[290px] cursor-pointer overflow-hidden rounded-[15px] border p-5 transition md:p-6",
+    "border-gray-300/85 bg-gradient-to-br from-white via-white to-indigo-50/45",
+    "shadow-[0_10px_35px_rgba(15,23,42,0.05)]",
+    "dark:border-gray-700 dark:bg-gradient-to-br dark:from-slate-900 dark:via-slate-900 dark:to-slate-950",
     !isSelected ? "hover:border-gray-400 dark:hover:border-gray-600" : "",
-    !isRenaming && !isSelected ? "hover:-translate-y-px hover:shadow-lg" : "",
+    !isRenaming && !isSelected ? "hover:-translate-y-0.5 hover:shadow-[0_18px_45px_rgba(15,23,42,0.09)]" : "",
     "active:border-indigo-500/40 active:ring-2 active:ring-inset active:ring-indigo-500/15",
-    isSelected ? "border-indigo-500/60 ring-2 ring-inset ring-indigo-500/18" : "",
+    isSelected ? "border-indigo-500/55 ring-2 ring-inset ring-indigo-500/16" : "",
   );
 
   return (
@@ -354,7 +479,7 @@ export default function ProjectCard(props: ProjectCardProps) {
         initial={{ opacity: 0, y: 14 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.22, ease: "easeOut" }}
-        className="relative "
+        className="relative"
       >
         <div
           tabIndex={0}
@@ -363,98 +488,198 @@ export default function ProjectCard(props: ProjectCardProps) {
           onContextMenu={openContextMenu}
           className={cardClass}
         >
-          <div className="relative">
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex min-w-0 flex-1 items-start gap-3">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-gray-300/80 bg-gray-100 shadow-sm dark:border-gray-700 dark:bg-slate-800">
-                  {icon}
-                </div>
+          <div className="pointer-events-none absolute inset-0">
+            <div className="absolute inset-x-0 top-0 h-1 opacity-80" />
+            <div className="absolute -right-10 -top-10 h-28 w-28 rounded-full bg-indigo-100/90 blur-3xl dark:bg-indigo-900/20" />
+            <div className="absolute -left-10 bottom-2 h-24 w-24 rounded-full bg-cyan-100/70 blur-3xl dark:bg-cyan-900/10" />
+            <div className="absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-white/70 to-transparent dark:from-slate-950/25 dark:to-transparent" />
+          </div>
 
-                <div className="min-w-0 flex-1">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <span
-                      className="truncate text-[16px] font-semibold leading-6 tracking-[0.01em] text-gray-950 dark:text-white"
-                      title={label}
-                    >
-                      {newLabel}
-                    </span>
-
-                    {showGuestBadge ? (
-                      <span className="shrink-0 rounded-full border border-sky-300/80 bg-sky-50 px-2.5 py-0.5 text-[11px] font-semibold text-sky-800 dark:border-sky-700 dark:bg-sky-950/30 dark:text-sky-200">
-                        Guest
-                      </span>
-                    ) : null}
-
-                    {permission ? (
-                      <span className="shrink-0 rounded-full border border-gray-300/80 bg-white px-2.5 py-0.5 text-[11px] font-semibold text-gray-700 dark:border-gray-700 dark:bg-slate-800 dark:text-gray-200">
-                        {permission}
-                      </span>
-                    ) : null}
+          <div className="relative flex h-full flex-col">
+            <div
+              className={classNames(
+                "-mx-2 -mt-2 mb-2 rounded-t-[24px] border-b px-5 pt-5 pb-4 md:-mx-6 md:-mt-6 md:px-6 md:pt-6",
+                "border-gray-200/90 bg-gradient-to-br from-slate-50 via-white to-indigo-50/70",
+                "dark:border-gray-800 dark:bg-gradient-to-br dark:from-slate-900 dark:via-slate-900 dark:to-indigo-950/25",
+              )}
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex min-w-0 flex-1 items-start gap-3.5">
+                  <div
+                    className={classNames(
+                      "flex h-12 w-12 shrink-0 items-center justify-center rounded-[18px] border shadow-sm",
+                      "border-white/80 bg-gradient-to-br from-white to-indigo-50",
+                      "dark:border-slate-700 dark:bg-gradient-to-br dark:from-slate-800 dark:to-slate-900",
+                    )}
+                  >
+                    {icon}
                   </div>
 
-                  <div className="mt-1 flex items-center gap-2">
-                    <span className="inline-flex items-center rounded-full border border-indigo-300/70 bg-indigo-50 px-2.5 py-0.5 text-[11px] font-semibold text-indigo-800 dark:border-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-200">
-                      {String(value)} protocols
-                    </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="mb-2 flex flex-wrap items-center gap-2">
+                      <span
+                        className={classNames(
+                          "inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold tracking-[0.08em]",
+                          "border-indigo-300/80 bg-indigo-50 text-indigo-800",
+                          "dark:border-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-200",
+                        )}
+                      >
+                        {projectIdLabel}
+                      </span>
+
+                      <span
+                        className={classNames(
+                          "inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold",
+                          "border-gray-300/80 bg-white/90 text-gray-700",
+                          "dark:border-gray-700 dark:bg-slate-800 dark:text-gray-200",
+                        )}
+                      >
+                        {accessLabel}
+                      </span>
+
+                      {showGuestBadge ? (
+                        <span className="shrink-0 rounded-full border border-sky-300/80 bg-sky-50 px-2.5 py-0.5 text-[11px] font-semibold text-sky-800 dark:border-sky-700 dark:bg-sky-950/30 dark:text-sky-200">
+                          Guest
+                        </span>
+                      ) : null}
+
+                      {statusLabel ? (
+                        <span
+                          className={classNames(
+                            "shrink-0 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold",
+                            getStatusToneClasses(statusLabel),
+                          )}
+                        >
+                          {statusLabel}
+                        </span>
+                      ) : null}
+                    </div>
+
+                    <div className="flex min-w-0 items-start gap-2">
+                      <span
+                        className="truncate text-[17px] font-semibold leading-6 tracking-[0.01em] text-gray-950 dark:text-white"
+                        title={label}
+                      >
+                        {newLabel}
+                      </span>
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              <div className="shrink-0 pt-0.5">
-                <ProjectAction
-                  icon={null}
-                  label=""
-                  onOpen={handleOpen}
-                  onRename={canModify ? handleRename : undefined}
-                  onRemove={canModify ? handleRemove : undefined}
-                  onShare={canModify ? handleShare : undefined}
-                />
+                <div className="shrink-0 pt-0.5">
+                  <ProjectAction
+                    icon={null}
+                    label=""
+                    onOpen={handleOpen}
+                    onRename={canModify ? handleRename : undefined}
+                    onRemove={canModify ? handleRemove : undefined}
+                    onShare={canModify ? handleShare : undefined}
+                  />
+                </div>
               </div>
             </div>
 
-            <div className="mt-3 text-sm leading-6 text-gray-700 dark:text-gray-300">
-              <div className={classNames(isExpanded ? "" : "line-clamp-2")}>
-                {description?.trim() ? description : "No description available."}
-              </div>
+            <div className="mt-4">
+              <div
+                className={classNames(
+                  "rounded-2xl border px-4 py-3.5",
+                  "border-gray-200/90 bg-white/75",
+                  "dark:border-gray-800 dark:bg-slate-950/30",
+                )}
+              >
+                <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">
+                  Overview
+                </div>
 
-              {canToggleExpand ? (
+                <div className={classNames("mt-2 text-sm leading-6 text-gray-700 dark:text-gray-300", isExpanded ? "" : "line-clamp-3")}>
+                  {description?.trim() ? description : "No description available."}
+                </div>
+
+                {canToggleExpand ? (
+                  <button
+                    type="button"
+                    className="mt-3 inline-flex items-center gap-1 rounded-full border border-gray-300/80 bg-white px-3 py-1.5 text-sm font-medium text-gray-800 transition hover:bg-gray-50 hover:shadow-sm dark:border-gray-700 dark:bg-slate-900 dark:text-gray-200 dark:hover:bg-slate-800"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onToggleExpand?.();
+                    }}
+                  >
+                    {isExpanded ? "Show less" : "Show more"}
+                  </button>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="mt-auto pt-5">
+              <div
+                className={classNames(
+                  "flex flex-wrap items-center justify-between gap-3 border-t pt-4",
+                  "border-gray-200/90 dark:border-gray-800",
+                )}
+              >
+                <div className="flex flex-wrap items-center gap-2.5 text-sm">
+                  {updatedAt ? (
+                    <span
+                      className={classNames(
+                        "inline-flex items-center gap-2 rounded-full px-3 py-1.5",
+                        "bg-white/80 text-gray-700",
+                        "dark:bg-slate-900 dark:text-gray-300",
+                      )}
+                    >
+                      <CalendarIcon className="h-4 w-4 text-violet-600 dark:text-violet-300" />
+                      <span className="text-gray-600 dark:text-gray-400">Updated</span>
+                      <span className="font-semibold text-gray-900 dark:text-white">{formatDateShort(updatedAt)}</span>
+                    </span>
+                  ) : createdAt ? (
+                    <span
+                      className={classNames(
+                        "inline-flex items-center gap-2 rounded-full px-3 py-1.5",
+                        "bg-white/80 text-gray-700",
+                        "dark:bg-slate-900 dark:text-gray-300",
+                      )}
+                    >
+                      <CalendarIcon className="h-4 w-4 text-indigo-600 dark:text-indigo-300" />
+                      <span className="text-gray-600 dark:text-gray-400">Created</span>
+                      <span className="font-semibold text-gray-900 dark:text-white">{formatDateShort(createdAt)}</span>
+                    </span>
+                  ) : null}
+
+                  {diskUsage ? (
+                    <span
+                      className={classNames(
+                        "inline-flex items-center gap-2 rounded-full px-3 py-1.5",
+                        "bg-white/80 text-gray-700",
+                        "dark:bg-slate-900 dark:text-gray-300",
+                      )}
+                    >
+                      <StorageIcon className="h-4 w-4 text-cyan-700 dark:text-cyan-300" />
+                      <span className="font-semibold text-gray-900 dark:text-white">{diskUsage}</span>
+                    </span>
+                  ) : null}
+                </div>
+
                 <button
                   type="button"
-                  className="mt-2 inline-flex items-center gap-1 rounded-lg border border-gray-300/80 bg-white px-2 py-1 text-sm font-medium text-gray-800 hover:shadow-sm dark:border-gray-700 dark:bg-slate-900 dark:text-gray-200"
                   onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    onToggleExpand?.();
+                    handleOpen();
                   }}
+                  className={classNames(
+                    "inline-flex items-center gap-2 rounded-[10px] px-4 py-2.5 text-sm  transition",
+                    "bg-gradient-to-r from-indigo-600 via-sky-600 to-cyan-600 text-white shadow-sm",
+                    "hover:brightness-[0.98] hover:shadow-md",
+                  )}
                 >
-                  {isExpanded ? "Show less" : "Show more"}
+                  <OpenFolderIcon className="h-4 w-4" />
+                  Open project
                 </button>
-              ) : null}
-            </div>
-
-            <div className="mt-16 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm leading-6 text-gray-700 dark:text-gray-300">
-              {updatedAt ? (
-                <span className="inline-flex items-center gap-1.5">
-                  <CalendarIcon className="h-4 w-4 text-violet-600 dark:text-violet-300" />
-                  <span className="text-gray-600 dark:text-gray-400">Updated: </span>
-                  <span className="font-medium text-gray-800 dark:text-gray-200">{formatDateShort(updatedAt)}</span>
-                </span>
-              ) : createdAt ? (
-                <span className="inline-flex items-center gap-1.5">
-                  <CalendarIcon className="h-4 w-4 text-indigo-600 dark:text-indigo-300" />
-                  <span className="text-gray-600 dark:text-gray-400">Created:</span>
-                  <span className="font-medium text-gray-800 dark:text-gray-200">{formatDateShort(createdAt)}</span>
-                </span>
-              ) : null}
-
-              {diskUsage ? (
-                <span className="inline-flex items-center gap-1.5">
-                  <StorageIcon className="h-4 w-4 text-cyan-700 dark:text-cyan-300" />
-                  <span className="font-medium text-gray-800 dark:text-gray-200">{diskUsage}</span>
-                </span>
-              ) : null}
+              </div>
             </div>
           </div>
+
+
 
           <AnimatePresence>
             {isRenaming && (
@@ -465,7 +690,7 @@ export default function ProjectCard(props: ProjectCardProps) {
                 transition={{ duration: 0.15 }}
                 className={classNames(
                   crispText,
-                  "absolute inset-0 z-20 overflow-hidden rounded-2xl border",
+                  "absolute inset-0 z-20 overflow-hidden rounded-[28px] border",
                   "border-gray-300/90 bg-white",
                   "dark:border-gray-700 dark:bg-slate-900",
                 )}

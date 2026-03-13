@@ -212,7 +212,7 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
                   type="button"
                   onClick={() => setShowDropdown((prev) => !prev)}
                   className={classNames(
-                    "inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition",
+                    "inline-flex items-center gap-2 rounded-[10px] px-3 py-2 text-sm font-semibold transition",
                     "text-white shadow-sm hover:shadow-md hover:brightness-[0.98]",
                     "bg-gradient-to-r from-indigo-600 via-sky-600 to-cyan-600",
                   )}
