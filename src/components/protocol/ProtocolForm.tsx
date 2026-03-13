@@ -76,6 +76,12 @@ import {
   renderPointerParamRow,
 } from "./ProtocolFormRenderers"
 
+import {
+  applyProtUnionPointerClassToParams,
+  getProtUnionDerivedPointerClass,
+  syncProtUnionPointerClassInParams,
+} from "@/utils/protocolform.protunion";
+
 type ProtocolFormProps = {
   data: any;
   projectProtocols: any;
@@ -541,14 +547,8 @@ export default function ProtocolForm({
     let finalParams = params;
 
     if (protocolClassName === "ProtUnionSet") {
-      const inputTypeKey = Object.keys(params).find((k) => k.endsWith("_inputType"));
-      if (inputTypeKey) {
-        const inputTypeParam = params[inputTypeKey];
-        const inputText = getEnumDisplayText(inputTypeParam);
-        const unionPointerClass = mapProtUnionSetInputTypeToPointerClass(inputText);
-        finalParams = applyProtUnionPointerClassToParams(params, unionPointerClass);
-        prevSelectedInputTypeRef.current = unionPointerClass;
-      }
+      finalParams = syncProtUnionPointerClassInParams(params);
+      prevSelectedInputTypeRef.current = getProtUnionDerivedPointerClass(finalParams);
     }
 
     setProtocolDetails({
@@ -584,48 +584,6 @@ export default function ProtocolForm({
     );
   };
 
-  const getEnumDisplayText = (param: any): string | null => {
-    if (!param) return null;
-
-    const options = normalizeEnumOptions(param.choices);
-    const raw = param.editableValue ?? param.value ?? param.default ?? null;
-
-    if (raw === null || raw === undefined) return null;
-
-    if (typeof raw === "number" && Number.isFinite(raw)) {
-      return options[raw]?.label?.trim() || null;
-    }
-
-    const rawText = String(raw).trim();
-    if (!rawText) return null;
-
-    const byValue = options.find((opt) => opt.value === rawText);
-    if (byValue) return byValue.label.trim();
-
-    const byLabel = options.find((opt) => opt.label === rawText);
-    if (byLabel) return byLabel.label.trim();
-
-    return rawText;
-  };
-
-  const mapProtUnionSetInputTypeToPointerClass = (inputTextRaw: string | null): string | null => {
-    const inputText = String(inputTextRaw ?? "").trim();
-    if (!inputText) return null;
-
-    if (inputText === "All") {
-      return "EMSet";
-    }
-
-    let pointerClass = `SetOf${inputText}`;
-
-    if (inputText === "Volumes" || inputText === "Volume") {
-      pointerClass += ",Volume";
-    } else if (inputText === "CTFs" || inputText === "CTF") {
-      pointerClass = "SetOfCTF,CTFModel";
-    }
-
-    return pointerClass;
-  };
 
   // Live expected-class reader for pointer-like params
   const getExpectedClass = (def: any): string | string[] | null => {
@@ -704,62 +662,33 @@ export default function ProtocolForm({
   }, [projectProtocols]);
 
 
-  const applyProtUnionPointerClassToParams = (
-    params: Record<string, any>,
-    pointerClass: string | null
-  ) => {
-    if (!pointerClass) return params;
-
-    const nextParams: Record<string, any> = { ...params };
-
-    for (const [stateKey, param] of Object.entries(nextParams)) {
-      if (stateKey.endsWith("_inputType")) continue;
-
-      const resolvedClass = resolveParamClass(param);
-
-      if (resolvedClass !== "PointerParam" && resolvedClass !== "MultiPointerParam") {
-        continue;
-      }
-
-      nextParams[stateKey] = {
-        ...(param as any),
-        pointerClass,
-      };
-    }
-
-    return nextParams;
-  };
-
   const currentUnionPointerClass = useMemo(() => {
     if (protocolClassName !== "ProtUnionSet") return null;
-
-    const params = protocolDetails.params ?? {};
-    const inputTypeKey = Object.keys(params).find((key) => key.endsWith("_inputType"));
-    if (!inputTypeKey) return null;
-
-    const inputTypeParam = params[inputTypeKey];
-    const inputText = getEnumDisplayText(inputTypeParam);
-
-    return mapProtUnionSetInputTypeToPointerClass(inputText);
+    return getProtUnionDerivedPointerClass(protocolDetails.params ?? {});
   }, [protocolClassName, protocolDetails.params]);
+
 
   useEffect(() => {
     if (protocolClassName !== "ProtUnionSet") return;
     if (!currentUnionPointerClass) return;
 
     const previousPointerClass = prevSelectedInputTypeRef.current;
+    if (previousPointerClass === currentUnionPointerClass) return;
 
-    if (previousPointerClass === currentUnionPointerClass) {
-      return;
-    }
-
-    setProtocolDetails((prev: any) => ({
-      ...prev,
-      params: applyProtUnionPointerClassToParams(
-        prev?.params ?? {},
+    setProtocolDetails((prev: any) => {
+      const currentParams = prev?.params ?? {};
+      const nextParams = applyProtUnionPointerClassToParams(
+        currentParams,
         currentUnionPointerClass
-      ),
-    }));
+      );
+
+      if (nextParams === currentParams) return prev;
+
+      return {
+        ...prev,
+        params: nextParams,
+      };
+    });
 
     prevSelectedInputTypeRef.current = currentUnionPointerClass;
   }, [protocolClassName, currentUnionPointerClass]);
