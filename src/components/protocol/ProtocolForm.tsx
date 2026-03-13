@@ -1,5 +1,4 @@
 // src/components/ProtocolForm.tsx
-// src/components/ProtocolForm.tsx
 import { useState, useEffect, useCallback, JSX, useRef, useMemo } from "react";
 import toast from "react-hot-toast";
 import {
@@ -41,6 +40,10 @@ import AnalyzeOutputDialog from "@/components/analyze/analyze-output-dialog";
 import ExecuteModeButton from "./ExecuteModeButton";
 import JsonTree from "./json-tree";
 import renderRichHelpText from "./help-text";
+import { useProtocolLogs } from "@/hooks/useProtocolLogs";
+import ProtocolLogsPanel from "./ProtocolLogsPanel";
+
+
 
 type ProtocolFormProps = {
   data: any;
@@ -191,130 +194,6 @@ function coerceCollapsedFlag(raw: any): boolean {
   return coerceReadOnlyFlag(raw);
 }
 
-type LogChannel = {
-  id: string;
-  label: string;
-  order?: number;
-};
-
-type LogOffsets = Record<string, number>;
-
-type LogChunkItem = {
-  channel: string;
-  content?: string;
-  text?: string; // backward compatibility
-  offset?: number;
-  resetOffset?: boolean;
-  truncated?: boolean;
-  exists?: boolean;
-  path?: string;
-  bytesRead?: number;
-  linesRead?: number;
-  sizeBytes?: number;
-};
-
-type LogsChunkResponse = {
-  chunks?: LogChunkItem[] | Record<string, { text?: string; offset?: number }>;
-  done?: boolean;
-};
-
-
-const defaultLogChannels: LogChannel[] = [];
-
-function mergeLogChannels(base: LogChannel[], extra: LogChannel[]) {
-  // mergeLogChannels
-  const map = new Map<string, LogChannel>();
-
-  for (const ch of base) map.set(ch.id, ch);
-  for (const ch of extra) {
-    const prev = map.get(ch.id);
-    map.set(ch.id, { ...prev, ...ch }); // extra overrides label/order if provided
-  }
-
-  return Array.from(map.values());
-}
-
-function buildLogBuffers(channels: LogChannel[], prev?: Record<string, string>) {
-  // buildLogBuffers
-  const next: Record<string, string> = {};
-  for (const ch of channels) {
-    next[ch.id] = typeof prev?.[ch.id] === "string" ? prev![ch.id] : "";
-  }
-  return next;
-}
-
-function buildOffsets(channels: LogChannel[], prev?: Record<string, number>) {
-  // buildOffsets
-  const next: Record<string, number> = {};
-  for (const ch of channels) {
-    const v = prev?.[ch.id];
-    next[ch.id] = typeof v === "number" ? v : 0;
-  }
-  return next;
-}
-
-function buildOffsetsPayload(requestChannels: LogChannel[], offsets: Record<string, number>) {
-  // buildOffsetsPayload
-  const payload: Record<string, number> = {};
-  for (const ch of requestChannels) {
-    payload[ch.id] = typeof offsets[ch.id] === "number" ? offsets[ch.id] : 0;
-  }
-  return payload;
-}
-
-
-function normalizeLogChannels(raw: any): LogChannel[] {
-  // normalizeLogChannels
-  if (!raw) return defaultLogChannels;
-
-  if (Array.isArray(raw)) {
-    const arr = raw
-      .map((x) => ({
-        id: String(x?.id ?? x?.key ?? x?.name ?? ""),
-        label: String(x?.label ?? x?.title ?? x?.name ?? ""),
-        order: typeof x?.order === "number" ? x.order : undefined,
-      }))
-      .filter((x) => x.id.length > 0)
-      .map((x) => ({
-        ...x,
-        label: x.label.trim().length > 0 ? x.label : x.id,
-      }));
-
-    return arr.length > 0 ? arr : defaultLogChannels;
-  }
-
-  if (raw && typeof raw === "object") {
-    const channelsArr = Array.isArray(raw.channels) ? raw.channels : null;
-    if (channelsArr) return normalizeLogChannels(channelsArr);
-
-    const dict = raw.logs && typeof raw.logs === "object" ? raw.logs : raw;
-    const entries = Object.entries(dict as Record<string, any>);
-
-    const arr = entries
-      .map(([id, meta]) => ({
-        id: String(id),
-        label: String(meta?.label ?? meta?.name ?? meta?.title ?? id),
-        order: typeof meta?.order === "number" ? meta.order : undefined,
-      }))
-      .filter((x) => x.id.length > 0);
-
-    return arr.length > 0 ? arr : defaultLogChannels;
-  }
-
-  return defaultLogChannels;
-}
-
-function sortLogChannels(channels: LogChannel[]): LogChannel[] {
-  // sortLogChannels
-  const arr = Array.isArray(channels) ? [...channels] : [];
-  arr.sort((a, b) => {
-    const ao = typeof a.order === "number" ? a.order : 1_000_000;
-    const bo = typeof b.order === "number" ? b.order : 1_000_000;
-    if (ao !== bo) return ao - bo;
-    return String(a.label || a.id).localeCompare(String(b.label || b.id));
-  });
-  return arr.length > 0 ? arr : defaultLogChannels;
-}
 
 function getParamNameFromStateKey(stateKey: string): string {
   // getParamNameFromStateKey
@@ -413,7 +292,6 @@ export default function ProtocolForm({
 
 
   const [topTab, setTopTab] = useState(0);
-  const [activeLogChannelId, setActiveLogChannelId] = useState<string>("");
   const [sectionTab, setSectionTab] = useState(0);
   const [protocolDetails, setProtocolDetails] = useState<any>({});
   const [expandedGroups, setExpandedGroups] = useState<{ [key: string]: boolean }>({});
@@ -432,47 +310,22 @@ export default function ProtocolForm({
   const [dragOverKey, setDragOverKey] = useState<string | null>(null);
   const [currentDraggedOutput] = useState<any>(null);
 
-  // Logs (dynamic channels)
-  const logsContainerRef = useRef<HTMLDivElement>(null);
-  const stickToBottomRef = useRef<boolean>(true);
-  const autoScrollThresholdPx = 24;
-
-  const updateStickToBottom = useCallback(() => {
-    // updateStickToBottom
-    const el = logsContainerRef.current;
-    if (!el) return;
-
-    const distanceToBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-    stickToBottomRef.current = distanceToBottom <= autoScrollThresholdPx;
-  }, []);
-
-
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const [logChannels, setLogChannels] = useState<LogChannel[]>(defaultLogChannels);
-  const sortedLogChannels = useMemo(() => sortLogChannels(logChannels), [logChannels]);
-
-  const uiChannelsRef = useRef<LogChannel[]>(defaultLogChannels);
-  const requestChannelsRef = useRef<LogChannel[]>(defaultLogChannels);
-
-  const [logBuffers, setLogBuffers] = useState<Record<string, string>>(() =>
-    buildLogBuffers(defaultLogChannels)
-  );
-
-  const offsetsRef = useRef<Record<string, number>>(buildOffsets(defaultLogChannels));
-
-  useEffect(() => {
-    // ensureActiveLogChannelId
-    if (!sortedLogChannels || sortedLogChannels.length === 0) return;
-
-    setActiveLogChannelId((prev) => {
-      if (prev && sortedLogChannels.some((c) => c.id === prev)) return prev;
-      return sortedLogChannels[0].id;
-    });
-  }, [sortedLogChannels]);
-
-
-  const [logsError, setLogsError] = useState<string | null>(null);
+  //Logs
+  const {
+    sortedLogChannels,
+    activeLogChannelId,
+    setActiveLogChannelId,
+    activeLogText,
+    logsError,
+    logsContainerRef,
+    updateStickToBottom,
+  } = useProtocolLogs({
+    svc,
+    enabled: topTab === 2,
+    projectId,
+    protocolId,
+    protocolStatus: protocolDetails.status,
+  });
 
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const [showValidationDialog, setShowValidationDialog] = useState(false);
@@ -807,57 +660,6 @@ export default function ProtocolForm({
       .some((part) => part.split("&&").every((atom) => evalAtom(sectionIdx, atom.trim())));
   };
 
-  // ANSI color parser for logs
-  function parseAnsi(line: string): JSX.Element[] {
-    const regex = /\x1b\[(\d+)m/g;
-    const parts: JSX.Element[] = [];
-    let lastIndex = 0;
-    let match;
-    let currentColor: string | null = null;
-    let key = 0;
-
-    while ((match = regex.exec(line)) !== null) {
-      if (match.index > lastIndex) {
-        parts.push(
-          <span key={key++} style={{ color: currentColor ?? "inherit" }}>
-            {line.slice(lastIndex, match.index)}
-          </span>
-        );
-      }
-      const code = parseInt(match[1], 10);
-      switch (code) {
-        case 31:
-          currentColor = "red";
-          break;
-        case 32:
-          currentColor = "green";
-          break;
-        case 33:
-          currentColor = "orange";
-          break;
-        case 35:
-          currentColor = "magenta";
-          break;
-        case 0:
-          currentColor = null;
-          break;
-        default:
-          currentColor = null;
-          break;
-      }
-      lastIndex = regex.lastIndex;
-    }
-
-    if (lastIndex < line.length) {
-      parts.push(
-        <span key={key++} style={{ color: currentColor ?? "inherit" }}>
-          {line.slice(lastIndex)}
-        </span>
-      );
-    }
-    return parts;
-  }
-
 
   const hasOwn = (obj: any, key: string) => {
     // hasOwn
@@ -1142,247 +944,6 @@ export default function ProtocolForm({
       }
     }
   }, [form, info, values, sections, protocolId, protocolClassName]);
-
-  const isTerminalStatus = (s: any) =>
-    ["finished", "success", "done", "failed", "error", "cancelled", "canceled", "stopped", "aborted"].includes(
-      String(s || "").toLowerCase()
-    );
-  const idleStreakRef = useRef<number>(0);
-
-  const maxLogCharsPerChannel = 300_000;
-
-  function trimLogBuffer(text: string, maxChars: number): string {
-    // trimLogBuffer
-    if (maxChars <= 0) return text;
-    if (text.length <= maxChars) return text;
-
-    const start = text.length - maxChars;
-
-    // trimToNextNewline
-    const nl = text.indexOf("\n", start);
-    if (nl >= 0 && nl + 1 < text.length) return text.slice(nl + 1);
-
-    return text.slice(start);
-  }
-
-
-  // Incremental log polling (svc-only, dynamic channels)
-  useEffect(() => {
-    // clearPreviousInterval
-    if (pollRef.current) {
-      clearInterval(pollRef.current);
-      pollRef.current = null;
-    }
-
-    setLogsError(null);
-
-    // enablePollingOnlyOnLogsTab
-    if (topTab !== 2 || !projectId || !protocolId) return;
-
-    let cancelled = false;
-    idleStreakRef.current = 0;
-
-    const fetchChannelsFn = svc.fetchProtocolLogChannels;
-    const fetchChunkFn = svc.fetchProtocolLogsChunk;
-
-
-    const ensureChannelState = (channels: LogChannel[]) => {
-      // ensureChannelState
-      const ids = channels.map((c) => c.id);
-
-      setLogBuffers((prev) => {
-        const next = { ...prev };
-        for (const id of ids) {
-          if (typeof next[id] !== "string") next[id] = "";
-        }
-        return next;
-      });
-
-      for (const id of ids) {
-        if (typeof offsetsRef.current[id] !== "number") offsetsRef.current[id] = 0;
-      }
-    };
-
-    const appendChunks = (chunksRaw: any): boolean => {
-      // appendChunks
-      if (!chunksRaw) return false;
-
-      const items: Array<{ id: string; text: string; nextOffset: number | null; reset: boolean }> = [];
-
-      // normalizeFromArrayShape
-      if (Array.isArray(chunksRaw)) {
-        for (const c of chunksRaw) {
-          const id = String(c?.channel ?? "");
-          if (!id) continue;
-
-          const text =
-            typeof c?.content === "string" ? c.content : typeof c?.text === "string" ? c.text : "";
-
-          const nextOffset = typeof c?.offset === "number" ? c.offset : null;
-          const reset = Boolean(c?.resetOffset);
-
-          items.push({ id, text, nextOffset, reset });
-        }
-      }
-      // normalizeFromDictShape (legacy)
-      else if (typeof chunksRaw === "object") {
-        for (const [idRaw, chunk] of Object.entries(chunksRaw)) {
-          const id = String(idRaw ?? "");
-          if (!id) continue;
-
-          const text = typeof (chunk as any)?.text === "string" ? (chunk as any).text : "";
-          const nextOffset = typeof (chunk as any)?.offset === "number" ? (chunk as any).offset : null;
-
-          items.push({ id, text, nextOffset, reset: false });
-        }
-      } else {
-        return false;
-      }
-
-      if (items.length === 0) return false;
-
-      let gotNew = false;
-      const patches: Record<string, { reset: boolean; text: string }> = {};
-
-      for (const it of items) {
-        const curOffset = typeof offsetsRef.current[it.id] === "number" ? offsetsRef.current[it.id] : 0;
-
-        const offsetKnown = typeof it.nextOffset === "number";
-        const nextOffset = offsetKnown ? (it.nextOffset as number) : curOffset;
-
-        // resetIfServerSaysOrOffsetGoesBack
-        const mustReset = it.reset || (offsetKnown && nextOffset < curOffset);
-
-        if (mustReset) {
-          offsetsRef.current[it.id] = offsetKnown ? nextOffset : 0;
-          patches[it.id] = { reset: true, text: it.text };
-          if (it.text.length > 0) gotNew = true;
-          continue;
-        }
-
-        // appendOnlyIfOffsetAdvanced
-        if (offsetKnown && nextOffset > curOffset) {
-          offsetsRef.current[it.id] = nextOffset;
-
-          if (it.text.length > 0) {
-            patches[it.id] = { reset: false, text: it.text };
-            gotNew = true;
-          }
-        }
-      }
-
-      if (gotNew) {
-        setLogBuffers((prev) => {
-          const next = { ...prev };
-          for (const [id, p] of Object.entries(patches)) {
-            const base = p.reset ? "" : String(next[id] ?? "");
-            next[id] = trimLogBuffer(base + p.text, maxLogCharsPerChannel);
-          }
-          return next;
-        });
-      }
-
-      return gotNew;
-    };
-
-
-    // initialLoad
-    (async () => {
-      try {
-        const rawChannels: any = await fetchChannelsFn(projectId, protocolId);
-        if (cancelled) return;
-
-        const serverChannels = sortLogChannels(normalizeLogChannels(rawChannels));
-
-        // uiChannels keeps defaults (includes schedule) plus whatever the server declares
-        const uiChannels = sortLogChannels(mergeLogChannels(defaultLogChannels, serverChannels));
-
-        // requestChannels only includes what server declared (if any); otherwise fallback to defaults
-        const requestChannels = serverChannels.length > 0 ? serverChannels : defaultLogChannels;
-
-        uiChannelsRef.current = uiChannels;
-        requestChannelsRef.current = requestChannels;
-
-        setLogChannels(uiChannels);
-
-        setLogBuffers((prev) => buildLogBuffers(uiChannels, prev));
-        offsetsRef.current = buildOffsets(uiChannels, offsetsRef.current);
-
-        const offsetsPayload = buildOffsetsPayload(requestChannelsRef.current, offsetsRef.current);
-
-        const rawChunk: LogsChunkResponse = await fetchChunkFn(projectId, protocolId, offsetsPayload);
-        if (cancelled) return;
-
-        ensureChannelState(uiChannels);
-        appendChunks(rawChunk?.chunks);
-      } catch (err: any) {
-        if (!cancelled) setLogsError(err?.message || "Failed to load logs");
-      }
-    })();
-
-
-    // incrementalPolling
-    pollRef.current = setInterval(async () => {
-      try {
-        const offsetsPayload = buildOffsetsPayload(requestChannelsRef.current, offsetsRef.current);
-
-        const rawChunk: LogsChunkResponse = await fetchChunkFn(projectId, protocolId, offsetsPayload);
-        if (cancelled) return;
-
-        const gotNew = appendChunks(rawChunk?.chunks);
-
-        // stopPollingWhenTerminalAndIdle
-        if (isTerminalStatus(protocolDetails.status)) {
-          idleStreakRef.current = gotNew ? 0 : idleStreakRef.current + 1;
-          if (idleStreakRef.current >= 2 && pollRef.current) {
-            clearInterval(pollRef.current);
-            pollRef.current = null;
-          }
-        } else {
-          if (gotNew) idleStreakRef.current = 0;
-        }
-      } catch (err: any) {
-        if (!cancelled) setLogsError(err?.message || "Failed to poll logs");
-      }
-    }, 2000);
-
-    return () => {
-      cancelled = true;
-      if (pollRef.current) {
-        clearInterval(pollRef.current);
-        pollRef.current = null;
-      }
-    };
-  }, [topTab, projectId, protocolId, protocolDetails.status, svc]);
-
-  // Autoscroll logs
-  const activeLogText = logBuffers[activeLogChannelId] ?? "";
-
-  useEffect(() => {
-    // recomputeStickinessOnChannelChange
-    requestAnimationFrame(() => {
-      updateStickToBottom();
-
-      if (!stickToBottomRef.current) return;
-      const el = logsContainerRef.current;
-      if (!el) return;
-      el.scrollTop = el.scrollHeight;
-    });
-  }, [activeLogChannelId, updateStickToBottom]);
-
-  useEffect(() => {
-    // autoScrollOnlyWhenPinnedToBottom
-    if (!stickToBottomRef.current) return;
-
-    const el = logsContainerRef.current;
-    if (!el) return;
-
-    requestAnimationFrame(() => {
-      const el2 = logsContainerRef.current;
-      if (!el2) return;
-      el2.scrollTop = el2.scrollHeight;
-    });
-  }, [activeLogText]);
 
 
   // Live expected-class reader for pointer-like params
@@ -3765,105 +3326,15 @@ export default function ProtocolForm({
 
             {/* Logs */}
             {topTab === 2 && (
-              <Box
-                sx={{
-                  flex: 1,
-                  minHeight: 0,
-                  minWidth: 0,
-                  display: "flex",
-                  flexDirection: "column",
-                  overflow: "hidden",
-                }}
-              >
-                <Tabs
-                  value={activeLogChannelId}
-                  onChange={(_, val) => setActiveLogChannelId(String(val))}
-                  variant="scrollable"
-                  scrollButtons="auto"
-                  allowScrollButtonsMobile
-                  sx={{
-                    flex: "0 0 auto",
-                    mb: 0.5,
-                    "& .MuiTab-root": {
-                      textTransform: "none",
-                      fontSize: "0.8rem",
-                      fontWeight: 500,
-                    },
-                  }}
-                >
-                  {sortedLogChannels.map((ch) => (
-                    <Tab key={ch.id} value={ch.id} label={ch.label} />
-                  ))}
-                </Tabs>
-
-                <Box
-                  className={styles.bottomTabContent}
-                  sx={{
-                    flex: 1,
-                    minHeight: 0,
-                    minWidth: 0,
-                    display: "flex",
-                    flexDirection: "column",
-                    overflow: "hidden",
-                    p: 1,
-                  }}
-                >
-                  {logsError && (
-                    <Typography variant="body2" color="error" sx={{ mb: 1 }}>
-                      {logsError}
-                    </Typography>
-                  )}
-
-                  <Box
-                    ref={logsContainerRef}
-                    onScroll={updateStickToBottom}
-                    sx={{
-                      flex: 1,
-                      minHeight: 0,
-                      minWidth: 0,
-                      backgroundColor: "#f5f5f5",
-                      color: "black",
-                      borderRadius: 2,
-                      border: "1px solid #e5e7eb",
-                      p: 1.5,
-                      fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-                      fontSize: 12,
-                      lineHeight: 1.4,
-                      overflowY: "auto",
-                      overflowX: "auto",
-                      whiteSpace: "pre",
-                    }}
-                  >
-                    {activeLogText && activeLogText.length > 0 ? (
-                      activeLogText.split("\n").map((line, idx) => {
-                        const lineNoColor = activeLogChannelId === "stderr" ? "red" : "blue";
-
-                        return (
-                          <div key={idx} style={{ display: "flex", minWidth: 0 }}>
-                            <span
-                              style={{
-                                color: lineNoColor,
-                                userSelect: "none",
-                                marginRight: 8,
-                                flex: "0 0 auto",
-                              }}
-                            >
-                              {String(idx + 1).padStart(5, "0")}:
-                            </span>
-                            <span style={{ flex: "1 1 auto", minWidth: 0 }}>
-                              {parseAnsi(line)}
-                            </span>
-                          </div>
-                        );
-                      })
-                    ) : (
-                      <Typography variant="body2" sx={{ opacity: 0.7 }}>
-                        No logs yet.
-                      </Typography>
-                    )}
-                  </Box>
-                </Box>
-              </Box>
+              <ProtocolLogsPanel
+                sortedLogChannels={sortedLogChannels}
+                activeLogChannelId={activeLogChannelId}
+                setActiveLogChannelId={setActiveLogChannelId}
+                activeLogText={activeLogText}
+                logsError={logsError}
+                logsContainerRef={logsContainerRef}
+                updateStickToBottom={updateStickToBottom}
+              />
             )}
 
 
