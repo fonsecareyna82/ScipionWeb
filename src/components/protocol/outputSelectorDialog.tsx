@@ -46,13 +46,46 @@ interface Output {
 
 function getPointerClass(o: Output): string {
   // getPointerClass
-  return String(o.pointerClass ?? o._expectedClass ?? "");
+  return getPointerClassLabel(o);
 }
 
 function getParamClass(o: Output): string {
   // getParamClass
   const rawParamClass = String(o.paramClass ?? "");
   return rawParamClass || (getPointerClass(o) ? "PointerParam" : "");
+}
+
+function splitClassList(raw: unknown): string[] {
+  // splitClassList
+  if (Array.isArray(raw)) {
+    return Array.from(
+      new Set(
+        raw.flatMap((item) => splitClassList(item))
+      )
+    );
+  }
+
+  const text = String(raw ?? "").trim();
+  if (!text) return [];
+
+  return Array.from(
+    new Set(
+      text
+        .split(",")
+        .map((part) => part.trim())
+        .filter((part) => part.length > 0)
+    )
+  );
+}
+
+function getPointerClasses(o: Output): string[] {
+  // getPointerClasses
+  return splitClassList(o.pointerClass ?? o._expectedClass ?? "");
+}
+
+function getPointerClassLabel(o: Output): string {
+  // getPointerClassLabel
+  return getPointerClasses(o).join(", ");
 }
 
 interface OutputSelectorDialogProps {
@@ -116,17 +149,22 @@ const OutputSelectorDialog: React.FC<OutputSelectorDialogProps> = ({
     let filtered = allOutputs;
 
     if (expectedClass) {
-      const classes = Array.isArray(expectedClass)
-        ? expectedClass.map((c) => toLowerString(c))
-        : [toLowerString(expectedClass)];
+      const expectedClasses = (
+        Array.isArray(expectedClass) ? expectedClass : [expectedClass]
+      )
+        .flatMap((c) => splitClassList(c))
+        .map((c) => toLowerString(c));
 
-      filtered = filtered.filter((o) => classes.includes(toLowerString(getPointerClass(o))));
+      filtered = filtered.filter((o) => {
+        const outputClasses = getPointerClasses(o).map((c) => toLowerString(c));
+        return expectedClasses.some((cls) => outputClasses.includes(cls));
+      });
     }
 
     if (filter.trim()) {
       const q = filter.toLowerCase();
       filtered = filtered.filter((o) => {
-        const pointerClass = toLowerString(getPointerClass(o));
+        const pointerClass = toLowerString(getPointerClasses(o).join(", "));
         const paramClass = toLowerString(getParamClass(o));
         const info = toLowerString(o.info);
         const objValue = toLowerString(o.value);
@@ -343,7 +381,7 @@ const OutputSelectorDialog: React.FC<OutputSelectorDialogProps> = ({
               {matchingOutputs.map((o, i) => {
                 const id = getOutputRowId(o);
                 const isSelected = isRowSelected(o);
-                const effectivePointerClass = getPointerClass(o);
+                const effectivePointerClass = getPointerClassLabel(o);
 
                 return (
                   <TableRow

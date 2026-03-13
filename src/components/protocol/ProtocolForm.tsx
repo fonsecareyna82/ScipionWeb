@@ -563,9 +563,28 @@ export default function ProtocolForm({
   }, [form, info, values, sections, protocolId, protocolClassName]);
 
 
+  const splitClassList = (raw: unknown): string[] => {
+    if (Array.isArray(raw)) {
+      return Array.from(new Set(raw.flatMap((item) => splitClassList(item))));
+    }
+
+    const text = String(raw ?? "").trim();
+    if (!text) return [];
+
+    return Array.from(
+      new Set(
+        text
+          .split(",")
+          .map((part) => part.trim())
+          .filter((part) => part.length > 0)
+      )
+    );
+  };
+
   // Live expected-class reader for pointer-like params
   const getExpectedClass = (def: any): string | string[] | null => {
     if (!def) return null;
+
     const candidates = [
       def.pointerClass,
       def.pointerClassName,
@@ -583,18 +602,19 @@ export default function ProtocolForm({
     ];
 
     const flat: string[] = [];
-    const push = (s?: any) => {
-      if (typeof s === "string") {
-        const v = s.trim();
-        if (v && !flat.includes(v)) flat.push(v);
+
+    for (const candidate of candidates) {
+      const tokens = splitClassList(candidate);
+      for (const token of tokens) {
+        if (!flat.includes(token)) {
+          flat.push(token);
+        }
       }
-    };
-    for (const c of candidates) {
-      if (Array.isArray(c)) c.forEach(push);
-      else push(c);
     }
 
-    const isParamMeta = (s: string) => /pointerparam$/i.test(s) || /multipointerparam$/i.test(s);
+    const isParamMeta = (s: string) =>
+      /pointerparam$/i.test(s) || /multipointerparam$/i.test(s);
+
     const filtered = flat.filter((s) => !isParamMeta(s));
 
     if (filtered.length === 0) return null;
@@ -1396,15 +1416,22 @@ export default function ProtocolForm({
 
     const pool = outputs.filter((o) => !blocked.has(String(o.protocolId)));
 
-    const norm = (s: any) => (typeof s === "string" ? s.replace(/\s+/g, "").toLowerCase() : "");
+    const norm = (s: any) => String(s ?? "").replace(/\s+/g, "").toLowerCase();
 
     if (expected === null) {
-      return pool.filter((o) => /^setof/i.test(String(o.pointerClass || "")));
+      return pool.filter((o) => {
+        const outputClasses = splitClassList(o.pointerClass).map(norm);
+        return outputClasses.some((cls) => cls.startsWith("setof"));
+      });
     }
 
+    const expectedClasses = (Array.isArray(expected) ? expected : [expected])
+      .flatMap((item) => splitClassList(item))
+      .map(norm);
+
     return pool.filter((o) => {
-      const oc = norm(o.pointerClass);
-      return Array.isArray(expected) ? expected.some((e) => norm(e) === oc) : norm(expected) === oc;
+      const outputClasses = splitClassList(o.pointerClass).map(norm);
+      return expectedClasses.some((cls) => outputClasses.includes(cls));
     });
   };
 
