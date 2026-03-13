@@ -21,6 +21,7 @@ interface ProjectWorkflowsPanelProps {
   onRetry?: () => void;
   onWorkflowClick?: (workflow: ProjectWorkflow) => void;
   onWorkflowDoubleClick?: (workflow: ProjectWorkflow) => void;
+  onWorkflowLoaded?: () => void | Promise<void>;
   projectId: string | number;
   projectName?: string;
 }
@@ -34,6 +35,7 @@ export function ProjectWorkflowsPanel({
   onRetry,
   onWorkflowClick,
   onWorkflowDoubleClick,
+  onWorkflowLoaded,
   projectId,
   projectName,
 }: ProjectWorkflowsPanelProps) {
@@ -54,8 +56,8 @@ export function ProjectWorkflowsPanel({
 
   const filteredWorkflows = normalizedSearch
     ? workflows.filter((wf) =>
-        (wf.name ?? "").toString().toLowerCase().includes(normalizedSearch),
-      )
+      (wf.name ?? "").toString().toLowerCase().includes(normalizedSearch),
+    )
     : workflows;
 
   const hasFilteredWorkflows =
@@ -189,6 +191,7 @@ export function ProjectWorkflowsPanel({
         workflow={selectedWorkflow}
         projectId={projectId}
         projectName={projectName}
+        onWorkflowLoaded={onWorkflowLoaded}
         onClose={() => setDialogOpen(false)}
       />
     </>
@@ -200,6 +203,7 @@ interface ApplyWorkflowToCurrentProjectDialogProps {
   workflow: ProjectWorkflow | null;
   projectId: string | number;
   projectName?: string;
+  onWorkflowLoaded?: () => void | Promise<void>;
   onClose: () => void;
 }
 
@@ -208,6 +212,7 @@ function ApplyWorkflowToCurrentProjectDialog({
   workflow,
   projectId,
   projectName,
+  onWorkflowLoaded,
   onClose,
 }: ApplyWorkflowToCurrentProjectDialogProps) {
   const svc = useProjectService();
@@ -229,12 +234,13 @@ function ApplyWorkflowToCurrentProjectDialog({
         workflowId: String(workflow.id),
       });
 
+
       const targetName = projectName ?? String(projectId);
 
       toast.success(
         `Workflow "${workflow.name}" applied to project "${targetName}".`,
       );
-
+      await onWorkflowLoaded?.();
       onClose();
     } catch (err: any) {
       console.error(
@@ -260,7 +266,7 @@ function ApplyWorkflowToCurrentProjectDialog({
           className={styles.applyCloseButton}
           aria-label="Close apply workflow dialog"
           disabled={submitting}
-        > 
+        >
           <X className={styles.applyCloseIcon} />
         </button>
 

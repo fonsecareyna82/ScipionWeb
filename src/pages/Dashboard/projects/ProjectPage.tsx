@@ -546,22 +546,22 @@ export default function ProjectPage() {
 
 
   // Default policy used until the service returns a value
-    const contextMenuVisibilityPolicyRef = useRef<NodeMenuVisibility>({
-        open: true,
-        browse: true,
-        continue: true,
-        delete: true,
-        duplicate: true,
-        export: true,
-        manageTags: true,
-        nextSteps: true,
-        rename: true,
-        reset: true,
-        restart: true,
-        selectFrom: true,
-        selectTo: true,
-        stop: true,
-        upload: true,
+  const contextMenuVisibilityPolicyRef = useRef<NodeMenuVisibility>({
+    open: true,
+    browse: true,
+    continue: true,
+    delete: true,
+    duplicate: true,
+    export: true,
+    manageTags: true,
+    nextSteps: true,
+    rename: true,
+    reset: true,
+    restart: true,
+    selectFrom: true,
+    selectTo: true,
+    stop: true,
+    upload: true,
   });
 
   const projectId = useMemo(() => {
@@ -4424,6 +4424,9 @@ export default function ProjectPage() {
             errorMessage={workflowsError}
             projectId={Number(project?.id)}
             onRetry={handleOpenWorkflows}
+            onWorkflowLoaded={async () => {
+              await handleRefresh();
+            }}
           />
 
         </div>
