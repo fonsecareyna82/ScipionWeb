@@ -1,5 +1,5 @@
 import { Box } from "@mui/material";
-import JsonTree from "./json-tree";
+import JsonTree from "./JsonTree";
 
 type ProtocolMetadataPanelProps = {
   metadataSnapshot: any;

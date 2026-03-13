@@ -1,9 +1,7 @@
-import { useState, JSX, useMemo } from "react";
+import { useState, useMemo } from "react";
 import {
   Box,
-  Typography,
   Button,
-  Link,
 } from "@mui/material";
 import { Copy } from "lucide-react";
 

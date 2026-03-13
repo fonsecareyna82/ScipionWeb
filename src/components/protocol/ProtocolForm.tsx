@@ -16,10 +16,6 @@ import {
   Tooltip,
   CircularProgress,
   IconButton,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
 } from "@mui/material";
 import styles from "./protocolform.module.css";
 import {
@@ -44,6 +40,31 @@ import ProtocolMetadataPanel from "./ProtocolMetadataPanel";
 import ProtocolHelpDialog from "./ProtocolHelpDialog";
 import ExecErrorDialog from "./ExecErrorDialog";
 import ValidationErrorsDialog from "./ValidationErrorsDialog";
+import {
+  UnwrappedParam,
+  getParamClass,
+  isNonEmptyString,
+  resolveParamClass,
+  withResolvedParamClass,
+  unwrapParamDef,
+  parseFromJSONValue,
+  coerceBooleanValue,
+  coerceReadOnlyFlag,
+  coerceCollapsedFlag,
+  getParamNameFromStateKey,
+  getInitialRawForParam,
+  normalizePointerToken,
+  normalizeEnumOptions,
+  normalizeEnumSelection,
+  normalizeMultiPointerValue,
+} from "../../../src/utils/protocolform.utils";
+
+import {
+  getBackendPayloadFromError,
+  getHttpStatusFromError,
+  getErrorsFromBackendPayload,
+  formatErrorsForDialog,
+} from "../../../src/utils/protocolform.errors";
 
 
 type ProtocolFormProps = {
@@ -54,154 +75,6 @@ type ProtocolFormProps = {
   /** Presentation variant: "drawer" (default) slides in from the right; "docked" fills its parent panel. */
   variant?: "drawer" | "docked";
 };
-
-type UnwrappedParam = {
-  paramName: string;
-  paramDef: any;
-};
-
-function getParamClass(defLike: any): string {
-  // getParamClass
-  return String(defLike?.paramClass ?? defLike?._class ?? "");
-}
-
-function isNonEmptyString(v: any): boolean {
-  // isNonEmptyString
-  return typeof v === "string" && v.trim().length > 0;
-}
-
-function hasPointerClass(def: any): boolean {
-  // hasPointerClass
-  return isNonEmptyString(def?.pointerClass) || isNonEmptyString(def?.pointerClassName);
-}
-
-function hasMinMax(defLike: any): boolean {
-  // hasMinMax
-  if (!defLike || typeof defLike !== "object") return false;
-  return "min" in defLike || "max" in defLike;
-}
-
-
-function resolveParamClass(defLike: any): string {
-  // resolveParamClass
-  const rawCls = getParamClass(defLike);
-
-  // Keep explicit pointer classes as-is
-  if (rawCls === "PointerParam" || rawCls === "MultiPointerParam") return rawCls;
-
-  // Keep PathParam as PathParam even if pointerClass is present.
-  // PathParam may be "pointer-enabled" via pointerClass, but it must still render as PathParam.
-  if (rawCls === "PathParam") return "PathParam";
-
-  const pointerLike = hasPointerClass(defLike);
-
-  // If pointerClass exists, treat it as pointer for non-PathParam params
-  if (pointerLike) {
-    // If backend sends min/max, interpret as multi-pointer
-    if (hasMinMax(defLike)) return "MultiPointerParam";
-    return "PointerParam";
-  }
-
-  return rawCls;
-}
-
-
-function withResolvedParamClass(defLike: any): any {
-  // withResolvedParamClass
-  const rawCls = getParamClass(defLike);
-  const resolved = resolveParamClass(defLike);
-
-  if (!resolved || resolved === rawCls) return defLike;
-
-  // Force a stable paramClass so later logic (render/serialize) is consistent
-  return { ...defLike, paramClass: resolved };
-}
-
-
-function unwrapParamDef(paramLike: any): UnwrappedParam {
-  // unwrapParamDef
-  if (!paramLike || typeof paramLike !== "object") {
-    return { paramName: "", paramDef: paramLike };
-  }
-
-  // Direct backend shape: { name: "...", paramClass: "..." }
-  if (typeof (paramLike as any).name === "string") {
-    return { paramName: String((paramLike as any).name ?? ""), paramDef: paramLike };
-  }
-
-  // Common backend shape: { [name]: payload }
-  const entries = Object.entries(paramLike);
-  if (entries.length === 1) {
-    const [maybeName, payload] = entries[0] as [string, any];
-
-    // If payload looks like a param definition, use it
-    if (
-      payload &&
-      typeof payload === "object" &&
-      ("paramClass" in payload || "_class" in payload)
-    ) {
-      return { paramName: String(maybeName), paramDef: payload };
-    }
-
-    // Otherwise keep previous behavior (rare edge cases)
-    return { paramName: String(maybeName), paramDef: paramLike };
-  }
-
-  // Fallback
-  return { paramName: String((paramLike as any).name ?? ""), paramDef: paramLike };
-}
-
-
-function unwrapObjValue(raw: any) {
-  // unwrapObjValue
-  if (raw && typeof raw === "object" && "value" in raw) {
-    return (raw as any).value;
-  }
-  return raw;
-}
-
-function coerceBooleanValue(raw: any): boolean {
-  // coerceBooleanValue
-  const v = unwrapObjValue(raw);
-
-  if (v === true || v === 1 || v === "1") return true;
-  if (v === false || v === 0 || v === "0") return false;
-
-  if (typeof v === "string") {
-    const s = v.trim().toLowerCase();
-    if (s === "true") return true;
-    if (s === "false") return false;
-  }
-
-  return false;
-}
-
-function coerceReadOnlyFlag(raw: any): boolean {
-  // coerceReadOnlyFlag
-  if (raw === true || raw === 1 || raw === "1") return true;
-  if (raw === false || raw === 0 || raw === "0") return false;
-
-  if (typeof raw === "string") {
-    const s = raw.trim().toLowerCase();
-    if (s === "true") return true;
-    if (s === "false") return false;
-  }
-
-  return false;
-}
-
-function coerceCollapsedFlag(raw: any): boolean {
-  // coerceCollapsedFlag
-  return coerceReadOnlyFlag(raw);
-}
-
-
-function getParamNameFromStateKey(stateKey: string): string {
-  // getParamNameFromStateKey
-  const firstUnderscore = stateKey.indexOf("_");
-  return firstUnderscore >= 0 ? stateKey.slice(firstUnderscore + 1) : stateKey;
-}
-
 
 export default function ProtocolForm({
   data,
@@ -388,27 +261,6 @@ export default function ProtocolForm({
     if (isClosing) onClose();
   };
 
-  // Parse JSON envelopes like {"value": "..."} if they appear as strings or objects
-  const parseFromJSONValue = (maybeJson: any) => {
-    // parseFromJSONValue
-    try {
-      // unwrapObjectEnvelope
-      if (maybeJson && typeof maybeJson === "object" && "value" in maybeJson) {
-        return (maybeJson as any).value;
-      }
-
-      // unwrapStringEnvelope
-      if (typeof maybeJson === "string") {
-        const obj = JSON.parse(maybeJson);
-        if (obj && typeof obj === "object" && "value" in obj) {
-          return (obj as any).value;
-        }
-      }
-    } catch {
-      // noOp
-    }
-    return maybeJson;
-  };
 
   const coerceToken = (raw: any) => {
     if (raw === undefined || raw === null) return "";
@@ -559,148 +411,6 @@ export default function ProtocolForm({
       .split("||")
       .some((part) => part.split("&&").every((atom) => evalAtom(sectionIdx, atom.trim())));
   };
-
-
-  const hasOwn = (obj: any, key: string) => {
-    // hasOwn
-    return obj != null && typeof obj === "object" && Object.prototype.hasOwnProperty.call(obj, key);
-  };
-
-  const getInitialRawForParam = (paramName: string, def: any, valuesMap: any) => {
-    // getInitialRawForParam
-    if (hasOwn(valuesMap, paramName)) return valuesMap[paramName];
-    return def?.value ?? def?.default ?? "";
-  };
-
-  const normalizePointerToken = (raw: any): string => {
-    // normalizePointerToken
-    const v = parseFromJSONValue(raw);
-
-    if (v === null || v === undefined) return "";
-    if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") return String(v);
-
-    if (v && typeof v === "object") {
-      if ("value" in v) return String((v as any).value ?? "");
-      if ("object" in v) return String((v as any).object ?? "");
-    }
-
-    return "";
-  };
-
-  type EnumOption = { value: string; label: string };
-
-  function normalizeEnumOptions(choicesRaw: any): EnumOption[] {
-    // normalizeEnumOptions
-    if (Array.isArray(choicesRaw)) {
-      return choicesRaw.map((c) => {
-        const s = String(c ?? "");
-        return { value: s, label: s };
-      });
-    }
-
-    if (choicesRaw && typeof choicesRaw === "object") {
-      return Object.entries(choicesRaw as Record<string, any>).map(([k, v]) => ({
-        value: String(k ?? ""),
-        label: String(v ?? ""),
-      }));
-    }
-
-    return [];
-  }
-
-  function normalizeEnumSelection(raw: any, choicesRaw: any, fallbackRaw: any): string {
-    // normalizeEnumSelection
-    const options = normalizeEnumOptions(choicesRaw);
-    if (options.length === 0) return String(parseFromJSONValue(raw) ?? fallbackRaw ?? "");
-
-    const pickByIndex = (idx: number) => options[idx]?.value ?? options[0].value;
-
-    const resolveString = (s: string): string => {
-      const trimmed = s.trim();
-      if (!trimmed) return options[0].value;
-
-      // directMatchOnValue
-      if (options.some((o) => o.value === trimmed)) return trimmed;
-
-      // matchOnLabelToReturnValue
-      const byLabel = options.find((o) => o.label === trimmed);
-      if (byLabel) return byLabel.value;
-
-      // numericStringAsIndex
-      if (/^\d+$/.test(trimmed)) return pickByIndex(Number(trimmed));
-
-      return options[0].value;
-    };
-
-    const v = parseFromJSONValue(raw);
-
-    if (typeof v === "number" && Number.isFinite(v)) return pickByIndex(v);
-    if (typeof v === "string") return resolveString(v);
-
-    // fallbackHandling
-    const fb = parseFromJSONValue(fallbackRaw);
-    if (typeof fb === "number" && Number.isFinite(fb)) return pickByIndex(fb);
-    if (typeof fb === "string") return resolveString(fb);
-
-    return options[0].value;
-  }
-
-
-  const normalizeMultiPointerValue = (raw: any) => {
-    // normalizeMultiPointerValue
-    const parsed = parseFromJSONValue(raw);
-
-    const tryParseJsonArray = (text: string) => {
-      // tryParseJsonArray
-      const t = text.trim();
-      if (!t) return null;
-
-      try {
-        const v = JSON.parse(t);
-        return Array.isArray(v) ? v : null;
-      } catch {
-        try {
-          const normalized = t
-            .replace(/'/g, '"')
-            .replace(/\bNone\b/g, "null")
-            .replace(/\bTrue\b/g, "true")
-            .replace(/\bFalse\b/g, "false");
-          const v2 = JSON.parse(normalized);
-          return Array.isArray(v2) ? v2 : null;
-        } catch {
-          return null;
-        }
-      }
-    };
-
-    const asArray =
-      Array.isArray(parsed)
-        ? parsed
-        : typeof parsed === "string"
-          ? tryParseJsonArray(parsed) ?? []
-          : [];
-
-    return asArray.map((item: any) => {
-      // normalizeMultiPointerItem
-      if (typeof item === "string" || typeof item === "number" || typeof item === "boolean") {
-        const token = String(item);
-        return { object: token, value: token, info: "", pointerClass: "", parentId: null };
-      }
-
-      const objectToken = item?.object ?? item?.value ?? item?._objValue ?? item?._objId ?? "";
-      const objectStr = String(objectToken ?? "");
-
-      return {
-        object: objectStr,
-        value: objectStr,
-        info: String(item?.info ?? ""),
-        pointerClass: String(item?.pointerClass ?? item?._class ?? ""),
-        parentId: item?.parentId ?? null,
-      };
-    });
-  };
-
-
 
   // Load initial parameters into protocolDetails
   useEffect(() => {
@@ -1001,107 +711,12 @@ export default function ProtocolForm({
   }, [data, getSerializedParams]);
 
 
-  // Extract validation messages from backend error detail
-  function extractValidationErrors(detail: string): string[] {
-    const singleQuoted = Array.from(detail.matchAll(/'([^']+)'/g), (m) => m[1].trim());
-    if (singleQuoted.length) return singleQuoted;
-
-    const doubleQuoted = Array.from(detail.matchAll(/"([^"]+)"/g), (m) => m[1].trim());
-    if (doubleQuoted.length) return doubleQuoted;
-
-    const bracket = detail.match(/\[(.*)\]/);
-    if (bracket && bracket[1]) {
-      return bracket[1]
-        .split(/',\s*'|",\s*"/)
-        .map((s: string) => s.replace(/^['"]|['"]$/g, "").trim())
-        .filter((s: string) => s.length > 0);
-    }
-    return [detail.replace(/^422:\s*/, "").trim()];
-  }
-
-  function extractValidationMessages(detail: any): string[] {
-    // extractValidationMessages
-    if (!detail) return [];
-
-    if (typeof detail === "string") {
-      return extractValidationErrors(detail);
-    }
-
-    // FastAPI/Pydantic often returns an array of error objects
-    if (Array.isArray(detail)) {
-      return detail
-        .map((item) => {
-          if (typeof item === "string") return item;
-
-          const loc = Array.isArray(item?.loc) ? item.loc.join(".") : "";
-          const msg = item?.msg ?? item?.message ?? JSON.stringify(item);
-          const locPrefix = loc ? `${loc}: ` : "";
-          return `${locPrefix}${String(msg)}`;
-        })
-        .filter((s) => typeof s === "string" && s.trim().length > 0);
-    }
-
-    if (typeof detail === "object") {
-      const msg = (detail as any).msg ?? (detail as any).message ?? (detail as any).error;
-      if (typeof msg === "string" && msg.trim()) return [msg];
-      try {
-        return [JSON.stringify(detail)];
-      } catch {
-        return [String(detail)];
-      }
-    }
-
-    return [String(detail)];
-  }
-
   function openExecErrorDialog(title: string, message: string) {
     // openExecErrorDialog
     setExecError(message); // optional: keep the inline Typography too
     setExecErrorDialogTitle(title);
     setExecErrorDialogMessage(message);
     setExecErrorDialogOpen(true);
-  }
-
-  function normalizeStringList(value: any): string[] {
-    // normalizeStringList
-    if (!value) return [];
-    if (Array.isArray(value)) return value.map((v) => String(v)).filter((s) => s.trim().length > 0);
-    if (typeof value === "string") return [value].filter((s) => s.trim().length > 0);
-    return [String(value)].filter((s) => s.trim().length > 0);
-  }
-
-  function getBackendPayloadFromError(err: any): any {
-    // getBackendPayloadFromError
-    return err?.response?.data ?? err?.data ?? null;
-  }
-
-  function getHttpStatusFromError(err: any): number | null {
-    // getHttpStatusFromError
-    const statusCode = err?.status ?? err?.response?.status ?? null;
-    return typeof statusCode === "number" ? statusCode : null;
-  }
-
-  function getErrorsFromBackendPayload(payload: any): string[] {
-    // getErrorsFromBackendPayload
-    if (!payload) return [];
-
-    // Preferred schema from backend: { status: number, errors: string[], workflow: [] }
-    const directErrors = normalizeStringList(payload?.errors);
-    if (directErrors.length > 0) return directErrors;
-
-    // Fallbacks (older/other shapes)
-    const detail = payload?.detail ?? payload?.error ?? payload?.message ?? null;
-    if (!detail) return [];
-
-    // Reuse your existing logic for detail parsing if you want
-    return extractValidationMessages(detail);
-  }
-
-  function formatErrorsForDialog(errors: string[]): string {
-    // formatErrorsForDialog
-    if (errors.length === 0) return "Unknown error";
-    if (errors.length === 1) return errors[0];
-    return errors.map((e, i) => `${i + 1}. ${e}`).join("\n");
   }
 
   // handleExecute

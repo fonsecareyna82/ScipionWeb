@@ -1,6 +1,6 @@
 import { Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, IconButton } from "@mui/material";
 import { CloseIcon } from "../../icons";
-import renderRichHelpText from "./help-text";
+import renderRichHelpText from "./HelpText";
 
 type ProtocolHelpDialogProps = {
   open: boolean;
