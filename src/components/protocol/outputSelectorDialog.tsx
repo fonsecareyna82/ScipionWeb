@@ -55,6 +55,12 @@ function getParamClass(o: Output): string {
   return rawParamClass || (getPointerClass(o) ? "PointerParam" : "");
 }
 
+function isWildcardExpectedClass(raw: unknown): boolean {
+  // isWildcardExpectedClass
+  const tokens = splitClassList(raw).map((item) => item.replace(/\s+/g, "").toLowerCase());
+  return tokens.includes("all") || tokens.includes("emset");
+}
+
 function splitClassList(raw: unknown): string[] {
   // splitClassList
   if (Array.isArray(raw)) {
@@ -149,16 +155,22 @@ const OutputSelectorDialog: React.FC<OutputSelectorDialogProps> = ({
     let filtered = allOutputs;
 
     if (expectedClass) {
-      const expectedClasses = (
-        Array.isArray(expectedClass) ? expectedClass : [expectedClass]
-      )
-        .flatMap((c) => splitClassList(c))
-        .map((c) => toLowerString(c));
+      const wildcard = (Array.isArray(expectedClass) ? expectedClass : [expectedClass]).some(
+        (item) => isWildcardExpectedClass(item)
+      );
 
-      filtered = filtered.filter((o) => {
-        const outputClasses = getPointerClasses(o).map((c) => toLowerString(c));
-        return expectedClasses.some((cls) => outputClasses.includes(cls));
-      });
+      if (!wildcard) {
+        const expectedClasses = (
+          Array.isArray(expectedClass) ? expectedClass : [expectedClass]
+        )
+          .flatMap((c) => splitClassList(c))
+          .map((c) => toLowerString(c));
+
+        filtered = filtered.filter((o) => {
+          const outputClasses = getPointerClasses(o).map((c) => toLowerString(c));
+          return expectedClasses.some((cls) => outputClasses.includes(cls));
+        });
+      }
     }
 
     if (filter.trim()) {

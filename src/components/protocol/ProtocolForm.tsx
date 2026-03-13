@@ -563,6 +563,11 @@ export default function ProtocolForm({
   }, [form, info, values, sections, protocolId, protocolClassName]);
 
 
+  const isWildcardExpectedClass = (raw: unknown): boolean => {
+    const tokens = splitClassList(raw).map((item) => item.replace(/\s+/g, "").toLowerCase());
+    return tokens.includes("all") || tokens.includes("emset");
+  };
+
   const splitClassList = (raw: unknown): string[] => {
     if (Array.isArray(raw)) {
       return Array.from(new Set(raw.flatMap((item) => splitClassList(item))));
@@ -1425,9 +1430,13 @@ export default function ProtocolForm({
       });
     }
 
-    const expectedClasses = (Array.isArray(expected) ? expected : [expected])
-      .flatMap((item) => splitClassList(item))
-      .map(norm);
+    const expectedList = Array.isArray(expected) ? expected : [expected];
+
+    if (expectedList.some((item) => isWildcardExpectedClass(item))) {
+      return pool;
+    }
+
+    const expectedClasses = expectedList.flatMap((item) => splitClassList(item)).map(norm);
 
     return pool.filter((o) => {
       const outputClasses = splitClassList(o.pointerClass).map(norm);
