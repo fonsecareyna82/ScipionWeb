@@ -4426,7 +4426,9 @@ export default function ProjectPage() {
             onRetry={handleOpenWorkflows}
             onWorkflowLoaded={async () => {
               await handleRefresh();
+              setWorkflowsOpen(false);
             }}
+            
           />
 
         </div>
