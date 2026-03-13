@@ -479,9 +479,15 @@ function formatCellValue(value: MetadataCell): ReactNode {
   if (typeof value === "object" && "kind" in value) {
     if ((value as { kind?: string }).kind === "matrix") {
       const matrixValue = (value as { value?: unknown }).value;
-      if (Array.isArray(matrixValue) && matrixValue.length > 0 && Array.isArray(matrixValue[0])) {
-        return `matrix ${matrixValue.length}×${matrixValue[0].length}`;
+
+      if (Array.isArray(matrixValue) && matrixValue.length > 0) {
+        if (Array.isArray(matrixValue[0])) {
+          return `matrix ${matrixValue.length}×${matrixValue[0].length}`;
+        }
+
+        return `matrix [${matrixValue.length}]`;
       }
+
       return "matrix";
     }
 
@@ -503,10 +509,23 @@ function isMatrixCell(cell: MetadataCell): cell is MatrixCellValue {
   return typeof cell === "object" && cell !== null && (cell as any).kind === "matrix";
 }
 
-function normalizeMatrix2d(value: unknown): Array<Array<number | string>> | null {
-  if (!Array.isArray(value)) return null;
 
-  // normalizeTo2dArrayAndClampTo4x4
+function normalizeMatrix1d(value: unknown): Array<number | string> | null {
+  if (!Array.isArray(value) || value.length === 0) return null;
+  if (Array.isArray(value[0])) return null;
+
+  return value.map((v) => {
+    if (typeof v === "number" && Number.isFinite(v)) return v;
+    if (typeof v === "string") return v;
+    return String(v);
+  });
+}
+
+
+function normalizeMatrix2d(value: unknown): Array<Array<number | string>> | null {
+  if (!Array.isArray(value) || value.length === 0) return null;
+  if (!Array.isArray(value[0])) return null;
+
   const rows = value.slice(0, 4).map((row) => (Array.isArray(row) ? row.slice(0, 4) : []));
   if (!rows.length) return null;
 
@@ -516,6 +535,39 @@ function normalizeMatrix2d(value: unknown): Array<Array<number | string>> | null
       if (typeof v === "string") return v;
       return String(v);
     }),
+  );
+}
+
+function buildPrettyVectorText(values: Array<number | string>, maxItems = 4): string {
+  const visible = values.slice(0, maxItems).map((v) => formatMatrixEntry(v));
+  const suffix = values.length > maxItems ? ", …" : "";
+  return `[ ${visible.join(", ")}${suffix} ]`;
+}
+
+function VectorInlineCell({ values }: { values: Array<number | string> }) {
+  const text = buildPrettyVectorText(values);
+
+  return (
+    <Box
+      sx={{
+        fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+        fontSize: "0.72rem",
+        lineHeight: 1.25,
+        whiteSpace: "nowrap",
+        color: "#0f172a",
+        px: 1,
+        py: 0.75,
+        borderRadius: 1.5,
+        border: "1px solid rgba(148,163,184,0.25)",
+        backgroundColor: "rgba(248,250,252,0.9)",
+        fontVariantNumeric: "tabular-nums",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        maxWidth: "100%",
+      }}
+    >
+      {text}
+    </Box>
   );
 }
 
@@ -2507,7 +2559,10 @@ function MetadataTablePanel({
                     }
 
                     if (isMatrixCell(cellValue as MetadataCell)) {
-                      const matrixValue = normalizeMatrix2d((cellValue as any).value);
+                      const rawMatrixValue = (cellValue as { value?: unknown }).value;
+                      const vectorValue = normalizeMatrix1d(rawMatrixValue);
+                      const matrixValue = normalizeMatrix2d(rawMatrixValue);
+
                       return (
                         <TableCell
                           key={column.name}
@@ -2522,13 +2577,11 @@ function MetadataTablePanel({
                             overflow: "visible",
                             textOverflow: "clip",
                             backgroundColor: isHighlightedRow ? "rgba(219,234,254,0.9)" : "background.paper",
-                            // centerMatrixCellLikeImages
                             textAlign: "center",
                           }}
                         >
                           <Box
                             sx={{
-                              // centerMatrixContent
                               width: "100%",
                               display: "flex",
                               alignItems: "center",
@@ -2536,7 +2589,9 @@ function MetadataTablePanel({
                             }}
                           >
                             <Box sx={{ display: "inline-block", maxWidth: "100%" }}>
-                              {matrixValue ? (
+                              {vectorValue ? (
+                                <VectorInlineCell values={vectorValue} />
+                              ) : matrixValue ? (
                                 <MatrixInlineCell matrix={matrixValue} />
                               ) : (
                                 <Typography variant="caption" color="text.secondary">
