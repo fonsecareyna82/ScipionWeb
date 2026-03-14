@@ -11,8 +11,8 @@ import React, {
   JSX
 } from "react";
 
-import ProtocolForm from "../../../components/protocol/ProtocolForm";
-import { buildGraphElements } from "../../../utils/graph_utils";
+import ProtocolForm from "@/components/protocol/ProtocolForm";
+import { buildGraphElements } from "@/utils/graph_utils";
 
 import ReactFlow, {
   Background,
@@ -28,7 +28,7 @@ import ReactFlow, {
   MiniMap,
 } from "reactflow";
 import "reactflow/dist/style.css";
-import { createStatusNodeWrapper } from "../../../components/protocol/ProtocolNodeCardWrapper";
+import { createStatusNodeWrapper } from "@/components/protocol/ProtocolNodeCardWrapper";
 import { ProtocolsDrawer } from "@/components/protocol/ProtocolsDrawer";
 import { ProjectWorkflowsPanel, ProjectWorkflow } from "@/components/projects/workflows-panel";
 
@@ -53,7 +53,7 @@ import {
   FocusIcon,
   TagsIcon
 } from "lucide-react";
-import { FitViewIcon, TableIcon, TreeIcon } from "../../../icons";
+import { FitViewIcon, TableIcon, TreeIcon } from "@/icons";
 
 import { useProjectService } from "@/ProjectServiceContext";
 import { Project } from "@/types/project";
