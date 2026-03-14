@@ -4428,7 +4428,7 @@ export default function ProjectPage() {
               await handleRefresh();
               setWorkflowsOpen(false);
             }}
-            
+
           />
 
         </div>
@@ -4871,7 +4871,11 @@ export default function ProjectPage() {
           title="Manage tags"
         >
           <div style={{ paddingTop: 8 }}>
-            <TagManager projectId={Number(projId)} open={tagManagerOpen} />
+            <TagManager
+              projectId={Number(projId)}
+              open={tagManagerOpen}
+              onTagsChange={setAllTags}
+            />
           </div>
         </TagsDialog>
 

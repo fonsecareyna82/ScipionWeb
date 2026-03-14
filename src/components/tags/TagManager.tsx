@@ -478,9 +478,10 @@ const TagManager = memo(function TagManager({ title, projectId, open = true, tag
             // keepGlobalStoreInSync
             storeSetTags(list);
 
-            if (isControlled) onTagsChange?.(list);
+            // notifyParentAlways
+            onTagsChange?.(list);
         },
-        [backendEnabled, isControlled, onTagsChange, storeSetTags],
+        [backendEnabled, onTagsChange, storeSetTags],
     );
 
 
