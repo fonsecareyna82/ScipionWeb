@@ -56,21 +56,28 @@ type ContextMenuState = {
   y: number;
 };
 
-type ProtocolThumbnailItem = {
-  protocolId: string | number;
-  label?: string;
-  status?: string;
+type ProtocolThumbnailOutputItem = {
   outputName?: string | null;
   outputClassName?: string | null;
-  priority?: number | null;
   exists?: boolean;
   thumbnailUrl?: string | null;
   thumbnailRebuildUrl?: string | null;
 };
 
-type HydratedProtocolThumbnailItem = ProtocolThumbnailItem & {
+type HydratedProtocolThumbnailOutputItem = ProtocolThumbnailOutputItem & {
   src: string | null;
   hasError: boolean;
+};
+
+type ProtocolThumbnailGroup = {
+  protocolId: string | number;
+  label?: string;
+  status?: string;
+  outputs: ProtocolThumbnailOutputItem[];
+};
+
+type HydratedProtocolThumbnailGroup = Omit<ProtocolThumbnailGroup, "outputs"> & {
+  outputs: HydratedProtocolThumbnailOutputItem[];
 };
 
 function classNames(...xs: Array<string | false | null | undefined>): string {
@@ -196,98 +203,40 @@ function appendQueryParams(
   return parsed.toString();
 }
 
-function normalizeThumbnailItems(raw: any): ProtocolThumbnailItem[] {
+function normalizeThumbnailItems(raw: any): ProtocolThumbnailGroup[] {
   const list = Array.isArray(raw) ? raw : Array.isArray(raw?.items) ? raw.items : [];
-  const flat: ProtocolThumbnailItem[] = [];
 
-  for (const item of list) {
-    const protocolId = item?.protocolId ?? item?.protocol_id ?? item?.id ?? null;
-    if (protocolId === null || protocolId === undefined) continue;
+  return list
+    .map((group: any) => {
+      const protocolId = group?.protocolId ?? group?.protocol_id ?? group?.id ?? null;
+      if (protocolId === null || protocolId === undefined) return null;
 
-    const protocolLabel =
-      item?.protocolLabel ??
-      item?.protocol_label ??
-      item?.label ??
-      item?.name ??
-      `Protocol ${String(protocolId)}`;
+      const outputs = Array.isArray(group?.outputs)
+        ? group.outputs
+          .map((output: any) => ({
+            outputName: output?.outputName ?? output?.output_name ?? null,
+            outputClassName: output?.outputClassName ?? output?.output_class_name ?? null,
+            exists: output?.exists !== undefined ? Boolean(output.exists) : true,
+            thumbnailUrl: output?.thumbnailUrl ?? output?.thumbnail_url ?? null,
+            thumbnailRebuildUrl:
+              output?.thumbnailRebuildUrl ?? output?.thumbnail_rebuild_url ?? null,
+          }))
+          .filter(Boolean)
+        : [];
 
-    const protocolStatus = item?.status ?? undefined;
-
-    const parentThumbnailUrl =
-      item?.thumbnailUrl ??
-      item?.thumbnail_url ??
-      null;
-
-    const parentThumbnailRebuildUrl =
-      item?.thumbnailRebuildUrl ??
-      item?.thumbnail_rebuild_url ??
-      null;
-
-    const outputs = Array.isArray(item?.outputs) ? item.outputs : null;
-
-    if (outputs && outputs.length > 0) {
-      for (const output of outputs) {
-        flat.push({
-          protocolId,
-          label: protocolLabel,
-          status: output?.status ?? protocolStatus,
-          outputName: output?.outputName ?? output?.output_name ?? null,
-          outputClassName: output?.outputClassName ?? output?.output_class_name ?? null,
-          priority:
-            typeof output?.score === "number"
-              ? output.score
-              : output?.score != null
-                ? Number(output.score)
-                : typeof output?.priority === "number"
-                  ? output.priority
-                  : output?.priority != null
-                    ? Number(output.priority)
-                    : null,
-          exists: output?.exists !== undefined ? Boolean(output.exists) : true,
-          thumbnailUrl:
-            output?.thumbnailUrl ??
-            output?.thumbnail_url ??
-            parentThumbnailUrl,
-          thumbnailRebuildUrl:
-            output?.thumbnailRebuildUrl ??
-            output?.thumbnail_rebuild_url ??
-            parentThumbnailRebuildUrl,
-        });
-      }
-      continue;
-    }
-
-    flat.push({
-      protocolId,
-      label: protocolLabel,
-      status: protocolStatus,
-      outputName: item?.outputName ?? item?.output_name ?? null,
-      outputClassName: item?.outputClassName ?? item?.output_class_name ?? null,
-      priority:
-        typeof item?.priority === "number"
-          ? item.priority
-          : item?.priority != null
-            ? Number(item.priority)
-            : null,
-      exists: item?.exists !== undefined ? Boolean(item.exists) : true,
-      thumbnailUrl: parentThumbnailUrl,
-      thumbnailRebuildUrl: parentThumbnailRebuildUrl,
-    });
-  }
-
-  flat.sort((a, b) => {
-    const pa = typeof a.priority === "number" ? a.priority : -1;
-    const pb = typeof b.priority === "number" ? b.priority : -1;
-    if (pb !== pa) return pb - pa;
-
-    const aProtocol = Number(a.protocolId) || 0;
-    const bProtocol = Number(b.protocolId) || 0;
-    if (bProtocol !== aProtocol) return bProtocol - aProtocol;
-
-    return String(a.outputName ?? "").localeCompare(String(b.outputName ?? ""));
-  });
-
-  return flat.filter((item) => item.exists !== false);
+      return {
+        protocolId,
+        label:
+          group?.protocolLabel ??
+          group?.protocol_label ??
+          group?.label ??
+          group?.name ??
+          `Protocol ${String(protocolId)}`,
+        status: group?.status ?? undefined,
+        outputs,
+      } satisfies ProtocolThumbnailGroup;
+    })
+    .filter(Boolean) as ProtocolThumbnailGroup[];
 }
 
 const crispText = "subpixel-antialiased [text-rendering:optimizeLegibility]";
@@ -339,7 +288,7 @@ export default function ProjectCard(props: ProjectCardProps) {
   const showGuestBadge = Boolean(normalizedIsShared && !normalizedIsOwner);
   const canModify = normalizedIsOwner;
 
-  const [galleryItems, setGalleryItems] = useState<HydratedProtocolThumbnailItem[]>([]);
+  const [galleryItems, setGalleryItems] = useState<HydratedProtocolThumbnailGroup[]>([]);
   const [galleryMetaLoading, setGalleryMetaLoading] = useState(false);
   const [galleryImagesLoading, setGalleryImagesLoading] = useState(false);
   const [galleryError, setGalleryError] = useState(false);
@@ -432,11 +381,11 @@ export default function ProjectCard(props: ProjectCardProps) {
         }
 
         const payload = await response.json();
-        const items = normalizeThumbnailItems(payload);
+        const groups = normalizeThumbnailItems(payload);
 
         if (cancelled) return;
 
-        if (items.length === 0) {
+        if (groups.length === 0) {
           clearGalleryObjectUrls();
           setGalleryItems([]);
           setGalleryError(false);
@@ -446,41 +395,53 @@ export default function ProjectCard(props: ProjectCardProps) {
         setGalleryImagesLoading(true);
 
         const createdUrls: string[] = [];
-        const hydrated = await Promise.all(
-          items.map(async (item): Promise<HydratedProtocolThumbnailItem> => {
-            const itemUrl = resolveApiUrl(item.thumbnailUrl);
 
-            if (!itemUrl) {
-              return { ...item, src: null, hasError: true };
-            }
+        const hydratedGroups = await Promise.all(
+          groups.map(async (group): Promise<HydratedProtocolThumbnailGroup> => {
+            const outputs = await Promise.all(
+              (group.outputs || []).map(
+                async (output): Promise<HydratedProtocolThumbnailOutputItem> => {
+                  const itemUrl = resolveApiUrl(output.thumbnailUrl);
 
-            try {
-              const imageUrl = appendQueryParams(itemUrl, { size: 320 });
-              const imageResponse = await fetchWithAuth(imageUrl, {
-                method: "GET",
-                signal: controller.signal,
-              });
+                  if (!itemUrl) {
+                    return { ...output, src: null, hasError: true };
+                  }
 
-              if (!imageResponse.ok) {
-                throw new Error(`Failed to fetch protocol thumbnail: ${imageResponse.status}`);
-              }
+                  try {
+                    const imageUrl = appendQueryParams(itemUrl, { size: 320 });
+                    const imageResponse = await fetchWithAuth(imageUrl, {
+                      method: "GET",
+                      signal: controller.signal,
+                    });
 
-              const blob = await imageResponse.blob();
-              const objectUrl = URL.createObjectURL(blob);
-              createdUrls.push(objectUrl);
+                    if (!imageResponse.ok) {
+                      throw new Error(`Failed to fetch protocol thumbnail: ${imageResponse.status}`);
+                    }
 
-              return {
-                ...item,
-                src: objectUrl,
-                hasError: false,
-              };
-            } catch {
-              return {
-                ...item,
-                src: null,
-                hasError: true,
-              };
-            }
+                    const blob = await imageResponse.blob();
+                    const objectUrl = URL.createObjectURL(blob);
+                    createdUrls.push(objectUrl);
+
+                    return {
+                      ...output,
+                      src: objectUrl,
+                      hasError: false,
+                    };
+                  } catch {
+                    return {
+                      ...output,
+                      src: null,
+                      hasError: true,
+                    };
+                  }
+                },
+              ),
+            );
+
+            return {
+              ...group,
+              outputs,
+            };
           }),
         );
 
@@ -491,7 +452,7 @@ export default function ProjectCard(props: ProjectCardProps) {
 
         clearGalleryObjectUrls();
         galleryObjectUrlsRef.current = createdUrls;
-        setGalleryItems(hydrated);
+        setGalleryItems(hydratedGroups);
       } catch {
         if (controller.signal.aborted || cancelled) return;
 
@@ -811,11 +772,28 @@ export default function ProjectCard(props: ProjectCardProps) {
   const showProjectFallback = !showGallery && Boolean(projectThumbnailSrc);
 
   const galleryCountLabel = useMemo(() => {
-    if (showGallery) return `${galleryItems.length} items`;
+    if (showGallery) {
+      const totalOutputs = galleryItems.reduce(
+        (acc, group) => acc + (group.outputs?.length ?? 0),
+        0,
+      );
+      return `${galleryItems.length} protocols · ${totalOutputs} outputs`;
+    }
     if (showGalleryLoading) return "loading";
     if (thumbnailRebuildUrl) return "preview available";
     return "";
-  }, [showGallery, galleryItems.length, showGalleryLoading, thumbnailRebuildUrl]);
+  }, [showGallery, galleryItems, showGalleryLoading, thumbnailRebuildUrl]);
+
+  const getProtocolCardWidth = useCallback((outputCount: number) => {
+    const count = Math.max(1, outputCount);
+
+    if (count === 1) return 240;
+    if (count === 2) return 480;
+    if (count === 3) return 624;
+    if (count === 4) return 880;
+
+    return 1188 + (count - 4) * 260;
+  }, []);
 
   return (
     <>
@@ -953,76 +931,95 @@ export default function ProjectCard(props: ProjectCardProps) {
                     </div>
                   ) : showGallery ? (
                     <>
-                      <div className="pointer-events-none absolute inset-y-0 left-0 z-[1] w-8 bg-gradient-to-r from-slate-50 via-slate-50/90 to-transparent dark:from-slate-900 dark:via-slate-900/90 dark:to-transparent" />
-                      <div className="pointer-events-none absolute inset-y-0 right-0 z-[1] w-8 bg-gradient-to-l from-slate-50 via-slate-50/90 to-transparent dark:from-slate-900 dark:via-slate-900/90 dark:to-transparent" />
+                      <div className="pointer-events-none absolute inset-y-0 left-0 z-[1] w-8 bg-gradient-to-r from-gray-50 via-gray-50/90 to-transparent dark:from-slate-900 dark:via-slate-900/90 dark:to-transparent" />
+                      <div className="pointer-events-none absolute inset-y-0 right-0 z-[1] w-8 bg-gradient-to-l from-gray-50 via-gray-50/90 to-transparent dark:from-slate-900 dark:via-slate-900/90 dark:to-transparent" />
 
-                      <div className="h-full overflow-x-auto overflow-y-hidden px-2.5 py-2.5 [scrollbar-width:thin]">
-                        <div className="flex h-full min-w-max items-stretch gap-2.5">
-                          {galleryItems.map((item) => (
-                            <div
-                              key={`${String(item.protocolId)}-${String(item.outputName ?? item.outputClassName ?? "output")}`}
-                              className="group h-full w-[284px] shrink-0"
-                              title={item.label ?? `Protocol ${String(item.protocolId)}`}
-                            >
+                      <div className="h-full overflow-x-auto overflow-y-hidden px-3 py-3 [scrollbar-width:thin]">
+                        <div className="flex h-full min-w-max items-stretch gap-3">
+                          {galleryItems.map((group) => {
+                            const outputs = group.outputs ?? [];
+                            const outputCount = outputs.length;
+
+                            return (
                               <div
-                                className={classNames(
-                                  "grid h-full grid-rows-[34px,1fr] overflow-hidden rounded-[18px] border transition-all duration-300",
-                                  "border-slate-200/90 bg-white/96 shadow-[0_10px_28px_rgba(15,23,42,0.08)]",
-                                  "dark:border-slate-800 dark:bg-slate-950/96 dark:shadow-[0_12px_28px_rgba(0,0,0,0.26)]",
-                                  "group-hover:-translate-y-0.5 group-hover:shadow-[0_18px_36px_rgba(15,23,42,0.14)]",
-                                )}
+                                key={String(group.protocolId)}
+                                className="group h-full shrink-0"
+                                style={{ width: `${getProtocolCardWidth(outputCount)}px` }}
+                                title={group.label ?? `Protocol ${String(group.protocolId)}`}
                               >
                                 <div
                                   className={classNames(
-                                    "flex items-center justify-between gap-2 border-b px-3 py-1.5",
-                                    "border-slate-200/80 bg-slate-50/95",
-                                    "dark:border-slate-800 dark:bg-slate-900/95",
+                                    "grid h-full grid-rows-[auto,1fr,auto] overflow-hidden rounded-[20px] border transition",
+                                    "border-gray-200/90 bg-white shadow-[0_8px_24px_rgba(15,23,42,0.08)]",
+                                    "dark:border-slate-800 dark:bg-slate-950 dark:shadow-[0_8px_24px_rgba(0,0,0,0.26)]",
+                                    "group-hover:-translate-y-0.5 group-hover:shadow-[0_14px_30px_rgba(15,23,42,0.14)]",
                                   )}
                                 >
-                                  <span className="truncate text-[12px] text-black/95">
-                                        {item.label ?? `Protocol ${String(item.protocolId)}`}
-                                      </span>
-                                </div>
-
-                                <div className="relative min-h-0 p-1.5">
                                   <div
                                     className={classNames(
-                                      "relative flex h-full w-full items-center justify-center overflow-hidden rounded-[12px] border",
-                                      "border-slate-200 bg-[linear-gradient(180deg,rgba(248,250,252,1),rgba(241,245,249,1))]",
-                                      "dark:border-slate-800 dark:bg-[linear-gradient(180deg,rgba(15,23,42,0.92),rgba(2,6,23,0.98))]",
+                                      "flex items-center justify-between gap-2 border-b px-3 py-1.5",
+                                      "border-gray-200/80 bg-gray-50",
+                                      "dark:border-slate-800 dark:bg-slate-900",
                                     )}
                                   >
-                                    {item.src ? (
-                                      <img
-                                        src={item.src}
-                                        alt={item.label ?? `Protocol ${String(item.protocolId)}`}
-                                        className="block h-full w-full object-contain"
-                                        draggable={false}
-                                      />
-                                    ) : (
-                                      <div className="px-4 text-center text-[11px] font-medium text-slate-500 dark:text-slate-400">
-                                        Preview not available
-                                      </div>
-                                    )}
-
-                                    <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/82 via-slate-950/40 to-transparent p-2.5">
-                                      
-                                      {item.status ? (
-                                        <span
-                                          className={classNames(
-                                            "inline-flex max-w-[96px] items-center truncate rounded-full border px-2 py-0.5 text-[12px]",
-                                            getStatusToneClasses(item.status),
-                                          )}
-                                        >
-                                          {item.status}
-                                        </span>
-                                      ) : null}
+                                     <div className="truncate text-[11px] font-semibold text-gray-800 dark:text-slate-200">
+                                      {group.label ?? `Protocol ${String(group.protocolId)}`}
                                     </div>
+                                  </div>
+
+                                  <div className="min-h-0 p-2">
+                                    <div className="flex h-full items-stretch gap-2">
+                                      {outputs.map((output, index) => (
+                                        <div
+                                          key={`${String(group.protocolId)}-${output.outputName ?? index}`}
+                                          className={classNames(
+                                            "min-w-0 flex-1 overflow-hidden rounded-[14px] border",
+                                            "border-gray-200 bg-gray-50",
+                                            "dark:border-slate-800 dark:bg-slate-900",
+                                          )}
+                                          title={output.outputName ?? output.outputClassName ?? "Output"}
+                                        >
+                                          {output.src ? (
+                                            <img
+                                              src={output.src}
+                                              alt={output.outputName ?? output.outputClassName ?? "Output"}
+                                              className="block h-full w-full object-contain"
+                                              draggable={false}
+                                            />
+                                          ) : (
+                                            <div className="flex h-full items-center justify-center px-3 text-center text-[10px] font-medium text-gray-500 dark:text-gray-400">
+                                              Preview not available
+                                            </div>
+                                          )}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+
+                                  <div
+                                    className={classNames(
+                                      "border-t px-3 py-1.5",
+                                      "border-gray-200/80 bg-white",
+                                      "dark:border-slate-800 dark:bg-slate-950",
+                                    )}
+                                  >
+                                    
+                                    {group.status ? (
+                                      <span
+                                        className={classNames(
+                                          "inline-flex max-w-[96px] items-center truncate rounded-full border px-2 py-0.5 text-[12px]",
+                                          getStatusToneClasses(group.status),
+                                        )}
+                                      >
+                                        {group.status}
+                                      </span>
+                                    ) : null}
+                                                                       
                                   </div>
                                 </div>
                               </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       </div>
                     </>
