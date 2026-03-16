@@ -1,4 +1,3 @@
-// src/pages/projects/Projects.tsx
 import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import PageMeta from "../../../components/common/PageMeta";
 import ProjectCard from "../../../components/projects/ProjectsCard";
@@ -6,7 +5,7 @@ import { ChevronDownIcon } from "@/icons";
 import NewProjectModal from "@/components/projects/NewProjectModal";
 import { useProjectService } from "@/ProjectServiceContext";
 import type { ProjectService } from "@/services/ProjectService";
-import { Project } from "@/types/project";
+import type { Project } from "@/types/project";
 import { CloudDownload, Download, PlusCircle, Search } from "lucide-react";
 import ShareProjectModal from "@/components/projects/ShareProjectModal";
 
@@ -19,8 +18,14 @@ function classNames(...xs: Array<string | false | null | undefined>): string {
 
 const crispText = "subpixel-antialiased [text-rendering:optimizeLegibility]";
 
+type ProjectCardProject = Project & {
+  thumbnailUrl?: string | null;
+  thumbnailRebuildUrl?: string | null;
+  thumbnailItemsUrl?: string | null;
+};
+
 /** Normalize any backend project shape into our internal Project type. */
-function normalizeProject(raw: any): Project {
+function normalizeProject(raw: any): ProjectCardProject {
   const p = raw ?? {};
   const createdRaw = p.createdAt ?? p.created_at;
   const updatedRaw = p.updatedAt ?? p.updated_at;
@@ -49,7 +54,10 @@ function normalizeProject(raw: any): Project {
     isOwner: isOwnerFlag,
     permission: p.permission ?? "full",
     projectOwnerId: p.projectOwnerId ?? p.ownerId ?? p.owner_id ?? null,
-  } as Project;
+    thumbnailUrl: p.thumbnailUrl ?? p.thumbnail_url ?? null,
+    thumbnailRebuildUrl: p.thumbnailRebuildUrl ?? p.thumbnail_rebuild_url ?? null,
+    thumbnailItemsUrl: p.thumbnailItemsUrl ?? p.thumbnail_items_url ?? null,
+  };
 }
 
 interface ProjectsPageProps {
@@ -79,7 +87,7 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
   const svcFromCtx = useProjectService();
   const svc = service ?? svcFromCtx;
 
-  const [projects, setProjects] = useState<Project[]>([]);
+  const [projects, setProjects] = useState<ProjectCardProject[]>([]);
   const [search, setSearch] = useState<string>("");
   const [selectedLabel, setSelectedLabel] = useState<string | null>(null);
   const [showDropdown, setShowDropdown] = useState(false);
@@ -98,9 +106,11 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
   const loadProjects = useCallback(async () => {
     setLoading(true);
     setLoadError(null);
+
     try {
       const raw = await (fetchList ? fetchList() : svc.fetchList());
       let list: any[] = [];
+
       if (Array.isArray(raw)) list = raw;
       else if (raw && Array.isArray((raw as any).results)) list = (raw as any).results;
       else if (raw && typeof raw === "object") list = Object.values(raw);
@@ -121,6 +131,7 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
         setShowDropdown(false);
       }
     };
+
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
@@ -133,6 +144,7 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
 
   const filteredProjects = useMemo(() => {
     if (!normalizedTerm) return projects;
+
     return projects.filter((p) => {
       const name = String(p.name ?? "").toLowerCase();
       const id = String(p.id ?? "").toLowerCase();
@@ -166,6 +178,7 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
   const handleCreateProject = useCallback((rawCreated: any) => {
     const unwrapped = (rawCreated && (rawCreated.project || rawCreated.data || rawCreated.result)) ?? rawCreated;
     const normalized = normalizeProject(unwrapped);
+
     setProjects((prev) => [normalized, ...prev]);
     setSearch("");
   }, []);
@@ -380,11 +393,16 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
                       }
                       onDelete={handleDeleteProject}
                       onRename={handleRenameProject}
-                      onShare={(id) => handleShareProject(id, project.name, project.projectOwnerId ?? null)}
+                      onShare={(cardId) =>
+                        handleShareProject(cardId, project.name, project.projectOwnerId ?? null)
+                      }
                       isShared={project.isShared}
                       isOwner={project.isOwner}
                       permission={project.permission?.toString()}
                       projectOwnerId={project.projectOwnerId ?? null}
+                      thumbnailUrl={project.thumbnailUrl ?? null}
+                      thumbnailRebuildUrl={project.thumbnailRebuildUrl ?? null}
+                      thumbnailItemsUrl={project.thumbnailItemsUrl ?? null}
                     />
                   </div>
                 ))}
@@ -394,7 +412,11 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
         </div>
       </div>
 
-      <NewProjectModal open={showCreate} onClose={() => setShowCreate(false)} onCreate={handleCreateProject} />
+      <NewProjectModal
+        open={showCreate}
+        onClose={() => setShowCreate(false)}
+        onCreate={handleCreateProject}
+      />
 
       <ShareProjectModal
         open={!!shareProject}

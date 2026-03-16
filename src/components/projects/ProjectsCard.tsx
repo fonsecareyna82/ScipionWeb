@@ -1,4 +1,3 @@
-// src/components/projects/ProjectsCard.tsx
 import * as React from "react";
 import { useNavigate } from "react-router-dom";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -6,6 +5,8 @@ import { AnimatePresence, motion } from "framer-motion";
 import { createPortal } from "react-dom";
 import toast from "react-hot-toast";
 import { X, UserPlus2 } from "lucide-react";
+import { BASE_URL } from "@/config";
+import { fetchWithAuth } from "@/api/auth";
 
 import {
   CalendarIcon,
@@ -43,12 +44,33 @@ interface ProjectCardProps {
   isShared?: boolean | string | number;
   isOwner?: boolean | string | number;
   permission?: string;
+
+  thumbnailUrl?: string | null;
+  thumbnailRebuildUrl?: string | null;
+  thumbnailItemsUrl?: string | null;
 }
 
 type ContextMenuState = {
   open: boolean;
   x: number;
   y: number;
+};
+
+type ProtocolThumbnailItem = {
+  protocolId: string | number;
+  label?: string;
+  status?: string;
+  outputName?: string | null;
+  outputClassName?: string | null;
+  priority?: number | null;
+  exists?: boolean;
+  thumbnailUrl?: string | null;
+  thumbnailRebuildUrl?: string | null;
+};
+
+type HydratedProtocolThumbnailItem = ProtocolThumbnailItem & {
+  src: string | null;
+  hasError: boolean;
 };
 
 function classNames(...xs: Array<string | false | null | undefined>): string {
@@ -70,7 +92,11 @@ function formatDateShort(raw?: string): string {
   const d = new Date(raw);
   if (Number.isNaN(d.getTime())) return "—";
   try {
-    return new Intl.DateTimeFormat(undefined, { year: "numeric", month: "short", day: "2-digit" }).format(d);
+    return new Intl.DateTimeFormat(undefined, {
+      year: "numeric",
+      month: "short",
+      day: "2-digit",
+    }).format(d);
   } catch {
     return d.toISOString().slice(0, 10);
   }
@@ -142,42 +168,63 @@ function getStatusToneClasses(raw?: string): string {
   );
 }
 
-function MetaTile(props: {
-  title: string;
-  value: React.ReactNode;
-  icon: React.ReactNode;
-  tone: "indigo" | "sky" | "cyan";
-}) {
-  const toneClasses =
-    props.tone === "indigo"
-      ? classNames(
-        "border-indigo-200/80 bg-gradient-to-br from-white to-indigo-50/80",
-        "dark:border-indigo-900/60 dark:bg-gradient-to-br dark:from-slate-900 dark:to-indigo-950/20",
-      )
-      : props.tone === "sky"
-        ? classNames(
-          "border-sky-200/80 bg-gradient-to-br from-white to-sky-50/80",
-          "dark:border-sky-900/60 dark:bg-gradient-to-br dark:from-slate-900 dark:to-sky-950/20",
-        )
-        : classNames(
-          "border-cyan-200/80 bg-gradient-to-br from-white to-cyan-50/80",
-          "dark:border-cyan-900/60 dark:bg-gradient-to-br dark:from-slate-900 dark:to-cyan-950/20",
-        );
+function resolveApiUrl(raw?: string | null): string | null {
+  const value = String(raw ?? "").trim();
+  if (!value) return null;
 
-  return (
-    <div
-      className={classNames(
-        "rounded-2xl border px-3.5 py-3",
-        toneClasses,
-      )}
-    >
-      <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-500 dark:text-gray-400">
-        <span className="text-gray-500 dark:text-gray-400">{props.icon}</span>
-        <span>{props.title}</span>
-      </div>
-      <div className="mt-2 line-clamp-2 text-sm font-semibold text-gray-950 dark:text-white">{props.value}</div>
-    </div>
-  );
+  if (/^https?:\/\//i.test(value)) return value;
+  if (value.startsWith("/")) return `${BASE_URL}${value}`;
+
+  return `${BASE_URL}/${value}`;
+}
+
+function appendQueryParams(
+  url: string,
+  params: Record<string, string | number | boolean | null | undefined>,
+): string {
+  const parsed = new URL(url, window.location.origin);
+
+  Object.entries(params).forEach(([key, value]) => {
+    if (value === null || value === undefined) return;
+    const text = String(value).trim();
+    if (!text) return;
+    parsed.searchParams.set(key, text);
+  });
+
+  return parsed.toString();
+}
+
+function normalizeThumbnailItems(raw: any): ProtocolThumbnailItem[] {
+  const list = Array.isArray(raw) ? raw : Array.isArray(raw?.items) ? raw.items : [];
+
+  return list
+    .map((item: any) => {
+      const protocolId = item?.protocolId ?? item?.protocol_id ?? item?.id ?? null;
+      if (protocolId === null || protocolId === undefined) return null;
+
+      return {
+        protocolId,
+        label:
+          item?.protocolLabel ??
+          item?.protocol_label ??
+          item?.label ??
+          item?.name ??
+          `Protocol ${String(protocolId)}`,
+        status: item?.status ?? undefined,
+        outputName: item?.outputName ?? item?.output_name ?? null,
+        outputClassName: item?.outputClassName ?? item?.output_class_name ?? null,
+        priority:
+          typeof item?.priority === "number"
+            ? item.priority
+            : item?.priority != null
+              ? Number(item.priority)
+              : null,
+        exists: item?.exists !== undefined ? Boolean(item.exists) : true,
+        thumbnailUrl: item?.thumbnailUrl ?? item?.thumbnail_url ?? null,
+        thumbnailRebuildUrl: item?.thumbnailRebuildUrl ?? item?.thumbnail_rebuild_url ?? null,
+      } satisfies ProtocolThumbnailItem;
+    })
+    .filter(Boolean) as ProtocolThumbnailItem[];
 }
 
 const crispText = "subpixel-antialiased [text-rendering:optimizeLegibility]";
@@ -186,15 +233,12 @@ export default function ProjectCard(props: ProjectCardProps) {
   const {
     id,
     label,
-    value,
     badgeValue,
     createdAt,
     updatedAt,
     diskUsage,
     isSelected,
     onSelect,
-    isExpanded,
-    onToggleExpand,
     description = "",
     status,
     icon = <FolderIcon className="h-5 w-5 text-gray-900 dark:text-white" />,
@@ -204,6 +248,9 @@ export default function ProjectCard(props: ProjectCardProps) {
     isShared,
     isOwner,
     permission,
+    thumbnailUrl,
+    thumbnailRebuildUrl,
+    thumbnailItemsUrl,
   } = props;
 
   const navigate = useNavigate();
@@ -215,7 +262,11 @@ export default function ProjectCard(props: ProjectCardProps) {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
-  const [contextMenu, setContextMenu] = useState<ContextMenuState>({ open: false, x: 0, y: 0 });
+  const [contextMenu, setContextMenu] = useState<ContextMenuState>({
+    open: false,
+    x: 0,
+    y: 0,
+  });
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
   const contextItemRefs = useRef<Array<HTMLLIElement | null>>([]);
   const portalRoot = typeof document !== "undefined" ? document.body : null;
@@ -225,10 +276,36 @@ export default function ProjectCard(props: ProjectCardProps) {
   const showGuestBadge = Boolean(normalizedIsShared && !normalizedIsOwner);
   const canModify = normalizedIsOwner;
 
-  const canToggleExpand = useMemo(() => {
-    const d = (description ?? "").trim();
-    return d.length > 140 && typeof onToggleExpand === "function";
-  }, [description, onToggleExpand]);
+  const [galleryItems, setGalleryItems] = useState<HydratedProtocolThumbnailItem[]>([]);
+  const [galleryMetaLoading, setGalleryMetaLoading] = useState(false);
+  const [galleryImagesLoading, setGalleryImagesLoading] = useState(false);
+  const [galleryError, setGalleryError] = useState(false);
+
+  const [projectThumbnailSrc, setProjectThumbnailSrc] = useState<string | null>(null);
+  const [projectThumbnailLoading, setProjectThumbnailLoading] = useState(false);
+  const [projectThumbnailError, setProjectThumbnailError] = useState(false);
+
+  const galleryObjectUrlsRef = useRef<string[]>([]);
+  const projectObjectUrlRef = useRef<string | null>(null);
+
+  const clearGalleryObjectUrls = useCallback(() => {
+    galleryObjectUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+    galleryObjectUrlsRef.current = [];
+  }, []);
+
+  const clearProjectObjectUrl = useCallback(() => {
+    if (projectObjectUrlRef.current) {
+      URL.revokeObjectURL(projectObjectUrlRef.current);
+      projectObjectUrlRef.current = null;
+    }
+  }, []);
+
+  const resolvedThumbnailUrl = useMemo(() => resolveApiUrl(thumbnailUrl), [thumbnailUrl]);
+
+  const resolvedThumbnailItemsUrl = useMemo(
+    () => resolveApiUrl(thumbnailItemsUrl),
+    [thumbnailItemsUrl],
+  );
 
   const projectIdLabel = useMemo(() => `P${String(id)}`, [id]);
 
@@ -245,13 +322,200 @@ export default function ProjectCard(props: ProjectCardProps) {
     return raw || null;
   }, [status, badgeValue]);
 
-  const mainDate = updatedAt ?? createdAt;
-  const mainDateTitle = updatedAt ? "Updated" : "Created";
-
   useEffect(() => {
     setNewLabel(label);
     setNewDescription(description || "");
   }, [label, description]);
+
+  useEffect(() => {
+    return () => {
+      clearGalleryObjectUrls();
+      clearProjectObjectUrl();
+    };
+  }, [clearGalleryObjectUrls, clearProjectObjectUrl]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const controller = new AbortController();
+
+    async function loadGalleryItems() {
+      if (!resolvedThumbnailItemsUrl) {
+        clearGalleryObjectUrls();
+        setGalleryItems([]);
+        setGalleryMetaLoading(false);
+        setGalleryImagesLoading(false);
+        setGalleryError(false);
+        return;
+      }
+
+      setGalleryMetaLoading(true);
+      setGalleryImagesLoading(false);
+      setGalleryError(false);
+
+      try {
+        const listUrl = appendQueryParams(resolvedThumbnailItemsUrl, {
+          size: 320,
+          maxProtocols: 12,
+        });
+
+        const response = await fetchWithAuth(listUrl, {
+          method: "GET",
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to fetch thumbnail items: ${response.status}`);
+        }
+
+        const payload = await response.json();
+        const items = normalizeThumbnailItems(payload);
+
+        if (cancelled) return;
+
+        if (items.length === 0) {
+          clearGalleryObjectUrls();
+          setGalleryItems([]);
+          setGalleryError(false);
+          return;
+        }
+
+        setGalleryImagesLoading(true);
+
+        const createdUrls: string[] = [];
+        const hydrated = await Promise.all(
+          items.map(async (item): Promise<HydratedProtocolThumbnailItem> => {
+            const itemUrl = resolveApiUrl(item.thumbnailUrl);
+
+            if (!itemUrl) {
+              return { ...item, src: null, hasError: true };
+            }
+
+            try {
+              const imageUrl = appendQueryParams(itemUrl, { size: 320 });
+              const imageResponse = await fetchWithAuth(imageUrl, {
+                method: "GET",
+                signal: controller.signal,
+              });
+
+              if (!imageResponse.ok) {
+                throw new Error(`Failed to fetch protocol thumbnail: ${imageResponse.status}`);
+              }
+
+              const blob = await imageResponse.blob();
+              const objectUrl = URL.createObjectURL(blob);
+              createdUrls.push(objectUrl);
+
+              return {
+                ...item,
+                src: objectUrl,
+                hasError: false,
+              };
+            } catch {
+              return {
+                ...item,
+                src: null,
+                hasError: true,
+              };
+            }
+          }),
+        );
+
+        if (cancelled) {
+          createdUrls.forEach((url) => URL.revokeObjectURL(url));
+          return;
+        }
+
+        clearGalleryObjectUrls();
+        galleryObjectUrlsRef.current = createdUrls;
+        setGalleryItems(hydrated);
+      } catch {
+        if (controller.signal.aborted || cancelled) return;
+
+        clearGalleryObjectUrls();
+        setGalleryItems([]);
+        setGalleryError(true);
+      } finally {
+        if (!cancelled) {
+          setGalleryMetaLoading(false);
+          setGalleryImagesLoading(false);
+        }
+      }
+    }
+
+    void loadGalleryItems();
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [resolvedThumbnailItemsUrl, clearGalleryObjectUrls]);
+
+  const shouldLoadProjectFallback = useMemo(() => {
+    if (!resolvedThumbnailUrl) return false;
+    if (galleryMetaLoading || galleryImagesLoading) return false;
+    if (galleryItems.length > 0) return false;
+    return true;
+  }, [resolvedThumbnailUrl, galleryMetaLoading, galleryImagesLoading, galleryItems.length]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const controller = new AbortController();
+
+    async function loadProjectThumbnailFallback() {
+      if (!shouldLoadProjectFallback || !resolvedThumbnailUrl) {
+        clearProjectObjectUrl();
+        setProjectThumbnailSrc(null);
+        setProjectThumbnailLoading(false);
+        setProjectThumbnailError(false);
+        return;
+      }
+
+      setProjectThumbnailLoading(true);
+      setProjectThumbnailError(false);
+
+      try {
+        const response = await fetchWithAuth(
+          appendQueryParams(resolvedThumbnailUrl, { size: 960 }),
+          {
+            method: "GET",
+            signal: controller.signal,
+          },
+        );
+
+        if (!response.ok) {
+          throw new Error(`Thumbnail request failed: ${response.status}`);
+        }
+
+        const blob = await response.blob();
+        const objectUrl = URL.createObjectURL(blob);
+
+        if (!cancelled) {
+          clearProjectObjectUrl();
+          projectObjectUrlRef.current = objectUrl;
+          setProjectThumbnailSrc(objectUrl);
+        } else {
+          URL.revokeObjectURL(objectUrl);
+        }
+      } catch {
+        if (!cancelled) {
+          clearProjectObjectUrl();
+          setProjectThumbnailSrc(null);
+          setProjectThumbnailError(true);
+        }
+      } finally {
+        if (!cancelled) {
+          setProjectThumbnailLoading(false);
+        }
+      }
+    }
+
+    void loadProjectThumbnailFallback();
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [resolvedThumbnailUrl, shouldLoadProjectFallback, clearProjectObjectUrl]);
 
   const handleOpen = useCallback(() => {
     if (isRenaming) return;
@@ -294,6 +558,7 @@ export default function ProjectCard(props: ProjectCardProps) {
       setErrorMessage("Project name cannot be empty.");
       return;
     }
+
     if (newDescription && newDescription.trim().length > 0 && newDescription.trim().length < 3) {
       setErrorMessage("Description must be at least 3 characters.");
       return;
@@ -427,7 +692,9 @@ export default function ProjectCard(props: ProjectCardProps) {
     const onPointerDown = (ev: PointerEvent) => {
       const target = ev.target as Node | null;
       if (!target) return;
-      if (contextMenuRef.current && !contextMenuRef.current.contains(target)) closeContextMenu();
+      if (contextMenuRef.current && !contextMenuRef.current.contains(target)) {
+        closeContextMenu();
+      }
     };
 
     const onKeyDown = (ev: KeyboardEvent) => {
@@ -473,6 +740,17 @@ export default function ProjectCard(props: ProjectCardProps) {
     isSelected ? "border-indigo-500/55 ring-2 ring-inset ring-indigo-500/16" : "",
   );
 
+  const showGallery = galleryItems.length > 0;
+  const showGalleryLoading = galleryMetaLoading || galleryImagesLoading;
+  const showProjectFallback = !showGallery && Boolean(projectThumbnailSrc);
+
+  const galleryCountLabel = useMemo(() => {
+    if (showGallery) return `${galleryItems.length} items`;
+    if (showGalleryLoading) return "loading";
+    if (thumbnailRebuildUrl) return "preview available";
+    return "";
+  }, [showGallery, galleryItems.length, showGalleryLoading, thumbnailRebuildUrl]);
+
   return (
     <>
       <motion.div
@@ -498,7 +776,7 @@ export default function ProjectCard(props: ProjectCardProps) {
           <div className="relative flex h-full flex-col">
             <div
               className={classNames(
-                "-mx-2 -mt-2 mb-2 rounded-t-[24px] border-b px-5 pt-5 pb-4 md:-mx-6 md:-mt-6 md:px-6 md:pt-6",
+                "-mx-2 -mt-2 mb-2 rounded-t-[24px] border-b px-5 pb-4 pt-5 md:-mx-6 md:-mt-6 md:px-6 md:pt-6",
                 "border-gray-200/90 bg-gradient-to-br from-slate-50 via-white to-indigo-50/70",
                 "dark:border-gray-800 dark:bg-gradient-to-br dark:from-slate-900 dark:via-slate-900 dark:to-indigo-950/25",
               )}
@@ -582,32 +860,142 @@ export default function ProjectCard(props: ProjectCardProps) {
             <div className="mt-4">
               <div
                 className={classNames(
-                  "rounded-2xl border px-4 py-3.5",
-                  "border-gray-200/90 bg-white/75",
+                  "overflow-hidden rounded-2xl border",
+                  "border-gray-200/90 bg-white/85",
                   "dark:border-gray-800 dark:bg-slate-950/30",
                 )}
               >
-                <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">
-                  Overview
-                </div>
+                <div className="relative h-[280px] w-full bg-gray-50 dark:bg-slate-900">
+                  {showGalleryLoading ? (
+                    <div className="h-full overflow-hidden px-3 py-3">
+                      <div className="flex h-full min-w-max items-stretch gap-3">
+                        {Array.from({ length: 4 }).map((_, index) => (
+                          <div
+                            key={index}
+                            className={classNames(
+                              "h-full w-[244px] shrink-0 overflow-hidden rounded-[20px] border",
+                              "border-gray-200/80 bg-white/90",
+                              "dark:border-slate-800 dark:bg-slate-950/80",
+                            )}
+                          >
+                            <div className="h-[38px] border-b border-gray-200/80 bg-gray-100 dark:border-slate-800 dark:bg-slate-900" />
+                            <div className="h-[calc(100%-38px)] animate-pulse bg-gradient-to-br from-gray-100 via-gray-50 to-gray-100 dark:from-slate-800 dark:via-slate-900 dark:to-slate-800" />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : showGallery ? (
+                    <>
+                      <div className="pointer-events-none absolute inset-y-0 left-0 z-[1] w-8 bg-gradient-to-r from-gray-50 via-gray-50/90 to-transparent dark:from-slate-900 dark:via-slate-900/90 dark:to-transparent" />
+                      <div className="pointer-events-none absolute inset-y-0 right-0 z-[1] w-8 bg-gradient-to-l from-gray-50 via-gray-50/90 to-transparent dark:from-slate-900 dark:via-slate-900/90 dark:to-transparent" />
 
-                <div className={classNames("mt-2 text-sm leading-6 text-gray-700 dark:text-gray-300", isExpanded ? "" : "line-clamp-3")}>
-                  {description?.trim() ? description : "No description available."}
-                </div>
+                      <div className="h-full overflow-x-auto overflow-y-hidden px-3 py-3 [scrollbar-width:thin]">
+                        <div className="flex h-full min-w-max items-stretch gap-3">
+                          {galleryItems.map((item) => (
+                            <div
+                              key={String(item.protocolId)}
+                              className="group h-full w-[284px] shrink-0"
+                              title={item.label ?? `Protocol ${String(item.protocolId)}`}
+                            >
+                              <div
+                                className={classNames(
+                                  "grid h-full grid-rows-[auto,1fr,auto] overflow-hidden rounded-[20px] border transition",
+                                  "border-gray-200/90 bg-white shadow-[0_8px_24px_rgba(15,23,42,0.08)]",
+                                  "dark:border-slate-800 dark:bg-slate-950 dark:shadow-[0_8px_24px_rgba(0,0,0,0.26)]",
+                                  "group-hover:-translate-y-0.5 group-hover:shadow-[0_14px_30px_rgba(15,23,42,0.14)]",
+                                )}
+                              >
+                                <div
+                                  className={classNames(
+                                    "flex items-center justify-between gap-2 border-b px-3 py-1.5",
+                                    "border-gray-200/80 bg-gray-50",
+                                    "dark:border-slate-800 dark:bg-slate-900",
+                                  )}
+                                >
+                                  <span className="inline-flex items-center rounded-full bg-indigo-600 px-2.5 py-1 text-[10px] font-semibold tracking-[0.04em] text-white shadow-sm">
+                                    Protocol {String(item.protocolId)}
+                                  </span>
 
-                {canToggleExpand ? (
-                  <button
-                    type="button"
-                    className="mt-3 inline-flex items-center gap-1 rounded-full border border-gray-300/80 bg-white px-3 py-1.5 text-sm font-medium text-gray-800 transition hover:bg-gray-50 hover:shadow-sm dark:border-gray-700 dark:bg-slate-900 dark:text-gray-200 dark:hover:bg-slate-800"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      onToggleExpand?.();
-                    }}
-                  >
-                    {isExpanded ? "Show less" : "Show more"}
-                  </button>
-                ) : null}
+                                  {item.status ? (
+                                    <span
+                                      className={classNames(
+                                        "inline-flex max-w-[96px] items-center truncate rounded-full border px-2 py-0.5 text-[10px] font-semibold",
+                                        getStatusToneClasses(item.status),
+                                      )}
+                                    >
+                                      {item.status}
+                                    </span>
+                                  ) : null}
+                                </div>
+
+                                <div className="min-h-0 p-1.5">
+                                  <div
+                                    className={classNames(
+                                      "flex h-full w-full items-center justify-center overflow-hidden rounded-[12px] border",
+                                      "border-gray-200 bg-gray-50",
+                                      "dark:border-slate-800 dark:bg-slate-900",
+                                    )}
+                                  >
+                                    {item.src ? (
+                                      <img
+                                        src={item.src}
+                                        alt={item.label ?? `Protocol ${String(item.protocolId)}`}
+                                        className="block h-full w-full object-contain"
+                                        draggable={false}
+                                      />
+                                    ) : (
+                                      <div className="px-4 text-center text-[11px] font-medium text-gray-500 dark:text-gray-400">
+                                        Preview not available
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+
+                                <div
+                                  className={classNames(
+                                    "border-t px-3 py-1.5",
+                                    "border-gray-200/80 bg-white",
+                                    "dark:border-slate-800 dark:bg-slate-950",
+                                  )}
+                                >
+                                  <div className="truncate text-[11px] font-semibold text-gray-800 dark:text-slate-200">
+                                    {item.label ?? `Protocol ${String(item.protocolId)}`}
+                                  </div>
+
+                                  
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </>
+                  ) : showProjectFallback ? (
+                    <>
+                      <div className="pointer-events-none absolute inset-y-0 left-0 z-[1] w-8 bg-gradient-to-r from-gray-50 via-gray-50/90 to-transparent dark:from-slate-900 dark:via-slate-900/90 dark:to-transparent" />
+                      <div className="pointer-events-none absolute inset-y-0 right-0 z-[1] w-8 bg-gradient-to-l from-gray-50 via-gray-50/90 to-transparent dark:from-slate-900 dark:via-slate-900/90 dark:to-transparent" />
+
+                      <div className="h-full overflow-x-auto overflow-y-hidden px-3 py-3 [scrollbar-width:thin]">
+                        <div className="h-full min-w-max">
+                          <img
+                            src={projectThumbnailSrc ?? undefined}
+                            alt={`${label} thumbnail`}
+                            className="block h-full w-auto max-w-none rounded-[18px]"
+                            draggable={false}
+                          />
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex h-full items-center justify-center px-6 text-center text-sm text-gray-500 dark:text-gray-400">
+                      {projectThumbnailLoading
+                        ? "Loading preview..."
+                        : galleryError || projectThumbnailError
+                          ? "Preview not available"
+                          : "No thumbnails yet"}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -629,7 +1017,9 @@ export default function ProjectCard(props: ProjectCardProps) {
                     >
                       <CalendarIcon className="h-4 w-4 text-violet-600 dark:text-violet-300" />
                       <span className="text-gray-600 dark:text-gray-400">Updated</span>
-                      <span className="font-semibold text-gray-900 dark:text-white">{formatDateShort(updatedAt)}</span>
+                      <span className="font-semibold text-gray-900 dark:text-white">
+                        {formatDateShort(updatedAt)}
+                      </span>
                     </span>
                   ) : createdAt ? (
                     <span
@@ -641,7 +1031,9 @@ export default function ProjectCard(props: ProjectCardProps) {
                     >
                       <CalendarIcon className="h-4 w-4 text-indigo-600 dark:text-indigo-300" />
                       <span className="text-gray-600 dark:text-gray-400">Created</span>
-                      <span className="font-semibold text-gray-900 dark:text-white">{formatDateShort(createdAt)}</span>
+                      <span className="font-semibold text-gray-900 dark:text-white">
+                        {formatDateShort(createdAt)}
+                      </span>
                     </span>
                   ) : null}
 
@@ -667,7 +1059,7 @@ export default function ProjectCard(props: ProjectCardProps) {
                     handleOpen();
                   }}
                   className={classNames(
-                    "inline-flex items-center gap-2 rounded-[10px] px-4 py-2.5 text-sm  transition",
+                    "inline-flex items-center gap-2 rounded-[10px] px-4 py-2.5 text-sm transition",
                     "bg-gradient-to-r from-indigo-600 via-sky-600 to-cyan-600 text-white shadow-sm",
                     "hover:brightness-[0.98] hover:shadow-md",
                   )}
@@ -678,8 +1070,6 @@ export default function ProjectCard(props: ProjectCardProps) {
               </div>
             </div>
           </div>
-
-
 
           <AnimatePresence>
             {isRenaming && (
@@ -713,8 +1103,12 @@ export default function ProjectCard(props: ProjectCardProps) {
                         {icon}
                       </div>
                       <div className="min-w-0">
-                        <div className="text-sm font-semibold text-gray-950 dark:text-white">Rename project</div>
-                        <div className="truncate text-sm text-gray-700 dark:text-gray-300">{label}</div>
+                        <div className="text-sm font-semibold text-gray-950 dark:text-white">
+                          Rename project
+                        </div>
+                        <div className="truncate text-sm text-gray-700 dark:text-gray-300">
+                          {label}
+                        </div>
                       </div>
                     </div>
 
@@ -845,7 +1239,8 @@ export default function ProjectCard(props: ProjectCardProps) {
                 const baseItemClass = "flex items-center gap-2 px-4 py-2.5 outline-none text-sm";
                 const enabledItemClass =
                   "cursor-pointer transition hover:bg-gray-50 focus:bg-gray-100 dark:hover:bg-slate-800/70 dark:focus:bg-slate-800/70";
-                const disabledItemClass = "cursor-not-allowed opacity-50 text-gray-400 dark:text-gray-500";
+                const disabledItemClass =
+                  "cursor-not-allowed opacity-50 text-gray-400 dark:text-gray-500";
 
                 const itemClass = (disabled: boolean) =>
                   classNames(baseItemClass, disabled ? disabledItemClass : enabledItemClass);
@@ -879,7 +1274,9 @@ export default function ProjectCard(props: ProjectCardProps) {
                       <RenameIcon
                         className={classNames(
                           "h-5 w-5",
-                          renameDisabled ? "text-gray-400 dark:text-gray-500" : "text-gray-700 dark:text-gray-200",
+                          renameDisabled
+                            ? "text-gray-400 dark:text-gray-500"
+                            : "text-gray-700 dark:text-gray-200",
                         )}
                       />
                       <span>Rename</span>
@@ -898,7 +1295,9 @@ export default function ProjectCard(props: ProjectCardProps) {
                       <UserPlus2
                         className={classNames(
                           "h-4 w-4",
-                          shareDisabled ? "text-gray-400 dark:text-gray-500" : "text-gray-700 dark:text-gray-200",
+                          shareDisabled
+                            ? "text-gray-400 dark:text-gray-500"
+                            : "text-gray-700 dark:text-gray-200",
                         )}
                       />
                       <span>Share</span>
@@ -912,7 +1311,9 @@ export default function ProjectCard(props: ProjectCardProps) {
                       data-disabled={removeDisabled ? "true" : "false"}
                       className={classNames(
                         itemClass(removeDisabled),
-                        !removeDisabled ? "hover:bg-red-50 focus:bg-red-50 dark:hover:bg-red-950/20 dark:focus:bg-red-950/20" : "",
+                        !removeDisabled
+                          ? "hover:bg-red-50 focus:bg-red-50 dark:hover:bg-red-950/20 dark:focus:bg-red-950/20"
+                          : "",
                       )}
                       onPointerMove={focusOnHoverIfEnabled(removeDisabled)}
                       onClick={runContextItem(removeDisabled, handleRemove)}
@@ -920,10 +1321,14 @@ export default function ProjectCard(props: ProjectCardProps) {
                       <TrashBinIcon
                         className={classNames(
                           "h-5 w-5",
-                          removeDisabled ? "text-gray-400 dark:text-gray-500" : "text-red-700 dark:text-red-300",
+                          removeDisabled
+                            ? "text-gray-400 dark:text-gray-500"
+                            : "text-red-700 dark:text-red-300",
                         )}
                       />
-                      <span className={!removeDisabled ? "text-red-700 dark:text-red-300" : undefined}>Remove</span>
+                      <span className={!removeDisabled ? "text-red-700 dark:text-red-300" : undefined}>
+                        Remove
+                      </span>
                     </li>
                   </ul>
                 );
@@ -953,7 +1358,9 @@ export default function ProjectCard(props: ProjectCardProps) {
               className="w-full max-w-sm rounded-2xl border border-gray-300/90 bg-white p-6 shadow-2xl subpixel-antialiased dark:border-gray-700 dark:bg-slate-900"
               onClick={(e: React.MouseEvent<HTMLDivElement>) => e.stopPropagation()}
             >
-              <h2 className="mb-4 text-lg font-semibold text-gray-950 dark:text-white">Delete project?</h2>
+              <h2 className="mb-4 text-lg font-semibold text-gray-950 dark:text-white">
+                Delete project?
+              </h2>
               <p className="mb-6 text-sm leading-6 text-gray-800 dark:text-gray-200">
                 This action cannot be undone. Are you sure you want to delete <strong>{label}</strong>?
               </p>

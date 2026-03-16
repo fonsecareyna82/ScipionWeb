@@ -1,8 +1,7 @@
 // src/pages/projects/Plugins.tsx
 import { useEffect, useMemo, useState } from "react";
-import { RefreshCw, Search, X } from "lucide-react";
+import { Search, X } from "lucide-react";
 
-import PageBreadcrumb from "../../../components/common/PageBreadCrumb";
 import PageMeta from "../../../components/common/PageMeta";
 import PluginCard from "../../../components/plugin/PluginsCard";
 import { usePlugins } from "@/hooks/usePlugins";
