@@ -153,7 +153,7 @@ function getStatusToneClasses(raw?: string): string {
   if (
     value.includes("fail") ||
     value.includes("error") ||
-    value.includes("stopped") || 
+    value.includes("stopped") ||
     value.includes("aborted") ||
     value.includes("failed") ||
     value.includes("abort")
@@ -198,35 +198,96 @@ function appendQueryParams(
 
 function normalizeThumbnailItems(raw: any): ProtocolThumbnailItem[] {
   const list = Array.isArray(raw) ? raw : Array.isArray(raw?.items) ? raw.items : [];
+  const flat: ProtocolThumbnailItem[] = [];
 
-  return list
-    .map((item: any) => {
-      const protocolId = item?.protocolId ?? item?.protocol_id ?? item?.id ?? null;
-      if (protocolId === null || protocolId === undefined) return null;
+  for (const item of list) {
+    const protocolId = item?.protocolId ?? item?.protocol_id ?? item?.id ?? null;
+    if (protocolId === null || protocolId === undefined) continue;
 
-      return {
-        protocolId,
-        label:
-          item?.protocolLabel ??
-          item?.protocol_label ??
-          item?.label ??
-          item?.name ??
-          `Protocol ${String(protocolId)}`,
-        status: item?.status ?? undefined,
-        outputName: item?.outputName ?? item?.output_name ?? null,
-        outputClassName: item?.outputClassName ?? item?.output_class_name ?? null,
-        priority:
-          typeof item?.priority === "number"
-            ? item.priority
-            : item?.priority != null
-              ? Number(item.priority)
-              : null,
-        exists: item?.exists !== undefined ? Boolean(item.exists) : true,
-        thumbnailUrl: item?.thumbnailUrl ?? item?.thumbnail_url ?? null,
-        thumbnailRebuildUrl: item?.thumbnailRebuildUrl ?? item?.thumbnail_rebuild_url ?? null,
-      } satisfies ProtocolThumbnailItem;
-    })
-    .filter(Boolean) as ProtocolThumbnailItem[];
+    const protocolLabel =
+      item?.protocolLabel ??
+      item?.protocol_label ??
+      item?.label ??
+      item?.name ??
+      `Protocol ${String(protocolId)}`;
+
+    const protocolStatus = item?.status ?? undefined;
+
+    const parentThumbnailUrl =
+      item?.thumbnailUrl ??
+      item?.thumbnail_url ??
+      null;
+
+    const parentThumbnailRebuildUrl =
+      item?.thumbnailRebuildUrl ??
+      item?.thumbnail_rebuild_url ??
+      null;
+
+    const outputs = Array.isArray(item?.outputs) ? item.outputs : null;
+
+    if (outputs && outputs.length > 0) {
+      for (const output of outputs) {
+        flat.push({
+          protocolId,
+          label: protocolLabel,
+          status: output?.status ?? protocolStatus,
+          outputName: output?.outputName ?? output?.output_name ?? null,
+          outputClassName: output?.outputClassName ?? output?.output_class_name ?? null,
+          priority:
+            typeof output?.score === "number"
+              ? output.score
+              : output?.score != null
+                ? Number(output.score)
+                : typeof output?.priority === "number"
+                  ? output.priority
+                  : output?.priority != null
+                    ? Number(output.priority)
+                    : null,
+          exists: output?.exists !== undefined ? Boolean(output.exists) : true,
+          thumbnailUrl:
+            output?.thumbnailUrl ??
+            output?.thumbnail_url ??
+            parentThumbnailUrl,
+          thumbnailRebuildUrl:
+            output?.thumbnailRebuildUrl ??
+            output?.thumbnail_rebuild_url ??
+            parentThumbnailRebuildUrl,
+        });
+      }
+      continue;
+    }
+
+    flat.push({
+      protocolId,
+      label: protocolLabel,
+      status: protocolStatus,
+      outputName: item?.outputName ?? item?.output_name ?? null,
+      outputClassName: item?.outputClassName ?? item?.output_class_name ?? null,
+      priority:
+        typeof item?.priority === "number"
+          ? item.priority
+          : item?.priority != null
+            ? Number(item.priority)
+            : null,
+      exists: item?.exists !== undefined ? Boolean(item.exists) : true,
+      thumbnailUrl: parentThumbnailUrl,
+      thumbnailRebuildUrl: parentThumbnailRebuildUrl,
+    });
+  }
+
+  flat.sort((a, b) => {
+    const pa = typeof a.priority === "number" ? a.priority : -1;
+    const pb = typeof b.priority === "number" ? b.priority : -1;
+    if (pb !== pa) return pb - pa;
+
+    const aProtocol = Number(a.protocolId) || 0;
+    const bProtocol = Number(b.protocolId) || 0;
+    if (bProtocol !== aProtocol) return bProtocol - aProtocol;
+
+    return String(a.outputName ?? "").localeCompare(String(b.outputName ?? ""));
+  });
+
+  return flat.filter((item) => item.exists !== false);
 }
 
 const crispText = "subpixel-antialiased [text-rendering:optimizeLegibility]";
@@ -358,6 +419,7 @@ export default function ProjectCard(props: ProjectCardProps) {
         const listUrl = appendQueryParams(resolvedThumbnailItemsUrl, {
           size: 320,
           maxProtocols: 12,
+          maxOutputsPerProtocol: 4,
         });
 
         const response = await fetchWithAuth(listUrl, {
@@ -898,7 +960,7 @@ export default function ProjectCard(props: ProjectCardProps) {
                         <div className="flex h-full min-w-max items-stretch gap-2.5">
                           {galleryItems.map((item) => (
                             <div
-                              key={String(item.protocolId)}
+                              key={`${String(item.protocolId)}-${String(item.outputName ?? item.outputClassName ?? "output")}`}
                               className="group h-full w-[284px] shrink-0"
                               title={item.label ?? `Protocol ${String(item.protocolId)}`}
                             >
