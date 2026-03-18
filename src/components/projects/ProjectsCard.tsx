@@ -80,6 +80,116 @@ type HydratedProtocolThumbnailGroup = Omit<ProtocolThumbnailGroup, "outputs"> & 
   outputs: HydratedProtocolThumbnailOutputItem[];
 };
 
+type ThumbnailItemsCacheEntry = {
+  ts: number;
+  data: ProtocolThumbnailGroup[];
+};
+
+type ThumbnailObjectUrlCacheEntry = {
+  url: string;
+  touchedAt: number;
+};
+
+const THUMBNAIL_ITEMS_TTL_MS = 20_000;
+const THUMBNAIL_ITEMS_CACHE = new Map<string, ThumbnailItemsCacheEntry>();
+
+const THUMBNAIL_OBJECT_URL_CACHE_MAX = 180;
+const THUMBNAIL_OBJECT_URL_CACHE = new Map<string, ThumbnailObjectUrlCacheEntry>();
+const THUMBNAIL_PENDING_REQUESTS = new Map<string, Promise<string | null>>();
+
+function getCachedThumbnailObjectUrl(key: string): string | null {
+  const entry = THUMBNAIL_OBJECT_URL_CACHE.get(key);
+  if (!entry) return null;
+
+  entry.touchedAt = Date.now();
+  return entry.url;
+}
+
+function setCachedThumbnailObjectUrl(key: string, objectUrl: string): void {
+  THUMBNAIL_OBJECT_URL_CACHE.set(key, {
+    url: objectUrl,
+    touchedAt: Date.now(),
+  });
+
+  while (THUMBNAIL_OBJECT_URL_CACHE.size > THUMBNAIL_OBJECT_URL_CACHE_MAX) {
+    let oldestKey: string | null = null;
+    let oldestTs = Number.POSITIVE_INFINITY;
+
+    for (const [cacheKey, entry] of THUMBNAIL_OBJECT_URL_CACHE.entries()) {
+      if (entry.touchedAt < oldestTs) {
+        oldestTs = entry.touchedAt;
+        oldestKey = cacheKey;
+      }
+    }
+
+    if (!oldestKey) break;
+
+    const oldestEntry = THUMBNAIL_OBJECT_URL_CACHE.get(oldestKey);
+    if (oldestEntry?.url) {
+      URL.revokeObjectURL(oldestEntry.url);
+    }
+    THUMBNAIL_OBJECT_URL_CACHE.delete(oldestKey);
+  }
+}
+
+async function fetchThumbnailObjectUrl(url: string): Promise<string | null> {
+  const cached = getCachedThumbnailObjectUrl(url);
+  if (cached) return cached;
+
+  const pending = THUMBNAIL_PENDING_REQUESTS.get(url);
+  if (pending) return pending;
+
+  const promise = (async () => {
+    const response = await fetchWithAuth(url, {
+      method: "GET",
+      cache: "default",
+    });
+
+    if (!response.ok) {
+      throw new Error(`Thumbnail request failed: ${response.status}`);
+    }
+
+    const blob = await response.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    setCachedThumbnailObjectUrl(url, objectUrl);
+    return objectUrl;
+  })()
+    .catch(() => null)
+    .finally(() => {
+      THUMBNAIL_PENDING_REQUESTS.delete(url);
+    });
+
+  THUMBNAIL_PENDING_REQUESTS.set(url, promise);
+  return promise;
+}
+
+async function runWithConcurrencyLimit<T>(
+  items: T[],
+  limit: number,
+  worker: (item: T) => Promise<void>,
+): Promise<void> {
+  if (!items.length) return;
+
+  let nextIndex = 0;
+
+  async function consume(): Promise<void> {
+    while (true) {
+      const currentIndex = nextIndex;
+      nextIndex += 1;
+
+      if (currentIndex >= items.length) return;
+      await worker(items[currentIndex]);
+    }
+  }
+
+  const workers = Array.from(
+    { length: Math.min(limit, items.length) },
+    () => consume(),
+  );
+
+  await Promise.all(workers);
+}
+
 function classNames(...xs: Array<string | false | null | undefined>): string {
   return xs.filter(Boolean).join(" ");
 }
@@ -297,20 +407,8 @@ export default function ProjectCard(props: ProjectCardProps) {
   const [projectThumbnailLoading, setProjectThumbnailLoading] = useState(false);
   const [projectThumbnailError, setProjectThumbnailError] = useState(false);
 
-  const galleryObjectUrlsRef = useRef<string[]>([]);
-  const projectObjectUrlRef = useRef<string | null>(null);
-
-  const clearGalleryObjectUrls = useCallback(() => {
-    galleryObjectUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
-    galleryObjectUrlsRef.current = [];
-  }, []);
-
-  const clearProjectObjectUrl = useCallback(() => {
-    if (projectObjectUrlRef.current) {
-      URL.revokeObjectURL(projectObjectUrlRef.current);
-      projectObjectUrlRef.current = null;
-    }
-  }, []);
+  const cardRef = useRef<HTMLDivElement | null>(null);
+  const [isInViewport, setIsInViewport] = useState(false);
 
   const resolvedThumbnailUrl = useMemo(() => resolveApiUrl(thumbnailUrl), [thumbnailUrl]);
 
@@ -339,29 +437,46 @@ export default function ProjectCard(props: ProjectCardProps) {
     setNewDescription(description || "");
   }, [label, description]);
 
+
   useEffect(() => {
+    if (isInViewport) return;
+    if (!cardRef.current) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries.some(
+          (entry) => entry.isIntersecting || entry.intersectionRatio > 0,
+        );
+        if (visible) {
+          setIsInViewport(true);
+          observer.disconnect();
+        }
+      },
+      {
+        root: null,
+        rootMargin: "240px 0px",
+        threshold: 0.01,
+      },
+    );
+
+    observer.observe(cardRef.current);
+
     return () => {
-      clearGalleryObjectUrls();
-      clearProjectObjectUrl();
+      observer.disconnect();
     };
-  }, [clearGalleryObjectUrls, clearProjectObjectUrl]);
+  }, [isInViewport]);
+
 
   useEffect(() => {
     let cancelled = false;
     const controller = new AbortController();
 
     async function loadGalleryItems() {
-      if (!resolvedThumbnailItemsUrl) {
-        clearGalleryObjectUrls();
-        setGalleryItems([]);
-        setGalleryMetaLoading(false);
-        setGalleryImagesLoading(false);
-        setGalleryError(false);
+      if (!isInViewport || !resolvedThumbnailItemsUrl) {
         return;
       }
 
       setGalleryMetaLoading(true);
-      setGalleryImagesLoading(false);
       setGalleryError(false);
 
       try {
@@ -371,92 +486,115 @@ export default function ProjectCard(props: ProjectCardProps) {
           maxOutputsPerProtocol: 4,
         });
 
-        const response = await fetchWithAuth(listUrl, {
-          method: "GET",
-          signal: controller.signal,
-        });
+        let groups: ProtocolThumbnailGroup[] = [];
+        const cachedEntry = THUMBNAIL_ITEMS_CACHE.get(listUrl);
 
-        if (!response.ok) {
-          throw new Error(`Failed to fetch thumbnail items: ${response.status}`);
+        if (cachedEntry && Date.now() - cachedEntry.ts < THUMBNAIL_ITEMS_TTL_MS) {
+          groups = cachedEntry.data;
+        } else {
+          const response = await fetchWithAuth(listUrl, {
+            method: "GET",
+            signal: controller.signal,
+            cache: "default",
+          });
+
+          if (!response.ok) {
+            throw new Error(`Failed to fetch thumbnail items: ${response.status}`);
+          }
+
+          const payload = await response.json();
+          groups = normalizeThumbnailItems(payload);
+          THUMBNAIL_ITEMS_CACHE.set(listUrl, {
+            ts: Date.now(),
+            data: groups,
+          });
         }
-
-        const payload = await response.json();
-        const groups = normalizeThumbnailItems(payload);
 
         if (cancelled) return;
 
-        if (groups.length === 0) {
-          clearGalleryObjectUrls();
+        if (!groups.length) {
           setGalleryItems([]);
+          setGalleryImagesLoading(false);
           setGalleryError(false);
           return;
         }
 
-        setGalleryImagesLoading(true);
-
-        const createdUrls: string[] = [];
-
-        const hydratedGroups = await Promise.all(
-          groups.map(async (group): Promise<HydratedProtocolThumbnailGroup> => {
-            const outputs = await Promise.all(
-              (group.outputs || []).map(
-                async (output): Promise<HydratedProtocolThumbnailOutputItem> => {
-                  const itemUrl = resolveApiUrl(output.thumbnailUrl);
-
-                  if (!itemUrl) {
-                    return { ...output, src: null, hasError: true };
-                  }
-
-                  try {
-                    const imageUrl = appendQueryParams(itemUrl, { size: 320 });
-                    const imageResponse = await fetchWithAuth(imageUrl, {
-                      method: "GET",
-                      signal: controller.signal,
-                    });
-
-                    if (!imageResponse.ok) {
-                      throw new Error(`Failed to fetch protocol thumbnail: ${imageResponse.status}`);
-                    }
-
-                    const blob = await imageResponse.blob();
-                    const objectUrl = URL.createObjectURL(blob);
-                    createdUrls.push(objectUrl);
-
-                    return {
-                      ...output,
-                      src: objectUrl,
-                      hasError: false,
-                    };
-                  } catch {
-                    return {
-                      ...output,
-                      src: null,
-                      hasError: true,
-                    };
-                  }
-                },
-              ),
-            );
+        const initialGroups: HydratedProtocolThumbnailGroup[] = groups.map((group) => ({
+          ...group,
+          outputs: (group.outputs || []).map((output) => {
+            const rawImageUrl = resolveApiUrl(output.thumbnailUrl);
+            const requestUrl = rawImageUrl
+              ? appendQueryParams(rawImageUrl, { size: 320 })
+              : null;
+            const cachedSrc = requestUrl ? getCachedThumbnailObjectUrl(requestUrl) : null;
 
             return {
-              ...group,
-              outputs,
+              ...output,
+              src: cachedSrc,
+              hasError: !requestUrl,
             };
           }),
+        }));
+
+        setGalleryItems(initialGroups);
+        setGalleryImagesLoading(true);
+
+        const tasks = initialGroups.flatMap((group, groupIndex) =>
+          group.outputs.map((output, outputIndex) => ({
+            groupIndex,
+            outputIndex,
+            requestUrl: output.thumbnailUrl
+              ? appendQueryParams(resolveApiUrl(output.thumbnailUrl) ?? "", { size: 320 })
+              : null,
+          })),
         );
 
-        if (cancelled) {
-          createdUrls.forEach((url) => URL.revokeObjectURL(url));
-          return;
-        }
+        await runWithConcurrencyLimit(tasks, 6, async (task) => {
+          if (!task.requestUrl) {
+            if (cancelled) return;
 
-        clearGalleryObjectUrls();
-        galleryObjectUrlsRef.current = createdUrls;
-        setGalleryItems(hydratedGroups);
+            setGalleryItems((prev) =>
+              prev.map((group, groupIndex) =>
+                groupIndex !== task.groupIndex
+                  ? group
+                  : {
+                    ...group,
+                    outputs: group.outputs.map((output, outputIndex) =>
+                      outputIndex !== task.outputIndex
+                        ? output
+                        : { ...output, src: null, hasError: true },
+                    ),
+                  },
+              ),
+            );
+            return;
+          }
+
+          const objectUrl = await fetchThumbnailObjectUrl(task.requestUrl);
+          if (cancelled) return;
+
+          setGalleryItems((prev) =>
+            prev.map((group, groupIndex) =>
+              groupIndex !== task.groupIndex
+                ? group
+                : {
+                  ...group,
+                  outputs: group.outputs.map((output, outputIndex) =>
+                    outputIndex !== task.outputIndex
+                      ? output
+                      : {
+                        ...output,
+                        src: objectUrl,
+                        hasError: !objectUrl,
+                      },
+                  ),
+                },
+            ),
+          );
+        });
       } catch {
         if (controller.signal.aborted || cancelled) return;
 
-        clearGalleryObjectUrls();
         setGalleryItems([]);
         setGalleryError(true);
       } finally {
@@ -473,7 +611,8 @@ export default function ProjectCard(props: ProjectCardProps) {
       cancelled = true;
       controller.abort();
     };
-  }, [resolvedThumbnailItemsUrl, clearGalleryObjectUrls]);
+  }, [isInViewport, resolvedThumbnailItemsUrl]);
+
 
   const shouldLoadProjectFallback = useMemo(() => {
     if (!resolvedThumbnailUrl) return false;
@@ -484,14 +623,9 @@ export default function ProjectCard(props: ProjectCardProps) {
 
   useEffect(() => {
     let cancelled = false;
-    const controller = new AbortController();
 
     async function loadProjectThumbnailFallback() {
-      if (!shouldLoadProjectFallback || !resolvedThumbnailUrl) {
-        clearProjectObjectUrl();
-        setProjectThumbnailSrc(null);
-        setProjectThumbnailLoading(false);
-        setProjectThumbnailError(false);
+      if (!isInViewport || !resolvedThumbnailUrl) {
         return;
       }
 
@@ -499,31 +633,14 @@ export default function ProjectCard(props: ProjectCardProps) {
       setProjectThumbnailError(false);
 
       try {
-        const response = await fetchWithAuth(
-          appendQueryParams(resolvedThumbnailUrl, { size: 960 }),
-          {
-            method: "GET",
-            signal: controller.signal,
-          },
-        );
-
-        if (!response.ok) {
-          throw new Error(`Thumbnail request failed: ${response.status}`);
-        }
-
-        const blob = await response.blob();
-        const objectUrl = URL.createObjectURL(blob);
+        const requestUrl = appendQueryParams(resolvedThumbnailUrl, { size: 960 });
+        const objectUrl = await fetchThumbnailObjectUrl(requestUrl);
 
         if (!cancelled) {
-          clearProjectObjectUrl();
-          projectObjectUrlRef.current = objectUrl;
           setProjectThumbnailSrc(objectUrl);
-        } else {
-          URL.revokeObjectURL(objectUrl);
         }
       } catch {
         if (!cancelled) {
-          clearProjectObjectUrl();
           setProjectThumbnailSrc(null);
           setProjectThumbnailError(true);
         }
@@ -538,9 +655,8 @@ export default function ProjectCard(props: ProjectCardProps) {
 
     return () => {
       cancelled = true;
-      controller.abort();
     };
-  }, [resolvedThumbnailUrl, shouldLoadProjectFallback, clearProjectObjectUrl]);
+  }, [isInViewport, resolvedThumbnailUrl]);
 
   const handleOpen = useCallback(() => {
     if (isRenaming) return;
@@ -767,9 +883,22 @@ export default function ProjectCard(props: ProjectCardProps) {
     isSelected ? "border-indigo-500/55 ring-2 ring-inset ring-indigo-500/14" : "",
   );
 
-  const showGallery = galleryItems.length > 0;
-  const showGalleryLoading = galleryMetaLoading || galleryImagesLoading;
-  const showProjectFallback = !showGallery && Boolean(projectThumbnailSrc);
+  const galleryHasImages = useMemo(
+    () =>
+      galleryItems.some((group) =>
+        (group.outputs || []).some((output) => Boolean(output.src)),
+      ),
+    [galleryItems],
+  );
+
+  const showGallery =
+    galleryItems.length > 0 && (galleryHasImages || (!galleryMetaLoading && !galleryImagesLoading));
+
+  const showProjectFallback = Boolean(projectThumbnailSrc) && !showGallery;
+
+  const showGalleryLoading =
+    !showProjectFallback &&
+    (galleryMetaLoading || (galleryItems.length > 0 && galleryImagesLoading && !galleryHasImages));
 
   const galleryCountLabel = useMemo(() => {
     if (showGallery) {
@@ -798,6 +927,7 @@ export default function ProjectCard(props: ProjectCardProps) {
   return (
     <>
       <motion.div
+        ref={cardRef}
         initial={{ opacity: 0, y: 14 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.22, ease: "easeOut" }}
@@ -962,7 +1092,7 @@ export default function ProjectCard(props: ProjectCardProps) {
                                       "dark:border-slate-800 dark:bg-slate-900",
                                     )}
                                   >
-                                     <div className="truncate text-[11px] font-semibold text-gray-800 dark:text-slate-200">
+                                    <div className="truncate text-[11px] font-semibold text-gray-800 dark:text-slate-200">
                                       {group.label ?? `Protocol ${String(group.protocolId)}`}
                                     </div>
                                   </div>
@@ -1003,7 +1133,7 @@ export default function ProjectCard(props: ProjectCardProps) {
                                       "dark:border-slate-800 dark:bg-slate-950",
                                     )}
                                   >
-                                    
+
                                     {group.status ? (
                                       <span
                                         className={classNames(
@@ -1014,7 +1144,7 @@ export default function ProjectCard(props: ProjectCardProps) {
                                         {group.status}
                                       </span>
                                     ) : null}
-                                                                       
+
                                   </div>
                                 </div>
                               </div>
@@ -1135,6 +1265,7 @@ export default function ProjectCard(props: ProjectCardProps) {
           <AnimatePresence>
             {isRenaming && (
               <motion.div
+                ref={cardRef}
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
@@ -1403,6 +1534,7 @@ export default function ProjectCard(props: ProjectCardProps) {
       <AnimatePresence>
         {showDeleteModal && (
           <motion.div
+            ref={cardRef}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -1412,6 +1544,7 @@ export default function ProjectCard(props: ProjectCardProps) {
             onClick={() => setShowDeleteModal(false)}
           >
             <motion.div
+              ref={cardRef}
               initial={{ scale: 0.96, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.96, opacity: 0 }}
