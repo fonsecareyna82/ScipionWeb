@@ -492,6 +492,9 @@ export default function ProjectCard(props: ProjectCardProps) {
         if (cachedEntry && Date.now() - cachedEntry.ts < THUMBNAIL_ITEMS_TTL_MS) {
           groups = cachedEntry.data;
         } else {
+
+          setProjectThumbnailSrc(null);
+          setProjectThumbnailError(false);
           const response = await fetchWithAuth(listUrl, {
             method: "GET",
             signal: controller.signal,
@@ -625,7 +628,7 @@ export default function ProjectCard(props: ProjectCardProps) {
     let cancelled = false;
 
     async function loadProjectThumbnailFallback() {
-      if (!isInViewport || !resolvedThumbnailUrl) {
+      if (!isInViewport || !shouldLoadProjectFallback || !resolvedThumbnailUrl) {
         return;
       }
 
@@ -656,7 +659,7 @@ export default function ProjectCard(props: ProjectCardProps) {
     return () => {
       cancelled = true;
     };
-  }, [isInViewport, resolvedThumbnailUrl]);
+  }, [isInViewport, resolvedThumbnailUrl, shouldLoadProjectFallback]);
 
   const handleOpen = useCallback(() => {
     if (isRenaming) return;
@@ -1265,7 +1268,6 @@ export default function ProjectCard(props: ProjectCardProps) {
           <AnimatePresence>
             {isRenaming && (
               <motion.div
-                ref={cardRef}
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
@@ -1534,7 +1536,6 @@ export default function ProjectCard(props: ProjectCardProps) {
       <AnimatePresence>
         {showDeleteModal && (
           <motion.div
-            ref={cardRef}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -1544,7 +1545,6 @@ export default function ProjectCard(props: ProjectCardProps) {
             onClick={() => setShowDeleteModal(false)}
           >
             <motion.div
-              ref={cardRef}
               initial={{ scale: 0.96, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.96, opacity: 0 }}
