@@ -480,6 +480,10 @@ export default function ProjectCard(props: ProjectCardProps) {
       setGalleryError(false);
 
       try {
+
+        setProjectThumbnailSrc(null);
+        setProjectThumbnailError(false);
+
         const listUrl = appendQueryParams(resolvedThumbnailItemsUrl, {
           size: 320,
           maxProtocols: 12,
@@ -493,8 +497,6 @@ export default function ProjectCard(props: ProjectCardProps) {
           groups = cachedEntry.data;
         } else {
 
-          setProjectThumbnailSrc(null);
-          setProjectThumbnailError(false);
           const response = await fetchWithAuth(listUrl, {
             method: "GET",
             signal: controller.signal,
@@ -894,14 +896,17 @@ export default function ProjectCard(props: ProjectCardProps) {
     [galleryItems],
   );
 
-  const showGallery =
-    galleryItems.length > 0 && (galleryHasImages || (!galleryMetaLoading && !galleryImagesLoading));
+  const hasGalleryStructure = galleryItems.length > 0;
 
-  const showProjectFallback = Boolean(projectThumbnailSrc) && !showGallery;
+  const showGallery = hasGalleryStructure;
 
-  const showGalleryLoading =
-    !showProjectFallback &&
-    (galleryMetaLoading || (galleryItems.length > 0 && galleryImagesLoading && !galleryHasImages));
+  const showProjectFallback =
+    Boolean(projectThumbnailSrc) &&
+    !hasGalleryStructure &&
+    !galleryMetaLoading &&
+    !galleryImagesLoading;
+
+  const showGalleryLoading = !hasGalleryStructure && galleryMetaLoading;
 
   const galleryCountLabel = useMemo(() => {
     if (showGallery) {
@@ -1119,6 +1124,8 @@ export default function ProjectCard(props: ProjectCardProps) {
                                               className="block h-full w-full object-contain"
                                               draggable={false}
                                             />
+                                          ) : galleryImagesLoading ? (
+                                            <div className="h-full w-full animate-pulse bg-gradient-to-br from-slate-100 via-slate-50 to-slate-100 dark:from-slate-800 dark:via-slate-900 dark:to-slate-800" />
                                           ) : (
                                             <div className="flex h-full items-center justify-center px-3 text-center text-[10px] font-medium text-gray-500 dark:text-gray-400">
                                               Preview not available
