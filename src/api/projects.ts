@@ -2691,3 +2691,55 @@ export async function createNewSetOfCTFTomoSeries(
 
   return safeJson<any>(res);
 }
+
+
+export function resolveBackendUrl(raw?: string | null): string | null {
+  const value = String(raw ?? "").trim();
+  if (!value) return null;
+
+  if (/^https?:\/\//i.test(value)) return value;
+  if (value.startsWith("/")) return `${BASE_URL}${value}`;
+
+  return `${BASE_URL}/${value}`;
+}
+
+export async function fetchJsonUrl(
+  url: string,
+  opts: {
+    signal?: AbortSignal;
+    cache?: RequestCache;
+  } = {},
+): Promise<any> {
+  const response = await fetchWithAuth(url, {
+    method: "GET",
+    signal: opts.signal,
+    cache: opts.cache ?? "default",
+  });
+
+  if (!response.ok) {
+    throw await toApiError(response, "Failed to fetch JSON resource");
+  }
+
+  return safeJson<any>(response);
+}
+
+export async function fetchBlobObjectUrl(
+  url: string,
+  opts: {
+    signal?: AbortSignal;
+    cache?: RequestCache;
+  } = {},
+): Promise<string> {
+  const response = await fetchWithAuth(url, {
+    method: "GET",
+    signal: opts.signal,
+    cache: opts.cache ?? "default",
+  });
+
+  if (!response.ok) {
+    throw await toApiError(response, "Failed to fetch binary resource");
+  }
+
+  const blob = await response.blob();
+  return URL.createObjectURL(blob);
+}

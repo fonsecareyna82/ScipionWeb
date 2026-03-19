@@ -44,6 +44,25 @@ import type {
 const toId = (id: string | number | null | undefined): string => String(id);
 
 const defaultService: ProjectService = {
+
+  // ──────────────────────────── Generic authenticated resources ────────────────────────────
+
+  resolveBackendUrl: (raw?: string | null) =>
+    api.resolveBackendUrl(raw),
+
+  fetchJsonUrl: (
+    url: string,
+    opts?: { signal?: AbortSignal; cache?: RequestCache },
+  ) =>
+    api.fetchJsonUrl(url, opts),
+
+  fetchBlobObjectUrl: (
+    url: string,
+    opts?: { signal?: AbortSignal; cache?: RequestCache },
+  ) =>
+    api.fetchBlobObjectUrl(url, opts),
+
+
   // --- Reads ---
   fetchList: () => api.fetchProjects(),
 

@@ -5,8 +5,6 @@ import { AnimatePresence, motion } from "framer-motion";
 import { createPortal } from "react-dom";
 import toast from "react-hot-toast";
 import { X, UserPlus2 } from "lucide-react";
-import { BASE_URL } from "@/config";
-import { fetchWithAuth } from "@/api/auth";
 
 import {
   CalendarIcon,
@@ -132,36 +130,7 @@ function setCachedThumbnailObjectUrl(key: string, objectUrl: string): void {
   }
 }
 
-async function fetchThumbnailObjectUrl(url: string): Promise<string | null> {
-  const cached = getCachedThumbnailObjectUrl(url);
-  if (cached) return cached;
 
-  const pending = THUMBNAIL_PENDING_REQUESTS.get(url);
-  if (pending) return pending;
-
-  const promise = (async () => {
-    const response = await fetchWithAuth(url, {
-      method: "GET",
-      cache: "default",
-    });
-
-    if (!response.ok) {
-      throw new Error(`Thumbnail request failed: ${response.status}`);
-    }
-
-    const blob = await response.blob();
-    const objectUrl = URL.createObjectURL(blob);
-    setCachedThumbnailObjectUrl(url, objectUrl);
-    return objectUrl;
-  })()
-    .catch(() => null)
-    .finally(() => {
-      THUMBNAIL_PENDING_REQUESTS.delete(url);
-    });
-
-  THUMBNAIL_PENDING_REQUESTS.set(url, promise);
-  return promise;
-}
 
 async function runWithConcurrencyLimit<T>(
   items: T[],
@@ -287,15 +256,6 @@ function getStatusToneClasses(raw?: string): string {
   );
 }
 
-function resolveApiUrl(raw?: string | null): string | null {
-  const value = String(raw ?? "").trim();
-  if (!value) return null;
-
-  if (/^https?:\/\//i.test(value)) return value;
-  if (value.startsWith("/")) return `${BASE_URL}${value}`;
-
-  return `${BASE_URL}/${value}`;
-}
 
 function appendQueryParams(
   url: string,
@@ -410,11 +370,14 @@ export default function ProjectCard(props: ProjectCardProps) {
   const cardRef = useRef<HTMLDivElement | null>(null);
   const [isInViewport, setIsInViewport] = useState(false);
 
-  const resolvedThumbnailUrl = useMemo(() => resolveApiUrl(thumbnailUrl), [thumbnailUrl]);
+  const resolvedThumbnailUrl = useMemo(
+    () => svc.resolveBackendUrl(thumbnailUrl),
+    [svc, thumbnailUrl],
+  );
 
   const resolvedThumbnailItemsUrl = useMemo(
-    () => resolveApiUrl(thumbnailItemsUrl),
-    [thumbnailItemsUrl],
+    () => svc.resolveBackendUrl(thumbnailItemsUrl),
+    [svc, thumbnailItemsUrl],
   );
 
   const projectIdLabel = useMemo(() => `P${String(id)}`, [id]);
@@ -431,6 +394,34 @@ export default function ProjectCard(props: ProjectCardProps) {
     const raw = String(status ?? badgeValue ?? "").trim();
     return raw || null;
   }, [status, badgeValue]);
+
+
+  const fetchThumbnailObjectUrl = useCallback(
+    async (url: string): Promise<string | null> => {
+      const cached = getCachedThumbnailObjectUrl(url);
+      if (cached) return cached;
+
+      const pending = THUMBNAIL_PENDING_REQUESTS.get(url);
+      if (pending) return pending;
+
+      const promise = svc
+        .fetchBlobObjectUrl(url, {
+          cache: "default",
+        })
+        .then((objectUrl) => {
+          setCachedThumbnailObjectUrl(url, objectUrl);
+          return objectUrl;
+        })
+        .catch(() => null)
+        .finally(() => {
+          THUMBNAIL_PENDING_REQUESTS.delete(url);
+        });
+
+      THUMBNAIL_PENDING_REQUESTS.set(url, promise);
+      return promise;
+    },
+    [svc],
+  );
 
   useEffect(() => {
     setNewLabel(label);
@@ -497,17 +488,11 @@ export default function ProjectCard(props: ProjectCardProps) {
           groups = cachedEntry.data;
         } else {
 
-          const response = await fetchWithAuth(listUrl, {
-            method: "GET",
+          const payload = await svc.fetchJsonUrl(listUrl, {
             signal: controller.signal,
             cache: "default",
           });
 
-          if (!response.ok) {
-            throw new Error(`Failed to fetch thumbnail items: ${response.status}`);
-          }
-
-          const payload = await response.json();
           groups = normalizeThumbnailItems(payload);
           THUMBNAIL_ITEMS_CACHE.set(listUrl, {
             ts: Date.now(),
@@ -527,7 +512,7 @@ export default function ProjectCard(props: ProjectCardProps) {
         const initialGroups: HydratedProtocolThumbnailGroup[] = groups.map((group) => ({
           ...group,
           outputs: (group.outputs || []).map((output) => {
-            const rawImageUrl = resolveApiUrl(output.thumbnailUrl);
+            const rawImageUrl = svc.resolveBackendUrl(output.thumbnailUrl);
             const requestUrl = rawImageUrl
               ? appendQueryParams(rawImageUrl, { size: 320 })
               : null;
@@ -549,7 +534,7 @@ export default function ProjectCard(props: ProjectCardProps) {
             groupIndex,
             outputIndex,
             requestUrl: output.thumbnailUrl
-              ? appendQueryParams(resolveApiUrl(output.thumbnailUrl) ?? "", { size: 320 })
+              ? appendQueryParams(svc.resolveBackendUrl(output.thumbnailUrl) ?? "", { size: 320 })
               : null,
           })),
         );
@@ -616,7 +601,7 @@ export default function ProjectCard(props: ProjectCardProps) {
       cancelled = true;
       controller.abort();
     };
-  }, [isInViewport, resolvedThumbnailItemsUrl]);
+  }, [isInViewport, resolvedThumbnailItemsUrl, svc]);
 
 
   const shouldLoadProjectFallback = useMemo(() => {
@@ -661,7 +646,7 @@ export default function ProjectCard(props: ProjectCardProps) {
     return () => {
       cancelled = true;
     };
-  }, [isInViewport, resolvedThumbnailUrl, shouldLoadProjectFallback]);
+  }, [isInViewport, resolvedThumbnailUrl, shouldLoadProjectFallback, fetchThumbnailObjectUrl]);
 
   const handleOpen = useCallback(() => {
     if (isRenaming) return;

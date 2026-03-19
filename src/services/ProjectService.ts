@@ -2,6 +2,13 @@
 
 import { loadWorkflowPayload } from "@/api/projects";
 
+
+/** Generic Authenticated Request Options */
+export type AuthenticatedRequestOptions = {
+  signal?: AbortSignal;
+  cache?: RequestCache;
+};
+
 /** Common ID type to accept either string or number seamlessly. */
 export type Id = string | number | null | undefined;
 
@@ -571,6 +578,23 @@ export interface ProjectService<
   TProjectList = any,
   TProtocol = any
 > {
+
+  /**
+   * Generic authenticated resources
+  */
+  resolveBackendUrl(raw?: string | null): string | null;
+
+  fetchJsonUrl(
+    url: string,
+    opts?: AuthenticatedRequestOptions,
+  ): Promise<any>;
+
+  fetchBlobObjectUrl(
+    url: string,
+    opts?: AuthenticatedRequestOptions,
+  ): Promise<string>;
+
+
   /**
    * List projects. It can return an array or a paginated object.
    * Components should normalize the result.
