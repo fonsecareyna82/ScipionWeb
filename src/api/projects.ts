@@ -18,9 +18,12 @@ import {
   ProtocolTagUpdatePayload,
   ProtocolTagIdsResult,
   NextProtocolSuggestion,
-  CreateCoords3dOutputFromPointsPayload,
   CreateCoords3dOutputFromPointsResult,
   CreateCoords3dOutputFromPointsOptions,
+  AuthenticatedRequestOptions,
+  ProjectThumbnailGroup,
+  ProjectThumbnailItemsOptions,
+  ProjectThumbnailObjectUrlOptions,
 
 } from "@/services/ProjectService";
 
@@ -133,6 +136,57 @@ async function toApiError(response: Response, fallback: string): Promise<ApiErro
   });
 }
 
+
+function normalizeProjectThumbnailItems(raw: any): ProjectThumbnailGroup[] {
+  const list = Array.isArray(raw) ? raw : Array.isArray(raw?.items) ? raw.items : [];
+
+  return list
+    .map((group: any) => {
+      const protocolId = group?.protocolId ?? group?.protocol_id ?? group?.id ?? null;
+      if (protocolId === null || protocolId === undefined) return null;
+
+      const outputs = Array.isArray(group?.outputs)
+        ? group.outputs
+          .map((output: any) => ({
+            outputName: output?.outputName ?? output?.output_name ?? null,
+            outputClassName: output?.outputClassName ?? output?.output_class_name ?? null,
+            exists: output?.exists !== undefined ? Boolean(output.exists) : true,
+            thumbnailUrl: output?.thumbnailUrl ?? output?.thumbnail_url ?? null,
+            thumbnailRebuildUrl:
+              output?.thumbnailRebuildUrl ?? output?.thumbnail_rebuild_url ?? null,
+          }))
+          .filter(Boolean)
+        : [];
+
+      return {
+        protocolId,
+        label:
+          group?.protocolLabel ??
+          group?.protocol_label ??
+          group?.label ??
+          group?.name ??
+          `Protocol ${String(protocolId)}`,
+        status: group?.status ?? undefined,
+        outputs,
+      } satisfies ProjectThumbnailGroup;
+    })
+    .filter(Boolean) as ProjectThumbnailGroup[];
+}
+
+async function resolveProjectThumbnailBaseUrl(
+  projectId: Id,
+  sourceUrl: string | null | undefined,
+  field: "thumbnailUrl" | "thumbnailItemsUrl",
+): Promise<string | null> {
+  const direct = resolveBackendUrl(sourceUrl);
+  if (direct) return direct;
+
+  const project = await fetchProject(projectId);
+  return resolveBackendUrl((project as any)?.[field] ?? null);
+}
+
+
+
 /* ======================= PROJECTS ======================= */
 export async function fetchProjects(): Promise<Project[]> {
   const response = await fetchWithAuth(`${BASE_URL}/projects/`);
@@ -144,6 +198,73 @@ export async function fetchProject(projectId: Id): Promise<Project> {
   const response = await fetchWithAuth(`${BASE_URL}/projects/${projectId}`);
   if (!response.ok) throw await toApiError(response, "Failed to fetch project");
   return safeJson<Project>(response);
+}
+
+
+export async function fetchProjectThumbnailItems(
+  projectId: Id,
+  opts: ProjectThumbnailItemsOptions = {},
+): Promise<ProjectThumbnailGroup[]> {
+  const {
+    sourceUrl,
+    size = 320,
+    maxProtocols = 12,
+    maxOutputsPerProtocol = 4,
+    signal,
+    cache,
+  } = opts;
+
+  const baseUrl = await resolveProjectThumbnailBaseUrl(
+    projectId,
+    sourceUrl,
+    "thumbnailItemsUrl",
+  );
+
+  if (!baseUrl) {
+    return [];
+  }
+
+  const parsed = new URL(baseUrl, window.location.origin);
+  parsed.searchParams.set("size", String(size));
+  parsed.searchParams.set("maxProtocols", String(maxProtocols));
+  parsed.searchParams.set("maxOutputsPerProtocol", String(maxOutputsPerProtocol));
+
+  const payload = await fetchJsonUrl(parsed.toString(), {
+    signal,
+    cache: cache ?? "default",
+  });
+
+  return normalizeProjectThumbnailItems(payload);
+}
+
+export async function fetchProjectThumbnailObjectUrl(
+  projectId: Id,
+  opts: ProjectThumbnailObjectUrlOptions = {},
+): Promise<string> {
+  const {
+    sourceUrl,
+    size = 960,
+    signal,
+    cache,
+  } = opts;
+
+  const baseUrl = await resolveProjectThumbnailBaseUrl(
+    projectId,
+    sourceUrl,
+    "thumbnailUrl",
+  );
+
+  if (!baseUrl) {
+    throw new Error("Project thumbnail is not available");
+  }
+
+  const parsed = new URL(baseUrl, window.location.origin);
+  parsed.searchParams.set("size", String(size));
+
+  return fetchBlobObjectUrl(parsed.toString(), {
+    signal,
+    cache: cache ?? "default",
+  });
 }
 
 export async function createProject(

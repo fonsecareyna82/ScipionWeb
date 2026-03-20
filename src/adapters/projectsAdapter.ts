@@ -26,9 +26,11 @@ import type {
   ContextMenuVisibilityPolicy,
   MetadataTableActionPayload,
   MetadataTableActionResult,
-  CreateCoords3dOutputFromPointsPayload,
   CreateCoords3dOutputFromPointsResult,
   CreateCoords3dOutputFromPointsOptions,
+  AuthenticatedRequestOptions,
+  ProjectThumbnailItemsOptions,
+  ProjectThumbnailObjectUrlOptions,
 } from "@/services/ProjectService";
 
 
@@ -52,15 +54,29 @@ const defaultService: ProjectService = {
 
   fetchJsonUrl: (
     url: string,
-    opts?: { signal?: AbortSignal; cache?: RequestCache },
+    opts?: AuthenticatedRequestOptions,
   ) =>
     api.fetchJsonUrl(url, opts),
 
   fetchBlobObjectUrl: (
     url: string,
-    opts?: { signal?: AbortSignal; cache?: RequestCache },
+    opts?: AuthenticatedRequestOptions,
   ) =>
     api.fetchBlobObjectUrl(url, opts),
+
+  // ──────────────────────────── Project thumbnails ────────────────────────────
+
+  fetchProjectThumbnailItems: (
+    projectId: Id,
+    opts?: ProjectThumbnailItemsOptions,
+  ) =>
+    api.fetchProjectThumbnailItems(toId(projectId), opts),
+
+  fetchProjectThumbnailObjectUrl: (
+    projectId: Id,
+    opts?: ProjectThumbnailObjectUrlOptions,
+  ) =>
+    api.fetchProjectThumbnailObjectUrl(toId(projectId), opts),
 
 
   // --- Reads ---
@@ -376,7 +392,7 @@ const defaultService: ProjectService = {
       opts,
     ),
 
-    createCoords3dOutputFromPoints: (
+  createCoords3dOutputFromPoints: (
     projectId: Id,
     protocolId: Id,
     coordsOutputName: string,

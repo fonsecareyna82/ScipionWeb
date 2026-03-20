@@ -3,11 +3,43 @@
 import { loadWorkflowPayload } from "@/api/projects";
 
 
-/** Generic Authenticated Request Options */
 export type AuthenticatedRequestOptions = {
   signal?: AbortSignal;
   cache?: RequestCache;
 };
+
+export type ProjectThumbnailOutputItem = {
+  outputName?: string | null;
+  outputClassName?: string | null;
+  exists?: boolean;
+  thumbnailUrl?: string | null;
+  thumbnailRebuildUrl?: string | null;
+};
+
+export type ProjectThumbnailGroup = {
+  protocolId: Id;
+  label?: string;
+  status?: string;
+  outputs: ProjectThumbnailOutputItem[];
+};
+
+export type ProjectThumbnailSourceOptions = {
+  sourceUrl?: string | null;
+};
+
+export type ProjectThumbnailItemsOptions =
+  ProjectThumbnailSourceOptions &
+  AuthenticatedRequestOptions & {
+    size?: number;
+    maxProtocols?: number;
+    maxOutputsPerProtocol?: number;
+  };
+
+export type ProjectThumbnailObjectUrlOptions =
+  ProjectThumbnailSourceOptions &
+  AuthenticatedRequestOptions & {
+    size?: number;
+  };
 
 /** Common ID type to accept either string or number seamlessly. */
 export type Id = string | number | null | undefined;
@@ -592,6 +624,20 @@ export interface ProjectService<
   fetchBlobObjectUrl(
     url: string,
     opts?: AuthenticatedRequestOptions,
+  ): Promise<string>;
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Project thumbnails
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  fetchProjectThumbnailItems(
+    projectId: Id,
+    opts?: ProjectThumbnailItemsOptions,
+  ): Promise<ProjectThumbnailGroup[]>;
+
+  fetchProjectThumbnailObjectUrl(
+    projectId: Id,
+    opts?: ProjectThumbnailObjectUrlOptions,
   ): Promise<string>;
 
 

@@ -18,4 +18,5 @@ export interface Project {
   thumbnailUrl?: string | null;
   thumbnailRebuildUrl?: string | null;
   thumbnailItemsUrl?: string | null;
+  thumbnailVersion?: string | number | null;
 }

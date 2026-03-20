@@ -13,9 +13,13 @@ import {
   OpenFolderIcon,
   RenameIcon,
   TrashBinIcon,
-} from "../../icons";
+} from "@/icons";
 import ProjectAction from "./ProjectActions";
 import { useProjectService } from "@/ProjectServiceContext";
+import type {
+  ProjectThumbnailGroup,
+  ProjectThumbnailOutputItem,
+} from "@/services/ProjectService";
 
 interface ProjectCardProps {
   id: string | number;
@@ -46,6 +50,7 @@ interface ProjectCardProps {
   thumbnailUrl?: string | null;
   thumbnailRebuildUrl?: string | null;
   thumbnailItemsUrl?: string | null;
+  thumbnailVersion?: string | number;
 }
 
 type ContextMenuState = {
@@ -54,33 +59,19 @@ type ContextMenuState = {
   y: number;
 };
 
-type ProtocolThumbnailOutputItem = {
-  outputName?: string | null;
-  outputClassName?: string | null;
-  exists?: boolean;
-  thumbnailUrl?: string | null;
-  thumbnailRebuildUrl?: string | null;
-};
 
-type HydratedProtocolThumbnailOutputItem = ProtocolThumbnailOutputItem & {
+type HydratedProjectThumbnailOutputItem = ProjectThumbnailOutputItem & {
   src: string | null;
   hasError: boolean;
 };
 
-type ProtocolThumbnailGroup = {
-  protocolId: string | number;
-  label?: string;
-  status?: string;
-  outputs: ProtocolThumbnailOutputItem[];
-};
-
-type HydratedProtocolThumbnailGroup = Omit<ProtocolThumbnailGroup, "outputs"> & {
-  outputs: HydratedProtocolThumbnailOutputItem[];
+type HydratedProjectThumbnailGroup = Omit<ProjectThumbnailGroup, "outputs"> & {
+  outputs: HydratedProjectThumbnailOutputItem[];
 };
 
 type ThumbnailItemsCacheEntry = {
   ts: number;
-  data: ProtocolThumbnailGroup[];
+  data: ProjectThumbnailGroup[];
 };
 
 type ThumbnailObjectUrlCacheEntry = {
@@ -273,41 +264,6 @@ function appendQueryParams(
   return parsed.toString();
 }
 
-function normalizeThumbnailItems(raw: any): ProtocolThumbnailGroup[] {
-  const list = Array.isArray(raw) ? raw : Array.isArray(raw?.items) ? raw.items : [];
-
-  return list
-    .map((group: any) => {
-      const protocolId = group?.protocolId ?? group?.protocol_id ?? group?.id ?? null;
-      if (protocolId === null || protocolId === undefined) return null;
-
-      const outputs = Array.isArray(group?.outputs)
-        ? group.outputs
-          .map((output: any) => ({
-            outputName: output?.outputName ?? output?.output_name ?? null,
-            outputClassName: output?.outputClassName ?? output?.output_class_name ?? null,
-            exists: output?.exists !== undefined ? Boolean(output.exists) : true,
-            thumbnailUrl: output?.thumbnailUrl ?? output?.thumbnail_url ?? null,
-            thumbnailRebuildUrl:
-              output?.thumbnailRebuildUrl ?? output?.thumbnail_rebuild_url ?? null,
-          }))
-          .filter(Boolean)
-        : [];
-
-      return {
-        protocolId,
-        label:
-          group?.protocolLabel ??
-          group?.protocol_label ??
-          group?.label ??
-          group?.name ??
-          `Protocol ${String(protocolId)}`,
-        status: group?.status ?? undefined,
-        outputs,
-      } satisfies ProtocolThumbnailGroup;
-    })
-    .filter(Boolean) as ProtocolThumbnailGroup[];
-}
 
 const crispText = "subpixel-antialiased [text-rendering:optimizeLegibility]";
 
@@ -333,6 +289,7 @@ export default function ProjectCard(props: ProjectCardProps) {
     thumbnailUrl,
     thumbnailRebuildUrl,
     thumbnailItemsUrl,
+    thumbnailVersion,
   } = props;
 
   const navigate = useNavigate();
@@ -358,7 +315,7 @@ export default function ProjectCard(props: ProjectCardProps) {
   const showGuestBadge = Boolean(normalizedIsShared && !normalizedIsOwner);
   const canModify = normalizedIsOwner;
 
-  const [galleryItems, setGalleryItems] = useState<HydratedProtocolThumbnailGroup[]>([]);
+  const [galleryItems, setGalleryItems] = useState<HydratedProjectThumbnailGroup[]>([]);
   const [galleryMetaLoading, setGalleryMetaLoading] = useState(false);
   const [galleryImagesLoading, setGalleryImagesLoading] = useState(false);
   const [galleryError, setGalleryError] = useState(false);
@@ -366,19 +323,10 @@ export default function ProjectCard(props: ProjectCardProps) {
   const [projectThumbnailSrc, setProjectThumbnailSrc] = useState<string | null>(null);
   const [projectThumbnailLoading, setProjectThumbnailLoading] = useState(false);
   const [projectThumbnailError, setProjectThumbnailError] = useState(false);
+  const [thumbnailRetryNonce, setThumbnailRetryNonce] = useState(0);
 
   const cardRef = useRef<HTMLDivElement | null>(null);
   const [isInViewport, setIsInViewport] = useState(false);
-
-  const resolvedThumbnailUrl = useMemo(
-    () => svc.resolveBackendUrl(thumbnailUrl),
-    [svc, thumbnailUrl],
-  );
-
-  const resolvedThumbnailItemsUrl = useMemo(
-    () => svc.resolveBackendUrl(thumbnailItemsUrl),
-    [svc, thumbnailItemsUrl],
-  );
 
   const projectIdLabel = useMemo(() => `P${String(id)}`, [id]);
 
@@ -397,27 +345,30 @@ export default function ProjectCard(props: ProjectCardProps) {
 
 
   const fetchThumbnailObjectUrl = useCallback(
-    async (url: string): Promise<string | null> => {
-      const cached = getCachedThumbnailObjectUrl(url);
+    async (rawUrl: string): Promise<string | null> => {
+      const resolvedUrl = svc.resolveBackendUrl(rawUrl);
+      if (!resolvedUrl) return null;
+
+      const cached = getCachedThumbnailObjectUrl(resolvedUrl);
       if (cached) return cached;
 
-      const pending = THUMBNAIL_PENDING_REQUESTS.get(url);
+      const pending = THUMBNAIL_PENDING_REQUESTS.get(resolvedUrl);
       if (pending) return pending;
 
       const promise = svc
-        .fetchBlobObjectUrl(url, {
+        .fetchBlobObjectUrl(resolvedUrl, {
           cache: "default",
         })
         .then((objectUrl) => {
-          setCachedThumbnailObjectUrl(url, objectUrl);
+          setCachedThumbnailObjectUrl(resolvedUrl, objectUrl);
           return objectUrl;
         })
         .catch(() => null)
         .finally(() => {
-          THUMBNAIL_PENDING_REQUESTS.delete(url);
+          THUMBNAIL_PENDING_REQUESTS.delete(resolvedUrl);
         });
 
-      THUMBNAIL_PENDING_REQUESTS.set(url, promise);
+      THUMBNAIL_PENDING_REQUESTS.set(resolvedUrl, promise);
       return promise;
     },
     [svc],
@@ -463,7 +414,7 @@ export default function ProjectCard(props: ProjectCardProps) {
     const controller = new AbortController();
 
     async function loadGalleryItems() {
-      if (!isInViewport || !resolvedThumbnailItemsUrl) {
+      if (!isInViewport || !thumbnailItemsUrl) {
         return;
       }
 
@@ -471,32 +422,35 @@ export default function ProjectCard(props: ProjectCardProps) {
       setGalleryError(false);
 
       try {
-
         setProjectThumbnailSrc(null);
         setProjectThumbnailError(false);
 
-        const listUrl = appendQueryParams(resolvedThumbnailItemsUrl, {
-          size: 320,
-          maxProtocols: 12,
-          maxOutputsPerProtocol: 4,
-        });
+        const cacheKey = [
+          String(id),
+          String(thumbnailItemsUrl ?? ""),
+          String(thumbnailVersion ?? ""),
+          "size=320",
+          "maxProtocols=12",
+          "maxOutputsPerProtocol=4",
+        ].join("|");
 
-        let groups: ProtocolThumbnailGroup[] = [];
-        const cachedEntry = THUMBNAIL_ITEMS_CACHE.get(listUrl);
+        let groups: ProjectThumbnailGroup[] = [];
+        const cachedEntry = THUMBNAIL_ITEMS_CACHE.get(cacheKey);
 
-        if (cachedEntry && Date.now() - cachedEntry.ts < THUMBNAIL_ITEMS_TTL_MS) {
+        if (
+          cachedEntry &&
+          Date.now() - cachedEntry.ts < THUMBNAIL_ITEMS_TTL_MS &&
+          cachedEntry.data.length > 0
+        ) {
           groups = cachedEntry.data;
         } else {
-
-          const payload = await svc.fetchJsonUrl(listUrl, {
+          groups = await svc.fetchProjectThumbnailItems(id, {
+            sourceUrl: thumbnailItemsUrl,
+            size: 320,
+            maxProtocols: 12,
+            maxOutputsPerProtocol: 4,
             signal: controller.signal,
             cache: "default",
-          });
-
-          groups = normalizeThumbnailItems(payload);
-          THUMBNAIL_ITEMS_CACHE.set(listUrl, {
-            ts: Date.now(),
-            data: groups,
           });
         }
 
@@ -506,15 +460,31 @@ export default function ProjectCard(props: ProjectCardProps) {
           setGalleryItems([]);
           setGalleryImagesLoading(false);
           setGalleryError(false);
+
+          window.setTimeout(() => {
+            if (!cancelled) {
+              setThumbnailRetryNonce((n) => n + 1);
+            }
+          }, 1500);
+
           return;
         }
 
-        const initialGroups: HydratedProtocolThumbnailGroup[] = groups.map((group) => ({
+        THUMBNAIL_ITEMS_CACHE.set(cacheKey, {
+          ts: Date.now(),
+          data: groups,
+        });
+
+
+        const initialGroups: HydratedProjectThumbnailGroup[] = groups.map((group) => ({
           ...group,
           outputs: (group.outputs || []).map((output) => {
             const rawImageUrl = svc.resolveBackendUrl(output.thumbnailUrl);
             const requestUrl = rawImageUrl
-              ? appendQueryParams(rawImageUrl, { size: 320 })
+              ? appendQueryParams(rawImageUrl, {
+                size: 320,
+                v: thumbnailVersion ?? "",
+              })
               : null;
             const cachedSrc = requestUrl ? getCachedThumbnailObjectUrl(requestUrl) : null;
 
@@ -534,7 +504,13 @@ export default function ProjectCard(props: ProjectCardProps) {
             groupIndex,
             outputIndex,
             requestUrl: output.thumbnailUrl
-              ? appendQueryParams(svc.resolveBackendUrl(output.thumbnailUrl) ?? "", { size: 320 })
+              ? appendQueryParams(
+                svc.resolveBackendUrl(output.thumbnailUrl) ?? "",
+                {
+                  size: 320,
+                  v: thumbnailVersion ?? "",
+                },
+              )
               : null,
           })),
         );
@@ -587,6 +563,12 @@ export default function ProjectCard(props: ProjectCardProps) {
 
         setGalleryItems([]);
         setGalleryError(true);
+
+        window.setTimeout(() => {
+          if (!cancelled) {
+            setThumbnailRetryNonce((n) => n + 1);
+          }
+        }, 1500);
       } finally {
         if (!cancelled) {
           setGalleryMetaLoading(false);
@@ -601,21 +583,21 @@ export default function ProjectCard(props: ProjectCardProps) {
       cancelled = true;
       controller.abort();
     };
-  }, [isInViewport, resolvedThumbnailItemsUrl, svc]);
+  }, [id, isInViewport, thumbnailItemsUrl, svc, thumbnailVersion, fetchThumbnailObjectUrl, thumbnailRetryNonce]);
 
 
   const shouldLoadProjectFallback = useMemo(() => {
-    if (!resolvedThumbnailUrl) return false;
+    if (!thumbnailUrl) return false;
     if (galleryMetaLoading || galleryImagesLoading) return false;
     if (galleryItems.length > 0) return false;
     return true;
-  }, [resolvedThumbnailUrl, galleryMetaLoading, galleryImagesLoading, galleryItems.length]);
+  }, [thumbnailUrl, galleryMetaLoading, galleryImagesLoading, galleryItems.length]);
 
   useEffect(() => {
     let cancelled = false;
 
     async function loadProjectThumbnailFallback() {
-      if (!isInViewport || !shouldLoadProjectFallback || !resolvedThumbnailUrl) {
+      if (!isInViewport || !shouldLoadProjectFallback || !thumbnailUrl) {
         return;
       }
 
@@ -623,16 +605,44 @@ export default function ProjectCard(props: ProjectCardProps) {
       setProjectThumbnailError(false);
 
       try {
-        const requestUrl = appendQueryParams(resolvedThumbnailUrl, { size: 960 });
-        const objectUrl = await fetchThumbnailObjectUrl(requestUrl);
+        const resolvedBaseUrl = svc.resolveBackendUrl(thumbnailUrl);
+        const requestUrl = resolvedBaseUrl
+          ? appendQueryParams(resolvedBaseUrl, {
+            size: 960,
+            v: thumbnailVersion ?? "",
+          })
+          : null;
+
+        if (!requestUrl) {
+          throw new Error("Project thumbnail is not available");
+        }
+
+        const cachedSrc = getCachedThumbnailObjectUrl(requestUrl);
+        if (cachedSrc) {
+          if (!cancelled) {
+            setProjectThumbnailSrc(cachedSrc);
+          }
+          return;
+        }
+
+        const objectUrl = await svc.fetchBlobObjectUrl(requestUrl, {
+          cache: "default",
+        });
 
         if (!cancelled) {
+          setCachedThumbnailObjectUrl(requestUrl, objectUrl);
           setProjectThumbnailSrc(objectUrl);
         }
       } catch {
         if (!cancelled) {
           setProjectThumbnailSrc(null);
           setProjectThumbnailError(true);
+
+          window.setTimeout(() => {
+            if (!cancelled) {
+              setThumbnailRetryNonce((n) => n + 1);
+            }
+          }, 1500);
         }
       } finally {
         if (!cancelled) {
@@ -646,7 +656,7 @@ export default function ProjectCard(props: ProjectCardProps) {
     return () => {
       cancelled = true;
     };
-  }, [isInViewport, resolvedThumbnailUrl, shouldLoadProjectFallback, fetchThumbnailObjectUrl]);
+  }, [id, isInViewport, shouldLoadProjectFallback, thumbnailUrl, svc, thumbnailRetryNonce, thumbnailVersion]);
 
   const handleOpen = useCallback(() => {
     if (isRenaming) return;
@@ -873,14 +883,6 @@ export default function ProjectCard(props: ProjectCardProps) {
     isSelected ? "border-indigo-500/55 ring-2 ring-inset ring-indigo-500/14" : "",
   );
 
-  const galleryHasImages = useMemo(
-    () =>
-      galleryItems.some((group) =>
-        (group.outputs || []).some((output) => Boolean(output.src)),
-      ),
-    [galleryItems],
-  );
-
   const hasGalleryStructure = galleryItems.length > 0;
 
   const showGallery = hasGalleryStructure;
@@ -892,19 +894,6 @@ export default function ProjectCard(props: ProjectCardProps) {
     !galleryImagesLoading;
 
   const showGalleryLoading = !hasGalleryStructure && galleryMetaLoading;
-
-  const galleryCountLabel = useMemo(() => {
-    if (showGallery) {
-      const totalOutputs = galleryItems.reduce(
-        (acc, group) => acc + (group.outputs?.length ?? 0),
-        0,
-      );
-      return `${galleryItems.length} protocols · ${totalOutputs} outputs`;
-    }
-    if (showGalleryLoading) return "loading";
-    if (thumbnailRebuildUrl) return "preview available";
-    return "";
-  }, [showGallery, galleryItems, showGalleryLoading, thumbnailRebuildUrl]);
 
   const getProtocolCardWidth = useCallback((outputCount: number) => {
     const count = Math.max(1, outputCount);

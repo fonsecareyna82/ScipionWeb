@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback, useMemo } from "react";
+import { useEffect, useState, useRef, useCallback, useMemo, type ReactNode } from "react";
 import PageMeta from "../../../components/common/PageMeta";
 import ProjectCard from "../../../components/projects/ProjectsCard";
 import { ChevronDownIcon } from "@/icons";
@@ -22,6 +22,7 @@ type ProjectCardProject = Project & {
   thumbnailUrl?: string | null;
   thumbnailRebuildUrl?: string | null;
   thumbnailItemsUrl?: string | null;
+  thumbnailVersion?: string | number | null;
 };
 
 /** Normalize any backend project shape into our internal Project type. */
@@ -57,6 +58,7 @@ function normalizeProject(raw: any): ProjectCardProject {
     thumbnailUrl: p.thumbnailUrl ?? p.thumbnail_url ?? null,
     thumbnailRebuildUrl: p.thumbnailRebuildUrl ?? p.thumbnail_rebuild_url ?? null,
     thumbnailItemsUrl: p.thumbnailItemsUrl ?? p.thumbnail_items_url ?? null,
+    thumbnailVersion: p.thumbnailVersion ?? p.thumbnail_version ?? null,
   };
 }
 
@@ -65,7 +67,7 @@ interface ProjectsPageProps {
   fetchList?: () => Promise<Project[]>;
 }
 
-function StatCard(props: { label: string; value: React.ReactNode }) {
+function StatCard(props: { label: string; value: ReactNode }) {
   return (
     <div
       className={classNames(
@@ -103,27 +105,62 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
     projectOwnerId: string | number | null;
   } | null>(null);
 
-  const loadProjects = useCallback(async () => {
-    setLoading(true);
-    setLoadError(null);
+  const loadProjects = useCallback(
+    async (opts: { silent?: boolean } = {}) => {
+      const { silent = false } = opts;
 
-    try {
-      const raw = await (fetchList ? fetchList() : svc.fetchList());
-      let list: any[] = [];
+      if (!silent) {
+        setLoading(true);
+        setLoadError(null);
+      }
 
-      if (Array.isArray(raw)) list = raw;
-      else if (raw && Array.isArray((raw as any).results)) list = (raw as any).results;
-      else if (raw && typeof raw === "object") list = Object.values(raw);
+      try {
+        const raw = await (fetchList ? fetchList() : svc.fetchList());
+        let list: any[] = [];
 
-      setProjects(list.map(normalizeProject));
-    } catch (err: any) {
-      console.error("[Projects] failed to load projects:", err);
-      setLoadError(err?.message ?? String(err));
-      setProjects([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [fetchList, svc]);
+        if (Array.isArray(raw)) list = raw;
+        else if (raw && Array.isArray((raw as any).results)) list = (raw as any).results;
+        else if (raw && typeof raw === "object") list = Object.values(raw);
+
+        setProjects(list.map(normalizeProject));
+      } catch (err: any) {
+        console.error("[Projects] failed to load projects:", err);
+
+        if (!silent) {
+          setLoadError(err?.message ?? String(err));
+          setProjects([]);
+        }
+      } finally {
+        if (!silent) {
+          setLoading(false);
+        }
+      }
+    },
+    [fetchList, svc],
+  );
+
+  useEffect(() => {
+    void loadProjects();
+  }, [loadProjects]);
+
+  useEffect(() => {
+    const refreshSilently = () => {
+      if (document.visibilityState === "visible") {
+        void loadProjects({ silent: true });
+      }
+    };
+
+    const intervalId = window.setInterval(refreshSilently, 15000);
+
+    window.addEventListener("focus", refreshSilently);
+    document.addEventListener("visibilitychange", refreshSilently);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", refreshSilently);
+      document.removeEventListener("visibilitychange", refreshSilently);
+    };
+  }, [loadProjects]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -135,10 +172,6 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
-
-  useEffect(() => {
-    void loadProjects();
-  }, [loadProjects]);
 
   const normalizedTerm = search.trim().toLowerCase();
 
@@ -161,7 +194,8 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
   }, [projects]);
 
   const handleDeleteProject = useCallback((id: number | string) => {
-    setProjects((prev) => prev.filter((p) => String(p.id) !== String(id)));
+    const key = String(id);
+    setProjects((prev) => prev.filter((p) => String(p.id) !== key));
   }, []);
 
   const handleRenameProject = useCallback(
@@ -403,6 +437,7 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
                       thumbnailUrl={project.thumbnailUrl ?? null}
                       thumbnailRebuildUrl={project.thumbnailRebuildUrl ?? null}
                       thumbnailItemsUrl={project.thumbnailItemsUrl ?? null}
+                      thumbnailVersion={project.thumbnailVersion ?? 0}
                     />
                   </div>
                 ))}
