@@ -159,7 +159,7 @@ export type Coordinates3dPoint = {
   label?: number | string;
   score?: number;
   [key: string]: unknown;
-  matrix?: any |  [];
+  matrix?: any | [];
 };
 
 /**
@@ -315,6 +315,15 @@ export interface MetadataPage {
   totalRows: number;
   rows: MetadataRow[];
 }
+// ─────────────────────────────────────────────────────────────────────────────
+// Analyze Results (FSCs)
+// ─────────────────────────────────────────────────────────────────────────────
+export type FscPoint = {
+  x: number;
+  y: number;
+  label?: string;
+  xKind?: "frequency" | "resolution";
+};
 
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -740,6 +749,11 @@ export interface ProjectService<
     protocolId: Id,
     opts?: NextProtocolSuggestionsOptions
   ): Promise<NextProtocolSuggestion[]>;
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Analyze Results (FSCs)
+  // ─────────────────────────────────────────────────────────────────────────────
+  fetchFscRows(projectId: Id, protocolId: Id, outputName: string): Promise<FscPoint[]>;
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Analyze Results (Volumes) — used by the "Analyze Results" viewer.

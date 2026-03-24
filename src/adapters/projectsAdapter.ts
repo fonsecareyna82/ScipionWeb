@@ -31,6 +31,7 @@ import type {
   AuthenticatedRequestOptions,
   ProjectThumbnailItemsOptions,
   ProjectThumbnailObjectUrlOptions,
+  FscPoint,
 } from "@/services/ProjectService";
 
 
@@ -405,6 +406,19 @@ const defaultService: ProjectService = {
       coordsOutputName,
       payload,
       opts,
+    ),
+
+  // ──────────────────────────── Analyze Results: FSC ────────────────────────────
+
+  fetchFscRows: (
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+  ) =>
+    api.fetchFscRows(
+      toId(projectId),
+      toId(protocolId),
+      outputName,
     ),
 
   // ──────────────────────────── Analyze Results: Metadata tables ────────────────────────────

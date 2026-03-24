@@ -15,6 +15,7 @@ import VolumeViewer from "./volume-viewer";
 import Coords3dViewer from "./coords3d-viewer";
 import TiltSeriesViewer from "./tiltseries-viewer";
 import CTFTomoViewer from "./ctftomo-viewer";
+import FscViewer from "./fsc-viewer";
 
 type AnalyzeOutputRef = {
   paramClass: string;
@@ -50,6 +51,7 @@ function isSetOfMetadataKind(k?: string) {
   if (!/^SetOf/i.test(trimmed) && !/^RelionSetOf/i.test(trimmed)) return false;
   if (isVolumeKind(k)) return false;
   if (isCoords3dKind(k)) return false;
+  if (isSetOfFSCsKind(k)) return false;
   return true;
 }
 
@@ -63,6 +65,12 @@ function isCTFTomoSeriesKind(k?: string) {
   if (!k) return false;
   const s = k.replace(/\s+/g, "").toLowerCase();
   return s.includes("setofctftomoseries");
+}
+
+function isSetOfFSCsKind(k?: string) {
+  if (!k) return false;
+  const s = k.replace(/\s+/g, "").toLowerCase();
+  return s.includes("setoffsc");
 }
 
 const dialogPaperSx = {
@@ -228,7 +236,17 @@ function AnalyzeOutputDialog({
     }
 
     if (isSetOfMetadataKind(pointerClass)) {
-      return <MetadataViewer projectId={projectIdNum} protocolId={protocolIdNum} outputName={outputName} onClose={onClose}/>;
+      return <MetadataViewer projectId={projectIdNum} protocolId={protocolIdNum} outputName={outputName} onClose={onClose} />;
+    }
+
+    if (isSetOfFSCsKind(pointerClass)) {
+      return (
+        <FscViewer
+          projectId={projectIdNum}
+          protocolId={protocolIdNum}
+          outputName={outputName}
+        />
+      );
     }
 
     // noViewerFallback

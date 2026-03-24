@@ -20,11 +20,10 @@ import {
   NextProtocolSuggestion,
   CreateCoords3dOutputFromPointsResult,
   CreateCoords3dOutputFromPointsOptions,
-  AuthenticatedRequestOptions,
   ProjectThumbnailGroup,
   ProjectThumbnailItemsOptions,
   ProjectThumbnailObjectUrlOptions,
-
+  FscPoint,
 } from "@/services/ProjectService";
 
 const ACTION_LAUNCH = "launch";
@@ -1785,6 +1784,29 @@ export async function fetchOutputPreview(
   if (!response.ok)
     throw await toApiError(response, "Failed previewing the output");
   return buildPreviewResult(response, downloadUrl);
+}
+
+/* ======================= Analyze Results: FSC ======================= */
+
+export async function fetchFscRows(
+  projectId: Id,
+  protocolId: Id,
+  outputName: string,
+): Promise<FscPoint[]> {
+  const enc = encodeURIComponent;
+
+  const url = `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/outputs/${enc(
+    outputName,
+  )}/fsc/rows`;
+
+  const res = await fetchWithAuth(url, { method: "GET" });
+
+  if (!res.ok) {
+    throw await toApiError(res, "Failed to fetch FSC rows");
+  }
+
+  const raw = await safeJson<any>(res);
+  return raw;
 }
 
 /* ======================= Analyze Results: Volumes ======================= */
