@@ -357,7 +357,7 @@ export default function ProjectCard(props: ProjectCardProps) {
 
       const promise = svc
         .fetchBlobObjectUrl(resolvedUrl, {
-          cache: "default",
+          cache: "no-store",
         })
         .then((objectUrl) => {
           setCachedThumbnailObjectUrl(resolvedUrl, objectUrl);
@@ -444,13 +444,20 @@ export default function ProjectCard(props: ProjectCardProps) {
         ) {
           groups = cachedEntry.data;
         } else {
+          const resolvedItemsUrl = svc.resolveBackendUrl(thumbnailItemsUrl);
+          const versionedItemsUrl = resolvedItemsUrl
+            ? appendQueryParams(resolvedItemsUrl, {
+              v: thumbnailVersion ?? "",
+            })
+            : thumbnailItemsUrl;
+
           groups = await svc.fetchProjectThumbnailItems(id, {
-            sourceUrl: thumbnailItemsUrl,
+            sourceUrl: versionedItemsUrl,
             size: 320,
             maxProtocols: 12,
             maxOutputsPerProtocol: 4,
             signal: controller.signal,
-            cache: "default",
+            cache: "no-store",
           });
         }
 
@@ -586,12 +593,34 @@ export default function ProjectCard(props: ProjectCardProps) {
   }, [id, isInViewport, thumbnailItemsUrl, svc, thumbnailVersion, fetchThumbnailObjectUrl, thumbnailRetryNonce]);
 
 
+
+  const galleryHasImages = useMemo(
+    () =>
+      galleryItems.some((group) =>
+        (group.outputs || []).some((output) => Boolean(output.src)),
+      ),
+    [galleryItems],
+  );
+
+  const preferProtocolGallery = Boolean(thumbnailItemsUrl);
+
   const shouldLoadProjectFallback = useMemo(() => {
     if (!thumbnailUrl) return false;
+
+    // If protocol thumbnails are available, do not fall back to the general project thumbnail.
+    if (preferProtocolGallery) return false;
+
     if (galleryMetaLoading || galleryImagesLoading) return false;
-    if (galleryItems.length > 0) return false;
+    if (galleryHasImages) return false;
+
     return true;
-  }, [thumbnailUrl, galleryMetaLoading, galleryImagesLoading, galleryItems.length]);
+  }, [
+    thumbnailUrl,
+    preferProtocolGallery,
+    galleryMetaLoading,
+    galleryImagesLoading,
+    galleryHasImages,
+  ]);
 
   useEffect(() => {
     let cancelled = false;
@@ -626,7 +655,7 @@ export default function ProjectCard(props: ProjectCardProps) {
         }
 
         const objectUrl = await svc.fetchBlobObjectUrl(requestUrl, {
-          cache: "default",
+          cache: "no-store",
         });
 
         if (!cancelled) {
@@ -883,17 +912,20 @@ export default function ProjectCard(props: ProjectCardProps) {
     isSelected ? "border-indigo-500/55 ring-2 ring-inset ring-indigo-500/14" : "",
   );
 
+
   const hasGalleryStructure = galleryItems.length > 0;
 
-  const showGallery = hasGalleryStructure;
+  const showGallery = hasGalleryStructure && (galleryHasImages || galleryImagesLoading);
 
   const showProjectFallback =
     Boolean(projectThumbnailSrc) &&
-    !hasGalleryStructure &&
+    !showGallery &&
     !galleryMetaLoading &&
     !galleryImagesLoading;
 
-  const showGalleryLoading = !hasGalleryStructure && galleryMetaLoading;
+  const showGalleryLoading =
+    (!hasGalleryStructure && galleryMetaLoading) ||
+    (hasGalleryStructure && galleryImagesLoading && !galleryHasImages);
 
   const getProtocolCardWidth = useCallback((outputCount: number) => {
     const count = Math.max(1, outputCount);
@@ -1074,7 +1106,7 @@ export default function ProjectCard(props: ProjectCardProps) {
                                       "dark:border-slate-800 dark:bg-slate-900",
                                     )}
                                   >
-                                    <div className="truncate text-[11px] font-semibold text-gray-800 dark:text-slate-200">
+                                    <div className="truncate text-[12px]  text-gray-800 dark:text-slate-200">
                                       {group.label ?? `Protocol ${String(group.protocolId)}`}
                                     </div>
                                   </div>
