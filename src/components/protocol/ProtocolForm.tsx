@@ -1428,28 +1428,104 @@ export default function ProtocolForm({
     ]
   );
 
+  const getOutputStableIdentity = (item: any): string => {
+    const normalizedToken = normalizePointerToken(
+      item?.value ?? item?.object ?? item?.editableValue ?? ""
+    );
+
+    if (normalizedToken) return normalizedToken;
+
+    const protocolToken = String(item?.protocolId ?? item?.parentId ?? "");
+    const keyToken = String(item?.key ?? "").trim();
+
+    return `${protocolToken}::${keyToken}`;
+  };
+
+  const getCurrentSelectionIdentities = (paramState: any): Set<string> => {
+    const ids = new Set<string>();
+    const cls = resolveParamClass(paramState);
+
+    if (cls === "MultiPointerParam") {
+      const items = Array.isArray(paramState?.editableValue) ? paramState.editableValue : [];
+      for (const item of items) {
+        const id = getOutputStableIdentity(item);
+        if (id && !id.endsWith("::")) ids.add(id);
+      }
+      return ids;
+    }
+
+    if (cls === "PointerParam") {
+      const id = getOutputStableIdentity({
+        value: paramState?.value ?? paramState?.editableValue ?? "",
+        key: paramState?.key ?? "",
+        protocolId: paramState?.protocolId ?? paramState?.parentId ?? "",
+      });
+      if (id && !id.endsWith("::")) ids.add(id);
+    }
+
+    return ids;
+  };
+
   // Filter outputs for a given paramKey, excluding self and descendants
   const getFilteredOutputsForKey = (paramKey: string) => {
     const liveParam = protocolDetails.params?.[paramKey];
     const expected = getExpectedClass(liveParam);
 
     const { outputs, dependencyMap } = gatherAllOutputs();
-    const currentId = String((form as any)?.protocolId ?? "");
 
-    const blocked = new Set<string>([currentId]);
-    const stack = [currentId];
+    const normalizeIdToken = (value: any): string => {
+      const token = String(value ?? "").trim();
+      if (!token || token === "null" || token === "undefined") return "";
+      return token;
+    };
+
+    const currentProtocolIds = new Set(
+      [
+        protocolId,
+        info?.protocolId,
+        info?.id,
+        (form as any)?.protocolId,
+        (form as any)?.id,
+        protocolDetails?.id,
+      ]
+        .map(normalizeIdToken)
+        .filter(Boolean)
+    );
+
+    const blocked = new Set<string>(currentProtocolIds);
+    const stack = [...currentProtocolIds];
+
     while (stack.length > 0) {
       const parent = stack.pop()!;
       const children = dependencyMap[parent] || [];
+
       for (const child of children) {
-        if (!blocked.has(child)) {
-          blocked.add(child);
-          stack.push(child);
+        const childId = normalizeIdToken(child);
+        if (childId && !blocked.has(childId)) {
+          blocked.add(childId);
+          stack.push(childId);
         }
       }
     }
 
-    const pool = outputs.filter((o) => !blocked.has(String(o.protocolId)));
+    const currentSelectionIds = getCurrentSelectionIdentities(liveParam);
+
+    const pool = outputs.filter((o) => {
+      const outputProtocolId = normalizeIdToken(o.protocolId);
+      const outputParentId = normalizeIdToken(o.parentId);
+
+      if (
+        (outputProtocolId && blocked.has(outputProtocolId)) ||
+        (outputParentId && blocked.has(outputParentId))
+      ) {
+        return false;
+      }
+
+      const outputId = getOutputStableIdentity(o);
+      if (currentSelectionIds.has(outputId)) return false;
+
+      return true;
+    });
 
     const norm = (s: any) => String(s ?? "").replace(/\s+/g, "").toLowerCase();
 
