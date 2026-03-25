@@ -46,7 +46,6 @@ import {
   TableIcon,
   Check,
   ColumnsSettingsIcon,
-  CheckSquare,
   List,
   ArrowDown,
   ArrowUp,

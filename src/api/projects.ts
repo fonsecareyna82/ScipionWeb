@@ -36,7 +36,6 @@ const ACTION_STOP = "stop";
 
 type Id = string | number | null | undefined;
 
-type ApiErrorShape = { message?: string; detail?: unknown;[k: string]: unknown };
 
 class ApiError extends Error {
   status?: number;
