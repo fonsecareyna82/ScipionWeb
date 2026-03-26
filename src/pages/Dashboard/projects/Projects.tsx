@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useCallback, useMemo, type ReactNode } from "react";
-import PageMeta from "../../../components/common/PageMeta";
-import ProjectCard from "../../../components/projects/ProjectsCard";
+import PageMeta from "@/components/common/PageMeta";
+import ProjectCard from "@/components/projects/ProjectsCard";
 import { ChevronDownIcon } from "@/icons";
 import NewProjectModal from "@/components/projects/NewProjectModal";
 import { useProjectService } from "@/ProjectServiceContext";
@@ -8,6 +8,8 @@ import type { ProjectService } from "@/services/ProjectService";
 import type { Project } from "@/types/project";
 import { CloudDownload, Download, PlusCircle, Search } from "lucide-react";
 import ShareProjectModal from "@/components/projects/ShareProjectModal";
+import toast from "react-hot-toast";
+import ImportProjectDialog from "@/components/projects/ImportProjectDialog";
 
 /** Tweak this if your header/breadcrumb/top paddings differ */
 const GRID_VPORT_OFFSET_PX = 250;
@@ -98,6 +100,7 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
   const [showCreate, setShowCreate] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [showImportProject, setShowImportProject] = useState(false);
 
   const [shareProject, setShareProject] = useState<{
     id: string | number;
@@ -137,6 +140,79 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
       }
     },
     [fetchList, svc],
+  );
+
+  const resolveImportBrowserPaths = useCallback(async () => {
+    const api = svc as any;
+
+    if (typeof api.resolveImportBrowserPaths === "function") {
+      return api.resolveImportBrowserPaths();
+    }
+
+    throw new Error("Missing ProjectService.resolveImportBrowserPaths()");
+  }, [svc]);
+
+  const listImportRemoteDirectory = useCallback(
+    async (relPath: string) => {
+      const api = svc as any;
+
+      if (typeof api.listImportRemoteDirectory === "function") {
+        return api.listImportRemoteDirectory(relPath);
+      }
+
+      throw new Error("Missing ProjectService.listImportRemoteDirectory()");
+    },
+    [svc],
+  );
+
+  const previewImportRemoteEntry = useCallback(
+    async (relPath: string) => {
+      const api = svc as any;
+
+      if (typeof api.previewImportRemoteEntry === "function") {
+        return api.previewImportRemoteEntry(relPath);
+      }
+
+      return null;
+    },
+    [svc],
+  );
+
+  const buildImportDownloadUrl = useCallback(
+    (relPath: string, inline?: boolean) => {
+      const api = svc as any;
+
+      if (typeof api.buildImportDownloadUrl === "function") {
+        return api.buildImportDownloadUrl(relPath, !!inline);
+      }
+
+      return "";
+    },
+    [svc],
+  );
+
+  const handleImportProject = useCallback(
+    async (payload: {
+      projectLocation: string;
+      projectName?: string;
+      copyProject: boolean;
+    }) => {
+      const api = svc as any;
+
+      if (typeof api.importProject !== "function") {
+        throw new Error("Missing ProjectService.importProject()");
+      }
+
+      await api.importProject({
+        projectLocation: payload.projectLocation,
+        projectName: payload.projectName,
+        copyProject: payload.copyProject,
+      });
+
+      toast.success("Project imported successfully.");
+      await loadProjects({ silent: true });
+    },
+    [svc, loadProjects],
   );
 
   useEffect(() => {
@@ -304,7 +380,7 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
                           )}
                           onClick={() => {
                             setShowDropdown(false);
-                            console.log("Import Project");
+                            setShowImportProject(true);
                           }}
                         >
                           <Download className="h-4 w-4" />
@@ -451,6 +527,16 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
         open={showCreate}
         onClose={() => setShowCreate(false)}
         onCreate={handleCreateProject}
+      />
+
+      <ImportProjectDialog
+        open={showImportProject}
+        onClose={() => setShowImportProject(false)}
+        onImport={handleImportProject}
+        resolveBrowserPaths={() => svc.resolveBrowserPaths(-1, -1)}
+        listRemoteDirectory={(p) => svc.listRemoteDirectory(-1, -1, p)}
+        previewRemoteEntry={(p) => svc.previewRemoteEntry(-1, -1, p)}
+        buildDownloadUrl={(p, inline) => svc.buildProtocolDownloadUrl('-1', '-1', p, !!inline)}
       />
 
       <ShareProjectModal

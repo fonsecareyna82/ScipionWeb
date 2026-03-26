@@ -323,7 +323,6 @@ export default function ProjectCard(props: ProjectCardProps) {
   const [projectThumbnailSrc, setProjectThumbnailSrc] = useState<string | null>(null);
   const [projectThumbnailLoading, setProjectThumbnailLoading] = useState(false);
   const [projectThumbnailError, setProjectThumbnailError] = useState(false);
-  const [thumbnailRetryNonce, setThumbnailRetryNonce] = useState(0);
 
   const cardRef = useRef<HTMLDivElement | null>(null);
   const [isInViewport, setIsInViewport] = useState(false);
@@ -467,13 +466,6 @@ export default function ProjectCard(props: ProjectCardProps) {
           setGalleryItems([]);
           setGalleryImagesLoading(false);
           setGalleryError(false);
-
-          window.setTimeout(() => {
-            if (!cancelled) {
-              setThumbnailRetryNonce((n) => n + 1);
-            }
-          }, 1500);
-
           return;
         }
 
@@ -570,12 +562,6 @@ export default function ProjectCard(props: ProjectCardProps) {
 
         setGalleryItems([]);
         setGalleryError(true);
-
-        window.setTimeout(() => {
-          if (!cancelled) {
-            setThumbnailRetryNonce((n) => n + 1);
-          }
-        }, 1500);
       } finally {
         if (!cancelled) {
           setGalleryMetaLoading(false);
@@ -590,7 +576,7 @@ export default function ProjectCard(props: ProjectCardProps) {
       cancelled = true;
       controller.abort();
     };
-  }, [id, isInViewport, thumbnailItemsUrl, svc, thumbnailVersion, fetchThumbnailObjectUrl, thumbnailRetryNonce]);
+  }, [id, isInViewport, thumbnailItemsUrl, svc, thumbnailVersion, fetchThumbnailObjectUrl]);
 
 
 
@@ -666,12 +652,6 @@ export default function ProjectCard(props: ProjectCardProps) {
         if (!cancelled) {
           setProjectThumbnailSrc(null);
           setProjectThumbnailError(true);
-
-          window.setTimeout(() => {
-            if (!cancelled) {
-              setThumbnailRetryNonce((n) => n + 1);
-            }
-          }, 1500);
         }
       } finally {
         if (!cancelled) {
@@ -685,7 +665,7 @@ export default function ProjectCard(props: ProjectCardProps) {
     return () => {
       cancelled = true;
     };
-  }, [id, isInViewport, shouldLoadProjectFallback, thumbnailUrl, svc, thumbnailRetryNonce, thumbnailVersion]);
+  }, [id, isInViewport, shouldLoadProjectFallback, thumbnailUrl, svc, thumbnailVersion]);
 
   const handleOpen = useCallback(() => {
     if (isRenaming) return;
@@ -915,17 +895,15 @@ export default function ProjectCard(props: ProjectCardProps) {
 
   const hasGalleryStructure = galleryItems.length > 0;
 
-  const showGallery = hasGalleryStructure && (galleryHasImages || galleryImagesLoading);
+  const showGallery = hasGalleryStructure;
 
   const showProjectFallback =
     Boolean(projectThumbnailSrc) &&
-    !showGallery &&
+    !hasGalleryStructure &&
     !galleryMetaLoading &&
     !galleryImagesLoading;
 
-  const showGalleryLoading =
-    (!hasGalleryStructure && galleryMetaLoading) ||
-    (hasGalleryStructure && galleryImagesLoading && !galleryHasImages);
+  const showGalleryLoading = !hasGalleryStructure && galleryMetaLoading;
 
   const getProtocolCardWidth = useCallback((outputCount: number) => {
     const count = Math.max(1, outputCount);
@@ -1130,12 +1108,8 @@ export default function ProjectCard(props: ProjectCardProps) {
                                               className="block h-full w-full object-contain"
                                               draggable={false}
                                             />
-                                          ) : galleryImagesLoading ? (
-                                            <div className="h-full w-full animate-pulse bg-gradient-to-br from-slate-100 via-slate-50 to-slate-100 dark:from-slate-800 dark:via-slate-900 dark:to-slate-800" />
                                           ) : (
-                                            <div className="flex h-full items-center justify-center px-3 text-center text-[10px] font-medium text-gray-500 dark:text-gray-400">
-                                              Preview not available
-                                            </div>
+                                            <div className="h-full w-full animate-pulse bg-gradient-to-br from-slate-100 via-slate-50 to-slate-100 dark:from-slate-800 dark:via-slate-900 dark:to-slate-800" />
                                           )}
                                         </div>
                                       ))}

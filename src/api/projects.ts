@@ -24,6 +24,7 @@ import {
   ProjectThumbnailItemsOptions,
   ProjectThumbnailObjectUrlOptions,
   FscPoint,
+  ImportProjectPayload,
 } from "@/services/ProjectService";
 
 const ACTION_LAUNCH = "launch";
@@ -274,6 +275,26 @@ export async function createProject(
     body: JSON.stringify({ name, description }),
   });
   if (!response.ok) throw await toApiError(response, "Failed to create project");
+  return safeJson<Project>(response);
+}
+
+export async function importProject(
+  payload: ImportProjectPayload,
+): Promise<Project> {
+  const response = await fetchWithAuth(`${BASE_URL}/projects/import`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      projectLocation: payload.projectLocation,
+      projectName: payload.projectName,
+      copyProject: payload.copyProject,
+    }),
+  });
+
+  if (!response.ok) {
+    throw await toApiError(response, "Failed to import project");
+  }
+
   return safeJson<Project>(response);
 }
 

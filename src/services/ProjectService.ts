@@ -47,6 +47,13 @@ export type Id = string | number | null | undefined;
 /** Payload for creating a project. */
 export type ProjectPayload = { name: string; description?: string };
 
+/** Payload for importing a project. */
+export type ImportProjectPayload = {
+  projectLocation: string;
+  projectName?: string;
+  copyProject: boolean;
+};
+
 /** Volume list item used by Analyze Results. */
 export type VolumeListItem = {
   /** Unique id for the volume (index, db id, or filename). */
@@ -667,6 +674,9 @@ export interface ProjectService<
 
   /** Create a new project. */
   createProject(payload: ProjectPayload): Promise<TProject>;
+
+   /** Import an existing project from a filesystem location. */
+  importProject(payload: ImportProjectPayload): Promise<TProject>;
 
   /** Rename a project (and optionally update description). */
   renameProject(id: Id, newName: string, newDescription?: string): Promise<TProject>;

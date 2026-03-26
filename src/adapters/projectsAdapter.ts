@@ -5,6 +5,7 @@ import { BASE_URL } from "@/config";
 import type {
   ProjectService,
   ProjectPayload,
+  ImportProjectPayload,
   Id,
   NextProtocolSuggestion,
   VolumeSliceObjectUrl,
@@ -94,6 +95,9 @@ const defaultService: ProjectService = {
   // --- Mutations ---
   createProject: (payload: ProjectPayload) =>
     api.createProject(payload.name, (payload.description ?? "").trim()),
+
+    importProject: (payload: ImportProjectPayload) =>
+    api.importProject(payload),
 
   renameProject: (id: Id, newName: string, newDescription?: string) =>
     api.renameProject(toId(id), newName, (newDescription ?? "").trim()),
