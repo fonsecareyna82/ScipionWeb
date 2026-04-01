@@ -18,6 +18,9 @@ export async function login(email: string, password: string) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password }),
+    credentials: "include",
+    cache: "no-store",
+    redirect: "follow",
   });
 
   const data = await res.json();
@@ -83,6 +86,9 @@ export async function refreshAccessToken(): Promise<string | null> {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ token: refreshToken }),
+    credentials: "include",
+    cache: "no-store",
+    redirect: "follow",
   });
 
   if (!res.ok) {
@@ -108,6 +114,9 @@ export async function getCurrentUser() {
 
   const res = await fetch(`${BASE_URL}/auth/me`, {
     headers: { Authorization: `Bearer ${token}` },
+    credentials: "include",
+    cache: "no-store",
+    redirect: "follow",
   });
 
   const data = await res.json();
@@ -134,6 +143,9 @@ export async function verifyEmail(code: string) {
   const res = await fetch(`${BASE_URL}/auth/verify`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    cache: "no-store",
+    redirect: "follow",
     body: JSON.stringify({ code }),
   });
 
@@ -154,6 +166,9 @@ export async function resendVerificationCode(email: string) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email }),
+    credentials: "include",
+    cache: "no-store",
+    redirect: "follow",
   });
 
   const data = await res.json();
@@ -174,6 +189,9 @@ export async function getUserProfile() {
 
   const res = await fetch(`${BASE_URL}/auth/me`, {
     headers: { Authorization: `Bearer ${token}` },
+    credentials: "include",
+    cache: "no-store",
+    redirect: "follow",
   });
 
   if (!res.ok) {

@@ -270,7 +270,7 @@ export async function createProject(
   name: string,
   description: string,
 ): Promise<Project> {
-  const response = await fetchWithAuth(`${BASE_URL}/projects`, {
+  const response = await fetchWithAuth(`${BASE_URL}/projects/`, {
     method: "POST",
     body: JSON.stringify({ name, description }),
   });

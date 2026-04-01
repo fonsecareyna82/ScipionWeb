@@ -169,7 +169,7 @@ export default function ImportProjectDialog({
         disableRestoreFocus
         PaperProps={{
           sx: {
-            borderRadius: 2,
+            borderRadius: 4,
             overflow: "hidden",
             border: `1px solid ${alpha(theme.palette.divider, 0.9)}`,
           },
@@ -225,6 +225,7 @@ export default function ImportProjectDialog({
                 variant="body2"
                 sx={{
                   mb: 0.75,
+                  mt:2,
                   fontWeight: 600,
                   color: theme.palette.text.primary,
                 }}
@@ -296,17 +297,7 @@ export default function ImportProjectDialog({
                   </Tooltip>
                 </Stack>
 
-                <Typography
-                  variant="caption"
-                  sx={{
-                    pl: 4.5,
-                    color: theme.palette.text.secondary,
-                    lineHeight: 1.45,
-                  }}
-                >
-                  If disabled, the project will be imported as a symbolic link
-                  instead of duplicating the files.
-                </Typography>
+                
               </Stack>
             </Box>
 

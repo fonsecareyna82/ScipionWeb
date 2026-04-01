@@ -707,6 +707,8 @@ export default function PluginPage() {
             }
 
             await refreshPlugin();
+            finishInstall(pipName);
+
             if (!isMountedRef.current) return;
             setSuccess(wasUpdate ? "Plugin updated successfully" : "Plugin installed successfully");
         } catch (err) {
@@ -771,6 +773,8 @@ export default function PluginPage() {
             }
 
             await refreshPlugin();
+            finishRemove(pipName);
+
             if (!isMountedRef.current) return;
             setSuccess("Plugin removed successfully");
         } catch (err) {
