@@ -1,7 +1,6 @@
 // src/App.tsx
 import { Suspense, lazy } from "react";
 import { Routes, Route } from "react-router-dom";
-import NotFound from "./pages/OtherPage/NotFound";
 import AppLayout from "./layout/AppLayout";
 import { ScrollToTop } from "./components/common/ScrollToTop";
 import ProtectedRoute from "./components/auth/ProtectedRoute";
@@ -31,7 +30,7 @@ const Calendar = lazy(() => import("./pages/Calendar"));
 const BasicTables = lazy(() => import("./pages/Tables/BasicTables"));
 const FormElements = lazy(() => import("./pages/Forms/FormElements"));
 const Blank = lazy(() => import("./pages/Blank"));
-const Home = lazy(() => import("./pages/Dashboard/Home"));
+const Home = lazy(() => import("./pages/Dashboard/homepage/Home"));
 const Projects = lazy(() => import("./pages/Dashboard/projects/Projects"));
 const ProjectPage = lazy(() => import("./pages/Dashboard/projects/ProjectPage"));
 const Plugins = lazy(() => import("./pages/Dashboard/plugins/Plugins"));
@@ -39,6 +38,9 @@ const PluginPage = lazy(() => import("./pages/Dashboard/plugins/PluginPage"));
 const WorkflowsPage = lazy(() => import("./pages/Dashboard/workflows/WorkflowsPage"));
 const SettingsPage = lazy(() => import("./pages/Settings/settingspage"));
 const VerifyEmailForm = lazy(() => import("./components/auth/VerifyEmailForm"));
+const ReleaseNotes = lazy(() => import("./pages/Dashboard/homepage/releasenotespage"));
+const ReleaseNoteDetailPage = lazy(() => import("./pages/Dashboard/homepage/releasenotedetailpage"));
+const NotFound = lazy(() => import("./pages/OtherPage/NotFound"));
 
 function RouteFallback() {
   // suspenseFallback
@@ -86,6 +88,8 @@ export default function App({ service }: AppProps) {
                   <Route path="/calendar" element={<Calendar />} />
                   <Route path="/settings" element={<SettingsPage />} />
                   <Route path="/blank" element={<Blank />} />
+                  <Route path="/release-notes" element={<ReleaseNotes />} />
+                  <Route path="/release-notes/:version" element={<ReleaseNoteDetailPage />} />
                   <Route path="/form-elements" element={<FormElements />} />
                   <Route path="/basic-tables" element={<BasicTables />} />
                   <Route path="/alerts" element={<Alerts />} />

@@ -3,8 +3,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
-import PageMeta from "../../components/common/PageMeta";
-
 import { useProjectService } from "@/ProjectServiceContext";
 import {
   BookOpen,
@@ -17,12 +15,12 @@ import {
   GraduationCap,
   LifeBuoy,
   Folder,
-  Plus,
   LucideSettings2,
   Sparkles,
   Clock3,
 } from "lucide-react";
 import { TreeIcon } from "@/icons";
+import PageMeta from "@/components/common/PageMeta";
 
 type ProjectRow = {
   id: string;
@@ -37,6 +35,7 @@ type IconTone = "indigo" | "violet" | "emerald" | "amber" | "sky" | "rose";
 
 const PIN_STORAGE_KEY = "scipion.home.pins.v1";
 const LAST_OPEN_STORAGE_KEY = "scipion.home.lastOpenedProjectId.v1";
+const RELEASE_NOTES_ROUTE = "/release-notes";
 
 function normalizeProjects(raw: any): ProjectRow[] {
   // normalizeProjects
@@ -463,8 +462,6 @@ export default function Home() {
     return projects[0]?.id;
   }, [lastOpenedId, projects]);
 
-  const hasAnyProjects = projects.length > 0;
-
   return (
     <>
       <PageMeta title="Scipion" description="Scipion Home" />
@@ -510,12 +507,8 @@ export default function Home() {
                       {lastProjectId ? "Open last project" : "Open projects"}
                     </button>
 
-                    
-
-                    <a
-                      href="https://scipion-em.github.io/docs/release-3.0.0/index.html"
-                      target="_blank"
-                      rel="noreferrer"
+                    <Link
+                      to={RELEASE_NOTES_ROUTE}
                       className={classNames(
                         "inline-flex items-center gap-2 rounded-[10px] border px-4 py-2.5 text-sm font-semibold transition",
                         "border-gray-300/80 bg-white text-gray-950 hover:bg-gray-50",
@@ -524,7 +517,7 @@ export default function Home() {
                     >
                       <BookOpen className="h-4 w-4" />
                       Release notes
-                    </a>
+                    </Link>
                   </div>
 
                   <div className="mt-6 border-t border-white/70 pt-4 dark:border-slate-800">
@@ -574,15 +567,6 @@ export default function Home() {
                   >
                     <SectionLabel>Workspace</SectionLabel>
 
-                    <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3 xl:grid-cols-1">
-                      <MetricPill label="Projects" value={stats.total} icon={<FolderKanban className="h-4 w-4" />} />
-                      <MetricPill label="Pinned" value={stats.pinned} icon={<Pin className="h-4 w-4" />} />
-                      <MetricPill
-                        label="Last update"
-                        value={stats.lastUpdated}
-                        icon={<Clock3 className="h-4 w-4" />}
-                      />
-                    </div>
 
                     <div className="mt-4 border-t border-gray-200/90 pt-4 dark:border-gray-800">
                       <div className="space-y-2.5">
@@ -619,19 +603,18 @@ export default function Home() {
                     <SectionLabel>Resources</SectionLabel>
                     <div className="mt-2 space-y-1">
                       <ResourceLink
-                        title="Quickstart"
-                        subtitle="Get productive fast"
-                        icon={<GraduationCap className="h-4 w-4" />}
-                        tone="violet"
-                        href="https://scipion-em.github.io/docs/release-3.0.0/index.html"
-                        openInNewTab
+                        title="Release notes"
+                        subtitle="See features, fixes and version updates"
+                        icon={<BookOpen className="h-4 w-4" />}
+                        tone="sky"
+                        to={RELEASE_NOTES_ROUTE}
                       />
                       <ResourceLink
                         title="Documentation"
                         subtitle="Browse full docs and tutorials"
-                        icon={<BookOpen className="h-4 w-4" />}
-                        tone="sky"
-                        href="https://scipion-em.github.io/docs/"
+                        icon={<GraduationCap className="h-4 w-4" />}
+                        tone="violet"
+                        href="https://fonsecareyna82.github.io/scipion-docs/"
                         openInNewTab
                       />
                       <ResourceLink
@@ -648,6 +631,7 @@ export default function Home() {
             </div>
           </Surface>
         </div>
+
         <div className="col-span-12">
           <Surface
             className="border-gray-300/90 shadow-[0_8px_30px_rgba(15,23,42,0.04)] dark:shadow-none"
@@ -750,7 +734,7 @@ export default function Home() {
                             <div className="mt-1 line-clamp-1 text-sm text-gray-700 dark:text-gray-300">
                               {p.description?.trim() ? p.description : "No description"}
                             </div>
-                            <div className="mt-2 text-xs font-medium  text-gray-500 dark:text-gray-400">
+                            <div className="mt-2 text-xs font-medium text-gray-500 dark:text-gray-400">
                               Updated {formatDateTime(p.updatedAt ?? p.createdAt)}
                             </div>
                           </div>

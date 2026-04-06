@@ -122,7 +122,7 @@ export default function ImportProjectDialog({
 
   const [projectLocation, setProjectLocation] = useState("");
   const [projectName, setProjectName] = useState("");
-  const [copyProject, setCopyProject] = useState(true);
+  const [copyProject, setCopyProject] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [openBrowser, setOpenBrowser] = useState(false);
 
@@ -131,7 +131,7 @@ export default function ImportProjectDialog({
 
     setProjectLocation("");
     setProjectName("");
-    setCopyProject(true);
+    setCopyProject(false);
     setSubmitting(false);
     setOpenBrowser(false);
   }, [open]);
