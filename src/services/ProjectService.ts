@@ -150,6 +150,36 @@ export type VolumeData3d = {
   std?: number;
 };
 
+/**
+ * Host configuration for settings page.
+ */
+export type HostQueueParam = {
+  variableName: string;
+  value: string;
+  label: string;
+  help: string;
+};
+
+export type HostQueue = {
+  name: string;
+  params: HostQueueParam[];
+};
+
+export type HostSettings = {
+  hostAlias: string;
+  schedulerName: string;
+  mandatory: boolean;
+  parallelCommand: string;
+  submitCommand: string;
+  cancelCommand: string;
+  checkCommand: string;
+  jobDoneRegex: string;
+  submitTemplate: string;
+  queues: HostQueue[];
+};
+
+export type HostSettingsPatch = Partial<HostSettings>;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Coordinates3D + linked tomograms (SetOfCoordinates3D support)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1150,4 +1180,10 @@ export interface ProjectService<
     projectId: Id,
   ): Promise<ContextMenuVisibilityPolicy>;
 
+  //-────────────────────────────────────────────────────────────────────────────
+  //Host settings (for cluster execution)
+  // ─────────────────────────────────────────────────────────────────────────────
+  fetchHostSettings(): Promise<HostSettings>;
+  putHostSettings(payload: HostSettings): Promise<HostSettings | null>;
+  patchHostSettings(patch: HostSettingsPatch): Promise<HostSettings | null>;
 }

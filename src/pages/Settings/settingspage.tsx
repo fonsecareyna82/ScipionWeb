@@ -44,8 +44,15 @@ import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 
 import TagManager from "@/components/tags/TagManager";
 import type { ProtocolTag } from "@/components/tags/tagTypes";
+import HostSettingsPanel, {
+  type HostSettings,
+  defaultHostSettings,
+  sanitizeHostSettings,
+  buildHostPatch,
+} from "@/pages/Settings/HostSettingsPanel";
 
-type TabKey = "user" | "instance" | "tags" | "environment";
+
+type TabKey = "user" | "instance" | "host" | "tags" | "environment";
 
 type WorkflowViewMode = "treeTb" | "treeLr" | "grid" | "table";
 
@@ -424,6 +431,13 @@ export default function SettingsPage() {
     return raw;
   }, [selectedProject?.id]);
 
+  const [hostLoading, setHostLoading] = useState(false);
+  const [hostError, setHostError] = useState<string | null>(null);
+  const [hostAvailable, setHostAvailable] = useState(true);
+  const [hostBase, setHostBase] = useState<HostSettings | null>(null);
+  const [hostDraft, setHostDraft] = useState<HostSettings | null>(null);
+  const [hostLoadedOnce, setHostLoadedOnce] = useState(false);
+
   const loadProjectsForTagsTab = useCallback(async () => {
     // loadProjectsForTagsTab
     if (projectsRequestInFlightRef.current) return;
@@ -654,6 +668,13 @@ export default function SettingsPage() {
     return opts;
   }, [userDraft?.timeZone, userBase?.timeZone]);
 
+
+  const hostPatch = useMemo(() => {
+    if (!hostBase || !hostDraft) return null;
+    const patch = buildHostPatch(hostBase, hostDraft);
+    return Object.keys(patch).length ? patch : null;
+  }, [hostBase, hostDraft]);
+
   const userPatch = useMemo(() => {
     // userPatch
     if (!userBase || !userDraft) return null;
@@ -685,6 +706,42 @@ export default function SettingsPage() {
       return name.includes(q) || value.includes(q);
     });
   }, [environmentDraft, environmentFilter]);
+
+
+  const loadHostSettings = useCallback(async () => {
+    setHostLoading(true);
+    setHostError(null);
+
+    try {
+      const raw = await svc.fetchHostSettings();
+      const data = sanitizeHostSettings(raw ?? defaultHostSettings);
+      setHostAvailable(true);
+      setHostBase(data);
+      setHostDraft(data);
+    } catch (e: any) {
+      if (isForbidden(e)) {
+        setHostAvailable(false);
+        setHostBase(null);
+        setHostDraft(null);
+        setHostLoadedOnce(true);
+        return;
+      }
+
+      const msg = getErrorMsg(e);
+      setHostError(msg);
+      toast.error(msg);
+    } finally {
+      setHostLoading(false);
+      setHostLoadedOnce(true);
+    }
+  }, [svc]);
+
+  useEffect(() => {
+    if (tab !== "host") return;
+    if (hostLoadedOnce) return;
+    void loadHostSettings();
+  }, [tab, hostLoadedOnce, loadHostSettings]);
+
 
   const loadUserSettings = useCallback(async () => {
     // loadUserSettings
@@ -779,6 +836,41 @@ export default function SettingsPage() {
     if (environmentLoadedOnce) return;
     void loadEnvironmentVariables();
   }, [tab, environmentLoadedOnce, loadEnvironmentVariables]);
+
+
+  const handleSaveHost = useCallback(async () => {
+    if (!hostAvailable || !hostDraft || !hostBase) return;
+
+    const patch = buildHostPatch(hostBase, hostDraft);
+    if (!Object.keys(patch).length) return;
+
+    setHostLoading(true);
+    setHostError(null);
+
+    try {
+      const savedRaw = await svc.patchHostSettings(patch);
+      const saved = sanitizeHostSettings(savedRaw ?? hostDraft);
+      setHostBase(saved);
+      setHostDraft(saved);
+      toast.success("Host settings saved.");
+    } catch (e: any) {
+      if (isForbidden(e)) {
+        setHostAvailable(false);
+        toast.error("Forbidden: admin permissions required.");
+        return;
+      }
+
+      const msg = getErrorMsg(e);
+      setHostError(msg);
+      toast.error(msg);
+    } finally {
+      setHostLoading(false);
+    }
+  }, [svc, hostAvailable, hostBase, hostDraft]);
+
+  const handleResetHost = useCallback(() => {
+    if (hostBase) setHostDraft(hostBase);
+  }, [hostBase]);
 
   const handleSaveUser = useCallback(async () => {
     // handleSaveUser
@@ -881,44 +973,92 @@ export default function SettingsPage() {
   }, [environmentBase]);
 
   const handleCopyAdvanced = useCallback(async () => {
-    // handleCopyAdvanced
     try {
       const payload =
         tab === "user"
           ? (userDraft ?? userBase ?? {})
           : tab === "instance"
             ? (instanceDraft ?? instanceBase ?? {})
-            : tab === "environment"
-              ? (environmentDraft ?? [])
-              : (tagsDraft ?? []);
+            : tab === "host"
+              ? (hostDraft ?? hostBase ?? {})
+              : tab === "environment"
+                ? (environmentDraft ?? [])
+                : (tagsDraft ?? []);
+
       await copyToClipboard(safeStringify(payload));
       toast.success("Copied.");
     } catch {
       toast.error("Copy failed.");
     }
-  }, [tab, userDraft, userBase, instanceDraft, instanceBase, environmentDraft, tagsDraft]);
+  }, [
+    tab,
+    userDraft,
+    userBase,
+    instanceDraft,
+    instanceBase,
+    hostDraft,
+    hostBase,
+    environmentDraft,
+    tagsDraft,
+  ]);
 
   const headerRight = useMemo(() => {
-    // headerRight
     if (tab === "tags") return null;
 
     const isUser = tab === "user";
     const isInstance = tab === "instance";
+    const isHost = tab === "host";
     const isEnvironment = tab === "environment";
 
-    const busy = isUser ? userLoading : isInstance ? instanceLoading : environmentLoading;
-    const patch = isUser ? userPatch : isInstance ? instancePatch : environmentPatch;
+    const busy = isUser
+      ? userLoading
+      : isInstance
+        ? instanceLoading
+        : isHost
+          ? hostLoading
+          : environmentLoading;
+
+    const patch = isUser
+      ? userPatch
+      : isInstance
+        ? instancePatch
+        : isHost
+          ? hostPatch
+          : environmentPatch;
+
     const hasChanges = Boolean(patch);
 
     const canSave = isUser
       ? Boolean(userDraft)
       : isInstance
         ? instanceAvailable && Boolean(instanceDraft)
-        : environmentAvailable;
+        : isHost
+          ? hostAvailable && Boolean(hostDraft)
+          : environmentAvailable;
 
-    const onReload = isUser ? loadUserSettings : isInstance ? loadInstanceSettings : loadEnvironmentVariables;
-    const onReset = isUser ? handleResetUser : isInstance ? handleResetInstance : handleResetEnvironment;
-    const onSave = isUser ? handleSaveUser : isInstance ? handleSaveInstance : handleSaveEnvironment;
+    const onReload = isUser
+      ? loadUserSettings
+      : isInstance
+        ? loadInstanceSettings
+        : isHost
+          ? loadHostSettings
+          : loadEnvironmentVariables;
+
+    const onReset = isUser
+      ? handleResetUser
+      : isInstance
+        ? handleResetInstance
+        : isHost
+          ? handleResetHost
+          : handleResetEnvironment;
+
+    const onSave = isUser
+      ? handleSaveUser
+      : isInstance
+        ? handleSaveInstance
+        : isHost
+          ? handleSaveHost
+          : handleSaveEnvironment;
 
     return (
       <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" justifyContent="flex-end">
@@ -962,26 +1102,53 @@ export default function SettingsPage() {
     tab,
     userLoading,
     instanceLoading,
+    hostLoading,
     environmentLoading,
     userPatch,
     instancePatch,
+    hostPatch,
     environmentPatch,
     instanceAvailable,
+    hostAvailable,
     environmentAvailable,
     userDraft,
     instanceDraft,
+    hostDraft,
     loadUserSettings,
     loadInstanceSettings,
+    loadHostSettings,
     loadEnvironmentVariables,
     handleResetUser,
     handleResetInstance,
+    handleResetHost,
     handleResetEnvironment,
     handleSaveUser,
     handleSaveInstance,
+    handleSaveHost,
     handleSaveEnvironment,
     actionButtonSx,
     saveButtonSx,
   ]);
+
+  const renderHostContent = () => {
+    if (!hostAvailable) {
+      return <Alert severity="info">Host settings are restricted to admin users.</Alert>;
+    }
+
+    return (
+      <HostSettingsPanel
+        value={hostDraft}
+        onChange={setHostDraft}
+        loading={hostLoading}
+        error={hostError}
+        fieldSx={fieldSx}
+        cardSx={cardSx}
+        cardHeaderSx={cardHeaderSx}
+        dividerSx={dividerSx}
+        colors={colors}
+      />
+    );
+  };
 
   const renderUserContent = () => {
     // renderUserContent
@@ -1600,12 +1767,12 @@ export default function SettingsPage() {
   };
 
   const advancedPayload = useMemo(() => {
-    // advancedPayload
     if (tab === "user") return userDraft ?? userBase ?? {};
     if (tab === "instance") return instanceDraft ?? instanceBase ?? {};
+    if (tab === "host") return hostDraft ?? hostBase ?? {};
     if (tab === "environment") return environmentDraft ?? [];
     return tagsDraft ?? [];
-  }, [tab, userDraft, userBase, instanceDraft, instanceBase, environmentDraft, tagsDraft]);
+  }, [tab, userDraft, userBase, instanceDraft, instanceBase, hostDraft, hostBase, environmentDraft, tagsDraft]);
 
   return (
     <>
@@ -1656,6 +1823,7 @@ export default function SettingsPage() {
             >
               <Tab value="user" label="User" />
               <Tab value="instance" label="Instance" />
+              <Tab value="host" label="Host" />
               <Tab value="tags" label="Tags" />
               <Tab value="environment" label="Environment" />
             </Tabs>
@@ -1667,9 +1835,11 @@ export default function SettingsPage() {
                 ? renderUserContent()
                 : tab === "instance"
                   ? renderInstanceContent()
-                  : tab === "tags"
-                    ? renderTagsContent()
-                    : renderEnvironmentContent()}
+                  : tab === "host"
+                    ? renderHostContent()
+                    : tab === "tags"
+                      ? renderTagsContent()
+                      : renderEnvironmentContent()}
 
               <Divider sx={{ my: 2, ...dividerSx }} />
 

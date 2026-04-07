@@ -1,6 +1,7 @@
 // settingsApi
 import { BASE_URL } from "@/config";
 import { fetchWithAuth } from "./auth";
+import { HostSettings, HostSettingsPatch } from "@/services/ProjectService";
 
 export type UserSettings = {
   theme: "system" | "light" | "dark";
@@ -170,4 +171,71 @@ export async function patchEnvironmentVariables(
   });
   if (!res.ok) throw await toApiError(res, "Failed to patch environment variables");
   return safeJson<EnvironmentVariable[]>(res);
+}
+
+/* ======================= hostSettings ======================= */
+
+function normalizeHostSettingsPayload(raw: any): HostSettings {
+  const source =
+    raw && typeof raw === "object" && raw.config && typeof raw.config === "object"
+      ? raw.config
+      : raw;
+
+  return (source && typeof source === "object" ? source : {}) as HostSettings;
+}
+
+
+export async function fetchHostSettings(): Promise<HostSettings> {
+  const response = await fetchWithAuth(`${BASE_URL}/settings/host`, {
+    method: "GET",
+  });
+
+  if (!response.ok) {
+    throw await toApiError(response, "Failed to fetch host settings");
+  }
+
+  const data = await safeJson<any>(response);
+  return normalizeHostSettingsPayload(data);
+}
+
+export async function putHostSettings(
+  settings: HostSettings,
+): Promise<HostSettings | null> {
+  const response = await fetchWithAuth(`${BASE_URL}/settings/host`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(settings ?? {}),
+  });
+
+  if (response.status === 204) {
+    return null;
+  }
+
+  if (!response.ok) {
+    throw await toApiError(response, "Failed to update host settings");
+  }
+
+  const data = await safeJson<any>(response);
+  return normalizeHostSettingsPayload(data);
+}
+
+export async function patchHostSettings(
+  patch: HostSettingsPatch,
+): Promise<HostSettings | null> {
+  const response = await fetchWithAuth(`${BASE_URL}/settings/host`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch ?? {}),
+  });
+
+  if (response.status === 204) {
+    return null;
+  }
+
+  if (!response.ok) {
+    throw await toApiError(response, "Failed to patch host settings");
+  }
+
+  const data = await safeJson<any>(response);
+  return normalizeHostSettingsPayload(data);
 }

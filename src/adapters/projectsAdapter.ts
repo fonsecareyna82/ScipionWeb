@@ -42,6 +42,8 @@ import type {
   UserSettingsPatch,
   InstanceSettings,
   InstanceSettingsPatch,
+  HostSettings,
+  HostSettingsPatch,
 } from "@/services/ProjectService";
 
 /** Normalize id */
@@ -715,6 +717,10 @@ const defaultService: ProjectService = {
   fetchInstanceSettings: () => settingsApi.fetchInstanceSettings(),
   putInstanceSettings: (payload: InstanceSettings) => settingsApi.putInstanceSettings(payload),
   patchInstanceSettings: (patch: InstanceSettingsPatch) => settingsApi.patchInstanceSettings(patch),
+
+  fetchHostSettings: () => settingsApi.fetchHostSettings(),
+  putHostSettings: (payload: HostSettings) => settingsApi.putHostSettings(payload),
+  patchHostSettings: (patch: HostSettingsPatch) => settingsApi.patchHostSettings(patch),
 
   fetchEnvironmentVariables: () => settingsApi.fetchEnvironmentVariables(),
   patchEnvironmentVariables: (patch: Record<string, string>) =>
