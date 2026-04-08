@@ -33,18 +33,18 @@ import type {
   ProjectThumbnailItemsOptions,
   ProjectThumbnailObjectUrlOptions,
   FscPoint,
-} from "@/services/ProjectService";
-
-
-import * as settingsApi from "@/api/settings";
-import type {
   UserSettings,
   UserSettingsPatch,
   InstanceSettings,
   InstanceSettingsPatch,
   HostSettings,
   HostSettingsPatch,
+  ProjectEffectiveSettings,
+  ProjectServiceCapabilities,
+  
 } from "@/services/ProjectService";
+
+import * as settingsApi from "@/api/settings";
 
 /** Normalize id */
 const toId = (id: string | number | null | undefined): string => String(id);
@@ -87,6 +87,17 @@ const defaultService: ProjectService = {
   fetchList: () => api.fetchProjects(),
 
   fetchProject: (id: Id) => api.fetchProject(toId(id)),
+
+    // ──────────────────────────── Optional runtime capabilities ────────────────────────────
+
+  getCapabilities: (): ProjectServiceCapabilities => ({
+    projectEffectiveSettings: true,
+  }),
+
+  fetchProjectEffectiveSettings: (
+    projectId: Id,
+  ): Promise<ProjectEffectiveSettings> =>
+    api.fetchProjectEffectiveSettings(toId(projectId)),
 
   fetchProtocolDetails: (projectId: Id, protocolId: Id) =>
     api.fetchProtocolDetails(toId(projectId), toId(protocolId)),

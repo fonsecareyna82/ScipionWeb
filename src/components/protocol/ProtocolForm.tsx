@@ -10,6 +10,15 @@ import {
   Tooltip,
   CircularProgress,
   IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  Select,
 } from "@mui/material";
 import styles from "./protocolform.module.css";
 import {
@@ -81,6 +90,7 @@ import {
   getProtUnionDerivedPointerClass,
   syncProtUnionPointerClassInParams,
 } from "@/utils/protocolform.protunion";
+import { ProjectEffectiveSettings } from "@/services/ProjectService";
 
 type ProtocolFormProps = {
   data: any;
@@ -89,7 +99,85 @@ type ProtocolFormProps = {
   onExecuted?: () => void;
   /** Presentation variant: "drawer" (default) slides in from the right; "docked" fills its parent panel. */
   variant?: "drawer" | "docked";
+  projectEffectiveSettings?: ProjectEffectiveSettings | null;
 };
+
+type EffectiveHostQueueParam = {
+  variableName: string;
+  value: string;
+  label: string;
+  help: string;
+};
+
+type EffectiveHostQueue = {
+  name: string;
+  params: EffectiveHostQueueParam[];
+};
+
+type QueueLaunchDraftParam = {
+  stateKey: string | null;
+  variableName: string;
+  value: string;
+  label: string;
+  help: string;
+};
+
+type QueueLaunchDraft = {
+  queueName: string;
+  params: QueueLaunchDraftParam[];
+};
+
+type QueueDialogDraft = {
+  queueName: string;
+  params: EffectiveHostQueueParam[];
+};
+
+function normalizeEffectiveHostQueues(raw: unknown): EffectiveHostQueue[] {
+  if (!Array.isArray(raw)) return [];
+
+  return raw
+    .map((queue: any) => {
+      const name = String(queue?.name ?? "").trim();
+      if (!name) return null;
+
+      const paramsRaw = Array.isArray(queue?.params) ? queue.params : [];
+      const params = paramsRaw
+        .map((param: any) => {
+          const variableName = String(param?.variableName ?? "").trim();
+          if (!variableName) return null;
+
+          return {
+            variableName,
+            value: String(param?.value ?? ""),
+            label: String(param?.label ?? ""),
+            help: String(param?.help ?? ""),
+          };
+        })
+        .filter(Boolean) as EffectiveHostQueueParam[];
+
+      return { name, params };
+    })
+    .filter(Boolean) as EffectiveHostQueue[];
+}
+
+function isEmptyProtocolValue(raw: unknown): boolean {
+  if (raw == null) return true;
+
+  if (typeof raw === "string") {
+    return raw.trim() === "";
+  }
+
+  if (Array.isArray(raw)) {
+    if (raw.length === 0) return true;
+
+    return raw.every((item: any) => {
+      const token = normalizePointerToken(item?.object ?? item?.value ?? item);
+      return !token;
+    });
+  }
+
+  return false;
+}
 
 export default function ProtocolForm({
   data,
@@ -97,6 +185,7 @@ export default function ProtocolForm({
   onClose,
   onExecuted,
   variant = "drawer",
+  projectEffectiveSettings = null,
 }: ProtocolFormProps) {
   const svc = useProjectService();
 
@@ -166,16 +255,72 @@ export default function ProtocolForm({
 
   const [selectedExecuteMode, setSelectedExecuteMode] = useState<string | null>(null);
 
+  const effectiveSettingsRoot = useMemo(() => {
+    const root = (projectEffectiveSettings as any)?.settings ?? projectEffectiveSettings ?? null;
+    return root && typeof root === "object" ? root : null;
+  }, [projectEffectiveSettings]);
+
+  const effectiveUserSettings: any = effectiveSettingsRoot?.user ?? null;
+  const effectiveInstanceSettings: any = effectiveSettingsRoot?.instance ?? null;
+  const effectiveHostSettings: any = effectiveSettingsRoot?.host ?? null;
+
+  const effectiveHostQueues = useMemo(
+    () => normalizeEffectiveHostQueues(effectiveHostSettings?.queues),
+    [effectiveHostSettings]
+  );
+
+  const effectiveQueueMandatory = Boolean(effectiveHostSettings?.mandatory);
+
+  const effectiveDefaultQueueName = useMemo(() => {
+    const candidates = [
+      effectiveInstanceSettings?.defaultQueueName,
+      effectiveInstanceSettings?.defaultQueue,
+      effectiveUserSettings?.defaultQueueName,
+      effectiveUserSettings?.defaultQueue,
+      effectiveHostSettings?.defaultQueueName,
+      effectiveHostSettings?.defaultQueue,
+    ]
+      .map((value) => String(value ?? "").trim())
+      .filter(Boolean);
+
+    const explicit = candidates.find((name) =>
+      effectiveHostQueues.some((queue) => queue.name === name)
+    );
+
+    if (explicit) return explicit;
+    return effectiveHostQueues[0]?.name ?? "";
+  }, [
+    effectiveInstanceSettings,
+    effectiveUserSettings,
+    effectiveHostSettings,
+    effectiveHostQueues,
+  ]);
+
+  const preferredExecuteMode = useMemo(() => {
+    const token = String(
+      effectiveUserSettings?.preferredExecuteMode ??
+      effectiveUserSettings?.defaultExecuteMode ??
+      effectiveInstanceSettings?.preferredExecuteMode ??
+      effectiveInstanceSettings?.defaultExecuteMode ??
+      ""
+    ).trim();
+
+    if (!token || !executeModeMap) return "";
+    return executeModeMap[token] ? token : "";
+  }, [effectiveUserSettings, effectiveInstanceSettings, executeModeMap]);
+
   useEffect(() => {
     if (!executeModeMap) return;
+
     const keys = Object.keys(executeModeMap);
     if (keys.length === 0) return;
 
     setSelectedExecuteMode((prev) => {
       if (prev && executeModeMap[prev]) return prev;
+      if (preferredExecuteMode && executeModeMap[preferredExecuteMode]) return preferredExecuteMode;
       return keys[0];
     });
-  }, [executeModeMap]);
+  }, [executeModeMap, preferredExecuteMode]);
 
 
   const [topTab, setTopTab] = useState(0);
@@ -219,6 +364,18 @@ export default function ProtocolForm({
   const [execErrorDialogOpen, setExecErrorDialogOpen] = useState(false);
   const [execErrorDialogTitle, setExecErrorDialogTitle] = useState("Error");
   const [execErrorDialogMessage, setExecErrorDialogMessage] = useState<string>("");
+
+  const [queueDialogOpen, setQueueDialogOpen] = useState(false);
+  const [pendingExecuteMode, setPendingExecuteMode] = useState<string | null>(null);
+  const [queueDraft, setQueueDraft] = useState<QueueLaunchDraft | null>(null);
+
+  const cloneQueueParams = (params: EffectiveHostQueueParam[]): EffectiveHostQueueParam[] =>
+    params.map((param) => ({
+      variableName: param.variableName,
+      value: String(param.value ?? ""),
+      label: String(param.label ?? ""),
+      help: String(param.help ?? ""),
+    }));
 
   // Global Output Selector
   const [openSelector, setOpenSelector] = useState(false);
@@ -561,6 +718,348 @@ export default function ProtocolForm({
   }, [form, info, values, sections, protocolId, protocolClassName]);
 
 
+  const findStateKeyByParamNames = useCallback(
+    (paramsObj: Record<string, any> | undefined, names: string[]) => {
+      const normalizedNames = new Set(
+        names
+          .map((name) => String(name ?? "").trim().toLowerCase())
+          .filter(Boolean)
+      );
+
+      for (const stateKey of Object.keys(paramsObj ?? {})) {
+        const paramName = String(getParamNameFromStateKey(stateKey) ?? "")
+          .trim()
+          .toLowerCase();
+
+        if (normalizedNames.has(paramName)) {
+          return stateKey;
+        }
+      }
+
+      return null;
+    },
+    []
+  );
+
+  const queueNameStateKey = useMemo(
+    () =>
+      findStateKeyByParamNames(protocolDetails.params, [
+        "queueName",
+        "_queueName",
+        "queue_name",
+        "queue",
+      ]),
+    [protocolDetails.params, findStateKeyByParamNames]
+  );
+
+  const useQueueStateKey = useMemo(
+    () =>
+      findStateKeyByParamNames(protocolDetails.params, [
+        "useQueue",
+        "_useQueue",
+        "use_queue",
+      ]),
+    [protocolDetails.params, findStateKeyByParamNames]
+  );
+
+  const activeQueueName = useMemo(() => {
+    if (!queueNameStateKey) return effectiveDefaultQueueName;
+
+    const current = protocolDetails.params?.[queueNameStateKey];
+    const currentName = String(current?.editableValue ?? current?.value ?? "").trim();
+
+    return currentName || effectiveDefaultQueueName;
+  }, [protocolDetails.params, queueNameStateKey, effectiveDefaultQueueName]);
+
+  const activeQueueDef = useMemo(() => {
+    if (!activeQueueName) return null;
+    return effectiveHostQueues.find((queue) => queue.name === activeQueueName) ?? null;
+  }, [effectiveHostQueues, activeQueueName]);
+
+
+  const useQueueEnabled = useMemo(() => {
+    if (!useQueueStateKey) return false;
+
+    const current = protocolDetails.params?.[useQueueStateKey];
+    return coerceBooleanValue(
+      current?.editableValue ?? current?.value ?? current?.default
+    );
+  }, [protocolDetails.params, useQueueStateKey]);
+
+  const hasConfiguredQueues = effectiveHostQueues.length > 0;
+
+  const hasAnyQueueParams = effectiveHostQueues.some(
+    (queue) => Array.isArray(queue.params) && queue.params.length > 0
+  );
+
+  const buildQueueDraft = useCallback(
+    (queueNameRaw?: string): QueueLaunchDraft | null => {
+      if (!effectiveHostQueues.length) return null;
+
+      const requestedQueueName = String(
+        queueNameRaw ?? activeQueueName ?? effectiveDefaultQueueName ?? ""
+      ).trim();
+
+      const selectedQueue =
+        effectiveHostQueues.find((queue) => queue.name === requestedQueueName) ??
+        effectiveHostQueues[0];
+
+      if (!selectedQueue) return null;
+
+      return {
+        queueName: selectedQueue.name,
+        params: selectedQueue.params.map((queueParam) => {
+          const stateKey = findStateKeyByParamNames(protocolDetails.params, [
+            queueParam.variableName,
+          ]);
+
+          return {
+            stateKey,
+            variableName: queueParam.variableName,
+            value: String(queueParam.value ?? ""),
+            label: String(queueParam.label ?? ""),
+            help: String(queueParam.help ?? ""),
+          };
+        }),
+      };
+    },
+    [
+      effectiveHostQueues,
+      activeQueueName,
+      effectiveDefaultQueueName,
+      protocolDetails.params,
+      findStateKeyByParamNames,
+    ]
+  );
+
+  const handleQueueDraftQueueChange = useCallback(
+    (nextQueueName: string) => {
+      setQueueDraft(() => {
+        const selectedQueue =
+          effectiveHostQueues.find((queue) => queue.name === nextQueueName) ?? null;
+
+        if (!selectedQueue) return null;
+
+        return {
+          queueName: selectedQueue.name,
+          params: selectedQueue.params.map((queueParam) => {
+            const stateKey = findStateKeyByParamNames(protocolDetails.params, [
+              queueParam.variableName,
+            ]);
+
+            return {
+              stateKey,
+              variableName: queueParam.variableName,
+              value: String(queueParam.value ?? ""),
+              label: String(queueParam.label ?? ""),
+              help: String(queueParam.help ?? ""),
+            };
+          }),
+        };
+      });
+    },
+    [effectiveHostQueues, protocolDetails.params, findStateKeyByParamNames]
+  );
+
+  const applyQueueDraftToProtocolState = useCallback(
+    (draft: QueueLaunchDraft) => {
+      setProtocolDetails((prev: any) => {
+        const currentParams = prev?.params ?? {};
+        let nextParams = currentParams;
+
+        const ensureClone = () => {
+          if (nextParams === currentParams) {
+            nextParams = { ...currentParams };
+          }
+        };
+
+        if (queueNameStateKey) {
+          const current = nextParams[queueNameStateKey] ?? currentParams[queueNameStateKey] ?? {};
+          const currentValue = String(current?.editableValue ?? current?.value ?? "").trim();
+
+          if (currentValue !== draft.queueName) {
+            ensureClone();
+            nextParams[queueNameStateKey] = {
+              ...current,
+              editableValue: draft.queueName,
+            };
+          }
+        }
+
+        if (useQueueStateKey) {
+          const current = nextParams[useQueueStateKey] ?? currentParams[useQueueStateKey] ?? {};
+          const currentValue = coerceBooleanValue(
+            current?.editableValue ?? current?.value ?? current?.default
+          );
+
+          if (!currentValue) {
+            ensureClone();
+            nextParams[useQueueStateKey] = {
+              ...current,
+              editableValue: true,
+            };
+          }
+        }
+
+        for (const queueParam of draft.params) {
+          if (!queueParam.stateKey) continue;
+
+          const current =
+            nextParams[queueParam.stateKey] ?? currentParams[queueParam.stateKey] ?? {};
+
+          const currentValue = String(current?.editableValue ?? current?.value ?? "");
+          if (currentValue !== queueParam.value) {
+            ensureClone();
+            nextParams[queueParam.stateKey] = {
+              ...current,
+              editableValue: queueParam.value,
+            };
+          }
+        }
+
+        if (nextParams === currentParams) return prev;
+        return { ...prev, params: nextParams };
+      });
+    },
+    [queueNameStateKey, useQueueStateKey]
+  );
+
+  const mergeQueueDraftIntoParams = useCallback(
+    (baseParams: Record<string, any>, draft: QueueLaunchDraft | null) => {
+      if (!draft) return baseParams;
+
+      const merged: Record<string, any> = {
+        ...baseParams,
+        _useQueue: true,
+        _queueName: draft.queueName,
+      };
+
+      const queueParamsMap: Record<string, string> = {};
+
+      for (const queueParam of draft.params) {
+        queueParamsMap[queueParam.variableName] = queueParam.value;
+        merged[queueParam.variableName] = queueParam.value;
+      }
+
+      merged._queueParams = queueParamsMap;
+      return merged;
+    },
+    []
+  );
+
+  useEffect(() => {
+    if (!effectiveHostQueues.length) return;
+
+    setProtocolDetails((prev: any) => {
+      const currentParams = prev?.params ?? {};
+      let nextParams = currentParams;
+
+      const ensureClone = () => {
+        if (nextParams === currentParams) {
+          nextParams = { ...currentParams };
+        }
+      };
+
+      if (queueNameStateKey && effectiveDefaultQueueName) {
+        const current = currentParams[queueNameStateKey] ?? {};
+        const currentValue = String(current?.editableValue ?? current?.value ?? "").trim();
+
+        if (!currentValue) {
+          ensureClone();
+          nextParams[queueNameStateKey] = {
+            ...current,
+            editableValue: effectiveDefaultQueueName,
+          };
+        }
+      }
+
+      if (useQueueStateKey) {
+        const current = currentParams[useQueueStateKey] ?? {};
+        const currentValue = current?.editableValue ?? current?.value ?? current?.default;
+
+        const shouldEnableQueue = effectiveQueueMandatory || Boolean(effectiveDefaultQueueName);
+        const isUnset =
+          currentValue === undefined || currentValue === null || currentValue === "";
+
+        const shouldWrite =
+          effectiveQueueMandatory
+            ? !coerceBooleanValue(currentValue)
+            : shouldEnableQueue && isUnset;
+
+        if (shouldWrite) {
+          ensureClone();
+          nextParams[useQueueStateKey] = {
+            ...current,
+            editableValue: true,
+          };
+        }
+      }
+
+      if (nextParams === currentParams) return prev;
+      return { ...prev, params: nextParams };
+    });
+  }, [
+    effectiveHostQueues,
+    effectiveDefaultQueueName,
+    effectiveQueueMandatory,
+    queueNameStateKey,
+    useQueueStateKey,
+  ]);
+
+  useEffect(() => {
+    if (!activeQueueDef) return;
+
+    setProtocolDetails((prev: any) => {
+      const currentParams = prev?.params ?? {};
+      let nextParams = currentParams;
+
+      const ensureClone = () => {
+        if (nextParams === currentParams) {
+          nextParams = { ...currentParams };
+        }
+      };
+
+      for (const queueParam of activeQueueDef.params) {
+        const paramStateKey = findStateKeyByParamNames(currentParams, [
+          queueParam.variableName,
+        ]);
+
+        if (!paramStateKey) continue;
+
+        const current = nextParams[paramStateKey] ?? currentParams[paramStateKey] ?? {};
+        let nextParam = current;
+
+        if (
+          isEmptyProtocolValue(current?.editableValue) &&
+          !isEmptyProtocolValue(queueParam.value)
+        ) {
+          nextParam = {
+            ...nextParam,
+            editableValue: queueParam.value,
+          };
+        }
+
+        if (!isNonEmptyString(current?.label) && isNonEmptyString(queueParam.label)) {
+          if (nextParam === current) nextParam = { ...nextParam };
+          nextParam.label = queueParam.label;
+        }
+
+        if (!isNonEmptyString(current?.help) && isNonEmptyString(queueParam.help)) {
+          if (nextParam === current) nextParam = { ...nextParam };
+          nextParam.help = queueParam.help;
+        }
+
+        if (nextParam !== current) {
+          ensureClone();
+          nextParams[paramStateKey] = nextParam;
+        }
+      }
+
+      if (nextParams === currentParams) return prev;
+      return { ...prev, params: nextParams };
+    });
+  }, [activeQueueDef, findStateKeyByParamNames]);
+
   const isWildcardExpectedClass = (raw: unknown): boolean => {
     const tokens = splitClassList(raw).map((item) => item.replace(/\s+/g, "").toLowerCase());
     return tokens.includes("all") || tokens.includes("emset");
@@ -781,8 +1280,11 @@ export default function ProtocolForm({
     setExecErrorDialogOpen(true);
   }
 
-  // handleExecute
-  const handleExecute = async (modeKey: string) => {
+
+  const executeNow = async (
+    modeKey: string,
+    queueOverride: QueueLaunchDraft | null = null
+  ) => {
     setActionLoading("execute");
     setExecError(null);
     setValidationErrors([]);
@@ -790,7 +1292,16 @@ export default function ProtocolForm({
     try {
       const pid = String(protocolId ?? "");
       const serializedParams = getSerializedParams();
-      const res: any = await svc.executeProtocol(projectId, pid, protocolClassName, serializedParams, modeKey);
+      const finalParams = mergeQueueDraftIntoParams(serializedParams, queueOverride);
+
+      const res: any = await svc.executeProtocol(
+        projectId,
+        pid,
+        protocolClassName,
+        finalParams,
+        modeKey
+      );
+
       const errors = getErrorsFromBackendPayload(res);
 
       if (errors.length > 0) {
@@ -802,7 +1313,6 @@ export default function ProtocolForm({
       onExecuted?.();
       requestClose();
     } catch (err: any) {
-      // keepYourExistingErrorHandling
       const httpStatus = getHttpStatusFromError(err);
       const backendPayload = getBackendPayloadFromError(err);
       const errors = getErrorsFromBackendPayload(backendPayload);
@@ -813,6 +1323,7 @@ export default function ProtocolForm({
           setShowValidationDialog(true);
           return;
         }
+
         openExecErrorDialog("Execution error", formatErrorsForDialog(errors));
         return;
       }
@@ -826,6 +1337,53 @@ export default function ProtocolForm({
     } finally {
       setActionLoading(null);
     }
+  };
+
+  // handleExecute
+  const handleExecute = async (modeKey: string) => {
+    const shouldUseQueue = useQueueEnabled || effectiveQueueMandatory;
+
+    if (!shouldUseQueue) {
+      await executeNow(modeKey, null);
+      return;
+    }
+
+    if (!hasConfiguredQueues) {
+      toast.error("No queues are configured for this host.");
+      return;
+    }
+
+    if (!hasAnyQueueParams) {
+      toast.error("No queue parameters are available for the configured queues.");
+      return;
+    }
+
+    const draft = buildQueueDraft(activeQueueName);
+
+    if (!draft) {
+      toast.error("Unable to prepare queue settings.");
+      return;
+    }
+
+    setPendingExecuteMode(modeKey);
+    setQueueDraft(draft);
+    setQueueDialogOpen(true);
+  };
+
+  const confirmQueueAndExecute = async () => {
+    if (!pendingExecuteMode || !queueDraft) {
+      setQueueDialogOpen(false);
+      setPendingExecuteMode(null);
+      return;
+    }
+
+    const draft = queueDraft;
+
+    applyQueueDraftToProtocolState(draft);
+    setQueueDialogOpen(false);
+    setPendingExecuteMode(null);
+
+    await executeNow(pendingExecuteMode, draft);
   };
 
   // handleSave
@@ -885,7 +1443,16 @@ export default function ProtocolForm({
       const { paramName: name, paramDef: def } = unwrapParamDef(paramLike);
       if (!def) return null;
 
-      const rawDef = def;
+      // State key only exists for real params with a name
+      const stateKey = name ? `${sectionIdx}_${name}` : null;
+      const liveState = stateKey ? protocolDetails.params?.[stateKey] ?? {} : {};
+
+      const rawDef = {
+        ...def,
+        ...(isNonEmptyString((liveState as any)?.label) ? { label: (liveState as any).label } : {}),
+        ...(isNonEmptyString((liveState as any)?.help) ? { help: (liveState as any).help } : {}),
+      };
+
       const defResolved = withResolvedParamClass(rawDef);
       const defClass = resolveParamClass(defResolved);
 
@@ -893,8 +1460,6 @@ export default function ProtocolForm({
       const basePrefix = parentKeyPrefix || `sec${sectionIdx}`;
       const stableKey = `${basePrefix}|${name ? `param:${name}` : `decorator:${defClass}:${rowIndex}`}`;
 
-      // State key only exists for real params with a name
-      const stateKey = name ? `${sectionIdx}_${name}` : null;
       const value = stateKey ? protocolDetails.params?.[stateKey]?.editableValue : undefined;
 
       const isInline = layoutVariant === "inline";
@@ -1889,6 +2454,362 @@ export default function ProtocolForm({
         onSelect={handleSelectOutput}
         multiSelect={false}
       />
+
+      {/* Queue dialog */}
+      <Dialog
+        open={queueDialogOpen}
+        onClose={() => {
+          if (isBusy) return;
+          setQueueDialogOpen(false);
+          setPendingExecuteMode(null);
+        }}
+        maxWidth="md"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: "26px",
+            overflow: "hidden",
+            border: "1px solid rgba(51, 61, 73, 0.14)",
+            boxShadow: "0 30px 90px rgba(15, 23, 42, 0.30)",
+            backgroundImage: "none",
+          },
+        }}
+      >
+        <DialogTitle
+          sx={{
+            m: 0,
+            px: 2.5,
+            py: 2,
+            background:
+              "linear-gradient(135deg, #333d49 0%, #3d4957 55%, #465567 100%)",
+            color: "#ffffff",
+            borderBottom: "1px solid rgba(255,255,255,0.08)",
+          }}
+        >
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "flex-start",
+              justifyContent: "space-between",
+              gap: 2,
+            }}
+          >
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "flex-start",
+                gap: 1.5,
+                minWidth: 0,
+              }}
+            >
+              <Box
+                sx={{
+                  width: 38,
+                  height: 38,
+                  borderRadius: "12px",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  background:
+                    "linear-gradient(135deg, rgba(255,255,255,0.16), rgba(255,255,255,0.08))",
+                  border: "1px solid rgba(255,255,255,0.14)",
+                  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.12)",
+                  flex: "0 0 auto",
+                  fontWeight: 800,
+                  fontSize: "0.95rem",
+                  color: "#ffffff",
+                }}
+              >
+                Q
+              </Box>
+
+              <Box sx={{ minWidth: 0 }}>
+                <Typography
+                  variant="h6"
+                  sx={{
+                    fontSize: "1rem",
+                    fontWeight: 700,
+                    lineHeight: 1.15,
+                    color: "inherit",
+                  }}
+                >
+                  Queue settings
+                </Typography>
+
+                <Typography
+                  variant="body2"
+                  sx={{
+                    mt: 0.6,
+                    color: "rgba(255,255,255,0.78)",
+                    lineHeight: 1.5,
+                    maxWidth: 720,
+                  }}
+                >
+                  Select the execution queue and adjust its submission parameters before launching the protocol.
+                </Typography>
+
+                {!!queueDraft?.queueName && (
+                  <Box
+                    sx={{
+                      mt: 1.2,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      px: 1.2,
+                      py: 0.45,
+                      borderRadius: "999px",
+                      backgroundColor: "rgba(255,255,255,0.12)",
+                      border: "1px solid rgba(255,255,255,0.14)",
+                      color: "#ffffff",
+                      fontSize: "0.76rem",
+                      fontWeight: 700,
+                      letterSpacing: "0.02em",
+                    }}
+                  >
+                    Active queue:&nbsp;{queueDraft.queueName}
+                  </Box>
+                )}
+              </Box>
+            </Box>
+
+            <IconButton
+              onClick={() => {
+                if (isBusy) return;
+                setQueueDialogOpen(false);
+                setPendingExecuteMode(null);
+              }}
+              size="small"
+              sx={{
+                color: "#e5e7eb",
+                border: "1px solid rgba(255,255,255,0.14)",
+                backgroundColor: "rgba(255,255,255,0.06)",
+                "&:hover": {
+                  backgroundColor: "rgba(255,255,255,0.12)",
+                  borderColor: "rgba(255,255,255,0.22)",
+                },
+              }}
+            >
+              <CloseIcon fontSize="small" />
+            </IconButton>
+          </Box>
+        </DialogTitle>
+
+        <DialogContent
+          dividers
+          sx={{
+            px: 2.5,
+            py: 2.5,
+            background:
+              "linear-gradient(180deg, #f8fafc 0%, #f4f7fb 100%)",
+            borderColor: "rgba(15,23,42,0.08)",
+          }}
+        >
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            <Box
+              sx={{
+                p: 1.75,
+                borderRadius: "20px",
+                backgroundColor: "#ffffff",
+                border: "1px solid rgba(15,23,42,0.08)",
+                boxShadow: "0 10px 26px rgba(15,23,42,0.06)",
+              }}
+            >
+              <Typography
+                variant="body2"
+                sx={{
+                  mb: 1,
+                  fontWeight: 700,
+                  color: "#334155",
+                  letterSpacing: "0.01em",
+                }}
+              >
+                Queue selection
+              </Typography>
+
+              <FormControl fullWidth size="small">
+                <InputLabel id="queue-select-label">Queue</InputLabel>
+                <Select
+                  labelId="queue-select-label"
+                  value={queueDraft?.queueName ?? ""}
+                  label="Queue"
+                  onChange={(e) => handleQueueDraftQueueChange(String(e.target.value))}
+                  sx={{
+                    borderRadius: "14px",
+                    backgroundColor: "#ffffff",
+                    "& .MuiOutlinedInput-notchedOutline": {
+                      borderColor: "rgba(15,23,42,0.12)",
+                    },
+                  }}
+                >
+                  {effectiveHostQueues.map((queue) => (
+                    <MenuItem key={queue.name} value={queue.name}>
+                      {queue.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Box>
+
+            {(queueDraft?.params ?? []).length > 0 && (
+              <Box
+                key={queueDraft?.queueName || "queue-params"}
+                sx={{
+                  display: "grid",
+                  gridTemplateColumns: {
+                    xs: "1fr",
+                    md: "1fr 1fr",
+                  },
+                  gap: 1.5,
+                  animation: "ppQueueFadeIn 180ms ease-out",
+                  "@keyframes ppQueueFadeIn": {
+                    from: {
+                      opacity: 0,
+                      transform: "translateY(6px) scale(0.995)",
+                    },
+                    to: {
+                      opacity: 1,
+                      transform: "translateY(0) scale(1)",
+                    },
+                  },
+                }}
+              >
+                {(queueDraft?.params ?? []).map((param) => (
+                  <Box
+                    key={param.variableName}
+                    sx={{
+                      p: 1.5,
+                      borderRadius: "18px",
+                      backgroundColor: "#ffffff",
+                      border: "1px solid rgba(15,23,42,0.08)",
+                      boxShadow: "0 8px 22px rgba(15,23,42,0.05)",
+                      transition:
+                        "transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease",
+                      "&:hover": {
+                        transform: "translateY(-1px)",
+                        boxShadow: "0 14px 28px rgba(15,23,42,0.08)",
+                        borderColor: "rgba(51,61,73,0.16)",
+                      },
+                    }}
+                  >
+                    <Typography
+                      variant="caption"
+                      sx={{
+                        display: "block",
+                        mb: 0.9,
+                        fontWeight: 700,
+                        color: "#64748b",
+                        letterSpacing: "0.03em",
+                        textTransform: "uppercase",
+                      }}
+                    >
+                      {param.variableName}
+                    </Typography>
+
+                    <TextField
+                      label={param.label || param.variableName}
+                      value={param.value}
+                      onChange={(e) => {
+                        const nextValue = e.target.value;
+                        setQueueDraft((prev) => {
+                          if (!prev) return prev;
+
+                          return {
+                            ...prev,
+                            params: prev.params.map((item) =>
+                              item.variableName === param.variableName
+                                ? { ...item, value: nextValue }
+                                : item
+                            ),
+                          };
+                        });
+                      }}
+                      fullWidth
+                      size="small"
+                      helperText={param.help || param.variableName}
+                      sx={{
+                        "& .MuiOutlinedInput-root": {
+                          borderRadius: "14px",
+                          backgroundColor: "#ffffff",
+                          "& .MuiOutlinedInput-notchedOutline": {
+                            borderColor: "rgba(15,23,42,0.12)",
+                          },
+                        },
+                        "& .MuiFormHelperText-root": {
+                          marginLeft: 0,
+                          marginRight: 0,
+                          marginTop: 0.8,
+                          color: "text.secondary",
+                          lineHeight: 1.4,
+                        },
+                      }}
+                    />
+                  </Box>
+                ))}
+              </Box>
+            )}
+          </Box>
+        </DialogContent>
+
+        <DialogActions
+          sx={{
+            px: 2.5,
+            py: 2,
+            backgroundColor: "#ffffff",
+            borderTop: "1px solid rgba(15,23,42,0.08)",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: 2,
+            flexWrap: "wrap",
+          }}
+        >
+          <Box>
+            <Typography
+              variant="caption"
+              sx={{
+                display: "block",
+                color: "text.secondary",
+                lineHeight: 1.45,
+              }}
+            >
+              These queue values will be sent together with the protocol launch request.
+            </Typography>
+          </Box>
+
+          <Box sx={{ display: "flex", gap: 1.25 }}>
+            <Button
+              onClick={() => {
+                setQueueDialogOpen(false);
+                setPendingExecuteMode(null);
+              }}
+              disabled={isBusy}
+              variant="outlined"
+              sx={{
+                textTransform: "none",
+                borderRadius: "12px",
+                px: 2,
+                fontWeight: 600,
+              }}
+            >
+              Cancel
+            </Button>
+
+            <Button
+              variant="contained"
+              color="success"
+              onClick={confirmQueueAndExecute}
+              disabled={isBusy}
+              sx={{
+                textTransform: "none",
+                borderRadius: "12px",
+                px: 2.25,
+                fontWeight: 700,
+                boxShadow: "0 10px 24px rgba(22,163,74,0.24)",
+              }}
+            >
+              Launch
+            </Button>
+          </Box>
+        </DialogActions>
+      </Dialog>
 
       {/* Generic execute/save error dialog */}
       <ExecErrorDialog

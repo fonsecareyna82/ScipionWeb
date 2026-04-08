@@ -25,6 +25,7 @@ import {
   ProjectThumbnailObjectUrlOptions,
   FscPoint,
   ImportProjectPayload,
+  ProjectEffectiveSettings,
 } from "@/services/ProjectService";
 
 const ACTION_LAUNCH = "launch";
@@ -199,6 +200,44 @@ export async function fetchProject(projectId: Id): Promise<Project> {
   return safeJson<Project>(response);
 }
 
+export async function fetchProjectEffectiveSettings(
+  projectId: Id,
+): Promise<ProjectEffectiveSettings> {
+  const response = await fetchWithAuth(
+    `${BASE_URL}/projects/${projectId}/effective-settings`,
+    { method: "GET" },
+  );
+
+  if (!response.ok) {
+    throw await toApiError(response, "Failed to fetch project effective settings");
+  }
+
+  const data = await safeJson<ProjectEffectiveSettings>(response);
+
+  const raw = (data && typeof data === "object") ? data : ({} as ProjectEffectiveSettings);
+  const settings =
+    raw && typeof raw.settings === "object" && raw.settings !== null
+      ? raw.settings
+      : {};
+
+  return {
+    projectId: raw?.projectId ?? projectId,
+    settings: {
+      user:
+        settings.user && typeof settings.user === "object"
+          ? settings.user
+          : null,
+      instance:
+        settings.instance && typeof settings.instance === "object"
+          ? settings.instance
+          : null,
+      host:
+        settings.host && typeof settings.host === "object"
+          ? settings.host
+          : null,
+    },
+  };
+}
 
 export async function fetchProjectThumbnailItems(
   projectId: Id,
