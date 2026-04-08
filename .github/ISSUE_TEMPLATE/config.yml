@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: ScipionWeb Support Docs
+    url: https://fonsecareyna82.github.io/scipion-docs/support/
+    about: Read the support hub for questions, bug reporting guidance, and known issues.
+  - name: ScipionWeb Discussions
+    url: https://github.com/fonsecareyna82/ScipionWeb/discussions
+    about: Ask questions, troubleshoot problems, or discuss ideas.
