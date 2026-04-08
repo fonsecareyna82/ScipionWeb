@@ -56,6 +56,10 @@ import {
 import { FitViewIcon, TableIcon, TreeIcon } from "@/icons";
 
 import { useProjectService } from "@/ProjectServiceContext";
+import {
+  hasProjectEffectiveSettingsService,
+  type ProjectEffectiveSettings,
+} from "@/services/ProjectService";
 import { Project } from "@/types/project";
 import Label from "@/components/form/Label";
 import { Input, Typography, Link } from "@mui/material";
@@ -411,6 +415,12 @@ export default function ProjectPage() {
   const [project, setProject] = useState<Project | undefined>(undefined);
   const [isLoadingProject, setIsLoadingProject] = useState(true);
 
+  const [projectEffectiveSettings, setProjectEffectiveSettings] =
+    useState<ProjectEffectiveSettings | null>(null);
+
+  const [projectEffectiveSettingsLoading, setProjectEffectiveSettingsLoading] =
+    useState(false);
+
   // Tags states
   const [allTags, setAllTags] = useState<ProtocolTag[]>([]);
   const [tagManagerOpen, setTagManagerOpen] = useState(false);
@@ -565,13 +575,54 @@ export default function ProjectPage() {
   });
 
   const projectId = useMemo(() => {
-    // deriveProjectIdFromProjectState
-    const raw: any = (project as any)?.id ?? (project as any)?.projectId;
-    if (raw == null) return undefined;
+  // deriveProjectIdFromProjectState
+  const raw: any = (project as any)?.id ?? (project as any)?.projectId;
+  if (raw == null) return undefined;
 
-    const n = typeof raw === "number" ? raw : Number(raw);
-    return Number.isFinite(n) ? n : undefined;
-  }, [project]);
+  const n = typeof raw === "number" ? raw : Number(raw);
+  return Number.isFinite(n) ? n : undefined;
+}, [project]);
+
+const effectiveUserSettings = projectEffectiveSettings?.settings?.user ?? null;
+const effectiveInstanceSettings = projectEffectiveSettings?.settings?.instance ?? null;
+const effectiveHostSettings = projectEffectiveSettings?.settings?.host ?? null;
+
+const effectiveHostQueues = effectiveHostSettings?.queues ?? [];
+const effectiveDefaultQueueName = effectiveInstanceSettings?.defaultQueueName ?? "";
+
+const loadProjectEffectiveSettings = useCallback(
+  async (nextProjectId?: string | number) => {
+    // loadProjectEffectiveSettings
+    if (nextProjectId == null) {
+      setProjectEffectiveSettings(null);
+      setProjectEffectiveSettingsLoading(false);
+      return;
+    }
+
+    if (!hasProjectEffectiveSettingsService(svc)) {
+      setProjectEffectiveSettings(null);
+      setProjectEffectiveSettingsLoading(false);
+      return;
+    }
+
+    try {
+      setProjectEffectiveSettingsLoading(true);
+      const data = await svc.fetchProjectEffectiveSettings(nextProjectId);
+      setProjectEffectiveSettings(data ?? null);
+    } catch (err) {
+      console.warn("fetchProjectEffectiveSettings failed", err);
+      setProjectEffectiveSettings(null);
+    } finally {
+      setProjectEffectiveSettingsLoading(false);
+    }
+  },
+  [svc]
+);
+
+useEffect(() => {
+  // syncProjectEffectiveSettings
+  void loadProjectEffectiveSettings(projectId);
+}, [projectId, loadProjectEffectiveSettings]);
 
   // Bump this to force rerender when policy is loaded/changed
   const [policyRevision, setPolicyRevision] = useState(0);
@@ -2059,6 +2110,9 @@ export default function ProjectPage() {
 
   useEffect(() => {
     setIsLoadingProject(true);
+    setProjectEffectiveSettings(null);
+    setProjectEffectiveSettingsLoading(false);
+
     // eslint-disable-next-line @typescript-eslint/no-floating-promises
     fetchAndLoadProject();
     // only reload when changing project
@@ -4397,6 +4451,7 @@ export default function ProjectPage() {
                     data={f.details}
                     projectProtocols={project?.protocols ?? {}}
                     variant="docked"
+                    projectEffectiveSettings={projectEffectiveSettings}
                     onClose={() => {
                       handleRefreshRef.current?.();
                       setTimeout(() => handleRefreshRef.current?.(), 800);

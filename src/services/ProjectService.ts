@@ -150,35 +150,6 @@ export type VolumeData3d = {
   std?: number;
 };
 
-/**
- * Host configuration for settings page.
- */
-export type HostQueueParam = {
-  variableName: string;
-  value: string;
-  label: string;
-  help: string;
-};
-
-export type HostQueue = {
-  name: string;
-  params: HostQueueParam[];
-};
-
-export type HostSettings = {
-  hostAlias: string;
-  schedulerName: string;
-  mandatory: boolean;
-  parallelCommand: string;
-  submitCommand: string;
-  cancelCommand: string;
-  checkCommand: string;
-  jobDoneRegex: string;
-  submitTemplate: string;
-  queues: HostQueue[];
-};
-
-export type HostSettingsPatch = Partial<HostSettings>;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Coordinates3D + linked tomograms (SetOfCoordinates3D support)
@@ -538,6 +509,91 @@ export type EnvironmentVariable = {
 };
 
 export type EnvironmentVariablesPatch = Record<string, string>;
+
+/**
+ * Host configuration for settings page.
+ */
+export type HostQueueParam = {
+  variableName: string;
+  value: string;
+  label: string;
+  help: string;
+};
+
+export type HostQueue = {
+  name: string;
+  params: HostQueueParam[];
+};
+
+export type HostSettings = {
+  hostAlias: string;
+  schedulerName: string;
+  mandatory: boolean;
+  parallelCommand: string;
+  submitCommand: string;
+  cancelCommand: string;
+  checkCommand: string;
+  jobDoneRegex: string;
+  submitTemplate: string;
+  queues: HostQueue[];
+};
+
+export type HostSettingsPatch = Partial<HostSettings>;
+
+
+export type ProjectRuntimeHostQueueParam = {
+  variableName: string;
+  value: string;
+  label: string;
+  help: string;
+};
+
+export type ProjectRuntimeHostQueue = {
+  name: string;
+  params: ProjectRuntimeHostQueueParam[];
+};
+
+export type ProjectRuntimeHostSettings = {
+  hostAlias?: string | null;
+  schedulerName?: string | null;
+  mandatory?: boolean;
+  parallelCommand?: string | null;
+  submitCommand?: string | null;
+  cancelCommand?: string | null;
+  checkCommand?: string | null;
+  jobDoneRegex?: string | null;
+  submitTemplate?: string | null;
+  queues?: ProjectRuntimeHostQueue[];
+};
+
+export type ProjectRuntimeInstanceSettings = {
+  enableCelery?: boolean;
+  defaultQueueName?: string | null;
+  maxConcurrentRunsPerUser?: number;
+  requireConfirmBeforeExecute?: boolean;
+  requireConfirmBeforeDelete?: boolean;
+};
+
+export type ProjectEffectiveSettings = {
+  projectId: Id;
+  settings: {
+    user?: Record<string, unknown> | null;
+    instance?: ProjectRuntimeInstanceSettings | null;
+    host?: ProjectRuntimeHostSettings | null;
+  };
+};
+
+export type ProjectServiceCapabilities = {
+  projectEffectiveSettings?: boolean;
+};
+
+export function hasProjectEffectiveSettingsService(
+  svc: ProjectService<any, any, any>,
+): svc is ProjectService<any, any, any> & {
+  fetchProjectEffectiveSettings: (projectId: Id) => Promise<ProjectEffectiveSettings>;
+} {
+  return typeof (svc as any)?.fetchProjectEffectiveSettings === "function";
+}
 
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1127,7 +1183,7 @@ export interface ProjectService<
 
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // Settings (user + instance)
+  // Settings (user + instance + host)
   // ─────────────────────────────────────────────────────────────────────────────
 
   fetchUserSettings(): Promise<UserSettings>;
@@ -1140,6 +1196,20 @@ export interface ProjectService<
 
   fetchEnvironmentVariables: () => Promise<EnvironmentVariable[]>;
   patchEnvironmentVariables: (patch: EnvironmentVariablesPatch) => Promise<EnvironmentVariable[]>;
+
+  fetchHostSettings(): Promise<HostSettings>;
+  putHostSettings(payload: HostSettings): Promise<HostSettings | null>;
+  patchHostSettings(patch: HostSettingsPatch): Promise<HostSettings | null>;
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Optional runtime capabilities
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  getCapabilities?: () => ProjectServiceCapabilities;
+
+  fetchProjectEffectiveSettings?: (
+    projectId: Id,
+  ) => Promise<ProjectEffectiveSettings>;
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Protocol logs (dynamic channels)
@@ -1179,11 +1249,4 @@ export interface ProjectService<
   getContextMenuVisibilityPolicy(
     projectId: Id,
   ): Promise<ContextMenuVisibilityPolicy>;
-
-  //-────────────────────────────────────────────────────────────────────────────
-  //Host settings (for cluster execution)
-  // ─────────────────────────────────────────────────────────────────────────────
-  fetchHostSettings(): Promise<HostSettings>;
-  putHostSettings(payload: HostSettings): Promise<HostSettings | null>;
-  patchHostSettings(patch: HostSettingsPatch): Promise<HostSettings | null>;
 }
