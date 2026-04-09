@@ -39,6 +39,7 @@ type CommonRendererProps = {
   stateKey: string;
   protocolDetails: any;
   setProtocolDetails: (updater: (prev: any) => any) => void;
+  hasWizard?: boolean;
 };
 
 type PointerRendererProps = CommonRendererProps & {
@@ -89,6 +90,7 @@ export function renderPointerParamRow({
   dragOverKey,
   setDragOverKey,
   onOpenFind,
+  hasWizard = false,
 }: PointerRendererProps): JSX.Element {
   const liveDef = {
     ...defResolved,
@@ -167,6 +169,7 @@ export function renderPointerParamRow({
       rowIndex={rowIndex}
       onOpenFind={() => onOpenFind(stateKey)}
       layoutVariant={layoutVariant}
+      hasWizard={hasWizard}
     />
   );
 }
@@ -188,6 +191,7 @@ export function renderPathParamRow({
   setDragOverKey,
   onBrowsePath,
   onOpenFind,
+  hasWizard = false,
 }: PathRendererProps): JSX.Element {
   const current = protocolDetails.params?.[stateKey] || {};
   const textValue = current.editableValue ?? current.value ?? def.value ?? def.default ?? "";
@@ -254,6 +258,7 @@ export function renderPathParamRow({
       onOpenFind={isPointerEnabled ? () => onOpenFind(stateKey) : undefined}
       rowIndex={rowIndex}
       layoutVariant={layoutVariant}
+      hasWizard={hasWizard}
     />
   );
 }
@@ -271,6 +276,7 @@ export function renderEnumParamRow({
   setProtocolDetails,
   def,
   value,
+  hasWizard = false,
 }: EnumRendererProps): JSX.Element | null {
   const options = normalizeEnumOptions(def.choices);
   if (options.length === 0) return null;
@@ -327,6 +333,7 @@ export function renderEnumParamRow({
       helpText={helpText}
       rowIndex={rowIndex}
       layoutVariant={layoutVariant}
+      hasWizard={hasWizard}
     />
   );
 }
@@ -346,6 +353,7 @@ export function renderBooleanParamRow({
   setProtocolDetails,
   def,
   value,
+  hasWizard = false,
 }: BooleanRendererProps): JSX.Element {
   const checked = coerceBooleanValue(
     value !== undefined
@@ -385,6 +393,7 @@ export function renderBooleanParamRow({
       helpText={helpText}
       rowIndex={rowIndex}
       layoutVariant={layoutVariant}
+      hasWizard={hasWizard}
     />
   );
 }
@@ -403,6 +412,7 @@ export function renderDefaultParamRow({
   setProtocolDetails,
   def,
   value,
+  hasWizard = false,
 }: DefaultRendererProps): JSX.Element {
   const defaultControl = (
     <Box sx={{ display: "flex", alignItems: "center", gap: 1, minWidth: 0, width: "77%" }}>
@@ -437,6 +447,7 @@ export function renderDefaultParamRow({
       helpText={helpText}
       rowIndex={rowIndex}
       layoutVariant={layoutVariant}
+      hasWizard={hasWizard}
     />
   );
 }

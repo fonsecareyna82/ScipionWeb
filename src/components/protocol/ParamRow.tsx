@@ -1,4 +1,3 @@
-// src/components/ParamRow.tsx
 import { JSX, useState } from "react";
 import {
   Box,
@@ -13,7 +12,7 @@ import {
   Link,
 } from "@mui/material";
 import { CloseIcon, FindIcon, HelpIcon, TrashBinIcon } from "../../icons";
-import { FolderOpen as FolderIcon } from "lucide-react";
+import { FolderOpen as FolderIcon, Wand2 as WizardIcon } from "lucide-react";
 import styles from "./paramrow.module.css";
 
 type ParamRowLayoutVariant = "standard" | "inline" | "fullWidth";
@@ -25,6 +24,11 @@ type ParamRowProps = {
   isPointerParam?: boolean;
   onClear?: () => void;
   rowIndex?: number;
+
+  // Wizard
+  hasWizard?: boolean;
+  onOpenWizard?: () => void;
+  wizardTooltip?: string;
 
   // PointerParam
   onOpenFind?: () => void;
@@ -239,6 +243,9 @@ const ParamRow = ({
   isPointerParam,
   onClear,
   rowIndex = 0,
+  hasWizard = false,
+  onOpenWizard,
+  wizardTooltip,
   onOpenFind,
   isPathParam,
   onBrowsePath,
@@ -249,6 +256,7 @@ const ParamRow = ({
 
   const isInline = layoutVariant === "inline";
   const isFullWidth = layoutVariant === "fullWidth";
+  const hasWizardAction = typeof onOpenWizard === "function";
 
   const actionIconButtonSx = {
     // actionIconButtonSx
@@ -273,35 +281,35 @@ const ParamRow = ({
         sx={{
           ...(isInline
             ? {
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 0.75,
-              px: 1,
-              py: 0.5,
-              borderRadius: 1,
-              minHeight: 42,
-            }
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 0.75,
+                px: 1,
+                py: 0.5,
+                borderRadius: 1,
+                minHeight: 42,
+              }
             : isFullWidth
               ? {
-                // fullWidthLayout
-                display: "grid",
-                gridTemplateColumns: "1fr auto",
-                columnGap: 1,
-                alignItems: "center",
-                mb: 1,
-                mt: rowIndex === 0 ? 1.5 : 0, // firstRowTopMargin
-                position: "relative",
-              }
+                  // fullWidthLayout
+                  display: "grid",
+                  gridTemplateColumns: "1fr auto",
+                  columnGap: 1,
+                  alignItems: "center",
+                  mb: 1,
+                  mt: rowIndex === 0 ? 1.5 : 0, // firstRowTopMargin
+                  position: "relative",
+                }
               : {
-                // standardLayout
-                display: "grid",
-                gridTemplateColumns: "210px minmax(0, 1fr) auto",
-                columnGap: 1,
-                alignItems: "center",
-                mb: 1,
-                mt: rowIndex === 0 ? 1.5 : 0, // firstRowTopMargin
-                position: "relative",
-              }),
+                  // standardLayout
+                  display: "grid",
+                  gridTemplateColumns: "210px minmax(0, 1fr) auto",
+                  columnGap: 1,
+                  alignItems: "center",
+                  mb: 1,
+                  mt: rowIndex === 0 ? 1.5 : 0, // firstRowTopMargin
+                  position: "relative",
+                }),
         }}
       >
         <Typography
@@ -330,11 +338,11 @@ const ParamRow = ({
               width: "100%", // allowControlToStretch
               ...(isInline
                 ? {
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 0.75,
-                  width: "auto",
-                }
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 0.75,
+                    width: "auto",
+                  }
                 : null),
             }}
           >
@@ -368,6 +376,28 @@ const ParamRow = ({
               <IconButton size="small" sx={actionIconButtonSx} onClick={onClear}>
                 <TrashBinIcon className="ml-0" fontSize="1.2rem" />
               </IconButton>
+            </Tooltip>
+          )}
+
+          {hasWizard && (
+            <Tooltip
+              title={wizardTooltip || (hasWizardAction ? "Open wizard" : "Wizard available")}
+            >
+              <span>
+                <IconButton
+                  size="small"
+                  sx={{
+                    ...actionIconButtonSx,
+                    color: hasWizardAction ? undefined : "text.secondary",
+                    opacity: hasWizardAction ? 1 : 0.78,
+                    cursor: hasWizardAction ? "pointer" : "default",
+                  }}
+                  onClick={hasWizardAction ? onOpenWizard : undefined}
+                  disableRipple={!hasWizardAction}
+                >
+                  <WizardIcon className="ml-0" size={18} />
+                </IconButton>
+              </span>
             </Tooltip>
           )}
 
@@ -477,7 +507,6 @@ const ParamRow = ({
             </Button>
           </DialogActions>
         </Dialog>
-
       )}
 
       <Dialog open={openSelector} onClose={() => setOpenSelector(false)} maxWidth="sm" fullWidth>

@@ -1621,6 +1621,7 @@ export default function ProtocolForm({
             }
             helpText={def.help}
             rowIndex={rowIndex}
+            hasWizard={Boolean(def?.hasWizard)}
           />
         );
       }
@@ -1658,6 +1659,7 @@ export default function ProtocolForm({
           dragOverKey,
           setDragOverKey,
           onOpenFind: handleOpenFind,
+          hasWizard: Boolean(def?.hasWizard),
         });
       }
 
@@ -1705,6 +1707,7 @@ export default function ProtocolForm({
           setDragOverKey,
           onBrowsePath: handleBrowsePath,
           onOpenFind: handleOpenFind,
+          hasWizard: Boolean(def?.hasWizard),
         });
       }
 
@@ -1727,6 +1730,7 @@ export default function ProtocolForm({
           setProtocolDetails,
           def,
           value,
+          hasWizard: Boolean(def?.hasWizard),
         });
       }
 
@@ -1769,6 +1773,7 @@ export default function ProtocolForm({
               helpText={def?.help}
               rowIndex={rowIndex}
               layoutVariant="fullWidth"
+              hasWizard={Boolean(def?.hasWizard)}
             />
           );
         }
@@ -1817,6 +1822,7 @@ export default function ProtocolForm({
             helpText={def?.help}
             rowIndex={rowIndex}
             layoutVariant="standard"
+            hasWizard={Boolean(def?.hasWizard)}
           />
         );
       }
@@ -1941,6 +1947,7 @@ export default function ProtocolForm({
           setProtocolDetails,
           def,
           value,
+          hasWizard: Boolean(def?.hasWizard),
         });
       }
 
@@ -1955,6 +1962,7 @@ export default function ProtocolForm({
             helpText={def.help}
             rowIndex={rowIndex}
             layoutVariant="fullWidth"
+            hasWizard={Boolean(def?.hasWizard)}
           />
         );
       }
@@ -1977,6 +1985,7 @@ export default function ProtocolForm({
         setProtocolDetails,
         def,
         value,
+        hasWizard: Boolean(def?.hasWizard),
       });
     },
     [
