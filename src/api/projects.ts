@@ -2898,11 +2898,23 @@ export async function createNewSetOfCTFTomoSeries(
 
 
 export function resolveBackendUrl(raw?: string | null): string | null {
-  const value = String(raw ?? "").trim();
+  if (!raw) return null;
+
+  const value = String(raw).trim();
   if (!value) return null;
 
-  if (/^https?:\/\//i.test(value)) return value;
-  if (value.startsWith("/")) return `${BASE_URL}${value}`;
+  if (
+    value.startsWith("http://") ||
+    value.startsWith("https://") ||
+    value.startsWith("data:") ||
+    value.startsWith("blob:")
+  ) {
+    return value;
+  }
+
+  if (value.startsWith("/")) {
+    return `${BASE_URL}${value}`;
+  }
 
   return `${BASE_URL}/${value}`;
 }
@@ -3003,21 +3015,21 @@ export async function executeProtocolWizard(
   const availableValues =
     raw && typeof raw === "object" && Array.isArray(raw.availableValues)
       ? raw.availableValues
-          .map((item: any) => String(item ?? "").trim())
-          .filter((item: string) => item.length > 0)
-      : undefined;
+      : null;
 
   const requiresUserInput =
     raw && typeof raw === "object" && typeof raw.requiresUserInput === "boolean"
       ? raw.requiresUserInput
-      : undefined;
+      : false;
 
   const inputSchema =
-    raw &&
-    typeof raw === "object" &&
-    raw.inputSchema &&
-    typeof raw.inputSchema === "object"
+    raw && typeof raw === "object" && raw.inputSchema && typeof raw.inputSchema === "object"
       ? raw.inputSchema
+      : null;
+
+  const preview =
+    raw && typeof raw === "object" && raw.preview && typeof raw.preview === "object"
+      ? raw.preview
       : null;
 
   return {
@@ -3029,5 +3041,6 @@ export async function executeProtocolWizard(
     availableValues,
     requiresUserInput,
     inputSchema,
+    preview,
   };
 }

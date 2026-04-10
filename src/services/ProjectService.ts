@@ -701,6 +701,45 @@ export type ContextMenuVisibilityPolicy = {
 // Wizards support (protocols that can launch a multi-step form instead of the regular parameter form)
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────────
 
+export type ExecuteProtocolWizardInputField = {
+  name: string;
+  label?: string;
+  kind: "number" | "text" | "select";
+  value?: string | number | null;
+  min?: number;
+  max?: number;
+  step?: number;
+  options?: Array<{ value: string; label: string }>;
+};
+
+export type ExecuteProtocolWizardInputSchema =
+  | {
+    type: "select";
+    paramName: string;
+    title?: string;
+    options: Array<{ value: string; label: string }>;
+  }
+  | {
+    type: "mask_radius";
+    paramName: string;
+    title?: string;
+    fields: Array<{
+      name: string;
+      label: string;
+      kind: "number";
+      value: number;
+      min?: number;
+      max?: number;
+      step?: number;
+    }>;
+  };
+
+export type ExecuteProtocolWizardPreview = {
+  imageUrl?: string | null;
+  width?: number | null;
+  height?: number | null;
+};
+
 export type ExecuteProtocolWizardPayload = {
   protocolId?: string | number | null;
   protocolClassName: string;
@@ -716,13 +755,16 @@ export type ExecuteProtocolWizardResult = {
   kind: string;
   paramUpdates: Record<string, any>;
   message?: string | null;
-  availableValues?: string[];
+
+  availableValues?: Array<string | { value: string; label: string }> | null;
 
   requiresUserInput?: boolean;
-  inputSchema?: {
-    type: "select";
-    paramName: string;
-    options: Array<{ value: string; label: string }>;
+  inputSchema?: ExecuteProtocolWizardInputSchema | null;
+
+  preview?: {
+    imageUrl?: string | null;
+    width?: number | null;
+    height?: number | null;
   } | null;
 };
 

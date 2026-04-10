@@ -147,6 +147,44 @@ type WizardOptionsDialogState = {
   message: string;
 };
 
+type MaskRadiusDialogState = {
+  open: boolean;
+  stateKey: string | null;
+  paramName: string;
+  wizardId: string;
+  title: string;
+  radius: number;
+  min: number;
+  step: number;
+  message: string;
+  previewUrl: string | null;
+  previewWidth: number | null;
+  previewHeight: number | null;
+};
+
+type WizardInputDialogField = {
+  name: string;
+  label?: string;
+  kind: "number" | "text" | "select";
+  value?: string | number | null;
+  min?: number;
+  max?: number;
+  step?: number;
+  options?: Array<{ value: string; label: string }>;
+};
+
+type WizardInputDialogState = {
+  open: boolean;
+  stateKey: string | null;
+  paramName: string;
+  wizardId: string;
+  title: string;
+  fields: WizardInputDialogField[];
+  values: Record<string, string>;
+  message: string;
+  previewImageUrl: string;
+};
+
 function normalizeEffectiveHostQueues(raw: unknown): EffectiveHostQueue[] {
   if (!Array.isArray(raw)) return [];
 
@@ -401,6 +439,33 @@ export default function ProtocolForm({
     options: [],
     selectedValue: "",
     message: "",
+  });
+
+  const [maskRadiusDialog, setMaskRadiusDialog] = useState<MaskRadiusDialogState>({
+    open: false,
+    stateKey: null,
+    paramName: "",
+    wizardId: "",
+    title: "",
+    radius: 0,
+    min: 1,
+    step: 1,
+    message: "",
+    previewUrl: null,
+    previewWidth: null,
+    previewHeight: null,
+  });
+
+  const [wizardInputDialog, setWizardInputDialog] = useState<WizardInputDialogState>({
+    open: false,
+    stateKey: null,
+    paramName: "",
+    wizardId: "",
+    title: "",
+    fields: [],
+    values: {},
+    message: "",
+    previewImageUrl: "",
   });
 
   // Global Output Selector
@@ -1411,6 +1476,128 @@ export default function ProtocolForm({
     ]
   );
 
+  const normalizeWizardAvailableValues = useCallback(
+    (raw: unknown): WizardDialogOption[] => {
+      if (!Array.isArray(raw)) return [];
+
+      return Array.from(
+        new Map(
+          raw
+            .map((item) => String(item ?? "").trim())
+            .filter((item) => item.length > 0)
+            .map((item) => [item, { value: item, label: item }])
+        ).values()
+      );
+    },
+    []
+  );
+
+  const closeWizardOptionsDialog = useCallback(() => {
+    setWizardOptionsDialog({
+      open: false,
+      stateKey: null,
+      paramName: "",
+      title: "",
+      options: [],
+      selectedValue: "",
+      message: "",
+    });
+  }, []);
+
+  const confirmWizardOptionsDialog = useCallback(() => {
+    const { paramName, selectedValue } = wizardOptionsDialog;
+
+    if (!paramName || !selectedValue) {
+      closeWizardOptionsDialog();
+      return;
+    }
+
+    applyWizardParamUpdates({
+      [paramName]: selectedValue,
+    });
+
+    toast.success(`Wizard value applied to '${paramName}'.`);
+    closeWizardOptionsDialog();
+  }, [wizardOptionsDialog, applyWizardParamUpdates, closeWizardOptionsDialog]);
+
+  const closeMaskRadiusDialog = useCallback(() => {
+    setMaskRadiusDialog({
+      open: false,
+      stateKey: null,
+      paramName: "",
+      wizardId: "",
+      title: "",
+      radius: 0,
+      min: 1,
+      step: 1,
+      message: "",
+      previewUrl: null,
+      previewWidth: null,
+      previewHeight: null,
+    });
+  }, []);
+
+  const confirmMaskRadiusDialog = useCallback(async () => {
+    if (!projectId) {
+      toast.error("Missing project id.");
+      return;
+    }
+
+    if (!maskRadiusDialog.paramName || !maskRadiusDialog.wizardId) {
+      closeMaskRadiusDialog();
+      return;
+    }
+
+    try {
+      const result = await svc.executeProtocolWizard(projectId, {
+        protocolId: protocolId ?? null,
+        protocolClassName,
+        paramName: maskRadiusDialog.paramName,
+        wizardId: maskRadiusDialog.wizardId,
+        formValues: getSerializedParams(),
+        wizardInputs: {
+          radius: maskRadiusDialog.radius,
+        },
+      });
+
+      const updates =
+        result?.paramUpdates && typeof result.paramUpdates === "object"
+          ? { ...result.paramUpdates }
+          : {};
+
+      if (Object.keys(updates).length > 0) {
+        applyWizardParamUpdates(updates);
+      }
+
+      toast.success(result?.message?.trim() || "Wizard executed successfully.");
+      closeMaskRadiusDialog();
+    } catch (err: any) {
+      const payload = getBackendPayloadFromError(err);
+      const errors = getErrorsFromBackendPayload(payload);
+
+      if (errors.length > 0) {
+        openExecErrorDialog("Wizard error", formatErrorsForDialog(errors));
+        return;
+      }
+
+      const fallbackMsg =
+        err?.message ||
+        (typeof payload?.detail === "string" ? payload.detail : null) ||
+        "Wizard execution failed";
+
+      openExecErrorDialog("Wizard error", String(fallbackMsg));
+    }
+  }, [
+    projectId,
+    protocolId,
+    protocolClassName,
+    maskRadiusDialog,
+    svc,
+    getSerializedParams,
+    applyWizardParamUpdates,
+    closeMaskRadiusDialog,
+  ]);
+
   const normalizeWizardDialogOptions = useCallback(
     (result: any): WizardDialogOption[] => {
       const normalized: WizardDialogOption[] = [];
@@ -1456,33 +1643,112 @@ export default function ProtocolForm({
     []
   );
 
-  const closeWizardOptionsDialog = useCallback(() => {
-    setWizardOptionsDialog({
+  const closeWizardInputDialog = useCallback(() => {
+    setWizardInputDialog({
       open: false,
       stateKey: null,
       paramName: "",
+      wizardId: "",
       title: "",
-      options: [],
-      selectedValue: "",
+      fields: [],
+      values: {},
       message: "",
+      previewImageUrl: "",
     });
   }, []);
 
-  const confirmWizardOptionsDialog = useCallback(() => {
-    const { paramName, selectedValue } = wizardOptionsDialog;
+  const openWizardInputDialog = useCallback(
+    (
+      stateKey: string,
+      paramName: string,
+      wizardId: string,
+      result: any,
+      mergedDef: any,
+    ) => {
+      const schema = result?.inputSchema;
+      const fields = Array.isArray(schema?.fields) ? schema.fields : [];
 
-    if (!paramName || !selectedValue) {
-      closeWizardOptionsDialog();
+      const values: Record<string, string> = {};
+      for (const field of fields) {
+        const fieldName = String(field?.name ?? "").trim();
+        if (!fieldName) continue;
+        values[fieldName] = String(field?.value ?? "");
+      }
+
+      setWizardInputDialog({
+        open: true,
+        stateKey,
+        paramName,
+        wizardId,
+        title: String(schema?.title ?? mergedDef?.label ?? paramName),
+        fields,
+        values,
+        message: String(result?.message ?? "").trim(),
+        previewImageUrl: String(result?.preview?.imageUrl ?? "").trim(),
+      });
+    },
+    []
+  );
+
+  const confirmWizardInputDialog = useCallback(async () => {
+    if (!projectId) {
+      toast.error("Missing project id.");
       return;
     }
 
-    applyWizardParamUpdates({
-      [paramName]: selectedValue,
-    });
+    if (!wizardInputDialog.paramName || !wizardInputDialog.wizardId) {
+      closeWizardInputDialog();
+      return;
+    }
 
-    toast.success(`Wizard value applied to '${paramName}'.`);
-    closeWizardOptionsDialog();
-  }, [wizardOptionsDialog, applyWizardParamUpdates, closeWizardOptionsDialog]);
+    try {
+      const result = await svc.executeProtocolWizard(projectId, {
+        protocolId: protocolId ?? null,
+        protocolClassName,
+        paramName: wizardInputDialog.paramName,
+        wizardId: wizardInputDialog.wizardId,
+        formValues: getSerializedParams(),
+        wizardInputs: wizardInputDialog.values,
+      });
+
+      const updates =
+        result?.paramUpdates && typeof result.paramUpdates === "object"
+          ? result.paramUpdates
+          : {};
+
+      if (Object.keys(updates).length > 0) {
+        applyWizardParamUpdates(updates);
+      }
+
+      toast.success(result?.message?.trim() || "Wizard executed successfully.");
+      closeWizardInputDialog();
+    } catch (err: any) {
+      const payload = getBackendPayloadFromError(err);
+      const errors = getErrorsFromBackendPayload(payload);
+
+      if (errors.length > 0) {
+        openExecErrorDialog("Wizard error", formatErrorsForDialog(errors));
+        return;
+      }
+
+      const fallbackMsg =
+        err?.message ||
+        (typeof payload?.detail === "string" ? payload.detail : null) ||
+        "Wizard execution failed";
+
+      openExecErrorDialog("Wizard error", String(fallbackMsg));
+    }
+  }, [
+    projectId,
+    protocolId,
+    protocolClassName,
+    wizardInputDialog,
+    svc,
+    getSerializedParams,
+    applyWizardParamUpdates,
+    closeWizardInputDialog,
+  ]);
+
 
   const handleOpenWizard = useCallback(
     async (stateKey: string, paramDef?: any) => {
@@ -1525,10 +1791,52 @@ export default function ProtocolForm({
             ? { ...result.paramUpdates }
             : {};
 
-        const dialogOptions = normalizeWizardDialogOptions(result);
+        const inputSchema = result?.inputSchema ?? null;
+        const availableValues = normalizeWizardAvailableValues(result?.availableValues);
 
-        // If backend returns selectable options, open a selector dialog
-        if (dialogOptions.length > 1) {
+        // Interactive wizard: mask radius
+        if (result?.requiresUserInput && inputSchema?.type === "mask_radius") {
+          const deferredUpdates = { ...updates };
+          delete deferredUpdates[paramName];
+
+          if (Object.keys(deferredUpdates).length > 0) {
+            applyWizardParamUpdates(deferredUpdates);
+          }
+
+          const fields = Array.isArray(inputSchema.fields) ? inputSchema.fields : [];
+          const radiusField = fields.find((field: any) => field?.name === "radius");
+
+          const previewUrlRaw =
+            typeof result?.preview?.imageUrl === "string" && result.preview.imageUrl.trim()
+              ? result.preview.imageUrl.trim()
+              : null;
+
+          const previewUrl = previewUrlRaw
+            ? svc.resolveBackendUrl(previewUrlRaw) ?? previewUrlRaw
+            : null;
+
+          setMaskRadiusDialog({
+            open: true,
+            stateKey,
+            paramName,
+            wizardId: wizard.id,
+            title: String(inputSchema.title ?? mergedDef?.label ?? paramName),
+            radius: Number(radiusField?.value ?? liveParam?.editableValue ?? liveParam?.value ?? 0) || 0,
+            min: Number(radiusField?.min ?? 1) || 1,
+            step: Number(radiusField?.step ?? 1) || 1,
+            message: String(result?.message ?? "").trim(),
+            previewUrl,
+            previewWidth:
+              typeof result?.preview?.width === "number" ? result.preview.width : null,
+            previewHeight:
+              typeof result?.preview?.height === "number" ? result.preview.height : null,
+          });
+
+          return;
+        }
+
+        // Wizard returning multiple selectable values
+        if (availableValues.length > 1) {
           const deferredUpdates = { ...updates };
           delete deferredUpdates[paramName];
 
@@ -1544,16 +1852,18 @@ export default function ProtocolForm({
 
           const currentValue = String(currentValueRaw ?? "").trim();
 
-          const selectedValue = dialogOptions.some((opt) => opt.value === currentValue)
+          const selectedValue = availableValues.some(
+            (option) => option.value === currentValue
+          )
             ? currentValue
-            : dialogOptions[0].value;
+            : availableValues[0].value;
 
           setWizardOptionsDialog({
             open: true,
             stateKey,
             paramName,
             title: String(mergedDef?.label ?? paramName),
-            options: dialogOptions,
+            options: availableValues,
             selectedValue,
             message: String(result?.message ?? "").trim(),
           });
@@ -1567,9 +1877,9 @@ export default function ProtocolForm({
           return;
         }
 
-        if (dialogOptions.length === 1) {
+        if (availableValues.length === 1) {
           applyWizardParamUpdates({
-            [paramName]: dialogOptions[0].value,
+            [paramName]: availableValues[0].value,
           });
           toast.success(result?.message?.trim() || "Wizard executed successfully.");
           return;
@@ -1602,7 +1912,7 @@ export default function ProtocolForm({
       getSerializedParams,
       getWizardDescriptor,
       applyWizardParamUpdates,
-      normalizeWizardDialogOptions,
+      normalizeWizardAvailableValues,
     ]
   );
 
@@ -3304,6 +3614,351 @@ export default function ProtocolForm({
           <Button
             variant="contained"
             onClick={confirmWizardOptionsDialog}
+            sx={{
+              textTransform: "none",
+              borderRadius: "12px",
+              px: 2.25,
+              fontWeight: 700,
+            }}
+          >
+            Apply
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={wizardInputDialog.open}
+        onClose={closeWizardInputDialog}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: "22px",
+            overflow: "hidden",
+            border: "1px solid rgba(51, 61, 73, 0.14)",
+            boxShadow: "0 24px 70px rgba(15, 23, 42, 0.24)",
+            backgroundImage: "none",
+          },
+        }}
+      >
+        <DialogTitle
+          sx={{
+            m: 0,
+            px: 2.5,
+            py: 2,
+            background:
+              "linear-gradient(135deg, #333d49 0%, #3d4957 55%, #465567 100%)",
+            color: "#ffffff",
+            borderBottom: "1px solid rgba(255,255,255,0.08)",
+          }}
+        >
+          {wizardInputDialog.title || "Wizard input"}
+        </DialogTitle>
+
+        <DialogContent
+          dividers
+          sx={{
+            px: 2.5,
+            py: 2.5,
+            background: "linear-gradient(180deg, #f8fafc 0%, #f4f7fb 100%)",
+            borderColor: "rgba(15,23,42,0.08)",
+          }}
+        >
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            {isNonEmptyString(wizardInputDialog.message) && (
+              <Typography
+                variant="body2"
+                sx={{
+                  color: "text.secondary",
+                  lineHeight: 1.6,
+                }}
+              >
+                {wizardInputDialog.message}
+              </Typography>
+            )}
+
+            {wizardInputDialog.previewImageUrl && (
+              <Box
+                sx={{
+                  borderRadius: "14px",
+                  overflow: "hidden",
+                  border: "1px solid rgba(15,23,42,0.10)",
+                  backgroundColor: "#ffffff",
+                  p: 1,
+                }}
+              >
+                <Box
+                  component="img"
+                  src={wizardInputDialog.previewImageUrl}
+                  alt="Wizard preview"
+                  sx={{
+                    display: "block",
+                    width: "100%",
+                    maxHeight: 320,
+                    objectFit: "contain",
+                    borderRadius: "10px",
+                  }}
+                />
+              </Box>
+            )}
+
+            {wizardInputDialog.fields.map((field) => {
+              const fieldName = String(field?.name ?? "").trim();
+              if (!fieldName) return null;
+
+              const fieldValue = wizardInputDialog.values[fieldName] ?? "";
+
+              if (field.kind === "select") {
+                return (
+                  <TextField
+                    key={fieldName}
+                    select
+                    fullWidth
+                    size="small"
+                    label={field.label || fieldName}
+                    value={fieldValue}
+                    onChange={(e) =>
+                      setWizardInputDialog((prev) => ({
+                        ...prev,
+                        values: {
+                          ...prev.values,
+                          [fieldName]: String(e.target.value),
+                        },
+                      }))
+                    }
+                    sx={{
+                      "& .MuiOutlinedInput-root": {
+                        borderRadius: "14px",
+                        backgroundColor: "#ffffff",
+                        "& .MuiOutlinedInput-notchedOutline": {
+                          borderColor: "rgba(15,23,42,0.12)",
+                        },
+                      },
+                    }}
+                  >
+                    {(field.options ?? []).map((option) => (
+                      <MenuItem key={option.value} value={option.value}>
+                        {option.label}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                );
+              }
+
+              return (
+                <TextField
+                  key={fieldName}
+                  fullWidth
+                  size="small"
+                  type={field.kind === "number" ? "number" : "text"}
+                  label={field.label || fieldName}
+                  value={fieldValue}
+                  onChange={(e) =>
+                    setWizardInputDialog((prev) => ({
+                      ...prev,
+                      values: {
+                        ...prev.values,
+                        [fieldName]: e.target.value,
+                      },
+                    }))
+                  }
+                  inputProps={
+                    field.kind === "number"
+                      ? {
+                        min: field.min,
+                        max: field.max,
+                        step: field.step ?? 1,
+                      }
+                      : undefined
+                  }
+                  sx={{
+                    "& .MuiOutlinedInput-root": {
+                      borderRadius: "14px",
+                      backgroundColor: "#ffffff",
+                      "& .MuiOutlinedInput-notchedOutline": {
+                        borderColor: "rgba(15,23,42,0.12)",
+                      },
+                    },
+                  }}
+                />
+              );
+            })}
+          </Box>
+        </DialogContent>
+
+        <DialogActions
+          sx={{
+            px: 2.5,
+            py: 2,
+            backgroundColor: "#ffffff",
+            borderTop: "1px solid rgba(15,23,42,0.08)",
+            justifyContent: "space-between",
+            gap: 2,
+          }}
+        >
+          <Button
+            onClick={closeWizardInputDialog}
+            variant="outlined"
+            sx={{
+              textTransform: "none",
+              borderRadius: "12px",
+              px: 2,
+              fontWeight: 600,
+            }}
+          >
+            Cancel
+          </Button>
+
+          <Button
+            variant="contained"
+            onClick={confirmWizardInputDialog}
+            sx={{
+              textTransform: "none",
+              borderRadius: "12px",
+              px: 2.25,
+              fontWeight: 700,
+            }}
+          >
+            Apply
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={maskRadiusDialog.open}
+        onClose={closeMaskRadiusDialog}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: "22px",
+            overflow: "hidden",
+            border: "1px solid rgba(51, 61, 73, 0.14)",
+            boxShadow: "0 24px 70px rgba(15, 23, 42, 0.24)",
+            backgroundImage: "none",
+          },
+        }}
+      >
+        <DialogTitle
+          sx={{
+            m: 0,
+            px: 2.5,
+            py: 2,
+            background:
+              "linear-gradient(135deg, #333d49 0%, #3d4957 55%, #465567 100%)",
+            color: "#ffffff",
+            borderBottom: "1px solid rgba(255,255,255,0.08)",
+          }}
+        >
+          {maskRadiusDialog.title || "Mask radius"}
+        </DialogTitle>
+
+        <DialogContent
+          dividers
+          sx={{
+            px: 2.5,
+            py: 2.5,
+            background: "linear-gradient(180deg, #f8fafc 0%, #f4f7fb 100%)",
+            borderColor: "rgba(15,23,42,0.08)",
+          }}
+        >
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            {isNonEmptyString(maskRadiusDialog.message) && (
+              <Typography
+                variant="body2"
+                sx={{
+                  color: "text.secondary",
+                  lineHeight: 1.6,
+                }}
+              >
+                {maskRadiusDialog.message}
+              </Typography>
+            )}
+
+            {maskRadiusDialog.previewUrl ? (
+              <Box
+                sx={{
+                  display: "flex",
+                  justifyContent: "center",
+                  p: 1,
+                  borderRadius: 2,
+                  backgroundColor: "#ffffff",
+                  border: "1px solid rgba(15,23,42,0.08)",
+                }}
+              >
+                <Box
+                  component="img"
+                  src={maskRadiusDialog.previewUrl}
+                  alt="Mask radius preview"
+                  sx={{
+                    maxWidth: "100%",
+                    maxHeight: 320,
+                    objectFit: "contain",
+                    borderRadius: 1,
+                  }}
+                />
+              </Box>
+            ) : (
+              <Typography variant="caption" sx={{ color: "text.secondary" }}>
+                Preview not available yet.
+              </Typography>
+            )}
+
+            <TextField
+              type="number"
+              fullWidth
+              size="small"
+              label="Radius"
+              value={maskRadiusDialog.radius}
+              onChange={(e) =>
+                setMaskRadiusDialog((prev) => ({
+                  ...prev,
+                  radius: Number(e.target.value ?? 0) || 0,
+                }))
+              }
+              inputProps={{
+                min: maskRadiusDialog.min,
+                step: maskRadiusDialog.step,
+              }}
+              sx={{
+                "& .MuiOutlinedInput-root": {
+                  borderRadius: "14px",
+                  backgroundColor: "#ffffff",
+                  "& .MuiOutlinedInput-notchedOutline": {
+                    borderColor: "rgba(15,23,42,0.12)",
+                  },
+                },
+              }}
+            />
+          </Box>
+        </DialogContent>
+
+        <DialogActions
+          sx={{
+            px: 2.5,
+            py: 2,
+            backgroundColor: "#ffffff",
+            borderTop: "1px solid rgba(15,23,42,0.08)",
+            justifyContent: "space-between",
+            gap: 2,
+          }}
+        >
+          <Button
+            onClick={closeMaskRadiusDialog}
+            variant="outlined"
+            sx={{
+              textTransform: "none",
+              borderRadius: "12px",
+              px: 2,
+              fontWeight: 600,
+            }}
+          >
+            Cancel
+          </Button>
+
+          <Button
+            variant="contained"
+            onClick={confirmMaskRadiusDialog}
             sx={{
               textTransform: "none",
               borderRadius: "12px",
