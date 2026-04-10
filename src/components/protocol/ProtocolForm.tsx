@@ -132,6 +132,21 @@ type QueueDialogDraft = {
   params: EffectiveHostQueueParam[];
 };
 
+type WizardDialogOption = {
+  value: string;
+  label: string;
+};
+
+type WizardOptionsDialogState = {
+  open: boolean;
+  stateKey: string | null;
+  paramName: string;
+  title: string;
+  options: WizardDialogOption[];
+  selectedValue: string;
+  message: string;
+};
+
 function normalizeEffectiveHostQueues(raw: unknown): EffectiveHostQueue[] {
   if (!Array.isArray(raw)) return [];
 
@@ -376,6 +391,17 @@ export default function ProtocolForm({
       label: String(param.label ?? ""),
       help: String(param.help ?? ""),
     }));
+
+  // Wizard options dialog state
+  const [wizardOptionsDialog, setWizardOptionsDialog] = useState<WizardOptionsDialogState>({
+    open: false,
+    stateKey: null,
+    paramName: "",
+    title: "",
+    options: [],
+    selectedValue: "",
+    message: "",
+  });
 
   // Global Output Selector
   const [openSelector, setOpenSelector] = useState(false);
@@ -1244,6 +1270,342 @@ export default function ProtocolForm({
     return out;
   }, [protocolDetails.params]);
 
+  type WizardDescriptor = {
+    id: string;
+    className?: string;
+    module?: string;
+    kind?: string;
+    interactive?: boolean;
+    webSupported?: boolean;
+    webView?: string | null;
+    displayParam?: string | null;
+    targetParams?: string[];
+  };
+
+  const getWizardDescriptor = useCallback((paramDef: any): WizardDescriptor | null => {
+    const candidates: any[] = [];
+
+    if (paramDef?.wizard && typeof paramDef.wizard === "object") {
+      candidates.push(paramDef.wizard);
+    }
+
+    if (Array.isArray(paramDef?.wizards)) {
+      candidates.push(...paramDef.wizards);
+    }
+
+    for (const item of candidates) {
+      if (!item || typeof item !== "object") continue;
+      const id = String(item.id ?? "").trim();
+      if (!id) continue;
+
+      return {
+        id,
+        className: typeof item.className === "string" ? item.className : undefined,
+        module: typeof item.module === "string" ? item.module : undefined,
+        kind: typeof item.kind === "string" ? item.kind : undefined,
+        interactive: typeof item.interactive === "boolean" ? item.interactive : undefined,
+        webSupported: typeof item.webSupported === "boolean" ? item.webSupported : undefined,
+        webView: typeof item.webView === "string" ? item.webView : null,
+        displayParam: typeof item.displayParam === "string" ? item.displayParam : null,
+        targetParams: Array.isArray(item.targetParams) ? item.targetParams : undefined,
+      };
+    }
+
+    return null;
+  }, []);
+
+  const getWizardTooltip = useCallback(
+    (stateKey: string, paramDef?: any) => {
+      const liveParam = protocolDetails.params?.[stateKey] ?? {};
+      const mergedDef = { ...(paramDef ?? {}), ...liveParam };
+      const wizard = getWizardDescriptor(mergedDef);
+
+      if (!wizard) return "Wizard available";
+
+      const kindLabel = String(wizard.kind ?? "")
+        .replace(/_/g, " ")
+        .trim();
+
+      if (wizard.webSupported === false) {
+        return kindLabel
+          ? `Wizard available (${kindLabel}, not supported yet)`
+          : "Wizard available (not supported yet)";
+      }
+
+      if (wizard.className) {
+        return kindLabel
+          ? `Open wizard (${wizard.className} · ${kindLabel})`
+          : `Open wizard (${wizard.className})`;
+      }
+
+      return kindLabel ? `Open wizard (${kindLabel})` : "Open wizard";
+    },
+    [protocolDetails.params, getWizardDescriptor]
+  );
+
+  const applyWizardParamUpdates = useCallback(
+    (paramUpdates: Record<string, any>) => {
+      setProtocolDetails((prev: any) => {
+        const currentParams = prev?.params ?? {};
+        let nextParams = currentParams;
+
+        const ensureClone = () => {
+          if (nextParams === currentParams) {
+            nextParams = { ...currentParams };
+          }
+        };
+
+        for (const [paramName, rawValue] of Object.entries(paramUpdates ?? {})) {
+          const stateKey = findStateKeyByParamNames(currentParams, [paramName]);
+          if (!stateKey) continue;
+
+          const current = nextParams[stateKey] ?? currentParams[stateKey] ?? {};
+          const cls = resolveParamClass(current);
+          const nextParam = { ...current };
+
+          if (cls === "BooleanParam") {
+            const boolValue = coerceBooleanValue(rawValue);
+            nextParam.value = boolValue;
+            nextParam.editableValue = boolValue;
+          } else if (cls === "PointerParam") {
+            const token = normalizePointerToken(rawValue);
+            nextParam.value = token;
+            nextParam.editableValue = token;
+          } else if (cls === "PathParam") {
+            const token = rawValue == null ? "" : String(rawValue);
+            nextParam.value = token;
+            nextParam.editableValue = token;
+          } else if (cls === "MultiPointerParam") {
+            nextParam.editableValue = normalizeMultiPointerValue(rawValue);
+          } else if (cls === "EnumParam" && current?.choices) {
+            nextParam.editableValue = normalizeEnumSelection(
+              rawValue,
+              current.choices,
+              current.default
+            );
+          } else {
+            const parsed = parseFromJSONValue(rawValue);
+            nextParam.editableValue = parsed ?? rawValue ?? "";
+          }
+
+          ensureClone();
+          nextParams[stateKey] = nextParam;
+        }
+
+        if (nextParams === currentParams) return prev;
+
+        if (protocolClassName === "ProtUnionSet") {
+          nextParams = syncProtUnionPointerClassInParams(nextParams);
+          prevSelectedInputTypeRef.current = getProtUnionDerivedPointerClass(nextParams);
+        }
+
+        return {
+          ...prev,
+          params: nextParams,
+        };
+      });
+    },
+    [
+      findStateKeyByParamNames,
+      protocolClassName,
+    ]
+  );
+
+  const normalizeWizardDialogOptions = useCallback(
+    (result: any): WizardDialogOption[] => {
+      const normalized: WizardDialogOption[] = [];
+
+      const pushOption = (valueRaw: unknown, labelRaw?: unknown) => {
+        const value = String(valueRaw ?? "").trim();
+        if (!value) return;
+
+        const label = String(labelRaw ?? value).trim() || value;
+
+        if (!normalized.some((item) => item.value === value)) {
+          normalized.push({ value, label });
+        }
+      };
+
+      const rawAvailableValues = result?.availableValues;
+
+      if (Array.isArray(rawAvailableValues)) {
+        for (const item of rawAvailableValues) {
+          if (item && typeof item === "object") {
+            pushOption((item as any).value, (item as any).label);
+          } else {
+            pushOption(item);
+          }
+        }
+      }
+
+      const inputSchema = result?.inputSchema;
+      if (
+        inputSchema &&
+        inputSchema.type === "select" &&
+        Array.isArray(inputSchema.options)
+      ) {
+        for (const option of inputSchema.options) {
+          if (option && typeof option === "object") {
+            pushOption(option.value, option.label);
+          }
+        }
+      }
+
+      return normalized;
+    },
+    []
+  );
+
+  const closeWizardOptionsDialog = useCallback(() => {
+    setWizardOptionsDialog({
+      open: false,
+      stateKey: null,
+      paramName: "",
+      title: "",
+      options: [],
+      selectedValue: "",
+      message: "",
+    });
+  }, []);
+
+  const confirmWizardOptionsDialog = useCallback(() => {
+    const { paramName, selectedValue } = wizardOptionsDialog;
+
+    if (!paramName || !selectedValue) {
+      closeWizardOptionsDialog();
+      return;
+    }
+
+    applyWizardParamUpdates({
+      [paramName]: selectedValue,
+    });
+
+    toast.success(`Wizard value applied to '${paramName}'.`);
+    closeWizardOptionsDialog();
+  }, [wizardOptionsDialog, applyWizardParamUpdates, closeWizardOptionsDialog]);
+
+  const handleOpenWizard = useCallback(
+    async (stateKey: string, paramDef?: any) => {
+      if (!projectId) {
+        toast.error("Missing project id.");
+        return;
+      }
+
+      const paramName = getParamNameFromStateKey(stateKey);
+      if (!paramName) {
+        toast.error("Could not resolve wizard parameter.");
+        return;
+      }
+
+      const liveParam = protocolDetails.params?.[stateKey] ?? {};
+      const mergedDef = { ...(paramDef ?? {}), ...liveParam };
+      const wizard = getWizardDescriptor(mergedDef);
+
+      if (!wizard) {
+        toast.error(`No wizard metadata found for '${paramName}'.`);
+        return;
+      }
+
+      if (wizard.webSupported === false) {
+        toast.error("This wizard is not available in the web UI yet.");
+        return;
+      }
+
+      try {
+        const result = await svc.executeProtocolWizard(projectId, {
+          protocolId: protocolId ?? null,
+          protocolClassName,
+          paramName,
+          wizardId: wizard.id,
+          formValues: getSerializedParams(),
+        });
+
+        const updates =
+          result?.paramUpdates && typeof result.paramUpdates === "object"
+            ? { ...result.paramUpdates }
+            : {};
+
+        const dialogOptions = normalizeWizardDialogOptions(result);
+
+        // If backend returns selectable options, open a selector dialog
+        if (dialogOptions.length > 1) {
+          const deferredUpdates = { ...updates };
+          delete deferredUpdates[paramName];
+
+          if (Object.keys(deferredUpdates).length > 0) {
+            applyWizardParamUpdates(deferredUpdates);
+          }
+
+          const currentValueRaw =
+            updates[paramName] ??
+            liveParam?.editableValue ??
+            liveParam?.value ??
+            "";
+
+          const currentValue = String(currentValueRaw ?? "").trim();
+
+          const selectedValue = dialogOptions.some((opt) => opt.value === currentValue)
+            ? currentValue
+            : dialogOptions[0].value;
+
+          setWizardOptionsDialog({
+            open: true,
+            stateKey,
+            paramName,
+            title: String(mergedDef?.label ?? paramName),
+            options: dialogOptions,
+            selectedValue,
+            message: String(result?.message ?? "").trim(),
+          });
+
+          return;
+        }
+
+        if (Object.keys(updates).length > 0) {
+          applyWizardParamUpdates(updates);
+          toast.success(result?.message?.trim() || "Wizard executed successfully.");
+          return;
+        }
+
+        if (dialogOptions.length === 1) {
+          applyWizardParamUpdates({
+            [paramName]: dialogOptions[0].value,
+          });
+          toast.success(result?.message?.trim() || "Wizard executed successfully.");
+          return;
+        }
+
+        toast.success(result?.message?.trim() || "Wizard executed successfully.");
+      } catch (err: any) {
+        const payload = getBackendPayloadFromError(err);
+        const errors = getErrorsFromBackendPayload(payload);
+
+        if (errors.length > 0) {
+          openExecErrorDialog("Wizard error", formatErrorsForDialog(errors));
+          return;
+        }
+
+        const fallbackMsg =
+          err?.message ||
+          (typeof payload?.detail === "string" ? payload.detail : null) ||
+          "Wizard execution failed";
+
+        openExecErrorDialog("Wizard error", String(fallbackMsg));
+      }
+    },
+    [
+      projectId,
+      protocolId,
+      protocolClassName,
+      protocolDetails.params,
+      svc,
+      getSerializedParams,
+      getWizardDescriptor,
+      applyWizardParamUpdates,
+      normalizeWizardDialogOptions,
+    ]
+  );
+
   useEffect(() => {
     // syncMetadataSnapshot
     const liveValues = getSerializedParams();
@@ -1621,7 +1983,9 @@ export default function ProtocolForm({
             }
             helpText={def.help}
             rowIndex={rowIndex}
-            hasWizard={Boolean(def?.hasWizard)}
+            hasWizard={Boolean(def?.hasWizard || def?.wizard || (Array.isArray(def?.wizards) && def.wizards.length > 0))}
+            onOpenWizard={() => handleOpenWizard(stateKey, def)}
+            wizardTooltip={getWizardTooltip(stateKey, liveDef)}
           />
         );
       }
@@ -1708,6 +2072,7 @@ export default function ProtocolForm({
           onBrowsePath: handleBrowsePath,
           onOpenFind: handleOpenFind,
           hasWizard: Boolean(def?.hasWizard),
+          onOpenWizard: handleOpenWizard,
         });
       }
 
@@ -1731,6 +2096,7 @@ export default function ProtocolForm({
           def,
           value,
           hasWizard: Boolean(def?.hasWizard),
+          onOpenWizard: handleOpenWizard,
         });
       }
 
@@ -1773,7 +2139,8 @@ export default function ProtocolForm({
               helpText={def?.help}
               rowIndex={rowIndex}
               layoutVariant="fullWidth"
-              hasWizard={Boolean(def?.hasWizard)}
+              hasWizard={Boolean(def?.hasWizard || def?.wizard || (Array.isArray(def?.wizards) && def.wizards.length > 0))}
+              onOpenWizard={name ? () => handleOpenWizard(`${sectionIdx}_${name}`, def) : undefined}
             />
           );
         }
@@ -1822,7 +2189,8 @@ export default function ProtocolForm({
             helpText={def?.help}
             rowIndex={rowIndex}
             layoutVariant="standard"
-            hasWizard={Boolean(def?.hasWizard)}
+            hasWizard={Boolean(def?.hasWizard || def?.wizard || (Array.isArray(def?.wizards) && def.wizards.length > 0))}
+            onOpenWizard={name ? () => handleOpenWizard(`${sectionIdx}_${name}`, def) : undefined}
           />
         );
       }
@@ -1948,6 +2316,7 @@ export default function ProtocolForm({
           def,
           value,
           hasWizard: Boolean(def?.hasWizard),
+          onOpenWizard: handleOpenWizard,
         });
       }
 
@@ -1962,7 +2331,8 @@ export default function ProtocolForm({
             helpText={def.help}
             rowIndex={rowIndex}
             layoutVariant="fullWidth"
-            hasWizard={Boolean(def?.hasWizard)}
+            hasWizard={Boolean(def?.hasWizard || def?.wizard || (Array.isArray(def?.wizards) && def.wizards.length > 0))}
+            onOpenWizard={name ? () => handleOpenWizard(`${sectionIdx}_${name}`, def) : undefined}
           />
         );
       }
@@ -1986,6 +2356,7 @@ export default function ProtocolForm({
         def,
         value,
         hasWizard: Boolean(def?.hasWizard),
+        onOpenWizard: handleOpenWizard,
       });
     },
     [
@@ -1996,9 +2367,12 @@ export default function ProtocolForm({
       generalExpertLevel,
       findGeneralExpertLocator,
       getExpectedClass,
-      gatherAllOutputs,
       projectId,
       protocolId,
+      variant,
+      protocolClassName,
+      handleOpenWizard,
+      getWizardTooltip,
     ]
   );
 
@@ -2817,6 +3191,128 @@ export default function ProtocolForm({
               Launch
             </Button>
           </Box>
+        </DialogActions>
+      </Dialog>
+
+
+      {/* Wizard selector dialog */}
+      <Dialog
+        open={wizardOptionsDialog.open}
+        onClose={closeWizardOptionsDialog}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: "22px",
+            overflow: "hidden",
+            border: "1px solid rgba(51, 61, 73, 0.14)",
+            boxShadow: "0 24px 70px rgba(15, 23, 42, 0.24)",
+            backgroundImage: "none",
+          },
+        }}
+      >
+        <DialogTitle
+          sx={{
+            m: 0,
+            px: 2.5,
+            py: 2,
+            background:
+              "linear-gradient(135deg, #333d49 0%, #3d4957 55%, #465567 100%)",
+            color: "#ffffff",
+            borderBottom: "1px solid rgba(255,255,255,0.08)",
+          }}
+        >
+          Wizard result
+        </DialogTitle>
+
+        <DialogContent
+          dividers
+          sx={{
+            px: 2.5,
+            py: 2.5,
+            background: "linear-gradient(180deg, #f8fafc 0%, #f4f7fb 100%)",
+            borderColor: "rgba(15,23,42,0.08)",
+          }}
+        >
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            {isNonEmptyString(wizardOptionsDialog.message) && (
+              <Typography
+                variant="body2"
+                sx={{
+                  color: "text.secondary",
+                  lineHeight: 1.6,
+                }}
+              >
+                {wizardOptionsDialog.message}
+              </Typography>
+            )}
+
+            <TextField
+              select
+              fullWidth
+              size="small"
+              label={wizardOptionsDialog.title || wizardOptionsDialog.paramName}
+              value={wizardOptionsDialog.selectedValue}
+              onChange={(e) =>
+                setWizardOptionsDialog((prev) => ({
+                  ...prev,
+                  selectedValue: String(e.target.value),
+                }))
+              }
+              sx={{
+                "& .MuiOutlinedInput-root": {
+                  borderRadius: "14px",
+                  backgroundColor: "#ffffff",
+                  "& .MuiOutlinedInput-notchedOutline": {
+                    borderColor: "rgba(15,23,42,0.12)",
+                  },
+                },
+              }}
+            >
+              {wizardOptionsDialog.options.map((option) => (
+                <MenuItem key={option.value} value={option.value}>
+                  {option.label}
+                </MenuItem>
+              ))}
+            </TextField>
+          </Box>
+        </DialogContent>
+
+        <DialogActions
+          sx={{
+            px: 2.5,
+            py: 2,
+            backgroundColor: "#ffffff",
+            borderTop: "1px solid rgba(15,23,42,0.08)",
+            justifyContent: "space-between",
+            gap: 2,
+          }}
+        >
+          <Button
+            onClick={closeWizardOptionsDialog}
+            variant="outlined"
+            sx={{
+              textTransform: "none",
+              borderRadius: "12px",
+              px: 2,
+              fontWeight: 600,
+            }}
+          >
+            Cancel
+          </Button>
+
+          <Button
+            variant="contained"
+            onClick={confirmWizardOptionsDialog}
+            sx={{
+              textTransform: "none",
+              borderRadius: "12px",
+              px: 2.25,
+              fontWeight: 700,
+            }}
+          >
+            Apply
+          </Button>
         </DialogActions>
       </Dialog>
 

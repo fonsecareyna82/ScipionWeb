@@ -40,6 +40,8 @@ type CommonRendererProps = {
   protocolDetails: any;
   setProtocolDetails: (updater: (prev: any) => any) => void;
   hasWizard?: boolean;
+  onOpenWizard?: (stateKey: string, def: any) => void;
+  wizardTooltip?: string;
 };
 
 type PointerRendererProps = CommonRendererProps & {
@@ -91,6 +93,8 @@ export function renderPointerParamRow({
   setDragOverKey,
   onOpenFind,
   hasWizard = false,
+  onOpenWizard,
+  wizardTooltip,
 }: PointerRendererProps): JSX.Element {
   const liveDef = {
     ...defResolved,
@@ -170,6 +174,8 @@ export function renderPointerParamRow({
       onOpenFind={() => onOpenFind(stateKey)}
       layoutVariant={layoutVariant}
       hasWizard={hasWizard}
+      onOpenWizard={hasWizard && onOpenWizard ? () => onOpenWizard(stateKey, def) : undefined}
+      wizardTooltip={wizardTooltip}
     />
   );
 }
@@ -192,6 +198,8 @@ export function renderPathParamRow({
   onBrowsePath,
   onOpenFind,
   hasWizard = false,
+  onOpenWizard,
+  wizardTooltip,
 }: PathRendererProps): JSX.Element {
   const current = protocolDetails.params?.[stateKey] || {};
   const textValue = current.editableValue ?? current.value ?? def.value ?? def.default ?? "";
@@ -259,6 +267,8 @@ export function renderPathParamRow({
       rowIndex={rowIndex}
       layoutVariant={layoutVariant}
       hasWizard={hasWizard}
+      onOpenWizard={hasWizard && onOpenWizard ? () => onOpenWizard(stateKey, def) : undefined}
+      wizardTooltip={wizardTooltip}
     />
   );
 }
@@ -277,6 +287,8 @@ export function renderEnumParamRow({
   def,
   value,
   hasWizard = false,
+  onOpenWizard,
+  wizardTooltip,
 }: EnumRendererProps): JSX.Element | null {
   const options = normalizeEnumOptions(def.choices);
   if (options.length === 0) return null;
@@ -334,6 +346,8 @@ export function renderEnumParamRow({
       rowIndex={rowIndex}
       layoutVariant={layoutVariant}
       hasWizard={hasWizard}
+      onOpenWizard={hasWizard && onOpenWizard ? () => onOpenWizard(stateKey, def) : undefined}
+      wizardTooltip={wizardTooltip}
     />
   );
 }
@@ -354,6 +368,8 @@ export function renderBooleanParamRow({
   def,
   value,
   hasWizard = false,
+  onOpenWizard,
+  wizardTooltip,
 }: BooleanRendererProps): JSX.Element {
   const checked = coerceBooleanValue(
     value !== undefined
@@ -394,6 +410,8 @@ export function renderBooleanParamRow({
       rowIndex={rowIndex}
       layoutVariant={layoutVariant}
       hasWizard={hasWizard}
+      onOpenWizard={hasWizard && onOpenWizard ? () => onOpenWizard(stateKey, def) : undefined}
+      wizardTooltip={wizardTooltip}
     />
   );
 }
@@ -413,6 +431,8 @@ export function renderDefaultParamRow({
   def,
   value,
   hasWizard = false,
+  onOpenWizard,
+  wizardTooltip,
 }: DefaultRendererProps): JSX.Element {
   const defaultControl = (
     <Box sx={{ display: "flex", alignItems: "center", gap: 1, minWidth: 0, width: "77%" }}>
@@ -448,6 +468,8 @@ export function renderDefaultParamRow({
       rowIndex={rowIndex}
       layoutVariant={layoutVariant}
       hasWizard={hasWizard}
+      onOpenWizard={hasWizard && onOpenWizard ? () => onOpenWizard(stateKey, def) : undefined}
+      wizardTooltip={wizardTooltip}
     />
   );
 }

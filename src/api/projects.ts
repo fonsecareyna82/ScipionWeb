@@ -26,6 +26,8 @@ import {
   FscPoint,
   ImportProjectPayload,
   ProjectEffectiveSettings,
+  ExecuteProtocolWizardPayload,
+  ExecuteProtocolWizardResult,
 } from "@/services/ProjectService";
 
 const ACTION_LAUNCH = "launch";
@@ -2944,4 +2946,88 @@ export async function fetchBlobObjectUrl(
 
   const blob = await response.blob();
   return URL.createObjectURL(blob);
+}
+
+export async function executeProtocolWizard(
+  projectId: Id,
+  payload: ExecuteProtocolWizardPayload,
+): Promise<ExecuteProtocolWizardResult> {
+  const url = `${BASE_URL}/projects/${projectId}/wizards/execute`;
+
+  const response = await fetchWithAuth(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      protocolId: payload.protocolId ?? null,
+      protocolClassName: payload.protocolClassName,
+      paramName: payload.paramName,
+      wizardId: payload.wizardId,
+      formValues: payload.formValues ?? {},
+      wizardInputs: payload.wizardInputs ?? {},
+    }),
+  });
+
+  if (!response.ok) {
+    throw await toApiError(response, "Failed to execute protocol wizard");
+  }
+
+  const raw = await safeJson<any>(response);
+
+  const paramUpdates =
+    raw && typeof raw === "object" && raw.paramUpdates && typeof raw.paramUpdates === "object"
+      ? raw.paramUpdates
+      : raw && typeof raw === "object" && raw.updates && typeof raw.updates === "object"
+        ? raw.updates
+        : {};
+
+  const kind =
+    raw && typeof raw === "object" && typeof raw.kind === "string" && raw.kind.trim()
+      ? raw.kind.trim()
+      : "unknown";
+
+  const wizardId =
+    raw && typeof raw === "object" && typeof raw.wizardId === "string" && raw.wizardId.trim()
+      ? raw.wizardId.trim()
+      : payload.wizardId;
+
+  const success =
+    raw && typeof raw === "object" && typeof raw.success === "boolean"
+      ? raw.success
+      : true;
+
+  const message =
+    raw && typeof raw === "object" && typeof raw.message === "string"
+      ? raw.message
+      : null;
+
+  const availableValues =
+    raw && typeof raw === "object" && Array.isArray(raw.availableValues)
+      ? raw.availableValues
+          .map((item: any) => String(item ?? "").trim())
+          .filter((item: string) => item.length > 0)
+      : undefined;
+
+  const requiresUserInput =
+    raw && typeof raw === "object" && typeof raw.requiresUserInput === "boolean"
+      ? raw.requiresUserInput
+      : undefined;
+
+  const inputSchema =
+    raw &&
+    typeof raw === "object" &&
+    raw.inputSchema &&
+    typeof raw.inputSchema === "object"
+      ? raw.inputSchema
+      : null;
+
+  return {
+    success,
+    wizardId,
+    kind,
+    paramUpdates,
+    message,
+    availableValues,
+    requiresUserInput,
+    inputSchema,
+  };
 }

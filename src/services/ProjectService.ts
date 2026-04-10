@@ -696,6 +696,36 @@ export type ContextMenuVisibilityPolicy = {
   upload: boolean,
 };
 
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────────
+// Wizards support (protocols that can launch a multi-step form instead of the regular parameter form)
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+export type ExecuteProtocolWizardPayload = {
+  protocolId?: string | number | null;
+  protocolClassName: string;
+  paramName: string;
+  wizardId: string;
+  formValues: Record<string, any>;
+  wizardInputs?: Record<string, any>;
+};
+
+export type ExecuteProtocolWizardResult = {
+  success: boolean;
+  wizardId: string;
+  kind: string;
+  paramUpdates: Record<string, any>;
+  message?: string | null;
+  availableValues?: string[];
+
+  requiresUserInput?: boolean;
+  inputSchema?: {
+    type: "select";
+    paramName: string;
+    options: Array<{ value: string; label: string }>;
+  } | null;
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // ProjectService interface
 // ─────────────────────────────────────────────────────────────────────────────  
@@ -761,7 +791,7 @@ export interface ProjectService<
   /** Create a new project. */
   createProject(payload: ProjectPayload): Promise<TProject>;
 
-   /** Import an existing project from a filesystem location. */
+  /** Import an existing project from a filesystem location. */
   importProject(payload: ImportProjectPayload): Promise<TProject>;
 
   /** Rename a project (and optionally update description). */
@@ -1249,4 +1279,13 @@ export interface ProjectService<
   getContextMenuVisibilityPolicy(
     projectId: Id,
   ): Promise<ContextMenuVisibilityPolicy>;
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Wizards support
+  // ─────────────────────────────────────────────────────────────────────────────  
+
+  executeProtocolWizard: (
+    projectId: string | number,
+    payload: ExecuteProtocolWizardPayload
+  ) => Promise<ExecuteProtocolWizardResult>;
 }
