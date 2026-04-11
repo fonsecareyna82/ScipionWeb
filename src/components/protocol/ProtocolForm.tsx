@@ -1,5 +1,6 @@
 // src/components/ProtocolForm.tsx
 import { useState, useEffect, useCallback, JSX, useRef, useMemo } from "react";
+import * as React from "react";
 import toast from "react-hot-toast";
 import {
   Tabs,
@@ -90,13 +91,14 @@ import {
   getProtUnionDerivedPointerClass,
   syncProtUnionPointerClassInParams,
 } from "@/utils/protocolform.protunion";
-import { ProjectEffectiveSettings } from "@/services/ProjectService";
+import { ExecuteProtocolWizardViewerState, ProjectEffectiveSettings } from "@/services/ProjectService";
 
 import {
   WizardOptionsDialog,
   WizardInputDialog,
   MaskRadiusDialog,
 } from "./WizardDialogs";
+
 
 type ProtocolFormProps = {
   data: any;
@@ -153,6 +155,12 @@ type WizardOptionsDialogState = {
   message: string;
 };
 
+type MaskRadiusDialogItem = {
+  id: string;
+  label: string;
+  index: number;
+};
+
 type MaskRadiusDialogState = {
   open: boolean;
   stateKey: string | null;
@@ -161,11 +169,19 @@ type MaskRadiusDialogState = {
   title: string;
   radius: number;
   min: number;
+  max: number;
   step: number;
+  radiusAngstrom: number | null;
+  samplingRate: number | null;
+  selectedIndex: number;
+  items: MaskRadiusDialogItem[];
   message: string;
   previewUrl: string | null;
   previewWidth: number | null;
   previewHeight: number | null;
+  previewSourceWidth: number | null;
+  previewSourceHeight: number | null;
+  previewCaption: string;
 };
 
 type WizardInputDialogField = {
@@ -455,11 +471,19 @@ export default function ProtocolForm({
     title: "",
     radius: 0,
     min: 1,
+    max: 1,
     step: 1,
+    radiusAngstrom: null,
+    samplingRate: null,
+    selectedIndex: 1,
+    items: [],
     message: "",
     previewUrl: null,
     previewWidth: null,
     previewHeight: null,
+    previewSourceWidth: null,
+    previewSourceHeight: null,
+    previewCaption: "",
   });
 
   const [wizardInputDialog, setWizardInputDialog] = useState<WizardInputDialogState>({
@@ -473,6 +497,8 @@ export default function ProtocolForm({
     message: "",
     previewImageUrl: "",
   });
+
+  const maskRadiusPreviewRequestIdRef = useRef(0);
 
   // Global Output Selector
   const [openSelector, setOpenSelector] = useState(false);
@@ -1535,13 +1561,40 @@ export default function ProtocolForm({
       title: "",
       radius: 0,
       min: 1,
+      max: 1,
       step: 1,
+      radiusAngstrom: null,
+      samplingRate: null,
+      selectedIndex: 1,
+      items: [],
       message: "",
       previewUrl: null,
       previewWidth: null,
       previewHeight: null,
+      previewSourceWidth: null,
+      previewSourceHeight: null,
+      previewCaption: "",
     });
   }, []);
+
+  const resolveWizardPreviewUrl = useCallback(
+    (raw: unknown): string | null => {
+      const value = String(raw ?? "").trim();
+      if (!value) return null;
+
+      if (
+        value.startsWith("data:") ||
+        value.startsWith("blob:") ||
+        value.startsWith("http://") ||
+        value.startsWith("https://")
+      ) {
+        return value;
+      }
+
+      return svc.resolveBackendUrl(value) ?? value;
+    },
+    [svc]
+  );
 
   const confirmMaskRadiusDialog = useCallback(async () => {
     if (!projectId) {
@@ -1562,6 +1615,8 @@ export default function ProtocolForm({
         wizardId: maskRadiusDialog.wizardId,
         formValues: getSerializedParams(),
         wizardInputs: {
+          action: "apply",
+          selectedIndex: maskRadiusDialog.selectedIndex,
           radius: maskRadiusDialog.radius,
         },
       });
@@ -1603,6 +1658,87 @@ export default function ProtocolForm({
     applyWizardParamUpdates,
     closeMaskRadiusDialog,
   ]);
+
+  const refreshMaskRadiusPreview = useCallback(
+    async (selectedIndex: number, radius: number) => {
+      if (!projectId) return;
+      if (!maskRadiusDialog.paramName || !maskRadiusDialog.wizardId) return;
+
+      try {
+        const requestId = ++maskRadiusPreviewRequestIdRef.current;
+        const result = await svc.executeProtocolWizard(projectId, {
+          protocolId: protocolId ?? null,
+          protocolClassName,
+          paramName: maskRadiusDialog.paramName,
+          wizardId: maskRadiusDialog.wizardId,
+          formValues: getSerializedParams(),
+          wizardInputs: {
+            action: "preview",
+            selectedIndex,
+            radius,
+          },
+        });
+        if (requestId !== maskRadiusPreviewRequestIdRef.current) {
+          return;
+        }
+
+        const viewerState: ExecuteProtocolWizardViewerState | null =
+          result?.viewerState ?? null;
+
+        const previewUrl = resolveWizardPreviewUrl(viewerState?.preview?.imageUrl);
+
+        setMaskRadiusDialog((prev) => ({
+          ...prev,
+          radius: Number(viewerState?.radius ?? radius) || radius,
+          min: Number(viewerState?.radiusMin ?? prev.min) || prev.min,
+          max: Number(viewerState?.radiusMax ?? prev.max) || prev.max,
+          step: Number(viewerState?.radiusStep ?? prev.step) || prev.step,
+          radiusAngstrom:
+            typeof viewerState?.radiusAngstrom === "number"
+              ? viewerState.radiusAngstrom
+              : prev.radiusAngstrom,
+          samplingRate:
+            typeof viewerState?.samplingRate === "number"
+              ? viewerState.samplingRate
+              : prev.samplingRate,
+          selectedIndex:
+            Number(viewerState?.selectedIndex ?? selectedIndex) || selectedIndex,
+          items: Array.isArray(viewerState?.items) ? viewerState.items : prev.items,
+          previewUrl,
+          previewWidth:
+            typeof viewerState?.preview?.width === "number"
+              ? viewerState.preview.width
+              : prev.previewWidth,
+          previewHeight:
+            typeof viewerState?.preview?.height === "number"
+              ? viewerState.preview.height
+              : prev.previewHeight,
+          previewSourceWidth:
+            typeof viewerState?.preview?.sourceWidth === "number"
+              ? viewerState.preview.sourceWidth
+              : prev.previewSourceWidth,
+          previewSourceHeight:
+            typeof viewerState?.preview?.sourceHeight === "number"
+              ? viewerState.preview.sourceHeight
+              : prev.previewSourceHeight,
+          previewCaption: String(
+            viewerState?.preview?.caption ?? prev.previewCaption ?? ""
+          ).trim(),
+        }));
+      } catch (err) {
+        // Keep current preview state if refresh fails
+      }
+    },
+    [
+      projectId,
+      protocolId,
+      protocolClassName,
+      maskRadiusDialog.paramName,
+      maskRadiusDialog.wizardId,
+      svc,
+      getSerializedParams,
+    ]
+  );
 
   const normalizeWizardDialogOptions = useCallback(
     (result: any): WizardDialogOption[] => {
@@ -1814,17 +1950,10 @@ export default function ProtocolForm({
             applyWizardParamUpdates(deferredUpdates);
           }
 
-          const fields = Array.isArray(inputSchema.fields) ? inputSchema.fields : [];
-          const radiusField = fields.find((field: any) => field?.name === "radius");
+          const viewerState: ExecuteProtocolWizardViewerState | null =
+            result?.viewerState ?? null;
 
-          const previewUrlRaw =
-            typeof result?.preview?.imageUrl === "string" && result.preview.imageUrl.trim()
-              ? result.preview.imageUrl.trim()
-              : null;
-
-          const previewUrl = previewUrlRaw
-            ? svc.resolveBackendUrl(previewUrlRaw) ?? previewUrlRaw
-            : null;
+          const previewUrl = resolveWizardPreviewUrl(viewerState?.preview?.imageUrl);
 
           setMaskRadiusDialog({
             open: true,
@@ -1832,15 +1961,45 @@ export default function ProtocolForm({
             paramName,
             wizardId: wizard.id,
             title: String(inputSchema.title ?? mergedDef?.label ?? paramName),
-            radius: Number(radiusField?.value ?? liveParam?.editableValue ?? liveParam?.value ?? 0) || 0,
-            min: Number(radiusField?.min ?? 1) || 1,
-            step: Number(radiusField?.step ?? 1) || 1,
+            radius:
+              Number(
+                viewerState?.radius ??
+                liveParam?.editableValue ??
+                liveParam?.value ??
+                1
+              ) || 1,
+            min: Number(viewerState?.radiusMin ?? 1) || 1,
+            max: Number(viewerState?.radiusMax ?? 256) || 256,
+            step: Number(viewerState?.radiusStep ?? 1) || 1,
+            radiusAngstrom:
+              typeof viewerState?.radiusAngstrom === "number"
+                ? viewerState.radiusAngstrom
+                : null,
+            samplingRate:
+              typeof viewerState?.samplingRate === "number"
+                ? viewerState.samplingRate
+                : null,
+            selectedIndex: Number(viewerState?.selectedIndex ?? 1) || 1,
+            items: Array.isArray(viewerState?.items) ? viewerState.items : [],
             message: String(result?.message ?? "").trim(),
             previewUrl,
             previewWidth:
-              typeof result?.preview?.width === "number" ? result.preview.width : null,
+              typeof viewerState?.preview?.width === "number"
+                ? viewerState.preview.width
+                : null,
             previewHeight:
-              typeof result?.preview?.height === "number" ? result.preview.height : null,
+              typeof viewerState?.preview?.height === "number"
+                ? viewerState.preview.height
+                : null,
+            previewSourceWidth:
+              typeof viewerState?.preview?.sourceWidth === "number"
+                ? viewerState.preview.sourceWidth
+                : null,
+            previewSourceHeight:
+              typeof viewerState?.preview?.sourceHeight === "number"
+                ? viewerState.preview.sourceHeight
+                : null,
+            previewCaption: String(viewerState?.preview?.caption ?? "").trim(),
           });
 
           return;
@@ -1937,6 +2096,7 @@ export default function ProtocolForm({
       applyWizardParamUpdates,
       normalizeWizardAvailableValues,
       openWizardInputDialog,
+      resolveWizardPreviewUrl,
     ]
   );
 
@@ -3574,17 +3734,35 @@ export default function ProtocolForm({
         title={maskRadiusDialog.title}
         radius={maskRadiusDialog.radius}
         min={maskRadiusDialog.min}
+        max={maskRadiusDialog.max}
         step={maskRadiusDialog.step}
+        radiusAngstrom={maskRadiusDialog.radiusAngstrom}
+        samplingRate={maskRadiusDialog.samplingRate}
+        selectedIndex={maskRadiusDialog.selectedIndex}
+        items={maskRadiusDialog.items}
         message={maskRadiusDialog.message}
         previewUrl={maskRadiusDialog.previewUrl}
+        previewCaption={maskRadiusDialog.previewCaption}
+        previewSourceWidth={maskRadiusDialog.previewSourceWidth}
+        previewSourceHeight={maskRadiusDialog.previewSourceHeight}
         onClose={closeMaskRadiusDialog}
         onConfirm={confirmMaskRadiusDialog}
-        onRadiusChange={(value) =>
+        onRadiusChange={(value) => {
           setMaskRadiusDialog((prev) => ({
             ...prev,
             radius: value,
-          }))
-        }
+          }));
+        }}
+        onRadiusCommit={(value) => {
+          void refreshMaskRadiusPreview(maskRadiusDialog.selectedIndex, value);
+        }}
+        onSelectedIndexChange={(value) => {
+          setMaskRadiusDialog((prev) => ({
+            ...prev,
+            selectedIndex: value,
+          }));
+          void refreshMaskRadiusPreview(value, maskRadiusDialog.radius);
+        }}
       />
 
       {/* Generic execute/save error dialog */}

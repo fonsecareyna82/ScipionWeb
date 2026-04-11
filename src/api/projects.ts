@@ -3032,6 +3032,11 @@ export async function executeProtocolWizard(
       ? raw.preview
       : null;
 
+  const viewerState =
+    raw && typeof raw === "object" && raw.viewerState && typeof raw.viewerState === "object"
+      ? raw.viewerState
+      : null;
+
   return {
     success,
     wizardId,
@@ -3042,5 +3047,6 @@ export async function executeProtocolWizard(
     requiresUserInput,
     inputSchema,
     preview,
+    viewerState,
   };
 }

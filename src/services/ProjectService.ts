@@ -740,6 +740,31 @@ export type ExecuteProtocolWizardPreview = {
   height?: number | null;
 };
 
+export type ExecuteProtocolWizardViewerItem = {
+  id: string;
+  label: string;
+  index: number;
+};
+
+export type ExecuteProtocolWizardViewerState = {
+  items: ExecuteProtocolWizardViewerItem[];
+  selectedIndex: number;
+  radius: number;
+  radiusMin?: number | null;
+  radiusMax?: number | null;
+  radiusStep?: number | null;
+  radiusAngstrom?: number | null;
+  samplingRate?: number | null;
+  preview?: {
+    imageUrl?: string | null;
+    width?: number | null;
+    height?: number | null;
+    caption?: string | null;
+    sourceWidth?: number | null;
+    sourceHeight?: number | null;
+  } | null;
+};
+
 export type ExecuteProtocolWizardPayload = {
   protocolId?: string | number | null;
   protocolClassName: string;
@@ -766,6 +791,8 @@ export type ExecuteProtocolWizardResult = {
     width?: number | null;
     height?: number | null;
   } | null;
+
+  viewerState?: ExecuteProtocolWizardViewerState | null;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
