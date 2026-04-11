@@ -92,6 +92,12 @@ import {
 } from "@/utils/protocolform.protunion";
 import { ProjectEffectiveSettings } from "@/services/ProjectService";
 
+import {
+  WizardOptionsDialog,
+  WizardInputDialog,
+  MaskRadiusDialog,
+} from "./WizardDialogs";
+
 type ProtocolFormProps = {
   data: any;
   projectProtocols: any;
@@ -1675,6 +1681,11 @@ export default function ProtocolForm({
         values[fieldName] = String(field?.value ?? "");
       }
 
+      const previewImageUrlRaw = String(result?.preview?.imageUrl ?? "").trim();
+      const previewImageUrl = previewImageUrlRaw
+        ? svc.resolveBackendUrl(previewImageUrlRaw) ?? previewImageUrlRaw
+        : "";
+
       setWizardInputDialog({
         open: true,
         stateKey,
@@ -1684,10 +1695,10 @@ export default function ProtocolForm({
         fields,
         values,
         message: String(result?.message ?? "").trim(),
-        previewImageUrl: String(result?.preview?.imageUrl ?? "").trim(),
+        previewImageUrl,
       });
     },
-    []
+    [svc]
   );
 
   const confirmWizardInputDialog = useCallback(async () => {
@@ -1835,6 +1846,18 @@ export default function ProtocolForm({
           return;
         }
 
+        if (result?.requiresUserInput) {
+          const deferredUpdates = { ...updates };
+          delete deferredUpdates[paramName];
+
+          if (Object.keys(deferredUpdates).length > 0) {
+            applyWizardParamUpdates(deferredUpdates);
+          }
+
+          openWizardInputDialog(stateKey, paramName, wizard.id, result, mergedDef);
+          return;
+        }
+
         // Wizard returning multiple selectable values
         if (availableValues.length > 1) {
           const deferredUpdates = { ...updates };
@@ -1913,6 +1936,7 @@ export default function ProtocolForm({
       getWizardDescriptor,
       applyWizardParamUpdates,
       normalizeWizardAvailableValues,
+      openWizardInputDialog,
     ]
   );
 
@@ -3506,470 +3530,62 @@ export default function ProtocolForm({
 
 
       {/* Wizard selector dialog */}
-      <Dialog
+      <WizardOptionsDialog
         open={wizardOptionsDialog.open}
+        title={wizardOptionsDialog.title}
+        paramName={wizardOptionsDialog.paramName}
+        options={wizardOptionsDialog.options}
+        selectedValue={wizardOptionsDialog.selectedValue}
+        message={wizardOptionsDialog.message}
         onClose={closeWizardOptionsDialog}
-        maxWidth="sm"
-        fullWidth
-        PaperProps={{
-          sx: {
-            borderRadius: "22px",
-            overflow: "hidden",
-            border: "1px solid rgba(51, 61, 73, 0.14)",
-            boxShadow: "0 24px 70px rgba(15, 23, 42, 0.24)",
-            backgroundImage: "none",
-          },
-        }}
-      >
-        <DialogTitle
-          sx={{
-            m: 0,
-            px: 2.5,
-            py: 2,
-            background:
-              "linear-gradient(135deg, #333d49 0%, #3d4957 55%, #465567 100%)",
-            color: "#ffffff",
-            borderBottom: "1px solid rgba(255,255,255,0.08)",
-          }}
-        >
-          Wizard result
-        </DialogTitle>
+        onConfirm={confirmWizardOptionsDialog}
+        onSelectedValueChange={(value) =>
+          setWizardOptionsDialog((prev) => ({
+            ...prev,
+            selectedValue: value,
+          }))
+        }
+      />
 
-        <DialogContent
-          dividers
-          sx={{
-            px: 2.5,
-            py: 2.5,
-            background: "linear-gradient(180deg, #f8fafc 0%, #f4f7fb 100%)",
-            borderColor: "rgba(15,23,42,0.08)",
-          }}
-        >
-          <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-            {isNonEmptyString(wizardOptionsDialog.message) && (
-              <Typography
-                variant="body2"
-                sx={{
-                  color: "text.secondary",
-                  lineHeight: 1.6,
-                }}
-              >
-                {wizardOptionsDialog.message}
-              </Typography>
-            )}
-
-            <TextField
-              select
-              fullWidth
-              size="small"
-              label={wizardOptionsDialog.title || wizardOptionsDialog.paramName}
-              value={wizardOptionsDialog.selectedValue}
-              onChange={(e) =>
-                setWizardOptionsDialog((prev) => ({
-                  ...prev,
-                  selectedValue: String(e.target.value),
-                }))
-              }
-              sx={{
-                "& .MuiOutlinedInput-root": {
-                  borderRadius: "14px",
-                  backgroundColor: "#ffffff",
-                  "& .MuiOutlinedInput-notchedOutline": {
-                    borderColor: "rgba(15,23,42,0.12)",
-                  },
-                },
-              }}
-            >
-              {wizardOptionsDialog.options.map((option) => (
-                <MenuItem key={option.value} value={option.value}>
-                  {option.label}
-                </MenuItem>
-              ))}
-            </TextField>
-          </Box>
-        </DialogContent>
-
-        <DialogActions
-          sx={{
-            px: 2.5,
-            py: 2,
-            backgroundColor: "#ffffff",
-            borderTop: "1px solid rgba(15,23,42,0.08)",
-            justifyContent: "space-between",
-            gap: 2,
-          }}
-        >
-          <Button
-            onClick={closeWizardOptionsDialog}
-            variant="outlined"
-            sx={{
-              textTransform: "none",
-              borderRadius: "12px",
-              px: 2,
-              fontWeight: 600,
-            }}
-          >
-            Cancel
-          </Button>
-
-          <Button
-            variant="contained"
-            onClick={confirmWizardOptionsDialog}
-            sx={{
-              textTransform: "none",
-              borderRadius: "12px",
-              px: 2.25,
-              fontWeight: 700,
-            }}
-          >
-            Apply
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      <Dialog
+      {/* Wizard input dialog */}
+      <WizardInputDialog
         open={wizardInputDialog.open}
+        title={wizardInputDialog.title}
+        fields={wizardInputDialog.fields}
+        values={wizardInputDialog.values}
+        message={wizardInputDialog.message}
+        previewImageUrl={wizardInputDialog.previewImageUrl}
         onClose={closeWizardInputDialog}
-        maxWidth="sm"
-        fullWidth
-        PaperProps={{
-          sx: {
-            borderRadius: "22px",
-            overflow: "hidden",
-            border: "1px solid rgba(51, 61, 73, 0.14)",
-            boxShadow: "0 24px 70px rgba(15, 23, 42, 0.24)",
-            backgroundImage: "none",
-          },
-        }}
-      >
-        <DialogTitle
-          sx={{
-            m: 0,
-            px: 2.5,
-            py: 2,
-            background:
-              "linear-gradient(135deg, #333d49 0%, #3d4957 55%, #465567 100%)",
-            color: "#ffffff",
-            borderBottom: "1px solid rgba(255,255,255,0.08)",
-          }}
-        >
-          {wizardInputDialog.title || "Wizard input"}
-        </DialogTitle>
+        onConfirm={confirmWizardInputDialog}
+        onValueChange={(fieldName, value) =>
+          setWizardInputDialog((prev) => ({
+            ...prev,
+            values: {
+              ...prev.values,
+              [fieldName]: value,
+            },
+          }))
+        }
+      />
 
-        <DialogContent
-          dividers
-          sx={{
-            px: 2.5,
-            py: 2.5,
-            background: "linear-gradient(180deg, #f8fafc 0%, #f4f7fb 100%)",
-            borderColor: "rgba(15,23,42,0.08)",
-          }}
-        >
-          <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-            {isNonEmptyString(wizardInputDialog.message) && (
-              <Typography
-                variant="body2"
-                sx={{
-                  color: "text.secondary",
-                  lineHeight: 1.6,
-                }}
-              >
-                {wizardInputDialog.message}
-              </Typography>
-            )}
-
-            {wizardInputDialog.previewImageUrl && (
-              <Box
-                sx={{
-                  borderRadius: "14px",
-                  overflow: "hidden",
-                  border: "1px solid rgba(15,23,42,0.10)",
-                  backgroundColor: "#ffffff",
-                  p: 1,
-                }}
-              >
-                <Box
-                  component="img"
-                  src={wizardInputDialog.previewImageUrl}
-                  alt="Wizard preview"
-                  sx={{
-                    display: "block",
-                    width: "100%",
-                    maxHeight: 320,
-                    objectFit: "contain",
-                    borderRadius: "10px",
-                  }}
-                />
-              </Box>
-            )}
-
-            {wizardInputDialog.fields.map((field) => {
-              const fieldName = String(field?.name ?? "").trim();
-              if (!fieldName) return null;
-
-              const fieldValue = wizardInputDialog.values[fieldName] ?? "";
-
-              if (field.kind === "select") {
-                return (
-                  <TextField
-                    key={fieldName}
-                    select
-                    fullWidth
-                    size="small"
-                    label={field.label || fieldName}
-                    value={fieldValue}
-                    onChange={(e) =>
-                      setWizardInputDialog((prev) => ({
-                        ...prev,
-                        values: {
-                          ...prev.values,
-                          [fieldName]: String(e.target.value),
-                        },
-                      }))
-                    }
-                    sx={{
-                      "& .MuiOutlinedInput-root": {
-                        borderRadius: "14px",
-                        backgroundColor: "#ffffff",
-                        "& .MuiOutlinedInput-notchedOutline": {
-                          borderColor: "rgba(15,23,42,0.12)",
-                        },
-                      },
-                    }}
-                  >
-                    {(field.options ?? []).map((option) => (
-                      <MenuItem key={option.value} value={option.value}>
-                        {option.label}
-                      </MenuItem>
-                    ))}
-                  </TextField>
-                );
-              }
-
-              return (
-                <TextField
-                  key={fieldName}
-                  fullWidth
-                  size="small"
-                  type={field.kind === "number" ? "number" : "text"}
-                  label={field.label || fieldName}
-                  value={fieldValue}
-                  onChange={(e) =>
-                    setWizardInputDialog((prev) => ({
-                      ...prev,
-                      values: {
-                        ...prev.values,
-                        [fieldName]: e.target.value,
-                      },
-                    }))
-                  }
-                  inputProps={
-                    field.kind === "number"
-                      ? {
-                        min: field.min,
-                        max: field.max,
-                        step: field.step ?? 1,
-                      }
-                      : undefined
-                  }
-                  sx={{
-                    "& .MuiOutlinedInput-root": {
-                      borderRadius: "14px",
-                      backgroundColor: "#ffffff",
-                      "& .MuiOutlinedInput-notchedOutline": {
-                        borderColor: "rgba(15,23,42,0.12)",
-                      },
-                    },
-                  }}
-                />
-              );
-            })}
-          </Box>
-        </DialogContent>
-
-        <DialogActions
-          sx={{
-            px: 2.5,
-            py: 2,
-            backgroundColor: "#ffffff",
-            borderTop: "1px solid rgba(15,23,42,0.08)",
-            justifyContent: "space-between",
-            gap: 2,
-          }}
-        >
-          <Button
-            onClick={closeWizardInputDialog}
-            variant="outlined"
-            sx={{
-              textTransform: "none",
-              borderRadius: "12px",
-              px: 2,
-              fontWeight: 600,
-            }}
-          >
-            Cancel
-          </Button>
-
-          <Button
-            variant="contained"
-            onClick={confirmWizardInputDialog}
-            sx={{
-              textTransform: "none",
-              borderRadius: "12px",
-              px: 2.25,
-              fontWeight: 700,
-            }}
-          >
-            Apply
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      <Dialog
+      {/* Mask radius dialog */}
+      <MaskRadiusDialog
         open={maskRadiusDialog.open}
+        title={maskRadiusDialog.title}
+        radius={maskRadiusDialog.radius}
+        min={maskRadiusDialog.min}
+        step={maskRadiusDialog.step}
+        message={maskRadiusDialog.message}
+        previewUrl={maskRadiusDialog.previewUrl}
         onClose={closeMaskRadiusDialog}
-        maxWidth="sm"
-        fullWidth
-        PaperProps={{
-          sx: {
-            borderRadius: "22px",
-            overflow: "hidden",
-            border: "1px solid rgba(51, 61, 73, 0.14)",
-            boxShadow: "0 24px 70px rgba(15, 23, 42, 0.24)",
-            backgroundImage: "none",
-          },
-        }}
-      >
-        <DialogTitle
-          sx={{
-            m: 0,
-            px: 2.5,
-            py: 2,
-            background:
-              "linear-gradient(135deg, #333d49 0%, #3d4957 55%, #465567 100%)",
-            color: "#ffffff",
-            borderBottom: "1px solid rgba(255,255,255,0.08)",
-          }}
-        >
-          {maskRadiusDialog.title || "Mask radius"}
-        </DialogTitle>
-
-        <DialogContent
-          dividers
-          sx={{
-            px: 2.5,
-            py: 2.5,
-            background: "linear-gradient(180deg, #f8fafc 0%, #f4f7fb 100%)",
-            borderColor: "rgba(15,23,42,0.08)",
-          }}
-        >
-          <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-            {isNonEmptyString(maskRadiusDialog.message) && (
-              <Typography
-                variant="body2"
-                sx={{
-                  color: "text.secondary",
-                  lineHeight: 1.6,
-                }}
-              >
-                {maskRadiusDialog.message}
-              </Typography>
-            )}
-
-            {maskRadiusDialog.previewUrl ? (
-              <Box
-                sx={{
-                  display: "flex",
-                  justifyContent: "center",
-                  p: 1,
-                  borderRadius: 2,
-                  backgroundColor: "#ffffff",
-                  border: "1px solid rgba(15,23,42,0.08)",
-                }}
-              >
-                <Box
-                  component="img"
-                  src={maskRadiusDialog.previewUrl}
-                  alt="Mask radius preview"
-                  sx={{
-                    maxWidth: "100%",
-                    maxHeight: 320,
-                    objectFit: "contain",
-                    borderRadius: 1,
-                  }}
-                />
-              </Box>
-            ) : (
-              <Typography variant="caption" sx={{ color: "text.secondary" }}>
-                Preview not available yet.
-              </Typography>
-            )}
-
-            <TextField
-              type="number"
-              fullWidth
-              size="small"
-              label="Radius"
-              value={maskRadiusDialog.radius}
-              onChange={(e) =>
-                setMaskRadiusDialog((prev) => ({
-                  ...prev,
-                  radius: Number(e.target.value ?? 0) || 0,
-                }))
-              }
-              inputProps={{
-                min: maskRadiusDialog.min,
-                step: maskRadiusDialog.step,
-              }}
-              sx={{
-                "& .MuiOutlinedInput-root": {
-                  borderRadius: "14px",
-                  backgroundColor: "#ffffff",
-                  "& .MuiOutlinedInput-notchedOutline": {
-                    borderColor: "rgba(15,23,42,0.12)",
-                  },
-                },
-              }}
-            />
-          </Box>
-        </DialogContent>
-
-        <DialogActions
-          sx={{
-            px: 2.5,
-            py: 2,
-            backgroundColor: "#ffffff",
-            borderTop: "1px solid rgba(15,23,42,0.08)",
-            justifyContent: "space-between",
-            gap: 2,
-          }}
-        >
-          <Button
-            onClick={closeMaskRadiusDialog}
-            variant="outlined"
-            sx={{
-              textTransform: "none",
-              borderRadius: "12px",
-              px: 2,
-              fontWeight: 600,
-            }}
-          >
-            Cancel
-          </Button>
-
-          <Button
-            variant="contained"
-            onClick={confirmMaskRadiusDialog}
-            sx={{
-              textTransform: "none",
-              borderRadius: "12px",
-              px: 2.25,
-              fontWeight: 700,
-            }}
-          >
-            Apply
-          </Button>
-        </DialogActions>
-      </Dialog>
+        onConfirm={confirmMaskRadiusDialog}
+        onRadiusChange={(value) =>
+          setMaskRadiusDialog((prev) => ({
+            ...prev,
+            radius: value,
+          }))
+        }
+      />
 
       {/* Generic execute/save error dialog */}
       <ExecErrorDialog
