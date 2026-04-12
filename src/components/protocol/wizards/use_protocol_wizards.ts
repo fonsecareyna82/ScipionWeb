@@ -23,6 +23,7 @@ import {
   closedWizardState,
   type ActiveWizardState,
   viewerStateToMaskRadiusDialogState,
+  viewerStateToMaskRadiiDialogState,
 } from "./protocol_wizard_types";
 
 import { getWizardDescriptor } from "./protocol_wizard_meta";
@@ -49,7 +50,7 @@ export function useProtocolWizards({
   openExecErrorDialog,
 }: UseProtocolWizardsArgs) {
   const [wizardState, setWizardState] = useState<ActiveWizardState>(closedWizardState);
-  const maskRadiusPreviewRequestIdRef = useRef(0);
+  const previewRequestIdRef = useRef(0);
 
   const closeWizard = useCallback(() => {
     setWizardState(closedWizardState);
@@ -128,6 +129,35 @@ export function useProtocolWizards({
 
         toast.success(result?.message?.trim() || "Wizard executed successfully.");
         closeWizard();
+        return;
+      }
+
+      if (wizardState.kind === "mask_radii") {
+        const result = await svc.executeProtocolWizard(projectId, {
+          protocolId: protocolId ?? null,
+          protocolClassName,
+          paramName: wizardState.paramName,
+          wizardId: wizardState.wizardId,
+          formValues: getSerializedParams(),
+          wizardInputs: {
+            action: "apply",
+            selectedIndex: wizardState.selectedIndex,
+            innerRadius: wizardState.innerRadius,
+            outerRadius: wizardState.outerRadius,
+          },
+        });
+
+        const updates =
+          result?.paramUpdates && typeof result.paramUpdates === "object"
+            ? { ...result.paramUpdates }
+            : {};
+
+        if (Object.keys(updates).length > 0) {
+          applyWizardParamUpdates(updates);
+        }
+
+        toast.success(result?.message?.trim() || "Wizard executed successfully.");
+        closeWizard();
       }
     } catch (err: any) {
       const payload = getBackendPayloadFromError(err);
@@ -157,13 +187,15 @@ export function useProtocolWizards({
     closeWizard,
   ]);
 
-  const refreshMaskRadiusPreview = useCallback(
-    async (selectedIndex: number, radius: number) => {
+  const refreshInteractiveWizardPreview = useCallback(
+    async (wizardInputs: Record<string, any>) => {
       if (!projectId) return;
-      if (wizardState.kind !== "mask_radius") return;
+      if (wizardState.kind !== "mask_radius" && wizardState.kind !== "mask_radii") {
+        return;
+      }
 
       try {
-        const requestId = ++maskRadiusPreviewRequestIdRef.current;
+        const requestId = ++previewRequestIdRef.current;
 
         const result = await svc.executeProtocolWizard(projectId, {
           protocolId: protocolId ?? null,
@@ -173,12 +205,11 @@ export function useProtocolWizards({
           formValues: getSerializedParams(),
           wizardInputs: {
             action: "preview",
-            selectedIndex,
-            radius,
+            ...wizardInputs,
           },
         });
 
-        if (requestId !== maskRadiusPreviewRequestIdRef.current) {
+        if (requestId !== previewRequestIdRef.current) {
           return;
         }
 
@@ -191,46 +222,112 @@ export function useProtocolWizards({
         );
 
         setWizardState((prev) => {
-          if (prev.kind !== "mask_radius") return prev;
+          if (prev.kind === "mask_radius") {
+            return {
+              ...prev,
+              radius: Number(viewerState?.radius ?? prev.radius) || prev.radius,
+              min: Number(viewerState?.radiusMin ?? prev.min) || prev.min,
+              max: Number(viewerState?.radiusMax ?? prev.max) || prev.max,
+              step: Number(viewerState?.radiusStep ?? prev.step) || prev.step,
+              radiusAngstrom:
+                typeof viewerState?.radiusAngstrom === "number"
+                  ? viewerState.radiusAngstrom
+                  : prev.radiusAngstrom,
+              samplingRate:
+                typeof viewerState?.samplingRate === "number"
+                  ? viewerState.samplingRate
+                  : prev.samplingRate,
+              selectedIndex:
+                Number(
+                  viewerState?.selectedIndex ?? wizardInputs.selectedIndex ?? prev.selectedIndex,
+                ) || prev.selectedIndex,
+              items: Array.isArray(viewerState?.items) ? viewerState.items : prev.items,
+              previewUrl,
+              previewWidth:
+                typeof viewerState?.preview?.width === "number"
+                  ? viewerState.preview.width
+                  : prev.previewWidth,
+              previewHeight:
+                typeof viewerState?.preview?.height === "number"
+                  ? viewerState.preview.height
+                  : prev.previewHeight,
+              previewSourceWidth:
+                typeof viewerState?.preview?.sourceWidth === "number"
+                  ? viewerState.preview.sourceWidth
+                  : prev.previewSourceWidth,
+              previewSourceHeight:
+                typeof viewerState?.preview?.sourceHeight === "number"
+                  ? viewerState.preview.sourceHeight
+                  : prev.previewSourceHeight,
+              previewCaption: String(
+                viewerState?.preview?.caption ?? prev.previewCaption ?? "",
+              ).trim(),
+            };
+          }
 
-          return {
-            ...prev,
-            radius: Number(viewerState?.radius ?? radius) || radius,
-            min: Number(viewerState?.radiusMin ?? prev.min) || prev.min,
-            max: Number(viewerState?.radiusMax ?? prev.max) || prev.max,
-            step: Number(viewerState?.radiusStep ?? prev.step) || prev.step,
-            radiusAngstrom:
-              typeof viewerState?.radiusAngstrom === "number"
-                ? viewerState.radiusAngstrom
-                : prev.radiusAngstrom,
-            samplingRate:
-              typeof viewerState?.samplingRate === "number"
-                ? viewerState.samplingRate
-                : prev.samplingRate,
-            selectedIndex:
-              Number(viewerState?.selectedIndex ?? selectedIndex) || selectedIndex,
-            items: Array.isArray(viewerState?.items) ? viewerState.items : prev.items,
-            previewUrl,
-            previewWidth:
-              typeof viewerState?.preview?.width === "number"
-                ? viewerState.preview.width
-                : prev.previewWidth,
-            previewHeight:
-              typeof viewerState?.preview?.height === "number"
-                ? viewerState.preview.height
-                : prev.previewHeight,
-            previewSourceWidth:
-              typeof viewerState?.preview?.sourceWidth === "number"
-                ? viewerState.preview.sourceWidth
-                : prev.previewSourceWidth,
-            previewSourceHeight:
-              typeof viewerState?.preview?.sourceHeight === "number"
-                ? viewerState.preview.sourceHeight
-                : prev.previewSourceHeight,
-            previewCaption: String(
-              viewerState?.preview?.caption ?? prev.previewCaption ?? "",
-            ).trim(),
-          };
+          if (prev.kind === "mask_radii") {
+            const nextInner =
+              Number(viewerState?.innerRadius ?? wizardInputs.innerRadius ?? prev.innerRadius) ||
+              prev.innerRadius;
+            const nextOuterRaw =
+              Number(viewerState?.outerRadius ?? wizardInputs.outerRadius ?? prev.outerRadius) ||
+              prev.outerRadius;
+            const nextOuter = Math.max(nextInner, nextOuterRaw);
+
+            return {
+              ...prev,
+              innerRadius: nextInner,
+              outerRadius: nextOuter,
+              innerMin:
+                Number(viewerState?.innerRadiusMin ?? prev.innerMin) || prev.innerMin,
+              outerMin:
+                Number(viewerState?.outerRadiusMin ?? prev.outerMin) || prev.outerMin,
+              max: Number(viewerState?.radiusMax ?? prev.max) || prev.max,
+              step: Number(viewerState?.radiusStep ?? prev.step) || prev.step,
+              innerRadiusAngstrom:
+                typeof viewerState?.innerRadiusAngstrom === "number"
+                  ? viewerState.innerRadiusAngstrom
+                  : prev.innerRadiusAngstrom,
+              outerRadiusAngstrom:
+                typeof viewerState?.outerRadiusAngstrom === "number"
+                  ? viewerState.outerRadiusAngstrom
+                  : prev.outerRadiusAngstrom,
+              samplingRate:
+                typeof viewerState?.samplingRate === "number"
+                  ? viewerState.samplingRate
+                  : prev.samplingRate,
+              secondaryParamName:
+                String(viewerState?.secondaryParam ?? prev.secondaryParamName).trim() ||
+                prev.secondaryParamName,
+              selectedIndex:
+                Number(
+                  viewerState?.selectedIndex ?? wizardInputs.selectedIndex ?? prev.selectedIndex,
+                ) || prev.selectedIndex,
+              items: Array.isArray(viewerState?.items) ? viewerState.items : prev.items,
+              previewUrl,
+              previewWidth:
+                typeof viewerState?.preview?.width === "number"
+                  ? viewerState.preview.width
+                  : prev.previewWidth,
+              previewHeight:
+                typeof viewerState?.preview?.height === "number"
+                  ? viewerState.preview.height
+                  : prev.previewHeight,
+              previewSourceWidth:
+                typeof viewerState?.preview?.sourceWidth === "number"
+                  ? viewerState.preview.sourceWidth
+                  : prev.previewSourceWidth,
+              previewSourceHeight:
+                typeof viewerState?.preview?.sourceHeight === "number"
+                  ? viewerState.preview.sourceHeight
+                  : prev.previewSourceHeight,
+              previewCaption: String(
+                viewerState?.preview?.caption ?? prev.previewCaption ?? "",
+              ).trim(),
+            };
+          }
+
+          return prev;
         });
       } catch {
         // Keep current preview state if refresh fails
@@ -320,6 +417,64 @@ export function useProtocolWizards({
                     liveParam?.value ??
                     1,
                 ) || 1,
+              viewerState,
+              previewUrl,
+            }),
+          );
+
+          return;
+        }
+
+        if (result?.requiresUserInput && inputSchema?.type === "mask_radii") {
+          const deferredUpdates = { ...updates };
+          delete deferredUpdates[paramName];
+
+          const secondaryParamNameRaw =
+            Array.isArray((wizard as any)?.targetParams) && (wizard as any).targetParams.length > 1
+              ? (wizard as any).targetParams.find((item: string) => item !== paramName)
+              : undefined;
+
+          if (secondaryParamNameRaw) {
+            delete deferredUpdates[secondaryParamNameRaw];
+          }
+
+          if (Object.keys(deferredUpdates).length > 0) {
+            applyWizardParamUpdates(deferredUpdates);
+          }
+
+          const viewerState: ExecuteProtocolWizardViewerState | null =
+            result?.viewerState ?? null;
+
+          const previewUrl = resolveWizardPreviewUrl(
+            svc,
+            viewerState?.preview?.imageUrl,
+          );
+
+          const fallbackInner =
+            Number(viewerState?.innerRadius ?? liveParam?.editableValue ?? liveParam?.value ?? 1) || 1;
+
+          const secondaryLiveValue =
+            secondaryParamNameRaw
+              ? protocolDetails.params?.[`${stateKey.split("_")[0]}_${secondaryParamNameRaw}`]
+              : null;
+
+          const fallbackOuter =
+            Number(
+              viewerState?.outerRadius ??
+                secondaryLiveValue?.editableValue ??
+                secondaryLiveValue?.value ??
+                Math.max(2, fallbackInner),
+            ) || Math.max(2, fallbackInner);
+
+          setWizardState(
+            viewerStateToMaskRadiiDialogState({
+              stateKey,
+              paramName,
+              wizardId: wizard.id,
+              title: String(inputSchema.title ?? mergedDef?.label ?? paramName),
+              message: String(result?.message ?? "").trim(),
+              fallbackInnerRadius: fallbackInner,
+              fallbackOuterRadius: fallbackOuter,
               viewerState,
               previewUrl,
             }),
@@ -472,9 +627,12 @@ export function useProtocolWizards({
   const commitMaskRadiusValue = useCallback(
     async (value: number) => {
       if (wizardState.kind !== "mask_radius") return;
-      await refreshMaskRadiusPreview(wizardState.selectedIndex, value);
+      await refreshInteractiveWizardPreview({
+        selectedIndex: wizardState.selectedIndex,
+        radius: value,
+      });
     },
-    [wizardState, refreshMaskRadiusPreview],
+    [wizardState, refreshInteractiveWizardPreview],
   );
 
   const setMaskRadiusSelectedIndex = useCallback(
@@ -489,9 +647,100 @@ export function useProtocolWizards({
       );
 
       if (wizardState.kind !== "mask_radius") return;
-      await refreshMaskRadiusPreview(value, wizardState.radius);
+
+      await refreshInteractiveWizardPreview({
+        selectedIndex: value,
+        radius: wizardState.radius,
+      });
     },
-    [wizardState, refreshMaskRadiusPreview],
+    [wizardState, refreshInteractiveWizardPreview],
+  );
+
+  const setMaskRadiiInnerValue = useCallback((value: number) => {
+    setWizardState((prev) => {
+      if (prev.kind !== "mask_radii") return prev;
+
+      const nextInner = Math.max(prev.innerMin, Math.min(value, prev.outerRadius));
+      const nextOuter = Math.max(nextInner, prev.outerRadius);
+
+      return {
+        ...prev,
+        innerRadius: nextInner,
+        outerRadius: nextOuter,
+      };
+    });
+  }, []);
+
+  const commitMaskRadiiInnerValue = useCallback(
+    async (value: number) => {
+      if (wizardState.kind !== "mask_radii") return;
+
+      const nextInner = Math.max(wizardState.innerMin, Math.min(value, wizardState.outerRadius));
+      const nextOuter = Math.max(nextInner, wizardState.outerRadius);
+
+      await refreshInteractiveWizardPreview({
+        selectedIndex: wizardState.selectedIndex,
+        innerRadius: nextInner,
+        outerRadius: nextOuter,
+      });
+    },
+    [wizardState, refreshInteractiveWizardPreview],
+  );
+
+  const setMaskRadiiOuterValue = useCallback((value: number) => {
+    setWizardState((prev) => {
+      if (prev.kind !== "mask_radii") return prev;
+
+      const nextOuter = Math.max(
+        Math.max(prev.outerMin, prev.innerRadius),
+        Math.min(value, prev.max),
+      );
+
+      return {
+        ...prev,
+        outerRadius: nextOuter,
+      };
+    });
+  }, []);
+
+  const commitMaskRadiiOuterValue = useCallback(
+    async (value: number) => {
+      if (wizardState.kind !== "mask_radii") return;
+
+      const nextOuter = Math.max(
+        Math.max(wizardState.outerMin, wizardState.innerRadius),
+        Math.min(value, wizardState.max),
+      );
+
+      await refreshInteractiveWizardPreview({
+        selectedIndex: wizardState.selectedIndex,
+        innerRadius: wizardState.innerRadius,
+        outerRadius: nextOuter,
+      });
+    },
+    [wizardState, refreshInteractiveWizardPreview],
+  );
+
+  const setMaskRadiiSelectedIndex = useCallback(
+    async (value: number) => {
+      setWizardState((prev) =>
+        prev.kind === "mask_radii"
+          ? {
+              ...prev,
+              selectedIndex: value,
+            }
+          : prev,
+      );
+
+      if (wizardState.kind !== "mask_radii") return;
+
+      await refreshInteractiveWizardPreview({
+        selectedIndex: value,
+        innerRadius: wizardState.innerRadius,
+        outerRadius: wizardState.outerRadius,
+      });
+    },
+    [wizardState, refreshInteractiveWizardPreview],
   );
 
   return {
@@ -504,5 +753,10 @@ export function useProtocolWizards({
     setMaskRadiusValue,
     commitMaskRadiusValue,
     setMaskRadiusSelectedIndex,
+    setMaskRadiiInnerValue,
+    commitMaskRadiiInnerValue,
+    setMaskRadiiOuterValue,
+    commitMaskRadiiOuterValue,
+    setMaskRadiiSelectedIndex,
   };
 }

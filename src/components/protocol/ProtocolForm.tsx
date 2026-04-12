@@ -1353,6 +1353,11 @@ export default function ProtocolForm({
     setMaskRadiusValue,
     commitMaskRadiusValue,
     setMaskRadiusSelectedIndex,
+    setMaskRadiiInnerValue,
+    commitMaskRadiiInnerValue,
+    setMaskRadiiOuterValue,
+    commitMaskRadiiOuterValue,
+    setMaskRadiiSelectedIndex,
   } = useProtocolWizards({
     projectId,
     protocolId,
@@ -2931,6 +2936,11 @@ export default function ProtocolForm({
         onMaskRadiusChange={setMaskRadiusValue}
         onMaskRadiusCommit={commitMaskRadiusValue}
         onMaskRadiusSelectedIndexChange={setMaskRadiusSelectedIndex}
+        onMaskRadiiInnerChange={setMaskRadiiInnerValue}
+        onMaskRadiiInnerCommit={commitMaskRadiiInnerValue}
+        onMaskRadiiOuterChange={setMaskRadiiOuterValue}
+        onMaskRadiiOuterCommit={commitMaskRadiiOuterValue}
+        onMaskRadiiSelectedIndexChange={setMaskRadiiSelectedIndex}
       />
       {/* Generic execute/save error dialog */}
       <ExecErrorDialog

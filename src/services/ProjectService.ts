@@ -732,6 +732,20 @@ export type ExecuteProtocolWizardInputSchema =
       max?: number;
       step?: number;
     }>;
+  }
+  | {
+    type: "mask_radii";
+    paramName: string;
+    title?: string;
+    fields: Array<{
+      name: string;
+      label: string;
+      kind: "number";
+      value: number;
+      min?: number;
+      max?: number;
+      step?: number;
+    }>;
   };
 
 export type ExecuteProtocolWizardPreview = {
@@ -749,11 +763,22 @@ export type ExecuteProtocolWizardViewerItem = {
 export type ExecuteProtocolWizardViewerState = {
   items: ExecuteProtocolWizardViewerItem[];
   selectedIndex: number;
-  radius: number;
+
+  radius?: number;
   radiusMin?: number | null;
   radiusMax?: number | null;
   radiusStep?: number | null;
   radiusAngstrom?: number | null;
+
+  innerRadius?: number;
+  outerRadius?: number;
+  innerRadiusMin?: number | null;
+  outerRadiusMin?: number | null;
+  innerRadiusAngstrom?: number | null;
+  outerRadiusAngstrom?: number | null;
+  primaryParam?: string | null;
+  secondaryParam?: string | null;
+
   samplingRate?: number | null;
   preview?: {
     imageUrl?: string | null;
