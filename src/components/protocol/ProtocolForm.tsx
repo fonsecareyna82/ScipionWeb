@@ -91,7 +91,7 @@ import {
   getProtUnionDerivedPointerClass,
   syncProtUnionPointerClassInParams,
 } from "@/utils/protocolform.protunion";
-import { ExecuteProtocolWizardViewerState, ProjectEffectiveSettings } from "@/services/ProjectService";
+import { ProjectEffectiveSettings } from "@/services/ProjectService";
 import WizardDialogHost from "./wizards/wizard-dialog-host";
 import { useProtocolWizards } from "./wizards/use_protocol_wizards";
 

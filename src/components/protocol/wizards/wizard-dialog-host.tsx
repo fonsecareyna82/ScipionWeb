@@ -1,8 +1,8 @@
 import {
-  MaskRadiusDialog,
   WizardInputDialog,
   WizardOptionsDialog,
 } from "../WizardDialogs";
+import MaskRadiusDialog from "./MaskRadiusDialog";
 import type { ActiveWizardState } from "./protocol_wizard_types";
 
 type WizardDialogHostProps = {
