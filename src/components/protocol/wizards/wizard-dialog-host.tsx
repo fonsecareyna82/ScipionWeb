@@ -2,6 +2,7 @@ import {
     WizardInputDialog,
     WizardOptionsDialog,
 } from "../WizardDialogs";
+import CtfPreviewDialog from "./CtfPreviewDialog";
 import MaskRadiusDialog from "./MaskRadiusDialog";
 import MaskRadiiDialog from "./MaskRadiiDialog";
 import type { ActiveWizardState } from "./protocol_wizard_types";
@@ -20,6 +21,13 @@ type WizardDialogHostProps = {
     onMaskRadiiOuterChange: (value: number) => void;
     onMaskRadiiOuterCommit: (value: number) => void;
     onMaskRadiiSelectedIndexChange: (value: number) => void;
+    onCtfDownsampleChange: (value: number) => void;
+    onCtfDownsampleCommit: (value: number) => void;
+    onCtfLowFreqChange: (value: number) => void;
+    onCtfLowFreqCommit: (value: number) => void;
+    onCtfHighFreqChange: (value: number) => void;
+    onCtfHighFreqCommit: (value: number) => void;
+    onCtfSelectedIndexChange: (value: number) => void;
 };
 
 export default function WizardDialogHost({
@@ -36,6 +44,13 @@ export default function WizardDialogHost({
     onMaskRadiiOuterChange,
     onMaskRadiiOuterCommit,
     onMaskRadiiSelectedIndexChange,
+    onCtfDownsampleChange,
+    onCtfDownsampleCommit,
+    onCtfLowFreqChange,
+    onCtfLowFreqCommit,
+    onCtfHighFreqChange,
+    onCtfHighFreqCommit,
+    onCtfSelectedIndexChange,
 }: WizardDialogHostProps) {
     if (!wizardState.open) return null;
 
@@ -128,6 +143,47 @@ export default function WizardDialogHost({
                 onOuterRadiusChange={onMaskRadiiOuterChange}
                 onOuterRadiusCommit={onMaskRadiiOuterCommit}
                 onSelectedIndexChange={onMaskRadiiSelectedIndexChange}
+            />
+        );
+    }
+
+    if (wizardState.kind === "ctf_preview") {
+        return (
+            <CtfPreviewDialog
+                open={wizardState.open}
+                title={wizardState.title}
+                message={wizardState.message}
+                items={wizardState.items}
+                selectedIndex={wizardState.selectedIndex}
+                onSelectedIndexChange={onCtfSelectedIndexChange}
+                micrographPreviewUrl={wizardState.micrographPreviewUrl}
+                psdPreviewUrl={wizardState.psdPreviewUrl}
+                downsample={wizardState.downsample}
+                downsampleMin={wizardState.downsampleMin}
+                downsampleMax={wizardState.downsampleMax}
+                downsampleStep={wizardState.downsampleStep}
+                autoDownsampling={wizardState.autoDownsampling}
+                autoDownsampleValue={wizardState.autoDownsampleValue}
+                lowFreq={wizardState.lowFreq}
+                lowFreqMin={wizardState.lowFreqMin}
+                lowFreqMax={wizardState.lowFreqMax}
+                highFreq={wizardState.highFreq}
+                highFreqMin={wizardState.highFreqMin}
+                highFreqMax={wizardState.highFreqMax}
+                freqStep={wizardState.freqStep}
+                samplingRate={wizardState.samplingRate}
+                showInAngstroms={wizardState.showInAngstroms}
+                downsampleParamName={wizardState.downsampleParamName}
+                lowFreqParamName={wizardState.lowFreqParamName}
+                highFreqParamName={wizardState.highFreqParamName}
+                onClose={onClose}
+                onConfirm={onConfirm}
+                onDownsampleChange={onCtfDownsampleChange}
+                onDownsampleCommit={onCtfDownsampleCommit}
+                onLowFreqChange={onCtfLowFreqChange}
+                onLowFreqCommit={onCtfLowFreqCommit}
+                onHighFreqChange={onCtfHighFreqChange}
+                onHighFreqCommit={onCtfHighFreqCommit}
             />
         );
     }

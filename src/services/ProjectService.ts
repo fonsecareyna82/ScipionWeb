@@ -746,6 +746,20 @@ export type ExecuteProtocolWizardInputSchema =
       max?: number;
       step?: number;
     }>;
+  }
+  | {
+    type: "ctf_preview";
+    paramName: string;
+    title?: string;
+    fields: Array<{
+      name: string;
+      label: string;
+      kind: "number";
+      value: number;
+      min?: number;
+      max?: number;
+      step?: number;
+    }>;
   };
 
 export type ExecuteProtocolWizardPreview = {
@@ -779,6 +793,29 @@ export type ExecuteProtocolWizardViewerState = {
   primaryParam?: string | null;
   secondaryParam?: string | null;
 
+  downsample?: number | null;
+  downsampleMin?: number | null;
+  downsampleMax?: number | null;
+  downsampleStep?: number | null;
+
+  lowFreq?: number | null;
+  lowFreqMin?: number | null;
+  lowFreqMax?: number | null;
+
+  highFreq?: number | null;
+  highFreqMin?: number | null;
+  highFreqMax?: number | null;
+
+  freqStep?: number | null;
+  showInAngstroms?: boolean | null;
+
+  downsampleParam?: string | null;
+  lowFreqParam?: string | null;
+  highFreqParam?: string | null;
+
+  autoDownsampling?: boolean | null;
+  autoDownsampleValue?: number | null;
+
   samplingRate?: number | null;
   preview?: {
     imageUrl?: string | null;
@@ -788,6 +825,25 @@ export type ExecuteProtocolWizardViewerState = {
     sourceWidth?: number | null;
     sourceHeight?: number | null;
   } | null;
+
+    micrographPreview?: {
+    imageUrl?: string | null;
+    width?: number | null;
+    height?: number | null;
+    caption?: string | null;
+    sourceWidth?: number | null;
+    sourceHeight?: number | null;
+  } | null;
+
+  psdPreview?: {
+    imageUrl?: string | null;
+    width?: number | null;
+    height?: number | null;
+    caption?: string | null;
+    sourceWidth?: number | null;
+    sourceHeight?: number | null;
+  } | null;
+  
 };
 
 export type ExecuteProtocolWizardPayload = {

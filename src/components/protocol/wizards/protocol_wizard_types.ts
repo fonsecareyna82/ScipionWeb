@@ -98,6 +98,46 @@ export type MaskRadiiDialogState = {
     previewCaption: string;
 };
 
+export type CtfPreviewDialogState = {
+    kind: "ctf_preview";
+    open: true;
+    stateKey: string;
+    paramName: string;
+    wizardId: string;
+    title: string;
+    message: string;
+
+    items: MaskRadiusDialogItem[];
+    selectedIndex: number;
+
+    micrographPreviewUrl: string | null;
+    psdPreviewUrl: string | null;
+
+    downsample: number;
+    downsampleMin: number;
+    downsampleMax: number;
+    downsampleStep: number;
+
+    lowFreq: number;
+    lowFreqMin: number;
+    lowFreqMax: number;
+
+    highFreq: number;
+    highFreqMin: number;
+    highFreqMax: number;
+
+    freqStep: number;
+    samplingRate: number | null;
+    showInAngstroms: boolean;
+
+    downsampleParamName: string;
+    lowFreqParamName: string;
+    highFreqParamName: string;
+
+    autoDownsampling: boolean;
+    autoDownsampleValue: number | null;
+};
+
 export type ClosedWizardState = {
     kind: "closed";
     open: false;
@@ -108,7 +148,8 @@ export type ActiveWizardState =
     | WizardOptionsDialogState
     | WizardInputDialogState
     | MaskRadiusDialogState
-    | MaskRadiiDialogState;
+    | MaskRadiiDialogState
+    | CtfPreviewDialogState;
 
 export const closedWizardState: ClosedWizardState = {
     kind: "closed",
@@ -120,12 +161,20 @@ export function normalizeWizardViewerItems(
 ): MaskRadiusDialogItem[] {
     if (!Array.isArray(raw)) return [];
 
+    const seen = new Map<string, number>();
+
     return raw
-        .map((item: any) => ({
-            id: String(item?.id ?? "").trim(),
-            label: String(item?.label ?? "").trim(),
-            index: Number(item?.index ?? 0) || 0,
-        }))
+        .map((item: any, idx: number) => {
+            const baseId = String(item?.id ?? "").trim() || `wizard-item-${idx + 1}`;
+            const count = seen.get(baseId) ?? 0;
+            seen.set(baseId, count + 1);
+
+            return {
+                id: count === 0 ? baseId : `${baseId}:${count + 1}`,
+                label: String(item?.label ?? "").trim(),
+                index: Number(item?.index ?? idx + 1) || idx + 1,
+            };
+        })
         .filter((item) => item.id && item.label && item.index > 0);
 }
 
@@ -169,7 +218,7 @@ export function viewerStateToMaskRadiusDialogState(args: {
             typeof viewerState?.samplingRate === "number"
                 ? viewerState.samplingRate
                 : null,
-        selectedIndex: Number(viewerState?.selectedIndex ?? 1) || 1,
+        selectedIndex: Math.max(1, Number(viewerState?.selectedIndex ?? 1) || 1),
         items: normalizeWizardViewerItems(viewerState?.items),
         message,
         previewUrl,
@@ -250,7 +299,7 @@ export function viewerStateToMaskRadiiDialogState(args: {
             typeof viewerState?.samplingRate === "number"
                 ? viewerState.samplingRate
                 : null,
-        selectedIndex: Number(viewerState?.selectedIndex ?? 1) || 1,
+        selectedIndex: Math.max(1, Number(viewerState?.selectedIndex ?? 1) || 1),
         items: normalizeWizardViewerItems(viewerState?.items),
         message,
         previewUrl,
@@ -271,5 +320,71 @@ export function viewerStateToMaskRadiiDialogState(args: {
                 ? viewerState.preview.sourceHeight
                 : null,
         previewCaption: String(viewerState?.preview?.caption ?? "").trim(),
+    };
+}
+
+export function viewerStateToCtfPreviewDialogState(args: {
+    stateKey: string;
+    paramName: string;
+    wizardId: string;
+    title: string;
+    message: string;
+    viewerState: ExecuteProtocolWizardViewerState | null;
+    previewUrl: string | null;
+}): CtfPreviewDialogState {
+    const {
+        stateKey,
+        paramName,
+        wizardId,
+        title,
+        message,
+        viewerState,
+        previewUrl,
+    } = args;
+
+    const items = normalizeWizardViewerItems(viewerState?.items);
+    const normalizedSelectedIndex = Math.max(
+        1,
+        Number(viewerState?.selectedIndex ?? items[0]?.index ?? 1) || items[0]?.index || 1,
+    );
+
+    return {
+        kind: "ctf_preview",
+        open: true,
+        stateKey,
+        paramName,
+        wizardId,
+        title,
+        message,
+        items,
+        selectedIndex: normalizedSelectedIndex,
+        micrographPreviewUrl:
+            String(viewerState?.micrographPreview?.imageUrl ?? "").trim() || previewUrl,
+        psdPreviewUrl:
+            String(viewerState?.psdPreview?.imageUrl ?? "").trim() || previewUrl,
+        downsample: Number(viewerState?.downsample ?? 1) || 1,
+        downsampleMin: Number(viewerState?.downsampleMin ?? 1) || 1,
+        downsampleMax: Number(viewerState?.downsampleMax ?? 8) || 8,
+        downsampleStep: Number(viewerState?.downsampleStep ?? 0.1) || 0.1,
+        lowFreq: Number(viewerState?.lowFreq ?? 0.1) || 0.1,
+        lowFreqMin: Number(viewerState?.lowFreqMin ?? 0.1) || 0.1,
+        lowFreqMax: Number(viewerState?.lowFreqMax ?? 50) || 50,
+        highFreq: Number(viewerState?.highFreq ?? 0.35) || 0.35,
+        highFreqMin: Number(viewerState?.highFreqMin ?? 0.1) || 0.1,
+        highFreqMax: Number(viewerState?.highFreqMax ?? 50) || 50,
+        freqStep: Number(viewerState?.freqStep ?? 0.1) || 0.1,
+        samplingRate:
+            typeof viewerState?.samplingRate === "number"
+                ? viewerState.samplingRate
+                : null,
+        showInAngstroms: Boolean(viewerState?.showInAngstroms),
+        downsampleParamName: String(viewerState?.downsampleParam ?? paramName).trim() || paramName,
+        lowFreqParamName: String(viewerState?.lowFreqParam ?? "lowRes").trim() || "lowRes",
+        highFreqParamName: String(viewerState?.highFreqParam ?? "highRes").trim() || "highRes",
+        autoDownsampling: Boolean(viewerState?.autoDownsampling),
+        autoDownsampleValue:
+            typeof viewerState?.autoDownsampleValue === "number"
+                ? viewerState.autoDownsampleValue
+                : null,
     };
 }

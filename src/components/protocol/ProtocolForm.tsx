@@ -96,6 +96,7 @@ import { ProjectEffectiveSettings } from "@/services/ProjectService";
 import WizardDialogHost from "./wizards/wizard-dialog-host";
 import { useProtocolWizards } from "./wizards/use_protocol_wizards";
 import { buildWizardUiProps } from "./wizards/protocol_wizard_meta";
+import WizardLoadingDialog from "./wizards/WizardLoadingDialog";
 
 
 type ProtocolFormProps = {
@@ -1345,6 +1346,7 @@ export default function ProtocolForm({
 
   const {
     wizardState,
+    openingWizard,
     openWizardForParam,
     closeWizard,
     confirmWizard,
@@ -1358,6 +1360,13 @@ export default function ProtocolForm({
     setMaskRadiiOuterValue,
     commitMaskRadiiOuterValue,
     setMaskRadiiSelectedIndex,
+    setCtfDownsampleValue,
+    commitCtfDownsampleValue,
+    setCtfLowFreqValue,
+    commitCtfLowFreqValue,
+    setCtfHighFreqValue,
+    commitCtfHighFreqValue,
+    setCtfSelectedIndex,
   } = useProtocolWizards({
     projectId,
     protocolId,
@@ -2925,6 +2934,12 @@ export default function ProtocolForm({
         </DialogActions>
       </Dialog>
 
+      {/* Wizard Loading Dialog */}
+      <WizardLoadingDialog
+        open={openingWizard.open}
+        title={openingWizard.title}
+        message={openingWizard.message}
+      />
 
       {/* Wizard selector dialog */}
       <WizardDialogHost
@@ -2941,7 +2956,15 @@ export default function ProtocolForm({
         onMaskRadiiOuterChange={setMaskRadiiOuterValue}
         onMaskRadiiOuterCommit={commitMaskRadiiOuterValue}
         onMaskRadiiSelectedIndexChange={setMaskRadiiSelectedIndex}
+        onCtfDownsampleChange={setCtfDownsampleValue}
+        onCtfDownsampleCommit={commitCtfDownsampleValue}
+        onCtfLowFreqChange={setCtfLowFreqValue}
+        onCtfLowFreqCommit={commitCtfLowFreqValue}
+        onCtfHighFreqChange={setCtfHighFreqValue}
+        onCtfHighFreqCommit={commitCtfHighFreqValue}
+        onCtfSelectedIndexChange={setCtfSelectedIndex}
       />
+
       {/* Generic execute/save error dialog */}
       <ExecErrorDialog
         open={execErrorDialogOpen}
