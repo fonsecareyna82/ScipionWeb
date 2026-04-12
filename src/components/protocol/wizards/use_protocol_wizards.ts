@@ -25,17 +25,7 @@ import {
   viewerStateToMaskRadiusDialogState,
 } from "./protocol_wizard_types";
 
-type WizardDescriptor = {
-  id: string;
-  className?: string;
-  module?: string;
-  kind?: string;
-  interactive?: boolean;
-  webSupported?: boolean;
-  webView?: string | null;
-  displayParam?: string | null;
-  targetParams?: string[];
-};
+import { getWizardDescriptor } from "./protocol_wizard_meta";
 
 type UseProtocolWizardsArgs = {
   projectId: string | number | null;
@@ -44,7 +34,6 @@ type UseProtocolWizardsArgs = {
   protocolDetails: any;
   svc: any;
   getSerializedParams: () => Record<string, any>;
-  getWizardDescriptor: (paramDef: any) => WizardDescriptor | null;
   applyWizardParamUpdates: (updates: Record<string, any>) => void;
   openExecErrorDialog: (title: string, message: string) => void;
 };
@@ -56,7 +45,6 @@ export function useProtocolWizards({
   protocolDetails,
   svc,
   getSerializedParams,
-  getWizardDescriptor,
   applyWizardParamUpdates,
   openExecErrorDialog,
 }: UseProtocolWizardsArgs) {
@@ -440,7 +428,6 @@ export function useProtocolWizards({
       protocolDetails.params,
       svc,
       getSerializedParams,
-      getWizardDescriptor,
       applyWizardParamUpdates,
       openExecErrorDialog,
     ],

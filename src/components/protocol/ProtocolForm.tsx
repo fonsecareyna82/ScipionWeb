@@ -91,9 +91,14 @@ import {
   getProtUnionDerivedPointerClass,
   syncProtUnionPointerClassInParams,
 } from "@/utils/protocolform.protunion";
+
 import { ProjectEffectiveSettings } from "@/services/ProjectService";
 import WizardDialogHost from "./wizards/wizard-dialog-host";
 import { useProtocolWizards } from "./wizards/use_protocol_wizards";
+import {
+  getWizardTooltip,
+  hasWizardMetadata,
+} from "./wizards/protocol_wizard_meta";
 
 
 type ProtocolFormProps = {
@@ -367,15 +372,6 @@ export default function ProtocolForm({
   const [queueDialogOpen, setQueueDialogOpen] = useState(false);
   const [pendingExecuteMode, setPendingExecuteMode] = useState<string | null>(null);
   const [queueDraft, setQueueDraft] = useState<QueueLaunchDraft | null>(null);
-
-  const cloneQueueParams = (params: EffectiveHostQueueParam[]): EffectiveHostQueueParam[] =>
-    params.map((param) => ({
-      variableName: param.variableName,
-      value: String(param.value ?? ""),
-      label: String(param.label ?? ""),
-      help: String(param.help ?? ""),
-    }));
-
 
   // Global Output Selector
   const [openSelector, setOpenSelector] = useState(false);
@@ -1244,78 +1240,7 @@ export default function ProtocolForm({
     return out;
   }, [protocolDetails.params]);
 
-  type WizardDescriptor = {
-    id: string;
-    className?: string;
-    module?: string;
-    kind?: string;
-    interactive?: boolean;
-    webSupported?: boolean;
-    webView?: string | null;
-    displayParam?: string | null;
-    targetParams?: string[];
-  };
 
-  const getWizardDescriptor = useCallback((paramDef: any): WizardDescriptor | null => {
-    const candidates: any[] = [];
-
-    if (paramDef?.wizard && typeof paramDef.wizard === "object") {
-      candidates.push(paramDef.wizard);
-    }
-
-    if (Array.isArray(paramDef?.wizards)) {
-      candidates.push(...paramDef.wizards);
-    }
-
-    for (const item of candidates) {
-      if (!item || typeof item !== "object") continue;
-      const id = String(item.id ?? "").trim();
-      if (!id) continue;
-
-      return {
-        id,
-        className: typeof item.className === "string" ? item.className : undefined,
-        module: typeof item.module === "string" ? item.module : undefined,
-        kind: typeof item.kind === "string" ? item.kind : undefined,
-        interactive: typeof item.interactive === "boolean" ? item.interactive : undefined,
-        webSupported: typeof item.webSupported === "boolean" ? item.webSupported : undefined,
-        webView: typeof item.webView === "string" ? item.webView : null,
-        displayParam: typeof item.displayParam === "string" ? item.displayParam : null,
-        targetParams: Array.isArray(item.targetParams) ? item.targetParams : undefined,
-      };
-    }
-
-    return null;
-  }, []);
-
-  const getWizardTooltip = useCallback(
-    (stateKey: string, paramDef?: any) => {
-      const liveParam = protocolDetails.params?.[stateKey] ?? {};
-      const mergedDef = { ...(paramDef ?? {}), ...liveParam };
-      const wizard = getWizardDescriptor(mergedDef);
-
-      if (!wizard) return "Wizard available";
-
-      const kindLabel = String(wizard.kind ?? "")
-        .replace(/_/g, " ")
-        .trim();
-
-      if (wizard.webSupported === false) {
-        return kindLabel
-          ? `Wizard available (${kindLabel}, not supported yet)`
-          : "Wizard available (not supported yet)";
-      }
-
-      if (wizard.className) {
-        return kindLabel
-          ? `Open wizard (${wizard.className} · ${kindLabel})`
-          : `Open wizard (${wizard.className})`;
-      }
-
-      return kindLabel ? `Open wizard (${kindLabel})` : "Open wizard";
-    },
-    [protocolDetails.params, getWizardDescriptor]
-  );
 
   const applyWizardParamUpdates = useCallback(
     (paramUpdates: Record<string, any>) => {
@@ -1438,7 +1363,6 @@ export default function ProtocolForm({
     protocolDetails,
     svc,
     getSerializedParams,
-    getWizardDescriptor,
     applyWizardParamUpdates,
     openExecErrorDialog,
   });
@@ -1783,9 +1707,9 @@ export default function ProtocolForm({
             }
             helpText={def.help}
             rowIndex={rowIndex}
-            hasWizard={Boolean(def?.hasWizard || def?.wizard || (Array.isArray(def?.wizards) && def.wizards.length > 0))}
+            hasWizard={hasWizardMetadata(def)}
             onOpenWizard={() => openWizardForParam(stateKey, def)}
-            wizardTooltip={getWizardTooltip(stateKey, liveDef)}
+            wizardTooltip={getWizardTooltip(stateKey, liveDef, protocolDetails.params)}
           />
         );
       }
@@ -1939,7 +1863,7 @@ export default function ProtocolForm({
               helpText={def?.help}
               rowIndex={rowIndex}
               layoutVariant="fullWidth"
-              hasWizard={Boolean(def?.hasWizard || def?.wizard || (Array.isArray(def?.wizards) && def.wizards.length > 0))}
+              hasWizard={hasWizardMetadata(def)}
               onOpenWizard={name ? () => openWizardForParam(`${sectionIdx}_${name}`, def) : undefined}
             />
           );
@@ -1989,7 +1913,7 @@ export default function ProtocolForm({
             helpText={def?.help}
             rowIndex={rowIndex}
             layoutVariant="standard"
-            hasWizard={Boolean(def?.hasWizard || def?.wizard || (Array.isArray(def?.wizards) && def.wizards.length > 0))}
+            hasWizard={hasWizardMetadata(def)}
             onOpenWizard={name ? () => openWizardForParam(`${sectionIdx}_${name}`, def) : undefined}
           />
         );
@@ -2131,7 +2055,7 @@ export default function ProtocolForm({
             helpText={def.help}
             rowIndex={rowIndex}
             layoutVariant="fullWidth"
-            hasWizard={Boolean(def?.hasWizard || def?.wizard || (Array.isArray(def?.wizards) && def.wizards.length > 0))}
+            hasWizard={hasWizardMetadata(def)}
             onOpenWizard={name ? () => openWizardForParam(`${sectionIdx}_${name}`, def) : undefined}
           />
         );
@@ -2172,7 +2096,6 @@ export default function ProtocolForm({
       variant,
       protocolClassName,
       openWizardForParam,
-      getWizardTooltip,
     ]
   );
 
