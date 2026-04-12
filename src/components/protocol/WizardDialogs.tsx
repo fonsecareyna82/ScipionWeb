@@ -5,10 +5,12 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  IconButton,
   MenuItem,
   TextField,
   Typography,
 } from "@mui/material";
+import { CloseIcon } from "@/icons";
 
 import type {
   WizardDialogOption,
@@ -68,8 +70,8 @@ const wizardDialogActionsSx = {
   py: 2,
   backgroundColor: "#ffffff",
   borderTop: "1px solid rgba(15,23,42,0.08)",
-  justifyContent: "space-between",
-  gap: 2,
+  justifyContent: "flex-end",
+  gap: 1.25,
 };
 
 const wizardFieldSx = {
@@ -84,6 +86,54 @@ const wizardFieldSx = {
 
 function hasText(value: string | null | undefined): boolean {
   return Boolean(String(value ?? "").trim());
+}
+
+function WizardHeader({
+  title,
+  onClose,
+}: {
+  title: string;
+  onClose: () => void;
+}) {
+  return (
+    <DialogTitle sx={wizardDialogTitleSx}>
+      <Box
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 2,
+        }}
+      >
+        <Typography
+          component="span"
+          sx={{
+            fontSize: "1rem",
+            fontWeight: 700,
+            color: "inherit",
+          }}
+        >
+          {title}
+        </Typography>
+
+        <IconButton
+          onClick={onClose}
+          size="small"
+          sx={{
+            color: "#e5e7eb",
+            border: "1px solid rgba(255,255,255,0.14)",
+            backgroundColor: "rgba(255,255,255,0.06)",
+            "&:hover": {
+              backgroundColor: "rgba(255,255,255,0.12)",
+              borderColor: "rgba(255,255,255,0.22)",
+            },
+          }}
+        >
+          <CloseIcon fontSize="small" />
+        </IconButton>
+      </Box>
+    </DialogTitle>
+  );
 }
 
 export function WizardOptionsDialog({
@@ -105,7 +155,7 @@ export function WizardOptionsDialog({
       fullWidth
       PaperProps={{ sx: wizardDialogPaperSx }}
     >
-      <DialogTitle sx={wizardDialogTitleSx}>Wizard result</DialogTitle>
+      <WizardHeader title={title || "Wizard result"} onClose={onClose} />
 
       <DialogContent dividers sx={wizardDialogContentSx}>
         <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
@@ -189,7 +239,7 @@ export function WizardInputDialog({
       fullWidth
       PaperProps={{ sx: wizardDialogPaperSx }}
     >
-      <DialogTitle sx={wizardDialogTitleSx}>{title || "Wizard input"}</DialogTitle>
+      <WizardHeader title={title || "Wizard input"} onClose={onClose} />
 
       <DialogContent dividers sx={wizardDialogContentSx}>
         <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>

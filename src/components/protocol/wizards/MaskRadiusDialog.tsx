@@ -6,12 +6,14 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  IconButton,
   List,
   ListItemButton,
   ListItemText,
   Slider,
   Typography,
 } from "@mui/material";
+import { CloseIcon } from "@/icons";
 
 import type { MaskRadiusDialogItem } from "./protocol_wizard_types";
 
@@ -67,8 +69,8 @@ const wizardDialogActionsSx = {
   py: 2,
   backgroundColor: "#ffffff",
   borderTop: "1px solid rgba(15,23,42,0.08)",
-  justifyContent: "space-between",
-  gap: 2,
+  justifyContent: "flex-end",
+  gap: 1.25,
 };
 
 function hasText(value: string | null | undefined): boolean {
@@ -180,7 +182,43 @@ export default function MaskRadiusDialog({
         },
       }}
     >
-      <DialogTitle sx={wizardDialogTitleSx}>{title || "Wizard"}</DialogTitle>
+      <DialogTitle sx={wizardDialogTitleSx}>
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 2,
+          }}
+        >
+          <Typography
+            component="span"
+            sx={{
+              fontSize: "1rem",
+              fontWeight: 700,
+              color: "inherit",
+            }}
+          >
+            {title || "Wizard"}
+          </Typography>
+
+          <IconButton
+            onClick={onClose}
+            size="small"
+            sx={{
+              color: "#e5e7eb",
+              border: "1px solid rgba(255,255,255,0.14)",
+              backgroundColor: "rgba(255,255,255,0.06)",
+              "&:hover": {
+                backgroundColor: "rgba(255,255,255,0.12)",
+                borderColor: "rgba(255,255,255,0.22)",
+              },
+            }}
+          >
+            <CloseIcon fontSize="small" />
+          </IconButton>
+        </Box>
+      </DialogTitle>
 
       <DialogContent
         dividers

@@ -51,7 +51,6 @@ export function useProtocolWizards({
     openExecErrorDialog,
 }: UseProtocolWizardsArgs) {
     const [wizardState, setWizardState] = useState<ActiveWizardState>(closedWizardState);
-    const [isOpeningWizard, setIsOpeningWizard] = useState(false);
     const [openingWizard, setOpeningWizard] = useState<{
         open: boolean;
         title: string;
@@ -404,9 +403,13 @@ export function useProtocolWizards({
                             selectedIndex: nextSelectedIndex,
                             items: Array.isArray(viewerState?.items) ? viewerState.items : prev.items,
                             micrographPreviewUrl:
-                                resolveWizardPreviewUrl(svc, viewerState?.micrographPreview?.imageUrl) ?? prev.micrographPreviewUrl ?? previewUrl,
+                                resolveWizardPreviewUrl(svc, viewerState?.micrographPreview?.imageUrl) ??
+                                prev.micrographPreviewUrl ??
+                                previewUrl,
                             psdPreviewUrl:
-                                resolveWizardPreviewUrl(svc, viewerState?.psdPreview?.imageUrl) ?? prev.psdPreviewUrl ?? previewUrl,
+                                resolveWizardPreviewUrl(svc, viewerState?.psdPreview?.imageUrl) ??
+                                prev.psdPreviewUrl ??
+                                previewUrl,
                             downsample: nextDownsample,
                             downsampleMin:
                                 Number(viewerState?.downsampleMin ?? prev.downsampleMin) || prev.downsampleMin,
@@ -504,8 +507,6 @@ export function useProtocolWizards({
             });
 
             try {
-                setIsOpeningWizard(true);
-
                 const result: ExecuteProtocolWizardResult = await svc.executeProtocolWizard(projectId, {
                     protocolId: protocolId ?? null,
                     protocolClassName,
@@ -1021,7 +1022,6 @@ export function useProtocolWizards({
     return {
         wizardState,
         openingWizard,
-        isOpeningWizard,
         openWizardForParam,
         closeWizard,
         confirmWizard,
