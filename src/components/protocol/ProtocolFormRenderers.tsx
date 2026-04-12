@@ -23,6 +23,7 @@ import {
   normalizeEnumOptions,
   normalizeEnumSelection,
 } from "@/utils/protocolform.utils";
+import type { WizardUiProps } from "./wizards/protocol_wizard_meta";
 
 type LayoutVariant = "standard" | "inline";
 
@@ -39,9 +40,7 @@ type CommonRendererProps = {
   stateKey: string;
   protocolDetails: any;
   setProtocolDetails: (updater: (prev: any) => any) => void;
-  hasWizard?: boolean;
-  onOpenWizard?: (stateKey: string, def: any) => void;
-  wizardTooltip?: string;
+  wizardUi?: WizardUiProps;
 };
 
 type PointerRendererProps = CommonRendererProps & {
@@ -92,9 +91,7 @@ export function renderPointerParamRow({
   dragOverKey,
   setDragOverKey,
   onOpenFind,
-  hasWizard = false,
-  onOpenWizard,
-  wizardTooltip,
+  wizardUi,
 }: PointerRendererProps): JSX.Element {
   const liveDef = {
     ...defResolved,
@@ -112,14 +109,14 @@ export function renderPointerParamRow({
         protocolDetails.params?.[stateKey]?.editableValue ??
           protocolDetails.params?.[stateKey]?.value ??
           def.default ??
-          ""
+          "",
       )}
       onChange={
         isReadOnly
           ? undefined
           : (e) =>
               setProtocolDetails((prev: any) =>
-                setParamValueAndEditableValue(prev, stateKey, e.target.value)
+                setParamValueAndEditableValue(prev, stateKey, e.target.value),
               )
       }
       InputProps={isReadOnly ? { readOnly: true } : undefined}
@@ -173,9 +170,9 @@ export function renderPointerParamRow({
       rowIndex={rowIndex}
       onOpenFind={() => onOpenFind(stateKey)}
       layoutVariant={layoutVariant}
-      hasWizard={hasWizard}
-      onOpenWizard={hasWizard && onOpenWizard ? () => onOpenWizard(stateKey, def) : undefined}
-      wizardTooltip={wizardTooltip}
+      hasWizard={wizardUi?.hasWizard ?? false}
+      onOpenWizard={wizardUi?.onOpenWizard}
+      wizardTooltip={wizardUi?.wizardTooltip}
     />
   );
 }
@@ -197,9 +194,7 @@ export function renderPathParamRow({
   setDragOverKey,
   onBrowsePath,
   onOpenFind,
-  hasWizard = false,
-  onOpenWizard,
-  wizardTooltip,
+  wizardUi,
 }: PathRendererProps): JSX.Element {
   const current = protocolDetails.params?.[stateKey] || {};
   const textValue = current.editableValue ?? current.value ?? def.value ?? def.default ?? "";
@@ -217,7 +212,7 @@ export function renderPathParamRow({
       value={textValue}
       onChange={(e) =>
         setProtocolDetails((prev: any) =>
-          setParamValueAndEditableValue(prev, stateKey, e.target.value)
+          setParamValueAndEditableValue(prev, stateKey, e.target.value),
         )
       }
       sx={{
@@ -266,9 +261,9 @@ export function renderPathParamRow({
       onOpenFind={isPointerEnabled ? () => onOpenFind(stateKey) : undefined}
       rowIndex={rowIndex}
       layoutVariant={layoutVariant}
-      hasWizard={hasWizard}
-      onOpenWizard={hasWizard && onOpenWizard ? () => onOpenWizard(stateKey, def) : undefined}
-      wizardTooltip={wizardTooltip}
+      hasWizard={wizardUi?.hasWizard ?? false}
+      onOpenWizard={wizardUi?.onOpenWizard}
+      wizardTooltip={wizardUi?.wizardTooltip}
     />
   );
 }
@@ -286,9 +281,7 @@ export function renderEnumParamRow({
   setProtocolDetails,
   def,
   value,
-  hasWizard = false,
-  onOpenWizard,
-  wizardTooltip,
+  wizardUi,
 }: EnumRendererProps): JSX.Element | null {
   const options = normalizeEnumOptions(def.choices);
   if (options.length === 0) return null;
@@ -345,9 +338,9 @@ export function renderEnumParamRow({
       helpText={helpText}
       rowIndex={rowIndex}
       layoutVariant={layoutVariant}
-      hasWizard={hasWizard}
-      onOpenWizard={hasWizard && onOpenWizard ? () => onOpenWizard(stateKey, def) : undefined}
-      wizardTooltip={wizardTooltip}
+      hasWizard={wizardUi?.hasWizard ?? false}
+      onOpenWizard={wizardUi?.onOpenWizard}
+      wizardTooltip={wizardUi?.wizardTooltip}
     />
   );
 }
@@ -367,14 +360,12 @@ export function renderBooleanParamRow({
   setProtocolDetails,
   def,
   value,
-  hasWizard = false,
-  onOpenWizard,
-  wizardTooltip,
+  wizardUi,
 }: BooleanRendererProps): JSX.Element {
   const checked = coerceBooleanValue(
     value !== undefined
       ? value
-      : protocolDetails.params?.[stateKey]?.value ?? def.value ?? def.default
+      : protocolDetails.params?.[stateKey]?.value ?? def.value ?? def.default,
   );
 
   return (
@@ -397,7 +388,7 @@ export function renderBooleanParamRow({
               checked={checked}
               onChange={(e) =>
                 setProtocolDetails((prev: any) =>
-                  setParamValueAndEditableValue(prev, stateKey, e.target.checked)
+                  setParamValueAndEditableValue(prev, stateKey, e.target.checked),
                 )
               }
               color="primary"
@@ -409,9 +400,9 @@ export function renderBooleanParamRow({
       helpText={helpText}
       rowIndex={rowIndex}
       layoutVariant={layoutVariant}
-      hasWizard={hasWizard}
-      onOpenWizard={hasWizard && onOpenWizard ? () => onOpenWizard(stateKey, def) : undefined}
-      wizardTooltip={wizardTooltip}
+      hasWizard={wizardUi?.hasWizard ?? false}
+      onOpenWizard={wizardUi?.onOpenWizard}
+      wizardTooltip={wizardUi?.wizardTooltip}
     />
   );
 }
@@ -430,9 +421,7 @@ export function renderDefaultParamRow({
   setProtocolDetails,
   def,
   value,
-  hasWizard = false,
-  onOpenWizard,
-  wizardTooltip,
+  wizardUi,
 }: DefaultRendererProps): JSX.Element {
   const defaultControl = (
     <Box sx={{ display: "flex", alignItems: "center", gap: 1, minWidth: 0, width: "77%" }}>
@@ -445,7 +434,7 @@ export function renderDefaultParamRow({
           value={value ?? def.default ?? ""}
           onChange={(e) =>
             setProtocolDetails((prev: any) =>
-              setParamEditableValue(prev, stateKey, e.target.value)
+              setParamEditableValue(prev, stateKey, e.target.value),
             )
           }
           sx={{
@@ -467,9 +456,9 @@ export function renderDefaultParamRow({
       helpText={helpText}
       rowIndex={rowIndex}
       layoutVariant={layoutVariant}
-      hasWizard={hasWizard}
-      onOpenWizard={hasWizard && onOpenWizard ? () => onOpenWizard(stateKey, def) : undefined}
-      wizardTooltip={wizardTooltip}
+      hasWizard={wizardUi?.hasWizard ?? false}
+      onOpenWizard={wizardUi?.onOpenWizard}
+      wizardTooltip={wizardUi?.wizardTooltip}
     />
   );
 }

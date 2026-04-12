@@ -95,10 +95,7 @@ import {
 import { ProjectEffectiveSettings } from "@/services/ProjectService";
 import WizardDialogHost from "./wizards/wizard-dialog-host";
 import { useProtocolWizards } from "./wizards/use_protocol_wizards";
-import {
-  getWizardTooltip,
-  hasWizardMetadata,
-} from "./wizards/protocol_wizard_meta";
+import { buildWizardUiProps } from "./wizards/protocol_wizard_meta";
 
 
 type ProtocolFormProps = {
@@ -1539,6 +1536,13 @@ export default function ProtocolForm({
         ...(isNonEmptyString((liveState as any)?.help) ? { help: (liveState as any).help } : {}),
       };
 
+      const wizardUi = buildWizardUiProps({
+        stateKey,
+        paramDef: rawDef,
+        paramsByStateKey: protocolDetails.params,
+        onOpenWizardForParam: openWizardForParam,
+      });
+
       const defResolved = withResolvedParamClass(rawDef);
       const defClass = resolveParamClass(defResolved);
 
@@ -1707,9 +1711,9 @@ export default function ProtocolForm({
             }
             helpText={def.help}
             rowIndex={rowIndex}
-            hasWizard={hasWizardMetadata(def)}
-            onOpenWizard={() => openWizardForParam(stateKey, def)}
-            wizardTooltip={getWizardTooltip(stateKey, liveDef, protocolDetails.params)}
+            hasWizard={wizardUi.hasWizard}
+            onOpenWizard={wizardUi.onOpenWizard}
+            wizardTooltip={wizardUi.wizardTooltip}
           />
         );
       }
@@ -1747,7 +1751,7 @@ export default function ProtocolForm({
           dragOverKey,
           setDragOverKey,
           onOpenFind: handleOpenFind,
-          hasWizard: Boolean(def?.hasWizard),
+          wizardUi,
         });
       }
 
@@ -1795,8 +1799,7 @@ export default function ProtocolForm({
           setDragOverKey,
           onBrowsePath: handleBrowsePath,
           onOpenFind: handleOpenFind,
-          hasWizard: Boolean(def?.hasWizard),
-          onOpenWizard: openWizardForParam,
+          wizardUi,
         });
       }
 
@@ -1819,8 +1822,7 @@ export default function ProtocolForm({
           setProtocolDetails,
           def,
           value,
-          hasWizard: Boolean(def?.hasWizard),
-          onOpenWizard: openWizardForParam,
+          wizardUi
         });
       }
 
@@ -1863,8 +1865,9 @@ export default function ProtocolForm({
               helpText={def?.help}
               rowIndex={rowIndex}
               layoutVariant="fullWidth"
-              hasWizard={hasWizardMetadata(def)}
-              onOpenWizard={name ? () => openWizardForParam(`${sectionIdx}_${name}`, def) : undefined}
+              hasWizard={wizardUi.hasWizard}
+              onOpenWizard={wizardUi.onOpenWizard}
+              wizardTooltip={wizardUi.wizardTooltip}
             />
           );
         }
@@ -1913,8 +1916,9 @@ export default function ProtocolForm({
             helpText={def?.help}
             rowIndex={rowIndex}
             layoutVariant="standard"
-            hasWizard={hasWizardMetadata(def)}
-            onOpenWizard={name ? () => openWizardForParam(`${sectionIdx}_${name}`, def) : undefined}
+            hasWizard={wizardUi.hasWizard}
+            onOpenWizard={wizardUi.onOpenWizard}
+            wizardTooltip={wizardUi.wizardTooltip}
           />
         );
       }
@@ -2039,8 +2043,7 @@ export default function ProtocolForm({
           setProtocolDetails,
           def,
           value,
-          hasWizard: Boolean(def?.hasWizard),
-          onOpenWizard: openWizardForParam,
+          wizardUi,
         });
       }
 
@@ -2055,8 +2058,9 @@ export default function ProtocolForm({
             helpText={def.help}
             rowIndex={rowIndex}
             layoutVariant="fullWidth"
-            hasWizard={hasWizardMetadata(def)}
-            onOpenWizard={name ? () => openWizardForParam(`${sectionIdx}_${name}`, def) : undefined}
+            hasWizard={wizardUi.hasWizard}
+            onOpenWizard={wizardUi.onOpenWizard}
+            wizardTooltip={wizardUi.wizardTooltip}
           />
         );
       }
@@ -2079,8 +2083,7 @@ export default function ProtocolForm({
         setProtocolDetails,
         def,
         value,
-        hasWizard: Boolean(def?.hasWizard),
-        onOpenWizard: openWizardForParam,
+        wizardUi,
       });
     },
     [

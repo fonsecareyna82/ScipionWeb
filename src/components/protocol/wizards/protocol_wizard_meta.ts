@@ -10,6 +10,12 @@ export type WizardDescriptor = {
   targetParams?: string[];
 };
 
+export type WizardUiProps = {
+  hasWizard: boolean;
+  onOpenWizard?: () => void;
+  wizardTooltip?: string;
+};
+
 export function getWizardDescriptor(paramDef: any): WizardDescriptor | null {
   const candidates: any[] = [];
 
@@ -81,4 +87,37 @@ export function getWizardTooltip(
   }
 
   return kindLabel ? `Open wizard (${kindLabel})` : "Open wizard";
+}
+
+export function buildWizardUiProps(args: {
+  stateKey?: string | null;
+  paramDef: any;
+  paramsByStateKey?: Record<string, any>;
+  onOpenWizardForParam?: (stateKey: string, paramDef: any) => void;
+}): WizardUiProps {
+  const {
+    stateKey,
+    paramDef,
+    paramsByStateKey,
+    onOpenWizardForParam,
+  } = args;
+
+  const hasWizard = hasWizardMetadata(paramDef);
+
+  if (!hasWizard) {
+    return { hasWizard: false };
+  }
+
+  if (!stateKey) {
+    return { hasWizard: true };
+  }
+
+  return {
+    hasWizard: true,
+    onOpenWizard:
+      onOpenWizardForParam != null
+        ? () => onOpenWizardForParam(stateKey, paramDef)
+        : undefined,
+    wizardTooltip: getWizardTooltip(stateKey, paramDef, paramsByStateKey),
+  };
 }
