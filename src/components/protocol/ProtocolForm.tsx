@@ -92,12 +92,8 @@ import {
   syncProtUnionPointerClassInParams,
 } from "@/utils/protocolform.protunion";
 import { ExecuteProtocolWizardViewerState, ProjectEffectiveSettings } from "@/services/ProjectService";
-
-import {
-  WizardOptionsDialog,
-  WizardInputDialog,
-  MaskRadiusDialog,
-} from "./WizardDialogs";
+import WizardDialogHost from "./wizards/wizard-dialog-host";
+import { useProtocolWizards } from "./wizards/use_protocol_wizards";
 
 
 type ProtocolFormProps = {
@@ -133,78 +129,6 @@ type QueueLaunchDraftParam = {
 type QueueLaunchDraft = {
   queueName: string;
   params: QueueLaunchDraftParam[];
-};
-
-type QueueDialogDraft = {
-  queueName: string;
-  params: EffectiveHostQueueParam[];
-};
-
-type WizardDialogOption = {
-  value: string;
-  label: string;
-};
-
-type WizardOptionsDialogState = {
-  open: boolean;
-  stateKey: string | null;
-  paramName: string;
-  title: string;
-  options: WizardDialogOption[];
-  selectedValue: string;
-  message: string;
-};
-
-type MaskRadiusDialogItem = {
-  id: string;
-  label: string;
-  index: number;
-};
-
-type MaskRadiusDialogState = {
-  open: boolean;
-  stateKey: string | null;
-  paramName: string;
-  wizardId: string;
-  title: string;
-  radius: number;
-  min: number;
-  max: number;
-  step: number;
-  radiusAngstrom: number | null;
-  samplingRate: number | null;
-  selectedIndex: number;
-  items: MaskRadiusDialogItem[];
-  message: string;
-  previewUrl: string | null;
-  previewWidth: number | null;
-  previewHeight: number | null;
-  previewSourceWidth: number | null;
-  previewSourceHeight: number | null;
-  previewCaption: string;
-};
-
-type WizardInputDialogField = {
-  name: string;
-  label?: string;
-  kind: "number" | "text" | "select";
-  value?: string | number | null;
-  min?: number;
-  max?: number;
-  step?: number;
-  options?: Array<{ value: string; label: string }>;
-};
-
-type WizardInputDialogState = {
-  open: boolean;
-  stateKey: string | null;
-  paramName: string;
-  wizardId: string;
-  title: string;
-  fields: WizardInputDialogField[];
-  values: Record<string, string>;
-  message: string;
-  previewImageUrl: string;
 };
 
 function normalizeEffectiveHostQueues(raw: unknown): EffectiveHostQueue[] {
@@ -452,53 +376,6 @@ export default function ProtocolForm({
       help: String(param.help ?? ""),
     }));
 
-  // Wizard options dialog state
-  const [wizardOptionsDialog, setWizardOptionsDialog] = useState<WizardOptionsDialogState>({
-    open: false,
-    stateKey: null,
-    paramName: "",
-    title: "",
-    options: [],
-    selectedValue: "",
-    message: "",
-  });
-
-  const [maskRadiusDialog, setMaskRadiusDialog] = useState<MaskRadiusDialogState>({
-    open: false,
-    stateKey: null,
-    paramName: "",
-    wizardId: "",
-    title: "",
-    radius: 0,
-    min: 1,
-    max: 1,
-    step: 1,
-    radiusAngstrom: null,
-    samplingRate: null,
-    selectedIndex: 1,
-    items: [],
-    message: "",
-    previewUrl: null,
-    previewWidth: null,
-    previewHeight: null,
-    previewSourceWidth: null,
-    previewSourceHeight: null,
-    previewCaption: "",
-  });
-
-  const [wizardInputDialog, setWizardInputDialog] = useState<WizardInputDialogState>({
-    open: false,
-    stateKey: null,
-    paramName: "",
-    wizardId: "",
-    title: "",
-    fields: [],
-    values: {},
-    message: "",
-    previewImageUrl: "",
-  });
-
-  const maskRadiusPreviewRequestIdRef = useRef(0);
 
   // Global Output Selector
   const [openSelector, setOpenSelector] = useState(false);
@@ -1508,598 +1385,6 @@ export default function ProtocolForm({
     ]
   );
 
-  const normalizeWizardAvailableValues = useCallback(
-    (raw: unknown): WizardDialogOption[] => {
-      if (!Array.isArray(raw)) return [];
-
-      return Array.from(
-        new Map(
-          raw
-            .map((item) => String(item ?? "").trim())
-            .filter((item) => item.length > 0)
-            .map((item) => [item, { value: item, label: item }])
-        ).values()
-      );
-    },
-    []
-  );
-
-  const closeWizardOptionsDialog = useCallback(() => {
-    setWizardOptionsDialog({
-      open: false,
-      stateKey: null,
-      paramName: "",
-      title: "",
-      options: [],
-      selectedValue: "",
-      message: "",
-    });
-  }, []);
-
-  const confirmWizardOptionsDialog = useCallback(() => {
-    const { paramName, selectedValue } = wizardOptionsDialog;
-
-    if (!paramName || !selectedValue) {
-      closeWizardOptionsDialog();
-      return;
-    }
-
-    applyWizardParamUpdates({
-      [paramName]: selectedValue,
-    });
-
-    toast.success(`Wizard value applied to '${paramName}'.`);
-    closeWizardOptionsDialog();
-  }, [wizardOptionsDialog, applyWizardParamUpdates, closeWizardOptionsDialog]);
-
-  const closeMaskRadiusDialog = useCallback(() => {
-    setMaskRadiusDialog({
-      open: false,
-      stateKey: null,
-      paramName: "",
-      wizardId: "",
-      title: "",
-      radius: 0,
-      min: 1,
-      max: 1,
-      step: 1,
-      radiusAngstrom: null,
-      samplingRate: null,
-      selectedIndex: 1,
-      items: [],
-      message: "",
-      previewUrl: null,
-      previewWidth: null,
-      previewHeight: null,
-      previewSourceWidth: null,
-      previewSourceHeight: null,
-      previewCaption: "",
-    });
-  }, []);
-
-  const resolveWizardPreviewUrl = useCallback(
-    (raw: unknown): string | null => {
-      const value = String(raw ?? "").trim();
-      if (!value) return null;
-
-      if (
-        value.startsWith("data:") ||
-        value.startsWith("blob:") ||
-        value.startsWith("http://") ||
-        value.startsWith("https://")
-      ) {
-        return value;
-      }
-
-      return svc.resolveBackendUrl(value) ?? value;
-    },
-    [svc]
-  );
-
-  const confirmMaskRadiusDialog = useCallback(async () => {
-    if (!projectId) {
-      toast.error("Missing project id.");
-      return;
-    }
-
-    if (!maskRadiusDialog.paramName || !maskRadiusDialog.wizardId) {
-      closeMaskRadiusDialog();
-      return;
-    }
-
-    try {
-      const result = await svc.executeProtocolWizard(projectId, {
-        protocolId: protocolId ?? null,
-        protocolClassName,
-        paramName: maskRadiusDialog.paramName,
-        wizardId: maskRadiusDialog.wizardId,
-        formValues: getSerializedParams(),
-        wizardInputs: {
-          action: "apply",
-          selectedIndex: maskRadiusDialog.selectedIndex,
-          radius: maskRadiusDialog.radius,
-        },
-      });
-
-      const updates =
-        result?.paramUpdates && typeof result.paramUpdates === "object"
-          ? { ...result.paramUpdates }
-          : {};
-
-      if (Object.keys(updates).length > 0) {
-        applyWizardParamUpdates(updates);
-      }
-
-      toast.success(result?.message?.trim() || "Wizard executed successfully.");
-      closeMaskRadiusDialog();
-    } catch (err: any) {
-      const payload = getBackendPayloadFromError(err);
-      const errors = getErrorsFromBackendPayload(payload);
-
-      if (errors.length > 0) {
-        openExecErrorDialog("Wizard error", formatErrorsForDialog(errors));
-        return;
-      }
-
-      const fallbackMsg =
-        err?.message ||
-        (typeof payload?.detail === "string" ? payload.detail : null) ||
-        "Wizard execution failed";
-
-      openExecErrorDialog("Wizard error", String(fallbackMsg));
-    }
-  }, [
-    projectId,
-    protocolId,
-    protocolClassName,
-    maskRadiusDialog,
-    svc,
-    getSerializedParams,
-    applyWizardParamUpdates,
-    closeMaskRadiusDialog,
-  ]);
-
-  const refreshMaskRadiusPreview = useCallback(
-    async (selectedIndex: number, radius: number) => {
-      if (!projectId) return;
-      if (!maskRadiusDialog.paramName || !maskRadiusDialog.wizardId) return;
-
-      try {
-        const requestId = ++maskRadiusPreviewRequestIdRef.current;
-        const result = await svc.executeProtocolWizard(projectId, {
-          protocolId: protocolId ?? null,
-          protocolClassName,
-          paramName: maskRadiusDialog.paramName,
-          wizardId: maskRadiusDialog.wizardId,
-          formValues: getSerializedParams(),
-          wizardInputs: {
-            action: "preview",
-            selectedIndex,
-            radius,
-          },
-        });
-        if (requestId !== maskRadiusPreviewRequestIdRef.current) {
-          return;
-        }
-
-        const viewerState: ExecuteProtocolWizardViewerState | null =
-          result?.viewerState ?? null;
-
-        const previewUrl = resolveWizardPreviewUrl(viewerState?.preview?.imageUrl);
-
-        setMaskRadiusDialog((prev) => ({
-          ...prev,
-          radius: Number(viewerState?.radius ?? radius) || radius,
-          min: Number(viewerState?.radiusMin ?? prev.min) || prev.min,
-          max: Number(viewerState?.radiusMax ?? prev.max) || prev.max,
-          step: Number(viewerState?.radiusStep ?? prev.step) || prev.step,
-          radiusAngstrom:
-            typeof viewerState?.radiusAngstrom === "number"
-              ? viewerState.radiusAngstrom
-              : prev.radiusAngstrom,
-          samplingRate:
-            typeof viewerState?.samplingRate === "number"
-              ? viewerState.samplingRate
-              : prev.samplingRate,
-          selectedIndex:
-            Number(viewerState?.selectedIndex ?? selectedIndex) || selectedIndex,
-          items: Array.isArray(viewerState?.items) ? viewerState.items : prev.items,
-          previewUrl,
-          previewWidth:
-            typeof viewerState?.preview?.width === "number"
-              ? viewerState.preview.width
-              : prev.previewWidth,
-          previewHeight:
-            typeof viewerState?.preview?.height === "number"
-              ? viewerState.preview.height
-              : prev.previewHeight,
-          previewSourceWidth:
-            typeof viewerState?.preview?.sourceWidth === "number"
-              ? viewerState.preview.sourceWidth
-              : prev.previewSourceWidth,
-          previewSourceHeight:
-            typeof viewerState?.preview?.sourceHeight === "number"
-              ? viewerState.preview.sourceHeight
-              : prev.previewSourceHeight,
-          previewCaption: String(
-            viewerState?.preview?.caption ?? prev.previewCaption ?? ""
-          ).trim(),
-        }));
-      } catch (err) {
-        // Keep current preview state if refresh fails
-      }
-    },
-    [
-      projectId,
-      protocolId,
-      protocolClassName,
-      maskRadiusDialog.paramName,
-      maskRadiusDialog.wizardId,
-      svc,
-      getSerializedParams,
-    ]
-  );
-
-  const normalizeWizardDialogOptions = useCallback(
-    (result: any): WizardDialogOption[] => {
-      const normalized: WizardDialogOption[] = [];
-
-      const pushOption = (valueRaw: unknown, labelRaw?: unknown) => {
-        const value = String(valueRaw ?? "").trim();
-        if (!value) return;
-
-        const label = String(labelRaw ?? value).trim() || value;
-
-        if (!normalized.some((item) => item.value === value)) {
-          normalized.push({ value, label });
-        }
-      };
-
-      const rawAvailableValues = result?.availableValues;
-
-      if (Array.isArray(rawAvailableValues)) {
-        for (const item of rawAvailableValues) {
-          if (item && typeof item === "object") {
-            pushOption((item as any).value, (item as any).label);
-          } else {
-            pushOption(item);
-          }
-        }
-      }
-
-      const inputSchema = result?.inputSchema;
-      if (
-        inputSchema &&
-        inputSchema.type === "select" &&
-        Array.isArray(inputSchema.options)
-      ) {
-        for (const option of inputSchema.options) {
-          if (option && typeof option === "object") {
-            pushOption(option.value, option.label);
-          }
-        }
-      }
-
-      return normalized;
-    },
-    []
-  );
-
-  const closeWizardInputDialog = useCallback(() => {
-    setWizardInputDialog({
-      open: false,
-      stateKey: null,
-      paramName: "",
-      wizardId: "",
-      title: "",
-      fields: [],
-      values: {},
-      message: "",
-      previewImageUrl: "",
-    });
-  }, []);
-
-  const openWizardInputDialog = useCallback(
-    (
-      stateKey: string,
-      paramName: string,
-      wizardId: string,
-      result: any,
-      mergedDef: any,
-    ) => {
-      const schema = result?.inputSchema;
-      const fields = Array.isArray(schema?.fields) ? schema.fields : [];
-
-      const values: Record<string, string> = {};
-      for (const field of fields) {
-        const fieldName = String(field?.name ?? "").trim();
-        if (!fieldName) continue;
-        values[fieldName] = String(field?.value ?? "");
-      }
-
-      const previewImageUrlRaw = String(result?.preview?.imageUrl ?? "").trim();
-      const previewImageUrl = previewImageUrlRaw
-        ? svc.resolveBackendUrl(previewImageUrlRaw) ?? previewImageUrlRaw
-        : "";
-
-      setWizardInputDialog({
-        open: true,
-        stateKey,
-        paramName,
-        wizardId,
-        title: String(schema?.title ?? mergedDef?.label ?? paramName),
-        fields,
-        values,
-        message: String(result?.message ?? "").trim(),
-        previewImageUrl,
-      });
-    },
-    [svc]
-  );
-
-  const confirmWizardInputDialog = useCallback(async () => {
-    if (!projectId) {
-      toast.error("Missing project id.");
-      return;
-    }
-
-    if (!wizardInputDialog.paramName || !wizardInputDialog.wizardId) {
-      closeWizardInputDialog();
-      return;
-    }
-
-    try {
-      const result = await svc.executeProtocolWizard(projectId, {
-        protocolId: protocolId ?? null,
-        protocolClassName,
-        paramName: wizardInputDialog.paramName,
-        wizardId: wizardInputDialog.wizardId,
-        formValues: getSerializedParams(),
-        wizardInputs: wizardInputDialog.values,
-      });
-
-      const updates =
-        result?.paramUpdates && typeof result.paramUpdates === "object"
-          ? result.paramUpdates
-          : {};
-
-      if (Object.keys(updates).length > 0) {
-        applyWizardParamUpdates(updates);
-      }
-
-      toast.success(result?.message?.trim() || "Wizard executed successfully.");
-      closeWizardInputDialog();
-    } catch (err: any) {
-      const payload = getBackendPayloadFromError(err);
-      const errors = getErrorsFromBackendPayload(payload);
-
-      if (errors.length > 0) {
-        openExecErrorDialog("Wizard error", formatErrorsForDialog(errors));
-        return;
-      }
-
-      const fallbackMsg =
-        err?.message ||
-        (typeof payload?.detail === "string" ? payload.detail : null) ||
-        "Wizard execution failed";
-
-      openExecErrorDialog("Wizard error", String(fallbackMsg));
-    }
-  }, [
-    projectId,
-    protocolId,
-    protocolClassName,
-    wizardInputDialog,
-    svc,
-    getSerializedParams,
-    applyWizardParamUpdates,
-    closeWizardInputDialog,
-  ]);
-
-
-  const handleOpenWizard = useCallback(
-    async (stateKey: string, paramDef?: any) => {
-      if (!projectId) {
-        toast.error("Missing project id.");
-        return;
-      }
-
-      const paramName = getParamNameFromStateKey(stateKey);
-      if (!paramName) {
-        toast.error("Could not resolve wizard parameter.");
-        return;
-      }
-
-      const liveParam = protocolDetails.params?.[stateKey] ?? {};
-      const mergedDef = { ...(paramDef ?? {}), ...liveParam };
-      const wizard = getWizardDescriptor(mergedDef);
-
-      if (!wizard) {
-        toast.error(`No wizard metadata found for '${paramName}'.`);
-        return;
-      }
-
-      if (wizard.webSupported === false) {
-        toast.error("This wizard is not available in the web UI yet.");
-        return;
-      }
-
-      try {
-        const result = await svc.executeProtocolWizard(projectId, {
-          protocolId: protocolId ?? null,
-          protocolClassName,
-          paramName,
-          wizardId: wizard.id,
-          formValues: getSerializedParams(),
-        });
-
-        const updates =
-          result?.paramUpdates && typeof result.paramUpdates === "object"
-            ? { ...result.paramUpdates }
-            : {};
-
-        const inputSchema = result?.inputSchema ?? null;
-        const availableValues = normalizeWizardAvailableValues(result?.availableValues);
-
-        // Interactive wizard: mask radius
-        if (result?.requiresUserInput && inputSchema?.type === "mask_radius") {
-          const deferredUpdates = { ...updates };
-          delete deferredUpdates[paramName];
-
-          if (Object.keys(deferredUpdates).length > 0) {
-            applyWizardParamUpdates(deferredUpdates);
-          }
-
-          const viewerState: ExecuteProtocolWizardViewerState | null =
-            result?.viewerState ?? null;
-
-          const previewUrl = resolveWizardPreviewUrl(viewerState?.preview?.imageUrl);
-
-          setMaskRadiusDialog({
-            open: true,
-            stateKey,
-            paramName,
-            wizardId: wizard.id,
-            title: String(inputSchema.title ?? mergedDef?.label ?? paramName),
-            radius:
-              Number(
-                viewerState?.radius ??
-                liveParam?.editableValue ??
-                liveParam?.value ??
-                1
-              ) || 1,
-            min: Number(viewerState?.radiusMin ?? 1) || 1,
-            max: Number(viewerState?.radiusMax ?? 256) || 256,
-            step: Number(viewerState?.radiusStep ?? 1) || 1,
-            radiusAngstrom:
-              typeof viewerState?.radiusAngstrom === "number"
-                ? viewerState.radiusAngstrom
-                : null,
-            samplingRate:
-              typeof viewerState?.samplingRate === "number"
-                ? viewerState.samplingRate
-                : null,
-            selectedIndex: Number(viewerState?.selectedIndex ?? 1) || 1,
-            items: Array.isArray(viewerState?.items) ? viewerState.items : [],
-            message: String(result?.message ?? "").trim(),
-            previewUrl,
-            previewWidth:
-              typeof viewerState?.preview?.width === "number"
-                ? viewerState.preview.width
-                : null,
-            previewHeight:
-              typeof viewerState?.preview?.height === "number"
-                ? viewerState.preview.height
-                : null,
-            previewSourceWidth:
-              typeof viewerState?.preview?.sourceWidth === "number"
-                ? viewerState.preview.sourceWidth
-                : null,
-            previewSourceHeight:
-              typeof viewerState?.preview?.sourceHeight === "number"
-                ? viewerState.preview.sourceHeight
-                : null,
-            previewCaption: String(viewerState?.preview?.caption ?? "").trim(),
-          });
-
-          return;
-        }
-
-        if (result?.requiresUserInput) {
-          const deferredUpdates = { ...updates };
-          delete deferredUpdates[paramName];
-
-          if (Object.keys(deferredUpdates).length > 0) {
-            applyWizardParamUpdates(deferredUpdates);
-          }
-
-          openWizardInputDialog(stateKey, paramName, wizard.id, result, mergedDef);
-          return;
-        }
-
-        // Wizard returning multiple selectable values
-        if (availableValues.length > 1) {
-          const deferredUpdates = { ...updates };
-          delete deferredUpdates[paramName];
-
-          if (Object.keys(deferredUpdates).length > 0) {
-            applyWizardParamUpdates(deferredUpdates);
-          }
-
-          const currentValueRaw =
-            updates[paramName] ??
-            liveParam?.editableValue ??
-            liveParam?.value ??
-            "";
-
-          const currentValue = String(currentValueRaw ?? "").trim();
-
-          const selectedValue = availableValues.some(
-            (option) => option.value === currentValue
-          )
-            ? currentValue
-            : availableValues[0].value;
-
-          setWizardOptionsDialog({
-            open: true,
-            stateKey,
-            paramName,
-            title: String(mergedDef?.label ?? paramName),
-            options: availableValues,
-            selectedValue,
-            message: String(result?.message ?? "").trim(),
-          });
-
-          return;
-        }
-
-        if (Object.keys(updates).length > 0) {
-          applyWizardParamUpdates(updates);
-          toast.success(result?.message?.trim() || "Wizard executed successfully.");
-          return;
-        }
-
-        if (availableValues.length === 1) {
-          applyWizardParamUpdates({
-            [paramName]: availableValues[0].value,
-          });
-          toast.success(result?.message?.trim() || "Wizard executed successfully.");
-          return;
-        }
-
-        toast.success(result?.message?.trim() || "Wizard executed successfully.");
-      } catch (err: any) {
-        const payload = getBackendPayloadFromError(err);
-        const errors = getErrorsFromBackendPayload(payload);
-
-        if (errors.length > 0) {
-          openExecErrorDialog("Wizard error", formatErrorsForDialog(errors));
-          return;
-        }
-
-        const fallbackMsg =
-          err?.message ||
-          (typeof payload?.detail === "string" ? payload.detail : null) ||
-          "Wizard execution failed";
-
-        openExecErrorDialog("Wizard error", String(fallbackMsg));
-      }
-    },
-    [
-      projectId,
-      protocolId,
-      protocolClassName,
-      protocolDetails.params,
-      svc,
-      getSerializedParams,
-      getWizardDescriptor,
-      applyWizardParamUpdates,
-      normalizeWizardAvailableValues,
-      openWizardInputDialog,
-      resolveWizardPreviewUrl,
-    ]
-  );
-
   useEffect(() => {
     // syncMetadataSnapshot
     const liveValues = getSerializedParams();
@@ -2136,6 +1421,27 @@ export default function ProtocolForm({
     setExecErrorDialogOpen(true);
   }
 
+  const {
+    wizardState,
+    openWizardForParam,
+    closeWizard,
+    confirmWizard,
+    setOptionsSelectedValue,
+    setInputFieldValue,
+    setMaskRadiusValue,
+    commitMaskRadiusValue,
+    setMaskRadiusSelectedIndex,
+  } = useProtocolWizards({
+    projectId,
+    protocolId,
+    protocolClassName,
+    protocolDetails,
+    svc,
+    getSerializedParams,
+    getWizardDescriptor,
+    applyWizardParamUpdates,
+    openExecErrorDialog,
+  });
 
   const executeNow = async (
     modeKey: string,
@@ -2478,7 +1784,7 @@ export default function ProtocolForm({
             helpText={def.help}
             rowIndex={rowIndex}
             hasWizard={Boolean(def?.hasWizard || def?.wizard || (Array.isArray(def?.wizards) && def.wizards.length > 0))}
-            onOpenWizard={() => handleOpenWizard(stateKey, def)}
+            onOpenWizard={() => openWizardForParam(stateKey, def)}
             wizardTooltip={getWizardTooltip(stateKey, liveDef)}
           />
         );
@@ -2566,7 +1872,7 @@ export default function ProtocolForm({
           onBrowsePath: handleBrowsePath,
           onOpenFind: handleOpenFind,
           hasWizard: Boolean(def?.hasWizard),
-          onOpenWizard: handleOpenWizard,
+          onOpenWizard: openWizardForParam,
         });
       }
 
@@ -2590,7 +1896,7 @@ export default function ProtocolForm({
           def,
           value,
           hasWizard: Boolean(def?.hasWizard),
-          onOpenWizard: handleOpenWizard,
+          onOpenWizard: openWizardForParam,
         });
       }
 
@@ -2634,7 +1940,7 @@ export default function ProtocolForm({
               rowIndex={rowIndex}
               layoutVariant="fullWidth"
               hasWizard={Boolean(def?.hasWizard || def?.wizard || (Array.isArray(def?.wizards) && def.wizards.length > 0))}
-              onOpenWizard={name ? () => handleOpenWizard(`${sectionIdx}_${name}`, def) : undefined}
+              onOpenWizard={name ? () => openWizardForParam(`${sectionIdx}_${name}`, def) : undefined}
             />
           );
         }
@@ -2684,7 +1990,7 @@ export default function ProtocolForm({
             rowIndex={rowIndex}
             layoutVariant="standard"
             hasWizard={Boolean(def?.hasWizard || def?.wizard || (Array.isArray(def?.wizards) && def.wizards.length > 0))}
-            onOpenWizard={name ? () => handleOpenWizard(`${sectionIdx}_${name}`, def) : undefined}
+            onOpenWizard={name ? () => openWizardForParam(`${sectionIdx}_${name}`, def) : undefined}
           />
         );
       }
@@ -2810,7 +2116,7 @@ export default function ProtocolForm({
           def,
           value,
           hasWizard: Boolean(def?.hasWizard),
-          onOpenWizard: handleOpenWizard,
+          onOpenWizard: openWizardForParam,
         });
       }
 
@@ -2826,7 +2132,7 @@ export default function ProtocolForm({
             rowIndex={rowIndex}
             layoutVariant="fullWidth"
             hasWizard={Boolean(def?.hasWizard || def?.wizard || (Array.isArray(def?.wizards) && def.wizards.length > 0))}
-            onOpenWizard={name ? () => handleOpenWizard(`${sectionIdx}_${name}`, def) : undefined}
+            onOpenWizard={name ? () => openWizardForParam(`${sectionIdx}_${name}`, def) : undefined}
           />
         );
       }
@@ -2850,7 +2156,7 @@ export default function ProtocolForm({
         def,
         value,
         hasWizard: Boolean(def?.hasWizard),
-        onOpenWizard: handleOpenWizard,
+        onOpenWizard: openWizardForParam,
       });
     },
     [
@@ -2865,7 +2171,7 @@ export default function ProtocolForm({
       protocolId,
       variant,
       protocolClassName,
-      handleOpenWizard,
+      openWizardForParam,
       getWizardTooltip,
     ]
   );
@@ -3690,81 +2996,16 @@ export default function ProtocolForm({
 
 
       {/* Wizard selector dialog */}
-      <WizardOptionsDialog
-        open={wizardOptionsDialog.open}
-        title={wizardOptionsDialog.title}
-        paramName={wizardOptionsDialog.paramName}
-        options={wizardOptionsDialog.options}
-        selectedValue={wizardOptionsDialog.selectedValue}
-        message={wizardOptionsDialog.message}
-        onClose={closeWizardOptionsDialog}
-        onConfirm={confirmWizardOptionsDialog}
-        onSelectedValueChange={(value) =>
-          setWizardOptionsDialog((prev) => ({
-            ...prev,
-            selectedValue: value,
-          }))
-        }
+      <WizardDialogHost
+        wizardState={wizardState}
+        onClose={closeWizard}
+        onConfirm={confirmWizard}
+        onOptionsSelectedValueChange={setOptionsSelectedValue}
+        onInputValueChange={setInputFieldValue}
+        onMaskRadiusChange={setMaskRadiusValue}
+        onMaskRadiusCommit={commitMaskRadiusValue}
+        onMaskRadiusSelectedIndexChange={setMaskRadiusSelectedIndex}
       />
-
-      {/* Wizard input dialog */}
-      <WizardInputDialog
-        open={wizardInputDialog.open}
-        title={wizardInputDialog.title}
-        fields={wizardInputDialog.fields}
-        values={wizardInputDialog.values}
-        message={wizardInputDialog.message}
-        previewImageUrl={wizardInputDialog.previewImageUrl}
-        onClose={closeWizardInputDialog}
-        onConfirm={confirmWizardInputDialog}
-        onValueChange={(fieldName, value) =>
-          setWizardInputDialog((prev) => ({
-            ...prev,
-            values: {
-              ...prev.values,
-              [fieldName]: value,
-            },
-          }))
-        }
-      />
-
-      {/* Mask radius dialog */}
-      <MaskRadiusDialog
-        open={maskRadiusDialog.open}
-        title={maskRadiusDialog.title}
-        radius={maskRadiusDialog.radius}
-        min={maskRadiusDialog.min}
-        max={maskRadiusDialog.max}
-        step={maskRadiusDialog.step}
-        radiusAngstrom={maskRadiusDialog.radiusAngstrom}
-        samplingRate={maskRadiusDialog.samplingRate}
-        selectedIndex={maskRadiusDialog.selectedIndex}
-        items={maskRadiusDialog.items}
-        message={maskRadiusDialog.message}
-        previewUrl={maskRadiusDialog.previewUrl}
-        previewCaption={maskRadiusDialog.previewCaption}
-        previewSourceWidth={maskRadiusDialog.previewSourceWidth}
-        previewSourceHeight={maskRadiusDialog.previewSourceHeight}
-        onClose={closeMaskRadiusDialog}
-        onConfirm={confirmMaskRadiusDialog}
-        onRadiusChange={(value) => {
-          setMaskRadiusDialog((prev) => ({
-            ...prev,
-            radius: value,
-          }));
-        }}
-        onRadiusCommit={(value) => {
-          void refreshMaskRadiusPreview(maskRadiusDialog.selectedIndex, value);
-        }}
-        onSelectedIndexChange={(value) => {
-          setMaskRadiusDialog((prev) => ({
-            ...prev,
-            selectedIndex: value,
-          }));
-          void refreshMaskRadiusPreview(value, maskRadiusDialog.radius);
-        }}
-      />
-
       {/* Generic execute/save error dialog */}
       <ExecErrorDialog
         open={execErrorDialogOpen}
