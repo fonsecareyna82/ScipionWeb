@@ -3,6 +3,7 @@ import {
     WizardOptionsDialog,
 } from "../WizardDialogs";
 import CtfPreviewDialog from "./CtfPreviewDialog";
+import FilterPreviewDialog from "./FilterPreviewDialog";
 import MaskRadiusDialog from "./MaskRadiusDialog";
 import MaskRadiiDialog from "./MaskRadiiDialog";
 import type { ActiveWizardState } from "./protocol_wizard_types";
@@ -29,6 +30,13 @@ type WizardDialogHostProps = {
     onCtfHighFreqChange: (value: number) => void;
     onCtfHighFreqCommit: (value: number) => void;
     onCtfSelectedIndexChange: (value: number) => void;
+    onFilterLowFreqChange: (value: number) => void;
+    onFilterLowFreqCommit: (value: number) => void;
+    onFilterHighFreqChange: (value: number) => void;
+    onFilterHighFreqCommit: (value: number) => void;
+    onFilterDecayChange: (value: number) => void;
+    onFilterDecayCommit: (value: number) => void;
+    onFilterSelectedIndexChange: (value: number) => void;
 };
 
 export default function WizardDialogHost({
@@ -53,6 +61,13 @@ export default function WizardDialogHost({
     onCtfHighFreqChange,
     onCtfHighFreqCommit,
     onCtfSelectedIndexChange,
+    onFilterLowFreqChange,
+    onFilterLowFreqCommit,
+    onFilterHighFreqChange,
+    onFilterHighFreqCommit,
+    onFilterDecayChange,
+    onFilterDecayCommit,
+    onFilterSelectedIndexChange,
 }: WizardDialogHostProps) {
     if (!wizardState.open) return null;
 
@@ -187,6 +202,45 @@ export default function WizardDialogHost({
                 onLowFreqCommit={onCtfLowFreqCommit}
                 onHighFreqChange={onCtfHighFreqChange}
                 onHighFreqCommit={onCtfHighFreqCommit}
+            />
+        );
+    }
+
+    if (wizardState.kind === "filter_preview") {
+        return (
+            <FilterPreviewDialog
+                open={wizardState.open}
+                title={wizardState.title}
+                message={wizardState.message}
+                items={wizardState.items}
+                selectedIndex={wizardState.selectedIndex}
+                onSelectedIndexChange={onFilterSelectedIndexChange}
+                originalPreviewUrl={wizardState.originalPreviewUrl}
+                filteredPreviewUrl={wizardState.filteredPreviewUrl}
+                previewLoading={previewLoading}
+                lowFreq={wizardState.lowFreq}
+                lowFreqMin={wizardState.lowFreqMin}
+                lowFreqMax={wizardState.lowFreqMax}
+                highFreq={wizardState.highFreq}
+                highFreqMin={wizardState.highFreqMin}
+                highFreqMax={wizardState.highFreqMax}
+                decay={wizardState.decay}
+                decayMin={wizardState.decayMin}
+                decayMax={wizardState.decayMax}
+                freqStep={wizardState.freqStep}
+                unitLabel={wizardState.unitLabel}
+                filterMode={wizardState.filterMode}
+                lowFreqParamName={wizardState.lowFreqParamName}
+                highFreqParamName={wizardState.highFreqParamName}
+                decayParamName={wizardState.decayParamName}
+                onClose={onClose}
+                onConfirm={onConfirm}
+                onLowFreqChange={onFilterLowFreqChange}
+                onLowFreqCommit={onFilterLowFreqCommit}
+                onHighFreqChange={onFilterHighFreqChange}
+                onHighFreqCommit={onFilterHighFreqCommit}
+                onDecayChange={onFilterDecayChange}
+                onDecayCommit={onFilterDecayCommit}
             />
         );
     }

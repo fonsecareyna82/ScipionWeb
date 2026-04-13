@@ -1369,6 +1369,13 @@ export default function ProtocolForm({
     setCtfHighFreqValue,
     commitCtfHighFreqValue,
     setCtfSelectedIndex,
+    setFilterLowFreqValue,
+    commitFilterLowFreqValue,
+    setFilterHighFreqValue,
+    commitFilterHighFreqValue,
+    setFilterDecayValue,
+    commitFilterDecayValue,
+    setFilterSelectedIndex,
   } = useProtocolWizards({
     projectId,
     protocolId,
@@ -2966,6 +2973,13 @@ export default function ProtocolForm({
         onCtfHighFreqChange={setCtfHighFreqValue}
         onCtfHighFreqCommit={commitCtfHighFreqValue}
         onCtfSelectedIndexChange={setCtfSelectedIndex}
+        onFilterLowFreqChange={setFilterLowFreqValue}
+        onFilterLowFreqCommit={commitFilterLowFreqValue}
+        onFilterHighFreqChange={setFilterHighFreqValue}
+        onFilterHighFreqCommit={commitFilterHighFreqValue}
+        onFilterDecayChange={setFilterDecayValue}
+        onFilterDecayCommit={commitFilterDecayValue}
+        onFilterSelectedIndexChange={setFilterSelectedIndex}
       />
 
       {/* Generic execute/save error dialog */}

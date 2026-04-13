@@ -138,6 +138,42 @@ export type CtfPreviewDialogState = {
     autoDownsampleValue: number | null;
 };
 
+export type FilterPreviewDialogState = {
+    kind: "filter_preview";
+    open: true;
+    stateKey: string;
+    paramName: string;
+    wizardId: string;
+    title: string;
+    message: string;
+
+    items: MaskRadiusDialogItem[];
+    selectedIndex: number;
+
+    originalPreviewUrl: string | null;
+    filteredPreviewUrl: string | null;
+
+    lowFreq: number;
+    lowFreqMin: number;
+    lowFreqMax: number;
+
+    highFreq: number;
+    highFreqMin: number;
+    highFreqMax: number;
+
+    decay: number;
+    decayMin: number;
+    decayMax: number;
+
+    freqStep: number;
+    unitLabel: string;
+    filterMode: string;
+
+    lowFreqParamName: string;
+    highFreqParamName: string;
+    decayParamName: string;
+};
+
 export type ClosedWizardState = {
     kind: "closed";
     open: false;
@@ -149,12 +185,70 @@ export type ActiveWizardState =
     | WizardInputDialogState
     | MaskRadiusDialogState
     | MaskRadiiDialogState
-    | CtfPreviewDialogState;
+    | CtfPreviewDialogState
+    | FilterPreviewDialogState;
 
 export const closedWizardState: ClosedWizardState = {
     kind: "closed",
     open: false,
 };
+
+export function viewerStateToFilterPreviewDialogState(args: {
+    stateKey: string;
+    paramName: string;
+    wizardId: string;
+    title: string;
+    message: string;
+    viewerState: ExecuteProtocolWizardViewerState | null;
+    previewUrl: string | null;
+}): FilterPreviewDialogState {
+    const {
+        stateKey,
+        paramName,
+        wizardId,
+        title,
+        message,
+        viewerState,
+        previewUrl,
+    } = args;
+
+    const items = normalizeWizardViewerItems(viewerState?.items);
+    const normalizedSelectedIndex = Math.max(
+        1,
+        Number(viewerState?.selectedIndex ?? items[0]?.index ?? 1) || items[0]?.index || 1,
+    );
+
+    return {
+        kind: "filter_preview",
+        open: true,
+        stateKey,
+        paramName,
+        wizardId,
+        title,
+        message,
+        items,
+        selectedIndex: normalizedSelectedIndex,
+        originalPreviewUrl:
+            String(viewerState?.originalPreview?.imageUrl ?? "").trim() || previewUrl,
+        filteredPreviewUrl:
+            String(viewerState?.filteredPreview?.imageUrl ?? "").trim() || previewUrl,
+        lowFreq: Number(viewerState?.lowFreq ?? 0) || 0,
+        lowFreqMin: Number(viewerState?.lowFreqMin ?? 0) || 0,
+        lowFreqMax: Number(viewerState?.lowFreqMax ?? 1) || 1,
+        highFreq: Number(viewerState?.highFreq ?? 0) || 0,
+        highFreqMin: Number(viewerState?.highFreqMin ?? 0) || 0,
+        highFreqMax: Number(viewerState?.highFreqMax ?? 1) || 1,
+        decay: Number(viewerState?.decay ?? 0) || 0,
+        decayMin: Number(viewerState?.decayMin ?? 0) || 0,
+        decayMax: Number(viewerState?.decayMax ?? 1) || 1,
+        freqStep: Number(viewerState?.freqStep ?? 0.01) || 0.01,
+        unitLabel: String(viewerState?.unitLabel ?? "").trim(),
+        filterMode: String(viewerState?.filterMode ?? "").trim(),
+        lowFreqParamName: String(viewerState?.lowFreqParam ?? "lowFreq").trim() || "lowFreq",
+        highFreqParamName: String(viewerState?.highFreqParam ?? "highFreq").trim() || "highFreq",
+        decayParamName: String(viewerState?.decayParam ?? "decay").trim() || "decay",
+    };
+}
 
 export function normalizeWizardViewerItems(
     raw: unknown,

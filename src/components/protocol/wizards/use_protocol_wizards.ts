@@ -23,6 +23,7 @@ import {
     closedWizardState,
     type ActiveWizardState,
     viewerStateToCtfPreviewDialogState,
+    viewerStateToFilterPreviewDialogState,
     viewerStateToMaskRadiusDialogState,
     viewerStateToMaskRadiiDialogState,
 } from "./protocol_wizard_types";
@@ -201,6 +202,35 @@ export function useProtocolWizards({
                 closeWizard();
                 return;
             }
+            if (wizardState.kind === "filter_preview") {
+                const result = await svc.executeProtocolWizard(projectId, {
+                    protocolId: protocolId ?? null,
+                    protocolClassName,
+                    paramName: wizardState.paramName,
+                    wizardId: wizardState.wizardId,
+                    formValues: getSerializedParams(),
+                    wizardInputs: {
+                        action: "apply",
+                        selectedIndex: wizardState.selectedIndex,
+                        lowFreq: wizardState.lowFreq,
+                        highFreq: wizardState.highFreq,
+                        decay: wizardState.decay,
+                    },
+                });
+
+                const updates =
+                    result?.paramUpdates && typeof result.paramUpdates === "object"
+                        ? { ...result.paramUpdates }
+                        : {};
+
+                if (Object.keys(updates).length > 0) {
+                    applyWizardParamUpdates(updates);
+                }
+
+                toast.success(result?.message?.trim() || "Wizard executed successfully.");
+                closeWizard();
+                return;
+            }
         } catch (err: any) {
             const payload = getBackendPayloadFromError(err);
             const errors = getErrorsFromBackendPayload(payload);
@@ -235,7 +265,8 @@ export function useProtocolWizards({
             if (
                 wizardState.kind !== "mask_radius" &&
                 wizardState.kind !== "mask_radii" &&
-                wizardState.kind !== "ctf_preview"
+                wizardState.kind !== "ctf_preview" &&
+                wizardState.kind !== "filter_preview"
             ) {
                 return;
             }
@@ -458,6 +489,73 @@ export function useProtocolWizards({
                                     : prev.autoDownsampleValue,
                         };
                     }
+                    if (prev.kind === "filter_preview") {
+                        const nextSelectedIndex = Math.max(
+                            1,
+                            Number(
+                                viewerState?.selectedIndex ?? wizardInputs.selectedIndex ?? prev.selectedIndex,
+                            ) || prev.selectedIndex,
+                        );
+
+                        const nextLowFreq =
+                            wizardInputs.lowFreq != null
+                                ? Number(wizardInputs.lowFreq) || prev.lowFreq
+                                : prev.lowFreq;
+
+                        const nextHighFreq =
+                            wizardInputs.highFreq != null
+                                ? Number(wizardInputs.highFreq) || prev.highFreq
+                                : prev.highFreq;
+
+                        const nextDecay =
+                            wizardInputs.decay != null
+                                ? Number(wizardInputs.decay) || prev.decay
+                                : prev.decay;
+
+                        return {
+                            ...prev,
+                            selectedIndex: nextSelectedIndex,
+                            items: Array.isArray(viewerState?.items) ? viewerState.items : prev.items,
+                            originalPreviewUrl:
+                                resolveWizardPreviewUrl(svc, viewerState?.originalPreview?.imageUrl) ??
+                                prev.originalPreviewUrl ??
+                                previewUrl,
+                            filteredPreviewUrl:
+                                resolveWizardPreviewUrl(svc, viewerState?.filteredPreview?.imageUrl) ??
+                                prev.filteredPreviewUrl ??
+                                previewUrl,
+                            lowFreq: nextLowFreq,
+                            lowFreqMin:
+                                Number(viewerState?.lowFreqMin ?? prev.lowFreqMin) || prev.lowFreqMin,
+                            lowFreqMax:
+                                Number(viewerState?.lowFreqMax ?? prev.lowFreqMax) || prev.lowFreqMax,
+                            highFreq: nextHighFreq,
+                            highFreqMin:
+                                Number(viewerState?.highFreqMin ?? prev.highFreqMin) || prev.highFreqMin,
+                            highFreqMax:
+                                Number(viewerState?.highFreqMax ?? prev.highFreqMax) || prev.highFreqMax,
+                            decay: nextDecay,
+                            decayMin:
+                                Number(viewerState?.decayMin ?? prev.decayMin) || prev.decayMin,
+                            decayMax:
+                                Number(viewerState?.decayMax ?? prev.decayMax) || prev.decayMax,
+                            freqStep:
+                                Number(viewerState?.freqStep ?? prev.freqStep) || prev.freqStep,
+                            unitLabel:
+                                String(viewerState?.unitLabel ?? prev.unitLabel).trim() || prev.unitLabel,
+                            filterMode:
+                                String(viewerState?.filterMode ?? prev.filterMode).trim() || prev.filterMode,
+                            lowFreqParamName:
+                                String(viewerState?.lowFreqParam ?? prev.lowFreqParamName).trim() ||
+                                prev.lowFreqParamName,
+                            highFreqParamName:
+                                String(viewerState?.highFreqParam ?? prev.highFreqParamName).trim() ||
+                                prev.highFreqParamName,
+                            decayParamName:
+                                String(viewerState?.decayParam ?? prev.decayParamName).trim() ||
+                                prev.decayParamName,
+                        };
+                    }
 
                     return prev;
                 });
@@ -643,6 +741,37 @@ export function useProtocolWizards({
 
                     setWizardState(
                         viewerStateToCtfPreviewDialogState({
+                            stateKey,
+                            paramName,
+                            wizardId: wizard.id,
+                            title: String(inputSchema.title ?? mergedDef?.label ?? paramName),
+                            message: String(result?.message ?? "").trim(),
+                            viewerState,
+                            previewUrl,
+                        }),
+                    );
+
+                    return;
+                }
+
+                if (result?.requiresUserInput && inputSchema?.type === "filter_preview") {
+                    const deferredUpdates = { ...updates };
+                    delete deferredUpdates[paramName];
+
+                    if (Object.keys(deferredUpdates).length > 0) {
+                        applyWizardParamUpdates(deferredUpdates);
+                    }
+
+                    const viewerState: ExecuteProtocolWizardViewerState | null =
+                        result?.viewerState ?? null;
+
+                    const previewUrl = resolveWizardPreviewUrl(
+                        svc,
+                        viewerState?.preview?.imageUrl,
+                    );
+
+                    setWizardState(
+                        viewerStateToFilterPreviewDialogState({
                             stateKey,
                             paramName,
                             wizardId: wizard.id,
@@ -1025,6 +1154,120 @@ export function useProtocolWizards({
         [wizardState, refreshInteractiveWizardPreview],
     );
 
+
+    const setFilterLowFreqValue = useCallback((value: number) => {
+        setWizardState((prev) =>
+            prev.kind === "filter_preview"
+                ? {
+                    ...prev,
+                    lowFreq: Math.max(prev.lowFreqMin, Math.min(value, prev.lowFreqMax)),
+                }
+                : prev,
+        );
+    }, []);
+
+    const commitFilterLowFreqValue = useCallback(
+        async (value: number) => {
+            if (wizardState.kind !== "filter_preview") return;
+
+            const nextValue = Math.max(
+                wizardState.lowFreqMin,
+                Math.min(value, wizardState.lowFreqMax),
+            );
+
+            await refreshInteractiveWizardPreview({
+                selectedIndex: wizardState.selectedIndex,
+                lowFreq: nextValue,
+                highFreq: wizardState.highFreq,
+                decay: wizardState.decay,
+            });
+        },
+        [wizardState, refreshInteractiveWizardPreview],
+    );
+
+    const setFilterHighFreqValue = useCallback((value: number) => {
+        setWizardState((prev) =>
+            prev.kind === "filter_preview"
+                ? {
+                    ...prev,
+                    highFreq: Math.max(prev.highFreqMin, Math.min(value, prev.highFreqMax)),
+                }
+                : prev,
+        );
+    }, []);
+
+    const commitFilterHighFreqValue = useCallback(
+        async (value: number) => {
+            if (wizardState.kind !== "filter_preview") return;
+
+            const nextValue = Math.max(
+                wizardState.highFreqMin,
+                Math.min(value, wizardState.highFreqMax),
+            );
+
+            await refreshInteractiveWizardPreview({
+                selectedIndex: wizardState.selectedIndex,
+                lowFreq: wizardState.lowFreq,
+                highFreq: nextValue,
+                decay: wizardState.decay,
+            });
+        },
+        [wizardState, refreshInteractiveWizardPreview],
+    );
+
+    const setFilterDecayValue = useCallback((value: number) => {
+        setWizardState((prev) =>
+            prev.kind === "filter_preview"
+                ? {
+                    ...prev,
+                    decay: Math.max(prev.decayMin, Math.min(value, prev.decayMax)),
+                }
+                : prev,
+        );
+    }, []);
+
+    const commitFilterDecayValue = useCallback(
+        async (value: number) => {
+            if (wizardState.kind !== "filter_preview") return;
+
+            const nextValue = Math.max(
+                wizardState.decayMin,
+                Math.min(value, wizardState.decayMax),
+            );
+
+            await refreshInteractiveWizardPreview({
+                selectedIndex: wizardState.selectedIndex,
+                lowFreq: wizardState.lowFreq,
+                highFreq: wizardState.highFreq,
+                decay: nextValue,
+            });
+        },
+        [wizardState, refreshInteractiveWizardPreview],
+    );
+
+    const setFilterSelectedIndex = useCallback(
+        async (value: number) => {
+            setWizardState((prev) =>
+                prev.kind === "filter_preview"
+                    ? {
+                        ...prev,
+                        selectedIndex: value,
+                    }
+                    : prev,
+            );
+
+            if (wizardState.kind !== "filter_preview") return;
+
+            await refreshInteractiveWizardPreview({
+                selectedIndex: value,
+                lowFreq: wizardState.lowFreq,
+                highFreq: wizardState.highFreq,
+                decay: wizardState.decay,
+            });
+        },
+        [wizardState, refreshInteractiveWizardPreview],
+    );
+
     return {
         wizardState,
         openingWizard,
@@ -1049,5 +1292,13 @@ export function useProtocolWizards({
         setCtfHighFreqValue,
         commitCtfHighFreqValue,
         setCtfSelectedIndex,
+        setFilterLowFreqValue,
+        commitFilterLowFreqValue,
+        setFilterHighFreqValue,
+        commitFilterHighFreqValue,
+        setFilterDecayValue,
+        commitFilterDecayValue,
+        setFilterSelectedIndex,
+
     };
 }

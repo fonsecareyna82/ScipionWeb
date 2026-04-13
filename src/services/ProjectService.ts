@@ -760,6 +760,34 @@ export type ExecuteProtocolWizardInputSchema =
       max?: number;
       step?: number;
     }>;
+  }
+  | {
+    type: "filter_preview";
+    paramName: string;
+    title?: string;
+    fields: Array<{
+      name: string;
+      label: string;
+      kind: "number";
+      value: number;
+      min?: number;
+      max?: number;
+      step?: number;
+    }>;
+  }
+  | {
+    type: "gaussian_preview";
+    paramName: string;
+    title?: string;
+    fields: Array<{
+      name: string;
+      label: string;
+      kind: "number";
+      value: number;
+      min?: number;
+      max?: number;
+      step?: number;
+    }>;
   };
 
 export type ExecuteProtocolWizardPreview = {
@@ -826,7 +854,7 @@ export type ExecuteProtocolWizardViewerState = {
     sourceHeight?: number | null;
   } | null;
 
-    micrographPreview?: {
+  micrographPreview?: {
     imageUrl?: string | null;
     width?: number | null;
     height?: number | null;
@@ -843,7 +871,33 @@ export type ExecuteProtocolWizardViewerState = {
     sourceWidth?: number | null;
     sourceHeight?: number | null;
   } | null;
-  
+
+  decay?: number | null;
+  decayMin?: number | null;
+  decayMax?: number | null;
+
+  freqInAngstrom?: boolean | null;
+  unitLabel?: string | null;
+  filterMode?: string | null;
+  decayParam?: string | null;
+
+  originalPreview?: {
+    imageUrl?: string | null;
+    width?: number | null;
+    height?: number | null;
+    caption?: string | null;
+    sourceWidth?: number | null;
+    sourceHeight?: number | null;
+  } | null;
+
+  filteredPreview?: {
+    imageUrl?: string | null;
+    width?: number | null;
+    height?: number | null;
+    caption?: string | null;
+    sourceWidth?: number | null;
+    sourceHeight?: number | null;
+  } | null;
 };
 
 export type ExecuteProtocolWizardPayload = {
