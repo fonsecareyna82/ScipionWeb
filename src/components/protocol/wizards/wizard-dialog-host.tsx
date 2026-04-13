@@ -9,6 +9,7 @@ import type { ActiveWizardState } from "./protocol_wizard_types";
 
 type WizardDialogHostProps = {
     wizardState: ActiveWizardState;
+    previewLoading: boolean;
     onClose: () => void;
     onConfirm: () => void;
     onOptionsSelectedValueChange: (value: string) => void;
@@ -32,6 +33,7 @@ type WizardDialogHostProps = {
 
 export default function WizardDialogHost({
     wizardState,
+    previewLoading,
     onClose,
     onConfirm,
     onOptionsSelectedValueChange,
@@ -158,6 +160,7 @@ export default function WizardDialogHost({
                 onSelectedIndexChange={onCtfSelectedIndexChange}
                 micrographPreviewUrl={wizardState.micrographPreviewUrl}
                 psdPreviewUrl={wizardState.psdPreviewUrl}
+                previewLoading={previewLoading}
                 downsample={wizardState.downsample}
                 downsampleMin={wizardState.downsampleMin}
                 downsampleMax={wizardState.downsampleMax}

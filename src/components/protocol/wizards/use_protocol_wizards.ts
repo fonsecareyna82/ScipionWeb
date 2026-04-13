@@ -60,6 +60,7 @@ export function useProtocolWizards({
         title: "Opening wizard",
         message: "Preparing preview...",
     });
+    const [interactivePreviewLoading, setInteractivePreviewLoading] = useState(false);
     const previewRequestIdRef = useRef(0);
 
     const closeWizard = useCallback(() => {
@@ -239,9 +240,10 @@ export function useProtocolWizards({
                 return;
             }
 
-            try {
-                const requestId = ++previewRequestIdRef.current;
+            const requestId = ++previewRequestIdRef.current;
+            setInteractivePreviewLoading(true);
 
+            try {
                 const result = await svc.executeProtocolWizard(projectId, {
                     protocolId: protocolId ?? null,
                     protocolClassName,
@@ -461,6 +463,10 @@ export function useProtocolWizards({
                 });
             } catch {
                 // Keep current preview state if refresh fails
+            } finally {
+                if (requestId === previewRequestIdRef.current) {
+                    setInteractivePreviewLoading(false);
+                }
             }
         },
         [
@@ -1022,6 +1028,7 @@ export function useProtocolWizards({
     return {
         wizardState,
         openingWizard,
+        interactivePreviewLoading,
         openWizardForParam,
         closeWizard,
         confirmWizard,

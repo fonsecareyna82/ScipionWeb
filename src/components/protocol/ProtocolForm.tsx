@@ -107,6 +107,7 @@ type ProtocolFormProps = {
   /** Presentation variant: "drawer" (default) slides in from the right; "docked" fills its parent panel. */
   variant?: "drawer" | "docked";
   projectEffectiveSettings?: ProjectEffectiveSettings | null;
+  interactivePreviewLoading?: boolean;
 };
 
 type EffectiveHostQueueParam = {
@@ -1347,6 +1348,7 @@ export default function ProtocolForm({
   const {
     wizardState,
     openingWizard,
+    interactivePreviewLoading,
     openWizardForParam,
     closeWizard,
     confirmWizard,
@@ -2944,6 +2946,7 @@ export default function ProtocolForm({
       {/* Wizard selector dialog */}
       <WizardDialogHost
         wizardState={wizardState}
+        previewLoading={interactivePreviewLoading}
         onClose={closeWizard}
         onConfirm={confirmWizard}
         onOptionsSelectedValueChange={setOptionsSelectedValue}
