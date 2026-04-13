@@ -101,8 +101,26 @@ const wizardDialogActionsSx = {
     gap: 1.25,
 };
 
+const psdOuterBg = "#a9a9a9";
+const psdInnerBg = "#9d9d9d";
+const psdGridColor = "rgba(255,255,255,0.22)";
+const psdAxisColor = "rgba(40,40,40,0.58)";
+const psdTickColor = "rgba(25,25,25,0.72)";
+const psdRingColor = "rgb(0, 255, 255)";
+const psdRingHaloColor = "rgba(255,255,255,0.34)";
+
+const plotFrame = {
+    left: 15,
+    top: 5,
+    size: 76,
+};
+
 function hasText(value: string | null | undefined): boolean {
     return Boolean(String(value ?? "").trim());
+}
+
+function clamp(value: number, min: number, max: number): number {
+    return Math.min(Math.max(value, min), max);
 }
 
 function formatFrequencyValue(
@@ -124,6 +142,18 @@ function formatFrequencyValue(
         digitalText,
         angstromText: `${safeValue.toFixed(1)} Å`,
     };
+}
+
+function formatAxisTick(value: number): string {
+    if (Math.abs(value) < 1e-9) {
+        return "0.0";
+    }
+    return value.toFixed(1);
+}
+
+function buildAxisTickValues(axisMax: number): number[] {
+    const half = axisMax / 2;
+    return [-axisMax, -half, 0, half, axisMax];
 }
 
 export default function CtfPreviewDialog({
@@ -168,11 +198,6 @@ export default function CtfPreviewDialog({
     const [localLowFreq, setLocalLowFreq] = React.useState(lowFreq);
     const [localHighFreq, setLocalHighFreq] = React.useState(highFreq);
 
-    const [micrographLoaded, setMicrographLoaded] = React.useState(false);
-    const [psdLoaded, setPsdLoaded] = React.useState(false);
-    const psdImageRef = React.useRef<HTMLImageElement | null>(null);
-    const [psdRenderSize, setPsdRenderSize] = React.useState({ width: 0, height: 0 });
-
     React.useEffect(() => {
         setLocalDownsample(downsample);
         setLocalDownsampleText(String(downsample));
@@ -185,46 +210,6 @@ export default function CtfPreviewDialog({
     React.useEffect(() => {
         setLocalHighFreq(highFreq);
     }, [highFreq]);
-
-    React.useEffect(() => {
-        if (!micrographPreviewUrl) {
-            setMicrographLoaded(false);
-            return;
-        }
-        setMicrographLoaded(false);
-    }, [micrographPreviewUrl]);
-
-    React.useEffect(() => {
-        if (!psdPreviewUrl) {
-            setPsdLoaded(false);
-            return;
-        }
-        setPsdLoaded(false);
-    }, [psdPreviewUrl]);
-
-    const updatePsdRenderSize = React.useCallback(() => {
-        const node = psdImageRef.current;
-        if (!node) return;
-
-        const rect = node.getBoundingClientRect();
-        setPsdRenderSize({
-            width: rect.width,
-            height: rect.height,
-        });
-    }, []);
-
-    React.useLayoutEffect(() => {
-        updatePsdRenderSize();
-
-        const node = psdImageRef.current;
-        if (!node || typeof ResizeObserver === "undefined") return;
-
-        const observer = new ResizeObserver(() => updatePsdRenderSize());
-        observer.observe(node);
-
-        return () => observer.disconnect();
-    }, [psdPreviewUrl, updatePsdRenderSize]);
-
 
     const commitDownsample = React.useCallback(
         (value: number) => {
@@ -269,26 +254,26 @@ export default function CtfPreviewDialog({
     const lowFreqLabel = formatFrequencyValue(localLowFreq, samplingRate, showInAngstroms);
     const highFreqLabel = formatFrequencyValue(localHighFreq, samplingRate, showInAngstroms);
 
-    const psdMinSize = Math.min(psdRenderSize.width, psdRenderSize.height);
-    const psdHalfSize = psdMinSize / 2;
+    const axisMax = React.useMemo(() => {
+        const rawMax = Math.max(localLowFreq, localHighFreq, 0.4);
+        return Math.ceil(rawMax / 0.2) * 0.2;
+    }, [localLowFreq, localHighFreq]);
 
-    const frequencyAxisMax = Math.max(
-        lowFreqMax,
-        highFreqMax,
-        localLowFreq,
-        localHighFreq,
-        0.5,
-    );
+    const axisTicks = React.useMemo(() => buildAxisTickValues(axisMax), [axisMax]);
 
-    const lowRingRadius = Math.max(
-        0,
-        Math.min((localLowFreq / frequencyAxisMax) * psdHalfSize, psdHalfSize),
-    );
+    const plotCenterX = plotFrame.left + plotFrame.size / 2;
+    const plotCenterY = plotFrame.top + plotFrame.size / 2;
+    const plotHalf = plotFrame.size / 2;
 
-    const highRingRadius = Math.max(
-        0,
-        Math.min((localHighFreq / frequencyAxisMax) * psdHalfSize, psdHalfSize),
-    );
+    const lowRingRadius = React.useMemo(() => {
+        if (axisMax <= 0) return 0;
+        return clamp((localLowFreq / axisMax) * plotHalf, 0, plotHalf);
+    }, [localLowFreq, axisMax, plotHalf]);
+
+    const highRingRadius = React.useMemo(() => {
+        if (axisMax <= 0) return 0;
+        return clamp((localHighFreq / axisMax) * plotHalf, 0, plotHalf);
+    }, [localHighFreq, axisMax, plotHalf]);
 
     const showLoadingOverlay = previewLoading;
     const loadingLabel = "Updating preview...";
@@ -511,7 +496,6 @@ export default function CtfPreviewDialog({
                                         component="img"
                                         src={micrographPreviewUrl}
                                         alt="Micrograph preview"
-                                        onLoad={() => setMicrographLoaded(true)}
                                         sx={{
                                             display: "block",
                                             width: "100%",
@@ -555,77 +539,139 @@ export default function CtfPreviewDialog({
                                     <Box
                                         sx={{
                                             position: "relative",
-                                            display: "inline-block",
-                                            lineHeight: 0,
                                             width: "100%",
+                                            maxWidth: 360,
+                                            alignSelf: "center",
+                                            aspectRatio: "1 / 1",
+                                            backgroundColor: psdOuterBg,
+                                            border: "1px solid rgba(70,70,70,0.10)",
+                                            boxShadow: "inset 0 1px 0 rgba(255,255,255,0.08)",
                                         }}
                                     >
                                         <Box
                                             component="img"
-                                            ref={psdImageRef}
                                             src={psdPreviewUrl}
                                             alt="PSD preview"
-                                            onLoad={() => {
-                                                setPsdLoaded(true);
-                                                updatePsdRenderSize();
-                                            }}
                                             sx={{
+                                                position: "absolute",
+                                                left: `${plotFrame.left}%`,
+                                                top: `${plotFrame.top}%`,
+                                                width: `${plotFrame.size}%`,
+                                                height: `${plotFrame.size}%`,
+                                                objectFit: "fill",
                                                 display: "block",
-                                                width: "100%",
-                                                maxHeight: 320,
-                                                objectFit: "contain",
                                                 userSelect: "none",
+                                                backgroundColor: psdInnerBg,
                                             }}
                                         />
 
-                                        {psdRenderSize.width > 0 && psdRenderSize.height > 0 && (
-                                            <Box
-                                                component="svg"
-                                                viewBox={`0 0 ${psdRenderSize.width} ${psdRenderSize.height}`}
-                                                sx={{
-                                                    position: "absolute",
-                                                    inset: 0,
-                                                    width: "100%",
-                                                    height: "100%",
-                                                    pointerEvents: "none",
-                                                    overflow: "visible",
-                                                }}
-                                            >
-                                                <circle
-                                                    cx={psdRenderSize.width / 2}
-                                                    cy={psdRenderSize.height / 2}
-                                                    r={lowRingRadius}
-                                                    fill="none"
-                                                    stroke="rgba(255,255,255,0.42)"
-                                                    strokeWidth="6"
-                                                />
-                                                <circle
-                                                    cx={psdRenderSize.width / 2}
-                                                    cy={psdRenderSize.height / 2}
-                                                    r={lowRingRadius}
-                                                    fill="none"
-                                                    stroke="rgb(0, 255, 255)"
-                                                    strokeWidth="2.8"
-                                                />
+                                        <Box
+                                            component="svg"
+                                            viewBox="0 0 100 100"
+                                            preserveAspectRatio="none"
+                                            sx={{
+                                                position: "absolute",
+                                                inset: 0,
+                                                width: "100%",
+                                                height: "100%",
+                                                pointerEvents: "none",
+                                                overflow: "visible",
+                                            }}
+                                        >
+                                            <rect
+                                                x={plotFrame.left}
+                                                y={plotFrame.top}
+                                                width={plotFrame.size}
+                                                height={plotFrame.size}
+                                                fill="none"
+                                                stroke={psdAxisColor}
+                                                strokeWidth="0.35"
+                                            />
 
-                                                <circle
-                                                    cx={psdRenderSize.width / 2}
-                                                    cy={psdRenderSize.height / 2}
-                                                    r={highRingRadius}
-                                                    fill="none"
-                                                    stroke="rgba(255,255,255,0.42)"
-                                                    strokeWidth="6"
-                                                />
-                                                <circle
-                                                    cx={psdRenderSize.width / 2}
-                                                    cy={psdRenderSize.height / 2}
-                                                    r={highRingRadius}
-                                                    fill="none"
-                                                    stroke="rgb(0, 255, 255)"
-                                                    strokeWidth="2.8"
-                                                />
-                                            </Box>
-                                        )}
+                                            {axisTicks.map((tickValue) => {
+                                                const normalized = (tickValue + axisMax) / (2 * axisMax);
+                                                const x = plotFrame.left + normalized * plotFrame.size;
+                                                const y = plotFrame.top + (1 - normalized) * plotFrame.size;
+                                                const isCenter = Math.abs(tickValue) < 1e-9;
+
+                                                return (
+                                                    <React.Fragment key={`grid-${tickValue}`}>
+                                                        <line
+                                                            x1={x}
+                                                            y1={plotFrame.top}
+                                                            x2={x}
+                                                            y2={plotFrame.top + plotFrame.size}
+                                                            stroke={psdGridColor}
+                                                            strokeWidth={isCenter ? 0.34 : 0.22}
+                                                        />
+                                                        <line
+                                                            x1={plotFrame.left}
+                                                            y1={y}
+                                                            x2={plotFrame.left + plotFrame.size}
+                                                            y2={y}
+                                                            stroke={psdGridColor}
+                                                            strokeWidth={isCenter ? 0.34 : 0.22}
+                                                        />
+
+                                                        <text
+                                                            x={plotFrame.left - 1.6}
+                                                            y={y + 0.95}
+                                                            textAnchor="end"
+                                                            fontSize="2.8"
+                                                            fill={psdTickColor}
+                                                            fontFamily="sans-serif"
+                                                        >
+                                                            {formatAxisTick(tickValue)}
+                                                        </text>
+
+                                                        <text
+                                                            x={x}
+                                                            y={plotFrame.top + plotFrame.size + 3.4}
+                                                            textAnchor="middle"
+                                                            fontSize="2.8"
+                                                            fill={psdTickColor}
+                                                            fontFamily="sans-serif"
+                                                        >
+                                                            {formatAxisTick(tickValue)}
+                                                        </text>
+                                                    </React.Fragment>
+                                                );
+                                            })}
+
+                                            <circle
+                                                cx={plotCenterX}
+                                                cy={plotCenterY}
+                                                r={lowRingRadius}
+                                                fill="none"
+                                                stroke={psdRingHaloColor}
+                                                strokeWidth="1.45"
+                                            />
+                                            <circle
+                                                cx={plotCenterX}
+                                                cy={plotCenterY}
+                                                r={lowRingRadius}
+                                                fill="none"
+                                                stroke={psdRingColor}
+                                                strokeWidth="0.62"
+                                            />
+
+                                            <circle
+                                                cx={plotCenterX}
+                                                cy={plotCenterY}
+                                                r={highRingRadius}
+                                                fill="none"
+                                                stroke={psdRingHaloColor}
+                                                strokeWidth="1.45"
+                                            />
+                                            <circle
+                                                cx={plotCenterX}
+                                                cy={plotCenterY}
+                                                r={highRingRadius}
+                                                fill="none"
+                                                stroke={psdRingColor}
+                                                strokeWidth="0.62"
+                                            />
+                                        </Box>
                                     </Box>
                                 ) : (
                                     <Typography variant="body2" sx={{ color: "text.secondary", textAlign: "center" }}>
