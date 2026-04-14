@@ -43,7 +43,10 @@ import type {
   ProjectServiceCapabilities,
   ExecuteProtocolWizardPayload,
   ExecuteProtocolWizardResult,
-  
+  ProtocolExportPayload,
+  WriteRemoteFilePayload,
+  WriteRemoteFileResult,
+
 } from "@/services/ProjectService";
 
 import * as settingsApi from "@/api/settings";
@@ -90,7 +93,7 @@ const defaultService: ProjectService = {
 
   fetchProject: (id: Id) => api.fetchProject(toId(id)),
 
-    // ──────────────────────────── Optional runtime capabilities ────────────────────────────
+  // ──────────────────────────── Optional runtime capabilities ────────────────────────────
 
   getCapabilities: (): ProjectServiceCapabilities => ({
     projectEffectiveSettings: true,
@@ -111,7 +114,7 @@ const defaultService: ProjectService = {
   createProject: (payload: ProjectPayload) =>
     api.createProject(payload.name, (payload.description ?? "").trim()),
 
-    importProject: (payload: ImportProjectPayload) =>
+  importProject: (payload: ImportProjectPayload) =>
     api.importProject(payload),
 
   renameProject: (id: Id, newName: string, newDescription?: string) =>
@@ -173,8 +176,8 @@ const defaultService: ProjectService = {
   listRemoteDirectory: (projectId: Id, protocolId: Id, path: string) =>
     api.listRemoteDirectory(toId(projectId), toId(protocolId), path),
 
-  previewProtocolText: (projectId: Id, protocolId: Id, path: string) =>
-    api.previewProtocolText(toId(projectId), toId(protocolId), path),
+  //previewProtocolText: (projectId: Id, protocolId: Id, path: string) =>
+  //  api.previewProtocolText(toId(projectId), toId(protocolId), path),
 
   buildProtocolDownloadUrl: (
     projectId: Id,
@@ -196,6 +199,18 @@ const defaultService: ProjectService = {
   previewRemoteEntry: (projectId: Id, protocolId: Id, path: string) =>
     api.previewRemoteEntry(toId(projectId), toId(protocolId), path),
 
+  exportProtocols: (
+    projectId: Id,
+    protocolIds: Id[],
+  ): Promise<ProtocolExportPayload> =>
+    api.exportProtocols(toId(projectId), protocolIds.map(toId)),
+
+  writeRemoteFile: (
+    projectId: Id,
+    protocolId: Id,
+    payload: WriteRemoteFilePayload,
+  ): Promise<WriteRemoteFileResult> =>
+    api.writeRemoteFile(toId(projectId), toId(protocolId), payload),
 
   getNextProtocolSuggestions: (
     projectId: Id,
@@ -791,12 +806,12 @@ const defaultService: ProjectService = {
     api.getContextMenuVisibilityPolicy(toId(projectId)),
 
   // ──────────────────────────── Wizards support ────────────────────────────
-  
+
   executeProtocolWizard: (
-  projectId: Id,
-  payload: ExecuteProtocolWizardPayload,
-): Promise<ExecuteProtocolWizardResult> =>
-  api.executeProtocolWizard(toId(projectId), payload),
+    projectId: Id,
+    payload: ExecuteProtocolWizardPayload,
+  ): Promise<ExecuteProtocolWizardResult> =>
+    api.executeProtocolWizard(toId(projectId), payload),
 
 };
 

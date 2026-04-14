@@ -87,7 +87,7 @@ type RemoteFileDialogProps = {
   buildDownloadUrl?: (relPath: string, inline?: boolean) => string;
 
   // when absPath is available, Select returns absPath; otherwise it falls back to relative path
-  onPick?: (path: string) => void;
+  onPick?: (path: string, entry: RemoteEntry) => void;
 };
 
 type SortDir = "asc" | "desc";
@@ -684,11 +684,11 @@ export default function RemoteFileDialog({
   };
 
   const handlePick = () => {
-    if (!selected || !onPick) return;
-    const pickPath = buildPickPathForEntry(selected);
-    onPick(pickPath);
-    onClose();
-  };
+  if (!selected || !onPick) return;
+  const pickPath = buildPickPathForEntry(selected);
+  onPick(pickPath, selected);
+  onClose();
+};
 
   const handleDialogClick: React.MouseEventHandler = (e) => {
     e.stopPropagation();
@@ -1367,8 +1367,12 @@ export default function RemoteFileDialog({
                   </ul>
                 </>
               )}
+
+              
             </div>
           </div>
+
+          
 
           <div className={styles.panel}>
             <div className={styles.previewViewport + " " + previewHeightClass}>{renderPreviewBody()}</div>

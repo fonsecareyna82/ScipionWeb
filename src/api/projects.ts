@@ -28,6 +28,9 @@ import {
   ProjectEffectiveSettings,
   ExecuteProtocolWizardPayload,
   ExecuteProtocolWizardResult,
+  ProtocolExportPayload,
+  WriteRemoteFilePayload,
+  WriteRemoteFileResult,
 } from "@/services/ProjectService";
 
 const ACTION_LAUNCH = "launch";
@@ -855,6 +858,26 @@ export async function duplicateProtocol(
   return safeJson<ProtocolNode[]>(response);
 }
 
+export async function exportProtocols(
+  projectId: Id,
+  protocolIds: Id[],
+): Promise<ProtocolExportPayload> {
+  const response = await fetchWithAuth(
+    `${BASE_URL}/projects/${projectId}/protocols/export`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ protocolIds }),
+    },
+  );
+
+  if (!response.ok) {
+    throw await toApiError(response, "Failed to export protocols");
+  }
+
+  return safeJson<ProtocolExportPayload>(response);
+}
+
 export async function deleteProtocol(projectId: Id, protocolIds: Id[]): Promise<any> {
   const response = await fetchWithAuth(
     `${BASE_URL}/projects/${projectId}/protocols/delete`,
@@ -1671,8 +1694,26 @@ function base64ToBlob(dataBase64OrDataUrl: string, mime: string): Blob {
   return new Blob([bytes], { type: mime || "application/octet-stream" });
 }
 
+export async function writeRemoteFile(
+  projectId: Id,
+  protocolId: Id,
+  payload: WriteRemoteFilePayload,
+): Promise<WriteRemoteFileResult> {
+  const response = await fetchWithAuth(
+    `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/fs/write`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload ?? {}),
+    },
+  );
 
-// projects.ts
+  if (!response.ok) {
+    throw await toApiError(response, "Failed to write remote file");
+  }
+
+  return safeJson<WriteRemoteFileResult>(response);
+}
 
 /**
  * Fetch PSD image for a CTF tomo view given its stack spec (for example "3@/path/TS_1.mrc").
