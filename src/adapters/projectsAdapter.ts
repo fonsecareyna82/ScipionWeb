@@ -43,7 +43,8 @@ import type {
   ProjectServiceCapabilities,
   ExecuteProtocolWizardPayload,
   ExecuteProtocolWizardResult,
-  ProtocolExportPayload,
+  ExportProtocolsRequestPayload,
+  ExportProtocolsResult,
   WriteRemoteFilePayload,
   WriteRemoteFileResult,
 
@@ -201,9 +202,9 @@ const defaultService: ProjectService = {
 
   exportProtocols: (
     projectId: Id,
-    protocolIds: Id[],
-  ): Promise<ProtocolExportPayload> =>
-    api.exportProtocols(toId(projectId), protocolIds.map(toId)),
+    payload: ExportProtocolsRequestPayload,
+  ): Promise<ExportProtocolsResult> =>
+    api.exportProtocols(toId(projectId), payload),
 
   writeRemoteFile: (
     projectId: Id,

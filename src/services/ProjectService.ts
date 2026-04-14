@@ -941,10 +941,18 @@ export type ResolveBrowserPathsResult = {
   protocolRoot?: string;
 };
 
-export type ProtocolExportPayload = {
-  filename?: string;
+export type ExportProtocolsRequestPayload = {
+  protocolIds: Id[];
+  directoryPath: string;
+  filename: string;
+};
+
+export type ExportProtocolsResult = {
+  success: boolean;
+  path: string;
+  filename: string;
+  size?: number;
   mimeType?: string;
-  content?: string;
   protocolIds?: Array<Id>;
 };
 
@@ -1528,9 +1536,9 @@ export interface ProjectService<
   // Protocol export (for sharing or external analysis)
   // ─────────────────────────────────────────────────────────────────────────────
   exportProtocols(
-    projectId: Id,
-    protocolIds: Id[],
-  ): Promise<ProtocolExportPayload>;
+  projectId: Id,
+  payload: ExportProtocolsRequestPayload,
+): Promise<ExportProtocolsResult>;
 
   writeRemoteFile(
     projectId: Id,

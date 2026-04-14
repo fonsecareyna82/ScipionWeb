@@ -75,7 +75,7 @@ import type {
   Id,
   ProtocolTag as ServiceProtocolTag,
   ResolveBrowserPathsResult,
-  ProtocolExportPayload,
+  ExportProtocolsRequestPayload,
 } from "@/services/ProjectService";
 
 import type { ProtocolTag } from "@/components/tags/tagTypes";
@@ -209,16 +209,6 @@ type NormalizedOutput = {
   parentId?: string | number;
 };
 
-function joinFsPath(basePath: string, leafName: string): string {
-  const base = String(basePath ?? "")
-    .replace(/\\/g, "/")
-    .replace(/\/+$/g, "");
-  const leaf = String(leafName ?? "")
-    .replace(/\\/g, "/")
-    .replace(/^\/+/g, "");
-
-  return base ? `${base}/${leaf}` : leaf;
-}
 
 const normalizeOutputItem = (outputObj: unknown): NormalizedOutput | null => {
   // normalizeOutputItem
@@ -1043,7 +1033,18 @@ export default function ProtocolNodeCard({
 
   const [exportBrowserOpen, setExportBrowserOpen] = useState(false);
   const [exportBusy, setExportBusy] = useState(false);
-  const [exportPayload, setExportPayload] = useState<ProtocolExportPayload | null>(null);
+  const [exportProtocolIds, setExportProtocolIds] = useState<string[]>([]);
+  const [exportDefaultFilename, setExportDefaultFilename] = useState("protocols_export.json");
+
+  const buildDefaultExportFilename = useCallback((projectId: Id, protocolIds: string[]) => {
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const stamp =
+      `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_` +
+      `${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+
+    return `protocols_export_${String(projectId)}_${stamp}.json`;
+  }, []);
 
   useEffect(() => {
     // cleanupNextStepTooltipTimer
@@ -1741,71 +1742,62 @@ export default function ProtocolNodeCard({
       return;
     }
 
-    const run = async () => {
-      setExportBusy(true);
-
-      try {
-        const payload = await svcRef.current.exportProtocols(
-          normalizedProjectId as Id,
-          protocolIds,
-        );
-
-        const normalized = (payload ?? {}) as ProtocolExportPayload;
-        if (typeof normalized.content !== "string" || !normalized.content.trim()) {
-          throw new Error("Backend returned an empty export payload.");
-        }
-
-        setExportPayload(normalized);
-        setExportBrowserOpen(true);
-      } catch (e: any) {
-        toast.error(coerceErrorMessage(e, "Failed to export protocols"));
-      } finally {
-        setExportBusy(false);
-      }
-    };
-
-    void run();
-  }, [getSelectedProtocolIdsForExport, isProjectNode, normalizedProjectId]);
+    setExportProtocolIds(protocolIds);
+    setExportDefaultFilename(buildDefaultExportFilename(normalizedProjectId, protocolIds));
+    setExportBrowserOpen(true);
+  }, [
+    buildDefaultExportFilename,
+    getSelectedProtocolIdsForExport,
+    isProjectNode,
+    normalizedProjectId,
+  ]);
 
   const handlePickExportTarget = useCallback(
-    (pickedPath: string, entry: RemoteEntry) => {
-      const rawPath = String(pickedPath ?? "").trim();
-      if (!rawPath) {
-        toast.error("Please choose a destination.");
+    (directoryPath: string, _entry: RemoteEntry, filename?: string) => {
+      if (normalizedProjectId == null) {
+        toast.error("Project id is not available.");
         return;
       }
 
-      const payload = exportPayload;
-      const content = payload?.content;
+      const finalDirectoryPath = String(directoryPath ?? "").trim();
+      const finalFilename = String(filename ?? "").trim();
+      const protocolIds = exportProtocolIds;
 
-      if (typeof content !== "string" || !content.trim()) {
-        toast.error("Missing export payload.");
+      if (!finalDirectoryPath) {
+        toast.error("Please choose a destination folder.");
         return;
       }
 
-      const defaultFileName =
-        String(payload?.filename ?? "").trim() || "protocols_export.json";
+      if (!finalFilename) {
+        toast.error("Please provide a file name.");
+        return;
+      }
 
-      const mimeType =
-        String(payload?.mimeType ?? "").trim() || "application/json";
-
-      const finalPath = entry?.isDir ? joinFsPath(rawPath, defaultFileName) : rawPath;
+      if (!protocolIds.length) {
+        toast.error("No protocols selected to export.");
+        return;
+      }
 
       const run = async () => {
         setExportBusy(true);
 
         try {
-          await svcRef.current.writeRemoteFile("-1", "-1", {
-            path: finalPath,
-            content,
-            mimeType,
-          });
+          const payload: ExportProtocolsRequestPayload = {
+            protocolIds,
+            directoryPath: finalDirectoryPath,
+            filename: finalFilename,
+          };
 
-          toast.success(`Export saved as ${defaultFileName}`);
+          const result = await svcRef.current.exportProtocols(
+            normalizedProjectId as Id,
+            payload,
+          );
+
+          toast.success(`Export saved as ${result.filename ?? finalFilename}`);
           setExportBrowserOpen(false);
-          setExportPayload(null);
+          setExportProtocolIds([]);
         } catch (e: any) {
-          toast.error(coerceErrorMessage(e, "Failed to save export file"));
+          toast.error(coerceErrorMessage(e, "Failed to export protocols"));
         } finally {
           setExportBusy(false);
         }
@@ -1813,13 +1805,13 @@ export default function ProtocolNodeCard({
 
       void run();
     },
-    [exportPayload],
+    [exportProtocolIds, normalizedProjectId],
   );
 
   const handleCloseExportBrowser = useCallback(() => {
     if (exportBusy) return;
     setExportBrowserOpen(false);
-    setExportPayload(null);
+    setExportProtocolIds([]);
   }, [exportBusy]);
 
   const mod = isMac ? "⌘" : "Ctrl";
@@ -3188,13 +3180,19 @@ export default function ProtocolNodeCard({
         </Dialog>
       ) : null}
 
-      {exportBrowserOpen && exportPayload ? (
+      {exportBrowserOpen ? (
         <RemoteFileDialog
           open
           onClose={handleCloseExportBrowser}
-          title="Select export destination"
+          title="Export protocols"
           projectId={-1}
           protocolId={-1}
+          mode="save"
+          defaultFilename={exportDefaultFilename}
+          filenameLabel="Export file name"
+          confirmLabel={exportBusy ? "Saving..." : "Save"}
+          closeOnPick={false}
+          busy={exportBusy}
           resolveBrowserPaths={resolveExportBrowserPaths}
           listRemoteDirectory={listExportRemoteDirectory}
           previewRemoteEntry={previewExportRemoteEntry}

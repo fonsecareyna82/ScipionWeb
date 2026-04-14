@@ -64,6 +64,8 @@ type ResolveBrowserPathsResult = {
   startPath?: string; // relative-to-root preferred ("" means root)
 };
 
+type RemoteFileDialogMode = "select" | "save";
+
 type RemoteFileDialogProps = {
   open: boolean;
   onClose: () => void;
@@ -74,20 +76,19 @@ type RemoteFileDialogProps = {
 
   // initialPathRel: relative to root ("" means root)
   initialPath?: string;
-
-  // resolveBrowserPaths: returns startPath and optionally rootAbs
   resolveBrowserPaths?: () => Promise<ResolveBrowserPathsResult>;
-
-  // returns items only
   listRemoteDirectory: (relPath: string) => Promise<RemoteEntry[]>;
-
-  // unifiedPreviewContract
   previewRemoteEntry?: (relPath: string) => Promise<RemotePreview | null>;
-
   buildDownloadUrl?: (relPath: string, inline?: boolean) => string;
 
-  // when absPath is available, Select returns absPath; otherwise it falls back to relative path
-  onPick?: (path: string, entry: RemoteEntry) => void;
+  mode?: RemoteFileDialogMode;
+  defaultFilename?: string;
+  filenameLabel?: string;
+  confirmLabel?: string;
+  closeOnPick?: boolean;
+  busy?: boolean;
+
+  onPick?: (path: string, entry: RemoteEntry, filename?: string) => void;
 };
 
 type SortDir = "asc" | "desc";
@@ -103,6 +104,12 @@ export default function RemoteFileDialog({
   protocolId,
   buildDownloadUrl,
   onPick,
+  mode = "select",
+  defaultFilename = "",
+  filenameLabel = "File name",
+  confirmLabel,
+  closeOnPick = true,
+  busy = false,
 }: RemoteFileDialogProps) {
   // directoryState (cwdRel is relative to root; "" means root)
   const [cwdRel, setCwdRel] = useState<string>(initialPath);
@@ -142,9 +149,28 @@ export default function RemoteFileDialog({
 
   // fixedLayoutSizes
   const dialogWidthClass = styles.dialogWidth;
-  const dialogHeightClass = styles.dialogHeight;
-  const browserHeightClass = styles.browserHeight;
-  const previewHeightClass = styles.previewHeight;
+  const dialogHeightClass =
+    mode === "save"
+      ? `${styles.dialogHeight} ${styles.dialogHeightSave}`
+      : styles.dialogHeight;
+
+  const browserHeightClass =
+    mode === "save"
+      ? `${styles.browserHeight} ${styles.browserHeightSave}`
+      : styles.browserHeight;
+
+  const previewHeightClass =
+    mode === "save"
+      ? `${styles.previewHeight} ${styles.previewHeightSave}`
+      : styles.previewHeight;
+
+  // controlledFilenameInputForSaveMode
+  const [saveFilename, setSaveFilename] = useState<string>(defaultFilename);
+
+  useEffect(() => {
+    if (!open) return;
+    setSaveFilename(defaultFilename || "");
+  }, [open, defaultFilename]);
 
   useEffect(() => {
     // ensureDialogPortalRootExists
@@ -680,15 +706,37 @@ export default function RemoteFileDialog({
 
   const handleSelectEntry = (entry: RemoteEntry) => {
     setSelected(entry);
+
+    if (mode === "save" && !entry.isDir && entry.name) {
+      setSaveFilename(entry.name);
+    }
+
     void loadUnifiedPreview(entry);
   };
 
   const handlePick = () => {
-  if (!selected || !onPick) return;
-  const pickPath = buildPickPathForEntry(selected);
-  onPick(pickPath, selected);
-  onClose();
-};
+    if (!onPick) return;
+
+    if (mode === "save") {
+      const filename = String(saveFilename ?? "").trim();
+      if (!filename) return;
+
+      const entry = selected ?? buildSyntheticCurrentDirEntry();
+      const directoryPath = buildSaveDirectoryPath();
+
+      onPick(directoryPath, entry, filename);
+
+      if (closeOnPick) onClose();
+      return;
+    }
+
+    if (!selected) return;
+
+    const pickPath = buildPickPathForEntry(selected);
+    onPick(pickPath, selected);
+
+    if (closeOnPick) onClose();
+  };
 
   const handleDialogClick: React.MouseEventHandler = (e) => {
     e.stopPropagation();
@@ -1111,6 +1159,36 @@ export default function RemoteFileDialog({
     return <div className={styles.centerPlaceholder}>No preview available.</div>;
   };
 
+  const buildCurrentDirectoryPickPath = () => {
+    const root = normalizePosixPath(browserRootAbs || "").replace(/\/+$/g, "");
+    if (root) {
+      return cwdRel ? `${root}/${cwdRel}` : root;
+    }
+    return cwdRel || "";
+  };
+
+  const buildSyntheticCurrentDirEntry = (): RemoteEntry => {
+    const parts = normalizeRelPath(cwdRel || "").split("/").filter(Boolean);
+    const name = parts[parts.length - 1] || ".";
+    return {
+      name,
+      path: cwdRel || "",
+      absPath: buildCurrentDirectoryPickPath(),
+      isDir: true,
+    };
+  };
+
+  const buildSaveDirectoryPath = () => {
+    if (!selected) return buildCurrentDirectoryPickPath();
+
+    const picked = buildPickPathForEntry(selected);
+    if (selected.isDir) return picked;
+
+    const normalized = normalizePosixPath(picked);
+    const parent = normalized.replace(/\/+$/g, "").replace(/\/[^/]+$/g, "");
+    return parent || buildCurrentDirectoryPickPath();
+  };
+
   return (
     <Dialog
       open={open}
@@ -1368,19 +1446,38 @@ export default function RemoteFileDialog({
                 </>
               )}
 
-              
+
             </div>
           </div>
 
-          
+
 
           <div className={styles.panel}>
             <div className={styles.previewViewport + " " + previewHeightClass}>{renderPreviewBody()}</div>
           </div>
         </div>
 
+        {mode === "save" && (
+          <div className={styles.saveBar}>
+            <label className={styles.saveLabel}>{filenameLabel}</label>
+            <input
+              value={saveFilename}
+              onChange={(e) => setSaveFilename(e.target.value)}
+              placeholder="protocols_export.json"
+              className={styles.saveInput}
+              aria-label={filenameLabel}
+              disabled={busy}
+            />
+          </div>
+        )}
+
         <div className={styles.footer}>
-          <button type="button" className={styles.ppDialogBtn} onClick={onClose}>
+          <button
+            type="button"
+            className={styles.ppDialogBtn}
+            onClick={onClose}
+            disabled={busy}
+          >
             Close
           </button>
 
@@ -1388,9 +1485,14 @@ export default function RemoteFileDialog({
             type="button"
             className={[styles.ppDialogBtn, styles.ppDialogBtnPrimary].join(" ")}
             onClick={handlePick}
-            disabled={!selected}
+            disabled={
+              busy ||
+              (mode === "save"
+                ? !String(saveFilename ?? "").trim()
+                : !selected)
+            }
           >
-            Select
+            {confirmLabel ?? (mode === "save" ? "Save" : "Select")}
           </button>
         </div>
       </DialogContent>

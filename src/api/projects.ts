@@ -28,7 +28,8 @@ import {
   ProjectEffectiveSettings,
   ExecuteProtocolWizardPayload,
   ExecuteProtocolWizardResult,
-  ProtocolExportPayload,
+  ExportProtocolsRequestPayload,
+  ExportProtocolsResult,
   WriteRemoteFilePayload,
   WriteRemoteFileResult,
 } from "@/services/ProjectService";
@@ -860,14 +861,14 @@ export async function duplicateProtocol(
 
 export async function exportProtocols(
   projectId: Id,
-  protocolIds: Id[],
-): Promise<ProtocolExportPayload> {
+  payload: ExportProtocolsRequestPayload,
+): Promise<ExportProtocolsResult> {
   const response = await fetchWithAuth(
     `${BASE_URL}/projects/${projectId}/protocols/export`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ protocolIds }),
+      body: JSON.stringify(payload ?? {}),
     },
   );
 
@@ -875,7 +876,7 @@ export async function exportProtocols(
     throw await toApiError(response, "Failed to export protocols");
   }
 
-  return safeJson<ProtocolExportPayload>(response);
+  return safeJson<ExportProtocolsResult>(response);
 }
 
 export async function deleteProtocol(projectId: Id, protocolIds: Id[]): Promise<any> {
