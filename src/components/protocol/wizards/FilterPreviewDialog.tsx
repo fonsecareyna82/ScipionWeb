@@ -188,6 +188,27 @@ export default function FilterPreviewDialog({
         [decayMin, decayMax, onDecayChange, onDecayCommit],
     );
 
+    const debounceRef = React.useRef<number | null>(null);
+
+    const scheduleCommit = React.useCallback((fn: () => void) => {
+        if (debounceRef.current != null) {
+            window.clearTimeout(debounceRef.current);
+        }
+
+        debounceRef.current = window.setTimeout(() => {
+            fn();
+            debounceRef.current = null;
+        }, 120);
+    }, []);
+
+    React.useEffect(() => {
+        return () => {
+            if (debounceRef.current != null) {
+                window.clearTimeout(debounceRef.current);
+            }
+        };
+    }, []);
+
     return (
         <Dialog
             open={open}
@@ -528,8 +549,11 @@ export default function FilterPreviewDialog({
                                         max={lowFreqMax}
                                         step={freqStep}
                                         value={localLowFreq}
-                                        onChange={(_, value) => setLocalLowFreq(Number(value))}
-                                        onChangeCommitted={(_, value) => commitLowFreq(Number(value))}
+                                        onChange={(_, value) => {
+                                            const nextValue = Number(value);
+                                            setLocalLowFreq(nextValue);
+                                            scheduleCommit(() => commitLowFreq(nextValue));
+                                        }}
                                         valueLabelDisplay="auto"
                                     />
 
@@ -558,8 +582,11 @@ export default function FilterPreviewDialog({
                                         max={highFreqMax}
                                         step={freqStep}
                                         value={localHighFreq}
-                                        onChange={(_, value) => setLocalHighFreq(Number(value))}
-                                        onChangeCommitted={(_, value) => commitHighFreq(Number(value))}
+                                        onChange={(_, value) => {
+                                            const nextValue = Number(value);
+                                            setLocalHighFreq(nextValue);
+                                            scheduleCommit(() => commitHighFreq(nextValue));
+                                        }}
                                         valueLabelDisplay="auto"
                                     />
 
@@ -588,8 +615,11 @@ export default function FilterPreviewDialog({
                                         max={decayMax}
                                         step={freqStep}
                                         value={localDecay}
-                                        onChange={(_, value) => setLocalDecay(Number(value))}
-                                        onChangeCommitted={(_, value) => commitDecay(Number(value))}
+                                        onChange={(_, value) => {
+                                            const nextValue = Number(value);
+                                            setLocalDecay(nextValue);
+                                            scheduleCommit(() => commitDecay(nextValue));
+                                        }}
                                         valueLabelDisplay="auto"
                                     />
 
