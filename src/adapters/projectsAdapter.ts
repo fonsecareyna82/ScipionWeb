@@ -41,6 +41,8 @@ import type {
   HostSettingsPatch,
   ProjectEffectiveSettings,
   ProjectServiceCapabilities,
+  ExecuteProtocolWizardPayload,
+  ExecuteProtocolWizardResult,
   
 } from "@/services/ProjectService";
 
@@ -787,6 +789,14 @@ const defaultService: ProjectService = {
     projectId: Id,
   ): Promise<ContextMenuVisibilityPolicy> =>
     api.getContextMenuVisibilityPolicy(toId(projectId)),
+
+  // ──────────────────────────── Wizards support ────────────────────────────
+  
+  executeProtocolWizard: (
+  projectId: Id,
+  payload: ExecuteProtocolWizardPayload,
+): Promise<ExecuteProtocolWizardResult> =>
+  api.executeProtocolWizard(toId(projectId), payload),
 
 };
 

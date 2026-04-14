@@ -696,6 +696,240 @@ export type ContextMenuVisibilityPolicy = {
   upload: boolean,
 };
 
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────────
+// Wizards support (protocols that can launch a multi-step form instead of the regular parameter form)
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+export type ExecuteProtocolWizardInputField = {
+  name: string;
+  label?: string;
+  kind: "number" | "text" | "select";
+  value?: string | number | null;
+  min?: number;
+  max?: number;
+  step?: number;
+  options?: Array<{ value: string; label: string }>;
+};
+
+export type ExecuteProtocolWizardInputSchema =
+  | {
+    type: "select";
+    paramName: string;
+    title?: string;
+    options: Array<{ value: string; label: string }>;
+  }
+  | {
+    type: "mask_radius";
+    paramName: string;
+    title?: string;
+    fields: Array<{
+      name: string;
+      label: string;
+      kind: "number";
+      value: number;
+      min?: number;
+      max?: number;
+      step?: number;
+    }>;
+  }
+  | {
+    type: "mask_radii";
+    paramName: string;
+    title?: string;
+    fields: Array<{
+      name: string;
+      label: string;
+      kind: "number";
+      value: number;
+      min?: number;
+      max?: number;
+      step?: number;
+    }>;
+  }
+  | {
+    type: "ctf_preview";
+    paramName: string;
+    title?: string;
+    fields: Array<{
+      name: string;
+      label: string;
+      kind: "number";
+      value: number;
+      min?: number;
+      max?: number;
+      step?: number;
+    }>;
+  }
+  | {
+    type: "filter_preview";
+    paramName: string;
+    title?: string;
+    fields: Array<{
+      name: string;
+      label: string;
+      kind: "number";
+      value: number;
+      min?: number;
+      max?: number;
+      step?: number;
+    }>;
+  }
+  | {
+    type: "gaussian_preview";
+    paramName: string;
+    title?: string;
+    fields: Array<{
+      name: string;
+      label: string;
+      kind: "number";
+      value: number;
+      min?: number;
+      max?: number;
+      step?: number;
+    }>;
+  };
+
+export type ExecuteProtocolWizardPreview = {
+  imageUrl?: string | null;
+  width?: number | null;
+  height?: number | null;
+};
+
+export type ExecuteProtocolWizardViewerItem = {
+  id: string;
+  label: string;
+  index: number;
+};
+
+export type ExecuteProtocolWizardViewerState = {
+  items: ExecuteProtocolWizardViewerItem[];
+  selectedIndex: number;
+
+  radius?: number;
+  radiusMin?: number | null;
+  radiusMax?: number | null;
+  radiusStep?: number | null;
+  radiusAngstrom?: number | null;
+
+  innerRadius?: number;
+  outerRadius?: number;
+  innerRadiusMin?: number | null;
+  outerRadiusMin?: number | null;
+  innerRadiusAngstrom?: number | null;
+  outerRadiusAngstrom?: number | null;
+  primaryParam?: string | null;
+  secondaryParam?: string | null;
+
+  downsample?: number | null;
+  downsampleMin?: number | null;
+  downsampleMax?: number | null;
+  downsampleStep?: number | null;
+
+  lowFreq?: number | null;
+  lowFreqMin?: number | null;
+  lowFreqMax?: number | null;
+
+  highFreq?: number | null;
+  highFreqMin?: number | null;
+  highFreqMax?: number | null;
+
+  freqStep?: number | null;
+  showInAngstroms?: boolean | null;
+
+  downsampleParam?: string | null;
+  lowFreqParam?: string | null;
+  highFreqParam?: string | null;
+
+  autoDownsampling?: boolean | null;
+  autoDownsampleValue?: number | null;
+
+  samplingRate?: number | null;
+  preview?: {
+    imageUrl?: string | null;
+    width?: number | null;
+    height?: number | null;
+    caption?: string | null;
+    sourceWidth?: number | null;
+    sourceHeight?: number | null;
+  } | null;
+
+  micrographPreview?: {
+    imageUrl?: string | null;
+    width?: number | null;
+    height?: number | null;
+    caption?: string | null;
+    sourceWidth?: number | null;
+    sourceHeight?: number | null;
+  } | null;
+
+  psdPreview?: {
+    imageUrl?: string | null;
+    width?: number | null;
+    height?: number | null;
+    caption?: string | null;
+    sourceWidth?: number | null;
+    sourceHeight?: number | null;
+  } | null;
+
+  decay?: number | null;
+  decayMin?: number | null;
+  decayMax?: number | null;
+
+  freqInAngstrom?: boolean | null;
+  unitLabel?: string | null;
+  filterMode?: string | null;
+  decayParam?: string | null;
+
+  originalPreview?: {
+    imageUrl?: string | null;
+    width?: number | null;
+    height?: number | null;
+    caption?: string | null;
+    sourceWidth?: number | null;
+    sourceHeight?: number | null;
+  } | null;
+
+  filteredPreview?: {
+    imageUrl?: string | null;
+    width?: number | null;
+    height?: number | null;
+    caption?: string | null;
+    sourceWidth?: number | null;
+    sourceHeight?: number | null;
+  } | null;
+};
+
+export type ExecuteProtocolWizardPayload = {
+  protocolId?: string | number | null;
+  protocolClassName: string;
+  paramName: string;
+  wizardId: string;
+  formValues: Record<string, any>;
+  wizardInputs?: Record<string, any>;
+};
+
+export type ExecuteProtocolWizardResult = {
+  success: boolean;
+  wizardId: string;
+  kind: string;
+  paramUpdates: Record<string, any>;
+  message?: string | null;
+
+  availableValues?: Array<string | { value: string; label: string }> | null;
+
+  requiresUserInput?: boolean;
+  inputSchema?: ExecuteProtocolWizardInputSchema | null;
+
+  preview?: {
+    imageUrl?: string | null;
+    width?: number | null;
+    height?: number | null;
+  } | null;
+
+  viewerState?: ExecuteProtocolWizardViewerState | null;
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // ProjectService interface
 // ─────────────────────────────────────────────────────────────────────────────  
@@ -761,7 +995,7 @@ export interface ProjectService<
   /** Create a new project. */
   createProject(payload: ProjectPayload): Promise<TProject>;
 
-   /** Import an existing project from a filesystem location. */
+  /** Import an existing project from a filesystem location. */
   importProject(payload: ImportProjectPayload): Promise<TProject>;
 
   /** Rename a project (and optionally update description). */
@@ -1249,4 +1483,13 @@ export interface ProjectService<
   getContextMenuVisibilityPolicy(
     projectId: Id,
   ): Promise<ContextMenuVisibilityPolicy>;
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Wizards support
+  // ─────────────────────────────────────────────────────────────────────────────  
+
+  executeProtocolWizard: (
+    projectId: string | number,
+    payload: ExecuteProtocolWizardPayload
+  ) => Promise<ExecuteProtocolWizardResult>;
 }
