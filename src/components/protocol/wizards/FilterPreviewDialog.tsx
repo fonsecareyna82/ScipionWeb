@@ -145,6 +145,7 @@ export default function FilterPreviewDialog({
     const [localLowFreq, setLocalLowFreq] = React.useState(lowFreq);
     const [localHighFreq, setLocalHighFreq] = React.useState(highFreq);
     const [localDecay, setLocalDecay] = React.useState(decay);
+    const [pendingPreview, setPendingPreview] = React.useState(false);
 
     React.useEffect(() => {
         setLocalLowFreq(lowFreq);
@@ -157,6 +158,22 @@ export default function FilterPreviewDialog({
     React.useEffect(() => {
         setLocalDecay(decay);
     }, [decay]);
+
+    React.useEffect(() => {
+        setPendingPreview(false);
+    }, [
+        originalPreviewUrl,
+        filteredPreviewUrl,
+        lowFreq,
+        highFreq,
+        decay,
+    ]);
+
+    React.useEffect(() => {
+        if (!open) {
+            setPendingPreview(false);
+        }
+    }, [open]);
 
     const commitLowFreq = React.useCallback(
         (value: number) => {
@@ -189,6 +206,22 @@ export default function FilterPreviewDialog({
     );
 
     const debounceRef = React.useRef<number | null>(null);
+    const pendingTimeoutRef = React.useRef<number | null>(null);
+
+    const clearPendingTimeout = React.useCallback(() => {
+        if (pendingTimeoutRef.current != null) {
+            window.clearTimeout(pendingTimeoutRef.current);
+            pendingTimeoutRef.current = null;
+        }
+    }, []);
+
+    const armPendingTimeout = React.useCallback(() => {
+        clearPendingTimeout();
+        pendingTimeoutRef.current = window.setTimeout(() => {
+            setPendingPreview(false);
+            pendingTimeoutRef.current = null;
+        }, 5000);
+    }, [clearPendingTimeout]);
 
     const scheduleCommit = React.useCallback((fn: () => void) => {
         if (debounceRef.current != null) {
@@ -202,12 +235,27 @@ export default function FilterPreviewDialog({
     }, []);
 
     React.useEffect(() => {
+        if (previewLoading) {
+            armPendingTimeout();
+        } else if (!pendingPreview) {
+            clearPendingTimeout();
+        }
+
+        return () => {
+            clearPendingTimeout();
+        };
+    }, [previewLoading, pendingPreview, armPendingTimeout, clearPendingTimeout]);
+
+    React.useEffect(() => {
         return () => {
             if (debounceRef.current != null) {
                 window.clearTimeout(debounceRef.current);
             }
+            clearPendingTimeout();
         };
-    }, []);
+    }, [clearPendingTimeout]);
+
+    const showLoading = pendingPreview || previewLoading;
 
     return (
         <Dialog
@@ -293,7 +341,7 @@ export default function FilterPreviewDialog({
                         minHeight: 0,
                     }}
                 >
-                    {previewLoading && (
+                    {showLoading && (
                         <Box
                             sx={{
                                 position: "absolute",
@@ -322,7 +370,7 @@ export default function FilterPreviewDialog({
                             >
                                 <CircularProgress size={20} />
                                 <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                                    Updating preview...
+                                    Loading preview...
                                 </Typography>
                             </Box>
                         </Box>
@@ -364,6 +412,8 @@ export default function FilterPreviewDialog({
                                     selected={item.index === selectedIndex}
                                     onClick={() => {
                                         if (item.index === selectedIndex) return;
+                                        setPendingPreview(true);
+                                        armPendingTimeout();
                                         onSelectedIndexChange(item.index);
                                     }}
                                     sx={{
@@ -425,6 +475,7 @@ export default function FilterPreviewDialog({
                                 {originalPreviewUrl ? (
                                     <Box
                                         component="img"
+                                        key={originalPreviewUrl ?? "original-preview"}
                                         src={originalPreviewUrl}
                                         alt="Original preview"
                                         sx={{
@@ -469,6 +520,7 @@ export default function FilterPreviewDialog({
                                 {filteredPreviewUrl ? (
                                     <Box
                                         component="img"
+                                        key={filteredPreviewUrl ?? "filtered-preview"}
                                         src={filteredPreviewUrl}
                                         alt="Filtered preview"
                                         sx={{
@@ -551,6 +603,8 @@ export default function FilterPreviewDialog({
                                         value={localLowFreq}
                                         onChange={(_, value) => {
                                             const nextValue = Number(value);
+                                            setPendingPreview(true);
+                                            armPendingTimeout();
                                             setLocalLowFreq(nextValue);
                                             scheduleCommit(() => commitLowFreq(nextValue));
                                         }}
@@ -584,6 +638,8 @@ export default function FilterPreviewDialog({
                                         value={localHighFreq}
                                         onChange={(_, value) => {
                                             const nextValue = Number(value);
+                                            setPendingPreview(true);
+                                            armPendingTimeout();
                                             setLocalHighFreq(nextValue);
                                             scheduleCommit(() => commitHighFreq(nextValue));
                                         }}
@@ -617,6 +673,8 @@ export default function FilterPreviewDialog({
                                         value={localDecay}
                                         onChange={(_, value) => {
                                             const nextValue = Number(value);
+                                            setPendingPreview(true);
+                                            armPendingTimeout();
                                             setLocalDecay(nextValue);
                                             scheduleCommit(() => commitDecay(nextValue));
                                         }}
