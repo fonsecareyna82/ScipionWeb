@@ -5,14 +5,14 @@
   "type": "module",
   "scripts": {
     "dev": "node ./node_modules/vite/bin/vite.js",
-
     "build:web": "cross-env NODE_OPTIONS=--max-old-space-size=12288 vite build --mode app",
     "preview:web": "vite preview --mode app",
-
     "build:widget:list": "WIDGET_BUILD=1 vite build --mode projects && node src/scripts/rename-css.mjs projects",
     "build:widget:page": "WIDGET_BUILD=1 vite build --mode projectpage && node src/scripts/rename-css.mjs projectpage",
     "build:widget:protocoldetail": "WIDGET_BUILD=1 vite build --mode protocoldetail && node src/scripts/rename-css.mjs protocoldetail",
-    "build:widgets": "npm run build:widget:list && npm run build:widget:page && npm run build:widget:protocoldetail"
+    "build:widgets": "npm run build:widget:list && npm run build:widget:page && npm run build:widget:protocoldetail",
+    "test": "vitest --config vitest.config.ts run",
+    "test:watch": "vitest --config vitest.config.ts"
   },
   "engines": {
     "node": ">=20.18.0 <21"
@@ -113,7 +113,9 @@
     "typescript": "~5.7.2",
     "typescript-eslint": "^8.22.0",
     "vite": "^6.1.0",
-    "vite-plugin-svgr": "^4.3.0"
+    "vite-plugin-svgr": "^4.3.0",
+    "jsdom": "^26.1.0",
+    "vitest": "^3.2.4"
   },
   "overrides": {
     "react-helmet-async": {
