@@ -58,7 +58,6 @@ import type {
   ProtocolTagCreatePayload,
   ProtocolTagUpdatePayload,
   ProtocolTagIdsResult,
-
 } from "./services/ProjectService";
 import type { WidgetGlobal } from "./types/global-widget";
 import type { loadWorkflowPayload } from "@/api/projects";
@@ -162,9 +161,8 @@ let mockInstanceSettings: InstanceSettings = {
   requireConfirmBeforeDelete: true,
 };
 
-
-/** defaultMockServiceImplementsFullProjectService */
-const defaultMockService: ProjectService = {
+/** defaultMockServiceImplementsPartialProjectService */
+const defaultMockService: Partial<ProjectService> = {
   async fetchList() {
     return [
       {
@@ -213,6 +211,16 @@ const defaultMockService: ProjectService = {
 
   async deleteProject(_id: Id) {
     return { success: true } as any;
+  },
+
+  async importProject(payload: any) {
+    return {
+      id: `mock-import-${Date.now()}`,
+      name: payload?.projectName || "Imported project",
+      description: "",
+      createdAt: new Date().toISOString(),
+      status: "idle",
+    } as any;
   },
 
   async loadProtocols(_projectId: Id) {
@@ -282,15 +290,11 @@ const defaultMockService: ProjectService = {
     return { id: projectId, protocolId, path, entries: [] } as any;
   },
 
-
   async resolveAnalyzeViewer() {
     return { handled: false } as any;
   },
 
-  async previewProtocolText(projectId: Id, id: string, path: string) {
-    return { id: projectId, action: "previewProtocolText", protocolId: id, path, content: "Mock preview..." } as any;
-  },
-
+ 
   buildProtocolDownloadUrl(projectId: string, protocolId: string, path: string, inline: boolean) {
     return `/download/${encodeURIComponent(String(projectId))}/${encodeURIComponent(
       String(protocolId)
@@ -310,7 +314,6 @@ const defaultMockService: ProjectService = {
     };
     return { blob, meta };
   },
-
 
   async previewRemoteEntry(projectId: Id, id: string, path: string) {
     return { id: projectId, action: "previewProtocolText", protocolId: id, path, content: "Mock preview..." } as any;
@@ -358,7 +361,7 @@ const defaultMockService: ProjectService = {
     _opts?: VolumeSliceOptions
   ): Promise<VolumeSliceObjectUrl> {
     const url = mockSliceDataUrl(Number(sliceIndex));
-    return { url, revoke: () => { } };
+    return { url, revoke: () => {} };
   },
 
   async getVolumeData3d(
@@ -392,7 +395,11 @@ const defaultMockService: ProjectService = {
     sliceIndex: number
   ): Promise<VolumeSliceObjectUrl> {
     const url = mockSliceDataUrl(Number(sliceIndex));
-    return { url, revoke: () => { } };
+    return { url, revoke: () => {} };
+  },
+
+  async createCoords3dOutputFromPoints() {
+    return { success: true, outputName: "mock-output" } as any;
   },
 
   async fetchOutputMetadataTables(_projectId: Id, _protocolId: Id, _outputName: string): Promise<MetadataTableInfo[]> {
@@ -426,11 +433,15 @@ const defaultMockService: ProjectService = {
   },
 
   async fetchMetadataImageCellObjectUrl(): Promise<{ url: string; revoke: () => void }> {
-    return { url: mockSliceDataUrl(0), revoke: () => { } };
+    return { url: mockSliceDataUrl(0), revoke: () => {} };
   },
 
   getMetadataImageCellUrl(): string {
     return mockSliceDataUrl(0);
+  },
+
+  async runMetadataTableAction() {
+    return { success: true } as any;
   },
 
   async listOutputTiltSeries(): Promise<any[]> {
@@ -447,7 +458,7 @@ const defaultMockService: ProjectService = {
     _outputName: string,
     _tiltSeriesId: Id
   ): Promise<ObjectUrlResult> {
-    return { url: mockSliceDataUrl(0), revoke: () => { } };
+    return { url: mockSliceDataUrl(0), revoke: () => {} };
   },
 
   async createNewSetOfTiltSeries(
@@ -497,7 +508,6 @@ const defaultMockService: ProjectService = {
     return { success: true };
   },
 
-  // tagsApiMockImplementations
   async listProjectTags(_projectId: Id): Promise<ProtocolTag[]> {
     return [];
   },
@@ -540,8 +550,6 @@ const defaultMockService: ProjectService = {
     return { tagIds } as any;
   },
 
-
-  // settingsApiMockImplementations
   async fetchUserSettings(): Promise<UserSettings> {
     return { ...mockUserSettings };
   },
@@ -586,14 +594,13 @@ const defaultMockService: ProjectService = {
       signal?: AbortSignal;
     },
   ): Promise<ProtocolLogsChunkResponse> {
-    // Build a valid ProtocolLogsChunkResponse using the provided offsets
     const channelIds = Object.keys(offsets ?? {});
     const safeChannelIds = channelIds.length > 0 ? channelIds : ["default"];
 
     const chunks: Record<string, ProtocolLogChunk> = {};
 
     for (const channelId of safeChannelIds) {
-      const offset = (offsets && offsets[channelId] != null) ? offsets[channelId] : 0;
+      const offset = offsets?.[channelId] != null ? offsets[channelId] : 0;
 
       chunks[channelId] = {
         text: "",
@@ -608,49 +615,71 @@ const defaultMockService: ProjectService = {
   async getNextProtocolSuggestions(_projectId: Id, _protocolId: Id): Promise<any> {
     return [
       {
-        "protocolName": null,
-        "protocolClass": "ProtWarpTSTemplateMatch",
-        "help": null,
-        "installed": "Missing. Available in None plugin."
+        protocolName: null,
+        protocolClass: "ProtWarpTSTemplateMatch",
+        help: null,
+        installed: "Missing. Available in None plugin.",
       },
       {
-        "protocolName": "CryoCARE Prediction",
-        "protocolClass": "ProtCryoCAREPrediction",
-        "help": "Generate the final restored tomogram by applying the cryoCARE trained network to bothtomograms followed by per-pixel averaging.",
-        "installed": "Missing. Available in scipion-em-cryocare plugin."
+        protocolName: "CryoCARE Prediction",
+        protocolClass: "ProtCryoCAREPrediction",
+        help: "Generate the final restored tomogram by applying the cryoCARE trained network to bothtomograms followed by per-pixel averaging.",
+        installed: "Missing. Available in scipion-em-cryocare plugin.",
       },
       {
-        "protocolName": "vectorial picking",
-        "protocolClass": "DynamoBoxing",
-        "help": "Manual vectorial picker from Dynamo. After choosing the Tomogram to be picked, the tomo slicer from Dynamo will be    direclty loaded with all the models previously saved in the disk (if any).    This picking will only save the \"user points\" defined in a set of models. It is possible to    create several models at once in a given tomogram. Once the coordinates are defined,    the models are automatically saved in the catalogue and registered.    Currently the following Dynamo models are supported:        - Ellipsoidal Vesicle",
-        "installed": "Missing. Available in scipion-em-dynamo plugin."
-      }
-    ]
+        protocolName: "vectorial picking",
+        protocolClass: "DynamoBoxing",
+        help: "Manual vectorial picker from Dynamo. After choosing the Tomogram to be picked, the tomo slicer from Dynamo will be direclty loaded with all the models previously saved in the disk (if any). This picking will only save the user points defined in a set of models.",
+        installed: "Missing. Available in scipion-em-dynamo plugin.",
+      },
+    ];
   },
 
-  async getContextMenuVisibilityPolicy(_projectId: Id,): Promise<any> {
+  async getContextMenuVisibilityPolicy(_projectId: Id): Promise<any> {
     return {
-      "open": true,
-      "browse": true,
-      "rename": true,
-      "duplicate": true,
-      "delete": true,
-      "restart": true,
-      "continue": true,
-      "reset": true,
-      "stop": true,
-      "selectFrom": true,
-      "selectTo": true,
-      "manageTags": true,
-      "export": true,
-      "upload": true,
-      "nextSteps": true,
-    }
+      open: true,
+      browse: true,
+      rename: true,
+      duplicate: true,
+      delete: true,
+      restart: true,
+      continue: true,
+      reset: true,
+      stop: true,
+      selectFrom: true,
+      selectTo: true,
+      manageTags: true,
+      export: true,
+      upload: true,
+      nextSteps: true,
+    };
+  },
+
+  async exportProtocols(_projectId: Id, payload: any) {
+    return {
+      success: true,
+      path: `${payload?.directoryPath || ""}/${payload?.filename || "protocols_export.json"}`,
+      filename: payload?.filename || "protocols_export.json",
+      size: 0,
+      mimeType: "application/json",
+      protocolIds: payload?.protocolIds || [],
+    } as any;
+  },
+
+  async writeRemoteFile(_projectId: Id, _protocolId: Id, payload: any) {
+    return {
+      success: true,
+      path: payload?.path || "",
+      size: String(payload?.content || "").length,
+      mimeType: payload?.mimeType || "application/json",
+    } as any;
   },
 };
 
 /** normalizeServiceApiAliasMappingAndSignatureAdapters */
-function normalizeServiceAPI(srv?: any): ProjectService {
+function normalizeServiceAPI(
+  srv?: Partial<ProjectService> | any
+): ProjectService {
   const source = srv ?? defaultMockService;
 
   if (!source || typeof source !== "object") {
@@ -677,12 +706,31 @@ function normalizeServiceAPI(srv?: any): ProjectService {
     }
   };
 
+  // generic authenticated helpers
+  mapFn("resolveBackendUrl", "resolveBackendUrl");
+  mapFn("fetchJsonUrl", "fetchJsonUrl");
+  mapFn("fetchBlobObjectUrl", "fetchBlobObjectUrl");
+
   // projectsApiAliases
   mapFn("fetchList", "listProjects", "list", "fetch");
   mapFn("fetchProject", "getProject", "fetchOne", "get");
-  mapFn("createProject", "create", "newProject");
-  mapFn("renameProject", "rename", "updateProject");
-  mapFn("deleteProject", "delete", "remove", "removeProject");
+  mapFn("createProject", "createProject", "create", "newProject");
+  mapFn("importProject", "importProject");
+  mapFn("renameProject", "renameProject", "rename", "updateProject");
+  mapFn("deleteProject", "deleteProject", "delete", "remove", "removeProject");
+
+  // project thumbnails
+  mapFn(
+    "fetchProjectThumbnailItems",
+    "fetchProjectThumbnailItems",
+    "listProjectThumbnailItems",
+  );
+  mapFn(
+    "fetchProjectThumbnailObjectUrl",
+    "fetchProjectThumbnailObjectUrl",
+    "fetchProjectThumbnail",
+    "getProjectThumbnailObjectUrl",
+  );
 
   // workflowsApiAliases
   mapFn("fetchWorkflows", "listProjectWorkflows", "getProjectWorkflows", "workflows");
@@ -713,7 +761,7 @@ function normalizeServiceAPI(srv?: any): ProjectService {
   );
 
   // fileAndPreviewApiAliases
-  mapFn("resolveProtocolStartPath", "resolveProtocolStartPath");
+  mapFn("resolveBrowserPaths", "resolveBrowserPaths", "resolveProtocolStartPath");
   mapFn("listRemoteDirectory", "listRemoteDirectory");
   mapFn("previewProtocolText", "previewProtocolText");
   mapFn("previewRemoteEntry", "previewRemoteEntry");
@@ -733,6 +781,7 @@ function normalizeServiceAPI(srv?: any): ProjectService {
   mapFn("listCoords3dTomograms", "listCoords3dTomograms");
   mapFn("fetchCoords3dForTomogram", "fetchCoords3dForTomogram");
   mapFn("fetchCoords3dTomogramSliceObjectUrl", "fetchCoords3dTomogramSliceObjectUrl");
+  mapFn("createCoords3dOutputFromPoints", "createCoords3dOutputFromPoints");
 
   // analyzeMetadataApiAliases
   mapFn("fetchOutputMetadataTables", "fetchOutputMetadataTables");
@@ -742,6 +791,7 @@ function normalizeServiceAPI(srv?: any): ProjectService {
   mapFn("fetchMetadataTableWindow", "fetchMetadataTableWindow");
   mapFn("fetchMetadataImageCellObjectUrl", "fetchMetadataImageCellObjectUrl");
   mapFn("getMetadataImageCellUrl", "getMetadataImageCellUrl");
+  mapFn("runMetadataTableAction", "runMetadataTableAction");
 
   // analyzeTiltSeriesApiAliases
   mapFn("listOutputTiltSeries", "listOutputTiltSeries");
@@ -806,11 +856,66 @@ function normalizeServiceAPI(srv?: any): ProjectService {
     "saveProtocolTagIds",
   );
 
-  mapFn("getNextProtocolSuggestions", "nextProtocolSuggestions",);
-  mapFn("getContextMenuVisibilityPolicy", "contextMenuVisibilityPolicy",);
+  mapFn("getNextProtocolSuggestions", "nextProtocolSuggestions");
+  mapFn("getContextMenuVisibilityPolicy", "contextMenuVisibilityPolicy");
+
+  // protocol logs
+  mapFn(
+    "fetchProtocolLogChannels",
+    "fetchProtocolLogChannels",
+    "getProtocolLogChannels",
+  );
+  mapFn(
+    "fetchProtocolLogsChunk",
+    "fetchProtocolLogsChunk",
+    "getProtocolLogsChunk",
+  );
+
+  // analyze: FSC
+  mapFn("fetchFscRows", "fetchFscRows", "getFscRows");
+
+  // settings: user
+  mapFn("fetchUserSettings", "fetchUserSettings", "getUserSettings");
+  mapFn("putUserSettings", "putUserSettings", "updateUserSettings");
+  mapFn("patchUserSettings", "patchUserSettings");
+
+  // settings: instance
+  mapFn("fetchInstanceSettings", "fetchInstanceSettings", "getInstanceSettings");
+  mapFn("putInstanceSettings", "putInstanceSettings", "updateInstanceSettings");
+  mapFn("patchInstanceSettings", "patchInstanceSettings");
+
+  // settings: environment
+  mapFn(
+    "fetchEnvironmentVariables",
+    "fetchEnvironmentVariables",
+    "getEnvironmentVariables",
+  );
+  mapFn(
+    "patchEnvironmentVariables",
+    "patchEnvironmentVariables",
+    "updateEnvironmentVariables",
+  );
+
+  // settings: host
+  mapFn("fetchHostSettings", "fetchHostSettings", "getHostSettings");
+  mapFn("putHostSettings", "putHostSettings", "updateHostSettings");
+  mapFn("patchHostSettings", "patchHostSettings");
+
+  // project effective settings
+  mapFn(
+    "fetchProjectEffectiveSettings",
+    "fetchProjectEffectiveSettings",
+    "getProjectEffectiveSettings",
+  );
+
+  // wizards
+  mapFn("executeProtocolWizard", "executeProtocolWizard");
+
+  // protocol export
+  mapFn("exportProtocols", "exportProtocols");
+  mapFn("writeRemoteFile", "writeRemoteFile");
 
   const ensureFn = (name: string, impl: (...args: any[]) => any) => {
-    // ensureFn
     if (typeof normalized[name] !== "function") {
       normalized[name] = impl;
     }
@@ -820,8 +925,6 @@ function normalizeServiceAPI(srv?: any): ProjectService {
     return new Error(`ProjectsWidget: service is missing required method '${methodName}'`);
   };
 
-
-  // executeProtocolSignatureAdapter
   if (typeof normalized.executeProtocol === "function") {
     const baseExec = normalized.executeProtocol;
     const execLen = meta.executeProtocol?.len ?? 4;
@@ -838,7 +941,6 @@ function normalizeServiceAPI(srv?: any): ProjectService {
     };
   }
 
-  // saveProtocolSignatureAdapter
   if (typeof normalized.saveProtocol === "function") {
     const baseSave = normalized.saveProtocol;
     const saveLen = meta.saveProtocol?.len ?? 4;
@@ -853,7 +955,7 @@ function normalizeServiceAPI(srv?: any): ProjectService {
       return baseSave(protocolId, protocolClassName, params);
     };
   }
-  // tagsApiDefaultsSafeReadsStrictWrites
+
   ensureFn("listProjectTags", async () => []);
   ensureFn("listProtocolTagIds", async () => []);
 
@@ -870,7 +972,6 @@ function normalizeServiceAPI(srv?: any): ProjectService {
     throw createMissingServiceMethodError("setProtocolTagIds");
   });
 
-  // listProjectTagsSignatureAdapter
   if (typeof normalized.listProjectTags === "function") {
     const base = normalized.listProjectTags;
     const len = meta.listProjectTags?.len ?? base.length;
@@ -881,7 +982,6 @@ function normalizeServiceAPI(srv?: any): ProjectService {
     };
   }
 
-  // createProjectTagSignatureAdapter
   if (typeof normalized.createProjectTag === "function") {
     const base = normalized.createProjectTag;
     const len = meta.createProjectTag?.len ?? base.length;
@@ -892,7 +992,6 @@ function normalizeServiceAPI(srv?: any): ProjectService {
     };
   }
 
-  // updateProjectTagSignatureAdapter
   if (typeof normalized.updateProjectTag === "function") {
     const base = normalized.updateProjectTag;
     const len = meta.updateProjectTag?.len ?? base.length;
@@ -907,7 +1006,6 @@ function normalizeServiceAPI(srv?: any): ProjectService {
     };
   }
 
-  // deleteProjectTagSignatureAdapter
   if (typeof normalized.deleteProjectTag === "function") {
     const base = normalized.deleteProjectTag;
     const len = meta.deleteProjectTag?.len ?? base.length;
@@ -918,7 +1016,6 @@ function normalizeServiceAPI(srv?: any): ProjectService {
     };
   }
 
-  // listProtocolTagIdsSignatureAdapter
   if (typeof normalized.listProtocolTagIds === "function") {
     const base = normalized.listProtocolTagIds;
     const len = meta.listProtocolTagIds?.len ?? base.length;
@@ -929,7 +1026,6 @@ function normalizeServiceAPI(srv?: any): ProjectService {
     };
   }
 
-  // setProtocolTagIdsSignatureAdapter
   if (typeof normalized.setProtocolTagIds === "function") {
     const base = normalized.setProtocolTagIds;
     const len = meta.setProtocolTagIds?.len ?? base.length;
@@ -944,15 +1040,13 @@ function normalizeServiceAPI(srv?: any): ProjectService {
     };
   }
 
-
-
   return normalized as ProjectService;
 }
 
 /** publicMountOptionsForProjectsListWidget */
 export type MountOptions = {
   container: string | HTMLElement;
-  service?: ProjectService;
+  service?: Partial<ProjectService>;
   props?: Record<string, any>;
 };
 
@@ -984,7 +1078,6 @@ export function mount({ container, service, props }: MountOptions) {
       <QueryClientProviderV3 client={queryClientV3}>
         <QueryClientProviderV5 client={queryClientV5}>
           <CacheProvider value={emotionCache}>
-            {/* importantUseBrowserRouterSoNavigateUpdatesRealUrlHostCanObserveAndMountProjectPageWidget */}
             <BrowserRouter>
               <HelmetProvider>
                 <WidgetErrorBoundary>

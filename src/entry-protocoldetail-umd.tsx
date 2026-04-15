@@ -5,7 +5,6 @@ import React, { useEffect, useMemo, useState } from "react";
 import ReactDOM from "react-dom/client";
 import ProtocolForm from "./components/protocol/ProtocolForm";
 
-
 // ---- Tipos básicos para el servicio que inyecta el host ----
 type Id = string | number;
 type ProjectService = {
