@@ -575,54 +575,54 @@ export default function ProjectPage() {
   });
 
   const projectId = useMemo(() => {
-  // deriveProjectIdFromProjectState
-  const raw: any = (project as any)?.id ?? (project as any)?.projectId;
-  if (raw == null) return undefined;
+    // deriveProjectIdFromProjectState
+    const raw: any = (project as any)?.id ?? (project as any)?.projectId;
+    if (raw == null) return undefined;
 
-  const n = typeof raw === "number" ? raw : Number(raw);
-  return Number.isFinite(n) ? n : undefined;
-}, [project]);
+    const n = typeof raw === "number" ? raw : Number(raw);
+    return Number.isFinite(n) ? n : undefined;
+  }, [project]);
 
-const effectiveUserSettings = projectEffectiveSettings?.settings?.user ?? null;
-const effectiveInstanceSettings = projectEffectiveSettings?.settings?.instance ?? null;
-const effectiveHostSettings = projectEffectiveSettings?.settings?.host ?? null;
+  const effectiveUserSettings = projectEffectiveSettings?.settings?.user ?? null;
+  const effectiveInstanceSettings = projectEffectiveSettings?.settings?.instance ?? null;
+  const effectiveHostSettings = projectEffectiveSettings?.settings?.host ?? null;
 
-const effectiveHostQueues = effectiveHostSettings?.queues ?? [];
-const effectiveDefaultQueueName = effectiveInstanceSettings?.defaultQueueName ?? "";
+  const effectiveHostQueues = effectiveHostSettings?.queues ?? [];
+  const effectiveDefaultQueueName = effectiveInstanceSettings?.defaultQueueName ?? "";
 
-const loadProjectEffectiveSettings = useCallback(
-  async (nextProjectId?: string | number) => {
-    // loadProjectEffectiveSettings
-    if (nextProjectId == null) {
-      setProjectEffectiveSettings(null);
-      setProjectEffectiveSettingsLoading(false);
-      return;
-    }
+  const loadProjectEffectiveSettings = useCallback(
+    async (nextProjectId?: string | number) => {
+      // loadProjectEffectiveSettings
+      if (nextProjectId == null) {
+        setProjectEffectiveSettings(null);
+        setProjectEffectiveSettingsLoading(false);
+        return;
+      }
 
-    if (!hasProjectEffectiveSettingsService(svc)) {
-      setProjectEffectiveSettings(null);
-      setProjectEffectiveSettingsLoading(false);
-      return;
-    }
+      if (!hasProjectEffectiveSettingsService(svc)) {
+        setProjectEffectiveSettings(null);
+        setProjectEffectiveSettingsLoading(false);
+        return;
+      }
 
-    try {
-      setProjectEffectiveSettingsLoading(true);
-      const data = await svc.fetchProjectEffectiveSettings(nextProjectId);
-      setProjectEffectiveSettings(data ?? null);
-    } catch (err) {
-      console.warn("fetchProjectEffectiveSettings failed", err);
-      setProjectEffectiveSettings(null);
-    } finally {
-      setProjectEffectiveSettingsLoading(false);
-    }
-  },
-  [svc]
-);
+      try {
+        setProjectEffectiveSettingsLoading(true);
+        const data = await svc.fetchProjectEffectiveSettings(nextProjectId);
+        setProjectEffectiveSettings(data ?? null);
+      } catch (err) {
+        console.warn("fetchProjectEffectiveSettings failed", err);
+        setProjectEffectiveSettings(null);
+      } finally {
+        setProjectEffectiveSettingsLoading(false);
+      }
+    },
+    [svc]
+  );
 
-useEffect(() => {
-  // syncProjectEffectiveSettings
-  void loadProjectEffectiveSettings(projectId);
-}, [projectId, loadProjectEffectiveSettings]);
+  useEffect(() => {
+    // syncProjectEffectiveSettings
+    void loadProjectEffectiveSettings(projectId);
+  }, [projectId, loadProjectEffectiveSettings]);
 
   // Bump this to force rerender when policy is loaded/changed
   const [policyRevision, setPolicyRevision] = useState(0);
@@ -3614,6 +3614,25 @@ useEffect(() => {
         return;
       }
 
+      if (modPressed(e) && !e.shiftKey && e.key.toLowerCase() === "p") {
+        e.preventDefault();
+        e.stopPropagation();
+        (e as any).stopImmediatePropagation?.();
+
+        closeAllDockedForms();
+        handleProtocolsDrawerOpenChange(true);
+        return;
+      }
+
+      /*if (modPressed(e) && !e.shiftKey && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        e.stopPropagation();
+        (e as any).stopImmediatePropagation?.();
+
+        void handleOpenWorkflows();
+        return;
+      }*/
+
       const ids = getSelectedIds();
       const selectedId = selectedIdRef.current;
 
@@ -3712,6 +3731,9 @@ useEffect(() => {
     openStop,
     handleSelectFrom,
     handleSelectTo,
+    closeAllDockedForms,
+    handleProtocolsDrawerOpenChange,
+    handleOpenWorkflows,
   ]);
 
   function getHostIsDark() {
