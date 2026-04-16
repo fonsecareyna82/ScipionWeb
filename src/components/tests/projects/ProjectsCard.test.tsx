@@ -1,18 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 
 import ProjectCard from "../../projects/ProjectsCard";
 import { useNavigate } from "react-router-dom";
-import { useProjectService } from "@/ProjectServiceContext";
 import toast from "react-hot-toast";
+import { makeProject, resetFactories } from "../factories";
+import { createProjectServiceMock, renderWithProviders } from "../test-utils";
 
-vi.mock("react-router-dom", () => ({
-  useNavigate: vi.fn(),
-}));
-
-vi.mock("@/ProjectServiceContext", () => ({
-  useProjectService: vi.fn(),
-}));
+vi.mock("react-router-dom", async () => {
+  const actual = await vi.importActual<typeof import("react-router-dom")>("react-router-dom");
+  return {
+    ...actual,
+    useNavigate: vi.fn(),
+  };
+});
 
 vi.mock("react-hot-toast", () => ({
   default: {
@@ -91,29 +92,19 @@ class MockIntersectionObserver {
 
 describe("ProjectsCard", () => {
   const navigate = vi.fn();
-  const deleteProject = vi.fn();
-  const renameProject = vi.fn();
-  const resolveBackendUrl = vi.fn((url: string) => url);
-  const fetchBlobObjectUrl = vi.fn();
-  const fetchProjectThumbnailItems = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
+    resetFactories();
 
     vi.stubGlobal("IntersectionObserver", MockIntersectionObserver);
-
     (useNavigate as unknown as ReturnType<typeof vi.fn>).mockReturnValue(navigate);
-    (useProjectService as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
-      deleteProject,
-      renameProject,
-      resolveBackendUrl,
-      fetchBlobObjectUrl,
-      fetchProjectThumbnailItems,
-    });
   });
 
   it("renders the main project information", () => {
-    render(
+    const service = createProjectServiceMock();
+
+    renderWithProviders(
       <ProjectCard
         id={7}
         label="Alpha Project"
@@ -126,6 +117,7 @@ describe("ProjectsCard", () => {
         permission="write"
         status="running"
       />,
+      { service },
     );
 
     expect(screen.getByText("Alpha Project")).toBeInTheDocument();
@@ -137,7 +129,9 @@ describe("ProjectsCard", () => {
   });
 
   it("shows guest/shared state for a shared non-owner project", () => {
-    render(
+    const service = createProjectServiceMock();
+
+    renderWithProviders(
       <ProjectCard
         id={8}
         label="Shared Project"
@@ -147,6 +141,7 @@ describe("ProjectsCard", () => {
         isShared={true}
         permission="read"
       />,
+      { service },
     );
 
     expect(screen.getByText("Shared · read")).toBeInTheDocument();
@@ -154,7 +149,9 @@ describe("ProjectsCard", () => {
   });
 
   it("navigates to the project when clicking Open project", () => {
-    render(
+    const service = createProjectServiceMock();
+
+    renderWithProviders(
       <ProjectCard
         id={42}
         label="Openable Project"
@@ -162,6 +159,7 @@ describe("ProjectsCard", () => {
         projectOwnerId={1}
         isOwner={true}
       />,
+      { service },
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Open project" }));
@@ -171,9 +169,11 @@ describe("ProjectsCard", () => {
 
   it("renames the project successfully", async () => {
     const onRename = vi.fn();
-    renameProject.mockResolvedValue(undefined);
+    const service = createProjectServiceMock({
+      renameProject: vi.fn().mockResolvedValue(undefined),
+    });
 
-    render(
+    renderWithProviders(
       <ProjectCard
         id={5}
         label="Old Project"
@@ -183,6 +183,7 @@ describe("ProjectsCard", () => {
         isOwner={true}
         onRename={onRename}
       />,
+      { service },
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Mock action rename" }));
@@ -200,15 +201,19 @@ describe("ProjectsCard", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() => {
-      expect(renameProject).toHaveBeenCalledWith("5", "New Project", "New description");
+      expect(service.renameProject).toHaveBeenCalledWith("5", "New Project", "New description");
     });
 
     expect(onRename).toHaveBeenCalledWith(5, "New Project", "New description");
     expect(toast.success).toHaveBeenCalledWith("Project renamed successfully");
   });
 
-  it("shows a validation error when the rename name is empty", async () => {
-    render(
+  it("shows a validation error when the rename name is empty", () => {
+    const service = createProjectServiceMock({
+      renameProject: vi.fn(),
+    });
+
+    renderWithProviders(
       <ProjectCard
         id={6}
         label="Name Test"
@@ -217,6 +222,7 @@ describe("ProjectsCard", () => {
         projectOwnerId={1}
         isOwner={true}
       />,
+      { service },
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Mock action rename" }));
@@ -228,11 +234,15 @@ describe("ProjectsCard", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     expect(screen.getByText("Project name cannot be empty.")).toBeInTheDocument();
-    expect(renameProject).not.toHaveBeenCalled();
+    expect(service.renameProject).not.toHaveBeenCalled();
   });
 
-  it("shows a validation error when the description is too short", async () => {
-    render(
+  it("shows a validation error when the description is too short", () => {
+    const service = createProjectServiceMock({
+      renameProject: vi.fn(),
+    });
+
+    renderWithProviders(
       <ProjectCard
         id={9}
         label="Description Test"
@@ -241,6 +251,7 @@ describe("ProjectsCard", () => {
         projectOwnerId={1}
         isOwner={true}
       />,
+      { service },
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Mock action rename" }));
@@ -258,14 +269,16 @@ describe("ProjectsCard", () => {
     expect(
       screen.getByText("Description must be at least 3 characters."),
     ).toBeInTheDocument();
-    expect(renameProject).not.toHaveBeenCalled();
+    expect(service.renameProject).not.toHaveBeenCalled();
   });
 
   it("deletes the project after confirmation", async () => {
     const onDelete = vi.fn();
-    deleteProject.mockResolvedValue(undefined);
+    const service = createProjectServiceMock({
+      deleteProject: vi.fn().mockResolvedValue(undefined),
+    });
 
-    render(
+    renderWithProviders(
       <ProjectCard
         id={11}
         label="Delete Me"
@@ -274,6 +287,7 @@ describe("ProjectsCard", () => {
         isOwner={true}
         onDelete={onDelete}
       />,
+      { service },
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Mock action remove" }));
@@ -283,7 +297,7 @@ describe("ProjectsCard", () => {
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
 
     await waitFor(() => {
-      expect(deleteProject).toHaveBeenCalledWith("11");
+      expect(service.deleteProject).toHaveBeenCalledWith("11");
     });
 
     expect(onDelete).toHaveBeenCalledWith(11);
@@ -293,7 +307,9 @@ describe("ProjectsCard", () => {
   });
 
   it("disables owner-only actions for non-owners", () => {
-    render(
+    const service = createProjectServiceMock();
+
+    renderWithProviders(
       <ProjectCard
         id={12}
         label="Read Only Project"
@@ -302,6 +318,7 @@ describe("ProjectsCard", () => {
         isOwner={false}
         isShared={true}
       />,
+      { service },
     );
 
     expect(screen.getByRole("button", { name: "Mock action open" })).toBeEnabled();
@@ -312,8 +329,9 @@ describe("ProjectsCard", () => {
 
   it("calls onShare for owners", () => {
     const onShare = vi.fn();
+    const service = createProjectServiceMock();
 
-    render(
+    renderWithProviders(
       <ProjectCard
         id={13}
         label="Sharable Project"
@@ -322,10 +340,46 @@ describe("ProjectsCard", () => {
         isOwner={true}
         onShare={onShare}
       />,
+      { service },
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Mock action share" }));
 
     expect(onShare).toHaveBeenCalledWith(13);
+  });
+
+  it("can render from a factory-built project shape", () => {
+    const project = makeProject({
+      id: "21",
+      name: "Factory Project",
+      description: "Factory description",
+      isOwner: true,
+      isShared: false,
+      permission: "full",
+      projectOwnerId: "1",
+      diskUsage: "3 GB",
+    });
+
+    const service = createProjectServiceMock();
+
+    renderWithProviders(
+      <ProjectCard
+        id={project.id}
+        label={project.name}
+        value={project.protocolsCount ?? "0"}
+        description={project.description}
+        createdAt={project.createdAt.toISOString()}
+        updatedAt={project.updatedAt?.toISOString()}
+        diskUsage={project.diskUsage}
+        projectOwnerId={project.projectOwnerId}
+        isOwner={project.isOwner}
+        isShared={project.isShared}
+        permission={project.permission}
+      />,
+      { service },
+    );
+
+    expect(screen.getByText("Factory Project")).toBeInTheDocument();
+    expect(screen.getByText("3 GB")).toBeInTheDocument();
   });
 });

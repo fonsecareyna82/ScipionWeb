@@ -12,6 +12,14 @@ vi.mock("react-router-dom", () => ({
   Navigate: ({ to }: { to: string }) => <div>Redirect to {to}</div>,
 }));
 
+function renderProtectedRoute() {
+  return render(
+    <ProtectedRoute>
+      <div>Protected content</div>
+    </ProtectedRoute>,
+  );
+}
+
 describe("ProtectedRoute", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -19,11 +27,7 @@ describe("ProtectedRoute", () => {
   });
 
   it("redirects to root when there is no token", () => {
-    render(
-      <ProtectedRoute>
-        <div>Protected content</div>
-      </ProtectedRoute>,
-    );
+    renderProtectedRoute();
 
     expect(screen.getByText("Redirect to /")).toBeInTheDocument();
     expect(screen.queryByText("Protected content")).not.toBeInTheDocument();
@@ -36,11 +40,7 @@ describe("ProtectedRoute", () => {
       exp: Math.floor(Date.now() / 1000) + 3600,
     });
 
-    render(
-      <ProtectedRoute>
-        <div>Protected content</div>
-      </ProtectedRoute>,
-    );
+    renderProtectedRoute();
 
     expect(screen.getByText("Protected content")).toBeInTheDocument();
     expect(screen.queryByText("Redirect to /")).not.toBeInTheDocument();
@@ -53,11 +53,7 @@ describe("ProtectedRoute", () => {
       exp: Math.floor(Date.now() / 1000) - 10,
     });
 
-    render(
-      <ProtectedRoute>
-        <div>Protected content</div>
-      </ProtectedRoute>,
-    );
+    renderProtectedRoute();
 
     expect(localStorage.getItem("accessToken")).toBeNull();
     expect(screen.getByText("Redirect to /")).toBeInTheDocument();
@@ -71,11 +67,7 @@ describe("ProtectedRoute", () => {
       throw new Error("Invalid token");
     });
 
-    render(
-      <ProtectedRoute>
-        <div>Protected content</div>
-      </ProtectedRoute>,
-    );
+    renderProtectedRoute();
 
     expect(localStorage.getItem("accessToken")).toBeNull();
     expect(screen.getByText("Redirect to /")).toBeInTheDocument();

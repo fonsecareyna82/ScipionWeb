@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 
 import SessionTimeoutModal from "../../common/SessionTimeoutModal";
@@ -25,6 +25,19 @@ vi.mock("../../ui/modal", () => ({
     ) : null,
 }));
 
+function renderSessionTimeoutModal(
+  props: Partial<React.ComponentProps<typeof SessionTimeoutModal>> = {},
+) {
+  return render(
+    <SessionTimeoutModal
+      isVisible={true}
+      onStayConnected={() => {}}
+      countdownStart={65}
+      {...props}
+    />,
+  );
+}
+
 describe("SessionTimeoutModal", () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -38,39 +51,21 @@ describe("SessionTimeoutModal", () => {
   });
 
   it("does not render when not visible", () => {
-    render(
-      <SessionTimeoutModal
-        isVisible={false}
-        onStayConnected={() => {}}
-        countdownStart={65}
-      />,
-    );
+    renderSessionTimeoutModal({ isVisible: false });
 
     expect(screen.queryByTestId("mock-modal")).not.toBeInTheDocument();
     expect(screen.queryByText("Session about to expire")).not.toBeInTheDocument();
   });
 
   it("renders the initial formatted countdown when visible", () => {
-    render(
-      <SessionTimeoutModal
-        isVisible={true}
-        onStayConnected={() => {}}
-        countdownStart={65}
-      />,
-    );
+    renderSessionTimeoutModal({ countdownStart: 65 });
 
     expect(screen.getByText("Session about to expire")).toBeInTheDocument();
     expect(screen.getByText("01:05")).toBeInTheDocument();
   });
 
   it("counts down every second", () => {
-    render(
-      <SessionTimeoutModal
-        isVisible={true}
-        onStayConnected={() => {}}
-        countdownStart={65}
-      />,
-    );
+    renderSessionTimeoutModal({ countdownStart: 65 });
 
     expect(screen.getByText("01:05")).toBeInTheDocument();
 
@@ -88,13 +83,7 @@ describe("SessionTimeoutModal", () => {
   });
 
   it("resets the countdown when reopened", () => {
-    const { rerender } = render(
-      <SessionTimeoutModal
-        isVisible={true}
-        onStayConnected={() => {}}
-        countdownStart={10}
-      />,
-    );
+    const { rerender } = renderSessionTimeoutModal({ countdownStart: 10 });
 
     act(() => {
       vi.advanceTimersByTime(3000);
@@ -124,13 +113,10 @@ describe("SessionTimeoutModal", () => {
   it("calls onStayConnected when the modal requests close", () => {
     const onStayConnected = vi.fn();
 
-    render(
-      <SessionTimeoutModal
-        isVisible={true}
-        onStayConnected={onStayConnected}
-        countdownStart={30}
-      />,
-    );
+    renderSessionTimeoutModal({
+      onStayConnected,
+      countdownStart: 30,
+    });
 
     fireEvent.click(screen.getByRole("button", { name: "Mock close" }));
 

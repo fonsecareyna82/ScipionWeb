@@ -1,13 +1,10 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 
 import NewProjectModal from "../../projects/NewProjectModal";
-import { useProjectService } from "@/ProjectServiceContext";
+import { makeRawProject, resetFactories } from "../factories";
+import { createProjectServiceMock, renderWithProviders } from "../test-utils";
 import toast from "react-hot-toast";
-
-vi.mock("@/ProjectServiceContext", () => ({
-  useProjectService: vi.fn(),
-}));
 
 vi.mock("react-hot-toast", () => ({
   default: {
@@ -17,45 +14,62 @@ vi.mock("react-hot-toast", () => ({
 }));
 
 describe("NewProjectModal", () => {
-  const createProject = vi.fn();
   const onClose = vi.fn();
   const onCreate = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
-    (useProjectService as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
-      createProject,
-    });
+    resetFactories();
   });
 
   it("does not render when closed", () => {
-    render(<NewProjectModal open={false} onClose={onClose} />);
+    const service = createProjectServiceMock();
+
+    renderWithProviders(
+      <NewProjectModal open={false} onClose={onClose} />,
+      { service },
+    );
 
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.queryByText("New project")).not.toBeInTheDocument();
   });
 
-  it("shows a validation error when trying to create without a name", async () => {
-    render(<NewProjectModal open={true} onClose={onClose} />);
+  it("shows a validation error when trying to create without a name", () => {
+    const service = createProjectServiceMock({
+      createProject: vi.fn(),
+    });
+
+    renderWithProviders(
+      <NewProjectModal open={true} onClose={onClose} />,
+      { service },
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "Create" }));
 
     expect(
       screen.getByText("Project name is required."),
     ).toBeInTheDocument();
-    expect(createProject).not.toHaveBeenCalled();
+    expect(service.createProject).not.toHaveBeenCalled();
   });
 
   it("creates a project with trimmed values and calls callbacks", async () => {
-    const createdProject = { id: 1, name: "My project" };
-    createProject.mockResolvedValue(createdProject);
+    const createdProject = makeRawProject({
+      id: "1",
+      name: "My project",
+      description: "Some description",
+    });
 
-    render(
+    const service = createProjectServiceMock({
+      createProject: vi.fn().mockResolvedValue(createdProject),
+    });
+
+    renderWithProviders(
       <NewProjectModal
         open={true}
         onClose={onClose}
         onCreate={onCreate}
       />,
+      { service },
     );
 
     fireEvent.change(screen.getByPlaceholderText("Project name"), {
@@ -69,7 +83,7 @@ describe("NewProjectModal", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create" }));
 
     await waitFor(() => {
-      expect(createProject).toHaveBeenCalledWith({
+      expect(service.createProject).toHaveBeenCalledWith({
         name: "My project",
         description: "Some description",
       });
@@ -82,7 +96,12 @@ describe("NewProjectModal", () => {
   });
 
   it("closes when Cancel is clicked", () => {
-    render(<NewProjectModal open={true} onClose={onClose} />);
+    const service = createProjectServiceMock();
+
+    renderWithProviders(
+      <NewProjectModal open={true} onClose={onClose} />,
+      { service },
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
 

@@ -1,13 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 
 import ShareProjectModal from "../../projects/ShareProjectModal";
-import { useProjectService } from "@/ProjectServiceContext";
 import toast from "react-hot-toast";
-
-vi.mock("@/ProjectServiceContext", () => ({
-  useProjectService: vi.fn(),
-}));
+import { makeShareableUser, resetFactories } from "../factories";
+import { createProjectServiceMock, renderWithProviders } from "../test-utils";
 
 vi.mock("react-hot-toast", () => ({
   default: {
@@ -17,35 +14,17 @@ vi.mock("react-hot-toast", () => ({
 }));
 
 describe("ShareProjectModal", () => {
-  const listUsers = vi.fn();
-  const listProjectShares = vi.fn();
-  const shareProject = vi.fn();
-  const revokeProjectShare = vi.fn();
   const onClose = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
-
-    (useProjectService as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
-      listUsers,
-      listProjectShares,
-      shareProject,
-      revokeProjectShare,
-    });
-
-    listUsers.mockResolvedValue([
-      { id: 1, name: "Owner User", email: "owner@example.com" },
-      { id: 2, name: "Shared User", email: "shared@example.com" },
-      { id: 3, name: "Invite User", email: "invite@example.com" },
-    ]);
-
-    listProjectShares.mockResolvedValue([{ userId: 2 }]);
-    shareProject.mockResolvedValue(undefined);
-    revokeProjectShare.mockResolvedValue(undefined);
+    resetFactories();
   });
 
   it("does not render when closed", () => {
-    render(
+    const service = createProjectServiceMock();
+
+    renderWithProviders(
       <ShareProjectModal
         open={false}
         projectId={123}
@@ -53,6 +32,7 @@ describe("ShareProjectModal", () => {
         projectOwnerId={1}
         onClose={onClose}
       />,
+      { service },
     );
 
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
@@ -60,7 +40,32 @@ describe("ShareProjectModal", () => {
   });
 
   it("loads users and shows owner/shared/invite states", async () => {
-    render(
+    const ownerUser = makeShareableUser({
+      id: 1,
+      name: "Owner User",
+      email: "owner@example.com",
+    });
+
+    const sharedUser = makeShareableUser({
+      id: 2,
+      name: "Shared User",
+      email: "shared@example.com",
+    });
+
+    const inviteUser = makeShareableUser({
+      id: 3,
+      name: "Invite User",
+      email: "invite@example.com",
+    });
+
+    const service = createProjectServiceMock({
+      listUsers: vi.fn().mockResolvedValue([ownerUser, sharedUser, inviteUser]),
+      listProjectShares: vi.fn().mockResolvedValue([{ userId: 2 }]),
+      shareProject: vi.fn().mockResolvedValue(undefined),
+      revokeProjectShare: vi.fn().mockResolvedValue(undefined),
+    });
+
+    renderWithProviders(
       <ShareProjectModal
         open={true}
         projectId={123}
@@ -68,6 +73,7 @@ describe("ShareProjectModal", () => {
         projectOwnerId={1}
         onClose={onClose}
       />,
+      { service },
     );
 
     expect(screen.getByText("Loading users...")).toBeInTheDocument();
@@ -83,12 +89,35 @@ describe("ShareProjectModal", () => {
     expect(screen.getByText("Shared")).toBeInTheDocument();
     expect(screen.getByText("Invite")).toBeInTheDocument();
 
-    expect(listUsers).toHaveBeenCalledTimes(1);
-    expect(listProjectShares).toHaveBeenCalledWith("123");
+    expect(service.listUsers).toHaveBeenCalledTimes(1);
+    expect(service.listProjectShares).toHaveBeenCalledWith("123");
   });
 
   it("filters users by the search field", async () => {
-    render(
+    const service = createProjectServiceMock({
+      listUsers: vi.fn().mockResolvedValue([
+        makeShareableUser({
+          id: 1,
+          name: "Owner User",
+          email: "owner@example.com",
+        }),
+        makeShareableUser({
+          id: 2,
+          name: "Shared User",
+          email: "shared@example.com",
+        }),
+        makeShareableUser({
+          id: 3,
+          name: "Invite User",
+          email: "invite@example.com",
+        }),
+      ]),
+      listProjectShares: vi.fn().mockResolvedValue([{ userId: 2 }]),
+      shareProject: vi.fn().mockResolvedValue(undefined),
+      revokeProjectShare: vi.fn().mockResolvedValue(undefined),
+    });
+
+    renderWithProviders(
       <ShareProjectModal
         open={true}
         projectId={123}
@@ -96,6 +125,7 @@ describe("ShareProjectModal", () => {
         projectOwnerId={1}
         onClose={onClose}
       />,
+      { service },
     );
 
     await waitFor(() => {
@@ -112,7 +142,30 @@ describe("ShareProjectModal", () => {
   });
 
   it("shares the project with a newly selected user", async () => {
-    render(
+    const service = createProjectServiceMock({
+      listUsers: vi.fn().mockResolvedValue([
+        makeShareableUser({
+          id: 1,
+          name: "Owner User",
+          email: "owner@example.com",
+        }),
+        makeShareableUser({
+          id: 2,
+          name: "Shared User",
+          email: "shared@example.com",
+        }),
+        makeShareableUser({
+          id: 3,
+          name: "Invite User",
+          email: "invite@example.com",
+        }),
+      ]),
+      listProjectShares: vi.fn().mockResolvedValue([{ userId: 2 }]),
+      shareProject: vi.fn().mockResolvedValue(undefined),
+      revokeProjectShare: vi.fn().mockResolvedValue(undefined),
+    });
+
+    renderWithProviders(
       <ShareProjectModal
         open={true}
         projectId={123}
@@ -120,6 +173,7 @@ describe("ShareProjectModal", () => {
         projectOwnerId={1}
         onClose={onClose}
       />,
+      { service },
     );
 
     await waitFor(() => {
@@ -134,7 +188,7 @@ describe("ShareProjectModal", () => {
     fireEvent.click(screen.getByRole("button", { name: "Share (1)" }));
 
     await waitFor(() => {
-      expect(shareProject).toHaveBeenCalledWith("123", ["3"]);
+      expect(service.shareProject).toHaveBeenCalledWith("123", ["3"]);
     });
 
     expect(toast.success).toHaveBeenCalledWith("Project shared successfully");
@@ -143,7 +197,30 @@ describe("ShareProjectModal", () => {
   });
 
   it("revokes access for an already shared user", async () => {
-    render(
+    const service = createProjectServiceMock({
+      listUsers: vi.fn().mockResolvedValue([
+        makeShareableUser({
+          id: 1,
+          name: "Owner User",
+          email: "owner@example.com",
+        }),
+        makeShareableUser({
+          id: 2,
+          name: "Shared User",
+          email: "shared@example.com",
+        }),
+        makeShareableUser({
+          id: 3,
+          name: "Invite User",
+          email: "invite@example.com",
+        }),
+      ]),
+      listProjectShares: vi.fn().mockResolvedValue([{ userId: 2 }]),
+      shareProject: vi.fn().mockResolvedValue(undefined),
+      revokeProjectShare: vi.fn().mockResolvedValue(undefined),
+    });
+
+    renderWithProviders(
       <ShareProjectModal
         open={true}
         projectId={123}
@@ -151,6 +228,7 @@ describe("ShareProjectModal", () => {
         projectOwnerId={1}
         onClose={onClose}
       />,
+      { service },
     );
 
     await waitFor(() => {
@@ -169,7 +247,7 @@ describe("ShareProjectModal", () => {
     fireEvent.click(screen.getByRole("button", { name: "Remove access" }));
 
     await waitFor(() => {
-      expect(revokeProjectShare).toHaveBeenCalledWith("123", "2");
+      expect(service.revokeProjectShare).toHaveBeenCalledWith("123", "2");
     });
 
     expect(toast.success).toHaveBeenCalledWith(

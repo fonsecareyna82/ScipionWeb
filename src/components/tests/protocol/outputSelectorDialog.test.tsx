@@ -1,44 +1,39 @@
-import { describe, it, expect, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 
 import OutputSelectorDialog from "../../protocol/outputSelectorDialog";
+import { makeOutputSelectorOutput, resetFactories } from "../factories";
 
-type Output = {
-  paramClass?: string;
-  pointerClass?: string;
-  _expectedClass?: string;
-  value?: string;
-  info?: string;
-  parentId?: string | number;
-  protocol?: string;
-  key?: string;
-};
-
-const outputs: Output[] = [
-  {
+const outputs = [
+  makeOutputSelectorOutput({
     parentId: 10,
     protocol: "Import particles",
     pointerClass: "SetOfParticles",
     info: "Particles from run 10",
     key: "particles-10",
-  },
-  {
+  }),
+  makeOutputSelectorOutput({
     parentId: 20,
     protocol: "Import volumes",
     pointerClass: "SetOfVolumes",
     info: "Volumes from run 20",
     key: "volumes-20",
-  },
-  {
+  }),
+  makeOutputSelectorOutput({
     parentId: 30,
     protocol: "Refine particles",
     pointerClass: "SetOfParticles",
     info: "Particles from run 30",
     key: "particles-30",
-  },
+  }),
 ];
 
 describe("OutputSelectorDialog", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetFactories();
+  });
+
   it("does not render when closed", () => {
     render(
       <OutputSelectorDialog
