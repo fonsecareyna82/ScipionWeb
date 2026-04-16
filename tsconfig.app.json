@@ -21,7 +21,7 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true,
 
-    "types": ["vite/client", "node", "@react-three/fiber"],
+    "types": ["vite/client", "node", "@react-three/fiber", "vitest/globals", "@testing-library/jest-dom"],
 
     "baseUrl": ".",
     "paths": {

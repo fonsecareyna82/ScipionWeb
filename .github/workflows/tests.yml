@@ -1,0 +1,30 @@
+name: ScipionWeb frontend tests
+
+on:
+  push:
+    branches:
+      - devel
+      - wizard-dialogs-refactor
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  frontend-tests:
+    name: Frontend tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.18.0
+          cache: npm
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Run frontend tests
+        run: npm test

@@ -107,7 +107,6 @@ function createAutoUnmountGuard(containerEl: HTMLElement, onCleanup: () => void)
   return { dispose };
 }
 
-
 function inferWidgetCssHref(): string | null {
   // inferWidgetCssHref
   const scripts = Array.from(document.getElementsByTagName("script"));
@@ -155,7 +154,6 @@ function removeWidgetCssLinkIfInserted() {
     // noOp
   }
 }
-
 
 /** Keeps widget shell's dark class in sync with the host document */
 function syncShellDarkMode(shell: HTMLElement) {
@@ -254,12 +252,31 @@ function normalizeServiceAPI(srv: any): ProjectService {
     }
   };
 
+  // generic authenticated helpers
+  mapFn("resolveBackendUrl", "resolveBackendUrl");
+  mapFn("fetchJsonUrl", "fetchJsonUrl");
+  mapFn("fetchBlobObjectUrl", "fetchBlobObjectUrl");
+
   // projects
   mapFn("fetchList", "listProjects", "list", "fetch");
   mapFn("fetchProject", "getProject", "fetchOne", "get");
   mapFn("createProject", "createProject", "create", "newProject");
+  mapFn("importProject", "importProject");
   mapFn("renameProject", "renameProject", "rename", "updateProject");
   mapFn("deleteProject", "deleteProject", "delete", "remove", "removeProject");
+
+  // project thumbnails
+  mapFn(
+    "fetchProjectThumbnailItems",
+    "fetchProjectThumbnailItems",
+    "listProjectThumbnailItems",
+  );
+  mapFn(
+    "fetchProjectThumbnailObjectUrl",
+    "fetchProjectThumbnailObjectUrl",
+    "fetchProjectThumbnail",
+    "getProjectThumbnailObjectUrl",
+  );
 
   // workflows
   mapFn(
@@ -297,7 +314,7 @@ function normalizeServiceAPI(srv: any): ProjectService {
   mapFn("fetchInstanceSettings", "getInstanceSettings");
   mapFn("updateInstanceSettings", "patchInstanceSettings");
 
-    // tags
+  // tags
   mapFn(
     "listProjectTags",
     "listProjectTags",
@@ -342,8 +359,145 @@ function normalizeServiceAPI(srv: any): ProjectService {
     "saveProtocolTagIds",
   );
 
-  mapFn("getNextProtocolSuggestions", "nextProtocolSuggestions",);
-  mapFn("getContextMenuVisibilityPolicy", "contextMenuVisibilityPolicy",);
+  mapFn("getNextProtocolSuggestions", "nextProtocolSuggestions");
+  mapFn("getContextMenuVisibilityPolicy", "contextMenuVisibilityPolicy");
+
+  // file / previews
+  mapFn(
+    "resolveBrowserPaths",
+    "resolveBrowserPaths",
+    "resolveProtocolStartPath",
+  );
+  mapFn("listRemoteDirectory", "listRemoteDirectory");
+  mapFn("previewProtocolText", "previewProtocolText");
+  mapFn("previewRemoteEntry", "previewRemoteEntry");
+  mapFn("buildProtocolDownloadUrl", "buildProtocolDownloadUrl");
+  mapFn(
+    "fetchProtocolInlinePreviewBlob",
+    "previewInlineBlob",
+    "getInlinePreviewBlob",
+    "downloadInlinePreviewBlob",
+  );
+  mapFn("fetchOutputPreview", "previewOutput", "getOutputPreview");
+
+  // analyze: FSC
+  mapFn("fetchFscRows", "fetchFscRows", "getFscRows");
+
+  // analyze: volumes
+  mapFn("listOutputVolumes", "listOutputVolumes");
+  mapFn("getVolumeInfo", "getVolumeInfo");
+  mapFn("getVolumeHistogram", "getVolumeHistogram");
+  mapFn("buildVolumeSliceUrl", "buildVolumeSliceUrl");
+  mapFn("fetchVolumeSliceObjectUrl", "fetchVolumeSliceObjectUrl");
+  mapFn("getVolumeData3d", "getVolumeData3d");
+
+  // analyze: coords3d
+  mapFn("listCoords3dTomograms", "listCoords3dTomograms");
+  mapFn("fetchCoords3dForTomogram", "fetchCoords3dForTomogram");
+  mapFn(
+    "fetchCoords3dTomogramSliceObjectUrl",
+    "fetchCoords3dTomogramSliceObjectUrl",
+  );
+  mapFn(
+    "createCoords3dOutputFromPoints",
+    "createCoords3dOutputFromPoints",
+  );
+
+  // analyze: metadata
+  mapFn("fetchOutputMetadataTables", "fetchOutputMetadataTables");
+  mapFn("fetchMetadataTableSchema", "fetchMetadataTableSchema");
+  mapFn("fetchMetadataTablePage", "fetchMetadataTablePage");
+  mapFn("exportMetadataTable", "exportMetadataTable");
+  mapFn("fetchMetadataTableWindow", "fetchMetadataTableWindow");
+  mapFn(
+    "fetchMetadataImageCellObjectUrl",
+    "fetchMetadataImageCellObjectUrl",
+  );
+  mapFn("getMetadataImageCellUrl", "getMetadataImageCellUrl");
+  mapFn("runMetadataTableAction", "runMetadataTableAction");
+
+  // analyze: tilt series
+  mapFn("listOutputTiltSeries", "listOutputTiltSeries");
+  mapFn("fetchTiltSeriesFrames", "fetchTiltSeriesFrames");
+  mapFn(
+    "fetchTiltSeriesViewImageObjectUrl",
+    "fetchTiltSeriesViewImageObjectUrl",
+  );
+  mapFn("createNewSetOfTiltSeries", "createNewSetOfTiltSeries");
+
+  // analyze: CTF tomo
+  mapFn("listOutputCTFTomoSeries", "listOutputCTFTomoSeries");
+  mapFn("fetchCTFTomoSeriesViews", "fetchCTFTomoSeriesViews");
+  mapFn("createNewSetOfCTFTomoSeries", "createNewSetOfCTFTomoSeries");
+  mapFn("fetchCTFPsdImage", "fetchCTFPsdImage");
+
+  // sharing
+  mapFn("listUsers", "listUsers");
+  mapFn("shareProject", "shareProject");
+  mapFn("listProjectShares", "listProjectShares");
+  mapFn("revokeProjectShare", "revokeProjectShare");
+
+  // settings: user
+  mapFn("fetchUserSettings", "fetchUserSettings", "getUserSettings");
+  mapFn("putUserSettings", "putUserSettings", "updateUserSettings");
+  mapFn("patchUserSettings", "patchUserSettings");
+
+  // settings: instance
+  mapFn("fetchInstanceSettings", "fetchInstanceSettings", "getInstanceSettings");
+  mapFn("putInstanceSettings", "putInstanceSettings", "updateInstanceSettings");
+  mapFn("patchInstanceSettings", "patchInstanceSettings");
+
+  // settings: environment
+  mapFn(
+    "fetchEnvironmentVariables",
+    "fetchEnvironmentVariables",
+    "getEnvironmentVariables",
+  );
+  mapFn(
+    "patchEnvironmentVariables",
+    "patchEnvironmentVariables",
+    "updateEnvironmentVariables",
+  );
+
+  // settings: host
+  mapFn("fetchHostSettings", "fetchHostSettings", "getHostSettings");
+  mapFn("putHostSettings", "putHostSettings", "updateHostSettings");
+  mapFn("patchHostSettings", "patchHostSettings");
+
+  // project effective settings
+  mapFn(
+    "fetchProjectEffectiveSettings",
+    "fetchProjectEffectiveSettings",
+    "getProjectEffectiveSettings",
+  );
+
+  // protocol logs
+  mapFn(
+    "fetchProtocolLogChannels",
+    "fetchProtocolLogChannels",
+    "getProtocolLogChannels",
+  );
+  mapFn(
+    "fetchProtocolLogsChunk",
+    "fetchProtocolLogsChunk",
+    "getProtocolLogsChunk",
+  );
+
+  // wizards
+  mapFn("executeProtocolWizard", "executeProtocolWizard");
+
+  // protocol export
+  mapFn("exportProtocols", "exportProtocols");
+  mapFn("writeRemoteFile", "writeRemoteFile");
+
+  // analyze viewer resolve
+  mapFn(
+    "resolveAnalyzeViewer",
+    "resolveAnalyzeViewer",
+    "resolveAnalyzeOutputViewer",
+    "resolveAnalyzeViewerDecision",
+    "analyzeViewerResolve",
+  );
 
   const rawExecute =
     typeof normalized.executeProtocol === "function"
@@ -379,7 +533,7 @@ function normalizeServiceAPI(srv: any): ProjectService {
     typeof normalized.setProtocolTagIds === "function"
       ? normalized.setProtocolTagIds
       : null;
-  
+
   const rawGetNextProtocolSuggestions =
     typeof normalized.getNextProtocolSuggestions === "function"
       ? normalized.getNextProtocolSuggestions
@@ -471,7 +625,6 @@ function normalizeServiceAPI(srv: any): ProjectService {
     };
   }
 
-
   if (rawGetNextProtocolSuggestions) {
     normalized.getNextProtocolSuggestions = async (
       projectId: any,
@@ -481,30 +634,6 @@ function normalizeServiceAPI(srv: any): ProjectService {
       return await callWithFallbackArgs(fn, [projectId, protocolId], [protocolId]);
     };
   }
-
-
-
-  // file / previews
-  mapFn("resolveProtocolStartPath", "resolveProtocolStartPath");
-  mapFn("listRemoteDirectory", "listRemoteDirectory");
-  mapFn("previewProtocolText", "previewProtocolText");
-  mapFn("previewRemoteEntry", "previewRemoteEntry");
-  mapFn("buildProtocolDownloadUrl", "buildProtocolDownloadUrl");
-  mapFn(
-    "fetchProtocolInlinePreviewBlob",
-    "previewInlineBlob",
-    "getInlinePreviewBlob",
-  );
-  mapFn("fetchOutputPreview", "previewOutput", "getOutputPreview");
-
-  // analyze viewer resolve
-  mapFn(
-    "resolveAnalyzeViewer",
-    "resolveAnalyzeViewer",
-    "resolveAnalyzeOutputViewer",
-    "resolveAnalyzeViewerDecision",
-    "analyzeViewerResolve",
-  );
 
   ensureFn("executeProtocol", async () => {
     throw createMissingServiceMethodError("executeProtocol");
@@ -523,7 +652,7 @@ function normalizeServiceAPI(srv: any): ProjectService {
     protocolId: any,
     protocolClassName: string,
     params: any,
-    mode: string
+    mode: string,
   ) => {
     const fn = rawExecute ?? normalized.executeProtocol;
     try {
@@ -574,7 +703,7 @@ function normalizeServiceAPI(srv: any): ProjectService {
       sliceIndex: number,
     ) => ({
       url: mockSliceDataUrl(sliceIndex),
-      revoke: () => { },
+      revoke: () => {},
     }),
   );
 
@@ -722,12 +851,11 @@ export function mountProjectPageWidget({
 
   return {
     unmount() {
-      guard.dispose(); // triggers doUnmount once
+      guard.dispose();
     },
     root,
   };
 }
-
 
 /** Attach to window for UMD usage (no default export) */
 if (typeof window !== "undefined") {

@@ -11,6 +11,11 @@ import type {
   SetStateAction,
 } from "react";
 
+import RemoteFileDialog, {
+  RemoteEntry,
+  RemotePreview,
+} from "@/components/files/RemoteFileDialog";
+
 import { Handle, Position, useReactFlow } from "reactflow";
 import styles from "./ProtocolNodeCard.module.css";
 
@@ -49,7 +54,6 @@ import {
   Play,
   RotateCcw,
   ArrowUpRight,
-  Upload,
   Square,
   ArrowLeft,
   ArrowRight,
@@ -70,6 +74,8 @@ import type {
   AnalyzeViewerResolveDecision,
   Id,
   ProtocolTag as ServiceProtocolTag,
+  ResolveBrowserPathsResult,
+  ExportProtocolsRequestPayload,
 } from "@/services/ProjectService";
 
 import type { ProtocolTag } from "@/components/tags/tagTypes";
@@ -202,6 +208,7 @@ type NormalizedOutput = {
   value?: string;
   parentId?: string | number;
 };
+
 
 const normalizeOutputItem = (outputObj: unknown): NormalizedOutput | null => {
   // normalizeOutputItem
@@ -1024,6 +1031,21 @@ export default function ProtocolNodeCard({
     }, 180);
   }, []);
 
+  const [exportBrowserOpen, setExportBrowserOpen] = useState(false);
+  const [exportBusy, setExportBusy] = useState(false);
+  const [exportProtocolIds, setExportProtocolIds] = useState<string[]>([]);
+  const [exportDefaultFilename, setExportDefaultFilename] = useState("protocols_export.json");
+
+  const buildDefaultExportFilename = useCallback((projectId: Id, protocolIds: string[]) => {
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const stamp =
+      `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_` +
+      `${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+
+    return `protocols_export_${String(projectId)}_${stamp}.json`;
+  }, []);
+
   useEffect(() => {
     // cleanupNextStepTooltipTimer
     return () => {
@@ -1322,6 +1344,16 @@ export default function ProtocolNodeCard({
       ];
     }
   }, [reactFlow, data.id, data.projectId, data]);
+
+  const getSelectedProtocolIdsForExport = useCallback((): string[] => {
+    const targets = getSelectedTagTargets();
+
+    return uniqStrings(
+      targets
+        .map((t) => String(t.protocolId ?? "").trim())
+        .filter((protocolId) => protocolId && protocolId !== "PROJECT"),
+    );
+  }, [getSelectedTagTargets]);
 
   const getTagIdsFromNodeRaw = useCallback(
     (rawTags: unknown): string[] => {
@@ -1679,6 +1711,108 @@ export default function ProtocolNodeCard({
     },
     [isMac, armSuppressNextMenuAction, ensureRightClickSelectionIsUnambiguous],
   );
+
+  const resolveExportBrowserPaths = useCallback(async (): Promise<ResolveBrowserPathsResult> => {
+    return await svcRef.current.resolveBrowserPaths(-1, -1);
+  }, []);
+
+  const listExportRemoteDirectory = useCallback(async (relPath: string): Promise<RemoteEntry[]> => {
+    const items = await svcRef.current.listRemoteDirectory(-1, -1, relPath ?? "");
+    return Array.isArray(items) ? (items as RemoteEntry[]) : [];
+  }, []);
+
+  const previewExportRemoteEntry = useCallback(async (relPath: string): Promise<RemotePreview | null> => {
+    return await svcRef.current.previewRemoteEntry(-1, -1, relPath ?? "");
+  }, []);
+
+  const buildExportDownloadUrl = useCallback((relPath: string, inline: boolean = false) => {
+    return svcRef.current.buildProtocolDownloadUrl("-1", "-1", relPath ?? "", inline);
+  }, []);
+
+  const handleExport = useCallback(() => {
+    if (isProjectNode) return;
+    if (normalizedProjectId == null) {
+      toast.error("Project id is not available.");
+      return;
+    }
+
+    const protocolIds = getSelectedProtocolIdsForExport();
+    if (protocolIds.length === 0) {
+      toast.error("No protocols selected to export.");
+      return;
+    }
+
+    setExportProtocolIds(protocolIds);
+    setExportDefaultFilename(buildDefaultExportFilename(normalizedProjectId, protocolIds));
+    setExportBrowserOpen(true);
+  }, [
+    buildDefaultExportFilename,
+    getSelectedProtocolIdsForExport,
+    isProjectNode,
+    normalizedProjectId,
+  ]);
+
+  const handlePickExportTarget = useCallback(
+    (directoryPath: string, _entry: RemoteEntry, filename?: string) => {
+      if (normalizedProjectId == null) {
+        toast.error("Project id is not available.");
+        return;
+      }
+
+      const finalDirectoryPath = String(directoryPath ?? "").trim();
+      const finalFilename = String(filename ?? "").trim();
+      const protocolIds = exportProtocolIds;
+
+      if (!finalDirectoryPath) {
+        toast.error("Please choose a destination folder.");
+        return;
+      }
+
+      if (!finalFilename) {
+        toast.error("Please provide a file name.");
+        return;
+      }
+
+      if (!protocolIds.length) {
+        toast.error("No protocols selected to export.");
+        return;
+      }
+
+      const run = async () => {
+        setExportBusy(true);
+
+        try {
+          const payload: ExportProtocolsRequestPayload = {
+            protocolIds,
+            directoryPath: finalDirectoryPath,
+            filename: finalFilename,
+          };
+
+          const result = await svcRef.current.exportProtocols(
+            normalizedProjectId as Id,
+            payload,
+          );
+
+          toast.success(`Export saved as ${result.filename ?? finalFilename}`);
+          setExportBrowserOpen(false);
+          setExportProtocolIds([]);
+        } catch (e: any) {
+          toast.error(coerceErrorMessage(e, "Failed to export protocols"));
+        } finally {
+          setExportBusy(false);
+        }
+      };
+
+      void run();
+    },
+    [exportProtocolIds, normalizedProjectId],
+  );
+
+  const handleCloseExportBrowser = useCallback(() => {
+    if (exportBusy) return;
+    setExportBrowserOpen(false);
+    setExportProtocolIds([]);
+  }, [exportBusy]);
 
   const mod = isMac ? "⌘" : "Ctrl";
   const modShift = isMac ? "⌘⇧" : "Ctrl+Shift";
@@ -2360,7 +2494,12 @@ export default function ProtocolNodeCard({
                       </DropdownMenuSub>)}
 
                     {isMenuItemVisible("export") && (
-                      <DropdownMenuItem>
+                      <DropdownMenuItem
+                        onSelect={(e) => {
+                          e.preventDefault();
+                          handleExport();
+                        }}
+                      >
                         <div className={styles.menuRow}>
                           <span className={styles.menuLeft}>
                             <FileUp className={styles.menuItemIcon} />
@@ -2370,18 +2509,9 @@ export default function ProtocolNodeCard({
                       </DropdownMenuItem>
                     )}
 
-                    {isMenuItemVisible("upload") && (
-                      <DropdownMenuItem>
-                        <div className={styles.menuRow}>
-                          <span className={styles.menuLeft}>
-                            <Upload className={styles.menuItemIcon} />
-                            <span>Export & upload</span>
-                          </span>
-                        </div>
-                      </DropdownMenuItem>)}
-
-                    {(isMenuItemVisible("upload") || isMenuItemVisible("export") || isMenuItemVisible("manageTags")) && (
-                      <DropdownMenuSeparator />)}
+                    {(isMenuItemVisible("export") || isMenuItemVisible("manageTags")) && (
+                      <DropdownMenuSeparator />
+                    )}
 
                     {isMenuItemVisible("nextSteps") && (
                       <DropdownMenuSub
@@ -2885,28 +3015,17 @@ export default function ProtocolNodeCard({
           </ContextMenuSub>)}
 
         {isMenuItemVisible("export") && (
-          <ContextMenuItem>
+          <ContextMenuItem onClick={handleExport}>
             <div className={styles.menuRow}>
               <span className={styles.menuLeft}>
                 <FileUp className={styles.menuItemIcon} />
                 <span>Export</span>
               </span>
             </div>
-          </ContextMenuItem>)}
+          </ContextMenuItem>
+        )}
 
-        {isMenuItemVisible("upload") && (
-          <ContextMenuItem>
-            <div className={styles.menuRow}>
-              <span className={styles.menuLeft}>
-                <Upload className={styles.menuItemIcon} />
-                <span>Export & upload</span>
-              </span>
-            </div>
-          </ContextMenuItem>)}
-
-
-        {(isMenuItemVisible("upload") || isMenuItemVisible("upload")) && (
-          <ContextMenuSeparator />)}
+        {isMenuItemVisible("export") && <ContextMenuSeparator />}
 
         {isMenuItemVisible("nextSteps") && (
           <ContextMenuSub
@@ -3059,6 +3178,27 @@ export default function ProtocolNodeCard({
             </Button>
           </DialogActions>
         </Dialog>
+      ) : null}
+
+      {exportBrowserOpen ? (
+        <RemoteFileDialog
+          open
+          onClose={handleCloseExportBrowser}
+          title="Export protocols"
+          projectId={-1}
+          protocolId={-1}
+          mode="save"
+          defaultFilename={exportDefaultFilename}
+          filenameLabel="Export file name"
+          confirmLabel={exportBusy ? "Saving..." : "Save"}
+          closeOnPick={false}
+          busy={exportBusy}
+          resolveBrowserPaths={resolveExportBrowserPaths}
+          listRemoteDirectory={listExportRemoteDirectory}
+          previewRemoteEntry={previewExportRemoteEntry}
+          buildDownloadUrl={buildExportDownloadUrl}
+          onPick={handlePickExportTarget}
+        />
       ) : null}
 
     </ContextMenu>

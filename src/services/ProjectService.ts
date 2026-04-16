@@ -1,6 +1,7 @@
 // src/services/ProjectService.ts
 
 import { loadWorkflowPayload } from "@/api/projects";
+import { RemoteEntry, RemotePreview } from "@/components/files/RemoteFileDialog";
 
 
 export type AuthenticatedRequestOptions = {
@@ -930,6 +931,44 @@ export type ExecuteProtocolWizardResult = {
   viewerState?: ExecuteProtocolWizardViewerState | null;
 };
 
+//─────────────────────────────────────────────────────────────────────────────
+// Protocol export (for sharing or external analysis)
+//─────────────────────────────────────────────────────────────────────────────
+
+export type ResolveBrowserPathsResult = {
+  rootAbs?: string;
+  startPath?: string;
+  protocolRoot?: string;
+};
+
+export type ExportProtocolsRequestPayload = {
+  protocolIds: Id[];
+  directoryPath: string;
+  filename: string;
+};
+
+export type ExportProtocolsResult = {
+  success: boolean;
+  path: string;
+  filename: string;
+  size?: number;
+  mimeType?: string;
+  protocolIds?: Array<Id>;
+};
+
+export type WriteRemoteFilePayload = {
+  path: string;
+  content: string;
+  mimeType?: string;
+};
+
+export type WriteRemoteFileResult = {
+  success: boolean;
+  path: string;
+  size?: number;
+  mimeType?: string;
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // ProjectService interface
 // ─────────────────────────────────────────────────────────────────────────────  
@@ -1047,9 +1086,9 @@ export interface ProjectService<
   continueAll(projectId: Id, protocolId: Id): Promise<TProject>;
   resetFrom(projectId: Id, protocolId: Id): Promise<TProject>;
   stopProtocol(projectId: Id, ids: string[]): Promise<TProject>;
-  resolveBrowserPaths(projectId: Id, protocolId: Id): Promise<TProject>;
-  listRemoteDirectory(projectId: Id, protocolId: Id, path: string): Promise<TProject>;
-  previewProtocolText(projectId: Id, protocolId: string, path: string): Promise<TProject>;
+  resolveBrowserPaths(projectId: Id, protocolId: Id): Promise<ResolveBrowserPathsResult>;
+  listRemoteDirectory(projectId: Id, protocolId: Id, path: string): Promise<any[]>;
+  previewRemoteEntry(projectId: Id, protocolId: Id, path: string): Promise<any | null>;
   buildProtocolDownloadUrl(
     projectId: string,
     protocolId: string,
@@ -1492,4 +1531,18 @@ export interface ProjectService<
     projectId: string | number,
     payload: ExecuteProtocolWizardPayload
   ) => Promise<ExecuteProtocolWizardResult>;
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Protocol export (for sharing or external analysis)
+  // ─────────────────────────────────────────────────────────────────────────────
+  exportProtocols(
+  projectId: Id,
+  payload: ExportProtocolsRequestPayload,
+): Promise<ExportProtocolsResult>;
+
+  writeRemoteFile(
+    projectId: Id,
+    protocolId: Id,
+    payload: WriteRemoteFilePayload,
+  ): Promise<WriteRemoteFileResult>;
 }
