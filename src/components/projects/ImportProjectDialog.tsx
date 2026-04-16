@@ -225,7 +225,7 @@ export default function ImportProjectDialog({
                 variant="body2"
                 sx={{
                   mb: 0.75,
-                  mt:2,
+                  mt: 2,
                   fontWeight: 600,
                   color: theme.palette.text.primary,
                 }}
@@ -249,6 +249,7 @@ export default function ImportProjectDialog({
                 />
 
                 <IconButton
+                  aria-label="Browse project location"
                   onClick={() => setOpenBrowser(true)}
                   disabled={submitting}
                   sx={{
@@ -297,7 +298,7 @@ export default function ImportProjectDialog({
                   </Tooltip>
                 </Stack>
 
-                
+
               </Stack>
             </Box>
 
