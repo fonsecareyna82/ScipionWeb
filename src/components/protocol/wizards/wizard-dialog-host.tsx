@@ -6,6 +6,7 @@ import CtfPreviewDialog from "./CtfPreviewDialog";
 import FilterPreviewDialog from "./FilterPreviewDialog";
 import MaskRadiusDialog from "./MaskRadiusDialog";
 import MaskRadiiDialog from "./MaskRadiiDialog";
+import DownsamplePreviewDialog from "./DownsamplePreviewDialog";
 import type { ActiveWizardState } from "./protocol_wizard_types";
 
 type WizardDialogHostProps = {
@@ -37,6 +38,9 @@ type WizardDialogHostProps = {
     onFilterDecayChange: (value: number) => void;
     onFilterDecayCommit: (value: number) => void;
     onFilterSelectedIndexChange: (value: number) => void;
+    onDownsamplePreviewChange: (value: number) => void;
+    onDownsamplePreviewCommit: (value: number) => void;
+    onDownsamplePreviewSelectedIndexChange: (value: number) => void;
 };
 
 export default function WizardDialogHost({
@@ -68,6 +72,9 @@ export default function WizardDialogHost({
     onFilterDecayChange,
     onFilterDecayCommit,
     onFilterSelectedIndexChange,
+    onDownsamplePreviewSelectedIndexChange,
+    onDownsamplePreviewChange,
+    onDownsamplePreviewCommit,
 }: WizardDialogHostProps) {
     if (!wizardState.open) return null;
 
@@ -244,6 +251,31 @@ export default function WizardDialogHost({
             />
         );
     }
+
+    if (wizardState.kind === "downsample_preview") {
+    return (
+        <DownsamplePreviewDialog
+            open={wizardState.open}
+            title={wizardState.title}
+            message={wizardState.message}
+            items={wizardState.items}
+            selectedIndex={wizardState.selectedIndex}
+            onSelectedIndexChange={onDownsamplePreviewSelectedIndexChange}
+            micrographPreviewUrl={wizardState.micrographPreviewUrl}
+            psdPreviewUrl={wizardState.psdPreviewUrl}
+            previewLoading={previewLoading}
+            downsample={wizardState.downsample}
+            downsampleMin={wizardState.downsampleMin}
+            downsampleMax={wizardState.downsampleMax}
+            downsampleStep={wizardState.downsampleStep}
+            downsampleParamName={wizardState.downsampleParamName}
+            onClose={onClose}
+            onConfirm={onConfirm}
+            onDownsampleChange={onDownsamplePreviewChange}
+            onDownsampleCommit={onDownsamplePreviewCommit}
+        />
+    );
+}
 
     return null;
 }

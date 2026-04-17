@@ -138,6 +138,29 @@ export type CtfPreviewDialogState = {
     autoDownsampleValue: number | null;
 };
 
+export type DownsamplePreviewDialogState = {
+    kind: "downsample_preview";
+    open: true;
+    stateKey: string;
+    paramName: string;
+    wizardId: string;
+    title: string;
+    message: string;
+
+    items: MaskRadiusDialogItem[];
+    selectedIndex: number;
+
+    micrographPreviewUrl: string | null;
+    psdPreviewUrl: string | null;
+
+    downsample: number;
+    downsampleMin: number;
+    downsampleMax: number;
+    downsampleStep: number;
+
+    downsampleParamName: string;
+};
+
 export type FilterPreviewDialogState = {
     kind: "filter_preview";
     open: true;
@@ -186,6 +209,7 @@ export type ActiveWizardState =
     | MaskRadiusDialogState
     | MaskRadiiDialogState
     | CtfPreviewDialogState
+    | DownsamplePreviewDialogState
     | FilterPreviewDialogState;
 
 export const closedWizardState: ClosedWizardState = {
@@ -480,5 +504,53 @@ export function viewerStateToCtfPreviewDialogState(args: {
             typeof viewerState?.autoDownsampleValue === "number"
                 ? viewerState.autoDownsampleValue
                 : null,
+    };
+}
+
+export function viewerStateToDownsamplePreviewDialogState(args: {
+    stateKey: string;
+    paramName: string;
+    wizardId: string;
+    title: string;
+    message: string;
+    viewerState: ExecuteProtocolWizardViewerState | null;
+    previewUrl: string | null;
+}): DownsamplePreviewDialogState {
+    const {
+        stateKey,
+        paramName,
+        wizardId,
+        title,
+        message,
+        viewerState,
+        previewUrl,
+    } = args;
+
+    const items = normalizeWizardViewerItems(viewerState?.items);
+    const normalizedSelectedIndex = Math.max(
+        1,
+        Number(viewerState?.selectedIndex ?? items[0]?.index ?? 1) || items[0]?.index || 1,
+    );
+
+    return {
+        kind: "downsample_preview",
+        open: true,
+        stateKey,
+        paramName,
+        wizardId,
+        title,
+        message,
+        items,
+        selectedIndex: normalizedSelectedIndex,
+        micrographPreviewUrl:
+            String(viewerState?.micrographPreview?.imageUrl ?? "").trim() || previewUrl,
+        psdPreviewUrl:
+            String(viewerState?.psdPreview?.imageUrl ?? "").trim() || previewUrl,
+        downsample: Number(viewerState?.downsample ?? 1) || 1,
+        downsampleMin: Number(viewerState?.downsampleMin ?? 1) || 1,
+        downsampleMax: Number(viewerState?.downsampleMax ?? 8) || 8,
+        downsampleStep: Number(viewerState?.downsampleStep ?? 0.01) || 0.01,
+        downsampleParamName:
+            String(viewerState?.downsampleParam ?? paramName).trim() || paramName,
     };
 }

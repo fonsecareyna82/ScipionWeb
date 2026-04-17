@@ -763,6 +763,20 @@ export type ExecuteProtocolWizardInputSchema =
     }>;
   }
   | {
+    type: "downsample_preview";
+    paramName: string;
+    title?: string;
+    fields: Array<{
+      name: string;
+      label: string;
+      kind: "number";
+      value: number;
+      min?: number;
+      max?: number;
+      step?: number;
+    }>;
+  }
+  | {
     type: "filter_preview";
     paramName: string;
     title?: string;

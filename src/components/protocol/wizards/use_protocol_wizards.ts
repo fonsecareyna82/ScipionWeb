@@ -23,6 +23,7 @@ import {
     closedWizardState,
     type ActiveWizardState,
     viewerStateToCtfPreviewDialogState,
+    viewerStateToDownsamplePreviewDialogState,
     viewerStateToFilterPreviewDialogState,
     viewerStateToMaskRadiusDialogState,
     viewerStateToMaskRadiiDialogState,
@@ -173,6 +174,34 @@ export function useProtocolWizards({
                 return;
             }
 
+            if (wizardState.kind === "downsample_preview") {
+                const result = await svc.executeProtocolWizard(projectId, {
+                    protocolId: protocolId ?? null,
+                    protocolClassName,
+                    paramName: wizardState.paramName,
+                    wizardId: wizardState.wizardId,
+                    formValues: getSerializedParams(),
+                    wizardInputs: {
+                        action: "apply",
+                        selectedIndex: wizardState.selectedIndex,
+                        downsample: wizardState.downsample,
+                    },
+                });
+
+                const updates =
+                    result?.paramUpdates && typeof result.paramUpdates === "object"
+                        ? { ...result.paramUpdates }
+                        : {};
+
+                if (Object.keys(updates).length > 0) {
+                    applyWizardParamUpdates(updates);
+                }
+
+                toast.success(result?.message?.trim() || "Wizard executed successfully.");
+                closeWizard();
+                return;
+            }
+
             if (wizardState.kind === "ctf_preview") {
                 const result = await svc.executeProtocolWizard(projectId, {
                     protocolId: protocolId ?? null,
@@ -202,6 +231,7 @@ export function useProtocolWizards({
                 closeWizard();
                 return;
             }
+
             if (wizardState.kind === "filter_preview") {
                 const result = await svc.executeProtocolWizard(projectId, {
                     protocolId: protocolId ?? null,
@@ -265,6 +295,7 @@ export function useProtocolWizards({
             if (
                 wizardState.kind !== "mask_radius" &&
                 wizardState.kind !== "mask_radii" &&
+                wizardState.kind !== "downsample_preview" &&
                 wizardState.kind !== "ctf_preview" &&
                 wizardState.kind !== "filter_preview"
             ) {
@@ -409,6 +440,43 @@ export function useProtocolWizards({
                         };
                     }
 
+                    if (prev.kind === "downsample_preview") {
+                        const nextSelectedIndex = Math.max(
+                            1,
+                            Number(
+                                viewerState?.selectedIndex ?? wizardInputs.selectedIndex ?? prev.selectedIndex,
+                            ) || prev.selectedIndex,
+                        );
+
+                        const nextDownsample =
+                            Number(viewerState?.downsample ?? wizardInputs.downsample ?? prev.downsample) ||
+                            prev.downsample;
+
+                        return {
+                            ...prev,
+                            selectedIndex: nextSelectedIndex,
+                            items: Array.isArray(viewerState?.items) ? viewerState.items : prev.items,
+                            micrographPreviewUrl:
+                                resolveWizardPreviewUrl(svc, viewerState?.micrographPreview?.imageUrl) ??
+                                prev.micrographPreviewUrl ??
+                                previewUrl,
+                            psdPreviewUrl:
+                                resolveWizardPreviewUrl(svc, viewerState?.psdPreview?.imageUrl) ??
+                                prev.psdPreviewUrl ??
+                                previewUrl,
+                            downsample: nextDownsample,
+                            downsampleMin:
+                                Number(viewerState?.downsampleMin ?? prev.downsampleMin) || prev.downsampleMin,
+                            downsampleMax:
+                                Number(viewerState?.downsampleMax ?? prev.downsampleMax) || prev.downsampleMax,
+                            downsampleStep:
+                                Number(viewerState?.downsampleStep ?? prev.downsampleStep) || prev.downsampleStep,
+                            downsampleParamName:
+                                String(viewerState?.downsampleParam ?? prev.downsampleParamName).trim() ||
+                                prev.downsampleParamName,
+                        };
+                    }
+
                     if (prev.kind === "ctf_preview") {
                         const nextSelectedIndex = Math.max(
                             1,
@@ -489,6 +557,7 @@ export function useProtocolWizards({
                                     : prev.autoDownsampleValue,
                         };
                     }
+
                     if (prev.kind === "filter_preview") {
                         const nextSelectedIndex = Math.max(
                             1,
@@ -715,6 +784,37 @@ export function useProtocolWizards({
                             message: String(result?.message ?? "").trim(),
                             fallbackInnerRadius: fallbackInner,
                             fallbackOuterRadius: fallbackOuter,
+                            viewerState,
+                            previewUrl,
+                        }),
+                    );
+
+                    return;
+                }
+
+                if (result?.requiresUserInput && inputSchema?.type === "downsample_preview") {
+                    const deferredUpdates = { ...updates };
+                    delete deferredUpdates[paramName];
+
+                    if (Object.keys(deferredUpdates).length > 0) {
+                        applyWizardParamUpdates(deferredUpdates);
+                    }
+
+                    const viewerState: ExecuteProtocolWizardViewerState | null =
+                        result?.viewerState ?? null;
+
+                    const previewUrl = resolveWizardPreviewUrl(
+                        svc,
+                        viewerState?.preview?.imageUrl,
+                    );
+
+                    setWizardState(
+                        viewerStateToDownsamplePreviewDialogState({
+                            stateKey,
+                            paramName,
+                            wizardId: wizard.id,
+                            title: String(inputSchema.title ?? mergedDef?.label ?? paramName),
+                            message: String(result?.message ?? "").trim(),
                             viewerState,
                             previewUrl,
                         }),
@@ -1051,6 +1151,55 @@ export function useProtocolWizards({
         [wizardState, refreshInteractiveWizardPreview],
     );
 
+    const setDownsamplePreviewValue = useCallback((value: number) => {
+        setWizardState((prev) =>
+            prev.kind === "downsample_preview"
+                ? {
+                    ...prev,
+                    downsample: Math.max(prev.downsampleMin, Math.min(value, prev.downsampleMax)),
+                }
+                : prev,
+        );
+    }, []);
+
+    const commitDownsamplePreviewValue = useCallback(
+        async (value: number) => {
+            if (wizardState.kind !== "downsample_preview") return;
+
+            const nextValue = Math.max(
+                wizardState.downsampleMin,
+                Math.min(value, wizardState.downsampleMax),
+            );
+
+            await refreshInteractiveWizardPreview({
+                selectedIndex: wizardState.selectedIndex,
+                downsample: nextValue,
+            });
+        },
+        [wizardState, refreshInteractiveWizardPreview],
+    );
+
+    const setDownsamplePreviewSelectedIndex = useCallback(
+        async (value: number) => {
+            setWizardState((prev) =>
+                prev.kind === "downsample_preview"
+                    ? {
+                        ...prev,
+                        selectedIndex: value,
+                    }
+                    : prev,
+            );
+
+            if (wizardState.kind !== "downsample_preview") return;
+
+            await refreshInteractiveWizardPreview({
+                selectedIndex: value,
+                downsample: wizardState.downsample,
+            });
+        },
+        [wizardState, refreshInteractiveWizardPreview],
+    );
+
     const setCtfDownsampleValue = useCallback((value: number) => {
         setWizardState((prev) =>
             prev.kind === "ctf_preview"
@@ -1153,7 +1302,6 @@ export function useProtocolWizards({
         },
         [wizardState, refreshInteractiveWizardPreview],
     );
-
 
     const setFilterLowFreqValue = useCallback((value: number) => {
         setWizardState((prev) =>
@@ -1285,6 +1433,9 @@ export function useProtocolWizards({
         setMaskRadiiOuterValue,
         commitMaskRadiiOuterValue,
         setMaskRadiiSelectedIndex,
+        setDownsamplePreviewValue,
+        commitDownsamplePreviewValue,
+        setDownsamplePreviewSelectedIndex,
         setCtfDownsampleValue,
         commitCtfDownsampleValue,
         setCtfLowFreqValue,
@@ -1299,6 +1450,5 @@ export function useProtocolWizards({
         setFilterDecayValue,
         commitFilterDecayValue,
         setFilterSelectedIndex,
-
     };
 }
