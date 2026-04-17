@@ -210,12 +210,121 @@ export type ActiveWizardState =
     | MaskRadiiDialogState
     | CtfPreviewDialogState
     | DownsamplePreviewDialogState
-    | FilterPreviewDialogState;
+    | FilterPreviewDialogState
+    | PointInVolumeDialogState;
 
 export const closedWizardState: ClosedWizardState = {
     kind: "closed",
     open: false,
 };
+
+export type PointInVolumeDialogState = {
+    kind: "point_in_volume";
+    open: true;
+    stateKey: string;
+    paramName: string;
+    wizardId: string;
+    title: string;
+    message: string;
+
+    dims: [number, number, number];
+    previewDims: [number, number, number];
+    previewValues: number[];
+
+    point: {
+        x: number;
+        y: number;
+        z: number;
+    };
+
+    pointVoxel: {
+        x: number;
+        y: number;
+        z: number;
+    };
+
+    bounds: {
+        xMin: number;
+        xMax: number;
+        yMin: number;
+        yMax: number;
+        zMin: number;
+        zMax: number;
+    };
+};
+
+
+export function viewerStateToPointInVolumeDialogState(args: {
+    stateKey: string;
+    paramName: string;
+    wizardId: string;
+    title: string;
+    message: string;
+    viewerState: ExecuteProtocolWizardViewerState | null;
+}): PointInVolumeDialogState {
+    const {
+        stateKey,
+        paramName,
+        wizardId,
+        title,
+        message,
+        viewerState,
+    } = args;
+
+    const dimsRaw = Array.isArray(viewerState?.dims) ? viewerState.dims : [1, 1, 1];
+    const previewDimsRaw = Array.isArray(viewerState?.previewDims)
+        ? viewerState.previewDims
+        : dimsRaw;
+
+    const dims: [number, number, number] = [
+        Number(dimsRaw[0] ?? 1) || 1,
+        Number(dimsRaw[1] ?? 1) || 1,
+        Number(dimsRaw[2] ?? 1) || 1,
+    ];
+
+    const previewDims: [number, number, number] = [
+        Number(previewDimsRaw[0] ?? 1) || 1,
+        Number(previewDimsRaw[1] ?? 1) || 1,
+        Number(previewDimsRaw[2] ?? 1) || 1,
+    ];
+
+    const point = {
+        x: Number(viewerState?.point?.x ?? 0) || 0,
+        y: Number(viewerState?.point?.y ?? 0) || 0,
+        z: Number(viewerState?.point?.z ?? 0) || 0,
+    };
+
+    const pointVoxel = {
+        x: Number(viewerState?.pointVoxel?.x ?? 0) || 0,
+        y: Number(viewerState?.pointVoxel?.y ?? 0) || 0,
+        z: Number(viewerState?.pointVoxel?.z ?? 0) || 0,
+    };
+
+    return {
+        kind: "point_in_volume",
+        open: true,
+        stateKey,
+        paramName,
+        wizardId,
+        title,
+        message,
+        dims,
+        previewDims,
+        previewValues: Array.isArray(viewerState?.previewValues)
+            ? viewerState.previewValues.map((v) => Number(v) || 0)
+            : [],
+        point,
+        pointVoxel,
+        bounds: {
+            xMin: Number(viewerState?.bounds?.xMin ?? -(dims[2] / 2)) || -(dims[2] / 2),
+            xMax: Number(viewerState?.bounds?.xMax ?? dims[2] / 2) || dims[2] / 2,
+            yMin: Number(viewerState?.bounds?.yMin ?? -(dims[1] / 2)) || -(dims[1] / 2),
+            yMax: Number(viewerState?.bounds?.yMax ?? dims[1] / 2) || dims[1] / 2,
+            zMin: Number(viewerState?.bounds?.zMin ?? -(dims[0] / 2)) || -(dims[0] / 2),
+            zMax: Number(viewerState?.bounds?.zMax ?? dims[0] / 2) || dims[0] / 2,
+        },
+    };
+}
 
 export function viewerStateToFilterPreviewDialogState(args: {
     stateKey: string;

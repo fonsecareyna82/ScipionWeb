@@ -1379,6 +1379,8 @@ export default function ProtocolForm({
     setDownsamplePreviewValue,
     commitDownsamplePreviewValue,
     setDownsamplePreviewSelectedIndex,
+    setPointInVolumePoint,
+    setPointInVolumeVoxel,
   } = useProtocolWizards({
     projectId,
     protocolId,
@@ -2986,6 +2988,8 @@ export default function ProtocolForm({
         onDownsamplePreviewChange={setDownsamplePreviewValue}
         onDownsamplePreviewCommit={commitDownsamplePreviewValue}
         onDownsamplePreviewSelectedIndexChange={setDownsamplePreviewSelectedIndex}
+        onPointInVolumeChange={setPointInVolumePoint}
+        onPointInVolumeVoxelChange={setPointInVolumeVoxel}
 
       />
 

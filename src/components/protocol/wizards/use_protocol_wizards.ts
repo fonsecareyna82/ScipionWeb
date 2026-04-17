@@ -27,6 +27,7 @@ import {
     viewerStateToFilterPreviewDialogState,
     viewerStateToMaskRadiusDialogState,
     viewerStateToMaskRadiiDialogState,
+    viewerStateToPointInVolumeDialogState,
 } from "./protocol_wizard_types";
 
 import { getWizardDescriptor } from "./protocol_wizard_meta";
@@ -232,6 +233,37 @@ export function useProtocolWizards({
                 return;
             }
 
+            if (wizardState.kind === "point_in_volume") {
+                const result = await svc.executeProtocolWizard(projectId, {
+                    protocolId: protocolId ?? null,
+                    protocolClassName,
+                    paramName: wizardState.paramName,
+                    wizardId: wizardState.wizardId,
+                    formValues: getSerializedParams(),
+                    wizardInputs: {
+                        action: "apply",
+                        point: {
+                            x: wizardState.point.x,
+                            y: wizardState.point.y,
+                            z: wizardState.point.z,
+                        },
+                    },
+                });
+
+                const updates =
+                    result?.paramUpdates && typeof result.paramUpdates === "object"
+                        ? { ...result.paramUpdates }
+                        : {};
+
+                if (Object.keys(updates).length > 0) {
+                    applyWizardParamUpdates(updates);
+                }
+
+                toast.success(result?.message?.trim() || "Wizard executed successfully.");
+                closeWizard();
+                return;
+            }
+
             if (wizardState.kind === "filter_preview") {
                 const result = await svc.executeProtocolWizard(projectId, {
                     protocolId: protocolId ?? null,
@@ -261,6 +293,8 @@ export function useProtocolWizards({
                 closeWizard();
                 return;
             }
+
+
         } catch (err: any) {
             const payload = getBackendPayloadFromError(err);
             const errors = getErrorsFromBackendPayload(payload);
@@ -885,6 +919,31 @@ export function useProtocolWizards({
                     return;
                 }
 
+                if (result?.requiresUserInput && inputSchema?.type === "point_in_volume") {
+                    const deferredUpdates = { ...updates };
+                    delete deferredUpdates[paramName];
+
+                    if (Object.keys(deferredUpdates).length > 0) {
+                        applyWizardParamUpdates(deferredUpdates);
+                    }
+
+                    const viewerState: ExecuteProtocolWizardViewerState | null =
+                        result?.viewerState ?? null;
+
+                    setWizardState(
+                        viewerStateToPointInVolumeDialogState({
+                            stateKey,
+                            paramName,
+                            wizardId: wizard.id,
+                            title: String(inputSchema.title ?? mergedDef?.label ?? paramName),
+                            message: String(result?.message ?? "").trim(),
+                            viewerState,
+                        }),
+                    );
+
+                    return;
+                }
+
                 if (result?.requiresUserInput) {
                     const deferredUpdates = { ...updates };
                     delete deferredUpdates[paramName];
@@ -995,6 +1054,47 @@ export function useProtocolWizards({
             openExecErrorDialog,
         ],
     );
+
+    const setPointInVolumePoint = useCallback((point: { x: number; y: number; z: number }) => {
+        setWizardState((prev) =>
+            prev.kind === "point_in_volume"
+                ? {
+                    ...prev,
+                    point: {
+                        x: Number(point.x) || 0,
+                        y: Number(point.y) || 0,
+                        z: Number(point.z) || 0,
+                    },
+                }
+                : prev,
+        );
+    }, []);
+
+    const setPointInVolumeVoxel = useCallback((pointVoxel: { x: number; y: number; z: number }) => {
+        setWizardState((prev) => {
+            if (prev.kind !== "point_in_volume") return prev;
+
+            const voxelX = Number(pointVoxel.x) || 0;
+            const voxelY = Number(pointVoxel.y) || 0;
+            const voxelZ = Number(pointVoxel.z) || 0;
+
+            const nextPoint = {
+                x: voxelX - prev.dims[2] / 2,
+                y: voxelY - prev.dims[1] / 2,
+                z: voxelZ - prev.dims[0] / 2,
+            };
+
+            return {
+                ...prev,
+                pointVoxel: {
+                    x: voxelX,
+                    y: voxelY,
+                    z: voxelZ,
+                },
+                point: nextPoint,
+            };
+        });
+    }, []);
 
     const setOptionsSelectedValue = useCallback((value: string) => {
         setWizardState((prev) =>
@@ -1450,5 +1550,7 @@ export function useProtocolWizards({
         setFilterDecayValue,
         commitFilterDecayValue,
         setFilterSelectedIndex,
+        setPointInVolumePoint,
+        setPointInVolumeVoxel,
     };
 }

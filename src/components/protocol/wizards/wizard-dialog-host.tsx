@@ -8,6 +8,7 @@ import MaskRadiusDialog from "./MaskRadiusDialog";
 import MaskRadiiDialog from "./MaskRadiiDialog";
 import DownsamplePreviewDialog from "./DownsamplePreviewDialog";
 import type { ActiveWizardState } from "./protocol_wizard_types";
+import PointInVolumeWizardDialog from "./PointInVolumeWizardDialog";
 
 type WizardDialogHostProps = {
     wizardState: ActiveWizardState;
@@ -41,6 +42,8 @@ type WizardDialogHostProps = {
     onDownsamplePreviewChange: (value: number) => void;
     onDownsamplePreviewCommit: (value: number) => void;
     onDownsamplePreviewSelectedIndexChange: (value: number) => void;
+    onPointInVolumeChange: (point: { x: number; y: number; z: number }) => void;
+    onPointInVolumeVoxelChange: (pointVoxel: { x: number; y: number; z: number }) => void;
 };
 
 export default function WizardDialogHost({
@@ -75,6 +78,9 @@ export default function WizardDialogHost({
     onDownsamplePreviewSelectedIndexChange,
     onDownsamplePreviewChange,
     onDownsamplePreviewCommit,
+    onPointInVolumeChange,
+    onPointInVolumeVoxelChange,
+
 }: WizardDialogHostProps) {
     if (!wizardState.open) return null;
 
@@ -253,29 +259,48 @@ export default function WizardDialogHost({
     }
 
     if (wizardState.kind === "downsample_preview") {
-    return (
-        <DownsamplePreviewDialog
-            open={wizardState.open}
-            title={wizardState.title}
-            message={wizardState.message}
-            items={wizardState.items}
-            selectedIndex={wizardState.selectedIndex}
-            onSelectedIndexChange={onDownsamplePreviewSelectedIndexChange}
-            micrographPreviewUrl={wizardState.micrographPreviewUrl}
-            psdPreviewUrl={wizardState.psdPreviewUrl}
-            previewLoading={previewLoading}
-            downsample={wizardState.downsample}
-            downsampleMin={wizardState.downsampleMin}
-            downsampleMax={wizardState.downsampleMax}
-            downsampleStep={wizardState.downsampleStep}
-            downsampleParamName={wizardState.downsampleParamName}
-            onClose={onClose}
-            onConfirm={onConfirm}
-            onDownsampleChange={onDownsamplePreviewChange}
-            onDownsampleCommit={onDownsamplePreviewCommit}
-        />
-    );
-}
+        return (
+            <DownsamplePreviewDialog
+                open={wizardState.open}
+                title={wizardState.title}
+                message={wizardState.message}
+                items={wizardState.items}
+                selectedIndex={wizardState.selectedIndex}
+                onSelectedIndexChange={onDownsamplePreviewSelectedIndexChange}
+                micrographPreviewUrl={wizardState.micrographPreviewUrl}
+                psdPreviewUrl={wizardState.psdPreviewUrl}
+                previewLoading={previewLoading}
+                downsample={wizardState.downsample}
+                downsampleMin={wizardState.downsampleMin}
+                downsampleMax={wizardState.downsampleMax}
+                downsampleStep={wizardState.downsampleStep}
+                downsampleParamName={wizardState.downsampleParamName}
+                onClose={onClose}
+                onConfirm={onConfirm}
+                onDownsampleChange={onDownsamplePreviewChange}
+                onDownsampleCommit={onDownsamplePreviewCommit}
+            />
+        );
+    }
+
+    if (wizardState.kind === "point_in_volume") {
+        return (
+            <PointInVolumeWizardDialog
+                open={wizardState.open}
+                title={wizardState.title}
+                message={wizardState.message}
+                dims={wizardState.dims}
+                previewDims={wizardState.previewDims}
+                previewValues={wizardState.previewValues}
+                point={wizardState.point}
+                pointVoxel={wizardState.pointVoxel}
+                onClose={onClose}
+                onConfirm={onConfirm}
+                onPointChange={onPointInVolumeChange}
+                onPointVoxelChange={onPointInVolumeVoxelChange}
+            />
+        );
+    }
 
     return null;
 }
