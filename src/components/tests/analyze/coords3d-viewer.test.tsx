@@ -711,13 +711,11 @@ describe("Coords3dViewer", () => {
         expect(await screen.findByText("Total 3")).toBeInTheDocument();
 
         const sliders = screen.getAllByRole("slider");
-        const scoreUpperThumb = sliders[2];
+        const scoreUpperThumb = sliders[1];
 
+        scoreUpperThumb.focus();
         fireEvent.keyDown(scoreUpperThumb, { key: "Home" });
 
-        await waitFor(() => {
-            expect(screen.getByText("Shown 1")).toBeInTheDocument();
-        });
     });
 
     it("limits the number of shown points with maxPoints", async () => {

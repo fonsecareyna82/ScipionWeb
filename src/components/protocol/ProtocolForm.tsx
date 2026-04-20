@@ -1376,6 +1376,11 @@ export default function ProtocolForm({
     setFilterDecayValue,
     commitFilterDecayValue,
     setFilterSelectedIndex,
+    setDownsamplePreviewValue,
+    commitDownsamplePreviewValue,
+    setDownsamplePreviewSelectedIndex,
+    setPointInVolumePoint,
+    setPointInVolumeVoxel,
   } = useProtocolWizards({
     projectId,
     protocolId,
@@ -2980,6 +2985,12 @@ export default function ProtocolForm({
         onFilterDecayChange={setFilterDecayValue}
         onFilterDecayCommit={commitFilterDecayValue}
         onFilterSelectedIndexChange={setFilterSelectedIndex}
+        onDownsamplePreviewChange={setDownsamplePreviewValue}
+        onDownsamplePreviewCommit={commitDownsamplePreviewValue}
+        onDownsamplePreviewSelectedIndexChange={setDownsamplePreviewSelectedIndex}
+        onPointInVolumeChange={setPointInVolumePoint}
+        onPointInVolumeVoxelChange={setPointInVolumeVoxel}
+
       />
 
       {/* Generic execute/save error dialog */}

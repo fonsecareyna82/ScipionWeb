@@ -763,6 +763,20 @@ export type ExecuteProtocolWizardInputSchema =
     }>;
   }
   | {
+    type: "downsample_preview";
+    paramName: string;
+    title?: string;
+    fields: Array<{
+      name: string;
+      label: string;
+      kind: "number";
+      value: number;
+      min?: number;
+      max?: number;
+      step?: number;
+    }>;
+  }
+  | {
     type: "filter_preview";
     paramName: string;
     title?: string;
@@ -789,6 +803,12 @@ export type ExecuteProtocolWizardInputSchema =
       max?: number;
       step?: number;
     }>;
+  }
+  | {
+    type: "point_in_volume";
+    paramName: string;
+    title?: string;
+    fields: [];
   };
 
 export type ExecuteProtocolWizardPreview = {
@@ -899,6 +919,32 @@ export type ExecuteProtocolWizardViewerState = {
     sourceWidth?: number | null;
     sourceHeight?: number | null;
   } | null;
+  point?: {
+    x: number;
+    y: number;
+    z: number;
+  } | null;
+
+  pointVoxel?: {
+    x: number;
+    y: number;
+    z: number;
+  } | null;
+
+  dims?: [number, number, number] | number[];
+  previewDims?: [number, number, number] | number[];
+  previewValues?: number[];
+  axisOrder?: string[];
+
+  bounds?: {
+    xMin: number;
+    xMax: number;
+    yMin: number;
+    yMax: number;
+    zMin: number;
+    zMax: number;
+  } | null;
+
 };
 
 export type ExecuteProtocolWizardPayload = {
@@ -1536,9 +1582,9 @@ export interface ProjectService<
   // Protocol export (for sharing or external analysis)
   // ─────────────────────────────────────────────────────────────────────────────
   exportProtocols(
-  projectId: Id,
-  payload: ExportProtocolsRequestPayload,
-): Promise<ExportProtocolsResult>;
+    projectId: Id,
+    payload: ExportProtocolsRequestPayload,
+  ): Promise<ExportProtocolsResult>;
 
   writeRemoteFile(
     projectId: Id,
