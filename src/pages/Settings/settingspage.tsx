@@ -11,6 +11,7 @@ import {
   CardContent,
   CardHeader,
   Chip,
+  CircularProgress,
   Collapse,
   Divider,
   FormControl,
@@ -1618,10 +1619,29 @@ export default function SettingsPage() {
 
     if (environmentLoading && environmentDraft.length === 0) {
       return (
-        <Stack spacing={1.75}>
-          <Skeleton variant="rounded" height={64} />
-          <Skeleton variant="rounded" height={340} />
-        </Stack>
+        <Card variant="outlined" sx={cardSx}>
+          <CardHeader
+            title="Environment"
+            subheader="Loading backend environment variables..."
+            sx={cardHeaderSx}
+          />
+          <CardContent
+            sx={{
+              pt: 2,
+              minHeight: 320,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Stack spacing={1.5} alignItems="center">
+              <CircularProgress size={28} thickness={4.5} />
+              <Typography sx={{ fontSize: 13, color: colors.muted }}>
+                Loading environment variables...
+              </Typography>
+            </Stack>
+          </CardContent>
+        </Card>
       );
     }
 
@@ -1671,93 +1691,121 @@ export default function SettingsPage() {
               {environmentDraft.length === 0 ? (
                 <Alert severity="info">No environment variables returned by the backend.</Alert>
               ) : (
-                <TableContainer
-                  component={Paper}
-                  variant="outlined"
-                  sx={{
-                    bgcolor: "transparent",
-                    borderColor: colors.border,
-                    borderRadius: 2,
-                    overflow: "auto",
-                    maxHeight: { xs: 360, md: 360 },
-                  }}
-                >
-                  <MuiTable size="small" stickyHeader>
-                    <TableHead>
-                      <TableRow>
-                        <TableCell
-                          sx={{
-                            minWidth: 280,
-                            bgcolor: colors.surface,
-                            color: colors.text,
-                            borderColor: colors.border,
-                            fontSize: 12,
-                            fontWeight: 900,
-                          }}
-                        >
-                          Variable
-                        </TableCell>
-                        <TableCell
-                          sx={{
-                            bgcolor: colors.surface,
-                            color: colors.text,
-                            borderColor: colors.border,
-                            fontSize: 12,
-                            fontWeight: 900,
-                          }}
-                        >
-                          Value
-                        </TableCell>
-                      </TableRow>
-                    </TableHead>
+                <Box sx={{ position: "relative" }}>
+                  <TableContainer
+                    component={Paper}
+                    variant="outlined"
+                    sx={{
+                      bgcolor: "transparent",
+                      borderColor: colors.border,
+                      borderRadius: 2,
+                      overflow: "auto",
+                      maxHeight: { xs: 360, md: 360 },
+                      transition: "opacity 160ms ease",
+                      opacity: environmentLoading ? 0.55 : 1,
+                    }}
+                  >
+                    <MuiTable size="small" stickyHeader>
+                      <TableHead>
+                        <TableRow>
+                          <TableCell
+                            sx={{
+                              minWidth: 280,
+                              bgcolor: colors.surface,
+                              color: colors.text,
+                              borderColor: colors.border,
+                              fontSize: 12,
+                              fontWeight: 900,
+                            }}
+                          >
+                            Variable
+                          </TableCell>
+                          <TableCell
+                            sx={{
+                              bgcolor: colors.surface,
+                              color: colors.text,
+                              borderColor: colors.border,
+                              fontSize: 12,
+                              fontWeight: 900,
+                            }}
+                          >
+                            Value
+                          </TableCell>
+                        </TableRow>
+                      </TableHead>
 
-                    <TableBody>
-                      {filteredEnvironmentRows.map((row) => {
-                        const originalIndex = environmentDraft.findIndex((item) => item.name === row.name);
+                      <TableBody>
+                        {filteredEnvironmentRows.map((row) => {
+                          const originalIndex = environmentDraft.findIndex((item) => item.name === row.name);
 
-                        return (
-                          <TableRow key={row.name} hover>
-                            <TableCell
-                              sx={{
-                                verticalAlign: "top",
-                                borderColor: colors.border,
-                                color: colors.text,
-                                fontSize: 12,
-                                fontWeight: 800,
-                                fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-                              }}
-                            >
-                              {row.name}
-                            </TableCell>
-
-                            <TableCell sx={{ borderColor: colors.border }}>
-                              <TextField
-                                sx={fieldSx}
-                                fullWidth
-                                multiline
-                                minRows={1}
-                                maxRows={8}
-                                size="small"
-                                value={row.value}
-                                onChange={(e) => {
-                                  const nextValue = e.target.value;
-                                  setEnvironmentDraft((prev) => {
-                                    const next = [...prev];
-                                    if (originalIndex >= 0 && originalIndex < next.length) {
-                                      next[originalIndex] = { ...next[originalIndex], value: nextValue };
-                                    }
-                                    return next;
-                                  });
+                          return (
+                            <TableRow key={row.name} hover>
+                              <TableCell
+                                sx={{
+                                  verticalAlign: "top",
+                                  borderColor: colors.border,
+                                  color: colors.text,
+                                  fontSize: 12,
+                                  fontWeight: 800,
+                                  fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
                                 }}
-                                placeholder="Variable value"
-                              />
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </MuiTable>
-                </TableContainer>
+                              >
+                                {row.name}
+                              </TableCell>
+
+                              <TableCell sx={{ borderColor: colors.border }}>
+                                <TextField
+                                  sx={fieldSx}
+                                  fullWidth
+                                  multiline
+                                  minRows={1}
+                                  maxRows={8}
+                                  size="small"
+                                  value={row.value}
+                                  disabled={environmentLoading}
+                                  onChange={(e) => {
+                                    const nextValue = e.target.value;
+                                    setEnvironmentDraft((prev) => {
+                                      const next = [...prev];
+                                      if (originalIndex >= 0 && originalIndex < next.length) {
+                                        next[originalIndex] = { ...next[originalIndex], value: nextValue };
+                                      }
+                                      return next;
+                                    });
+                                  }}
+                                  placeholder="Variable value"
+                                />
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </MuiTable>
+                  </TableContainer>
+
+                  {environmentLoading && (
+                    <Box
+                      sx={{
+                        position: "absolute",
+                        inset: 0,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        borderRadius: 2,
+                        bgcolor: isDarkMode ? "rgba(2, 6, 23, 0.38)" : "rgba(255,255,255,0.52)",
+                        backdropFilter: "blur(2px)",
+                        pointerEvents: "all",
+                      }}
+                    >
+                      <Stack spacing={1.25} alignItems="center">
+                        <CircularProgress size={28} thickness={4.5} />
+                        <Typography sx={{ fontSize: 13, color: colors.text, fontWeight: 700 }}>
+                          Saving environment variables...
+                        </Typography>
+                      </Stack>
+                    </Box>
+                  )}
+                </Box>
               )}
             </Stack>
           </CardContent>
