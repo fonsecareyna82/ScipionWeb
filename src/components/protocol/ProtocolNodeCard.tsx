@@ -2182,6 +2182,28 @@ export default function ProtocolNodeCard({
     [canOpenViewer, data.projectId, data.id, data.label, service],
   );
 
+  const stepsDone = Number(data.stepsDone ?? 0);
+  const numberOfSteps = Number(data.numberOfSteps ?? 0);
+
+  const hasStepProgress =
+    Number.isFinite(stepsDone) &&
+    Number.isFinite(numberOfSteps) &&
+    numberOfSteps > 0;
+
+  const progressPct = hasStepProgress
+    ? Math.max(0, Math.min(100, (stepsDone / numberOfSteps) * 100))
+    : 0;
+
+  const showProgressBar =
+    data.status === "running" ||
+    data.status === "failed" ||
+    data.status === "aborted";
+
+  const showIndeterminateProgress =
+    data.status === "running" &&
+    numberOfSteps > 0 &&
+    stepsDone <= 0;
+
   return (
     <ContextMenu modal={false}>
       <ContextMenuTrigger asChild>
@@ -2716,18 +2738,27 @@ export default function ProtocolNodeCard({
                     >
                       {data.status}
 
-                      {(data.status === "running" || data.status === "failed" || data.status === "aborted") && (
+                      {showProgressBar && (
                         <span className={styles.progress}>
                           <span className={styles.progressTrack}>
                             <span
-                              className={styles.progressFill}
-                              style={{
-                                width: `${((data.stepsDone ?? 0) / (data.numberOfSteps ?? 1)) * 100}%`,
-                              }}
+                              className={[
+                                styles.progressFill,
+                                showIndeterminateProgress ? styles.progressFillIndeterminate : "",
+                              ]
+                                .filter(Boolean)
+                                .join(" ")}
+                              style={
+                                showIndeterminateProgress
+                                  ? undefined
+                                  : {
+                                    width: `${progressPct}%`,
+                                  }
+                              }
                             />
                           </span>
                           <span className={styles.progressText}>
-                            {data.stepsDone}/{data.numberOfSteps}
+                            {stepsDone}/{numberOfSteps}
                           </span>
                         </span>
                       )}
