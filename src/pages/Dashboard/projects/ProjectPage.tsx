@@ -851,8 +851,13 @@ export default function ProjectPage() {
   // pendingNewNodesRef tracks node ids before an operation that creates new nodes (duplicate/add)
   const pendingNewNodesRef = useRef<{
     beforeIds: Set<string>;
+    operation?: "duplicate" | "add";
+    duplicatedPairs?: Array<{
+      sourceId: string;
+      newId: string;
+      sourcePosition?: { x: number; y: number };
+    }>;
   } | null>(null);
-
 
   useEffect(() => {
     // forceNodeRerenderAfterPolicyChange
@@ -3128,10 +3133,47 @@ export default function ProjectPage() {
     setNodes((prev) => {
       const step = getLevelStep(dir);
 
+      let seededPrev = prev;
+      const seededChangedMap = new Map<string, { x: number; y: number }>();
+
+      if (
+        pending.operation === "duplicate" &&
+        Array.isArray(pending.duplicatedPairs) &&
+        pending.duplicatedPairs.length > 0
+      ) {
+        const duplicateGap = 720;
+
+        seededPrev = prev.map((node) => {
+          const nodeId = String(node.id);
+          const pair = pending.duplicatedPairs?.find((p) => p.newId === nodeId);
+
+          if (!pair?.sourcePosition) return node;
+
+          const sourceLevelKey = inferNearestLevelKey(dir, pair.sourcePosition, prev);
+          const sourceLevelPos = sourceLevelKey * step;
+          const sourceAxis = getAxisCoord(dir, pair.sourcePosition);
+          const desiredAxis = sourceAxis + duplicateGap;
+
+          const desiredPosition = setAxisCoord(
+            dir,
+            setLevelCoord(dir, node.position, sourceLevelPos),
+            desiredAxis
+          );
+
+          seededChangedMap.set(nodeId, desiredPosition);
+
+          return {
+            ...node,
+            position: desiredPosition,
+            selected: true,
+          };
+        });
+      }
+
       // groupNewNodesByLevelKey
       const newIdsByLevel = new Map<number, string[]>();
       for (const id of newIds) {
-        const node = prev.find((n) => String(n.id) === id);
+        const node = seededPrev.find((n) => String(n.id) === id);
         if (!node) continue;
 
         const levelKey = Math.round(getLevelCoord(dir, node.position) / step);
@@ -3146,8 +3188,8 @@ export default function ProjectPage() {
       // processLevelsInStableOrder
       const levelKeys = Array.from(newIdsByLevel.keys()).sort((a, b) => a - b);
 
-      let nodesAcc = prev;
-      const changedMap = new Map<string, { x: number; y: number }>();
+      let nodesAcc = seededPrev;
+      const changedMap = new Map<string, { x: number; y: number }>(seededChangedMap);
 
       for (const levelKey of levelKeys) {
         const idsInLevel = newIdsByLevel.get(levelKey) ?? [];
@@ -3463,14 +3505,52 @@ export default function ProjectPage() {
     const cleanIds = ids.filter((i) => i && i !== "PROJECT");
     if (cleanIds.length === 0) return;
 
-    // snapshotIdsBeforeDuplicate
+    const beforeIds = new Set(nodesRef.current.map((n) => String(n.id)));
+
+    const sourcePositionById = new Map<string, { x: number; y: number }>();
+    for (const id of cleanIds) {
+      const node = nodesRef.current.find((n) => String(n.id) === String(id));
+      if (node?.position) {
+        sourcePositionById.set(String(id), node.position);
+      }
+    }
+
     pendingNewNodesRef.current = {
-      beforeIds: new Set(nodesRef.current.map((n) => String(n.id))),
+      beforeIds,
+      operation: "duplicate",
+      duplicatedPairs: [],
     };
 
     try {
       const items = cleanIds.map((id) => ({ id, name: genCopyName(id) }));
-      await svc.duplicateProtocol(projectName, items);
+      const result = await svc.duplicateProtocol(projectName, items);
+
+      const duplicatedFromBackend = Array.isArray((result as any)?.duplicated)
+        ? (result as any).duplicated
+        : [];
+
+      pendingNewNodesRef.current = {
+        beforeIds,
+        operation: "duplicate",
+        duplicatedPairs: duplicatedFromBackend
+          .map((pair: any) => {
+            const sourceId = String(pair?.sourceId ?? "");
+            const newId = String(pair?.newId ?? "");
+            if (!sourceId || !newId) return null;
+
+            return {
+              sourceId,
+              newId,
+              sourcePosition: sourcePositionById.get(sourceId),
+            };
+          })
+          .filter(Boolean) as Array<{
+            sourceId: string;
+            newId: string;
+            sourcePosition?: { x: number; y: number };
+          }>,
+      };
+
       toast.success(cleanIds.length > 1 ? "Protocols duplicated successfully." : "Protocol duplicated successfully.");
 
       clearAllSelectionHard();

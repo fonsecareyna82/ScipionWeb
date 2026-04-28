@@ -843,3 +843,28 @@
   gap: 8px;
   flex-wrap: wrap;
 }
+
+.progressTrack {
+  position: relative;
+}
+
+.progressFill {
+  display: block;
+  height: 12px;
+  background: #fff;
+  transition: width 500ms ease;
+}
+
+.progressFillIndeterminate {
+  width: 40%;
+  animation: swProtocolNodeCardIndeterminate 1.2s infinite ease-in-out;
+}
+
+@keyframes swProtocolNodeCardIndeterminate {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(220%);
+  }
+}

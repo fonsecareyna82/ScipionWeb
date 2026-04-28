@@ -421,7 +421,6 @@ export default function ProjectCard(props: ProjectCardProps) {
       setGalleryError(false);
 
       try {
-        setProjectThumbnailSrc(null);
         setProjectThumbnailError(false);
 
         const cacheKey = [
@@ -588,25 +587,33 @@ export default function ProjectCard(props: ProjectCardProps) {
     [galleryItems],
   );
 
-  const preferProtocolGallery = Boolean(thumbnailItemsUrl);
+  const galleryHasPendingImages = useMemo(
+    () =>
+      galleryItems.some((group) =>
+        (group.outputs || []).some((output) => !output.src && !output.hasError),
+      ),
+    [galleryItems],
+  );
 
-  const shouldLoadProjectFallback = useMemo(() => {
-    if (!thumbnailUrl) return false;
-
-    // If protocol thumbnails are available, do not fall back to the general project thumbnail.
-    if (preferProtocolGallery) return false;
-
-    if (galleryMetaLoading || galleryImagesLoading) return false;
-    if (galleryHasImages) return false;
-
-    return true;
+  const shouldPreferProtocolGallery = useMemo(() => {
+    if (!thumbnailItemsUrl) return false;
+    if (galleryMetaLoading || galleryImagesLoading) return true;
+    if (galleryHasImages) return true;
+    if (galleryHasPendingImages) return true;
+    return false;
   }, [
-    thumbnailUrl,
-    preferProtocolGallery,
+    thumbnailItemsUrl,
     galleryMetaLoading,
     galleryImagesLoading,
     galleryHasImages,
+    galleryHasPendingImages,
   ]);
+
+  const shouldLoadProjectFallback = useMemo(() => {
+    if (!thumbnailUrl) return false;
+    if (shouldPreferProtocolGallery) return false;
+    return true;
+  }, [thumbnailUrl, shouldPreferProtocolGallery]);
 
   useEffect(() => {
     let cancelled = false;
@@ -893,17 +900,20 @@ export default function ProjectCard(props: ProjectCardProps) {
   );
 
 
-  const hasGalleryStructure = galleryItems.length > 0;
-
-  const showGallery = hasGalleryStructure;
+  const showGallery =
+    shouldPreferProtocolGallery &&
+    (galleryHasImages || galleryHasPendingImages);
 
   const showProjectFallback =
     Boolean(projectThumbnailSrc) &&
-    !hasGalleryStructure &&
+    !showGallery &&
     !galleryMetaLoading &&
     !galleryImagesLoading;
 
-  const showGalleryLoading = !hasGalleryStructure && galleryMetaLoading;
+  const showGalleryLoading =
+    !showGallery &&
+    Boolean(thumbnailItemsUrl) &&
+    (galleryMetaLoading || galleryImagesLoading);
 
   const getProtocolCardWidth = useCallback((outputCount: number) => {
     const count = Math.max(1, outputCount);
