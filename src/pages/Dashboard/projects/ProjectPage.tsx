@@ -127,6 +127,42 @@ type NodeActions = {
 
 type OpenForm = { key: string; id: string; details: any; isClosing?: boolean };
 
+function mergeLiveProtocolFormDetails(currentDetails: any, freshDetails: any): any {
+  if (!currentDetails || typeof currentDetails !== "object") return freshDetails;
+  if (!freshDetails || typeof freshDetails !== "object") return currentDetails;
+
+  const currentInfo = currentDetails.info ?? {};
+  const freshInfo = freshDetails.info ?? {};
+
+  const currentForm = currentDetails.form ?? {};
+  const freshForm = freshDetails.form ?? {};
+
+  return {
+    ...currentDetails,
+    ...freshDetails,
+
+    info: {
+      ...currentInfo,
+      ...freshInfo,
+    },
+
+    form: {
+      ...currentForm,
+      ...freshForm,
+
+      // Keep the form definition stable while the user is editing.
+      sections: currentForm.sections ?? freshForm.sections,
+      definition: currentForm.definition ?? freshForm.definition,
+
+      // Do not overwrite editable values while the form is open.
+      values: currentForm.values ?? freshForm.values,
+    },
+
+    // Same protection if values are at the root level.
+    values: currentDetails.values ?? freshDetails.values,
+  };
+}
+
 type SearchResult = { id: string; label: string; status?: string };
 
 type ProtocolHelpState = {
@@ -711,6 +747,11 @@ export default function ProjectPage() {
   // dockEpochRef: prevents reopening forms after global close while a fetch is in-flight
   const dockEpochRef = useRef(0);
 
+  const openFormsRef = useRef<OpenForm[]>([]);
+
+  useEffect(() => {
+    openFormsRef.current = openForms;
+  }, [openForms]);
 
   const closeAllDockedForms = useCallback(() => {
     // closeAllDockedForms
@@ -725,6 +766,48 @@ export default function ProjectPage() {
 
     setOpenForms([]);
   }, [openForms.length]);
+
+  const refreshOpenFormsDetails = useCallback(async () => {
+    if (!projectName) return;
+
+    const formsToRefresh = openFormsRef.current.filter((form) => !form.isClosing);
+    if (!formsToRefresh.length) return;
+
+    const currentEpoch = dockEpochRef.current;
+
+    const results = await Promise.allSettled(
+      formsToRefresh.map(async (form) => {
+        const details = await svc.fetchProtocolDetails(projectName, form.id);
+        return {
+          id: String(form.id),
+          details,
+        };
+      })
+    );
+
+    if (dockEpochRef.current !== currentEpoch) return;
+
+    const detailsById = new Map<string, any>();
+
+    for (const result of results) {
+      if (result.status !== "fulfilled") continue;
+      detailsById.set(result.value.id, result.value.details);
+    }
+
+    if (!detailsById.size) return;
+
+    setOpenForms((prev) =>
+      prev.map((form) => {
+        const freshDetails = detailsById.get(String(form.id));
+        if (!freshDetails) return form;
+
+        return {
+          ...form,
+          details: mergeLiveProtocolFormDetails(form.details, freshDetails),
+        };
+      })
+    );
+  }, [projectName, svc]);
 
 
   // --- Smooth dock animations (FLIP) ---
@@ -1805,6 +1888,7 @@ export default function ProjectPage() {
       onSelectFrom: handleSelectFrom,
       onSelectTo: handleSelectTo,
       onStop: openStop,
+      onResetFrom: openResetFrom,
       onManageTags: () => setTagManagerOpen(true),
 
       onOpenProtocolClass: (protocolClass) => {
@@ -2189,6 +2273,7 @@ export default function ProjectPage() {
           requestAnimationFrame(() => snapViewportToTopLeft(GRID_ZOOM));
         }
       }
+      void refreshOpenFormsDetails();
     } catch (err) {
       console.error(err);
     } finally {
@@ -3577,6 +3662,8 @@ export default function ProjectPage() {
   const openRestartAll = (id: string) => setDlgRestartAll({ open: true, id: String(id) });
 
   const openContinueAll = (id: string) => setDlgContinueAll({ open: true, id: String(id) });
+
+  const openResetFrom = (id: string) => setDlgResetFrom({ open: true, id: String(id) });
 
   const openStop = (id: string) => {
     const ids =

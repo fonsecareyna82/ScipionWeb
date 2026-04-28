@@ -383,6 +383,7 @@ export default function ProtocolForm({
   const [allOutputs, setAllOutputs] = useState<any[]>([]);
   // Tracks last committed label for inputType to detect user changes
   const prevSelectedInputTypeRef = useRef<string | null>(null);
+  const initializedProtocolKeyRef = useRef<string | null>(null);
 
   // --------------------------------------------
   // Metadata tab snapshot
@@ -581,8 +582,39 @@ export default function ProtocolForm({
   useEffect(() => {
     if (!form) {
       setProtocolDetails({});
+      initializedProtocolKeyRef.current = null;
       return;
     }
+
+    const protocolKey = `${protocolId ?? "new"}:${protocolClassName ?? ""}`;
+
+    if (initializedProtocolKeyRef.current === protocolKey) {
+      setProtocolDetails((prev: any) => ({
+        ...prev,
+        label:
+          info?.protocolName ??
+          info?.label ??
+          (form as any)?.protocolName ??
+          prev?.label ??
+          "",
+        status:
+          info?.status ??
+          (form as any)?.status ??
+          prev?.status ??
+          "",
+        id: protocolId ?? prev?.id ?? "",
+        color:
+          info?.color ??
+          (form as any)?.color ??
+          prev?.color ??
+          "",
+      }));
+
+      setMetadataSnapshot(data);
+      return;
+    }
+
+    initializedProtocolKeyRef.current = protocolKey;
 
     const valuesMap = values && typeof values === "object" ? values : null;
 
