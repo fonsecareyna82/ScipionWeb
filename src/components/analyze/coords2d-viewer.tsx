@@ -336,16 +336,23 @@ function Coords2dViewer({ projectId, protocolId, protocolLabel, outputName }: Co
     const drag = dragRef.current;
     dragRef.current.active = false;
     if (drag.moved) return;
+
     const rect = event.currentTarget.getBoundingClientRect();
     const clickX = event.clientX - rect.left;
     const clickY = event.clientY - rect.top;
-    let best: { point: Coords2dPoint; distance: number } | null = null;
-    visiblePoints.forEach((point) => {
+    let nextSelectedPointId: string | null = null;
+    let bestDistance = Number.POSITIVE_INFINITY;
+
+    for (const point of visiblePoints) {
       const screen = worldToScreen(point.x, point.y);
       const distance = Math.hypot(screen.x - clickX, screen.y - clickY);
-      if (distance <= Math.max(8, radius + 6) && (!best || distance < best.distance)) best = { point, distance };
-    });
-    setSelectedPointId(best?.point.id ?? null);
+      if (distance <= Math.max(8, radius + 6) && distance < bestDistance) {
+        bestDistance = distance;
+        nextSelectedPointId = point.id;
+      }
+    }
+
+    setSelectedPointId(nextSelectedPointId);
   }, [radius, visiblePoints, worldToScreen]);
 
   const missingColumns = !loading && schema && (!data.xColumn || !data.yColumn);
