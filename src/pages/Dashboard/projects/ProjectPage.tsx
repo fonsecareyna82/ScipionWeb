@@ -1888,6 +1888,7 @@ export default function ProjectPage() {
       onSelectFrom: handleSelectFrom,
       onSelectTo: handleSelectTo,
       onStop: openStop,
+      onResetFrom: openResetFrom,
       onManageTags: () => setTagManagerOpen(true),
 
       onOpenProtocolClass: (protocolClass) => {
@@ -3661,6 +3662,8 @@ export default function ProjectPage() {
   const openRestartAll = (id: string) => setDlgRestartAll({ open: true, id: String(id) });
 
   const openContinueAll = (id: string) => setDlgContinueAll({ open: true, id: String(id) });
+
+  const openResetFrom = (id: string) => setDlgResetFrom({ open: true, id: String(id) });
 
   const openStop = (id: string) => {
     const ids =
