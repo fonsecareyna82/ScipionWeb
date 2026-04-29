@@ -12,9 +12,13 @@ import {
   Box,
   Button,
   ButtonGroup,
+  Checkbox,
   Chip,
   CircularProgress,
   Divider,
+  IconButton,
+  Menu,
+  MenuItem,
   Paper,
   Slider,
   Table,
@@ -35,6 +39,7 @@ import {
   Plus,
   Square,
   Table2,
+  X,
 } from "lucide-react";
 import { useProjectService } from "@/ProjectServiceContext";
 import type {
@@ -75,14 +80,77 @@ type Bounds2d = {
 type ToolMode = "pan" | "pick" | "erase";
 type ShapeMode = "circle" | "square";
 
+type ImageFilters = {
+  enhanceContrast: boolean;
+  gaussianBlur: boolean;
+  invertContrast: boolean;
+};
+
+type ParticleCrop = {
+  pointId: string;
+  rowIndex: number;
+  url: string;
+  x: number;
+  y: number;
+};
+
+type DragState = {
+  type: "none" | "pan" | "point" | "erase";
+  active: boolean;
+  moved: boolean;
+  x: number;
+  y: number;
+  offsetX: number;
+  offsetY: number;
+  pointId: string | null;
+  micKey: string;
+  startWorldX: number;
+  startWorldY: number;
+  initialPointX: number;
+  initialPointY: number;
+  initialPoint: ViewerPoint | null;
+};
+
+type ParticleCropCacheEntry = {
+  signature: string;
+  url: string;
+};
+
+type PendingPointMove = {
+  micKey: string;
+  pointId: string;
+  point: ViewerPoint;
+};
+
 const DEFAULT_BOX_SIZE = 50;
 const MIN_BOX_SIZE = 10;
 const MAX_BOX_SIZE = 240;
+const PARTICLE_GALLERY_SIZE = 74;
+
 const PANEL_BORDER = "1px solid rgba(100,116,139,0.35)";
 const HEADER_BG = "#e5e7eb";
 const TOOLBAR_BG = "#eeeeee";
 const ROW_SELECTED = "#3f617b";
-const DEFAULT_PICK_COLOR = "#ff0000";
+const DEFAULT_PICK_COLOR = "#00d5d5";
+
+function createDragState(): DragState {
+  return {
+    type: "none",
+    active: false,
+    moved: false,
+    x: 0,
+    y: 0,
+    offsetX: 0,
+    offsetY: 0,
+    pointId: null,
+    micKey: "",
+    startWorldX: 0,
+    startWorldY: 0,
+    initialPointX: 0,
+    initialPointY: 0,
+    initialPoint: null,
+  };
+}
 
 function toStringId(value: Id): string {
   return String(value ?? "");
@@ -101,12 +169,14 @@ function basename(value: string): string {
 
 function normalizeObjectUrl(raw: ObjectUrlResult | string | null | undefined): ObjectUrlResult | null {
   if (!raw) return null;
+
   if (typeof raw === "string") {
     return {
       url: raw,
       revoke: () => URL.revokeObjectURL(raw),
     };
   }
+
   return raw;
 }
 
@@ -122,6 +192,101 @@ function getMicrographLabel(micrograph: Coords2dMicrograph): string {
 
 function getPointId(point: Coords2dPoint, fallbackIndex: number): string {
   return String(point.id ?? `${point.micId}:${fallbackIndex}`);
+}
+
+function buildCanvasFilter(filters: ImageFilters): string {
+  const items: string[] = [];
+
+  if (filters.enhanceContrast) {
+    items.push("contrast(220%)");
+  }
+
+  if (filters.gaussianBlur) {
+    items.push("blur(0.5px)");
+  }
+
+  if (filters.invertContrast) {
+    items.push("invert(1)");
+  }
+
+  return items.length ? items.join(" ") : "none";
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function makeParticleCropSignature(
+  point: ViewerPoint,
+  imageUrl: string | null,
+  imageWorldSize: { width: number; height: number },
+  boxSize: number,
+  filters: ImageFilters,
+): string {
+  return [
+    imageUrl ?? "",
+    point.id,
+    point.x.toFixed(2),
+    point.y.toFixed(2),
+    imageWorldSize.width,
+    imageWorldSize.height,
+    boxSize,
+    filters.enhanceContrast ? "c1" : "c0",
+    filters.gaussianBlur ? "b1" : "b0",
+    filters.invertContrast ? "i1" : "i0",
+  ].join(":");
+}
+
+function makeParticleCropUrl(
+  image: HTMLImageElement,
+  point: ViewerPoint,
+  imageWorldSize: { width: number; height: number },
+  boxSize: number,
+  filters: ImageFilters,
+  outputSize = PARTICLE_GALLERY_SIZE,
+): string {
+  const sourceScaleX = image.naturalWidth / imageWorldSize.width;
+  const sourceScaleY = image.naturalHeight / imageWorldSize.height;
+
+  const sourceSizeX = Math.max(1, boxSize * sourceScaleX);
+  const sourceSizeY = Math.max(1, boxSize * sourceScaleY);
+
+  const rawSourceX = (point.x - boxSize / 2) * sourceScaleX;
+  const rawSourceY = (point.y - boxSize / 2) * sourceScaleY;
+
+  const sourceX = clamp(rawSourceX, 0, Math.max(0, image.naturalWidth - 1));
+  const sourceY = clamp(rawSourceY, 0, Math.max(0, image.naturalHeight - 1));
+
+  const safeSourceWidth = Math.min(sourceSizeX, image.naturalWidth - sourceX);
+  const safeSourceHeight = Math.min(sourceSizeY, image.naturalHeight - sourceY);
+
+  const canvas = document.createElement("canvas");
+  canvas.width = outputSize;
+  canvas.height = outputSize;
+
+  const ctx = canvas.getContext("2d");
+  if (!ctx || safeSourceWidth <= 0 || safeSourceHeight <= 0) {
+    return "";
+  }
+
+  ctx.fillStyle = "#111827";
+  ctx.fillRect(0, 0, outputSize, outputSize);
+  ctx.filter = buildCanvasFilter(filters);
+  ctx.imageSmoothingEnabled = true;
+
+  ctx.drawImage(
+    image,
+    sourceX,
+    sourceY,
+    safeSourceWidth,
+    safeSourceHeight,
+    0,
+    0,
+    outputSize,
+    outputSize,
+  );
+
+  return canvas.toDataURL("image/png");
 }
 
 function getBounds(
@@ -165,6 +330,21 @@ function getBounds(
   };
 }
 
+function computeFitTransform(bounds: Bounds2d, size: { width: number; height: number }): ViewTransform {
+  const worldWidth = Math.max(1, bounds.maxX - bounds.minX);
+  const worldHeight = Math.max(1, bounds.maxY - bounds.minY);
+  const scale = Math.max(
+    0.0001,
+    Math.min((size.width - 32) / worldWidth, (size.height - 32) / worldHeight),
+  );
+
+  return {
+    scale,
+    offsetX: (size.width - worldWidth * scale) / 2,
+    offsetY: (size.height - worldHeight * scale) / 2,
+  };
+}
+
 function Coords2dViewer({
   projectId,
   protocolId,
@@ -176,14 +356,15 @@ function Coords2dViewer({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const canvasWrapRef = useRef<HTMLDivElement | null>(null);
   const nextPointIdRef = useRef(1);
-  const dragRef = useRef({
-    active: false,
-    moved: false,
-    x: 0,
-    y: 0,
-    offsetX: 0,
-    offsetY: 0,
-  });
+  const dragRef = useRef<DragState>(createDragState());
+  const particleRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const visiblePointsRef = useRef<ViewerPoint[]>([]);
+  const deletedPointIdsRef = useRef<Set<string>>(new Set());
+  const erasedDuringDragRef = useRef<Set<string>>(new Set());
+  const particleCropCacheRef = useRef<Record<string, ParticleCropCacheEntry>>({});
+  const cropUpdateFrameRef = useRef<number | null>(null);
+  const pointMoveFrameRef = useRef<number | null>(null);
+  const pendingPointMoveRef = useRef<PendingPointMove | null>(null);
 
   const [micrographs, setMicrographs] = useState<Coords2dMicrograph[]>([]);
   const [selectedMicId, setSelectedMicId] = useState<Id | null>(null);
@@ -194,6 +375,8 @@ function Coords2dViewer({
   const [totalPicks, setTotalPicks] = useState(0);
   const [loadingMicrographs, setLoadingMicrographs] = useState(true);
   const [loadingCoordinates, setLoadingCoordinates] = useState(false);
+  const [loadingImage, setLoadingImage] = useState(false);
+  const [imageLoadAttempted, setImageLoadAttempted] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [selectedPointId, setSelectedPointId] = useState<string | null>(null);
@@ -202,6 +385,19 @@ function Coords2dViewer({
   const [pickColor, setPickColor] = useState(DEFAULT_PICK_COLOR);
   const [deletedPointIds, setDeletedPointIds] = useState<Set<string>>(() => new Set());
   const [updatedMicIds, setUpdatedMicIds] = useState<Set<string>>(() => new Set());
+
+  const [filtersAnchorEl, setFiltersAnchorEl] = useState<HTMLElement | null>(null);
+  const [toolsAnchorEl, setToolsAnchorEl] = useState<HTMLElement | null>(null);
+  const [windowsAnchorEl, setWindowsAnchorEl] = useState<HTMLElement | null>(null);
+
+  const [filters, setFilters] = useState<ImageFilters>({
+    enhanceContrast: true,
+    gaussianBlur: false,
+    invertContrast: false,
+  });
+
+  const [particlesOpen, setParticlesOpen] = useState(false);
+  const [particleCropVersion, setParticleCropVersion] = useState(0);
 
   const [size, setSize] = useState({ width: 800, height: 600 });
   const [transform, setTransform] = useState<ViewTransform>({
@@ -238,6 +434,26 @@ function Coords2dViewer({
     if (!selectedPointId) return null;
     return visiblePoints.find((point, index) => getPointId(point, index) === selectedPointId) ?? null;
   }, [selectedPointId, visiblePoints]);
+
+  useEffect(() => {
+    visiblePointsRef.current = visiblePoints;
+  }, [visiblePoints]);
+
+  useEffect(() => {
+    deletedPointIdsRef.current = deletedPointIds;
+  }, [deletedPointIds]);
+
+  useEffect(() => {
+    return () => {
+      if (cropUpdateFrameRef.current !== null) {
+        cancelAnimationFrame(cropUpdateFrameRef.current);
+      }
+
+      if (pointMoveFrameRef.current !== null) {
+        cancelAnimationFrame(pointMoveFrameRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -389,13 +605,21 @@ function Coords2dViewer({
   ]);
 
   useEffect(() => {
-    if (!selectedMicId) return;
+    if (!selectedMicId) {
+      setImageUrl(null);
+      setImage(null);
+      setLoadingImage(false);
+      setImageLoadAttempted(false);
+      return;
+    }
 
     let cancelled = false;
     let objectUrl: ObjectUrlResult | null = null;
 
     setImageUrl(null);
     setImage(null);
+    setLoadingImage(true);
+    setImageLoadAttempted(false);
 
     async function loadImage() {
       try {
@@ -409,7 +633,17 @@ function Coords2dViewer({
           ),
         );
 
-        if (!objectUrl || cancelled) return;
+        if (!objectUrl) {
+          if (!cancelled) {
+            setImageUrl(null);
+            setImage(null);
+            setImageLoadAttempted(true);
+            setLoadingImage(false);
+          }
+          return;
+        }
+
+        if (cancelled) return;
 
         const img = new Image();
 
@@ -417,12 +651,16 @@ function Coords2dViewer({
           if (cancelled) return;
           setImageUrl(objectUrl?.url ?? null);
           setImage(img);
+          setImageLoadAttempted(true);
+          setLoadingImage(false);
         };
 
         img.onerror = () => {
           if (cancelled) return;
           setImageUrl(null);
           setImage(null);
+          setImageLoadAttempted(true);
+          setLoadingImage(false);
         };
 
         img.src = objectUrl.url;
@@ -430,6 +668,8 @@ function Coords2dViewer({
         if (!cancelled) {
           setImageUrl(null);
           setImage(null);
+          setImageLoadAttempted(true);
+          setLoadingImage(false);
         }
       }
     }
@@ -480,28 +720,26 @@ function Coords2dViewer({
     return { width, height };
   }, [image, selectedMicrograph]);
 
+  const activeImageFilter = useMemo(() => {
+    return buildCanvasFilter(filters);
+  }, [filters]);
+
   const bounds = useMemo(() => {
     return getBounds(visiblePoints, imageWorldSize, boxSize);
   }, [boxSize, imageWorldSize, visiblePoints]);
 
   const fitView = useCallback(() => {
-    const worldWidth = Math.max(1, bounds.maxX - bounds.minX);
-    const worldHeight = Math.max(1, bounds.maxY - bounds.minY);
-    const scale = Math.max(
-      0.0001,
-      Math.min((size.width - 32) / worldWidth, (size.height - 32) / worldHeight),
-    );
-
-    setTransform({
-      scale,
-      offsetX: (size.width - worldWidth * scale) / 2,
-      offsetY: (size.height - worldHeight * scale) / 2,
-    });
-  }, [bounds, size.height, size.width]);
+    setTransform(computeFitTransform(bounds, size));
+  }, [bounds, size]);
 
   useEffect(() => {
-    fitView();
-  }, [fitView, selectedMicKey, imageUrl]);
+    if (!selectedMicKey) return;
+
+    const nextBounds = getBounds(visiblePointsRef.current, imageWorldSize, boxSize);
+    setTransform(computeFitTransform(nextBounds, size));
+    // Auto-fit only when the selected micrograph, image or canvas size changes.
+    // Do not depend on visiblePoints/bounds, so moving coordinates keeps the current zoom.
+  }, [selectedMicKey, imageUrl, size.width, size.height, imageWorldSize, boxSize]);
 
   const worldToScreen = useCallback(
     (x: number, y: number) => ({
@@ -525,20 +763,175 @@ function Coords2dViewer({
       let bestDistance = Number.POSITIVE_INFINITY;
       const radiusPx = Math.max(8, (boxSize / 2) * transform.scale);
 
-      visiblePoints.forEach((point, index) => {
+      visiblePointsRef.current.forEach((point, index) => {
+        const pointId = getPointId(point, index);
+        if (deletedPointIdsRef.current.has(pointId)) return;
+
         const screen = worldToScreen(point.x, point.y);
         const distance = Math.hypot(screen.x - screenX, screen.y - screenY);
 
         if (distance <= radiusPx && distance < bestDistance) {
           bestDistance = distance;
-          bestId = getPointId(point, index);
+          bestId = pointId;
         }
       });
 
       return bestId;
     },
-    [boxSize, transform.scale, visiblePoints, worldToScreen],
+    [boxSize, transform.scale, worldToScreen],
   );
+
+  const particleCrops = useMemo<ParticleCrop[]>(() => {
+    return visiblePoints
+      .map((point, index) => {
+        const pointId = getPointId(point, index);
+        const cached = particleCropCacheRef.current[pointId];
+
+        return {
+          pointId,
+          rowIndex: index,
+          url: cached?.url ?? "",
+          x: point.x,
+          y: point.y,
+        };
+      })
+      .filter((crop) => Boolean(crop.url));
+  }, [particleCropVersion, visiblePoints]);
+
+  useEffect(() => {
+    if (!particlesOpen || !image || !imageWorldSize) return;
+
+    const nextCache: Record<string, ParticleCropCacheEntry> = {};
+    const points = visiblePointsRef.current;
+
+    points.forEach((point, index) => {
+      const pointId = getPointId(point, index);
+      const signature = makeParticleCropSignature(point, imageUrl, imageWorldSize, boxSize, filters);
+      const cached = particleCropCacheRef.current[pointId];
+
+      if (cached?.signature === signature) {
+        nextCache[pointId] = cached;
+        return;
+      }
+
+      const url = makeParticleCropUrl(image, point, imageWorldSize, boxSize, filters);
+      if (!url) return;
+
+      nextCache[pointId] = {
+        signature,
+        url,
+      };
+    });
+
+    particleCropCacheRef.current = nextCache;
+    setParticleCropVersion((current) => current + 1);
+  }, [
+    boxSize,
+    deletedPointIds.size,
+    filters,
+    image,
+    imageUrl,
+    imageWorldSize,
+    particlesOpen,
+    selectedMicKey,
+    visiblePoints.length,
+  ]);
+
+  useEffect(() => {
+    if (!particlesOpen || !selectedPointId) return;
+
+    const node = particleRefs.current[selectedPointId];
+    if (!node) return;
+
+    node.scrollIntoView({
+      block: "nearest",
+      inline: "nearest",
+      behavior: "smooth",
+    });
+  }, [particleCrops.length, particlesOpen, selectedPointId]);
+
+  const scheduleParticleCropUpdate = useCallback(
+    (pointId: string, point: ViewerPoint) => {
+      if (!particlesOpen || !image || !imageWorldSize) return;
+
+      if (cropUpdateFrameRef.current !== null) {
+        cancelAnimationFrame(cropUpdateFrameRef.current);
+      }
+
+      cropUpdateFrameRef.current = requestAnimationFrame(() => {
+        cropUpdateFrameRef.current = null;
+
+        const signature = makeParticleCropSignature(point, imageUrl, imageWorldSize, boxSize, filters);
+        const url = makeParticleCropUrl(image, point, imageWorldSize, boxSize, filters);
+        if (!url) return;
+
+        particleCropCacheRef.current = {
+          ...particleCropCacheRef.current,
+          [pointId]: {
+            signature,
+            url,
+          },
+        };
+
+        setParticleCropVersion((current) => current + 1);
+      });
+    },
+    [boxSize, filters, image, imageUrl, imageWorldSize, particlesOpen],
+  );
+
+  const schedulePointMove = useCallback(
+    (micKey: string, pointId: string, point: ViewerPoint) => {
+      pendingPointMoveRef.current = {
+        micKey,
+        pointId,
+        point,
+      };
+
+      scheduleParticleCropUpdate(pointId, point);
+
+      if (pointMoveFrameRef.current !== null) return;
+
+      pointMoveFrameRef.current = requestAnimationFrame(() => {
+        pointMoveFrameRef.current = null;
+
+        const pendingMove = pendingPointMoveRef.current;
+        pendingPointMoveRef.current = null;
+
+        if (!pendingMove) return;
+
+        setPointsByMicId((current) => {
+          const points = current[pendingMove.micKey];
+          if (!points) return current;
+
+          return {
+            ...current,
+            [pendingMove.micKey]: points.map((candidate, index) => {
+              if (getPointId(candidate, index) !== pendingMove.pointId) return candidate;
+
+              return {
+                ...candidate,
+                x: pendingMove.point.x,
+                y: pendingMove.point.y,
+              };
+            }),
+          };
+        });
+      });
+    },
+    [scheduleParticleCropUpdate],
+  );
+
+  useEffect(() => {
+    return () => {
+      if (cropUpdateFrameRef.current !== null) {
+        cancelAnimationFrame(cropUpdateFrameRef.current);
+      }
+
+      if (pointMoveFrameRef.current !== null) {
+        cancelAnimationFrame(pointMoveFrameRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -563,6 +956,8 @@ function Coords2dViewer({
       const topLeft = worldToScreen(0, 0);
       const bottomRight = worldToScreen(imageWorldSize.width, imageWorldSize.height);
 
+      ctx.save();
+      ctx.filter = activeImageFilter;
       ctx.imageSmoothingEnabled = true;
       ctx.drawImage(
         image,
@@ -571,6 +966,7 @@ function Coords2dViewer({
         bottomRight.x - topLeft.x,
         bottomRight.y - topLeft.y,
       );
+      ctx.restore();
     } else {
       ctx.fillStyle = "#9ca3af";
       ctx.fillRect(0, 0, size.width, size.height);
@@ -583,7 +979,7 @@ function Coords2dViewer({
       const selected = pointId === selectedPointId;
 
       ctx.strokeStyle = selected ? "#ffff00" : pickColor;
-      ctx.lineWidth = selected ? 2 : 1.2;
+      ctx.lineWidth = selected ? 2.5 : 1.2;
       ctx.beginPath();
 
       if (shapeMode === "circle") {
@@ -595,11 +991,13 @@ function Coords2dViewer({
       ctx.stroke();
     });
   }, [
+    activeImageFilter,
     bounds.maxX,
     bounds.maxY,
     boxSize,
     image,
     imageUrl,
+    imageWorldSize,
     pickColor,
     selectedPointId,
     shapeMode,
@@ -609,6 +1007,13 @@ function Coords2dViewer({
     visiblePoints,
     worldToScreen,
   ]);
+
+  const toggleFilter = useCallback((key: keyof ImageFilters) => {
+    setFilters((current) => ({
+      ...current,
+      [key]: !current[key],
+    }));
+  }, []);
 
   const markMicrographUpdated = useCallback((micId: Id) => {
     setUpdatedMicIds((current) => new Set(current).add(toStringId(micId)));
@@ -631,6 +1036,31 @@ function Coords2dViewer({
 
     setTotalPicks((current) => Math.max(0, current + delta));
   }, []);
+
+  const erasePointAt = useCallback(
+    (screenX: number, screenY: number) => {
+      if (!selectedMicId) return;
+
+      const hitId = findPointAt(screenX, screenY);
+      if (!hitId) return;
+      if (erasedDuringDragRef.current.has(hitId)) return;
+      if (deletedPointIdsRef.current.has(hitId)) return;
+
+      erasedDuringDragRef.current.add(hitId);
+
+      setDeletedPointIds((current) => {
+        const next = new Set(current);
+        next.add(hitId);
+        deletedPointIdsRef.current = next;
+        return next;
+      });
+
+      setSelectedPointId((current) => (current === hitId ? null : current));
+      markMicrographUpdated(selectedMicId);
+      updateMicrographParticleCount(selectedMicId, -1);
+    },
+    [findPointAt, markMicrographUpdated, selectedMicId, updateMicrographParticleCount],
+  );
 
   const handleWheel = useCallback(
     (event: ReactWheelEvent<HTMLCanvasElement>) => {
@@ -659,43 +1089,163 @@ function Coords2dViewer({
 
   const handleMouseDown = useCallback(
     (event: ReactMouseEvent<HTMLCanvasElement>) => {
+      const rect = event.currentTarget.getBoundingClientRect();
+      const pointerX = event.clientX - rect.left;
+      const pointerY = event.clientY - rect.top;
+
+      dragRef.current = createDragState();
+
+      if (toolMode === "erase") {
+        erasedDuringDragRef.current = new Set();
+        erasePointAt(pointerX, pointerY);
+
+        dragRef.current = {
+          ...createDragState(),
+          type: "erase",
+          active: true,
+          x: event.clientX,
+          y: event.clientY,
+        };
+        return;
+      }
+
+      if (toolMode !== "pan") return;
+
+      const hitId = findPointAt(pointerX, pointerY);
+      if (hitId && selectedMicKey) {
+        const point = visiblePoints.find((candidate, index) => getPointId(candidate, index) === hitId);
+        if (!point) return;
+
+        const world = screenToWorld(pointerX, pointerY);
+
+        setSelectedPointId(hitId);
+
+        dragRef.current = {
+          type: "point",
+          active: true,
+          moved: false,
+          x: event.clientX,
+          y: event.clientY,
+          offsetX: transform.offsetX,
+          offsetY: transform.offsetY,
+          pointId: hitId,
+          micKey: selectedMicKey,
+          startWorldX: world.x,
+          startWorldY: world.y,
+          initialPointX: point.x,
+          initialPointY: point.y,
+          initialPoint: point,
+        };
+
+        return;
+      }
+
       dragRef.current = {
-        active: toolMode === "pan",
+        type: "pan",
+        active: true,
         moved: false,
         x: event.clientX,
         y: event.clientY,
         offsetX: transform.offsetX,
         offsetY: transform.offsetY,
+        pointId: null,
+        micKey: "",
+        startWorldX: 0,
+        startWorldY: 0,
+        initialPointX: 0,
+        initialPointY: 0,
+        initialPoint: null,
       };
     },
-    [toolMode, transform.offsetX, transform.offsetY],
+    [
+      erasePointAt,
+      findPointAt,
+      screenToWorld,
+      selectedMicKey,
+      toolMode,
+      transform.offsetX,
+      transform.offsetY,
+      visiblePoints,
+    ],
   );
 
-  const handleMouseMove = useCallback((event: ReactMouseEvent<HTMLCanvasElement>) => {
-    const drag = dragRef.current;
+  const handleMouseMove = useCallback(
+    (event: ReactMouseEvent<HTMLCanvasElement>) => {
+      const drag = dragRef.current;
 
-    if (!drag.active) return;
+      if (!drag.active) return;
 
-    const dx = event.clientX - drag.x;
-    const dy = event.clientY - drag.y;
+      const dx = event.clientX - drag.x;
+      const dy = event.clientY - drag.y;
 
-    if (Math.abs(dx) + Math.abs(dy) > 3) {
-      drag.moved = true;
-    }
+      if (Math.abs(dx) + Math.abs(dy) > 3) {
+        drag.moved = true;
+      }
 
-    setTransform((current) => ({
-      ...current,
-      offsetX: drag.offsetX + dx,
-      offsetY: drag.offsetY + dy,
-    }));
-  }, []);
+      if (drag.type === "erase") {
+        const rect = event.currentTarget.getBoundingClientRect();
+        erasePointAt(event.clientX - rect.left, event.clientY - rect.top);
+        return;
+      }
+
+      if (drag.type === "point" && drag.pointId && drag.micKey && drag.initialPoint) {
+        const rect = event.currentTarget.getBoundingClientRect();
+        const pointerX = event.clientX - rect.left;
+        const pointerY = event.clientY - rect.top;
+        const world = screenToWorld(pointerX, pointerY);
+
+        const deltaX = world.x - drag.startWorldX;
+        const deltaY = world.y - drag.startWorldY;
+
+        let nextX = drag.initialPointX + deltaX;
+        let nextY = drag.initialPointY + deltaY;
+
+        if (imageWorldSize) {
+          nextX = clamp(nextX, 0, imageWorldSize.width);
+          nextY = clamp(nextY, 0, imageWorldSize.height);
+        }
+
+        schedulePointMove(drag.micKey, drag.pointId, {
+          ...drag.initialPoint,
+          x: nextX,
+          y: nextY,
+        });
+
+        return;
+      }
+
+      if (drag.type === "pan") {
+        setTransform((current) => ({
+          ...current,
+          offsetX: drag.offsetX + dx,
+          offsetY: drag.offsetY + dy,
+        }));
+      }
+    },
+    [erasePointAt, imageWorldSize, schedulePointMove, screenToWorld],
+  );
 
   const handleMouseUp = useCallback(
     (event: ReactMouseEvent<HTMLCanvasElement>) => {
       const drag = dragRef.current;
-      dragRef.current.active = false;
+      dragRef.current = createDragState();
 
-      if (drag.moved) return;
+      if (drag.type === "erase") {
+        erasedDuringDragRef.current = new Set();
+        return;
+      }
+
+      if (drag.type === "point") {
+        if (drag.moved && selectedMicId) {
+          markMicrographUpdated(selectedMicId);
+        }
+
+        return;
+      }
+
+      if (drag.type === "pan" && drag.moved) {
+        return;
+      }
 
       const rect = event.currentTarget.getBoundingClientRect();
       const clickX = event.clientX - rect.left;
@@ -708,8 +1258,8 @@ function Coords2dViewer({
         const point: ViewerPoint = {
           id: `new:${selectedMicKey}:${nextPointIdRef.current++}`,
           micId: selectedMicId,
-          x: world.x,
-          y: world.y,
+          x: imageWorldSize ? clamp(world.x, 0, imageWorldSize.width) : world.x,
+          y: imageWorldSize ? clamp(world.y, 0, imageWorldSize.height) : world.y,
           isNew: true,
         };
 
@@ -725,21 +1275,11 @@ function Coords2dViewer({
       }
 
       const hitId = findPointAt(clickX, clickY);
-
-      if (toolMode === "erase") {
-        if (!hitId) return;
-
-        setDeletedPointIds((current) => new Set(current).add(hitId));
-        setSelectedPointId((current) => (current === hitId ? null : current));
-        markMicrographUpdated(selectedMicId);
-        updateMicrographParticleCount(selectedMicId, -1);
-        return;
-      }
-
       setSelectedPointId(hitId);
     },
     [
       findPointAt,
+      imageWorldSize,
       markMicrographUpdated,
       screenToWorld,
       selectedMicId,
@@ -749,7 +1289,21 @@ function Coords2dViewer({
     ],
   );
 
-  const loading = loadingMicrographs || loadingCoordinates;
+  const handleCanvasMouseLeave = useCallback(() => {
+    const drag = dragRef.current;
+
+    if (drag.type === "point" && drag.moved && selectedMicId) {
+      markMicrographUpdated(selectedMicId);
+    }
+
+    if (drag.type === "erase") {
+      erasedDuringDragRef.current = new Set();
+    }
+
+    dragRef.current = createDragState();
+  }, [markMicrographUpdated, selectedMicId]);
+
+  const loading = loadingMicrographs || loadingCoordinates || loadingImage;
   const updatedCount = updatedMicIds.size;
 
   return (
@@ -760,8 +1314,95 @@ function Coords2dViewer({
         flexDirection: "column",
         minHeight: 0,
         bgcolor: "#d7d7d7",
+        position: "relative",
       }}
     >
+      <Box
+        sx={{
+          px: 0.5,
+          py: 0.25,
+          display: "flex",
+          alignItems: "center",
+          gap: 0.25,
+          borderBottom: PANEL_BORDER,
+          bgcolor: "#f3f4f6",
+        }}
+      >
+        <Button size="small" disabled sx={{ minWidth: 42, color: "#111827" }}>
+          File
+        </Button>
+
+        <Button
+          size="small"
+          onClick={(event) => setFiltersAnchorEl(event.currentTarget)}
+          sx={{ minWidth: 58, color: "#111827" }}
+        >
+          Filters
+        </Button>
+
+        <Button
+          size="small"
+          onClick={(event) => setToolsAnchorEl(event.currentTarget)}
+          sx={{ minWidth: 50, color: "#111827" }}
+        >
+          Tools
+        </Button>
+
+        <Button
+          size="small"
+          onClick={(event) => setWindowsAnchorEl(event.currentTarget)}
+          sx={{ minWidth: 68, color: "#111827" }}
+        >
+          Window
+        </Button>
+
+        <Menu
+          anchorEl={filtersAnchorEl}
+          open={Boolean(filtersAnchorEl)}
+          onClose={() => setFiltersAnchorEl(null)}
+        >
+          <MenuItem onClick={() => toggleFilter("enhanceContrast")}>
+            <Checkbox size="small" checked={filters.enhanceContrast} />
+            Enhance contrast
+          </MenuItem>
+
+          <MenuItem onClick={() => toggleFilter("gaussianBlur")}>
+            <Checkbox size="small" checked={filters.gaussianBlur} />
+            Gaussian blur
+          </MenuItem>
+
+          <MenuItem onClick={() => toggleFilter("invertContrast")}>
+            <Checkbox size="small" checked={filters.invertContrast} />
+            Invert contrast
+          </MenuItem>
+        </Menu>
+
+        <Menu
+          anchorEl={toolsAnchorEl}
+          open={Boolean(toolsAnchorEl)}
+          onClose={() => setToolsAnchorEl(null)}
+        >
+          <MenuItem disabled>Power histogram</MenuItem>
+          <MenuItem disabled>Reset micrograph</MenuItem>
+          <MenuItem disabled>Restore micrograph</MenuItem>
+        </Menu>
+
+        <Menu
+          anchorEl={windowsAnchorEl}
+          open={Boolean(windowsAnchorEl)}
+          onClose={() => setWindowsAnchorEl(null)}
+        >
+          <MenuItem
+            onClick={() => {
+              setParticlesOpen(true);
+              setWindowsAnchorEl(null);
+            }}
+          >
+            Particles
+          </MenuItem>
+        </Menu>
+      </Box>
+
       <Box
         sx={{
           px: 1,
@@ -836,6 +1477,7 @@ function Coords2dViewer({
           >
             <Circle size={16} />
           </Button>
+
           <Button
             variant={shapeMode === "square" ? "contained" : "outlined"}
             onClick={() => setShapeMode("square")}
@@ -854,7 +1496,7 @@ function Coords2dViewer({
           component="input"
           type="color"
           value={pickColor}
-          onChange={(event: any) => setPickColor(event.target.value)}
+          onChange={(event) => setPickColor((event.target as HTMLInputElement).value)}
           sx={{
             width: 34,
             height: 30,
@@ -945,18 +1587,22 @@ function Coords2dViewer({
                 <TableCell sx={{ bgcolor: HEADER_BG, fontWeight: 700, width: 58 }}>
                   Index
                 </TableCell>
+
                 <TableCell sx={{ bgcolor: HEADER_BG, fontWeight: 700, width: 72 }}>
                   Preview
                 </TableCell>
+
                 <TableCell sx={{ bgcolor: HEADER_BG, fontWeight: 700 }}>
                   File
                 </TableCell>
+
                 <TableCell
                   align="center"
                   sx={{ bgcolor: HEADER_BG, fontWeight: 700, width: 100 }}
                 >
                   Particles
                 </TableCell>
+
                 <TableCell
                   align="center"
                   sx={{ bgcolor: HEADER_BG, fontWeight: 700, width: 92 }}
@@ -1060,9 +1706,7 @@ function Coords2dViewer({
               onMouseDown={handleMouseDown}
               onMouseMove={handleMouseMove}
               onMouseUp={handleMouseUp}
-              onMouseLeave={() => {
-                dragRef.current.active = false;
-              }}
+              onMouseLeave={handleCanvasMouseLeave}
               style={{
                 display: "block",
                 width: "100%",
@@ -1084,14 +1728,15 @@ function Coords2dViewer({
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  bgcolor: "rgba(255,255,255,0.45)",
+                  bgcolor: "rgba(255,255,255,0.25)",
+                  pointerEvents: "none",
                 }}
               >
                 <CircularProgress size={24} />
               </Box>
             ) : null}
 
-            {!loading && !imageUrl ? (
+            {loadingImage ? (
               <Box
                 sx={{
                   position: "absolute",
@@ -1101,6 +1746,24 @@ function Coords2dViewer({
                   py: 0.5,
                   bgcolor: "rgba(255,255,255,0.86)",
                   border: PANEL_BORDER,
+                  pointerEvents: "none",
+                }}
+              >
+                <Typography variant="caption">Loading micrograph image...</Typography>
+              </Box>
+            ) : null}
+
+            {!loadingImage && imageLoadAttempted && !imageUrl ? (
+              <Box
+                sx={{
+                  position: "absolute",
+                  left: 12,
+                  bottom: 12,
+                  px: 1,
+                  py: 0.5,
+                  bgcolor: "rgba(255,255,255,0.86)",
+                  border: PANEL_BORDER,
+                  pointerEvents: "none",
                 }}
               >
                 <Typography variant="caption">
@@ -1152,6 +1815,111 @@ function Coords2dViewer({
           </Box>
         </Box>
       </Box>
+
+      {particlesOpen ? (
+        <Paper
+          elevation={8}
+          sx={{
+            width: 250,
+            maxHeight: "92vh",
+            position: "fixed",
+            right: 24,
+            top: 24,
+            zIndex: 1500,
+            borderRadius: 1.5,
+            overflow: "hidden",
+            border: PANEL_BORDER,
+            bgcolor: "#ffffff",
+          }}
+        >
+          <Box
+            sx={{
+              px: 1,
+              py: 0.75,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              bgcolor: "#f3f4f6",
+              borderBottom: PANEL_BORDER,
+              cursor: "default",
+            }}
+          >
+            <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+              Particles
+            </Typography>
+
+            <IconButton size="small" onClick={() => setParticlesOpen(false)}>
+              <X size={16} />
+            </IconButton>
+          </Box>
+
+          <Box
+            sx={{
+              p: 0.75,
+              bgcolor: "#ffffff",
+              overflow: "auto",
+              maxHeight: "calc(92vh - 42px)",
+            }}
+          >
+            {!image || !imageWorldSize ? (
+              <Typography variant="body2" sx={{ color: "text.secondary", p: 1 }}>
+                No micrograph image available.
+              </Typography>
+            ) : particleCrops.length === 0 ? (
+              <Typography variant="body2" sx={{ color: "text.secondary", p: 1 }}>
+                No particles in selected micrograph.
+              </Typography>
+            ) : (
+              <Box
+                sx={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(3, 1fr)",
+                  gap: 0.75,
+                }}
+              >
+                {particleCrops.map((crop) => {
+                  const selected = crop.pointId === selectedPointId;
+
+                  return (
+                    <Box
+                      key={crop.pointId}
+                      ref={(node) => {
+                        particleRefs.current[crop.pointId] = node as HTMLButtonElement | null;
+                      }}
+                      component="button"
+                      type="button"
+                      onClick={() => setSelectedPointId(crop.pointId)}
+                      sx={{
+                        width: PARTICLE_GALLERY_SIZE,
+                        height: PARTICLE_GALLERY_SIZE,
+                        p: 0,
+                        border: selected ? "3px solid #ef4444" : "2px solid #4f46e5",
+                        bgcolor: "#111827",
+                        cursor: "pointer",
+                        outline: "none",
+                        display: "block",
+                        overflow: "hidden",
+                      }}
+                    >
+                      <Box
+                        component="img"
+                        src={crop.url}
+                        alt={`Particle ${crop.rowIndex + 1}`}
+                        sx={{
+                          width: "100%",
+                          height: "100%",
+                          objectFit: "cover",
+                          display: "block",
+                        }}
+                      />
+                    </Box>
+                  );
+                })}
+              </Box>
+            )}
+          </Box>
+        </Paper>
+      ) : null}
     </Box>
   );
 }
