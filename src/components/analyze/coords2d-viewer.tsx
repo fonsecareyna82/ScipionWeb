@@ -17,6 +17,7 @@ import {
   CircularProgress,
   Divider,
   IconButton,
+  ListItemIcon,
   Menu,
   MenuItem,
   Paper,
@@ -31,14 +32,27 @@ import {
   Typography,
 } from "@mui/material";
 import {
+  BarChart3,
   Circle,
+  Contrast,
   Eraser,
+  FileText,
+  Grid3X3,
   Hand,
+  ImageMinus,
   LocateFixed,
   MousePointer2,
   Plus,
+  RefreshCcw,
+  RotateCcw,
+  Save,
+  SlidersHorizontal,
+  Sparkles,
   Square,
   Table2,
+  Trash2,
+  Waves,
+  Wrench,
   X,
 } from "lucide-react";
 import { useProjectService } from "@/ProjectServiceContext";
@@ -120,6 +134,12 @@ type PendingPointMove = {
   micKey: string;
   pointId: string;
   point: ViewerPoint;
+};
+
+type HistogramImageData = {
+  imageData: ImageData;
+  width: number;
+  height: number;
 };
 
 const DEFAULT_BOX_SIZE = 50;
@@ -345,6 +365,185 @@ function computeFitTransform(bounds: Bounds2d, size: { width: number; height: nu
   };
 }
 
+function buildFilteredImageData(image: HTMLImageElement, filters: ImageFilters): HistogramImageData | null {
+  const canvas = document.createElement("canvas");
+  canvas.width = image.naturalWidth;
+  canvas.height = image.naturalHeight;
+
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx) return null;
+
+  ctx.filter = buildCanvasFilter(filters);
+  ctx.drawImage(image, 0, 0);
+
+  try {
+    return {
+      imageData: ctx.getImageData(0, 0, canvas.width, canvas.height),
+      width: canvas.width,
+      height: canvas.height,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function buildHistogramFromImageData(bundle: HistogramImageData): number[] {
+  const histogram = new Array(256).fill(0);
+  const { imageData, width, height } = bundle;
+  const data = imageData.data;
+  const targetSamples = 500000;
+  const step = Math.max(1, Math.ceil(Math.sqrt((width * height) / targetSamples)));
+
+  for (let y = 0; y < height; y += step) {
+    for (let x = 0; x < width; x += step) {
+      const idx = (y * width + x) * 4;
+      const value = Math.round((data[idx] + data[idx + 1] + data[idx + 2]) / 3);
+      histogram[clamp(value, 0, 255)] += 1;
+    }
+  }
+
+  return histogram;
+}
+
+function calculateAverageIntensity(
+  bundle: HistogramImageData,
+  point: ViewerPoint,
+  imageWorldSize: { width: number; height: number },
+  boxSize: number,
+): number {
+  const { imageData, width, height } = bundle;
+  const data = imageData.data;
+
+  const scaleX = width / imageWorldSize.width;
+  const scaleY = height / imageWorldSize.height;
+
+  const left = clamp(Math.floor((point.x - boxSize / 2) * scaleX), 0, width - 1);
+  const right = clamp(Math.ceil((point.x + boxSize / 2) * scaleX), 0, width);
+  const top = clamp(Math.floor((point.y - boxSize / 2) * scaleY), 0, height - 1);
+  const bottom = clamp(Math.ceil((point.y + boxSize / 2) * scaleY), 0, height);
+
+  let sum = 0;
+  let count = 0;
+
+  for (let y = top; y < bottom; y += 1) {
+    for (let x = left; x < right; x += 1) {
+      const idx = (y * width + x) * 4;
+      sum += (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
+      count += 1;
+    }
+  }
+
+  return count > 0 ? sum / count : 0;
+}
+
+function HistogramChart({
+  histogram,
+  range,
+}: {
+  histogram: number[];
+  range: [number, number];
+}) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext("2d");
+
+    if (!canvas || !ctx) return;
+
+    const width = 560;
+    const height = 310;
+    const ratio = window.devicePixelRatio || 1;
+
+    canvas.width = width * ratio;
+    canvas.height = height * ratio;
+    canvas.style.width = `${width}px`;
+    canvas.style.height = `${height}px`;
+
+    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    ctx.clearRect(0, 0, width, height);
+
+    const margin = {
+      left: 54,
+      right: 18,
+      top: 18,
+      bottom: 42,
+    };
+
+    const plotWidth = width - margin.left - margin.right;
+    const plotHeight = height - margin.top - margin.bottom;
+
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, width, height);
+
+    ctx.strokeStyle = "#475569";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(margin.left, margin.top, plotWidth, plotHeight);
+
+    const maxValue = Math.max(1, ...histogram);
+    const xScale = plotWidth / 255;
+    const yScale = plotHeight / maxValue;
+
+    ctx.beginPath();
+    histogram.forEach((value, index) => {
+      const x = margin.left + index * xScale;
+      const y = margin.top + plotHeight - value * yScale;
+
+      if (index === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.strokeStyle = "#1976d2";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    const drawRangeLine = (value: number) => {
+      const x = margin.left + clamp(value, 0, 255) * xScale;
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.setLineDash([5, 4]);
+      ctx.moveTo(x, margin.top);
+      ctx.lineTo(x, margin.top + plotHeight);
+      ctx.strokeStyle = "#ef4444";
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      ctx.restore();
+    };
+
+    drawRangeLine(range[0]);
+    drawRangeLine(range[1]);
+
+    ctx.fillStyle = "#111827";
+    ctx.font = "13px sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("Pixel Value", margin.left + plotWidth / 2, height - 10);
+
+    ctx.save();
+    ctx.translate(14, margin.top + plotHeight / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.textAlign = "center";
+    ctx.fillText("Frequency", 0, 0);
+    ctx.restore();
+
+    ctx.fillStyle = "#334155";
+    ctx.font = "12px sans-serif";
+    ctx.textAlign = "center";
+    [0, 50, 100, 150, 200, 250].forEach((tick) => {
+      const x = margin.left + tick * xScale;
+      ctx.fillText(String(tick), x, margin.top + plotHeight + 18);
+    });
+
+    ctx.textAlign = "right";
+    [0, 0.25, 0.5, 0.75, 1].forEach((ratioValue) => {
+      const value = Math.round(maxValue * ratioValue);
+      const y = margin.top + plotHeight - value * yScale;
+      ctx.fillText(String(value), margin.left - 8, y + 4);
+    });
+  }, [histogram, range]);
+
+  return <canvas ref={canvasRef} />;
+}
+
 function Coords2dViewer({
   projectId,
   protocolId,
@@ -359,16 +558,20 @@ function Coords2dViewer({
   const dragRef = useRef<DragState>(createDragState());
   const particleRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const visiblePointsRef = useRef<ViewerPoint[]>([]);
+  const baseVisiblePointsRef = useRef<ViewerPoint[]>([]);
   const deletedPointIdsRef = useRef<Set<string>>(new Set());
+  const previewHiddenPointIdsRef = useRef<Set<string>>(new Set());
   const erasedDuringDragRef = useRef<Set<string>>(new Set());
   const particleCropCacheRef = useRef<Record<string, ParticleCropCacheEntry>>({});
   const cropUpdateFrameRef = useRef<number | null>(null);
   const pointMoveFrameRef = useRef<number | null>(null);
   const pendingPointMoveRef = useRef<PendingPointMove | null>(null);
+  const histogramImageDataRef = useRef<HistogramImageData | null>(null);
 
   const [micrographs, setMicrographs] = useState<Coords2dMicrograph[]>([]);
   const [selectedMicId, setSelectedMicId] = useState<Id | null>(null);
   const [pointsByMicId, setPointsByMicId] = useState<Record<string, ViewerPoint[]>>({});
+  const [originalPointsByMicId, setOriginalPointsByMicId] = useState<Record<string, ViewerPoint[]>>({});
   const [thumbnailUrls, setThumbnailUrls] = useState<Record<string, string>>({});
 
   const [boxSize, setBoxSize] = useState(DEFAULT_BOX_SIZE);
@@ -384,6 +587,7 @@ function Coords2dViewer({
   const [toolMode, setToolMode] = useState<ToolMode>("pan");
   const [pickColor, setPickColor] = useState(DEFAULT_PICK_COLOR);
   const [deletedPointIds, setDeletedPointIds] = useState<Set<string>>(() => new Set());
+  const [previewHiddenPointIds, setPreviewHiddenPointIds] = useState<Set<string>>(() => new Set());
   const [updatedMicIds, setUpdatedMicIds] = useState<Set<string>>(() => new Set());
 
   const [filtersAnchorEl, setFiltersAnchorEl] = useState<HTMLElement | null>(null);
@@ -398,6 +602,11 @@ function Coords2dViewer({
 
   const [particlesOpen, setParticlesOpen] = useState(false);
   const [particleCropVersion, setParticleCropVersion] = useState(0);
+
+  const [histogramOpen, setHistogramOpen] = useState(false);
+  const [histogramComputing, setHistogramComputing] = useState(false);
+  const [histogramData, setHistogramData] = useState<number[]>(() => new Array(256).fill(0));
+  const [histogramRange, setHistogramRange] = useState<[number, number]>([0, 255]);
 
   const [size, setSize] = useState({ width: 800, height: 600 });
   const [transform, setTransform] = useState<ViewTransform>({
@@ -423,12 +632,19 @@ function Coords2dViewer({
     return pointsByMicId[selectedMicKey] ?? [];
   }, [pointsByMicId, selectedMicKey]);
 
-  const visiblePoints = useMemo(() => {
+  const baseVisiblePoints = useMemo(() => {
     return currentPoints.filter((point, index) => {
       const pointId = getPointId(point, index);
       return !deletedPointIds.has(pointId);
     });
   }, [currentPoints, deletedPointIds]);
+
+  const visiblePoints = useMemo(() => {
+    return baseVisiblePoints.filter((point, index) => {
+      const pointId = getPointId(point, index);
+      return !previewHiddenPointIds.has(pointId);
+    });
+  }, [baseVisiblePoints, previewHiddenPointIds]);
 
   const selectedPoint = useMemo(() => {
     if (!selectedPointId) return null;
@@ -440,8 +656,16 @@ function Coords2dViewer({
   }, [visiblePoints]);
 
   useEffect(() => {
+    baseVisiblePointsRef.current = baseVisiblePoints;
+  }, [baseVisiblePoints]);
+
+  useEffect(() => {
     deletedPointIdsRef.current = deletedPointIds;
   }, [deletedPointIds]);
+
+  useEffect(() => {
+    previewHiddenPointIdsRef.current = previewHiddenPointIds;
+  }, [previewHiddenPointIds]);
 
   useEffect(() => {
     return () => {
@@ -580,6 +804,15 @@ function Coords2dViewer({
           ...current,
           [selectedMicKey]: normalizedPoints,
         }));
+
+        setOriginalPointsByMicId((current) => {
+          if (current[selectedMicKey]) return current;
+
+          return {
+            ...current,
+            [selectedMicKey]: normalizedPoints.map((point) => ({ ...point })),
+          };
+        });
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : "Failed to load 2D coordinates");
@@ -620,6 +853,8 @@ function Coords2dViewer({
     setImage(null);
     setLoadingImage(true);
     setImageLoadAttempted(false);
+    setPreviewHiddenPointIds(new Set());
+    setHistogramOpen(false);
 
     async function loadImage() {
       try {
@@ -737,8 +972,6 @@ function Coords2dViewer({
 
     const nextBounds = getBounds(visiblePointsRef.current, imageWorldSize, boxSize);
     setTransform(computeFitTransform(nextBounds, size));
-    // Auto-fit only when the selected micrograph, image or canvas size changes.
-    // Do not depend on visiblePoints/bounds, so moving coordinates keeps the current zoom.
   }, [selectedMicKey, imageUrl, size.width, size.height, imageWorldSize, boxSize]);
 
   const worldToScreen = useCallback(
@@ -766,6 +999,7 @@ function Coords2dViewer({
       visiblePointsRef.current.forEach((point, index) => {
         const pointId = getPointId(point, index);
         if (deletedPointIdsRef.current.has(pointId)) return;
+        if (previewHiddenPointIdsRef.current.has(pointId)) return;
 
         const screen = worldToScreen(point.x, point.y);
         const distance = Math.hypot(screen.x - screenX, screen.y - screenY);
@@ -833,6 +1067,7 @@ function Coords2dViewer({
     imageUrl,
     imageWorldSize,
     particlesOpen,
+    previewHiddenPointIds.size,
     selectedMicKey,
     visiblePoints.length,
   ]);
@@ -921,17 +1156,192 @@ function Coords2dViewer({
     [scheduleParticleCropUpdate],
   );
 
-  useEffect(() => {
-    return () => {
-      if (cropUpdateFrameRef.current !== null) {
-        cancelAnimationFrame(cropUpdateFrameRef.current);
+  const updateHistogramPreview = useCallback(
+    (range: [number, number]) => {
+      const bundle = histogramImageDataRef.current;
+      if (!bundle || !imageWorldSize) return;
+
+      const [minValue, maxValue] = range;
+      const nextHiddenIds = new Set<string>();
+
+      baseVisiblePointsRef.current.forEach((point, index) => {
+        const pointId = getPointId(point, index);
+        const average = calculateAverageIntensity(bundle, point, imageWorldSize, boxSize);
+
+        if (average < minValue || average > maxValue) {
+          nextHiddenIds.add(pointId);
+        }
+      });
+
+      previewHiddenPointIdsRef.current = nextHiddenIds;
+      setPreviewHiddenPointIds(nextHiddenIds);
+    },
+    [boxSize, imageWorldSize],
+  );
+
+  const openPowerHistogram = useCallback(() => {
+    setToolsAnchorEl(null);
+
+    if (!image || !imageWorldSize) {
+      setError("No micrograph image available to build the histogram.");
+      return;
+    }
+
+    setHistogramOpen(true);
+    setHistogramComputing(true);
+    setHistogramRange([0, 255]);
+    setPreviewHiddenPointIds(new Set());
+
+    requestAnimationFrame(() => {
+      const bundle = buildFilteredImageData(image, filters);
+
+      if (!bundle) {
+        setHistogramComputing(false);
+        setError("Could not build the histogram for the current micrograph.");
+        return;
       }
 
-      if (pointMoveFrameRef.current !== null) {
-        cancelAnimationFrame(pointMoveFrameRef.current);
-      }
-    };
+      histogramImageDataRef.current = bundle;
+      setHistogramData(buildHistogramFromImageData(bundle));
+      setHistogramComputing(false);
+    });
+  }, [filters, image, imageWorldSize]);
+
+  const closePowerHistogram = useCallback(() => {
+    setHistogramOpen(false);
+    histogramImageDataRef.current = null;
+    setPreviewHiddenPointIds(new Set());
+    previewHiddenPointIdsRef.current = new Set();
   }, []);
+
+  const savePowerHistogram = useCallback(() => {
+    if (!selectedMicId) {
+      closePowerHistogram();
+      return;
+    }
+
+    const idsToDelete = Array.from(previewHiddenPointIdsRef.current).filter(
+      (pointId) => !deletedPointIdsRef.current.has(pointId),
+    );
+
+    if (idsToDelete.length > 0) {
+      setDeletedPointIds((current) => {
+        const next = new Set(current);
+        idsToDelete.forEach((pointId) => next.add(pointId));
+        deletedPointIdsRef.current = next;
+        return next;
+      });
+
+      setSelectedPointId((current) => (current && idsToDelete.includes(current) ? null : current));
+      setMicrographs((current) =>
+        current.map((micrograph) => {
+          if (toStringId(micrograph.id) !== toStringId(selectedMicId)) return micrograph;
+
+          return {
+            ...micrograph,
+            particles: Math.max(0, Number(micrograph.particles ?? 0) - idsToDelete.length),
+            updated: true,
+          };
+        }),
+      );
+      setTotalPicks((current) => Math.max(0, current - idsToDelete.length));
+      setUpdatedMicIds((current) => new Set(current).add(toStringId(selectedMicId)));
+    }
+
+    closePowerHistogram();
+  }, [closePowerHistogram, selectedMicId]);
+
+  const resetCurrentMicrograph = useCallback(() => {
+    setToolsAnchorEl(null);
+
+    if (!selectedMicId || !selectedMicKey) return;
+
+    const idsToDelete = baseVisiblePointsRef.current
+      .map((point, index) => getPointId(point, index))
+      .filter((pointId) => !deletedPointIdsRef.current.has(pointId));
+
+    if (!idsToDelete.length) return;
+
+    setDeletedPointIds((current) => {
+      const next = new Set(current);
+      idsToDelete.forEach((pointId) => next.add(pointId));
+      deletedPointIdsRef.current = next;
+      return next;
+    });
+
+    setPreviewHiddenPointIds(new Set());
+    previewHiddenPointIdsRef.current = new Set();
+    setSelectedPointId(null);
+
+    setMicrographs((current) =>
+      current.map((micrograph) => {
+        if (toStringId(micrograph.id) !== selectedMicKey) return micrograph;
+
+        return {
+          ...micrograph,
+          particles: 0,
+          updated: true,
+        };
+      }),
+    );
+
+    setTotalPicks((current) => Math.max(0, current - idsToDelete.length));
+    setUpdatedMicIds((current) => new Set(current).add(selectedMicKey));
+  }, [selectedMicId, selectedMicKey]);
+
+  const restoreCurrentMicrograph = useCallback(() => {
+    setToolsAnchorEl(null);
+
+    if (!selectedMicId || !selectedMicKey) return;
+
+    const originalPoints = originalPointsByMicId[selectedMicKey] ?? [];
+    const currentCount = baseVisiblePointsRef.current.length;
+    const originalCount = originalPoints.length;
+
+    setPointsByMicId((current) => ({
+      ...current,
+      [selectedMicKey]: originalPoints.map((point) => ({ ...point })),
+    }));
+
+    setDeletedPointIds((current) => {
+      const next = new Set(current);
+
+      currentPoints.forEach((point, index) => {
+        next.delete(getPointId(point, index));
+      });
+
+      originalPoints.forEach((point, index) => {
+        next.delete(getPointId(point, index));
+      });
+
+      deletedPointIdsRef.current = next;
+      return next;
+    });
+
+    setPreviewHiddenPointIds(new Set());
+    previewHiddenPointIdsRef.current = new Set();
+    setSelectedPointId(null);
+
+    setMicrographs((current) =>
+      current.map((micrograph) => {
+        if (toStringId(micrograph.id) !== selectedMicKey) return micrograph;
+
+        return {
+          ...micrograph,
+          particles: originalCount,
+          updated: false,
+        };
+      }),
+    );
+
+    setTotalPicks((current) => Math.max(0, current + originalCount - currentCount));
+
+    setUpdatedMicIds((current) => {
+      const next = new Set(current);
+      next.delete(selectedMicKey);
+      return next;
+    });
+  }, [currentPoints, originalPointsByMicId, selectedMicId, selectedMicKey]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -1303,6 +1713,21 @@ function Coords2dViewer({
     dragRef.current = createDragState();
   }, [markMicrographUpdated, selectedMicId]);
 
+  const handleHistogramRangeChange = useCallback(
+    (_event: Event, value: number | number[]) => {
+      if (!Array.isArray(value)) return;
+
+      const nextRange: [number, number] = [
+        Math.round(value[0]),
+        Math.round(value[1]),
+      ];
+
+      setHistogramRange(nextRange);
+      updateHistogramPreview(nextRange);
+    },
+    [updateHistogramPreview],
+  );
+
   const loading = loadingMicrographs || loadingCoordinates || loadingImage;
   const updatedCount = updatedMicIds.size;
 
@@ -1328,12 +1753,18 @@ function Coords2dViewer({
           bgcolor: "#f3f4f6",
         }}
       >
-        <Button size="small" disabled sx={{ minWidth: 42, color: "#111827" }}>
+        <Button
+          size="small"
+          disabled
+          startIcon={<FileText size={14} />}
+          sx={{ minWidth: 42, color: "#111827" }}
+        >
           File
         </Button>
 
         <Button
           size="small"
+          startIcon={<SlidersHorizontal size={14} />}
           onClick={(event) => setFiltersAnchorEl(event.currentTarget)}
           sx={{ minWidth: 58, color: "#111827" }}
         >
@@ -1342,6 +1773,7 @@ function Coords2dViewer({
 
         <Button
           size="small"
+          startIcon={<Wrench size={14} />}
           onClick={(event) => setToolsAnchorEl(event.currentTarget)}
           sx={{ minWidth: 50, color: "#111827" }}
         >
@@ -1350,6 +1782,7 @@ function Coords2dViewer({
 
         <Button
           size="small"
+          startIcon={<Grid3X3 size={14} />}
           onClick={(event) => setWindowsAnchorEl(event.currentTarget)}
           sx={{ minWidth: 68, color: "#111827" }}
         >
@@ -1362,16 +1795,25 @@ function Coords2dViewer({
           onClose={() => setFiltersAnchorEl(null)}
         >
           <MenuItem onClick={() => toggleFilter("enhanceContrast")}>
+            <ListItemIcon>
+              <Sparkles size={17} />
+            </ListItemIcon>
             <Checkbox size="small" checked={filters.enhanceContrast} />
             Enhance contrast
           </MenuItem>
 
           <MenuItem onClick={() => toggleFilter("gaussianBlur")}>
+            <ListItemIcon>
+              <Waves size={17} />
+            </ListItemIcon>
             <Checkbox size="small" checked={filters.gaussianBlur} />
             Gaussian blur
           </MenuItem>
 
           <MenuItem onClick={() => toggleFilter("invertContrast")}>
+            <ListItemIcon>
+              <Contrast size={17} />
+            </ListItemIcon>
             <Checkbox size="small" checked={filters.invertContrast} />
             Invert contrast
           </MenuItem>
@@ -1382,9 +1824,26 @@ function Coords2dViewer({
           open={Boolean(toolsAnchorEl)}
           onClose={() => setToolsAnchorEl(null)}
         >
-          <MenuItem disabled>Power histogram</MenuItem>
-          <MenuItem disabled>Reset micrograph</MenuItem>
-          <MenuItem disabled>Restore micrograph</MenuItem>
+          <MenuItem onClick={openPowerHistogram}>
+            <ListItemIcon>
+              <BarChart3 size={17} />
+            </ListItemIcon>
+            Power histogram
+          </MenuItem>
+
+          <MenuItem onClick={resetCurrentMicrograph}>
+            <ListItemIcon>
+              <Trash2 size={17} />
+            </ListItemIcon>
+            Reset micrograph
+          </MenuItem>
+
+          <MenuItem onClick={restoreCurrentMicrograph}>
+            <ListItemIcon>
+              <RotateCcw size={17} />
+            </ListItemIcon>
+            Restore micrograph
+          </MenuItem>
         </Menu>
 
         <Menu
@@ -1398,6 +1857,9 @@ function Coords2dViewer({
               setWindowsAnchorEl(null);
             }}
           >
+            <ListItemIcon>
+              <ImageMinus size={17} />
+            </ListItemIcon>
             Particles
           </MenuItem>
         </Menu>
@@ -1815,6 +2277,107 @@ function Coords2dViewer({
           </Box>
         </Box>
       </Box>
+
+      {histogramOpen ? (
+        <Paper
+          elevation={8}
+          sx={{
+            width: 680,
+            position: "fixed",
+            left: 96,
+            top: 96,
+            zIndex: 1600,
+            borderRadius: 1.5,
+            overflow: "hidden",
+            border: PANEL_BORDER,
+            bgcolor: "#d7d7d7",
+          }}
+        >
+          <Box
+            sx={{
+              px: 1,
+              py: 0.75,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              bgcolor: "#f3f4f6",
+              borderBottom: PANEL_BORDER,
+            }}
+          >
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+              <BarChart3 size={17} />
+              <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                Power histogram
+              </Typography>
+            </Box>
+
+            <IconButton size="small" onClick={closePowerHistogram}>
+              <X size={16} />
+            </IconButton>
+          </Box>
+
+          <Box sx={{ p: 1.25, bgcolor: "#ffffff" }}>
+            {histogramComputing ? (
+              <Box sx={{ height: 370, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <CircularProgress size={26} />
+              </Box>
+            ) : (
+              <>
+                <Box sx={{ display: "flex", justifyContent: "center" }}>
+                  <HistogramChart histogram={histogramData} range={histogramRange} />
+                </Box>
+
+                <Box sx={{ px: 7, display: "flex", alignItems: "center", gap: 2 }}>
+                  <Slider
+                    min={0}
+                    max={255}
+                    step={1}
+                    value={histogramRange}
+                    onChange={handleHistogramRangeChange}
+                    valueLabelDisplay="auto"
+                    sx={{ flex: 1 }}
+                  />
+
+                  <Typography variant="body2" sx={{ minWidth: 78 }}>
+                    ({histogramRange[0]}, {histogramRange[1]})
+                  </Typography>
+                </Box>
+
+                <Box
+                  sx={{
+                    mt: 1.25,
+                    display: "flex",
+                    justifyContent: "flex-end",
+                    gap: 1,
+                  }}
+                >
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    startIcon={<X size={16} />}
+                    onClick={closePowerHistogram}
+                  >
+                    Close
+                  </Button>
+
+                  <Button
+                    size="small"
+                    variant="contained"
+                    startIcon={<Save size={16} />}
+                    onClick={savePowerHistogram}
+                    sx={{
+                      bgcolor: "#b22a2a",
+                      "&:hover": { bgcolor: "#922020" },
+                    }}
+                  >
+                    Save & Close
+                  </Button>
+                </Box>
+              </>
+            )}
+          </Box>
+        </Paper>
+      ) : null}
 
       {particlesOpen ? (
         <Paper
