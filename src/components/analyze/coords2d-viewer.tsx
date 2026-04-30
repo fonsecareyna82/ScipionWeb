@@ -15,6 +15,11 @@ import {
   Checkbox,
   Chip,
   CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
   Divider,
   IconButton,
   ListItemIcon,
@@ -32,6 +37,7 @@ import {
   Typography,
 } from "@mui/material";
 import {
+  AlertTriangle,
   BarChart3,
   Circle,
   Contrast,
@@ -43,7 +49,6 @@ import {
   LocateFixed,
   MousePointer2,
   Plus,
-  RefreshCcw,
   RotateCcw,
   Save,
   SlidersHorizontal,
@@ -68,6 +73,7 @@ type Coords2dViewerProps = {
   protocolId: number;
   protocolLabel: string;
   outputName: string;
+  onClose?: () => void;
 };
 
 type ViewerPoint = Coords2dPoint & {
@@ -93,6 +99,7 @@ type Bounds2d = {
 
 type ToolMode = "pan" | "pick" | "erase";
 type ShapeMode = "circle" | "square";
+type ConfirmationAction = "close" | "create-output" | null;
 
 type ImageFilters = {
   enhanceContrast: boolean;
@@ -549,6 +556,7 @@ function Coords2dViewer({
   protocolId,
   protocolLabel,
   outputName,
+  onClose,
 }: Coords2dViewerProps) {
   const service = useProjectService();
 
@@ -568,6 +576,12 @@ function Coords2dViewer({
   const pendingPointMoveRef = useRef<PendingPointMove | null>(null);
   const histogramImageDataRef = useRef<HistogramImageData | null>(null);
 
+  const micrographsLoadKeyRef = useRef("");
+  const thumbnailSourceKeyRef = useRef("");
+  const thumbnailLoadKeyRef = useRef("");
+  const thumbnailUrlsRef = useRef<Record<string, string>>({});
+  const thumbnailObjectUrlsRef = useRef<Record<string, ObjectUrlResult>>({});
+
   const [micrographs, setMicrographs] = useState<Coords2dMicrograph[]>([]);
   const [selectedMicId, setSelectedMicId] = useState<Id | null>(null);
   const [pointsByMicId, setPointsByMicId] = useState<Record<string, ViewerPoint[]>>({});
@@ -580,7 +594,9 @@ function Coords2dViewer({
   const [loadingCoordinates, setLoadingCoordinates] = useState(false);
   const [loadingImage, setLoadingImage] = useState(false);
   const [imageLoadAttempted, setImageLoadAttempted] = useState(false);
+  const [creatingOutput, setCreatingOutput] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const [selectedPointId, setSelectedPointId] = useState<string | null>(null);
   const [shapeMode, setShapeMode] = useState<ShapeMode>("circle");
@@ -595,7 +611,7 @@ function Coords2dViewer({
   const [windowsAnchorEl, setWindowsAnchorEl] = useState<HTMLElement | null>(null);
 
   const [filters, setFilters] = useState<ImageFilters>({
-    enhanceContrast: true,
+    enhanceContrast: false,
     gaussianBlur: false,
     invertContrast: false,
   });
@@ -607,6 +623,8 @@ function Coords2dViewer({
   const [histogramComputing, setHistogramComputing] = useState(false);
   const [histogramData, setHistogramData] = useState<number[]>(() => new Array(256).fill(0));
   const [histogramRange, setHistogramRange] = useState<[number, number]>([0, 255]);
+
+  const [confirmationAction, setConfirmationAction] = useState<ConfirmationAction>(null);
 
   const [size, setSize] = useState({ width: 800, height: 600 });
   const [transform, setTransform] = useState<ViewTransform>({
@@ -651,6 +669,8 @@ function Coords2dViewer({
     return visiblePoints.find((point, index) => getPointId(point, index) === selectedPointId) ?? null;
   }, [selectedPointId, visiblePoints]);
 
+  const hasUnsavedChanges = updatedMicIds.size > 0;
+
   useEffect(() => {
     visiblePointsRef.current = visiblePoints;
   }, [visiblePoints]);
@@ -668,6 +688,10 @@ function Coords2dViewer({
   }, [previewHiddenPointIds]);
 
   useEffect(() => {
+    thumbnailUrlsRef.current = thumbnailUrls;
+  }, [thumbnailUrls]);
+
+  useEffect(() => {
     return () => {
       if (cropUpdateFrameRef.current !== null) {
         cancelAnimationFrame(cropUpdateFrameRef.current);
@@ -676,15 +700,27 @@ function Coords2dViewer({
       if (pointMoveFrameRef.current !== null) {
         cancelAnimationFrame(pointMoveFrameRef.current);
       }
+
+      Object.values(thumbnailObjectUrlsRef.current).forEach((item) => {
+        item.revoke?.();
+      });
+
+      thumbnailObjectUrlsRef.current = {};
     };
   }, []);
 
   useEffect(() => {
+    const loadKey = `${projectId}:${protocolId}:${outputName}`;
+    if (micrographsLoadKeyRef.current === loadKey) return;
+
+    micrographsLoadKeyRef.current = loadKey;
+
     let cancelled = false;
 
     async function loadMicrographs() {
       setLoadingMicrographs(true);
       setError(null);
+      setSuccessMessage(null);
 
       try {
         const result = await service.listCoords2dMicrographs(projectId, protocolId, outputName);
@@ -702,6 +738,8 @@ function Coords2dViewer({
         const firstMicId = nextMicrographs[0]?.id ?? null;
         setSelectedMicId(firstMicId);
       } catch (err) {
+        micrographsLoadKeyRef.current = "";
+
         if (!cancelled) {
           setError(err instanceof Error ? err.message : "Failed to load 2D coordinate micrographs");
         }
@@ -720,55 +758,93 @@ function Coords2dViewer({
   useEffect(() => {
     if (!micrographs.length) return;
 
+    const sourceKey = `${projectId}:${protocolId}:${outputName}`;
+    const idsKey = micrographs.map((micrograph) => toStringId(micrograph.id)).join("|");
+    const loadKey = `${sourceKey}:${idsKey}`;
+
+    if (thumbnailSourceKeyRef.current !== sourceKey) {
+      Object.values(thumbnailObjectUrlsRef.current).forEach((item) => {
+        item.revoke?.();
+      });
+
+      thumbnailObjectUrlsRef.current = {};
+      thumbnailUrlsRef.current = {};
+      thumbnailLoadKeyRef.current = "";
+      thumbnailSourceKeyRef.current = sourceKey;
+      setThumbnailUrls({});
+    }
+
+    if (thumbnailLoadKeyRef.current === loadKey) return;
+    thumbnailLoadKeyRef.current = loadKey;
+
     let cancelled = false;
-    const objectUrls: ObjectUrlResult[] = [];
 
     async function loadThumbnails() {
-      const entries = await Promise.all(
-        micrographs.map(async (micrograph) => {
-          const micKey = toStringId(micrograph.id);
+      const directUrls: Record<string, string> = {};
 
-          if (micrograph.thumbnailUrl) {
-            return [micKey, micrograph.thumbnailUrl] as const;
-          }
+      for (const micrograph of micrographs) {
+        const micKey = toStringId(micrograph.id);
+        if (!micKey) continue;
 
-          try {
-            const result = normalizeObjectUrl(
-              await service.fetchCoords2dMicrographThumbnailObjectUrl(
-                projectId,
-                protocolId,
-                outputName,
-                micrograph.id,
-                { size: 72, format: "png" },
-              ),
-            );
-
-            if (!result) return null;
-
-            objectUrls.push(result);
-            return [micKey, result.url] as const;
-          } catch {
-            return null;
-          }
-        }),
-      );
-
-      if (cancelled) return;
-
-      const nextUrls: Record<string, string> = {};
-      for (const entry of entries) {
-        if (!entry) continue;
-        nextUrls[entry[0]] = entry[1];
+        if (micrograph.thumbnailUrl) {
+          directUrls[micKey] = micrograph.thumbnailUrl;
+        }
       }
 
-      setThumbnailUrls(nextUrls);
+      if (Object.keys(directUrls).length > 0) {
+        setThumbnailUrls((current) => {
+          const next = { ...current, ...directUrls };
+          thumbnailUrlsRef.current = next;
+          return next;
+        });
+      }
+
+      for (const micrograph of micrographs) {
+        if (cancelled) return;
+
+        const micKey = toStringId(micrograph.id);
+        if (!micKey) continue;
+
+        if (micrograph.thumbnailUrl) continue;
+        if (thumbnailUrlsRef.current[micKey]) continue;
+        if (thumbnailObjectUrlsRef.current[micKey]) continue;
+
+        try {
+          const result = normalizeObjectUrl(
+            await service.fetchCoords2dMicrographThumbnailObjectUrl(
+              projectId,
+              protocolId,
+              outputName,
+              micrograph.id,
+              { size: 72, format: "png" },
+            ),
+          );
+
+          if (!result || cancelled) continue;
+
+          thumbnailObjectUrlsRef.current[micKey] = result;
+
+          setThumbnailUrls((current) => {
+            if (current[micKey]) return current;
+
+            const next = {
+              ...current,
+              [micKey]: result.url,
+            };
+
+            thumbnailUrlsRef.current = next;
+            return next;
+          });
+        } catch {
+          continue;
+        }
+      }
     }
 
     void loadThumbnails();
 
     return () => {
       cancelled = true;
-      objectUrls.forEach((item) => item.revoke?.());
     };
   }, [service, projectId, protocolId, outputName, micrographs]);
 
@@ -1233,6 +1309,7 @@ function Coords2dViewer({
       });
 
       setSelectedPointId((current) => (current && idsToDelete.includes(current) ? null : current));
+
       setMicrographs((current) =>
         current.map((micrograph) => {
           if (toStringId(micrograph.id) !== toStringId(selectedMicId)) return micrograph;
@@ -1244,6 +1321,7 @@ function Coords2dViewer({
           };
         }),
       );
+
       setTotalPicks((current) => Math.max(0, current - idsToDelete.length));
       setUpdatedMicIds((current) => new Set(current).add(toStringId(selectedMicId)));
     }
@@ -1343,6 +1421,142 @@ function Coords2dViewer({
     });
   }, [currentPoints, originalPointsByMicId, selectedMicId, selectedMicKey]);
 
+  const buildCreateOutputPayload = useCallback(() => {
+    const micrographsPayload = Array.from(updatedMicIds)
+      .map((micKey) => {
+        const points = pointsByMicId[micKey] ?? [];
+
+        const coordinates = points
+          .filter((point, index) => {
+            const pointId = getPointId(point, index);
+            return !deletedPointIds.has(pointId);
+          })
+          .map((point) => ({
+            id: point.id,
+            micId: point.micId ?? micKey,
+            x: Number(point.x),
+            y: Number(point.y),
+          }))
+          .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y));
+
+        return {
+          id: micKey,
+          coordinates,
+        };
+      })
+      .filter((item) => pointsByMicId[String(item.id)] !== undefined);
+
+    return {
+      boxSize,
+      micrographs: micrographsPayload,
+    };
+  }, [boxSize, deletedPointIds, pointsByMicId, updatedMicIds]);
+
+  const clearSavedState = useCallback(() => {
+    const cleanedPointsByMicId: Record<string, ViewerPoint[]> = {};
+
+    for (const [micKey, points] of Object.entries(pointsByMicId)) {
+      cleanedPointsByMicId[micKey] = points
+        .filter((point, index) => {
+          const pointId = getPointId(point, index);
+          return !deletedPointIds.has(pointId);
+        })
+        .map((point) => ({ ...point }));
+    }
+
+    setPointsByMicId(cleanedPointsByMicId);
+    setOriginalPointsByMicId(cleanedPointsByMicId);
+    setDeletedPointIds(new Set());
+    deletedPointIdsRef.current = new Set();
+    setPreviewHiddenPointIds(new Set());
+    previewHiddenPointIdsRef.current = new Set();
+    setUpdatedMicIds(new Set());
+
+    setMicrographs((current) =>
+      current.map((micrograph) => {
+        const micKey = toStringId(micrograph.id);
+        const loadedPoints = cleanedPointsByMicId[micKey];
+
+        if (!loadedPoints && !micrograph.updated) {
+          return micrograph;
+        }
+
+        return {
+          ...micrograph,
+          particles: loadedPoints ? loadedPoints.length : micrograph.particles,
+          updated: false,
+        };
+      }),
+    );
+  }, [deletedPointIds, pointsByMicId]);
+
+  const closeViewer = useCallback(() => {
+    setParticlesOpen(false);
+    setHistogramOpen(false);
+
+    if (onClose) {
+      onClose();
+    }
+  }, [onClose]);
+
+  const requestCloseViewer = useCallback(() => {
+    if (hasUnsavedChanges) {
+      setConfirmationAction("close");
+      return;
+    }
+
+    closeViewer();
+  }, [closeViewer, hasUnsavedChanges]);
+
+  const requestCreateOutput = useCallback(() => {
+    setConfirmationAction("create-output");
+  }, []);
+
+  const confirmCreateOutput = useCallback(async () => {
+    setCreatingOutput(true);
+    setError(null);
+    setSuccessMessage(null);
+
+    try {
+      const result = await service.createCoords2dOutputFromCurrentCoordinates(
+        projectId,
+        protocolId,
+        outputName,
+        buildCreateOutputPayload(),
+      );
+
+      clearSavedState();
+      setConfirmationAction(null);
+
+      setSuccessMessage(
+        result.message || `The new set of coordinates has been created: ${result.outputName}`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create coordinates output");
+    } finally {
+      setCreatingOutput(false);
+    }
+  }, [
+    buildCreateOutputPayload,
+    clearSavedState,
+    outputName,
+    projectId,
+    protocolId,
+    service,
+  ]);
+
+  const handleConfirmAction = useCallback(async () => {
+    if (confirmationAction === "close") {
+      setConfirmationAction(null);
+      closeViewer();
+      return;
+    }
+
+    if (confirmationAction === "create-output") {
+      await confirmCreateOutput();
+    }
+  }, [closeViewer, confirmCreateOutput, confirmationAction]);
+
   useEffect(() => {
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext("2d");
@@ -1426,6 +1640,7 @@ function Coords2dViewer({
   }, []);
 
   const markMicrographUpdated = useCallback((micId: Id) => {
+    setSuccessMessage(null);
     setUpdatedMicIds((current) => new Set(current).add(toStringId(micId)));
   }, []);
 
@@ -1731,6 +1946,19 @@ function Coords2dViewer({
   const loading = loadingMicrographs || loadingCoordinates || loadingImage;
   const updatedCount = updatedMicIds.size;
 
+  const confirmationTitle =
+    confirmationAction === "close"
+      ? "Close coordinates viewer?"
+      : "Create coordinates output?";
+
+  const confirmationDescription =
+    confirmationAction === "close"
+      ? "There are changes that could be saved. Do you really want to close the viewer?"
+      : "A new SetOfCoordinates output will be created in the protocol using the coordinates currently visible in the viewer.";
+
+  const confirmationConfirmLabel =
+    confirmationAction === "close" ? "Close viewer" : "Create output";
+
   return (
     <Box
       sx={{
@@ -2027,8 +2255,14 @@ function Coords2dViewer({
       </Box>
 
       {error ? (
-        <Alert severity="error" sx={{ borderRadius: 0 }}>
+        <Alert severity="error" sx={{ borderRadius: 0 }} onClose={() => setError(null)}>
           {error}
+        </Alert>
+      ) : null}
+
+      {successMessage ? (
+        <Alert severity="success" sx={{ borderRadius: 0 }} onClose={() => setSuccessMessage(null)}>
+          {successMessage}
         </Alert>
       ) : null}
 
@@ -2258,6 +2492,8 @@ function Coords2dViewer({
                 size="small"
                 variant="outlined"
                 startIcon={<MousePointer2 size={16} />}
+                onClick={requestCloseViewer}
+                disabled={creatingOutput}
               >
                 Close
               </Button>
@@ -2265,13 +2501,15 @@ function Coords2dViewer({
               <Button
                 size="small"
                 variant="contained"
-                startIcon={<Plus size={16} />}
+                startIcon={creatingOutput ? <CircularProgress size={14} /> : <Plus size={16} />}
+                onClick={requestCreateOutput}
+                disabled={creatingOutput}
                 sx={{
                   bgcolor: "#b22a2a",
                   "&:hover": { bgcolor: "#922020" },
                 }}
               >
-                Coordinate
+                {creatingOutput ? "Creating..." : "Coordinate"}
               </Button>
             </Box>
           </Box>
@@ -2483,6 +2721,49 @@ function Coords2dViewer({
           </Box>
         </Paper>
       ) : null}
+
+      <Dialog
+        open={confirmationAction !== null}
+        onClose={() => {
+          if (!creatingOutput) setConfirmationAction(null);
+        }}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+          <AlertTriangle size={19} />
+          {confirmationTitle}
+        </DialogTitle>
+
+        <DialogContent>
+          <DialogContentText>{confirmationDescription}</DialogContentText>
+        </DialogContent>
+
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button
+            variant="outlined"
+            onClick={() => setConfirmationAction(null)}
+            disabled={creatingOutput}
+          >
+            Cancel
+          </Button>
+
+          <Button
+            variant="contained"
+            onClick={handleConfirmAction}
+            disabled={creatingOutput}
+            startIcon={creatingOutput ? <CircularProgress size={14} /> : undefined}
+            sx={{
+              bgcolor: confirmationAction === "create-output" ? "#b22a2a" : undefined,
+              "&:hover": {
+                bgcolor: confirmationAction === "create-output" ? "#922020" : undefined,
+              },
+            }}
+          >
+            {creatingOutput ? "Creating..." : confirmationConfirmLabel}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

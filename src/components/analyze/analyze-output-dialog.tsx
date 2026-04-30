@@ -134,7 +134,15 @@ function AnalyzeOutputDialog({ open, onClose, projectId, protocolId, protocolLab
 
   const body = useMemo(() => {
     if (isVolumeKind(pointerClass)) {
-      return <VolumeViewer projectId={projectIdNum} protocolId={protocolIdNum} protocolLabel={protocolLabel} outputName={outputName} pointerClass={pointerClass} />;
+      return (
+        <Coords2dViewer
+          projectId={projectIdNum}
+          protocolId={protocolIdNum}
+          protocolLabel={protocolLabel}
+          outputName={outputName}
+          onClose={onClose}
+        />
+      );
     }
 
     if (isCoords2dKind(pointerClass)) {

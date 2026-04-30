@@ -34,6 +34,8 @@ import {
   WriteRemoteFileResult,
   Coords2dMicrographsResult,
   Coords2dPoint,
+  CreateCoords2dOutputPayload,
+  CreateCoords2dOutputResult,
 } from "@/services/ProjectService";
 
 const ACTION_LAUNCH = "launch";
@@ -3183,5 +3185,37 @@ export async function fetchCoords2dMicrographThumbnailObjectUrl(
   return {
     url: objectUrl,
     revoke: () => URL.revokeObjectURL(objectUrl),
+  };
+}
+
+export async function createCoords2dOutputFromCurrentCoordinates(
+  projectId: Id,
+  protocolId: Id,
+  outputName: string,
+  payload: CreateCoords2dOutputPayload,
+): Promise<CreateCoords2dOutputResult> {
+  const enc = encodeURIComponent;
+
+  const response = await fetchWithAuth(
+    `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/outputs/${enc(outputName)}/coords2d/create-output`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload ?? {}),
+    },
+  );
+
+  if (!response.ok) {
+    throw await toApiError(response, "Failed to create coordinates output");
+  }
+
+  const raw = await safeJson<any>(response);
+
+  return {
+    success: raw?.success === true,
+    outputName: String(raw?.outputName ?? ""),
+    totalCoordinates:
+      typeof raw?.totalCoordinates === "number" ? raw.totalCoordinates : undefined,
+    message: raw?.message ? String(raw.message) : undefined,
   };
 }
