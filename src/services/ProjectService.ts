@@ -698,6 +698,62 @@ export type ContextMenuVisibilityPolicy = {
 };
 
 
+//-────────────────────────────────────────────────────────────────────────────
+// 2D Coordinates picking (for CTF, particle picking, etc.)
+//-────────────────────────────────────────────────────────────────────────────
+export type Coords2dMicrograph = {
+  id: Id;
+  index: number;
+  fileName: string;
+  label?: string;
+  particles: number;
+  updated?: boolean;
+  width?: number | null;
+  height?: number | null;
+  thumbnailUrl?: string | null;
+};
+
+export type Coords2dPoint = {
+  id: Id;
+  x: number;
+  y: number;
+  micId: Id;
+  score?: number | null;
+  classLabel?: string | null;
+};
+
+export type Coords2dMicrographsResult = {
+  micrographs: Coords2dMicrograph[];
+  totalMicrographs: number;
+  totalPicks: number;
+  boxSize?: number | null;
+};
+
+export type CreateCoords2dOutputPoint = {
+  id?: Id;
+  micId?: Id;
+  x: number;
+  y: number;
+};
+
+export type CreateCoords2dOutputMicrograph = {
+  id: Id;
+  coordinates: CreateCoords2dOutputPoint[];
+};
+
+export type CreateCoords2dOutputPayload = {
+  boxSize?: number | null;
+  outputName?: string | null;
+  micrographs: CreateCoords2dOutputMicrograph[];
+};
+
+export type CreateCoords2dOutputResult = {
+  success: boolean;
+  outputName: string;
+  totalCoordinates?: number;
+  message?: string;
+};
+
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────────
 // Wizards support (protocols that can launch a multi-step form instead of the regular parameter form)
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -1591,4 +1647,52 @@ export interface ProjectService<
     protocolId: Id,
     payload: WriteRemoteFilePayload,
   ): Promise<WriteRemoteFileResult>;
+
+  //-────────────────────────────────────────────────────────────────────────────
+  // 2D Coordinates picking (for CTF, particle picking, etc.)
+  //-────────────────────────────────────────────────────────────────────────────
+  listCoords2dMicrographs(
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+  ): Promise<Coords2dMicrographsResult>;
+
+  fetchCoords2dForMicrograph(
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    micId: Id,
+  ): Promise<Coords2dPoint[]>;
+
+  fetchCoords2dMicrographImageObjectUrl(
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    micId: Id,
+    opts?: {
+      size?: number;
+      format?: "png" | "webp" | "jpeg";
+      signal?: AbortSignal;
+    },
+  ): Promise<ObjectUrlResult>;
+
+  fetchCoords2dMicrographThumbnailObjectUrl(
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    micId: Id,
+    opts?: {
+      size?: number;
+      format?: "png" | "webp" | "jpeg";
+      signal?: AbortSignal;
+    },
+  ): Promise<ObjectUrlResult>;
+
+    createCoords2dOutputFromCurrentCoordinates(
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    payload: CreateCoords2dOutputPayload,
+  ): Promise<CreateCoords2dOutputResult>;
+
 }

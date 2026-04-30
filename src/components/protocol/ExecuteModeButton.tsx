@@ -187,10 +187,19 @@ export default function ExecuteModeButton(props: ExecuteModeButtonProps) {
         anchorEl={anchorEl}
         open={menuOpen}
         onClose={handleCloseMenu}
-        anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
-        transformOrigin={{ vertical: "top", horizontal: "right" }}
+        anchorOrigin={{ vertical: "top", horizontal: "right" }}
+        transformOrigin={{ vertical: "bottom", horizontal: "right" }}
+        marginThreshold={8}
+        slotProps={{
+          paper: {
+            sx: {
+              maxHeight: "min(360px, calc(100vh - 96px))",
+              overflowY: "auto",
+              mb: 0.75,
+            },
+          },
+        }}
         MenuListProps={{
-          // reduceAccidentalHoverOnOpen
           sx: { py: 0.5 },
         }}
       >
@@ -245,12 +254,10 @@ export default function ExecuteModeButton(props: ExecuteModeButtonProps) {
                   role="button"
                   tabIndex={0}
                   onClick={(e) => {
-                    // preventSelectingModeOnHelpClick
                     e.preventDefault();
                     e.stopPropagation();
                   }}
                   onKeyDown={(e) => {
-                    // preventSelectingModeOnHelpKey
                     e.stopPropagation();
                   }}
                   sx={{

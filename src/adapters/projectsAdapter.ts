@@ -47,6 +47,8 @@ import type {
   ExportProtocolsResult,
   WriteRemoteFilePayload,
   WriteRemoteFileResult,
+  CreateCoords2dOutputPayload,
+  CreateCoords2dOutputResult,
 
 } from "@/services/ProjectService";
 
@@ -813,6 +815,74 @@ const defaultService: ProjectService = {
     payload: ExecuteProtocolWizardPayload,
   ): Promise<ExecuteProtocolWizardResult> =>
     api.executeProtocolWizard(toId(projectId), payload),
+
+  // ──────────────────────────── 2D Coordinates viewer ────────────────────────────
+  listCoords2dMicrographs: (
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+  ) =>
+    api.listCoords2dMicrographs(
+      toId(projectId),
+      toId(protocolId),
+      outputName,
+    ),
+
+  fetchCoords2dForMicrograph: (
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    micId: Id,
+  ) =>
+    api.fetchCoords2dForMicrograph(
+      toId(projectId),
+      toId(protocolId),
+      outputName,
+      toId(micId),
+    ),
+
+  fetchCoords2dMicrographImageObjectUrl: (
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    micId: Id,
+    opts?: { size?: number; format?: "png" | "webp" | "jpeg"; signal?: AbortSignal },
+  ) =>
+    api.fetchCoords2dMicrographImageObjectUrl(
+      toId(projectId),
+      toId(protocolId),
+      outputName,
+      toId(micId),
+      opts,
+    ),
+
+  fetchCoords2dMicrographThumbnailObjectUrl: (
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    micId: Id,
+    opts?: { size?: number; format?: "png" | "webp" | "jpeg"; signal?: AbortSignal },
+  ) =>
+    api.fetchCoords2dMicrographThumbnailObjectUrl(
+      toId(projectId),
+      toId(protocolId),
+      outputName,
+      toId(micId),
+      opts,
+    ),
+
+  createCoords2dOutputFromCurrentCoordinates: (
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    payload: CreateCoords2dOutputPayload,
+  ): Promise<CreateCoords2dOutputResult> =>
+    api.createCoords2dOutputFromCurrentCoordinates(
+      toId(projectId),
+      toId(protocolId),
+      outputName,
+      payload,
+    ),
 
 };
 

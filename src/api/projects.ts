@@ -32,6 +32,10 @@ import {
   ExportProtocolsResult,
   WriteRemoteFilePayload,
   WriteRemoteFileResult,
+  Coords2dMicrographsResult,
+  Coords2dPoint,
+  CreateCoords2dOutputPayload,
+  CreateCoords2dOutputResult,
 } from "@/services/ProjectService";
 
 const ACTION_LAUNCH = "launch";
@@ -3090,5 +3094,128 @@ export async function executeProtocolWizard(
     inputSchema,
     preview,
     viewerState,
+  };
+}
+
+// 2D Coordinates normalization helper for legacy backends that return inconsistent field names and formats
+
+export async function listCoords2dMicrographs(
+  projectId: Id,
+  protocolId: Id,
+  outputName: string,
+): Promise<Coords2dMicrographsResult> {
+  const enc = encodeURIComponent;
+  const response = await fetchWithAuth(
+    `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/outputs/${enc(outputName)}/coords2d/micrographs`,
+    { method: "GET" },
+  );
+
+  if (!response.ok) {
+    throw await toApiError(response, "Failed to fetch 2D coordinate micrographs");
+  }
+
+  return safeJson<Coords2dMicrographsResult>(response);
+}
+
+export async function fetchCoords2dForMicrograph(
+  projectId: Id,
+  protocolId: Id,
+  outputName: string,
+  micId: Id,
+): Promise<Coords2dPoint[]> {
+  const enc = encodeURIComponent;
+
+  const response = await fetchWithAuth(
+    `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/outputs/${enc(outputName)}/coords2d/micrographs/${enc(String(micId))}/coordinates`,
+    { method: "GET" },
+  );
+
+  if (!response.ok) {
+    throw await toApiError(response, "Failed to fetch 2D coordinates");
+  }
+
+  const raw = await safeJson<any>(response);
+  return Array.isArray(raw)
+    ? raw
+    : Array.isArray(raw?.coordinates)
+      ? raw.coordinates
+      : [];
+}
+
+export async function fetchCoords2dMicrographImageObjectUrl(
+  projectId: Id,
+  protocolId: Id,
+  outputName: string,
+  micId: Id,
+  opts: { size?: number; format?: "png" | "webp" | "jpeg"; signal?: AbortSignal } = {},
+): Promise<ObjectUrlResult> {
+  const enc = encodeURIComponent;
+  const params = new URLSearchParams();
+  if (opts.size) params.set("size", String(opts.size));
+  if (opts.format) params.set("format", opts.format);
+
+  const url =
+    `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/outputs/${enc(outputName)}` +
+    `/coords2d/micrographs/${enc(String(micId))}/image?${params.toString()}`;
+
+  const objectUrl = await fetchBlobObjectUrl(url, { signal: opts.signal });
+  return {
+    url: objectUrl,
+    revoke: () => URL.revokeObjectURL(objectUrl),
+  };
+}
+
+export async function fetchCoords2dMicrographThumbnailObjectUrl(
+  projectId: Id,
+  protocolId: Id,
+  outputName: string,
+  micId: Id,
+  opts: { size?: number; format?: "png" | "webp" | "jpeg"; signal?: AbortSignal } = {},
+): Promise<ObjectUrlResult> {
+  const enc = encodeURIComponent;
+  const params = new URLSearchParams();
+  if (opts.size) params.set("size", String(opts.size));
+  if (opts.format) params.set("format", opts.format);
+
+  const url =
+    `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/outputs/${enc(outputName)}` +
+    `/coords2d/micrographs/${enc(String(micId))}/thumbnail?${params.toString()}`;
+
+  const objectUrl = await fetchBlobObjectUrl(url, { signal: opts.signal });
+  return {
+    url: objectUrl,
+    revoke: () => URL.revokeObjectURL(objectUrl),
+  };
+}
+
+export async function createCoords2dOutputFromCurrentCoordinates(
+  projectId: Id,
+  protocolId: Id,
+  outputName: string,
+  payload: CreateCoords2dOutputPayload,
+): Promise<CreateCoords2dOutputResult> {
+  const enc = encodeURIComponent;
+
+  const response = await fetchWithAuth(
+    `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/outputs/${enc(outputName)}/coords2d/create-output`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload ?? {}),
+    },
+  );
+
+  if (!response.ok) {
+    throw await toApiError(response, "Failed to create coordinates output");
+  }
+
+  const raw = await safeJson<any>(response);
+
+  return {
+    success: raw?.success === true,
+    outputName: String(raw?.outputName ?? ""),
+    totalCoordinates:
+      typeof raw?.totalCoordinates === "number" ? raw.totalCoordinates : undefined,
+    message: raw?.message ? String(raw.message) : undefined,
   };
 }
