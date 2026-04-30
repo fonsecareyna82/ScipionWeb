@@ -330,7 +330,6 @@ export default function ProtocolForm({
   const [sectionTab, setSectionTab] = useState(0);
   const [protocolDetails, setProtocolDetails] = useState<any>({});
   const [expandedGroups, setExpandedGroups] = useState<{ [key: string]: boolean }>({});
-  const [execError, setExecError] = useState<string | null>(null);
 
   // actionLoadingState
   const [actionLoading, setActionLoading] = useState<"save" | "execute" | null>(null);
@@ -1371,7 +1370,6 @@ export default function ProtocolForm({
 
   function openExecErrorDialog(title: string, message: string) {
     // openExecErrorDialog
-    setExecError(message); // optional: keep the inline Typography too
     setExecErrorDialogTitle(title);
     setExecErrorDialogMessage(message);
     setExecErrorDialogOpen(true);
@@ -1429,7 +1427,6 @@ export default function ProtocolForm({
     queueOverride: QueueLaunchDraft | null = null
   ) => {
     setActionLoading("execute");
-    setExecError(null);
     setValidationErrors([]);
 
     try {
@@ -1532,7 +1529,6 @@ export default function ProtocolForm({
   // handleSave
   const handleSave = async () => {
     setActionLoading("save");
-    setExecError(null);
 
     try {
       const pid = String(protocolId ?? "");
@@ -2371,11 +2367,6 @@ export default function ProtocolForm({
         />
       )}
 
-      {execError && (
-        <Typography color="error" variant="body2" sx={{ px: 2, py: 1 }}>
-          {execError}
-        </Typography>
-      )}
 
       {/* BODY */}
       <div
