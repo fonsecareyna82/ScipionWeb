@@ -67,6 +67,7 @@ import type {
   Id,
   ObjectUrlResult,
 } from "@/services/ProjectService";
+import { Close } from "@mui/icons-material";
 
 type Coords2dViewerProps = {
   projectId: number;
@@ -2491,7 +2492,7 @@ function Coords2dViewer({
               <Button
                 size="small"
                 variant="outlined"
-                startIcon={<MousePointer2 size={16} />}
+                startIcon={<X size={16} />}
                 onClick={requestCloseViewer}
                 disabled={creatingOutput}
               >
