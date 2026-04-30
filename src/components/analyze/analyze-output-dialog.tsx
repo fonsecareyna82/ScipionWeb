@@ -146,7 +146,15 @@ function AnalyzeOutputDialog({ open, onClose, projectId, protocolId, protocolLab
     }
 
     if (isCoords2dKind(pointerClass)) {
-      return <Coords2dViewer projectId={projectIdNum} protocolId={protocolIdNum} protocolLabel={protocolLabel} outputName={outputName} />;
+      return (
+        <Coords2dViewer
+          projectId={projectIdNum}
+          protocolId={protocolIdNum}
+          protocolLabel={protocolLabel}
+          outputName={outputName}
+          onClose={onClose}
+        />
+      );
     }
 
     if (isCoords3dKind(pointerClass)) {
