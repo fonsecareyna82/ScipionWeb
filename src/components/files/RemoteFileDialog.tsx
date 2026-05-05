@@ -56,6 +56,7 @@ export type RemotePreview =
   | { kind: "none"; mime?: string; meta?: PreviewMeta; note?: string }
   | { kind: "text"; mime?: string; meta?: PreviewMeta; text: string; truncated?: boolean; language?: string }
   | { kind: "image"; mime?: string; meta?: PreviewMeta; source: RemotePreviewSource }
+  | { kind: "volume"; mime?: string; meta?: PreviewMeta; source: RemotePreviewSource }
   | { kind: "table"; mime?: string; meta?: PreviewMeta; columns: string[]; rows: Array<Array<string | number | null>>; truncated?: boolean }
   | { kind: "error"; mime?: string; meta?: PreviewMeta; message: string };
 
@@ -572,28 +573,6 @@ export default function RemoteFileDialog({
     );
   };
 
-  function formatMetaValue(v: unknown): string {
-    // formatMetaValueBestEffort
-    if (v === undefined) return "";
-    if (v === null) return "null";
-
-    if (typeof v === "string") return v;
-    if (typeof v === "number") return Number.isFinite(v) ? String(v) : String(v);
-    if (typeof v === "boolean") return v ? "true" : "false";
-
-    if (Array.isArray(v)) return v.map((x) => formatMetaValue(x)).join(", ");
-
-    if (typeof v === "object") {
-      try {
-        return JSON.stringify(v);
-      } catch {
-        return String(v);
-      }
-    }
-
-    return String(v);
-  }
-
   const renderTwoRowPreview = (content: React.ReactNode, meta: PreviewMeta | undefined) => {
     return (
       <div className={styles.previewStack}>
@@ -828,7 +807,7 @@ export default function RemoteFileDialog({
 
   useEffect(() => {
     // syncPreviewImageSrcFromModel
-    if (!preview || preview.kind !== "image") {
+    if (!preview || (preview.kind !== "image" && preview.kind !== "volume")) {
       revokeObjectUrlSafe(previewObjectUrlRef.current);
       previewObjectUrlRef.current = "";
       setPreviewImageSrc("");
@@ -1140,7 +1119,7 @@ export default function RemoteFileDialog({
       return renderTwoRowPreview(content, preview.meta);
     }
 
-    if (preview.kind === "image") {
+    if (preview.kind === "image" || preview.kind === "volume") {
       const content = (
         <div className={styles.imageCanvas}>
           {!previewImageSrc && <div className={styles.centerPlaceholder}>No image preview available.</div>}

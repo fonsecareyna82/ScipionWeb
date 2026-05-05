@@ -32,7 +32,6 @@ import type {
   AuthenticatedRequestOptions,
   ProjectThumbnailItemsOptions,
   ProjectThumbnailObjectUrlOptions,
-  FscPoint,
   UserSettings,
   UserSettingsPatch,
   InstanceSettings,
@@ -229,7 +228,6 @@ const defaultService: ProjectService = {
     // resolveAnalyzeViewer
     const projectId = toId(ctx.projectId);
     const protocolId = toId(ctx.protocolId);
-    const enc = encodeURIComponent;
 
     const url = `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/viewer/resolve`;
 
