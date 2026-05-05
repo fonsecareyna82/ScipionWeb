@@ -23,10 +23,9 @@
 
     "types": ["vite/client", "node", "@react-three/fiber", "vitest/globals", "@testing-library/jest-dom"],
 
-    "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
-    }
+  "@/*": ["./src/*"]
+}
   },
   "include": ["src"]
 }
