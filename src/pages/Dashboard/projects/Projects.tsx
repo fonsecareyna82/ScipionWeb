@@ -64,6 +64,16 @@ function normalizeProject(raw: any): ProjectCardProject {
   };
 }
 
+function getProjectCardKey(project: ProjectCardProject): string {
+  return [
+    String(project.id ?? ""),
+    String(project.thumbnailVersion ?? ""),
+    String(project.thumbnailItemsUrl ?? ""),
+    String(project.thumbnailUrl ?? ""),
+    String(project.protocolsCount ?? ""),
+  ].join("|");
+}
+
 interface ProjectsPageProps {
   service?: ProjectService;
   fetchList?: () => Promise<Project[]>;
@@ -486,7 +496,7 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
                 aria-label="Projects list"
               >
                 {filteredProjects.map((project) => (
-                  <div key={String(project.id)} className="mt-2 h-full">
+                  <div key={getProjectCardKey(project)} className="mt-2 h-full">
                     <ProjectCard
                       id={project.id}
                       label={project.name}
