@@ -1285,6 +1285,37 @@ export default function RemoteFileDialog({
               )}
             </div>
 
+            {!error && (
+              <div className={styles.fileListControls}>
+                <div className={styles.fileFilterRow}>
+                  <Search className={styles.fileFilterIcon} />
+
+                  <input
+                    ref={searchInputRef}
+                    value={filterText}
+                    onChange={(e) => setFilterText(e.target.value)}
+                    placeholder="Filter file names…"
+                    aria-label="Filter file names"
+                    className={styles.fileFilterInput}
+                  />
+                </div>
+
+                <div className={styles.fileListHeader}>
+                  <div className={styles.fileListHeaderTitle}>Name</div>
+
+                  <button
+                    type="button"
+                    onClick={toggleSortDir}
+                    title={sortDir === "asc" ? "Ascending" : "Descending"}
+                    aria-label={`Sort ${sortDir === "asc" ? "ascending" : "descending"}`}
+                    className={styles.fileListSortButton}
+                  >
+                    <SortDirIcon className={styles.iconSm} />
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div className={styles.panelBody}>
               {error && (
                 <div className={styles.errorBox}>
@@ -1294,142 +1325,69 @@ export default function RemoteFileDialog({
               )}
 
               {!error && (
-                <>
-                  <div
-                    style={{
-                      padding: "10px 10px 0 10px",
-                      borderBottom: "1px solid rgba(148, 163, 184, 0.18)",
-                    }}
-                  >
-                    <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
-                      <Search className={styles.iconSm} style={{ position: "absolute", left: 10, opacity: 0.7 }} />
-                      <input
-                        ref={searchInputRef}
-                        value={filterText}
-                        onChange={(e) => setFilterText(e.target.value)}
-                        placeholder="Filter file names…"
-                        aria-label="Filter file names"
-                        style={{
-                          width: "100%",
-                          paddingLeft: 34,
-                          paddingRight: 10,
-                          height: 34,
-                          borderRadius: 10,
-                          border: "1px solid rgba(148, 163, 184, 0.35)",
-                          background: "transparent",
-                          color: "inherit",
-                          outline: "none",
-                          fontSize: 12,
-                        }}
-                      />
-                    </div>
-
-                    <div
-                      style={{
-                        marginTop: 10,
-                        marginLeft: -10,
-                        marginRight: -10,
-                        padding: "8px 10px",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        background: "rgba(148, 163, 184, 0.10)",
-                        borderTop: "1px solid rgba(148, 163, 184, 0.14)",
-                      }}
-                    >
-                      <div style={{ fontSize: 12, opacity: 0.85, fontWeight: 600 }}>Name</div>
-
-                      <button
-                        type="button"
-                        onClick={toggleSortDir}
-                        title={sortDir === "asc" ? "Ascending" : "Descending"}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          width: 30,
-                          height: 26,
-                          borderRadius: 8,
-                          border: "1px solid rgba(148, 163, 184, 0.25)",
-                          background: "rgba(0,0,0,0)",
-                          color: "inherit",
-                          cursor: "pointer",
-                          opacity: 0.9,
-                        }}
-                      >
-                        <SortDirIcon className={styles.iconSm} />
-                      </button>
-                    </div>
-                  </div>
-
-                  <ul className={styles.list}>
-                    {showParentEntry && (
-                      <li className={styles.listItem} key="..">
-                        {(() => {
-                          const isSel = sameEntry(selected, parentEntry);
-                          return (
-                            <button
-                              className={[styles.rowBtn, isSel ? styles.rowBtnSelected : ""].join(" ")}
-                              onClick={() => handleSelectEntry(parentEntry)}
-                              onDoubleClick={goUp}
-                              type="button"
-                              title="Double-click to go up"
-                            >
-                              <FolderOpen className={styles.iconSmMut} />
-                              <span className={styles.truncate}>..</span>
-                            </button>
-                          );
-                        })()}
-                      </li>
-                    )}
-
-                    {loading && (
-                      <li className={styles.loadingRow} key="loading">
-                        <Loader2 className={styles.iconSpinSmMut} />
-                        <span>Loading…</span>
-                      </li>
-                    )}
-
-                    {!loading &&
-                      visibleItems.map((entry) => {
-                        const isSel = sameEntry(selected, entry);
-                        const entryKey = `${entry.absPath ?? entry.path}-${entry.name}-${entry.isDir ? "d" : "f"}`;
-
+                <ul className={styles.list}>
+                  {showParentEntry && (
+                    <li className={styles.listItem} key="..">
+                      {(() => {
+                        const isSel = sameEntry(selected, parentEntry);
                         return (
-                          <li key={entryKey} className={styles.listItem}>
-                            <button
-                              className={[styles.rowBtn, isSel ? styles.rowBtnSelected : ""].join(" ")}
-                              onClick={() => handleSelectEntry(entry)}
-                              onDoubleClick={() => enterDir(entry)}
-                              type="button"
-                            >
-                              {entry.isDir ? (
-                                <>
-                                  <FolderOpen className={styles.iconSmMut} />
-                                  <span className={styles.truncate}>{entry.name}</span>
-                                </>
-                              ) : (
-                                <>
-                                  <FileIcon className={styles.iconSmMut} />
-                                  <span className={styles.truncate}>{entry.name}</span>
-                                  <span className={styles.fileSize}>
-                                    {typeof entry.size === "number" ? humanBytes(entry.size) ?? "" : ""}
-                                  </span>
-                                </>
-                              )}
-                            </button>
-                          </li>
+                          <button
+                            className={[styles.rowBtn, isSel ? styles.rowBtnSelected : ""].join(" ")}
+                            onClick={() => handleSelectEntry(parentEntry)}
+                            onDoubleClick={goUp}
+                            type="button"
+                            title="Double-click to go up"
+                          >
+                            <FolderOpen className={styles.iconSmMut} />
+                            <span className={styles.truncate}>..</span>
+                          </button>
                         );
-                      })}
-                  </ul>
-                </>
+                      })()}
+                    </li>
+                  )}
+
+                  {loading && (
+                    <li className={styles.loadingRow} key="loading">
+                      <Loader2 className={styles.iconSpinSmMut} />
+                      <span>Loading…</span>
+                    </li>
+                  )}
+
+                  {!loading &&
+                    visibleItems.map((entry) => {
+                      const isSel = sameEntry(selected, entry);
+                      const entryKey = `${entry.absPath ?? entry.path}-${entry.name}-${entry.isDir ? "d" : "f"}`;
+
+                      return (
+                        <li key={entryKey} className={styles.listItem}>
+                          <button
+                            className={[styles.rowBtn, isSel ? styles.rowBtnSelected : ""].join(" ")}
+                            onClick={() => handleSelectEntry(entry)}
+                            onDoubleClick={() => enterDir(entry)}
+                            type="button"
+                          >
+                            {entry.isDir ? (
+                              <>
+                                <FolderOpen className={styles.iconSmMut} />
+                                <span className={styles.truncate}>{entry.name}</span>
+                              </>
+                            ) : (
+                              <>
+                                <FileIcon className={styles.iconSmMut} />
+                                <span className={styles.truncate}>{entry.name}</span>
+                                <span className={styles.fileSize}>
+                                  {typeof entry.size === "number" ? humanBytes(entry.size) ?? "" : ""}
+                                </span>
+                              </>
+                            )}
+                          </button>
+                        </li>
+                      );
+                    })}
+                </ul>
               )}
-
-
             </div>
           </div>
-
-
 
           <div className={styles.panel}>
             <div className={styles.previewViewport + " " + previewHeightClass}>{renderPreviewBody()}</div>
