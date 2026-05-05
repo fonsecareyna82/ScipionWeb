@@ -5,11 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "node ./node_modules/vite/bin/vite.js",
-    "build:web": "cross-env NODE_OPTIONS=--max-old-space-size=12288 vite build --mode app",
+    "build:web": "cross-env NODE_OPTIONS=--max-old-space-size=24288 vite build --mode app",
     "preview:web": "vite preview --mode app",
-    "build:widget:list": "WIDGET_BUILD=1 vite build --mode projects && node src/scripts/rename-css.mjs projects",
-    "build:widget:page": "WIDGET_BUILD=1 vite build --mode projectpage && node src/scripts/rename-css.mjs projectpage",
-    "build:widget:protocoldetail": "WIDGET_BUILD=1 vite build --mode protocoldetail && node src/scripts/rename-css.mjs protocoldetail",
+    "build:widget:list": "cross-env NODE_OPTIONS=--max-old-space-size=24288 WIDGET_BUILD=1 vite build --mode projects && node src/scripts/rename-css.mjs projects",
+    "build:widget:page": "cross-env NODE_OPTIONS=--max-old-space-size=24288 WIDGET_BUILD=1 vite build --mode projectpage && node src/scripts/rename-css.mjs projectpage",
+    "build:widget:protocoldetail": "cross-env NODE_OPTIONS=--max-old-space-size=24288 WIDGET_BUILD=1 vite build --mode protocoldetail && node src/scripts/rename-css.mjs protocoldetail",
     "build:widgets": "npm run build:widget:list && npm run build:widget:page && npm run build:widget:protocoldetail",
     "test": "vitest --config vitest.config.ts run",
     "test:watch": "vitest --config vitest.config.ts"
