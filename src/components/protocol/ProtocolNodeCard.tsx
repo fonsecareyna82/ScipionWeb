@@ -117,6 +117,8 @@ type StatusNodeProps = {
   id?: string;
   data: {
     label: string;
+    runName: string;
+    comment: string;
     title: string;
     status?: string;
     id: string;
