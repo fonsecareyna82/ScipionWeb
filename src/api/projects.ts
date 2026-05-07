@@ -604,7 +604,7 @@ export async function setProtocolTagIds(
  * Backend endpoint: GET /users
  */
 export async function listUsers(): Promise<any[]> {
-  const response = await fetchWithAuth(`${BASE_URL}/users`, {
+  const response = await fetchWithAuth(`${BASE_URL}/users/`, {
     method: "GET",
   });
   if (!response.ok) {
