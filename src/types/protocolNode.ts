@@ -4,6 +4,8 @@ export interface ProtocolNode {
   children: string[];
   label: string;
   title: string;
+  runName: string;
+  comment: string; 
   status: string;
   parameters: Record<string, any>;
   cpuTime: string;

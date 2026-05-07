@@ -1,6 +1,5 @@
 // File: src/utils/graph_utils.ts
 import { ProtocolNode } from "@/types/protocolNode";
-import { title } from "process";
 import { Node, Edge, Position } from "reactflow";
 
 /**
@@ -272,6 +271,8 @@ export function buildGraphElements(
       label: prot.label,
       title: prot.title,
       status: prot.status,
+      runName: prot.runName,
+      comment: prot.comment,
       parameters: prot.parameters,
       children: prot.children,
       cpuTime: prot.cpuTime,
@@ -359,6 +360,8 @@ export function buildGraphElements(
           label: prot?.label || id,
           title: prot?.title,
           status: prot?.status,
+          runName: prot?.runName,
+          comment: prot?.comment,
           id,
           parameters: prot?.parameters,
           cpuTime: prot?.cpuTime,
@@ -495,6 +498,8 @@ export function buildGraphElements(
       const prot = protocols[id];
       const label = prot?.label || id;
       const status = prot?.status;
+      const runName = prot?.runName || "";
+      const comment = prot?.comment || "";
 
       const position = placements[id] ?? (direction === "TB" ? { x: 0, y: level * spacingY } : { x: level * spacingX, y: 0 });
 
@@ -508,6 +513,8 @@ export function buildGraphElements(
           label: id === "PROJECT" ? projectName : label,
           title: prot?.title,
           status,
+          runName,
+          comment,
           id,
           parameters: prot?.parameters,
           cpuTime: prot?.cpuTime,

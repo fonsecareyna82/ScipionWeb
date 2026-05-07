@@ -622,11 +622,14 @@ export default function PluginPage() {
         const el = logContainerRef.current;
         if (!el) return;
 
-        const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
-        if (isNearBottom) {
+        const frame = window.requestAnimationFrame(() => {
             el.scrollTop = el.scrollHeight;
-        }
-    }, [taskLog, autoScroll]);
+        });
+
+        return () => {
+            window.cancelAnimationFrame(frame);
+        };
+    }, [taskLog, autoScroll, logExpanded, logTask?.taskId]);
 
     const isInstalling = useMemo(() => (pipName ? installing.has(pipName) : false), [installing, pipName]);
     const isRemoving = useMemo(() => (pipName ? removing.has(pipName) : false), [removing, pipName]);

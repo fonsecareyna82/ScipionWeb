@@ -78,6 +78,8 @@ import { NodeMenuVisibility } from "@/types/protocol-node-menu-items";
 interface StatusNodeData {
   label: string;
   title: string;
+  runName: string;
+  comment: string;
   status?: string;
   id: string;
 

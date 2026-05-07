@@ -242,12 +242,20 @@ export function ProcessingProvider({ children }: { children: React.ReactNode }) 
                 if (typeof rawStep === "string") step = rawStep;
               }
 
+              const nextStatus = status.status;
+              const nextError = status.error ?? null;
+
+              const hasTaskChanged =
+                existingTask.status !== nextStatus ||
+                existingTask.error !== nextError ||
+                existingTask.step !== step;
+
               const next: PluginTask = {
                 ...existingTask,
-                status: status.status,
-                error: status.error ?? null,
+                status: nextStatus,
+                error: nextError,
                 step,
-                updatedAtMs: Date.now(),
+                updatedAtMs: hasTaskChanged ? Date.now() : existingTask.updatedAtMs,
               };
 
               if (isTerminalStatus(next.status)) {
