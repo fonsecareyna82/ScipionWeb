@@ -1,6 +1,7 @@
 // src/pages/projects/Plugins.tsx
 import { useEffect, useMemo, useState } from "react";
 import { Search, X } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 import PageMeta from "../../../components/common/PageMeta";
 import PluginCard from "../../../components/plugin/PluginsCard";
@@ -16,11 +17,11 @@ function classNames(...xs: Array<string | false | null | undefined>): string {
 function formatTimeAgo(ms: number) {
   const diffMs = Date.now() - ms;
   const sec = Math.max(0, Math.floor(diffMs / 1000));
-  if (sec < 60) return `${sec}s ago`;
+  if (sec < 60) return `${sec} seg ago`;
   const min = Math.floor(sec / 60);
-  if (min < 60) return `${min}m ago`;
+  if (min < 60) return `${min} min ago`;
   const hr = Math.floor(min / 60);
-  return `${hr}h ago`;
+  return `${hr} hours ago`;
 }
 
 function CardShell(props: {
@@ -117,6 +118,7 @@ function TabButton(props: {
 }
 
 export default function Plugins() {
+  const navigate = useNavigate();
   const { tasks, installing, removing } = useProcessingPlugins();
   const tasksCount = tasks.length;
 
@@ -172,13 +174,24 @@ export default function Plugins() {
   const loading = isLoading && plugins.length === 0;
   const error = isError ? "Failed to load plugins" : null;
 
+  function openTaskPlugin(pipName: string) {
+    const plugin = plugins.find((p) => p.pipName === pipName);
+
+    if (plugin) {
+      navigate(`/plugins/${pipName}`, { state: { plugin } });
+      return;
+    }
+
+    navigate(`/plugins/${pipName}`);
+  }
+
   return (
     <>
       <PageMeta title="Scipion | Plugins" description="Plugins page" />
       <CardShell
         title="Plugins"
         subtitle="Install, remove, and monitor Scipion plugins and background tasks."
-        
+
       >
         {loading && (
           <div
@@ -264,9 +277,17 @@ export default function Plugins() {
 
                 <div className="divide-y divide-gray-200/70 dark:divide-gray-800/70">
                   {filteredTasks.map((t) => (
-                    <div
+                    <button
                       key={t.taskId}
-                      className="grid grid-cols-12 gap-3 px-4 py-3 transition hover:bg-gray-50/80 dark:hover:bg-white/[0.02]"
+                      type="button"
+                      onClick={() => openTaskPlugin(t.pipName)}
+                      className={classNames(
+                        "grid w-full grid-cols-12 gap-3 px-4 py-3 text-left transition",
+                        "cursor-pointer hover:bg-gray-50/80 focus:outline-none focus:ring-2 focus:ring-indigo-500/20",
+                        "dark:hover:bg-white/[0.02] dark:focus:ring-indigo-400/20",
+                      )}
+                      title={`Open ${t.pluginName ?? t.pipName}`}
+                      aria-label={`Open ${t.pluginName ?? t.pipName}`}
                     >
                       <div className="col-span-12 md:col-span-4 min-w-0">
                         <div className="truncate text-sm font-semibold text-gray-900 dark:text-white/90">
@@ -299,7 +320,7 @@ export default function Plugins() {
                       <div className="col-span-12 md:col-span-2 text-left text-xs text-gray-600 dark:text-gray-400 md:text-right">
                         {formatTimeAgo(t.updatedAtMs)}
                       </div>
-                    </div>
+                    </button>
                   ))}
 
                   {filteredTasks.length === 0 && (
