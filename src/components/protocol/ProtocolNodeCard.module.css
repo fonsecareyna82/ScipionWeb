@@ -868,3 +868,23 @@
     transform: translateX(220%);
   }
 }
+
+.protocolTitleBlock {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.protocolSubtitle {
+  margin-left: 1rem;
+  margin-top: 2px;
+  max-width: calc(var(--swNodeWidth) - var(--swNodeHorizontalGutters));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  font-size: 1.6rem;
+  line-height: 1.15;
+  color: rgba(17, 24, 39, 0.68);
+  font-weight: 400;
+}

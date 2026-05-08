@@ -48,6 +48,7 @@ import type {
   WriteRemoteFileResult,
   CreateCoords2dOutputPayload,
   CreateCoords2dOutputResult,
+  RenameProtocolPayload
 
 } from "@/services/ProjectService";
 
@@ -151,8 +152,8 @@ const defaultService: ProjectService = {
     params: Record<string, unknown>,
   ) => api.saveProtocol(toId(projectId), toId(protocolId), protocolClassName, params),
 
-  renameProtocol: (projectId: Id, protocolId: Id, newName: string) =>
-    api.renameProtocol(toId(projectId), toId(protocolId), newName),
+  renameProtocol: (projectId: Id, protocolId: Id, payload: RenameProtocolPayload,) =>
+    api.renameProtocol(toId(projectId), toId(protocolId), payload),
 
   duplicateProtocol: (projectId: Id, items: { id: string; name?: string }[]) =>
     api.duplicateProtocol(toId(projectId), items),

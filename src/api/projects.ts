@@ -36,6 +36,7 @@ import {
   Coords2dPoint,
   CreateCoords2dOutputPayload,
   CreateCoords2dOutputResult,
+  RenameProtocolPayload,
 } from "@/services/ProjectService";
 
 const ACTION_LAUNCH = "launch";
@@ -839,11 +840,11 @@ export async function loadWorkflow(
 export async function renameProtocol(
   projectId: Id,
   protocolId: Id,
-  newName: string,
+   payload: RenameProtocolPayload,
 ): Promise<ProtocolNode> {
   const response = await fetchWithAuth(
     `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/${ACTION_RENAME}`,
-    { method: "PUT", body: JSON.stringify({ name: newName }) },
+    { method: "PUT", body: JSON.stringify({ runName: payload.runName, comment: payload.comment }) },
   );
   if (!response.ok)
     throw await toApiError(response, "Failed to rename protocol");

@@ -51,7 +51,11 @@ import {
   LayoutGrid,
   MapIcon,
   FocusIcon,
-  TagsIcon
+  TagsIcon,
+  AlertTriangle,
+  Trash2,
+  Play,
+  Square
 } from "lucide-react";
 import { FitViewIcon, TableIcon, TreeIcon } from "@/icons";
 
@@ -62,7 +66,7 @@ import {
 } from "@/services/ProjectService";
 import { Project } from "@/types/project";
 import Label from "@/components/form/Label";
-import { Input, Typography, Link } from "@mui/material";
+import { TextField, Typography, Link } from "@mui/material";
 import toast from "react-hot-toast";
 import RemoteFileDialog from "@/components/files/RemoteFileDialog";
 import type { ExternalAnalyzeViewerService } from "@/components/protocol/ProtocolNodeCard";
@@ -3008,6 +3012,18 @@ export default function ProjectPage() {
     return ((n as any)?.data?.label as string) ?? id;
   };
 
+  const findNodeRunName = (id: string) => {
+    const n = nodesRef.current.find((m) => m.id === id);
+    const data: any = (n as any)?.data ?? {};
+    return String(data.runName ?? data.label ?? id);
+  };
+
+  const findNodeComment = (id: string) => {
+    const n = nodesRef.current.find((m) => m.id === id);
+    const data: any = (n as any)?.data ?? {};
+    return String(data.comment ?? "");
+  };
+
   // layoutConstantsForHierarchical
   const hierSpacingX = (dir: "TB" | "LR") => (dir === "TB" ? 300 : 1150);
   const hierSpacingY = (dir: "TB" | "LR") => (dir === "TB" ? 580 : 380);
@@ -3489,9 +3505,20 @@ export default function ProjectPage() {
 
 
   /* ------------------------ Dialogs + API ------------------------ */
-  const [dlgRename, setDlgRename] = useState<{ open: boolean; id: string | null; value: string }>({
-    open: false, id: null, value: "",
-  });
+  const emptyRenameDialog = {
+    open: false,
+    id: null,
+    value: "",
+    comment: "",
+  };
+
+  const [dlgRename, setDlgRename] = useState<{
+    open: boolean;
+    id: string | null;
+    value: string;
+    comment: string;
+  }>(emptyRenameDialog);
+
   const [dlgResetFrom, setDlgResetFrom] = useState<{ open: boolean; id: string | null }>({
     open: false, id: null,
   });
@@ -3650,7 +3677,13 @@ export default function ProjectPage() {
   };
 
 
-  const openRename = (id: string) => setDlgRename({ open: true, id, value: findNodeLabel(id) });
+  const openRename = (id: string) =>
+    setDlgRename({
+      open: true,
+      id,
+      value: findNodeRunName(id),
+      comment: findNodeComment(id),
+    });
 
   const openDelete = (id: string) => {
     const selected =
@@ -3681,13 +3714,17 @@ export default function ProjectPage() {
 
   const submitRename = async () => {
     if (!projectName || !dlgRename.id || !dlgRename.value.trim()) return;
-    const id = dlgRename.id;
-    const value = dlgRename.value.trim();
 
-    setDlgRename({ open: false, id: null, value: "" });
+    const id = dlgRename.id;
+    const runName = dlgRename.value.trim();
+    const comment = dlgRename.comment.trim();
+
+    setDlgRename(emptyRenameDialog);
+
     try {
-      await svc.renameProtocol(projectName, id, value);
-      toast.success("Protocol renamed successfully.");
+      await svc.renameProtocol(projectName, id, { runName, comment, });
+
+      toast.success("Protocol annotation updated successfully.");
       await handleRefresh();
     } catch (e) {
       console.error(e);
@@ -4680,42 +4717,212 @@ export default function ProjectPage() {
         </div>
 
         {/* --- Dialogs --- */}
-        <Dialog open={dlgRename.open} onOpenChange={(open: boolean) => { if (!open) setDlgRename({ open: false, id: null, value: "" }); }}>
-          <DialogContent container={dialogContainer ?? undefined} className="sm:max-w-2xl">
-            <DialogHeader>
-              <DialogTitle>Rename protocol</DialogTitle>
-              <DialogDescription>Set a new name for this protocol.</DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-3 py-2">
-              <Label htmlFor="rename">New name</Label>
-              <Input id="rename" value={dlgRename.value} onChange={(e) => setDlgRename((s) => ({ ...s, value: (e.target as any).value }))} placeholder="e.g. motioncorr_02" />
+        <Dialog
+          open={dlgRename.open}
+          onOpenChange={(open: boolean) => {
+            if (!open) setDlgRename(emptyRenameDialog);
+          }}
+        >
+          <DialogContent
+            container={dialogContainer ?? undefined}
+            className="sm:max-w-2xl p-0 overflow-hidden border border-border bg-background shadow-xl rounded-xl"
+          >
+            <div
+              className="border-b border-border"
+              style={{
+                backgroundColor: "#333d49",
+                color: "white",
+                padding: "16px 20px",
+                boxSizing: "border-box",
+              }}
+            >
+              <DialogHeader>
+                <DialogTitle className="text-base font-semibold leading-6 text-white">
+                  Annotate protocol
+                </DialogTitle>
+
+                <DialogDescription className="mt-1 text-sm text-white/75">
+                  Update the visible protocol name and comment.
+                </DialogDescription>
+              </DialogHeader>
             </div>
-            <DialogFooter>
-              <Button onClick={() => setDlgRename({ open: false, id: null, value: "" })} className="pp-dialogBtn">
+
+            <div className="px-5 py-5">
+              <div className="mb-5 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-900/40">
+                <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
+
+                  <span className="rounded-full bg-white px-2 py-1 font-mono text-slate-700 shadow-sm ring-1 ring-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:ring-slate-700">
+                    {dlgRename.id ?? "—"}
+                  </span>
+                  <span className="min-w-0 truncate font-medium text-slate-700 dark:text-slate-200">
+                    {dlgRename.id ? findNodeLabel(dlgRename.id) : "—"}
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid gap-5">
+                <div className="grid gap-2">
+                  <Label htmlFor="rename" className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                    Run name
+                  </Label>
+
+                  <TextField
+                    id="rename"
+                    value={dlgRename.value}
+                    onChange={(e) =>
+                      setDlgRename((s) => ({
+                        ...s,
+                        value: e.target.value,
+                      }))
+                    }
+                    placeholder="e.g. motioncorr_02"
+                    fullWidth
+                    autoFocus
+                    size="small"
+                    variant="outlined"
+                    error={!dlgRename.value.trim()}
+                    helperText={!dlgRename.value.trim() ? "Run name is required." : "This is the name shown in the workflow card."}
+                    sx={{
+                      "& .MuiOutlinedInput-root": {
+                        borderRadius: "10px",
+                        backgroundColor: "background.paper",
+                      },
+                      "& .MuiFormHelperText-root": {
+                        marginLeft: 0,
+                      },
+                    }}
+                  />
+                </div>
+
+                <div className="grid gap-2">
+                  <Label htmlFor="rename-comment" className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                    Comment
+                  </Label>
+
+                  <TextField
+                    id="rename-comment"
+                    value={dlgRename.comment}
+                    onChange={(e) =>
+                      setDlgRename((s) => ({
+                        ...s,
+                        comment: e.target.value,
+                      }))
+                    }
+                    placeholder="Add a short note about this protocol..."
+                    fullWidth
+                    multiline
+                    minRows={4}
+                    maxRows={8}
+                    variant="outlined"
+                    sx={{
+                      "& .MuiOutlinedInput-root": {
+                        borderRadius: "10px",
+                        backgroundColor: "background.paper",
+                        alignItems: "flex-start",
+                      },
+                      "& .MuiFormHelperText-root": {
+                        marginLeft: 0,
+                      },
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <DialogFooter className="border-t border-border bg-slate-50 px-5 py-4 dark:bg-slate-900/35">
+              <Button
+                onClick={() => setDlgRename(emptyRenameDialog)}
+                className="pp-dialogBtn"
+              >
                 Cancel
               </Button>
-              <Button onClick={submitRename} disabled={!dlgRename.value.trim()} className="pp-dialogBtn pp-dialogBtnPrimary">
-                Rename
+
+              <Button
+                onClick={submitRename}
+                disabled={!dlgRename.value.trim()}
+                className="pp-dialogBtn pp-dialogBtnPrimary"
+              >
+                Save annotation
               </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
 
 
-        <Dialog open={dlgResetFrom.open} onOpenChange={(open: boolean) => { if (!open) setDlgResetFrom({ open: false, id: null }); }}>
-          <DialogContent container={dialogContainer ?? undefined} className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle>Reset from this protocol?</DialogTitle>
-              <DialogDescription>Downstream steps may be invalidated. You can re-run them later.</DialogDescription>
-            </DialogHeader>
-            <DialogFooter>
-              <button onClick={() => setDlgResetFrom({ open: false, id: null })}
-                className="pp-dialogBtn">
+        <Dialog
+          open={dlgResetFrom.open}
+          onOpenChange={(open: boolean) => {
+            if (!open) setDlgResetFrom({ open: false, id: null });
+          }}
+        >
+          <DialogContent
+            container={dialogContainer ?? undefined}
+            className="sm:max-w-lg p-0 overflow-hidden border border-border bg-background shadow-xl rounded-xl"
+          >
+            <div
+              className="border-b border-border"
+              style={{
+                backgroundColor: "#333d49",
+                color: "white",
+                padding: "16px 20px",
+                boxSizing: "border-box",
+              }}
+            >
+              <DialogHeader>
+                <div className="flex items-start gap-3">
+                  <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/10 ring-1 ring-white/15">
+                    <AlertTriangle className="h-5 w-5 text-amber-300" />
+                  </div>
+
+                  <div className="min-w-0">
+                    <DialogTitle className="text-base font-semibold leading-6 text-white">
+                      Reset workflow from this protocol?
+                    </DialogTitle>
+
+                    <DialogDescription className="mt-1 text-sm text-white/75">
+                      This operation will invalidate downstream steps. You can re-run them afterwards.
+                    </DialogDescription>
+                  </div>
+                </div>
+              </DialogHeader>
+            </div>
+
+            <div className="px-5 py-5">
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
+                <div className="font-semibold">
+                  Protocol affected
+                </div>
+
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <span className="rounded-full bg-white px-2 py-1 font-mono text-xs text-amber-900 shadow-sm ring-1 ring-amber-200 dark:bg-amber-900/40 dark:text-amber-100 dark:ring-amber-800">
+                    {dlgResetFrom.id ?? "—"}
+                  </span>
+
+                  <span className="min-w-0 truncate">
+                    {dlgResetFrom.id ? findNodeLabel(dlgResetFrom.id) : "Selected protocol"}
+                  </span>
+                </div>
+              </div>
+
+              <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-300">
+                The selected protocol will be kept, but all dependent results may become outdated and need to be executed again.
+              </div>
+            </div>
+
+            <DialogFooter className="border-t border-border bg-slate-50 px-5 py-4 dark:bg-slate-900/35">
+              <button
+                type="button"
+                onClick={() => setDlgResetFrom({ open: false, id: null })}
+                className="pp-dialogBtn"
+              >
                 Cancel
               </button>
+
               <button
+                type="button"
                 onClick={async () => {
                   if (!projectName || !dlgResetFrom.id) return;
+
                   try {
                     await svc.resetFrom(projectName, dlgResetFrom.id);
                     setDlgResetFrom({ open: false, id: null });
@@ -4807,15 +5014,74 @@ export default function ProjectPage() {
             }
           }}
         >
-          <DialogContent container={dialogContainer ?? undefined}>
-            <DialogHeader>
-              <DialogTitle className="mb-6">Delete protocol(s)?</DialogTitle>
-              <DialogDescription className="mb-5 text-sm text-muted-foreground">
-                This action cannot be undone. This will permanently remove the selected protocol(s) and outputs not used elsewhere.
-              </DialogDescription>
-            </DialogHeader>
+          <DialogContent
+            container={dialogContainer ?? undefined}
+            className="sm:max-w-lg p-0 overflow-hidden border border-border bg-background shadow-xl rounded-xl"
+          >
+            <div
+              className="border-b border-red-900/20"
+              style={{
+                backgroundColor: "#3b2328",
+                color: "white",
+                padding: "16px 20px",
+                boxSizing: "border-box",
+              }}
+            >
+              <DialogHeader>
+                <div className="flex items-start gap-3">
+                  <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-red-500/15 ring-1 ring-red-300/20">
+                    <Trash2 className="h-5 w-5 text-red-200" />
+                  </div>
 
-            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                  <div className="min-w-0 mt-2">
+                    <DialogTitle className="text-base font-semibold leading-6 text-white">
+                      Delete protocol{dlgDelete.ids.length > 1 ? "s" : ""}?
+                    </DialogTitle>
+
+                    <DialogDescription className="mt-2 text-sm text-white/75">
+                      This action cannot be undone. Outputs that are not used elsewhere will also be removed.
+                    </DialogDescription>
+                  </div>
+                </div>
+              </DialogHeader>
+            </div>
+
+            <div className="px-5 py-5">
+              <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-100">
+                <div className="font-semibold">
+                  {dlgDelete.ids.length > 1
+                    ? `${dlgDelete.ids.length} protocols selected`
+                    : "Protocol selected"}
+                </div>
+
+                <div className="mt-3 max-h-40 overflow-auto pr-1">
+                  <div className="grid gap-2">
+                    {dlgDelete.ids
+                      .filter((id) => id && id !== "PROJECT")
+                      .map((id) => (
+                        <div
+                          key={id}
+                          className="flex min-w-0 items-center gap-2 rounded-md bg-white/70 px-3 py-2 ring-1 ring-red-200 dark:bg-red-900/25 dark:ring-red-800"
+                        >
+                          <span className="shrink-0 rounded-full bg-white px-2 py-1 font-mono text-xs text-red-900 shadow-sm ring-1 ring-red-200 dark:bg-red-900/50 dark:text-red-100 dark:ring-red-800">
+                            {id}
+                          </span>
+
+                          <span className="min-w-0 truncate">
+                            {findNodeLabel(id)}
+                          </span>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-300">
+                The selected protocol nodes will be removed from the workflow. This may also remove generated files that are no longer referenced by other protocols.
+              </div>
+            </div>
+
+            <DialogFooter className="border-t border-border bg-slate-50 px-5 py-4 dark:bg-slate-900/35">
               <button
                 type="button"
                 onClick={(e) => {
@@ -4851,12 +5117,18 @@ export default function ProjectPage() {
                   }
 
                   setDeleteBusy(true);
+
                   try {
                     const res = await svc.deleteProtocol(projectName, ids);
                     if (!ensureApiOk(res, "Delete failed.")) return;
 
                     clearAllSelectionHard();
-                    toast.success(ids.length > 1 ? "Protocols deleted successfully." : "Protocol deleted successfully.");
+
+                    toast.success(
+                      ids.length > 1
+                        ? "Protocols deleted successfully."
+                        : "Protocol deleted successfully.",
+                    );
 
                     setDlgDelete({ open: false, ids: [] });
                     await handleRefresh();
@@ -4873,10 +5145,19 @@ export default function ProjectPage() {
                 }}
                 disabled={deleteBusy}
                 className="pp-dialogBtn pp-dialogBtnPrimary"
+                style={{
+                  backgroundColor: "#dc2626",
+                  borderColor: "#dc2626",
+                  color: "white",
+                }}
               >
-                Delete
+                {deleteBusy
+                  ? "Deleting..."
+                  : dlgDelete.ids.length > 1
+                    ? "Delete protocols"
+                    : "Delete protocol"}
               </button>
-            </div>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
 
@@ -4890,15 +5171,61 @@ export default function ProjectPage() {
             }
           }}
         >
-          <DialogContent container={dialogContainer ?? undefined}>
-            <DialogHeader>
-              <DialogTitle className="mb-6">Restart all protocol(s)?</DialogTitle>
-              <DialogDescription className="mb-5 text-sm text-muted-foreground">
-                All protocols will be restarted from this protocol, so the previous results will be deleted
-              </DialogDescription>
-            </DialogHeader>
+          <DialogContent
+            container={dialogContainer ?? undefined}
+            className="sm:max-w-lg p-0 overflow-hidden border border-border bg-background shadow-xl rounded-xl"
+          >
+            <div
+              className="border-b border-border"
+              style={{
+                backgroundColor: "#333d49",
+                color: "white",
+                padding: "16px 20px",
+                boxSizing: "border-box",
+              }}
+            >
+              <DialogHeader>
+                <div className="flex items-start gap-3">
+                  <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/10 ring-1 ring-white/15">
+                    <RefreshCw className="h-5 w-5 text-sky-200" />
+                  </div>
 
-            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                  <div className="min-w-0 mt-2">
+                    <DialogTitle className="text-base font-semibold leading-6 text-white">
+                      Restart workflow from this protocol?
+                    </DialogTitle>
+
+                    <DialogDescription className="mt-1 text-sm text-white/75">
+                      This will restart this protocol and all dependent protocols from this point.
+                    </DialogDescription>
+                  </div>
+                </div>
+              </DialogHeader>
+            </div>
+
+            <div className="px-5 py-5">
+              <div className="rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900 dark:border-sky-900/50 dark:bg-sky-950/30 dark:text-sky-100">
+                <div className="font-semibold">
+                  Restart origin
+                </div>
+
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <span className="rounded-full bg-white px-2 py-1 font-mono text-xs text-sky-900 shadow-sm ring-1 ring-sky-200 dark:bg-sky-900/40 dark:text-sky-100 dark:ring-sky-800">
+                    {dlgRestartAll.id ?? "—"}
+                  </span>
+
+                  <span className="min-w-0 truncate">
+                    {dlgRestartAll.id ? findNodeLabel(dlgRestartAll.id) : "Selected protocol"}
+                  </span>
+                </div>
+              </div>
+
+              <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
+                Previous results for affected protocols will be deleted and recomputed. This may take some time depending on the workflow size.
+              </div>
+            </div>
+
+            <DialogFooter className="border-t border-border bg-slate-50 px-5 py-4 dark:bg-slate-900/35">
               <button
                 type="button"
                 onClick={(e) => {
@@ -4926,6 +5253,7 @@ export default function ProjectPage() {
                   if (!projectName || !dlgRestartAll.id || restartAllBusy) return;
 
                   setRestartAllBusy(true);
+
                   try {
                     const res = await svc.restartAll(projectName, dlgRestartAll.id);
                     if (!ensureApiOk(res, "Restart failed.")) return;
@@ -4948,9 +5276,9 @@ export default function ProjectPage() {
                 disabled={restartAllBusy}
                 className="pp-dialogBtn pp-dialogBtnPrimary"
               >
-                Restart
+                {restartAllBusy ? "Restarting..." : "Restart workflow"}
               </button>
-            </div>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
 
@@ -4964,15 +5292,61 @@ export default function ProjectPage() {
             }
           }}
         >
-          <DialogContent container={dialogContainer ?? undefined}>
-            <DialogHeader>
-              <DialogTitle className="mb-6">Continue all protocol(s)?</DialogTitle>
-              <DialogDescription className="mb-5 text-sm text-muted-foreground">
-                All protocols will continue for this protocol, so the previous results will be affected
-              </DialogDescription>
-            </DialogHeader>
+          <DialogContent
+            container={dialogContainer ?? undefined}
+            className="sm:max-w-lg p-0 overflow-hidden border border-border bg-background shadow-xl rounded-xl"
+          >
+            <div
+              className="border-b border-border"
+              style={{
+                backgroundColor: "#333d49",
+                color: "white",
+                padding: "16px 20px",
+                boxSizing: "border-box",
+              }}
+            >
+              <DialogHeader>
+                <div className="flex items-start gap-3">
+                  <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/10 ring-1 ring-white/15">
+                    <Play className="h-5 w-5 text-emerald-200" />
+                  </div>
 
-            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                  <div className="min-w-0 mt-2">
+                    <DialogTitle className="text-base font-semibold leading-6 text-white">
+                      Continue workflow from this protocol?
+                    </DialogTitle>
+
+                    <DialogDescription className="mt-1 text-sm text-white/75">
+                      This will continue this protocol and all dependent protocols from the current state.
+                    </DialogDescription>
+                  </div>
+                </div>
+              </DialogHeader>
+            </div>
+
+            <div className="px-5 py-5">
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-100">
+                <div className="font-semibold">
+                  Continue origin
+                </div>
+
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <span className="rounded-full bg-white px-2 py-1 font-mono text-xs text-emerald-900 shadow-sm ring-1 ring-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-100 dark:ring-emerald-800">
+                    {dlgContinueAll.id ?? "—"}
+                  </span>
+
+                  <span className="min-w-0 truncate">
+                    {dlgContinueAll.id ? findNodeLabel(dlgContinueAll.id) : "Selected protocol"}
+                  </span>
+                </div>
+              </div>
+
+              <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-300">
+                Existing results may be reused when possible, but affected protocols can still update their outputs.
+              </div>
+            </div>
+
+            <DialogFooter className="border-t border-border bg-slate-50 px-5 py-4 dark:bg-slate-900/35">
               <button
                 type="button"
                 onClick={(e) => {
@@ -5000,6 +5374,7 @@ export default function ProjectPage() {
                   if (!projectName || !dlgContinueAll.id || continueAllBusy) return;
 
                   setContinueAllBusy(true);
+
                   try {
                     const res = await svc.continueAll(projectName, dlgContinueAll.id);
                     if (!ensureApiOk(res, "Continue failed.")) return;
@@ -5022,9 +5397,9 @@ export default function ProjectPage() {
                 disabled={continueAllBusy}
                 className="pp-dialogBtn pp-dialogBtnPrimary"
               >
-                Continue
+                {continueAllBusy ? "Continuing..." : "Continue workflow"}
               </button>
-            </div>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
 
@@ -5037,15 +5412,74 @@ export default function ProjectPage() {
             }
           }}
         >
-          <DialogContent container={dialogContainer ?? undefined}>
-            <DialogHeader>
-              <DialogTitle className="mb-6">Stop protocol(s)?</DialogTitle>
-              <DialogDescription className="mb-5 text-sm text-muted-foreground">
-                This will attempt to gracefully stop the selected protocol(s). Running work may be interrupted.
-              </DialogDescription>
-            </DialogHeader>
+          <DialogContent
+            container={dialogContainer ?? undefined}
+            className="sm:max-w-lg p-0 overflow-hidden border border-border bg-background shadow-xl rounded-xl"
+          >
+            <div
+              className="border-b border-border"
+              style={{
+                backgroundColor: "#333d49",
+                color: "white",
+                padding: "16px 20px",
+                boxSizing: "border-box",
+              }}
+            >
+              <DialogHeader>
+                <div className="flex items-start gap-3">
+                  <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/10 ring-1 ring-white/15">
+                    <Square className="h-5 w-5 text-orange-200" />
+                  </div>
 
-            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                  <div className="min-w-0">
+                    <DialogTitle className="text-base font-semibold leading-6 text-white">
+                      Stop selected protocol{dlgStop.ids.length > 1 ? "s" : ""}?
+                    </DialogTitle>
+
+                    <DialogDescription className="mt-1 text-sm text-white/75">
+                      This will request a graceful stop for the selected running protocol{dlgStop.ids.length > 1 ? "s" : ""}.
+                    </DialogDescription>
+                  </div>
+                </div>
+              </DialogHeader>
+            </div>
+
+            <div className="px-5 py-5">
+              <div className="rounded-lg border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-900 dark:border-orange-900/50 dark:bg-orange-950/30 dark:text-orange-100">
+                <div className="font-semibold">
+                  {dlgStop.ids.length > 1
+                    ? `${dlgStop.ids.length} protocols selected`
+                    : "Protocol selected"}
+                </div>
+
+                <div className="mt-3 max-h-40 overflow-auto pr-1">
+                  <div className="grid gap-2">
+                    {dlgStop.ids
+                      .filter((id) => id && id !== "PROJECT")
+                      .map((id) => (
+                        <div
+                          key={id}
+                          className="flex min-w-0 items-center gap-2 rounded-md bg-white/70 px-3 py-2 ring-1 ring-orange-200 dark:bg-orange-900/25 dark:ring-orange-800"
+                        >
+                          <span className="shrink-0 rounded-full bg-white px-2 py-1 font-mono text-xs text-orange-900 shadow-sm ring-1 ring-orange-200 dark:bg-orange-900/50 dark:text-orange-100 dark:ring-orange-800">
+                            {id}
+                          </span>
+
+                          <span className="min-w-0 truncate">
+                            {findNodeLabel(id)}
+                          </span>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-300">
+                The stop request is graceful when possible. Running work may be interrupted, and affected outputs may remain incomplete.
+              </div>
+            </div>
+
+            <DialogFooter className="border-t border-border bg-slate-50 px-5 py-4 dark:bg-slate-900/35">
               <button
                 type="button"
                 onClick={(e) => {
@@ -5081,11 +5515,16 @@ export default function ProjectPage() {
                   }
 
                   setStopBusy(true);
+
                   try {
                     const res = await svc.stopProtocol(projectName, ids);
                     if (!ensureApiOk(res, "Stop failed.")) return;
 
-                    toast.success(ids.length > 1 ? `Stop requested for ${ids.length} protocols.` : "Stop requested.");
+                    toast.success(
+                      ids.length > 1
+                        ? `Stop requested for ${ids.length} protocols.`
+                        : "Stop requested.",
+                    );
 
                     clearAllSelectionHard();
                     setDlgStop({ open: false, ids: [] });
@@ -5103,10 +5542,19 @@ export default function ProjectPage() {
                 }}
                 disabled={stopBusy}
                 className="pp-dialogBtn pp-dialogBtnPrimary"
+                style={{
+                  backgroundColor: "#f97316",
+                  borderColor: "#f97316",
+                  color: "white",
+                }}
               >
-                Stop
+                {stopBusy
+                  ? "Stopping..."
+                  : dlgStop.ids.length > 1
+                    ? "Stop protocols"
+                    : "Stop protocol"}
               </button>
-            </div>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
 

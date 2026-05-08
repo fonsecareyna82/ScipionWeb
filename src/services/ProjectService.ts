@@ -597,6 +597,14 @@ export function hasProjectEffectiveSettingsService(
 }
 
 
+//-────────────────────────────────────────────────────────────────────────────
+// Protocol actions payloads
+//-────────────────────────────────────────────────────────────────────────────
+export type RenameProtocolPayload = {
+  runName: string;
+  comment?: string;
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Protocol logs (dynamic channels)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1178,7 +1186,11 @@ export interface ProjectService<
   ): Promise<TProtocol>;
 
   /** Protocol actions */
-  renameProtocol(projectId: Id, protocolId: Id, newName: string): Promise<TProtocol>;
+  renameProtocol(
+  projectId: Id,
+  protocolId: Id,
+  payload: RenameProtocolPayload,
+): Promise<TProtocol>;
   duplicateProtocol(
     projectId: Id,
     items: { id: string; name?: string }[],

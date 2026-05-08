@@ -708,6 +708,13 @@ export default function ProtocolNodeCard({
   const isProjectNode = data.id === "PROJECT";
   const isCompactView = zoomLevel <= compactThreshold;
 
+  const protocolLabel = String(data.label ?? "").trim();
+  const protocolRunName = String(data.runName ?? "").trim();
+
+  const headerDisplayName = isProjectNode
+    ? protocolLabel
+    : protocolRunName || protocolLabel || String(data.title ?? data.id ?? "").trim();
+
   const bgColor = statusColors[data.status ?? "finished"] ?? statusColors.root;
   data.color = bgColor;
 
@@ -1285,8 +1292,8 @@ export default function ProtocolNodeCard({
   const handleManageTags = useCallback(() => {
     // handleManageTags
     if (isProjectNode) return;
-    onManageTags?.(data.id, data.projectId, data.label);
-  }, [data.id, data.projectId, data.label, isProjectNode, onManageTags]);
+    onManageTags?.(data.id, data.projectId, headerDisplayName);
+  }, [data.id, data.projectId, headerDisplayName, isProjectNode, onManageTags]);
 
   const handleEdit = () => onEdit?.(data.id);
   const handleRename = () => onRename?.(data.id);
@@ -1309,7 +1316,7 @@ export default function ProtocolNodeCard({
   };
 
   const handleBrowse = () => {
-    if (!isProjectNode) onBrowse?.(data.id, data.projectId, data.label);
+    if (!isProjectNode) onBrowse?.(data.id, data.projectId, headerDisplayName);
   };
 
   const reduceMenus = pathSelectionActive || inPathSelection;
@@ -1896,7 +1903,7 @@ export default function ProtocolNodeCard({
           const ctx: AnalyzeViewerResolveContext = {
             projectId: data.projectId as string | number,
             protocolId: data.id,
-            protocolLabel: data.label,
+            protocolLabel: headerDisplayName,
             outputName,
             pointerClass: normalized?.pointerClass,
             paramClass: normalized?.paramClass,
@@ -1918,7 +1925,7 @@ export default function ProtocolNodeCard({
       setAnalyzeTarget({ outputName, outputRaw });
       setAnalyzeOpen(true);
     },
-    [canOpenViewer, data.projectId, data.id, data.label, service],
+    [canOpenViewer, data.projectId, data.id, headerDisplayName, service],
   );
 
   const stepsDone = Number(data.stepsDone ?? 0);
@@ -1990,12 +1997,21 @@ export default function ProtocolNodeCard({
                   <div title={data.label}>{truncateLabel(data.label, 120)}</div>
                 </div>
               ) : (
-                <div
-                  className={[styles.label, isCompactView ? styles.labelCompact : ""].filter(Boolean).join(" ")}
-                  title={data.label}
-                >
-                  {truncateLabel(data.label, 120)}
+                <div className={styles.protocolTitleBlock}>
+                  <div
+                    className={[styles.label, isCompactView ? styles.labelCompact : ""].filter(Boolean).join(" ")}
+                    title={headerDisplayName}
+                  >
+                    {truncateLabel(headerDisplayName, 120)}
+                  </div>
+
+                  {protocolLabel && protocolLabel !== headerDisplayName ? (
+                    <div className={styles.protocolSubtitle} title={protocolLabel}>
+                      {truncateLabel(protocolLabel, 120)}
+                    </div>
+                  ) : null}
                 </div>
+
               )}
             </div>
 
@@ -2053,7 +2069,7 @@ export default function ProtocolNodeCard({
                             <div className={styles.menuRow}>
                               <span className={styles.menuLeft}>
                                 <Pencil className={styles.menuItemIcon} />
-                                <span>Rename</span>
+                                <span>Annotate</span>
                               </span>
                               <ShortcutHint text={shortcuts.rename} />
                             </div>
@@ -2582,7 +2598,7 @@ export default function ProtocolNodeCard({
                 <div className={styles.menuRow}>
                   <span className={styles.menuLeft}>
                     <Pencil className={styles.menuItemIcon} />
-                    <span>Rename</span>
+                    <span>Annotate</span>
                   </span>
                   <ShortcutHint text={shortcuts.rename} />
                 </div>
@@ -2838,7 +2854,7 @@ export default function ProtocolNodeCard({
           }}
           projectId={analyzeProjectId}
           protocolId={analyzeProtocolId}
-          protocolLabel={data.label}
+          protocolLabel={headerDisplayName}
           outputName={analyzeTarget.outputName}
           outputRaw={analyzeTarget.outputRaw}
         />
