@@ -447,6 +447,17 @@ function getReadableTextColor(hexColor: string): string {
   return luminance > 0.62 ? "#111827" : "#f9fafb";
 }
 
+  const getProtocolRowDisplayName = (row: any) => {
+    const runName = String(row?.runName ?? "").trim();
+    if (runName) return runName;
+
+    const label = String(row?.label ?? "").trim();
+    if (label) return label;
+
+    return String(row?.id ?? "");
+  };
+
+
 export default function ProjectPage() {
   const hostIsDark = useHostDarkMode();
   const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/.test(navigator.platform);
@@ -2767,18 +2778,28 @@ export default function ProjectPage() {
     }
 
     if (viewMode === "table") {
-      const matchRow = tableData.find((row) =>
-        row.id.toLowerCase().includes(query.toLowerCase()) ||
-        row.label.toLowerCase().includes(query.toLowerCase())
-      );
+      const matchRow = tableData.find((row) => {
+        const id = String(row?.id ?? "").toLowerCase();
+        const label = String(row?.label ?? "").toLowerCase();
+        const runName = String(row?.runName ?? "").toLowerCase();
+        const q = query.toLowerCase();
+
+        return id.includes(q) || runName.includes(q) || label.includes(q);
+      });
       if (matchRow) scrollToProtocol(matchRow.id);
       return;
     }
 
-    const match = nodes.find((node) =>
-      node.id.toLowerCase().includes(query.toLowerCase()) ||
-      ((node as any).data?.label ?? "").toLowerCase().includes(query.toLowerCase())
-    );
+    const match = nodes.find((node) => {
+      const d: any = (node as any).data ?? {};
+      const q = query.toLowerCase();
+
+      return (
+        node.id.toLowerCase().includes(q) ||
+        String(d.runName ?? "").toLowerCase().includes(q) ||
+        String(d.label ?? "").toLowerCase().includes(q)
+      );
+    });
 
     if (!match) {
       setHighlightedId(null);
@@ -2850,12 +2871,12 @@ export default function ProjectPage() {
 
     if (viewMode === "table") {
       for (const row of filteredTableData) {
-        pushIfMatch(row?.id, row?.label, row?.status);
+        pushIfMatch(row?.id, getProtocolRowDisplayName(row), row?.status);
       }
     } else {
       for (const n of nodes) {
         const d: any = (n as any).data ?? {};
-        pushIfMatch(n.id, d.label ?? n.id, d.status);
+        pushIfMatch(n.id, d.runName ?? d.label ?? n.id, d.status);
       }
     }
 
@@ -3011,6 +3032,7 @@ export default function ProjectPage() {
     const n = nodesRef.current.find((m) => m.id === id);
     return ((n as any)?.data?.label as string) ?? id;
   };
+
 
   const findNodeRunName = (id: string) => {
     const n = nodesRef.current.find((m) => m.id === id);
@@ -4336,7 +4358,6 @@ export default function ProjectPage() {
           )}
 
           {/* TABLE */}
-          {/* TABLE */}
           <div
             ref={tableContainerRef}
             className={viewMode === "table" ? "pp-tableShell" : "pp-tableShell pp-hidden"}
@@ -4413,7 +4434,12 @@ export default function ProjectPage() {
                       </td>
 
                       <td className="pp-td">
-                        <div className="pp-protocolCell">{row.label}</div>
+                        <div
+                          className="pp-protocolCell"
+                          title={String(row?.label ?? "")}
+                        >
+                          {getProtocolRowDisplayName(row)}
+                        </div>
                       </td>
 
                       <td className="pp-td">
