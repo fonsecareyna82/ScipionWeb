@@ -447,15 +447,15 @@ function getReadableTextColor(hexColor: string): string {
   return luminance > 0.62 ? "#111827" : "#f9fafb";
 }
 
-  const getProtocolRowDisplayName = (row: any) => {
-    const runName = String(row?.runName ?? "").trim();
-    if (runName) return runName;
+const getProtocolRowDisplayName = (row: any) => {
+  const runName = String(row?.runName ?? "").trim();
+  if (runName) return runName;
 
-    const label = String(row?.label ?? "").trim();
-    if (label) return label;
+  const label = String(row?.label ?? "").trim();
+  if (label) return label;
 
-    return String(row?.id ?? "");
-  };
+  return String(row?.id ?? "");
+};
 
 
 export default function ProjectPage() {
@@ -1092,6 +1092,7 @@ export default function ProjectPage() {
   const [, setTableVisible] = useState(viewMode === "table");
   const [nodesLoadedOnce, setNodesLoadedOnce] = useState(false);
   const firstLoadRef = useRef(true);
+  const skipNextGridSnapRef = useRef(false);
 
   // Zoom rules
   const GRID_ZOOM = 0.347;
@@ -1970,6 +1971,7 @@ export default function ProjectPage() {
   const nodePositionsVersion = 2;
 
   const storageKeyHier = `${localStorageKey}-${graphDirection}-hier`;
+  const viewportStorageKey = `${localStorageKey}-${viewMode}-${graphDirection}-viewport`;
 
   const safeParseJson = (raw: string | null): unknown => {
     // safeParseJson
@@ -2031,6 +2033,79 @@ export default function ProjectPage() {
       positions,
     };
     localStorage.setItem(key, JSON.stringify(payload));
+  };
+
+  type PersistedViewportV1 = {
+    version: 1;
+    viewMode: "hierarchical" | "grid" | "table";
+    direction: "TB" | "LR";
+    viewport: {
+      x: number;
+      y: number;
+      zoom: number;
+    };
+  };
+
+  const isValidViewport = (value: any): value is { x: number; y: number; zoom: number } => {
+    // isValidViewport
+    return (
+      typeof value?.x === "number" &&
+      Number.isFinite(value.x) &&
+      typeof value?.y === "number" &&
+      Number.isFinite(value.y) &&
+      typeof value?.zoom === "number" &&
+      Number.isFinite(value.zoom) &&
+      value.zoom > 0
+    );
+  };
+
+  const readPersistedViewport = (): { x: number; y: number; zoom: number } | null => {
+    // readPersistedViewport
+    if (!projectName || viewMode === "table") return null;
+
+    try {
+      const parsed = safeParseJson(localStorage.getItem(viewportStorageKey));
+      if (!parsed || typeof parsed !== "object") return null;
+
+      const payload = parsed as PersistedViewportV1;
+
+      if (payload.version !== 1) return null;
+      if (payload.viewMode !== viewMode) return null;
+      if (payload.direction !== graphDirection) return null;
+      if (!isValidViewport(payload.viewport)) return null;
+
+      return {
+        x: payload.viewport.x,
+        y: payload.viewport.y,
+        zoom: viewMode === "grid" ? GRID_ZOOM : clampZoom(payload.viewport.zoom),
+      };
+    } catch {
+      return null;
+    }
+  };
+
+  const writePersistedViewport = (nextViewport: { x: number; y: number; zoom: number }) => {
+    // writePersistedViewport
+    if (!projectName || viewMode === "table") return;
+
+    try {
+      const normalizedViewport = {
+        x: nextViewport.x,
+        y: nextViewport.y,
+        zoom: viewMode === "grid" ? GRID_ZOOM : clampZoom(nextViewport.zoom),
+      };
+
+      const payload: PersistedViewportV1 = {
+        version: 1,
+        viewMode,
+        direction: graphDirection,
+        viewport: normalizedViewport,
+      };
+
+      localStorage.setItem(viewportStorageKey, JSON.stringify(payload));
+    } catch {
+      // noOp
+    }
   };
 
 
@@ -2202,7 +2277,14 @@ export default function ProjectPage() {
         setNodesLoadedOnce(true);
 
         if (mode === "grid") {
-          requestAnimationFrame(() => snapViewportToTopLeft(GRID_ZOOM));
+          requestAnimationFrame(() => {
+            if (skipNextGridSnapRef.current) {
+              skipNextGridSnapRef.current = false;
+              return;
+            }
+
+            snapViewportToTopLeft(GRID_ZOOM);
+          });
         }
       }
     } catch (err) {
@@ -3459,7 +3541,18 @@ export default function ProjectPage() {
     reactFlowInstanceRef.current = inst;
     try {
       const current = inst.getViewport();
+      const savedViewport = readPersistedViewport();
+
+      if (savedViewport) {
+        inst.setViewport(savedViewport);
+        setViewport(savedViewport);
+        firstLoadRef.current = false;
+        skipNextGridSnapRef.current = viewMode === "grid";
+        return;
+      }
+
       const desiredZoom = viewMode === "grid" ? GRID_ZOOM : clampZoom(viewportRef.current.zoom ?? current.zoom);
+
       if (viewMode === "grid") {
         inst.setViewport({ x: 0, y: 0, zoom: GRID_ZOOM });
         setViewport({ x: 0, y: 0, zoom: GRID_ZOOM });
@@ -3481,11 +3574,12 @@ export default function ProjectPage() {
         }
       }
     } catch { }
-  }, [viewMode]);
+  }, [readPersistedViewport, viewMode]);
 
   const handleOnMoveEnd = useCallback((_: any, vp: { x: number; y: number; zoom: number }) => {
     setViewport(vp);
-  }, []);
+    writePersistedViewport(vp);
+  }, [writePersistedViewport]);
 
   const onSelectionChange = useCallback(({ nodes: selNodes }: { nodes: Node[]; edges: Edge[] }) => {
     if (suppressNextSyncRef.current) {
