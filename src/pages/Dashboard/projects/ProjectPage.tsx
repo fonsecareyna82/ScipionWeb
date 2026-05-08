@@ -3876,7 +3876,7 @@ export default function ProjectPage() {
 
       if (modPressed(e) && !e.shiftKey && e.key.toLowerCase() === "b" && selectedId) {
         e.preventDefault();
-        openBrowse(selectedId, project?.id, findNodeLabel(selectedId));
+        openBrowse(selectedId, project?.id, findNodeRunName(selectedId));
         return;
       }
 
