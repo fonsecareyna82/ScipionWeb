@@ -58,6 +58,7 @@ import type {
   ProtocolTagCreatePayload,
   ProtocolTagUpdatePayload,
   ProtocolTagIdsResult,
+  RenameProtocolPayload,
 } from "./services/ProjectService";
 import type { WidgetGlobal } from "./types/global-widget";
 import type { loadWorkflowPayload } from "@/api/projects";
@@ -254,8 +255,8 @@ const defaultMockService: Partial<ProjectService> = {
     return { success: true } as any;
   },
 
-  async renameProtocol(_projectId: Id, protocolId: Id, newName: string) {
-    return { id: protocolId, name: newName } as any;
+  async renameProtocol(_projectId: Id, protocolId: Id, payload: RenameProtocolPayload) {
+    return { id: protocolId, payload: {runName: payload.runName, comment: payload.comment} } as any;
   },
 
   async duplicateProtocol(_projectId: Id, items: { id: string; name?: string }[]) {

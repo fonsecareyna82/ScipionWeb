@@ -1420,3 +1420,205 @@
   text-overflow: ellipsis !important;
   white-space: nowrap !important;
 }
+
+.projectpage-widget-root .pp-annotateDialog {
+  max-width: 42rem;
+  padding: 0 !important;
+  overflow: hidden;
+  border: 1px solid var(--color-border, #e5e7eb);
+  border-radius: 0.9rem;
+  background: var(--background);
+  color: var(--foreground);
+  box-shadow: 0 18px 50px rgba(15, 23, 42, 0.28);
+}
+
+.projectpage-widget-root .pp-annotateHeader {
+  border-bottom: 1px solid var(--color-border, #e5e7eb);
+  background: #333d49;
+  color: #ffffff;
+  padding: 16px 20px;
+  box-sizing: border-box;
+}
+
+.projectpage-widget-root .pp-annotateHeaderTitle {
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.5;
+  color: #ffffff;
+}
+
+.projectpage-widget-root .pp-annotateHeaderDescription {
+  margin-top: 0.25rem;
+  font-size: 0.875rem;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.projectpage-widget-root .pp-annotateBody {
+  padding: 20px;
+}
+
+.projectpage-widget-root .pp-annotateMetaBox {
+  margin-bottom: 20px;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.75rem;
+  background: #f8fafc;
+  padding: 12px 16px;
+}
+
+.projectpage-widget-root.dark .pp-annotateMetaBox {
+  border-color: rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.45);
+}
+
+.projectpage-widget-root .pp-annotateMetaRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  font-size: 0.75rem;
+  color: #475569;
+}
+
+.projectpage-widget-root.dark .pp-annotateMetaRow {
+  color: #cbd5e1;
+}
+
+.projectpage-widget-root .pp-annotateIdBadge {
+  border-radius: 9999px;
+  background: #ffffff;
+  padding: 0.25rem 0.5rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  color: #334155;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+  border: 1px solid #e2e8f0;
+}
+
+.projectpage-widget-root.dark .pp-annotateIdBadge {
+  background: #1e293b;
+  color: #e2e8f0;
+  border-color: rgba(148, 163, 184, 0.35);
+}
+
+.projectpage-widget-root .pp-annotateInternalLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+  color: #334155;
+}
+
+.projectpage-widget-root.dark .pp-annotateInternalLabel {
+  color: #e2e8f0;
+}
+
+.projectpage-widget-root .pp-annotateFields {
+  display: grid;
+  gap: 20px;
+}
+
+.projectpage-widget-root .pp-annotateField {
+  display: grid;
+  gap: 8px;
+}
+
+.projectpage-widget-root .pp-annotateLabel {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #334155;
+}
+
+.projectpage-widget-root.dark .pp-annotateLabel {
+  color: #e2e8f0;
+}
+
+.projectpage-widget-root .pp-annotateFooter {
+  border-top: 1px solid var(--color-border, #e5e7eb);
+  background: #f8fafc;
+  padding: 16px 20px;
+}
+
+.projectpage-widget-root.dark .pp-annotateFooter {
+  background: rgba(15, 23, 42, 0.35);
+}
+
+.projectpage-widget-root .pp-annotateInput,
+.projectpage-widget-root .pp-annotateTextarea {
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #0f172a;
+  font-family: inherit;
+  font-size: 0.875rem;
+  line-height: 1.35;
+  outline: none;
+  box-shadow: none;
+  transition:
+    border-color 140ms ease,
+    box-shadow 140ms ease,
+    background-color 140ms ease;
+}
+
+.projectpage-widget-root .pp-annotateInput {
+  height: 38px;
+  padding: 0 12px;
+}
+
+.projectpage-widget-root .pp-annotateTextarea {
+  min-height: 104px;
+  resize: vertical;
+  padding: 10px 12px;
+}
+
+.projectpage-widget-root .pp-annotateInput::placeholder,
+.projectpage-widget-root .pp-annotateTextarea::placeholder {
+  color: #94a3b8;
+}
+
+.projectpage-widget-root .pp-annotateInput:focus,
+.projectpage-widget-root .pp-annotateTextarea:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.18);
+}
+
+.projectpage-widget-root .pp-annotateInputError {
+  border-color: #ef4444;
+}
+
+.projectpage-widget-root .pp-annotateInputError:focus {
+  border-color: #ef4444;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.16);
+}
+
+.projectpage-widget-root .pp-annotateHelper {
+  margin: 4px 0 0;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  color: #64748b;
+}
+
+.projectpage-widget-root .pp-annotateHelperError {
+  color: #dc2626;
+}
+
+.projectpage-widget-root.dark .pp-annotateInput,
+.projectpage-widget-root.dark .pp-annotateTextarea {
+  border-color: rgba(148, 163, 184, 0.35);
+  background: #0f172a;
+  color: #e5e7eb;
+}
+
+.projectpage-widget-root.dark .pp-annotateInput::placeholder,
+.projectpage-widget-root.dark .pp-annotateTextarea::placeholder {
+  color: #64748b;
+}
+
+.projectpage-widget-root.dark .pp-annotateHelper {
+  color: #94a3b8;
+}
+
+.projectpage-widget-root.dark .pp-annotateHelperError {
+  color: #f87171;
+}

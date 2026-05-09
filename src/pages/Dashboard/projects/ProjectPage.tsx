@@ -66,7 +66,7 @@ import {
 } from "@/services/ProjectService";
 import { Project } from "@/types/project";
 import Label from "@/components/form/Label";
-import { TextField, Typography, Link } from "@mui/material";
+import { Typography, Link } from "@mui/material";
 import toast from "react-hot-toast";
 import RemoteFileDialog from "@/components/files/RemoteFileDialog";
 import type { ExternalAnalyzeViewerService } from "@/components/protocol/ProtocolNodeCard";
@@ -4845,48 +4845,40 @@ export default function ProjectPage() {
         >
           <DialogContent
             container={dialogContainer ?? undefined}
-            className="sm:max-w-2xl p-0 overflow-hidden border border-border bg-background shadow-xl rounded-xl"
+            className="pp-annotateDialog"
           >
-            <div
-              className="border-b border-border"
-              style={{
-                backgroundColor: "#333d49",
-                color: "white",
-                padding: "16px 20px",
-                boxSizing: "border-box",
-              }}
-            >
+            <div className="pp-annotateHeader">
               <DialogHeader>
-                <DialogTitle className="text-base font-semibold leading-6 text-white">
+                <DialogTitle className="pp-annotateHeaderTitle">
                   Annotate protocol
                 </DialogTitle>
 
-                <DialogDescription className="mt-1 text-sm text-white/75">
+                <DialogDescription className="pp-annotateHeaderDescription">
                   Update the visible protocol name and comment.
                 </DialogDescription>
               </DialogHeader>
             </div>
 
-            <div className="px-5 py-5">
-              <div className="mb-5 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-900/40">
-                <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
-
-                  <span className="rounded-full bg-white px-2 py-1 font-mono text-slate-700 shadow-sm ring-1 ring-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:ring-slate-700">
+            <div className="pp-annotateBody">
+              <div className="pp-annotateMetaBox">
+                <div className="pp-annotateMetaRow">
+                  <span className="pp-annotateIdBadge">
                     {dlgRename.id ?? "—"}
                   </span>
-                  <span className="min-w-0 truncate font-medium text-slate-700 dark:text-slate-200">
+
+                  <span className="pp-annotateInternalLabel">
                     {dlgRename.id ? findNodeLabel(dlgRename.id) : "—"}
                   </span>
                 </div>
               </div>
 
-              <div className="grid gap-5">
-                <div className="grid gap-2">
-                  <Label htmlFor="rename" className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+              <div className="pp-annotateFields">
+                <div className="pp-annotateField">
+                  <Label htmlFor="rename" className="pp-annotateLabel">
                     Run name
                   </Label>
 
-                  <TextField
+                  <input
                     id="rename"
                     value={dlgRename.value}
                     onChange={(e) =>
@@ -4896,30 +4888,36 @@ export default function ProjectPage() {
                       }))
                     }
                     placeholder="e.g. motioncorr_02"
-                    fullWidth
                     autoFocus
-                    size="small"
-                    variant="outlined"
-                    error={!dlgRename.value.trim()}
-                    helperText={!dlgRename.value.trim() ? "Run name is required." : "This is the name shown in the workflow card."}
-                    sx={{
-                      "& .MuiOutlinedInput-root": {
-                        borderRadius: "10px",
-                        backgroundColor: "background.paper",
-                      },
-                      "& .MuiFormHelperText-root": {
-                        marginLeft: 0,
-                      },
-                    }}
+                    aria-invalid={!dlgRename.value.trim()}
+                    className={[
+                      "pp-annotateInput",
+                      !dlgRename.value.trim() ? "pp-annotateInputError" : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
                   />
+
+                  <p
+                    className={[
+                      "pp-annotateHelper",
+                      !dlgRename.value.trim() ? "pp-annotateHelperError" : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
+                  >
+                    {!dlgRename.value.trim()
+                      ? "Run name is required."
+                      : "This is the name shown in the workflow card."}
+                  </p>
                 </div>
 
-                <div className="grid gap-2">
-                  <Label htmlFor="rename-comment" className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                <div className="pp-annotateField">
+                  <Label htmlFor="rename-comment" className="pp-annotateLabel">
                     Comment
                   </Label>
 
-                  <TextField
+                  <textarea
                     id="rename-comment"
                     value={dlgRename.comment}
                     onChange={(e) =>
@@ -4929,27 +4927,14 @@ export default function ProjectPage() {
                       }))
                     }
                     placeholder="Add a short note about this protocol..."
-                    fullWidth
-                    multiline
-                    minRows={4}
-                    maxRows={8}
-                    variant="outlined"
-                    sx={{
-                      "& .MuiOutlinedInput-root": {
-                        borderRadius: "10px",
-                        backgroundColor: "background.paper",
-                        alignItems: "flex-start",
-                      },
-                      "& .MuiFormHelperText-root": {
-                        marginLeft: 0,
-                      },
-                    }}
+                    rows={4}
+                    className="pp-annotateTextarea"
                   />
                 </div>
               </div>
             </div>
 
-            <DialogFooter className="border-t border-border bg-slate-50 px-5 py-4 dark:bg-slate-900/35">
+            <DialogFooter className="pp-annotateFooter">
               <Button
                 onClick={() => setDlgRename(emptyRenameDialog)}
                 className="pp-dialogBtn"
