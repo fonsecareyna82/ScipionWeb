@@ -2,6 +2,8 @@ import React from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import ProtocolNodeCard from "@/components/protocol/ProtocolNodeCard";
+import { run } from "node:test";
+import { comment } from "postcss";
 
 const mockSetCurrentDraggedOutput = vi.fn();
 const mockUseProjectService = vi.fn();
@@ -181,6 +183,8 @@ function createProtocolData(overrides: Record<string, any> = {}) {
         label: "Import Movies",
         title: "Import Movies",
         status: "running",
+        runName: "Import Movies",
+        comment: "This protocol imports movies",
         tick: 3661,
         projectId: 1,
         outputs: [
