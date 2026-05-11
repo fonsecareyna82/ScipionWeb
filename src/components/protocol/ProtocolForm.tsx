@@ -852,11 +852,6 @@ export default function ProtocolForm({
     (queue) => Array.isArray(queue.params) && queue.params.length > 0
   );
 
-  const isStopExecuteMode = (modeKey: string | null | undefined) => {
-    // isStopExecuteMode
-    return String(modeKey ?? "").trim().toLowerCase() === "stop";
-  };
-
   const buildQueueDraft = useCallback(
     (queueNameRaw?: string): QueueLaunchDraft | null => {
       if (!effectiveHostQueues.length) return null;
