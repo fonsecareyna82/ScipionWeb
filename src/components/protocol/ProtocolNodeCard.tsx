@@ -2002,7 +2002,7 @@ export default function ProtocolNodeCard({
 
               {isProjectNode ? (
                 <div className={styles.projectLabelWrapper} style={isCompactView ? { fontSize: "2.8rem" } : {}}>
-                  <div title={data.label}>{truncateLabel(data.label, 120)}</div>
+                  <div title={data.label}>{truncateLabel(data.label, 150)}</div>
                 </div>
               ) : (
                 <div className={styles.protocolTitleBlock}>
@@ -2010,12 +2010,12 @@ export default function ProtocolNodeCard({
                     className={[styles.label, isCompactView ? styles.labelCompact : ""].filter(Boolean).join(" ")}
                     title={data.runName}
                   >
-                    {truncateLabel(headerDisplayName, 120)}
+                    {truncateLabel(protocolLabel, 150)}
                   </div>
 
                   {shouldShowProtocolSubtitle ? (
-                    <div className={styles.protocolSubtitle} title={protocolLabel}>
-                      {truncateLabel(protocolLabel, 120)}
+                    <div className={styles.protocolSubtitle} title={headerDisplayName}>
+                      {truncateLabel(headerDisplayName, 150)}
                     </div>
                   ) : null}
                 </div>
