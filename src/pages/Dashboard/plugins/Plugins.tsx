@@ -246,10 +246,18 @@ function TabButton(props: {
       type="button"
       onClick={props.onClick}
       className={classNames(
-        "rounded-lg px-3 py-2 text-sm font-semibold transition",
+        "rounded-lg border px-3 py-2 text-sm font-semibold transition",
+        "focus:outline-none focus:ring-2 focus:ring-indigo-500/25 dark:focus:ring-indigo-400/25",
         props.active
-          ? "bg-white text-gray-900 shadow-sm dark:bg-gray-950 dark:text-white"
-          : "text-gray-700 hover:bg-gray-50/80 dark:text-gray-200 dark:hover:bg-gray-800/40",
+          ? [
+              "border-indigo-500/70 bg-indigo-600 text-white shadow-md shadow-indigo-500/20",
+              "ring-1 ring-indigo-500/30",
+              "dark:border-indigo-400/70 dark:bg-indigo-500 dark:text-white dark:shadow-indigo-500/20",
+            ].join(" ")
+          : [
+              "border-transparent text-gray-700 hover:border-gray-200 hover:bg-gray-50/80",
+              "dark:text-gray-200 dark:hover:border-gray-700 dark:hover:bg-gray-800/40",
+            ].join(" "),
       )}
     >
       {props.children}
