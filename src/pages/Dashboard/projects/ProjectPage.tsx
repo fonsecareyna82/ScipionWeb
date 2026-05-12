@@ -3122,6 +3122,12 @@ export default function ProjectPage() {
     return String(data.runName ?? data.label ?? id);
   };
 
+  const findNodeEditableRunName = (id: string) => {
+    const n = nodesRef.current.find((m) => m.id === id);
+    const data: any = (n as any)?.data ?? {};
+    return String(data.runName ?? "");
+  };
+
   const findNodeComment = (id: string) => {
     const n = nodesRef.current.find((m) => m.id === id);
     const data: any = (n as any)?.data ?? {};
@@ -3797,7 +3803,7 @@ export default function ProjectPage() {
     setDlgRename({
       open: true,
       id,
-      value: findNodeRunName(id),
+      value: findNodeEditableRunName(id),
       comment: findNodeComment(id),
     });
 
@@ -3829,7 +3835,7 @@ export default function ProjectPage() {
 
 
   const submitRename = async () => {
-    if (!projectName || !dlgRename.id || !dlgRename.value.trim()) return;
+    if (!projectName || !dlgRename.id) return;
 
     const id = dlgRename.id;
     const runName = dlgRename.value.trim();
@@ -3838,7 +3844,7 @@ export default function ProjectPage() {
     setDlgRename(emptyRenameDialog);
 
     try {
-      await svc.renameProtocol(projectName, id, { runName, comment, });
+      await svc.renameProtocol(projectName, id, { runName, comment });
 
       toast.success("Protocol annotation updated successfully.");
       await handleRefresh();
@@ -4854,7 +4860,7 @@ export default function ProjectPage() {
                 </DialogTitle>
 
                 <DialogDescription className="pp-annotateHeaderDescription">
-                  Update the visible protocol name and comment.
+                  Update the optional visible protocol name and comment.
                 </DialogDescription>
               </DialogHeader>
             </div>
@@ -4889,26 +4895,12 @@ export default function ProjectPage() {
                     }
                     placeholder="e.g. motioncorr_02"
                     autoFocus
-                    aria-invalid={!dlgRename.value.trim()}
-                    className={[
-                      "pp-annotateInput",
-                      !dlgRename.value.trim() ? "pp-annotateInputError" : "",
-                    ]
-                      .filter(Boolean)
-                      .join(" ")}
+                    aria-invalid={false}
+                    className="pp-annotateInput"
                   />
 
-                  <p
-                    className={[
-                      "pp-annotateHelper",
-                      !dlgRename.value.trim() ? "pp-annotateHelperError" : "",
-                    ]
-                      .filter(Boolean)
-                      .join(" ")}
-                  >
-                    {!dlgRename.value.trim()
-                      ? "Run name is required."
-                      : "This is the name shown in the workflow card."}
+                  <p className="pp-annotateHelper">
+                    Leave it empty to use the original protocol label in the workflow card.
                   </p>
                 </div>
 
@@ -4944,7 +4936,7 @@ export default function ProjectPage() {
 
               <Button
                 onClick={submitRename}
-                disabled={!dlgRename.value.trim()}
+                disabled={!dlgRename.id}
                 className="pp-dialogBtn pp-dialogBtnPrimary"
               >
                 Save annotation
