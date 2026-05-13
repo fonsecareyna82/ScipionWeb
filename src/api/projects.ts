@@ -37,6 +37,10 @@ import {
   CreateCoords2dOutputPayload,
   CreateCoords2dOutputResult,
   RenameProtocolPayload,
+  ExternalViewerDescriptor,
+  ExternalViewerListOptions,
+  ExternalViewerLaunchPayload,
+  ExternalViewerLaunchResult,
 } from "@/services/ProjectService";
 
 const ACTION_LAUNCH = "launch";
@@ -836,11 +840,127 @@ export async function loadWorkflow(
   return safeJson<any>(response);
 }
 
+
+function normalizeExternalViewer(raw: any): ExternalViewerDescriptor | null {
+  if (!raw || typeof raw !== "object") return null;
+
+  const id = String(
+    raw.id ??
+    raw.viewerId ??
+    raw.name ??
+    raw.className ??
+    raw.class_name ??
+    "",
+  ).trim();
+
+  if (!id) return null;
+
+  const label = String(
+    raw.label ??
+    raw.name ??
+    raw.className ??
+    raw.class_name ??
+    id,
+  ).trim();
+
+  return {
+    id,
+    label,
+    className: raw.className ?? raw.class_name ?? null,
+    moduleName: raw.moduleName ?? raw.module_name ?? null,
+    available: raw.available !== false,
+    reason: raw.reason ?? raw.message ?? null,
+  };
+}
+
+function normalizeExternalViewerList(raw: any): ExternalViewerDescriptor[] {
+  const items = Array.isArray(raw)
+    ? raw
+    : Array.isArray(raw?.viewers)
+      ? raw.viewers
+      : Array.isArray(raw?.items)
+        ? raw.items
+        : [];
+
+  return items
+    .map(normalizeExternalViewer)
+    .filter(Boolean) as ExternalViewerDescriptor[];
+}
+
+export async function listExternalViewers(
+  projectId: Id,
+  protocolId: Id,
+  outputName: string,
+  opts: ExternalViewerListOptions = {},
+): Promise<ExternalViewerDescriptor[]> {
+  const params = new URLSearchParams();
+
+  if (opts.objectId !== undefined && opts.objectId !== null) {
+    params.set("objectId", String(opts.objectId));
+  }
+
+  if (opts.objectKind) {
+    params.set("objectKind", opts.objectKind);
+  }
+
+  const query = params.toString();
+  const url =
+    `${BASE_URL}/projects/${projectId}/protocols/${protocolId}` +
+    `/outputs/${encodeURIComponent(outputName)}/external-viewers` +
+    (query ? `?${query}` : "");
+
+  const response = await fetchWithAuth(url, {
+    method: "GET",
+    signal: opts.signal,
+    cache: opts.cache,
+  });
+
+  if (!response.ok) {
+    throw await toApiError(response, "Failed to fetch external viewers");
+  }
+
+  const raw = await safeJson<any>(response);
+  return normalizeExternalViewerList(raw);
+}
+
+export async function launchExternalViewer(
+  projectId: Id,
+  protocolId: Id,
+  outputName: string,
+  viewerId: string,
+  payload: ExternalViewerLaunchPayload = {},
+): Promise<ExternalViewerLaunchResult> {
+  const url =
+    `${BASE_URL}/projects/${projectId}/protocols/${protocolId}` +
+    `/outputs/${encodeURIComponent(outputName)}` +
+    `/external-viewers/${encodeURIComponent(viewerId)}/launch`;
+
+  const response = await fetchWithAuth(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload ?? {}),
+  });
+
+  if (!response.ok) {
+    throw await toApiError(response, "Failed to launch external viewer");
+  }
+
+  const raw = await safeJson<any>(response);
+
+  return {
+    success: Boolean(raw?.success ?? true),
+    viewerId: String(raw?.viewerId ?? raw?.viewer_id ?? viewerId),
+    message: raw?.message ?? null,
+    pid: typeof raw?.pid === "number" ? raw.pid : null,
+    data: raw?.data,
+  };
+}
+
 /* ======================= PROTOCOL ACTIONS ======================= */
 export async function renameProtocol(
   projectId: Id,
   protocolId: Id,
-   payload: RenameProtocolPayload,
+  payload: RenameProtocolPayload,
 ): Promise<ProtocolNode> {
   const response = await fetchWithAuth(
     `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/${ACTION_RENAME}`,

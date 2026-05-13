@@ -1,7 +1,6 @@
 // src/services/ProjectService.ts
 
 import { loadWorkflowPayload } from "@/api/projects";
-import { RemoteEntry, RemotePreview } from "@/components/files/RemoteFileDialog";
 
 
 export type AuthenticatedRequestOptions = {
@@ -1041,6 +1040,41 @@ export type ExecuteProtocolWizardResult = {
   viewerState?: ExecuteProtocolWizardViewerState | null;
 };
 
+
+//─────────────────────────────────────────────────────────────────────────────
+// External viewers support (e.g., Imod, ChimeraX, etc.) — launched from 
+// protocol actions or output previews
+//─────────────────────────────────────────────────────────────────────────────
+
+export type ExternalViewerDescriptor = {
+  id: string;
+  label: string;
+  className?: string | null;
+  moduleName?: string | null;
+  available: boolean;
+  reason?: string | null;
+};
+
+export type ExternalViewerListOptions = AuthenticatedRequestOptions & {
+  objectId?: Id;
+  objectKind?: string;
+};
+
+export type ExternalViewerLaunchPayload = {
+  objectId?: Id;
+  objectKind?: string;
+  params?: Record<string, unknown>;
+};
+
+export type ExternalViewerLaunchResult = {
+  success: boolean;
+  viewerId: string;
+  message?: string | null;
+  pid?: number | null;
+  data?: unknown;
+};
+
+
 //─────────────────────────────────────────────────────────────────────────────
 // Protocol export (for sharing or external analysis)
 //─────────────────────────────────────────────────────────────────────────────
@@ -1187,10 +1221,10 @@ export interface ProjectService<
 
   /** Protocol actions */
   renameProtocol(
-  projectId: Id,
-  protocolId: Id,
-  payload: RenameProtocolPayload,
-): Promise<TProtocol>;
+    projectId: Id,
+    protocolId: Id,
+    payload: RenameProtocolPayload,
+  ): Promise<TProtocol>;
   duplicateProtocol(
     projectId: Id,
     items: { id: string; name?: string }[],
@@ -1540,6 +1574,25 @@ export interface ProjectService<
     psdPath: string,
   ): Promise<any>
 
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Analyze Results (External viewers for custom outputs)
+  // ─────────────────────────────────────────────────────────────────────────────
+  listExternalViewers(
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    opts?: ExternalViewerListOptions,
+  ): Promise<ExternalViewerDescriptor[]>;
+
+  launchExternalViewer(
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    viewerId: string,
+    payload?: ExternalViewerLaunchPayload,
+  ): Promise<ExternalViewerLaunchResult>;
+
   // ─────────────────────────────────────────────────────────────────────────────
   // Project sharing / collaboration
   // ─────────────────────────────────────────────────────────────────────────────
@@ -1700,7 +1753,7 @@ export interface ProjectService<
     },
   ): Promise<ObjectUrlResult>;
 
-    createCoords2dOutputFromCurrentCoordinates(
+  createCoords2dOutputFromCurrentCoordinates(
     projectId: Id,
     protocolId: Id,
     outputName: string,

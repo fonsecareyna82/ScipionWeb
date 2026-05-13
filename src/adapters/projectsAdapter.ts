@@ -48,7 +48,11 @@ import type {
   WriteRemoteFileResult,
   CreateCoords2dOutputPayload,
   CreateCoords2dOutputResult,
-  RenameProtocolPayload
+  RenameProtocolPayload,
+  ExternalViewerDescriptor,
+  ExternalViewerListOptions,
+  ExternalViewerLaunchPayload,
+  ExternalViewerLaunchResult,
 
 } from "@/services/ProjectService";
 
@@ -272,6 +276,34 @@ const defaultService: ProjectService = {
       title: (raw as any).title,
     };
   },
+
+    listExternalViewers: (
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    opts?: ExternalViewerListOptions,
+  ): Promise<ExternalViewerDescriptor[]> =>
+    api.listExternalViewers(
+      toId(projectId),
+      toId(protocolId),
+      outputName,
+      opts,
+    ),
+
+  launchExternalViewer: (
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    viewerId: string,
+    payload?: ExternalViewerLaunchPayload,
+  ): Promise<ExternalViewerLaunchResult> =>
+    api.launchExternalViewer(
+      toId(projectId),
+      toId(protocolId),
+      outputName,
+      viewerId,
+      payload,
+    ),
 
 
   // ──────────────────────────── Analyze Results: Volumes ────────────────────────────
