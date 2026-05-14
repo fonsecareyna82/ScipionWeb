@@ -34,6 +34,7 @@ import type { Id } from "@/services/ProjectService";
 import { CloseIcon } from "@/icons";
 import toast from "react-hot-toast";
 import { MetadataViewer } from "./metadata-viewer";
+import ExternalViewersBar from "./ExternalViewersBar";
 
 type TiltSeriesViewerProps = {
   projectId: Id;
@@ -894,17 +895,22 @@ export default function TiltSeriesViewer({
             flexShrink: 0,
           }}
         >
-          <Tooltip title="Back">
-            <IconButton size="small" onClick={() => setMainMode("viewer")}>
-              <ArrowBack fontSize="small" />
-            </IconButton>
+          <Tooltip title="Show TitlSerie viewer">
+            <span>
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<ArrowBack fontSize="small" />}
+                disabled={!canOpenMetadata}
+                onClick={() => setMainMode("viewer")}
+                sx={{ textTransform: "none" }}
+              >
+                TitlSerie viewer
+              </Button>
+            </span>
           </Tooltip>
 
-          <Box sx={{ minWidth: 0, flex: 1 }}>
-            <Typography variant="caption" color="text.secondary" noWrap>
-              {outputName} viewer
-            </Typography>
-          </Box>
+          
         </Paper>
 
         <Box sx={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
@@ -1242,18 +1248,38 @@ export default function TiltSeriesViewer({
               </Typography>
             </Box>
 
-            <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-              <Tooltip title="Metadata viewer">
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                gap: 1,
+                flexWrap: "wrap",
+                minWidth: 0,
+              }}
+            >
+              <Tooltip title="Show metadata viewer">
                 <span>
-                  <IconButton
+                  <Button
                     size="small"
-                    onClick={() => setMainMode("metadata")}
+                    variant="outlined"
+                    startIcon={<MetadataIcon fontSize="small" />}
                     disabled={!canOpenMetadata}
+                    onClick={() => setMainMode("metadata")}
+                    sx={{ textTransform: "none" }}
                   >
-                    <MetadataIcon fontSize="small" />
-                  </IconButton>
+                    Metadata
+                  </Button>
                 </span>
               </Tooltip>
+
+              <ExternalViewersBar
+                projectId={projectId}
+                protocolId={protocolId}
+                outputName={outputName}
+                objectId={selectedSeriesId}
+                objectKind="tiltSeries"
+                disabled={selectedSeriesId == null}
+              />
             </Box>
 
           </Paper>
