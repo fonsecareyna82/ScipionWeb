@@ -449,6 +449,31 @@ export default function Plugins() {
                 </div>
               </div>
 
+              
+
+              {activeTab !== "tasks" ? (
+                <div className="rounded-xl border border-gray-300/80 bg-white/70 p-1 dark:border-gray-700/80 dark:bg-white/[0.02]">
+                  <div className="flex flex-wrap gap-1">
+                    <TabButton
+                      active={activeCategoryId === "all"}
+                      onClick={() => setActiveCategoryId("all")}
+                    >
+                      All ({displayedPlugins.length})
+                    </TabButton>
+
+                    {categoryTabs.map((category) => (
+                      <TabButton
+                        key={category.id}
+                        active={activeCategoryId === category.id}
+                        onClick={() => setActiveCategoryId(category.id)}
+                      >
+                        {category.title} ({category.count})
+                      </TabButton>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
               <div className="relative w-full max-w-[420px]">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
 
@@ -478,28 +503,6 @@ export default function Plugins() {
                 ) : null}
               </div>
 
-              {activeTab !== "tasks" ? (
-                <div className="rounded-xl border border-gray-300/80 bg-white/70 p-1 dark:border-gray-700/80 dark:bg-white/[0.02]">
-                  <div className="flex flex-wrap gap-1">
-                    <TabButton
-                      active={activeCategoryId === "all"}
-                      onClick={() => setActiveCategoryId("all")}
-                    >
-                      All ({displayedPlugins.length})
-                    </TabButton>
-
-                    {categoryTabs.map((category) => (
-                      <TabButton
-                        key={category.id}
-                        active={activeCategoryId === category.id}
-                        onClick={() => setActiveCategoryId(category.id)}
-                      >
-                        {category.title} ({category.count})
-                      </TabButton>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
             </div>
 
             {activeTab === "tasks" ? (

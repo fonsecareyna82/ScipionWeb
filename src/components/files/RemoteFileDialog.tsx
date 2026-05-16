@@ -1,4 +1,4 @@
-// src/components/RemoteFileDialog.tsx
+// src/components/files/RemoteFileDialog.tsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Dialog,
@@ -94,6 +94,35 @@ type RemoteFileDialogProps = {
 
 type SortDir = "asc" | "desc";
 
+type TextPreviewToken = {
+  text: string;
+  className: string;
+};
+
+type TextPreviewLine = {
+  tokens: TextPreviewToken[];
+};
+
+type AnsiState = {
+  bold: boolean;
+  dim: boolean;
+  italic: boolean;
+  underline: boolean;
+  fg?: number;
+  bg?: number;
+};
+
+type TextPreviewModel = {
+  label: string;
+  lines: TextPreviewLine[];
+  lineCount: number;
+  isJson: boolean;
+  isEmpty: boolean;
+  hasAnsi: boolean;
+  sizeLabel?: string;
+};
+
+
 export default function RemoteFileDialog({
   open,
   onClose,
@@ -167,6 +196,185 @@ export default function RemoteFileDialog({
 
   // controlledFilenameInputForSaveMode
   const [saveFilename, setSaveFilename] = useState<string>(defaultFilename);
+
+  const getEntryExtension = (entry: RemoteEntry | null) => {
+    const name = (entry?.name || "").trim();
+    const dotIndex = name.lastIndexOf(".");
+    if (dotIndex < 0 || dotIndex === name.length - 1) return "";
+    return name.slice(dotIndex + 1).toLowerCase();
+  };
+
+  const hasAnsiSequences = (s: string) => /\x1b\[[0-9;]*m/.test(s);
+
+  const createDefaultAnsiState = (): AnsiState => ({
+    bold: false,
+    dim: false,
+    italic: false,
+    underline: false,
+  });
+
+  const getAnsiStateClassName = (state: AnsiState) => {
+    const css = styles as Record<string, string>;
+    const classNames: string[] = [];
+
+    if (state.bold) classNames.push(css.ansiBold);
+    if (state.dim) classNames.push(css.ansiDim);
+    if (state.italic) classNames.push(css.ansiItalic);
+    if (state.underline) classNames.push(css.ansiUnderline);
+    if (state.fg != null) classNames.push(css[`ansiFg${state.fg}`]);
+    if (state.bg != null) classNames.push(css[`ansiBg${state.bg}`]);
+
+    return classNames.filter(Boolean).join(" ");
+  };
+
+  const applyAnsiCode = (state: AnsiState, code: number): AnsiState => {
+    if (code === 0) return createDefaultAnsiState();
+
+    const next: AnsiState = { ...state };
+
+    if (code === 1) next.bold = true;
+    else if (code === 2) next.dim = true;
+    else if (code === 3) next.italic = true;
+    else if (code === 4) next.underline = true;
+    else if (code === 22) {
+      next.bold = false;
+      next.dim = false;
+    } else if (code === 23) next.italic = false;
+    else if (code === 24) next.underline = false;
+    else if ((code >= 30 && code <= 37) || (code >= 90 && code <= 97)) next.fg = code;
+    else if (code === 39) next.fg = undefined;
+    else if ((code >= 40 && code <= 47) || (code >= 100 && code <= 107)) next.bg = code;
+    else if (code === 49) next.bg = undefined;
+
+    return next;
+  };
+
+  const tokenizeAnsiLine = (line: string, initialState: AnsiState) => {
+    const ansiRegex = /\x1b\[([0-9;]*)m/g;
+    const tokens: TextPreviewToken[] = [];
+
+    let state: AnsiState = { ...initialState };
+    let lastIndex = 0;
+    let match: RegExpExecArray | null = null;
+
+    const pushChunk = (chunk: string) => {
+      if (!chunk) return;
+      tokens.push({
+        text: chunk,
+        className: getAnsiStateClassName(state),
+      });
+    };
+
+    while ((match = ansiRegex.exec(line)) !== null) {
+      pushChunk(line.slice(lastIndex, match.index));
+
+      const rawCodes = match[1] || "0";
+      const codes = rawCodes
+        .split(";")
+        .map((value) => Number(value))
+        .filter((value) => Number.isFinite(value));
+
+      for (const code of codes.length ? codes : [0]) {
+        state = applyAnsiCode(state, code);
+      }
+
+      lastIndex = ansiRegex.lastIndex;
+    }
+
+    pushChunk(line.slice(lastIndex));
+
+    return {
+      tokens,
+      state,
+    };
+  };
+
+  const buildTextPreviewLines = (content: string, parseAnsi: boolean): TextPreviewLine[] => {
+    const rawLines = content.length > 0 ? content.split(/\r\n|\r|\n/) : [""];
+
+    if (!parseAnsi) {
+      return rawLines.map((line) => ({
+        tokens: [{ text: line || "\u00A0", className: "" }],
+      }));
+    }
+
+    let state = createDefaultAnsiState();
+
+    return rawLines.map((line) => {
+      const result = tokenizeAnsiLine(line, state);
+      state = result.state;
+
+      return {
+        tokens: result.tokens.length
+          ? result.tokens
+          : [{ text: "\u00A0", className: getAnsiStateClassName(state) }],
+      };
+    });
+  };
+
+  const buildTextPreviewModel = (
+    textPreview: Extract<RemotePreview, { kind: "text" }>,
+    entry: RemoteEntry | null
+  ): TextPreviewModel => {
+    const rawText = String(textPreview.text ?? "");
+    const declaredLanguage = String(textPreview.language || "").trim().toLowerCase();
+    const extension = getEntryExtension(entry);
+    const mime = normalizeMimeValue(
+      String(textPreview.mime || textPreview.meta?.mime || entry?.mime || "")
+    );
+
+    const hasAnsi = hasAnsiSequences(rawText);
+    const isLogLike =
+      declaredLanguage === "log" ||
+      ["log", "out", "err", "stdout", "stderr"].includes(extension);
+
+    const shouldTryJson =
+      !hasAnsi &&
+      (declaredLanguage === "json" ||
+        extension === "json" ||
+        mime.includes("json") ||
+        isProbablyJsonString(rawText));
+
+    let content = rawText;
+    let isJson = false;
+
+    if (shouldTryJson) {
+      try {
+        content = JSON.stringify(JSON.parse(rawText), null, 2);
+        isJson = true;
+      } catch {
+        content = rawText;
+      }
+    }
+
+    const renderedLines = buildTextPreviewLines(content, hasAnsi);
+    const lineCount = content.length > 0 ? renderedLines.length : 0;
+
+    const sizeLabel =
+      typeof textPreview.meta?.sizeBytes === "number"
+        ? humanBytes(textPreview.meta.sizeBytes)
+        : undefined;
+
+    const label = isJson
+      ? "JSON"
+      : hasAnsi
+        ? isLogLike
+          ? "ANSI LOG"
+          : "ANSI"
+        : isLogLike
+          ? "LOG"
+          : (declaredLanguage || extension || "text").toUpperCase();
+
+    return {
+      label,
+      lines: renderedLines,
+      lineCount,
+      isJson,
+      isEmpty: content.length === 0,
+      hasAnsi,
+      sizeLabel,
+    };
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -1050,14 +1258,46 @@ export default function RemoteFileDialog({
         </div>
       );
     }
-
     if (preview.kind === "text") {
-      const content = preview.text ? (
-        <div className={styles.textPreviewBox} style={{ height: "100%" }}>
-          <div style={{ height: "100%", overflow: "auto", whiteSpace: "pre-wrap" }}>{preview.text}</div>
+      const model = buildTextPreviewModel(preview, selected);
+
+      const content = (
+        <div className={styles.textPreviewShell}>
+          <div className={styles.textPreviewHeader}>
+            <div className={styles.textPreviewHeaderLeft}>
+              <span className={styles.textPreviewBadge}>{model.label}</span>
+              <span className={styles.textPreviewMeta}>
+                {model.lineCount === 1 ? "1 line" : `${model.lineCount} lines`}
+              </span>
+              {model.sizeLabel && <span className={styles.textPreviewMeta}>{model.sizeLabel}</span>}
+            </div>
+
+            {preview.truncated && (
+              <span className={styles.textPreviewTruncated}>Truncated preview</span>
+            )}
+          </div>
+
+          {model.isEmpty ? (
+            <div className={styles.textPreviewEmpty}>Empty text file.</div>
+          ) : (
+            <div className={styles.textPreviewCodeScroll}>
+              <code className={styles.textPreviewCode}>
+                {model.lines.map((line, idx) => (
+                  <span key={idx} className={styles.textPreviewLine}>
+                    <span className={styles.textPreviewLineNumber}>{idx + 1}</span>
+                    <span className={styles.textPreviewLineContent}>
+                      {line.tokens.map((token, tokenIdx) => (
+                        <span key={tokenIdx} className={token.className}>
+                          {token.text}
+                        </span>
+                      ))}
+                    </span>
+                  </span>
+                ))}
+              </code>
+            </div>
+          )}
         </div>
-      ) : (
-        <div className={styles.centerPlaceholder}>No text preview available.</div>
       );
 
       return renderTwoRowPreview(content, preview.meta);
