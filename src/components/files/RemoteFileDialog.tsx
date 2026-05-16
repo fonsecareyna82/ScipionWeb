@@ -47,6 +47,53 @@ type PreviewMeta = {
   [key: string]: unknown;
 };
 
+type DatabaseSummaryItem = {
+  key: string;
+  value: unknown;
+};
+
+type DatabaseTablePreview = {
+  name: string;
+  type?: string;
+  rows?: number | null;
+  columns?: number;
+  columnPreview?: Array<{
+    name: string;
+    type?: string;
+    notNull?: boolean;
+    primaryKey?: boolean;
+  }>;
+};
+
+type DatabaseSamplePreview = {
+  table?: string;
+  columns: string[];
+  rows: Array<Array<string | number | null>>;
+  truncated?: boolean;
+};
+
+type RemoteDatabasePreview = {
+  engine?: string;
+  readable?: boolean;
+  isScipion?: boolean;
+  objectClass?: string | null;
+  objectCount?: number | null;
+  summary?: DatabaseSummaryItem[];
+  tables?: DatabaseTablePreview[];
+  sample?: DatabaseSamplePreview | null;
+  warnings?: string[];
+  scipion?: {
+    objectClass?: string | null;
+    objectCount?: number | null;
+    reader?: string;
+    summary?: DatabaseSummaryItem[];
+    sample?: {
+      columns?: string[];
+      rows?: Array<Record<string, unknown>>;
+    };
+  };
+};
+
 export type RemotePreviewSource =
   | { sourceType: "url"; url: string }
   | { sourceType: "blob"; blob: Blob }
@@ -58,6 +105,7 @@ export type RemotePreview =
   | { kind: "image"; mime?: string; meta?: PreviewMeta; source: RemotePreviewSource }
   | { kind: "volume"; mime?: string; meta?: PreviewMeta; source: RemotePreviewSource }
   | { kind: "table"; mime?: string; meta?: PreviewMeta; columns: string[]; rows: Array<Array<string | number | null>>; truncated?: boolean }
+  | { kind: "database"; mime?: string; meta?: PreviewMeta; database: RemoteDatabasePreview; truncated?: boolean }
   | { kind: "error"; mime?: string; meta?: PreviewMeta; message: string };
 
 type ResolveBrowserPathsResult = {
@@ -1216,6 +1264,141 @@ export default function RemoteFileDialog({
   const toggleSortDir = () => setSortDir((d) => (d === "asc" ? "desc" : "asc"));
   const SortDirIcon = sortDir === "asc" ? ArrowUp : ArrowDown;
 
+  const formatDatabaseValue = (value: unknown): string => {
+    if (value === null || value === undefined) return "—";
+    if (typeof value === "boolean") return value ? "yes" : "no";
+    if (typeof value === "number") return Number.isFinite(value) ? String(value) : "—";
+    if (typeof value === "string") return value || "—";
+
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return String(value);
+    }
+  };
+
+  const renderDatabasePreview = (
+    dbPreview: Extract<RemotePreview, { kind: "database" }>,
+  ) => {
+    const database = dbPreview.database || {};
+    const meta = dbPreview.meta || {};
+    const summary = Array.isArray(database.summary) ? database.summary : [];
+    const tables = Array.isArray(database.tables) ? database.tables : [];
+    const warnings = Array.isArray(database.warnings) ? database.warnings : [];
+    const sample = database.sample || null;
+
+    const title = database.isScipion
+      ? "Scipion SQLite database"
+      : "SQLite database";
+
+    const objectClass = database.objectClass || database.scipion?.objectClass || meta.objectClass;
+    const objectCount = database.objectCount ?? database.scipion?.objectCount;
+
+    return (
+      <div className={styles.databasePreviewShell}>
+        <div className={styles.databasePreviewHeader}>
+          <div className={styles.databasePreviewTitleBlock}>
+            <div className={styles.databasePreviewTitle}>{title}</div>
+            <div className={styles.databasePreviewSubtitle}>
+              {objectClass ? `${objectClass}` : database.engine || "sqlite"}
+              {objectCount !== undefined && objectCount !== null ? ` · ${objectCount} items` : ""}
+            </div>
+          </div>
+
+          <div className={styles.databasePreviewBadgeRow}>
+            <span className={styles.databasePreviewBadge}>
+              {database.readable === false ? "Unreadable" : "Readable"}
+            </span>
+            {database.isScipion && (
+              <span className={styles.databasePreviewBadgeAccent}>Scipion</span>
+            )}
+          </div>
+        </div>
+
+        {warnings.length > 0 && (
+          <div className={styles.databaseWarnings}>
+            {warnings.map((warning, index) => (
+              <div key={index} className={styles.databaseWarning}>
+                {warning}
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className={styles.databaseSummaryGrid}>
+          {summary.map((item, index) => (
+            <div key={`${item.key}-${index}`} className={styles.databaseSummaryCard}>
+              <div className={styles.databaseSummaryKey}>{item.key}</div>
+              <div className={styles.databaseSummaryValue}>{formatDatabaseValue(item.value)}</div>
+            </div>
+          ))}
+        </div>
+
+        {tables.length > 0 && (
+          <div className={styles.databaseSection}>
+            <div className={styles.databaseSectionTitle}>Tables</div>
+
+            <div className={styles.databaseTableScroll}>
+              <table className={styles.databaseTable}>
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Type</th>
+                    <th>Rows</th>
+                    <th>Columns</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tables.map((table) => (
+                    <tr key={table.name}>
+                      <td title={table.name}>{table.name}</td>
+                      <td>{table.type || "table"}</td>
+                      <td>{table.rows === null || table.rows === undefined ? "—" : table.rows}</td>
+                      <td>{table.columns ?? "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {sample && Array.isArray(sample.columns) && sample.columns.length > 0 && (
+          <div className={styles.databaseSection}>
+            <div className={styles.databaseSectionTitle}>
+              Sample rows{sample.table ? ` · ${sample.table}` : ""}
+            </div>
+
+            <div className={styles.databaseTableScroll}>
+              <table className={styles.databaseTable}>
+                <thead>
+                  <tr>
+                    {sample.columns.map((column) => (
+                      <th key={column}>{column}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {(sample.rows || []).map((row, rowIndex) => (
+                    <tr key={rowIndex}>
+                      {sample.columns.map((_, colIndex) => (
+                        <td key={colIndex}>{formatDatabaseValue(row[colIndex])}</td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {sample.truncated && (
+              <div className={styles.databaseSampleHint}>Showing a limited sample.</div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const renderPreviewBody = () => {
     if (!selected) return <div className={styles.centerPlaceholder}>Select a file or folder.</div>;
 
@@ -1356,6 +1539,11 @@ export default function RemoteFileDialog({
         </div>
       );
 
+      return renderTwoRowPreview(content, preview.meta);
+    }
+
+    if (preview.kind === "database") {
+      const content = renderDatabasePreview(preview);
       return renderTwoRowPreview(content, preview.meta);
     }
 

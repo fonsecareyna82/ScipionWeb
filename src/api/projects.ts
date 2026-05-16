@@ -1508,6 +1508,53 @@ export interface PreviewMeta {
   rowCount?: number;
 }
 
+export type DatabaseSummaryItem = {
+  key: string;
+  value: unknown;
+};
+
+export type DatabaseTablePreview = {
+  name: string;
+  type?: string;
+  rows?: number | null;
+  columns?: number;
+  columnPreview?: Array<{
+    name: string;
+    type?: string;
+    notNull?: boolean;
+    primaryKey?: boolean;
+  }>;
+};
+
+export type DatabaseSamplePreview = {
+  table?: string;
+  columns: string[];
+  rows: Array<Array<string | number | null>>;
+  truncated?: boolean;
+};
+
+export type RemoteDatabasePreview = {
+  engine?: string;
+  readable?: boolean;
+  isScipion?: boolean;
+  objectClass?: string | null;
+  objectCount?: number | null;
+  summary?: DatabaseSummaryItem[];
+  tables?: DatabaseTablePreview[];
+  sample?: DatabaseSamplePreview | null;
+  warnings?: string[];
+  scipion?: {
+    objectClass?: string | null;
+    objectCount?: number | null;
+    reader?: string;
+    summary?: DatabaseSummaryItem[];
+    sample?: {
+      columns?: string[];
+      rows?: Array<Record<string, unknown>>;
+    };
+  };
+};
+
 export interface PreviewSourceBlob {
   sourceType: "blob";
   blob: Blob;
@@ -1546,6 +1593,9 @@ export interface RemoteEntryPreview {
 
   // Blob payload (image/volume/binary)
   source?: PreviewSourceBlob;
+
+  // Database payload
+  database?: RemoteDatabasePreview;
 }
 
 function normalizeMime(value: string): string {
@@ -1565,7 +1615,7 @@ export function disposeRemoteEntryPreview(preview: RemoteEntryPreview | null): v
 }
 
 // types.ts (or wherever previewRemoteEntry lives)
-type PreviewKind = "none" | "text" | "table" | "image" | "volume" | "binary";
+type PreviewKind = "none" | "text" | "table" | "image" | "volume" | "binary" | "database";
 
 export async function previewRemoteEntry(
   projectId: Id,
@@ -1664,6 +1714,19 @@ export async function previewRemoteEntry(
     return finalizePreviewForGui({ kind, mime: semanticMime, meta, truncated, columns, rows });
   }
 
+  if (kind === "database") {
+    const data = await safeJson<any>(res);
+
+    return finalizePreviewForGui({
+      kind,
+      mime: semanticMime,
+      meta: data?.meta && typeof data.meta === "object" ? data.meta : meta,
+      truncated,
+      database: data?.database && typeof data.database === "object" ? data.database : undefined,
+      note: typeof data?.note === "string" ? data.note : undefined,
+    });
+  }
+
   // image | volume | binary -> blob
   const blob = await res.blob();
 
@@ -1742,6 +1805,17 @@ async function coerceNonScipionResponse(res: Response, payloadMime: string): Pro
     const columns = Array.isArray(data?.columns) ? data.columns.map((c: any) => String(c)) : [];
     const rows = Array.isArray(data?.rows) ? data.rows : [];
     return { kind, mime, meta, truncated, columns, rows };
+  }
+
+  if (kind === "database") {
+    return {
+      kind,
+      mime,
+      meta,
+      truncated,
+      database: data?.database && typeof data.database === "object" ? data.database : undefined,
+      note: typeof data?.note === "string" ? data.note : undefined,
+    };
   }
 
   // image|volume|binary: keepSourceAsIsHere; finalizePreviewForGui will normalize base64->blob
