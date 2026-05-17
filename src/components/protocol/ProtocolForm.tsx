@@ -329,6 +329,26 @@ export default function ProtocolForm({
   const [topTab, setTopTab] = useState(0);
   const [sectionTab, setSectionTab] = useState(0);
   const [protocolDetails, setProtocolDetails] = useState<any>({});
+  const protocolDisplayName = useMemo(() => {
+    const candidates = [
+      protocolDetails?.runName,
+      info?.runName,
+      (form as any)?.runName,
+      protocolDetails?.label,
+      info?.protocolName,
+      info?.label,
+      (form as any)?.protocolName,
+      protocolId,
+    ];
+
+    for (const candidate of candidates) {
+      const value = String(candidate ?? "").trim();
+      if (value) return value;
+    }
+
+    return "";
+  }, [protocolDetails?.runName, protocolDetails?.label, info, form, protocolId]);
+
   const [expandedGroups, setExpandedGroups] = useState<{ [key: string]: boolean }>({});
 
   // actionLoadingState
@@ -596,6 +616,14 @@ export default function ProtocolForm({
           (form as any)?.protocolName ??
           prev?.label ??
           "",
+        runName:
+          info?.runName ??
+          (form as any)?.runName ??
+          info?.protocolName ??
+          (form as any)?.protocolName ??
+          prev?.runName ??
+          prev?.label ??
+          "",
         status:
           info?.status ??
           (form as any)?.status ??
@@ -736,6 +764,12 @@ export default function ProtocolForm({
 
     setProtocolDetails({
       label: info?.protocolName ?? info?.label ?? (form as any)?.protocolName ?? "",
+      runName:
+        info?.runName ??
+        (form as any)?.runName ??
+        info?.protocolName ??
+        (form as any)?.protocolName ??
+        "",
       status: info?.status ?? (form as any)?.status ?? "",
       id: protocolId ?? "",
       color: info?.color ?? (form as any)?.color ?? "",
@@ -1481,6 +1515,14 @@ export default function ProtocolForm({
 
   // handleExecute
   const handleExecute = async (modeKey: string) => {
+
+    const normalizedModeKey = String(modeKey ?? "").trim().toLowerCase();
+
+    if (normalizedModeKey === "stop") {
+      await executeNow(modeKey, null);
+      return;
+    }
+
     const shouldUseQueue = useQueueEnabled || effectiveQueueMandatory;
 
     if (!shouldUseQueue) {
@@ -2488,7 +2530,7 @@ export default function ProtocolForm({
               <ProtocolOutputsPanel
                 projectId={projectId}
                 protocolId={protocolId}
-                protocolLabel={protocolDetails.label}
+                protocolLabel={protocolDisplayName}
                 outputsFromApi={outputsFromApi}
               />
             )}

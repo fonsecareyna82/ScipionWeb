@@ -34,6 +34,8 @@ export interface Plugin {
   toUpdate: boolean;
 
   binaries?: PluginBinaries;
+  categories?: any;
+  categoryData?: any;
 }
 
 export type PluginTaskBackend = "celery" | "local";

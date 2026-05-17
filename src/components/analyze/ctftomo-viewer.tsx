@@ -27,6 +27,7 @@ import { useProjectService } from "@/ProjectServiceContext";
 import type { Id } from "@/services/ProjectService";
 import toast from "react-hot-toast";
 import { MetadataViewer } from "./metadata-viewer";
+import ExternalViewersBar from "./ExternalViewersBar";
 
 type CTFTomoViewerProps = {
   projectId: Id;
@@ -925,15 +926,22 @@ export default function CTFTomoViewer({ projectId, protocolId, outputName }: CTF
             flexShrink: 0,
           }}
         >
-          <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, minWidth: 0 }}>
-            <Tooltip title="Back to viewer">
-              <IconButton size="small" onClick={() => setMainMode("viewer")}>
-                <ArrowBack fontSize="small" />
-              </IconButton>
-            </Tooltip>
-            <Typography variant="subtitle2" sx={{ fontSize: "0.85rem" }} noWrap>
-              CTF Tomo viewer
-            </Typography>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, minWidth: 0, }}>
+            <Tooltip title="Show CTFTomo viewer">
+                <span>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    startIcon={<ArrowBack fontSize="small" />}
+                    disabled={!canOpenMetadata}
+                    onClick={() => setMainMode("viewer")}
+                    sx={{ textTransform: "none" }}
+                  >
+                    CTFTomo viewer
+                  </Button>
+                </span>
+              </Tooltip>
+            
           </Box>
           <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.7rem" }} noWrap>
             {outputName}
@@ -1250,7 +1258,16 @@ export default function CTFTomoViewer({ projectId, protocolId, outputName }: CTF
               </Box>
             )}
 
-            <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "flex-end",
+                gap: 0.75,
+                flexWrap: "wrap",
+                minWidth: 0,
+              }}
+            >
               {selectedFrame && (
                 <Box sx={{ textAlign: "right" }}>
                   <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.7rem" }}>
@@ -1258,22 +1275,28 @@ export default function CTFTomoViewer({ projectId, protocolId, outputName }: CTF
                   </Typography>
                 </Box>
               )}
-              <Tooltip title={canOpenMetadata ? "Metadata viewer" : "Metadata requires numeric project/protocol id"}>
+
+              <ExternalViewersBar
+                projectId={projectId}
+                protocolId={protocolId}
+                outputName={outputName}
+                objectId={selectedSeriesId}
+                objectKind="ctfTomoSeries"
+                disabled={selectedSeriesId == null}
+              />
+
+              <Tooltip title="Show metadata viewer">
                 <span>
-                  <IconButton
+                  <Button
                     size="small"
-                    onClick={() => setMainMode("metadata")}
+                    variant="outlined"
+                    startIcon={<MetadataIcon fontSize="small" />}
                     disabled={!canOpenMetadata}
-                    sx={{
-                      color: canOpenMetadata ? "primary.main" : "text.disabled",
-                      bgcolor: canOpenMetadata ? "rgba(59,130,246,0.10)" : "transparent",
-                      "&:hover": {
-                        bgcolor: canOpenMetadata ? "rgba(59,130,246,0.18)" : "transparent",
-                      },
-                    }}
+                    onClick={() => setMainMode("metadata")}
+                    sx={{ textTransform: "none" }}
                   >
-                    <MetadataIcon fontSize="small" />
-                  </IconButton>
+                    Metadata
+                  </Button>
                 </span>
               </Tooltip>
             </Box>

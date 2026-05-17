@@ -82,16 +82,23 @@ const DialogContent = React.forwardRef<
 
         <DialogPrimitive.Close
           className={cn(
-            "absolute right-4 top-4 rounded-full p-1",
-            "border border-transparent bg-transparent",
-            "text-gray-500 hover:bg-gray-100 hover:text-gray-900",
-            "focus:outline-none",
-            "dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-100",
+            "absolute right-4 top-4 z-20 inline-flex h-8 w-8 items-center justify-center rounded-full",
+            "border border-white/25 bg-white/10 hover:bg-white/20",
+            "transition hover:bg-white hover:shadow-lg",
+            "focus:outline-none focus-visible:ring-2 focus-visible:ring-white/80 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-800",
+            "dark:border-white/20 dark:bg-white/95",
             "pp-dialogClose"
           )}
           aria-label="Close"
         >
-          <X className="h-5 w-5" />
+          <X
+            className="h-5 w-5"
+            strokeWidth={1}
+            style={{
+              color: "#d2daeb",
+              stroke: "#d2daeb",
+            }}
+          />
         </DialogPrimitive.Close>
       </DialogPrimitive.Content>
     </DialogPortal>

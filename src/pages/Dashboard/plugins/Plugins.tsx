@@ -1,5 +1,5 @@
-// src/pages/projects/Plugins.tsx
-import { useEffect, useMemo, useState } from "react";
+// src/pages/Dashboard/plugins/Plugins.tsx
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Search, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
@@ -9,6 +9,47 @@ import { usePlugins } from "@/hooks/usePlugins";
 import { useProcessingPlugins } from "@/hooks/useProcessingPlugins";
 
 type TabKey = "installed" | "available" | "tasks";
+
+type PluginCategoryTab = {
+  id: string;
+  title: string;
+  description?: string;
+  count: number;
+};
+
+type PluginWithCategories = {
+  category?: unknown;
+  categories?: unknown;
+  categoryIds?: unknown;
+  categoryData?: unknown;
+};
+
+const fallbackCategoryById: Record<string, { title: string; description: string }> = {
+  single_particle: {
+    title: "SPA",
+    description: "SPA processing, classification, refinement and reconstruction",
+  },
+  tomography: {
+    title: "Tomography",
+    description: "Tomograms, tilt series and subtomogram workflows",
+  },
+  modelling: {
+    title: "Modelling",
+    description: "Model building, fitting, validation and visualization",
+  },
+  flexibility: {
+    title: "Flexibility",
+    description: "Visualization and manipulation of flexibility data",
+  },
+  chem: {
+    title: "CHEM",
+    description: "CHEMoinformatics and virtual drug screening",
+  },
+  unclassified: {
+    title: "Unclassified",
+    description: "Unclassified plugins",
+  },
+};
 
 function classNames(...xs: Array<string | false | null | undefined>): string {
   return xs.filter(Boolean).join(" ");
@@ -24,11 +65,106 @@ function formatTimeAgo(ms: number) {
   return `${hr} hours ago`;
 }
 
+function humanizeCategoryId(id: string): string {
+  const fallback = fallbackCategoryById[id];
+  if (fallback) return fallback.title;
+
+  return id
+    .split(/[_-]+/)
+    .filter(Boolean)
+    .map((part) => part.slice(0, 1).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function getFallbackCategoryDescription(id: string): string {
+  return fallbackCategoryById[id]?.description ?? "";
+}
+
+function normalizeCategoryId(raw: unknown): string {
+  return String(raw ?? "").trim();
+}
+
+function readCategoryMetaFromRaw(raw: unknown): Array<Omit<PluginCategoryTab, "count">> {
+  if (!raw) return [];
+
+  const items = Array.isArray(raw) ? raw : [raw];
+
+  return items
+    .map((item) => {
+      if (typeof item === "string") {
+        const id = normalizeCategoryId(item);
+        if (!id) return null;
+
+        return {
+          id,
+          title: humanizeCategoryId(id),
+          description: getFallbackCategoryDescription(id),
+        };
+      }
+
+      if (!item || typeof item !== "object") return null;
+
+      const obj = item as Record<string, unknown>;
+      const id = normalizeCategoryId(
+        obj.id ??
+          obj.categoryId ??
+          obj.key ??
+          obj.value ??
+          obj.name,
+      );
+
+      if (!id) return null;
+
+      return {
+        id,
+        title: String(obj.title ?? obj.label ?? obj.name ?? humanizeCategoryId(id)),
+        description: String(obj.description ?? getFallbackCategoryDescription(id)),
+      };
+    })
+    .filter(Boolean) as Array<Omit<PluginCategoryTab, "count">>;
+}
+
+function getPluginCategoryMetadata(plugin: PluginWithCategories): Array<Omit<PluginCategoryTab, "count">> {
+  const rawMetas = [
+    ...readCategoryMetaFromRaw(plugin.categoryData),
+    ...readCategoryMetaFromRaw(plugin.categories),
+    ...readCategoryMetaFromRaw(plugin.categoryIds),
+    ...readCategoryMetaFromRaw(plugin.category),
+  ];
+
+  const byId = new Map<string, Omit<PluginCategoryTab, "count">>();
+
+  for (const meta of rawMetas) {
+    if (!meta.id) continue;
+
+    const current = byId.get(meta.id);
+    byId.set(meta.id, {
+      id: meta.id,
+      title: meta.title || current?.title || humanizeCategoryId(meta.id),
+      description: meta.description || current?.description || getFallbackCategoryDescription(meta.id),
+    });
+  }
+
+  if (byId.size === 0) {
+    byId.set("unclassified", {
+      id: "unclassified",
+      title: fallbackCategoryById.unclassified.title,
+      description: fallbackCategoryById.unclassified.description,
+    });
+  }
+
+  return Array.from(byId.values());
+}
+
+function getPluginCategoryIds(plugin: PluginWithCategories): string[] {
+  return getPluginCategoryMetadata(plugin).map((category) => category.id);
+}
+
 function CardShell(props: {
   title: string;
   subtitle?: string;
-  right?: React.ReactNode;
-  children: React.ReactNode;
+  right?: ReactNode;
+  children: ReactNode;
 }) {
   return (
     <div
@@ -42,9 +178,13 @@ function CardShell(props: {
       <div className="relative">
         <div className="mb-4 flex items-start justify-between gap-4">
           <div className="min-w-0">
-            <h3 className="text-base font-semibold text-gray-800 dark:text-white/90">{props.title}</h3>
+            <h3 className="text-base font-semibold text-gray-800 dark:text-white/90">
+              {props.title}
+            </h3>
             {props.subtitle ? (
-              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{props.subtitle}</p>
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {props.subtitle}
+              </p>
             ) : null}
           </div>
           {props.right ? <div className="shrink-0">{props.right}</div> : null}
@@ -55,7 +195,7 @@ function CardShell(props: {
   );
 }
 
-function StatPill(props: { label: string; value: React.ReactNode }) {
+function StatPill(props: { label: string; value: ReactNode }) {
   return (
     <div
       className={classNames(
@@ -71,7 +211,7 @@ function StatPill(props: { label: string; value: React.ReactNode }) {
 }
 
 function SecondaryButton(props: {
-  children: React.ReactNode;
+  children: ReactNode;
   onClick?: () => void;
   disabled?: boolean;
   className?: string;
@@ -99,17 +239,25 @@ function SecondaryButton(props: {
 function TabButton(props: {
   active: boolean;
   onClick: () => void;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
     <button
       type="button"
       onClick={props.onClick}
       className={classNames(
-        "rounded-lg px-3 py-2 text-sm font-semibold transition",
+        "rounded-lg border px-3 py-2 text-sm font-semibold transition",
+        "focus:outline-none focus:ring-2 focus:ring-indigo-500/25 dark:focus:ring-indigo-400/25",
         props.active
-          ? "bg-white text-gray-900 shadow-sm dark:bg-gray-950 dark:text-white"
-          : "text-gray-700 hover:bg-gray-50/80 dark:text-gray-200 dark:hover:bg-gray-800/40",
+          ? [
+              "border-indigo-500/70 bg-indigo-600 text-white shadow-md shadow-indigo-500/20",
+              "ring-1 ring-indigo-500/30",
+              "dark:border-indigo-400/70 dark:bg-indigo-500 dark:text-white dark:shadow-indigo-500/20",
+            ].join(" ")
+          : [
+              "border-transparent text-gray-700 hover:border-gray-200 hover:bg-gray-50/80",
+              "dark:text-gray-200 dark:hover:border-gray-700 dark:hover:bg-gray-800/40",
+            ].join(" "),
       )}
     >
       {props.children}
@@ -132,6 +280,7 @@ export default function Plugins() {
   });
 
   const [activeTab, setActiveTab] = useState<TabKey>("available");
+  const [activeCategoryId, setActiveCategoryId] = useState("all");
   const [search, setSearch] = useState("");
 
   useEffect(() => {
@@ -139,6 +288,10 @@ export default function Plugins() {
       void refetch();
     }
   }, [tasksCount, refetch]);
+
+  useEffect(() => {
+    setActiveCategoryId("all");
+  }, [activeTab]);
 
   const installedPlugins = useMemo(() => plugins.filter((p) => p.installed), [plugins]);
   const availablePlugins = useMemo(() => plugins.filter((p) => !p.installed), [plugins]);
@@ -149,16 +302,62 @@ export default function Plugins() {
     return [];
   }, [activeTab, installedPlugins, availablePlugins]);
 
+  const categoryTabs = useMemo<PluginCategoryTab[]>(() => {
+    const byId = new Map<string, PluginCategoryTab>();
+
+    for (const plugin of displayedPlugins) {
+      const categories = getPluginCategoryMetadata(plugin as PluginWithCategories);
+
+      for (const category of categories) {
+        const current = byId.get(category.id);
+
+        byId.set(category.id, {
+          id: category.id,
+          title: category.title,
+          description: category.description,
+          count: (current?.count ?? 0) + 1,
+        });
+      }
+    }
+
+    return Array.from(byId.values()).sort((a, b) => {
+      if (a.id === "unclassified") return 1;
+      if (b.id === "unclassified") return -1;
+      return a.title.localeCompare(b.title);
+    });
+  }, [displayedPlugins]);
+
+  useEffect(() => {
+    if (activeTab === "tasks") return;
+    if (activeCategoryId === "all") return;
+
+    const exists = categoryTabs.some((category) => category.id === activeCategoryId);
+    if (!exists) setActiveCategoryId("all");
+  }, [activeTab, activeCategoryId, categoryTabs]);
+
   const filteredPlugins = useMemo(() => {
     const term = search.trim().toLowerCase();
-    if (!term) return displayedPlugins;
 
     return displayedPlugins.filter((p) => {
+      const categoryIds = getPluginCategoryIds(p as PluginWithCategories);
+      const categoryText = getPluginCategoryMetadata(p as PluginWithCategories)
+        .map((category) => `${category.id} ${category.title} ${category.description ?? ""}`)
+        .join(" ")
+        .toLowerCase();
+
+      const matchesCategory =
+        activeCategoryId === "all" || categoryIds.includes(activeCategoryId);
+
+      if (!matchesCategory) return false;
+
+      if (!term) return true;
+
       const name = (p.name ?? "").toLowerCase();
       const pipName = (p.pipName ?? "").toLowerCase();
-      return name.includes(term) || pipName.includes(term);
+
+      return name.includes(term) || pipName.includes(term) || categoryText.includes(term);
     });
-  }, [displayedPlugins, search]);
+  }, [displayedPlugins, search, activeCategoryId]);
 
   const filteredTasks = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -188,10 +387,10 @@ export default function Plugins() {
   return (
     <>
       <PageMeta title="Scipion | Plugins" description="Plugins page" />
+
       <CardShell
         title="Plugins"
         subtitle="Install, remove, and monitor Scipion plugins and background tasks."
-
       >
         {loading && (
           <div
@@ -220,21 +419,64 @@ export default function Plugins() {
               <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
                 <div className="rounded-xl border border-gray-300/80 bg-white/70 p-1 dark:border-gray-700/80 dark:bg-white/[0.02]">
                   <div className="flex flex-wrap gap-1">
-                    <TabButton active={activeTab === "installed"} onClick={() => setActiveTab("installed")}>
+                    <TabButton
+                      active={activeTab === "installed"}
+                      onClick={() => setActiveTab("installed")}
+                    >
                       Installed ({installedPlugins.length})
                     </TabButton>
-                    <TabButton active={activeTab === "available"} onClick={() => setActiveTab("available")}>
+
+                    <TabButton
+                      active={activeTab === "available"}
+                      onClick={() => setActiveTab("available")}
+                    >
                       Available ({availablePlugins.length})
                     </TabButton>
-                    <TabButton active={activeTab === "tasks"} onClick={() => setActiveTab("tasks")}>
+
+                    <TabButton
+                      active={activeTab === "tasks"}
+                      onClick={() => setActiveTab("tasks")}
+                    >
                       Tasks ({tasksCount})
                     </TabButton>
                   </div>
                 </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <StatPill label="Installed" value={installedPlugins.length} />
+                  <StatPill label="Available" value={availablePlugins.length} />
+                  <StatPill label="Tasks" value={tasksCount} />
+                </div>
               </div>
+
+              
+
+              {activeTab !== "tasks" ? (
+                <div className="rounded-xl border border-gray-300/80 bg-white/70 p-1 dark:border-gray-700/80 dark:bg-white/[0.02]">
+                  <div className="flex flex-wrap gap-1">
+                    <TabButton
+                      active={activeCategoryId === "all"}
+                      onClick={() => setActiveCategoryId("all")}
+                    >
+                      All ({displayedPlugins.length})
+                    </TabButton>
+
+                    {categoryTabs.map((category) => (
+                      <TabButton
+                        key={category.id}
+                        active={activeCategoryId === category.id}
+                        onClick={() => setActiveCategoryId(category.id)}
+                      >
+                        {category.title} ({category.count})
+                      </TabButton>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
 
               <div className="relative w-full max-w-[420px]">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
+
                 <input
                   type="text"
                   placeholder={activeTab === "tasks" ? "Search task…" : "Search plugin…"}
@@ -248,6 +490,7 @@ export default function Plugins() {
                     "dark:focus:border-indigo-400/40 dark:focus:ring-indigo-400/15",
                   )}
                 />
+
                 {search ? (
                   <button
                     type="button"
@@ -259,6 +502,7 @@ export default function Plugins() {
                   </button>
                 ) : null}
               </div>
+
             </div>
 
             {activeTab === "tasks" ? (
@@ -289,14 +533,16 @@ export default function Plugins() {
                       title={`Open ${t.pluginName ?? t.pipName}`}
                       aria-label={`Open ${t.pluginName ?? t.pipName}`}
                     >
-                      <div className="col-span-12 md:col-span-4 min-w-0">
+                      <div className="col-span-12 min-w-0 md:col-span-4">
                         <div className="truncate text-sm font-semibold text-gray-900 dark:text-white/90">
                           {t.pluginName ?? t.pipName}
                         </div>
-                        <div className="mt-1 truncate text-xs text-gray-500 dark:text-gray-400">{t.pipName}</div>
+                        <div className="mt-1 truncate text-xs text-gray-500 dark:text-gray-400">
+                          {t.pipName}
+                        </div>
                       </div>
 
-                      <div className="col-span-6 md:col-span-3 text-sm text-gray-700 dark:text-gray-300">
+                      <div className="col-span-6 text-sm text-gray-700 dark:text-gray-300 md:col-span-3">
                         {t.operation === "install" ? "Install/Update" : "Uninstall"}
                       </div>
 
@@ -309,15 +555,19 @@ export default function Plugins() {
                         </span>
 
                         {t.step ? (
-                          <div className="mt-1 break-all text-xs text-gray-600 dark:text-gray-400">{t.step}</div>
+                          <div className="mt-1 break-all text-xs text-gray-600 dark:text-gray-400">
+                            {t.step}
+                          </div>
                         ) : null}
 
                         {t.error ? (
-                          <div className="mt-1 break-all text-xs text-red-500 dark:text-red-300">{t.error}</div>
+                          <div className="mt-1 break-all text-xs text-red-500 dark:text-red-300">
+                            {t.error}
+                          </div>
                         ) : null}
                       </div>
 
-                      <div className="col-span-12 md:col-span-2 text-left text-xs text-gray-600 dark:text-gray-400 md:text-right">
+                      <div className="col-span-12 text-left text-xs text-gray-600 dark:text-gray-400 md:col-span-2 md:text-right">
                         {formatTimeAgo(t.updatedAtMs)}
                       </div>
                     </button>

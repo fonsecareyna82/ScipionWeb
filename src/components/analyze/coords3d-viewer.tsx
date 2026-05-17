@@ -36,6 +36,7 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { useProjectService } from "@/ProjectServiceContext";
 import type { Id, Coordinates3dTomogramPoints } from "@/services/ProjectService";
 import { MetadataViewer } from "./metadata-viewer";
+import ExternalViewersBar from "./ExternalViewersBar";
 
 type Coords3dViewerProps = {
   projectId: Id;
@@ -1780,6 +1781,15 @@ export default function Coords3dViewer({
                   flexWrap: "wrap",
                 }}
               >
+                <ExternalViewersBar
+                  projectId={projectId}
+                  protocolId={protocolId}
+                  outputName={outputName}
+                  objectId={selectedTomoId}
+                  objectKind="coords3dTomogram"
+                  disabled={selectedTomoId == null}
+                />
+
                 <Chip
                   size="small"
                   variant="outlined"

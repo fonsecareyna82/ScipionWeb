@@ -24,6 +24,7 @@ import { useProjectService } from "@/ProjectServiceContext";
 import { ZoomIn, Layers3, HelpCircle, BoxIcon, Table as TableLucide, Pause, Play } from "lucide-react";
 import GpuVolumeView from "./gpu-volume-view";
 import { MetadataViewer } from "./metadata-viewer";
+import ExternalViewersBar from "./ExternalViewersBar";
 
 type VolumeViewerProps = {
   projectId: string | number;
@@ -902,7 +903,25 @@ export default function VolumeViewer({
               </ToggleButtonGroup>
             </Box>
 
-            <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "flex-end",
+                gap: 0.75,
+                flexWrap: "wrap",
+                minWidth: 0,
+              }}
+            >
+              <ExternalViewersBar
+                projectId={projectId}
+                protocolId={protocolId}
+                outputName={outputName}
+                objectId={selectedId}
+                objectKind="volume"
+                disabled={selectedId == null}
+              />
+
               {viewMode === "map3d" && (
                 <Tooltip title={autoRotate3d ? "Pause rotation" : "Play rotation"}>
                   <span>
@@ -938,7 +957,11 @@ export default function VolumeViewer({
                   <Typography
                     variant="caption"
                     color="text.secondary"
-                    sx={{ fontVariantNumeric: "tabular-nums", minWidth: "5ch", textAlign: "right" }}
+                    sx={{
+                      fontVariantNumeric: "tabular-nums",
+                      minWidth: "5ch",
+                      textAlign: "right",
+                    }}
                   >
                     {Math.round(zoomMul * 100)}%
                   </Typography>

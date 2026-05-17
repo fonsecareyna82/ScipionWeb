@@ -48,6 +48,11 @@ import type {
   WriteRemoteFileResult,
   CreateCoords2dOutputPayload,
   CreateCoords2dOutputResult,
+  RenameProtocolPayload,
+  ExternalViewerDescriptor,
+  ExternalViewerListOptions,
+  ExternalViewerLaunchPayload,
+  ExternalViewerLaunchResult,
 
 } from "@/services/ProjectService";
 
@@ -151,8 +156,8 @@ const defaultService: ProjectService = {
     params: Record<string, unknown>,
   ) => api.saveProtocol(toId(projectId), toId(protocolId), protocolClassName, params),
 
-  renameProtocol: (projectId: Id, protocolId: Id, newName: string) =>
-    api.renameProtocol(toId(projectId), toId(protocolId), newName),
+  renameProtocol: (projectId: Id, protocolId: Id, payload: RenameProtocolPayload,) =>
+    api.renameProtocol(toId(projectId), toId(protocolId), payload),
 
   duplicateProtocol: (projectId: Id, items: { id: string; name?: string }[]) =>
     api.duplicateProtocol(toId(projectId), items),
@@ -271,6 +276,34 @@ const defaultService: ProjectService = {
       title: (raw as any).title,
     };
   },
+
+    listExternalViewers: (
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    opts?: ExternalViewerListOptions,
+  ): Promise<ExternalViewerDescriptor[]> =>
+    api.listExternalViewers(
+      toId(projectId),
+      toId(protocolId),
+      outputName,
+      opts,
+    ),
+
+  launchExternalViewer: (
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    viewerId: string,
+    payload?: ExternalViewerLaunchPayload,
+  ): Promise<ExternalViewerLaunchResult> =>
+    api.launchExternalViewer(
+      toId(projectId),
+      toId(protocolId),
+      outputName,
+      viewerId,
+      payload,
+    ),
 
 
   // ──────────────────────────── Analyze Results: Volumes ────────────────────────────

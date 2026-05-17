@@ -150,6 +150,7 @@ export default function ProtocolOutputsPanel({
         const ctx = {
             projectId: projectIdStr,
             protocolId: protocolIdStr,
+            protocolLabel,
             outputName: String(activeOutput.name ?? ""),
             outputRaw,
             pointerClass: String(outputRaw?.pointerClass ?? outputRaw?.paramClass ?? outputRaw?._class ?? ""),
