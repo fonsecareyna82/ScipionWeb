@@ -23,6 +23,8 @@ import Plot from "react-plotly.js";
 import { useProjectService } from "@/ProjectServiceContext";
 import { ZoomIn, Layers3, HelpCircle, BoxIcon, Table as TableLucide, Pause, Play } from "lucide-react";
 import GpuVolumeView from "./gpu-volume-view";
+import MeshVolumeView from "./mesh-volume-view";
+import type { VolumeSurfaceMesh } from "@/services/ProjectService";
 import { MetadataViewer } from "./metadata-viewer";
 import ExternalViewersBar from "./ExternalViewersBar";
 
@@ -82,9 +84,7 @@ const HELP_TEXT: Record<string, string> = {
   surfaceCount:
     "Number of isosurfaces in Plotly fallback. Does not affect GPU raycasting.",
   isoRenderMode3d:
-    "How the iso band is visualized in GPU mode. Surface mimics ChimeraX-like solid shells; Volume renders the full band.",
-  surfaceThickness3d:
-    "Thickness of the surface shell as a fraction of the iso band width.",
+    "Surface loads a real marching-cubes mesh, closer to Chimera/EMAN. Volume renders the density field by GPU raycasting.",
   axis: "Slice axis. Z/Y/X correspond to the 3D volume axes.",
   sliceLayout:
     "Single shows one slice view at a time. Triple shows synchronized orthogonal Z/Y/X views at once.",
@@ -106,6 +106,10 @@ const HELP_TEXT: Record<string, string> = {
     "Pan single-view slices with Ctrl+drag or middle mouse. Reset with Fit.",
   zoom2d:
     "Mouse wheel zooms single-view slices. Double-click fits and resets pan.",
+  surfaceLevel3d:
+    "Absolute iso level for the marching-cubes surface. Leave it empty to let the backend choose an automatic level.",
+  maxTriangles3d:
+    "Maximum number of triangles returned by the backend surface mesh. Higher values preserve more detail but are heavier.",
 };
 
 const SliceSlider = styled(Slider)(({ theme }) => ({
@@ -207,9 +211,14 @@ export default function VolumeViewer({
     max?: number;
   } | null>(null);
 
-  const [maxDim3d, setMaxDim3d] = useState(96);
+  const [surfaceMesh, setSurfaceMesh] = useState<VolumeSurfaceMesh | null>(null);
+  const [surfaceLevel3d, setSurfaceLevel3d] = useState<number | null>(null);
+  const [surfaceResolvedLevel, setSurfaceResolvedLevel] = useState<number | null>(null);
+  const [maxTriangles3d, setMaxTriangles3d] = useState(350000);
+
+  const [maxDim3d, setMaxDim3d] = useState(192);
   const [method3d, setMethod3d] = useState<"binning" | "stride" | "none">(
-    "binning",
+    "stride",
   );
 
   const [surfaceCount, setSurfaceCount] = useState(3);
@@ -222,13 +231,22 @@ export default function VolumeViewer({
 
   const [renderMode3d, setRenderMode3d] =
     useState<RenderMode3d>("surface");
-  const [surfaceThickness3d, setSurfaceThickness3d] = useState(0.12);
 
   const lastLoadedRef = useRef<{
     volumeId: string | number | null;
     maxDim: number;
     method: "binning" | "stride" | "none";
-  }>({ volumeId: null, maxDim: 96, method: "binning" });
+    renderMode: RenderMode3d;
+    surfaceLevel: number | null;
+    maxTriangles: number;
+  }>({
+    volumeId: null,
+    maxDim: 192,
+    method: "stride",
+    renderMode: "surface",
+    surfaceLevel: null,
+    maxTriangles: 350000,
+  });
 
   const lastThrVolumeRef = useRef<string | number | null>(null);
 
@@ -259,7 +277,10 @@ export default function VolumeViewer({
 
   useEffect(() => {
     const shouldAnimatePlotly =
-      viewMode === "map3d" && autoRotate3d && (gpuError || !mapData);
+      viewMode === "map3d" &&
+      renderMode3d === "volume" &&
+      autoRotate3d &&
+      (gpuError || !mapData);
 
     if (!shouldAnimatePlotly) {
       if (plotlyAnimHandleRef.current != null) {
@@ -304,7 +325,14 @@ export default function VolumeViewer({
         plotlyAnimHandleRef.current = null;
       }
     };
-  }, [viewMode, autoRotate3d, gpuError, mapData]);
+  }, [viewMode, renderMode3d, autoRotate3d, gpuError, mapData]);
+
+  useEffect(() => {
+    setSurfaceMesh(null);
+    setSurfaceResolvedLevel(null);
+    setSurfaceLevel3d(null);
+    setGpuError(null);
+  }, [selectedId]);
 
   useEffect(() => {
     setRightTab("ctrl");
@@ -568,11 +596,44 @@ export default function VolumeViewer({
 
   const load3d = useCallback(async () => {
     if (selectedId == null) return;
+
     setMapLoading(true);
     setMapError(null);
     setGpuError(null);
 
     try {
+      if (renderMode3d === "surface") {
+        const mesh = await svc.getVolumeSurfaceMesh(
+          projectId,
+          protocolId,
+          outputName,
+          selectedId,
+          {
+            level: surfaceLevel3d,
+            maxDim: maxDim3d,
+            method: method3d,
+            maxTriangles: maxTriangles3d,
+          },
+        );
+
+        setSurfaceMesh(mesh);
+        setSurfaceResolvedLevel(
+          Number.isFinite(mesh?.level) ? Number(mesh.level) : null,
+        );
+        setMapData(null);
+
+        lastLoadedRef.current = {
+          volumeId: selectedId,
+          maxDim: maxDim3d,
+          method: method3d,
+          renderMode: renderMode3d,
+          surfaceLevel: surfaceLevel3d,
+          maxTriangles: maxTriangles3d,
+        };
+
+        return;
+      }
+
       const raw = await svc.getVolumeData3d(
         projectId,
         protocolId,
@@ -582,16 +643,24 @@ export default function VolumeViewer({
       );
 
       const parsed = normalize3dPayload(raw);
+
       setMapData(parsed);
+      setSurfaceMesh(null);
+      setSurfaceResolvedLevel(null);
 
       lastLoadedRef.current = {
         volumeId: selectedId,
         maxDim: maxDim3d,
         method: method3d,
+        renderMode: renderMode3d,
+        surfaceLevel: surfaceLevel3d,
+        maxTriangles: maxTriangles3d,
       };
     } catch (e: any) {
       setMapError(e?.message || "Failed to load 3D data");
       setMapData(null);
+      setSurfaceMesh(null);
+      setSurfaceResolvedLevel(null);
     } finally {
       setMapLoading(false);
     }
@@ -603,6 +672,9 @@ export default function VolumeViewer({
     outputName,
     maxDim3d,
     method3d,
+    renderMode3d,
+    surfaceLevel3d,
+    maxTriangles3d,
   ]);
 
   useEffect(() => {
@@ -610,19 +682,33 @@ export default function VolumeViewer({
     if (selectedId == null) return;
 
     const last = lastLoadedRef.current;
-    if (last.volumeId !== selectedId) load3d();
-  }, [viewMode, selectedId, load3d]);
+    if (last.volumeId !== selectedId || last.renderMode !== renderMode3d) {
+      load3d();
+    }
+  }, [viewMode, selectedId, renderMode3d, load3d]);
 
   const dataDirty = useMemo(() => {
     const last = lastLoadedRef.current;
+
     return (
       viewMode === "map3d" &&
       selectedId != null &&
       (last.volumeId !== selectedId ||
         last.maxDim !== maxDim3d ||
-        last.method !== method3d)
+        last.method !== method3d ||
+        last.renderMode !== renderMode3d ||
+        last.surfaceLevel !== surfaceLevel3d ||
+        last.maxTriangles !== maxTriangles3d)
     );
-  }, [viewMode, selectedId, maxDim3d, method3d]);
+  }, [
+    viewMode,
+    selectedId,
+    maxDim3d,
+    method3d,
+    renderMode3d,
+    surfaceLevel3d,
+    maxTriangles3d,
+  ]);
 
   const sortedValues = useMemo(() => {
     if (!mapData?.values?.length) return null;
@@ -773,6 +859,10 @@ export default function VolumeViewer({
       el.removeEventListener("pointerleave", onPointerUp);
     };
   }, [viewMode, sliceLayoutMode, frontUrl]);
+
+  const handleMeshError = useCallback((msg: string) => {
+    setGpuError(msg);
+  }, []);
 
   const panelBasis = 340;
 
@@ -984,7 +1074,11 @@ export default function VolumeViewer({
           >
             <Box
               ref={viewerRef}
-              onDoubleClick={sliceLayoutMode === "single" ? fitZoom : undefined}
+              onDoubleClick={
+                viewMode === "slices" && sliceLayoutMode === "single"
+                  ? fitZoom
+                  : undefined
+              }
               sx={{
                 flex: 1,
                 minHeight: 0,
@@ -1092,7 +1186,20 @@ export default function VolumeViewer({
                 <Typography variant="body2" color="error">
                   {mapError}
                 </Typography>
-              ) : mapData && stats3d && isoRange3d && !gpuError ? (
+              ) : renderMode3d === "surface" && surfaceMesh && !gpuError ? (
+                <MeshVolumeView
+                  mesh={surfaceMesh}
+                  opacity={opacity3d}
+                  colormap={colormap3d}
+                  autoRotate={autoRotate3d}
+                  autoRotateSpeed={3.8}
+                  onError={handleMeshError}
+                />
+              ) : renderMode3d === "surface" && gpuError ? (
+                <Typography variant="body2" color="error">
+                  {gpuError}
+                </Typography>
+              ) : renderMode3d === "volume" && mapData && stats3d && isoRange3d && !gpuError ? (
                 <GpuVolumeView
                   values={mapData.values}
                   dims={mapData.dims}
@@ -1104,13 +1211,12 @@ export default function VolumeViewer({
                   isoMax={isoRange3d[1]}
                   opacity={opacity3d}
                   colormap={colormap3d}
-                  renderMode={renderMode3d}
-                  shell={surfaceThickness3d}
+                  renderMode="volume"
                   autoRotate={autoRotate3d}
                   autoRotateSpeed={3.8}
                   onError={(msg) => setGpuError(msg)}
                 />
-              ) : mapData && stats3d && isoRange3d ? (
+              ) : renderMode3d === "volume" && mapData && stats3d && isoRange3d ? (
                 <Box sx={{ width: "100%", height: "100%" }}>
                   {(() => {
                     const plotProps: any = {
@@ -1144,11 +1250,15 @@ export default function VolumeViewer({
                       config: { displaylogo: false, responsive: true, scrollZoom: true },
                       onRelayout: handleRelayout,
                     };
-                    // forceRerenderWhileAutoRotatingPlotly
+
                     void plotlyAnimTick;
                     return <Plot {...plotProps} />;
                   })()}
                 </Box>
+              ) : gpuError ? (
+                <Typography variant="body2" color="error">
+                  {gpuError}
+                </Typography>
               ) : (
                 <Typography variant="body2" color="text.secondary">
                   No 3D data. Press Reload.
@@ -1169,6 +1279,18 @@ export default function VolumeViewer({
                       label="Downsampled"
                       value={`${mapData.dims.x} × ${mapData.dims.y} × ${mapData.dims.z}`}
                     />
+                  )}
+                  {viewMode === "map3d" && renderMode3d === "surface" && surfaceMesh && (
+                    <>
+                      <MetaItem
+                        label="Surface"
+                        value={`${surfaceMesh.vertexCount} vertices / ${surfaceMesh.triangleCount} tris`}
+                      />
+                      <MetaItem
+                        label="Level"
+                        value={formatSci(surfaceResolvedLevel ?? surfaceMesh.level)}
+                      />
+                    </>
                   )}
                 </Box>
               </>
@@ -1493,6 +1615,24 @@ export default function VolumeViewer({
                           </TextField>
                         }
                       />
+                      {renderMode3d === "surface" && (
+                        <ParamRow
+                          label="Max triangles"
+                          helpKey="maxTriangles3d"
+                          onHelp={openHelp}
+                          control={
+                            <TextField
+                              size="small"
+                              type="number"
+                              value={maxTriangles3d}
+                              onChange={(e) =>
+                                setMaxTriangles3d(clampInt(e.target.value, 1000, 1500000))
+                              }
+                              inputProps={{ min: 1000, max: 1500000, step: 50000 }}
+                            />
+                          }
+                        />
+                      )}
                       <Button
                         size="small"
                         variant={dataDirty ? "contained" : "outlined"}
@@ -1540,20 +1680,22 @@ export default function VolumeViewer({
                         }
                       />
 
-                      <ParamRow
-                        label="Surfaces"
-                        helpKey="surfaceCount"
-                        onHelp={openHelp}
-                        control={
-                          <TextField
-                            size="small"
-                            type="number"
-                            value={surfaceCount}
-                            onChange={(e) => setSurfaceCount(clampInt(e.target.value, 1, 8))}
-                            inputProps={{ min: 1, max: 8, step: 1 }}
-                          />
-                        }
-                      />
+                      {renderMode3d === "volume" && (
+                        <ParamRow
+                          label="Surfaces"
+                          helpKey="surfaceCount"
+                          onHelp={openHelp}
+                          control={
+                            <TextField
+                              size="small"
+                              type="number"
+                              value={surfaceCount}
+                              onChange={(e) => setSurfaceCount(clampInt(e.target.value, 1, 8))}
+                              inputProps={{ min: 1, max: 8, step: 1 }}
+                            />
+                          }
+                        />
+                      )}
 
                       <Divider />
 
@@ -1576,91 +1718,116 @@ export default function VolumeViewer({
                       />
 
                       {renderMode3d === "surface" && (
-                        <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
-                          <Box sx={{ display: "inline-flex", gap: 0.5, alignItems: "center" }}>
+                        <>
+                          <ParamRow
+                            label="Iso level"
+                            helpKey="surfaceLevel3d"
+                            onHelp={openHelp}
+                            control={
+                              <TextField
+                                size="small"
+                                type="number"
+                                value={surfaceLevel3d ?? ""}
+                                placeholder="auto"
+                                onChange={(e) => {
+                                  const raw = e.target.value.trim();
+                                  if (!raw) {
+                                    setSurfaceLevel3d(null);
+                                    return;
+                                  }
+
+                                  const value = Number(raw);
+                                  if (Number.isFinite(value)) {
+                                    setSurfaceLevel3d(value);
+                                  }
+                                }}
+                                inputProps={{ step: 0.001 }}
+                              />
+                            }
+                          />
+
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            onClick={() => setSurfaceLevel3d(null)}
+                            sx={{ textTransform: "none", borderRadius: 1.5 }}
+                          >
+                            Auto level
+                          </Button>
+
+                          {surfaceResolvedLevel != null && (
                             <Typography variant="caption" color="text.secondary">
-                              Surface thickness
+                              Current level: {formatSci(surfaceResolvedLevel)}
                             </Typography>
-                            <IconButton size="small" onClick={openHelp("surfaceThickness3d")}>
+                          )}
+                        </>
+                      )}
+
+                      {renderMode3d === "volume" && (
+                        <Box sx={{ mt: 0.5 }}>
+                          <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                            <Typography variant="caption" color="text.secondary">
+                              Threshold
+                            </Typography>
+                            <IconButton size="small" onClick={openHelp("thrMode")}>
                               <HelpCircle size={14} />
                             </IconButton>
                           </Box>
-                          <Slider
+
+                          <ToggleButtonGroup
                             size="small"
-                            value={surfaceThickness3d}
-                            min={0.02}
-                            max={0.6}
-                            step={0.01}
-                            onChange={(_, v) => setSurfaceThickness3d(v as number)}
-                            valueLabelDisplay="auto"
-                            valueLabelFormat={(v) => (v as number).toFixed(2)}
-                          />
-                        </Box>
-                      )}
+                            exclusive
+                            value={thrMode}
+                            onChange={(_, v) => v && setThrMode(v)}
+                            sx={{ mb: 0.75 }}
+                          >
+                            <ToggleButton value="percentile">Percentile</ToggleButton>
+                            <ToggleButton value="absolute">Absolute</ToggleButton>
+                          </ToggleButtonGroup>
 
-                      <Box sx={{ mt: 0.5 }}>
-                        <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-                          <Typography variant="caption" color="text.secondary">
-                            Threshold
-                          </Typography>
-                          <IconButton size="small" onClick={openHelp("thrMode")}>
-                            <HelpCircle size={14} />
-                          </IconButton>
-                        </Box>
+                          {thrMode === "percentile" && (
+                            <>
+                              <Slider
+                                size="small"
+                                value={thrPct}
+                                min={0}
+                                max={100}
+                                step={1}
+                                onChange={(_, v) => {
+                                  const arr = v as number[];
+                                  const lo = Math.min(arr[0], arr[1]);
+                                  const hi = Math.max(arr[0], arr[1]);
+                                  setThrPct([lo, Math.max(lo + 1, hi)] as [number, number]);
+                                }}
+                                valueLabelDisplay="auto"
+                                disabled={!sortedValues}
+                              />
+                              {thrPctAbs && (
+                                <Typography variant="caption" color="text.secondary">
+                                  ≈ {formatSci(thrPctAbs[0])} – {formatSci(thrPctAbs[1])}
+                                </Typography>
+                              )}
+                            </>
+                          )}
 
-                        <ToggleButtonGroup
-                          size="small"
-                          exclusive
-                          value={thrMode}
-                          onChange={(_, v) => v && setThrMode(v)}
-                          sx={{ mb: 0.75 }}
-                        >
-                          <ToggleButton value="percentile">Percentile</ToggleButton>
-                          <ToggleButton value="absolute">Absolute</ToggleButton>
-                        </ToggleButtonGroup>
-
-                        {thrMode === "percentile" && (
-                          <>
+                          {thrMode === "absolute" && (
                             <Slider
                               size="small"
-                              value={thrPct}
-                              min={0}
-                              max={100}
-                              step={1}
+                              value={thrAbs}
+                              min={stats3d?.min ?? 0}
+                              max={stats3d?.max ?? 1}
+                              step={stats3d ? (stats3d.max - stats3d.min) / 400 : 0.001}
                               onChange={(_, v) => {
-                                const arr = v as number[];
-                                const lo = Math.min(arr[0], arr[1]);
-                                const hi = Math.max(arr[0], arr[1]);
-                                setThrPct([lo, Math.max(lo + 1, hi)] as [number, number]);
+                                const [lo, hi] = v as number[];
+                                setThrAbs([Math.min(lo, hi), Math.max(lo, hi)] as [number, number]);
                               }}
                               valueLabelDisplay="auto"
-                              disabled={!sortedValues}
+                              valueLabelFormat={(v) => formatSci(v as number)}
+                              disabled={!stats3d}
                             />
-                            {thrPctAbs && (
-                              <Typography variant="caption" color="text.secondary">
-                                ≈ {formatSci(thrPctAbs[0])} – {formatSci(thrPctAbs[1])}
-                              </Typography>
-                            )}
-                          </>
-                        )}
-
-                        {thrMode === "absolute" && (
-                          <Slider
-                            size="small"
-                            value={thrAbs}
-                            min={stats3d?.min ?? 0}
-                            max={stats3d?.max ?? 1}
-                            step={stats3d ? (stats3d.max - stats3d.min) / 400 : 0.001}
-                            onChange={(_, v) => {
-                              const [lo, hi] = v as number[];
-                              setThrAbs([Math.min(lo, hi), Math.max(lo, hi)] as [number, number]);
-                            }}
-                            valueLabelDisplay="auto"
-                            valueLabelFormat={(v) => formatSci(v as number)}
-                            disabled={!stats3d}
-                          />
-                        )}
-                      </Box>
+                          )}
+                        </Box>
+                      )}
                     </Box>
                   )}
 
