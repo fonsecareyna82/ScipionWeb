@@ -8,6 +8,7 @@ export type MeshVolumeViewProps = {
     opacity?: number;
     colormap?: string;
     autoRotate?: boolean;
+    displayMode?: "surface" | "mesh";
     autoRotateSpeed?: number;
     onError?: (message: string) => void;
 };
@@ -53,6 +54,7 @@ function disposeObject3d(root: THREE.Object3D): void {
 export default function MeshVolumeView({
     mesh,
     opacity = 1,
+    displayMode = "surface",
     colormap = "gray",
     autoRotate = false,
     autoRotateSpeed = 3.8,
@@ -76,8 +78,9 @@ export default function MeshVolumeView({
         material.color.copy(colorFromColormap(colormap));
         material.opacity = opacity;
         material.transparent = opacity < 1;
+        material.wireframe = displayMode === "mesh";
         material.needsUpdate = true;
-    }, [colormap, opacity]);
+    }, [colormap, opacity, displayMode]);
 
     useEffect(() => {
         autoRotateRef.current = autoRotate;
@@ -92,7 +95,7 @@ export default function MeshVolumeView({
         if (!host) return;
 
         if (!mesh?.vertices?.length || !mesh?.indices?.length) {
-            onError?.("Surface mesh is empty.");
+            onErrorRef.current?.("Surface mesh is empty.");
             return;
         }
 
@@ -147,15 +150,14 @@ export default function MeshVolumeView({
                 ONE: THREE.TOUCH.ROTATE,
                 TWO: THREE.TOUCH.DOLLY_PAN,
             };
-            controls.enableDamping = true;
-            controls.dampingFactor = 0.08;
-            controls.rotateSpeed = 0.75;
-            controls.zoomSpeed = 0.85;
-            controls.panSpeed = 0.55;
             controls.target.set(0, 0, 0);
 
             const stopViewerEvent = (event: Event) => {
                 event.stopPropagation();
+
+                if (event.type === "contextmenu") {
+                    event.preventDefault();
+                }
             };
 
             const viewerEvents = [
@@ -198,6 +200,7 @@ export default function MeshVolumeView({
                 metalness: 0.02,
                 transparent: opacity < 1,
                 opacity,
+                wireframe: displayMode === "mesh",
                 side: THREE.DoubleSide,
             });
 

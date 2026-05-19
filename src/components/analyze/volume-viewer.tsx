@@ -47,7 +47,7 @@ type ViewMode = "slices" | "map3d" | "metadata";
 type ThrMode = "percentile" | "absolute";
 type RightTab = "ctrl" | "hist";
 type Interp2d = "nearest" | "linear" | "high";
-type RenderMode3d = "surface" | "volume";
+type RenderMode3d = "surface" | "mesh" | "volume";
 type SliceLayoutMode = "single" | "triple";
 
 type SliceImageState = {
@@ -231,6 +231,8 @@ export default function VolumeViewer({
 
   const [renderMode3d, setRenderMode3d] =
     useState<RenderMode3d>("surface");
+
+  const usesSurfaceMesh3d = renderMode3d === "surface" || renderMode3d === "mesh";
 
   const lastLoadedRef = useRef<{
     volumeId: string | number | null;
@@ -602,7 +604,7 @@ export default function VolumeViewer({
     setGpuError(null);
 
     try {
-      if (renderMode3d === "surface") {
+      if (usesSurfaceMesh3d) {
         const mesh = await svc.getVolumeSurfaceMesh(
           projectId,
           protocolId,
@@ -675,6 +677,7 @@ export default function VolumeViewer({
     renderMode3d,
     surfaceLevel3d,
     maxTriangles3d,
+    usesSurfaceMesh3d
   ]);
 
   useEffect(() => {
@@ -865,6 +868,24 @@ export default function VolumeViewer({
   }, []);
 
   const panelBasis = 340;
+
+  const surfaceLevelRange = useMemo<[number, number] | null>(() => {
+    const min = Number(meta?.min);
+    const max = Number(meta?.max);
+
+    if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) {
+      return null;
+    }
+
+    return [min, max];
+  }, [meta]);
+
+  const surfaceLevelValue = useMemo(() => {
+    if (surfaceLevel3d != null) return surfaceLevel3d;
+    if (surfaceResolvedLevel != null) return surfaceResolvedLevel;
+    if (surfaceLevelRange) return surfaceLevelRange[0] + 0.75 * (surfaceLevelRange[1] - surfaceLevelRange[0]);
+    return 0;
+  }, [surfaceLevel3d, surfaceResolvedLevel, surfaceLevelRange]);
 
   return (
     <Box
@@ -1186,16 +1207,17 @@ export default function VolumeViewer({
                 <Typography variant="body2" color="error">
                   {mapError}
                 </Typography>
-              ) : renderMode3d === "surface" && surfaceMesh && !gpuError ? (
+              ) : usesSurfaceMesh3d && surfaceMesh && !gpuError ? (
                 <MeshVolumeView
                   mesh={surfaceMesh}
+                  displayMode={renderMode3d === "mesh" ? "mesh" : "surface"}
                   opacity={opacity3d}
                   colormap={colormap3d}
                   autoRotate={autoRotate3d}
                   autoRotateSpeed={3.8}
                   onError={handleMeshError}
                 />
-              ) : renderMode3d === "surface" && gpuError ? (
+              ) : usesSurfaceMesh3d && gpuError ? (
                 <Typography variant="body2" color="error">
                   {gpuError}
                 </Typography>
@@ -1615,7 +1637,7 @@ export default function VolumeViewer({
                           </TextField>
                         }
                       />
-                      {renderMode3d === "surface" && (
+                      {usesSurfaceMesh3d && (
                         <ParamRow
                           label="Max triangles"
                           helpKey="maxTriangles3d"
@@ -1712,6 +1734,7 @@ export default function VolumeViewer({
                             onChange={(_, v) => v && setRenderMode3d(v)}
                           >
                             <ToggleButton value="surface">surface</ToggleButton>
+                            <ToggleButton value="mesh">mesh</ToggleButton>
                             <ToggleButton value="volume">volume</ToggleButton>
                           </ToggleButtonGroup>
                         }
@@ -1746,10 +1769,64 @@ export default function VolumeViewer({
                             }
                           />
 
+                          {surfaceLevelRange && (
+                            <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
+                              <Box sx={{ display: "flex", justifyContent: "space-between", gap: 1 }}>
+                                <Typography variant="caption" color="text.secondary">
+                                  Level
+                                </Typography>
+                                <Typography variant="caption" color="text.secondary">
+                                  {formatSci(surfaceLevelValue)}
+                                </Typography>
+                              </Box>
+
+                              <Slider
+                                size="small"
+                                value={surfaceLevelValue}
+                                min={surfaceLevelRange[0]}
+                                max={surfaceLevelRange[1]}
+                                step={(surfaceLevelRange[1] - surfaceLevelRange[0]) / 500}
+                                valueLabelDisplay="auto"
+                                valueLabelFormat={(v) => formatSci(v as number)}
+                                onChange={(_, v) => {
+                                  const value = Array.isArray(v) ? v[0] : v;
+                                  if (Number.isFinite(value)) {
+                                    setSurfaceLevel3d(value as number);
+                                  }
+                                }}
+                                onChangeCommitted={(_, v) => {
+                                  const value = Array.isArray(v) ? v[0] : v;
+                                  if (!Number.isFinite(value)) return;
+
+                                  const level = value as number;
+                                  setSurfaceLevel3d(level);
+
+                                  window.setTimeout(() => {
+                                    void load3d();
+                                  }, 0);
+                                }}
+                              />
+
+                              <Box sx={{ display: "flex", justifyContent: "space-between" }}>
+                                <Typography variant="caption" color="text.secondary">
+                                  {formatSci(surfaceLevelRange[0])}
+                                </Typography>
+                                <Typography variant="caption" color="text.secondary">
+                                  {formatSci(surfaceLevelRange[1])}
+                                </Typography>
+                              </Box>
+                            </Box>
+                          )}
+
                           <Button
                             size="small"
                             variant="outlined"
-                            onClick={() => setSurfaceLevel3d(null)}
+                            onClick={() => {
+                              setSurfaceLevel3d(null);
+                              window.setTimeout(() => {
+                                void load3d();
+                              }, 0);
+                            }}
                             sx={{ textTransform: "none", borderRadius: 1.5 }}
                           >
                             Auto level
