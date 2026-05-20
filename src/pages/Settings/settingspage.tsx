@@ -39,7 +39,7 @@ import { useTheme } from "@mui/material/styles";
 
 import { useProjectService } from "@/ProjectServiceContext";
 import { TreeIcon } from "@/icons";
-import { LayoutGrid, Table, Search, Save, RotateCcw, RefreshCw } from "lucide-react";
+import { LayoutGrid, Table, Search, Save, RotateCcw, RefreshCw, Plus } from "lucide-react";
 import PageMeta from "@/components/common/PageMeta";
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 
@@ -113,6 +113,7 @@ const defaultInstanceSettings: InstanceSettings = {
 
 const wrapperMaxWidth = 980;
 const fieldFontSize = 12;
+const environmentNamePattern = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 function safeStringify(value: unknown): string {
   // safeStringify
@@ -395,6 +396,9 @@ export default function SettingsPage() {
   const [environmentDraft, setEnvironmentDraft] = useState<EnvironmentRow[]>([]);
   const [environmentLoadedOnce, setEnvironmentLoadedOnce] = useState(false);
   const [environmentFilter, setEnvironmentFilter] = useState("");
+
+  const [newEnvironmentName, setNewEnvironmentName] = useState("");
+  const [newEnvironmentValue, setNewEnvironmentValue] = useState("");
 
   const [showAdvanced, setShowAdvanced] = useState(false);
 
@@ -707,6 +711,69 @@ export default function SettingsPage() {
       return name.includes(q) || value.includes(q);
     });
   }, [environmentDraft, environmentFilter]);
+
+  const newEnvironmentNameTrimmed = useMemo(() => {
+    return newEnvironmentName.trim();
+  }, [newEnvironmentName]);
+
+  const newEnvironmentNameExists = useMemo(() => {
+    if (!newEnvironmentNameTrimmed) return false;
+
+    return environmentDraft.some(
+      (row) => row.name === newEnvironmentNameTrimmed,
+    );
+  }, [environmentDraft, newEnvironmentNameTrimmed]);
+
+  const newEnvironmentNameInvalid = useMemo(() => {
+    if (!newEnvironmentNameTrimmed) return false;
+
+    return !environmentNamePattern.test(newEnvironmentNameTrimmed);
+  }, [newEnvironmentNameTrimmed]);
+
+  const canAddEnvironmentVariable = useMemo(() => {
+    return (
+      environmentAvailable &&
+      !environmentLoading &&
+      newEnvironmentNameTrimmed.length > 0 &&
+      !newEnvironmentNameExists &&
+      !newEnvironmentNameInvalid
+    );
+  }, [
+    environmentAvailable,
+    environmentLoading,
+    newEnvironmentNameTrimmed,
+    newEnvironmentNameExists,
+    newEnvironmentNameInvalid,
+  ]);
+
+  const handleAddEnvironmentVariable = useCallback(() => {
+    const name = newEnvironmentName.trim();
+
+    if (!name) {
+      toast.error("Variable name is required.");
+      return;
+    }
+
+    if (!environmentNamePattern.test(name)) {
+      toast.error("Variable name can only contain letters, numbers and underscores, and cannot start with a number.");
+      return;
+    }
+
+    if (environmentDraft.some((row) => row.name === name)) {
+      toast.error(`Environment variable ${name} already exists.`);
+      return;
+    }
+
+    setEnvironmentDraft((prev) => {
+      return [...prev, { name, value: newEnvironmentValue }].sort((a, b) =>
+        a.name.localeCompare(b.name),
+      );
+    });
+
+    setNewEnvironmentName("");
+    setNewEnvironmentValue("");
+    setEnvironmentFilter("");
+  }, [environmentDraft, newEnvironmentName, newEnvironmentValue]);
 
 
   const loadHostSettings = useCallback(async () => {
@@ -1687,6 +1754,77 @@ export default function SettingsPage() {
                   </Box>
                 </Grid>
               </Grid>
+
+              <Card
+                variant="outlined"
+                sx={{
+                  borderRadius: 2,
+                  bgcolor: colors.hover,
+                  borderColor: colors.border,
+                }}
+              >
+                <CardContent sx={{ p: 1.5, "&:last-child": { pb: 1.5 } }}>
+                  <Grid container spacing={1.25} sx={{ width: "100%" }} alignItems="flex-start">
+                    <Grid size={{ xs: 12, md: 4 }}>
+                      <TextField
+                        sx={fieldSx}
+                        fullWidth
+                        size="small"
+                        label="New variable"
+                        value={newEnvironmentName}
+                        disabled={environmentLoading}
+                        onChange={(e) => setNewEnvironmentName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && canAddEnvironmentVariable) {
+                            e.preventDefault();
+                            handleAddEnvironmentVariable();
+                          }
+                        }}
+                        error={newEnvironmentNameExists || newEnvironmentNameInvalid}
+                        helperText={
+                          newEnvironmentNameExists
+                            ? "This variable already exists."
+                            : newEnvironmentNameInvalid
+                              ? "Use letters, numbers and underscores. It cannot start with a number."
+                              : "Example: SCIPION_HOME"
+                        }
+                      />
+                    </Grid>
+
+                    <Grid size={{ xs: 12, md: 5 }}>
+                      <TextField
+                        sx={fieldSx}
+                        fullWidth
+                        size="small"
+                        label="Value"
+                        value={newEnvironmentValue}
+                        disabled={environmentLoading}
+                        onChange={(e) => setNewEnvironmentValue(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && e.ctrlKey && canAddEnvironmentVariable) {
+                            e.preventDefault();
+                            handleAddEnvironmentVariable();
+                          }
+                        }}
+                        helperText="Ctrl+Enter to add."
+                      />
+                    </Grid>
+
+                    <Grid size={{ xs: 12, md: 3 }}>
+                      <Button
+                        sx={{ ...actionButtonSx, height: 40, width: "100%" }}
+                        variant="outlined"
+                        size="small"
+                        startIcon={<Plus size={16} />}
+                        disabled={!canAddEnvironmentVariable}
+                        onClick={handleAddEnvironmentVariable}
+                      >
+                        Add variable
+                      </Button>
+                    </Grid>
+                  </Grid>
+                </CardContent>
+              </Card>
 
               {environmentDraft.length === 0 ? (
                 <Alert severity="info">No environment variables returned by the backend.</Alert>
