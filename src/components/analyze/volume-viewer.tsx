@@ -214,10 +214,8 @@ export default function VolumeViewer({
   const [surfaceMesh, setSurfaceMesh] = useState<VolumeSurfaceMesh | null>(null);
   const [surfaceLevel3d, setSurfaceLevel3d] = useState<number | null>(null);
   const [surfaceResolvedLevel, setSurfaceResolvedLevel] = useState<number | null>(null);
-  const [surfaceLevelRange, setSurfaceLevelRange] =
-    useState<[number, number] | null>(null);
+  const [surfaceLevelRange, setSurfaceLevelRange] = useState<[number, number] | null>(null);
 
-  useState<[number, number] | null>(null);
 
   const [surfaceRefreshing, setSurfaceRefreshing] = useState(false);
   const surfaceAbortRef = useRef<AbortController | null>(null);
@@ -249,7 +247,7 @@ export default function VolumeViewer({
   }>({
     volumeId: null,
     maxDim: 192,
-    method: "stride",
+    method: "none",
     renderMode: "surface",
     surfaceLevel: null,
   });
