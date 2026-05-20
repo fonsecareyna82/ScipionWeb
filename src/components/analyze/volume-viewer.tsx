@@ -237,6 +237,8 @@ export default function VolumeViewer({
     useState<RenderMode3d>("surface");
 
   const usesSurfaceMesh3d = renderMode3d === "surface" || renderMode3d === "mesh";
+  const needsHistogram =
+    showHistogram || (viewMode === "map3d" && usesSurfaceMesh3d && selectedId != null);
 
   const lastLoadedRef = useRef<{
     volumeId: string | number | null;
@@ -410,7 +412,7 @@ export default function VolumeViewer({
   }, [selectedId, projectId, protocolId, outputName, svc]);
 
   useEffect(() => {
-    if (!showHistogram || selectedId == null) {
+    if (!needsHistogram || selectedId == null) {
       setHistogram(null);
       setHistError(null);
       setHistLoading(false);
@@ -451,7 +453,7 @@ export default function VolumeViewer({
     return () => {
       cancelled = true;
     };
-  }, [showHistogram, selectedId, projectId, protocolId, outputName, svc]);
+  }, [needsHistogram, selectedId, projectId, protocolId, outputName, svc]);
 
   const dims = useMemo(() => getDimsZYXtoXYZ(meta), [meta]);
 
@@ -664,6 +666,8 @@ export default function VolumeViewer({
       setMapError(null);
       setGpuError(null);
 
+      const requestLevel = clampIsoLevelToOpenRange(level, surfaceLevelRange);
+
       try {
         const mesh = await svc.getVolumeSurfaceMesh(
           projectId,
@@ -671,7 +675,7 @@ export default function VolumeViewer({
           outputName,
           selectedId,
           {
-            level: clampIsoLevelToOpenRange(level, surfaceLevelRange),
+            level: requestLevel,
             maxDim: maxDim3d,
             method: method3d,
             maxTriangles: SURFACE_MAX_TRIANGLES,
@@ -705,7 +709,7 @@ export default function VolumeViewer({
           maxDim: maxDim3d,
           method: method3d,
           renderMode: renderMode3d,
-          surfaceLevel: level,
+          surfaceLevel: requestLevel,
         };
       } catch (e: any) {
         if (controller.signal.aborted || e?.name === "AbortError") return;
@@ -825,36 +829,6 @@ export default function VolumeViewer({
     method3d,
     renderMode3d,
     surfaceLevel3d,
-  ]);
-
-  useEffect(() => {
-    if (viewMode !== "map3d") return;
-    if (!usesSurfaceMesh3d) return;
-    if (selectedId == null) return;
-    if (surfaceLevel3d == null) return;
-
-    const last = lastLoadedRef.current;
-
-    if (last.volumeId !== selectedId) return;
-    if (last.maxDim !== maxDim3d) return;
-    if (last.method !== method3d) return;
-    if (last.surfaceLevel === surfaceLevel3d) return;
-
-    const handle = window.setTimeout(() => {
-      void reloadSurfaceMesh(surfaceLevel3d, { silent: true });
-    }, 250);
-
-    return () => {
-      window.clearTimeout(handle);
-    };
-  }, [
-    viewMode,
-    usesSurfaceMesh3d,
-    selectedId,
-    surfaceLevel3d,
-    maxDim3d,
-    method3d,
-    reloadSurfaceMesh,
   ]);
 
   const sortedValues = useMemo(() => {
@@ -1014,7 +988,6 @@ export default function VolumeViewer({
   const panelBasis = 340;
 
 
-
   const surfaceLevelValue = useMemo(() => {
     const fallback =
       surfaceLevel3d ??
@@ -1028,6 +1001,23 @@ export default function VolumeViewer({
 
     return Math.max(surfaceLevelRange[0], Math.min(surfaceLevelRange[1], fallback));
   }, [surfaceLevel3d, surfaceResolvedLevel, surfaceMesh, surfaceLevelRange]);
+
+
+  const histogramLevelRange = useMemo<[number, number] | null>(() => {
+    const edges = histogram?.binEdges ?? [];
+    if (edges.length < 2) return null;
+
+    const min = firstFiniteNumber(edges[0]);
+    const max = firstFiniteNumber(edges[edges.length - 1]);
+
+    if (min != null && max != null && max > min) {
+      return [min, max];
+    }
+
+    return null;
+  }, [histogram]);
+
+  const surfaceLevelDisplayRange = histogramLevelRange ?? surfaceLevelRange;
 
   return (
     <Box
@@ -1425,7 +1415,9 @@ export default function VolumeViewer({
                 </Typography>
               ) : (
                 <Typography variant="body2" color="text.secondary">
-                  No 3D data. Press Reload.
+                  {usesSurfaceMesh3d
+                    ? "Load the surface to start adjusting the level."
+                    : "Load the 3D volume to start rendering."}
                 </Typography>
               )}
             </Box>
@@ -1779,7 +1771,7 @@ export default function VolumeViewer({
                           </TextField>
                         }
                       />
-                      
+
                       <Button
                         size="small"
                         variant={dataDirty ? "contained" : "outlined"}
@@ -1867,50 +1859,24 @@ export default function VolumeViewer({
 
                       {usesSurfaceMesh3d && (
                         <>
-                          {surfaceLevelRange && (
-                            <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
-                              <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1 }}>
-                                <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
-                                  <Typography variant="caption" color="text.secondary">
-                                    Level
-                                  </Typography>
-                                  <IconButton size="small" onClick={openHelp("surfaceLevel3d")}>
-                                    <HelpCircle size={14} />
-                                  </IconButton>
-                                </Box>
-
-                                <Typography variant="caption" color="text.secondary">
-                                  {formatSci(surfaceLevelValue)}
-                                </Typography>
-                              </Box>
-
-                              <Slider
-                                size="small"
-                                value={surfaceLevelValue}
-                                min={surfaceLevelRange[0]}
-                                max={surfaceLevelRange[1]}
-                                step={(surfaceLevelRange[1] - surfaceLevelRange[0]) / 500}
-                                valueLabelDisplay="auto"
-                                valueLabelFormat={(v) => formatSci(v as number)}
-                                onChange={(_, v) => {
-                                  const value = Array.isArray(v) ? v[0] : v;
-                                  if (Number.isFinite(value)) {
-                                    setSurfaceLevel3d(
-                                      clampIsoLevelToOpenRange(value as number, surfaceLevelRange),
-                                    );
-                                  }
-                                }}
-                              />
-
-                              <Box sx={{ display: "flex", justifyContent: "space-between" }}>
-                                <Typography variant="caption" color="text.secondary">
-                                  {formatSci(surfaceLevelRange[0])}
-                                </Typography>
-                                <Typography variant="caption" color="text.secondary">
-                                  {formatSci(surfaceLevelRange[1])}
-                                </Typography>
-                              </Box>
-                            </Box>
+                          {surfaceLevelDisplayRange && (
+                            <SurfaceLevelHistogramSlider
+                              histogram={histogram}
+                              loading={histLoading}
+                              error={histError}
+                              displayRange={surfaceLevelDisplayRange}
+                              validRange={surfaceLevelRange ?? surfaceLevelDisplayRange}
+                              value={surfaceLevelValue}
+                              disabled={selectedId == null || mapLoading}
+                              onHelp={openHelp("surfaceLevel3d")}
+                              onChange={(level) => {
+                                setSurfaceLevel3d(level);
+                              }}
+                              onCommit={(level) => {
+                                setSurfaceLevel3d(level);
+                                void reloadSurfaceMesh(level, { silent: true });
+                              }}
+                            />
                           )}
 
                           <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
@@ -1941,7 +1907,7 @@ export default function VolumeViewer({
                         </>
                       )}
 
-                      {!surfaceLevelRange && (
+                      {!surfaceLevelDisplayRange && (
                         <Typography variant="caption" color="text.secondary">
                           Load the surface to enable level control.
                         </Typography>
@@ -2088,6 +2054,193 @@ export default function VolumeViewer({
           {helpKey ? HELP_TEXT[helpKey] ?? "No help available." : ""}
         </Typography>
       </Popover>
+    </Box>
+  );
+}
+
+function SurfaceLevelHistogramSlider({
+  histogram,
+  loading,
+  error,
+  displayRange,
+  validRange,
+  value,
+  disabled,
+  onHelp,
+  onChange,
+  onCommit,
+}: {
+  histogram: HistogramData | null;
+  loading: boolean;
+  error: string | null;
+  displayRange: [number, number];
+  validRange: [number, number];
+  value: number;
+  disabled?: boolean;
+  onHelp: (e: React.MouseEvent<HTMLElement>) => void;
+  onChange: (value: number) => void;
+  onCommit: (value: number) => void;
+}) {
+  const [min, max] = displayRange;
+
+  const displayValue = clampValueToRange(value, displayRange);
+  const markerX = max > min ? ((displayValue - min) / (max - min)) * 100 : 50;
+
+  const bars = useMemo(() => {
+    if (!histogram?.counts?.length || !histogram?.binEdges?.length) {
+      return [];
+    }
+
+    const maxCount = Math.max(...histogram.counts);
+    if (!Number.isFinite(maxCount) || maxCount <= 0 || max <= min) {
+      return [];
+    }
+
+    return histogram.counts
+      .map((count, index) => {
+        const leftEdge = Number(histogram.binEdges[index]);
+        const rightEdge = Number(histogram.binEdges[index + 1]);
+
+        if (
+          !Number.isFinite(leftEdge) ||
+          !Number.isFinite(rightEdge) ||
+          rightEdge <= min ||
+          leftEdge >= max
+        ) {
+          return null;
+        }
+
+        const x0 = Math.max(0, ((leftEdge - min) / (max - min)) * 100);
+        const x1 = Math.min(100, ((rightEdge - min) / (max - min)) * 100);
+        const width = Math.max(0.12, x1 - x0);
+        const height = Math.max(1, (Number(count) / maxCount) * 42);
+
+        return {
+          x: x0,
+          y: 46 - height,
+          width,
+          height,
+        };
+      })
+      .filter(Boolean) as Array<{
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+      }>;
+  }, [histogram, min, max]);
+
+  return (
+    <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
+      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1 }}>
+        <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
+          <Typography variant="caption" color="text.secondary">
+            Level
+          </Typography>
+          <IconButton size="small" onClick={onHelp}>
+            <HelpCircle size={14} />
+          </IconButton>
+        </Box>
+
+        <Typography variant="caption" color="text.secondary">
+          {formatSci(displayValue)}
+        </Typography>
+      </Box>
+
+      <Box
+        sx={{
+          position: "relative",
+          height: 54,
+          borderRadius: 1,
+          bgcolor: "action.hover",
+          overflow: "hidden",
+          border: "1px solid",
+          borderColor: "divider",
+        }}
+      >
+        {loading ? (
+          <Box sx={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <Typography variant="caption" color="text.secondary">
+              Loading histogram…
+            </Typography>
+          </Box>
+        ) : error ? (
+          <Box sx={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", px: 1 }}>
+            <Typography variant="caption" color="error" noWrap>
+              {error}
+            </Typography>
+          </Box>
+        ) : (
+          <Box
+            component="svg"
+            viewBox="0 0 100 48"
+            preserveAspectRatio="none"
+            sx={{
+              width: "100%",
+              height: "100%",
+              display: "block",
+            }}
+          >
+            {bars.map((bar, index) => (
+              <rect
+                key={index}
+                x={bar.x}
+                y={bar.y}
+                width={bar.width}
+                height={bar.height}
+                fill="currentColor"
+                opacity={0.45}
+              />
+            ))}
+
+            <line
+              x1={markerX}
+              x2={markerX}
+              y1={0}
+              y2={48}
+              stroke="currentColor"
+              strokeWidth={0.9}
+              opacity={0.95}
+            />
+          </Box>
+        )}
+      </Box>
+
+      <Slider
+        size="small"
+        value={displayValue}
+        min={min}
+        max={max}
+        step={(max - min) / 700}
+        valueLabelDisplay="auto"
+        valueLabelFormat={(v) => formatSci(v as number)}
+        disabled={disabled || max <= min}
+        onChange={(_, v) => {
+          const rawValue = Array.isArray(v) ? v[0] : v;
+          if (!Number.isFinite(rawValue)) return;
+
+          onChange(clampValueToRange(rawValue as number, displayRange));
+        }}
+        onChangeCommitted={(_, v) => {
+          const rawValue = Array.isArray(v) ? v[0] : v;
+          if (!Number.isFinite(rawValue)) return;
+
+          const displayLevel = clampValueToRange(rawValue as number, displayRange);
+          const renderLevel =
+            clampIsoLevelToOpenRange(displayLevel, validRange) ?? displayLevel;
+
+          onCommit(renderLevel);
+        }}
+      />
+
+      <Box sx={{ display: "flex", justifyContent: "space-between" }}>
+        <Typography variant="caption" color="text.secondary">
+          {formatSci(min)}
+        </Typography>
+        <Typography variant="caption" color="text.secondary">
+          {formatSci(max)}
+        </Typography>
+      </Box>
     </Box>
   );
 }
@@ -3125,4 +3278,15 @@ function clampIsoLevelToOpenRange(
 
   const eps = Math.max((max - min) * 1e-5, Number.EPSILON * 100);
   return Math.max(min + eps, Math.min(max - eps, value));
+}
+
+function clampValueToRange(value: number, range: [number, number]) {
+  const [min, max] = range;
+
+  if (!Number.isFinite(value)) return min;
+  if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) {
+    return value;
+  }
+
+  return Math.max(min, Math.min(max, value));
 }
