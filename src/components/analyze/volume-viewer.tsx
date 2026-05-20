@@ -987,23 +987,10 @@ export default function VolumeViewer({
 
   const panelBasis = 340;
 
-
-  const surfaceLevelValue = useMemo(() => {
-    const fallback =
-      surfaceLevel3d ??
-      surfaceResolvedLevel ??
-      surfaceMesh?.level ??
-      (surfaceLevelRange
-        ? surfaceLevelRange[0] + 0.75 * (surfaceLevelRange[1] - surfaceLevelRange[0])
-        : 0);
-
-    if (!surfaceLevelRange) return fallback;
-
-    return Math.max(surfaceLevelRange[0], Math.min(surfaceLevelRange[1], fallback));
-  }, [surfaceLevel3d, surfaceResolvedLevel, surfaceMesh, surfaceLevelRange]);
-
-
   const histogramLevelRange = useMemo<[number, number] | null>(() => {
+    const range = getHistogramDisplayRange(histogram, 0.005, 0.995);
+    if (range) return range;
+
     const edges = histogram?.binEdges ?? [];
     if (edges.length < 2) return null;
 
@@ -1017,7 +1004,23 @@ export default function VolumeViewer({
     return null;
   }, [histogram]);
 
-  const surfaceLevelDisplayRange = histogramLevelRange ?? surfaceLevelRange;
+
+  const surfaceLevelValue = useMemo(() => {
+    return (
+      surfaceLevel3d ??
+      surfaceResolvedLevel ??
+      surfaceMesh?.level ??
+      (surfaceLevelRange
+        ? surfaceLevelRange[0] +
+        0.75 * (surfaceLevelRange[1] - surfaceLevelRange[0])
+        : 0)
+    );
+  }, [
+    surfaceLevel3d,
+    surfaceResolvedLevel,
+    surfaceMesh,
+    surfaceLevelRange,
+  ]);
 
   return (
     <Box
@@ -1859,13 +1862,13 @@ export default function VolumeViewer({
 
                       {usesSurfaceMesh3d && (
                         <>
-                          {surfaceLevelDisplayRange && (
+                          {surfaceLevelRange && (
                             <SurfaceLevelHistogramSlider
                               histogram={histogram}
                               loading={histLoading}
                               error={histError}
-                              displayRange={surfaceLevelDisplayRange}
-                              validRange={surfaceLevelRange ?? surfaceLevelDisplayRange}
+                              displayRange={surfaceLevelRange}
+                              validRange={surfaceLevelRange ?? surfaceLevelRange}
                               value={surfaceLevelValue}
                               disabled={selectedId == null || mapLoading}
                               onHelp={openHelp("surfaceLevel3d")}
@@ -1907,7 +1910,7 @@ export default function VolumeViewer({
                         </>
                       )}
 
-                      {!surfaceLevelDisplayRange && (
+                      {!surfaceLevelRange && (
                         <Typography variant="caption" color="text.secondary">
                           Load the surface to enable level control.
                         </Typography>
@@ -2091,11 +2094,12 @@ function SurfaceLevelHistogramSlider({
       return [];
     }
 
-    const maxCount = Math.max(...histogram.counts);
-    if (!Number.isFinite(maxCount) || maxCount <= 0 || max <= min) {
+    const maxCount = Math.max(...histogram.counts.map((count) => Number(count) || 0));
+    const maxLogCount = Math.log1p(maxCount);
+
+    if (!Number.isFinite(maxLogCount) || maxLogCount <= 0 || max <= min) {
       return [];
     }
-
     return histogram.counts
       .map((count, index) => {
         const leftEdge = Number(histogram.binEdges[index]);
@@ -2113,7 +2117,7 @@ function SurfaceLevelHistogramSlider({
         const x0 = Math.max(0, ((leftEdge - min) / (max - min)) * 100);
         const x1 = Math.min(100, ((rightEdge - min) / (max - min)) * 100);
         const width = Math.max(0.12, x1 - x0);
-        const height = Math.max(1, (Number(count) / maxCount) * 42);
+        const height = Math.max(1, (Math.log1p(Number(count)) / maxLogCount) * 42);
 
         return {
           x: x0,
@@ -3289,4 +3293,69 @@ function clampValueToRange(value: number, range: [number, number]) {
   }
 
   return Math.max(min, Math.min(max, value));
+}
+
+function getHistogramDisplayRange(
+  histogram: HistogramData | null,
+  lowQuantile: number,
+  highQuantile: number,
+): [number, number] | null {
+  if (!histogram?.binEdges?.length || !histogram?.counts?.length) {
+    return null;
+  }
+
+  const low = histogramWeightedQuantile(histogram, lowQuantile);
+  const high = histogramWeightedQuantile(histogram, highQuantile);
+
+  if (low == null || high == null || high <= low) {
+    return null;
+  }
+
+  const padding = Math.max((high - low) * 0.04, Number.EPSILON * 100);
+  return [low - padding, high + padding];
+}
+
+function histogramWeightedQuantile(
+  histogram: HistogramData,
+  quantile: number,
+): number | null {
+  const edges = histogram.binEdges;
+  const counts = histogram.counts;
+
+  if (edges.length < 2 || counts.length === 0) {
+    return null;
+  }
+
+  const total = counts.reduce((sum, count) => {
+    const value = Number(count);
+    return Number.isFinite(value) && value > 0 ? sum + value : sum;
+  }, 0);
+
+  if (!Number.isFinite(total) || total <= 0) {
+    return null;
+  }
+
+  const target = Math.max(0, Math.min(1, quantile)) * total;
+  let cumulative = 0;
+
+  for (let i = 0; i < counts.length; i += 1) {
+    const count = Number(counts[i]);
+    if (!Number.isFinite(count) || count <= 0) continue;
+
+    const left = Number(edges[i]);
+    const right = Number(edges[i + 1]);
+
+    if (!Number.isFinite(left) || !Number.isFinite(right)) continue;
+
+    const previous = cumulative;
+    cumulative += count;
+
+    if (cumulative >= target) {
+      const fraction = count > 0 ? (target - previous) / count : 0;
+      return left + Math.max(0, Math.min(1, fraction)) * (right - left);
+    }
+  }
+
+  const last = Number(edges[edges.length - 1]);
+  return Number.isFinite(last) ? last : null;
 }
