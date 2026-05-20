@@ -67,11 +67,13 @@ const CMAP_OPTIONS = [
   "turbo",
 ];
 
+const SURFACE_MAX_TRIANGLES = 550000;
+
 const HELP_TEXT: Record<string, string> = {
   maxDim3d:
     "Maximum dimension used for the downsampled 3D volume. Higher values look better but are slower.",
   method3d:
-    "Downsampling method. Binning averages blocks. Stride skips voxels. None keeps original size (can be heavy).",
+    "Downsampling method: None keeps original size. Binning averages blocks. Stride skips voxels. ",
   colormap3d: "Colormap applied to the rendered 3D volume.",
   opacity3d:
     "Opacity of the volume along the ray. Higher values make the map more solid.",
@@ -108,8 +110,6 @@ const HELP_TEXT: Record<string, string> = {
     "Mouse wheel zooms single-view slices. Double-click fits and resets pan.",
   surfaceLevel3d:
     "Absolute iso level for the marching-cubes surface. Leave it empty to let the backend choose an automatic level.",
-  maxTriangles3d:
-    "Maximum number of triangles returned by the backend surface mesh. Higher values preserve more detail but are heavier.",
 };
 
 const SliceSlider = styled(Slider)(({ theme }) => ({
@@ -214,11 +214,17 @@ export default function VolumeViewer({
   const [surfaceMesh, setSurfaceMesh] = useState<VolumeSurfaceMesh | null>(null);
   const [surfaceLevel3d, setSurfaceLevel3d] = useState<number | null>(null);
   const [surfaceResolvedLevel, setSurfaceResolvedLevel] = useState<number | null>(null);
-  const [maxTriangles3d, setMaxTriangles3d] = useState(350000);
+  const [surfaceLevelRange, setSurfaceLevelRange] =
+    useState<[number, number] | null>(null);
+
+  useState<[number, number] | null>(null);
+
+  const [surfaceRefreshing, setSurfaceRefreshing] = useState(false);
+  const surfaceAbortRef = useRef<AbortController | null>(null);
 
   const [maxDim3d, setMaxDim3d] = useState(192);
-  const [method3d, setMethod3d] = useState<"binning" | "stride" | "none">(
-    "stride",
+  const [method3d, setMethod3d] = useState<"none" | "binning" | "stride">(
+    "none",
   );
 
   const [surfaceCount, setSurfaceCount] = useState(3);
@@ -240,14 +246,12 @@ export default function VolumeViewer({
     method: "binning" | "stride" | "none";
     renderMode: RenderMode3d;
     surfaceLevel: number | null;
-    maxTriangles: number;
   }>({
     volumeId: null,
     maxDim: 192,
     method: "stride",
     renderMode: "surface",
     surfaceLevel: null,
-    maxTriangles: 350000,
   });
 
   const lastThrVolumeRef = useRef<string | number | null>(null);
@@ -333,6 +337,7 @@ export default function VolumeViewer({
     setSurfaceMesh(null);
     setSurfaceResolvedLevel(null);
     setSurfaceLevel3d(null);
+    setSurfaceLevelRange(null);
     setGpuError(null);
   }, [selectedId]);
 
@@ -596,6 +601,147 @@ export default function VolumeViewer({
     reloadKey: sliceReloadNonce,
   });
 
+  const metadataSurfaceLevelRange = useMemo<[number, number] | null>(() => {
+
+    const meshMin = firstFiniteNumber(surfaceMesh?.rangeMin);
+    const meshMax = firstFiniteNumber(surfaceMesh?.rangeMax);
+
+    if (meshMin != null && meshMax != null && meshMax > meshMin) {
+      return [meshMin, meshMax];
+    }
+
+    const min = firstFiniteNumber(
+      meta?.min,
+      meta?.minimum,
+      meta?.rangeMin,
+      meta?.dataMin,
+      meta?.valueMin,
+    );
+
+    const max = firstFiniteNumber(
+      meta?.max,
+      meta?.maximum,
+      meta?.rangeMax,
+      meta?.dataMax,
+      meta?.valueMax,
+    );
+
+    if (min != null && max != null && max > min) {
+      return [min, max];
+    }
+
+    return null;
+  }, [surfaceMesh, meta]);
+
+
+
+  useEffect(() => {
+    if (metadataSurfaceLevelRange) {
+      setSurfaceLevelRange(metadataSurfaceLevelRange);
+    }
+  }, [metadataSurfaceLevelRange]);
+
+  const buildFallbackSurfaceLevelRange = useCallback((level: number): [number, number] => {
+    const width = Math.max(Math.abs(level) * 4, 0.02);
+    return [level - width, level + width];
+  }, []);
+
+  const reloadSurfaceMesh = useCallback(
+    async (level: number | null, opts: { silent?: boolean } = {}) => {
+      if (selectedId == null) return;
+
+      surfaceAbortRef.current?.abort();
+
+      const controller = new AbortController();
+      surfaceAbortRef.current = controller;
+
+      const silent = opts.silent === true;
+
+      if (silent) {
+        setSurfaceRefreshing(true);
+      } else {
+        setMapLoading(true);
+      }
+
+      setMapError(null);
+      setGpuError(null);
+
+      try {
+        const mesh = await svc.getVolumeSurfaceMesh(
+          projectId,
+          protocolId,
+          outputName,
+          selectedId,
+          {
+            level: clampIsoLevelToOpenRange(level, surfaceLevelRange),
+            maxDim: maxDim3d,
+            method: method3d,
+            maxTriangles: SURFACE_MAX_TRIANGLES,
+            signal: controller.signal,
+          },
+        );
+
+        if (controller.signal.aborted) return;
+
+        const resolvedLevel = Number.isFinite(mesh?.level) ? Number(mesh.level) : null;
+
+        setSurfaceMesh(mesh);
+        setSurfaceResolvedLevel(resolvedLevel);
+        setMapData(null);
+
+        if (metadataSurfaceLevelRange) {
+          setSurfaceLevelRange(metadataSurfaceLevelRange);
+        } else if (resolvedLevel != null) {
+          setSurfaceLevelRange((prev) => {
+            if (prev && resolvedLevel >= prev[0] && resolvedLevel <= prev[1]) {
+              return prev;
+            }
+
+            return buildFallbackSurfaceLevelRange(resolvedLevel);
+          });
+        }
+        setMapData(null);
+
+        lastLoadedRef.current = {
+          volumeId: selectedId,
+          maxDim: maxDim3d,
+          method: method3d,
+          renderMode: renderMode3d,
+          surfaceLevel: level,
+        };
+      } catch (e: any) {
+        if (controller.signal.aborted || e?.name === "AbortError") return;
+
+        setMapError(e?.message || "Failed to load surface mesh");
+        setSurfaceMesh(null);
+        setSurfaceResolvedLevel(null);
+      } finally {
+        if (surfaceAbortRef.current === controller) {
+          surfaceAbortRef.current = null;
+        }
+
+        if (silent) {
+          setSurfaceRefreshing(false);
+        } else {
+          setMapLoading(false);
+        }
+      }
+    },
+    [
+      selectedId,
+      svc,
+      projectId,
+      protocolId,
+      outputName,
+      maxDim3d,
+      method3d,
+      renderMode3d,
+      metadataSurfaceLevelRange,
+      buildFallbackSurfaceLevelRange,
+      surfaceLevelRange,
+    ],
+  );
+
   const load3d = useCallback(async () => {
     if (selectedId == null) return;
 
@@ -605,34 +751,7 @@ export default function VolumeViewer({
 
     try {
       if (usesSurfaceMesh3d) {
-        const mesh = await svc.getVolumeSurfaceMesh(
-          projectId,
-          protocolId,
-          outputName,
-          selectedId,
-          {
-            level: surfaceLevel3d,
-            maxDim: maxDim3d,
-            method: method3d,
-            maxTriangles: maxTriangles3d,
-          },
-        );
-
-        setSurfaceMesh(mesh);
-        setSurfaceResolvedLevel(
-          Number.isFinite(mesh?.level) ? Number(mesh.level) : null,
-        );
-        setMapData(null);
-
-        lastLoadedRef.current = {
-          volumeId: selectedId,
-          maxDim: maxDim3d,
-          method: method3d,
-          renderMode: renderMode3d,
-          surfaceLevel: surfaceLevel3d,
-          maxTriangles: maxTriangles3d,
-        };
-
+        await reloadSurfaceMesh(surfaceLevel3d, { silent: false });
         return;
       }
 
@@ -656,7 +775,6 @@ export default function VolumeViewer({
         method: method3d,
         renderMode: renderMode3d,
         surfaceLevel: surfaceLevel3d,
-        maxTriangles: maxTriangles3d,
       };
     } catch (e: any) {
       setMapError(e?.message || "Failed to load 3D data");
@@ -676,8 +794,8 @@ export default function VolumeViewer({
     method3d,
     renderMode3d,
     surfaceLevel3d,
-    maxTriangles3d,
-    usesSurfaceMesh3d
+    usesSurfaceMesh3d,
+    reloadSurfaceMesh,
   ]);
 
   useEffect(() => {
@@ -700,8 +818,7 @@ export default function VolumeViewer({
         last.maxDim !== maxDim3d ||
         last.method !== method3d ||
         last.renderMode !== renderMode3d ||
-        last.surfaceLevel !== surfaceLevel3d ||
-        last.maxTriangles !== maxTriangles3d)
+        last.surfaceLevel !== surfaceLevel3d)
     );
   }, [
     viewMode,
@@ -710,7 +827,36 @@ export default function VolumeViewer({
     method3d,
     renderMode3d,
     surfaceLevel3d,
-    maxTriangles3d,
+  ]);
+
+  useEffect(() => {
+    if (viewMode !== "map3d") return;
+    if (!usesSurfaceMesh3d) return;
+    if (selectedId == null) return;
+    if (surfaceLevel3d == null) return;
+
+    const last = lastLoadedRef.current;
+
+    if (last.volumeId !== selectedId) return;
+    if (last.maxDim !== maxDim3d) return;
+    if (last.method !== method3d) return;
+    if (last.surfaceLevel === surfaceLevel3d) return;
+
+    const handle = window.setTimeout(() => {
+      void reloadSurfaceMesh(surfaceLevel3d, { silent: true });
+    }, 250);
+
+    return () => {
+      window.clearTimeout(handle);
+    };
+  }, [
+    viewMode,
+    usesSurfaceMesh3d,
+    selectedId,
+    surfaceLevel3d,
+    maxDim3d,
+    method3d,
+    reloadSurfaceMesh,
   ]);
 
   const sortedValues = useMemo(() => {
@@ -869,23 +1015,21 @@ export default function VolumeViewer({
 
   const panelBasis = 340;
 
-  const surfaceLevelRange = useMemo<[number, number] | null>(() => {
-    const min = Number(meta?.min);
-    const max = Number(meta?.max);
 
-    if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) {
-      return null;
-    }
-
-    return [min, max];
-  }, [meta]);
 
   const surfaceLevelValue = useMemo(() => {
-    if (surfaceLevel3d != null) return surfaceLevel3d;
-    if (surfaceResolvedLevel != null) return surfaceResolvedLevel;
-    if (surfaceLevelRange) return surfaceLevelRange[0] + 0.75 * (surfaceLevelRange[1] - surfaceLevelRange[0]);
-    return 0;
-  }, [surfaceLevel3d, surfaceResolvedLevel, surfaceLevelRange]);
+    const fallback =
+      surfaceLevel3d ??
+      surfaceResolvedLevel ??
+      surfaceMesh?.level ??
+      (surfaceLevelRange
+        ? surfaceLevelRange[0] + 0.75 * (surfaceLevelRange[1] - surfaceLevelRange[0])
+        : 0);
+
+    if (!surfaceLevelRange) return fallback;
+
+    return Math.max(surfaceLevelRange[0], Math.min(surfaceLevelRange[1], fallback));
+  }, [surfaceLevel3d, surfaceResolvedLevel, surfaceMesh, surfaceLevelRange]);
 
   return (
     <Box
@@ -1637,24 +1781,7 @@ export default function VolumeViewer({
                           </TextField>
                         }
                       />
-                      {usesSurfaceMesh3d && (
-                        <ParamRow
-                          label="Max triangles"
-                          helpKey="maxTriangles3d"
-                          onHelp={openHelp}
-                          control={
-                            <TextField
-                              size="small"
-                              type="number"
-                              value={maxTriangles3d}
-                              onChange={(e) =>
-                                setMaxTriangles3d(clampInt(e.target.value, 1000, 1500000))
-                              }
-                              inputProps={{ min: 1000, max: 1500000, step: 50000 }}
-                            />
-                          }
-                        />
-                      )}
+                      
                       <Button
                         size="small"
                         variant={dataDirty ? "contained" : "outlined"}
@@ -1740,41 +1867,20 @@ export default function VolumeViewer({
                         }
                       />
 
-                      {renderMode3d === "surface" && (
+                      {usesSurfaceMesh3d && (
                         <>
-                          <ParamRow
-                            label="Iso level"
-                            helpKey="surfaceLevel3d"
-                            onHelp={openHelp}
-                            control={
-                              <TextField
-                                size="small"
-                                type="number"
-                                value={surfaceLevel3d ?? ""}
-                                placeholder="auto"
-                                onChange={(e) => {
-                                  const raw = e.target.value.trim();
-                                  if (!raw) {
-                                    setSurfaceLevel3d(null);
-                                    return;
-                                  }
-
-                                  const value = Number(raw);
-                                  if (Number.isFinite(value)) {
-                                    setSurfaceLevel3d(value);
-                                  }
-                                }}
-                                inputProps={{ step: 0.001 }}
-                              />
-                            }
-                          />
-
                           {surfaceLevelRange && (
                             <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
-                              <Box sx={{ display: "flex", justifyContent: "space-between", gap: 1 }}>
-                                <Typography variant="caption" color="text.secondary">
-                                  Level
-                                </Typography>
+                              <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1 }}>
+                                <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
+                                  <Typography variant="caption" color="text.secondary">
+                                    Level
+                                  </Typography>
+                                  <IconButton size="small" onClick={openHelp("surfaceLevel3d")}>
+                                    <HelpCircle size={14} />
+                                  </IconButton>
+                                </Box>
+
                                 <Typography variant="caption" color="text.secondary">
                                   {formatSci(surfaceLevelValue)}
                                 </Typography>
@@ -1791,19 +1897,10 @@ export default function VolumeViewer({
                                 onChange={(_, v) => {
                                   const value = Array.isArray(v) ? v[0] : v;
                                   if (Number.isFinite(value)) {
-                                    setSurfaceLevel3d(value as number);
+                                    setSurfaceLevel3d(
+                                      clampIsoLevelToOpenRange(value as number, surfaceLevelRange),
+                                    );
                                   }
-                                }}
-                                onChangeCommitted={(_, v) => {
-                                  const value = Array.isArray(v) ? v[0] : v;
-                                  if (!Number.isFinite(value)) return;
-
-                                  const level = value as number;
-                                  setSurfaceLevel3d(level);
-
-                                  window.setTimeout(() => {
-                                    void load3d();
-                                  }, 0);
                                 }}
                               />
 
@@ -1818,19 +1915,25 @@ export default function VolumeViewer({
                             </Box>
                           )}
 
-                          <Button
-                            size="small"
-                            variant="outlined"
-                            onClick={() => {
-                              setSurfaceLevel3d(null);
-                              window.setTimeout(() => {
-                                void load3d();
-                              }, 0);
-                            }}
-                            sx={{ textTransform: "none", borderRadius: 1.5 }}
-                          >
-                            Auto level
-                          </Button>
+                          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              onClick={() => {
+                                setSurfaceLevel3d(null);
+                                void reloadSurfaceMesh(null, { silent: true });
+                              }}
+                              sx={{ textTransform: "none", borderRadius: 1.5 }}
+                            >
+                              Auto level
+                            </Button>
+
+                            {surfaceRefreshing && (
+                              <Typography variant="caption" color="text.secondary">
+                                updating surface…
+                              </Typography>
+                            )}
+                          </Box>
 
                           {surfaceResolvedLevel != null && (
                             <Typography variant="caption" color="text.secondary">
@@ -1838,6 +1941,12 @@ export default function VolumeViewer({
                             </Typography>
                           )}
                         </>
+                      )}
+
+                      {!surfaceLevelRange && (
+                        <Typography variant="caption" color="text.secondary">
+                          Load the surface to enable level control.
+                        </Typography>
                       )}
 
                       {renderMode3d === "volume" && (
@@ -2986,6 +3095,14 @@ function formatSci(v: number) {
   return v.toFixed(3);
 }
 
+function firstFiniteNumber(...values: any[]) {
+  for (const value of values) {
+    const n = Number(value);
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
+}
+
 function toPlotlyColorscale(name: string) {
   const n = (name || "viridis").toLowerCase();
   if (n === "gray" || n === "grey") return "Greys";
@@ -2995,4 +3112,19 @@ function toPlotlyColorscale(name: string) {
   if (n === "plasma") return "Plasma";
   if (n === "magma") return "Magma";
   return "Viridis";
+}
+
+function clampIsoLevelToOpenRange(
+  value: number | null,
+  range: [number, number] | null,
+) {
+  if (value == null || !range) return value;
+
+  const [min, max] = range;
+  if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) {
+    return value;
+  }
+
+  const eps = Math.max((max - min) * 1e-5, Number.EPSILON * 100);
+  return Math.max(min + eps, Math.min(max - eps, value));
 }

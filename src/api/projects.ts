@@ -2278,6 +2278,8 @@ export type VolumeSurfaceMethod =
 export interface VolumeSurfaceMesh {
   kind: "surfaceMesh";
   level: number;
+  rangeMin?: number;
+  rangeMax?: number;
   dims: [number, number, number];
   sourceDims?: [number, number, number];
   order: "zyx" | "xyz";

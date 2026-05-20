@@ -417,6 +417,8 @@ export type VolumeSurfaceMethod =
 export interface VolumeSurfaceMesh {
   kind: "surfaceMesh";
   level: number;
+  rangeMin?: number;
+  rangeMax?: number;
   dims: [number, number, number];
   sourceDims?: [number, number, number];
   order: "zyx" | "xyz";
@@ -1359,7 +1361,7 @@ export interface ProjectService<
     opts?: VolumeSliceOptions
   ): Promise<VolumeSliceObjectUrl>;
 
-   getVolumeSurfaceMesh(
+  getVolumeSurfaceMesh(
     projectId: string | number,
     protocolId: string | number,
     outputName: string,
