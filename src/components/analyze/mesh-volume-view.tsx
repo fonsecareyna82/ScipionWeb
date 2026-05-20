@@ -104,16 +104,17 @@ export default function MeshVolumeView({
 
         try {
             const scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x101214);
+            scene.background = null;
 
             const camera = new THREE.PerspectiveCamera(35, 1, 0.01, 100);
             camera.position.set(0.9, -1.45, 0.9);
 
             renderer = new THREE.WebGLRenderer({
                 antialias: true,
-                alpha: false,
+                alpha: true,
                 powerPreference: "high-performance",
             });
+            renderer.setClearColor(0x000000, 0);
 
             renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
             renderer.outputColorSpace = THREE.SRGBColorSpace;
