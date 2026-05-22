@@ -1148,12 +1148,39 @@ export default function ProjectPage() {
 
       const data = await svc.fetchWorkflows();
 
+      const normalizeStringArray = (value: unknown): string[] => {
+        if (!Array.isArray(value)) return [];
+
+        return Array.from(
+          new Set(
+            value
+              .map((item) => String(item ?? "").trim())
+              .filter(Boolean),
+          ),
+        );
+      };
+
       const normalized: ProjectWorkflow[] = Array.isArray(data)
-        ? data.map((wf: any, idx: number) => ({
-          id: String(wf.id ?? wf.name ?? `wf-${idx}`),
-          name: wf.name ?? String(wf.id ?? `Workflow ${idx + 1}`),
-          description: wf.description ?? "",
-        }))
+        ? data.map((wf: any, idx: number) => {
+          const requiredPluginNames = normalizeStringArray(wf.requiredPluginNames);
+          const missingPluginNames = normalizeStringArray(wf.missingPluginNames);
+
+          return {
+            id: String(wf.id ?? wf.name ?? `wf-${idx}`),
+            name: String(wf.name ?? wf.id ?? `Workflow ${idx + 1}`),
+            description: String(wf.description ?? ""),
+            source: wf.source ? String(wf.source) : "",
+            templatePath: wf.templatePath ? String(wf.templatePath) : "",
+            protocolsCount: Number.isFinite(Number(wf.protocolsCount))
+              ? Number(wf.protocolsCount)
+              : undefined,
+            parseError: wf.parseError ? String(wf.parseError) : null,
+            requiredPluginNames,
+            missingPluginNames,
+            canLoad: typeof wf.canLoad === "boolean" ? wf.canLoad : missingPluginNames.length === 0,
+            disabledReason: wf.disabledReason ? String(wf.disabledReason) : "",
+          };
+        })
         : [];
 
       setWorkflows(normalized);
