@@ -1852,6 +1852,41 @@ export default function ProjectPage() {
     applyPathSelection(Array.from(ids));
   }, [applyPathSelection]);
 
+  const getAllWorkflowProtocolIds = useCallback((): Set<string> => {
+    // getAllWorkflowProtocolIds
+    const ids = new Set<string>();
+
+    if (viewModeRef.current === "table") {
+      for (const row of tableData) {
+        const id = String(row?.id ?? "").trim();
+        if (id && id !== "PROJECT") ids.add(id);
+      }
+
+      return ids;
+    }
+
+    for (const node of nodesRef.current) {
+      const id = String(node.id ?? "").trim();
+      if (id && id !== "PROJECT") ids.add(id);
+    }
+
+    return ids;
+  }, [tableData]);
+
+  const handleSelectAllWorkflow = useCallback(() => {
+    // handleSelectAllWorkflow
+    const ids = getAllWorkflowProtocolIds();
+
+    if (!ids.size) return;
+
+    selectedIdRef.current = null;
+    setPreviousNodeId(null);
+    setHighlightedId(null);
+
+    suppressOneFrame();
+    applyGenericSelectionFromSet(ids);
+  }, [getAllWorkflowProtocolIds, applyGenericSelectionFromSet]);
+
   const handleSelectFrom = useCallback((id: string) => {
     const nodesSet = collectDescendants(id);
     if (id !== "PROJECT") nodesSet.add(String(id));
@@ -3909,8 +3944,9 @@ export default function ProjectPage() {
     const isTypingTarget = (el: EventTarget | null) => {
       const t = el as HTMLElement | null;
       if (!t) return false;
+
       return !!t.closest(
-        'input, textarea, select, [contenteditable=""], [contenteditable="true"]'
+        'input, textarea, select, [contenteditable=""], [contenteditable="true"], [role="dialog"]'
       );
     };
 
@@ -3952,14 +3988,24 @@ export default function ProjectPage() {
         return;
       }
 
-      /*if (modPressed(e) && !e.shiftKey && e.key.toLowerCase() === "k") {
+      if (modPressed(e) && !e.shiftKey && e.key.toLowerCase() === "p") {
         e.preventDefault();
         e.stopPropagation();
         (e as any).stopImmediatePropagation?.();
 
-        void handleOpenWorkflows();
+        closeAllDockedForms();
+        handleProtocolsDrawerOpenChange(true);
         return;
-      }*/
+      }
+
+      if (modPressed(e) && !e.shiftKey && e.key.toLowerCase() === "a") {
+        e.preventDefault();
+        e.stopPropagation();
+        (e as any).stopImmediatePropagation?.();
+
+        handleSelectAllWorkflow();
+        return;
+      }
 
       const ids = getSelectedIds();
       const selectedId = selectedIdRef.current;
@@ -4059,6 +4105,7 @@ export default function ProjectPage() {
     openStop,
     handleSelectFrom,
     handleSelectTo,
+    handleSelectAllWorkflow,
     closeAllDockedForms,
     handleProtocolsDrawerOpenChange,
     handleOpenWorkflows,
