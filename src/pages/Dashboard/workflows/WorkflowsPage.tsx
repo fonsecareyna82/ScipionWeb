@@ -1,9 +1,19 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import { ArrowRight, RefreshCw, Search, X } from "lucide-react";
 import toast from "react-hot-toast";
+import ReactFlow, {
+  Background,
+  Controls,
+  MarkerType,
+  Position,
+  type Edge,
+  type Node,
+} from "reactflow";
+import "reactflow/dist/style.css";
 
 import { useProjectService } from "@/ProjectServiceContext";
-import type { ProjectWorkflow } from "@/components/projects/workflows-panel";
+import type { ProjectWorkflow as BaseProjectWorkflow } from "@/components/projects/workflows-panel";
 
 function classNames(...xs: Array<string | false | null | undefined>): string {
   return xs.filter(Boolean).join(" ");
@@ -11,7 +21,262 @@ function classNames(...xs: Array<string | false | null | undefined>): string {
 
 const crispText = "subpixel-antialiased [text-rendering:optimizeLegibility]";
 
-function CardShell(props: { title: string; subtitle?: string; right?: React.ReactNode; children: React.ReactNode }) {
+type WorkflowPreviewNode = {
+  id: string;
+  protocolId?: string;
+  className?: string;
+  label?: string;
+  comment?: string;
+  runName?: string | null;
+  order?: number;
+};
+
+type WorkflowPreviewEdge = {
+  id: string;
+  source: string;
+  target: string;
+  sourceOutput?: string;
+  targetParam?: string;
+};
+
+type WorkflowPreviewGraph = {
+  nodes: WorkflowPreviewNode[];
+  edges: WorkflowPreviewEdge[];
+  rootIds?: string[];
+};
+
+type ProjectWorkflow = BaseProjectWorkflow & {
+  source?: string;
+  templatePath?: string;
+  protocolsCount?: number;
+  parseError?: string | null;
+  content?: Array<Record<string, unknown>>;
+  previewGraph?: WorkflowPreviewGraph;
+};
+
+function normalizeWorkflowPreviewGraph(raw: any): WorkflowPreviewGraph {
+  const nodes = Array.isArray(raw?.nodes)
+    ? (raw.nodes
+      .map((node: any, index: number) => {
+        const id = String(node?.id ?? node?.protocolId ?? index).trim();
+        if (!id) return null;
+
+        return {
+          id,
+          protocolId: String(node?.protocolId ?? id),
+          className: node?.className ? String(node.className) : "",
+          label: node?.label ? String(node.label) : id,
+          comment: node?.comment ? String(node.comment) : "",
+          runName: node?.runName ?? null,
+          order: Number.isFinite(Number(node?.order)) ? Number(node.order) : index,
+        };
+      })
+      .filter(Boolean) as WorkflowPreviewNode[])
+    : [];
+
+  const nodeIds = new Set(nodes.map((node) => node.id));
+
+  const edges = Array.isArray(raw?.edges)
+    ? (raw.edges
+      .map((edge: any, index: number) => {
+        const source = String(edge?.source ?? "").trim();
+        const target = String(edge?.target ?? "").trim();
+
+        if (!source || !target || !nodeIds.has(source) || !nodeIds.has(target)) {
+          return null;
+        }
+
+        return {
+          id: String(edge?.id ?? `${source}->${target}:${index}`),
+          source,
+          target,
+          sourceOutput: edge?.sourceOutput ? String(edge.sourceOutput) : "",
+          targetParam: edge?.targetParam ? String(edge.targetParam) : "",
+        };
+      })
+      .filter(Boolean) as WorkflowPreviewEdge[])
+    : [];
+
+  const rootIds = Array.isArray(raw?.rootIds)
+    ? raw.rootIds
+      .map((id: any) => String(id))
+      .filter((id: string) => nodeIds.has(id))
+    : [];
+
+  return { nodes, edges, rootIds };
+}
+
+function buildWorkflowReactFlowElements(
+  previewNodes: WorkflowPreviewNode[],
+  previewEdges: WorkflowPreviewEdge[],
+): { nodes: Node[]; edges: Edge[] } {
+  const nodeWidth = 300;
+  const nodeHeight = 82;
+  const xGap = 72;
+  const yGap = 50;
+
+  const nodeIds = previewNodes.map((node) => node.id);
+  const nodeIdSet = new Set(nodeIds);
+
+  const parentsById = new Map<string, string[]>();
+  nodeIds.forEach((id) => parentsById.set(id, []));
+
+  previewEdges.forEach((edge) => {
+    if (!nodeIdSet.has(edge.source) || !nodeIdSet.has(edge.target)) return;
+    parentsById.get(edge.target)?.push(edge.source);
+  });
+
+  const levelById = new Map<string, number>();
+
+  const resolveLevel = (id: string, stack: Set<string> = new Set()): number => {
+    if (levelById.has(id)) return levelById.get(id) ?? 0;
+    if (stack.has(id)) return 0;
+
+    stack.add(id);
+
+    const parents = (parentsById.get(id) ?? []).filter((parentId) =>
+      nodeIdSet.has(parentId),
+    );
+
+    const level =
+      parents.length === 0
+        ? 0
+        : Math.max(...parents.map((parentId) => resolveLevel(parentId, stack))) + 1;
+
+    stack.delete(id);
+    levelById.set(id, level);
+
+    return level;
+  };
+
+  nodeIds.forEach((id) => resolveLevel(id));
+
+  const levels = new Map<number, WorkflowPreviewNode[]>();
+
+  previewNodes.forEach((node) => {
+    const level = levelById.get(node.id) ?? 0;
+    const items = levels.get(level) ?? [];
+    items.push(node);
+    levels.set(level, items);
+  });
+
+  Array.from(levels.values()).forEach((items) => {
+    items.sort((a, b) => {
+      const orderA = Number.isFinite(Number(a.order)) ? Number(a.order) : 0;
+      const orderB = Number.isFinite(Number(b.order)) ? Number(b.order) : 0;
+      return orderA - orderB;
+    });
+  });
+
+  const nodes: Node[] = [];
+
+  Array.from(levels.entries()).forEach(([level, items]) => {
+    const rowWidth = items.length * nodeWidth + Math.max(0, items.length - 1) * xGap;
+    const startX = -rowWidth / 2;
+
+    items.forEach((node, index) => {
+      nodes.push({
+        id: node.id,
+        type: "default",
+        position: {
+          x: startX + index * (nodeWidth + xGap),
+          y: level * (nodeHeight + yGap),
+        },
+        data: {
+          label: (
+            <div className="min-w-0 px-1 py-3.5">
+              <div className="truncate text-[14px]  text-black">
+                {node.label || node.id}
+              </div>
+              
+            </div>
+          ),
+        },
+        sourcePosition: Position.Bottom,
+        targetPosition: Position.Top,
+        draggable: false,
+        selectable: false,
+        connectable: false,
+        style: {
+          width: nodeWidth,
+          minHeight: nodeHeight,
+          borderRadius: 14,
+          border: "1px solid rgba(34, 139, 64, 0.95)",
+          background: "#28A745",
+          color: "#ffffff",
+          boxShadow: "0 10px 24px rgba(40, 167, 69, 0.24)",
+          fontSize: 12,
+        },
+      });
+    });
+  });
+
+  const edges: Edge[] = previewEdges
+    .filter((edge) => nodeIdSet.has(edge.source) && nodeIdSet.has(edge.target))
+    .map((edge) => ({
+      id: edge.id,
+      source: edge.source,
+      target: edge.target,
+      type: "smoothstep",
+      animated: false,
+      markerEnd: {
+        type: MarkerType.ArrowClosed,
+        width: 16,
+        height: 16,
+      },
+      style: {
+        strokeWidth: 1.5,
+      },
+    }));
+
+  return { nodes, edges };
+}
+
+function WorkflowGraphPreview({ workflow }: { workflow: ProjectWorkflow }) {
+  const graph = workflow.previewGraph;
+  const previewNodes = graph?.nodes ?? [];
+  const previewEdges = graph?.edges ?? [];
+
+  const { nodes, edges } = useMemo(
+    () => buildWorkflowReactFlowElements(previewNodes, previewEdges),
+    [previewNodes, previewEdges],
+  );
+
+  if (!nodes.length) {
+    return (
+      <div className="rounded-xl border border-gray-300/80 px-3 py-4 text-sm leading-6 text-gray-700 dark:border-gray-700 dark:text-gray-300">
+        No preview graph available.
+      </div>
+    );
+  }
+
+  return (
+    <div className="h-[520px] overflow-hidden rounded-xl border border-gray-300/80 bg-gray-50 dark:border-gray-700 dark:bg-slate-950">
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        fitView
+        fitViewOptions={{ padding: 0.22 }}
+        minZoom={0.2}
+        maxZoom={1.8}
+        nodesDraggable={false}
+        nodesConnectable={false}
+        elementsSelectable={false}
+        panOnDrag
+        zoomOnScroll
+        zoomOnPinch
+        zoomOnDoubleClick
+        preventScrolling={false}
+        proOptions={{ hideAttribution: true }}
+      >
+        <Background gap={18} size={1} />
+        <Controls showInteractive={false} position="bottom-right" />
+      </ReactFlow>
+    </div>
+  );
+}
+
+function CardShell(props: { title: string; subtitle?: string; right?: ReactNode; children: ReactNode }) {
   return (
     <div
       className={classNames(
@@ -40,7 +305,7 @@ function CardShell(props: { title: string; subtitle?: string; right?: React.Reac
   );
 }
 
-function StatPill(props: { label: string; value: React.ReactNode; accent?: "indigo" | "sky" | "cyan" }) {
+function StatPill(props: { label: string; value: ReactNode; accent?: "indigo" | "sky" | "cyan" }) {
   return (
     <div
       className={classNames(
@@ -57,7 +322,7 @@ function StatPill(props: { label: string; value: React.ReactNode; accent?: "indi
 }
 
 function PrimaryButton(props: {
-  children: React.ReactNode;
+  children: ReactNode;
   onClick?: () => void;
   disabled?: boolean;
   className?: string;
@@ -85,7 +350,7 @@ function PrimaryButton(props: {
 }
 
 function SecondaryButton(props: {
-  children: React.ReactNode;
+  children: ReactNode;
   onClick?: () => void;
   disabled?: boolean;
   className?: string;
@@ -131,11 +396,25 @@ export default function WorkflowsPage() {
       const data = await svc.fetchWorkflows();
 
       const normalized: ProjectWorkflow[] = Array.isArray(data)
-        ? data.map((wf: any) => ({
-            id: String(wf.id ?? wf.name),
-            name: wf.name ?? String(wf.id ?? ""),
-            description: wf.description ?? "",
-          }))
+        ? data.map((wf: any, index: number) => {
+          const previewGraph = normalizeWorkflowPreviewGraph(wf.previewGraph);
+
+          return {
+            id: String(wf.id ?? wf.name ?? index),
+            name: String(wf.name ?? wf.id ?? `Workflow ${index + 1}`),
+            description: String(wf.description ?? ""),
+            source: wf.source ? String(wf.source) : "",
+            templatePath: wf.templatePath ? String(wf.templatePath) : "",
+            protocolsCount: Number.isFinite(Number(wf.protocolsCount))
+              ? Number(wf.protocolsCount)
+              : Array.isArray(wf.content)
+                ? wf.content.length
+                : previewGraph.nodes.length,
+            parseError: wf.parseError ?? null,
+            content: Array.isArray(wf.content) ? wf.content : [],
+            previewGraph,
+          };
+        })
         : [];
 
       normalized.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
@@ -158,7 +437,21 @@ export default function WorkflowsPage() {
 
   const filteredWorkflows = useMemo(() => {
     if (!normalizedSearch) return workflows;
-    return workflows.filter((wf) => (wf.name ?? "").toLowerCase().includes(normalizedSearch));
+
+    return workflows.filter((wf) => {
+      const haystack = [
+        wf.name,
+        wf.description,
+        wf.source,
+        ...(wf.previewGraph?.nodes ?? []).map((node) => node.className),
+        ...(wf.previewGraph?.nodes ?? []).map((node) => node.label),
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      return haystack.includes(normalizedSearch);
+    });
   }, [workflows, normalizedSearch]);
 
   const hasAnyWorkflows = workflows.length > 0;
@@ -191,7 +484,7 @@ export default function WorkflowsPage() {
   return (
     <div className={classNames(crispText, "h-app min-h-0 flex flex-col px-2 py-2")}>
       <div className="grid grid-cols-12 gap-4 md:gap-6">
-        <div className="col-span-12 xl:col-span-8">
+        <div className="col-span-12 xl:col-span-7">
           <CardShell
             title="Workflows"
             subtitle="Browse templates and load them into a project."
@@ -285,6 +578,25 @@ export default function WorkflowsPage() {
                           >
                             {wf.name}
                           </div>
+
+                          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                            {wf.source ? (
+                              <span className="rounded-full border border-gray-300/80 px-2 py-0.5 text-[11px] font-medium text-gray-700 dark:border-gray-700 dark:text-gray-300">
+                                {wf.source}
+                              </span>
+                            ) : null}
+
+                            <span className="rounded-full border border-gray-300/80 px-2 py-0.5 text-[11px] font-medium text-gray-700 dark:border-gray-700 dark:text-gray-300">
+                              {wf.protocolsCount ?? wf.previewGraph?.nodes?.length ?? 0} protocols
+                            </span>
+
+                            {wf.parseError ? (
+                              <span className="rounded-full border border-red-300/80 px-2 py-0.5 text-[11px] font-medium text-red-600 dark:border-red-800 dark:text-red-300">
+                                parse error
+                              </span>
+                            ) : null}
+                          </div>
+
                           <div className="mt-1 line-clamp-2 text-sm leading-6 text-gray-700 dark:text-gray-300 md:hidden">
                             {wf.description || "—"}
                           </div>
@@ -319,7 +631,7 @@ export default function WorkflowsPage() {
           </CardShell>
         </div>
 
-        <div className="col-span-12 xl:col-span-4">
+        <div className="col-span-12 xl:col-span-5">
           <CardShell
             title="Details"
             subtitle={selectedWorkflow ? "Selected workflow overview." : "Select a workflow to preview it."}
@@ -342,6 +654,34 @@ export default function WorkflowsPage() {
                   <div className="mt-1 whitespace-pre-line text-sm leading-6 text-gray-800 dark:text-gray-200">
                     {selectedWorkflow.description || "—"}
                   </div>
+                </div>
+
+                <div className="rounded-2xl border border-gray-300/80 bg-white p-4 dark:border-gray-700 dark:bg-slate-900">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                        Preview
+                      </div>
+                      <div className="mt-1 text-xs text-gray-600 dark:text-gray-400">
+                        {selectedWorkflow.protocolsCount ?? selectedWorkflow.previewGraph?.nodes?.length ?? 0} protocols ·{" "}
+                        {selectedWorkflow.previewGraph?.edges?.length ?? 0} links
+                      </div>
+                    </div>
+
+                    {selectedWorkflow.source ? (
+                      <span className="rounded-full border border-gray-300/80 px-2 py-1 text-xs font-medium text-gray-700 dark:border-gray-700 dark:text-gray-300">
+                        {selectedWorkflow.source}
+                      </span>
+                    ) : null}
+                  </div>
+
+                  {selectedWorkflow.parseError ? (
+                    <div className="rounded-xl border border-red-300/80 bg-red-50 px-3 py-2 text-sm leading-6 text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
+                      {selectedWorkflow.parseError}
+                    </div>
+                  ) : (
+                    <WorkflowGraphPreview workflow={selectedWorkflow} />
+                  )}
                 </div>
 
                 <PrimaryButton onClick={() => openApply(selectedWorkflow)} className="w-full">
@@ -409,9 +749,9 @@ function ApplyWorkflowDialog({ open, workflow, onClose }: ApplyWorkflowDialogPro
         const data = await svc.fetchList();
         const normalized: Array<{ id: string; name: string }> = Array.isArray(data)
           ? data.map((p: any) => ({
-              id: String(p.id ?? p.name),
-              name: p.name ?? String(p.id ?? ""),
-            }))
+            id: String(p.id ?? p.name),
+            name: p.name ?? String(p.id ?? ""),
+          }))
           : [];
 
         if (!cancelled) setProjectOptions(normalized);
@@ -427,6 +767,7 @@ function ApplyWorkflowDialog({ open, workflow, onClose }: ApplyWorkflowDialogPro
     };
 
     void loadProjects();
+
     return () => {
       cancelled = true;
     };
@@ -561,85 +902,83 @@ function ApplyWorkflowDialog({ open, workflow, onClose }: ApplyWorkflowDialogPro
           </div>
 
           <div className="mt-4 min-h-0 flex-1">
-            <div className="mt-4 min-h-0 flex-1">
-              {mode === "create" ? (
-                <>
-                  <div className="space-y-1.5">
-                    <label className="text-sm font-medium text-gray-900 dark:text-gray-200">New project name</label>
-                    <input
-                      type="text"
-                      value={newProjectTitle}
-                      onChange={(e) => setNewProjectTitle(e.target.value)}
-                      placeholder="Enter a title"
-                      className={classNames(
-                        crispText,
-                        "w-full rounded-xl border px-3 py-2.5 text-sm font-medium outline-none transition",
-                        "border-gray-300/80 bg-white text-gray-950 placeholder:text-gray-400",
-                        "focus:border-indigo-500/40 focus:ring-2 focus:ring-indigo-500/10",
-                        "dark:border-gray-700 dark:bg-slate-900 dark:text-white dark:placeholder:text-gray-500",
-                      )}
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="text-sm font-medium text-gray-900 dark:text-gray-200">Project description</label>
-                    <textarea
-                      rows={4}
-                      value={newProjectDescription}
-                      onChange={(e) => setNewProjectDescription(e.target.value)}
-                      placeholder="Optional description for this project"
-                      className={classNames(
-                        crispText,
-                        "w-full resize-none rounded-xl border px-3 py-2.5 text-sm leading-6 text-gray-900 outline-none transition placeholder:text-gray-400",
-                        "border-gray-300/80 bg-white",
-                        "focus:border-indigo-500/40 focus:ring-2 focus:ring-indigo-500/10",
-                        "dark:border-gray-700 dark:bg-slate-900 dark:text-white dark:placeholder:text-gray-500",
-                      )}
-                    />
-                    <p className="text-sm leading-6 text-gray-700 dark:text-gray-300">
-                      A new project will be created and this workflow will be loaded into it.
-                    </p>
-                  </div>
-                </>
-              ) : (
+            {mode === "create" ? (
+              <>
                 <div className="space-y-1.5">
-                  <label className="text-sm font-medium text-gray-900 dark:text-gray-200">Project</label>
-                  <select
-                    value={selectedProjectId}
-                    onChange={(e) => setSelectedProjectId(e.target.value)}
+                  <label className="text-sm font-medium text-gray-900 dark:text-gray-200">New project name</label>
+                  <input
+                    type="text"
+                    value={newProjectTitle}
+                    onChange={(e) => setNewProjectTitle(e.target.value)}
+                    placeholder="Enter a title"
                     className={classNames(
                       crispText,
                       "w-full rounded-xl border px-3 py-2.5 text-sm font-medium outline-none transition",
-                      "border-gray-300/80 bg-white text-gray-950",
+                      "border-gray-300/80 bg-white text-gray-950 placeholder:text-gray-400",
                       "focus:border-indigo-500/40 focus:ring-2 focus:ring-indigo-500/10",
-                      "dark:border-gray-700 dark:bg-slate-900 dark:text-white",
+                      "dark:border-gray-700 dark:bg-slate-900 dark:text-white dark:placeholder:text-gray-500",
                     )}
-                    disabled={projectsLoading || !!projectsError}
-                  >
-                    <option value="">
-                      {projectsLoading ? "Loading projects…" : projectsError ? "Could not load projects" : "Select a project"}
-                    </option>
-                    {!projectsLoading &&
-                      !projectsError &&
-                      projectOptions.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name}
-                        </option>
-                      ))}
-                  </select>
-
-                  {projectsError ? (
-                    <p className="text-sm leading-6 text-red-600 dark:text-red-300">{projectsError}</p>
-                  ) : (
-                    <p className="text-sm leading-6 text-gray-700 dark:text-gray-300 mb-43">
-                      The workflow will be loaded inside the selected existing project.
-                    </p>
-                  )}
+                  />
                 </div>
-              )}
 
-              {submitError ? <div className="text-sm leading-6 text-red-600 dark:text-red-300">{submitError}</div> : null}
-            </div>
+                <div className="mt-4 space-y-1.5">
+                  <label className="text-sm font-medium text-gray-900 dark:text-gray-200">Project description</label>
+                  <textarea
+                    rows={4}
+                    value={newProjectDescription}
+                    onChange={(e) => setNewProjectDescription(e.target.value)}
+                    placeholder="Optional description for this project"
+                    className={classNames(
+                      crispText,
+                      "w-full resize-none rounded-xl border px-3 py-2.5 text-sm leading-6 text-gray-900 outline-none transition placeholder:text-gray-400",
+                      "border-gray-300/80 bg-white",
+                      "focus:border-indigo-500/40 focus:ring-2 focus:ring-indigo-500/10",
+                      "dark:border-gray-700 dark:bg-slate-900 dark:text-white dark:placeholder:text-gray-500",
+                    )}
+                  />
+                  <p className="text-sm leading-6 text-gray-700 dark:text-gray-300">
+                    A new project will be created and this workflow will be loaded into it.
+                  </p>
+                </div>
+              </>
+            ) : (
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-gray-900 dark:text-gray-200">Project</label>
+                <select
+                  value={selectedProjectId}
+                  onChange={(e) => setSelectedProjectId(e.target.value)}
+                  className={classNames(
+                    crispText,
+                    "w-full rounded-xl border px-3 py-2.5 text-sm font-medium outline-none transition",
+                    "border-gray-300/80 bg-white text-gray-950",
+                    "focus:border-indigo-500/40 focus:ring-2 focus:ring-indigo-500/10",
+                    "dark:border-gray-700 dark:bg-slate-900 dark:text-white",
+                  )}
+                  disabled={projectsLoading || !!projectsError}
+                >
+                  <option value="">
+                    {projectsLoading ? "Loading projects…" : projectsError ? "Could not load projects" : "Select a project"}
+                  </option>
+                  {!projectsLoading &&
+                    !projectsError &&
+                    projectOptions.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                </select>
+
+                {projectsError ? (
+                  <p className="text-sm leading-6 text-red-600 dark:text-red-300">{projectsError}</p>
+                ) : (
+                  <p className="text-sm leading-6 text-gray-700 dark:text-gray-300">
+                    The workflow will be loaded inside the selected existing project.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {submitError ? <div className="mt-4 text-sm leading-6 text-red-600 dark:text-red-300">{submitError}</div> : null}
           </div>
 
           <div className="mt-6 flex items-center justify-between gap-3">
