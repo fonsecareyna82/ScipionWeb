@@ -866,12 +866,6 @@ export default function WorkflowsPage() {
               </div>
             ) : (
               <div className="space-y-3">
-                <div className="rounded-2xl border border-gray-300/80 bg-white p-4 dark:border-gray-700 dark:bg-slate-900">
-                  <div className="text-sm font-medium text-gray-700 dark:text-gray-300">Name</div>
-                  <div className="mt-1 text-[15px] font-medium leading-6 text-gray-950 dark:text-white">
-                    {selectedWorkflow.name}
-                  </div>
-                </div>
 
                 <WorkflowDescriptionCard workflow={selectedWorkflow} />
 
