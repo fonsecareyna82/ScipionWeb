@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { ArrowRight, RefreshCw, Search, X } from "lucide-react";
+import { ArrowRight, FileText, RefreshCw, Search, X } from "lucide-react";
 import toast from "react-hot-toast";
 import ReactFlow, {
   Background,
@@ -52,6 +52,10 @@ type ProjectWorkflow = BaseProjectWorkflow & {
   parseError?: string | null;
   content?: Array<Record<string, unknown>>;
   previewGraph?: WorkflowPreviewGraph;
+  requiredPluginNames?: string[];
+  missingPluginNames?: string[];
+  canLoad?: boolean;
+  disabledReason?: string;
 };
 
 function normalizeWorkflowPreviewGraph(raw: any): WorkflowPreviewGraph {
@@ -104,6 +108,33 @@ function normalizeWorkflowPreviewGraph(raw: any): WorkflowPreviewGraph {
     : [];
 
   return { nodes, edges, rootIds };
+}
+
+function normalizeStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+
+  return Array.from(
+    new Set(
+      value
+        .map((item) => String(item ?? "").trim())
+        .filter(Boolean),
+    ),
+  );
+}
+
+function canLoadWorkflow(workflow: ProjectWorkflow) {
+  if (workflow.canLoad === false) return false;
+  return !(workflow.missingPluginNames?.length);
+}
+
+function getWorkflowDisabledReason(workflow: ProjectWorkflow) {
+  if (workflow.disabledReason) return workflow.disabledReason;
+
+  if (workflow.missingPluginNames?.length) {
+    return `Missing required plugins: ${workflow.missingPluginNames.join(", ")}`;
+  }
+
+  return "";
 }
 
 function buildWorkflowReactFlowElements(
@@ -188,7 +219,7 @@ function buildWorkflowReactFlowElements(
               <div className="truncate text-[14px]  text-black">
                 {node.label || node.id}
               </div>
-              
+
             </div>
           ),
         },
@@ -328,6 +359,7 @@ function PrimaryButton(props: {
   className?: string;
   title?: string;
 }) {
+
   return (
     <button
       type="button"
@@ -376,6 +408,171 @@ function SecondaryButton(props: {
   );
 }
 
+function normalizeWorkflowDescriptionText(description?: string) {
+  return String(description ?? "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .replace(/(ScipionWeb metadata format:)/g, "\n$1")
+    .replace(/(ScipionWeb metadata version:)/g, "\n$1")
+    .replace(/(ScipionWeb exported at UTC:)/g, "\n$1")
+    .replace(/(ScipionWeb required plugins:)/g, "\n$1")
+    .replace(/(Scipion required plugins:)/g, "\n$1")
+    .replace(/(ScipionWeb protocol plugin:)/g, "\n$1")
+    .replace(/(You'll need)/g, "\n$1")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function parseWorkflowDescription(description?: string) {
+  const normalized = normalizeWorkflowDescriptionText(description);
+
+  const lines = normalized
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const metadataLines: string[] = [];
+  const pluginNames: string[] = [];
+  const descriptionLines: string[] = [];
+
+  for (const line of lines) {
+    const requiredPluginsMatch = line.match(/^Scipion(?:Web)? required plugins:\s*(.*)$/i);
+
+    if (requiredPluginsMatch) {
+      const names = requiredPluginsMatch[1]
+        .split(",")
+        .map((name) => name.trim())
+        .filter(Boolean);
+
+      pluginNames.push(...names);
+      metadataLines.push(line);
+      continue;
+    }
+
+    if (
+      line.startsWith("ScipionWeb metadata") ||
+      line.startsWith("ScipionWeb exported") ||
+      line.startsWith("ScipionWeb protocol plugin:")
+    ) {
+      metadataLines.push(line);
+      continue;
+    }
+
+    descriptionLines.push(line);
+  }
+
+  const uniquePluginNames = Array.from(new Set(pluginNames));
+
+  return {
+    lead: descriptionLines[0] || "No description available.",
+    details: descriptionLines.slice(1),
+    metadataLines,
+    pluginNames: uniquePluginNames,
+  };
+}
+
+function WorkflowDescriptionCard({ workflow }: { workflow: ProjectWorkflow }) {
+  const { lead, details, metadataLines, pluginNames } = useMemo(
+    () => parseWorkflowDescription(workflow.description),
+    [workflow.description],
+  );
+
+  return (
+    <div className="overflow-hidden rounded-2xl border border-gray-300/80 bg-white shadow-sm dark:border-gray-700 dark:bg-slate-900">
+      <div className="border-b border-gray-200/90 bg-gray-50 px-4 py-3 dark:border-gray-700 dark:bg-slate-800/70">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <div className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-gray-300/80 bg-white text-gray-700 shadow-sm dark:border-gray-700 dark:bg-slate-900 dark:text-gray-300">
+              <FileText className="h-4 w-4" />
+            </div>
+
+            <div className="min-w-0">
+              <div className="text-sm font-semibold tracking-[0.01em] text-gray-950 dark:text-white">
+                Description
+              </div>
+              <div className="mt-0.5 truncate text-xs text-gray-600 dark:text-gray-400">
+                Workflow overview and import requirements
+              </div>
+            </div>
+          </div>
+
+          {workflow.source ? (
+            <span className="shrink-0 rounded-full border border-gray-300/80 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 dark:border-gray-700 dark:bg-slate-900 dark:text-gray-300">
+              {workflow.source}
+            </span>
+          ) : null}
+
+          {workflow.missingPluginNames?.length ? (
+            <div className="rounded-xl border border-amber-300/80 bg-amber-50 px-3 py-2 text-sm leading-6 text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+              This workflow cannot be loaded because these plugins are missing:{" "}
+              <span className="font-semibold">{workflow.missingPluginNames.join(", ")}</span>
+            </div>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="space-y-3 p-4">
+        <div className="rounded-2xl border border-emerald-200/80 bg-emerald-50/70 px-4 py-3 dark:border-emerald-900/70 dark:bg-emerald-950/20">
+          <div className="text-[15px]  leading-6 text-gray-950 dark:text-white">
+            {lead}
+          </div>
+        </div>
+
+        {details.length ? (
+          <div className="space-y-2">
+            {details.map((line, index) => (
+              <div
+                key={`${workflow.id}-description-detail-${index}`}
+                className="rounded-xl border border-gray-200/90 bg-white px-3 py-2 text-sm leading-6 text-gray-800 dark:border-gray-700 dark:bg-slate-950/40 dark:text-gray-200"
+              >
+                {line}
+              </div>
+            ))}
+          </div>
+        ) : null}
+
+        {pluginNames.length ? (
+          <div className="rounded-xl border border-gray-200/90 bg-white p-3 dark:border-gray-700 dark:bg-slate-950/40">
+            <div className="mb-2 text-xs font-semibold uppercase tracking-[0.08em] text-gray-500 dark:text-gray-400">
+              Required plugins
+            </div>
+
+            <div className="flex flex-wrap gap-1.5">
+              {pluginNames.map((pluginName) => (
+                <span
+                  key={`${workflow.id}-plugin-${pluginName}`}
+                  className="rounded-full border border-emerald-300/80 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300"
+                >
+                  {pluginName}
+                </span>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        {metadataLines.length ? (
+          <details className="rounded-xl border border-gray-200/90 bg-gray-50 px-3 py-2 dark:border-gray-700 dark:bg-slate-950/40">
+            <summary className="cursor-pointer text-xs font-semibold uppercase tracking-[0.08em] text-gray-500 dark:text-gray-400">
+              ScipionWeb metadata
+            </summary>
+
+            <div className="mt-2 space-y-1.5">
+              {metadataLines.map((line, index) => (
+                <div
+                  key={`${workflow.id}-metadata-${index}`}
+                  className="break-words rounded-lg bg-white px-2.5 py-1.5 font-mono text-[11px] leading-5 text-gray-700 dark:bg-slate-900 dark:text-gray-300"
+                >
+                  {line}
+                </div>
+              ))}
+            </div>
+          </details>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 export default function WorkflowsPage() {
   const svc = useProjectService();
 
@@ -398,6 +595,9 @@ export default function WorkflowsPage() {
       const normalized: ProjectWorkflow[] = Array.isArray(data)
         ? data.map((wf: any, index: number) => {
           const previewGraph = normalizeWorkflowPreviewGraph(wf.previewGraph);
+          const requiredPluginNames = normalizeStringArray(wf.requiredPluginNames);
+          const missingPluginNames = normalizeStringArray(wf.missingPluginNames);
+
 
           return {
             id: String(wf.id ?? wf.name ?? index),
@@ -413,6 +613,10 @@ export default function WorkflowsPage() {
             parseError: wf.parseError ?? null,
             content: Array.isArray(wf.content) ? wf.content : [],
             previewGraph,
+            requiredPluginNames,
+            missingPluginNames,
+            canLoad: typeof wf.canLoad === "boolean" ? wf.canLoad : missingPluginNames.length === 0,
+            disabledReason: wf.disabledReason ? String(wf.disabledReason) : "",
           };
         })
         : [];
@@ -465,7 +669,15 @@ export default function WorkflowsPage() {
     };
   }, [filteredWorkflows.length, selectedWorkflow, workflows.length]);
 
+  const selectedWorkflowIsLoadable = selectedWorkflow ? canLoadWorkflow(selectedWorkflow) : false;
+  const selectedWorkflowDisabledReason = selectedWorkflow ? getWorkflowDisabledReason(selectedWorkflow) : "";
+
   const openApply = useCallback((wf: ProjectWorkflow) => {
+    if (!canLoadWorkflow(wf)) {
+      toast.error(getWorkflowDisabledReason(wf) || "This workflow cannot be loaded.");
+      return;
+    }
+
     setSelectedWorkflow(wf);
     setApplyDialogOpen(true);
   }, []);
@@ -555,6 +767,8 @@ export default function WorkflowsPage() {
                 ) : (
                   filteredWorkflows.map((wf) => {
                     const isSelected = selectedWorkflow && String(selectedWorkflow.id) === String(wf.id);
+                    const isLoadable = canLoadWorkflow(wf);
+                    const disabledReason = getWorkflowDisabledReason(wf);
 
                     return (
                       <div
@@ -595,6 +809,15 @@ export default function WorkflowsPage() {
                                 parse error
                               </span>
                             ) : null}
+
+                            {wf.missingPluginNames?.length ? (
+                              <span
+                                className="rounded-full border border-amber-300/80 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300"
+                                title={disabledReason}
+                              >
+                                missing plugins
+                              </span>
+                            ) : null}
                           </div>
 
                           <div className="mt-1 line-clamp-2 text-sm leading-6 text-gray-700 dark:text-gray-300 md:hidden">
@@ -611,8 +834,9 @@ export default function WorkflowsPage() {
                         <div className="col-span-8 flex items-center justify-end md:col-span-2">
                           <PrimaryButton
                             onClick={() => openApply(wf)}
+                            disabled={!isLoadable}
                             className="px-3 py-2 text-xs"
-                            title="Load this workflow"
+                            title={isLoadable ? "Load this workflow" : disabledReason}
                           >
                             Load
                             <ArrowRight className="h-4 w-4" />
@@ -649,12 +873,7 @@ export default function WorkflowsPage() {
                   </div>
                 </div>
 
-                <div className="rounded-2xl border border-gray-300/80 bg-white p-4 dark:border-gray-700 dark:bg-slate-900">
-                  <div className="text-sm font-medium text-gray-700 dark:text-gray-300">Description</div>
-                  <div className="mt-1 whitespace-pre-line text-sm leading-6 text-gray-800 dark:text-gray-200">
-                    {selectedWorkflow.description || "—"}
-                  </div>
-                </div>
+                <WorkflowDescriptionCard workflow={selectedWorkflow} />
 
                 <div className="rounded-2xl border border-gray-300/80 bg-white p-4 dark:border-gray-700 dark:bg-slate-900">
                   <div className="mb-3 flex items-center justify-between gap-3">
@@ -684,7 +903,12 @@ export default function WorkflowsPage() {
                   )}
                 </div>
 
-                <PrimaryButton onClick={() => openApply(selectedWorkflow)} className="w-full">
+                <PrimaryButton
+                  onClick={() => openApply(selectedWorkflow)}
+                  disabled={!selectedWorkflowIsLoadable}
+                  title={selectedWorkflowIsLoadable ? "Load this workflow" : selectedWorkflowDisabledReason}
+                  className="w-full"
+                >
                   Load workflow
                   <ArrowRight className="h-4 w-4" />
                 </PrimaryButton>
