@@ -513,7 +513,7 @@ export default function ProjectCard(props: ProjectCardProps) {
           })),
         );
 
-        await runWithConcurrencyLimit(tasks, 6, async (task) => {
+        await runWithConcurrencyLimit(tasks, 1, async (task) => {
           if (!task.requestUrl) {
             if (cancelled) return;
 
