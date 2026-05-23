@@ -428,8 +428,8 @@ export default function ProjectCard(props: ProjectCardProps) {
           String(thumbnailItemsUrl ?? ""),
           String(thumbnailVersion ?? ""),
           "size=320",
-          "maxProtocols=12",
-          "maxOutputsPerProtocol=4",
+          "maxProtocols=5",
+          "maxOutputsPerProtocol=2",
         ].join("|");
 
         let groups: ProjectThumbnailGroup[] = [];
@@ -452,8 +452,8 @@ export default function ProjectCard(props: ProjectCardProps) {
           groups = await svc.fetchProjectThumbnailItems(id, {
             sourceUrl: versionedItemsUrl,
             size: 320,
-            maxProtocols: 12,
-            maxOutputsPerProtocol: 4,
+            maxProtocols: 5,
+            maxOutputsPerProtocol: 2,
             signal: controller.signal,
             cache: "no-store",
           });
