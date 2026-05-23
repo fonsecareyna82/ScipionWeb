@@ -427,9 +427,9 @@ export default function ProjectCard(props: ProjectCardProps) {
           String(id),
           String(thumbnailItemsUrl ?? ""),
           String(thumbnailVersion ?? ""),
-          "size=320",
-          "maxProtocols=12",
-          "maxOutputsPerProtocol=4",
+          "size=256",
+          "maxProtocols=5",
+          "maxOutputsPerProtocol=2",
         ].join("|");
 
         let groups: ProjectThumbnailGroup[] = [];
@@ -451,9 +451,9 @@ export default function ProjectCard(props: ProjectCardProps) {
 
           groups = await svc.fetchProjectThumbnailItems(id, {
             sourceUrl: versionedItemsUrl,
-            size: 320,
-            maxProtocols: 12,
-            maxOutputsPerProtocol: 4,
+            size: 256,
+            maxProtocols: 5,
+            maxOutputsPerProtocol: 2,
             signal: controller.signal,
             cache: "no-store",
           });
@@ -480,7 +480,7 @@ export default function ProjectCard(props: ProjectCardProps) {
             const rawImageUrl = svc.resolveBackendUrl(output.thumbnailUrl);
             const requestUrl = rawImageUrl
               ? appendQueryParams(rawImageUrl, {
-                size: 320,
+                size: 256,
                 v: thumbnailVersion ?? "",
               })
               : null;
@@ -505,7 +505,7 @@ export default function ProjectCard(props: ProjectCardProps) {
               ? appendQueryParams(
                 svc.resolveBackendUrl(output.thumbnailUrl) ?? "",
                 {
-                  size: 320,
+                  size: 256,
                   v: thumbnailVersion ?? "",
                 },
               )
@@ -513,7 +513,7 @@ export default function ProjectCard(props: ProjectCardProps) {
           })),
         );
 
-        await runWithConcurrencyLimit(tasks, 6, async (task) => {
+        await runWithConcurrencyLimit(tasks, 1, async (task) => {
           if (!task.requestUrl) {
             if (cancelled) return;
 

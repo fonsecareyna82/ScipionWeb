@@ -2267,6 +2267,88 @@ export async function fetchVolumeSliceObjectUrl(
   return { url: objUrl, meta, revoke };
 }
 
+
+export type VolumeSurfaceMethod =
+  | "binning"
+  | "stride"
+  | "linear"
+  | "fourier"
+  | "none";
+
+export interface VolumeSurfaceMesh {
+  kind: "surfaceMesh";
+  level: number;
+  rangeMin?: number;
+  rangeMax?: number;
+  dims: [number, number, number];
+  sourceDims?: [number, number, number];
+  order: "zyx" | "xyz";
+  vertexCount: number;
+  triangleCount: number;
+  vertices: number[];
+  normals: number[];
+  indices: number[];
+  values?: number[];
+  center?: number[];
+  scale?: number;
+  maxDim?: number;
+  method?: VolumeSurfaceMethod;
+  volumeId?: string;
+  outputName?: string;
+}
+
+export async function getVolumeSurfaceMesh(
+  projectId: Id,
+  protocolId: Id,
+  outputName: string,
+  volumeId: Id,
+  opts: {
+    level?: number | null;
+    maxDim?: number;
+    method?: VolumeSurfaceMethod;
+    maxTriangles?: number;
+    signal?: AbortSignal;
+  } = {},
+): Promise<VolumeSurfaceMesh> {
+  const enc = encodeURIComponent;
+
+  const base = `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/outputs/${enc(
+    outputName,
+  )}/volumes/${enc(String(volumeId))}/surface`;
+
+  const params = new URLSearchParams();
+
+  if (opts.level != null && Number.isFinite(opts.level)) {
+    params.set("level", String(opts.level));
+  }
+
+  if (opts.maxDim != null) {
+    params.set("maxDim", String(opts.maxDim));
+  }
+
+  if (opts.method) {
+    params.set("method", opts.method);
+  }
+
+  if (opts.maxTriangles != null) {
+    params.set("maxTriangles", String(opts.maxTriangles));
+  }
+
+  const url = params.toString() ? `${base}?${params.toString()}` : base;
+
+  const res = await fetchWithAuth(url, {
+    method: "GET",
+    cache: "no-store",
+    signal: opts.signal,
+  });
+
+  if (!res.ok) {
+    throw await toApiError(res, "Failed to fetch volume surface mesh");
+  }
+
+  return safeJson<VolumeSurfaceMesh>(res);
+}
+
 export async function getVolumeData3d(
   projectId: Id,
   protocolId: Id,

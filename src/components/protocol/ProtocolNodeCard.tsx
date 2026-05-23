@@ -94,7 +94,7 @@ const statusColors: Record<string, string> = {
   interactive: "#f7f3bf",
   root: "#D9F1FA",
   scheduled: "#f7f3bf",
-  new: "#1E90FF",
+  new: "#D9F1FA",
 };
 
 const statusBadgeColors: Record<string, string> = {

@@ -1148,12 +1148,39 @@ export default function ProjectPage() {
 
       const data = await svc.fetchWorkflows();
 
+      const normalizeStringArray = (value: unknown): string[] => {
+        if (!Array.isArray(value)) return [];
+
+        return Array.from(
+          new Set(
+            value
+              .map((item) => String(item ?? "").trim())
+              .filter(Boolean),
+          ),
+        );
+      };
+
       const normalized: ProjectWorkflow[] = Array.isArray(data)
-        ? data.map((wf: any, idx: number) => ({
-          id: String(wf.id ?? wf.name ?? `wf-${idx}`),
-          name: wf.name ?? String(wf.id ?? `Workflow ${idx + 1}`),
-          description: wf.description ?? "",
-        }))
+        ? data.map((wf: any, idx: number) => {
+          const requiredPluginNames = normalizeStringArray(wf.requiredPluginNames);
+          const missingPluginNames = normalizeStringArray(wf.missingPluginNames);
+
+          return {
+            id: String(wf.id ?? wf.name ?? `wf-${idx}`),
+            name: String(wf.name ?? wf.id ?? `Workflow ${idx + 1}`),
+            description: String(wf.description ?? ""),
+            source: wf.source ? String(wf.source) : "",
+            templatePath: wf.templatePath ? String(wf.templatePath) : "",
+            protocolsCount: Number.isFinite(Number(wf.protocolsCount))
+              ? Number(wf.protocolsCount)
+              : undefined,
+            parseError: wf.parseError ? String(wf.parseError) : null,
+            requiredPluginNames,
+            missingPluginNames,
+            canLoad: typeof wf.canLoad === "boolean" ? wf.canLoad : missingPluginNames.length === 0,
+            disabledReason: wf.disabledReason ? String(wf.disabledReason) : "",
+          };
+        })
         : [];
 
       setWorkflows(normalized);
@@ -1851,6 +1878,41 @@ export default function ProjectPage() {
     pathEdgeModeRef.current = 'all';
     applyPathSelection(Array.from(ids));
   }, [applyPathSelection]);
+
+  const getAllWorkflowProtocolIds = useCallback((): Set<string> => {
+    // getAllWorkflowProtocolIds
+    const ids = new Set<string>();
+
+    if (viewModeRef.current === "table") {
+      for (const row of tableData) {
+        const id = String(row?.id ?? "").trim();
+        if (id && id !== "PROJECT") ids.add(id);
+      }
+
+      return ids;
+    }
+
+    for (const node of nodesRef.current) {
+      const id = String(node.id ?? "").trim();
+      if (id && id !== "PROJECT") ids.add(id);
+    }
+
+    return ids;
+  }, [tableData]);
+
+  const handleSelectAllWorkflow = useCallback(() => {
+    // handleSelectAllWorkflow
+    const ids = getAllWorkflowProtocolIds();
+
+    if (!ids.size) return;
+
+    selectedIdRef.current = null;
+    setPreviousNodeId(null);
+    setHighlightedId(null);
+
+    suppressOneFrame();
+    applyGenericSelectionFromSet(ids);
+  }, [getAllWorkflowProtocolIds, applyGenericSelectionFromSet]);
 
   const handleSelectFrom = useCallback((id: string) => {
     const nodesSet = collectDescendants(id);
@@ -3909,8 +3971,9 @@ export default function ProjectPage() {
     const isTypingTarget = (el: EventTarget | null) => {
       const t = el as HTMLElement | null;
       if (!t) return false;
+
       return !!t.closest(
-        'input, textarea, select, [contenteditable=""], [contenteditable="true"]'
+        'input, textarea, select, [contenteditable=""], [contenteditable="true"], [role="dialog"]'
       );
     };
 
@@ -3952,14 +4015,24 @@ export default function ProjectPage() {
         return;
       }
 
-      /*if (modPressed(e) && !e.shiftKey && e.key.toLowerCase() === "k") {
+      if (modPressed(e) && !e.shiftKey && e.key.toLowerCase() === "p") {
         e.preventDefault();
         e.stopPropagation();
         (e as any).stopImmediatePropagation?.();
 
-        void handleOpenWorkflows();
+        closeAllDockedForms();
+        handleProtocolsDrawerOpenChange(true);
         return;
-      }*/
+      }
+
+      if (modPressed(e) && !e.shiftKey && e.key.toLowerCase() === "a") {
+        e.preventDefault();
+        e.stopPropagation();
+        (e as any).stopImmediatePropagation?.();
+
+        handleSelectAllWorkflow();
+        return;
+      }
 
       const ids = getSelectedIds();
       const selectedId = selectedIdRef.current;
@@ -4059,6 +4132,7 @@ export default function ProjectPage() {
     openStop,
     handleSelectFrom,
     handleSelectTo,
+    handleSelectAllWorkflow,
     closeAllDockedForms,
     handleProtocolsDrawerOpenChange,
     handleOpenWorkflows,

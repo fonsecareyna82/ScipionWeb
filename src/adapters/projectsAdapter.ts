@@ -277,7 +277,7 @@ const defaultService: ProjectService = {
     };
   },
 
-    listExternalViewers: (
+  listExternalViewers: (
     projectId: Id,
     protocolId: Id,
     outputName: string,
@@ -375,6 +375,22 @@ const defaultService: ProjectService = {
       // API uses { axis?, cmap?, normalize?, scale?, format?, thumb?, fast?, quality?, signal? }
       opts as any,
     ),
+
+  getVolumeSurfaceMesh(
+    projectId,
+    protocolId,
+    outputName,
+    volumeId,
+    opts,
+  ) {
+    return api.getVolumeSurfaceMesh(
+      projectId,
+      protocolId,
+      outputName,
+      volumeId,
+      opts,
+    );
+  },
 
   getVolumeData3d: (
     projectId: Id,

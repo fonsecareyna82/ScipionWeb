@@ -23,6 +23,8 @@ import Plot from "react-plotly.js";
 import { useProjectService } from "@/ProjectServiceContext";
 import { ZoomIn, Layers3, HelpCircle, BoxIcon, Table as TableLucide, Pause, Play } from "lucide-react";
 import GpuVolumeView from "./gpu-volume-view";
+import MeshVolumeView from "./mesh-volume-view";
+import type { VolumeSurfaceMesh } from "@/services/ProjectService";
 import { MetadataViewer } from "./metadata-viewer";
 import ExternalViewersBar from "./ExternalViewersBar";
 
@@ -45,7 +47,7 @@ type ViewMode = "slices" | "map3d" | "metadata";
 type ThrMode = "percentile" | "absolute";
 type RightTab = "ctrl" | "hist";
 type Interp2d = "nearest" | "linear" | "high";
-type RenderMode3d = "surface" | "volume";
+type RenderMode3d = "surface" | "mesh" | "volume";
 type SliceLayoutMode = "single" | "triple";
 
 type SliceImageState = {
@@ -65,11 +67,13 @@ const CMAP_OPTIONS = [
   "turbo",
 ];
 
+const SURFACE_MAX_TRIANGLES = 550000;
+
 const HELP_TEXT: Record<string, string> = {
   maxDim3d:
     "Maximum dimension used for the downsampled 3D volume. Higher values look better but are slower.",
   method3d:
-    "Downsampling method. Binning averages blocks. Stride skips voxels. None keeps original size (can be heavy).",
+    "Downsampling method: None keeps original size. Binning averages blocks. Stride skips voxels. ",
   colormap3d: "Colormap applied to the rendered 3D volume.",
   opacity3d:
     "Opacity of the volume along the ray. Higher values make the map more solid.",
@@ -82,9 +86,7 @@ const HELP_TEXT: Record<string, string> = {
   surfaceCount:
     "Number of isosurfaces in Plotly fallback. Does not affect GPU raycasting.",
   isoRenderMode3d:
-    "How the iso band is visualized in GPU mode. Surface mimics ChimeraX-like solid shells; Volume renders the full band.",
-  surfaceThickness3d:
-    "Thickness of the surface shell as a fraction of the iso band width.",
+    "Surface loads a real marching-cubes mesh, closer to Chimera/EMAN. Volume renders the density field by GPU raycasting.",
   axis: "Slice axis. Z/Y/X correspond to the 3D volume axes.",
   sliceLayout:
     "Single shows one slice view at a time. Triple shows synchronized orthogonal Z/Y/X views at once.",
@@ -106,6 +108,8 @@ const HELP_TEXT: Record<string, string> = {
     "Pan single-view slices with Ctrl+drag or middle mouse. Reset with Fit.",
   zoom2d:
     "Mouse wheel zooms single-view slices. Double-click fits and resets pan.",
+  surfaceLevel3d:
+    "Absolute iso level for the marching-cubes surface. Leave it empty to let the backend choose an automatic level.",
 };
 
 const SliceSlider = styled(Slider)(({ theme }) => ({
@@ -207,9 +211,18 @@ export default function VolumeViewer({
     max?: number;
   } | null>(null);
 
-  const [maxDim3d, setMaxDim3d] = useState(96);
-  const [method3d, setMethod3d] = useState<"binning" | "stride" | "none">(
-    "binning",
+  const [surfaceMesh, setSurfaceMesh] = useState<VolumeSurfaceMesh | null>(null);
+  const [surfaceLevel3d, setSurfaceLevel3d] = useState<number | null>(null);
+  const [surfaceResolvedLevel, setSurfaceResolvedLevel] = useState<number | null>(null);
+  const [surfaceLevelRange, setSurfaceLevelRange] = useState<[number, number] | null>(null);
+
+
+  const [surfaceRefreshing, setSurfaceRefreshing] = useState(false);
+  const surfaceAbortRef = useRef<AbortController | null>(null);
+
+  const [maxDim3d, setMaxDim3d] = useState(192);
+  const [method3d, setMethod3d] = useState<"none" | "binning" | "stride">(
+    "none",
   );
 
   const [surfaceCount, setSurfaceCount] = useState(3);
@@ -222,13 +235,24 @@ export default function VolumeViewer({
 
   const [renderMode3d, setRenderMode3d] =
     useState<RenderMode3d>("surface");
-  const [surfaceThickness3d, setSurfaceThickness3d] = useState(0.12);
+
+  const usesSurfaceMesh3d = renderMode3d === "surface" || renderMode3d === "mesh";
+  const needsHistogram =
+    showHistogram || (viewMode === "map3d" && usesSurfaceMesh3d && selectedId != null);
 
   const lastLoadedRef = useRef<{
     volumeId: string | number | null;
     maxDim: number;
     method: "binning" | "stride" | "none";
-  }>({ volumeId: null, maxDim: 96, method: "binning" });
+    renderMode: RenderMode3d;
+    surfaceLevel: number | null;
+  }>({
+    volumeId: null,
+    maxDim: 192,
+    method: "none",
+    renderMode: "surface",
+    surfaceLevel: null,
+  });
 
   const lastThrVolumeRef = useRef<string | number | null>(null);
 
@@ -259,7 +283,10 @@ export default function VolumeViewer({
 
   useEffect(() => {
     const shouldAnimatePlotly =
-      viewMode === "map3d" && autoRotate3d && (gpuError || !mapData);
+      viewMode === "map3d" &&
+      renderMode3d === "volume" &&
+      autoRotate3d &&
+      (gpuError || !mapData);
 
     if (!shouldAnimatePlotly) {
       if (plotlyAnimHandleRef.current != null) {
@@ -304,7 +331,15 @@ export default function VolumeViewer({
         plotlyAnimHandleRef.current = null;
       }
     };
-  }, [viewMode, autoRotate3d, gpuError, mapData]);
+  }, [viewMode, renderMode3d, autoRotate3d, gpuError, mapData]);
+
+  useEffect(() => {
+    setSurfaceMesh(null);
+    setSurfaceResolvedLevel(null);
+    setSurfaceLevel3d(null);
+    setSurfaceLevelRange(null);
+    setGpuError(null);
+  }, [selectedId]);
 
   useEffect(() => {
     setRightTab("ctrl");
@@ -377,7 +412,7 @@ export default function VolumeViewer({
   }, [selectedId, projectId, protocolId, outputName, svc]);
 
   useEffect(() => {
-    if (!showHistogram || selectedId == null) {
+    if (!needsHistogram || selectedId == null) {
       setHistogram(null);
       setHistError(null);
       setHistLoading(false);
@@ -418,7 +453,7 @@ export default function VolumeViewer({
     return () => {
       cancelled = true;
     };
-  }, [showHistogram, selectedId, projectId, protocolId, outputName, svc]);
+  }, [needsHistogram, selectedId, projectId, protocolId, outputName, svc]);
 
   const dims = useMemo(() => getDimsZYXtoXYZ(meta), [meta]);
 
@@ -566,13 +601,162 @@ export default function VolumeViewer({
     reloadKey: sliceReloadNonce,
   });
 
+  const metadataSurfaceLevelRange = useMemo<[number, number] | null>(() => {
+
+    const meshMin = firstFiniteNumber(surfaceMesh?.rangeMin);
+    const meshMax = firstFiniteNumber(surfaceMesh?.rangeMax);
+
+    if (meshMin != null && meshMax != null && meshMax > meshMin) {
+      return [meshMin, meshMax];
+    }
+
+    const min = firstFiniteNumber(
+      meta?.min,
+      meta?.minimum,
+      meta?.rangeMin,
+      meta?.dataMin,
+      meta?.valueMin,
+    );
+
+    const max = firstFiniteNumber(
+      meta?.max,
+      meta?.maximum,
+      meta?.rangeMax,
+      meta?.dataMax,
+      meta?.valueMax,
+    );
+
+    if (min != null && max != null && max > min) {
+      return [min, max];
+    }
+
+    return null;
+  }, [surfaceMesh, meta]);
+
+
+
+  useEffect(() => {
+    if (metadataSurfaceLevelRange) {
+      setSurfaceLevelRange(metadataSurfaceLevelRange);
+    }
+  }, [metadataSurfaceLevelRange]);
+
+  const buildFallbackSurfaceLevelRange = useCallback((level: number): [number, number] => {
+    const width = Math.max(Math.abs(level) * 4, 0.02);
+    return [level - width, level + width];
+  }, []);
+
+  const reloadSurfaceMesh = useCallback(
+    async (level: number | null, opts: { silent?: boolean } = {}) => {
+      if (selectedId == null) return;
+
+      surfaceAbortRef.current?.abort();
+
+      const controller = new AbortController();
+      surfaceAbortRef.current = controller;
+
+      const silent = opts.silent === true;
+
+      if (silent) {
+        setSurfaceRefreshing(true);
+      } else {
+        setMapLoading(true);
+      }
+
+      setMapError(null);
+      setGpuError(null);
+
+      const requestLevel = clampIsoLevelToOpenRange(level, surfaceLevelRange);
+
+      try {
+        const mesh = await svc.getVolumeSurfaceMesh(
+          projectId,
+          protocolId,
+          outputName,
+          selectedId,
+          {
+            level: requestLevel,
+            maxDim: maxDim3d,
+            method: method3d,
+            maxTriangles: SURFACE_MAX_TRIANGLES,
+            signal: controller.signal,
+          },
+        );
+
+        if (controller.signal.aborted) return;
+
+        const resolvedLevel = Number.isFinite(mesh?.level) ? Number(mesh.level) : null;
+
+        setSurfaceMesh(mesh);
+        setSurfaceResolvedLevel(resolvedLevel);
+        setMapData(null);
+
+        if (metadataSurfaceLevelRange) {
+          setSurfaceLevelRange(metadataSurfaceLevelRange);
+        } else if (resolvedLevel != null) {
+          setSurfaceLevelRange((prev) => {
+            if (prev && resolvedLevel >= prev[0] && resolvedLevel <= prev[1]) {
+              return prev;
+            }
+
+            return buildFallbackSurfaceLevelRange(resolvedLevel);
+          });
+        }
+        setMapData(null);
+
+        lastLoadedRef.current = {
+          volumeId: selectedId,
+          maxDim: maxDim3d,
+          method: method3d,
+          renderMode: renderMode3d,
+          surfaceLevel: requestLevel,
+        };
+      } catch (e: any) {
+        if (controller.signal.aborted || e?.name === "AbortError") return;
+
+        setMapError(e?.message || "Failed to load surface mesh");
+        setSurfaceMesh(null);
+        setSurfaceResolvedLevel(null);
+      } finally {
+        if (surfaceAbortRef.current === controller) {
+          surfaceAbortRef.current = null;
+        }
+
+        if (silent) {
+          setSurfaceRefreshing(false);
+        } else {
+          setMapLoading(false);
+        }
+      }
+    },
+    [
+      selectedId,
+      svc,
+      projectId,
+      protocolId,
+      outputName,
+      maxDim3d,
+      method3d,
+      renderMode3d,
+      metadataSurfaceLevelRange,
+      buildFallbackSurfaceLevelRange,
+      surfaceLevelRange,
+    ],
+  );
+
   const load3d = useCallback(async () => {
     if (selectedId == null) return;
+
     setMapLoading(true);
     setMapError(null);
     setGpuError(null);
 
     try {
+      if (usesSurfaceMesh3d) {
+        await reloadSurfaceMesh(surfaceLevel3d, { silent: false });
+        return;
+      }
+
       const raw = await svc.getVolumeData3d(
         projectId,
         protocolId,
@@ -582,16 +766,23 @@ export default function VolumeViewer({
       );
 
       const parsed = normalize3dPayload(raw);
+
       setMapData(parsed);
+      setSurfaceMesh(null);
+      setSurfaceResolvedLevel(null);
 
       lastLoadedRef.current = {
         volumeId: selectedId,
         maxDim: maxDim3d,
         method: method3d,
+        renderMode: renderMode3d,
+        surfaceLevel: surfaceLevel3d,
       };
     } catch (e: any) {
       setMapError(e?.message || "Failed to load 3D data");
       setMapData(null);
+      setSurfaceMesh(null);
+      setSurfaceResolvedLevel(null);
     } finally {
       setMapLoading(false);
     }
@@ -603,6 +794,10 @@ export default function VolumeViewer({
     outputName,
     maxDim3d,
     method3d,
+    renderMode3d,
+    surfaceLevel3d,
+    usesSurfaceMesh3d,
+    reloadSurfaceMesh,
   ]);
 
   useEffect(() => {
@@ -610,19 +805,31 @@ export default function VolumeViewer({
     if (selectedId == null) return;
 
     const last = lastLoadedRef.current;
-    if (last.volumeId !== selectedId) load3d();
-  }, [viewMode, selectedId, load3d]);
+    if (last.volumeId !== selectedId || last.renderMode !== renderMode3d) {
+      load3d();
+    }
+  }, [viewMode, selectedId, renderMode3d, load3d]);
 
   const dataDirty = useMemo(() => {
     const last = lastLoadedRef.current;
+
     return (
       viewMode === "map3d" &&
       selectedId != null &&
       (last.volumeId !== selectedId ||
         last.maxDim !== maxDim3d ||
-        last.method !== method3d)
+        last.method !== method3d ||
+        last.renderMode !== renderMode3d ||
+        last.surfaceLevel !== surfaceLevel3d)
     );
-  }, [viewMode, selectedId, maxDim3d, method3d]);
+  }, [
+    viewMode,
+    selectedId,
+    maxDim3d,
+    method3d,
+    renderMode3d,
+    surfaceLevel3d,
+  ]);
 
   const sortedValues = useMemo(() => {
     if (!mapData?.values?.length) return null;
@@ -774,7 +981,46 @@ export default function VolumeViewer({
     };
   }, [viewMode, sliceLayoutMode, frontUrl]);
 
+  const handleMeshError = useCallback((msg: string) => {
+    setGpuError(msg);
+  }, []);
+
   const panelBasis = 340;
+
+  const histogramLevelRange = useMemo<[number, number] | null>(() => {
+    const range = getHistogramDisplayRange(histogram, 0.005, 0.995);
+    if (range) return range;
+
+    const edges = histogram?.binEdges ?? [];
+    if (edges.length < 2) return null;
+
+    const min = firstFiniteNumber(edges[0]);
+    const max = firstFiniteNumber(edges[edges.length - 1]);
+
+    if (min != null && max != null && max > min) {
+      return [min, max];
+    }
+
+    return null;
+  }, [histogram]);
+
+
+  const surfaceLevelValue = useMemo(() => {
+    return (
+      surfaceLevel3d ??
+      surfaceResolvedLevel ??
+      surfaceMesh?.level ??
+      (surfaceLevelRange
+        ? surfaceLevelRange[0] +
+        0.75 * (surfaceLevelRange[1] - surfaceLevelRange[0])
+        : 0)
+    );
+  }, [
+    surfaceLevel3d,
+    surfaceResolvedLevel,
+    surfaceMesh,
+    surfaceLevelRange,
+  ]);
 
   return (
     <Box
@@ -984,7 +1230,11 @@ export default function VolumeViewer({
           >
             <Box
               ref={viewerRef}
-              onDoubleClick={sliceLayoutMode === "single" ? fitZoom : undefined}
+              onDoubleClick={
+                viewMode === "slices" && sliceLayoutMode === "single"
+                  ? fitZoom
+                  : undefined
+              }
               sx={{
                 flex: 1,
                 minHeight: 0,
@@ -1092,7 +1342,21 @@ export default function VolumeViewer({
                 <Typography variant="body2" color="error">
                   {mapError}
                 </Typography>
-              ) : mapData && stats3d && isoRange3d && !gpuError ? (
+              ) : usesSurfaceMesh3d && surfaceMesh && !gpuError ? (
+                <MeshVolumeView
+                  mesh={surfaceMesh}
+                  displayMode={renderMode3d === "mesh" ? "mesh" : "surface"}
+                  opacity={opacity3d}
+                  colormap={colormap3d}
+                  autoRotate={autoRotate3d}
+                  autoRotateSpeed={3.8}
+                  onError={handleMeshError}
+                />
+              ) : usesSurfaceMesh3d && gpuError ? (
+                <Typography variant="body2" color="error">
+                  {gpuError}
+                </Typography>
+              ) : renderMode3d === "volume" && mapData && stats3d && isoRange3d && !gpuError ? (
                 <GpuVolumeView
                   values={mapData.values}
                   dims={mapData.dims}
@@ -1104,13 +1368,12 @@ export default function VolumeViewer({
                   isoMax={isoRange3d[1]}
                   opacity={opacity3d}
                   colormap={colormap3d}
-                  renderMode={renderMode3d}
-                  shell={surfaceThickness3d}
+                  renderMode="volume"
                   autoRotate={autoRotate3d}
                   autoRotateSpeed={3.8}
                   onError={(msg) => setGpuError(msg)}
                 />
-              ) : mapData && stats3d && isoRange3d ? (
+              ) : renderMode3d === "volume" && mapData && stats3d && isoRange3d ? (
                 <Box sx={{ width: "100%", height: "100%" }}>
                   {(() => {
                     const plotProps: any = {
@@ -1144,14 +1407,20 @@ export default function VolumeViewer({
                       config: { displaylogo: false, responsive: true, scrollZoom: true },
                       onRelayout: handleRelayout,
                     };
-                    // forceRerenderWhileAutoRotatingPlotly
+
                     void plotlyAnimTick;
                     return <Plot {...plotProps} />;
                   })()}
                 </Box>
+              ) : gpuError ? (
+                <Typography variant="body2" color="error">
+                  {gpuError}
+                </Typography>
               ) : (
                 <Typography variant="body2" color="text.secondary">
-                  No 3D data. Press Reload.
+                  {usesSurfaceMesh3d
+                    ? "Load the surface to start adjusting the level."
+                    : "Load the 3D volume to start rendering."}
                 </Typography>
               )}
             </Box>
@@ -1169,6 +1438,18 @@ export default function VolumeViewer({
                       label="Downsampled"
                       value={`${mapData.dims.x} × ${mapData.dims.y} × ${mapData.dims.z}`}
                     />
+                  )}
+                  {viewMode === "map3d" && renderMode3d === "surface" && surfaceMesh && (
+                    <>
+                      <MetaItem
+                        label="Surface"
+                        value={`${surfaceMesh.vertexCount} vertices / ${surfaceMesh.triangleCount} tris`}
+                      />
+                      <MetaItem
+                        label="Level"
+                        value={formatSci(surfaceResolvedLevel ?? surfaceMesh.level)}
+                      />
+                    </>
                   )}
                 </Box>
               </>
@@ -1493,6 +1774,7 @@ export default function VolumeViewer({
                           </TextField>
                         }
                       />
+
                       <Button
                         size="small"
                         variant={dataDirty ? "contained" : "outlined"}
@@ -1540,20 +1822,22 @@ export default function VolumeViewer({
                         }
                       />
 
-                      <ParamRow
-                        label="Surfaces"
-                        helpKey="surfaceCount"
-                        onHelp={openHelp}
-                        control={
-                          <TextField
-                            size="small"
-                            type="number"
-                            value={surfaceCount}
-                            onChange={(e) => setSurfaceCount(clampInt(e.target.value, 1, 8))}
-                            inputProps={{ min: 1, max: 8, step: 1 }}
-                          />
-                        }
-                      />
+                      {renderMode3d === "volume" && (
+                        <ParamRow
+                          label="Surfaces"
+                          helpKey="surfaceCount"
+                          onHelp={openHelp}
+                          control={
+                            <TextField
+                              size="small"
+                              type="number"
+                              value={surfaceCount}
+                              onChange={(e) => setSurfaceCount(clampInt(e.target.value, 1, 8))}
+                              inputProps={{ min: 1, max: 8, step: 1 }}
+                            />
+                          }
+                        />
+                      )}
 
                       <Divider />
 
@@ -1570,97 +1854,133 @@ export default function VolumeViewer({
                             onChange={(_, v) => v && setRenderMode3d(v)}
                           >
                             <ToggleButton value="surface">surface</ToggleButton>
+                            <ToggleButton value="mesh">mesh</ToggleButton>
                             <ToggleButton value="volume">volume</ToggleButton>
                           </ToggleButtonGroup>
                         }
                       />
 
-                      {renderMode3d === "surface" && (
-                        <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
-                          <Box sx={{ display: "inline-flex", gap: 0.5, alignItems: "center" }}>
+                      {usesSurfaceMesh3d && (
+                        <>
+                          {surfaceLevelRange && (
+                            <SurfaceLevelHistogramSlider
+                              histogram={histogram}
+                              loading={histLoading}
+                              error={histError}
+                              displayRange={surfaceLevelRange}
+                              validRange={surfaceLevelRange ?? surfaceLevelRange}
+                              value={surfaceLevelValue}
+                              disabled={selectedId == null || mapLoading}
+                              onHelp={openHelp("surfaceLevel3d")}
+                              onChange={(level) => {
+                                setSurfaceLevel3d(level);
+                              }}
+                              onCommit={(level) => {
+                                setSurfaceLevel3d(level);
+                                void reloadSurfaceMesh(level, { silent: true });
+                              }}
+                            />
+                          )}
+
+                          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              onClick={() => {
+                                setSurfaceLevel3d(null);
+                                void reloadSurfaceMesh(null, { silent: true });
+                              }}
+                              sx={{ textTransform: "none", borderRadius: 1.5 }}
+                            >
+                              Auto level
+                            </Button>
+
+                            {surfaceRefreshing && (
+                              <Typography variant="caption" color="text.secondary">
+                                updating surface…
+                              </Typography>
+                            )}
+                          </Box>
+
+                          {surfaceResolvedLevel != null && (
                             <Typography variant="caption" color="text.secondary">
-                              Surface thickness
+                              Current level: {formatSci(surfaceResolvedLevel)}
                             </Typography>
-                            <IconButton size="small" onClick={openHelp("surfaceThickness3d")}>
+                          )}
+                        </>
+                      )}
+
+                      {!surfaceLevelRange && (
+                        <Typography variant="caption" color="text.secondary">
+                          Load the surface to enable level control.
+                        </Typography>
+                      )}
+
+                      {renderMode3d === "volume" && (
+                        <Box sx={{ mt: 0.5 }}>
+                          <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                            <Typography variant="caption" color="text.secondary">
+                              Threshold
+                            </Typography>
+                            <IconButton size="small" onClick={openHelp("thrMode")}>
                               <HelpCircle size={14} />
                             </IconButton>
                           </Box>
-                          <Slider
+
+                          <ToggleButtonGroup
                             size="small"
-                            value={surfaceThickness3d}
-                            min={0.02}
-                            max={0.6}
-                            step={0.01}
-                            onChange={(_, v) => setSurfaceThickness3d(v as number)}
-                            valueLabelDisplay="auto"
-                            valueLabelFormat={(v) => (v as number).toFixed(2)}
-                          />
-                        </Box>
-                      )}
+                            exclusive
+                            value={thrMode}
+                            onChange={(_, v) => v && setThrMode(v)}
+                            sx={{ mb: 0.75 }}
+                          >
+                            <ToggleButton value="percentile">Percentile</ToggleButton>
+                            <ToggleButton value="absolute">Absolute</ToggleButton>
+                          </ToggleButtonGroup>
 
-                      <Box sx={{ mt: 0.5 }}>
-                        <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-                          <Typography variant="caption" color="text.secondary">
-                            Threshold
-                          </Typography>
-                          <IconButton size="small" onClick={openHelp("thrMode")}>
-                            <HelpCircle size={14} />
-                          </IconButton>
-                        </Box>
+                          {thrMode === "percentile" && (
+                            <>
+                              <Slider
+                                size="small"
+                                value={thrPct}
+                                min={0}
+                                max={100}
+                                step={1}
+                                onChange={(_, v) => {
+                                  const arr = v as number[];
+                                  const lo = Math.min(arr[0], arr[1]);
+                                  const hi = Math.max(arr[0], arr[1]);
+                                  setThrPct([lo, Math.max(lo + 1, hi)] as [number, number]);
+                                }}
+                                valueLabelDisplay="auto"
+                                disabled={!sortedValues}
+                              />
+                              {thrPctAbs && (
+                                <Typography variant="caption" color="text.secondary">
+                                  ≈ {formatSci(thrPctAbs[0])} – {formatSci(thrPctAbs[1])}
+                                </Typography>
+                              )}
+                            </>
+                          )}
 
-                        <ToggleButtonGroup
-                          size="small"
-                          exclusive
-                          value={thrMode}
-                          onChange={(_, v) => v && setThrMode(v)}
-                          sx={{ mb: 0.75 }}
-                        >
-                          <ToggleButton value="percentile">Percentile</ToggleButton>
-                          <ToggleButton value="absolute">Absolute</ToggleButton>
-                        </ToggleButtonGroup>
-
-                        {thrMode === "percentile" && (
-                          <>
+                          {thrMode === "absolute" && (
                             <Slider
                               size="small"
-                              value={thrPct}
-                              min={0}
-                              max={100}
-                              step={1}
+                              value={thrAbs}
+                              min={stats3d?.min ?? 0}
+                              max={stats3d?.max ?? 1}
+                              step={stats3d ? (stats3d.max - stats3d.min) / 400 : 0.001}
                               onChange={(_, v) => {
-                                const arr = v as number[];
-                                const lo = Math.min(arr[0], arr[1]);
-                                const hi = Math.max(arr[0], arr[1]);
-                                setThrPct([lo, Math.max(lo + 1, hi)] as [number, number]);
+                                const [lo, hi] = v as number[];
+                                setThrAbs([Math.min(lo, hi), Math.max(lo, hi)] as [number, number]);
                               }}
                               valueLabelDisplay="auto"
-                              disabled={!sortedValues}
+                              valueLabelFormat={(v) => formatSci(v as number)}
+                              disabled={!stats3d}
                             />
-                            {thrPctAbs && (
-                              <Typography variant="caption" color="text.secondary">
-                                ≈ {formatSci(thrPctAbs[0])} – {formatSci(thrPctAbs[1])}
-                              </Typography>
-                            )}
-                          </>
-                        )}
-
-                        {thrMode === "absolute" && (
-                          <Slider
-                            size="small"
-                            value={thrAbs}
-                            min={stats3d?.min ?? 0}
-                            max={stats3d?.max ?? 1}
-                            step={stats3d ? (stats3d.max - stats3d.min) / 400 : 0.001}
-                            onChange={(_, v) => {
-                              const [lo, hi] = v as number[];
-                              setThrAbs([Math.min(lo, hi), Math.max(lo, hi)] as [number, number]);
-                            }}
-                            valueLabelDisplay="auto"
-                            valueLabelFormat={(v) => formatSci(v as number)}
-                            disabled={!stats3d}
-                          />
-                        )}
-                      </Box>
+                          )}
+                        </Box>
+                      )}
                     </Box>
                   )}
 
@@ -1737,6 +2057,194 @@ export default function VolumeViewer({
           {helpKey ? HELP_TEXT[helpKey] ?? "No help available." : ""}
         </Typography>
       </Popover>
+    </Box>
+  );
+}
+
+function SurfaceLevelHistogramSlider({
+  histogram,
+  loading,
+  error,
+  displayRange,
+  validRange,
+  value,
+  disabled,
+  onHelp,
+  onChange,
+  onCommit,
+}: {
+  histogram: HistogramData | null;
+  loading: boolean;
+  error: string | null;
+  displayRange: [number, number];
+  validRange: [number, number];
+  value: number;
+  disabled?: boolean;
+  onHelp: (e: React.MouseEvent<HTMLElement>) => void;
+  onChange: (value: number) => void;
+  onCommit: (value: number) => void;
+}) {
+  const [min, max] = displayRange;
+
+  const displayValue = clampValueToRange(value, displayRange);
+  const markerX = max > min ? ((displayValue - min) / (max - min)) * 100 : 50;
+
+  const bars = useMemo(() => {
+    if (!histogram?.counts?.length || !histogram?.binEdges?.length) {
+      return [];
+    }
+
+    const maxCount = Math.max(...histogram.counts.map((count) => Number(count) || 0));
+    const maxLogCount = Math.log1p(maxCount);
+
+    if (!Number.isFinite(maxLogCount) || maxLogCount <= 0 || max <= min) {
+      return [];
+    }
+    return histogram.counts
+      .map((count, index) => {
+        const leftEdge = Number(histogram.binEdges[index]);
+        const rightEdge = Number(histogram.binEdges[index + 1]);
+
+        if (
+          !Number.isFinite(leftEdge) ||
+          !Number.isFinite(rightEdge) ||
+          rightEdge <= min ||
+          leftEdge >= max
+        ) {
+          return null;
+        }
+
+        const x0 = Math.max(0, ((leftEdge - min) / (max - min)) * 100);
+        const x1 = Math.min(100, ((rightEdge - min) / (max - min)) * 100);
+        const width = Math.max(0.12, x1 - x0);
+        const height = Math.max(1, (Math.log1p(Number(count)) / maxLogCount) * 42);
+
+        return {
+          x: x0,
+          y: 46 - height,
+          width,
+          height,
+        };
+      })
+      .filter(Boolean) as Array<{
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+      }>;
+  }, [histogram, min, max]);
+
+  return (
+    <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
+      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1 }}>
+        <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
+          <Typography variant="caption" color="text.secondary">
+            Level
+          </Typography>
+          <IconButton size="small" onClick={onHelp}>
+            <HelpCircle size={14} />
+          </IconButton>
+        </Box>
+
+        <Typography variant="caption" color="text.secondary">
+          {formatSci(displayValue)}
+        </Typography>
+      </Box>
+
+      <Box
+        sx={{
+          position: "relative",
+          height: 54,
+          borderRadius: 1,
+          bgcolor: "action.hover",
+          overflow: "hidden",
+          border: "1px solid",
+          borderColor: "divider",
+        }}
+      >
+        {loading ? (
+          <Box sx={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <Typography variant="caption" color="text.secondary">
+              Loading histogram…
+            </Typography>
+          </Box>
+        ) : error ? (
+          <Box sx={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", px: 1 }}>
+            <Typography variant="caption" color="error" noWrap>
+              {error}
+            </Typography>
+          </Box>
+        ) : (
+          <Box
+            component="svg"
+            viewBox="0 0 100 48"
+            preserveAspectRatio="none"
+            sx={{
+              width: "100%",
+              height: "100%",
+              display: "block",
+            }}
+          >
+            {bars.map((bar, index) => (
+              <rect
+                key={index}
+                x={bar.x}
+                y={bar.y}
+                width={bar.width}
+                height={bar.height}
+                fill="currentColor"
+                opacity={0.45}
+              />
+            ))}
+
+            <line
+              x1={markerX}
+              x2={markerX}
+              y1={0}
+              y2={48}
+              stroke="currentColor"
+              strokeWidth={0.9}
+              opacity={0.95}
+            />
+          </Box>
+        )}
+      </Box>
+
+      <Slider
+        size="small"
+        value={displayValue}
+        min={min}
+        max={max}
+        step={(max - min) / 700}
+        valueLabelDisplay="auto"
+        valueLabelFormat={(v) => formatSci(v as number)}
+        disabled={disabled || max <= min}
+        onChange={(_, v) => {
+          const rawValue = Array.isArray(v) ? v[0] : v;
+          if (!Number.isFinite(rawValue)) return;
+
+          onChange(clampValueToRange(rawValue as number, displayRange));
+        }}
+        onChangeCommitted={(_, v) => {
+          const rawValue = Array.isArray(v) ? v[0] : v;
+          if (!Number.isFinite(rawValue)) return;
+
+          const displayLevel = clampValueToRange(rawValue as number, displayRange);
+          const renderLevel =
+            clampIsoLevelToOpenRange(displayLevel, validRange) ?? displayLevel;
+
+          onCommit(renderLevel);
+        }}
+      />
+
+      <Box sx={{ display: "flex", justifyContent: "space-between" }}>
+        <Typography variant="caption" color="text.secondary">
+          {formatSci(min)}
+        </Typography>
+        <Typography variant="caption" color="text.secondary">
+          {formatSci(max)}
+        </Typography>
+      </Box>
     </Box>
   );
 }
@@ -2742,6 +3250,14 @@ function formatSci(v: number) {
   return v.toFixed(3);
 }
 
+function firstFiniteNumber(...values: any[]) {
+  for (const value of values) {
+    const n = Number(value);
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
+}
+
 function toPlotlyColorscale(name: string) {
   const n = (name || "viridis").toLowerCase();
   if (n === "gray" || n === "grey") return "Greys";
@@ -2751,4 +3267,95 @@ function toPlotlyColorscale(name: string) {
   if (n === "plasma") return "Plasma";
   if (n === "magma") return "Magma";
   return "Viridis";
+}
+
+function clampIsoLevelToOpenRange(
+  value: number | null,
+  range: [number, number] | null,
+) {
+  if (value == null || !range) return value;
+
+  const [min, max] = range;
+  if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) {
+    return value;
+  }
+
+  const eps = Math.max((max - min) * 1e-5, Number.EPSILON * 100);
+  return Math.max(min + eps, Math.min(max - eps, value));
+}
+
+function clampValueToRange(value: number, range: [number, number]) {
+  const [min, max] = range;
+
+  if (!Number.isFinite(value)) return min;
+  if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) {
+    return value;
+  }
+
+  return Math.max(min, Math.min(max, value));
+}
+
+function getHistogramDisplayRange(
+  histogram: HistogramData | null,
+  lowQuantile: number,
+  highQuantile: number,
+): [number, number] | null {
+  if (!histogram?.binEdges?.length || !histogram?.counts?.length) {
+    return null;
+  }
+
+  const low = histogramWeightedQuantile(histogram, lowQuantile);
+  const high = histogramWeightedQuantile(histogram, highQuantile);
+
+  if (low == null || high == null || high <= low) {
+    return null;
+  }
+
+  const padding = Math.max((high - low) * 0.04, Number.EPSILON * 100);
+  return [low - padding, high + padding];
+}
+
+function histogramWeightedQuantile(
+  histogram: HistogramData,
+  quantile: number,
+): number | null {
+  const edges = histogram.binEdges;
+  const counts = histogram.counts;
+
+  if (edges.length < 2 || counts.length === 0) {
+    return null;
+  }
+
+  const total = counts.reduce((sum, count) => {
+    const value = Number(count);
+    return Number.isFinite(value) && value > 0 ? sum + value : sum;
+  }, 0);
+
+  if (!Number.isFinite(total) || total <= 0) {
+    return null;
+  }
+
+  const target = Math.max(0, Math.min(1, quantile)) * total;
+  let cumulative = 0;
+
+  for (let i = 0; i < counts.length; i += 1) {
+    const count = Number(counts[i]);
+    if (!Number.isFinite(count) || count <= 0) continue;
+
+    const left = Number(edges[i]);
+    const right = Number(edges[i + 1]);
+
+    if (!Number.isFinite(left) || !Number.isFinite(right)) continue;
+
+    const previous = cumulative;
+    cumulative += count;
+
+    if (cumulative >= target) {
+      const fraction = count > 0 ? (target - previous) / count : 0;
+      return left + Math.max(0, Math.min(1, fraction)) * (right - left);
+    }
+  }
+
+  const last = Number(edges[edges.length - 1]);
+  return Number.isFinite(last) ? last : null;
 }

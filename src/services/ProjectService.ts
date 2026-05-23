@@ -407,6 +407,43 @@ export type FetchImageSliceOptions = {
   signal?: AbortSignal;
 };
 
+export type VolumeSurfaceMethod =
+  | "binning"
+  | "stride"
+  | "linear"
+  | "fourier"
+  | "none";
+
+export interface VolumeSurfaceMesh {
+  kind: "surfaceMesh";
+  level: number;
+  rangeMin?: number;
+  rangeMax?: number;
+  dims: [number, number, number];
+  sourceDims?: [number, number, number];
+  order: "zyx" | "xyz";
+  vertexCount: number;
+  triangleCount: number;
+  vertices: number[];
+  normals: number[];
+  indices: number[];
+  values?: number[];
+  center?: number[];
+  scale?: number;
+  maxDim?: number;
+  method?: VolumeSurfaceMethod;
+  volumeId?: string;
+  outputName?: string;
+}
+
+export interface VolumeSurfaceMeshOptions {
+  level?: number | null;
+  maxDim?: number;
+  method?: VolumeSurfaceMethod;
+  maxTriangles?: number;
+  signal?: AbortSignal;
+}
+
 
 export type AnalyzeViewerResolveContext = {
   projectId: Id;
@@ -1323,6 +1360,14 @@ export interface ProjectService<
     sliceIndex: number,
     opts?: VolumeSliceOptions
   ): Promise<VolumeSliceObjectUrl>;
+
+  getVolumeSurfaceMesh(
+    projectId: string | number,
+    protocolId: string | number,
+    outputName: string,
+    volumeId: string | number,
+    opts?: VolumeSurfaceMeshOptions,
+  ): Promise<VolumeSurfaceMesh>;
 
   getVolumeData3d(
     projectId: Id,
