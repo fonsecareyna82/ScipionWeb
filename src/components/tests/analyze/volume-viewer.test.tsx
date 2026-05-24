@@ -6,6 +6,7 @@ const serviceMocks = vi.hoisted(() => ({
     getVolumeInfo: vi.fn(),
     getVolumeHistogram: vi.fn(),
     fetchVolumeSliceObjectUrl: vi.fn(),
+    getVolumeSurfaceMesh: vi.fn(),
     getVolumeData3d: vi.fn(),
 }));
 
@@ -35,6 +36,10 @@ vi.mock("react-plotly.js", () => ({
 
 vi.mock("../../analyze/gpu-volume-view", () => ({
     default: () => <div>Mock GpuVolumeView</div>,
+}));
+
+vi.mock("../../analyze/mesh-volume-view", () => ({
+    default: () => <div>Mock MeshVolumeView</div>,
 }));
 
 vi.mock("../../analyze/metadata-viewer", () => ({
@@ -143,6 +148,22 @@ function makeSliceUrl(axis: string, index: number) {
     };
 }
 
+function makeSurfaceMesh() {
+    return {
+        vertices: [
+            0, 0, 0,
+            1, 0, 0,
+            0, 1, 0,
+        ],
+        indices: [0, 1, 2],
+        vertexCount: 3,
+        triangleCount: 1,
+        level: 0.75,
+        rangeMin: -1.2,
+        rangeMax: 2.8,
+    };
+}
+
 function make3dData() {
     return {
         dims: [7, 6, 5],
@@ -200,6 +221,7 @@ describe("VolumeViewer", () => {
             ) => makeSliceUrl(String(options?.axis ?? "z"), Number(sliceIndex)),
         );
 
+        serviceMocks.getVolumeSurfaceMesh.mockResolvedValue(makeSurfaceMesh());
         serviceMocks.getVolumeData3d.mockResolvedValue(make3dData());
     });
 
@@ -288,7 +310,7 @@ describe("VolumeViewer", () => {
         expect(screen.getByText("1.100")).toBeInTheDocument();
     });
 
-    it("switches to 3D map mode and loads 3D data", async () => {
+    it("switches to 3D map mode and loads the surface mesh", async () => {
         renderViewer();
 
         expect(await screen.findByText("Vol A")).toBeInTheDocument();
@@ -296,16 +318,20 @@ describe("VolumeViewer", () => {
         fireEvent.click(screen.getByRole("button", { name: "3D Map" }));
 
         await waitFor(() => {
-            expect(serviceMocks.getVolumeData3d).toHaveBeenCalledWith(
+            expect(serviceMocks.getVolumeSurfaceMesh).toHaveBeenCalledWith(
                 1,
                 2,
                 "volumeOutput",
                 1,
-                { maxDim: 96, method: "binning" },
+                expect.objectContaining({
+                    maxDim: 192,
+                    method: "none",
+                    maxTriangles: 550000,
+                }),
             );
         });
 
-        expect(await screen.findByText("Mock GpuVolumeView")).toBeInTheDocument();
+        expect(await screen.findByText("Mock MeshVolumeView")).toBeInTheDocument();
     });
 
     it("switches to metadata mode when metadata is available", async () => {
@@ -407,7 +433,7 @@ describe("VolumeViewer", () => {
         });
     });
 
-    it("reloads 3D data after changing maxDim", async () => {
+    it("reloads surface mesh after changing maxDim", async () => {
         renderViewer();
 
         expect(await screen.findByText("Vol A")).toBeInTheDocument();
@@ -415,28 +441,34 @@ describe("VolumeViewer", () => {
         fireEvent.click(screen.getByRole("button", { name: "3D Map" }));
 
         await waitFor(() => {
-            expect(serviceMocks.getVolumeData3d).toHaveBeenCalledWith(
+            expect(serviceMocks.getVolumeSurfaceMesh).toHaveBeenCalledWith(
                 1,
                 2,
                 "volumeOutput",
                 1,
-                { maxDim: 96, method: "binning" },
+                expect.objectContaining({
+                    maxDim: 192,
+                    method: "none",
+                }),
             );
         });
 
-        fireEvent.change(screen.getByDisplayValue("96"), {
+        fireEvent.change(screen.getByDisplayValue("192"), {
             target: { value: "104" },
         });
 
         fireEvent.click(screen.getByRole("button", { name: "Reload data" }));
 
         await waitFor(() => {
-            expect(serviceMocks.getVolumeData3d).toHaveBeenLastCalledWith(
+            expect(serviceMocks.getVolumeSurfaceMesh).toHaveBeenLastCalledWith(
                 1,
                 2,
                 "volumeOutput",
                 1,
-                { maxDim: 104, method: "binning" },
+                expect.objectContaining({
+                    maxDim: 104,
+                    method: "none",
+                }),
             );
         });
     });
@@ -466,7 +498,7 @@ describe("VolumeViewer", () => {
         expect(metadataButton).toBeDisabled();
     });
 
-    it("disables 3D map mode when project and protocol ids are not numeric", async () => {
+    it("keeps metadata mode disabled when project and protocol ids are not numeric", async () => {
         renderViewerWithInvalidMetadataIds();
 
         expect(await screen.findByText("Vol A")).toBeInTheDocument();
@@ -558,7 +590,7 @@ describe("VolumeViewer", () => {
         fireEvent.click(screen.getByRole("button", { name: "3D Map" }));
 
         await waitFor(() => {
-            expect(serviceMocks.getVolumeData3d).toHaveBeenCalled();
+            expect(serviceMocks.getVolumeSurfaceMesh).toHaveBeenCalled();
         });
 
         fireEvent.click(getButtonFromTestId("play-icon"));
@@ -627,7 +659,7 @@ describe("VolumeViewer", () => {
         });
     });
 
-    it("reloads 3D data after changing method3d", async () => {
+    it("reloads surface mesh after changing method3d", async () => {
         renderViewer();
 
         expect(await screen.findByText("Vol A")).toBeInTheDocument();
@@ -635,12 +667,15 @@ describe("VolumeViewer", () => {
         fireEvent.click(screen.getByRole("button", { name: "3D Map" }));
 
         await waitFor(() => {
-            expect(serviceMocks.getVolumeData3d).toHaveBeenCalledWith(
+            expect(serviceMocks.getVolumeSurfaceMesh).toHaveBeenCalledWith(
                 1,
                 2,
                 "volumeOutput",
                 1,
-                { maxDim: 96, method: "binning" },
+                expect.objectContaining({
+                    maxDim: 192,
+                    method: "none",
+                }),
             );
         });
 
@@ -651,12 +686,15 @@ describe("VolumeViewer", () => {
         fireEvent.click(screen.getByRole("button", { name: "Reload data" }));
 
         await waitFor(() => {
-            expect(serviceMocks.getVolumeData3d).toHaveBeenLastCalledWith(
+            expect(serviceMocks.getVolumeSurfaceMesh).toHaveBeenLastCalledWith(
                 1,
                 2,
                 "volumeOutput",
                 1,
-                { maxDim: 96, method: "stride" },
+                expect.objectContaining({
+                    maxDim: 192,
+                    method: "stride",
+                }),
             );
         });
     });
@@ -669,7 +707,7 @@ describe("VolumeViewer", () => {
         fireEvent.click(screen.getByRole("button", { name: "3D Map" }));
 
         await waitFor(() => {
-            expect(serviceMocks.getVolumeData3d).toHaveBeenCalled();
+            expect(serviceMocks.getVolumeSurfaceMesh).toHaveBeenCalled();
         });
 
         fireEvent.click(getButtonFromTestId("play-icon"));
