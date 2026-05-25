@@ -133,6 +133,26 @@ type NodeActions = {
 
 type OpenForm = { key: string; id: string; details: any; isClosing?: boolean };
 
+function getProtocolFormStatus(details: any): string {
+  const candidates = [
+    details?.info?.status,
+    details?.form?.status,
+    details?.status,
+  ];
+
+  for (const candidate of candidates) {
+    const value = String(candidate ?? "").trim().toLowerCase();
+    if (value) return value;
+  }
+
+  return "";
+}
+
+function shouldRefreshProtocolForm(details: any): boolean {
+  const status = getProtocolFormStatus(details);
+  return status === "running" || status === "scheduled";
+}
+
 function mergeLiveProtocolFormDetails(currentDetails: any, freshDetails: any): any {
   if (!currentDetails || typeof currentDetails !== "object") return freshDetails;
   if (!freshDetails || typeof freshDetails !== "object") return currentDetails;
@@ -787,7 +807,11 @@ export default function ProjectPage() {
   const refreshOpenFormsDetails = useCallback(async () => {
     if (!projectName) return;
 
-    const formsToRefresh = openFormsRef.current.filter((form) => !form.isClosing);
+    const formsToRefresh = openFormsRef.current.filter((form) => {
+      if (form.isClosing) return false;
+      return shouldRefreshProtocolForm(form.details);
+    });
+
     if (!formsToRefresh.length) return;
 
     const currentEpoch = dockEpochRef.current;
