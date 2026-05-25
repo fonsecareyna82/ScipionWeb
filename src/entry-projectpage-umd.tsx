@@ -703,7 +703,7 @@ function normalizeServiceAPI(srv: any): ProjectService {
       sliceIndex: number,
     ) => ({
       url: mockSliceDataUrl(sliceIndex),
-      revoke: () => {},
+      revoke: () => { },
     }),
   );
 
@@ -755,6 +755,7 @@ export type ProjectPageMountOptions = {
   container: string | HTMLElement;
   service?: ProjectService;
   projectName: string;
+  theme?: "light" | "dark";
   props?: InitialProps;
 };
 
@@ -763,6 +764,7 @@ export function mountProjectPageWidget({
   container,
   service,
   projectName,
+  theme = "light",
 }: ProjectPageMountOptions) {
   const target =
     typeof container === "string" ? document.querySelector(container) : container;
@@ -772,7 +774,7 @@ export function mountProjectPageWidget({
   }
 
   const { shell, mountPoint } = createWidgetShell(target as HTMLElement);
-  const stopSyncDarkMode = syncShellDarkMode(shell);
+  shell.classList.toggle("dark", theme === "dark");
 
   const svc = normalizeServiceAPI(service ?? defaultMockService);
 
@@ -800,12 +802,6 @@ export function mountProjectPageWidget({
 
     try {
       root.unmount();
-    } catch {
-      // noOp
-    }
-
-    try {
-      stopSyncDarkMode();
     } catch {
       // noOp
     }
