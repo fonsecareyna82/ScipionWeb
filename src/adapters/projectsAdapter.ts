@@ -757,12 +757,14 @@ const defaultService: ProjectService = {
     protocolId: Id,
     outputName: string,
     psdPath: string,
+    opts?: AuthenticatedRequestOptions,
   ) =>
     api.fetchCTFPsdImage(
       projectId,
       protocolId,
       outputName,
       psdPath,
+      opts,
     ),
 
   // ──────────────────────────── Project sharing ────────────────────────────

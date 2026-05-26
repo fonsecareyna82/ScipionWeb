@@ -1613,11 +1613,12 @@ export interface ProjectService<
   ): Promise<void>;
 
   fetchCTFPsdImage(
-    projectId: Id,
-    protocolId: Id,
-    outputName: string,
-    psdPath: string,
-  ): Promise<any>
+  projectId: Id,
+  protocolId: Id,
+  outputName: string,
+  psdPath: string,
+  opts?: AuthenticatedRequestOptions,
+): Promise<Blob>;
 
 
   // ─────────────────────────────────────────────────────────────────────────────
