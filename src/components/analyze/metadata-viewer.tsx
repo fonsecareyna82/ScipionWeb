@@ -2276,10 +2276,12 @@ function MetadataTablePanel({
       variant="outlined"
       sx={{
         mt: 0,
-        minHeight: embedded ? 630 : 667,
-        maxHeight: embedded ? 630 : 667,
+        minHeight: 0,
+        maxHeight: "none",
         minWidth: 840,
-        flexShrink: 0,
+        flex: "1 1 auto",
+        flexShrink: 1,
+        overflow: "hidden",
         display: viewMode === "table" ? "flex" : "none",
         flexDirection: "column",
         borderColor: "rgba(148,163,184,0.4)",
@@ -2291,6 +2293,7 @@ function MetadataTablePanel({
         onScroll={handleScroll}
         sx={{
           flex: 1,
+          minHeight: 0,
           overflow: "auto",
         }}
       >
@@ -2705,10 +2708,12 @@ function MetadataGalleryPanel({
       variant="outlined"
       sx={{
         mt: 0,
-        minHeight: embedded ? 630 : 667,
-        maxHeight: embedded ? 630 : 667,
+        minHeight: 0,
+        maxHeight: "none",
         minWidth: 840,
-        flexShrink: 0,
+        flex: "1 1 auto",
+        flexShrink: 1,
+        overflow: "hidden",
         display: viewMode === "gallery" ? "flex" : "none",
         flexDirection: "column",
         borderColor: "rgba(148,163,184,0.4)",
@@ -2720,6 +2725,7 @@ function MetadataGalleryPanel({
         onScroll={handleGalleryScroll}
         sx={{
           flex: 1,
+          minHeight: 0,
           overflow: "auto",
         }}
       >
@@ -4449,12 +4455,13 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
       sx={{
         display: "flex",
         flexDirection: "column",
-        flex: embedded ? 1 : undefined,
-        flexShrink: embedded ? 1 : 0,
-        minHeight: embedded ? 0 : 480,
-        height: embedded ? "100%" : undefined,
-        mt: embedded ? 0 : 2,
-
+        flex: 1,
+        flexShrink: 1,
+        minHeight: 0,
+        minWidth: 0,
+        height: "100%",
+        overflow: "hidden",
+        mt: 0
       }}
     >
       {/* Header */}
@@ -4466,6 +4473,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
           gap: 2,
           mb: 1.5,
           flexWrap: "wrap",
+          flexShrink: 0,
         }}
       >
         <Box
@@ -4801,6 +4809,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
         sx={{
           mt: 0,
           p: 1,
+          flexShrink: 0,
           borderColor: "rgba(148,163,184,0.4)",
           display: "flex",
           alignItems: "center",

@@ -490,6 +490,8 @@ export default function PluginPage() {
     const taskLogOffsetRef = useRef(0);
     const logContainerRef = useRef<HTMLDivElement | null>(null);
 
+    const [skipBinaries, setSkipBinaries] = useState(false);
+
     const {
         tasks,
         installing,
@@ -635,6 +637,7 @@ export default function PluginPage() {
     const isRemoving = useMemo(() => (pipName ? removing.has(pipName) : false), [removing, pipName]);
 
     const isUpdateAvailable = Boolean(plugin?.installed && plugin?.toUpdate);
+    const canInstallOrUpdate = !plugin?.installed || isUpdateAvailable;
 
     async function refreshPlugin() {
         if (!pipName) return;
@@ -677,7 +680,7 @@ export default function PluginPage() {
         startInstall(pipName);
 
         try {
-            const started = await installPlugin(pipName);
+            const started = await installPlugin(pipName, { skipBinaries });
             startLogViewer(started.taskId, "install");
 
             registerTask({
@@ -713,7 +716,16 @@ export default function PluginPage() {
             finishInstall(pipName);
 
             if (!isMountedRef.current) return;
-            setSuccess(wasUpdate ? "Plugin updated successfully" : "Plugin installed successfully");
+
+            const successMessage = wasUpdate
+                ? skipBinaries
+                    ? "Plugin updated successfully without installing binaries"
+                    : "Plugin updated successfully"
+                : skipBinaries
+                    ? "Plugin installed successfully without installing binaries"
+                    : "Plugin installed successfully";
+
+            setSuccess(successMessage);
         } catch (err) {
             console.error(err);
             finishInstall(pipName);
@@ -843,32 +855,80 @@ export default function PluginPage() {
                 subtitle={`Latest release: v${plugin.latestRelease}`}
                 right={
                     <div className="flex flex-wrap items-center gap-2">
-                        <PrimaryButton
-                            onClick={handleInstallOrUpdate}
-                            disabled={isInstalling || (plugin.installed && !isUpdateAvailable)}
-                            title={isUpdateAvailable ? "Update plugin" : "Install plugin"}
-                        >
-                            {isInstalling ? (
-                                <>
-                                    <ExecuteIcon className="h-4 w-4 animate-spin" />
-                                    {isUpdateAvailable ? "Updating…" : "Installing…"}
-                                </>
-                            ) : plugin.installed ? (
-                                isUpdateAvailable ? (
-                                    <>
-                                        Update
-                                        <ArrowRight className="h-4 w-4" />
-                                    </>
-                                ) : (
-                                    "Installed"
-                                )
-                            ) : (
-                                <>
-                                    Install
-                                    <ArrowRight className="h-4 w-4" />
-                                </>
-                            )}
-                        </PrimaryButton>
+                        {canInstallOrUpdate ? (
+                            <div
+                                className={classNames(
+                                    crispText,
+                                    "inline-flex flex-wrap items-center gap-2 rounded-2xl border p-1.5 shadow-sm",
+                                    "border-gray-300/80 bg-gray-50/90",
+                                    "dark:border-gray-700 dark:bg-slate-950/70",
+                                )}
+                            >
+                                <label
+                                    className={classNames(
+                                        crispText,
+                                        "group inline-flex h-10 items-center gap-2 rounded-xl border px-3 text-sm font-semibold transition",
+                                        skipBinaries
+                                            ? "border-sky-300 bg-sky-50 text-sky-800 dark:border-sky-800/70 dark:bg-sky-950/40 dark:text-sky-200"
+                                            : "border-transparent bg-white text-gray-700 hover:border-gray-300/80 dark:bg-slate-900 dark:text-gray-200 dark:hover:border-gray-700",
+                                        isInstalling || isRemoving
+                                            ? "cursor-not-allowed opacity-60"
+                                            : "cursor-pointer",
+                                    )}
+                                    title="Install only the Python package and skip plugin binaries"
+                                >
+                                    <input
+                                        type="checkbox"
+                                        checked={skipBinaries}
+                                        disabled={isInstalling || isRemoving}
+                                        onChange={(event) => setSkipBinaries(event.target.checked)}
+                                        className="sr-only"
+                                    />
+
+                                    <span
+                                        className={classNames(
+                                            "inline-flex h-5 w-5 items-center justify-center rounded-md border text-[11px] font-bold transition",
+                                            skipBinaries
+                                                ? "border-sky-600 bg-sky-600 text-white"
+                                                : "border-gray-300 bg-white text-transparent group-hover:border-gray-400 dark:border-gray-600 dark:bg-slate-950",
+                                        )}
+                                    >
+                                        ✓
+                                    </span>
+
+                                    <span className="flex flex-col leading-tight">
+                                        <span>Skip binaries</span>
+                                        <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400">
+                                            Python package only
+                                        </span>
+                                    </span>
+                                </label>
+
+                                <PrimaryButton
+                                    onClick={handleInstallOrUpdate}
+                                    disabled={isInstalling}
+                                    title={isUpdateAvailable ? "Update plugin" : "Install plugin"}
+                                    className="h-10 px-4"
+                                >
+                                    {isInstalling ? (
+                                        <>
+                                            <ExecuteIcon className="h-4 w-4 animate-spin" />
+                                            {isUpdateAvailable ? "Updating…" : "Installing…"}
+                                        </>
+                                    ) : isUpdateAvailable ? (
+                                        <>
+                                            Update
+                                            <ArrowRight className="h-4 w-4" />
+                                        </>
+                                    ) : (
+                                        <>
+                                            Install
+                                            <ArrowRight className="h-4 w-4" />
+                                        </>
+                                    )}
+                                </PrimaryButton>
+                            </div>
+                        ) : null}
 
                         <SecondaryButton
                             onClick={handleRemove}

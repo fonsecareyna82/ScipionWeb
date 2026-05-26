@@ -47,7 +47,7 @@ type ViewMode = "slices" | "map3d" | "metadata";
 type ThrMode = "percentile" | "absolute";
 type RightTab = "ctrl" | "hist";
 type Interp2d = "nearest" | "linear" | "high";
-type RenderMode3d = "surface" | "mesh" | "volume";
+type RenderMode3d = "surface" | "mesh";
 type SliceLayoutMode = "single" | "triple";
 
 type SliceImageState = {
@@ -284,7 +284,6 @@ export default function VolumeViewer({
   useEffect(() => {
     const shouldAnimatePlotly =
       viewMode === "map3d" &&
-      renderMode3d === "volume" &&
       autoRotate3d &&
       (gpuError || !mapData);
 
@@ -1350,68 +1349,14 @@ export default function VolumeViewer({
                   colormap={colormap3d}
                   autoRotate={autoRotate3d}
                   autoRotateSpeed={3.8}
+                  cameraStateKey={selectedId}
                   onError={handleMeshError}
                 />
               ) : usesSurfaceMesh3d && gpuError ? (
                 <Typography variant="body2" color="error">
                   {gpuError}
                 </Typography>
-              ) : renderMode3d === "volume" && mapData && stats3d && isoRange3d && !gpuError ? (
-                <GpuVolumeView
-                  values={mapData.values}
-                  dims={mapData.dims}
-                  order={mapData.order}
-                  spacing={meta?.spacing}
-                  rangeMin={stats3d.min}
-                  rangeMax={stats3d.max}
-                  isoMin={isoRange3d[0]}
-                  isoMax={isoRange3d[1]}
-                  opacity={opacity3d}
-                  colormap={colormap3d}
-                  renderMode="volume"
-                  autoRotate={autoRotate3d}
-                  autoRotateSpeed={3.8}
-                  onError={(msg) => setGpuError(msg)}
-                />
-              ) : renderMode3d === "volume" && mapData && stats3d && isoRange3d ? (
-                <Box sx={{ width: "100%", height: "100%" }}>
-                  {(() => {
-                    const plotProps: any = {
-                      data: [
-                        {
-                          type: "isosurface",
-                          value: mapData.values,
-                          isomin: isoRange3d[0],
-                          isomax: isoRange3d[1],
-                          surface: { count: surfaceCount },
-                          caps: { x: { show: false }, y: { show: false }, z: { show: false } },
-                          opacity: opacity3d,
-                          colorscale: toPlotlyColorscale(colormap3d),
-                          showscale: false,
-                        } as any,
-                      ],
-                      layout: {
-                        autosize: true,
-                        margin: { l: 0, r: 0, t: 0, b: 0 },
-                        scene: {
-                          aspectmode: "data",
-                          xaxis: { visible: false },
-                          yaxis: { visible: false },
-                          zaxis: { visible: false },
-                          camera: plotlyCameraRef.current ?? undefined,
-                        },
-                        showlegend: false,
-                      },
-                      style: { width: "100%", height: "100%" },
-                      useResizeHandler: true,
-                      config: { displaylogo: false, responsive: true, scrollZoom: true },
-                      onRelayout: handleRelayout,
-                    };
 
-                    void plotlyAnimTick;
-                    return <Plot {...plotProps} />;
-                  })()}
-                </Box>
               ) : gpuError ? (
                 <Typography variant="body2" color="error">
                   {gpuError}
@@ -1822,23 +1767,6 @@ export default function VolumeViewer({
                         }
                       />
 
-                      {renderMode3d === "volume" && (
-                        <ParamRow
-                          label="Surfaces"
-                          helpKey="surfaceCount"
-                          onHelp={openHelp}
-                          control={
-                            <TextField
-                              size="small"
-                              type="number"
-                              value={surfaceCount}
-                              onChange={(e) => setSurfaceCount(clampInt(e.target.value, 1, 8))}
-                              inputProps={{ min: 1, max: 8, step: 1 }}
-                            />
-                          }
-                        />
-                      )}
-
                       <Divider />
 
                       <SectionTitle title="Iso rendering" />
@@ -1855,7 +1783,6 @@ export default function VolumeViewer({
                           >
                             <ToggleButton value="surface">surface</ToggleButton>
                             <ToggleButton value="mesh">mesh</ToggleButton>
-                            <ToggleButton value="volume">volume</ToggleButton>
                           </ToggleButtonGroup>
                         }
                       />
@@ -1914,72 +1841,6 @@ export default function VolumeViewer({
                         <Typography variant="caption" color="text.secondary">
                           Load the surface to enable level control.
                         </Typography>
-                      )}
-
-                      {renderMode3d === "volume" && (
-                        <Box sx={{ mt: 0.5 }}>
-                          <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-                            <Typography variant="caption" color="text.secondary">
-                              Threshold
-                            </Typography>
-                            <IconButton size="small" onClick={openHelp("thrMode")}>
-                              <HelpCircle size={14} />
-                            </IconButton>
-                          </Box>
-
-                          <ToggleButtonGroup
-                            size="small"
-                            exclusive
-                            value={thrMode}
-                            onChange={(_, v) => v && setThrMode(v)}
-                            sx={{ mb: 0.75 }}
-                          >
-                            <ToggleButton value="percentile">Percentile</ToggleButton>
-                            <ToggleButton value="absolute">Absolute</ToggleButton>
-                          </ToggleButtonGroup>
-
-                          {thrMode === "percentile" && (
-                            <>
-                              <Slider
-                                size="small"
-                                value={thrPct}
-                                min={0}
-                                max={100}
-                                step={1}
-                                onChange={(_, v) => {
-                                  const arr = v as number[];
-                                  const lo = Math.min(arr[0], arr[1]);
-                                  const hi = Math.max(arr[0], arr[1]);
-                                  setThrPct([lo, Math.max(lo + 1, hi)] as [number, number]);
-                                }}
-                                valueLabelDisplay="auto"
-                                disabled={!sortedValues}
-                              />
-                              {thrPctAbs && (
-                                <Typography variant="caption" color="text.secondary">
-                                  ≈ {formatSci(thrPctAbs[0])} – {formatSci(thrPctAbs[1])}
-                                </Typography>
-                              )}
-                            </>
-                          )}
-
-                          {thrMode === "absolute" && (
-                            <Slider
-                              size="small"
-                              value={thrAbs}
-                              min={stats3d?.min ?? 0}
-                              max={stats3d?.max ?? 1}
-                              step={stats3d ? (stats3d.max - stats3d.min) / 400 : 0.001}
-                              onChange={(_, v) => {
-                                const [lo, hi] = v as number[];
-                                setThrAbs([Math.min(lo, hi), Math.max(lo, hi)] as [number, number]);
-                              }}
-                              valueLabelDisplay="auto"
-                              valueLabelFormat={(v) => formatSci(v as number)}
-                              disabled={!stats3d}
-                            />
-                          )}
-                        </Box>
                       )}
                     </Box>
                   )}

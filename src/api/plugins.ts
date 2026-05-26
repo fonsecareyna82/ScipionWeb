@@ -62,6 +62,10 @@ export type PluginTaskLogResponse = {
   status?: string | null;
 };
 
+export type InstallPluginOptions = {
+  skipBinaries?: boolean;
+};
+
 async function safeJson<T = any>(response: Response): Promise<T> {
   const text = await response.text();
   if (!text) return undefined as unknown as T;
@@ -90,8 +94,22 @@ export async function fetchPluginById(pipName: string): Promise<Plugin> {
   return fetchPlugin(pipName);
 }
 
-export async function installPlugin(pipName: string): Promise<TaskStartResponse> {
-  const response = await fetchWithAuth(`${BASE_URL}/plugins/install/${pipName}`, {
+export async function installPlugin(
+  pipName: string,
+  options: InstallPluginOptions = {},
+): Promise<TaskStartResponse> {
+  const params = new URLSearchParams();
+
+  if (options.skipBinaries) {
+    params.set("skipBinaries", "true");
+  }
+
+  const query = params.toString();
+  const url = query
+    ? `${BASE_URL}/plugins/install/${pipName}?${query}`
+    : `${BASE_URL}/plugins/install/${pipName}`;
+
+  const response = await fetchWithAuth(url, {
     method: "POST",
   });
   if (!response.ok) throw new Error("Error installing plugin");

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import type { VolumeSurfaceMesh } from "@/services/ProjectService";
@@ -10,7 +10,15 @@ export type MeshVolumeViewProps = {
     autoRotate?: boolean;
     displayMode?: "surface" | "mesh";
     autoRotateSpeed?: number;
+    cameraStateKey?: string | number | null;
     onError?: (message: string) => void;
+};
+
+type MeshCameraState = {
+    key: string;
+    position: [number, number, number];
+    target: [number, number, number];
+    zoom: number;
 };
 
 function colorFromColormap(colormap?: string): THREE.Color {
@@ -51,6 +59,10 @@ function disposeObject3d(root: THREE.Object3D): void {
     });
 }
 
+function toNumberTuple(values: number[]): [number, number, number] {
+    return [values[0] ?? 0, values[1] ?? 0, values[2] ?? 0];
+}
+
 export default function MeshVolumeView({
     mesh,
     opacity = 1,
@@ -58,12 +70,16 @@ export default function MeshVolumeView({
     colormap = "gray",
     autoRotate = false,
     autoRotateSpeed = 3.8,
+    cameraStateKey = "default",
     onError,
 }: MeshVolumeViewProps) {
     const hostRef = useRef<HTMLDivElement | null>(null);
     const autoRotateRef = useRef(autoRotate);
     const autoRotateSpeedRef = useRef(autoRotateSpeed);
 
+    const currentCameraStateKey = useMemo(() => String(cameraStateKey ?? "default"), [cameraStateKey]);
+
+    const cameraStateRef = useRef<MeshCameraState | null>(null);
     const onErrorRef = useRef(onError);
     const materialRef = useRef<THREE.MeshStandardMaterial | null>(null);
 
@@ -153,6 +169,17 @@ export default function MeshVolumeView({
             };
             controls.target.set(0, 0, 0);
 
+            const saveCameraState = () => {
+                cameraStateRef.current = {
+                    key: currentCameraStateKey,
+                    position: toNumberTuple(camera.position.toArray()),
+                    target: toNumberTuple(controls.target.toArray()),
+                    zoom: camera.zoom,
+                };
+            };
+
+            controls.addEventListener("change", saveCameraState);
+
             const stopViewerEvent = (event: Event) => {
                 event.stopPropagation();
 
@@ -238,11 +265,20 @@ export default function MeshVolumeView({
             const radius = Math.max(0.5, sphere?.radius ?? 0.5);
             camera.near = Math.max(0.001, radius / 100);
             camera.far = Math.max(100, radius * 100);
-            camera.position.set(radius * 1.15, -radius * 2.0, radius * 1.15);
-            camera.updateProjectionMatrix();
 
-            controls.target.copy(sphere?.center ?? new THREE.Vector3(0, 0, 0));
+            const savedCameraState = cameraStateRef.current;
+            if (savedCameraState?.key === currentCameraStateKey) {
+                camera.position.fromArray(savedCameraState.position);
+                camera.zoom = savedCameraState.zoom;
+                controls.target.fromArray(savedCameraState.target);
+            } else {
+                camera.position.set(radius * 1.15, -radius * 2.0, radius * 1.15);
+                controls.target.copy(sphere?.center ?? new THREE.Vector3(0, 0, 0));
+            }
+
+            camera.updateProjectionMatrix();
             controls.update();
+            saveCameraState();
 
             const clock = new THREE.Clock();
 
@@ -261,8 +297,11 @@ export default function MeshVolumeView({
             animate();
 
             return () => {
+                saveCameraState();
                 window.cancelAnimationFrame(frameId);
                 observer.disconnect();
+
+                controls.removeEventListener("change", saveCameraState);
 
                 viewerEvents.forEach((eventName) => {
                     host.removeEventListener(eventName, stopViewerEvent);
@@ -285,7 +324,7 @@ export default function MeshVolumeView({
             onErrorRef.current?.(error?.message || "Failed to render surface mesh.");
         }
 
-    }, [mesh]);
+    }, [mesh, currentCameraStateKey]);
 
     return (
         <div

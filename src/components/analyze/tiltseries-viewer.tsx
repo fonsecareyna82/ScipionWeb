@@ -620,7 +620,7 @@ export default function TiltSeriesViewer({
         setPreviewError(e?.message || "Failed to load tilt image preview");
         setPreviewUrl(null);
       } finally {
-        if (previewReqIdRef.current === reqId) {
+        if (!controller.signal.aborted && previewReqIdRef.current === reqId) {
           setPreviewLoading(false);
         }
       }
@@ -628,6 +628,10 @@ export default function TiltSeriesViewer({
 
     return () => {
       controller.abort();
+
+      if (previewReqIdRef.current === reqId) {
+        previewReqIdRef.current += 1;
+      }
     };
   }, [
     mainMode,
@@ -664,15 +668,23 @@ export default function TiltSeriesViewer({
   // cleanupObjectUrlAndAutoplayOnUnmount
   useEffect(() => {
     return () => {
+      previewAbortRef.current?.abort();
+      previewAbortRef.current = null;
+      previewReqIdRef.current += 1;
+      previewLoadingRef.current = false;
+
       if (lastPreviewRevokeRef.current) {
         try {
           lastPreviewRevokeRef.current();
         } catch {
           // ignore
         }
+        lastPreviewRevokeRef.current = null;
       }
+
       if (autoplayRef.current != null) {
         window.clearInterval(autoplayRef.current);
+        autoplayRef.current = null;
       }
     };
   }, []);
@@ -910,7 +922,7 @@ export default function TiltSeriesViewer({
             </span>
           </Tooltip>
 
-          
+
         </Paper>
 
         <Box sx={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
