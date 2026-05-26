@@ -100,6 +100,10 @@ export default function CTFTomoViewer({ projectId, protocolId, outputName }: CTF
   const [psdImageUrl, setPsdImageUrl] = useState<string | null>(null);
   const psdImageUrlRef = useRef<string | null>(null);
 
+  const psdAbortRef = useRef<AbortController | null>(null);
+  const psdReqIdRef = useRef(0);
+  const isMountedRef = useRef(true);
+
   const exclusionsRef = useRef<CTFExclusionsMap | null>(null);
   const [generateDialogOpen, setGenerateDialogOpen] = useState(false);
   const [generateBusy, setGenerateBusy] = useState(false);
@@ -137,7 +141,13 @@ export default function CTFTomoViewer({ projectId, protocolId, outputName }: CTF
     return "Operation failed";
   };
 
-  const disposePsdImageUrl = () => {
+  const abortPsdLoad = () => {
+    psdAbortRef.current?.abort();
+    psdAbortRef.current = null;
+    psdReqIdRef.current += 1;
+  };
+
+  const revokePsdImageUrl = () => {
     const url = psdImageUrlRef.current;
     if (url) {
       try {
@@ -147,7 +157,14 @@ export default function CTFTomoViewer({ projectId, protocolId, outputName }: CTF
       }
     }
     psdImageUrlRef.current = null;
-    setPsdImageUrl(null);
+  };
+
+  const disposePsdImageUrl = () => {
+    revokePsdImageUrl();
+
+    if (isMountedRef.current) {
+      setPsdImageUrl(null);
+    }
   };
 
   const projectIdNum = useMemo(() => Number(projectId), [projectId]);
@@ -158,8 +175,12 @@ export default function CTFTomoViewer({ projectId, protocolId, outputName }: CTF
   );
 
   useEffect(() => {
+    isMountedRef.current = true;
+
     return () => {
-      disposePsdImageUrl();
+      isMountedRef.current = false;
+      abortPsdLoad();
+      revokePsdImageUrl();
     };
   }, []);
 
@@ -168,6 +189,7 @@ export default function CTFTomoViewer({ projectId, protocolId, outputName }: CTF
     // resetRightPanelStateWhenOpeningMetadata
     setViewMode("seriesChart");
     setPsdError(null);
+    abortPsdLoad();
     setPsdLoading(false);
     disposePsdImageUrl();
     setChartMenuPos(null);
@@ -266,6 +288,7 @@ export default function CTFTomoViewer({ projectId, protocolId, outputName }: CTF
       setFramesError(null);
       setSelectedRowIndex(null);
       setViewMode("seriesChart");
+      abortPsdLoad();
       setPsdError(null);
       disposePsdImageUrl();
       return;
@@ -280,6 +303,7 @@ export default function CTFTomoViewer({ projectId, protocolId, outputName }: CTF
         setFramesData(null);
         setSelectedRowIndex(null);
         setViewMode("seriesChart");
+        abortPsdLoad();
         setPsdError(null);
         disposePsdImageUrl();
 
@@ -389,32 +413,72 @@ export default function CTFTomoViewer({ projectId, protocolId, outputName }: CTF
 
   const loadPsdForRow = async (row: CTFViewRow) => {
     if (mainMode === "metadata") return;
+
     if (!row.psdFile) {
+      abortPsdLoad();
       setViewMode("seriesChart");
       setPsdError(null);
       disposePsdImageUrl();
+      setPsdLoading(false);
       return;
     }
+
+    abortPsdLoad();
+
+    const controller = new AbortController();
+    psdAbortRef.current = controller;
+    const reqId = ++psdReqIdRef.current;
 
     try {
       setPsdLoading(true);
       setPsdError(null);
       disposePsdImageUrl();
 
-      const blob: Blob = await (svc as any).fetchCTFPsdImage(projectId, protocolId, outputName, row.psdFile);
+      const blob: Blob = await (svc as any).fetchCTFPsdImage(
+        projectId,
+        protocolId,
+        outputName,
+        row.psdFile,
+        { signal: controller.signal },
+      );
+
+      if (
+        controller.signal.aborted ||
+        psdReqIdRef.current !== reqId ||
+        !isMountedRef.current
+      ) {
+        return;
+      }
 
       const url = URL.createObjectURL(blob);
       psdImageUrlRef.current = url;
       setPsdImageUrl(url);
       setViewMode("psdView");
     } catch (e: any) {
-      // eslint-disable-next-line no-console
+      if (
+        controller.signal.aborted ||
+        psdReqIdRef.current !== reqId ||
+        !isMountedRef.current
+      ) {
+        return;
+      }
+
       console.error("Failed to load PSD image", e);
       setPsdError(getErrorMsg(e) || "Failed to load PSD image for the selected view.");
       setViewMode("seriesChart");
       disposePsdImageUrl();
     } finally {
-      setPsdLoading(false);
+      if (psdAbortRef.current === controller) {
+        psdAbortRef.current = null;
+      }
+
+      if (
+        !controller.signal.aborted &&
+        psdReqIdRef.current === reqId &&
+        isMountedRef.current
+      ) {
+        setPsdLoading(false);
+      }
     }
   };
 
@@ -426,6 +490,7 @@ export default function CTFTomoViewer({ projectId, protocolId, outputName }: CTF
       if (row.psdFile) {
         loadPsdForRow(row);
       } else {
+        abortPsdLoad();
         setViewMode("seriesChart");
         setPsdError(null);
         disposePsdImageUrl();
@@ -438,6 +503,7 @@ export default function CTFTomoViewer({ projectId, protocolId, outputName }: CTF
     setSelectedSeriesId((prev) => (prev != null && String(prev) === String(seriesId) ? prev : seriesId));
     setViewMode("seriesChart");
     setPsdError(null);
+    abortPsdLoad();
     disposePsdImageUrl();
   };
 
@@ -928,20 +994,20 @@ export default function CTFTomoViewer({ projectId, protocolId, outputName }: CTF
         >
           <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, minWidth: 0, }}>
             <Tooltip title="Show CTFTomo viewer">
-                <span>
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    startIcon={<ArrowBack fontSize="small" />}
-                    disabled={!canOpenMetadata}
-                    onClick={() => setMainMode("viewer")}
-                    sx={{ textTransform: "none" }}
-                  >
-                    CTFTomo viewer
-                  </Button>
-                </span>
-              </Tooltip>
-            
+              <span>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  startIcon={<ArrowBack fontSize="small" />}
+                  disabled={!canOpenMetadata}
+                  onClick={() => setMainMode("viewer")}
+                  sx={{ textTransform: "none" }}
+                >
+                  CTFTomo viewer
+                </Button>
+              </span>
+            </Tooltip>
+
           </Box>
           <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.7rem" }} noWrap>
             {outputName}
