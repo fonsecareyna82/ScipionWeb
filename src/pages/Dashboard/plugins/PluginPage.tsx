@@ -490,6 +490,8 @@ export default function PluginPage() {
     const taskLogOffsetRef = useRef(0);
     const logContainerRef = useRef<HTMLDivElement | null>(null);
 
+    const [skipBinaries, setSkipBinaries] = useState(false);
+
     const {
         tasks,
         installing,
@@ -677,7 +679,7 @@ export default function PluginPage() {
         startInstall(pipName);
 
         try {
-            const started = await installPlugin(pipName);
+            const started = await installPlugin(pipName, { skipBinaries });
             startLogViewer(started.taskId, "install");
 
             registerTask({
@@ -843,6 +845,26 @@ export default function PluginPage() {
                 subtitle={`Latest release: v${plugin.latestRelease}`}
                 right={
                     <div className="flex flex-wrap items-center gap-2">
+                         <label
+                            className={classNames(
+                                crispText,
+                                "inline-flex h-10 items-center gap-2 rounded-xl border px-3 text-sm font-medium",
+                                "border-gray-300/80 bg-white text-gray-700 shadow-sm",
+                                "dark:border-gray-700 dark:bg-slate-900 dark:text-gray-200",
+                                isInstalling ? "cursor-not-allowed opacity-60" : "cursor-pointer",
+                            )}
+                            title="Install only the Python package and skip plugin binaries"
+                        >
+                            <input
+                                type="checkbox"
+                                checked={skipBinaries}
+                                disabled={isInstalling || isRemoving}
+                                onChange={(event) => setSkipBinaries(event.target.checked)}
+                                className="h-4 w-4 rounded border-gray-300"
+                            />
+                            <span>Skip binaries</span>
+                        </label>
+                        
                         <PrimaryButton
                             onClick={handleInstallOrUpdate}
                             disabled={isInstalling || (plugin.installed && !isUpdateAvailable)}
@@ -868,7 +890,7 @@ export default function PluginPage() {
                                     <ArrowRight className="h-4 w-4" />
                                 </>
                             )}
-                        </PrimaryButton>
+                        </PrimaryButton>             
 
                         <SecondaryButton
                             onClick={handleRemove}
