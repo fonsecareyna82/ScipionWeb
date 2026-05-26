@@ -129,8 +129,8 @@ export const releaseEntries: ReleaseEntry[] = [
     major: "v4",
     series: "v4.0",
     badges: ["major", "beta"],
-    downloadUrl: "https://fonsecareyna82.github.io/scipion-docs/installation/download-bundles/",
-    instructionsUrl: "https://fonsecareyna82.github.io/scipion-docs/installation/upgrade/",
+    downloadUrl: "https://fonsecareyna82.github.io/scipion-docs/latest/installation/download-bundles/",
+    instructionsUrl: "https://fonsecareyna82.github.io/scipion-docs/latest/installation/upgrade/",
     items: [
       {
         kind: "note",
