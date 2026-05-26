@@ -1349,13 +1349,14 @@ export default function VolumeViewer({
                   colormap={colormap3d}
                   autoRotate={autoRotate3d}
                   autoRotateSpeed={3.8}
+                  cameraStateKey={selectedId}
                   onError={handleMeshError}
                 />
               ) : usesSurfaceMesh3d && gpuError ? (
                 <Typography variant="body2" color="error">
                   {gpuError}
                 </Typography>
-              
+
               ) : gpuError ? (
                 <Typography variant="body2" color="error">
                   {gpuError}
