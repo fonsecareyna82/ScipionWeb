@@ -11,7 +11,7 @@ import {
   Tooltip,
   TextField,
 } from "@mui/material";
-import { TrashBinIcon, EyeIcon, FindIcon } from "../../icons";
+import { TrashBinIcon, FindIcon } from "../../icons";
 import { useDrag } from "./DragContext";
 import OutputSelectorDialog from "./outputSelectorDialog";
 
@@ -157,51 +157,60 @@ export default function MultiParamRow({
       py: 0,
       px: 0.5,
       lineHeight: 1.2,
-      color: "#111827",
+      color: "text.primary",
     },
   } as const;
 
   return (
     <Box sx={{ mb: 2, ml: -2 }}>
       <Box
-        sx={{
+        sx={(theme) => ({
           maxHeight: 320,
           width: "100%",
           maxWidth: 1040,
           overflowY: "auto",
           borderRadius: 1,
-          border: "1px dashed #bbb",
-          backgroundColor: "white",
+          border: "1px dashed",
+          borderColor: theme.palette.mode === "dark" ? "rgba(148, 163, 184, 0.34)" : "#bbb",
+          backgroundColor: theme.palette.mode === "dark" ? "rgba(15, 23, 42, 0.42)" : "white",
           position: "relative",
           mt: 2,
-        }}
+        })}
       >
         <Table
           size="small"
           stickyHeader
-          sx={{
+          sx={(theme) => ({
             tableLayout: "fixed",
             width: "100%",
             borderCollapse: "collapse",
             fontSize: 12,
             "& .MuiTableCell-root": {
-              borderBottom: "1px dashed #ccc",
+              borderBottom: "1px dashed",
+              borderColor: theme.palette.mode === "dark" ? "rgba(148, 163, 184, 0.24)" : "#ccc",
               padding: "6px 10px",
               fontSize: 12,
+              color: "text.primary",
+              backgroundColor: "transparent",
             },
             "& .MuiTableHead-root": {
               position: "sticky",
               top: 0,
               zIndex: 2,
             },
-          }}
+            "& .MuiTableHead-root .MuiTableCell-root": {
+              backgroundColor: theme.palette.mode === "dark" ? "rgba(30, 41, 59, 0.98)" : "#e0e0e0",
+              color: theme.palette.mode === "dark" ? "#e5e7eb" : "#111827",
+              borderColor: theme.palette.mode === "dark" ? "rgba(148, 163, 184, 0.28)" : "#ccc",
+            },
+          })}
         >
           <TableHead>
-            <TableRow sx={{ background: "#e0e0e0 !important" }}>
-              <TableCell sx={{ width: "40%", fontWeight: "bold", color: "black" }}>
+            <TableRow>
+              <TableCell sx={{ width: "40%", fontWeight: "bold" }}>
                 Object
               </TableCell>
-              <TableCell sx={{ width: "45%", fontWeight: "bold", color: "black" }}>
+              <TableCell sx={{ width: "45%", fontWeight: "bold" }}>
                 Information
               </TableCell>
               {onRowClear && (
@@ -210,7 +219,6 @@ export default function MultiParamRow({
                     width: "15%",
                     textAlign: "center",
                     fontWeight: "bold",
-                    color: "black",
                     whiteSpace: "nowrap",
                   }}
                 >
@@ -225,23 +233,35 @@ export default function MultiParamRow({
               const keyId = `${paramKey}_${i}`;
               const isOver = dragOverKey === keyId;
 
-              const backgroundColor = isOver
-                ? isDraggedCompatible
-                  ? "#b7f5c7"
-                  : "#f5b7b7"
-                : "transparent";
-
               const isEmpty = !row.object && !row.info;
 
               return (
                 <TableRow
                   key={i}
-                  sx={{
-                    backgroundColor,
+                  sx={(theme) => ({
+                    backgroundColor: isOver
+                      ? isDraggedCompatible
+                        ? theme.palette.mode === "dark"
+                          ? "rgba(34, 197, 94, 0.20)"
+                          : "#b7f5c7"
+                        : theme.palette.mode === "dark"
+                          ? "rgba(248, 113, 113, 0.20)"
+                          : "#f5b7b7"
+                      : "transparent",
                     transition: "background-color 0.15s ease-in-out",
                     height: 38,
-                    "& td": { borderBottom: "1px dashed #ccc" },
-                  }}
+                    "&:hover": {
+                      backgroundColor: isOver
+                        ? undefined
+                        : theme.palette.mode === "dark"
+                          ? "rgba(148, 163, 184, 0.08)"
+                          : "rgba(15, 23, 42, 0.035)",
+                    },
+                    "& td": {
+                      borderBottom: "1px dashed",
+                      borderColor: theme.palette.mode === "dark" ? "rgba(148, 163, 184, 0.22)" : "#ccc",
+                    },
+                  })}
                   onDragOver={(e) => {
                     // handleDragOver
                     if (!onRowDrop) return;
@@ -321,7 +341,11 @@ export default function MultiParamRow({
                     <TableCell sx={{ textAlign: "center", verticalAlign: "middle" }}>
                       {isEmpty ? (
                         <Tooltip title="Find compatible outputs">
-                          <IconButton size="small" onClick={() => setOpenSelectorFor(i)}>
+                          <IconButton
+                            size="small"
+                            onClick={() => setOpenSelectorFor(i)}
+                            sx={{ color: "text.secondary", "&:hover": { color: "text.primary" } }}
+                          >
                             <FindIcon fontSize="1.3rem" />
                           </IconButton>
                         </Tooltip>
@@ -334,7 +358,11 @@ export default function MultiParamRow({
                             gap: 1,
                           }}
                         >
-                          <IconButton size="small" onClick={() => onRowClear(i)}>
+                          <IconButton
+                            size="small"
+                            onClick={() => onRowClear(i)}
+                            sx={{ color: "text.secondary", "&:hover": { color: "text.primary" } }}
+                          >
                             <TrashBinIcon fontSize="1.1rem" />
                           </IconButton>
                         </Box>
