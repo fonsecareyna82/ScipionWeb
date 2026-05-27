@@ -33,16 +33,16 @@ function parseAnsi(line: string): JSX.Element[] {
     const code = Number.parseInt(match[1], 10);
     switch (code) {
       case 31:
-        currentColor = "red";
+        currentColor = "#f87171";
         break;
       case 32:
-        currentColor = "green";
+        currentColor = "#4ade80";
         break;
       case 33:
-        currentColor = "orange";
+        currentColor = "#fbbf24";
         break;
       case 35:
-        currentColor = "magenta";
+        currentColor = "#e879f9";
         break;
       case 0:
         currentColor = null;
@@ -127,14 +127,19 @@ export default function ProtocolLogsPanel({
         <Box
           ref={logsContainerRef}
           onScroll={updateStickToBottom}
-          sx={{
+          sx={(theme) => ({
             flex: 1,
             minHeight: 0,
             minWidth: 0,
-            backgroundColor: "#f5f5f5",
-            color: "black",
+            backgroundColor: theme.palette.mode === "dark" ? "rgba(2, 6, 23, 0.72)" : "#f5f5f5",
+            color: theme.palette.mode === "dark" ? "#e5e7eb" : "#111827",
             borderRadius: 2,
-            border: "1px solid #e5e7eb",
+            border: "1px solid",
+            borderColor: theme.palette.mode === "dark" ? "rgba(148, 163, 184, 0.26)" : "#e5e7eb",
+            boxShadow:
+              theme.palette.mode === "dark"
+                ? "inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 12px 28px rgba(0, 0, 0, 0.18)"
+                : "none",
             p: 1.5,
             fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
             fontSize: 12,
@@ -142,11 +147,15 @@ export default function ProtocolLogsPanel({
             overflowY: "auto",
             overflowX: "auto",
             whiteSpace: "pre",
-          }}
+            scrollbarColor:
+              theme.palette.mode === "dark"
+                ? "rgba(148, 163, 184, 0.45) rgba(15, 23, 42, 0.55)"
+                : undefined,
+          })}
         >
           {activeLogText && activeLogText.length > 0 ? (
             activeLogText.split("\n").map((line, idx) => {
-              const lineNoColor = activeLogChannelId === "stderr" ? "red" : "blue";
+              const lineNoColor = activeLogChannelId === "stderr" ? "#f87171" : "#60a5fa";
 
               return (
                 <div key={idx} style={{ display: "flex", minWidth: 0 }}>
@@ -165,7 +174,7 @@ export default function ProtocolLogsPanel({
               );
             })
           ) : (
-            <Typography variant="body2" sx={{ opacity: 0.7 }}>
+            <Typography variant="body2" sx={{ opacity: 0.7, color: "text.secondary" }}>
               No logs yet.
             </Typography>
           )}
