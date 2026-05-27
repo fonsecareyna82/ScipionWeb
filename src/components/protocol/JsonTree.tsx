@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import {
   Box,
   Button,
@@ -16,6 +16,31 @@ const jsonFallbackColor = "var(--json-fallback-color, #111827)";
 
 const jsonIndentPx = 14;
 const jsonToggleColWidthPx = 18;
+
+function useAncestorDarkMode<T extends HTMLElement>() {
+  const rootRef = useRef<T | null>(null);
+  const [isDark, setIsDark] = useState(false);
+
+  useEffect(() => {
+    const updateDarkMode = () => {
+      setIsDark(Boolean(rootRef.current?.closest(".dark")));
+    };
+
+    updateDarkMode();
+
+    const observer = new MutationObserver(updateDarkMode);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      childList: true,
+      subtree: true,
+      attributeFilter: ["class"],
+    });
+
+    return () => observer.disconnect();
+  }, []);
+
+  return { rootRef, isDark };
+}
 
 function getJsonScalarColor(value: any): string {
   // getJsonScalarColor
@@ -325,6 +350,7 @@ function JsonNode({
 
 function JsonTree({ data }: { data: any }) {
   // JsonTree
+  const { rootRef, isDark } = useAncestorDarkMode<HTMLDivElement>();
   const [copied, setCopied] = useState(false);
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(() => new Set(["$"]));
 
@@ -362,6 +388,7 @@ function JsonTree({ data }: { data: any }) {
 
   return (
     <Box
+      ref={rootRef}
       sx={{
         height: "100%",
         maxHeight: "100%",
@@ -383,35 +410,33 @@ function JsonTree({ data }: { data: any }) {
       </Box>
 
       <Box
-        sx={(theme) => ({
+        sx={{
           flex: 1,
           minHeight: 0,
-          backgroundColor: theme.palette.mode === "dark" ? "rgba(2, 6, 23, 0.72)" : "#f5f5f5",
-          color: theme.palette.mode === "dark" ? "#e5e7eb" : "#111827",
+          backgroundColor: isDark ? "rgba(2, 6, 23, 0.72)" : "#f5f5f5",
+          color: isDark ? "#e5e7eb" : "#111827",
           border: "1px solid",
-          borderColor: theme.palette.mode === "dark" ? "rgba(148, 163, 184, 0.26)" : "#e5e7eb",
+          borderColor: isDark ? "rgba(148, 163, 184, 0.26)" : "#e5e7eb",
           borderRadius: 2,
           p: 1.5,
           fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
           fontSize: 12,
           lineHeight: 1.5,
           overflow: "auto",
-          boxShadow:
-            theme.palette.mode === "dark"
-              ? "inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 12px 28px rgba(0, 0, 0, 0.18)"
-              : "none",
-          scrollbarColor:
-            theme.palette.mode === "dark"
-              ? "rgba(148, 163, 184, 0.45) rgba(15, 23, 42, 0.55)"
-              : undefined,
-          "--json-punct-color": theme.palette.mode === "dark" ? "#cbd5e1" : "#000000",
-          "--json-key-color": theme.palette.mode === "dark" ? "#93c5fd" : "#000000",
-          "--json-string-color": theme.palette.mode === "dark" ? "#86efac" : "#16a34a",
-          "--json-number-color": theme.palette.mode === "dark" ? "#fdba74" : "#f97316",
-          "--json-boolean-color": theme.palette.mode === "dark" ? "#c4b5fd" : "#7c3aed",
-          "--json-null-color": theme.palette.mode === "dark" ? "#94a3b8" : "#6b7280",
-          "--json-fallback-color": theme.palette.mode === "dark" ? "#e5e7eb" : "#111827",
-        })}
+          boxShadow: isDark
+            ? "inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 12px 28px rgba(0, 0, 0, 0.18)"
+            : "none",
+          scrollbarColor: isDark
+            ? "rgba(148, 163, 184, 0.45) rgba(15, 23, 42, 0.55)"
+            : undefined,
+          "--json-punct-color": isDark ? "#cbd5e1" : "#000000",
+          "--json-key-color": isDark ? "#93c5fd" : "#000000",
+          "--json-string-color": isDark ? "#86efac" : "#16a34a",
+          "--json-number-color": isDark ? "#fdba74" : "#f97316",
+          "--json-boolean-color": isDark ? "#c4b5fd" : "#7c3aed",
+          "--json-null-color": isDark ? "#94a3b8" : "#6b7280",
+          "--json-fallback-color": isDark ? "#e5e7eb" : "#111827",
+        }}
       >
         <JsonNode
           value={data}
