@@ -20,8 +20,20 @@ function isTheme(value: unknown): value is Theme {
 }
 
 function applyTheme(theme: Theme) {
-  document.documentElement.classList.toggle("dark", theme === "dark");
+  const isDark = theme === "dark";
+
+  document.documentElement.classList.toggle("dark", isDark);
+  document.body.classList.toggle("dark", isDark);
+
+  const appRoot = document.getElementById("root");
+  appRoot?.classList.toggle("dark", isDark);
+
+  document.querySelectorAll(".projectpage-widget-root").forEach((root) => {
+    root.classList.toggle("dark", isDark);
+  });
+
   document.documentElement.style.colorScheme = theme;
+  document.body.style.colorScheme = theme;
 }
 
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({
