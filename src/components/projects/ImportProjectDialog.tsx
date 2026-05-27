@@ -126,6 +126,70 @@ export default function ImportProjectDialog({
   const [submitting, setSubmitting] = useState(false);
   const [openBrowser, setOpenBrowser] = useState(false);
 
+  const textFieldSx = {
+    "& .MuiOutlinedInput-root": {
+      borderRadius: 1,
+      backgroundColor: "rgba(255,255,255,0.96)",
+      color: theme.palette.text.primary,
+      transition: "background-color 0.15s ease, border-color 0.15s ease",
+
+      "& fieldset": {
+        borderColor: alpha(theme.palette.text.primary, 0.22),
+      },
+
+      "&:hover fieldset": {
+        borderColor: alpha(theme.palette.text.primary, 0.36),
+      },
+
+      "&.Mui-focused fieldset": {
+        borderColor: theme.palette.primary.main,
+      },
+    },
+
+    "& .MuiInputBase-input": {
+      color: theme.palette.text.primary,
+
+      "&::placeholder": {
+        color: alpha(theme.palette.text.primary, 0.46),
+        opacity: 1,
+      },
+    },
+
+    ".dark & .MuiOutlinedInput-root": {
+      backgroundColor: "rgba(15, 23, 42, 0.72)",
+      color: "#e5e7eb",
+
+      "& fieldset": {
+        borderColor: "rgba(148, 163, 184, 0.34)",
+      },
+
+      "&:hover fieldset": {
+        borderColor: "rgba(148, 163, 184, 0.52)",
+      },
+
+      "&.Mui-focused fieldset": {
+        borderColor: "#60a5fa",
+      },
+    },
+
+    ".dark & .MuiInputBase-input": {
+      color: "#e5e7eb",
+    },
+
+    ".dark & .MuiInputBase-input::placeholder": {
+      color: "#94a3b8",
+      opacity: 1,
+    },
+
+    ".dark & .MuiInputBase-input.Mui-disabled": {
+      WebkitTextFillColor: "rgba(226, 232, 240, 0.46)",
+    },
+
+    ".dark & .MuiOutlinedInput-root.Mui-disabled": {
+      backgroundColor: "rgba(15, 23, 42, 0.42)",
+    },
+  };
+
   useEffect(() => {
     if (!open) return;
 
@@ -241,11 +305,7 @@ export default function ImportProjectDialog({
                   onChange={(e) => setProjectLocation(e.target.value)}
                   placeholder="/path/to/project"
                   disabled={submitting}
-                  sx={{
-                    "& .MuiOutlinedInput-root": {
-                      borderRadius: 1,
-                    },
-                  }}
+                  sx={textFieldSx}
                 />
 
                 <IconButton
@@ -321,11 +381,7 @@ export default function ImportProjectDialog({
                 onChange={(e) => setProjectName(e.target.value)}
                 placeholder="Imported project name"
                 disabled={submitting}
-                sx={{
-                  "& .MuiOutlinedInput-root": {
-                    borderRadius: 1,
-                  },
-                }}
+                sx={textFieldSx}
               />
             </Box>
           </Stack>
