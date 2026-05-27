@@ -79,7 +79,7 @@ type ThumbnailObjectUrlCacheEntry = {
   touchedAt: number;
 };
 
-const THUMBNAIL_ITEMS_TTL_MS = 20_000;
+const THUMBNAIL_ITEMS_TTL_MS = 300_000;
 const THUMBNAIL_ITEMS_CACHE = new Map<string, ThumbnailItemsCacheEntry>();
 
 const THUMBNAIL_OBJECT_URL_CACHE_MAX = 180;
@@ -356,7 +356,7 @@ export default function ProjectCard(props: ProjectCardProps) {
 
       const promise = svc
         .fetchBlobObjectUrl(resolvedUrl, {
-          cache: "no-store",
+          cache: "default",
         })
         .then((objectUrl) => {
           setCachedThumbnailObjectUrl(resolvedUrl, objectUrl);
@@ -437,8 +437,7 @@ export default function ProjectCard(props: ProjectCardProps) {
 
         if (
           cachedEntry &&
-          Date.now() - cachedEntry.ts < THUMBNAIL_ITEMS_TTL_MS &&
-          cachedEntry.data.length > 0
+          Date.now() - cachedEntry.ts < THUMBNAIL_ITEMS_TTL_MS 
         ) {
           groups = cachedEntry.data;
         } else {
@@ -455,7 +454,7 @@ export default function ProjectCard(props: ProjectCardProps) {
             maxProtocols: 5,
             maxOutputsPerProtocol: 2,
             signal: controller.signal,
-            cache: "no-store",
+            cache: "default",
           });
         }
 
@@ -648,7 +647,7 @@ export default function ProjectCard(props: ProjectCardProps) {
         }
 
         const objectUrl = await svc.fetchBlobObjectUrl(requestUrl, {
-          cache: "no-store",
+          cache: "default",
         });
 
         if (!cancelled) {
