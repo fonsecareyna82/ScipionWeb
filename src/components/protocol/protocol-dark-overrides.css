@@ -1,0 +1,60 @@
+/* Global dark mode overrides for protocol side panels.
+   These selectors intentionally target generated MUI/CSS-module classes because
+   some child components still use hardcoded light colors through MUI sx. */
+
+.dark [class*="protocolForm"] [class*="MuiBox-root"] {
+  color: #e5e7eb !important;
+  border-color: rgba(148, 163, 184, 0.24) !important;
+  scrollbar-color: rgba(148, 163, 184, 0.45) rgba(15, 23, 42, 0.55);
+}
+
+.dark [class*="protocolForm"] [class*="MuiBox-root"] [class*="MuiBox-root"] {
+  background-color: transparent !important;
+}
+
+.dark [class*="protocolForm"] [class*="MuiTypography-root"] {
+  color: #e5e7eb !important;
+}
+
+.dark [class*="protocolForm"] [class*="MuiTypography-caption"] {
+  color: #94a3b8 !important;
+}
+
+.dark [class*="protocolForm"] [class*="MuiButton-outlined"] {
+  color: #dbeafe !important;
+  border-color: rgba(148, 163, 184, 0.34) !important;
+}
+
+.dark [class*="protocolForm"] [class*="MuiButton-outlined"]:hover {
+  background-color: rgba(59, 130, 246, 0.10) !important;
+  border-color: rgba(147, 197, 253, 0.56) !important;
+}
+
+.dark [class*="protocolForm"] table {
+  background-color: rgba(2, 6, 23, 0.72) !important;
+  color: #e5e7eb !important;
+}
+
+.dark [class*="protocolForm"] thead {
+  background: rgba(30, 41, 59, 0.96) !important;
+  color: #f8fafc !important;
+}
+
+.dark [class*="protocolForm"] tr,
+.dark [class*="protocolForm"] th,
+.dark [class*="protocolForm"] td {
+  color: #e5e7eb !important;
+  border-color: rgba(148, 163, 184, 0.22) !important;
+}
+
+.dark [class*="protocolForm"] a {
+  color: #93c5fd !important;
+}
+
+.dark [class*="protocolForm"] object {
+  background-color: rgba(2, 6, 23, 0.72) !important;
+}
+
+.dark [class*="protocolForm"] [class*="MuiCircularProgress-root"] {
+  color: #93c5fd !important;
+}
