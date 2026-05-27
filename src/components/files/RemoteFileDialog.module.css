@@ -1545,3 +1545,146 @@
 :global(.projectpage-widget-root.dark) .databaseSampleHint {
   color: #94a3b8;
 }
+
+:global(.dark) .dialogContent.dialogLayout,
+:global(.projectpage-widget-root.dark) .dialogContent.dialogLayout {
+  background:
+    radial-gradient(circle at top left, rgba(59, 130, 246, 0.12), transparent 34%),
+    linear-gradient(145deg, rgba(15, 23, 42, 0.98), rgba(2, 6, 23, 0.98));
+  color: #e5e7eb;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.045),
+    0 24px 72px rgba(0, 0, 0, 0.58);
+}
+
+:global(.dark) .dialogContent.dialogLayout .headerBar,
+:global(.projectpage-widget-root.dark) .dialogContent.dialogLayout .headerBar {
+  background:
+    linear-gradient(135deg, rgba(30, 41, 59, 0.98), rgba(15, 23, 42, 0.98));
+  border-bottom-color: rgba(148, 163, 184, 0.20);
+}
+
+:global(.dark) .dialogContent.dialogLayout .headerTitle,
+:global(.projectpage-widget-root.dark) .dialogContent.dialogLayout .headerTitle {
+  background: transparent;
+  color: #f8fafc;
+}
+
+:global(.dark) .dialogContent.dialogLayout .toolbar,
+:global(.projectpage-widget-root.dark) .dialogContent.dialogLayout .toolbar {
+  background:
+    linear-gradient(145deg, rgba(30, 41, 59, 0.72), rgba(15, 23, 42, 0.72));
+  border-color: rgba(148, 163, 184, 0.24);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
+}
+
+:global(.dark) .dialogContent.dialogLayout .panel,
+:global(.projectpage-widget-root.dark) .dialogContent.dialogLayout .panel {
+  background:
+    linear-gradient(180deg, rgba(15, 23, 42, 0.88), rgba(2, 6, 23, 0.76));
+  border-color: rgba(148, 163, 184, 0.24);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.035),
+    0 14px 32px rgba(0, 0, 0, 0.20);
+}
+
+:global(.dark) .dialogContent.dialogLayout .panelHeader,
+:global(.projectpage-widget-root.dark) .dialogContent.dialogLayout .panelHeader {
+  background:
+    linear-gradient(135deg, rgba(30, 41, 59, 0.96), rgba(15, 23, 42, 0.96));
+  border-bottom-color: rgba(148, 163, 184, 0.22);
+  color: #e5e7eb;
+}
+
+:global(.dark) .dialogContent.dialogLayout .panelHeaderPath,
+:global(.projectpage-widget-root.dark) .dialogContent.dialogLayout .panelHeaderPath {
+  color: #cbd5e1;
+}
+
+:global(.dark) .dialogContent.dialogLayout .fileListControls,
+:global(.projectpage-widget-root.dark) .dialogContent.dialogLayout .fileListControls {
+  background: rgba(2, 6, 23, 0.28);
+  border-bottom-color: rgba(148, 163, 184, 0.18);
+}
+
+:global(.dark) .dialogContent.dialogLayout .fileFilterInput,
+:global(.projectpage-widget-root.dark) .dialogContent.dialogLayout .fileFilterInput {
+  background: rgba(15, 23, 42, 0.74);
+  color: #e5e7eb;
+  border-color: rgba(148, 163, 184, 0.34);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
+}
+
+:global(.dark) .dialogContent.dialogLayout .fileFilterInput::placeholder,
+:global(.projectpage-widget-root.dark) .dialogContent.dialogLayout .fileFilterInput::placeholder {
+  color: #94a3b8;
+  opacity: 1;
+}
+
+:global(.dark) .dialogContent.dialogLayout .fileFilterInput:focus,
+:global(.projectpage-widget-root.dark) .dialogContent.dialogLayout .fileFilterInput:focus {
+  border-color: rgba(96, 165, 250, 0.78);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 0 0 3px rgba(59, 130, 246, 0.18);
+}
+
+:global(.dark) .dialogContent.dialogLayout .fileFilterIcon,
+:global(.projectpage-widget-root.dark) .dialogContent.dialogLayout .fileFilterIcon {
+  color: #94a3b8;
+}
+
+:global(.dark) .dialogContent.dialogLayout .fileListHeader,
+:global(.projectpage-widget-root.dark) .dialogContent.dialogLayout .fileListHeader {
+  background: rgba(30, 41, 59, 0.74);
+  border-top-color: rgba(148, 163, 184, 0.16);
+}
+
+:global(.dark) .dialogContent.dialogLayout .fileListHeaderTitle,
+:global(.projectpage-widget-root.dark) .dialogContent.dialogLayout .fileListHeaderTitle {
+  color: #cbd5e1;
+}
+
+:global(.dark) .dialogContent.dialogLayout .fileListSortButton,
+:global(.projectpage-widget-root.dark) .dialogContent.dialogLayout .fileListSortButton {
+  color: #cbd5e1;
+  border-color: rgba(148, 163, 184, 0.28);
+  background: rgba(15, 23, 42, 0.42);
+}
+
+:global(.dark) .dialogContent.dialogLayout .fileListSortButton:hover,
+:global(.projectpage-widget-root.dark) .dialogContent.dialogLayout .fileListSortButton:hover {
+  color: #f8fafc;
+  background: rgba(148, 163, 184, 0.14);
+  border-color: rgba(148, 163, 184, 0.42);
+}
+
+:global(.dark) .dialogContent.dialogLayout .list,
+:global(.projectpage-widget-root.dark) .dialogContent.dialogLayout .list {
+  color: #e5e7eb;
+}
+
+:global(.dark) .dialogContent.dialogLayout .listItem,
+:global(.projectpage-widget-root.dark) .dialogContent.dialogLayout .listItem {
+  border-bottom-color: rgba(148, 163, 184, 0.16);
+}
+
+:global(.dark) .dialogContent.dialogLayout .rowBtn,
+:global(.projectpage-widget-root.dark) .dialogContent.dialogLayout .rowBtn {
+  color: #e5e7eb;
+}
+
+:global(.dark) .dialogContent.dialogLayout .rowBtn:hover,
+:global(.projectpage-widget-root.dark) .dialogContent.dialogLayout .rowBtn:hover {
+  background: rgba(148, 163, 184, 0.10);
+}
+
+:global(.dark) .dialogContent.dialogLayout .rowBtnSelected,
+:global(.projectpage-widget-root.dark) .dialogContent.dialogLayout .rowBtnSelected {
+  background:
+    linear-gradient(135deg, rgba(59, 130, 246, 0.18), rgba(14, 165, 233, 0.10));
+  box-shadow:
+    inset 3px 0 0 rgba(96, 165, 250, 0.92),
+    inset 0 1px 0 rgba(255, 255, 255, 0.035);
+}
