@@ -1,0 +1,339 @@
+/* Global dark mode overrides for RemoteFileDialog.
+   This dialog uses CSS modules and Radix portals, so these selectors intentionally
+   target generated class names that include the original CSS module keys. */
+
+.dark [class*="dialogContent"][class*="dialogLayout"],
+.projectpage-widget-root.dark [class*="dialogContent"][class*="dialogLayout"] {
+  background:
+    radial-gradient(circle at top left, rgba(59, 130, 246, 0.12), transparent 34%),
+    linear-gradient(145deg, rgba(15, 23, 42, 0.98), rgba(2, 6, 23, 0.98)) !important;
+  color: #e5e7eb !important;
+  border: 1px solid rgba(148, 163, 184, 0.24) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.045),
+    0 24px 72px rgba(0, 0, 0, 0.58) !important;
+}
+
+.dark [class*="headerBar"],
+.projectpage-widget-root.dark [class*="headerBar"] {
+  background:
+    linear-gradient(135deg, rgba(30, 41, 59, 0.98), rgba(15, 23, 42, 0.98)) !important;
+  border-bottom-color: rgba(148, 163, 184, 0.20) !important;
+}
+
+.dark [class*="headerTitle"],
+.projectpage-widget-root.dark [class*="headerTitle"] {
+  background: transparent !important;
+  color: #f8fafc !important;
+}
+
+.dark [class*="toolbar"],
+.projectpage-widget-root.dark [class*="toolbar"] {
+  background:
+    linear-gradient(145deg, rgba(30, 41, 59, 0.72), rgba(15, 23, 42, 0.72)) !important;
+  border-color: rgba(148, 163, 184, 0.24) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035) !important;
+}
+
+.dark [class*="panel"],
+.projectpage-widget-root.dark [class*="panel"] {
+  background:
+    linear-gradient(180deg, rgba(15, 23, 42, 0.88), rgba(2, 6, 23, 0.76)) !important;
+  border-color: rgba(148, 163, 184, 0.24) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.035),
+    0 14px 32px rgba(0, 0, 0, 0.20) !important;
+}
+
+.dark [class*="panelHeader"],
+.projectpage-widget-root.dark [class*="panelHeader"] {
+  background:
+    linear-gradient(135deg, rgba(30, 41, 59, 0.96), rgba(15, 23, 42, 0.96)) !important;
+  border-bottom-color: rgba(148, 163, 184, 0.22) !important;
+  color: #e5e7eb !important;
+}
+
+.dark [class*="panelHeaderPath"],
+.projectpage-widget-root.dark [class*="panelHeaderPath"] {
+  color: #cbd5e1 !important;
+}
+
+.dark [class*="fileListControls"],
+.projectpage-widget-root.dark [class*="fileListControls"] {
+  background: rgba(2, 6, 23, 0.28) !important;
+  border-bottom-color: rgba(148, 163, 184, 0.18) !important;
+}
+
+.dark [class*="fileFilterInput"],
+.projectpage-widget-root.dark [class*="fileFilterInput"] {
+  background: rgba(15, 23, 42, 0.74) !important;
+  color: #e5e7eb !important;
+  border-color: rgba(148, 163, 184, 0.34) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035) !important;
+}
+
+.dark [class*="fileFilterInput"]::placeholder,
+.projectpage-widget-root.dark [class*="fileFilterInput"]::placeholder {
+  color: #94a3b8 !important;
+  opacity: 1 !important;
+}
+
+.dark [class*="fileFilterInput"]:focus,
+.projectpage-widget-root.dark [class*="fileFilterInput"]:focus {
+  border-color: rgba(96, 165, 250, 0.78) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 0 0 3px rgba(59, 130, 246, 0.18) !important;
+}
+
+.dark [class*="fileFilterIcon"],
+.projectpage-widget-root.dark [class*="fileFilterIcon"] {
+  color: #94a3b8 !important;
+}
+
+.dark [class*="fileListHeader"],
+.projectpage-widget-root.dark [class*="fileListHeader"] {
+  background: rgba(30, 41, 59, 0.74) !important;
+  border-top-color: rgba(148, 163, 184, 0.16) !important;
+}
+
+.dark [class*="fileListHeaderTitle"],
+.projectpage-widget-root.dark [class*="fileListHeaderTitle"] {
+  color: #cbd5e1 !important;
+}
+
+.dark [class*="fileListSortButton"],
+.projectpage-widget-root.dark [class*="fileListSortButton"] {
+  color: #cbd5e1 !important;
+  border-color: rgba(148, 163, 184, 0.28) !important;
+  background: rgba(15, 23, 42, 0.42) !important;
+}
+
+.dark [class*="fileListSortButton"]:hover,
+.projectpage-widget-root.dark [class*="fileListSortButton"]:hover {
+  color: #f8fafc !important;
+  background: rgba(148, 163, 184, 0.14) !important;
+  border-color: rgba(148, 163, 184, 0.42) !important;
+}
+
+.dark [class*="list"],
+.projectpage-widget-root.dark [class*="list"] {
+  color: #e5e7eb !important;
+}
+
+.dark [class*="listItem"],
+.projectpage-widget-root.dark [class*="listItem"] {
+  border-bottom-color: rgba(148, 163, 184, 0.16) !important;
+}
+
+.dark [class*="rowBtn"],
+.projectpage-widget-root.dark [class*="rowBtn"] {
+  color: #e5e7eb !important;
+}
+
+.dark [class*="rowBtn"]:hover,
+.projectpage-widget-root.dark [class*="rowBtn"]:hover {
+  background: rgba(148, 163, 184, 0.10) !important;
+}
+
+.dark [class*="rowBtnSelected"],
+.projectpage-widget-root.dark [class*="rowBtnSelected"] {
+  background:
+    linear-gradient(135deg, rgba(59, 130, 246, 0.18), rgba(14, 165, 233, 0.10)) !important;
+  box-shadow:
+    inset 3px 0 0 rgba(96, 165, 250, 0.92),
+    inset 0 1px 0 rgba(255, 255, 255, 0.035) !important;
+}
+
+.dark [class*="iconSmMut"],
+.dark [class*="iconSpinSmMut"],
+.projectpage-widget-root.dark [class*="iconSmMut"],
+.projectpage-widget-root.dark [class*="iconSpinSmMut"] {
+  color: #94a3b8 !important;
+}
+
+.dark [class*="fileSize"],
+.projectpage-widget-root.dark [class*="fileSize"] {
+  color: #94a3b8 !important;
+  opacity: 0.82 !important;
+}
+
+.dark [class*="previewViewport"],
+.projectpage-widget-root.dark [class*="previewViewport"] {
+  color: #e5e7eb !important;
+  background: transparent !important;
+}
+
+.dark [class*="centerPlaceholder"],
+.projectpage-widget-root.dark [class*="centerPlaceholder"] {
+  color: #94a3b8 !important;
+}
+
+.dark [class*="textPreviewBox"],
+.dark [class*="textPreviewShell"],
+.dark [class*="metaBox"],
+.dark [class*="databasePreviewShell"],
+.projectpage-widget-root.dark [class*="textPreviewBox"],
+.projectpage-widget-root.dark [class*="textPreviewShell"],
+.projectpage-widget-root.dark [class*="metaBox"],
+.projectpage-widget-root.dark [class*="databasePreviewShell"] {
+  background:
+    radial-gradient(circle at top left, rgba(59, 130, 246, 0.08), transparent 32%),
+    linear-gradient(180deg, rgba(15, 23, 42, 0.94), rgba(2, 6, 23, 0.82)) !important;
+  border-color: rgba(148, 163, 184, 0.24) !important;
+  color: #e5e7eb !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.035),
+    0 12px 28px rgba(0, 0, 0, 0.20) !important;
+}
+
+.dark [class*="textPreviewHeader"],
+.projectpage-widget-root.dark [class*="textPreviewHeader"] {
+  background: rgba(15, 23, 42, 0.76) !important;
+  border-bottom-color: rgba(148, 163, 184, 0.20) !important;
+}
+
+.dark [class*="textPreviewCodeScroll"],
+.projectpage-widget-root.dark [class*="textPreviewCodeScroll"] {
+  background:
+    radial-gradient(circle at top left, rgba(96, 165, 250, 0.08), transparent 30%),
+    rgba(2, 6, 23, 0.38) !important;
+}
+
+.dark [class*="textPreviewLineNumber"],
+.projectpage-widget-root.dark [class*="textPreviewLineNumber"] {
+  background: rgba(15, 23, 42, 0.96) !important;
+  color: #64748b !important;
+  border-right-color: rgba(148, 163, 184, 0.20) !important;
+}
+
+.dark [class*="textPreviewLineContent"],
+.projectpage-widget-root.dark [class*="textPreviewLineContent"] {
+  color: #e5e7eb !important;
+}
+
+.dark [class*="previewFooter"],
+.projectpage-widget-root.dark [class*="previewFooter"] {
+  background: rgba(15, 23, 42, 0.62) !important;
+  border-top-color: rgba(148, 163, 184, 0.18) !important;
+  color: #cbd5e1 !important;
+}
+
+.dark [class*="metaTitle"],
+.dark [class*="metaLabel"],
+.dark [class*="databasePreviewTitle"],
+.dark [class*="databaseSummaryValue"],
+.projectpage-widget-root.dark [class*="metaTitle"],
+.projectpage-widget-root.dark [class*="metaLabel"],
+.projectpage-widget-root.dark [class*="databasePreviewTitle"],
+.projectpage-widget-root.dark [class*="databaseSummaryValue"] {
+  color: #f8fafc !important;
+}
+
+.dark [class*="metaValue"],
+.dark [class*="databasePreviewSubtitle"],
+.dark [class*="databaseSummaryKey"],
+.dark [class*="databaseSampleHint"],
+.projectpage-widget-root.dark [class*="metaValue"],
+.projectpage-widget-root.dark [class*="databasePreviewSubtitle"],
+.projectpage-widget-root.dark [class*="databaseSummaryKey"],
+.projectpage-widget-root.dark [class*="databaseSampleHint"] {
+  color: #94a3b8 !important;
+}
+
+.dark [class*="databasePreviewHeader"],
+.dark [class*="databaseSummaryCard"],
+.dark [class*="databaseTableScroll"],
+.projectpage-widget-root.dark [class*="databasePreviewHeader"],
+.projectpage-widget-root.dark [class*="databaseSummaryCard"],
+.projectpage-widget-root.dark [class*="databaseTableScroll"] {
+  background: rgba(15, 23, 42, 0.68) !important;
+  border-color: rgba(148, 163, 184, 0.22) !important;
+}
+
+.dark [class*="databaseTable"] th,
+.projectpage-widget-root.dark [class*="databaseTable"] th {
+  background: rgba(15, 23, 42, 0.96) !important;
+  color: #e2e8f0 !important;
+  border-bottom-color: rgba(148, 163, 184, 0.24) !important;
+}
+
+.dark [class*="databaseTable"] td,
+.projectpage-widget-root.dark [class*="databaseTable"] td {
+  color: #cbd5e1 !important;
+  border-bottom-color: rgba(148, 163, 184, 0.16) !important;
+}
+
+.dark [class*="saveBar"],
+.projectpage-widget-root.dark [class*="saveBar"] {
+  background:
+    linear-gradient(145deg, rgba(30, 41, 59, 0.72), rgba(15, 23, 42, 0.72)) !important;
+  border-color: rgba(148, 163, 184, 0.24) !important;
+}
+
+.dark [class*="saveInput"],
+.projectpage-widget-root.dark [class*="saveInput"] {
+  background: rgba(15, 23, 42, 0.74) !important;
+  color: #e5e7eb !important;
+  border-color: rgba(148, 163, 184, 0.34) !important;
+}
+
+.dark [class*="saveInput"]::placeholder,
+.projectpage-widget-root.dark [class*="saveInput"]::placeholder {
+  color: #94a3b8 !important;
+  opacity: 1 !important;
+}
+
+.dark [class*="saveInput"]:focus,
+.projectpage-widget-root.dark [class*="saveInput"]:focus {
+  border-color: rgba(96, 165, 250, 0.78) !important;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.18) !important;
+}
+
+.dark [class*="ppChipBtn"],
+.dark [class*="ppDialogBtn"],
+.projectpage-widget-root.dark [class*="ppChipBtn"],
+.projectpage-widget-root.dark [class*="ppDialogBtn"] {
+  color: #dbeafe !important;
+  border-color: rgba(148, 163, 184, 0.34) !important;
+  background: rgba(15, 23, 42, 0.34) !important;
+}
+
+.dark [class*="ppChipBtn"]:hover,
+.dark [class*="ppDialogBtn"]:hover,
+.projectpage-widget-root.dark [class*="ppChipBtn"]:hover,
+.projectpage-widget-root.dark [class*="ppDialogBtn"]:hover {
+  background: rgba(59, 130, 246, 0.12) !important;
+  border-color: rgba(147, 197, 253, 0.56) !important;
+  color: #f8fafc !important;
+}
+
+.dark [class*="ppDialogBtnPrimary"],
+.projectpage-widget-root.dark [class*="ppDialogBtnPrimary"] {
+  background: linear-gradient(135deg, #2563eb, #0ea5e9) !important;
+  border-color: rgba(147, 197, 253, 0.62) !important;
+  color: #ffffff !important;
+  box-shadow: 0 10px 24px rgba(14, 165, 233, 0.20) !important;
+}
+
+.dark [class*="ppDialogBtnPrimary"]:hover,
+.projectpage-widget-root.dark [class*="ppDialogBtnPrimary"]:hover {
+  background: linear-gradient(135deg, #1d4ed8, #0284c7) !important;
+}
+
+.dark [class*="errorBox"],
+.dark [class*="panelError"],
+.projectpage-widget-root.dark [class*="errorBox"],
+.projectpage-widget-root.dark [class*="panelError"] {
+  color: #fca5a5 !important;
+}
+
+.dark [class*="dialogContent"] ::selection,
+.projectpage-widget-root.dark [class*="dialogContent"] ::selection {
+  background: rgba(96, 165, 250, 0.32) !important;
+}
+
+.dark [class*="dialogContent"] *,
+.projectpage-widget-root.dark [class*="dialogContent"] * {
+  scrollbar-color: rgba(148, 163, 184, 0.45) rgba(15, 23, 42, 0.55);
+}
