@@ -2,8 +2,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import type { SystemUpdateCheck } from "@/services/ProjectService";
 
-import { BASE_URL } from "@/config";
 import { useProjectService } from "@/ProjectServiceContext";
 import {
   AlertTriangle,
@@ -22,7 +22,6 @@ import {
   Folder,
   LucideSettings2,
   Sparkles,
-  Clock3,
   X,
 } from "lucide-react";
 import { TreeIcon } from "@/icons";
@@ -35,20 +34,6 @@ type ProjectRow = {
   createdAt?: string;
   updatedAt?: string;
   status?: string;
-};
-
-type SystemUpdateStatus = {
-  apiVersion?: string | null;
-  webVersion?: string | null;
-  currentVersion?: string | null;
-  latestVersion?: string | null;
-  lastUpdateVersion?: string | null;
-  lastUpdateAt?: string | null;
-  updateAvailable?: boolean;
-  checkOk?: boolean;
-  error?: string | null;
-  updateCommand?: string | null;
-  manifestUrl?: string | null;
 };
 
 type IconTone = "indigo" | "violet" | "emerald" | "amber" | "sky" | "rose";
@@ -164,35 +149,6 @@ function displayVersion(value?: string | null): string {
   return normalizeVersionText(value) ?? "—";
 }
 
-function normalizeSystemUpdateStatus(raw: any): SystemUpdateStatus {
-  // normalizeSystemUpdateStatus
-  if (!raw || typeof raw !== "object") return { checkOk: false, updateAvailable: false, error: "Invalid response" };
-
-  return {
-    apiVersion: normalizeVersionText(raw.apiVersion),
-    webVersion: normalizeVersionText(raw.webVersion),
-    currentVersion: normalizeVersionText(raw.currentVersion),
-    latestVersion: normalizeVersionText(raw.latestVersion),
-    lastUpdateVersion: normalizeVersionText(raw.lastUpdateVersion),
-    lastUpdateAt: typeof raw.lastUpdateAt === "string" ? raw.lastUpdateAt : null,
-    updateAvailable: Boolean(raw.updateAvailable),
-    checkOk: raw.checkOk !== false,
-    error: typeof raw.error === "string" && raw.error.trim() ? raw.error : null,
-    updateCommand: typeof raw.updateCommand === "string" && raw.updateCommand.trim() ? raw.updateCommand : null,
-    manifestUrl: typeof raw.manifestUrl === "string" && raw.manifestUrl.trim() ? raw.manifestUrl : null,
-  };
-}
-
-async function readResponsePayload(response: Response): Promise<any> {
-  // readResponsePayload
-  const text = await response.text();
-  if (!text) return {};
-  try {
-    return JSON.parse(text);
-  } catch {
-    return { error: text };
-  }
-}
 
 async function copyTextToClipboard(text: string): Promise<void> {
   // copyTextToClipboard
@@ -386,24 +342,6 @@ function HeroAction(props: {
   );
 }
 
-function MetricPill(props: { label: string; value: ReactNode; icon?: ReactNode }) {
-  // MetricPill
-  return (
-    <div
-      className={classNames(
-        "rounded-2xl border px-4 py-3",
-        "border-gray-300/70 bg-white/80",
-        "dark:border-gray-700 dark:bg-slate-900/80",
-      )}
-    >
-      <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-gray-500 dark:text-gray-400">
-        {props.icon ? <span className="text-gray-500 dark:text-gray-400">{props.icon}</span> : null}
-        <span>{props.label}</span>
-      </div>
-      <div className="mt-1 text-sm font-semibold text-gray-950 dark:text-white">{props.value}</div>
-    </div>
-  );
-}
 
 function ResourceLink(props: {
   title: string;
@@ -467,7 +405,7 @@ export default function Home() {
   const [pinnedIds, setPinnedIds] = useState<string[]>(() => readPinnedIds());
   const [filter, setFilter] = useState("");
 
-  const [updateStatus, setUpdateStatus] = useState<SystemUpdateStatus | null>(null);
+  const [updateStatus, setUpdateStatus] = useState<SystemUpdateCheck | null>(null);
   const [updateLoading, setUpdateLoading] = useState(false);
   const [updateError, setUpdateError] = useState<string | null>(null);
   const [dismissedUpdateVersion, setDismissedUpdateVersion] = useState<string | null>(() => readDismissedUpdateVersion());
@@ -508,36 +446,21 @@ export default function Home() {
     setUpdateError(null);
 
     try {
-      const response = await fetch(`${BASE_URL}/system/update-check`, {
-        credentials: "include",
-        cache: "no-store",
-        redirect: "follow",
-      });
-      const payload = await readResponsePayload(response);
-
-      if (!response.ok) {
-        const message =
-          typeof payload?.detail === "string"
-            ? payload.detail
-            : typeof payload?.error === "string"
-              ? payload.error
-              : "Failed to check for updates";
-        throw new Error(message);
-      }
-
-      const status = normalizeSystemUpdateStatus(payload);
+      const status = await svc.fetchSystemUpdateCheck();
       setUpdateStatus(status);
 
       if (status.checkOk === false && status.error) {
         setUpdateError(status.error);
       }
     } catch (e: any) {
-      const msg = typeof e?.message === "string" && e.message.trim() ? e.message : "Failed to check for updates";
+      const msg = typeof e?.message === "string" && e.message.trim()
+        ? e.message
+        : "Failed to check for updates";
       setUpdateError(msg);
     } finally {
       setUpdateLoading(false);
     }
-  }, []);
+  }, [svc]);
 
   useEffect(() => {
     // initialLoad
@@ -618,13 +541,6 @@ export default function Home() {
     return filteredProjects.filter((p) => !set.has(String(p.id))).slice(0, 10);
   }, [filteredProjects, pinnedIds]);
 
-  const stats = useMemo(() => {
-    // stats
-    const total = projects.length;
-    const pinned = pinnedIds.length;
-    const lastUpdated = projects.length > 0 ? formatDateTime(projects[0].updatedAt ?? projects[0].createdAt) : "—";
-    return { total, pinned, lastUpdated };
-  }, [projects, pinnedIds.length]);
 
   const lastOpenedId = useMemo(() => readLastOpenedProjectId(), []);
   const lastProjectId = useMemo(() => {
@@ -634,12 +550,12 @@ export default function Home() {
     return projects[0]?.id;
   }, [lastOpenedId, projects]);
 
-  const installedVersion = displayVersion(updateStatus?.currentVersion ?? updateStatus?.apiVersion ?? "v4.0.0");
+  const installedVersion = displayVersion(updateStatus?.currentVersion ?? updateStatus?.apiVersion);
   const latestVersion = displayVersion(updateStatus?.latestVersion);
   const showUpdateNotice = Boolean(
     updateStatus?.updateAvailable &&
-      normalizeVersionText(updateStatus.latestVersion) &&
-      dismissedUpdateVersion !== normalizeVersionText(updateStatus.latestVersion),
+    normalizeVersionText(updateStatus.latestVersion) &&
+    dismissedUpdateVersion !== normalizeVersionText(updateStatus.latestVersion),
   );
 
   return (

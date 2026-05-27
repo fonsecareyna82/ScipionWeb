@@ -26,6 +26,8 @@ import {
   FscPoint,
   ImportProjectPayload,
   ProjectEffectiveSettings,
+  SystemVersionInfo,
+  SystemUpdateCheck,
   ExecuteProtocolWizardPayload,
   ExecuteProtocolWizardResult,
   ExportProtocolsRequestPayload,
@@ -200,7 +202,82 @@ async function resolveProjectThumbnailBaseUrl(
   return resolveBackendUrl((project as any)?.[field] ?? null);
 }
 
+function normalizeOptionalString(value: any): string | null {
+  // normalizeOptionalString
+  const text = String(value ?? "").trim();
+  if (!text || text === "unknown" || text === "null" || text === "undefined") {
+    return null;
+  }
+  return text;
+}
 
+function normalizeSystemVersionInfo(raw: any): SystemVersionInfo {
+  // normalizeSystemVersionInfo
+  const obj = raw && typeof raw === "object" ? raw : {};
+
+  return {
+    apiVersion: normalizeOptionalString(obj.apiVersion),
+    webVersion: normalizeOptionalString(obj.webVersion),
+    currentVersion: normalizeOptionalString(obj.currentVersion),
+    lastUpdateVersion: normalizeOptionalString(obj.lastUpdateVersion),
+    lastUpdateAt: normalizeOptionalString(obj.lastUpdateAt),
+    updateBaseUrl: normalizeOptionalString(obj.updateBaseUrl),
+    serveWeb: typeof obj.serveWeb === "boolean" ? obj.serveWeb : Boolean(obj.serveWeb),
+    webDistPath: normalizeOptionalString(obj.webDistPath),
+  };
+}
+
+function normalizeSystemUpdateCheck(raw: any): SystemUpdateCheck {
+  // normalizeSystemUpdateCheck
+  const obj = raw && typeof raw === "object" ? raw : {};
+  const versionInfo = normalizeSystemVersionInfo(obj);
+
+  return {
+    ...versionInfo,
+    checkOk: obj.checkOk !== false,
+    error: normalizeOptionalString(obj.error),
+    manifestUrl: normalizeOptionalString(obj.manifestUrl),
+    latestVersion: normalizeOptionalString(obj.latestVersion),
+    updateAvailable: obj.updateAvailable === true,
+    apiArchive: normalizeOptionalString(obj.apiArchive),
+    webArchive: normalizeOptionalString(obj.webArchive),
+    apiArchiveUrl: normalizeOptionalString(obj.apiArchiveUrl),
+    webArchiveUrl: normalizeOptionalString(obj.webArchiveUrl),
+    updateCommand: normalizeOptionalString(obj.updateCommand),
+  };
+}
+
+/* ======================= SYSTEM ======================= */
+
+export async function fetchSystemVersion(): Promise<SystemVersionInfo> {
+  // fetchSystemVersion
+  const response = await fetchWithAuth(`${BASE_URL}/system/version`, {
+    method: "GET",
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    throw await toApiError(response, "Failed to fetch system version");
+  }
+
+  const raw = await safeJson<any>(response);
+  return normalizeSystemVersionInfo(raw);
+}
+
+export async function fetchSystemUpdateCheck(): Promise<SystemUpdateCheck> {
+  // fetchSystemUpdateCheck
+  const response = await fetchWithAuth(`${BASE_URL}/system/update-check`, {
+    method: "GET",
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    throw await toApiError(response, "Failed to check for updates");
+  }
+
+  const raw = await safeJson<any>(response);
+  return normalizeSystemUpdateCheck(raw);
+}
 
 /* ======================= PROJECTS ======================= */
 export async function fetchProjects(): Promise<Project[]> {

@@ -39,6 +39,8 @@ import type {
   HostSettings,
   HostSettingsPatch,
   ProjectEffectiveSettings,
+  SystemVersionInfo,
+  SystemUpdateCheck,
   ProjectServiceCapabilities,
   ExecuteProtocolWizardPayload,
   ExecuteProtocolWizardResult,
@@ -79,6 +81,15 @@ const defaultService: ProjectService = {
     opts?: AuthenticatedRequestOptions,
   ) =>
     api.fetchBlobObjectUrl(url, opts),
+
+
+  // ──────────────────────────── System version and updates ────────────────────────────
+
+  fetchSystemVersion: (): Promise<SystemVersionInfo> =>
+    api.fetchSystemVersion(),
+
+  fetchSystemUpdateCheck: (): Promise<SystemUpdateCheck> =>
+    api.fetchSystemUpdateCheck(),
 
   // ──────────────────────────── Project thumbnails ────────────────────────────
 
