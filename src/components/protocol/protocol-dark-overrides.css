@@ -58,3 +58,21 @@
 .dark [class*="protocolForm"] [class*="MuiCircularProgress-root"] {
   color: #93c5fd !important;
 }
+
+.dark [class*="protocolForm"] [class*="MuiIconButton-root"] svg,
+.dark [class*="protocolForm"] [class*="MuiIconButton-root"] svg path,
+.dark [class*="protocolForm"] [class*="MuiIconButton-root"] svg circle,
+.dark [class*="protocolForm"] [class*="MuiIconButton-root"] svg text {
+  color: #e5e7eb !important;
+  fill: #e5e7eb !important;
+  stroke: #e5e7eb !important;
+}
+
+.dark [class*="protocolForm"] [class*="MuiIconButton-root"]:hover svg,
+.dark [class*="protocolForm"] [class*="MuiIconButton-root"]:hover svg path,
+.dark [class*="protocolForm"] [class*="MuiIconButton-root"]:hover svg circle,
+.dark [class*="protocolForm"] [class*="MuiIconButton-root"]:hover svg text {
+  color: #ffffff !important;
+  fill: #ffffff !important;
+  stroke: #ffffff !important;
+}
