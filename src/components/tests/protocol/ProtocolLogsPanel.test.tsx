@@ -94,7 +94,7 @@ describe("ProtocolLogsPanel", () => {
         });
 
         expect(screen.getByText("00001:")).toHaveStyle({
-            color: "rgb(0, 0, 255)",
+            color: "rgb(96, 165, 250)",
         });
     });
 
@@ -105,7 +105,7 @@ describe("ProtocolLogsPanel", () => {
         });
 
         expect(screen.getByText("00001:")).toHaveStyle({
-            color: "rgb(255, 0, 0)",
+            color: "rgb(248, 113, 113)",
         });
     });
 
@@ -115,7 +115,7 @@ describe("ProtocolLogsPanel", () => {
         });
 
         expect(screen.getByText("error")).toHaveStyle({
-            color: "rgb(255, 0, 0)",
+            color: "rgb(248, 113, 113)",
         });
         expect(screen.getByText(/ok/)).toBeInTheDocument();
     });
