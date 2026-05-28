@@ -72,6 +72,7 @@ export default function TagsDialog({ open, onClose, title, children }: TagsDialo
       <DialogTitle>{title ?? "Tags"}</DialogTitle>
 
       <DialogContent
+        className="tags-dialog-content"
         dividers
         sx={{
           // overflowVisibleToAvoidAutocompleteClippingWhenDisablePortalIsUsedSomewhere
@@ -84,6 +85,7 @@ export default function TagsDialog({ open, onClose, title, children }: TagsDialo
 
       <DialogActions>
         <Button
+          className="tags-dialog-close-button"
           onClick={onClose}
           variant="outlined"
           sx={{
