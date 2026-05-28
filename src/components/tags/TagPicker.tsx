@@ -3,6 +3,7 @@ import React, { useMemo } from "react";
 import { Autocomplete, Box, Chip, Paper, TextField, Typography } from "@mui/material";
 import Popper, { type PopperProps } from "@mui/material/Popper";
 import type { ProtocolTag } from "./tagTypes";
+import "./tag-dark-overrides.css";
 
 type TagPickerProps = {
   allTags?: ProtocolTag[];
@@ -139,6 +140,7 @@ export default function TagPicker({
     const Comp = (props: React.HTMLAttributes<HTMLElement>) => (
       <Paper
         {...props}
+        className={[props.className, "tag-picker-paper"].filter(Boolean).join(" ")}
         elevation={0}
         sx={{
           backgroundImage: "none",
@@ -180,6 +182,7 @@ export default function TagPicker({
 
   return (
     <Autocomplete<ProtocolTag, true, false, false>
+      className="tag-picker-root"
       multiple
       disableCloseOnSelect
       disablePortal={disablePortal}
