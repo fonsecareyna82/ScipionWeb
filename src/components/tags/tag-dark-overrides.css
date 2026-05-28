@@ -21,6 +21,68 @@
   color: #e5e7eb !important;
 }
 
+.dark .tags-dialog-content,
+.projectpage-widget-root.dark .tags-dialog-content {
+  background-color: #0f172a !important;
+  color: #e5e7eb !important;
+}
+
+.dark .tags-dialog-content > .MuiBox-root,
+.projectpage-widget-root.dark .tags-dialog-content > .MuiBox-root {
+  background-color: #0f172a !important;
+  color: #e5e7eb !important;
+  border-color: rgba(148, 163, 184, 0.28) !important;
+  box-shadow: 0 18px 46px rgba(0, 0, 0, 0.34) !important;
+}
+
+.dark .tags-dialog-content > .MuiBox-root > .MuiBox-root:first-of-type,
+.projectpage-widget-root.dark .tags-dialog-content > .MuiBox-root > .MuiBox-root:first-of-type {
+  background-color: #333d49 !important;
+  color: #ffffff !important;
+}
+
+.dark .tags-dialog-content > .MuiBox-root > .MuiBox-root:nth-of-type(2),
+.projectpage-widget-root.dark .tags-dialog-content > .MuiBox-root > .MuiBox-root:nth-of-type(2) {
+  background-color: #0f172a !important;
+  color: #e5e7eb !important;
+}
+
+.dark .tags-dialog-content > .MuiBox-root > .MuiBox-root:nth-of-type(2) > .MuiBox-root,
+.projectpage-widget-root.dark .tags-dialog-content > .MuiBox-root > .MuiBox-root:nth-of-type(2) > .MuiBox-root {
+  background-color: rgba(15, 23, 42, 0.82) !important;
+  color: #e5e7eb !important;
+  border-color: rgba(148, 163, 184, 0.24) !important;
+}
+
+.dark .tags-dialog-content > .MuiBox-root > .MuiBox-root:nth-of-type(2) > .MuiBox-root > .MuiBox-root,
+.projectpage-widget-root.dark .tags-dialog-content > .MuiBox-root > .MuiBox-root:nth-of-type(2) > .MuiBox-root > .MuiBox-root {
+  background-color: rgba(15, 23, 42, 0.88) !important;
+  color: #e5e7eb !important;
+  border-color: rgba(148, 163, 184, 0.24) !important;
+}
+
+.dark .tags-dialog-content > .MuiBox-root > .MuiBox-root:nth-of-type(2) > .MuiBox-root > .MuiBox-root:hover,
+.projectpage-widget-root.dark .tags-dialog-content > .MuiBox-root > .MuiBox-root:nth-of-type(2) > .MuiBox-root > .MuiBox-root:hover {
+  background-color: rgba(30, 41, 59, 0.86) !important;
+  border-color: rgba(125, 211, 252, 0.34) !important;
+}
+
+.dark .tags-dialog-content .MuiTypography-root,
+.projectpage-widget-root.dark .tags-dialog-content .MuiTypography-root {
+  color: #e5e7eb !important;
+}
+
+.dark .tags-dialog-content .MuiButton-contained,
+.projectpage-widget-root.dark .tags-dialog-content .MuiButton-contained {
+  color: #ffffff !important;
+  box-shadow: none !important;
+}
+
+.dark .tags-dialog-content .MuiIconButton-root,
+.projectpage-widget-root.dark .tags-dialog-content .MuiIconButton-root {
+  color: #fca5a5 !important;
+}
+
 .dark .MuiDialog-paper:has(.tag-manager-dialog-content),
 .projectpage-widget-root.dark .MuiDialog-paper:has(.tag-manager-dialog-content) {
   background-color: #0f172a !important;
@@ -89,6 +151,19 @@
 .dark .tag-manager-close-button:hover,
 .projectpage-widget-root.dark .tag-manager-close-button:hover {
   background-color: rgba(255, 255, 255, 0.2) !important;
+}
+
+.dark .tags-dialog-close-button,
+.projectpage-widget-root.dark .tags-dialog-close-button {
+  background-color: rgba(15, 23, 42, 0.78) !important;
+  color: #e5e7eb !important;
+  border-color: rgba(148, 163, 184, 0.34) !important;
+}
+
+.dark .tags-dialog-close-button:hover,
+.projectpage-widget-root.dark .tags-dialog-close-button:hover {
+  background-color: rgba(30, 41, 59, 0.9) !important;
+  border-color: rgba(148, 163, 184, 0.48) !important;
 }
 
 .dark .tag-manager-dialog-actions .MuiButton-outlined,
