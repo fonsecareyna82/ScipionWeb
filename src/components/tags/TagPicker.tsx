@@ -146,9 +146,14 @@ export default function TagPicker({
               sx={{
                 backgroundColor: color,
                 color: "#f9fafc",
-                border: "1px solid rgba(19, 7, 2, 0.18)",
+                border: "1px solid rgba(15,23,42,0.24)",
+                boxShadow: (theme) => theme.palette.mode === "dark" ? "0 0 0 1px rgba(248,250,252,0.08)" : "none",
                 height: 22,
-                "& .MuiChip-label": { px: 1, fontSize: 12 },
+                "& .MuiChip-label": { px: 1, fontSize: 12, fontWeight: 600 },
+                "& .MuiChip-deleteIcon": {
+                  color: "rgba(255,255,255,0.82)",
+                  "&:hover": { color: "#ffffff" },
+                },
               }}
             />
           );
@@ -177,7 +182,8 @@ export default function TagPicker({
                   height: 10,
                   borderRadius: "999px",
                   backgroundColor: color,
-                  border: "1px solid rgba(15,23,42,0.22)",
+                  border: "1px solid",
+                  borderColor: (theme) => theme.palette.mode === "dark" ? "rgba(248,250,252,0.26)" : "rgba(15,23,42,0.22)",
                   flex: "0 0 auto",
                 }}
               />
@@ -190,6 +196,7 @@ export default function TagPicker({
                   textOverflow: "ellipsis",
                   whiteSpace: "nowrap",
                   fontSize: 13,
+                  color: (theme) => theme.palette.mode === "dark" ? "#e5e7eb" : "#111827",
                 }}
               >
                 {String(option.title ?? option.id)}
@@ -199,7 +206,7 @@ export default function TagPicker({
                 variant="caption"
                 sx={{
                   flex: "0 0 auto",
-                  opacity: 0.75,
+                  color: (theme) => theme.palette.mode === "dark" ? "#94a3b8" : "#64748b",
                   fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
                 }}
               >
@@ -211,7 +218,7 @@ export default function TagPicker({
       }}
       ListboxProps={{
         style: {
-          maxHeight: "var(--ppTagDropdownMaxHeight, 180px)", // ~6 rows (6*28=168) + padding
+          maxHeight: "var(--ppTagDropdownMaxHeight, 180px)",
         },
       }}
       renderInput={(params) => (
@@ -229,15 +236,34 @@ export default function TagPicker({
           minHeight: 32,
           paddingTop: "2px",
           paddingBottom: "2px",
+          borderRadius: 2,
+          backgroundColor: (theme) => theme.palette.mode === "dark" ? "rgba(15,23,42,0.72)" : "#ffffff",
+        },
+        "& .MuiOutlinedInput-notchedOutline": {
+          borderColor: (theme) => theme.palette.mode === "dark" ? "rgba(148,163,184,0.28)" : "rgba(148,163,184,0.45)",
+        },
+        "&:hover .MuiOutlinedInput-notchedOutline": {
+          borderColor: (theme) => theme.palette.mode === "dark" ? "rgba(125,211,252,0.48)" : "rgba(37,99,235,0.42)",
+        },
+        "& .Mui-focused .MuiOutlinedInput-notchedOutline": {
+          borderColor: (theme) => theme.palette.mode === "dark" ? "#38bdf8" : "#2563eb",
+        },
+        "& .MuiInputLabel-root": {
+          color: (theme) => theme.palette.mode === "dark" ? "#94a3b8" : "#6b7280",
+        },
+        "& .MuiFormHelperText-root": {
+          color: (theme) => theme.palette.mode === "dark" ? "#94a3b8" : "#64748b",
         },
         "& .MuiAutocomplete-input": {
           fontSize: 12,
           paddingTop: "4px",
           paddingBottom: "4px",
+          color: (theme) => theme.palette.mode === "dark" ? "#e5e7eb" : "#111827",
         },
         "& .MuiInputBase-input::placeholder": {
           fontSize: 12,
-          opacity: 0.7,
+          opacity: 0.72,
+          color: (theme) => theme.palette.mode === "dark" ? "#94a3b8" : "#64748b",
         },
         "& .MuiChip-root": {
           height: 22,
@@ -247,8 +273,30 @@ export default function TagPicker({
           paddingRight: "8px",
           fontSize: 12,
         },
+        "& .MuiAutocomplete-paper": {
+          backgroundImage: "none",
+          backgroundColor: (theme) => theme.palette.mode === "dark" ? "#0f172a" : "#ffffff",
+          color: (theme) => theme.palette.mode === "dark" ? "#e5e7eb" : "#111827",
+          border: "1px solid",
+          borderColor: (theme) => theme.palette.mode === "dark" ? "rgba(148,163,184,0.24)" : "rgba(203,213,225,0.95)",
+          boxShadow: (theme) => theme.palette.mode === "dark"
+            ? "0 18px 48px rgba(0,0,0,0.52)"
+            : "0 14px 34px rgba(15,23,42,0.14)",
+        },
         "& .MuiAutocomplete-option": {
-          minHeight: 28,
+          minHeight: 30,
+          fontSize: 13,
+          color: (theme) => theme.palette.mode === "dark" ? "#e5e7eb" : "#111827",
+          "&[aria-selected='true']": {
+            backgroundColor: (theme) => theme.palette.mode === "dark" ? "rgba(37,99,235,0.28)" : "rgba(37,99,235,0.10)",
+          },
+          "&.Mui-focused": {
+            backgroundColor: (theme) => theme.palette.mode === "dark" ? "rgba(30,41,59,0.92)" : "#f1f5f9",
+          },
+        },
+        "& .MuiAutocomplete-noOptions": {
+          color: (theme) => theme.palette.mode === "dark" ? "#94a3b8" : "#64748b",
+          backgroundColor: (theme) => theme.palette.mode === "dark" ? "#0f172a" : "#ffffff",
         },
       }}
     />
