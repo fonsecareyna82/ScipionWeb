@@ -1,6 +1,7 @@
 // src/components/tags/TagsDialog.tsx
 import React from "react";
 import { Dialog, DialogTitle, DialogContent, DialogActions, Button } from "@mui/material";
+import "./tag-dark-overrides.css";
 
 type TagsDialogProps = {
   open: boolean;
