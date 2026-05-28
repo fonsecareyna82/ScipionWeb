@@ -1,6 +1,6 @@
 // src/components/tags/TagPicker.tsx
 import React, { useMemo } from "react";
-import { Autocomplete, Box, Chip, TextField, Typography } from "@mui/material";
+import { Autocomplete, Box, Chip, Paper, TextField, Typography } from "@mui/material";
 import Popper, { type PopperProps } from "@mui/material/Popper";
 import type { ProtocolTag } from "./tagTypes";
 
@@ -50,6 +50,17 @@ function createPlaceholderTag(id: string): ProtocolTag {
   } as ProtocolTag;
 }
 
+function isDocumentDarkMode(): boolean {
+  // isDocumentDarkMode
+  if (typeof document === "undefined") return false;
+  return Boolean(
+    document.documentElement.classList.contains("dark") ||
+    document.body.classList.contains("dark") ||
+    document.querySelector(".projectpage-widget-root.dark") ||
+    document.querySelector(".dark"),
+  );
+}
+
 type SpreadKeyFix<T> = T & { key?: React.Key };
 
 export default function TagPicker({
@@ -65,6 +76,15 @@ export default function TagPicker({
   popperContainer = null,
   popperZIndex = 2000,
 }: TagPickerProps) {
+  const isDarkMode = isDocumentDarkMode();
+  const fieldBg = isDarkMode ? "rgba(15,23,42,0.92)" : "#ffffff";
+  const fieldText = isDarkMode ? "#e5e7eb" : "#111827";
+  const mutedText = isDarkMode ? "#94a3b8" : "#64748b";
+  const borderColor = isDarkMode ? "rgba(148,163,184,0.32)" : "rgba(148,163,184,0.45)";
+  const paperBg = isDarkMode ? "#0f172a" : "#ffffff";
+  const optionHoverBg = isDarkMode ? "rgba(30,41,59,0.92)" : "#f1f5f9";
+  const optionSelectedBg = isDarkMode ? "rgba(37,99,235,0.30)" : "rgba(37,99,235,0.10)";
+
   const normalizedAllTags = useMemo(() => {
     // normalizedAllTags
     return allTags ?? [];
@@ -114,6 +134,50 @@ export default function TagPicker({
     return Comp;
   }, [popperContainer, popperZIndex]);
 
+  const paperComponent = useMemo(() => {
+    // paperComponent
+    const Comp = (props: React.HTMLAttributes<HTMLElement>) => (
+      <Paper
+        {...props}
+        elevation={0}
+        sx={{
+          backgroundImage: "none",
+          backgroundColor: paperBg,
+          color: fieldText,
+          border: "1px solid",
+          borderColor,
+          borderRadius: 2,
+          overflow: "hidden",
+          boxShadow: isDarkMode ? "0 18px 48px rgba(0,0,0,0.52)" : "0 14px 34px rgba(15,23,42,0.14)",
+          "& .MuiAutocomplete-listbox": {
+            backgroundColor: paperBg,
+            color: fieldText,
+            py: 0.5,
+          },
+          "& .MuiAutocomplete-option": {
+            minHeight: 30,
+            fontSize: 13,
+            color: fieldText,
+            "&[aria-selected='true']": {
+              backgroundColor: optionSelectedBg,
+            },
+            "&.Mui-focused": {
+              backgroundColor: optionHoverBg,
+            },
+            "&[aria-selected='true'].Mui-focused": {
+              backgroundColor: optionSelectedBg,
+            },
+          },
+          "& .MuiAutocomplete-noOptions": {
+            color: mutedText,
+            backgroundColor: paperBg,
+          },
+        }}
+      />
+    );
+    return Comp;
+  }, [borderColor, fieldText, isDarkMode, mutedText, optionHoverBg, optionSelectedBg, paperBg]);
+
   return (
     <Autocomplete<ProtocolTag, true, false, false>
       multiple
@@ -121,6 +185,7 @@ export default function TagPicker({
       disablePortal={disablePortal}
       noOptionsText="No tags"
       PopperComponent={popperComponent}
+      PaperComponent={paperComponent}
       options={mergedOptions}
       value={selectedTags}
       disabled={disabled}
@@ -147,7 +212,7 @@ export default function TagPicker({
                 backgroundColor: color,
                 color: "#f9fafc",
                 border: "1px solid rgba(15,23,42,0.24)",
-                boxShadow: (theme) => theme.palette.mode === "dark" ? "0 0 0 1px rgba(248,250,252,0.08)" : "none",
+                boxShadow: isDarkMode ? "0 0 0 1px rgba(248,250,252,0.08)" : "none",
                 height: 22,
                 "& .MuiChip-label": { px: 1, fontSize: 12, fontWeight: 600 },
                 "& .MuiChip-deleteIcon": {
@@ -183,7 +248,7 @@ export default function TagPicker({
                   borderRadius: "999px",
                   backgroundColor: color,
                   border: "1px solid",
-                  borderColor: (theme) => theme.palette.mode === "dark" ? "rgba(248,250,252,0.26)" : "rgba(15,23,42,0.22)",
+                  borderColor: isDarkMode ? "rgba(248,250,252,0.26)" : "rgba(15,23,42,0.22)",
                   flex: "0 0 auto",
                 }}
               />
@@ -196,7 +261,7 @@ export default function TagPicker({
                   textOverflow: "ellipsis",
                   whiteSpace: "nowrap",
                   fontSize: 13,
-                  color: (theme) => theme.palette.mode === "dark" ? "#e5e7eb" : "#111827",
+                  color: fieldText,
                 }}
               >
                 {String(option.title ?? option.id)}
@@ -206,7 +271,7 @@ export default function TagPicker({
                 variant="caption"
                 sx={{
                   flex: "0 0 auto",
-                  color: (theme) => theme.palette.mode === "dark" ? "#94a3b8" : "#64748b",
+                  color: mutedText,
                   fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
                 }}
               >
@@ -219,6 +284,8 @@ export default function TagPicker({
       ListboxProps={{
         style: {
           maxHeight: "var(--ppTagDropdownMaxHeight, 180px)",
+          backgroundColor: paperBg,
+          color: fieldText,
         },
       }}
       renderInput={(params) => (
@@ -237,33 +304,41 @@ export default function TagPicker({
           paddingTop: "2px",
           paddingBottom: "2px",
           borderRadius: 2,
-          backgroundColor: (theme) => theme.palette.mode === "dark" ? "rgba(15,23,42,0.72)" : "#ffffff",
+          backgroundColor: fieldBg,
+          color: fieldText,
+        },
+        "& .MuiOutlinedInput-root": {
+          backgroundColor: fieldBg,
+          color: fieldText,
         },
         "& .MuiOutlinedInput-notchedOutline": {
-          borderColor: (theme) => theme.palette.mode === "dark" ? "rgba(148,163,184,0.28)" : "rgba(148,163,184,0.45)",
+          borderColor,
         },
         "&:hover .MuiOutlinedInput-notchedOutline": {
-          borderColor: (theme) => theme.palette.mode === "dark" ? "rgba(125,211,252,0.48)" : "rgba(37,99,235,0.42)",
+          borderColor: isDarkMode ? "rgba(125,211,252,0.48)" : "rgba(37,99,235,0.42)",
         },
         "& .Mui-focused .MuiOutlinedInput-notchedOutline": {
-          borderColor: (theme) => theme.palette.mode === "dark" ? "#38bdf8" : "#2563eb",
+          borderColor: isDarkMode ? "#38bdf8" : "#2563eb",
         },
         "& .MuiInputLabel-root": {
-          color: (theme) => theme.palette.mode === "dark" ? "#94a3b8" : "#6b7280",
+          color: mutedText,
         },
         "& .MuiFormHelperText-root": {
-          color: (theme) => theme.palette.mode === "dark" ? "#94a3b8" : "#64748b",
+          color: mutedText,
         },
         "& .MuiAutocomplete-input": {
           fontSize: 12,
           paddingTop: "4px",
           paddingBottom: "4px",
-          color: (theme) => theme.palette.mode === "dark" ? "#e5e7eb" : "#111827",
+          color: fieldText,
         },
         "& .MuiInputBase-input::placeholder": {
           fontSize: 12,
           opacity: 0.72,
-          color: (theme) => theme.palette.mode === "dark" ? "#94a3b8" : "#64748b",
+          color: mutedText,
+        },
+        "& .MuiSvgIcon-root": {
+          color: mutedText,
         },
         "& .MuiChip-root": {
           height: 22,
@@ -272,31 +347,6 @@ export default function TagPicker({
           paddingLeft: "8px",
           paddingRight: "8px",
           fontSize: 12,
-        },
-        "& .MuiAutocomplete-paper": {
-          backgroundImage: "none",
-          backgroundColor: (theme) => theme.palette.mode === "dark" ? "#0f172a" : "#ffffff",
-          color: (theme) => theme.palette.mode === "dark" ? "#e5e7eb" : "#111827",
-          border: "1px solid",
-          borderColor: (theme) => theme.palette.mode === "dark" ? "rgba(148,163,184,0.24)" : "rgba(203,213,225,0.95)",
-          boxShadow: (theme) => theme.palette.mode === "dark"
-            ? "0 18px 48px rgba(0,0,0,0.52)"
-            : "0 14px 34px rgba(15,23,42,0.14)",
-        },
-        "& .MuiAutocomplete-option": {
-          minHeight: 30,
-          fontSize: 13,
-          color: (theme) => theme.palette.mode === "dark" ? "#e5e7eb" : "#111827",
-          "&[aria-selected='true']": {
-            backgroundColor: (theme) => theme.palette.mode === "dark" ? "rgba(37,99,235,0.28)" : "rgba(37,99,235,0.10)",
-          },
-          "&.Mui-focused": {
-            backgroundColor: (theme) => theme.palette.mode === "dark" ? "rgba(30,41,59,0.92)" : "#f1f5f9",
-          },
-        },
-        "& .MuiAutocomplete-noOptions": {
-          color: (theme) => theme.palette.mode === "dark" ? "#94a3b8" : "#64748b",
-          backgroundColor: (theme) => theme.palette.mode === "dark" ? "#0f172a" : "#ffffff",
         },
       }}
     />
