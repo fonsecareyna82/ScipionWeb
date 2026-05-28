@@ -118,6 +118,53 @@ type TagEditorDialogProps = {
     validationError?: string | null;
 };
 
+const dialogHeaderSx = {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#333d49",
+    color: "white",
+    px: 2,
+    py: 1.5,
+    boxSizing: "border-box",
+    m: 0,
+} as const;
+
+const dialogCloseButtonSx = {
+    color: "white",
+    borderRadius: "50%",
+    backgroundColor: "rgba(255,255,255,0.10)",
+    width: 32,
+    height: 32,
+    "&:hover": { backgroundColor: "rgba(255,255,255,0.18)" },
+    "&:focus-visible": {
+        outline: "2px solid rgba(255,255,255,0.55)",
+        outlineOffset: 2,
+    },
+} as const;
+
+const textFieldSx = {
+    "& .MuiInputBase-root": {
+        borderRadius: 2,
+        backgroundColor: (theme: any) => theme.palette.mode === "dark" ? "rgba(15,23,42,0.72)" : "#ffffff",
+    },
+    "& .MuiInputBase-input, & .MuiInputBase-inputMultiline": {
+        color: (theme: any) => theme.palette.mode === "dark" ? "#e5e7eb" : "#111827",
+    },
+    "& .MuiInputLabel-root": {
+        color: (theme: any) => theme.palette.mode === "dark" ? "#94a3b8" : "#6b7280",
+    },
+    "& .MuiOutlinedInput-notchedOutline": {
+        borderColor: (theme: any) => theme.palette.mode === "dark" ? "rgba(148,163,184,0.28)" : "rgba(148,163,184,0.45)",
+    },
+    "&:hover .MuiOutlinedInput-notchedOutline": {
+        borderColor: (theme: any) => theme.palette.mode === "dark" ? "rgba(125,211,252,0.48)" : "rgba(37,99,235,0.42)",
+    },
+    "& .Mui-focused .MuiOutlinedInput-notchedOutline": {
+        borderColor: (theme: any) => theme.palette.mode === "dark" ? "#38bdf8" : "#2563eb",
+    },
+} as const;
+
 function TagEditorDialog({
     open,
     mode,
@@ -153,8 +200,13 @@ function TagEditorDialog({
         borderRadius: 4,
         overflow: "hidden",
         border: "1px solid",
-        borderColor: "divider",
-        boxShadow: "0 18px 50px rgba(0,0,0,0.35)",
+        borderColor: (theme: any) => theme.palette.mode === "dark" ? "rgba(148,163,184,0.28)" : "rgba(203,213,225,0.95)",
+        backgroundImage: "none",
+        backgroundColor: (theme: any) => theme.palette.mode === "dark" ? "#0f172a" : "#ffffff",
+        color: (theme: any) => theme.palette.mode === "dark" ? "#e5e7eb" : "#111827",
+        boxShadow: (theme: any) => theme.palette.mode === "dark"
+            ? "0 24px 70px rgba(0,0,0,0.62)"
+            : "0 18px 50px rgba(15,23,42,0.18)",
     } as const;
 
     return (
@@ -166,24 +218,15 @@ function TagEditorDialog({
                 fullWidth
                 slotProps={{
                     backdrop: {
-                        sx: { backgroundColor: "transparent" },
+                        sx: {
+                            backgroundColor: (theme: any) => theme.palette.mode === "dark" ? "rgba(2,6,23,0.42)" : "rgba(15,23,42,0.12)",
+                            backdropFilter: "blur(2px)",
+                        },
                     },
                 }}
                 PaperProps={{ sx: paperSx }}
             >
-                <DialogTitle
-                    sx={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        backgroundColor: "#333d49",
-                        color: "white",
-                        px: 2,
-                        py: 1.5,
-                        boxSizing: "border-box",
-                        m: 0,
-                    }}
-                >
+                <DialogTitle sx={dialogHeaderSx}>
                     <Box sx={{ minWidth: 0, pr: 1 }}>
                         <Typography sx={{ fontWeight: 700, fontSize: 16, lineHeight: 1.2 }}>{dialogTitle}</Typography>
                     </Box>
@@ -193,24 +236,20 @@ function TagEditorDialog({
                         aria-label="Close"
                         size="small"
                         disabled={!!isSaving}
-                        sx={{
-                            color: "white",
-                            borderRadius: "50%",
-                            backgroundColor: "rgba(206, 170, 170, 0.1)",
-                            width: 32,
-                            height: 32,
-                            "&:hover": { backgroundColor: "rgba(253, 253, 253, 0.1)" },
-                            "&:focus-visible": {
-                                outline: "2px solid rgba(255,255,255,0.55)",
-                                outlineOffset: 2,
-                            },
-                        }}
+                        sx={dialogCloseButtonSx}
                     >
                         <CloseIcon fontSize="small" />
                     </IconButton>
                 </DialogTitle>
 
-                <DialogContent sx={{ px: 2, py: 1.5, overflow: "visible" }}>
+                <DialogContent
+                    sx={{
+                        px: 2,
+                        py: 1.75,
+                        overflow: "visible",
+                        backgroundColor: (theme: any) => theme.palette.mode === "dark" ? "#0f172a" : "#ffffff",
+                    }}
+                >
                     <Box sx={{ display: "flex", flexDirection: "column", gap: 2, pt: 0.5 }}>
                         <Box sx={{ display: "flex", alignItems: "flex-start", gap: 1 }}>
                             <TextField
@@ -222,10 +261,16 @@ function TagEditorDialog({
                                 required
                                 margin="dense"
                                 disabled={!!isSaving}
+                                sx={textFieldSx}
                             />
                             {hasTitleHelp ? (
                                 <Tooltip title="Help">
-                                    <IconButton size="small" onClick={() => setOpenHelp("title")} sx={{ mt: 0.75 }} disabled={!!isSaving}>
+                                    <IconButton
+                                        size="small"
+                                        onClick={() => setOpenHelp("title")}
+                                        sx={{ mt: 0.75, color: (theme: any) => theme.palette.mode === "dark" ? "#93c5fd" : "#2563eb" }}
+                                        disabled={!!isSaving}
+                                    >
                                         <HelpIcon fontSize="1.1rem" />
                                     </IconButton>
                                 </Tooltip>
@@ -243,13 +288,14 @@ function TagEditorDialog({
                                 minRows={3}
                                 margin="dense"
                                 disabled={!!isSaving}
+                                sx={textFieldSx}
                             />
                             {hasDescriptionHelp ? (
                                 <Tooltip title="Help">
                                     <IconButton
                                         size="small"
                                         onClick={() => setOpenHelp("description")}
-                                        sx={{ mt: 0.75 }}
+                                        sx={{ mt: 0.75, color: (theme: any) => theme.palette.mode === "dark" ? "#93c5fd" : "#2563eb" }}
                                         disabled={!!isSaving}
                                     >
                                         <HelpIcon fontSize="1.1rem" />
@@ -260,25 +306,43 @@ function TagEditorDialog({
 
                         <Box sx={{ display: "flex", alignItems: "flex-start", gap: 1 }}>
                             <Box sx={{ flex: 1, minWidth: 0 }}>
-                                <Typography sx={{ fontSize: 12, fontWeight: 600, mb: 0.75 }}>Color</Typography>
+                                <Typography
+                                    sx={{
+                                        fontSize: 12,
+                                        fontWeight: 700,
+                                        mb: 0.75,
+                                        color: (theme: any) => theme.palette.mode === "dark" ? "#cbd5e1" : "#374151",
+                                    }}
+                                >
+                                    Color
+                                </Typography>
 
                                 <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
                                     {defaultTagColors.map((c) => {
                                         const isSelected = c.toLowerCase() === String(draft.color).toLowerCase();
                                         return (
-                                            <button
+                                            <Box
                                                 key={c}
+                                                component="button"
                                                 type="button"
                                                 onClick={() => onChange({ color: c })}
                                                 disabled={!!isSaving}
-                                                style={{
-                                                    width: 22,
-                                                    height: 22,
+                                                sx={{
+                                                    width: 24,
+                                                    height: 24,
                                                     borderRadius: "50%",
-                                                    border: isSelected ? "2px solid #111827" : "1px solid rgba(0,0,0,0.2)",
-                                                    background: c,
+                                                    border: "2px solid",
+                                                    borderColor: isSelected
+                                                        ? (theme: any) => theme.palette.mode === "dark" ? "#f8fafc" : "#111827"
+                                                        : (theme: any) => theme.palette.mode === "dark" ? "rgba(148,163,184,0.34)" : "rgba(15,23,42,0.20)",
+                                                    backgroundColor: c,
                                                     cursor: isSaving ? "default" : "pointer",
                                                     opacity: isSaving ? 0.65 : 1,
+                                                    boxShadow: isSelected ? "0 0 0 3px rgba(59,130,246,0.26)" : "none",
+                                                    transition: "transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease",
+                                                    "&:hover": {
+                                                        transform: isSaving ? "none" : "translateY(-1px)",
+                                                    },
                                                 }}
                                                 aria-label={`Pick color ${c}`}
                                             />
@@ -290,22 +354,25 @@ function TagEditorDialog({
                                             size="small"
                                             value={draft.color}
                                             onChange={(e) => onChange({ color: e.target.value })}
-                                            sx={{ width: 140 }}
+                                            sx={{ ...textFieldSx, width: 140 }}
                                             inputProps={{ "aria-label": "Custom color" }}
                                             margin="dense"
                                             disabled={!!isSaving}
                                         />
-                                        <input
+                                        <Box
+                                            component="input"
                                             type="color"
                                             value={draft.color}
-                                            onChange={(e) => onChange({ color: e.target.value })}
+                                            onChange={(e: any) => onChange({ color: e.target.value })}
                                             disabled={!!isSaving}
-                                            style={{
-                                                width: 34,
-                                                height: 34,
-                                                border: "1px solid rgba(0,0,0,0.25)",
-                                                background: "transparent",
-                                                padding: 0,
+                                            sx={{
+                                                width: 36,
+                                                height: 36,
+                                                border: "1px solid",
+                                                borderColor: (theme: any) => theme.palette.mode === "dark" ? "rgba(148,163,184,0.38)" : "rgba(15,23,42,0.22)",
+                                                borderRadius: 1.5,
+                                                backgroundColor: "transparent",
+                                                padding: 0.25,
                                                 cursor: isSaving ? "default" : "pointer",
                                                 opacity: isSaving ? 0.65 : 1,
                                             }}
@@ -317,7 +384,12 @@ function TagEditorDialog({
 
                             {hasColorHelp ? (
                                 <Tooltip title="Help">
-                                    <IconButton size="small" onClick={() => setOpenHelp("color")} sx={{ mt: 0.75 }} disabled={!!isSaving}>
+                                    <IconButton
+                                        size="small"
+                                        onClick={() => setOpenHelp("color")}
+                                        sx={{ mt: 0.75, color: (theme: any) => theme.palette.mode === "dark" ? "#93c5fd" : "#2563eb" }}
+                                        disabled={!!isSaving}
+                                    >
                                         <HelpIcon fontSize="1.1rem" />
                                     </IconButton>
                                 </Tooltip>
@@ -325,7 +397,16 @@ function TagEditorDialog({
                         </Box>
 
                         {validationError ? (
-                            <Typography sx={{ color: "#dc2626", fontSize: 12, whiteSpace: "pre-wrap" }}>{validationError}</Typography>
+                            <Typography
+                                sx={{
+                                    color: (theme: any) => theme.palette.mode === "dark" ? "#fca5a5" : "#dc2626",
+                                    fontSize: 12,
+                                    fontWeight: 600,
+                                    whiteSpace: "pre-wrap",
+                                }}
+                            >
+                                {validationError}
+                            </Typography>
                         ) : null}
                     </Box>
                 </DialogContent>
@@ -333,18 +414,25 @@ function TagEditorDialog({
                 <DialogActions
                     sx={{
                         justifyContent: "center",
+                        gap: 1,
                         px: 2,
                         py: 1.5,
                         borderTop: "1px solid",
-                        borderColor: "divider",
-                        backgroundColor: "background.paper",
+                        borderColor: (theme: any) => theme.palette.mode === "dark" ? "rgba(148,163,184,0.20)" : "rgba(226,232,240,0.95)",
+                        backgroundColor: (theme: any) => theme.palette.mode === "dark" ? "rgba(15,23,42,0.98)" : "#f8fafc",
                     }}
                 >
                     <Button
                         variant="outlined"
                         onClick={onClose}
                         disabled={!!isSaving}
-                        sx={{ textTransform: "none", minWidth: 112, borderRadius: 2 }}
+                        sx={{
+                            textTransform: "none",
+                            minWidth: 112,
+                            borderRadius: 2,
+                            color: (theme: any) => theme.palette.mode === "dark" ? "#e5e7eb" : "#334155",
+                            borderColor: (theme: any) => theme.palette.mode === "dark" ? "rgba(148,163,184,0.34)" : "rgba(100,116,139,0.42)",
+                        }}
                     >
                         Cancel
                     </Button>
@@ -352,7 +440,7 @@ function TagEditorDialog({
                         variant="contained"
                         onClick={() => void onSave()}
                         disabled={!!isSaving}
-                        sx={{ textTransform: "none", minWidth: 112, borderRadius: 2 }}
+                        sx={{ textTransform: "none", minWidth: 112, borderRadius: 2, boxShadow: "none" }}
                     >
                         {isSaving ? "Saving..." : "Save"}
                     </Button>
@@ -366,50 +454,44 @@ function TagEditorDialog({
                 fullWidth
                 slotProps={{
                     backdrop: {
-                        sx: { backgroundColor: "transparent" },
+                        sx: {
+                            backgroundColor: (theme: any) => theme.palette.mode === "dark" ? "rgba(2,6,23,0.42)" : "rgba(15,23,42,0.12)",
+                            backdropFilter: "blur(2px)",
+                        },
                     },
                 }}
                 PaperProps={{ sx: paperSx }}
             >
-                <DialogTitle
-                    sx={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        backgroundColor: "#333d49",
-                        color: "white",
-                        px: 2,
-                        py: 1.5,
-                        boxSizing: "border-box",
-                        m: 0,
-                    }}
-                >
+                <DialogTitle sx={dialogHeaderSx}>
                     <Typography sx={{ fontWeight: 700, fontSize: 16, lineHeight: 1.2 }}>Help</Typography>
 
                     <IconButton
                         onClick={() => setOpenHelp(null)}
                         aria-label="Close"
                         size="small"
-                        sx={{
-                            color: "white",
-                            borderRadius: "50%",
-                            backgroundColor: "rgba(206, 170, 170, 0.1)",
-                            width: 32,
-                            height: 32,
-                            "&:hover": { backgroundColor: "rgba(253, 253, 253, 0.1)" },
-                            "&:focus-visible": {
-                                outline: "2px solid rgba(255,255,255,0.55)",
-                                outlineOffset: 2,
-                            },
-                        }}
+                        sx={dialogCloseButtonSx}
                     >
                         <CloseIcon fontSize="small" />
                     </IconButton>
                 </DialogTitle>
 
-                <DialogContent sx={{ px: 2, py: 1.5, marginTop: 2.25 }}>
+                <DialogContent
+                    sx={{
+                        px: 2,
+                        py: 1.75,
+                        mt: 2.25,
+                        backgroundColor: (theme: any) => theme.palette.mode === "dark" ? "#0f172a" : "#ffffff",
+                    }}
+                >
                     <Box sx={{ maxHeight: "60vh", overflow: "auto", pr: 0.5 }}>
-                        <Typography sx={{ fontSize: 13, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>
+                        <Typography
+                            sx={{
+                                fontSize: 13,
+                                lineHeight: 1.6,
+                                whiteSpace: "pre-wrap",
+                                color: (theme: any) => theme.palette.mode === "dark" ? "#cbd5e1" : "#374151",
+                            }}
+                        >
                             {helpText || "No help available."}
                         </Typography>
                     </Box>
@@ -421,11 +503,21 @@ function TagEditorDialog({
                         px: 2,
                         py: 1.5,
                         borderTop: "1px solid",
-                        borderColor: "divider",
-                        backgroundColor: "background.paper",
+                        borderColor: (theme: any) => theme.palette.mode === "dark" ? "rgba(148,163,184,0.20)" : "rgba(226,232,240,0.95)",
+                        backgroundColor: (theme: any) => theme.palette.mode === "dark" ? "rgba(15,23,42,0.98)" : "#f8fafc",
                     }}
                 >
-                    <Button variant="outlined" onClick={() => setOpenHelp(null)} sx={{ textTransform: "none", minWidth: 112 }}>
+                    <Button
+                        variant="outlined"
+                        onClick={() => setOpenHelp(null)}
+                        sx={{
+                            textTransform: "none",
+                            minWidth: 112,
+                            borderRadius: 2,
+                            color: (theme: any) => theme.palette.mode === "dark" ? "#e5e7eb" : "#334155",
+                            borderColor: (theme: any) => theme.palette.mode === "dark" ? "rgba(148,163,184,0.34)" : "rgba(100,116,139,0.42)",
+                        }}
+                    >
                         Close
                     </Button>
                 </DialogActions>
@@ -441,7 +533,6 @@ const TagManager = memo(function TagManager({ title, projectId, open = true, tag
         // syncSvcRef
         svcRef.current = svc;
     }, [svc]);
-
 
     const normalizedProjectId = useMemo(() => {
         // normalizedProjectId
@@ -464,8 +555,6 @@ const TagManager = memo(function TagManager({ title, projectId, open = true, tag
         return Array.isArray(storeTags) ? storeTags : [];
     }, [backendEnabled, backendTags, isControlled, tags, storeTags]);
 
-
-
     const persistTags = useCallback(
         (next: ProtocolTag[]) => {
             // persistTags
@@ -484,14 +573,13 @@ const TagManager = memo(function TagManager({ title, projectId, open = true, tag
         [backendEnabled, onTagsChange, storeSetTags],
     );
 
-
-
     const [isLoading, setIsLoading] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [deletingIds, setDeletingIds] = useState<Record<string, boolean>>({});
 
     useEffect(() => {
         // logProjectIdWhenChanges
+        if (!import.meta.env.DEV) return;
         if (projectId == null) return;
         // eslint-disable-next-line no-console
         console.debug("TagManager projectId:", projectId);
@@ -503,8 +591,6 @@ const TagManager = memo(function TagManager({ title, projectId, open = true, tag
         if (!Array.isArray(tags)) return;
         storeSetTags(tags);
     }, [backendEnabled, tags, storeSetTags]);
-
-
 
     useEffect(() => {
         // debugProjectId
@@ -557,8 +643,6 @@ const TagManager = memo(function TagManager({ title, projectId, open = true, tag
             cancelled = true;
         };
     }, [backendEnabled, normalizedProjectId, open, persistTags]);
-
-
 
     const [editorOpen, setEditorOpen] = useState(false);
     const [editorMode, setEditorMode] = useState<"create" | "edit">("create");
@@ -724,16 +808,19 @@ const TagManager = memo(function TagManager({ title, projectId, open = true, tag
     return (
         <Box
             sx={{
-                border: "1px solid #e5e7eb",
-                borderRadius: 2,
-                backgroundColor: "#fff",
+                border: "1px solid",
+                borderColor: (theme: any) => theme.palette.mode === "dark" ? "rgba(148,163,184,0.24)" : "rgba(203,213,225,0.95)",
+                borderRadius: 3,
+                backgroundColor: (theme: any) => theme.palette.mode === "dark" ? "#0f172a" : "#ffffff",
+                color: (theme: any) => theme.palette.mode === "dark" ? "#e5e7eb" : "#111827",
                 overflow: "hidden",
+                boxShadow: (theme: any) => theme.palette.mode === "dark" ? "0 18px 46px rgba(0,0,0,0.34)" : "0 8px 28px rgba(15,23,42,0.06)",
             }}
         >
             <Box
                 sx={{
-                    px: 1.5,
-                    py: 1.25,
+                    px: 1.75,
+                    py: 1.35,
                     backgroundColor: "#333d49",
                     color: "white",
                     display: "flex",
@@ -742,9 +829,9 @@ const TagManager = memo(function TagManager({ title, projectId, open = true, tag
                     gap: 1,
                 }}
             >
-                <Box sx={{ display: "inline-flex", alignItems: "center", gap: 1 }}>
-                    <Typography sx={{ fontWeight: 700, fontSize: 14 }}>{title ?? "Tags"}</Typography>
-                    {isLoading ? <CircularProgress size={14} /> : null}
+                <Box sx={{ display: "inline-flex", alignItems: "center", gap: 1, minWidth: 0 }}>
+                    <Typography sx={{ fontWeight: 700, fontSize: 14, lineHeight: 1.25 }}>{title ?? "Tags"}</Typography>
+                    {isLoading ? <CircularProgress size={14} sx={{ color: "rgba(255,255,255,0.88)" }} /> : null}
                 </Box>
 
                 <Button
@@ -753,18 +840,33 @@ const TagManager = memo(function TagManager({ title, projectId, open = true, tag
                     disabled={isLoading}
                     sx={{
                         textTransform: "none",
-                        backgroundColor: "#25991a",
+                        backgroundColor: "#16a34a",
                         borderRadius: 2,
-                        "&:hover": { backgroundColor: "#176d0f" },
+                        boxShadow: "none",
+                        fontWeight: 700,
+                        "&:hover": { backgroundColor: "#15803d", boxShadow: "none" },
                     }}
                 >
                     New tag
                 </Button>
             </Box>
 
-            <Box sx={{ p: 1.5 }}>
+            <Box sx={{ p: 1.5, backgroundColor: (theme: any) => theme.palette.mode === "dark" ? "#0f172a" : "#ffffff" }}>
                 {(effectiveTags ?? []).length === 0 ? (
-                    <Typography sx={{ fontSize: 12, color: "#6b7280" }}>No tags yet.</Typography>
+                    <Box
+                        sx={{
+                            border: "1px dashed",
+                            borderColor: (theme: any) => theme.palette.mode === "dark" ? "rgba(148,163,184,0.26)" : "rgba(148,163,184,0.45)",
+                            borderRadius: 2.5,
+                            px: 1.5,
+                            py: 1.25,
+                            backgroundColor: (theme: any) => theme.palette.mode === "dark" ? "rgba(15,23,42,0.82)" : "#f8fafc",
+                        }}
+                    >
+                        <Typography sx={{ fontSize: 12, color: (theme: any) => theme.palette.mode === "dark" ? "#94a3b8" : "#64748b" }}>
+                            No tags yet.
+                        </Typography>
+                    </Box>
                 ) : (
                     <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
                         {(effectiveTags ?? []).map((t) => {
@@ -777,22 +879,31 @@ const TagManager = memo(function TagManager({ title, projectId, open = true, tag
                                         gridTemplateColumns: "minmax(0,1fr) auto",
                                         alignItems: "center",
                                         gap: 1,
-                                        border: "1px solid #e5e7eb",
-                                        borderRadius: 2,
+                                        border: "1px solid",
+                                        borderColor: (theme: any) => theme.palette.mode === "dark" ? "rgba(148,163,184,0.18)" : "rgba(226,232,240,0.95)",
+                                        borderRadius: 2.5,
                                         px: 1.25,
                                         py: 1,
                                         opacity: isDeleting ? 0.65 : 1,
+                                        backgroundColor: (theme: any) => theme.palette.mode === "dark" ? "rgba(15,23,42,0.78)" : "#ffffff",
+                                        transition: "border-color 140ms ease, background-color 140ms ease, transform 140ms ease",
+                                        "&:hover": {
+                                            borderColor: (theme: any) => theme.palette.mode === "dark" ? "rgba(125,211,252,0.34)" : "rgba(59,130,246,0.28)",
+                                            backgroundColor: (theme: any) => theme.palette.mode === "dark" ? "rgba(30,41,59,0.78)" : "#f8fafc",
+                                        },
                                     }}
                                 >
                                     <Box sx={{ minWidth: 0 }}>
                                         <Box sx={{ display: "flex", alignItems: "center", gap: 1, minWidth: 0 }}>
                                             <Box
                                                 sx={{
-                                                    width: 10,
-                                                    height: 10,
+                                                    width: 11,
+                                                    height: 11,
                                                     borderRadius: "50%",
                                                     backgroundColor: t.color,
-                                                    border: "1px solid rgba(0,0,0,0.15)",
+                                                    border: "1px solid",
+                                                    borderColor: (theme: any) => theme.palette.mode === "dark" ? "rgba(248,250,252,0.32)" : "rgba(15,23,42,0.18)",
+                                                    boxShadow: "0 0 0 3px rgba(148,163,184,0.10)",
                                                     flex: "0 0 auto",
                                                 }}
                                             />
@@ -800,7 +911,7 @@ const TagManager = memo(function TagManager({ title, projectId, open = true, tag
                                                 sx={{
                                                     fontWeight: 700,
                                                     fontSize: 13,
-                                                    color: "#111827",
+                                                    color: (theme: any) => theme.palette.mode === "dark" ? "#f8fafc" : "#111827",
                                                     overflow: "hidden",
                                                     textOverflow: "ellipsis",
                                                     whiteSpace: "nowrap",
@@ -815,8 +926,8 @@ const TagManager = memo(function TagManager({ title, projectId, open = true, tag
                                             <Typography
                                                 sx={{
                                                     fontSize: 12,
-                                                    color: "#4b5563",
-                                                    mt: 0.25,
+                                                    color: (theme: any) => theme.palette.mode === "dark" ? "#94a3b8" : "#4b5563",
+                                                    mt: 0.35,
                                                     whiteSpace: "pre-wrap",
                                                     wordBreak: "break-word",
                                                 }}
@@ -826,18 +937,22 @@ const TagManager = memo(function TagManager({ title, projectId, open = true, tag
                                         ) : null}
                                     </Box>
 
-                                    <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.25 }}>
+                                    <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
                                         <Button
                                             size="small"
-                                            variant="outlined"
+                                            variant="contained"
                                             onClick={() => openEdit(t)}
                                             disabled={isDeleting || isLoading}
                                             sx={{
                                                 textTransform: "none",
                                                 borderRadius: 2,
-                                                backgroundColor: "#2b5ac0",
+                                                backgroundColor: (theme: any) => theme.palette.mode === "dark" ? "#2563eb" : "#2b5ac0",
                                                 color: "white",
-                                                "&:hover": { backgroundColor: "#1a43b3" },
+                                                boxShadow: "none",
+                                                "&:hover": {
+                                                    backgroundColor: (theme: any) => theme.palette.mode === "dark" ? "#1d4ed8" : "#1a43b3",
+                                                    boxShadow: "none",
+                                                },
                                             }}
                                         >
                                             Edit
@@ -845,7 +960,18 @@ const TagManager = memo(function TagManager({ title, projectId, open = true, tag
 
                                         <Tooltip title="Delete">
                                             <span>
-                                                <IconButton size="small" onClick={() => void deleteTag(String(t.id))} disabled={isDeleting || isLoading}>
+                                                <IconButton
+                                                    size="small"
+                                                    onClick={() => void deleteTag(String(t.id))}
+                                                    disabled={isDeleting || isLoading}
+                                                    sx={{
+                                                        color: (theme: any) => theme.palette.mode === "dark" ? "#fca5a5" : "#b91c1c",
+                                                        borderRadius: 2,
+                                                        "&:hover": {
+                                                            backgroundColor: (theme: any) => theme.palette.mode === "dark" ? "rgba(248,113,113,0.12)" : "rgba(239,68,68,0.08)",
+                                                        },
+                                                    }}
+                                                >
                                                     <TrashBinIcon fontSize="1.2rem" />
                                                 </IconButton>
                                             </span>
@@ -858,7 +984,7 @@ const TagManager = memo(function TagManager({ title, projectId, open = true, tag
                 )}
             </Box>
 
-            <Divider />
+            <Divider sx={{ borderColor: (theme: any) => theme.palette.mode === "dark" ? "rgba(148,163,184,0.16)" : "rgba(226,232,240,0.95)" }} />
 
             <TagEditorDialog
                 open={editorOpen}
