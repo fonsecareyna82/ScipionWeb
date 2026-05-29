@@ -19,6 +19,7 @@ import { TrashBinIcon, HelpIcon, CloseIcon } from "../../icons";
 import type { ProtocolTag } from "./tagTypes";
 import { useTagStore } from "@/stores/tag_store";
 import { useProjectService } from "@/ProjectServiceContext";
+import { useTheme as useAppTheme } from "@/context/ThemeContext";
 import type { Id, ProtocolTag as ServiceProtocolTag } from "@/services/ProjectService";
 
 type TagManagerProps = {
@@ -48,6 +49,33 @@ type TagEditorDialogProps = {
     validationError?: string | null;
 };
 
+type TagThemeMode = "light" | "dark";
+
+type TagPalette = {
+    panel: string;
+    panelSubtle: string;
+    row: string;
+    rowHover: string;
+    header: string;
+    border: string;
+    borderSoft: string;
+    text: string;
+    textStrong: string;
+    textMuted: string;
+    inputBg: string;
+    inputFocus: string;
+    inputHoverBorder: string;
+    blue: string;
+    blueHover: string;
+    green: string;
+    greenHover: string;
+    red: string;
+    dangerHover: string;
+    shadow: string;
+    dialogShadow: string;
+    backdrop: string;
+};
+
 const defaultTagColors = [
     "#ef4444",
     "#f97316",
@@ -63,52 +91,91 @@ const defaultTagColors = [
     "#111827",
 ] as const;
 
-const palette = {
-    panel: "#0f172a",
-    row: "rgba(15,23,42,0.88)",
-    rowHover: "rgba(30,41,59,0.88)",
-    header: "#333d49",
-    border: "rgba(148,163,184,0.32)",
-    borderSoft: "rgba(148,163,184,0.22)",
-    text: "#e5e7eb",
-    textStrong: "#f8fafc",
-    textMuted: "#94a3b8",
-    blue: "#2f61c7",
-    blueHover: "#2554b6",
-    green: "#16a34a",
-    greenHover: "#15803d",
-    red: "#fca5a5",
-};
+function getTagPalette(mode: TagThemeMode): TagPalette {
+    if (mode === "dark") {
+        return {
+            panel: "#0f172a",
+            panelSubtle: "rgba(15,23,42,0.98)",
+            row: "rgba(15,23,42,0.88)",
+            rowHover: "rgba(30,41,59,0.88)",
+            header: "#333d49",
+            border: "rgba(148,163,184,0.32)",
+            borderSoft: "rgba(148,163,184,0.22)",
+            text: "#e5e7eb",
+            textStrong: "#f8fafc",
+            textMuted: "#94a3b8",
+            inputBg: "rgba(15,23,42,0.92)",
+            inputFocus: "#38bdf8",
+            inputHoverBorder: "rgba(125,211,252,0.48)",
+            blue: "#2f61c7",
+            blueHover: "#2554b6",
+            green: "#16a34a",
+            greenHover: "#15803d",
+            red: "#fca5a5",
+            dangerHover: "rgba(248,113,113,0.12)",
+            shadow: "0 18px 46px rgba(0,0,0,0.34)",
+            dialogShadow: "0 24px 70px rgba(0,0,0,0.62)",
+            backdrop: "rgba(2,6,23,0.42)",
+        };
+    }
 
-const textFieldSx = {
-    "& .MuiInputBase-root": {
-        borderRadius: 2,
-        backgroundColor: "rgba(15,23,42,0.92)",
-        color: palette.text,
-    },
-    "& .MuiInputBase-input, & .MuiInputBase-inputMultiline": {
-        color: palette.text,
-    },
-    "& .MuiInputBase-input::placeholder": {
-        color: palette.textMuted,
-        opacity: 0.8,
-    },
-    "& .MuiInputLabel-root": {
-        color: palette.textMuted,
-    },
-    "& .MuiInputLabel-root.Mui-focused": {
-        color: "#93c5fd",
-    },
-    "& .MuiOutlinedInput-notchedOutline": {
-        borderColor: palette.border,
-    },
-    "&:hover .MuiOutlinedInput-notchedOutline": {
-        borderColor: "rgba(125,211,252,0.48)",
-    },
-    "& .Mui-focused .MuiOutlinedInput-notchedOutline": {
-        borderColor: "#38bdf8",
-    },
-} as const;
+    return {
+        panel: "#ffffff",
+        panelSubtle: "#f8fafc",
+        row: "#f8fafc",
+        rowHover: "#f1f5f9",
+        header: "#333d49",
+        border: "rgba(203,213,225,0.95)",
+        borderSoft: "rgba(226,232,240,0.95)",
+        text: "#334155",
+        textStrong: "#0f172a",
+        textMuted: "#64748b",
+        inputBg: "#ffffff",
+        inputFocus: "#2563eb",
+        inputHoverBorder: "rgba(37,99,235,0.42)",
+        blue: "#2563eb",
+        blueHover: "#1d4ed8",
+        green: "#16a34a",
+        greenHover: "#15803d",
+        red: "#dc2626",
+        dangerHover: "rgba(220,38,38,0.08)",
+        shadow: "0 18px 46px rgba(15,23,42,0.12)",
+        dialogShadow: "0 18px 50px rgba(15,23,42,0.18)",
+        backdrop: "rgba(15,23,42,0.12)",
+    };
+}
+
+function makeTextFieldSx(palette: TagPalette) {
+    return {
+        "& .MuiInputBase-root": {
+            borderRadius: 2,
+            backgroundColor: palette.inputBg,
+            color: palette.text,
+        },
+        "& .MuiInputBase-input, & .MuiInputBase-inputMultiline": {
+            color: palette.text,
+        },
+        "& .MuiInputBase-input::placeholder": {
+            color: palette.textMuted,
+            opacity: 0.8,
+        },
+        "& .MuiInputLabel-root": {
+            color: palette.textMuted,
+        },
+        "& .MuiInputLabel-root.Mui-focused": {
+            color: palette.inputFocus,
+        },
+        "& .MuiOutlinedInput-notchedOutline": {
+            borderColor: palette.border,
+        },
+        "&:hover .MuiOutlinedInput-notchedOutline": {
+            borderColor: palette.inputHoverBorder,
+        },
+        "& .Mui-focused .MuiOutlinedInput-notchedOutline": {
+            borderColor: palette.inputFocus,
+        },
+    } as const;
+}
 
 function generateTagId(): string {
     return `tag_${Date.now()}_${Math.random().toString(16).slice(2)}`;
@@ -143,6 +210,9 @@ function normalizeTagList(raw: unknown): ProtocolTag[] {
 }
 
 function TagEditorDialog({ open, mode, draft, onChange, onClose, onSave, isSaving, validationError }: TagEditorDialogProps) {
+    const { theme } = useAppTheme();
+    const palette = useMemo(() => getTagPalette(theme), [theme]);
+    const textFieldSx = useMemo(() => makeTextFieldSx(palette), [palette]);
     const dialogTitle = mode === "create" ? "Create tag" : "Edit tag";
     const [helpOpen, setHelpOpen] = useState(false);
 
@@ -153,7 +223,7 @@ function TagEditorDialog({ open, mode, draft, onChange, onClose, onSave, isSavin
                 onClose={isSaving ? undefined : onClose}
                 maxWidth="sm"
                 fullWidth
-                slotProps={{ backdrop: { sx: { backgroundColor: "rgba(2,6,23,0.42)", backdropFilter: "blur(2px)" } } }}
+                slotProps={{ backdrop: { sx: { backgroundColor: palette.backdrop, backdropFilter: "blur(2px)" } } }}
                 PaperProps={{
                     sx: {
                         borderRadius: 4,
@@ -162,7 +232,7 @@ function TagEditorDialog({ open, mode, draft, onChange, onClose, onSave, isSavin
                         backgroundImage: "none",
                         backgroundColor: palette.panel,
                         color: palette.text,
-                        boxShadow: "0 24px 70px rgba(0,0,0,0.62)",
+                        boxShadow: palette.dialogShadow,
                     },
                 }}
             >
@@ -216,7 +286,7 @@ function TagEditorDialog({ open, mode, draft, onChange, onClose, onSave, isSavin
                         />
 
                         <Box>
-                            <Typography sx={{ fontSize: 12, fontWeight: 700, mb: 0.75, color: "#cbd5e1" }}>Color</Typography>
+                            <Typography sx={{ fontSize: 12, fontWeight: 700, mb: 0.75, color: palette.textStrong }}>Color</Typography>
                             <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
                                 {defaultTagColors.map((c) => {
                                     const isSelected = c.toLowerCase() === String(draft.color).toLowerCase();
@@ -232,7 +302,7 @@ function TagEditorDialog({ open, mode, draft, onChange, onClose, onSave, isSavin
                                                 height: 24,
                                                 borderRadius: "50%",
                                                 border: "2px solid",
-                                                borderColor: isSelected ? palette.textStrong : "rgba(148,163,184,0.34)",
+                                                borderColor: isSelected ? palette.textStrong : palette.border,
                                                 backgroundColor: c,
                                                 cursor: isSaving ? "default" : "pointer",
                                                 opacity: isSaving ? 0.65 : 1,
@@ -269,12 +339,12 @@ function TagEditorDialog({ open, mode, draft, onChange, onClose, onSave, isSavin
                     </Box>
                 </DialogContent>
 
-                <DialogActions sx={{ justifyContent: "center", gap: 1, px: 2, py: 1.5, borderTop: `1px solid ${palette.borderSoft}`, backgroundColor: palette.panel }}>
+                <DialogActions sx={{ justifyContent: "center", gap: 1, px: 2, py: 1.5, borderTop: `1px solid ${palette.borderSoft}`, backgroundColor: palette.panelSubtle }}>
                     <Button
                         variant="outlined"
                         onClick={onClose}
                         disabled={!!isSaving}
-                        sx={{ textTransform: "none", minWidth: 112, borderRadius: 2, color: palette.text, borderColor: palette.border, backgroundColor: "rgba(15,23,42,0.78)" }}
+                        sx={{ textTransform: "none", minWidth: 112, borderRadius: 2, color: palette.text, borderColor: palette.border, backgroundColor: palette.inputBg, "&:hover": { backgroundColor: palette.rowHover, borderColor: palette.inputHoverBorder } }}
                     >
                         Cancel
                     </Button>
@@ -282,7 +352,7 @@ function TagEditorDialog({ open, mode, draft, onChange, onClose, onSave, isSavin
                         {isSaving ? "Saving..." : "Save"}
                     </Button>
                     <Tooltip title="Help">
-                        <IconButton size="small" onClick={() => setHelpOpen(true)} sx={{ color: "#93c5fd" }}>
+                        <IconButton size="small" onClick={() => setHelpOpen(true)} sx={{ color: palette.inputFocus }}>
                             <HelpIcon fontSize="1.1rem" />
                         </IconButton>
                     </Tooltip>
@@ -294,17 +364,17 @@ function TagEditorDialog({ open, mode, draft, onChange, onClose, onSave, isSavin
                 onClose={() => setHelpOpen(false)}
                 maxWidth="sm"
                 fullWidth
-                slotProps={{ backdrop: { sx: { backgroundColor: "rgba(2,6,23,0.42)", backdropFilter: "blur(2px)" } } }}
-                PaperProps={{ sx: { borderRadius: 4, backgroundColor: palette.panel, color: palette.text, border: `1px solid ${palette.border}` } }}
+                slotProps={{ backdrop: { sx: { backgroundColor: palette.backdrop, backdropFilter: "blur(2px)" } } }}
+                PaperProps={{ sx: { borderRadius: 4, backgroundImage: "none", backgroundColor: palette.panel, color: palette.text, border: `1px solid ${palette.border}` } }}
             >
                 <DialogTitle sx={{ backgroundColor: palette.header, color: "white", fontWeight: 700 }}>Help</DialogTitle>
                 <DialogContent sx={{ backgroundColor: palette.panel, color: palette.text, pt: 2 }}>
-                    <Typography sx={{ fontSize: 13, lineHeight: 1.6, color: "#cbd5e1" }}>
+                    <Typography sx={{ fontSize: 13, lineHeight: 1.6, color: palette.text }}>
                         Tag title identifies and filters protocols. The description is optional. Pick a color to recognize the tag quickly in chips and lists.
                     </Typography>
                 </DialogContent>
-                <DialogActions sx={{ backgroundColor: palette.panel, borderTop: `1px solid ${palette.borderSoft}` }}>
-                    <Button onClick={() => setHelpOpen(false)} variant="outlined" sx={{ color: palette.text, borderColor: palette.border, textTransform: "none" }}>
+                <DialogActions sx={{ backgroundColor: palette.panelSubtle, borderTop: `1px solid ${palette.borderSoft}` }}>
+                    <Button onClick={() => setHelpOpen(false)} variant="outlined" sx={{ color: palette.text, borderColor: palette.border, backgroundColor: palette.inputBg, textTransform: "none", "&:hover": { backgroundColor: palette.rowHover, borderColor: palette.inputHoverBorder } }}>
                         Close
                     </Button>
                 </DialogActions>
@@ -314,6 +384,8 @@ function TagEditorDialog({ open, mode, draft, onChange, onClose, onSave, isSavin
 }
 
 const TagManager = memo(function TagManager({ title, projectId, open = true, tags, onTagsChange, initialTags }: TagManagerProps) {
+    const { theme } = useAppTheme();
+    const palette = useMemo(() => getTagPalette(theme), [theme]);
     const svc = useProjectService();
     const svcRef = useRef(svc);
     useEffect(() => {
@@ -506,7 +578,7 @@ const TagManager = memo(function TagManager({ title, projectId, open = true, tag
     };
 
     return (
-        <Box sx={{ border: `1px solid ${palette.border}`, borderRadius: 3, backgroundColor: palette.panel, color: palette.text, overflow: "hidden", boxShadow: "0 18px 46px rgba(0,0,0,0.34)" }}>
+        <Box sx={{ border: `1px solid ${palette.border}`, borderRadius: 3, backgroundColor: palette.panel, color: palette.text, overflow: "hidden", boxShadow: palette.shadow }}>
             <Box sx={{ px: 1.75, py: 1.35, backgroundColor: palette.header, color: "white", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1 }}>
                 <Box sx={{ display: "inline-flex", alignItems: "center", gap: 1, minWidth: 0 }}>
                     <Typography sx={{ fontWeight: 700, fontSize: 14, lineHeight: 1.25, color: "white" }}>{title ?? "Tags"}</Typography>
@@ -527,10 +599,10 @@ const TagManager = memo(function TagManager({ title, projectId, open = true, tag
                         {effectiveTags.map((tag) => {
                             const isDeleting = !!deletingIds[String(tag.id)];
                             return (
-                                <Box key={tag.id} sx={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", alignItems: "center", gap: 1, border: `1px solid ${palette.borderSoft}`, borderRadius: 2.5, px: 1.25, py: 1, opacity: isDeleting ? 0.65 : 1, backgroundColor: palette.row, "&:hover": { borderColor: "rgba(125,211,252,0.34)", backgroundColor: palette.rowHover } }}>
+                                <Box key={tag.id} sx={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", alignItems: "center", gap: 1, border: `1px solid ${palette.borderSoft}`, borderRadius: 2.5, px: 1.25, py: 1, opacity: isDeleting ? 0.65 : 1, backgroundColor: palette.row, "&:hover": { borderColor: palette.inputHoverBorder, backgroundColor: palette.rowHover } }}>
                                     <Box sx={{ minWidth: 0 }}>
                                         <Box sx={{ display: "flex", alignItems: "center", gap: 1, minWidth: 0 }}>
-                                            <Box sx={{ width: 11, height: 11, borderRadius: "50%", backgroundColor: tag.color, border: "1px solid rgba(248,250,252,0.32)", boxShadow: "0 0 0 3px rgba(148,163,184,0.10)", flex: "0 0 auto" }} />
+                                            <Box sx={{ width: 11, height: 11, borderRadius: "50%", backgroundColor: tag.color, border: `1px solid ${palette.border}`, boxShadow: "0 0 0 3px rgba(148,163,184,0.10)", flex: "0 0 auto" }} />
                                             <Typography sx={{ fontWeight: 700, fontSize: 13, color: palette.textStrong, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={tag.title}>
                                                 {tag.title}
                                             </Typography>
@@ -543,7 +615,7 @@ const TagManager = memo(function TagManager({ title, projectId, open = true, tag
                                         </Button>
                                         <Tooltip title="Delete">
                                             <span>
-                                                <IconButton size="small" onClick={() => void deleteTag(String(tag.id))} disabled={isDeleting || isLoading} sx={{ color: palette.red, borderRadius: 2, "&:hover": { backgroundColor: "rgba(248,113,113,0.12)" } }}>
+                                                <IconButton size="small" onClick={() => void deleteTag(String(tag.id))} disabled={isDeleting || isLoading} sx={{ color: palette.red, borderRadius: 2, "&:hover": { backgroundColor: palette.dangerHover } }}>
                                                     <TrashBinIcon fontSize="1.2rem" />
                                                 </IconButton>
                                             </span>
