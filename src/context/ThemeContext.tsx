@@ -94,35 +94,27 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({
   useEffect(() => {
     if (typeof document === "undefined") return;
 
-    let isApplying = false;
     let pendingFrame: number | null = null;
 
-    const enforceTheme = () => {
-      if (isApplying) return;
-      isApplying = true;
-
-      if (pendingFrame != null) {
-        window.cancelAnimationFrame(pendingFrame);
-        pendingFrame = null;
-      }
-
-      applyTheme(theme);
+    const scheduleThemeApply = () => {
+      if (pendingFrame != null) return;
 
       pendingFrame = window.requestAnimationFrame(() => {
-        isApplying = false;
         pendingFrame = null;
+        applyTheme(theme);
       });
     };
 
-    enforceTheme();
+    applyTheme(theme);
 
     const observer = new MutationObserver((mutations) => {
-      const hasClassMutation = mutations.some((mutation) => {
+      const shouldReapplyTheme = mutations.some((mutation) => {
+        if (mutation.type === "childList") return mutation.addedNodes.length > 0;
         return mutation.type === "attributes" && mutation.attributeName === "class";
       });
 
-      if (hasClassMutation) {
-        enforceTheme();
+      if (shouldReapplyTheme) {
+        scheduleThemeApply();
       }
     });
 
@@ -131,18 +123,19 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({
       attributeFilter: ["class"],
     });
 
-    observer.observe(document.body, {
+    const observeRoot = document.getElementById("root") ?? document.body;
+    observer.observe(observeRoot, {
       attributes: true,
       attributeFilter: ["class"],
-      subtree: theme === "light",
+      childList: true,
+      subtree: true,
     });
 
-    const appRoot = document.getElementById("root");
-    if (appRoot) {
-      observer.observe(appRoot, {
+    if (observeRoot !== document.body) {
+      observer.observe(document.body, {
         attributes: true,
         attributeFilter: ["class"],
-        subtree: theme === "light",
+        childList: true,
       });
     }
 
