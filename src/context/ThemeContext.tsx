@@ -115,6 +115,14 @@ function applyTheme(theme: Theme) {
   document.body.style.colorScheme = theme;
 }
 
+function scheduleLazyCssThemeApply(theme: Theme) {
+  if (typeof window === "undefined") return;
+
+  window.requestAnimationFrame(() => applyTheme(theme));
+  window.setTimeout(() => applyTheme(theme), 50);
+  window.setTimeout(() => applyTheme(theme), 250);
+}
+
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
@@ -147,6 +155,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({
       });
 
       if (shouldReapplyTheme) {
+        scheduleLazyCssThemeApply(theme);
         scheduleThemeApply();
       }
     });
@@ -155,6 +164,11 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({
       attributes: true,
       attributeFilter: ["class"],
       childList: true,
+    });
+
+    observer.observe(document.head, {
+      childList: true,
+      subtree: true,
     });
 
     const observeRoot = document.getElementById("root") ?? document.body;
@@ -173,8 +187,22 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({
       });
     }
 
+    const handleLoad = (event: Event) => {
+      const target = event.target as HTMLElement | null;
+      if (!target) return;
+
+      const tagName = target.tagName.toLowerCase();
+      if (tagName === "link" || tagName === "style") {
+        scheduleLazyCssThemeApply(theme);
+      }
+    };
+
+    document.head.addEventListener("load", handleLoad, true);
+    scheduleLazyCssThemeApply(theme);
+
     return () => {
       observer.disconnect();
+      document.head.removeEventListener("load", handleLoad, true);
       if (pendingFrame != null) {
         window.cancelAnimationFrame(pendingFrame);
       }
@@ -185,6 +213,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({
     writeStoredTheme(nextTheme);
     setTheme(nextTheme);
     applyTheme(nextTheme);
+    scheduleLazyCssThemeApply(nextTheme);
   }, []);
 
   const toggleTheme = useCallback(() => {
@@ -193,6 +222,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({
 
       writeStoredTheme(nextTheme);
       applyTheme(nextTheme);
+      scheduleLazyCssThemeApply(nextTheme);
 
       return nextTheme;
     });
