@@ -5,6 +5,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useLayoutEffect,
   useState,
 } from "react";
@@ -88,6 +89,69 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({
 
   useLayoutEffect(() => {
     applyTheme(theme);
+  }, [theme]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+
+    let isApplying = false;
+    let pendingFrame: number | null = null;
+
+    const enforceTheme = () => {
+      if (isApplying) return;
+      isApplying = true;
+
+      if (pendingFrame != null) {
+        window.cancelAnimationFrame(pendingFrame);
+        pendingFrame = null;
+      }
+
+      applyTheme(theme);
+
+      pendingFrame = window.requestAnimationFrame(() => {
+        isApplying = false;
+        pendingFrame = null;
+      });
+    };
+
+    enforceTheme();
+
+    const observer = new MutationObserver((mutations) => {
+      const hasClassMutation = mutations.some((mutation) => {
+        return mutation.type === "attributes" && mutation.attributeName === "class";
+      });
+
+      if (hasClassMutation) {
+        enforceTheme();
+      }
+    });
+
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["class"],
+    });
+
+    observer.observe(document.body, {
+      attributes: true,
+      attributeFilter: ["class"],
+      subtree: theme === "light",
+    });
+
+    const appRoot = document.getElementById("root");
+    if (appRoot) {
+      observer.observe(appRoot, {
+        attributes: true,
+        attributeFilter: ["class"],
+        subtree: theme === "light",
+      });
+    }
+
+    return () => {
+      observer.disconnect();
+      if (pendingFrame != null) {
+        window.cancelAnimationFrame(pendingFrame);
+      }
+    };
   }, [theme]);
 
   const setThemeMode = useCallback((nextTheme: Theme) => {
