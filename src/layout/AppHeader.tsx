@@ -2,12 +2,15 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import { useSidebar } from "../context/SidebarContext";
+import { useTheme as useAppTheme } from "../context/ThemeContext";
 import { ThemeToggleButton } from "../components/common/ThemeToggleButton";
 import UserDropdown from "../components/header/UserDropdown";
 
 const AppHeader: React.FC = () => {
   const [isApplicationMenuOpen, setApplicationMenuOpen] = useState(false);
   const { isMobileOpen, toggleSidebar, toggleMobileSidebar } = useSidebar();
+  const { theme } = useAppTheme();
+  const isDark = theme === "dark";
 
   // Desktop toggles the rail; mobile opens the overlay drawer
   const handleToggle = () => {
@@ -20,7 +23,7 @@ const AppHeader: React.FC = () => {
 
   const toggleApplicationMenu = () => setApplicationMenuOpen((v) => !v);
 
-  // Optional Ctrl/Cmd+K focus hook (kept as in your version)
+  // Optional Ctrl/Cmd+K focus hook
   const inputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -33,9 +36,26 @@ const AppHeader: React.FC = () => {
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, []);
 
+  const headerClassName = [
+    "sticky top-0 z-[60] w-full border-b",
+    isDark ? "bg-gray-900 border-gray-800" : "bg-white border-gray-200",
+  ].join(" ");
+
+  const sidebarButtonClassName = [
+    "inline-flex items-center justify-center w-9 h-9 lg:w-10 lg:h-10 rounded-md border transition-colors",
+    isDark
+      ? "border-gray-800 text-gray-300 hover:bg-gray-800"
+      : "border-gray-200 text-gray-600 hover:bg-gray-100 hover:text-gray-700",
+  ].join(" ");
+
+  const appMenuButtonClassName = [
+    "lg:hidden inline-flex items-center justify-center w-9 h-9 rounded-md transition-colors",
+    isDark ? "text-gray-300 hover:bg-gray-800" : "text-gray-700 hover:bg-gray-100",
+  ].join(" ");
+
   return (
     // Sticky header above the scrollable <main>. Keep z lower than mobile Sidebar/Backdrop.
-    <header className="sticky top-0 z-[60] w-full bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800">
+    <header className={headerClassName}>
       {/* Fixed height line to avoid layout shifts; inner content uses min-h to match */}
       <div className="flex items-center min-h-14 md:min-h-16 px-2 lg:px-3">
         {/* Left: burger + logo (on mobile) */}
@@ -44,7 +64,7 @@ const AppHeader: React.FC = () => {
             type="button"
             onClick={handleToggle}
             aria-label="Toggle sidebar"
-            className="inline-flex items-center justify-center w-9 h-9 lg:w-10 lg:h-10 rounded-md border border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+            className={sidebarButtonClassName}
           >
             {isMobileOpen ? (
               // Close icon
@@ -69,18 +89,21 @@ const AppHeader: React.FC = () => {
             )}
           </button>
 
-          {/* Logo only on mobile (desktop lo tienes en el sidebar) */}
+          {/* Logo only on mobile */}
           <Link to="/" className="lg:hidden" aria-label="Home">
-            <img className="dark:hidden max-h-6" src="./images/logo/logo.svg" alt="Logo" />
-            <img className="hidden dark:block max-h-6" src="./images/logo/logo-dark.svg" alt="Logo" />
+            <img
+              className="max-h-6"
+              src={isDark ? "./images/logo/logo-dark.svg" : "./images/logo/logo.svg"}
+              alt="Logo"
+            />
           </Link>
 
-          {/* Mobile “apps” button */}
+          {/* Mobile apps button */}
           <button
             type="button"
             onClick={toggleApplicationMenu}
             aria-label="Open application menu"
-            className="lg:hidden inline-flex items-center justify-center w-9 h-9 rounded-md text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+            className={appMenuButtonClassName}
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
               <path
