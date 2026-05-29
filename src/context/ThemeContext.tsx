@@ -57,34 +57,57 @@ function removeAllDarkClasses() {
   });
 }
 
+function isSystemDarkMediaRule(rule: CSSRule): boolean {
+  const conditionText = String((rule as CSSMediaRule)?.conditionText ?? "").toLowerCase();
+  return conditionText.includes("prefers-color-scheme") && conditionText.includes("dark");
+}
+
+function getNestedRules(rule: CSSRule): CSSRuleList | null {
+  try {
+    const candidate = rule as CSSGroupingRule;
+    return candidate.cssRules ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function deleteRuleAt(owner: CSSStyleSheet | CSSGroupingRule, index: number) {
+  try {
+    owner.deleteRule(index);
+  } catch {
+    // Ignore stylesheet mutation errors.
+  }
+}
+
+function stripSystemDarkMediaRulesFromOwner(owner: CSSStyleSheet | CSSGroupingRule) {
+  let rules: CSSRuleList;
+
+  try {
+    rules = owner.cssRules;
+  } catch {
+    return;
+  }
+
+  for (let index = rules.length - 1; index >= 0; index -= 1) {
+    const rule = rules[index];
+
+    if (isSystemDarkMediaRule(rule)) {
+      deleteRuleAt(owner, index);
+      continue;
+    }
+
+    const nestedRules = getNestedRules(rule);
+    if (nestedRules && nestedRules.length > 0) {
+      stripSystemDarkMediaRulesFromOwner(rule as CSSGroupingRule);
+    }
+  }
+}
+
 function stripSystemDarkMediaRules() {
   if (typeof document === "undefined") return;
 
   for (const sheet of Array.from(document.styleSheets)) {
-    let rules: CSSRuleList;
-
-    try {
-      rules = sheet.cssRules;
-    } catch {
-      continue;
-    }
-
-    for (let index = rules.length - 1; index >= 0; index -= 1) {
-      const rule = rules[index];
-      const mediaRule = rule as CSSMediaRule;
-      const conditionText = String(mediaRule?.conditionText ?? "").toLowerCase();
-
-      if (
-        conditionText.includes("prefers-color-scheme") &&
-        conditionText.includes("dark")
-      ) {
-        try {
-          sheet.deleteRule(index);
-        } catch {
-          // Ignore stylesheet mutation errors.
-        }
-      }
-    }
+    stripSystemDarkMediaRulesFromOwner(sheet);
   }
 }
 
