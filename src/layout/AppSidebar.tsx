@@ -14,6 +14,7 @@ import {
   UserCircleIcon,
 } from "../icons";
 import { useSidebar } from "../context/SidebarContext";
+import { useTheme as useAppTheme } from "../context/ThemeContext";
 import SidebarWidget from "./SidebarWidget";
 import * as React from "react";
 import * as TooltipPrimitive from "@radix-ui/react-tooltip";
@@ -105,6 +106,8 @@ const othersItems: NavItem[] = [
 
 const AppSidebar: React.FC = () => {
   const { isExpanded, isMobileOpen } = useSidebar();
+  const { theme } = useAppTheme();
+  const isDark = theme === "dark";
   const location = useLocation();
 
   const [openSubmenu, setOpenSubmenu] = useState<{ type: "main" | "others"; index: number } | null>(null);
@@ -150,18 +153,59 @@ const AppSidebar: React.FC = () => {
     });
   };
 
+  const separatorClassName = isDark ? "border-gray-700" : "border-gray-300";
+  const secondarySeparatorClassName = isDark ? "border-gray-700" : "border-gray-200";
+  const tooltipClassName = isDark
+    ? "bg-gray-900 text-white text-sm px-2 py-1 rounded shadow-lg z-50 whitespace-nowrap border border-gray-800"
+    : "bg-white text-gray-900 text-sm px-2 py-1 rounded shadow-lg z-50 whitespace-nowrap border border-gray-200";
+
+  const getMenuItemClassName = (active: boolean) => [
+    "menu-item",
+    active
+      ? isDark
+        ? "bg-brand-500/[0.12] text-brand-400"
+        : "bg-brand-50 text-brand-500"
+      : isDark
+        ? "text-gray-300 hover:bg-white/5 hover:text-gray-300"
+        : "text-gray-700 hover:bg-gray-100 hover:text-gray-700",
+  ].join(" ");
+
+  const getMenuItemIconClassName = (active: boolean) => [
+    "menu-item-icon-size",
+    active
+      ? isDark
+        ? "text-brand-400"
+        : "text-brand-500"
+      : isDark
+        ? "text-gray-400"
+        : "text-gray-500 group-hover:text-gray-700",
+  ].join(" ");
+
+  const getDropdownItemClassName = (active: boolean) => [
+    "menu-dropdown-item",
+    active
+      ? isDark
+        ? "bg-brand-500/[0.12] text-brand-400"
+        : "bg-brand-50 text-brand-500"
+      : isDark
+        ? "text-gray-300 hover:bg-white/5"
+        : "text-gray-700 hover:bg-gray-100",
+  ].join(" ");
+
   const renderMenuItems = (items: NavItem[], menuType: "main" | "others") => (
     <ul className="flex flex-col gap-4">
       {items.map((nav, index) => {
-        // Separador
         if (nav.separator) {
           return (
             <li key={`separator-${index}`}>
-              <div className="w-full border-t border-gray-300 dark:border-gray-700 my-2" />
+              <div className={`w-full border-t ${separatorClassName} my-2`} />
             </li>
           );
         }
   
+        const isSubmenuActive = openSubmenu?.type === menuType && openSubmenu?.index === index;
+        const isLinkActive = nav.path ? isActive(nav.path) : false;
+
         return (
           <li key={nav.name}>
             <TooltipProvider>
@@ -170,17 +214,9 @@ const AppSidebar: React.FC = () => {
                   <TooltipTrigger asChild>
                     <button
                       onClick={() => handleSubmenuToggle(index, menuType)}
-                      className={`menu-item ${openSubmenu?.type === menuType && openSubmenu?.index === index
-                        ? "menu-item-active"
-                        : "menu-item-inactive"
-                        }`}
+                      className={getMenuItemClassName(isSubmenuActive)}
                     >
-                      <span
-                        className={`menu-item-icon-size ${openSubmenu?.type === menuType && openSubmenu?.index === index
-                          ? "menu-item-icon-active"
-                          : "menu-item-icon-inactive"
-                          }`}
-                      >
+                      <span className={getMenuItemIconClassName(isSubmenuActive)}>
                         {nav.icon}
                       </span>
                       {(isExpanded || isMobileOpen) && (
@@ -189,10 +225,7 @@ const AppSidebar: React.FC = () => {
                     </button>
                   </TooltipTrigger>
                   {!isExpanded && !isMobileOpen && (
-                    <TooltipContent
-                      side="right"
-                      className="bg-black text-white text-sm px-2 py-1 rounded shadow-lg z-50 whitespace-nowrap"
-                    >
+                    <TooltipContent side="right" className={tooltipClassName}>
                       {nav.name}
                     </TooltipContent>
                   )}
@@ -200,26 +233,15 @@ const AppSidebar: React.FC = () => {
               ) : (
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Link
-                      to={nav.path!}
-                      className={`menu-item ${isActive(nav.path!) ? "menu-item-active" : "menu-item-inactive"}`}
-                    >
-                      <span
-                        className={`menu-item-icon-size ${isActive(nav.path!)
-                          ? "menu-item-icon-active"
-                          : "menu-item-icon-inactive"
-                          }`}
-                      >
+                    <Link to={nav.path!} className={getMenuItemClassName(isLinkActive)}>
+                      <span className={getMenuItemIconClassName(isLinkActive)}>
                         {nav.icon}
                       </span>
                       {(isExpanded || isMobileOpen) && <span className="menu-item-text">{nav.name}</span>}
                     </Link>
                   </TooltipTrigger>
                   {!isExpanded && !isMobileOpen && (
-                    <TooltipContent
-                      side="right"
-                      className="bg-black text-white text-sm px-2 py-1 rounded shadow-lg z-50 whitespace-nowrap"
-                    >
+                    <TooltipContent side="right" className={tooltipClassName}>
                       {nav.name}
                     </TooltipContent>
                   )}
@@ -241,33 +263,27 @@ const AppSidebar: React.FC = () => {
                   }}
                 >
                   <ul className="mt-2 space-y-1 ml-9">
-                    {nav.subItems.map((subItem) => (
-                      <li key={subItem.name}>
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Link
-                                to={subItem.path}
-                                className={`menu-dropdown-item ${isActive(subItem.path)
-                                  ? "menu-dropdown-item-active"
-                                  : "menu-dropdown-item-inactive"
-                                  }`}
-                              >
-                                {subItem.name}
-                              </Link>
-                            </TooltipTrigger>
-                            {!isExpanded && !isMobileOpen && (
-                              <TooltipContent
-                                side="right"
-                                className="bg-black text-white text-sm px-2 py-1 rounded shadow-lg z-50 whitespace-nowrap"
-                              >
-                                {subItem.name}
-                              </TooltipContent>
-                            )}
-                          </Tooltip>
-                        </TooltipProvider>
-                      </li>
-                    ))}
+                    {nav.subItems.map((subItem) => {
+                      const isSubItemActive = isActive(subItem.path);
+                      return (
+                        <li key={subItem.name}>
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Link to={subItem.path} className={getDropdownItemClassName(isSubItemActive)}>
+                                  {subItem.name}
+                                </Link>
+                              </TooltipTrigger>
+                              {!isExpanded && !isMobileOpen && (
+                                <TooltipContent side="right" className={tooltipClassName}>
+                                  {subItem.name}
+                                </TooltipContent>
+                              )}
+                            </Tooltip>
+                          </TooltipProvider>
+                        </li>
+                      );
+                    })}
                   </ul>
                 </div>
               )}
@@ -278,56 +294,26 @@ const AppSidebar: React.FC = () => {
     </ul>
   );
 
+  const asideClassName = [
+    "fixed mt-16 flex flex-col lg:mt-0 top-0 px-4 left-0 h-screen transition-all duration-300 ease-in-out z-50 border-r",
+    isDark ? "bg-gray-900 border-gray-800 text-gray-100" : "bg-gray-100 border-gray-200 text-gray-900",
+    isExpanded || isMobileOpen ? "w-[280px]" : "w-[70px]",
+    isMobileOpen ? "translate-x-0" : "-translate-x-full",
+    "lg:translate-x-0",
+  ].join(" ");
+
   return (
-    <aside
-      className={`fixed mt-16 flex flex-col lg:mt-0 top-0 px-4 left-0 bg-gray-100 dark:bg-gray-900 
-                  dark:border-gray-800 text-gray-900 h-screen transition-all duration-300 ease-in-out 
-                  z-50 border-r border-gray-200 
-        ${isExpanded || isMobileOpen ? "w-[280px]" : "w-[70px]"}
-        ${isMobileOpen ? "translate-x-0" : "-translate-x-full"}
-        lg:translate-x-0`}
-    >
+    <aside className={asideClassName}>
       <div className={`py-8 flex ${!isExpanded ? "lg:justify-center" : "justify-start"}`}>
         <Link to="/">
-          {isExpanded || isMobileOpen ? (
-            <>
-              <div className="flex items-center">
-                <img
-                  className="dark:hidden"
-                  src="/images/logo/scipion_icon.png"
-                  alt="Logo"
-                  width={60}
-                  height={40}
-                />
-              </div>
-              <img
-                className="hidden dark:block"
-                src="/images/logo/scipion_icon_white.png"
-                alt="Logo"
-                width={60}
-                height={40}
-              />
-            </>
-          ) : (
-            <>
-              <div className="flex items-center">
-                <img
-                  className="dark:hidden"
-                  src="/images/logo/scipion_icon.png"
-                  alt="Logo"
-                  width={32}
-                  height={32}
-                />
-              </div>
-              <img
-                className="hidden dark:block"
-                src="/images/logo/scipion_icon_white.png"
-                alt="Logo"
-                width={32}
-                height={32}
-              />
-            </>
-          )}
+          <div className="flex items-center">
+            <img
+              src={isDark ? "/images/logo/scipion_icon_white.png" : "/images/logo/scipion_icon.png"}
+              alt="Logo"
+              width={isExpanded || isMobileOpen ? 60 : 32}
+              height={isExpanded || isMobileOpen ? 40 : 32}
+            />
+          </div>
         </Link>
       </div>
 
@@ -345,25 +331,7 @@ const AppSidebar: React.FC = () => {
               </h2>
               {renderMenuItems(navItems, "main")}
             </div>
-             {/* Separator */}
-            <div className="my-1 border-t border-gray-200 dark:border-gray-700" />
-             {/*<div className="">
-              <h2
-                className={`mb-4 text-xs uppercase flex leading-[20px] text-gray-400 ${!isExpanded && !isHovered
-                    ? "lg:justify-center"
-                    : "justify-start"
-                  }`}
-              >
-                
-                {isExpanded || isHovered || isMobileOpen ? (
-                  "Others"
-                ) : (
-                  <HorizontaLDots />
-                )}
-              </h2>
-               {renderMenuItems(othersItems, "others")}
-            </div>
-            */}
+            <div className={`my-1 border-t ${secondarySeparatorClassName}`} />
           </div>
         </nav>
 
