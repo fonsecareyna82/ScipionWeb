@@ -19,6 +19,13 @@ type MeshCameraState = {
     position: [number, number, number];
     target: [number, number, number];
     zoom: number;
+    objectQuaternion: [number, number, number, number];
+};
+
+type DragState = {
+    pointerId: number;
+    lastX: number;
+    lastY: number;
 };
 
 function colorFromColormap(colormap?: string): THREE.Color {
@@ -61,6 +68,35 @@ function disposeObject3d(root: THREE.Object3D): void {
 
 function toNumberTuple(values: number[]): [number, number, number] {
     return [values[0] ?? 0, values[1] ?? 0, values[2] ?? 0];
+}
+
+function toQuaternionTuple(values: number[]): [number, number, number, number] {
+    return [values[0] ?? 0, values[1] ?? 0, values[2] ?? 0, values[3] ?? 1];
+}
+
+function rotateObjectInScreenSpace(
+    object: THREE.Object3D,
+    camera: THREE.PerspectiveCamera,
+    dx: number,
+    dy: number,
+) {
+    const dragScale = 0.0075;
+    const cameraDirection = new THREE.Vector3();
+    const screenRight = new THREE.Vector3();
+    const screenUp = new THREE.Vector3();
+    const horizontalRotation = new THREE.Quaternion();
+    const verticalRotation = new THREE.Quaternion();
+    const dragRotation = new THREE.Quaternion();
+
+    camera.getWorldDirection(cameraDirection).normalize();
+    screenRight.crossVectors(cameraDirection, camera.up).normalize();
+    screenUp.copy(camera.up).normalize();
+
+    horizontalRotation.setFromAxisAngle(screenUp, dx * dragScale);
+    verticalRotation.setFromAxisAngle(screenRight, dy * dragScale);
+    dragRotation.multiplyQuaternions(horizontalRotation, verticalRotation);
+
+    object.quaternion.premultiply(dragRotation);
 }
 
 export default function MeshVolumeView({
@@ -117,6 +153,7 @@ export default function MeshVolumeView({
 
         let renderer: THREE.WebGLRenderer | null = null;
         let frameId = 0;
+        let dragState: DragState | null = null;
 
         try {
             const scene = new THREE.Scene();
@@ -148,58 +185,25 @@ export default function MeshVolumeView({
 
             const controls = new OrbitControls(camera, host);
             controls.enabled = true;
-            controls.enableRotate = true;
+            controls.enableRotate = false;
             controls.enableZoom = true;
             controls.enablePan = true;
             controls.enableDamping = true;
             controls.dampingFactor = 0.08;
-            controls.rotateSpeed = 0.75;
             controls.zoomSpeed = 0.85;
             controls.panSpeed = 0.55;
 
             controls.mouseButtons = {
-                LEFT: THREE.MOUSE.ROTATE,
+                LEFT: null as any,
                 MIDDLE: THREE.MOUSE.DOLLY,
                 RIGHT: THREE.MOUSE.PAN,
             };
 
             controls.touches = {
-                ONE: THREE.TOUCH.ROTATE,
+                ONE: null as any,
                 TWO: THREE.TOUCH.DOLLY_PAN,
             };
             controls.target.set(0, 0, 0);
-
-            const saveCameraState = () => {
-                cameraStateRef.current = {
-                    key: currentCameraStateKey,
-                    position: toNumberTuple(camera.position.toArray()),
-                    target: toNumberTuple(controls.target.toArray()),
-                    zoom: camera.zoom,
-                };
-            };
-
-            controls.addEventListener("change", saveCameraState);
-
-            const stopViewerEvent = (event: Event) => {
-                event.stopPropagation();
-
-                if (event.type === "contextmenu") {
-                    event.preventDefault();
-                }
-            };
-
-            const viewerEvents = [
-                "pointerdown",
-                "pointermove",
-                "pointerup",
-                "pointercancel",
-                "wheel",
-                "contextmenu",
-            ] as const;
-
-            viewerEvents.forEach((eventName) => {
-                host.addEventListener(eventName, stopViewerEvent, { passive: false });
-            });
 
             const geometry = new THREE.BufferGeometry();
             geometry.setAttribute(
@@ -235,7 +239,21 @@ export default function MeshVolumeView({
             materialRef.current = material;
 
             const surface = new THREE.Mesh(geometry, material);
-            scene.add(surface);
+            const surfacePivot = new THREE.Group();
+            surfacePivot.add(surface);
+            scene.add(surfacePivot);
+
+            const saveCameraState = () => {
+                cameraStateRef.current = {
+                    key: currentCameraStateKey,
+                    position: toNumberTuple(camera.position.toArray()),
+                    target: toNumberTuple(controls.target.toArray()),
+                    zoom: camera.zoom,
+                    objectQuaternion: toQuaternionTuple(surfacePivot.quaternion.toArray()),
+                };
+            };
+
+            controls.addEventListener("change", saveCameraState);
 
             const ambient = new THREE.AmbientLight(0xffffff, 0.55);
             scene.add(ambient);
@@ -271,14 +289,76 @@ export default function MeshVolumeView({
                 camera.position.fromArray(savedCameraState.position);
                 camera.zoom = savedCameraState.zoom;
                 controls.target.fromArray(savedCameraState.target);
+                surfacePivot.quaternion.fromArray(savedCameraState.objectQuaternion);
             } else {
                 camera.position.set(radius * 1.15, -radius * 2.0, radius * 1.15);
                 controls.target.copy(sphere?.center ?? new THREE.Vector3(0, 0, 0));
+                surfacePivot.quaternion.identity();
             }
 
             camera.updateProjectionMatrix();
             controls.update();
             saveCameraState();
+
+            const stopViewerEvent = (event: Event) => {
+                event.stopPropagation();
+
+                if (event.type === "contextmenu") {
+                    event.preventDefault();
+                }
+            };
+
+            const handlePointerDown = (event: PointerEvent) => {
+                stopViewerEvent(event);
+
+                if (event.button !== 0) return;
+
+                event.preventDefault();
+                dragState = {
+                    pointerId: event.pointerId,
+                    lastX: event.clientX,
+                    lastY: event.clientY,
+                };
+                host.style.cursor = "grabbing";
+                host.setPointerCapture?.(event.pointerId);
+            };
+
+            const handlePointerMove = (event: PointerEvent) => {
+                stopViewerEvent(event);
+
+                if (!dragState || dragState.pointerId !== event.pointerId) return;
+
+                event.preventDefault();
+                const dx = event.clientX - dragState.lastX;
+                const dy = event.clientY - dragState.lastY;
+                dragState.lastX = event.clientX;
+                dragState.lastY = event.clientY;
+
+                rotateObjectInScreenSpace(surfacePivot, camera, dx, dy);
+                saveCameraState();
+            };
+
+            const endDrag = (event: PointerEvent) => {
+                stopViewerEvent(event);
+
+                if (!dragState || dragState.pointerId !== event.pointerId) return;
+
+                event.preventDefault();
+                dragState = null;
+                host.style.cursor = "grab";
+                host.releasePointerCapture?.(event.pointerId);
+                saveCameraState();
+            };
+
+            const viewerEvents = ["wheel", "contextmenu"] as const;
+
+            viewerEvents.forEach((eventName) => {
+                host.addEventListener(eventName, stopViewerEvent, { passive: false });
+            });
+            host.addEventListener("pointerdown", handlePointerDown, { passive: false });
+            host.addEventListener("pointermove", handlePointerMove, { passive: false });
+            host.addEventListener("pointerup", endDrag, { passive: false });
+            host.addEventListener("pointercancel", endDrag, { passive: false });
 
             const clock = new THREE.Clock();
 
@@ -287,7 +367,7 @@ export default function MeshVolumeView({
 
                 const dt = clock.getDelta();
                 if (autoRotateRef.current) {
-                    surface.rotation.z += dt * (autoRotateSpeedRef.current / 10);
+                    surfacePivot.rotation.z += dt * (autoRotateSpeedRef.current / 10);
                 }
 
                 controls.update();
@@ -306,6 +386,10 @@ export default function MeshVolumeView({
                 viewerEvents.forEach((eventName) => {
                     host.removeEventListener(eventName, stopViewerEvent);
                 });
+                host.removeEventListener("pointerdown", handlePointerDown);
+                host.removeEventListener("pointermove", handlePointerMove);
+                host.removeEventListener("pointerup", endDrag);
+                host.removeEventListener("pointercancel", endDrag);
 
                 host.style.cursor = "";
                 host.style.touchAction = "";
