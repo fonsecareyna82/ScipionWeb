@@ -2,6 +2,7 @@
 import React, { useMemo } from "react";
 import { Autocomplete, Box, Chip, Paper, TextField, Typography } from "@mui/material";
 import Popper, { type PopperProps } from "@mui/material/Popper";
+import { useTheme as useAppTheme } from "@/context/ThemeContext";
 import type { ProtocolTag } from "./tagTypes";
 import "./tag-dark-overrides.css";
 
@@ -51,17 +52,6 @@ function createPlaceholderTag(id: string): ProtocolTag {
   } as ProtocolTag;
 }
 
-function isDocumentDarkMode(): boolean {
-  // isDocumentDarkMode
-  if (typeof document === "undefined") return false;
-  return Boolean(
-    document.documentElement.classList.contains("dark") ||
-    document.body.classList.contains("dark") ||
-    document.querySelector(".projectpage-widget-root.dark") ||
-    document.querySelector(".dark"),
-  );
-}
-
 type SpreadKeyFix<T> = T & { key?: React.Key };
 
 export default function TagPicker({
@@ -77,7 +67,8 @@ export default function TagPicker({
   popperContainer = null,
   popperZIndex = 2000,
 }: TagPickerProps) {
-  const isDarkMode = isDocumentDarkMode();
+  const { theme } = useAppTheme();
+  const isDarkMode = theme === "dark";
   const fieldBg = isDarkMode ? "rgba(15,23,42,0.92)" : "#ffffff";
   const fieldText = isDarkMode ? "#e5e7eb" : "#111827";
   const mutedText = isDarkMode ? "#94a3b8" : "#64748b";
