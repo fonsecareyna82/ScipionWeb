@@ -21,11 +21,12 @@ function getDialogPalette(mode: "light" | "dark") {
       border: "rgba(148,163,184,0.24)",
       divider: "rgba(148,163,184,0.18)",
       backdrop: "rgba(2,6,23,0.42)",
-      closeText: "#e5e7eb",
-      closeBorder: "rgba(148,163,184,0.34)",
-      closeBg: "rgba(15,23,42,0.78)",
-      closeHoverBg: "rgba(30,41,59,0.90)",
-      closeHoverBorder: "rgba(148,163,184,0.48)",
+      closeText: "#f8fafc",
+      closeBorder: "rgba(148,163,184,0.38)",
+      closeBg: "rgba(51,65,85,0.82)",
+      closeHoverBg: "rgba(71,85,105,0.92)",
+      closeHoverBorder: "rgba(203,213,225,0.48)",
+      closeShadow: "0 1px 2px rgba(0,0,0,0.28)",
       shadow: "0 24px 70px rgba(0,0,0,0.62)",
     };
   }
@@ -43,6 +44,7 @@ function getDialogPalette(mode: "light" | "dark") {
     closeBg: "#ffffff",
     closeHoverBg: "#f1f5f9",
     closeHoverBorder: "rgba(71,85,105,0.45)",
+    closeShadow: "none",
     shadow: "0 18px 50px rgba(15,23,42,0.18)",
   };
 }
@@ -127,6 +129,7 @@ export default function TagsDialog({ open, onClose, title, children }: TagsDialo
           className="tags-dialog-close-button"
           onClick={onClose}
           variant="outlined"
+          disableElevation
           sx={{
             borderRadius: 2,
             textTransform: "none",
@@ -134,9 +137,12 @@ export default function TagsDialog({ open, onClose, title, children }: TagsDialo
             color: palette.closeText,
             borderColor: palette.closeBorder,
             backgroundColor: palette.closeBg,
+            boxShadow: palette.closeShadow,
+            fontWeight: 600,
             "&:hover": {
               backgroundColor: palette.closeHoverBg,
               borderColor: palette.closeHoverBorder,
+              boxShadow: palette.closeShadow,
             },
           }}
         >
