@@ -1,6 +1,7 @@
 // src/components/tags/TagsDialog.tsx
-import React from "react";
+import React, { useMemo } from "react";
 import { Dialog, DialogTitle, DialogContent, DialogActions, Button } from "@mui/material";
+import { useTheme as useAppTheme } from "@/context/ThemeContext";
 import "./tag-dark-overrides.css";
 
 type TagsDialogProps = {
@@ -10,7 +11,46 @@ type TagsDialogProps = {
   children: React.ReactNode;
 };
 
+function getDialogPalette(mode: "light" | "dark") {
+  if (mode === "dark") {
+    return {
+      paperBg: "#0f172a",
+      contentBg: "#0f172a",
+      actionsBg: "rgba(15,23,42,0.98)",
+      text: "#e5e7eb",
+      border: "rgba(148,163,184,0.24)",
+      divider: "rgba(148,163,184,0.18)",
+      backdrop: "rgba(2,6,23,0.42)",
+      closeText: "#e5e7eb",
+      closeBorder: "rgba(148,163,184,0.34)",
+      closeBg: "rgba(15,23,42,0.78)",
+      closeHoverBg: "rgba(30,41,59,0.90)",
+      closeHoverBorder: "rgba(148,163,184,0.48)",
+      shadow: "0 24px 70px rgba(0,0,0,0.62)",
+    };
+  }
+
+  return {
+    paperBg: "#ffffff",
+    contentBg: "#ffffff",
+    actionsBg: "#f8fafc",
+    text: "#111827",
+    border: "rgba(203,213,225,0.95)",
+    divider: "rgba(226,232,240,0.95)",
+    backdrop: "rgba(15,23,42,0.12)",
+    closeText: "#334155",
+    closeBorder: "rgba(100,116,139,0.42)",
+    closeBg: "#ffffff",
+    closeHoverBg: "#f1f5f9",
+    closeHoverBorder: "rgba(71,85,105,0.45)",
+    shadow: "0 18px 50px rgba(15,23,42,0.18)",
+  };
+}
+
 export default function TagsDialog({ open, onClose, title, children }: TagsDialogProps) {
+  const { theme } = useAppTheme();
+  const palette = useMemo(() => getDialogPalette(theme), [theme]);
+
   return (
     <Dialog
       sx={{
@@ -18,13 +58,11 @@ export default function TagsDialog({ open, onClose, title, children }: TagsDialo
           overflow: "visible",
           borderRadius: 4,
           border: "1px solid",
-          borderColor: (theme) => theme.palette.mode === "dark" ? "rgba(148,163,184,0.24)" : "rgba(203,213,225,0.95)",
+          borderColor: palette.border,
           backgroundImage: "none",
-          backgroundColor: (theme) => theme.palette.mode === "dark" ? "#0f172a" : "#ffffff",
-          color: (theme) => theme.palette.mode === "dark" ? "#e5e7eb" : "#111827",
-          boxShadow: (theme) => theme.palette.mode === "dark"
-            ? "0 24px 70px rgba(0,0,0,0.62)"
-            : "0 18px 50px rgba(15,23,42,0.18)",
+          backgroundColor: palette.paperBg,
+          color: palette.text,
+          boxShadow: palette.shadow,
         },
         "& .MuiDialogTitle-root": {
           borderTopLeftRadius: 16,
@@ -39,13 +77,14 @@ export default function TagsDialog({ open, onClose, title, children }: TagsDialo
         "& .MuiDialogContent-root": {
           borderBottomLeftRadius: 0,
           borderBottomRightRadius: 0,
-          borderColor: (theme) => theme.palette.mode === "dark" ? "rgba(148,163,184,0.18)" : "rgba(226,232,240,0.95)",
-          backgroundColor: (theme) => theme.palette.mode === "dark" ? "#0f172a" : "#ffffff",
+          borderColor: palette.divider,
+          backgroundColor: palette.contentBg,
+          color: palette.text,
         },
         "& .MuiDialogActions-root": {
           borderTop: "1px solid",
-          borderColor: (theme) => theme.palette.mode === "dark" ? "rgba(148,163,184,0.18)" : "rgba(226,232,240,0.95)",
-          backgroundColor: (theme) => theme.palette.mode === "dark" ? "rgba(15,23,42,0.98)" : "#f8fafc",
+          borderColor: palette.divider,
+          backgroundColor: palette.actionsBg,
           px: 2,
           py: 1.5,
         },
@@ -53,7 +92,7 @@ export default function TagsDialog({ open, onClose, title, children }: TagsDialo
       slotProps={{
         backdrop: {
           sx: {
-            backgroundColor: (theme) => theme.palette.mode === "dark" ? "rgba(2,6,23,0.42)" : "rgba(15,23,42,0.12)",
+            backgroundColor: palette.backdrop,
             backdropFilter: "blur(2px)",
           },
         },
@@ -92,12 +131,12 @@ export default function TagsDialog({ open, onClose, title, children }: TagsDialo
             borderRadius: 2,
             textTransform: "none",
             minWidth: 112,
-            color: (theme) => theme.palette.mode === "dark" ? "#e5e7eb" : "#334155",
-            borderColor: (theme) => theme.palette.mode === "dark" ? "rgba(148,163,184,0.34)" : "rgba(100,116,139,0.42)",
-            backgroundColor: (theme) => theme.palette.mode === "dark" ? "rgba(15,23,42,0.78)" : "#ffffff",
+            color: palette.closeText,
+            borderColor: palette.closeBorder,
+            backgroundColor: palette.closeBg,
             "&:hover": {
-              backgroundColor: (theme) => theme.palette.mode === "dark" ? "rgba(30,41,59,0.90)" : "#f1f5f9",
-              borderColor: (theme) => theme.palette.mode === "dark" ? "rgba(148,163,184,0.48)" : "rgba(71,85,105,0.45)",
+              backgroundColor: palette.closeHoverBg,
+              borderColor: palette.closeHoverBorder,
             },
           }}
         >
