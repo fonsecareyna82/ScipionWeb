@@ -57,8 +57,41 @@ function removeAllDarkClasses() {
   });
 }
 
+function stripSystemDarkMediaRules() {
+  if (typeof document === "undefined") return;
+
+  for (const sheet of Array.from(document.styleSheets)) {
+    let rules: CSSRuleList;
+
+    try {
+      rules = sheet.cssRules;
+    } catch {
+      continue;
+    }
+
+    for (let index = rules.length - 1; index >= 0; index -= 1) {
+      const rule = rules[index];
+      const mediaRule = rule as CSSMediaRule;
+      const conditionText = String(mediaRule?.conditionText ?? "").toLowerCase();
+
+      if (
+        conditionText.includes("prefers-color-scheme") &&
+        conditionText.includes("dark")
+      ) {
+        try {
+          sheet.deleteRule(index);
+        } catch {
+          // Ignore stylesheet mutation errors.
+        }
+      }
+    }
+  }
+}
+
 function applyTheme(theme: Theme) {
   if (typeof document === "undefined") return;
+
+  stripSystemDarkMediaRules();
 
   const isDark = theme === "dark";
 
@@ -121,6 +154,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({
     observer.observe(document.documentElement, {
       attributes: true,
       attributeFilter: ["class"],
+      childList: true,
     });
 
     const observeRoot = document.getElementById("root") ?? document.body;
