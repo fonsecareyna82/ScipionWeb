@@ -29,7 +29,9 @@ function isProjectListRequest(input: RequestInfo | URL, init?: RequestInit): boo
 
   try {
     const url = new URL(getRequestUrl(input), window.location.origin);
-    return url.pathname.replace(/\/+$/, "") === "/projects";
+    const normalizedPath = url.pathname.replace(/\/+$/, "");
+
+    return normalizedPath === "/projects" || normalizedPath.endsWith("/projects");
   } catch {
     return false;
   }
