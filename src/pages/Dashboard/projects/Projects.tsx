@@ -751,9 +751,15 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
     <>
       <PageMeta title={`Scipion | ${activeProjectTitle}`} description="Projects page" />
 
-      <div className="flex min-h-0 flex-col gap-4">
+      <div className="flex min-h-0 flex-col gap-2">
         {renderWorkspaceTabs()}
-        {activeWorkspaceId === projectsWorkspaceTab.id ? renderProjectsListWorkspace() : <ProjectPage key={activeWorkspaceId} />}
+        {activeWorkspaceId === projectsWorkspaceTab.id ? (
+          renderProjectsListWorkspace()
+        ) : (
+          <div className="project-workspace-panel min-h-0">
+            <ProjectPage key={activeWorkspaceId} />
+          </div>
+        )}
       </div>
 
       <NewProjectModal
