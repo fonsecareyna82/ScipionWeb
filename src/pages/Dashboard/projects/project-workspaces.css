@@ -1,6 +1,11 @@
 /* Workspace tabs reserve vertical space above ProjectPage. */
 .project-workspace-panel .projectpage-widget-root {
-  --ppHostOffset: 54px;
+  --ppHostOffset: 44px;
+}
+
+.project-workspace-panel .projectpage-widget-root .h-app {
+  height: calc(90vh - var(--ppHostOffset, 0px));
+  min-height: calc(90vh - var(--ppHostOffset, 0px));
 }
 
 .projectpage-widget-root .pp-hidden,
