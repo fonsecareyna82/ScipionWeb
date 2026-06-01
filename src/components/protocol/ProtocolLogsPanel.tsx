@@ -1,7 +1,7 @@
 import { LogChannel } from "@/hooks/useProtocolLogs";
 import { Box, Tab, Tabs, Typography } from "@mui/material";
 import type { RefObject } from "react";
-import { JSX } from "react";
+import { JSX, useEffect, useRef, useState } from "react";
 
 type ProtocolLogsPanelProps = {
   sortedLogChannels: LogChannel[];
@@ -12,6 +12,31 @@ type ProtocolLogsPanelProps = {
   logsContainerRef: RefObject<HTMLDivElement | null>;
   updateStickToBottom: () => void;
 };
+
+function useAncestorDarkMode<T extends HTMLElement>() {
+  const rootRef = useRef<T | null>(null);
+  const [isDark, setIsDark] = useState(false);
+
+  useEffect(() => {
+    const updateDarkMode = () => {
+      setIsDark(Boolean(rootRef.current?.closest(".dark")));
+    };
+
+    updateDarkMode();
+
+    const observer = new MutationObserver(updateDarkMode);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      childList: true,
+      subtree: true,
+      attributeFilter: ["class"],
+    });
+
+    return () => observer.disconnect();
+  }, []);
+
+  return { rootRef, isDark };
+}
 
 function parseAnsi(line: string): JSX.Element[] {
   const regex = /\x1b\[(\d+)m/g;
@@ -33,16 +58,16 @@ function parseAnsi(line: string): JSX.Element[] {
     const code = Number.parseInt(match[1], 10);
     switch (code) {
       case 31:
-        currentColor = "red";
+        currentColor = "#f87171";
         break;
       case 32:
-        currentColor = "green";
+        currentColor = "#4ade80";
         break;
       case 33:
-        currentColor = "orange";
+        currentColor = "#fbbf24";
         break;
       case 35:
-        currentColor = "magenta";
+        currentColor = "#e879f9";
         break;
       case 0:
         currentColor = null;
@@ -75,8 +100,18 @@ export default function ProtocolLogsPanel({
   logsContainerRef,
   updateStickToBottom,
 }: ProtocolLogsPanelProps) {
+  const { rootRef, isDark } = useAncestorDarkMode<HTMLDivElement>();
+
+  const panelBg = isDark ? "rgba(2, 6, 23, 0.72)" : "#f5f5f5";
+  const panelText = isDark ? "#e5e7eb" : "#111827";
+  const panelBorder = isDark ? "rgba(148, 163, 184, 0.26)" : "#e5e7eb";
+  const panelShadow = isDark
+    ? "inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 12px 28px rgba(0, 0, 0, 0.18)"
+    : "none";
+
   return (
     <Box
+      ref={rootRef}
       sx={{
         flex: 1,
         minHeight: 0,
@@ -131,10 +166,12 @@ export default function ProtocolLogsPanel({
             flex: 1,
             minHeight: 0,
             minWidth: 0,
-            backgroundColor: "#f5f5f5",
-            color: "black",
+            backgroundColor: panelBg,
+            color: panelText,
             borderRadius: 2,
-            border: "1px solid #e5e7eb",
+            border: "1px solid",
+            borderColor: panelBorder,
+            boxShadow: panelShadow,
             p: 1.5,
             fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
             fontSize: 12,
@@ -142,11 +179,14 @@ export default function ProtocolLogsPanel({
             overflowY: "auto",
             overflowX: "auto",
             whiteSpace: "pre",
+            scrollbarColor: isDark
+              ? "rgba(148, 163, 184, 0.45) rgba(15, 23, 42, 0.55)"
+              : undefined,
           }}
         >
           {activeLogText && activeLogText.length > 0 ? (
             activeLogText.split("\n").map((line, idx) => {
-              const lineNoColor = activeLogChannelId === "stderr" ? "red" : "blue";
+              const lineNoColor = activeLogChannelId === "stderr" ? "#f87171" : "#60a5fa";
 
               return (
                 <div key={idx} style={{ display: "flex", minWidth: 0 }}>
@@ -165,7 +205,7 @@ export default function ProtocolLogsPanel({
               );
             })
           ) : (
-            <Typography variant="body2" sx={{ opacity: 0.7 }}>
+            <Typography variant="body2" sx={{ opacity: 0.7, color: isDark ? "#94a3b8" : "#6b7280" }}>
               No logs yet.
             </Typography>
           )}

@@ -2,10 +2,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import type { SystemUpdateCheck } from "@/services/ProjectService";
 
 import { useProjectService } from "@/ProjectServiceContext";
 import {
+  AlertTriangle,
+  BellRing,
   BookOpen,
+  CheckCircle2,
+  Copy,
   FolderKanban,
   RefreshCw,
   Pin,
@@ -17,7 +22,7 @@ import {
   Folder,
   LucideSettings2,
   Sparkles,
-  Clock3,
+  X,
 } from "lucide-react";
 import { TreeIcon } from "@/icons";
 import PageMeta from "@/components/common/PageMeta";
@@ -35,6 +40,7 @@ type IconTone = "indigo" | "violet" | "emerald" | "amber" | "sky" | "rose";
 
 const PIN_STORAGE_KEY = "scipion.home.pins.v1";
 const LAST_OPEN_STORAGE_KEY = "scipion.home.lastOpenedProjectId.v1";
+const DISMISSED_UPDATE_STORAGE_KEY = "scipion.home.dismissedUpdateVersion.v1";
 const RELEASE_NOTES_ROUTE = "/release-notes";
 
 function normalizeProjects(raw: any): ProjectRow[] {
@@ -109,6 +115,58 @@ function writeLastOpenedProjectId(id: string): void {
   } catch {
     // ignore
   }
+}
+
+function readDismissedUpdateVersion(): string | null {
+  // readDismissedUpdateVersion
+  try {
+    const raw = localStorage.getItem(DISMISSED_UPDATE_STORAGE_KEY);
+    const value = String(raw ?? "").trim();
+    return value || null;
+  } catch {
+    return null;
+  }
+}
+
+function writeDismissedUpdateVersion(version: string): void {
+  // writeDismissedUpdateVersion
+  try {
+    localStorage.setItem(DISMISSED_UPDATE_STORAGE_KEY, String(version));
+  } catch {
+    // ignore
+  }
+}
+
+function normalizeVersionText(value: unknown): string | null {
+  // normalizeVersionText
+  const text = String(value ?? "").trim();
+  if (!text || text === "unknown" || text === "null" || text === "undefined") return null;
+  return text;
+}
+
+function displayVersion(value?: string | null): string {
+  // displayVersion
+  return normalizeVersionText(value) ?? "—";
+}
+
+
+async function copyTextToClipboard(text: string): Promise<void> {
+  // copyTextToClipboard
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "true");
+  textarea.style.position = "fixed";
+  textarea.style.left = "-9999px";
+  textarea.style.top = "0";
+  document.body.appendChild(textarea);
+  textarea.select();
+  document.execCommand("copy");
+  document.body.removeChild(textarea);
 }
 
 function formatDateTime(raw?: string): string {
@@ -284,24 +342,6 @@ function HeroAction(props: {
   );
 }
 
-function MetricPill(props: { label: string; value: ReactNode; icon?: ReactNode }) {
-  // MetricPill
-  return (
-    <div
-      className={classNames(
-        "rounded-2xl border px-4 py-3",
-        "border-gray-300/70 bg-white/80",
-        "dark:border-gray-700 dark:bg-slate-900/80",
-      )}
-    >
-      <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-gray-500 dark:text-gray-400">
-        {props.icon ? <span className="text-gray-500 dark:text-gray-400">{props.icon}</span> : null}
-        <span>{props.label}</span>
-      </div>
-      <div className="mt-1 text-sm font-semibold text-gray-950 dark:text-white">{props.value}</div>
-    </div>
-  );
-}
 
 function ResourceLink(props: {
   title: string;
@@ -365,6 +405,12 @@ export default function Home() {
   const [pinnedIds, setPinnedIds] = useState<string[]>(() => readPinnedIds());
   const [filter, setFilter] = useState("");
 
+  const [updateStatus, setUpdateStatus] = useState<SystemUpdateCheck | null>(null);
+  const [updateLoading, setUpdateLoading] = useState(false);
+  const [updateError, setUpdateError] = useState<string | null>(null);
+  const [dismissedUpdateVersion, setDismissedUpdateVersion] = useState<string | null>(() => readDismissedUpdateVersion());
+  const [copiedUpdateCommand, setCopiedUpdateCommand] = useState(false);
+
   useEffect(() => {
     // persistPinnedIds
     writePinnedIds(pinnedIds);
@@ -394,10 +440,37 @@ export default function Home() {
     }
   }, [svc]);
 
+  const loadUpdateStatus = useCallback(async () => {
+    // loadUpdateStatus
+    setUpdateLoading(true);
+    setUpdateError(null);
+
+    try {
+      const status = await svc.fetchSystemUpdateCheck();
+      setUpdateStatus(status);
+
+      if (status.checkOk === false && status.error) {
+        setUpdateError(status.error);
+      }
+    } catch (e: any) {
+      const msg = typeof e?.message === "string" && e.message.trim()
+        ? e.message
+        : "Failed to check for updates";
+      setUpdateError(msg);
+    } finally {
+      setUpdateLoading(false);
+    }
+  }, [svc]);
+
   useEffect(() => {
     // initialLoad
     void loadProjects();
   }, [loadProjects]);
+
+  useEffect(() => {
+    // initialUpdateCheck
+    void loadUpdateStatus();
+  }, [loadUpdateStatus]);
 
   const togglePin = useCallback((projectId: string) => {
     // togglePin
@@ -417,6 +490,28 @@ export default function Home() {
     },
     [navigate],
   );
+
+  const copyUpdateCommand = useCallback(async () => {
+    // copyUpdateCommand
+    const command = updateStatus?.updateCommand;
+    if (!command) return;
+
+    try {
+      await copyTextToClipboard(command);
+      setCopiedUpdateCommand(true);
+      window.setTimeout(() => setCopiedUpdateCommand(false), 2200);
+    } catch {
+      setCopiedUpdateCommand(false);
+    }
+  }, [updateStatus?.updateCommand]);
+
+  const dismissUpdateNotice = useCallback(() => {
+    // dismissUpdateNotice
+    const version = normalizeVersionText(updateStatus?.latestVersion);
+    if (!version) return;
+    writeDismissedUpdateVersion(version);
+    setDismissedUpdateVersion(version);
+  }, [updateStatus?.latestVersion]);
 
   const normalizedFilter = filter.trim().toLowerCase();
 
@@ -446,13 +541,6 @@ export default function Home() {
     return filteredProjects.filter((p) => !set.has(String(p.id))).slice(0, 10);
   }, [filteredProjects, pinnedIds]);
 
-  const stats = useMemo(() => {
-    // stats
-    const total = projects.length;
-    const pinned = pinnedIds.length;
-    const lastUpdated = projects.length > 0 ? formatDateTime(projects[0].updatedAt ?? projects[0].createdAt) : "—";
-    return { total, pinned, lastUpdated };
-  }, [projects, pinnedIds.length]);
 
   const lastOpenedId = useMemo(() => readLastOpenedProjectId(), []);
   const lastProjectId = useMemo(() => {
@@ -461,6 +549,14 @@ export default function Home() {
     if (exists) return String(lastOpenedId);
     return projects[0]?.id;
   }, [lastOpenedId, projects]);
+
+  const installedVersion = displayVersion(updateStatus?.currentVersion ?? updateStatus?.apiVersion);
+  const latestVersion = displayVersion(updateStatus?.latestVersion);
+  const showUpdateNotice = Boolean(
+    updateStatus?.updateAvailable &&
+    normalizeVersionText(updateStatus.latestVersion) &&
+    dismissedUpdateVersion !== normalizeVersionText(updateStatus.latestVersion),
+  );
 
   return (
     <>
@@ -481,7 +577,7 @@ export default function Home() {
                 >
                   <div className="inline-flex items-center gap-2 rounded-[10px] border border-indigo-200/80 bg-white/80 px-3 py-1 text-xs font-semibold tracking-[0.02em] text-black-700 dark:border-indigo-800 dark:bg-slate-900/80 dark:text-indigo-200">
                     <Sparkles className="h-3.5 w-3.5" />
-                    Scipion v4.0.0 — Flavius
+                    Scipion {installedVersion} — Flavius
                   </div>
 
                   <h1 className="mt-4 text-2xl font-bold tracking-[-0.02em] text-gray-950 dark:text-white md:text-[2.2rem]">
@@ -492,6 +588,52 @@ export default function Home() {
                     Start from where you left off, jump into your projects, and keep the most important workspace
                     actions close at hand without overloading the page.
                   </p>
+
+                  {showUpdateNotice ? (
+                    <div className="mt-5 rounded-[10px] border border-amber-300/80 bg-amber-50/90 px-4 py-3 text-sm leading-6 text-amber-900 shadow-sm dark:border-amber-700/70 dark:bg-amber-950/25 dark:text-amber-100">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="flex min-w-0 gap-3">
+                          <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-800 ring-1 ring-amber-300/70 dark:bg-amber-950/45 dark:text-amber-200 dark:ring-amber-700/80">
+                            <BellRing className="h-4 w-4" />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="font-semibold text-amber-950 dark:text-amber-50">
+                              New Scipion version available: {latestVersion}
+                            </div>
+                            <div className="mt-1 text-amber-800 dark:text-amber-100/90">
+                              Installed version: {installedVersion}. Copy the update command and run it on the server when convenient.
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">
+                          {updateStatus?.updateCommand ? (
+                            <button
+                              type="button"
+                              onClick={() => void copyUpdateCommand()}
+                              className={classNames(
+                                "inline-flex items-center gap-2 rounded-[10px] border px-3 py-2 text-xs font-semibold transition",
+                                "border-amber-300 bg-white/90 text-amber-950 hover:bg-white",
+                                "dark:border-amber-700 dark:bg-slate-950/70 dark:text-amber-100 dark:hover:bg-slate-900",
+                              )}
+                            >
+                              {copiedUpdateCommand ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                              {copiedUpdateCommand ? "Copied" : "Copy command"}
+                            </button>
+                          ) : null}
+
+                          <button
+                            type="button"
+                            onClick={dismissUpdateNotice}
+                            className="inline-flex items-center justify-center rounded-[10px] p-2 text-amber-800 transition hover:bg-amber-100 dark:text-amber-200 dark:hover:bg-amber-950/45"
+                            title="Dismiss this update notice"
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
 
                   <div className="mt-5 flex flex-wrap items-center gap-3">
                     <button
@@ -565,8 +707,22 @@ export default function Home() {
                       "dark:border-gray-700 dark:bg-slate-950/40",
                     )}
                   >
-                    <SectionLabel>Workspace</SectionLabel>
-
+                    <div className="flex items-center justify-between gap-3">
+                      <SectionLabel>Workspace</SectionLabel>
+                      <button
+                        type="button"
+                        onClick={() => void loadUpdateStatus()}
+                        className={classNames(
+                          "inline-flex items-center gap-1.5 rounded-[10px] border px-2.5 py-1.5 text-xs font-semibold transition",
+                          "border-gray-300/80 bg-white text-gray-800 hover:bg-gray-50",
+                          "dark:border-gray-700 dark:bg-slate-900 dark:text-gray-200 dark:hover:bg-slate-800/80",
+                          updateLoading ? "pointer-events-none opacity-70" : "",
+                        )}
+                      >
+                        <RefreshCw className={classNames("h-3.5 w-3.5", updateLoading ? "animate-spin" : "")} />
+                        Check
+                      </button>
+                    </div>
 
                     <div className="mt-4 border-t border-gray-200/90 pt-4 dark:border-gray-800">
                       <div className="space-y-2.5">
@@ -578,12 +734,53 @@ export default function Home() {
                         </div>
 
                         <div className="flex items-center justify-between gap-3 text-sm">
+                          <span className="text-gray-700 dark:text-gray-300">Installed version</span>
+                          <span className="font-semibold text-gray-950 dark:text-white">{installedVersion}</span>
+                        </div>
+
+                        <div className="flex items-center justify-between gap-3 text-sm">
+                          <span className="text-gray-700 dark:text-gray-300">Latest version</span>
+                          <span className="font-semibold text-gray-950 dark:text-white">
+                            {updateLoading ? "Checking…" : latestVersion}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center justify-between gap-3 text-sm">
+                          <span className="text-gray-700 dark:text-gray-300">Update status</span>
+                          <span
+                            className={classNames(
+                              "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold",
+                              updateStatus?.updateAvailable
+                                ? "bg-amber-100 text-amber-800 dark:bg-amber-950/35 dark:text-amber-200"
+                                : updateError
+                                  ? "bg-red-100 text-red-700 dark:bg-red-950/35 dark:text-red-200"
+                                  : "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/35 dark:text-emerald-200",
+                            )}
+                          >
+                            {updateStatus?.updateAvailable ? (
+                              <BellRing className="h-3.5 w-3.5" />
+                            ) : updateError ? (
+                              <AlertTriangle className="h-3.5 w-3.5" />
+                            ) : (
+                              <CheckCircle2 className="h-3.5 w-3.5" />
+                            )}
+                            {updateStatus?.updateAvailable ? "Available" : updateError ? "Unavailable" : "Up to date"}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center justify-between gap-3 text-sm">
                           <span className="text-gray-700 dark:text-gray-300">Projects loaded</span>
                           <span className="font-semibold text-gray-950 dark:text-white">
                             {projectsLoading ? "Loading…" : String(projects.length)}
                           </span>
                         </div>
                       </div>
+
+                      {updateError ? (
+                        <div className="mt-3 rounded-2xl border border-amber-200/80 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/25 dark:text-amber-100">
+                          Update check unavailable: {updateError}
+                        </div>
+                      ) : null}
 
                       {projectsError ? (
                         <div className="mt-3 rounded-2xl border border-red-200/80 bg-red-50 px-4 py-3 text-sm leading-6 text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200">

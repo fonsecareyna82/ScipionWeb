@@ -723,16 +723,21 @@ export default function ProtocolNodeCard({
     protocolLabel.length > 0 &&
     normalizeDisplayText(protocolLabel) !== normalizeDisplayText(headerDisplayName);
 
-  const bgColor = statusColors[data.status ?? "finished"] ?? statusColors.root;
+  const normalizedStatus = String(data.status ?? "finished").trim().toLowerCase();
+  const bgColor = statusColors[normalizedStatus] ?? statusColors.root;
   data.color = bgColor;
 
   const nodeStyle: CSSProperties = {
     backgroundColor: bgColor,
   };
 
+  const statusClassName =
+    styles[`status-${normalizedStatus}`] ?? styles["status-finished"];
+
   const classNames = [
     styles.card,
     styles.crispText,
+    statusClassName,
     isHovered ? styles.hovered : "",
     isSelected ? styles.selected : "",
     inPathSelection ? styles.inPathSelection : "",

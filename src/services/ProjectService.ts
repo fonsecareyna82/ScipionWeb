@@ -8,6 +8,30 @@ export type AuthenticatedRequestOptions = {
   cache?: RequestCache;
 };
 
+export type SystemVersionInfo = {
+  apiVersion?: string | null;
+  webVersion?: string | null;
+  currentVersion?: string | null;
+  lastUpdateVersion?: string | null;
+  lastUpdateAt?: string | null;
+  updateBaseUrl?: string | null;
+  serveWeb?: boolean;
+  webDistPath?: string | null;
+};
+
+export type SystemUpdateCheck = SystemVersionInfo & {
+  checkOk: boolean;
+  error?: string | null;
+  manifestUrl?: string | null;
+  latestVersion?: string | null;
+  updateAvailable: boolean;
+  apiArchive?: string | null;
+  webArchive?: string | null;
+  apiArchiveUrl?: string | null;
+  webArchiveUrl?: string | null;
+  updateCommand?: string | null;
+};
+
 export type ProjectThumbnailOutputItem = {
   outputName?: string | null;
   outputClassName?: string | null;
@@ -1181,6 +1205,14 @@ export interface ProjectService<
     url: string,
     opts?: AuthenticatedRequestOptions,
   ): Promise<string>;
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // System version and updates
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  fetchSystemVersion(): Promise<SystemVersionInfo>;
+
+  fetchSystemUpdateCheck(): Promise<SystemUpdateCheck>;
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Project thumbnails

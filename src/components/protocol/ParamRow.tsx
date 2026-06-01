@@ -224,6 +224,7 @@ function renderHelpText(helpText: string): JSX.Element {
         mt: 2,
         whiteSpace: "normal",
         wordBreak: "break-word",
+        color: "text.primary",
       }}
     >
       {lines.map((line, i) => (
@@ -263,6 +264,11 @@ const ParamRow = ({
     p: 0.5,
     width: 32,
     height: 32,
+    color: "text.secondary",
+    "&:hover": {
+      color: "text.primary",
+      backgroundColor: "action.hover",
+    },
   };
 
   const actionsSlotSx = {
@@ -319,8 +325,8 @@ const ParamRow = ({
             p: isInline ? 0 : 0.5,
             pr: isInline ? 0.75 : 2,
             fontSize: "0.75rem",
-            fontWeight: 300,
-            color: "black",
+            fontWeight: 400,
+            color: "text.primary",
             whiteSpace: isFullWidth ? "normal" : "nowrap",
             overflow: isFullWidth ? "visible" : "hidden",
             textOverflow: isFullWidth ? "clip" : "ellipsis",
@@ -388,7 +394,7 @@ const ParamRow = ({
                   size="small"
                   sx={{
                     ...actionIconButtonSx,
-                    color: hasWizardAction ? undefined : "text.secondary",
+                    color: hasWizardAction ? "text.secondary" : "text.disabled",
                     opacity: hasWizardAction ? 1 : 0.78,
                     cursor: hasWizardAction ? "pointer" : "default",
                   }}
@@ -429,6 +435,8 @@ const ParamRow = ({
               border: "1px solid",
               borderColor: "divider",
               boxShadow: "0 18px 50px rgba(0,0,0,0.35)",
+              backgroundColor: "background.paper",
+              color: "text.primary",
             },
           }}
         >
@@ -481,7 +489,7 @@ const ParamRow = ({
           </DialogTitle>
 
           {/* body */}
-          <DialogContent sx={{ px: 2, py: 1.5 }}>
+          <DialogContent sx={{ px: 2, py: 1.5, backgroundColor: "background.paper" }}>
             <Box sx={{ maxHeight: "60vh", overflow: "auto", pr: 0.5 }}>
               {renderHelpText(helpText)}
             </Box>
@@ -511,12 +519,12 @@ const ParamRow = ({
 
       <Dialog open={openSelector} onClose={() => setOpenSelector(false)} maxWidth="sm" fullWidth>
         <DialogTitle className={styles.formHeader}>Select output</DialogTitle>
-        <DialogContent sx={{ p: 2 }}>
+        <DialogContent sx={{ p: 2, backgroundColor: "background.paper", color: "text.primary" }}>
           <Typography variant="body2" sx={{ lineHeight: 1.6 }}>
             No selector implemented here. Use onOpenFind/onBrowsePath from the parent.
           </Typography>
         </DialogContent>
-        <DialogActions sx={{ justifyContent: "center" }}>
+        <DialogActions sx={{ justifyContent: "center", backgroundColor: "background.paper" }}>
           <Button variant="outlined" onClick={() => setOpenSelector(false)} startIcon={<CloseIcon />}>
             Close
           </Button>
