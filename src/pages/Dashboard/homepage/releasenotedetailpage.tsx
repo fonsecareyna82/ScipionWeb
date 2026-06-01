@@ -134,23 +134,27 @@ export const releaseEntries: ReleaseEntry[] = [
     items: [
       {
         kind: "note",
-        text: "This entry defines the initial baseline for ScipionWeb release notes and the first public versioning structure for the web interface.",
+        text: "ScipionWeb v4.0.0 marks the first official release of a new web-based experience for Scipion, designed to make scientific image-processing workflows more accessible, interactive, and easier to manage from the browser.",
       },
       {
         kind: "added",
-        text: "Added a dedicated release notes area with index and detail pages for tracking web updates.",
+        text: "Introduced a modern project workspace that brings together project navigation, protocol execution, workflow visualization, and result inspection in a single web interface.",
       },
       {
         kind: "added",
-        text: "Added a cleaner Home integration so release notes are accessible directly from the main workspace.",
+        text: "Added the first generation of integrated data viewers, enabling users to inspect key Scipion outputs directly from the web environment without leaving the application.",
+      },
+      {
+        kind: "added",
+        text: "Added support for web-based project management, including a cleaner project overview, protocol interaction, execution monitoring, and access to generated outputs.",
       },
       {
         kind: "improved",
-        text: "Improved the visual structure of update communication with a simpler and more documentation-oriented layout.",
+        text: "Improved the overall user experience with a more consistent interface, clearer navigation, responsive layouts, and a product-oriented visual structure suitable for daily scientific work.",
       },
       {
         kind: "changed",
-        text: "Established the first release-note baseline for ScipionWeb as part of the broader Scipion v4 ecosystem.",
+        text: "Established ScipionWeb as the foundation for the next stage of Scipion, opening the path toward a more connected, extensible, and browser-driven workflow platform.",
       },
     ],
   },
