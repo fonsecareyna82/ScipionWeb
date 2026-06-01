@@ -283,7 +283,7 @@ function buildSubtreeAlignedPlacements(params: {
     return levelDelta !== 0 ? levelDelta : stableIdCompare(a, b);
   });
 
-  const gap = direction === "TB" ? Math.round(spacingX * 0.42) : Math.round(spacingY * 0.78);
+  const gap = direction === "TB" ? Math.round(spacingX * 0.45) : Math.round(spacingY * 0.78);
   const spanMemo = new Map<string, number>();
 
   const computeSpan = (id: string, stack = new Set<string>()): number => {
@@ -365,7 +365,7 @@ function buildSubtreeAlignedPlacements(params: {
     levelIds[level].push(id);
   }
 
-  const overlapGap = direction === "TB" ? 48 : 36;
+  const overlapGap = direction === "TB" ? 96 : 48;
 
   const getResolvedCrossSize = (id: string): number => {
     const size = getNodeCrossSize({
@@ -377,8 +377,8 @@ function buildSubtreeAlignedPlacements(params: {
     });
 
     return direction === "TB"
-      ? Math.max(520, Math.min(760, size))
-      : Math.max(260, Math.min(520, size));
+      ? Math.max(780, Math.min(1040, size))
+      : Math.max(280, Math.min(560, size));
   };
 
   for (const ids of Object.values(levelIds)) {
