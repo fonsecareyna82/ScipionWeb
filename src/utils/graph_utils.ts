@@ -365,7 +365,7 @@ function buildSubtreeAlignedPlacements(params: {
     levelIds[level].push(id);
   }
 
-  const overlapGap = direction === "TB" ? 200 : 48;
+  const overlapGap = direction === "TB" ? 250 : 48;
 
   const getResolvedCrossSize = (id: string): number => {
     const size = getNodeCrossSize({
