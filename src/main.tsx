@@ -12,7 +12,10 @@ import App from "./App";
 import { AppWrapper } from "./components/common/PageMeta";
 import { ThemeProvider } from "./context/ThemeContext";
 import { ProcessingProvider } from "@/hooks/useProcessingPlugins";
+import { installProjectListRequestGuard } from "@/utils/project-list-request-guard";
 import "./r3f-jsx";
+
+installProjectListRequestGuard();
 
 const queryClient = new QueryClient({
   defaultOptions: {
