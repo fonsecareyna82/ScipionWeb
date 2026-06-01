@@ -141,6 +141,30 @@ function getNodeCrossSize(params: {
     : getNodeHeight(id, label, nodeSizeMap);
 }
 
+function getNodePackingCrossSize(params: {
+  id: string;
+  direction: Direction;
+  protocols: Record<string, ProtocolNode>;
+  projectName: string;
+  nodeSizeMap?: NodeSizeMap | null;
+}): number {
+  const { id, direction, protocols, projectName, nodeSizeMap } = params;
+  const label = getGraphNodeLabel(id, protocols, projectName);
+  const measuredSize =
+    direction === "TB" ? nodeSizeMap?.[id]?.width : nodeSizeMap?.[id]?.height;
+
+  if (typeof measuredSize === "number" && measuredSize > 0) {
+    return Math.ceil(measuredSize);
+  }
+
+  const estimatedSize =
+    direction === "TB" ? estimateLabelWidth(label) : estimateNodeHeight(label);
+
+  return direction === "TB"
+    ? Math.max(320, Math.min(520, Math.round(estimatedSize * 0.52)))
+    : Math.max(240, Math.min(420, Math.round(estimatedSize * 0.75)));
+}
+
 function getChildRankUnderParent(
   protocols: Record<string, ProtocolNode>,
   parentId: string,
@@ -259,14 +283,14 @@ function buildSubtreeAlignedPlacements(params: {
     return levelDelta !== 0 ? levelDelta : stableIdCompare(a, b);
   });
 
-  const gap = direction === "TB" ? Math.round(spacingX * 0.78) : spacingY;
+  const gap = direction === "TB" ? Math.round(spacingX * 0.42) : Math.round(spacingY * 0.78);
   const spanMemo = new Map<string, number>();
 
   const computeSpan = (id: string, stack = new Set<string>()): number => {
     const cached = spanMemo.get(id);
     if (typeof cached === "number") return cached;
 
-    const nodeCrossSize = getNodeCrossSize({
+    const nodeCrossSize = getNodePackingCrossSize({
       id,
       direction,
       protocols,
