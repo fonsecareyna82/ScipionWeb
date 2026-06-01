@@ -125,7 +125,7 @@ export const releaseEntries: ReleaseEntry[] = [
   {
     version: "v4.0.0",
     title: "ScipionWeb v4.0.0",
-    date: "2026-03-01",
+    date: "2026-06-01",
     major: "v4",
     series: "v4.0",
     badges: ["major", "beta"],
