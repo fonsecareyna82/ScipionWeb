@@ -12,6 +12,7 @@ import ShareProjectModal from "@/components/projects/ShareProjectModal";
 import toast from "react-hot-toast";
 import ImportProjectDialog from "@/components/projects/ImportProjectDialog";
 import ProjectPage from "./ProjectPage";
+import "./project-workspaces.css";
 
 /** Tweak this if your header/breadcrumb/top paddings differ */
 const GRID_VPORT_OFFSET_PX = 250;
