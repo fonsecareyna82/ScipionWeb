@@ -259,7 +259,7 @@ function buildSubtreeAlignedPlacements(params: {
     return levelDelta !== 0 ? levelDelta : stableIdCompare(a, b);
   });
 
-  const gap = direction === "TB" ? spacingX : spacingY;
+  const gap = direction === "TB" ? Math.round(spacingX * 0.78) : spacingY;
   const spanMemo = new Map<string, number>();
 
   const computeSpan = (id: string, stack = new Set<string>()): number => {
