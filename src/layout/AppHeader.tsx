@@ -57,7 +57,7 @@ const AppHeader: React.FC = () => {
     // Sticky header above the scrollable <main>. Keep z lower than mobile Sidebar/Backdrop.
     <header className={headerClassName}>
       {/* Compact height line to keep more vertical room for project workspaces. */}
-      <div className="flex min-h-11 items-center px-2 md:min-h-12 lg:px-3">
+      <div className="flex min-h-11 items-center px-2 md:min-h-13 lg:px-3">
         {/* Left: burger + logo (on mobile) */}
         <div className="flex items-center gap-1.5 sm:gap-2">
           <button

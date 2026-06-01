@@ -4567,7 +4567,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
         </Box>
 
         <Box sx={{ flex: 1, display: "flex", justifyContent: "center", alignItems: "center", gap: 1, flexWrap: "wrap", }}>
-          <FormControl size="small" sx={{ minWidth: 240 }}>
+          <FormControl size="small" sx={{ minWidth: 240, mt: 1 }}>
             <InputLabel id="metadata-table-select-label">Metadata table</InputLabel>
             <Select
               labelId="metadata-table-select-label"
