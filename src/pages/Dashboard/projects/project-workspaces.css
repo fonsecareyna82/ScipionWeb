@@ -2,3 +2,10 @@
 .project-workspace-panel .projectpage-widget-root {
   --ppHostOffset: 54px;
 }
+
+.projectpage-widget-root .pp-hidden,
+.projectpage-widget-root .pp-tableShell.pp-hidden {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
