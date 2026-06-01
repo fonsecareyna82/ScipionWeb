@@ -156,6 +156,7 @@ export default function VolumeViewer({
   const [metaLoading, setMetaLoading] = useState(false);
   const [metaError, setMetaError] = useState<string | null>(null);
   const [meta, setMeta] = useState<any>(null);
+  const [metaVolumeId, setMetaVolumeId] = useState<string | number | null>(null);
 
   const [histogram, setHistogram] = useState<HistogramData | null>(null);
   const [histLoading, setHistLoading] = useState(false);
@@ -383,28 +384,42 @@ export default function VolumeViewer({
   useEffect(() => {
     if (selectedId == null) {
       setMeta(null);
+      setMetaVolumeId(null);
       return;
     }
+
     let cancelled = false;
+
+    setMeta(null);
+    setMetaVolumeId(null);
+
     (async () => {
       try {
         setMetaLoading(true);
         setMetaError(null);
+
         const info = await svc.getVolumeInfo(
           projectId,
           protocolId,
           outputName,
           selectedId,
         );
+
         if (cancelled) return;
+
         setMeta(info || null);
+        setMetaVolumeId(selectedId);
       } catch (e: any) {
-        if (!cancelled)
+        if (!cancelled) {
           setMetaError(e?.message || "Failed to fetch volume info");
+          setMeta(null);
+          setMetaVolumeId(null);
+        }
       } finally {
         if (!cancelled) setMetaLoading(false);
       }
     })();
+
     return () => {
       cancelled = true;
     };
@@ -475,6 +490,15 @@ export default function VolumeViewer({
   const readySlices = selectedId != null && !!meta && dims[axis] > 0;
   const readyTripleSlices =
     selectedId != null && !!meta && dims.x > 0 && dims.y > 0 && dims.z > 0;
+
+  const canShowExternalViewers = Boolean(
+    selectedId != null &&
+    meta != null &&
+    !metaLoading &&
+    !metaError &&
+    String(metaVolumeId) === String(selectedId) &&
+    readyTripleSlices,
+  );
 
   useEffect(() => {
     if (viewMode === "slices" && (readySlices || readyTripleSlices)) {
@@ -1158,14 +1182,15 @@ export default function VolumeViewer({
                 minWidth: 0,
               }}
             >
-              <ExternalViewersBar
-                projectId={projectId}
-                protocolId={protocolId}
-                outputName={outputName}
-                objectId={selectedId}
-                objectKind="volume"
-                disabled={selectedId == null}
-              />
+              {canShowExternalViewers && (
+                <ExternalViewersBar
+                  projectId={projectId}
+                  protocolId={protocolId}
+                  outputName={outputName}
+                  objectId={selectedId}
+                  objectKind="volume"
+                />
+              )}
 
               {viewMode === "map3d" && (
                 <Tooltip title={autoRotate3d ? "Pause rotation" : "Play rotation"}>
