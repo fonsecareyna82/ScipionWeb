@@ -42,24 +42,24 @@ const AppHeader: React.FC = () => {
   ].join(" ");
 
   const sidebarButtonClassName = [
-    "inline-flex items-center justify-center w-9 h-9 lg:w-10 lg:h-10 rounded-md border transition-colors",
+    "inline-flex items-center justify-center h-8 w-8 rounded-md border transition-colors lg:h-9 lg:w-9",
     isDark
       ? "border-gray-800 text-gray-300 hover:bg-gray-800"
       : "border-gray-200 text-gray-600 hover:bg-gray-100 hover:text-gray-700",
   ].join(" ");
 
   const appMenuButtonClassName = [
-    "lg:hidden inline-flex items-center justify-center w-9 h-9 rounded-md transition-colors",
+    "lg:hidden inline-flex items-center justify-center h-8 w-8 rounded-md transition-colors",
     isDark ? "text-gray-300 hover:bg-gray-800" : "text-gray-700 hover:bg-gray-100",
   ].join(" ");
 
   return (
     // Sticky header above the scrollable <main>. Keep z lower than mobile Sidebar/Backdrop.
     <header className={headerClassName}>
-      {/* Fixed height line to avoid layout shifts; inner content uses min-h to match */}
-      <div className="flex items-center min-h-14 md:min-h-16 px-2 lg:px-3">
+      {/* Compact height line to keep more vertical room for project workspaces. */}
+      <div className="flex min-h-11 items-center px-2 md:min-h-12 lg:px-3">
         {/* Left: burger + logo (on mobile) */}
-        <div className="flex items-center gap-2 sm:gap-3">
+        <div className="flex items-center gap-1.5 sm:gap-2">
           <button
             type="button"
             onClick={handleToggle}
@@ -68,7 +68,7 @@ const AppHeader: React.FC = () => {
           >
             {isMobileOpen ? (
               // Close icon
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
                 <path
                   fillRule="evenodd"
                   clipRule="evenodd"
@@ -78,7 +78,7 @@ const AppHeader: React.FC = () => {
               </svg>
             ) : (
               // Burger icon
-              <svg width="18" height="18" viewBox="0 0 16 12" fill="none">
+              <svg width="16" height="16" viewBox="0 0 16 12" fill="none">
                 <path
                   fillRule="evenodd"
                   clipRule="evenodd"
@@ -92,7 +92,7 @@ const AppHeader: React.FC = () => {
           {/* Logo only on mobile */}
           <Link to="/" className="lg:hidden" aria-label="Home">
             <img
-              className="max-h-6"
+              className="max-h-5"
               src={isDark ? "./images/logo/logo-dark.svg" : "./images/logo/logo.svg"}
               alt="Logo"
             />
@@ -105,7 +105,7 @@ const AppHeader: React.FC = () => {
             aria-label="Open application menu"
             className={appMenuButtonClassName}
           >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
               <path
                 fillRule="evenodd"
                 clipRule="evenodd"
@@ -119,7 +119,7 @@ const AppHeader: React.FC = () => {
         {/* Right side actions */}
         <div
           className={[
-            "ml-auto flex items-center gap-3 md:gap-4",
+            "ml-auto flex items-center gap-2 md:gap-3",
             // On mobile this row can collapse/toggle
             isApplicationMenuOpen ? "flex" : "hidden",
             "lg:flex",
