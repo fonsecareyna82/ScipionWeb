@@ -1,0 +1,4 @@
+/* Workspace tabs reserve vertical space above ProjectPage. */
+.project-workspace-panel .projectpage-widget-root {
+  --ppHostOffset: 54px;
+}
