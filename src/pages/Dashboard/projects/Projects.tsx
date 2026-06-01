@@ -144,6 +144,25 @@ function storeWorkspaceTabs(tabs: WorkspaceTab[]): void {
   }
 }
 
+function findProjectForWorkspaceName(
+  projects: ProjectCardProject[],
+  projectName: string,
+): ProjectCardProject | undefined {
+  return projects.find((p) => String(p.id) === projectName || String(p.name) === projectName);
+}
+
+function updateWorkspaceTitlesFromProjects(
+  tabs: WorkspaceTab[],
+  projects: ProjectCardProject[],
+): WorkspaceTab[] {
+  return tabs.map((tab) => {
+    if (tab.type !== "project") return tab;
+
+    const project = findProjectForWorkspaceName(projects, tab.projectName);
+    return project ? { ...tab, title: project.name } : tab;
+  });
+}
+
 interface ProjectsPageProps {
   service?: ProjectService;
   fetchList?: () => Promise<Project[]>;
@@ -180,12 +199,14 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
 
   const [workspaceTabs, setWorkspaceTabs] = useState<WorkspaceTab[]>(readStoredWorkspaceTabs);
   const activeWorkspaceId = routeProjectName ? getProjectWorkspaceId(routeProjectName) : projectsWorkspaceTab.id;
+  const isProjectsWorkspaceActive = activeWorkspaceId === projectsWorkspaceTab.id;
 
   const [projects, setProjects] = useState<ProjectCardProject[]>([]);
   const [search, setSearch] = useState<string>("");
   const [selectedLabel, setSelectedLabel] = useState<string | null>(null);
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const hasLoadedProjectsRef = useRef(false);
   const [expandedLabel, setExpandedLabel] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -215,7 +236,10 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
         else if (raw && Array.isArray((raw as any).results)) list = (raw as any).results;
         else if (raw && typeof raw === "object") list = Object.values(raw);
 
-        setProjects(list.map(normalizeProject));
+        const normalizedProjects = list.map(normalizeProject);
+        hasLoadedProjectsRef.current = true;
+        setProjects(normalizedProjects);
+        setWorkspaceTabs((prev) => updateWorkspaceTitlesFromProjects(prev, normalizedProjects));
       } catch (err: any) {
         console.error("[Projects] failed to load projects:", err);
 
@@ -230,55 +254,6 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
       }
     },
     [fetchList, svc],
-  );
-
-  const resolveImportBrowserPaths = useCallback(async () => {
-    const api = svc as any;
-
-    if (typeof api.resolveImportBrowserPaths === "function") {
-      return api.resolveImportBrowserPaths();
-    }
-
-    throw new Error("Missing ProjectService.resolveImportBrowserPaths()");
-  }, [svc]);
-
-  const listImportRemoteDirectory = useCallback(
-    async (relPath: string) => {
-      const api = svc as any;
-
-      if (typeof api.listImportRemoteDirectory === "function") {
-        return api.listImportRemoteDirectory(relPath);
-      }
-
-      throw new Error("Missing ProjectService.listImportRemoteDirectory()");
-    },
-    [svc],
-  );
-
-  const previewImportRemoteEntry = useCallback(
-    async (relPath: string) => {
-      const api = svc as any;
-
-      if (typeof api.previewImportRemoteEntry === "function") {
-        return api.previewImportRemoteEntry(relPath);
-      }
-
-      return null;
-    },
-    [svc],
-  );
-
-  const buildImportDownloadUrl = useCallback(
-    (relPath: string, inline?: boolean) => {
-      const api = svc as any;
-
-      if (typeof api.buildImportDownloadUrl === "function") {
-        return api.buildImportDownloadUrl(relPath, !!inline);
-      }
-
-      return "";
-    },
-    [svc],
   );
 
   const handleImportProject = useCallback(
@@ -306,10 +281,17 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
   );
 
   useEffect(() => {
-    void loadProjects();
-  }, [loadProjects]);
+    if (!isProjectsWorkspaceActive) {
+      setLoading(false);
+      return;
+    }
+
+    void loadProjects({ silent: hasLoadedProjectsRef.current });
+  }, [isProjectsWorkspaceActive, loadProjects]);
 
   useEffect(() => {
+    if (!isProjectsWorkspaceActive) return;
+
     const refreshSilently = () => {
       if (document.visibilityState === "visible") {
         void loadProjects({ silent: true });
@@ -326,7 +308,7 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
       window.removeEventListener("focus", refreshSilently);
       document.removeEventListener("visibilitychange", refreshSilently);
     };
-  }, [loadProjects]);
+  }, [isProjectsWorkspaceActive, loadProjects]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -342,13 +324,14 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
   useEffect(() => {
     if (!routeProjectName) return;
 
-    const project = projects.find((p) => String(p.id) === routeProjectName || String(p.name) === routeProjectName);
-    const title = project?.name ?? routeProjectName;
+    const project = findProjectForWorkspaceName(projects, routeProjectName);
 
     setWorkspaceTabs((prev) => {
       const tabId = getProjectWorkspaceId(routeProjectName);
-      const exists = prev.some((tab) => tab.id === tabId);
-      if (exists) {
+      const existingTab = prev.find((tab) => tab.id === tabId);
+      const title = project?.name ?? (existingTab?.type === "project" ? existingTab.title : routeProjectName);
+
+      if (existingTab) {
         return prev.map((tab) => (tab.id === tabId && tab.type === "project" ? { ...tab, title } : tab));
       }
 
@@ -398,12 +381,13 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
     (tab: WorkspaceTab) => {
       if (tab.type === "projects") {
         navigate("/projects");
+        void loadProjects();
         return;
       }
 
       navigate(getProjectWorkspacePath(tab.projectName));
     },
-    [navigate],
+    [loadProjects, navigate],
   );
 
   const closeWorkspaceTab = useCallback(
@@ -776,7 +760,7 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
         resolveBrowserPaths={() => svc.resolveBrowserPaths(-1, -1)}
         listRemoteDirectory={(p) => svc.listRemoteDirectory(-1, -1, p)}
         previewRemoteEntry={(p) => svc.previewRemoteEntry(-1, -1, p)}
-        buildDownloadUrl={(p, inline) => svc.buildProtocolDownloadUrl('-1', '-1', p, !!inline)}
+        buildDownloadUrl={(p, inline) => svc.buildProtocolDownloadUrl("-1", "-1", p, !!inline)}
       />
 
       <ShareProjectModal
