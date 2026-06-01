@@ -358,6 +358,84 @@ function buildSubtreeAlignedPlacements(params: {
     cursor += rootSpan + gap;
   }
 
+  const levelIds: Record<number, string[]> = {};
+  for (const id of nodeIds) {
+    const level = levelMap[id] ?? 0;
+    if (!levelIds[level]) levelIds[level] = [];
+    levelIds[level].push(id);
+  }
+
+  const overlapGap = direction === "TB" ? 48 : 36;
+
+  const getResolvedCrossSize = (id: string): number => {
+    const size = getNodeCrossSize({
+      id,
+      direction,
+      protocols,
+      projectName,
+      nodeSizeMap,
+    });
+
+    return direction === "TB"
+      ? Math.max(520, Math.min(760, size))
+      : Math.max(260, Math.min(520, size));
+  };
+
+  for (const ids of Object.values(levelIds)) {
+    const sorted = ids
+      .filter((id) => Boolean(placements[id]))
+      .sort((a, b) => {
+        const pa = placements[a];
+        const pb = placements[b];
+        const coordA = direction === "TB" ? pa.x : pa.y;
+        const coordB = direction === "TB" ? pb.x : pb.y;
+        return coordA !== coordB ? coordA - coordB : stableIdCompare(a, b);
+      });
+
+    if (sorted.length < 2) continue;
+
+    const originalBounds = sorted.map((id) => {
+      const coord = direction === "TB" ? placements[id].x : placements[id].y;
+      const size = getResolvedCrossSize(id);
+      return { id, center: coord, size, left: coord - size / 2, right: coord + size / 2 };
+    });
+
+    const originalCenter =
+      (Math.min(...originalBounds.map((item) => item.left)) +
+        Math.max(...originalBounds.map((item) => item.right))) /
+      2;
+
+    const resolvedCenters: Record<string, number> = {};
+    let previousRight = Number.NEGATIVE_INFINITY;
+
+    for (const item of originalBounds) {
+      const minCenter = previousRight + overlapGap + item.size / 2;
+      const center = Math.max(item.center, minCenter);
+      resolvedCenters[item.id] = center;
+      previousRight = center + item.size / 2;
+    }
+
+    const resolvedBounds = originalBounds.map((item) => {
+      const center = resolvedCenters[item.id];
+      return { left: center - item.size / 2, right: center + item.size / 2 };
+    });
+
+    const resolvedCenter =
+      (Math.min(...resolvedBounds.map((item) => item.left)) +
+        Math.max(...resolvedBounds.map((item) => item.right))) /
+      2;
+
+    const recenterOffset = originalCenter - resolvedCenter;
+
+    for (const id of sorted) {
+      const resolvedCenterForId = resolvedCenters[id] + recenterOffset;
+      placements[id] =
+        direction === "TB"
+          ? { ...placements[id], x: resolvedCenterForId }
+          : { ...placements[id], y: resolvedCenterForId };
+    }
+  }
+
   return placements;
 }
 
