@@ -5214,27 +5214,31 @@ export default function ProjectPage() {
             className="sm:max-w-lg p-0 overflow-hidden border border-border bg-background shadow-xl rounded-xl"
           >
             <div
-              className="border-b border-red-900/20"
+              className="border-b border-border"
               style={{
-                backgroundColor: "#3b2328",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                backgroundColor: "#333d49",
                 color: "white",
-                padding: "16px 20px",
+                padding: "14px 56px 14px 16px",
                 boxSizing: "border-box",
               }}
             >
-              <DialogHeader>
-                <div className="flex items-start gap-3">
-                  <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-red-500/15 ring-1 ring-red-300/20">
-                    <Trash2 className="h-5 w-5 text-red-200" />
+              <DialogHeader className="min-w-0 flex-1">
+                <div className="flex min-w-0 items-start gap-3">
+                  <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg  bg-white/10 ring-1 ring-white/15">
+                    <Trash2 className="h-5 w-5 text-red-300" />
                   </div>
 
-                  <div className="min-w-0 mt-2">
+                  <div className="min-w-0">
                     <DialogTitle className="text-base font-semibold leading-6 text-white">
                       Delete protocol{dlgDelete.ids.length > 1 ? "s" : ""}?
                     </DialogTitle>
 
-                    <DialogDescription className="mt-2 text-sm text-white/75">
-                      This action cannot be undone. Outputs that are not used elsewhere will also be removed.
+                    <DialogDescription className="mt-1 max-w-[420px] text-sm leading-5 text-gray-200">
+                      This action cannot be undone. The selected protocol
+                      {dlgDelete.ids.length > 1 ? "s" : ""} will be removed from the workflow.
                     </DialogDescription>
                   </div>
                 </div>
@@ -5242,8 +5246,9 @@ export default function ProjectPage() {
             </div>
 
             <div className="px-5 py-5">
-              <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-100">
-                <div className="font-semibold">
+              <div className="rounded-xl border border-border bg-muted/30 px-4 py-3 text-sm">
+                <div className="flex items-center gap-2 font-semibold text-foreground">
+                  <span className="h-2 w-2 rounded-full bg-red-500" />
                   {dlgDelete.ids.length > 1
                     ? `${dlgDelete.ids.length} protocols selected`
                     : "Protocol selected"}
@@ -5256,13 +5261,13 @@ export default function ProjectPage() {
                       .map((id) => (
                         <div
                           key={id}
-                          className="flex min-w-0 items-center gap-2 rounded-md bg-white/70 px-3 py-2 ring-1 ring-red-200 dark:bg-red-900/25 dark:ring-red-800"
+                          className="flex min-w-0 items-center gap-2 rounded-lg bg-background px-3 py-2 ring-1 ring-border"
                         >
-                          <span className="shrink-0 rounded-full bg-white px-2 py-1 font-mono text-xs text-red-900 shadow-sm ring-1 ring-red-200 dark:bg-red-900/50 dark:text-red-100 dark:ring-red-800">
+                          <span className="shrink-0 rounded-full bg-muted px-2 py-1 font-mono text-xs font-semibold text-muted-foreground ring-1 ring-border">
                             {id}
                           </span>
 
-                          <span className="min-w-0 truncate">
+                          <span className="min-w-0 truncate text-foreground">
                             {findNodeLabel(id)}
                           </span>
                         </div>
@@ -5271,12 +5276,13 @@ export default function ProjectPage() {
                 </div>
               </div>
 
-              <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-300">
-                The selected protocol nodes will be removed from the workflow. This may also remove generated files that are no longer referenced by other protocols.
+              <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm leading-5 text-red-800 dark:border-red-900/40 dark:bg-red-950/20 dark:text-red-100">
+                Outputs that are not used elsewhere may also be removed. Make sure this is the protocol
+                {dlgDelete.ids.length > 1 ? " selection" : ""} you want to delete.
               </div>
             </div>
 
-            <DialogFooter className="border-t border-border bg-slate-50 px-5 py-4 dark:bg-slate-900/35">
+            <DialogFooter className="border-t border-border bg-background px-5 py-4">
               <button
                 type="button"
                 onClick={(e) => {
@@ -5297,14 +5303,14 @@ export default function ProjectPage() {
               <button
                 type="button"
                 onClick={async (e) => {
-                  // preventDefaultAndStopPropagation
                   e.preventDefault();
                   e.stopPropagation();
 
                   if (!projectName || deleteBusy) return;
 
-                  const ids = Array.from(new Set((dlgDelete.ids ?? []).map(String)))
-                    .filter((x) => x && x !== "PROJECT");
+                  const ids = Array.from(new Set((dlgDelete.ids ?? []).map(String))).filter(
+                    (x) => x && x !== "PROJECT",
+                  );
 
                   if (ids.length === 0) {
                     setDlgDelete({ open: false, ids: [] });
