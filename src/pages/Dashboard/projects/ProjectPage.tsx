@@ -5261,7 +5261,7 @@ export default function ProjectPage() {
                       .map((id) => (
                         <div
                           key={id}
-                          className="flex min-w-0 items-center gap-2 rounded-lg bg-background px-3 py-2 ring-1 ring-border"
+                          className="flex min-w-0 items-center gap-2 rounded-lg bg-background px-3 py-2"
                         >
                           <span className="shrink-0 rounded-full bg-muted px-2 py-1 font-mono text-xs font-semibold text-muted-foreground ring-1 ring-border">
                             {id}
