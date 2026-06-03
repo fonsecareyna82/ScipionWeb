@@ -74,6 +74,11 @@ export type InstallPluginOptions = {
   skipBinaries?: boolean;
 };
 
+export type InstallPluginsBatchOptions = {
+  plugins: string[];
+  skipBinaries?: boolean;
+};
+
 export type DevelPluginManifestItem = {
   pipName: string;
   path: string;
@@ -182,6 +187,22 @@ export async function installPlugin(
     method: "POST",
   });
   if (!response.ok) throw new Error(await readErrorMessage(response, "Error installing plugin"));
+  return response.json();
+}
+
+export async function installPluginsBatch(options: InstallPluginsBatchOptions): Promise<TaskStartResponse> {
+  const response = await fetchWithAuth(`${BASE_URL}/plugins/install-batch`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      plugins: options.plugins,
+      skipBinaries: Boolean(options.skipBinaries),
+    }),
+  });
+
+  if (!response.ok) throw new Error(await readErrorMessage(response, "Error installing selected plugins"));
   return response.json();
 }
 
