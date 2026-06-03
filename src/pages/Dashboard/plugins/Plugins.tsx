@@ -603,23 +603,21 @@ export default function Plugins() {
             ) : (
               <div className="mt-4 grid grid-cols-1 gap-4 2xl:grid-cols-[minmax(0,1fr)_360px]">
                 <div className="min-w-0">
-                  {selectedPlugins.length > 0 ? (
-                    <div className="sticky top-4 z-30 mb-3 rounded-2xl bg-white/90 pb-1 backdrop-blur dark:bg-slate-950/90">
-                      <PluginSelectionBar
-                        selectedCount={selectedPlugins.length}
-                        actionableCount={actionableSelectedPlugins.length}
-                        busy={batchBusy}
-                        optionChecked={batchSkipBinaries}
-                        optionLabel="Skip binaries"
-                        primaryLabel="Install selected"
-                        busyLabel="Submitting selected..."
-                        className="shadow-sm shadow-slate-900/10"
-                        onOptionChange={setBatchSkipBinaries}
-                        onPrimaryAction={installSelectedPlugins}
-                        onClearSelection={() => setSelectedPipNames(new Set())}
-                      />
-                    </div>
-                  ) : null}
+                  <div className="sticky top-4 z-30 mb-3 rounded-2xl bg-white/90 pb-1 backdrop-blur dark:bg-slate-950/90">
+                    <PluginSelectionBar
+                      selectedCount={selectedPlugins.length}
+                      actionableCount={actionableSelectedPlugins.length}
+                      busy={batchBusy}
+                      optionChecked={batchSkipBinaries}
+                      optionLabel="Skip binaries"
+                      primaryLabel="Install selected"
+                      busyLabel="Submitting selected..."
+                      className="shadow-sm shadow-slate-900/10"
+                      onOptionChange={setBatchSkipBinaries}
+                      onPrimaryAction={installSelectedPlugins}
+                      onClearSelection={() => setSelectedPipNames(new Set())}
+                    />
+                  </div>
 
                   <div className="min-w-0 overflow-x-auto rounded-2xl">
                     <PluginListTable
@@ -627,7 +625,7 @@ export default function Plugins() {
                       selectedPipNames={selectedPipNames}
                       processingByPipName={processingByPipName}
                       activePluginPipName={activeListPluginPipName}
-                      maxHeightClassName={selectedPlugins.length > 0 ? "max-h-[calc(100vh-430px)]" : "max-h-[calc(100vh-350px)]"}
+                      maxHeightClassName="max-h-[calc(100vh-430px)]"
                       onTogglePlugin={togglePluginSelection}
                       onToggleAllVisible={toggleAllVisiblePlugins}
                       onSelectPlugin={(plugin) => setActiveListPluginPipName(plugin.pipName)}
