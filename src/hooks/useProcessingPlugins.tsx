@@ -3,7 +3,7 @@ import React, { createContext, useContext, useEffect, useMemo, useRef, useState 
 import { getTaskStatus, type TaskStatusResponse } from "@/api/plugins";
 import { useQueryClient } from "@tanstack/react-query";
 
-export type PluginTaskOperation = "install" | "uninstall";
+export type PluginTaskOperation = "install" | "install-devel" | "uninstall";
 
 export type PluginTask = {
   taskId: string;
@@ -66,6 +66,10 @@ function isTerminalStatus(status: string) {
   return status === "SUCCESS" || status === "FAILURE";
 }
 
+function isInstallOperation(operation: PluginTaskOperation) {
+  return operation === "install" || operation === "install-devel";
+}
+
 export function ProcessingProvider({ children }: { children: React.ReactNode }) {
   const [installing, setInstalling] = useState<Set<string>>(new Set());
   const [removing, setRemoving] = useState<Set<string>>(new Set());
@@ -100,7 +104,7 @@ export function ProcessingProvider({ children }: { children: React.ReactNode }) 
 
         for (const t of loadedTasks) {
           if (isTerminalStatus(t.status)) continue;
-          if (t.operation === "install") inst.add(t.pipName);
+          if (isInstallOperation(t.operation)) inst.add(t.pipName);
           if (t.operation === "uninstall") rem.add(t.pipName);
         }
 
@@ -180,7 +184,7 @@ export function ProcessingProvider({ children }: { children: React.ReactNode }) 
       deferredByIdRef.current.set(t.taskId, createDeferred());
     }
 
-    if (t.operation === "install") startInstall(t.pipName);
+    if (isInstallOperation(t.operation)) startInstall(t.pipName);
     if (t.operation === "uninstall") startRemove(t.pipName);
   };
 
@@ -265,7 +269,7 @@ export function ProcessingProvider({ children }: { children: React.ReactNode }) 
                   deferredByIdRef.current.delete(next.taskId);
                 }
 
-                if (next.operation === "install") finishInstall(next.pipName);
+                if (isInstallOperation(next.operation)) finishInstall(next.pipName);
                 if (next.operation === "uninstall") finishRemove(next.pipName);
 
                 prevMap.delete(task.taskId);
@@ -283,7 +287,7 @@ export function ProcessingProvider({ children }: { children: React.ReactNode }) 
                 deferredByIdRef.current.delete(task.taskId);
               }
 
-              if (task.operation === "install") finishInstall(task.pipName);
+              if (isInstallOperation(task.operation)) finishInstall(task.pipName);
               if (task.operation === "uninstall") finishRemove(task.pipName);
 
               prevMap.delete(task.taskId);
