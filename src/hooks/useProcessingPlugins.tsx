@@ -3,11 +3,12 @@ import React, { createContext, useContext, useEffect, useMemo, useRef, useState 
 import { getTaskStatus, type TaskStatusResponse } from "@/api/plugins";
 import { useQueryClient } from "@tanstack/react-query";
 
-export type PluginTaskOperation = "install" | "install-devel" | "uninstall";
+export type PluginTaskOperation = "install" | "install-batch" | "install-devel" | "uninstall";
 
 export type PluginTask = {
   taskId: string;
   pipName: string;
+  pipNames?: string[];
   pluginName?: string;
   operation: PluginTaskOperation;
   status: string;
@@ -30,6 +31,7 @@ type ProcessingContextType = {
   registerTask: (task: {
     taskId: string;
     pipName: string;
+    pipNames?: string[];
     pluginName?: string;
     operation: PluginTaskOperation;
     initialStatus?: string;
@@ -67,7 +69,14 @@ function isTerminalStatus(status: string) {
 }
 
 function isInstallOperation(operation: PluginTaskOperation) {
-  return operation === "install" || operation === "install-devel";
+  return operation === "install" || operation === "install-batch" || operation === "install-devel";
+}
+
+function getTaskPipNames(task: Pick<PluginTask, "pipName" | "pipNames">): string[] {
+  if (Array.isArray(task.pipNames) && task.pipNames.length > 0) {
+    return task.pipNames;
+  }
+  return task.pipName ? [task.pipName] : [];
 }
 
 export function ProcessingProvider({ children }: { children: React.ReactNode }) {
@@ -104,7 +113,9 @@ export function ProcessingProvider({ children }: { children: React.ReactNode }) 
 
         for (const t of loadedTasks) {
           if (isTerminalStatus(t.status)) continue;
-          if (isInstallOperation(t.operation)) inst.add(t.pipName);
+          if (isInstallOperation(t.operation)) {
+            getTaskPipNames(t).forEach((pipName) => inst.add(pipName));
+          }
           if (t.operation === "uninstall") rem.add(t.pipName);
         }
 
@@ -161,6 +172,7 @@ export function ProcessingProvider({ children }: { children: React.ReactNode }) 
   const registerTask: ProcessingContextType["registerTask"] = (t) => {
     const now = Date.now();
     const initialStatus = t.initialStatus ?? "PENDING";
+    const pipNames = Array.isArray(t.pipNames) && t.pipNames.length > 0 ? t.pipNames : [t.pipName];
 
     setTasks((prev) => {
       if (prev.some((x) => x.taskId === t.taskId)) return prev;
@@ -168,6 +180,7 @@ export function ProcessingProvider({ children }: { children: React.ReactNode }) 
         {
           taskId: t.taskId,
           pipName: t.pipName,
+          pipNames,
           pluginName: t.pluginName,
           operation: t.operation,
           status: initialStatus,
@@ -184,7 +197,7 @@ export function ProcessingProvider({ children }: { children: React.ReactNode }) 
       deferredByIdRef.current.set(t.taskId, createDeferred());
     }
 
-    if (isInstallOperation(t.operation)) startInstall(t.pipName);
+    if (isInstallOperation(t.operation)) pipNames.forEach(startInstall);
     if (t.operation === "uninstall") startRemove(t.pipName);
   };
 
@@ -269,7 +282,9 @@ export function ProcessingProvider({ children }: { children: React.ReactNode }) 
                   deferredByIdRef.current.delete(next.taskId);
                 }
 
-                if (isInstallOperation(next.operation)) finishInstall(next.pipName);
+                if (isInstallOperation(next.operation)) {
+                  getTaskPipNames(next).forEach(finishInstall);
+                }
                 if (next.operation === "uninstall") finishRemove(next.pipName);
 
                 prevMap.delete(task.taskId);
@@ -287,7 +302,9 @@ export function ProcessingProvider({ children }: { children: React.ReactNode }) 
                 deferredByIdRef.current.delete(task.taskId);
               }
 
-              if (isInstallOperation(task.operation)) finishInstall(task.pipName);
+              if (isInstallOperation(task.operation)) {
+                getTaskPipNames(task).forEach(finishInstall);
+              }
               if (task.operation === "uninstall") finishRemove(task.pipName);
 
               prevMap.delete(task.taskId);
