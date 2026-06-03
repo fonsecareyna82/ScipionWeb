@@ -202,7 +202,6 @@ export default function InstallDevelPluginDialog({
                   )}
                 >
                   <FolderOpen className="h-4 w-4" />
-                  Browse
                 </button>
 
                 <button

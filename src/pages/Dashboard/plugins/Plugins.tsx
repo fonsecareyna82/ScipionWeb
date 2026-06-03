@@ -108,10 +108,10 @@ function readCategoryMetaFromRaw(raw: unknown): Array<Omit<PluginCategoryTab, "c
       const obj = item as Record<string, unknown>;
       const id = normalizeCategoryId(
         obj.id ??
-          obj.categoryId ??
-          obj.key ??
-          obj.value ??
-          obj.name,
+        obj.categoryId ??
+        obj.key ??
+        obj.value ??
+        obj.name,
       );
 
       if (!id) return null;
@@ -258,14 +258,14 @@ function TabButton(props: {
         "focus:outline-none focus:ring-2 focus:ring-indigo-500/25 dark:focus:ring-indigo-400/25",
         props.active
           ? [
-              "border-indigo-500/70 bg-indigo-600 text-white shadow-md shadow-indigo-500/20",
-              "ring-1 ring-indigo-500/30",
-              "dark:border-indigo-400/70 dark:bg-indigo-500 dark:text-white dark:shadow-indigo-500/20",
-            ].join(" ")
+            "border-indigo-500/70 bg-indigo-600 text-white shadow-md shadow-indigo-500/20",
+            "ring-1 ring-indigo-500/30",
+            "dark:border-indigo-400/70 dark:bg-indigo-500 dark:text-white dark:shadow-indigo-500/20",
+          ].join(" ")
           : [
-              "border-transparent text-gray-700 hover:border-gray-200 hover:bg-gray-50/80",
-              "dark:text-gray-200 dark:hover:border-gray-700 dark:hover:bg-gray-800/40",
-            ].join(" "),
+            "border-transparent text-gray-700 hover:border-gray-200 hover:bg-gray-50/80",
+            "dark:text-gray-200 dark:hover:border-gray-700 dark:hover:bg-gray-800/40",
+          ].join(" "),
       )}
     >
       {props.children}
@@ -466,9 +466,9 @@ export default function Plugins() {
                   <SecondaryButton
                     onClick={() => setInstallDevelOpen(true)}
                     title="Install a local Scipion plugin in devel mode"
-                    className="border-[#333d49] bg-[#333d49] text-white shadow-sm shadow-slate-900/10 hover:border-[#2b3440] hover:bg-[#2b3440] hover:text-white hover:shadow-md dark:border-slate-600 dark:bg-[#333d49] dark:text-white dark:hover:border-slate-500 dark:hover:bg-[#2b3440]"
+                    className="!border-[#333d49] !bg-[#333d49] !text-white shadow-sm shadow-slate-900/10 hover:!border-[#2b3440] hover:!bg-[#2b3440] hover:!text-white hover:shadow-md dark:!border-slate-600 dark:!bg-[#333d49] dark:!text-white dark:hover:!border-slate-500 dark:hover:!bg-[#2b3440]"
                   >
-                    <FolderPlus className="h-4 w-4" />
+                    <FolderPlus className="h-4 w-4 text-white" />
                     Install local plugin
                   </SecondaryButton>
                   <StatPill label="Installed" value={installedPlugins.length} />
