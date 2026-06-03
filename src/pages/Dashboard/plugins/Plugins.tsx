@@ -5,7 +5,7 @@ import { useNavigate } from "react-router-dom";
 
 import PageMeta from "../../../components/common/PageMeta";
 import PluginCard from "../../../components/plugin/PluginsCard";
-import { installPluginsBatch, type Plugin } from "@/api/plugins";
+import { installPlugin, type Plugin } from "@/api/plugins";
 import { usePlugins } from "@/hooks/usePlugins";
 import { useProcessingPlugins } from "@/hooks/useProcessingPlugins";
 import InstallDevelPluginDialog from "./InstallDevelPluginDialog";
@@ -325,7 +325,7 @@ export default function Plugins() {
     });
   }
 
-  async function installSelectedPluginsBatch() {
+  async function installSelectedPlugins() {
     if (batchBusy) return;
     const queue = [...actionableSelectedPlugins];
     if (queue.length === 0) return;
@@ -333,24 +333,28 @@ export default function Plugins() {
     setBatchBusy(true);
 
     try {
-      const pipNames = queue.map((plugin) => plugin.pipName);
-      const started = await installPluginsBatch({
-        plugins: pipNames,
-        skipBinaries: batchSkipBinaries,
-      });
+      const results = await Promise.allSettled(
+        queue.map(async (plugin) => {
+          const started = await installPlugin(plugin.pipName, { skipBinaries: batchSkipBinaries });
 
-      registerTask({
-        taskId: started.taskId,
-        pipName: `batch:${pipNames.length}`,
-        pipNames,
-        pluginName: `Install ${pipNames.length} selected plugin${pipNames.length === 1 ? "" : "s"}`,
-        operation: "install-batch",
-        initialStatus: started.status,
-      });
+          registerTask({
+            taskId: started.taskId,
+            pipName: plugin.pipName,
+            pluginName: plugin.name,
+            operation: "install",
+            initialStatus: started.status,
+          });
 
-      setSelectedPipNames(new Set());
-      setActiveTab("tasks");
-      void refetch();
+          return started;
+        }),
+      );
+
+      const hasStartedTasks = results.some((result) => result.status === "fulfilled");
+      if (hasStartedTasks) {
+        setSelectedPipNames(new Set());
+        setActiveTab("tasks");
+        void refetch();
+      }
     } finally {
       setBatchBusy(false);
     }
@@ -607,7 +611,7 @@ export default function Plugins() {
                   primaryLabel="Install selected"
                   busyLabel="Submitting selected..."
                   onOptionChange={setBatchSkipBinaries}
-                  onPrimaryAction={installSelectedPluginsBatch}
+                  onPrimaryAction={installSelectedPlugins}
                   onClearSelection={() => setSelectedPipNames(new Set())}
                 />
 
