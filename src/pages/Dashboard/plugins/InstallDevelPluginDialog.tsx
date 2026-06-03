@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { AlertCircle, CheckCircle2, FolderOpen, FolderPlus, Loader2, RefreshCw } from "lucide-react";
+import { AlertCircle, CheckCircle2, FolderOpen, FolderPlus, Loader2, RefreshCw, TerminalSquare } from "lucide-react";
 
 import {
   fetchDevelPluginBrowserPaths,
@@ -13,10 +13,7 @@ import { useProcessingPlugins } from "@/hooks/useProcessingPlugins";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
-  DialogHeader,
-  DialogTitle,
 } from "@/components/ui/dialog/dialog";
 
 function classNames(...xs: Array<string | false | null | undefined>): string {
@@ -49,7 +46,6 @@ export default function InstallDevelPluginDialog({
 }: InstallDevelPluginDialogProps) {
   const [pluginPath, setPluginPath] = useState("");
   const [skipBinaries, setSkipBinaries] = useState(false);
-  const [force, setForce] = useState(false);
   const [validation, setValidation] = useState<DevelPluginValidation | null>(null);
   const [validating, setValidating] = useState(false);
   const [installing, setInstalling] = useState(false);
@@ -130,7 +126,6 @@ export default function InstallDevelPluginDialog({
       const started = await installDevelPlugin({
         path: currentValidation.path,
         skipBinaries,
-        force,
       });
 
       const pipName = currentValidation.pipName || currentValidation.path;
@@ -155,21 +150,34 @@ export default function InstallDevelPluginDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-gray-950 dark:text-white">
-              <FolderPlus className="h-5 w-5" />
-              Install plugin in devel mode
-            </DialogTitle>
-            <DialogDescription>
-              Install a local Scipion plugin source directory using Scipion editable/devel mode.
-            </DialogDescription>
-          </DialogHeader>
+        <DialogContent className="max-w-2xl overflow-hidden p-0">
+          <div className="relative overflow-hidden border-b border-indigo-400/30 bg-gradient-to-br from-indigo-700 via-sky-700 to-cyan-600 px-6 py-5 text-white">
+            <div className="absolute -right-12 -top-16 h-44 w-44 rounded-full bg-white/10 blur-2xl" />
+            <div className="absolute -bottom-20 left-12 h-44 w-44 rounded-full bg-cyan-300/20 blur-3xl" />
 
-          <div className="space-y-5">
+            <div className="relative flex items-start gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-white/20 bg-white/15 shadow-sm backdrop-blur">
+                <TerminalSquare className="h-6 w-6" />
+              </div>
+
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-lg font-semibold tracking-tight">Install local plugin</h2>
+                  <span className="rounded-full border border-white/20 bg-white/15 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-white/90">
+                    Devel mode
+                  </span>
+                </div>
+                <p className="mt-1 max-w-xl text-sm leading-6 text-white/80">
+                  Select a local Scipion plugin source folder and install it using Scipion editable/development mode.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-5 p-6">
             <div>
               <label className="text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300">
-                Plugin path
+                Plugin source folder
               </label>
               <div className="mt-2 flex flex-col gap-2 sm:flex-row">
                 <input
@@ -217,7 +225,7 @@ export default function InstallDevelPluginDialog({
               </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-3 rounded-2xl border border-gray-300/80 bg-gray-50/80 p-4 dark:border-gray-700 dark:bg-slate-950/60 sm:grid-cols-2">
+            <div className="rounded-2xl border border-gray-300/80 bg-gray-50/80 p-4 dark:border-gray-700 dark:bg-slate-950/60">
               <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-gray-200/80 bg-white p-3 text-sm dark:border-gray-800 dark:bg-slate-900">
                 <input
                   type="checkbox"
@@ -229,23 +237,7 @@ export default function InstallDevelPluginDialog({
                 <span>
                   <span className="block font-semibold text-gray-900 dark:text-white">Skip binaries</span>
                   <span className="mt-1 block text-xs leading-5 text-gray-600 dark:text-gray-400">
-                    Request Python-package-only install when the backend supports it.
-                  </span>
-                </span>
-              </label>
-
-              <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-gray-200/80 bg-white p-3 text-sm dark:border-gray-800 dark:bg-slate-900">
-                <input
-                  type="checkbox"
-                  checked={force}
-                  onChange={(event) => setForce(event.target.checked)}
-                  className="mt-1"
-                  disabled={installing}
-                />
-                <span>
-                  <span className="block font-semibold text-gray-900 dark:text-white">Force reinstall</span>
-                  <span className="mt-1 block text-xs leading-5 text-gray-600 dark:text-gray-400">
-                    Request a reinstall when the backend supports a force argument.
+                    Install only the Python package when binary installation is not needed.
                   </span>
                 </span>
               </label>
@@ -294,7 +286,7 @@ export default function InstallDevelPluginDialog({
             ) : null}
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="border-t border-gray-200 bg-gray-50/80 px-6 py-4 dark:border-gray-800 dark:bg-slate-950/80">
             <button
               type="button"
               onClick={onClose}
