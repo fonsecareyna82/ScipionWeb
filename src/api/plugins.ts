@@ -104,6 +104,21 @@ export type InstallDevelPluginOptions = {
   force?: boolean;
 };
 
+export type DevelPluginBrowserPaths = {
+  rootAbs?: string;
+  startPath?: string;
+  allowedRoots?: string[];
+};
+
+export type DevelPluginBrowserEntry = {
+  name: string;
+  path: string;
+  absPath?: string;
+  isDir: boolean;
+  size?: number;
+  mime?: string;
+};
+
 async function safeJson<T = any>(response: Response): Promise<T> {
   const text = await response.text();
   if (!text) return undefined as unknown as T;
@@ -198,6 +213,26 @@ export async function validateDevelPluginPath(path: string): Promise<DevelPlugin
 export async function fetchDevelPlugins(): Promise<DevelPluginManifestItem[]> {
   const response = await fetchWithAuth(`${BASE_URL}/plugins/devel`);
   if (!response.ok) throw new Error(await readErrorMessage(response, "Error fetching devel plugins"));
+  return response.json();
+}
+
+export async function fetchDevelPluginBrowserPaths(): Promise<DevelPluginBrowserPaths> {
+  const response = await fetchWithAuth(`${BASE_URL}/plugins/devel/browser/paths`);
+  if (!response.ok) throw new Error(await readErrorMessage(response, "Error fetching devel plugin browser paths"));
+  return response.json();
+}
+
+export async function listDevelPluginBrowserDirectory(path = ""): Promise<DevelPluginBrowserEntry[]> {
+  const params = new URLSearchParams();
+  if (path) params.set("path", path);
+
+  const query = params.toString();
+  const url = query
+    ? `${BASE_URL}/plugins/devel/browser/list?${query}`
+    : `${BASE_URL}/plugins/devel/browser/list`;
+
+  const response = await fetchWithAuth(url);
+  if (!response.ok) throw new Error(await readErrorMessage(response, "Error listing devel plugin browser directory"));
   return response.json();
 }
 
