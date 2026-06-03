@@ -151,23 +151,20 @@ export default function InstallDevelPluginDialog({
     <>
       <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
         <DialogContent className="max-w-2xl overflow-hidden p-0">
-          <div className="relative overflow-hidden border-b border-indigo-400/30 bg-gradient-to-br from-indigo-700 via-sky-700 to-cyan-600 px-6 py-5 text-white">
-            <div className="absolute -right-12 -top-16 h-44 w-44 rounded-full bg-white/10 blur-2xl" />
-            <div className="absolute -bottom-20 left-12 h-44 w-44 rounded-full bg-cyan-300/20 blur-3xl" />
-
-            <div className="relative flex items-start gap-4">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-white/20 bg-white/15 shadow-sm backdrop-blur">
+          <div className="border-b border-black/10 bg-[#333d49] px-6 py-5 text-white shadow-sm dark:border-white/10">
+            <div className="flex items-start gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-white/15 bg-white/10 shadow-sm">
                 <TerminalSquare className="h-6 w-6" />
               </div>
 
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <h2 className="text-lg font-semibold tracking-tight">Install local plugin</h2>
-                  <span className="rounded-full border border-white/20 bg-white/15 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-white/90">
+                  <span className="rounded-full border border-white/15 bg-white/10 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-white/90">
                     Devel mode
                   </span>
                 </div>
-                <p className="mt-1 max-w-xl text-sm leading-6 text-white/80">
+                <p className="mt-1 max-w-xl text-sm leading-6 text-white/75">
                   Select a local Scipion plugin source folder and install it using Scipion editable/development mode.
                 </p>
               </div>
