@@ -10,6 +10,7 @@ type PluginSelectionBarProps = {
   optionLabel: string;
   primaryLabel: string;
   busyLabel: string;
+  className?: string;
   onOptionChange: (value: boolean) => void;
   onPrimaryAction: () => void;
   onClearSelection: () => void;
@@ -23,6 +24,7 @@ export default function PluginSelectionBar({
   optionLabel,
   primaryLabel,
   busyLabel,
+  className,
   onOptionChange,
   onPrimaryAction,
   onClearSelection,
@@ -32,7 +34,12 @@ export default function PluginSelectionBar({
   const canRun = actionableCount > 0 && !busy;
 
   return (
-    <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-[#333d49]/20 bg-[#333d49]/5 p-4 dark:border-slate-700 dark:bg-white/[0.03] lg:flex-row lg:items-center lg:justify-between">
+    <div
+      className={classNames(
+        "flex flex-col gap-3 rounded-2xl border border-[#333d49]/20 bg-[#333d49]/5 p-4 dark:border-slate-700 dark:bg-white/[0.03] lg:flex-row lg:items-center lg:justify-between",
+        className,
+      )}
+    >
       <div className="min-w-0">
         <div className="text-sm font-semibold text-gray-900 dark:text-white">
           {selectedCount} selected
