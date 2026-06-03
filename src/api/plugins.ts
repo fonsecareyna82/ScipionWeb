@@ -32,6 +32,11 @@ export interface Plugin {
 
   installed: boolean;
   toUpdate: boolean;
+  installMode?: "standard" | "devel" | string;
+  localPath?: string;
+  devel?: boolean;
+  develInstalledAt?: string;
+  develUpdatedAt?: string;
 
   binaries?: PluginBinaries;
   categories?: any;
@@ -43,6 +48,7 @@ export type PluginTaskBackend = "celery" | "local";
 export type TaskStartResponse = {
   taskId: string;
   status: string;
+  backend?: PluginTaskBackend;
 };
 
 export type TaskStatusResponse = {
@@ -51,6 +57,7 @@ export type TaskStatusResponse = {
   result?: unknown;
   error?: string | null;
   meta?: unknown;
+  backend?: PluginTaskBackend;
 };
 
 export type PluginTaskLogResponse = {
@@ -60,10 +67,41 @@ export type PluginTaskLogResponse = {
   text: string;
   completed: boolean;
   status?: string | null;
+  backend?: PluginTaskBackend;
 };
 
 export type InstallPluginOptions = {
   skipBinaries?: boolean;
+};
+
+export type DevelPluginManifestItem = {
+  pipName: string;
+  path: string;
+  mode: "devel" | string;
+  installedAt?: string;
+  updatedAt?: string;
+  taskId?: string;
+};
+
+export type DevelPluginValidation = {
+  valid: boolean;
+  path: string;
+  exists: boolean;
+  isDirectory: boolean;
+  allowed: boolean;
+  pipName?: string | null;
+  hasPyproject?: boolean;
+  hasSetupPy?: boolean;
+  hasSetupCfg?: boolean;
+  hasInstallMetadata?: boolean;
+  allowedRoots?: string[];
+  message: string;
+};
+
+export type InstallDevelPluginOptions = {
+  path: string;
+  skipBinaries?: boolean;
+  force?: boolean;
 };
 
 async function safeJson<T = any>(response: Response): Promise<T> {
@@ -76,6 +114,23 @@ async function safeJson<T = any>(response: Response): Promise<T> {
   }
 }
 
+async function readErrorMessage(response: Response, fallback: string): Promise<string> {
+  const data = await safeJson<any>(response);
+  const detail = data?.detail ?? data;
+
+  if (typeof detail === "string" && detail.trim()) return detail;
+  if (detail && typeof detail === "object") {
+    const message = detail.message ?? detail.error;
+    if (typeof message === "string" && message.trim()) return message;
+    try {
+      return JSON.stringify(detail);
+    } catch {
+      return fallback;
+    }
+  }
+
+  return fallback;
+}
 
 export async function fetchPlugins(): Promise<Plugin[]> {
   const response = await fetchWithAuth(`${BASE_URL}/plugins/`);
@@ -112,7 +167,7 @@ export async function installPlugin(
   const response = await fetchWithAuth(url, {
     method: "POST",
   });
-  if (!response.ok) throw new Error("Error installing plugin");
+  if (!response.ok) throw new Error(await readErrorMessage(response, "Error installing plugin"));
   return response.json();
 }
 
@@ -120,13 +175,55 @@ export async function uninstallPlugin(pipName: string): Promise<TaskStartRespons
   const response = await fetchWithAuth(`${BASE_URL}/plugins/uninstall/${pipName}`, {
     method: "POST",
   });
-  if (!response.ok) throw new Error("Error uninstalling plugin");
+  if (!response.ok) throw new Error(await readErrorMessage(response, "Error uninstalling plugin"));
+  return response.json();
+}
+
+export async function validateDevelPluginPath(path: string): Promise<DevelPluginValidation> {
+  const response = await fetchWithAuth(`${BASE_URL}/plugins/devel/validate`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ path }),
+  });
+
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, "Error validating devel plugin path"));
+  }
+
+  return response.json();
+}
+
+export async function fetchDevelPlugins(): Promise<DevelPluginManifestItem[]> {
+  const response = await fetchWithAuth(`${BASE_URL}/plugins/devel`);
+  if (!response.ok) throw new Error(await readErrorMessage(response, "Error fetching devel plugins"));
+  return response.json();
+}
+
+export async function installDevelPlugin(options: InstallDevelPluginOptions): Promise<TaskStartResponse> {
+  const response = await fetchWithAuth(`${BASE_URL}/plugins/devel/install`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      path: options.path,
+      skipBinaries: Boolean(options.skipBinaries),
+      force: Boolean(options.force),
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, "Error installing devel plugin"));
+  }
+
   return response.json();
 }
 
 export async function getTaskStatus(taskId: string): Promise<TaskStatusResponse> {
   const response = await fetchWithAuth(`${BASE_URL}/plugins/tasks/${taskId}`);
-  if (!response.ok) throw new Error("Error fetching task status");
+  if (!response.ok) throw new Error(await readErrorMessage(response, "Error fetching task status"));
   return response.json();
 }
 
@@ -138,6 +235,6 @@ export async function fetchPluginTaskLog(
   const response = await fetchWithAuth(
     `${BASE_URL}/plugins/tasks/${encodeURIComponent(taskId)}/log?offset=${offset}&limit=${limit}`,
   );
-  if (!response.ok) throw  new Error("Error fetching task status");
+  if (!response.ok) throw new Error(await readErrorMessage(response, "Error fetching task log"));
   return safeJson<PluginTaskLogResponse>(response);
 }
