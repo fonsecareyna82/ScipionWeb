@@ -1,12 +1,13 @@
 // src/pages/Dashboard/plugins/Plugins.tsx
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { Search, X } from "lucide-react";
+import { FolderPlus, Search, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import PageMeta from "../../../components/common/PageMeta";
 import PluginCard from "../../../components/plugin/PluginsCard";
 import { usePlugins } from "@/hooks/usePlugins";
 import { useProcessingPlugins } from "@/hooks/useProcessingPlugins";
+import InstallDevelPluginDialog from "./InstallDevelPluginDialog";
 
 type TabKey = "installed" | "available" | "tasks";
 
@@ -160,6 +161,13 @@ function getPluginCategoryIds(plugin: PluginWithCategories): string[] {
   return getPluginCategoryMetadata(plugin).map((category) => category.id);
 }
 
+function getTaskOperationLabel(operation: string): string {
+  if (operation === "install-devel") return "Install devel";
+  if (operation === "install") return "Install/Update";
+  if (operation === "uninstall") return "Uninstall";
+  return operation;
+}
+
 function CardShell(props: {
   title: string;
   subtitle?: string;
@@ -282,6 +290,7 @@ export default function Plugins() {
   const [activeTab, setActiveTab] = useState<TabKey>("available");
   const [activeCategoryId, setActiveCategoryId] = useState("all");
   const [search, setSearch] = useState("");
+  const [installDevelOpen, setInstallDevelOpen] = useState(false);
 
   useEffect(() => {
     if (tasksCount === 0) {
@@ -295,6 +304,7 @@ export default function Plugins() {
 
   const installedPlugins = useMemo(() => plugins.filter((p) => p.installed), [plugins]);
   const availablePlugins = useMemo(() => plugins.filter((p) => !p.installed), [plugins]);
+  const develPlugins = useMemo(() => plugins.filter((p) => p.devel || p.installMode === "devel"), [plugins]);
 
   const displayedPlugins = useMemo(() => {
     if (activeTab === "installed") return installedPlugins;
@@ -354,8 +364,9 @@ export default function Plugins() {
 
       const name = (p.name ?? "").toLowerCase();
       const pipName = (p.pipName ?? "").toLowerCase();
+      const localPath = (p.localPath ?? "").toLowerCase();
 
-      return name.includes(term) || pipName.includes(term) || categoryText.includes(term);
+      return name.includes(term) || pipName.includes(term) || localPath.includes(term) || categoryText.includes(term);
     });
   }, [displayedPlugins, search, activeCategoryId]);
 
@@ -387,6 +398,15 @@ export default function Plugins() {
   return (
     <>
       <PageMeta title="Scipion | Plugins" description="Plugins page" />
+
+      <InstallDevelPluginDialog
+        open={installDevelOpen}
+        onClose={() => setInstallDevelOpen(false)}
+        onTaskStarted={() => {
+          setActiveTab("tasks");
+          void refetch();
+        }}
+      />
 
       <CardShell
         title="Plugins"
@@ -443,13 +463,20 @@ export default function Plugins() {
                 </div>
 
                 <div className="flex flex-wrap gap-2">
+                  <SecondaryButton
+                    onClick={() => setInstallDevelOpen(true)}
+                    title="Install a local Scipion plugin in devel mode"
+                    className="border-indigo-300/80 text-indigo-700 hover:border-indigo-400 dark:border-indigo-900/60 dark:text-indigo-300 dark:hover:border-indigo-700"
+                  >
+                    <FolderPlus className="h-4 w-4" />
+                    Install local plugin
+                  </SecondaryButton>
                   <StatPill label="Installed" value={installedPlugins.length} />
                   <StatPill label="Available" value={availablePlugins.length} />
+                  <StatPill label="Devel" value={develPlugins.length} />
                   <StatPill label="Tasks" value={tasksCount} />
                 </div>
               </div>
-
-              
 
               {activeTab !== "tasks" ? (
                 <div className="rounded-xl border border-gray-300/80 bg-white/70 p-1 dark:border-gray-700/80 dark:bg-white/[0.02]">
@@ -502,7 +529,6 @@ export default function Plugins() {
                   </button>
                 ) : null}
               </div>
-
             </div>
 
             {activeTab === "tasks" ? (
@@ -543,7 +569,7 @@ export default function Plugins() {
                       </div>
 
                       <div className="col-span-6 text-sm text-gray-700 dark:text-gray-300 md:col-span-3">
-                        {t.operation === "install" ? "Install/Update" : "Uninstall"}
+                        {getTaskOperationLabel(t.operation)}
                       </div>
 
                       <div className="col-span-6 md:col-span-3">
