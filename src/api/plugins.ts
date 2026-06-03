@@ -101,7 +101,6 @@ export type DevelPluginValidation = {
 export type InstallDevelPluginOptions = {
   path: string;
   skipBinaries?: boolean;
-  force?: boolean;
 };
 
 export type DevelPluginBrowserPaths = {
@@ -245,7 +244,6 @@ export async function installDevelPlugin(options: InstallDevelPluginOptions): Pr
     body: JSON.stringify({
       path: options.path,
       skipBinaries: Boolean(options.skipBinaries),
-      force: Boolean(options.force),
     }),
   });
 
