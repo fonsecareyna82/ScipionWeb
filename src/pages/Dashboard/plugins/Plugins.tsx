@@ -5,7 +5,7 @@ import { useNavigate } from "react-router-dom";
 
 import PageMeta from "../../../components/common/PageMeta";
 import PluginCard from "../../../components/plugin/PluginsCard";
-import { installPlugin, type Plugin } from "@/api/plugins";
+import { installPluginsBatch, type Plugin } from "@/api/plugins";
 import { usePlugins } from "@/hooks/usePlugins";
 import { useProcessingPlugins } from "@/hooks/useProcessingPlugins";
 import InstallDevelPluginDialog from "./InstallDevelPluginDialog";
@@ -134,7 +134,7 @@ function TabButton(props: {
 
 export default function Plugins() {
   const navigate = useNavigate();
-  const { tasks, installing, removing, registerTask, waitForTask } = useProcessingPlugins();
+  const { tasks, installing, removing, registerTask } = useProcessingPlugins();
   const tasksCount = tasks.length;
 
   const {
@@ -255,7 +255,8 @@ export default function Plugins() {
     return tasks.filter((t) => {
       const a = (t.pluginName ?? "").toLowerCase();
       const b = (t.pipName ?? "").toLowerCase();
-      return a.includes(term) || b.includes(term);
+      const c = (t.pipNames ?? []).join(" ").toLowerCase();
+      return a.includes(term) || b.includes(term) || c.includes(term);
     });
   }, [tasks, search]);
 
@@ -324,7 +325,7 @@ export default function Plugins() {
     });
   }
 
-  async function installSelectedPluginsSequentially() {
+  async function installSelectedPluginsBatch() {
     if (batchBusy) return;
     const queue = [...actionableSelectedPlugins];
     if (queue.length === 0) return;
@@ -332,21 +333,20 @@ export default function Plugins() {
     setBatchBusy(true);
 
     try {
-      for (const plugin of queue) {
-        const started = await installPlugin(plugin.pipName, { skipBinaries: batchSkipBinaries });
-        registerTask({
-          taskId: started.taskId,
-          pipName: plugin.pipName,
-          pluginName: plugin.name,
-          operation: "install",
-          initialStatus: started.status,
-        });
+      const pipNames = queue.map((plugin) => plugin.pipName);
+      const started = await installPluginsBatch({
+        plugins: pipNames,
+        skipBinaries: batchSkipBinaries,
+      });
 
-        const result = await waitForTask(started.taskId);
-        if (result.status === "FAILURE") {
-          break;
-        }
-      }
+      registerTask({
+        taskId: started.taskId,
+        pipName: `batch:${pipNames.length}`,
+        pipNames,
+        pluginName: `Install ${pipNames.length} selected plugin${pipNames.length === 1 ? "" : "s"}`,
+        operation: "install-batch",
+        initialStatus: started.status,
+      });
 
       setSelectedPipNames(new Set());
       setActiveTab("tasks");
@@ -533,6 +533,11 @@ export default function Plugins() {
                         <div className="mt-1 truncate text-xs text-gray-500 dark:text-gray-400">
                           {t.pipName}
                         </div>
+                        {t.pipNames && t.pipNames.length > 0 ? (
+                          <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                            {t.pipNames.length} selected plugin{t.pipNames.length === 1 ? "" : "s"}
+                          </div>
+                        ) : null}
                       </div>
 
                       <div className="col-span-6 text-sm text-gray-700 dark:text-gray-300 md:col-span-3">
@@ -541,7 +546,7 @@ export default function Plugins() {
 
                       <div className="col-span-6 md:col-span-3">
                         <span className="inline-flex items-center gap-2 rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-800 dark:bg-white/10 dark:text-gray-200">
-                          {(t.status === "PENDING" || t.status === "STARTED") && (
+                          {(t.status === "PENDING" || t.status === "STARTED" || t.status === "PROGRESS") && (
                             <span className="h-3 w-3 animate-spin rounded-full border-2 border-gray-400 border-t-transparent" />
                           )}
                           {t.status}
@@ -600,9 +605,9 @@ export default function Plugins() {
                   optionChecked={batchSkipBinaries}
                   optionLabel="Skip binaries"
                   primaryLabel="Install selected"
-                  busyLabel="Installing selected..."
+                  busyLabel="Submitting selected..."
                   onOptionChange={setBatchSkipBinaries}
-                  onPrimaryAction={installSelectedPluginsSequentially}
+                  onPrimaryAction={installSelectedPluginsBatch}
                   onClearSelection={() => setSelectedPipNames(new Set())}
                 />
 
