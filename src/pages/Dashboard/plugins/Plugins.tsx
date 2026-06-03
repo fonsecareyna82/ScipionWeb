@@ -466,7 +466,7 @@ export default function Plugins() {
                   <SecondaryButton
                     onClick={() => setInstallDevelOpen(true)}
                     title="Install a local Scipion plugin in devel mode"
-                    className="border-indigo-300/80 text-indigo-700 hover:border-indigo-400 dark:border-indigo-900/60 dark:text-indigo-300 dark:hover:border-indigo-700"
+                    className="border-[#333d49] bg-[#333d49] text-white shadow-sm shadow-slate-900/10 hover:border-[#2b3440] hover:bg-[#2b3440] hover:text-white hover:shadow-md dark:border-slate-600 dark:bg-[#333d49] dark:text-white dark:hover:border-slate-500 dark:hover:bg-[#2b3440]"
                   >
                     <FolderPlus className="h-4 w-4" />
                     Install local plugin
