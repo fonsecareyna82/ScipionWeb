@@ -5,168 +5,27 @@ import { useNavigate } from "react-router-dom";
 
 import PageMeta from "../../../components/common/PageMeta";
 import PluginCard from "../../../components/plugin/PluginsCard";
+import { installPlugin, type Plugin } from "@/api/plugins";
 import { usePlugins } from "@/hooks/usePlugins";
 import { useProcessingPlugins } from "@/hooks/useProcessingPlugins";
 import InstallDevelPluginDialog from "./InstallDevelPluginDialog";
-
-type TabKey = "installed" | "available" | "tasks";
-
-type PluginCategoryTab = {
-  id: string;
-  title: string;
-  description?: string;
-  count: number;
-};
-
-type PluginWithCategories = {
-  category?: unknown;
-  categories?: unknown;
-  categoryIds?: unknown;
-  categoryData?: unknown;
-};
-
-const fallbackCategoryById: Record<string, { title: string; description: string }> = {
-  single_particle: {
-    title: "SPA",
-    description: "SPA processing, classification, refinement and reconstruction",
-  },
-  tomography: {
-    title: "Tomography",
-    description: "Tomograms, tilt series and subtomogram workflows",
-  },
-  modelling: {
-    title: "Modelling",
-    description: "Model building, fitting, validation and visualization",
-  },
-  flexibility: {
-    title: "Flexibility",
-    description: "Visualization and manipulation of flexibility data",
-  },
-  chem: {
-    title: "CHEM",
-    description: "CHEMoinformatics and virtual drug screening",
-  },
-  unclassified: {
-    title: "Unclassified",
-    description: "Unclassified plugins",
-  },
-};
-
-function classNames(...xs: Array<string | false | null | undefined>): string {
-  return xs.filter(Boolean).join(" ");
-}
-
-function formatTimeAgo(ms: number) {
-  const diffMs = Date.now() - ms;
-  const sec = Math.max(0, Math.floor(diffMs / 1000));
-  if (sec < 60) return `${sec} seg ago`;
-  const min = Math.floor(sec / 60);
-  if (min < 60) return `${min} min ago`;
-  const hr = Math.floor(min / 60);
-  return `${hr} hours ago`;
-}
-
-function humanizeCategoryId(id: string): string {
-  const fallback = fallbackCategoryById[id];
-  if (fallback) return fallback.title;
-
-  return id
-    .split(/[_-]+/)
-    .filter(Boolean)
-    .map((part) => part.slice(0, 1).toUpperCase() + part.slice(1))
-    .join(" ");
-}
-
-function getFallbackCategoryDescription(id: string): string {
-  return fallbackCategoryById[id]?.description ?? "";
-}
-
-function normalizeCategoryId(raw: unknown): string {
-  return String(raw ?? "").trim();
-}
-
-function readCategoryMetaFromRaw(raw: unknown): Array<Omit<PluginCategoryTab, "count">> {
-  if (!raw) return [];
-
-  const items = Array.isArray(raw) ? raw : [raw];
-
-  return items
-    .map((item) => {
-      if (typeof item === "string") {
-        const id = normalizeCategoryId(item);
-        if (!id) return null;
-
-        return {
-          id,
-          title: humanizeCategoryId(id),
-          description: getFallbackCategoryDescription(id),
-        };
-      }
-
-      if (!item || typeof item !== "object") return null;
-
-      const obj = item as Record<string, unknown>;
-      const id = normalizeCategoryId(
-        obj.id ??
-        obj.categoryId ??
-        obj.key ??
-        obj.value ??
-        obj.name,
-      );
-
-      if (!id) return null;
-
-      return {
-        id,
-        title: String(obj.title ?? obj.label ?? obj.name ?? humanizeCategoryId(id)),
-        description: String(obj.description ?? getFallbackCategoryDescription(id)),
-      };
-    })
-    .filter(Boolean) as Array<Omit<PluginCategoryTab, "count">>;
-}
-
-function getPluginCategoryMetadata(plugin: PluginWithCategories): Array<Omit<PluginCategoryTab, "count">> {
-  const rawMetas = [
-    ...readCategoryMetaFromRaw(plugin.categoryData),
-    ...readCategoryMetaFromRaw(plugin.categories),
-    ...readCategoryMetaFromRaw(plugin.categoryIds),
-    ...readCategoryMetaFromRaw(plugin.category),
-  ];
-
-  const byId = new Map<string, Omit<PluginCategoryTab, "count">>();
-
-  for (const meta of rawMetas) {
-    if (!meta.id) continue;
-
-    const current = byId.get(meta.id);
-    byId.set(meta.id, {
-      id: meta.id,
-      title: meta.title || current?.title || humanizeCategoryId(meta.id),
-      description: meta.description || current?.description || getFallbackCategoryDescription(meta.id),
-    });
-  }
-
-  if (byId.size === 0) {
-    byId.set("unclassified", {
-      id: "unclassified",
-      title: fallbackCategoryById.unclassified.title,
-      description: fallbackCategoryById.unclassified.description,
-    });
-  }
-
-  return Array.from(byId.values());
-}
-
-function getPluginCategoryIds(plugin: PluginWithCategories): string[] {
-  return getPluginCategoryMetadata(plugin).map((category) => category.id);
-}
-
-function getTaskOperationLabel(operation: string): string {
-  if (operation === "install-devel") return "Install devel";
-  if (operation === "install") return "Install/Update";
-  if (operation === "uninstall") return "Uninstall";
-  return operation;
-}
+import PluginListTable from "./PluginListTable";
+import PluginQuickDetailsPanel from "./PluginQuickDetailsPanel";
+import PluginSelectionBar from "./PluginSelectionBar";
+import PluginViewToggle from "./PluginViewToggle";
+import {
+  canBatchInstallPlugin,
+  classNames,
+  formatTimeAgo,
+  getPluginCategoryIds,
+  getPluginCategoryMetadata,
+  getTaskOperationLabel,
+  type PluginCategoryTab,
+  type PluginProcessingState,
+  type PluginViewMode,
+  type PluginWithCategories,
+  type TabKey,
+} from "./plugin_helpers";
 
 function CardShell(props: {
   title: string;
@@ -275,7 +134,7 @@ function TabButton(props: {
 
 export default function Plugins() {
   const navigate = useNavigate();
-  const { tasks, installing, removing } = useProcessingPlugins();
+  const { tasks, installing, removing, registerTask, waitForTask } = useProcessingPlugins();
   const tasksCount = tasks.length;
 
   const {
@@ -291,6 +150,11 @@ export default function Plugins() {
   const [activeCategoryId, setActiveCategoryId] = useState("all");
   const [search, setSearch] = useState("");
   const [installDevelOpen, setInstallDevelOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<PluginViewMode>("cards");
+  const [selectedPipNames, setSelectedPipNames] = useState<Set<string>>(new Set());
+  const [activeListPluginPipName, setActiveListPluginPipName] = useState<string | null>(null);
+  const [batchSkipBinaries, setBatchSkipBinaries] = useState(false);
+  const [batchBusy, setBatchBusy] = useState(false);
 
   useEffect(() => {
     if (tasksCount === 0) {
@@ -300,11 +164,25 @@ export default function Plugins() {
 
   useEffect(() => {
     setActiveCategoryId("all");
+    setSelectedPipNames(new Set());
+    setActiveListPluginPipName(null);
   }, [activeTab]);
+
+  useEffect(() => {
+    setSelectedPipNames(new Set());
+    setActiveListPluginPipName(null);
+  }, [activeCategoryId, search]);
 
   const installedPlugins = useMemo(() => plugins.filter((p) => p.installed), [plugins]);
   const availablePlugins = useMemo(() => plugins.filter((p) => !p.installed), [plugins]);
   const develPlugins = useMemo(() => plugins.filter((p) => p.devel || p.installMode === "devel"), [plugins]);
+
+  const processingByPipName = useMemo(() => {
+    const map = new Map<string, PluginProcessingState>();
+    installing.forEach((pipName) => map.set(pipName, "installing"));
+    removing.forEach((pipName) => map.set(pipName, "removing"));
+    return map;
+  }, [installing, removing]);
 
   const displayedPlugins = useMemo(() => {
     if (activeTab === "installed") return installedPlugins;
@@ -381,6 +259,24 @@ export default function Plugins() {
     });
   }, [tasks, search]);
 
+  const activeListPlugin = useMemo(() => {
+    if (!activeListPluginPipName) return null;
+    return filteredPlugins.find((plugin) => plugin.pipName === activeListPluginPipName) ?? null;
+  }, [activeListPluginPipName, filteredPlugins]);
+
+  const selectedPlugins = useMemo(() => {
+    const byPipName = new Map(filteredPlugins.map((plugin) => [plugin.pipName, plugin]));
+    return Array.from(selectedPipNames)
+      .map((pipName) => byPipName.get(pipName))
+      .filter(Boolean) as Plugin[];
+  }, [filteredPlugins, selectedPipNames]);
+
+  const actionableSelectedPlugins = useMemo(() => {
+    return selectedPlugins.filter((plugin) =>
+      canBatchInstallPlugin(plugin, processingByPipName.get(plugin.pipName) ?? null),
+    );
+  }, [processingByPipName, selectedPlugins]);
+
   const loading = isLoading && plugins.length === 0;
   const error = isError ? "Failed to load plugins" : null;
 
@@ -393,6 +289,71 @@ export default function Plugins() {
     }
 
     navigate(`/plugins/${pipName}`);
+  }
+
+  function openPluginDetails(plugin: Plugin) {
+    navigate(`/plugins/${plugin.pipName}`, { state: { plugin } });
+  }
+
+  function togglePluginSelection(plugin: Plugin) {
+    const processingState = processingByPipName.get(plugin.pipName) ?? null;
+    if (!canBatchInstallPlugin(plugin, processingState)) return;
+
+    setSelectedPipNames((current) => {
+      const next = new Set(current);
+      if (next.has(plugin.pipName)) next.delete(plugin.pipName);
+      else next.add(plugin.pipName);
+      return next;
+    });
+  }
+
+  function toggleAllVisiblePlugins() {
+    const selectable = filteredPlugins.filter((plugin) =>
+      canBatchInstallPlugin(plugin, processingByPipName.get(plugin.pipName) ?? null),
+    );
+    const allSelected = selectable.length > 0 && selectable.every((plugin) => selectedPipNames.has(plugin.pipName));
+
+    setSelectedPipNames((current) => {
+      const next = new Set(current);
+      if (allSelected) {
+        selectable.forEach((plugin) => next.delete(plugin.pipName));
+      } else {
+        selectable.forEach((plugin) => next.add(plugin.pipName));
+      }
+      return next;
+    });
+  }
+
+  async function installSelectedPluginsSequentially() {
+    if (batchBusy) return;
+    const queue = [...actionableSelectedPlugins];
+    if (queue.length === 0) return;
+
+    setBatchBusy(true);
+
+    try {
+      for (const plugin of queue) {
+        const started = await installPlugin(plugin.pipName, { skipBinaries: batchSkipBinaries });
+        registerTask({
+          taskId: started.taskId,
+          pipName: plugin.pipName,
+          pluginName: plugin.name,
+          operation: "install",
+          initialStatus: started.status,
+        });
+
+        const result = await waitForTask(started.taskId);
+        if (result.status === "FAILURE") {
+          break;
+        }
+      }
+
+      setSelectedPipNames(new Set());
+      setActiveTab("tasks");
+      void refetch();
+    } finally {
+      setBatchBusy(false);
+    }
   }
 
   return (
@@ -501,32 +462,38 @@ export default function Plugins() {
                 </div>
               ) : null}
 
-              <div className="relative w-full max-w-[420px]">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div className="relative w-full max-w-[420px]">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
 
-                <input
-                  type="text"
-                  placeholder={activeTab === "tasks" ? "Search task…" : "Search plugin…"}
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className={classNames(
-                    "w-full rounded-xl border py-2 pl-9 pr-10 text-sm font-semibold outline-none transition",
-                    "border-gray-200/70 bg-white/70 text-gray-800 placeholder:text-gray-400",
-                    "focus:border-indigo-500/40 focus:ring-2 focus:ring-indigo-500/10",
-                    "dark:border-gray-800/80 dark:bg-white/[0.02] dark:text-white/90 dark:placeholder:text-gray-500",
-                    "dark:focus:border-indigo-400/40 dark:focus:ring-indigo-400/15",
-                  )}
-                />
+                  <input
+                    type="text"
+                    placeholder={activeTab === "tasks" ? "Search task…" : "Search plugin…"}
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className={classNames(
+                      "w-full rounded-xl border py-2 pl-9 pr-10 text-sm font-semibold outline-none transition",
+                      "border-gray-200/70 bg-white/70 text-gray-800 placeholder:text-gray-400",
+                      "focus:border-indigo-500/40 focus:ring-2 focus:ring-indigo-500/10",
+                      "dark:border-gray-800/80 dark:bg-white/[0.02] dark:text-white/90 dark:placeholder:text-gray-500",
+                      "dark:focus:border-indigo-400/40 dark:focus:ring-indigo-400/15",
+                    )}
+                  />
 
-                {search ? (
-                  <button
-                    type="button"
-                    onClick={() => setSearch("")}
-                    className="absolute right-2 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 dark:text-gray-500 dark:hover:bg-white/[0.04] dark:hover:text-gray-200"
-                    aria-label="Clear search"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
+                  {search ? (
+                    <button
+                      type="button"
+                      onClick={() => setSearch("")}
+                      className="absolute right-2 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 dark:text-gray-500 dark:hover:bg-white/[0.04] dark:hover:text-gray-200"
+                      aria-label="Clear search"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  ) : null}
+                </div>
+
+                {activeTab !== "tasks" ? (
+                  <PluginViewToggle viewMode={viewMode} onViewModeChange={setViewMode} />
                 ) : null}
               </div>
             </div>
@@ -606,20 +573,14 @@ export default function Plugins() {
                   )}
                 </div>
               </div>
-            ) : (
+            ) : viewMode === "cards" ? (
               <div className="mt-4 rounded-2xl border border-gray-200/70 bg-white/40 p-4 dark:border-gray-800/80 dark:bg-white/[0.01]">
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-5">
                   {filteredPlugins.map((plugin) => (
                     <PluginCard
                       key={plugin.pipName}
                       {...plugin}
-                      processingState={
-                        installing.has(plugin.pipName)
-                          ? "installing"
-                          : removing.has(plugin.pipName)
-                            ? "removing"
-                            : null
-                      }
+                      processingState={processingByPipName.get(plugin.pipName) ?? null}
                     />
                   ))}
 
@@ -630,6 +591,43 @@ export default function Plugins() {
                   )}
                 </div>
               </div>
+            ) : (
+              <>
+                <PluginSelectionBar
+                  selectedCount={selectedPlugins.length}
+                  actionableCount={actionableSelectedPlugins.length}
+                  busy={batchBusy}
+                  optionChecked={batchSkipBinaries}
+                  optionLabel="Skip binaries"
+                  primaryLabel="Install selected"
+                  busyLabel="Installing selected..."
+                  onOptionChange={setBatchSkipBinaries}
+                  onPrimaryAction={installSelectedPluginsSequentially}
+                  onClearSelection={() => setSelectedPipNames(new Set())}
+                />
+
+                <div className="mt-4 grid grid-cols-1 gap-4 2xl:grid-cols-[minmax(0,1fr)_360px]">
+                  <div className="min-w-0 overflow-x-auto">
+                    <PluginListTable
+                      plugins={filteredPlugins}
+                      selectedPipNames={selectedPipNames}
+                      processingByPipName={processingByPipName}
+                      activePluginPipName={activeListPluginPipName}
+                      onTogglePlugin={togglePluginSelection}
+                      onToggleAllVisible={toggleAllVisiblePlugins}
+                      onSelectPlugin={(plugin) => setActiveListPluginPipName(plugin.pipName)}
+                      onOpenDetails={openPluginDetails}
+                    />
+                  </div>
+
+                  <PluginQuickDetailsPanel
+                    plugin={activeListPlugin}
+                    processingState={activeListPlugin ? processingByPipName.get(activeListPlugin.pipName) ?? null : null}
+                    onClose={() => setActiveListPluginPipName(null)}
+                    onOpenDetails={openPluginDetails}
+                  />
+                </div>
+              </>
             )}
           </>
         ) : null}
