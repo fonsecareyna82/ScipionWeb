@@ -601,34 +601,42 @@ export default function Plugins() {
                 </div>
               </div>
             ) : (
-              <>
-                <PluginSelectionBar
-                  selectedCount={selectedPlugins.length}
-                  actionableCount={actionableSelectedPlugins.length}
-                  busy={batchBusy}
-                  optionChecked={batchSkipBinaries}
-                  optionLabel="Skip binaries"
-                  primaryLabel="Install selected"
-                  busyLabel="Submitting selected..."
-                  onOptionChange={setBatchSkipBinaries}
-                  onPrimaryAction={installSelectedPlugins}
-                  onClearSelection={() => setSelectedPipNames(new Set())}
-                />
+              <div className="mt-4 grid grid-cols-1 gap-4 2xl:grid-cols-[minmax(0,1fr)_360px]">
+                <div className="min-w-0">
+                  {selectedPlugins.length > 0 ? (
+                    <div className="sticky top-4 z-30 mb-3 rounded-2xl bg-white/90 pb-1 backdrop-blur dark:bg-slate-950/90">
+                      <PluginSelectionBar
+                        selectedCount={selectedPlugins.length}
+                        actionableCount={actionableSelectedPlugins.length}
+                        busy={batchBusy}
+                        optionChecked={batchSkipBinaries}
+                        optionLabel="Skip binaries"
+                        primaryLabel="Install selected"
+                        busyLabel="Submitting selected..."
+                        className="shadow-sm shadow-slate-900/10"
+                        onOptionChange={setBatchSkipBinaries}
+                        onPrimaryAction={installSelectedPlugins}
+                        onClearSelection={() => setSelectedPipNames(new Set())}
+                      />
+                    </div>
+                  ) : null}
 
-                <div className="mt-4 grid grid-cols-1 gap-4 2xl:grid-cols-[minmax(0,1fr)_360px]">
-                  <div className="min-w-0 overflow-x-auto">
+                  <div className="min-w-0 overflow-x-auto rounded-2xl">
                     <PluginListTable
                       plugins={filteredPlugins}
                       selectedPipNames={selectedPipNames}
                       processingByPipName={processingByPipName}
                       activePluginPipName={activeListPluginPipName}
+                      maxHeightClassName={selectedPlugins.length > 0 ? "max-h-[calc(100vh-430px)]" : "max-h-[calc(100vh-350px)]"}
                       onTogglePlugin={togglePluginSelection}
                       onToggleAllVisible={toggleAllVisiblePlugins}
                       onSelectPlugin={(plugin) => setActiveListPluginPipName(plugin.pipName)}
                       onOpenDetails={openPluginDetails}
                     />
                   </div>
+                </div>
 
+                <div className="2xl:sticky 2xl:top-4 2xl:self-start">
                   <PluginQuickDetailsPanel
                     plugin={activeListPlugin}
                     processingState={activeListPlugin ? processingByPipName.get(activeListPlugin.pipName) ?? null : null}
@@ -636,7 +644,7 @@ export default function Plugins() {
                     onOpenDetails={openPluginDetails}
                   />
                 </div>
-              </>
+              </div>
             )}
           </>
         ) : null}
