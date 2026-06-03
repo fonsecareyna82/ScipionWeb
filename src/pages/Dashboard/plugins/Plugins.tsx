@@ -117,14 +117,14 @@ function TabButton(props: {
         "focus:outline-none focus:ring-2 focus:ring-indigo-500/25 dark:focus:ring-indigo-400/25",
         props.active
           ? [
-            "border-indigo-500/70 bg-indigo-600 text-white shadow-md shadow-indigo-500/20",
-            "ring-1 ring-indigo-500/30",
-            "dark:border-indigo-400/70 dark:bg-indigo-500 dark:text-white dark:shadow-indigo-500/20",
-          ].join(" ")
+              "border-indigo-500/70 bg-indigo-600 text-white shadow-md shadow-indigo-500/20",
+              "ring-1 ring-indigo-500/30",
+              "dark:border-indigo-400/70 dark:bg-indigo-500 dark:text-white dark:shadow-indigo-500/20",
+            ].join(" ")
           : [
-            "border-transparent text-gray-700 hover:border-gray-200 hover:bg-gray-50/80",
-            "dark:text-gray-200 dark:hover:border-gray-700 dark:hover:bg-gray-800/40",
-          ].join(" "),
+              "border-transparent text-gray-700 hover:border-gray-200 hover:bg-gray-50/80",
+              "dark:text-gray-200 dark:hover:border-gray-700 dark:hover:bg-gray-800/40",
+            ].join(" "),
       )}
     >
       {props.children}
@@ -277,6 +277,9 @@ export default function Plugins() {
       canBatchInstallPlugin(plugin, processingByPipName.get(plugin.pipName) ?? null),
     );
   }, [processingByPipName, selectedPlugins]);
+
+  const selectionPrimaryLabel = activeTab === "installed" ? "Update selected" : "Install selected";
+  const selectionBusyLabel = activeTab === "installed" ? "Submitting updates..." : "Submitting selected...";
 
   const loading = isLoading && plugins.length === 0;
   const error = isError ? "Failed to load plugins" : null;
@@ -610,8 +613,8 @@ export default function Plugins() {
                       busy={batchBusy}
                       optionChecked={batchSkipBinaries}
                       optionLabel="Skip binaries"
-                      primaryLabel="Install selected"
-                      busyLabel="Submitting selected..."
+                      primaryLabel={selectionPrimaryLabel}
+                      busyLabel={selectionBusyLabel}
                       className="shadow-sm shadow-slate-900/10"
                       onOptionChange={setBatchSkipBinaries}
                       onPrimaryAction={installSelectedPlugins}
