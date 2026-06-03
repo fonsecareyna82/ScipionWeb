@@ -167,8 +167,9 @@ export function isPluginProcessing(processingState: PluginProcessingState): bool
 
 export function canBatchInstallPlugin(plugin: Plugin, processingState: PluginProcessingState): boolean {
   if (isPluginProcessing(processingState)) return false;
+  if (plugin.installed) return Boolean(plugin.toUpdate);
   if (isDevelPlugin(plugin)) return false;
-  return !plugin.installed || Boolean(plugin.installed && plugin.toUpdate);
+  return true;
 }
 
 export function getPluginVersionLabel(plugin: Plugin): string {
