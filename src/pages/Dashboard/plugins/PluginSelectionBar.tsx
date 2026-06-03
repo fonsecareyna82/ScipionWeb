@@ -29,8 +29,7 @@ export default function PluginSelectionBar({
   onPrimaryAction,
   onClearSelection,
 }: PluginSelectionBarProps) {
-  if (selectedCount === 0) return null;
-
+  const hasSelection = selectedCount > 0;
   const canRun = actionableCount > 0 && !busy;
 
   return (
@@ -45,7 +44,9 @@ export default function PluginSelectionBar({
           {selectedCount} selected
         </div>
         <div className="mt-1 text-xs text-gray-600 dark:text-gray-400">
-          {actionableCount} can be processed in this batch.
+          {hasSelection
+            ? `${actionableCount} can be processed in this batch.`
+            : "Select available plugins or updates from the list below."}
         </div>
       </div>
 
@@ -77,7 +78,7 @@ export default function PluginSelectionBar({
         <button
           type="button"
           onClick={onClearSelection}
-          disabled={busy}
+          disabled={busy || !hasSelection}
           className="inline-flex items-center gap-2 rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-800 shadow-sm transition hover:border-gray-400 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-700 dark:bg-slate-900 dark:text-white"
         >
           <X className="h-4 w-4" />
