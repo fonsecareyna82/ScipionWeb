@@ -23,6 +23,7 @@ export default function PluginCard(plugin: PluginCardProps) {
   const showProcessing = plugin.processingState === "installing" || plugin.processingState === "removing";
   const isInstalled = Boolean(plugin.installed);
   const isDevel = Boolean(plugin.devel || plugin.installMode === "devel");
+  const stackStatusBadges = Boolean(isDevel && showUpdate);
 
   return (
     <motion.div
@@ -42,7 +43,12 @@ export default function PluginCard(plugin: PluginCardProps) {
               : "border-slate-200/80 bg-gradient-to-br from-white via-slate-50 to-slate-100 hover:-translate-y-0.5 hover:border-slate-400 hover:shadow-md hover:ring-2 hover:ring-slate-200/70 dark:border-slate-800/80 dark:bg-gradient-to-br dark:from-slate-900 dark:via-slate-950 dark:to-black dark:hover:border-slate-600 dark:hover:ring-white/[0.06]",
         )}
       >
-        <div className="absolute right-3 top-3 z-10 flex flex-wrap items-center justify-end gap-2">
+        <div
+          className={classNames(
+            "absolute right-3 top-3 z-10 flex items-end justify-end gap-2",
+            stackStatusBadges ? "flex-col" : "flex-row flex-wrap",
+          )}
+        >
           {showProcessing ? (
             <span className="inline-flex items-center gap-2 rounded-full border border-gray-200/70 bg-white/90 px-3 py-1 text-[11px] font-semibold text-gray-800 shadow-sm dark:border-gray-700/70 dark:bg-white/[0.08] dark:text-gray-200">
               <ExecuteIcon className="h-3.5 w-3.5 animate-spin" />
