@@ -36,16 +36,16 @@ type ProjectCardProject = Project & {
 
 type WorkspaceTab =
   | {
-      type: "projects";
-      id: "projects";
-      title: string;
-    }
+    type: "projects";
+    id: "projects";
+    title: string;
+  }
   | {
-      type: "project";
-      id: string;
-      projectName: string;
-      title: string;
-    };
+    type: "project";
+    id: string;
+    projectName: string;
+    title: string;
+  };
 
 const projectsWorkspaceTab: WorkspaceTab = {
   type: "projects",
@@ -127,16 +127,16 @@ function readStoredWorkspaceTabs(): WorkspaceTab[] {
     const parsed = JSON.parse(raw);
     const projectTabs = Array.isArray(parsed)
       ? parsed
-          .filter((tab) => tab?.type === "project" && tab?.projectName)
-          .map((tab) => {
-            const projectName = String(tab.projectName);
-            return {
-              type: "project" as const,
-              id: getProjectWorkspaceId(projectName),
-              projectName,
-              title: String(tab.title || projectName),
-            };
-          })
+        .filter((tab) => tab?.type === "project" && tab?.projectName)
+        .map((tab) => {
+          const projectName = String(tab.projectName);
+          return {
+            type: "project" as const,
+            id: getProjectWorkspaceId(projectName),
+            projectName,
+            title: String(tab.title || projectName),
+          };
+        })
       : [];
 
     return [projectsWorkspaceTab, ...projectTabs];
@@ -542,33 +542,35 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
       )}
       aria-label="Projects view mode"
     >
-      <button
-        type="button"
-        onClick={() => setViewMode("cards")}
-        className={classNames(
-          "inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-semibold transition",
-          viewMode === "cards"
-            ? "bg-white text-indigo-700 shadow-sm dark:bg-slate-800 dark:text-indigo-200"
-            : "text-gray-600 hover:text-gray-950 dark:text-gray-400 dark:hover:text-white",
-        )}
-      >
-        <LayoutGrid className="h-4 w-4" />
-        <span className="hidden sm:inline">Cards</span>
-      </button>
+      <div className="mr-2 flex items-center gap-2 px-2 text-xs text-gray-700 dark:text-gray-200">
+        <span className="pp-viewLabel">View modes</span>
 
-      <button
-        type="button"
-        onClick={() => setViewMode("list")}
-        className={classNames(
-          "inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-semibold transition",
-          viewMode === "list"
-            ? "bg-white text-indigo-700 shadow-sm dark:bg-slate-800 dark:text-indigo-200"
-            : "text-gray-600 hover:text-gray-950 dark:text-gray-400 dark:hover:text-white",
-        )}
-      >
-        <List className="h-4 w-4" />
-        <span className="hidden sm:inline">List</span>
-      </button>
+        <button
+          type="button"
+          onClick={() => setViewMode("cards")}
+          className={classNames(
+            "inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-semibold transition",
+            viewMode === "cards"
+               ? "bg-[#333d49] text-white shadow-sm"
+              : "text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-white/[0.04]",
+          )}
+        >
+          <LayoutGrid className="h-4 w-4" />
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setViewMode("list")}
+          className={classNames(
+            "inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-semibold transition",
+            viewMode === "list"
+              ? "bg-[#333d49] text-white shadow-sm"
+              : "text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-white/[0.04]",
+          )}
+        >
+          <List className="h-4 w-4" />
+        </button>
+      </div>
     </div>
   );
 
@@ -656,14 +658,6 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
 
   const renderProjectList = () => (
     <div className="space-y-3" aria-label="Projects list">
-      <div className="hidden grid-cols-[minmax(260px,1fr)_120px_120px_150px_130px_52px] px-4 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500 dark:text-slate-500 xl:grid">
-        <div>Project</div>
-        <div>Protocols</div>
-        <div>Updated</div>
-        <div>Storage</div>
-        <div>Status</div>
-        <div />
-      </div>
 
       {filteredProjects.map((project) => (
         <ProjectListRow

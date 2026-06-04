@@ -258,7 +258,7 @@ export default function ProjectListRow(props: ProjectListRowProps) {
           "group grid cursor-pointer grid-cols-1 gap-3 rounded-2xl border px-4 py-4 transition-all duration-200",
           "border-slate-200/90 bg-white shadow-sm hover:border-slate-300 hover:shadow-md",
           "dark:border-slate-800 dark:bg-slate-950/70 dark:hover:border-slate-700",
-          "xl:grid-cols-[minmax(260px,1fr)_120px_120px_150px_130px_52px] xl:items-center",
+          "xl:grid-cols-[minmax(260px,1fr)_200px_320px_280px_280px_52px] xl:items-center",
           isSelected ? "border-indigo-400 ring-2 ring-indigo-500/15 dark:border-indigo-600" : "",
         )}
       >
