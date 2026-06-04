@@ -450,8 +450,8 @@ export default function ProjectCard(props: ProjectCardProps) {
 
           groups = await svc.fetchProjectThumbnailItems(id, {
             sourceUrl: versionedItemsUrl,
-            size: 256,
-            maxProtocols: 5,
+            size: 128,
+            maxProtocols: 4,
             maxOutputsPerProtocol: 2,
             signal: controller.signal,
             cache: "default",
@@ -629,7 +629,7 @@ export default function ProjectCard(props: ProjectCardProps) {
         const resolvedBaseUrl = svc.resolveBackendUrl(thumbnailUrl);
         const requestUrl = resolvedBaseUrl
           ? appendQueryParams(resolvedBaseUrl, {
-            size: 960,
+            size: 256,
             v: thumbnailVersion ?? "",
           })
           : null;
