@@ -169,6 +169,7 @@ function normalizeProjectThumbnailItems(raw: any): ProjectThumbnailGroup[] {
             outputClassName: output?.outputClassName ?? output?.output_class_name ?? null,
             exists: output?.exists !== undefined ? Boolean(output.exists) : true,
             thumbnailUrl: output?.thumbnailUrl ?? output?.thumbnail_url ?? null,
+            thumbnailDataUrl: output?.thumbnailDataUrl ?? output?.thumbnail_data_url ?? null,
             thumbnailRebuildUrl:
               output?.thumbnailRebuildUrl ?? output?.thumbnail_rebuild_url ?? null,
           }))
@@ -340,6 +341,7 @@ export async function fetchProjectThumbnailItems(
     size = 320,
     maxProtocols = 12,
     maxOutputsPerProtocol = 4,
+    inlineImages = false,
     signal,
     cache,
   } = opts;
@@ -358,6 +360,10 @@ export async function fetchProjectThumbnailItems(
   parsed.searchParams.set("size", String(size));
   parsed.searchParams.set("maxProtocols", String(maxProtocols));
   parsed.searchParams.set("maxOutputsPerProtocol", String(maxOutputsPerProtocol));
+
+  if (inlineImages) {
+    parsed.searchParams.set("inlineImages", "true");
+  }
 
   const payload = await fetchJsonUrl(parsed.toString(), {
     signal,

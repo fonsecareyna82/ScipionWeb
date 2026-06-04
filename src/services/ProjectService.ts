@@ -37,6 +37,7 @@ export type ProjectThumbnailOutputItem = {
   outputClassName?: string | null;
   exists?: boolean;
   thumbnailUrl?: string | null;
+  thumbnailDataUrl?: string | null;
   thumbnailRebuildUrl?: string | null;
 };
 
@@ -57,6 +58,7 @@ export type ProjectThumbnailItemsOptions =
     size?: number;
     maxProtocols?: number;
     maxOutputsPerProtocol?: number;
+    inlineImages?: boolean;
   };
 
 export type ProjectThumbnailObjectUrlOptions =
