@@ -417,6 +417,7 @@ export default function ProjectCard(props: ProjectCardProps) {
         return;
       }
 
+
       setGalleryMetaLoading(true);
       setGalleryError(false);
 
@@ -437,7 +438,7 @@ export default function ProjectCard(props: ProjectCardProps) {
 
         if (
           cachedEntry &&
-          Date.now() - cachedEntry.ts < THUMBNAIL_ITEMS_TTL_MS 
+          Date.now() - cachedEntry.ts < THUMBNAIL_ITEMS_TTL_MS
         ) {
           groups = cachedEntry.data;
         } else {
@@ -445,6 +446,7 @@ export default function ProjectCard(props: ProjectCardProps) {
           const versionedItemsUrl = resolvedItemsUrl
             ? appendQueryParams(resolvedItemsUrl, {
               v: thumbnailVersion ?? "",
+              maxProtocols: 4,
             })
             : thumbnailItemsUrl;
 
@@ -453,6 +455,7 @@ export default function ProjectCard(props: ProjectCardProps) {
             size: 128,
             maxProtocols: 4,
             maxOutputsPerProtocol: 2,
+            inlineImages: true,
             signal: controller.signal,
             cache: "default",
           });
@@ -476,6 +479,14 @@ export default function ProjectCard(props: ProjectCardProps) {
         const initialGroups: HydratedProjectThumbnailGroup[] = groups.map((group) => ({
           ...group,
           outputs: (group.outputs || []).map((output) => {
+            if (output.thumbnailDataUrl) {
+              return {
+                ...output,
+                src: output.thumbnailDataUrl,
+                hasError: false,
+              };
+            }
+
             const rawImageUrl = svc.resolveBackendUrl(output.thumbnailUrl);
             const requestUrl = rawImageUrl
               ? appendQueryParams(rawImageUrl, {
@@ -497,20 +508,37 @@ export default function ProjectCard(props: ProjectCardProps) {
         setGalleryImagesLoading(true);
 
         const tasks = initialGroups.flatMap((group, groupIndex) =>
-          group.outputs.map((output, outputIndex) => ({
-            groupIndex,
-            outputIndex,
-            requestUrl: output.thumbnailUrl
-              ? appendQueryParams(
-                svc.resolveBackendUrl(output.thumbnailUrl) ?? "",
-                {
-                  size: 128,
-                  v: thumbnailVersion ?? "",
-                },
-              )
-              : null,
-          })),
+          group.outputs
+            .map((output, outputIndex) => {
+              if (output.src || output.thumbnailDataUrl) {
+                return null;
+              }
+
+              return {
+                groupIndex,
+                outputIndex,
+                requestUrl: output.thumbnailUrl
+                  ? appendQueryParams(
+                    svc.resolveBackendUrl(output.thumbnailUrl) ?? "",
+                    {
+                      size: 128,
+                      v: thumbnailVersion ?? "",
+                    },
+                  )
+                  : null,
+              };
+            })
+            .filter(Boolean) as Array<{
+              groupIndex: number;
+              outputIndex: number;
+              requestUrl: string | null;
+            }>,
         );
+
+        if (!tasks.length) {
+          setGalleryImagesLoading(false);
+          return;
+        }
 
         await runWithConcurrencyLimit(tasks, 1, async (task) => {
           if (!task.requestUrl) {
@@ -610,9 +638,8 @@ export default function ProjectCard(props: ProjectCardProps) {
 
   const shouldLoadProjectFallback = useMemo(() => {
     if (!thumbnailUrl) return false;
-    if (shouldPreferProtocolGallery) return false;
     return true;
-  }, [thumbnailUrl, shouldPreferProtocolGallery]);
+  }, [thumbnailUrl]);
 
   useEffect(() => {
     let cancelled = false;
@@ -630,6 +657,7 @@ export default function ProjectCard(props: ProjectCardProps) {
         const requestUrl = resolvedBaseUrl
           ? appendQueryParams(resolvedBaseUrl, {
             size: 128,
+            maxProtocols: 4,
             v: thumbnailVersion ?? "",
           })
           : null;
@@ -905,9 +933,7 @@ export default function ProjectCard(props: ProjectCardProps) {
 
   const showProjectFallback =
     Boolean(projectThumbnailSrc) &&
-    !showGallery &&
-    !galleryMetaLoading &&
-    !galleryImagesLoading;
+    !showGallery;
 
   const showGalleryLoading =
     !showGallery &&
