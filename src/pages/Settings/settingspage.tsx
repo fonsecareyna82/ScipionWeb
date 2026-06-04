@@ -66,6 +66,7 @@ type UserSettings = {
   workflowViewMode: WorkflowViewMode;
   graphMiniMapEnabled: boolean;
   graphFocusModeEnabled: boolean;
+  protocolOutputThumbnailsEnabled: boolean;
   workflowsAutoRefreshSec: number;
 };
 
@@ -100,6 +101,7 @@ const defaultUserSettings: UserSettings = {
   workflowViewMode: "treeTb",
   graphMiniMapEnabled: true,
   graphFocusModeEnabled: false,
+  protocolOutputThumbnailsEnabled: false,
   workflowsAutoRefreshSec: 15,
 };
 
@@ -240,6 +242,10 @@ function sanitizeUserSettings(raw: any): UserSettings {
       typeof raw?.graphMiniMapEnabled === "boolean" ? raw.graphMiniMapEnabled : defaultUserSettings.graphMiniMapEnabled,
     graphFocusModeEnabled:
       typeof raw?.graphFocusModeEnabled === "boolean" ? raw.graphFocusModeEnabled : defaultUserSettings.graphFocusModeEnabled,
+    protocolOutputThumbnailsEnabled:
+      typeof raw?.protocolOutputThumbnailsEnabled === "boolean"
+        ? raw.protocolOutputThumbnailsEnabled
+        : defaultUserSettings.protocolOutputThumbnailsEnabled,
     workflowsAutoRefreshSec: clampNumber(raw?.workflowsAutoRefreshSec, defaultUserSettings.workflowsAutoRefreshSec, 0, 300),
   };
 }
@@ -1425,6 +1431,35 @@ export default function SettingsPage() {
                 />
                 <Typography sx={{ fontSize: fieldFontSize, color: colors.muted }}>
                   De-emphasizes non-selected nodes/edges.
+                </Typography>
+              </Grid>
+
+              <Grid size={{ xs: 12, md: 4 }}>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={Boolean(userDraft.protocolOutputThumbnailsEnabled)}
+                      onChange={(e) =>
+                        setUserDraft((prev) =>
+                          prev
+                            ? {
+                              ...prev,
+                              protocolOutputThumbnailsEnabled: e.target.checked,
+                            }
+                            : prev,
+                        )
+                      }
+                      size="small"
+                    />
+                  }
+                  label={
+                    <Typography sx={{ fontSize: 13.5, fontWeight: 700, color: colors.text }}>
+                      Protocol thumbnails
+                    </Typography>
+                  }
+                />
+                <Typography sx={{ fontSize: fieldFontSize, color: colors.muted }}>
+                  Shows output thumbnails inside workflow protocol cards when available.
                 </Typography>
               </Grid>
 

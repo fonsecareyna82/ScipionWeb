@@ -592,6 +592,28 @@ function preserveExistingOutputThumbnails(
   });
 }
 
+function clearOutputThumbnailsFromNodes(
+  nodes: Node<StatusNodeData>[],
+): Node<StatusNodeData>[] {
+  let changed = false;
+
+  const nextNodes = nodes.map((node) => {
+    if (!node.data?.outputThumbnails) return node;
+
+    changed = true;
+
+    const nextData = { ...node.data };
+    delete nextData.outputThumbnails;
+
+    return {
+      ...node,
+      data: nextData,
+    };
+  });
+
+  return changed ? nextNodes : nodes;
+}
+
 export default function ProjectPage() {
   const hostIsDark = useHostDarkMode();
   const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/.test(navigator.platform);
@@ -604,6 +626,14 @@ export default function ProjectPage() {
 
   const [projectEffectiveSettings, setProjectEffectiveSettings] =
     useState<ProjectEffectiveSettings | null>(null);
+
+  const protocolOutputThumbnailsEnabled = useMemo(() => {
+    const raw = projectEffectiveSettings?.settings?.user as Record<string, unknown> | null | undefined;
+
+    if (!raw) return true; // default to true if settings are not available
+
+    return raw.protocolOutputThumbnailsEnabled !== false;
+  }, [projectEffectiveSettings]);
 
   const [projectEffectiveSettingsLoading, setProjectEffectiveSettingsLoading] =
     useState(false);
@@ -1251,6 +1281,7 @@ export default function ProjectPage() {
 
   const loadProtocolOutputThumbnailsForNodes = useCallback(
     async (projectIdValue: string | number | undefined, sourceNodes: Node<StatusNodeData>[]) => {
+      if (!protocolOutputThumbnailsEnabled) return;
       if (projectIdValue == null) return;
       if (!Array.isArray(sourceNodes) || sourceNodes.length === 0) return;
       if (typeof (svc as any).fetchProtocolOutputThumbnails !== "function") return;
@@ -1336,8 +1367,17 @@ export default function ProjectPage() {
       outputThumbnailInFlightRef.current = run;
       await run;
     },
-    [svc, setNodes],
+    [svc, setNodes, protocolOutputThumbnailsEnabled],
   );
+
+  useEffect(() => {
+    if (protocolOutputThumbnailsEnabled) return;
+
+    outputThumbnailCacheRef.current.clear();
+    outputThumbnailInFlightRef.current = null;
+
+    setNodes((prev) => clearOutputThumbnailsFromNodes(prev as Node<StatusNodeData>[]));
+  }, [protocolOutputThumbnailsEnabled, setNodes]);
 
   const isRunningNode = (n: Node) => (n as any).data?.status === "running";
 
@@ -2573,10 +2613,12 @@ export default function ProjectPage() {
           setTableData(table ?? []);
         });
 
-        void loadProtocolOutputThumbnailsForNodes(
-          (data as any)?.id ?? (data as any)?.projectId,
-          nextNodes,
-        );
+        if (protocolOutputThumbnailsEnabled) {
+          void loadProtocolOutputThumbnailsForNodes(
+            (data as any)?.id ?? (data as any)?.projectId,
+            nextNodes,
+          );
+        }
 
         setNodeTicks(initialTicks);
         setNodesLoadedOnce(true);
@@ -2668,10 +2710,12 @@ export default function ProjectPage() {
           setTableData(table ?? []);
         });
 
-        void loadProtocolOutputThumbnailsForNodes(
-          (data as any)?.id ?? (data as any)?.projectId,
-          nodesSeedWithThumbnails,
-        );
+        if (protocolOutputThumbnailsEnabled) {
+          void loadProtocolOutputThumbnailsForNodes(
+            (data as any)?.id ?? (data as any)?.projectId,
+            nodesSeedWithThumbnails,
+          );
+        }
 
         setNodeTicks((prev) => {
           const updated: Record<string, number> = {};
