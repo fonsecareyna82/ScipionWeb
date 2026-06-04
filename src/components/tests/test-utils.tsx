@@ -4,6 +4,7 @@ import { MemoryRouter } from "react-router-dom";
 import { vi } from "vitest";
 
 import { ProjectServiceProvider } from "@/ProjectServiceContext";
+import { ThemeProvider } from "@/context/ThemeContext";
 import type { ProjectService } from "@/services/ProjectService";
 
 type DeepPartial<T> = {
@@ -48,9 +49,11 @@ export function renderWithProviders(
   function Wrapper({ children }: { children: ReactNode }) {
     return (
       <MemoryRouter initialEntries={[route]}>
-        <ProjectServiceProvider service={service}>
-          {children}
-        </ProjectServiceProvider>
+        <ThemeProvider>
+          <ProjectServiceProvider service={service}>
+            {children}
+          </ProjectServiceProvider>
+        </ThemeProvider>
       </MemoryRouter>
     );
   }

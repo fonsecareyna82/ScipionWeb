@@ -820,6 +820,19 @@ export default function Coords3dViewer({
     return null;
   }, [selectedTomoId]);
 
+  const canShowExternalViewers = Boolean(
+    effectiveTomoId != null &&
+    selectedTomoId != null &&
+    tomoMeta != null &&
+    tomoDims != null &&
+    pointsData != null &&
+    coordsReadyForSelectedTomo &&
+    !tomosLoading &&
+    !pointsLoading &&
+    !tomosError &&
+    !pointsError,
+  );
+
   useEffect(() => {
     const needZSlice = viewMode === "slice" || viewMode === "map3d";
     const shouldSkipForDebug = viewMode === "slice" && debugGrid;
@@ -1781,14 +1794,15 @@ export default function Coords3dViewer({
                   flexWrap: "wrap",
                 }}
               >
-                <ExternalViewersBar
-                  projectId={projectId}
-                  protocolId={protocolId}
-                  outputName={outputName}
-                  objectId={selectedTomoId}
-                  objectKind="coords3dTomogram"
-                  disabled={selectedTomoId == null}
-                />
+                {canShowExternalViewers && (
+                  <ExternalViewersBar
+                    projectId={projectId}
+                    protocolId={protocolId}
+                    outputName={outputName}
+                    objectId={effectiveTomoId}
+                    objectKind="coords3dTomogram"
+                  />
+                )}
 
                 <Chip
                   size="small"

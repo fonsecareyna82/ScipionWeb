@@ -17,7 +17,7 @@ type LocationState = { plugin?: Plugin };
 
 type LogTaskState = {
     taskId: string;
-    operation: "install" | "uninstall";
+    operation: "install" | "install-devel" | "uninstall";
     status: string;
     completed: boolean;
     pluginName?: string;
@@ -970,13 +970,14 @@ export default function PluginPage() {
                             <StatPill label="Installed" value={plugin.installed ? `v${plugin.pipVersion ?? "-"}` : "No"} />
                             <StatPill label="Latest" value={`v${plugin.latestRelease}`} />
                             <StatPill label="Published" value={publishedDate} />
+                            <StatPill label="Mode" value={plugin.devel || plugin.installMode === "devel" ? "Devel" : "Standard"} />
                         </div>
 
                         {currentTask ? (
                             <div className="mt-4 rounded-xl border border-gray-300/80 bg-gray-50/80 p-4 text-sm text-gray-700 dark:border-gray-700 dark:bg-slate-800/70 dark:text-gray-300">
                                 <div className="flex items-center gap-2 font-semibold text-gray-950 dark:text-white">
                                     <ExecuteIcon className="h-4 w-4 animate-spin" />
-                                    Active task: {currentTask.operation === "install" ? "Install/Update" : "Uninstall"}
+                                    Active task: {currentTask.operation === "install-devel" ? "Install devel" : currentTask.operation === "install" ? "Install/Update" : "Uninstall"}
                                 </div>
                                 <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">Status: {currentTask.status}</div>
                                 {currentStep ? (
@@ -997,6 +998,13 @@ export default function PluginPage() {
                         {success ? (
                             <div className="mt-4 rounded-xl border border-green-200/80 bg-green-50 p-4 text-sm leading-6 text-green-700 dark:border-green-900/50 dark:bg-green-950/30 dark:text-green-200">
                                 {success}
+                            </div>
+                        ) : null}
+
+                        {plugin.devel || plugin.installMode === "devel" ? (
+                            <div className="mt-5 rounded-xl border border-indigo-200/80 bg-indigo-50 p-4 shadow-sm dark:border-indigo-900/50 dark:bg-indigo-950/30">
+                                <div className="text-xs font-semibold text-indigo-700 dark:text-indigo-200">Local devel source</div>
+                                <div className="mt-2 break-all text-sm leading-6 text-indigo-900 dark:text-indigo-100">{plugin.localPath || "N/A"}</div>
                             </div>
                         ) : null}
 

@@ -32,7 +32,6 @@ const FormElements = lazy(() => import("./pages/Forms/FormElements"));
 const Blank = lazy(() => import("./pages/Blank"));
 const Home = lazy(() => import("./pages/Dashboard/homepage/Home"));
 const Projects = lazy(() => import("./pages/Dashboard/projects/Projects"));
-const ProjectPage = lazy(() => import("./pages/Dashboard/projects/ProjectPage"));
 const Plugins = lazy(() => import("./pages/Dashboard/plugins/Plugins"));
 const PluginPage = lazy(() => import("./pages/Dashboard/plugins/PluginPage"));
 const WorkflowsPage = lazy(() => import("./pages/Dashboard/workflows/WorkflowsPage"));
@@ -80,7 +79,7 @@ export default function App({ service }: AppProps) {
                 >
                   <Route path="/home" element={<Home />} />
                   <Route path="/projects" element={<Projects />} />
-                  <Route path="/project/load/:projectName" element={<ProjectPage />} />
+                  <Route path="/project/load/:projectName" element={<Projects />} />
                   <Route path="/plugins" element={<Plugins />} />
                   <Route path="/workflows" element={<WorkflowsPage />} />
                   <Route path="/plugins/:pipName" element={<PluginPage />} />

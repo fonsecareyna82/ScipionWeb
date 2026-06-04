@@ -67,7 +67,7 @@ const dialogPaperSx = {
   boxShadow: "0 10px 20px rgba(0,0,0,0.15), 0 6px 10px rgba(0,0,0,0.08)",
   display: "flex",
   flexDirection: "column",
-  height: "97vh",
+  height: "96vh",
   maxHeight: "97vh",
   minHeight: 650,
 };

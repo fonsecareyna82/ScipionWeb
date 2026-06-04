@@ -1,0 +1,47 @@
+/* Workspace tabs reserve vertical space above ProjectPage. */
+.project-workspace-panel .projectpage-widget-root {
+  --ppHostOffset: 40px;
+}
+
+.project-workspace-panel .projectpage-widget-root .h-app {
+  height: calc(90vh - var(--ppHostOffset, 0px));
+  min-height: calc(90vh - var(--ppHostOffset, 0px));
+}
+
+[aria-label="Project workspaces"] {
+  gap: 0.4rem !important;
+  padding: 0.35rem 0.5rem !important;
+  border-radius: 1rem !important;
+}
+
+[aria-label="Project workspaces"] > div {
+  max-width: 230px !important;
+  border-radius: 0.75rem !important;
+  font-size: 0.78rem !important;
+  line-height: 1rem !important;
+}
+
+[aria-label="Project workspaces"] > div > button:first-child {
+  padding: 0.42rem 0.7rem !important;
+  font-size: 0.78rem !important;
+  line-height: 1rem !important;
+}
+
+[aria-label="Project workspaces"] > div > button[aria-label^="Close"] {
+  width: 1.45rem !important;
+  height: 1.45rem !important;
+  margin-right: 0.2rem !important;
+  border-radius: 0.5rem !important;
+}
+
+[aria-label="Project workspaces"] > div > button[aria-label^="Close"] svg {
+  width: 0.75rem !important;
+  height: 0.75rem !important;
+}
+
+.projectpage-widget-root .pp-hidden,
+.projectpage-widget-root .pp-tableShell.pp-hidden {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
