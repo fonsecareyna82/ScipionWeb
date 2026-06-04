@@ -431,6 +431,7 @@ export default function ProjectCard(props: ProjectCardProps) {
           "size=128",
           "maxProtocols=4",
           "maxOutputsPerProtocol=2",
+          "inlineImages=true",
         ].join("|");
 
         let groups: ProjectThumbnailGroup[] = [];
