@@ -129,6 +129,12 @@ type StatusNodeProps = {
     numberOfSteps?: number;
     stepsDone?: number;
     outputs?: any[];
+    outputThumbnails?: Record<string, {
+      exists?: boolean;
+      thumbnailDataUrl?: string | null;
+      outputClassName?: string | null;
+      error?: string | null;
+    }>;
     inputs?: any[];
     parents?: string[];
     children?: string[];
@@ -1450,6 +1456,17 @@ export default function ProtocolNodeCard({
   const outputsArray = Array.isArray(data.outputs) ? data.outputs : [];
   const hasOutputs = outputsArray.length > 0;
 
+  const outputThumbnails = (data.outputThumbnails ?? {}) as Record<string, any>;
+
+  const hasRenderableOutputThumbnails = useMemo(() => {
+    return outputsArray.some((outputObj) => {
+      const value = normalizeOutputItem(outputObj);
+      const outputName = String(value?.name ?? "").trim();
+      if (!outputName) return false;
+      return Boolean(outputThumbnails[outputName]?.thumbnailDataUrl);
+    });
+  }, [outputsArray, outputThumbnails]);
+
   const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/.test(navigator.platform);
 
   const handleContextMenuCapture = useCallback(
@@ -2383,7 +2400,13 @@ export default function ProtocolNodeCard({
                         <span className={styles.sectionTitle}>Outputs</span>
                       </div>
 
-                      <div className={styles.sectionContent} data-has-scroll>
+                      <div
+                        className={[
+                          styles.sectionContent,
+                          hasRenderableOutputThumbnails ? styles.sectionContentThumbs : "",
+                        ].filter(Boolean).join(" ")}
+                        data-has-scroll
+                      >
                         {outputsArray.map((outputObj, idx) => {
                           const value = normalizeOutputItem(outputObj);
                           if (!value) return null;
@@ -2396,6 +2419,124 @@ export default function ProtocolNodeCard({
                           const outputName = String(value.name ?? "");
                           const isViewerEnabled = canOpenViewer && !!outputName;
 
+                          const thumbnail = outputName ? outputThumbnails[outputName] : null;
+                          const thumbnailSrc =
+                            typeof thumbnail?.thumbnailDataUrl === "string" && thumbnail.thumbnailDataUrl
+                              ? thumbnail.thumbnailDataUrl
+                              : "";
+
+                          const buildDragPayload = () => {
+                            const inferredParamClass = value.paramClass || (value.pointerClass ? "PointerParam" : "");
+
+                            return {
+                              paramClass: inferredParamClass,
+                              pointerClass: value.pointerClass ?? "",
+                              _expectedClass: value.pointerClass ?? "",
+                              value: value.value ?? "",
+                              info: value.info ?? "",
+                              parentId: value.parentId ?? "",
+                              name: value.name ?? "",
+                            };
+                          };
+
+                          const handleOutputMouseDown = (e: ReactMouseEvent<HTMLDivElement>) => {
+                            if (e.ctrlKey || e.metaKey) {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              forwardClickToRFNode(e);
+                            }
+                          };
+
+                          const handleOutputDragStart = (e: ReactDragEvent<HTMLDivElement>) => {
+                            e.stopPropagation();
+                            setDraggingIdx(idx);
+
+                            const output = buildDragPayload();
+
+                            setCurrentDraggedOutput(output);
+                            e.dataTransfer.setData("application/scipion-output", JSON.stringify(output));
+
+                            const ghost = document.createElement("div");
+                            ghost.style.position = "absolute";
+                            ghost.style.top = "-1000px";
+                            ghost.style.left = "-1000px";
+                            ghost.style.padding = "6px 12px";
+                            ghost.style.background = "white";
+                            ghost.style.border = "1px solid #ccc";
+                            ghost.style.color = "black";
+                            ghost.style.borderRadius = "0.5rem";
+                            ghost.innerText = `(${labelText})`;
+                            document.body.appendChild(ghost);
+                            e.dataTransfer.setDragImage(ghost, 0, 15);
+                            setTimeout(() => document.body.removeChild(ghost), 0);
+                          };
+
+                          const handleOutputDragEnd = () => {
+                            setDraggingIdx(null);
+                            setCurrentDraggedOutput(null);
+                          };
+
+                          const handleOpenOutput = (e: ReactMouseEvent) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            if (!isViewerEnabled) return;
+                            void openOutputViewer(outputName, outputObj, value);
+                          };
+
+                          if (thumbnailSrc) {
+                            return (
+                              <div
+                                key={pillKey}
+                                className={[
+                                  styles.outputThumbTile,
+                                  isDragging ? styles.outputPillDragging : "",
+                                  "nodrag",
+                                ].filter(Boolean).join(" ")}
+                                draggable
+                                title={labelText}
+                                onMouseDown={handleOutputMouseDown}
+                                onClick={handleOpenOutput}
+                                onDragStart={handleOutputDragStart}
+                                onDragEnd={handleOutputDragEnd}
+                              >
+                                <div className={styles.outputThumbImageWrap}>
+                                  <img
+                                    src={thumbnailSrc}
+                                    alt={labelText}
+                                    className={styles.outputThumbImage}
+                                    draggable={false}
+                                  />
+
+                                  <button
+                                    type="button"
+                                    className={`${styles.outputThumbActionBtn} nodrag`}
+                                    draggable={false}
+                                    data-nodrag
+                                    aria-label="View output"
+                                    title={isViewerEnabled ? "View output" : "Viewer not available"}
+                                    onPointerDown={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                    }}
+                                    onMouseDown={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                    }}
+                                    onClick={handleOpenOutput}
+                                    disabled={!isViewerEnabled}
+                                  >
+                                    <Eye className={styles.outputThumbEyeIcon} />
+                                  </button>
+                                </div>
+
+                                <div className={styles.outputThumbFooter}>
+                                  <ArrowUpRight className={styles.outputThumbTypeIcon} />
+                                  <span className={styles.outputThumbText}>{labelText}</span>
+                                </div>
+                              </div>
+                            );
+                          }
+
                           return (
                             <div
                               key={pillKey}
@@ -2403,55 +2544,14 @@ export default function ProtocolNodeCard({
                                 .filter(Boolean)
                                 .join(" ")}
                               draggable
-                              onMouseDown={(e: ReactMouseEvent<HTMLDivElement>) => {
-                                if (e.ctrlKey || e.metaKey) {
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  forwardClickToRFNode(e);
-                                }
-                              }}
+                              onMouseDown={handleOutputMouseDown}
                               onClick={(e: ReactMouseEvent<HTMLDivElement>) => {
                                 e.preventDefault();
                                 e.stopPropagation();
                                 forwardClickToRFNode(e);
                               }}
-                              onDragStart={(e: ReactDragEvent<HTMLDivElement>) => {
-                                e.stopPropagation();
-                                setDraggingIdx(idx);
-
-                                const inferredParamClass = value.paramClass || (value.pointerClass ? "PointerParam" : "");
-
-                                const output = {
-                                  paramClass: inferredParamClass,
-                                  pointerClass: value.pointerClass ?? "",
-                                  _expectedClass: value.pointerClass ?? "",
-                                  value: value.value ?? "",
-                                  info: value.info ?? "",
-                                  parentId: value.parentId ?? "",
-                                  name: value.name ?? "",
-                                };
-
-                                setCurrentDraggedOutput(output);
-                                e.dataTransfer.setData("application/scipion-output", JSON.stringify(output));
-
-                                const ghost = document.createElement("div");
-                                ghost.style.position = "absolute";
-                                ghost.style.top = "-1000px";
-                                ghost.style.left = "-1000px";
-                                ghost.style.padding = "6px 12px";
-                                ghost.style.background = "white";
-                                ghost.style.border = "1px solid #ccc";
-                                ghost.style.color = "black";
-                                ghost.style.borderRadius = "0.5rem";
-                                ghost.innerText = `(${labelText})`;
-                                document.body.appendChild(ghost);
-                                e.dataTransfer.setDragImage(ghost, 0, 15);
-                                setTimeout(() => document.body.removeChild(ghost), 0);
-                              }}
-                              onDragEnd={() => {
-                                setDraggingIdx(null);
-                                setCurrentDraggedOutput(null);
-                              }}
+                              onDragStart={handleOutputDragStart}
+                              onDragEnd={handleOutputDragEnd}
                             >
                               <ArrowUpRight className={styles.outputIcon} />
                               <span className={styles.outputText}>{labelText}</span>
@@ -2473,13 +2573,7 @@ export default function ProtocolNodeCard({
                                   e.preventDefault();
                                   e.stopPropagation();
                                 }}
-                                onClick={(e) => {
-                                  // openViewer
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  if (!isViewerEnabled) return;
-                                  void openOutputViewer(outputName, outputObj, value);
-                                }}
+                                onClick={handleOpenOutput}
                                 disabled={!isViewerEnabled}
                               >
                                 <Eye className={styles.outputEyeIcon} />

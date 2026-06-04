@@ -10,10 +10,7 @@
   --swOutputRowGap: 12px;
 
   /* Reserve exactly visibleRows * rowHeight + gaps */
-  --swOutputsListMaxHeight: calc(
-    (var(--swOutputRowHeight) * var(--swOutputVisibleRows)) +
-      (var(--swOutputRowGap) * (var(--swOutputVisibleRows) - 1))
-  );
+  --swOutputsListMaxHeight: calc((var(--swOutputRowHeight) * var(--swOutputVisibleRows)) + (var(--swOutputRowGap) * (var(--swOutputVisibleRows) - 1)));
 
   /* Fixed header height for the Outputs section, so reserved area includes it */
   --swOutputsHeaderHeight: 48px;
@@ -143,10 +140,12 @@
     transform: scale(1);
     box-shadow: 0 0 6px rgba(3, 88, 14, 0.8);
   }
+
   50% {
     transform: scale(1.08);
     box-shadow: 0 0 16px rgba(3, 88, 14, 0.9);
   }
+
   100% {
     transform: scale(1);
     box-shadow: 0 0 6px rgba(3, 88, 14, 0.8);
@@ -325,6 +324,111 @@
   transition: opacity 160ms ease, box-shadow 160ms ease;
 }
 
+.sectionContentThumbs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 12px;
+}
+
+.outputThumbTile {
+  cursor: grab;
+  min-width: 0;
+  min-height: 154px;
+  border-radius: 14px;
+  border: 1px solid rgba(15, 23, 42, 0.22);
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.16);
+  overflow: hidden;
+  transition:
+    transform 140ms ease,
+    box-shadow 140ms ease,
+    opacity 160ms ease;
+}
+
+.outputThumbTile:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 14px rgba(15, 23, 42, 0.22);
+}
+
+.outputThumbImageWrap {
+  position: relative;
+  height: 104px;
+  background:
+    linear-gradient(45deg, rgba(148, 163, 184, 0.18) 25%, transparent 25%),
+    linear-gradient(-45deg, rgba(148, 163, 184, 0.18) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, rgba(148, 163, 184, 0.18) 75%),
+    linear-gradient(-45deg, transparent 75%, rgba(148, 163, 184, 0.18) 75%);
+  background-size: 18px 18px;
+  background-position: 0 0, 0 9px, 9px -9px, -9px 0;
+  background-color: rgba(248, 250, 252, 0.92);
+}
+
+.outputThumbImage {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
+}
+
+.outputThumbActionBtn {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid rgba(15, 23, 42, 0.22);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.88);
+  color: #111827;
+  cursor: pointer;
+  opacity: 0.92;
+}
+
+.outputThumbActionBtn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.outputThumbActionBtn:hover:not(:disabled) {
+  opacity: 1;
+  background: #ffffff;
+}
+
+.outputThumbEyeIcon {
+  width: 22px;
+  height: 22px;
+}
+
+.outputThumbFooter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px 8px;
+  min-width: 0;
+}
+
+.outputThumbTypeIcon {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  color: #111827;
+}
+
+.outputThumbText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #111827;
+  font-size: 1.55rem;
+  line-height: 1.1;
+  font-weight: 500;
+}
+
 .outputPillDragging {
   opacity: 0.7;
 }
@@ -475,13 +579,14 @@
 
 .menuContent {
   width: 15rem;
-   background-color: var(--color-popover, #fff);
+  background-color: var(--color-popover, #fff);
   color: var(--color-popover-foreground, #111827);
   border: 1px solid var(--color-border, #e5e7eb);
   border-radius: 0.5rem;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
   padding: 0.25rem;
 }
+
 /* Radix state for hovered/focused items */
 .menuContent [data-highlighted] {
   background-color: var(--color-accent, #f3f4f6);
@@ -496,7 +601,7 @@
 .subMenuContent {
   width: 25rem;
   margin-bottom: 1.5rem;
-   background-color: var(--color-popover, #fff);
+  background-color: var(--color-popover, #fff);
   color: var(--color-popover-foreground, #111827);
   border: 1px solid var(--color-border, #e5e7eb);
   border-radius: 0.5rem;
@@ -541,22 +646,26 @@
   width: 44px;
   height: 44px;
 }
+
 .footer {
   display: flex;
   flex-direction: column;
-  align-items: stretch; /* key: prevents centering the whole row */
+  align-items: stretch;
+  /* key: prevents centering the whole row */
   width: 100%;
 }
 
 .footerTopRow {
   display: flex;
   align-items: center;
-  justify-content: space-between; /* left vs right */
+  justify-content: space-between;
+  /* left vs right */
   width: 100%;
 }
 
 .timeRow {
-  margin-left: auto; /* hard guarantee it goes to the right */
+  margin-left: auto;
+  /* hard guarantee it goes to the right */
 }
 
 .footerTagsRow {
@@ -572,17 +681,21 @@
 .tagChip {
   display: inline-flex;
   align-items: center;
-  padding: 8px 16px;      /* bigger */
+  padding: 8px 16px;
+  /* bigger */
   border-radius: 999px;
   border: 1px solid rgba(15, 23, 42, 0.18);
-  font-size: 30px;        /* bigger */
-  line-height: 22px;      /* bigger */
+  font-size: 30px;
+  /* bigger */
+  line-height: 22px;
+  /* bigger */
   color: #fdfdfd;
 
   /* optional extra punch if still small due to zoom */
   transform: scale(1.06);
   transform-origin: left center;
-  margin-left: 8px; /* to visually compensate the transform */
+  margin-left: 8px;
+  /* to visually compensate the transform */
 }
 
 .tagChipText {
@@ -645,10 +758,12 @@
 .nextStepList::-webkit-scrollbar {
   width: 10px;
 }
+
 .nextStepList::-webkit-scrollbar-track {
   background: rgba(15, 23, 42, 0.12);
   border-radius: 999px;
 }
+
 .nextStepList::-webkit-scrollbar-thumb {
   background: rgba(15, 23, 42, 0.45);
   border-radius: 999px;
@@ -672,7 +787,8 @@
   align-items: center;
   gap: 8px;
   flex: 1;
-  min-width: 0; /* criticalForEllipsis */
+  min-width: 0;
+  /* criticalForEllipsis */
 }
 
 .nextStepItemIcon {
@@ -864,6 +980,7 @@
   0% {
     transform: translateX(-120%);
   }
+
   100% {
     transform: translateX(220%);
   }

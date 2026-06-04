@@ -67,6 +67,35 @@ export type ProjectThumbnailObjectUrlOptions =
     size?: number;
   };
 
+export type ProtocolOutputThumbnailRequestItem = {
+  protocolId: Id;
+  outputName: string;
+};
+
+export type ProtocolOutputThumbnailItem = {
+  protocolId: Id;
+  outputName: string;
+  outputClassName?: string | null;
+  exists?: boolean;
+  cached?: boolean;
+  thumbnailUrl?: string | null;
+  thumbnailDataUrl?: string | null;
+  error?: string | null;
+};
+
+export type ProtocolOutputThumbnailsResponse = {
+  projectId: Id;
+  size: number;
+  items: ProtocolOutputThumbnailItem[];
+};
+
+export type ProtocolOutputThumbnailsOptions =
+  AuthenticatedRequestOptions & {
+    size?: number;
+    inlineImages?: boolean;
+    outputs: ProtocolOutputThumbnailRequestItem[];
+  };
+
 /** Common ID type to accept either string or number seamlessly. */
 export type Id = string | number | null | undefined;
 
@@ -1229,6 +1258,11 @@ export interface ProjectService<
     projectId: Id,
     opts?: ProjectThumbnailObjectUrlOptions,
   ): Promise<string>;
+
+  fetchProtocolOutputThumbnails: (
+    projectId: Id,
+    opts: ProtocolOutputThumbnailsOptions,
+  ) => Promise<ProtocolOutputThumbnailsResponse>;
 
 
   /**

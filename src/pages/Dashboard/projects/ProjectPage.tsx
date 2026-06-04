@@ -63,6 +63,7 @@ import { useProjectService } from "@/ProjectServiceContext";
 import {
   hasProjectEffectiveSettingsService,
   type ProjectEffectiveSettings,
+  type ProtocolOutputThumbnailItem,
 } from "@/services/ProjectService";
 import { Project } from "@/types/project";
 import Label from "@/components/form/Label";
@@ -91,6 +92,7 @@ interface StatusNodeData {
   projectId?: string | number;
   outputs?: unknown[];
   inputs?: unknown[];
+  outputThumbnails?: Record<string, ProtocolOutputThumbnailItem>;
 
   // Progress/timing
   cpuTime?: string;
@@ -477,6 +479,118 @@ const getProtocolRowDisplayName = (row: any) => {
   return String(row?.id ?? "");
 };
 
+
+const PROTOCOL_OUTPUT_THUMBNAIL_SIZE = 128;
+
+function getOutputNameFromNodeOutput(output: unknown): string {
+  if (!output || typeof output !== "object") return "";
+
+  const obj = output as Record<string, unknown>;
+
+  const directName = obj.outputName ?? obj.name;
+  if (typeof directName === "string" && directName.trim()) {
+    return directName.trim();
+  }
+
+  const entries = Object.entries(obj);
+  if (entries.length === 1) {
+    const [wrappedName, wrappedValue] = entries[0];
+    if (wrappedValue && typeof wrappedValue === "object") {
+      return String(wrappedName ?? "").trim();
+    }
+  }
+
+  return "";
+}
+
+function getOutputThumbnailCacheKey(
+  projectId: string | number,
+  protocolId: string | number,
+  outputName: string,
+  size: number,
+): string {
+  return [
+    String(projectId),
+    String(protocolId),
+    String(outputName),
+    `size=${size}`,
+  ].join("|");
+}
+
+function mergeOutputThumbnailsIntoNodes(
+  nodes: Node<StatusNodeData>[],
+  items: ProtocolOutputThumbnailItem[],
+): Node<StatusNodeData>[] {
+  if (!items.length) return nodes;
+
+  const byProtocolId = new Map<string, Record<string, ProtocolOutputThumbnailItem>>();
+
+  for (const item of items) {
+    if (!item.exists || !item.thumbnailDataUrl) continue;
+
+    const protocolId = String(item.protocolId ?? "").trim();
+    const outputName = String(item.outputName ?? "").trim();
+
+    if (!protocolId || !outputName) continue;
+
+    const current = byProtocolId.get(protocolId) ?? {};
+    current[outputName] = item;
+    byProtocolId.set(protocolId, current);
+  }
+
+  if (!byProtocolId.size) return nodes;
+
+  let changed = false;
+
+  const nextNodes = nodes.map((node) => {
+    const protocolThumbs = byProtocolId.get(String(node.id));
+    if (!protocolThumbs) return node;
+
+    changed = true;
+
+    return {
+      ...node,
+      data: {
+        ...node.data,
+        outputThumbnails: {
+          ...(node.data?.outputThumbnails ?? {}),
+          ...protocolThumbs,
+        },
+      },
+    };
+  });
+
+  return changed ? nextNodes : nodes;
+}
+
+function preserveExistingOutputThumbnails(
+  nextNodes: Node<StatusNodeData>[],
+  currentNodes: Node[],
+): Node<StatusNodeData>[] {
+  const thumbnailsByNodeId = new Map<string, Record<string, ProtocolOutputThumbnailItem>>();
+
+  for (const node of currentNodes) {
+    const thumbs = (node as any)?.data?.outputThumbnails;
+    if (thumbs && typeof thumbs === "object") {
+      thumbnailsByNodeId.set(String(node.id), thumbs);
+    }
+  }
+
+  if (!thumbnailsByNodeId.size) return nextNodes;
+
+  return nextNodes.map((node) => {
+    const thumbs = thumbnailsByNodeId.get(String(node.id));
+    if (!thumbs) return node;
+
+    return {
+      ...node,
+      data: {
+        ...node.data,
+        outputThumbnails: thumbs,
+      },
+    };
+  });
+}
 
 export default function ProjectPage() {
   const hostIsDark = useHostDarkMode();
@@ -924,6 +1038,8 @@ export default function ProjectPage() {
   }, [openForms]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState<StatusNodeData>([]);
+  const outputThumbnailCacheRef = useRef<Map<string, ProtocolOutputThumbnailItem>>(new Map());
+  const outputThumbnailInFlightRef = useRef<Promise<void> | null>(null);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge[]>([]);
   const [tableData, setTableData] = useState<any[]>([]);
   const sortedTableData = useMemo(() => {
@@ -1132,6 +1248,96 @@ export default function ProjectPage() {
   useEffect(() => { nodesRef.current = nodes; }, [nodes]);
   const edgesRef = useRef<Edge[]>(edges);
   useEffect(() => { edgesRef.current = edges; }, [edges]);
+
+  const loadProtocolOutputThumbnailsForNodes = useCallback(
+    async (projectIdValue: string | number | undefined, sourceNodes: Node<StatusNodeData>[]) => {
+      if (projectIdValue == null) return;
+      if (!Array.isArray(sourceNodes) || sourceNodes.length === 0) return;
+      if (typeof (svc as any).fetchProtocolOutputThumbnails !== "function") return;
+
+      const cachedItems: ProtocolOutputThumbnailItem[] = [];
+      const requests: Array<{ protocolId: string | number; outputName: string }> = [];
+      const seen = new Set<string>();
+
+      for (const node of sourceNodes) {
+        const protocolId = String(node.id ?? "").trim();
+        if (!protocolId || protocolId === "PROJECT") continue;
+
+        const outputs = Array.isArray(node.data?.outputs) ? node.data.outputs : [];
+
+        for (const output of outputs) {
+          const outputName = getOutputNameFromNodeOutput(output);
+          if (!outputName) continue;
+
+          const cacheKey = getOutputThumbnailCacheKey(
+            projectIdValue,
+            protocolId,
+            outputName,
+            PROTOCOL_OUTPUT_THUMBNAIL_SIZE,
+          );
+
+          if (seen.has(cacheKey)) continue;
+          seen.add(cacheKey);
+
+          const cached = outputThumbnailCacheRef.current.get(cacheKey);
+          if (cached) {
+            cachedItems.push(cached);
+            continue;
+          }
+
+          requests.push({
+            protocolId,
+            outputName,
+          });
+        }
+      }
+
+      if (cachedItems.length) {
+        setNodes((prev) => mergeOutputThumbnailsIntoNodes(prev as Node<StatusNodeData>[], cachedItems));
+      }
+
+      if (!requests.length) return;
+      if (outputThumbnailInFlightRef.current) return;
+
+      const run = (async () => {
+        try {
+          const result = await (svc as any).fetchProtocolOutputThumbnails(projectIdValue, {
+            size: PROTOCOL_OUTPUT_THUMBNAIL_SIZE,
+            inlineImages: true,
+            outputs: requests,
+          });
+
+          const items = Array.isArray(result?.items) ? result.items as ProtocolOutputThumbnailItem[] : [];
+
+          for (const item of items) {
+            const protocolId = String(item.protocolId ?? "").trim();
+            const outputName = String(item.outputName ?? "").trim();
+
+            if (!protocolId || !outputName) continue;
+
+            const cacheKey = getOutputThumbnailCacheKey(
+              projectIdValue,
+              protocolId,
+              outputName,
+              PROTOCOL_OUTPUT_THUMBNAIL_SIZE,
+            );
+
+            outputThumbnailCacheRef.current.set(cacheKey, item);
+          }
+
+          setNodes((prev) => mergeOutputThumbnailsIntoNodes(prev as Node<StatusNodeData>[], items));
+        } catch (err) {
+          console.warn("fetchProtocolOutputThumbnails failed", err);
+        } finally {
+          outputThumbnailInFlightRef.current = null;
+        }
+      })();
+
+      outputThumbnailInFlightRef.current = run;
+      await run;
+    },
+    [svc, setNodes],
+  );
 
   const isRunningNode = (n: Node) => (n as any).data?.status === "running";
 
@@ -2289,6 +2495,9 @@ export default function ProjectPage() {
 
   useEffect(() => {
     // resetFirstCenterOnProjectChange
+    outputThumbnailCacheRef.current.clear();
+    outputThumbnailInFlightRef.current = null;
+
     firstLoadRef.current = true;
     setNodesLoadedOnce(false);
 
@@ -2348,8 +2557,13 @@ export default function ProjectPage() {
           : new Set<string>();
         pathSelRef.current.edges = recomputedEdgeSet;
 
+        const nextNodes = nodesWithTick.map((n) => ({
+          ...n,
+          selected: unifiedSelectedIds.has(n.id),
+        }));
+
         startTransition(() => {
-          setNodes(nodesWithTick.map((n) => ({ ...n, selected: unifiedSelectedIds.has(n.id) })));
+          setNodes(nextNodes);
           setEdges((_) => {
             let base = mode === "grid" ? [] : loadedEdges;
             base = paintEdgeHighlight(base, selectedIdRef.current ?? null);
@@ -2358,6 +2572,11 @@ export default function ProjectPage() {
           });
           setTableData(table ?? []);
         });
+
+        void loadProtocolOutputThumbnailsForNodes(
+          (data as any)?.id ?? (data as any)?.projectId,
+          nextNodes,
+        );
 
         setNodeTicks(initialTicks);
         setNodesLoadedOnce(true);
@@ -2429,13 +2648,18 @@ export default function ProjectPage() {
             : { ...n, selected: unifiedSelectedIds.has(n.id) }
         );
 
+        const nodesSeedWithThumbnails = preserveExistingOutputThumbnails(
+          nodesSeed as Node<StatusNodeData>[],
+          nodesRef.current,
+        );
+
         const recomputedEdgeSet = unifiedSelectedIds.size
           ? computeEdgesForMode(unifiedSelectedIds, pathEdgeModeRef.current)
           : new Set<string>();
         pathSelRef.current.edges = recomputedEdgeSet;
 
         startTransition(() => {
-          setNodes(nodesSeed);
+          setNodes(nodesSeedWithThumbnails);
           setEdges((_) => {
             let out = paintEdgeHighlight(edgesMerged, selectedIdRef.current ?? null);
             if (recomputedEdgeSet.size) out = paintPathHighlight(out, recomputedEdgeSet);
@@ -2443,6 +2667,11 @@ export default function ProjectPage() {
           });
           setTableData(table ?? []);
         });
+
+        void loadProtocolOutputThumbnailsForNodes(
+          (data as any)?.id ?? (data as any)?.projectId,
+          nodesSeedWithThumbnails,
+        );
 
         setNodeTicks((prev) => {
           const updated: Record<string, number> = {};

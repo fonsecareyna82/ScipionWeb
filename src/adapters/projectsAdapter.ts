@@ -55,6 +55,7 @@ import type {
   ExternalViewerListOptions,
   ExternalViewerLaunchPayload,
   ExternalViewerLaunchResult,
+  ProtocolOutputThumbnailsOptions,
 
 } from "@/services/ProjectService";
 
@@ -104,6 +105,13 @@ const defaultService: ProjectService = {
     opts?: ProjectThumbnailObjectUrlOptions,
   ) =>
     api.fetchProjectThumbnailObjectUrl(toId(projectId), opts),
+
+
+  fetchProtocolOutputThumbnails: (
+    projectId: Id,
+    opts: ProtocolOutputThumbnailsOptions,
+  ) =>
+    api.fetchProtocolOutputThumbnails(toId(projectId), opts),
 
 
   // --- Reads ---
