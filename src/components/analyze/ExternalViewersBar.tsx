@@ -24,6 +24,22 @@ type ExternalViewersBarProps = {
   loadDelayMs?: number;
 };
 
+const externalViewersCache = new Map<string, ExternalViewerDescriptor[]>();
+
+function buildExternalViewersCacheKey(params: {
+  projectId: Id;
+  protocolId: Id;
+  outputName: string;
+  objectKind?: string;
+}) {
+  return [
+    String(params.projectId),
+    String(params.protocolId),
+    params.outputName,
+    params.objectKind ?? "",
+  ].join("::");
+}
+
 function getErrorMessage(error: unknown): string {
   if (error && typeof error === "object") {
     const data = (error as any).data;
@@ -61,6 +77,11 @@ export default function ExternalViewersBar({
   const [loading, setLoading] = useState(false);
   const [launchingViewerId, setLaunchingViewerId] = useState<string | null>(null);
 
+  const cacheKey = useMemo(
+    () => buildExternalViewersCacheKey({ projectId, protocolId, outputName, objectKind }),
+    [projectId, protocolId, outputName, objectKind],
+  );
+
   const canLoad = useMemo(() => {
     return Boolean(
       !disabled &&
@@ -75,6 +96,13 @@ export default function ExternalViewersBar({
   useEffect(() => {
     if (!canLoad || typeof (svc as any).listExternalViewers !== "function") {
       setViewers([]);
+      setLoading(false);
+      return;
+    }
+
+    const cachedViewers = externalViewersCache.get(cacheKey);
+    if (cachedViewers) {
+      setViewers(cachedViewers);
       setLoading(false);
       return;
     }
@@ -101,6 +129,7 @@ export default function ExternalViewersBar({
         if (cancelled) return;
 
         const nextViewers = Array.isArray(result) ? result : [];
+        externalViewersCache.set(cacheKey, nextViewers);
         setViewers(nextViewers);
       } catch (error: any) {
         if (controller.signal.aborted || cancelled) return;
@@ -128,7 +157,7 @@ export default function ExternalViewersBar({
       }
       controller.abort();
     };
-  }, [canLoad, svc, projectId, protocolId, outputName, objectId, objectKind, loadDelayMs]);
+  }, [canLoad, svc, projectId, protocolId, outputName, objectKind, cacheKey, loadDelayMs]);
 
   const handleLaunchViewer = async (viewer: ExternalViewerDescriptor) => {
     if (disabled || !viewer.available) return;
