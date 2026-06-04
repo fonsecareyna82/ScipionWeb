@@ -21,7 +21,24 @@ type ExternalViewersBarProps = {
   objectId?: Id;
   objectKind?: string;
   disabled?: boolean;
+  loadDelayMs?: number;
 };
+
+const externalViewersCache = new Map<string, ExternalViewerDescriptor[]>();
+
+function buildExternalViewersCacheKey(params: {
+  projectId: Id;
+  protocolId: Id;
+  outputName: string;
+  objectKind?: string;
+}) {
+  return [
+    String(params.projectId),
+    String(params.protocolId),
+    params.outputName,
+    params.objectKind ?? "",
+  ].join("::");
+}
 
 function getErrorMessage(error: unknown): string {
   if (error && typeof error === "object") {
@@ -52,6 +69,7 @@ export default function ExternalViewersBar({
   objectId,
   objectKind,
   disabled = false,
+  loadDelayMs = 600,
 }: ExternalViewersBarProps) {
   const svc = useProjectService();
 
@@ -59,7 +77,12 @@ export default function ExternalViewersBar({
   const [loading, setLoading] = useState(false);
   const [launchingViewerId, setLaunchingViewerId] = useState<string | null>(null);
 
-  const canLoad = useMemo(() => {
+  const cacheKey = useMemo(
+    () => buildExternalViewersCacheKey({ projectId, protocolId, outputName, objectKind }),
+    [projectId, protocolId, outputName, objectKind],
+  );
+
+  const hasRequiredContext = useMemo(() => {
     return Boolean(
       projectId !== null &&
       projectId !== undefined &&
@@ -70,13 +93,27 @@ export default function ExternalViewersBar({
   }, [projectId, protocolId, outputName]);
 
   useEffect(() => {
-    if (!canLoad || typeof (svc as any).listExternalViewers !== "function") {
+    if (!hasRequiredContext || typeof (svc as any).listExternalViewers !== "function") {
       setViewers([]);
+      setLoading(false);
+      return;
+    }
+
+    const cachedViewers = externalViewersCache.get(cacheKey);
+    if (cachedViewers) {
+      setViewers(cachedViewers);
+      setLoading(false);
+      return;
+    }
+
+    if (disabled) {
+      setLoading(false);
       return;
     }
 
     const controller = new AbortController();
     let cancelled = false;
+    let timer: number | null = null;
 
     async function loadExternalViewers() {
       try {
@@ -96,6 +133,7 @@ export default function ExternalViewersBar({
         if (cancelled) return;
 
         const nextViewers = Array.isArray(result) ? result : [];
+        externalViewersCache.set(cacheKey, nextViewers);
         setViewers(nextViewers);
       } catch (error: any) {
         if (controller.signal.aborted || cancelled) return;
@@ -112,13 +150,18 @@ export default function ExternalViewersBar({
       }
     }
 
-    loadExternalViewers();
+    timer = window.setTimeout(() => {
+      void loadExternalViewers();
+    }, Math.max(0, loadDelayMs));
 
     return () => {
       cancelled = true;
+      if (timer != null) {
+        window.clearTimeout(timer);
+      }
       controller.abort();
     };
-  }, [canLoad, svc, projectId, protocolId, outputName, objectId, objectKind]);
+  }, [hasRequiredContext, disabled, svc, projectId, protocolId, outputName, objectKind, cacheKey, loadDelayMs]);
 
   const handleLaunchViewer = async (viewer: ExternalViewerDescriptor) => {
     if (disabled || !viewer.available) return;
