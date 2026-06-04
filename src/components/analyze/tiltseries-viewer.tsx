@@ -1292,15 +1292,13 @@ export default function TiltSeriesViewer({
                 </span>
               </Tooltip>
 
-              {canShowExternalViewers && (
-                <ExternalViewersBar
-                  projectId={projectId}
-                  protocolId={protocolId}
-                  outputName={outputName}
-                  objectId={selectedSeriesId}
-                  objectKind="tiltSeries"
-                />
-              )}
+              <ExternalViewersBar
+                projectId={projectId}
+                protocolId={protocolId}
+                outputName={outputName}
+                objectId={selectedSeriesId}
+                objectKind="tiltSeries"
+              />
             </Box>
 
           </Paper>
