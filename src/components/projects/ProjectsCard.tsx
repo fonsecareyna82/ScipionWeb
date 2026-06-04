@@ -427,8 +427,8 @@ export default function ProjectCard(props: ProjectCardProps) {
           String(id),
           String(thumbnailItemsUrl ?? ""),
           String(thumbnailVersion ?? ""),
-          "size=256",
-          "maxProtocols=5",
+          "size=128",
+          "maxProtocols=4",
           "maxOutputsPerProtocol=2",
         ].join("|");
 
