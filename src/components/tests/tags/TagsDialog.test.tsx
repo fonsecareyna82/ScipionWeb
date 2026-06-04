@@ -1,11 +1,12 @@
 import { describe, it, expect, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 
 import TagsDialog from "../../tags/TagsDialog";
+import { renderWithProviders } from "../test-utils";
 
 describe("TagsDialog", () => {
   it("renders the default title and children when open", () => {
-    render(
+    renderWithProviders(
       <TagsDialog open={true} onClose={() => {}}>
         <div>Dialog content</div>
       </TagsDialog>,
@@ -17,7 +18,7 @@ describe("TagsDialog", () => {
   });
 
   it("renders a custom title when provided", () => {
-    render(
+    renderWithProviders(
       <TagsDialog open={true} onClose={() => {}} title="Manage tags">
         <div>Dialog content</div>
       </TagsDialog>,
@@ -30,7 +31,7 @@ describe("TagsDialog", () => {
   it("calls onClose when the Close button is clicked", () => {
     const onClose = vi.fn();
 
-    render(
+    renderWithProviders(
       <TagsDialog open={true} onClose={onClose}>
         <div>Dialog content</div>
       </TagsDialog>,
@@ -42,7 +43,7 @@ describe("TagsDialog", () => {
   });
 
   it("does not render content when closed", () => {
-    render(
+    renderWithProviders(
       <TagsDialog open={false} onClose={() => {}}>
         <div>Dialog content</div>
       </TagsDialog>,
