@@ -82,19 +82,18 @@ export default function ExternalViewersBar({
     [projectId, protocolId, outputName, objectKind],
   );
 
-  const canLoad = useMemo(() => {
+  const hasRequiredContext = useMemo(() => {
     return Boolean(
-      !disabled &&
       projectId !== null &&
       projectId !== undefined &&
       protocolId !== null &&
       protocolId !== undefined &&
       outputName,
     );
-  }, [disabled, projectId, protocolId, outputName]);
+  }, [projectId, protocolId, outputName]);
 
   useEffect(() => {
-    if (!canLoad || typeof (svc as any).listExternalViewers !== "function") {
+    if (!hasRequiredContext || typeof (svc as any).listExternalViewers !== "function") {
       setViewers([]);
       setLoading(false);
       return;
@@ -103,6 +102,11 @@ export default function ExternalViewersBar({
     const cachedViewers = externalViewersCache.get(cacheKey);
     if (cachedViewers) {
       setViewers(cachedViewers);
+      setLoading(false);
+      return;
+    }
+
+    if (disabled) {
       setLoading(false);
       return;
     }
@@ -157,7 +161,7 @@ export default function ExternalViewersBar({
       }
       controller.abort();
     };
-  }, [canLoad, svc, projectId, protocolId, outputName, objectKind, cacheKey, loadDelayMs]);
+  }, [hasRequiredContext, disabled, svc, projectId, protocolId, outputName, objectKind, cacheKey, loadDelayMs]);
 
   const handleLaunchViewer = async (viewer: ExternalViewerDescriptor) => {
     if (disabled || !viewer.available) return;
