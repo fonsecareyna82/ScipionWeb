@@ -2,27 +2,30 @@ import { useEffect, useState, useRef, useCallback, useMemo, type ReactNode } fro
 import { useNavigate, useParams } from "react-router-dom";
 import PageMeta from "@/components/common/PageMeta";
 import ProjectCard from "@/components/projects/ProjectsCard";
+import ProjectListRow from "@/components/projects/ProjectListRow";
 import { ChevronDownIcon } from "@/icons";
 import NewProjectModal from "@/components/projects/NewProjectModal";
 import { useProjectService } from "@/ProjectServiceContext";
 import type { ProjectService } from "@/services/ProjectService";
 import type { Project } from "@/types/project";
-import { CloudDownload, Download, PlusCircle, Search, X } from "lucide-react";
+import { CloudDownload, Download, LayoutGrid, List, PlusCircle, Search, X } from "lucide-react";
 import ShareProjectModal from "@/components/projects/ShareProjectModal";
 import toast from "react-hot-toast";
 import ImportProjectDialog from "@/components/projects/ImportProjectDialog";
 import ProjectPage from "./ProjectPage";
 import "./project-workspaces.css";
 
-/** Tweak this if your header/breadcrumb/top paddings differ */
 const GRID_VPORT_OFFSET_PX = 250;
 const WORKSPACE_TABS_STORAGE_KEY = "scipion.projects.workspaceTabs.v1";
+const PROJECTS_VIEW_MODE_STORAGE_KEY = "scipion.projects.viewMode.v1";
 
 function classNames(...xs: Array<string | false | null | undefined>): string {
   return xs.filter(Boolean).join(" ");
 }
 
 const crispText = "subpixel-antialiased [text-rendering:optimizeLegibility]";
+
+type ProjectsViewMode = "cards" | "list";
 
 type ProjectCardProject = Project & {
   thumbnailUrl?: string | null;
@@ -50,7 +53,6 @@ const projectsWorkspaceTab: WorkspaceTab = {
   title: "Projects",
 };
 
-/** Normalize any backend project shape into our internal Project type. */
 function normalizeProject(raw: any): ProjectCardProject {
   const p = raw ?? {};
   const createdRaw = p.createdAt ?? p.created_at;
@@ -103,6 +105,16 @@ function getProjectWorkspaceId(projectName: string | number): string {
 
 function getProjectWorkspacePath(projectName: string | number): string {
   return `/project/load/${encodeURIComponent(String(projectName))}`;
+}
+
+function readStoredProjectsViewMode(): ProjectsViewMode {
+  if (typeof window === "undefined") return "cards";
+
+  try {
+    return window.localStorage.getItem(PROJECTS_VIEW_MODE_STORAGE_KEY) === "list" ? "list" : "cards";
+  } catch {
+    return "cards";
+  }
 }
 
 function readStoredWorkspaceTabs(): WorkspaceTab[] {
@@ -198,6 +210,7 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
   }, [params.projectName]);
 
   const [workspaceTabs, setWorkspaceTabs] = useState<WorkspaceTab[]>(readStoredWorkspaceTabs);
+  const [viewMode, setViewMode] = useState<ProjectsViewMode>(readStoredProjectsViewMode);
   const activeWorkspaceId = routeProjectName ? getProjectWorkspaceId(routeProjectName) : projectsWorkspaceTab.id;
   const isProjectsWorkspaceActive = activeWorkspaceId === projectsWorkspaceTab.id;
 
@@ -350,6 +363,14 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
   useEffect(() => {
     storeWorkspaceTabs(workspaceTabs);
   }, [workspaceTabs]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(PROJECTS_VIEW_MODE_STORAGE_KEY, viewMode);
+    } catch {
+      // noOp
+    }
+  }, [viewMode]);
 
   const normalizedTerm = search.trim().toLowerCase();
 
@@ -511,6 +532,163 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
     </div>
   );
 
+  const renderViewModeToggle = () => (
+    <div
+      className={classNames(
+        crispText,
+        "inline-flex rounded-xl border p-1 shadow-sm",
+        "border-gray-300/80 bg-gray-100/80",
+        "dark:border-gray-700 dark:bg-slate-950",
+      )}
+      aria-label="Projects view mode"
+    >
+      <button
+        type="button"
+        onClick={() => setViewMode("cards")}
+        className={classNames(
+          "inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-semibold transition",
+          viewMode === "cards"
+            ? "bg-white text-indigo-700 shadow-sm dark:bg-slate-800 dark:text-indigo-200"
+            : "text-gray-600 hover:text-gray-950 dark:text-gray-400 dark:hover:text-white",
+        )}
+      >
+        <LayoutGrid className="h-4 w-4" />
+        <span className="hidden sm:inline">Cards</span>
+      </button>
+
+      <button
+        type="button"
+        onClick={() => setViewMode("list")}
+        className={classNames(
+          "inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-semibold transition",
+          viewMode === "list"
+            ? "bg-white text-indigo-700 shadow-sm dark:bg-slate-800 dark:text-indigo-200"
+            : "text-gray-600 hover:text-gray-950 dark:text-gray-400 dark:hover:text-white",
+        )}
+      >
+        <List className="h-4 w-4" />
+        <span className="hidden sm:inline">List</span>
+      </button>
+    </div>
+  );
+
+  const renderLoadingSkeleton = () => {
+    if (viewMode === "list") {
+      return (
+        <div className="space-y-3">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div
+              key={i}
+              className={classNames(
+                "h-[92px] animate-pulse rounded-2xl border px-4 py-4 shadow-sm",
+                "border-gray-300/80 bg-white",
+                "dark:border-gray-700 dark:bg-slate-900",
+              )}
+            >
+              <div className="h-5 w-1/3 rounded bg-gray-200 dark:bg-slate-700" />
+              <div className="mt-3 h-4 w-2/3 rounded bg-gray-100 dark:bg-slate-800" />
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    return (
+      <div className="grid grid-cols-1 items-start gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <div
+            key={i}
+            className={classNames(
+              "h-[210px] animate-pulse rounded-2xl border p-5 shadow-sm",
+              "border-gray-300/80 bg-white",
+              "dark:border-gray-700 dark:bg-slate-900",
+            )}
+          >
+            <div className="h-5 w-2/3 rounded bg-gray-200 dark:bg-slate-700" />
+            <div className="mt-3 h-4 w-1/2 rounded bg-gray-200 dark:bg-slate-700" />
+            <div className="mt-6 h-12 rounded bg-gray-100 dark:bg-slate-800" />
+            <div className="mt-3 h-4 w-1/3 rounded bg-gray-200 dark:bg-slate-700" />
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  const renderProjectGrid = () => (
+    <div
+      className="grid grid-cols-1 items-start gap-6 sm:grid-cols-2 lg:grid-cols-3"
+      aria-label="Projects cards"
+    >
+      {filteredProjects.map((project) => (
+        <div key={getProjectCardKey(project)} className="mt-2 h-full">
+          <ProjectCard
+            id={project.id}
+            label={project.name}
+            value={project.protocolsCount ?? "0"}
+            createdAt={project.createdAt ? String(project.createdAt) : undefined}
+            updatedAt={project.updatedAt ? String(project.updatedAt) : undefined}
+            diskUsage={project.diskUsage?.toString()}
+            isSelected={selectedLabel === project.name}
+            onSelect={() => setSelectedLabel(project.name)}
+            isExpanded={expandedLabel === project.name}
+            description={project.description ?? "No description available."}
+            onToggleExpand={() =>
+              setExpandedLabel((prev) => (prev === project.name ? null : project.name))
+            }
+            onDelete={handleDeleteProject}
+            onRename={handleRenameProject}
+            onShare={(cardId) =>
+              handleShareProject(cardId, project.name, project.projectOwnerId ?? null)
+            }
+            isShared={project.isShared}
+            isOwner={project.isOwner}
+            permission={project.permission?.toString()}
+            projectOwnerId={project.projectOwnerId ?? null}
+            thumbnailUrl={project.thumbnailUrl ?? null}
+            thumbnailRebuildUrl={project.thumbnailRebuildUrl ?? null}
+            thumbnailItemsUrl={project.thumbnailItemsUrl ?? null}
+            thumbnailVersion={project.thumbnailVersion ?? 0}
+          />
+        </div>
+      ))}
+    </div>
+  );
+
+  const renderProjectList = () => (
+    <div className="space-y-3" aria-label="Projects list">
+      <div className="hidden grid-cols-[minmax(260px,1fr)_120px_120px_150px_130px_52px] px-4 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500 dark:text-slate-500 xl:grid">
+        <div>Project</div>
+        <div>Protocols</div>
+        <div>Updated</div>
+        <div>Storage</div>
+        <div>Status</div>
+        <div />
+      </div>
+
+      {filteredProjects.map((project) => (
+        <ProjectListRow
+          key={String(project.id)}
+          id={project.id}
+          name={project.name}
+          description={project.description ?? "No description available."}
+          protocolsCount={project.protocolsCount ?? "0"}
+          createdAt={project.createdAt}
+          updatedAt={project.updatedAt}
+          diskUsage={project.diskUsage ?? null}
+          status={project.status}
+          isSelected={selectedLabel === project.name}
+          onSelect={() => setSelectedLabel(project.name)}
+          onDelete={handleDeleteProject}
+          onRename={handleRenameProject}
+          onShare={(rowId) => handleShareProject(rowId, project.name, project.projectOwnerId ?? null)}
+          isShared={project.isShared}
+          isOwner={project.isOwner}
+          permission={project.permission?.toString()}
+        />
+      ))}
+    </div>
+  );
+
   const renderProjectsListWorkspace = () => (
     <div
       className={classNames(
@@ -538,6 +716,8 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
           </div>
 
           <div className="flex flex-wrap items-center justify-start gap-2 sm:justify-end">
+            {renderViewModeToggle()}
+
             <div className="relative" ref={dropdownRef}>
               <button
                 type="button"
@@ -656,25 +836,7 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
             paddingRight: 4,
           }}
         >
-          {loading && (
-            <div className="grid grid-cols-1 items-start gap-6 sm:grid-cols-2 lg:grid-cols-3">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <div
-                  key={i}
-                  className={classNames(
-                    "h-[210px] animate-pulse rounded-2xl border p-5 shadow-sm",
-                    "border-gray-300/80 bg-white",
-                    "dark:border-gray-700 dark:bg-slate-900",
-                  )}
-                >
-                  <div className="h-5 w-2/3 rounded bg-gray-200 dark:bg-slate-700" />
-                  <div className="mt-3 h-4 w-1/2 rounded bg-gray-200 dark:bg-slate-700" />
-                  <div className="mt-6 h-12 rounded bg-gray-100 dark:bg-slate-800" />
-                  <div className="mt-3 h-4 w-1/3 rounded bg-gray-200 dark:bg-slate-700" />
-                </div>
-              ))}
-            </div>
-          )}
+          {loading && renderLoadingSkeleton()}
 
           {!loading && loadError && (
             <div className="rounded-2xl border border-red-200/80 bg-red-50 p-4 text-sm leading-6 text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200">
@@ -689,43 +851,7 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
           )}
 
           {!loading && !loadError && filteredProjects.length > 0 && (
-            <div
-              className="grid grid-cols-1 items-start gap-6 sm:grid-cols-2 lg:grid-cols-3"
-              aria-label="Projects list"
-            >
-              {filteredProjects.map((project) => (
-                <div key={getProjectCardKey(project)} className="mt-2 h-full">
-                  <ProjectCard
-                    id={project.id}
-                    label={project.name}
-                    value={project.protocolsCount ?? "0"}
-                    createdAt={project.createdAt ? String(project.createdAt) : undefined}
-                    updatedAt={project.updatedAt ? String(project.updatedAt) : undefined}
-                    diskUsage={project.diskUsage?.toString()}
-                    isSelected={selectedLabel === project.name}
-                    onSelect={() => setSelectedLabel(project.name)}
-                    isExpanded={expandedLabel === project.name}
-                    description={project.description ?? "No description available."}
-                    onToggleExpand={() =>
-                      setExpandedLabel((prev) => (prev === project.name ? null : project.name))
-                    }
-                    onDelete={handleDeleteProject}
-                    onRename={handleRenameProject}
-                    onShare={(cardId) =>
-                      handleShareProject(cardId, project.name, project.projectOwnerId ?? null)
-                    }
-                    isShared={project.isShared}
-                    isOwner={project.isOwner}
-                    permission={project.permission?.toString()}
-                    projectOwnerId={project.projectOwnerId ?? null}
-                    thumbnailUrl={project.thumbnailUrl ?? null}
-                    thumbnailRebuildUrl={project.thumbnailRebuildUrl ?? null}
-                    thumbnailItemsUrl={project.thumbnailItemsUrl ?? null}
-                    thumbnailVersion={project.thumbnailVersion ?? 0}
-                  />
-                </div>
-              ))}
-            </div>
+            viewMode === "list" ? renderProjectList() : renderProjectGrid()
           )}
         </div>
       </div>
