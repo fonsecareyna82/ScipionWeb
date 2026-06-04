@@ -348,7 +348,6 @@ export default function ProjectListRow(props: ProjectListRowProps) {
             }}
             className="hidden h-9 items-center gap-2 rounded-xl border border-slate-300/80 bg-white px-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-400 hover:shadow-md dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 xl:inline-flex"
           >
-            <Hash className="h-3.5 w-3.5" />
             Open
           </button>
 
