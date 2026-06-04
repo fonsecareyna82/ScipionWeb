@@ -479,7 +479,7 @@ export default function ProjectCard(props: ProjectCardProps) {
             const rawImageUrl = svc.resolveBackendUrl(output.thumbnailUrl);
             const requestUrl = rawImageUrl
               ? appendQueryParams(rawImageUrl, {
-                size: 256,
+                size: 128,
                 v: thumbnailVersion ?? "",
               })
               : null;
@@ -504,7 +504,7 @@ export default function ProjectCard(props: ProjectCardProps) {
               ? appendQueryParams(
                 svc.resolveBackendUrl(output.thumbnailUrl) ?? "",
                 {
-                  size: 256,
+                  size: 128,
                   v: thumbnailVersion ?? "",
                 },
               )
@@ -629,7 +629,7 @@ export default function ProjectCard(props: ProjectCardProps) {
         const resolvedBaseUrl = svc.resolveBackendUrl(thumbnailUrl);
         const requestUrl = resolvedBaseUrl
           ? appendQueryParams(resolvedBaseUrl, {
-            size: 256,
+            size: 128,
             v: thumbnailVersion ?? "",
           })
           : null;
