@@ -633,6 +633,9 @@ export default function ProjectPage() {
     return raw?.protocolOutputThumbnailsEnabled === true;
   }, [projectEffectiveSettings]);
 
+  const protocolOutputThumbnailsEnabledRef = useRef(false);
+  protocolOutputThumbnailsEnabledRef.current = protocolOutputThumbnailsEnabled;
+
   const [projectEffectiveSettingsLoading, setProjectEffectiveSettingsLoading] =
     useState(false);
 
@@ -2392,6 +2395,7 @@ export default function ProjectPage() {
         () => getProjectId(),
         () => getAnalyzeViewerService(),
         () => contextMenuVisibilityPolicyRef.current,
+        () => protocolOutputThumbnailsEnabledRef.current,
       ),
     };
 

@@ -135,6 +135,7 @@ type StatusNodeProps = {
       outputClassName?: string | null;
       error?: string | null;
     }>;
+    protocolOutputThumbnailsEnabled?: boolean;
     inputs?: any[];
     parents?: string[];
     children?: string[];
@@ -1457,6 +1458,7 @@ export default function ProtocolNodeCard({
   const hasOutputs = outputsArray.length > 0;
 
   const outputThumbnails = (data.outputThumbnails ?? {}) as Record<string, any>;
+  const outputThumbnailsEnabled = data.protocolOutputThumbnailsEnabled === true;
 
   const renderableOutputThumbnailCount = useMemo(() => {
     return outputsArray.reduce((count, outputObj) => {
@@ -1468,9 +1470,9 @@ export default function ProtocolNodeCard({
     }, 0);
   }, [outputsArray, outputThumbnails]);
 
-  const hasRenderableOutputThumbnails = renderableOutputThumbnailCount > 0;
+  const shouldUseOutputTiles = outputThumbnailsEnabled && hasOutputs;
 
-  const outputThumbnailLayoutCount = hasRenderableOutputThumbnails
+  const outputThumbnailLayoutCount = shouldUseOutputTiles
     ? outputsArray.length
     : renderableOutputThumbnailCount;
 
@@ -2412,7 +2414,7 @@ export default function ProtocolNodeCard({
                 <div
                   className={[
                     styles.outputsReserved,
-                    hasRenderableOutputThumbnails ? styles.outputsReservedThumbs : ""
+                    shouldUseOutputTiles ? styles.outputsReservedThumbs : "",
                   ].filter(Boolean).join(" ")}
                 >
                   {hasOutputs ? (
@@ -2424,8 +2426,8 @@ export default function ProtocolNodeCard({
                       <div
                         className={[
                           styles.sectionContent,
-                          hasRenderableOutputThumbnails ? styles.sectionContentThumbs : "",
-                          hasRenderableOutputThumbnails ? outputThumbnailLayoutClassName : "",
+                          shouldUseOutputTiles ? styles.sectionContentThumbs : "",
+                          shouldUseOutputTiles ? outputThumbnailLayoutClassName : "",
                         ].filter(Boolean).join(" ")}
                         data-has-scroll
                       >
@@ -2550,7 +2552,7 @@ export default function ProtocolNodeCard({
                             void openOutputViewer(outputName, outputObj, value);
                           };
 
-                          if (hasRenderableOutputThumbnails) {
+                         if (shouldUseOutputTiles) {
                             const hasThumbnail = Boolean(thumbnailSrc);
 
                             const outputThumbSizeClassName =
