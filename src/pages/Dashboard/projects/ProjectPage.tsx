@@ -1113,6 +1113,32 @@ export default function ProjectPage() {
 
   const projectIdRef = useRef<string | number | undefined>(undefined);
 
+  const seedNodesWithSelectionAndThumbnails = useCallback(
+    (
+      sourceNodes: Node[],
+      selectedIds: Set<string>,
+    ): Node<StatusNodeData>[] => {
+      let seededNodes: Node<StatusNodeData>[] = sourceNodes.map((n) => {
+        const node = n as Node<StatusNodeData>;
+
+        return {
+          ...node,
+          selected: selectedIds.has(node.id),
+        };
+      });
+
+      if (protocolOutputThumbnailsEnabled) {
+        seededNodes = preserveExistingOutputThumbnails(
+          seededNodes,
+          nodesRef.current,
+        );
+      }
+
+      return seededNodes;
+    },
+    [protocolOutputThumbnailsEnabled],
+  );
+
   // pendingNewNodesRef tracks node ids before an operation that creates new nodes (duplicate/add)
   const pendingNewNodesRef = useRef<{
     beforeIds: Set<string>;
@@ -2864,13 +2890,29 @@ export default function ProjectPage() {
     );
 
     const sel = getUnifiedSelectedIds();
-    const seeded = newNodes.map((n) => ({ ...n, selected: sel.has(n.id) }));
+    const seeded = seedNodesWithSelectionAndThumbnails(newNodes, sel);
 
     setNodes(seeded);
     setEdges([]); // grid has no edges
 
+    if (protocolOutputThumbnailsEnabled) {
+      const currentProjectId = getProjectId();
+
+      if (currentProjectId != null) {
+        void loadProtocolOutputThumbnailsForNodes(currentProjectId, seeded);
+      }
+    }
+
     requestAnimationFrame(() => snapViewportToTopLeft(GRID_ZOOM));
-  }, [gridWidth, viewMode, project, graphDirection, snapViewportToTopLeft]);
+  }, [gridWidth,
+    viewMode,
+    project,
+    graphDirection,
+    snapViewportToTopLeft,
+    seedNodesWithSelectionAndThumbnails,
+    protocolOutputThumbnailsEnabled,
+    loadProtocolOutputThumbnailsForNodes,
+  ]);
 
   /* ------------------------ Reorganize ------------------------ */
   const handleReorganize = useCallback(
@@ -2910,7 +2952,11 @@ export default function ProjectPage() {
             : loadedNodes;
 
         const unifiedSelectedIds = getUnifiedSelectedIds();
-        const nodesSeeded = nodesWithPositions.map((n) => ({ ...n, selected: unifiedSelectedIds.has(n.id) }));
+        const nodesSeeded = seedNodesWithSelectionAndThumbnails(
+          nodesWithPositions,
+          unifiedSelectedIds,
+        );
+
         const recomputedEdgeSet = unifiedSelectedIds.size
           ? computeEdgesForMode(unifiedSelectedIds, pathEdgeModeRef.current)
           : new Set<string>();
@@ -2923,6 +2969,17 @@ export default function ProjectPage() {
             if (recomputedEdgeSet.size) out = paintPathHighlight(out, recomputedEdgeSet);
             return out;
           });
+
+          if (protocolOutputThumbnailsEnabled) {
+            const currentProjectId =
+              (data as any)?.id ??
+              (data as any)?.projectId ??
+              getProjectId();
+
+            if (currentProjectId != null) {
+              void loadProtocolOutputThumbnailsForNodes(currentProjectId, nodesSeeded);
+            }
+          }
           setTableData(table ?? []);
           setNodeTicks((prev) => {
             const seeded: Record<string, number> = {};
@@ -2953,7 +3010,11 @@ export default function ProjectPage() {
         setHideGraphDuringCenter(false);
       }
     },
-    [projectName, viewMode, graphDirection, centerLikeButton, svc, paintEdgeHighlight, paintPathHighlight, computeEdgesForMode, gridWidth]
+    [projectName, viewMode, graphDirection, centerLikeButton, svc, paintEdgeHighlight, paintPathHighlight, computeEdgesForMode, gridWidth,
+      seedNodesWithSelectionAndThumbnails,
+      protocolOutputThumbnailsEnabled,
+      loadProtocolOutputThumbnailsForNodes,
+    ]
   );
 
   /* ------------------------ Ticks updater ------------------------ */
@@ -3049,7 +3110,11 @@ export default function ProjectPage() {
       viewMode === "hierarchical" ? loadNodesWithPositions(loadedNodes) : loadedNodes;
 
     const unifiedSelectedIds = getUnifiedSelectedIds();
-    const nodesSeeded = nodesWithPositions.map((n) => ({ ...n, selected: unifiedSelectedIds.has(n.id) }));
+    const nodesSeeded = seedNodesWithSelectionAndThumbnails(
+      nodesWithPositions,
+      unifiedSelectedIds,
+    );
+
     const recomputedEdgeSet = unifiedSelectedIds.size
       ? computeEdgesForMode(unifiedSelectedIds, pathEdgeModeRef.current)
       : new Set<string>();
@@ -3066,6 +3131,14 @@ export default function ProjectPage() {
         return out;
       });
     });
+
+    if (protocolOutputThumbnailsEnabled) {
+      const currentProjectId = getProjectId();
+
+      if (currentProjectId != null) {
+        void loadProtocolOutputThumbnailsForNodes(currentProjectId, nodesSeeded);
+      }
+    }
 
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
@@ -3092,8 +3165,20 @@ export default function ProjectPage() {
         });
       });
     });
-  }, [graphDirection, viewMode, project, paintEdgeHighlight, paintPathHighlight, computeEdgesForMode, gridWidth, centerLikeButton, snapViewportToTopLeft]);
-
+  }, [
+    graphDirection,
+    viewMode,
+    project,
+    paintEdgeHighlight,
+    paintPathHighlight,
+    computeEdgesForMode,
+    gridWidth,
+    centerLikeButton,
+    snapViewportToTopLeft,
+    seedNodesWithSelectionAndThumbnails,
+    protocolOutputThumbnailsEnabled,
+    loadProtocolOutputThumbnailsForNodes,
+  ]);
   /* ------------------------ First-center ONLY once after initial load ------------------------ */
   useEffect(() => {
     if (!nodesLoadedOnce || !firstLoadRef.current) return;
