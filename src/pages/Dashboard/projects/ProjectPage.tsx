@@ -630,9 +630,9 @@ export default function ProjectPage() {
   const protocolOutputThumbnailsEnabled = useMemo(() => {
     const raw = projectEffectiveSettings?.settings?.user as Record<string, unknown> | null | undefined;
 
-    if (!raw) return true; // default to true if settings are not available
+    if (!raw) return false;
 
-    return raw.protocolOutputThumbnailsEnabled !== false;
+    return raw.protocolOutputThumbnailsEnabled === true;
   }, [projectEffectiveSettings]);
 
   const [projectEffectiveSettingsLoading, setProjectEffectiveSettingsLoading] =
@@ -1369,6 +1369,26 @@ export default function ProjectPage() {
     },
     [svc, setNodes, protocolOutputThumbnailsEnabled],
   );
+
+  useEffect(() => {
+    if (!protocolOutputThumbnailsEnabled) return;
+    if (!project) return;
+
+    const projectIdValue =
+      (project as any)?.id ??
+      (project as any)?.projectId;
+
+    if (projectIdValue == null) return;
+
+    const currentNodes = nodesRef.current as Node<StatusNodeData>[];
+    if (!currentNodes.length) return;
+
+    void loadProtocolOutputThumbnailsForNodes(projectIdValue, currentNodes);
+  }, [
+    protocolOutputThumbnailsEnabled,
+    project,
+    loadProtocolOutputThumbnailsForNodes,
+  ]);
 
   useEffect(() => {
     if (protocolOutputThumbnailsEnabled) return;
