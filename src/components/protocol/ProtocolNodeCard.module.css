@@ -376,6 +376,7 @@
   padding: var(--swOutputThumbImagePadding, 8px);
   background: transparent;
   border-bottom: 0;
+  overflow: hidden;
 }
 
 .outputThumbTileSingle {
@@ -414,19 +415,19 @@
 .outputThumbFooter {
   position: absolute;
   left: 4px;
-  right: 4px;
   bottom: 4px;
 
   display: flex;
   align-items: center;
   justify-content: center;
-  text-align: center;
+  text-align: left;
 
+  max-width: calc(100% - 8px);
   min-width: 0;
-  padding: 3px 6px;
+  padding: 2px 5px;
 
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.72);
+  border-radius: 4px;
+  background: rgba(31, 41, 55, 0.72);
   backdrop-filter: blur(2px);
   pointer-events: none;
 }
@@ -437,11 +438,49 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #111827;
-  font-size: clamp(1.1rem, 1.35vw, 1.45rem);
+  color: #ffffff;
+  font-size: clamp(0.95rem, 1.15vw, 1.2rem);
   font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
   line-height: 1.15;
-  font-weight: 500;
+  font-weight: 600;
+  text-align: left;
+}
+
+.outputThumbBadge {
+  position: absolute;
+  z-index: 2;
+  max-width: calc(100% - 8px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 2px 5px;
+  border-radius: 4px;
+  background: rgba(31, 41, 55, 0.72);
+  backdrop-filter: blur(2px);
+  color: #ffffff;
+  font-size: clamp(0.85rem, 1.05vw, 1.1rem);
+  line-height: 1.15;
+  font-weight: 600;
+  pointer-events: none;
+}
+
+.outputThumbBadgeTopLeft {
+  top: 4px;
+  left: 4px;
+  max-width: 62%;
+}
+
+.outputThumbBadgeTopRight {
+  top: 4px;
+  right: 4px;
+  max-width: 44%;
+  text-align: right;
+}
+
+.outputThumbBadgeBottomLeft {
+  bottom: 4px;
+  left: 4px;
+  max-width: 70%;
 }
 
 .outputThumbTileMany .outputThumbText {

@@ -2438,6 +2438,28 @@ export default function ProtocolNodeCard({
                               ? thumbnail.thumbnailDataUrl
                               : "";
 
+                          const labelMatch = String(labelText).match(/^(.+?)\s*\((.*)\)\s*$/);
+                          const overlayTitle = (labelMatch?.[1] ?? String(labelText)).trim();
+
+                          const overlayDetails = labelMatch?.[2]
+                            ? labelMatch[2].split(",").map((part) => part.trim()).filter(Boolean)
+                            : [];
+
+                          const overlaySampling = overlayDetails.find((part) => /(?:Å|A)\/px/i.test(part)) ?? "";
+                          const overlayCount = overlayDetails.find((part) => /\bitems?\b/i.test(part)) ?? "";
+                          const overlaySize = overlayDetails.find((part) => {
+                            if (part === overlaySampling) return false;
+                            if (part === overlayCount) return false;
+                            return /\d+\s*x\s*\d+/i.test(part);
+                          }) ?? "";
+
+                          const overlayTopLeft = overlayCount
+                            ? `${overlayCount.replace(/\s+items?\b/i, "").trim()} ${overlayTitle}`
+                            : overlayTitle;
+
+                          const overlayTopRight = overlaySampling;
+                          const overlayBottomLeft = overlaySize || overlayDetails.find((part) => part !== overlaySampling && part !== overlayCount) || "";
+
                           const buildDragPayload = () => {
                             const inferredParamClass = value.paramClass || (value.pointerClass ? "PointerParam" : "");
 
@@ -2529,10 +2551,24 @@ export default function ProtocolNodeCard({
                                     className={styles.outputThumbImage}
                                     draggable={false}
                                   />
-                                </div>
 
-                                <div className={styles.outputThumbFooter}>
-                                  <span className={styles.outputThumbText}>{labelText}</span>
+                                  {overlayTopLeft ? (
+                                    <div className={`${styles.outputThumbBadge} ${styles.outputThumbBadgeTopLeft}`}>
+                                      {overlayTopLeft}
+                                    </div>
+                                  ) : null}
+
+                                  {overlayTopRight ? (
+                                    <div className={`${styles.outputThumbBadge} ${styles.outputThumbBadgeTopRight}`}>
+                                      {overlayTopRight}
+                                    </div>
+                                  ) : null}
+
+                                  {overlayBottomLeft ? (
+                                    <div className={`${styles.outputThumbBadge} ${styles.outputThumbBadgeBottomLeft}`}>
+                                      {overlayBottomLeft}
+                                    </div>
+                                  ) : null}
                                 </div>
                               </div>
                             );
