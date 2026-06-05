@@ -3,7 +3,7 @@
   /* Local CSS variables (no :root) */
   --swNodeWidth: 950px;
 
-  --swOutputRowHeight: 40px;
+  --swOutputRowHeight: 45px;
   --swOutputVisibleRows: 3.4;
 
   /* Matches the old look (the old margin-top: 12px), but now it's accounted for */
@@ -328,40 +328,37 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: start;
-  gap: 12px;
+  gap: 10px;
 }
 
 .outputThumbTile {
   cursor: grab;
   min-width: 0;
-  min-height: 154px;
-  border-radius: 14px;
-  border: 1px solid rgba(15, 23, 42, 0.22);
-  background: rgba(255, 255, 255, 0.72);
-  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.16);
+  min-height: 150px;
+  border-radius: 10px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
   overflow: hidden;
   transition:
-    transform 140ms ease,
-    box-shadow 140ms ease,
+    transform 120ms ease,
+    box-shadow 120ms ease,
     opacity 160ms ease;
 }
 
 .outputThumbTile:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 14px rgba(15, 23, 42, 0.22);
+  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.12);
 }
 
 .outputThumbImageWrap {
   position: relative;
-  height: 104px;
-  background:
-    linear-gradient(45deg, rgba(148, 163, 184, 0.18) 25%, transparent 25%),
-    linear-gradient(-45deg, rgba(148, 163, 184, 0.18) 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, rgba(148, 163, 184, 0.18) 75%),
-    linear-gradient(-45deg, transparent 75%, rgba(148, 163, 184, 0.18) 75%);
-  background-size: 18px 18px;
-  background-position: 0 0, 0 9px, 9px -9px, -9px 0;
-  background-color: rgba(248, 250, 252, 0.92);
+  height: 112px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  background: #ffffff;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
 }
 
 .outputThumbImage {
@@ -371,51 +368,15 @@
   object-fit: contain;
 }
 
-.outputThumbActionBtn {
-  position: absolute;
-  top: 7px;
-  right: 7px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 34px;
-  height: 34px;
-  border: 1px solid rgba(15, 23, 42, 0.22);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.88);
-  color: #111827;
-  cursor: pointer;
-  opacity: 0.92;
-}
 
-.outputThumbActionBtn:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
-}
-
-.outputThumbActionBtn:hover:not(:disabled) {
-  opacity: 1;
-  background: #ffffff;
-}
-
-.outputThumbEyeIcon {
-  width: 22px;
-  height: 22px;
-}
 
 .outputThumbFooter {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 7px 10px 8px;
+  justify-content: flex-start;
+  padding: 8px 10px;
   min-width: 0;
-}
-
-.outputThumbTypeIcon {
-  width: 22px;
-  height: 22px;
-  flex: 0 0 auto;
-  color: #111827;
+  background: #ffffff;
 }
 
 .outputThumbText {
@@ -424,9 +385,9 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   color: #111827;
-  font-size: 1.55rem;
-  line-height: 1.1;
-  font-weight: 500;
+  font-size: 2.1rem;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+  line-height: 1.15;
 }
 
 .outputPillDragging {

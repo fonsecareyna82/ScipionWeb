@@ -2507,30 +2507,10 @@ export default function ProtocolNodeCard({
                                     draggable={false}
                                   />
 
-                                  <button
-                                    type="button"
-                                    className={`${styles.outputThumbActionBtn} nodrag`}
-                                    draggable={false}
-                                    data-nodrag
-                                    aria-label="View output"
-                                    title={isViewerEnabled ? "View output" : "Viewer not available"}
-                                    onPointerDown={(e) => {
-                                      e.preventDefault();
-                                      e.stopPropagation();
-                                    }}
-                                    onMouseDown={(e) => {
-                                      e.preventDefault();
-                                      e.stopPropagation();
-                                    }}
-                                    onClick={handleOpenOutput}
-                                    disabled={!isViewerEnabled}
-                                  >
-                                    <Eye className={styles.outputThumbEyeIcon} />
-                                  </button>
+
                                 </div>
 
                                 <div className={styles.outputThumbFooter}>
-                                  <ArrowUpRight className={styles.outputThumbTypeIcon} />
                                   <span className={styles.outputThumbText}>{labelText}</span>
                                 </div>
                               </div>
