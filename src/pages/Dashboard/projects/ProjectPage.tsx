@@ -627,17 +627,11 @@ export default function ProjectPage() {
   const [projectEffectiveSettings, setProjectEffectiveSettings] =
     useState<ProjectEffectiveSettings | null>(null);
 
-  const [projectEffectiveSettingsLoaded, setProjectEffectiveSettingsLoaded] = useState(false);
-
   const protocolOutputThumbnailsEnabled = useMemo(() => {
-    if (!projectEffectiveSettingsLoaded) return false;
-
     const raw = projectEffectiveSettings?.settings?.user as Record<string, unknown> | null | undefined;
 
-    if (!raw) return false;
-
-    return raw.protocolOutputThumbnailsEnabled === true;
-  }, [projectEffectiveSettings, projectEffectiveSettingsLoaded]);
+    return raw?.protocolOutputThumbnailsEnabled === true;
+  }, [projectEffectiveSettings]);
 
   const [projectEffectiveSettingsLoading, setProjectEffectiveSettingsLoading] =
     useState(false);
@@ -812,75 +806,35 @@ export default function ProjectPage() {
   const effectiveDefaultQueueName = effectiveInstanceSettings?.defaultQueueName ?? "";
 
   const loadProjectEffectiveSettings = useCallback(
-    async (nextProjectId?: string | number) => {
-      // loadProjectEffectiveSettings
+    async (nextProjectId?: string | number): Promise<ProjectEffectiveSettings | null> => {
       if (nextProjectId == null) {
         setProjectEffectiveSettings(null);
         setProjectEffectiveSettingsLoading(false);
-        return;
+        return null;
       }
 
       if (!hasProjectEffectiveSettingsService(svc)) {
         setProjectEffectiveSettings(null);
         setProjectEffectiveSettingsLoading(false);
-        return;
+        return null;
       }
 
       try {
         setProjectEffectiveSettingsLoading(true);
         const data = await svc.fetchProjectEffectiveSettings(nextProjectId);
-        setProjectEffectiveSettings(data ?? null);
+        const normalized = data ?? null;
+        setProjectEffectiveSettings(normalized);
+        return normalized;
       } catch (err) {
         console.warn("fetchProjectEffectiveSettings failed", err);
         setProjectEffectiveSettings(null);
+        return null;
       } finally {
         setProjectEffectiveSettingsLoading(false);
       }
     },
-    [svc]
+    [svc],
   );
-
-  useEffect(() => {
-    if (!projectName) return;
-
-    setProjectEffectiveSettings(null);
-    setProjectEffectiveSettingsLoaded(false);
-
-    if (!hasProjectEffectiveSettingsService(svc)) {
-      setProjectEffectiveSettingsLoading(false);
-      setProjectEffectiveSettingsLoaded(true);
-      return;
-    }
-
-    let cancelled = false;
-
-    setProjectEffectiveSettingsLoading(true);
-
-    svc.fetchProjectEffectiveSettings(projectName)
-      .then((settings) => {
-        if (cancelled) return;
-        setProjectEffectiveSettings(settings);
-      })
-      .catch((error) => {
-        if (cancelled) return;
-        console.warn("fetchProjectEffectiveSettings failed", error);
-        setProjectEffectiveSettings(null);
-      })
-      .finally(() => {
-        if (cancelled) return;
-        setProjectEffectiveSettingsLoading(false);
-        setProjectEffectiveSettingsLoaded(true);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [projectName, svc]);
-
-  useEffect(() => {
-    // syncProjectEffectiveSettings
-    void loadProjectEffectiveSettings(projectId);
-  }, [projectId, loadProjectEffectiveSettings]);
 
   // Bump this to force rerender when policy is loaded/changed
   const [policyRevision, setPolicyRevision] = useState(0);
@@ -1324,8 +1278,9 @@ export default function ProjectPage() {
     async (
       projectIdValue: string | number | undefined,
       sourceNodes: Node<StatusNodeData>[],
+      enabled: boolean = protocolOutputThumbnailsEnabled,
     ): Promise<ProtocolOutputThumbnailItem[]> => {
-      if (!protocolOutputThumbnailsEnabled) return [];
+      if (!enabled) return [];
       if (projectIdValue == null) return [];
       if (!Array.isArray(sourceNodes) || sourceNodes.length === 0) return [];
       if (typeof (svc as any).fetchProtocolOutputThumbnails !== "function") return [];
@@ -2632,6 +2587,18 @@ export default function ProjectPage() {
       setProject(data);
       setTagAssignments(extractAssignmentsFromProjectProtocols((data as any)?.protocols));
 
+      const loadedProjectId =
+        (data as any)?.id ??
+        (data as any)?.projectId;
+
+      const effectiveSettings = await loadProjectEffectiveSettings(loadedProjectId);
+
+      const effectiveUserSettings =
+        effectiveSettings?.settings?.user as Record<string, unknown> | null | undefined;
+
+      const shouldLoadProtocolThumbnails =
+        effectiveUserSettings?.protocolOutputThumbnailsEnabled === true;
+
       if (data.protocols) {
         const mode = viewModeRef.current;
         const dir = graphDirectionRef2.current;
@@ -2682,10 +2649,11 @@ export default function ProjectPage() {
           };
         });
 
-        if (protocolOutputThumbnailsEnabled) {
+        if (shouldLoadProtocolThumbnails) {
           const thumbnailItems = await fetchProtocolOutputThumbnailItemsForNodes(
-            (data as any)?.id ?? (data as any)?.projectId,
+            loadedProjectId,
             nextNodes,
+            true,
           );
 
           if (thumbnailItems.length) {
@@ -2731,7 +2699,6 @@ export default function ProjectPage() {
   useEffect(() => {
     setIsLoadingProject(true);
     setProjectEffectiveSettings(null);
-    setProjectEffectiveSettingsLoaded(false);
     setProjectEffectiveSettingsLoading(false);
 
     outputThumbnailCacheRef.current.clear();
@@ -2740,10 +2707,9 @@ export default function ProjectPage() {
 
   useEffect(() => {
     if (!projectName) return;
-    if (!projectEffectiveSettingsLoaded) return;
 
     void fetchAndLoadProject();
-  }, [projectName, projectEffectiveSettingsLoaded, fetchAndLoadProject]);
+  }, [projectName, fetchAndLoadProject]);
 
   /* ------------------------ Refresh ------------------------ */
   const handleRefresh = useCallback(async () => {
