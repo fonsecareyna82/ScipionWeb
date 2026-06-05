@@ -1278,7 +1278,7 @@ export default function ProjectPage() {
     async (
       projectIdValue: string | number | undefined,
       sourceNodes: Node<StatusNodeData>[],
-      enabled: boolean = protocolOutputThumbnailsEnabled,
+      enabled: boolean,
     ): Promise<ProtocolOutputThumbnailItem[]> => {
       if (!enabled) return [];
       if (projectIdValue == null) return [];
@@ -1367,12 +1367,16 @@ export default function ProjectPage() {
         outputThumbnailInFlightRef.current = null;
       }
     },
-    [svc, protocolOutputThumbnailsEnabled],
+    [svc],
   );
 
   const loadProtocolOutputThumbnailsForNodes = useCallback(
     async (projectIdValue: string | number | undefined, sourceNodes: Node<StatusNodeData>[]) => {
-      const items = await fetchProtocolOutputThumbnailItemsForNodes(projectIdValue, sourceNodes);
+      const items = await fetchProtocolOutputThumbnailItemsForNodes(
+        projectIdValue,
+        sourceNodes,
+        protocolOutputThumbnailsEnabled,
+      );
 
       if (!items.length) return;
 
@@ -2693,8 +2697,15 @@ export default function ProjectPage() {
       setIsLoadingProject(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectName, svc, paintEdgeHighlight, paintPathHighlight, computeEdgesForMode, snapViewportToTopLeft, protocolOutputThumbnailsEnabled,
-    fetchProtocolOutputThumbnailItemsForNodes,]);
+  }, [
+    projectName,
+    svc,
+    paintEdgeHighlight,
+    paintPathHighlight,
+    computeEdgesForMode,
+    snapViewportToTopLeft,
+    fetchProtocolOutputThumbnailItemsForNodes,
+  ]);
 
   useEffect(() => {
     setIsLoadingProject(true);
