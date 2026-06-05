@@ -1470,12 +1470,16 @@ export default function ProtocolNodeCard({
 
   const hasRenderableOutputThumbnails = renderableOutputThumbnailCount > 0;
 
+  const outputThumbnailLayoutCount = hasRenderableOutputThumbnails
+    ? outputsArray.length
+    : renderableOutputThumbnailCount;
+
   const outputThumbnailLayoutClassName =
-    renderableOutputThumbnailCount <= 1
+    outputThumbnailLayoutCount <= 1
       ? styles.sectionContentThumbsSingle
-      : renderableOutputThumbnailCount === 2
+      : outputThumbnailLayoutCount === 2
         ? styles.sectionContentThumbsDouble
-        : renderableOutputThumbnailCount === 3
+        : outputThumbnailLayoutCount === 3
           ? styles.sectionContentThumbsTriple
           : styles.sectionContentThumbsMany;
 
@@ -2535,13 +2539,15 @@ export default function ProtocolNodeCard({
                             void openOutputViewer(outputName, outputObj, value);
                           };
 
-                          if (thumbnailSrc) {
+                          if (hasRenderableOutputThumbnails) {
+                            const hasThumbnail = Boolean(thumbnailSrc);
+
                             const outputThumbSizeClassName =
-                              renderableOutputThumbnailCount <= 1
+                              outputThumbnailLayoutCount <= 1
                                 ? styles.outputThumbTileSingle
-                                : renderableOutputThumbnailCount === 2
+                                : outputThumbnailLayoutCount === 2
                                   ? styles.outputThumbTileDouble
-                                  : renderableOutputThumbnailCount === 3
+                                  : outputThumbnailLayoutCount === 3
                                     ? styles.outputThumbTileTriple
                                     : styles.outputThumbTileMany;
 
@@ -2551,6 +2557,7 @@ export default function ProtocolNodeCard({
                                 className={[
                                   styles.outputThumbTile,
                                   outputThumbSizeClassName,
+                                  !hasThumbnail ? styles.outputThumbTileMissing : "",
                                   isDragging ? styles.outputPillDragging : "",
                                   "nodrag",
                                 ].filter(Boolean).join(" ")}
@@ -2562,13 +2569,24 @@ export default function ProtocolNodeCard({
                                 onDragEnd={handleOutputDragEnd}
                               >
                                 <div className={styles.outputThumbImageWrap}>
-                                  <div className={styles.outputThumbImageFrame}>
-                                    <img
-                                      src={thumbnailSrc}
-                                      alt={labelText}
-                                      className={styles.outputThumbImage}
-                                      draggable={false}
-                                    />
+                                  <div
+                                    className={[
+                                      styles.outputThumbImageFrame,
+                                      !hasThumbnail ? styles.outputThumbImageFrameEmpty : "",
+                                    ].filter(Boolean).join(" ")}
+                                  >
+                                    {hasThumbnail ? (
+                                      <img
+                                        src={thumbnailSrc}
+                                        alt={labelText}
+                                        className={styles.outputThumbImage}
+                                        draggable={false}
+                                      />
+                                    ) : (
+                                      <div className={styles.outputThumbPlaceholder}>
+                                        No preview
+                                      </div>
+                                    )}
 
                                     {overlayTopLeft ? (
                                       <div className={`${styles.outputThumbBadge} ${styles.outputThumbBadgeTopLeft}`}>
