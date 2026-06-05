@@ -309,7 +309,7 @@ function buildSubtreeAlignedPlacements(params: {
     const childrenTotal =
       children.length > 0
         ? children.reduce((sum, childId) => sum + computeSpan(childId, stack), 0) +
-          Math.max(0, children.length - 1) * gap
+        Math.max(0, children.length - 1) * gap
         : 0;
 
     stack.delete(id);
@@ -365,7 +365,7 @@ function buildSubtreeAlignedPlacements(params: {
     levelIds[level].push(id);
   }
 
-  const overlapGap = direction === "TB" ? 250 : 48;
+  const overlapGap = direction === "TB" ? 320 : 80;
 
   const getResolvedCrossSize = (id: string): number => {
     const size = getNodeCrossSize({
@@ -457,8 +457,8 @@ export function buildGraphElements(
   viewportZoom?: number | null,
   nodeSizeMap?: NodeSizeMap | null
 ) {
-  const spacingX = direction === "TB" ? 430 : 1150;
-  const spacingY = direction === "TB" ? 580 : 380;
+  const spacingX = direction === "TB" ? 480 : 1250;
+  const spacingY = direction === "TB" ? 660 : 430;
 
   const nodes: Node[] = [];
   const edges: Edge[] = [];
@@ -514,8 +514,8 @@ export function buildGraphElements(
       return getNodeHeight(id, label, nodeSizeMap);
     });
 
-    const gapX = 650;
-    const gapY = 200;
+    const gapX = 720;
+    const gapY = 260;
 
     const softWidths = estWidths.map((w) => Math.round(w * 0.45));
     const avgSoftW =
@@ -527,12 +527,12 @@ export function buildGraphElements(
     const baseH =
       estHeights.length > 0
         ? Math.min(
-            520,
-            Math.max(
-              320,
-              Math.round((estHeights.reduce((a, b) => a + b, 0) / estHeights.length) * 0.9)
-            )
+          520,
+          Math.max(
+            320,
+            Math.round((estHeights.reduce((a, b) => a + b, 0) / estHeights.length) * 0.9)
           )
+        )
         : 380;
 
     const cellW = baseW + gapX;

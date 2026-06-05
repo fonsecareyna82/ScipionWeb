@@ -2405,7 +2405,12 @@ export default function ProtocolNodeCard({
           {shouldRenderProtocolBody && (
             <div className={contentClassName} style={contentStyle} aria-hidden={!isContentExpanded}>
               <div className={styles.cardContent}>
-                <div className={styles.outputsReserved}>
+                <div
+                  className={[
+                    styles.outputsReserved,
+                    hasRenderableOutputThumbnails ? styles.outputsReservedThumbs : "",
+                  ].filter(Boolean).join(" ")}
+                >
                   {hasOutputs ? (
                     <div className={styles.outputsList}>
                       <div className={styles.sectionHeader}>

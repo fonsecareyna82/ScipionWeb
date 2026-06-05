@@ -262,6 +262,10 @@
   height: calc(var(--swOutputsHeaderHeight) + var(--swOutputsListMaxHeight));
 }
 
+.outputsReservedThumbs {
+  --swOutputsListMaxHeight: 230px;
+}
+
 .outputsList {
   width: 100%;
   height: 100%;
@@ -328,6 +332,7 @@
   display: grid;
   align-items: start;
   gap: 10px;
+  overflow-y: hidden;
 }
 
 .sectionContentThumbsSingle {
@@ -388,27 +393,23 @@
 }
 
 .outputThumbTileSingle {
-  --swOutputThumbImageHeight: 180px;
-  --swOutputThumbImagePadding: 2px;
-  --swOutputThumbTileHeight: auto;
+  --swOutputThumbImageHeight: 210px;
+  --swOutputThumbImagePadding: 1px;
 }
 
 .outputThumbTileDouble {
-  --swOutputThumbImageHeight: 145px;
-  --swOutputThumbImagePadding: 2px;
-  --swOutputThumbTileHeight: auto;
+  --swOutputThumbImageHeight: 160px;
+  --swOutputThumbImagePadding: 1px;
 }
 
 .outputThumbTileTriple {
-  --swOutputThumbImageHeight: 115px;
-  --swOutputThumbImagePadding: 2px;
-  --swOutputThumbTileHeight: auto;
+  --swOutputThumbImageHeight: 125px;
+  --swOutputThumbImagePadding: 1px;
 }
 
 .outputThumbTileMany {
-  --swOutputThumbImageHeight: 92px;
-  --swOutputThumbImagePadding: 2px;
-  --swOutputThumbTileHeight: auto;
+  --swOutputThumbImageHeight: 100px;
+  --swOutputThumbImagePadding: 1px;
 }
 
 .outputThumbImage {
