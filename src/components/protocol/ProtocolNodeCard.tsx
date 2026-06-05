@@ -1468,9 +1468,11 @@ export default function ProtocolNodeCard({
     }, 0);
   }, [outputsArray, outputThumbnails]);
 
+  const shouldUseOutputTiles = hasOutputs;
+
   const hasRenderableOutputThumbnails = renderableOutputThumbnailCount > 0;
 
-  const outputThumbnailLayoutCount = hasRenderableOutputThumbnails
+  const outputThumbnailLayoutCount = shouldUseOutputTiles
     ? outputsArray.length
     : renderableOutputThumbnailCount;
 
@@ -2412,7 +2414,7 @@ export default function ProtocolNodeCard({
                 <div
                   className={[
                     styles.outputsReserved,
-                    hasRenderableOutputThumbnails ? styles.outputsReservedThumbs : "",
+                    shouldUseOutputTiles ? styles.outputsReservedThumbs : "",
                   ].filter(Boolean).join(" ")}
                 >
                   {hasOutputs ? (
@@ -2424,8 +2426,8 @@ export default function ProtocolNodeCard({
                       <div
                         className={[
                           styles.sectionContent,
-                          hasRenderableOutputThumbnails ? styles.sectionContentThumbs : "",
-                          hasRenderableOutputThumbnails ? outputThumbnailLayoutClassName : "",
+                          shouldUseOutputTiles ? styles.sectionContentThumbs : "",
+                          shouldUseOutputTiles ? outputThumbnailLayoutClassName : "",
                         ].filter(Boolean).join(" ")}
                         data-has-scroll
                       >
@@ -2539,7 +2541,7 @@ export default function ProtocolNodeCard({
                             void openOutputViewer(outputName, outputObj, value);
                           };
 
-                          if (hasRenderableOutputThumbnails) {
+                          if (shouldUseOutputTiles) {
                             const hasThumbnail = Boolean(thumbnailSrc);
 
                             const outputThumbSizeClassName =

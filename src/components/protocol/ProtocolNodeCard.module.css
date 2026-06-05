@@ -263,7 +263,7 @@
 }
 
 .outputsReservedThumbs {
-  --swOutputsListMaxHeight: 230px;
+  --swOutputsListMaxHeight: 220px;
 }
 
 .outputsList {
@@ -413,7 +413,7 @@
   border: 1px dashed rgba(31, 41, 55, 0.28);
   background: rgba(255, 255, 255, 0.18);
   color: rgba(31, 41, 55, 0.68);
-  font-size: clamp(0.85rem, 1vw, 1.05rem);
+  font-size: clamp(1.65rem, 1vw, 1.05rem);
   font-weight: 700;
   line-height: 1.1;
   text-align: center;
@@ -493,9 +493,8 @@
   background: rgba(31, 41, 55, 0.72);
   backdrop-filter: blur(2px);
   color: #ffffff;
-  font-size: clamp(0.78rem, 0.95vw, 1rem);
+  font-size: clamp(1.48rem, 0.95vw, 1rem);
   line-height: 1.15;
-  font-weight: 600;
   pointer-events: none;
 }
 
