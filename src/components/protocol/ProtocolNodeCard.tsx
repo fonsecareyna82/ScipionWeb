@@ -2449,12 +2449,28 @@ export default function ProtocolNodeCard({
                               ? thumbnail.thumbnailDataUrl
                               : "";
 
-                          const labelMatch = String(labelText).match(/^(.+?)\s*\((.*)\)\s*$/);
-                          const overlayTitle = (labelMatch?.[1] ?? String(labelText)).trim();
+                          const labelTextValue = String(labelText).trim();
+                          const labelMatch = labelTextValue.match(/^(.+?)\s*\((.*)\)\s*$/);
+
+                          const inlineCount = labelTextValue.match(/\b\d+\s+items?\b/i)?.[0] ?? "";
+                          const inlineSampling = labelTextValue.match(/\d+(?:\.\d+)?\s*(?:Å|Å|A)\s*\/?\s*px/i)?.[0] ?? "";
+                          const inlineSize = labelTextValue.match(/\d+\s*x\s*\d+(?:\s*x\s*\d+)?/i)?.[0] ?? "";
+
+                          const removeInlineDetail = (text: string, detail: string) =>
+                            detail ? text.replace(detail, "") : text;
+
+                          const overlayTitle = [
+                            inlineCount,
+                            inlineSampling,
+                            inlineSize,
+                          ].reduce(removeInlineDetail, labelMatch?.[1] ?? labelTextValue)
+                            .replace(/[(),]+/g, " ")
+                            .replace(/\s+/g, " ")
+                            .trim() || labelTextValue;
 
                           const overlayDetails = labelMatch?.[2]
                             ? labelMatch[2].split(",").map((part) => part.trim()).filter(Boolean)
-                            : [];
+                            : [inlineCount, inlineSize, inlineSampling].filter(Boolean);
 
                           const rawOverlaySampling = overlayDetails.find((part) =>
                             /\d+(?:\.\d+)?\s*(?:Å|Å|A)\s*\/?\s*px/i.test(part)
@@ -2464,24 +2480,19 @@ export default function ProtocolNodeCard({
                             ? rawOverlaySampling.replace(/\s*(?:Å|Å|A)\s*\/?\s*px/i, " Å/px")
                             : "";
 
-                          const overlayCount = overlayDetails.find((part) => /\bitems?\b/i.test(part)) ?? "";
+                          const rawOverlayCount = overlayDetails.find((part) => /\b\d+\s+items?\b/i.test(part)) ?? "";
+                          const overlayCount = rawOverlayCount.replace(/\b1\s+items\b/i, "1 item");
 
                           const overlaySize = overlayDetails.find((part) => {
                             if (part === rawOverlaySampling) return false;
-                            if (part === overlayCount) return false;
+                            if (part === rawOverlayCount) return false;
                             return /\d+\s*x\s*\d+/i.test(part);
                           }) ?? "";
 
-                          const overlayTopLeft = overlayCount
-                            ? `${overlayCount.replace(/\s+items?\b/i, "").trim()} ${overlayTitle}`
-                            : overlayTitle;
-
+                          const overlayTopLeft = overlayTitle;
                           const overlayTopRight = overlaySampling;
-
-                          const overlayBottomLeft =
-                            overlaySize ||
-                            overlayDetails.find((part) => part !== rawOverlaySampling && part !== overlayCount) ||
-                            "";
+                          const overlayBottomLeft = overlaySize;
+                          const overlayBottomRight = overlayCount;
 
                           const buildDragPayload = () => {
                             const inferredParamClass = value.paramClass || (value.pointerClass ? "PointerParam" : "");
@@ -2605,6 +2616,12 @@ export default function ProtocolNodeCard({
                                     {overlayBottomLeft ? (
                                       <div className={`${styles.outputThumbBadge} ${styles.outputThumbBadgeBottomLeft}`}>
                                         {overlayBottomLeft}
+                                      </div>
+                                    ) : null}
+
+                                    {overlayBottomRight ? (
+                                      <div className={`${styles.outputThumbBadge} ${styles.outputThumbBadgeBottomRight}`}>
+                                        {overlayBottomRight}
                                       </div>
                                     ) : null}
                                   </div>
