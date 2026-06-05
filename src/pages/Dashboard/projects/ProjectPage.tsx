@@ -2679,18 +2679,6 @@ export default function ProjectPage() {
           };
         });
 
-        if (shouldLoadProtocolThumbnails) {
-          const thumbnailItems = await fetchProtocolOutputThumbnailItemsForNodes(
-            loadedProjectId,
-            nextNodes,
-            true,
-          );
-
-          if (thumbnailItems.length) {
-            nextNodes = mergeOutputThumbnailsIntoNodes(nextNodes, thumbnailItems);
-          }
-        }
-
         startTransition(() => {
           setNodes(nextNodes);
           setEdges((_) => {
@@ -2701,6 +2689,25 @@ export default function ProjectPage() {
           });
           setTableData(table ?? []);
         });
+
+        if (shouldLoadProtocolThumbnails) {
+          void (async () => {
+            const thumbnailItems = await fetchProtocolOutputThumbnailItemsForNodes(
+              loadedProjectId,
+              nextNodes,
+              true,
+            );
+
+            if (!thumbnailItems.length) return;
+
+            setNodes((prev) =>
+              mergeOutputThumbnailsIntoNodes(
+                prev as Node<StatusNodeData>[],
+                thumbnailItems,
+              ),
+            );
+          })();
+        }
 
         setNodeTicks(initialTicks);
         setNodesLoadedOnce(true);
