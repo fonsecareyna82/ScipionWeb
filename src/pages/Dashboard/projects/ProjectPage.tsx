@@ -627,13 +627,17 @@ export default function ProjectPage() {
   const [projectEffectiveSettings, setProjectEffectiveSettings] =
     useState<ProjectEffectiveSettings | null>(null);
 
+  const [projectEffectiveSettingsLoaded, setProjectEffectiveSettingsLoaded] = useState(false);
+
   const protocolOutputThumbnailsEnabled = useMemo(() => {
+    if (!projectEffectiveSettingsLoaded) return false;
+
     const raw = projectEffectiveSettings?.settings?.user as Record<string, unknown> | null | undefined;
 
     if (!raw) return false;
 
     return raw.protocolOutputThumbnailsEnabled === true;
-  }, [projectEffectiveSettings]);
+  }, [projectEffectiveSettings, projectEffectiveSettingsLoaded]);
 
   const [projectEffectiveSettingsLoading, setProjectEffectiveSettingsLoading] =
     useState(false);
@@ -835,6 +839,43 @@ export default function ProjectPage() {
     },
     [svc]
   );
+
+  useEffect(() => {
+    if (!projectName) return;
+
+    setProjectEffectiveSettings(null);
+    setProjectEffectiveSettingsLoaded(false);
+
+    if (!hasProjectEffectiveSettingsService(svc)) {
+      setProjectEffectiveSettingsLoading(false);
+      setProjectEffectiveSettingsLoaded(true);
+      return;
+    }
+
+    let cancelled = false;
+
+    setProjectEffectiveSettingsLoading(true);
+
+    svc.fetchProjectEffectiveSettings(projectName)
+      .then((settings) => {
+        if (cancelled) return;
+        setProjectEffectiveSettings(settings);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        console.warn("fetchProjectEffectiveSettings failed", error);
+        setProjectEffectiveSettings(null);
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setProjectEffectiveSettingsLoading(false);
+        setProjectEffectiveSettingsLoaded(true);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [projectName, svc]);
 
   useEffect(() => {
     // syncProjectEffectiveSettings
@@ -1279,12 +1320,15 @@ export default function ProjectPage() {
   const edgesRef = useRef<Edge[]>(edges);
   useEffect(() => { edgesRef.current = edges; }, [edges]);
 
-  const loadProtocolOutputThumbnailsForNodes = useCallback(
-    async (projectIdValue: string | number | undefined, sourceNodes: Node<StatusNodeData>[]) => {
-      if (!protocolOutputThumbnailsEnabled) return;
-      if (projectIdValue == null) return;
-      if (!Array.isArray(sourceNodes) || sourceNodes.length === 0) return;
-      if (typeof (svc as any).fetchProtocolOutputThumbnails !== "function") return;
+  const fetchProtocolOutputThumbnailItemsForNodes = useCallback(
+    async (
+      projectIdValue: string | number | undefined,
+      sourceNodes: Node<StatusNodeData>[],
+    ): Promise<ProtocolOutputThumbnailItem[]> => {
+      if (!protocolOutputThumbnailsEnabled) return [];
+      if (projectIdValue == null) return [];
+      if (!Array.isArray(sourceNodes) || sourceNodes.length === 0) return [];
+      if (typeof (svc as any).fetchProtocolOutputThumbnails !== "function") return [];
 
       const cachedItems: ProtocolOutputThumbnailItem[] = [];
       const requests: Array<{ protocolId: string | number; outputName: string }> = [];
@@ -1323,51 +1367,63 @@ export default function ProjectPage() {
         }
       }
 
-      if (cachedItems.length) {
-        setNodes((prev) => mergeOutputThumbnailsIntoNodes(prev as Node<StatusNodeData>[], cachedItems));
-      }
-
-      if (!requests.length) return;
-      if (outputThumbnailInFlightRef.current) return;
+      if (!requests.length) return cachedItems;
+      if (outputThumbnailInFlightRef.current) return cachedItems;
 
       const run = (async () => {
-        try {
-          const result = await (svc as any).fetchProtocolOutputThumbnails(projectIdValue, {
-            size: PROTOCOL_OUTPUT_THUMBNAIL_SIZE,
-            inlineImages: true,
-            outputs: requests,
-          });
+        const result = await (svc as any).fetchProtocolOutputThumbnails(projectIdValue, {
+          size: PROTOCOL_OUTPUT_THUMBNAIL_SIZE,
+          inlineImages: true,
+          outputs: requests,
+        });
 
-          const items = Array.isArray(result?.items) ? result.items as ProtocolOutputThumbnailItem[] : [];
+        const items = Array.isArray(result?.items)
+          ? result.items as ProtocolOutputThumbnailItem[]
+          : [];
 
-          for (const item of items) {
-            const protocolId = String(item.protocolId ?? "").trim();
-            const outputName = String(item.outputName ?? "").trim();
+        for (const item of items) {
+          const protocolId = String(item.protocolId ?? "").trim();
+          const outputName = String(item.outputName ?? "").trim();
 
-            if (!protocolId || !outputName) continue;
+          if (!protocolId || !outputName) continue;
 
-            const cacheKey = getOutputThumbnailCacheKey(
-              projectIdValue,
-              protocolId,
-              outputName,
-              PROTOCOL_OUTPUT_THUMBNAIL_SIZE,
-            );
+          const cacheKey = getOutputThumbnailCacheKey(
+            projectIdValue,
+            protocolId,
+            outputName,
+            PROTOCOL_OUTPUT_THUMBNAIL_SIZE,
+          );
 
-            outputThumbnailCacheRef.current.set(cacheKey, item);
-          }
-
-          setNodes((prev) => mergeOutputThumbnailsIntoNodes(prev as Node<StatusNodeData>[], items));
-        } catch (err) {
-          console.warn("fetchProtocolOutputThumbnails failed", err);
-        } finally {
-          outputThumbnailInFlightRef.current = null;
+          outputThumbnailCacheRef.current.set(cacheKey, item);
         }
+
+        return items;
       })();
 
-      outputThumbnailInFlightRef.current = run;
-      await run;
+      outputThumbnailInFlightRef.current = run.then(() => undefined);
+
+      try {
+        const items = await run;
+        return [...cachedItems, ...items];
+      } catch (err) {
+        console.warn("fetchProtocolOutputThumbnails failed", err);
+        return cachedItems;
+      } finally {
+        outputThumbnailInFlightRef.current = null;
+      }
     },
-    [svc, setNodes, protocolOutputThumbnailsEnabled],
+    [svc, protocolOutputThumbnailsEnabled],
+  );
+
+  const loadProtocolOutputThumbnailsForNodes = useCallback(
+    async (projectIdValue: string | number | undefined, sourceNodes: Node<StatusNodeData>[]) => {
+      const items = await fetchProtocolOutputThumbnailItemsForNodes(projectIdValue, sourceNodes);
+
+      if (!items.length) return;
+
+      setNodes((prev) => mergeOutputThumbnailsIntoNodes(prev as Node<StatusNodeData>[], items));
+    },
+    [fetchProtocolOutputThumbnailItemsForNodes, setNodes],
   );
 
   useEffect(() => {
@@ -2617,10 +2673,25 @@ export default function ProjectPage() {
           : new Set<string>();
         pathSelRef.current.edges = recomputedEdgeSet;
 
-        const nextNodes = nodesWithTick.map((n) => ({
-          ...n,
-          selected: unifiedSelectedIds.has(n.id),
-        }));
+        let nextNodes: Node<StatusNodeData>[] = nodesWithTick.map((n) => {
+          const node = n as Node<StatusNodeData>;
+
+          return {
+            ...node,
+            selected: unifiedSelectedIds.has(node.id),
+          };
+        });
+
+        if (protocolOutputThumbnailsEnabled) {
+          const thumbnailItems = await fetchProtocolOutputThumbnailItemsForNodes(
+            (data as any)?.id ?? (data as any)?.projectId,
+            nextNodes,
+          );
+
+          if (thumbnailItems.length) {
+            nextNodes = mergeOutputThumbnailsIntoNodes(nextNodes, thumbnailItems);
+          }
+        }
 
         startTransition(() => {
           setNodes(nextNodes);
@@ -2632,13 +2703,6 @@ export default function ProjectPage() {
           });
           setTableData(table ?? []);
         });
-
-        if (protocolOutputThumbnailsEnabled) {
-          void loadProtocolOutputThumbnailsForNodes(
-            (data as any)?.id ?? (data as any)?.projectId,
-            nextNodes,
-          );
-        }
 
         setNodeTicks(initialTicks);
         setNodesLoadedOnce(true);
@@ -2661,18 +2725,25 @@ export default function ProjectPage() {
       setIsLoadingProject(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectName, svc, paintEdgeHighlight, paintPathHighlight, computeEdgesForMode, snapViewportToTopLeft]);
+  }, [projectName, svc, paintEdgeHighlight, paintPathHighlight, computeEdgesForMode, snapViewportToTopLeft, protocolOutputThumbnailsEnabled,
+    fetchProtocolOutputThumbnailItemsForNodes,]);
 
   useEffect(() => {
     setIsLoadingProject(true);
     setProjectEffectiveSettings(null);
+    setProjectEffectiveSettingsLoaded(false);
     setProjectEffectiveSettingsLoading(false);
 
-    // eslint-disable-next-line @typescript-eslint/no-floating-promises
-    fetchAndLoadProject();
-    // only reload when changing project
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    outputThumbnailCacheRef.current.clear();
+    outputThumbnailInFlightRef.current = null;
   }, [projectName]);
+
+  useEffect(() => {
+    if (!projectName) return;
+    if (!projectEffectiveSettingsLoaded) return;
+
+    void fetchAndLoadProject();
+  }, [projectName, projectEffectiveSettingsLoaded, fetchAndLoadProject]);
 
   /* ------------------------ Refresh ------------------------ */
   const handleRefresh = useCallback(async () => {
