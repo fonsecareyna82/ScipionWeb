@@ -2529,8 +2529,6 @@ export default function ProtocolNodeCard({
                                     className={styles.outputThumbImage}
                                     draggable={false}
                                   />
-
-
                                 </div>
 
                                 <div className={styles.outputThumbFooter}>

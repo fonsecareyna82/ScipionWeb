@@ -349,12 +349,13 @@
 
 .outputThumbTile {
   cursor: grab;
+  position: relative;
   min-width: 0;
-  min-height: 150px;
+  min-height: var(--swOutputThumbTileHeight, 150px);
   border-radius: 10px;
-  border: 1px solid rgba(15, 23, 42, 0.12);
-  background: #ffffff;
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: transparent;
+  box-shadow: none;
   overflow: hidden;
   transition:
     transform 120ms ease,
@@ -363,7 +364,7 @@
 }
 
 .outputThumbTile:hover {
-  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.12);
+  box-shadow: 0 3px 8px rgba(15, 23, 42, 0.12);
 }
 
 .outputThumbImageWrap {
@@ -373,32 +374,32 @@
   align-items: center;
   justify-content: center;
   padding: var(--swOutputThumbImagePadding, 8px);
-  background: #ffffff;
-  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+  background: transparent;
+  border-bottom: 0;
 }
 
 .outputThumbTileSingle {
-  --swOutputThumbImageHeight: 190px;
-  --swOutputThumbImagePadding: 10px;
-  min-height: 230px;
+  --swOutputThumbImageHeight: 150px;
+  --swOutputThumbImagePadding: 6px;
+  --swOutputThumbTileHeight: 150px;
 }
 
 .outputThumbTileDouble {
-  --swOutputThumbImageHeight: 145px;
-  --swOutputThumbImagePadding: 8px;
-  min-height: 182px;
+  --swOutputThumbImageHeight: 128px;
+  --swOutputThumbImagePadding: 5px;
+  --swOutputThumbTileHeight: 128px;
 }
 
 .outputThumbTileTriple {
-  --swOutputThumbImageHeight: 112px;
-  --swOutputThumbImagePadding: 6px;
-  min-height: 148px;
+  --swOutputThumbImageHeight: 104px;
+  --swOutputThumbImagePadding: 4px;
+  --swOutputThumbTileHeight: 104px;
 }
 
 .outputThumbTileMany {
-  --swOutputThumbImageHeight: 88px;
-  --swOutputThumbImagePadding: 5px;
-  min-height: 122px;
+  --swOutputThumbImageHeight: 86px;
+  --swOutputThumbImagePadding: 3px;
+  --swOutputThumbTileHeight: 86px;
 }
 
 .outputThumbImage {
@@ -411,31 +412,44 @@
 
 
 .outputThumbFooter {
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  bottom: 4px;
+
   display: flex;
   align-items: center;
-  justify-content: flex-start;
-  padding: 8px 10px;
+  justify-content: center;
+  text-align: center;
+
   min-width: 0;
-  background: #ffffff;
+  padding: 3px 6px;
+
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(2px);
+  pointer-events: none;
 }
 
 .outputThumbText {
+  width: 100%;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   color: #111827;
-  font-size: clamp(1.35rem, 1.9vw, 2rem);
+  font-size: clamp(1.1rem, 1.35vw, 1.45rem);
   font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
   line-height: 1.15;
+  font-weight: 500;
 }
 
 .outputThumbTileMany .outputThumbText {
-  font-size: 1.25rem;
+  font-size: 1rem;
 }
 
 .outputThumbTileTriple .outputThumbText {
-  font-size: 1.35rem;
+  font-size: 1.05rem;
 }
 
 .outputPillDragging {
