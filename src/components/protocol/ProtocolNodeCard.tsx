@@ -1458,14 +1458,26 @@ export default function ProtocolNodeCard({
 
   const outputThumbnails = (data.outputThumbnails ?? {}) as Record<string, any>;
 
-  const hasRenderableOutputThumbnails = useMemo(() => {
-    return outputsArray.some((outputObj) => {
+  const renderableOutputThumbnailCount = useMemo(() => {
+    return outputsArray.reduce((count, outputObj) => {
       const value = normalizeOutputItem(outputObj);
       const outputName = String(value?.name ?? "").trim();
-      if (!outputName) return false;
-      return Boolean(outputThumbnails[outputName]?.thumbnailDataUrl);
-    });
+      if (!outputName) return count;
+
+      return outputThumbnails[outputName]?.thumbnailDataUrl ? count + 1 : count;
+    }, 0);
   }, [outputsArray, outputThumbnails]);
+
+  const hasRenderableOutputThumbnails = renderableOutputThumbnailCount > 0;
+
+  const outputThumbnailLayoutClassName =
+    renderableOutputThumbnailCount <= 1
+      ? styles.sectionContentThumbsSingle
+      : renderableOutputThumbnailCount === 2
+        ? styles.sectionContentThumbsDouble
+        : renderableOutputThumbnailCount === 3
+          ? styles.sectionContentThumbsTriple
+          : styles.sectionContentThumbsMany;
 
   const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/.test(navigator.platform);
 
@@ -2404,6 +2416,7 @@ export default function ProtocolNodeCard({
                         className={[
                           styles.sectionContent,
                           hasRenderableOutputThumbnails ? styles.sectionContentThumbs : "",
+                          hasRenderableOutputThumbnails ? outputThumbnailLayoutClassName : "",
                         ].filter(Boolean).join(" ")}
                         data-has-scroll
                       >
@@ -2484,11 +2497,21 @@ export default function ProtocolNodeCard({
                           };
 
                           if (thumbnailSrc) {
+                            const outputThumbSizeClassName =
+                              renderableOutputThumbnailCount <= 1
+                                ? styles.outputThumbTileSingle
+                                : renderableOutputThumbnailCount === 2
+                                  ? styles.outputThumbTileDouble
+                                  : renderableOutputThumbnailCount === 3
+                                    ? styles.outputThumbTileTriple
+                                    : styles.outputThumbTileMany;
+
                             return (
                               <div
                                 key={pillKey}
                                 className={[
                                   styles.outputThumbTile,
+                                  outputThumbSizeClassName,
                                   isDragging ? styles.outputPillDragging : "",
                                   "nodrag",
                                 ].filter(Boolean).join(" ")}
