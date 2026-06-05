@@ -1277,6 +1277,8 @@ export default function ProjectPage() {
   } | null>(null);
 
   const TIME_TO_REFRESH = 15000;
+  const PROTOCOL_OUTPUT_THUMBNAIL_CHUNK_SIZE = 24;
+  const PROTOCOL_OUTPUT_THUMBNAIL_CHUNK_DELAY_MS = 50;
   const localStorageKey = `project-${projectName}-node-positions`;
 
   const [, setIsSwitchingLayout] = useState(false);
@@ -1305,6 +1307,7 @@ export default function ProjectPage() {
       projectIdValue: string | number | undefined,
       sourceNodes: Node<StatusNodeData>[],
       enabled: boolean,
+      maxNewRequests?: number,
     ): Promise<ProtocolOutputThumbnailItem[]> => {
       if (!enabled) return [];
       if (projectIdValue == null) return [];
@@ -1338,6 +1341,14 @@ export default function ProjectPage() {
           const cached = outputThumbnailCacheRef.current.get(cacheKey);
           if (cached) {
             cachedItems.push(cached);
+            continue;
+          }
+
+          if (
+            typeof maxNewRequests === "number" &&
+            maxNewRequests > 0 &&
+            requests.length >= maxNewRequests
+          ) {
             continue;
           }
 
@@ -1397,18 +1408,52 @@ export default function ProjectPage() {
   );
 
   const loadProtocolOutputThumbnailsForNodes = useCallback(
-    async (projectIdValue: string | number | undefined, sourceNodes: Node<StatusNodeData>[]) => {
-      const items = await fetchProtocolOutputThumbnailItemsForNodes(
-        projectIdValue,
-        sourceNodes,
-        protocolOutputThumbnailsEnabled,
-      );
+    async (
+      projectIdValue: string | number | undefined,
+      sourceNodes: Node<StatusNodeData>[],
+      enabledOverride?: boolean,
+    ) => {
+      const enabled = enabledOverride ?? protocolOutputThumbnailsEnabled;
+      if (!enabled) return;
 
-      if (!items.length) return;
+      let safetyCounter = 0;
 
-      setNodes((prev) => mergeOutputThumbnailsIntoNodes(prev as Node<StatusNodeData>[], items));
+      while (safetyCounter < 50) {
+        safetyCounter += 1;
+
+        const cacheSizeBefore = outputThumbnailCacheRef.current.size;
+
+        const items = await fetchProtocolOutputThumbnailItemsForNodes(
+          projectIdValue,
+          sourceNodes,
+          true,
+          PROTOCOL_OUTPUT_THUMBNAIL_CHUNK_SIZE,
+        );
+
+        const cacheSizeAfter = outputThumbnailCacheRef.current.size;
+        const loadedNewCacheItems = cacheSizeAfter > cacheSizeBefore;
+
+        if (items.length) {
+          setNodes((prev) =>
+            mergeOutputThumbnailsIntoNodes(
+              prev as Node<StatusNodeData>[],
+              items,
+            ),
+          );
+        }
+
+        if (!loadedNewCacheItems) break;
+
+        await new Promise<void>((resolve) => {
+          window.setTimeout(resolve, PROTOCOL_OUTPUT_THUMBNAIL_CHUNK_DELAY_MS);
+        });
+      }
     },
-    [fetchProtocolOutputThumbnailItemsForNodes, setNodes],
+    [
+      fetchProtocolOutputThumbnailItemsForNodes,
+      protocolOutputThumbnailsEnabled,
+      setNodes,
+    ],
   );
 
   useEffect(() => {
@@ -2691,22 +2736,11 @@ export default function ProjectPage() {
         });
 
         if (shouldLoadProtocolThumbnails) {
-          void (async () => {
-            const thumbnailItems = await fetchProtocolOutputThumbnailItemsForNodes(
-              loadedProjectId,
-              nextNodes,
-              true,
-            );
-
-            if (!thumbnailItems.length) return;
-
-            setNodes((prev) =>
-              mergeOutputThumbnailsIntoNodes(
-                prev as Node<StatusNodeData>[],
-                thumbnailItems,
-              ),
-            );
-          })();
+          void loadProtocolOutputThumbnailsForNodes(
+            loadedProjectId,
+            nextNodes,
+            true,
+          );
         }
 
         setNodeTicks(initialTicks);
