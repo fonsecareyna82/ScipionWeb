@@ -1459,6 +1459,7 @@ export default function ProtocolNodeCard({
 
   const outputThumbnails = (data.outputThumbnails ?? {}) as Record<string, any>;
   const outputThumbnailsEnabled = data.protocolOutputThumbnailsEnabled === true;
+  const thumbnailMode = outputThumbnailsEnabled && !isProjectNode;
 
   const renderableOutputThumbnailCount = useMemo(() => {
     return outputsArray.reduce((count, outputObj) => {
@@ -2005,6 +2006,7 @@ export default function ProtocolNodeCard({
           ref={rootRef}
           className={classNames}
           style={nodeStyle}
+          data-thumbnail-mode={outputThumbnailsEnabled && !isProjectNode ? "true" : undefined}
           onContextMenuCapture={handleContextMenuCapture}
           onPointerDownCapture={(e: ReactPointerEvent<HTMLDivElement>) => {
             // suppressMenuMouseUpSelectingFirstItem
@@ -2414,7 +2416,7 @@ export default function ProtocolNodeCard({
                 <div
                   className={[
                     styles.outputsReserved,
-                    shouldUseOutputTiles ? styles.outputsReservedThumbs : "",
+                    thumbnailMode ? styles.outputsReservedThumbs : "",
                   ].filter(Boolean).join(" ")}
                 >
                   {hasOutputs ? (
@@ -2552,7 +2554,7 @@ export default function ProtocolNodeCard({
                             void openOutputViewer(outputName, outputObj, value);
                           };
 
-                         if (shouldUseOutputTiles) {
+                          if (shouldUseOutputTiles) {
                             const hasThumbnail = Boolean(thumbnailSrc);
 
                             const outputThumbSizeClassName =
