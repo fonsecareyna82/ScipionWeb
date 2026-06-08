@@ -675,6 +675,129 @@ export default function TiltSeriesViewer({
     ],
   );
 
+  const prefetchPreviewBatch = useCallback(
+    (rowIndexes: number[], size: number) => {
+      if (mainMode !== "viewer") return;
+      if (selectedSeriesId == null) return;
+      if (!framesData?.frames?.length) return;
+
+      const pending: Array<{
+        rowIndex: number;
+        frameIndex: number;
+        cacheKey: string;
+      }> = [];
+
+      const seenFrameIndexes = new Set<number>();
+
+      rowIndexes.forEach((rowIndex) => {
+        if (rowIndex < 0 || rowIndex >= framesData.frames.length) return;
+
+        const frame = framesData.frames[rowIndex];
+        const frameIndex = getPreviewFrameIndex(frame, rowIndex);
+
+        if (seenFrameIndexes.has(frameIndex)) return;
+        seenFrameIndexes.add(frameIndex);
+
+        const cacheKey = buildPreviewCacheKey(
+          projectId,
+          protocolId,
+          outputName,
+          selectedSeriesId,
+          frameIndex,
+          size,
+          applyTransform,
+        );
+
+        if (previewCacheRef.current.has(cacheKey)) return;
+        if (previewInFlightRef.current.has(cacheKey)) return;
+
+        pending.push({ rowIndex, frameIndex, cacheKey });
+      });
+
+      if (!pending.length) return;
+
+      const batchFetcher = (svc as any).fetchTiltSeriesViewImagesBatch;
+
+      if (typeof batchFetcher !== "function") {
+        pending.forEach((item) => {
+          prefetchPreviewAtIndex(item.rowIndex, size);
+        });
+        return;
+      }
+
+      pending.forEach((item) => {
+        previewInFlightRef.current.add(item.cacheKey);
+      });
+
+      void batchFetcher(
+        projectId,
+        protocolId,
+        outputName,
+        selectedSeriesId,
+        {
+          indices: pending.map((item) => item.frameIndex),
+          size,
+          format: "webp",
+          applyTransform,
+        },
+      )
+        .then((result: any) => {
+          const items = Array.isArray(result?.items) ? result.items : [];
+
+          items.forEach((item: any) => {
+            const frameIndex = Number(item?.index);
+            const dataUrl = String(item?.dataUrl ?? "");
+
+            if (!Number.isFinite(frameIndex) || !dataUrl) return;
+
+            const cacheKey = buildPreviewCacheKey(
+              projectId,
+              protocolId,
+              outputName,
+              selectedSeriesId,
+              frameIndex,
+              size,
+              applyTransform,
+            );
+
+            previewCacheRef.current.set(cacheKey, {
+              url: dataUrl,
+              revoke: undefined,
+              lastUsed: Date.now(),
+            });
+          });
+
+          trimPreviewCache(new Set(pending.map((item) => item.cacheKey)));
+        })
+        .catch(() => {
+          pending.forEach((item) => {
+            previewInFlightRef.current.delete(item.cacheKey);
+          });
+
+          pending.forEach((item) => {
+            prefetchPreviewAtIndex(item.rowIndex, size);
+          });
+        })
+        .finally(() => {
+          pending.forEach((item) => {
+            previewInFlightRef.current.delete(item.cacheKey);
+          });
+        });
+    },
+    [
+      mainMode,
+      selectedSeriesId,
+      framesData?.frames,
+      projectId,
+      protocolId,
+      outputName,
+      applyTransform,
+      svc,
+      trimPreviewCache,
+      prefetchPreviewAtIndex,
+    ],
+  );
+
   // previewImageForSelectedViewOnlyWhenFramesAreAlreadyLoaded
   useEffect(() => {
 
@@ -823,9 +946,10 @@ export default function TiltSeriesViewer({
     const offsets = isScrubbing ? SCRUBBING_PREVIEW_NEIGHBOR_OFFSETS : PREVIEW_NEIGHBOR_OFFSETS;
 
     previewPrefetchTimerRef.current = window.setTimeout(() => {
-      offsets.forEach((offset) => {
-        prefetchPreviewAtIndex(selectedRowIndex + offset, size);
-      });
+      prefetchPreviewBatch(
+        offsets.map((offset) => selectedRowIndex + offset),
+        size,
+      );
 
       previewPrefetchTimerRef.current = null;
     }, isScrubbing ? 120 : 60);
@@ -843,7 +967,7 @@ export default function TiltSeriesViewer({
     framesData?.frames?.length,
     isPlaying,
     isScrubbing,
-    prefetchPreviewAtIndex,
+    prefetchPreviewBatch,
   ]);
 
   // manageDisplayedUrlVsTransitionUrlForSmoothCrossfade

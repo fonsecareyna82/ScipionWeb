@@ -56,6 +56,8 @@ import type {
   ExternalViewerLaunchPayload,
   ExternalViewerLaunchResult,
   ProtocolOutputThumbnailsOptions,
+  TiltSeriesBatchPreviewOptions,
+  TiltSeriesBatchPreviewResult,
 
 } from "@/services/ProjectService";
 
@@ -715,6 +717,21 @@ const defaultService: ProjectService = {
       tiltSeriesId,
       viewIndex,
       options,
+    ),
+
+  fetchTiltSeriesViewImagesBatch: (
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    tiltSeriesId: Id,
+    opts: TiltSeriesBatchPreviewOptions,
+  ): Promise<TiltSeriesBatchPreviewResult> =>
+    api.fetchTiltSeriesViewImagesBatch(
+      toId(projectId),
+      toId(protocolId),
+      outputName,
+      toId(tiltSeriesId),
+      opts,
     ),
 
   createNewSetOfTiltSeries: (

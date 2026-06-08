@@ -419,6 +419,33 @@ export type TiltImageOptions = {
   signal?: AbortSignal;
 };
 
+export type TiltSeriesBatchPreviewItem = {
+  index: number;
+  contentType?: string | null;
+  dataUrl: string;
+  cache?: string | null;
+};
+
+export type TiltSeriesBatchPreviewResult = {
+  tiltSeriesId: string;
+  size: number;
+  fmt: string;
+  applyTransform: boolean;
+  items: TiltSeriesBatchPreviewItem[];
+  errors?: Array<{
+    index: number;
+    error: string;
+  }>;
+};
+
+export type TiltSeriesBatchPreviewOptions = {
+  indices: number[];
+  size?: number;
+  format?: "png" | "webp" | "jpeg";
+  applyTransform?: boolean;
+  signal?: AbortSignal;
+};
+
 export type TiltExclusionsPayload = Record<
   string,
   {
@@ -1634,6 +1661,14 @@ export interface ProjectService<
     viewIndex: number,
     opts?: FetchImageSliceOptions,
   ): Promise<ObjectUrlResult>;
+
+  fetchTiltSeriesViewImagesBatch(
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    tiltSeriesId: Id,
+    opts: TiltSeriesBatchPreviewOptions,
+  ): Promise<TiltSeriesBatchPreviewResult>;
 
   // Tilt series: create a new SetOfTiltSeries based on current exclusions
   createNewSetOfTiltSeries(

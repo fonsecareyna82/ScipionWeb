@@ -7,6 +7,8 @@ import {
   CTFTomoExclusionsPayload,
   FetchImageSliceOptions,
   ObjectUrlResult,
+  TiltSeriesBatchPreviewResult,
+  TiltSeriesBatchPreviewOptions,
   WorkflowDescriptor,
   TiltExclusionsPayload,
   SettingsObject,
@@ -3247,6 +3249,71 @@ export async function fetchTiltSeriesViewImageObjectUrl(
   const revoke = () => URL.revokeObjectURL(objUrl);
 
   return { url: objUrl, revoke };
+}
+
+export async function fetchTiltSeriesViewImagesBatch(
+  projectId: Id,
+  protocolId: Id,
+  outputName: string,
+  tiltSeriesId: Id,
+  opts: TiltSeriesBatchPreviewOptions,
+): Promise<TiltSeriesBatchPreviewResult> {
+  const enc = encodeURIComponent;
+
+  const url = `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/outputs/${enc(
+    outputName,
+  )}/tiltseries/${enc(String(tiltSeriesId))}/tilt/batch`;
+
+  const body = {
+    indices: Array.isArray(opts.indices) ? opts.indices : [],
+    size: opts.size ?? 512,
+    fmt: opts.format ?? "webp",
+    applyTransform: opts.applyTransform ?? true,
+    inline: true,
+  };
+
+  const res = await fetchWithAuth(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    cache: "no-store",
+    signal: opts.signal,
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    throw await toApiError(res, "Failed to fetch tilt series preview batch");
+  }
+
+  const raw = await safeJson<any>(res);
+
+  const items = Array.isArray(raw?.items)
+    ? raw.items
+      .map((item: any) => ({
+        index: Number(item?.index),
+        contentType: item?.contentType ?? item?.content_type ?? null,
+        dataUrl: String(item?.dataUrl ?? item?.data_url ?? ""),
+        cache: item?.cache ?? null,
+      }))
+      .filter((item: any) => Number.isFinite(item.index) && item.dataUrl)
+    : [];
+
+  const errors = Array.isArray(raw?.errors)
+    ? raw.errors
+      .map((item: any) => ({
+        index: Number(item?.index),
+        error: String(item?.error ?? ""),
+      }))
+      .filter((item: any) => Number.isFinite(item.index) && item.error)
+    : [];
+
+  return {
+    tiltSeriesId: String(raw?.tiltSeriesId ?? raw?.tilt_series_id ?? tiltSeriesId),
+    size: Number(raw?.size ?? body.size),
+    fmt: String(raw?.fmt ?? body.fmt),
+    applyTransform: Boolean(raw?.applyTransform ?? raw?.apply_transform ?? body.applyTransform),
+    items,
+    errors,
+  };
 }
 
 export async function fetchTiltSeriesFrames(
