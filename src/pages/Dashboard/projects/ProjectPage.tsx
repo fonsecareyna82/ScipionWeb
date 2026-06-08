@@ -5327,7 +5327,11 @@ export default function ProjectPage() {
                 multiSelectionKeyCode={isMac ? "Meta" : "Control"}
                 selectionKeyCode="Shift"
                 selectionOnDrag
-                style={{ width: "100%", height: "100%" }}
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  backgroundColor: hostIsDark ? "#0b1120" : "#f3f4f6"
+                }}
                 proOptions={{ hideAttribution: true }}
                 nodesConnectable={viewMode !== "grid"}
                 connectOnClick={viewMode !== "grid"}
@@ -5350,7 +5354,10 @@ export default function ProjectPage() {
                     }}
                   />
                 )}
-                <Background />
+                <Background
+                  color={hostIsDark ? "rgba(148, 163, 184, 0.18)" : "rgba(148, 163, 184, 0.35)"}
+                  gap={24}
+                />
               </ReactFlow>
             </ReactFlowProvider>
           </div>
