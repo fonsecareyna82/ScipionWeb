@@ -1374,6 +1374,7 @@ export default function ProtocolNodeCard({
       clientY: e.clientY,
       ctrlKey: e.ctrlKey,
       metaKey: e.metaKey,
+      shiftKey: e.shiftKey,
       view: win,
     };
 
@@ -2510,11 +2511,13 @@ export default function ProtocolNodeCard({
                             };
                           };
 
+                          const isMultiSelectionGesture = (e: ReactMouseEvent) =>
+                            e.ctrlKey || e.metaKey || e.shiftKey;
+
                           const handleOutputMouseDown = (e: ReactMouseEvent<HTMLDivElement>) => {
-                            if (e.ctrlKey || e.metaKey) {
+                            if (isMultiSelectionGesture(e)) {
                               e.preventDefault();
                               e.stopPropagation();
-                              forwardClickToRFNode(e);
                             }
                           };
 
@@ -2550,7 +2553,14 @@ export default function ProtocolNodeCard({
                           const handleOpenOutput = (e: ReactMouseEvent) => {
                             e.preventDefault();
                             e.stopPropagation();
+
+                            if (isMultiSelectionGesture(e)) {
+                              forwardClickToRFNode(e);
+                              return;
+                            }
+
                             if (!isViewerEnabled) return;
+
                             void openOutputViewer(outputName, outputObj, value);
                           };
 
