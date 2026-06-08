@@ -82,9 +82,9 @@ type CachedPreview = ObjectUrlResult & {
   lastUsed: number;
 };
 
-const PREVIEW_CACHE_LIMIT = 40;
+const PREVIEW_CACHE_LIMIT = 80;
 const PREVIEW_NEIGHBOR_OFFSETS = [-5, -1, 1, 5] as const;
-const SCRUBBING_PREVIEW_NEIGHBOR_OFFSETS = [-1, 1] as const;
+const SCRUBBING_PREVIEW_NEIGHBOR_OFFSETS = [-5, -2, -1, 1, 2, 5] as const;
 
 function buildPreviewCacheKey(
   projectId: Id,
