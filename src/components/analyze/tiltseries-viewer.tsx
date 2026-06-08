@@ -300,7 +300,7 @@ export default function TiltSeriesViewer({
         if (items.length > 0) {
           const firstId = items[0].tiltSeriesId;
           setSelectedSeriesId(firstId);
-          setExpandedSeriesId(firstId);
+          setExpandedSeriesId(null);
         }
       } catch (e: any) {
         if (!cancelled) {
@@ -723,7 +723,6 @@ export default function TiltSeriesViewer({
   };
 
   const handleSeriesRowClick = (seriesId: Id) => {
-    setExpandedSeriesId(seriesId);
     setSelectedSeriesId((prev) => (prev != null && String(prev) === String(seriesId) ? prev : seriesId));
   };
 
