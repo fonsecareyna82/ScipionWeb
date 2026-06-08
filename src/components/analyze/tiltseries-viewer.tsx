@@ -142,6 +142,7 @@ export default function TiltSeriesViewer({
   const previewAbortRef = useRef<AbortController | null>(null);
   const previewReqIdRef = useRef(0);
   const lastPreviewRevokeRef = useRef<(() => void) | null>(null);
+  const treeScrollRef = useRef<HTMLDivElement | null>(null);
   // trackPreviewLoadingStateInARefToUseItSafelyInsideIntervals
   const previewLoadingRef = useRef(false);
 
@@ -690,6 +691,9 @@ export default function TiltSeriesViewer({
   }, []);
 
   const totalFrames = framesData?.frames.length ?? 0;
+  const sliceSliderMax = Math.max(totalFrames - 1, 0);
+  const sliceSliderValue =
+    selectedRowIndex == null ? 0 : Math.min(Math.max(selectedRowIndex, 0), sliceSliderMax);
 
   const tiltAxisAngle = framesData?.tiltAxisAngle ?? activeSeries?.tiltAxisAngle ?? null;
 
@@ -721,6 +725,39 @@ export default function TiltSeriesViewer({
       setSelectedRowIndex(idx);
     }
   };
+
+  const handleSliceSliderChange = (_: Event, value: number | number[]) => {
+    const rawValue = Array.isArray(value) ? value[0] : value;
+    const nextIndex = Math.round(Number(rawValue));
+
+    if (!Number.isFinite(nextIndex) || totalFrames <= 0) return;
+
+    setIsPlaying(false);
+    setSelectedRowIndex(Math.min(Math.max(nextIndex, 0), totalFrames - 1));
+  };
+
+  useEffect(() => {
+    if (mainMode !== "viewer") return;
+    if (selectedRowIndex == null || !framesData?.frames?.length) return;
+    if (selectedSeriesId == null || expandedSeriesId == null) return;
+    if (String(selectedSeriesId) !== String(expandedSeriesId)) return;
+
+    window.requestAnimationFrame(() => {
+      const root = treeScrollRef.current;
+      if (!root) return;
+
+      const selectedRow = root.querySelector('[data-selected-tilt-row="true"]') as HTMLElement | null;
+      selectedRow?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    });
+  }, [
+    mainMode,
+    selectedRowIndex,
+    selectedSeriesId,
+    expandedSeriesId,
+    framesData?.tiltSeriesId,
+    framesData?.frames?.length,
+    filteredFrames.length,
+  ]);
 
   const handleSeriesRowClick = (seriesId: Id) => {
     setSelectedSeriesId((prev) => (prev != null && String(prev) === String(seriesId) ? prev : seriesId));
@@ -1041,6 +1078,7 @@ export default function TiltSeriesViewer({
           </Paper>
 
           <Box
+            ref={treeScrollRef}
             sx={{
               flex: 1,
               minHeight: 0,
@@ -1181,6 +1219,7 @@ export default function TiltSeriesViewer({
                                 key={`${String(s.tiltSeriesId)}-${String(row.viewId)}`}
                                 hover
                                 selected={isSelectedRow}
+                                data-selected-tilt-row={isSelectedRow ? "true" : undefined}
                                 onClick={() => handleRowClick(row)}
                                 sx={{
                                   cursor: "pointer",
@@ -1503,6 +1542,42 @@ export default function TiltSeriesViewer({
                 )}
               </>
             )}
+          </Box>
+
+          <Box
+            sx={{
+              px: 1.5,
+              py: 0.75,
+              borderTop: "1px solid #e5e7eb",
+              bgcolor: "background.paper",
+              display: "flex",
+              alignItems: "center",
+              gap: 1.5,
+            }}
+          >
+            
+            <Slider
+              size="small"
+              value={sliceSliderValue}
+              min={0}
+              max={sliceSliderMax}
+              step={1}
+              disabled={totalFrames <= 1}
+              onChange={handleSliceSliderChange}
+              valueLabelDisplay="auto"
+              valueLabelFormat={(value) => `View ${Number(value) + 1}`}
+              sx={{ flex: 1, minWidth: 120, ml: 10 }}
+            />
+
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ minWidth: 72, textAlign: "right", fontSize: "0.7rem" }}
+            >
+              {selectedRowIndex != null && totalFrames > 0
+                ? `${selectedRowIndex + 1} / ${totalFrames}`
+                : "0 / 0"}
+            </Typography>
           </Box>
 
           <Box
