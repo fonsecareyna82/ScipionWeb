@@ -5,6 +5,7 @@ const serviceMocks = vi.hoisted(() => ({
     listOutputTiltSeries: vi.fn(),
     fetchTiltSeriesFrames: vi.fn(),
     fetchTiltSeriesViewImageObjectUrl: vi.fn(),
+    fetchTiltSeriesViewImagesBatch: vi.fn(),
     createNewSetOfTiltSeries: vi.fn(),
 }));
 
@@ -29,6 +30,19 @@ async function flushMicrotasks() {
         await Promise.resolve();
         await Promise.resolve();
     });
+}
+
+async function expandFirstTiltSeries() {
+    expect(await screen.findByText("View 1 of 2")).toBeInTheDocument();
+
+    const firstExpandIcon = screen.getAllByTestId("ChevronRightIcon")[0];
+    const firstExpandButton = firstExpandIcon.closest("button");
+
+    if (!firstExpandButton) {
+        throw new Error("First tilt series expand button was not found");
+    }
+
+    fireEvent.click(firstExpandButton);
 }
 
 vi.mock("@/ProjectServiceContext", () => ({
@@ -179,6 +193,11 @@ describe("TiltSeriesViewer", () => {
             revoke: vi.fn(),
         });
 
+        serviceMocks.fetchTiltSeriesViewImagesBatch.mockResolvedValue({
+            items: [],
+            errors: [],
+        });
+
         serviceMocks.createNewSetOfTiltSeries.mockResolvedValue({});
     });
 
@@ -226,7 +245,9 @@ describe("TiltSeriesViewer", () => {
     it("auto-selects the first series and loads its frames", async () => {
         renderViewer();
 
-        expect(await screen.findByText("View 1 of 2")).toBeInTheDocument();
+        await expandFirstTiltSeries();
+
+        expect(await screen.findByText("/data/first.mrc")).toBeInTheDocument();
 
         await waitFor(() => {
             expect(serviceMocks.fetchTiltSeriesFrames).toHaveBeenCalledWith(
@@ -250,6 +271,8 @@ describe("TiltSeriesViewer", () => {
     it("filters frames within the selected series", async () => {
         renderViewer();
 
+        await expandFirstTiltSeries();
+
         expect(await screen.findByText("/data/first.mrc")).toBeInTheDocument();
         expect(screen.getByText("/data/second.mrc")).toBeInTheDocument();
 
@@ -265,7 +288,7 @@ describe("TiltSeriesViewer", () => {
     it("switches to metadata mode", async () => {
         renderViewer();
 
-        expect(await screen.findByText("TS1")).toBeInTheDocument();
+        expect(await screen.findByText("View 1 of 2")).toBeInTheDocument();
 
         const previewTitle = screen.getByText("Tilt view preview");
         const previewHeader = previewTitle.closest("div")?.parentElement;
@@ -283,7 +306,7 @@ describe("TiltSeriesViewer", () => {
     it("opens and closes the save dialog", async () => {
         renderViewer();
 
-        expect(await screen.findByText("TS1")).toBeInTheDocument();
+        expect(await screen.findByText("View 1 of 2")).toBeInTheDocument();
 
         fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
@@ -299,7 +322,7 @@ describe("TiltSeriesViewer", () => {
     it("creates a new set when confirming Yes", async () => {
         renderViewer();
 
-        expect(await screen.findByText("TS1")).toBeInTheDocument();
+        expect(await screen.findByText("View 1 of 2")).toBeInTheDocument();
 
         fireEvent.click(screen.getByRole("button", { name: "Save" }));
         expect(await screen.findByText("Create a new set")).toBeInTheDocument();

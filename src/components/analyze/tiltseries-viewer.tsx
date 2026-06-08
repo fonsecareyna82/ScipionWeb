@@ -828,7 +828,8 @@ export default function TiltSeriesViewer({
       applyTransform,
     );
 
-    const cachedPreview = previewCacheRef.current.get(cacheKey);
+    const shouldBypassPreviewCache = previewReloadToken > 0;
+    const cachedPreview = shouldBypassPreviewCache ? undefined : previewCacheRef.current.get(cacheKey);
 
     if (cachedPreview) {
       cachedPreview.lastUsed = Date.now();
@@ -839,6 +840,19 @@ export default function TiltSeriesViewer({
       setPreviewUrl(cachedPreview.url);
 
       return;
+    }
+
+    if (shouldBypassPreviewCache) {
+      const stalePreview = previewCacheRef.current.get(cacheKey);
+      if (stalePreview?.revoke) {
+        try {
+          stalePreview.revoke();
+        } catch {
+          // ignore
+        }
+      }
+
+      previewCacheRef.current.delete(cacheKey);
     }
 
     previewAbortRef.current?.abort();
@@ -1087,7 +1101,9 @@ export default function TiltSeriesViewer({
       if (!root) return;
 
       const selectedRow = root.querySelector('[data-selected-tilt-row="true"]') as HTMLElement | null;
-      selectedRow?.scrollIntoView({ block: "nearest", inline: "nearest" });
+      if (typeof selectedRow?.scrollIntoView === "function") {
+        selectedRow.scrollIntoView({ block: "nearest", inline: "nearest" });
+      }
     });
   }, [
     mainMode,
