@@ -68,6 +68,11 @@ const CMAP_OPTIONS = [
 ];
 
 const SURFACE_MAX_TRIANGLES = 550000;
+const ORTHO_AXIS_COLORS = {
+  x: "#ef4444",
+  y: "#22c55e",
+  z: "#3b82f6",
+} as const;
 
 const HELP_TEXT: Record<string, string> = {
   maxDim3d:
@@ -1533,6 +1538,7 @@ export default function VolumeViewer({
                             max={maxSliceZ}
                             onChange={(v) => setSliceIndexZ(v)}
                             disabled={!readyTripleSlices}
+                            axisColor={ORTHO_AXIS_COLORS.z}
                           />
                           <AxisSliceSliderControl
                             title="Slice Y"
@@ -1543,6 +1549,7 @@ export default function VolumeViewer({
                             max={maxSliceY}
                             onChange={(v) => setSliceIndexY(v)}
                             disabled={!readyTripleSlices}
+                            axisColor={ORTHO_AXIS_COLORS.y}
                           />
                           <AxisSliceSliderControl
                             title="Slice X"
@@ -1553,6 +1560,7 @@ export default function VolumeViewer({
                             max={maxSliceX}
                             onChange={(v) => setSliceIndexX(v)}
                             disabled={!readyTripleSlices}
+                            axisColor={ORTHO_AXIS_COLORS.x}
                           />
                         </>
                       )}
@@ -2144,6 +2152,7 @@ function AxisSliceSliderControl({
   max,
   onChange,
   disabled,
+  axisColor,
 }: {
   title: string;
   helpKey: string;
@@ -2153,6 +2162,7 @@ function AxisSliceSliderControl({
   max: number;
   onChange: (value: number) => void;
   disabled?: boolean;
+  axisColor?: string;
 }) {
   return (
     <Box sx={{ mt: 0.5 }}>
@@ -2175,6 +2185,25 @@ function AxisSliceSliderControl({
         disabled={disabled}
         valueLabelDisplay="auto"
         valueLabelFormat={(v) => `${(v as number) + 1}`}
+        sx={
+          axisColor
+            ? {
+              color: axisColor,
+              "& .MuiSlider-rail": {
+                opacity: 0.22,
+              },
+              "& .MuiSlider-thumb": {
+                boxShadow: `0 0 0 4px ${axisColor}22`,
+              },
+              "& .MuiSlider-thumb:hover": {
+                boxShadow: `0 0 0 7px ${axisColor}26`,
+              },
+              "& .MuiSlider-valueLabel": {
+                color: axisColor,
+              },
+            }
+            : undefined
+        }
       />
       <Box sx={{ display: "flex", justifyContent: "space-between" }}>
         <Typography variant="caption" color="text.secondary">
@@ -2209,9 +2238,9 @@ function OrthoSlicesGrid({
   brightness: number;
   contrast: number;
 }) {
-  const colX = "#ef4444";
-  const colY = "#22c55e";
-  const colZ = "#3b82f6";
+  const colX = ORTHO_AXIS_COLORS.x;
+  const colY = ORTHO_AXIS_COLORS.y;
+  const colZ = ORTHO_AXIS_COLORS.z;
 
   const gx = Math.max(1, dims.x || 1);
   const gy = Math.max(1, dims.y || 1);

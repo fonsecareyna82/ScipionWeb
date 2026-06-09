@@ -83,6 +83,13 @@ const NEARBY_SLICE_RANGE = 10;
 const MIN_NEARBY_SLICE_FACTOR = 0.25;
 const DEBUG_SYNTHETIC_GRID = false;
 
+const ORTHO_AXIS_COLORS = {
+  x: "#ef4444",
+  y: "#22c55e",
+  z: "#3b82f6",
+} as const;
+
+
 const POINT_COLOR_PALETTE: { label: string; value: string }[] = [
   { label: "Red", value: "#ef4444" },
   { label: "Green", value: "#22c55e" },
@@ -2014,7 +2021,7 @@ export default function Coords3dViewer({
                       }}
                     >
                       <Box sx={{ gridArea: "y", minWidth: 0, minHeight: 0 }}>
-                        <SlicePanelCard title="Y View · XZ" accent="#22c55e">
+                        <SlicePanelCard title="Y View · XZ" accent={ORTHO_AXIS_COLORS.y}>
                           {!tomoDimsX || !tomoDimsZ ? (
                             <CenteredHint text="XZ plane dimensions are not available." />
                           ) : sliceYLoading && !sliceYImageUrl && !debugGrid ? (
@@ -2060,7 +2067,7 @@ export default function Coords3dViewer({
                                   y1={0}
                                   x2={sliceIndexX}
                                   y2={tomoDimsZ}
-                                  stroke="#ef4444"
+                                  stroke={ORTHO_AXIS_COLORS.x}
                                   strokeWidth={1.2}
                                   opacity={0.95}
                                 />
@@ -2071,7 +2078,7 @@ export default function Coords3dViewer({
                                   y1={sliceIndex}
                                   x2={tomoDimsX}
                                   y2={sliceIndex}
-                                  stroke="#3b82f6"
+                                  stroke={ORTHO_AXIS_COLORS.z}
                                   strokeWidth={1.2}
                                   opacity={0.95}
                                 />
@@ -2198,7 +2205,7 @@ export default function Coords3dViewer({
                                   y1={0}
                                   x2={sliceIndexX}
                                   y2={tomoDimsY}
-                                  stroke="#ef4444"
+                                  stroke={ORTHO_AXIS_COLORS.x}
                                   strokeWidth={1.2}
                                   opacity={0.95}
                                 />
@@ -2334,7 +2341,7 @@ export default function Coords3dViewer({
                                     y1={sliceIndex}
                                     x2={tomoDimsY}
                                     y2={sliceIndex}
-                                    stroke="#3b82f6"
+                                    stroke={ORTHO_AXIS_COLORS.z}
                                     strokeWidth={1.2}
                                     opacity={0.95}
                                   />
@@ -2679,14 +2686,38 @@ export default function Coords3dViewer({
                             {viewMode === "map3d" ? "Slices / planes" : "Slices"}
                           </Typography>
 
-                          <SliderField label="Slice (Z)" helpKey="sliceIndex" openHelp={openHelp} value={sliceIndex} max={maxSliceZ} onChange={setSliceIndex} />
+                          <SliderField
+                            label="Slice (Z)"
+                            helpKey="sliceIndex"
+                            openHelp={openHelp}
+                            value={sliceIndex}
+                            max={maxSliceZ}
+                            onChange={setSliceIndex}
+                            axisColor={ORTHO_AXIS_COLORS.z}
+                          />
 
                           {showXAxisSlider && (
-                            <SliderField label="Slice (X)" helpKey="sliceIndex" openHelp={openHelp} value={sliceIndexX} max={maxSliceX} onChange={setSliceIndexX} />
+                            <SliderField
+                              label="Slice (X)"
+                              helpKey="sliceIndex"
+                              openHelp={openHelp}
+                              value={sliceIndexX}
+                              max={maxSliceX}
+                              onChange={setSliceIndexX}
+                              axisColor={ORTHO_AXIS_COLORS.x}
+                            />
                           )}
 
                           {showYAxisSlider && (
-                            <SliderField label="Slice (Y)" helpKey="sliceIndex" openHelp={openHelp} value={sliceIndexY} max={maxSliceY} onChange={setSliceIndexY} />
+                            <SliderField
+                              label="Slice (Y)"
+                              helpKey="sliceIndex"
+                              openHelp={openHelp}
+                              value={sliceIndexY}
+                              max={maxSliceY}
+                              onChange={setSliceIndexY}
+                              axisColor={ORTHO_AXIS_COLORS.y}
+                            />
                           )}
                         </Box>
 
@@ -3062,6 +3093,7 @@ function SliderField({
   value,
   max,
   onChange,
+  axisColor,
 }: {
   label: string;
   helpKey: string;
@@ -3069,6 +3101,7 @@ function SliderField({
   value: number | null;
   max: number | null;
   onChange: (v: number) => void;
+  axisColor?: string;
 }) {
   return (
     <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
@@ -3091,6 +3124,25 @@ function SliderField({
             onChange={(_, v) => onChange(v as number)}
             valueLabelDisplay="auto"
             valueLabelFormat={(v) => String((v as number) + 1)}
+            sx={
+              axisColor
+                ? {
+                  color: axisColor,
+                  "& .MuiSlider-rail": {
+                    opacity: 0.22,
+                  },
+                  "& .MuiSlider-thumb": {
+                    boxShadow: `0 0 0 4px ${axisColor}22`,
+                  },
+                  "& .MuiSlider-thumb:hover": {
+                    boxShadow: `0 0 0 7px ${axisColor}26`,
+                  },
+                  "& .MuiSlider-valueLabel": {
+                    color: axisColor,
+                  },
+                }
+                : undefined
+            }
           />
           <Box sx={{ display: "flex", justifyContent: "space-between" }}>
             <Typography variant="caption" color="text.secondary">
