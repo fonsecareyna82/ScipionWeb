@@ -14,8 +14,6 @@ import {
   TextField,
   Checkbox,
   Button,
-  Tabs,
-  Tab,
   Menu,
   MenuItem,
   Divider,
@@ -94,7 +92,6 @@ export default function CTFTomoViewer({ projectId, protocolId, outputName }: CTF
   const [selectedRowIndex, setSelectedRowIndex] = useState<number | null>(null);
   const [filterText, setFilterText] = useState<string>("");
 
-  const [viewMode, setViewMode] = useState<"seriesChart" | "psdView">("seriesChart");
   const [psdError, setPsdError] = useState<string | null>(null);
   const [psdLoading, setPsdLoading] = useState(false);
   const [psdImageUrl, setPsdImageUrl] = useState<string | null>(null);
@@ -187,7 +184,6 @@ export default function CTFTomoViewer({ projectId, protocolId, outputName }: CTF
   useEffect(() => {
     if (mainMode !== "metadata") return;
     // resetRightPanelStateWhenOpeningMetadata
-    setViewMode("seriesChart");
     setPsdError(null);
     abortPsdLoad();
     setPsdLoading(false);
@@ -231,7 +227,6 @@ export default function CTFTomoViewer({ projectId, protocolId, outputName }: CTF
         setFramesData(null);
         setFramesError(null);
         setSelectedRowIndex(null);
-        setViewMode("seriesChart");
         setPsdError(null);
         disposePsdImageUrl();
 
@@ -266,7 +261,6 @@ export default function CTFTomoViewer({ projectId, protocolId, outputName }: CTF
           const firstId = items[0].ctfSeriesId;
           setSelectedSeriesId(firstId);
           setExpandedSeriesId(null);
-          setViewMode("seriesChart");
         }
       } catch (e: any) {
         if (!cancelled) {
@@ -287,7 +281,6 @@ export default function CTFTomoViewer({ projectId, protocolId, outputName }: CTF
       setFramesData(null);
       setFramesError(null);
       setSelectedRowIndex(null);
-      setViewMode("seriesChart");
       abortPsdLoad();
       setPsdError(null);
       disposePsdImageUrl();
@@ -302,7 +295,6 @@ export default function CTFTomoViewer({ projectId, protocolId, outputName }: CTF
         setFramesError(null);
         setFramesData(null);
         setSelectedRowIndex(null);
-        setViewMode("seriesChart");
         abortPsdLoad();
         setPsdError(null);
         disposePsdImageUrl();
@@ -354,7 +346,6 @@ export default function CTFTomoViewer({ projectId, protocolId, outputName }: CTF
 
         setFramesData(payload);
         setSelectedRowIndex(null);
-        setViewMode("seriesChart");
       } catch (e: any) {
         if (!cancelled) {
           setFramesError(e?.message || "Failed to load CTF tomo views");
@@ -409,14 +400,12 @@ export default function CTFTomoViewer({ projectId, protocolId, outputName }: CTF
   }, [framesData, selectedRowIndex]);
 
   const totalFrames = framesData?.frames.length ?? 0;
-  const isPsdMode = viewMode === "psdView";
 
   const loadPsdForRow = async (row: CTFViewRow) => {
     if (mainMode === "metadata") return;
 
     if (!row.psdFile) {
       abortPsdLoad();
-      setViewMode("seriesChart");
       setPsdError(null);
       disposePsdImageUrl();
       setPsdLoading(false);
@@ -453,7 +442,6 @@ export default function CTFTomoViewer({ projectId, protocolId, outputName }: CTF
       const url = URL.createObjectURL(blob);
       psdImageUrlRef.current = url;
       setPsdImageUrl(url);
-      setViewMode("psdView");
     } catch (e: any) {
       if (
         controller.signal.aborted ||
@@ -465,7 +453,6 @@ export default function CTFTomoViewer({ projectId, protocolId, outputName }: CTF
 
       console.error("Failed to load PSD image", e);
       setPsdError(getErrorMsg(e) || "Failed to load PSD image for the selected view.");
-      setViewMode("seriesChart");
       disposePsdImageUrl();
     } finally {
       if (psdAbortRef.current === controller) {
@@ -491,7 +478,6 @@ export default function CTFTomoViewer({ projectId, protocolId, outputName }: CTF
         loadPsdForRow(row);
       } else {
         abortPsdLoad();
-        setViewMode("seriesChart");
         setPsdError(null);
         disposePsdImageUrl();
       }
@@ -501,18 +487,11 @@ export default function CTFTomoViewer({ projectId, protocolId, outputName }: CTF
   const handleSeriesRowClick = (seriesId: Id) => {
     setExpandedSeriesId(seriesId);
     setSelectedSeriesId((prev) => (prev != null && String(prev) === String(seriesId) ? prev : seriesId));
-    setViewMode("seriesChart");
     setPsdError(null);
     abortPsdLoad();
     disposePsdImageUrl();
   };
 
-  const handleChartTabChange = (_event: any, value: "seriesChart" | "psdView") => {
-    setViewMode(value);
-    if (value === "seriesChart") {
-      setPsdError(null);
-    }
-  };
 
   const toggleExcludeAtIndex = (frameIndex: number) => {
     setFramesData((prev) => {
@@ -841,7 +820,7 @@ export default function CTFTomoViewer({ projectId, protocolId, outputName }: CTF
   const plotLayout = useMemo(() => {
     return {
       autosize: true,
-      margin: { t: 44, r: 64, b: 48, l: 64 },
+      margin: { t: 28, r: 58, b: 42, l: 58 },
       hovermode: "closest",
       hoverdistance: 8,
       legend: {
@@ -896,7 +875,6 @@ export default function CTFTomoViewer({ projectId, protocolId, outputName }: CTF
     const hovered = chartHoveredPointRef.current;
     if (!hovered?.viewId) return;
 
-    setViewMode("seriesChart");
     setPsdError(null);
 
     setChartMenuTargetViewId(hovered.viewId);
@@ -959,7 +937,6 @@ export default function CTFTomoViewer({ projectId, protocolId, outputName }: CTF
     if (row?.psdFile) {
       loadPsdForRow(row);
     } else {
-      setViewMode("seriesChart");
       setPsdError(null);
       disposePsdImageUrl();
     }
@@ -1208,7 +1185,6 @@ export default function CTFTomoViewer({ projectId, protocolId, outputName }: CTF
                                     setSelectedSeriesId((prev) =>
                                       prev != null && String(prev) === String(s.ctfSeriesId) ? prev : s.ctfSeriesId,
                                     );
-                                    setViewMode("seriesChart");
                                     setPsdError(null);
                                     disposePsdImageUrl();
                                   }
@@ -1295,115 +1271,126 @@ export default function CTFTomoViewer({ projectId, protocolId, outputName }: CTF
           </Box>
         </Box>
 
-        <Box sx={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
+        <Box
+          sx={{
+            flex: 1,
+            minHeight: 0,
+            display: "flex",
+            flexDirection: "column",
+            gap: 1,
+            bgcolor: "background.default",
+            p: 1,
+          }}
+        >
           <Paper
-            square
             elevation={0}
             sx={{
-              p: 0.75,
-              borderBottom: "1px solid #e5e7eb",
+              flex: 1.45,
+              minHeight: 0,
               display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 1,
+              flexDirection: "column",
+              border: "1px solid #e5e7eb",
+              borderRadius: 1.5,
+              overflow: "hidden",
+              bgcolor: "background.paper",
             }}
           >
-            <Box sx={{ display: "flex", flexDirection: "column", gap: 0.25 }}>
-              <Typography variant="subtitle2" sx={{ fontSize: "0.8rem" }}>
-                {isPsdMode ? "PSD preview" : "CTF estimation"}
+            <Box
+              sx={{
+                px: 1,
+                py: 0.5,
+                borderBottom: "1px solid #e5e7eb",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+              }}
+            >
+              <Typography variant="caption" sx={{ fontWeight: 700, fontSize: "0.72rem" }}>
+                CTF estimation
               </Typography>
-              <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.7rem" }}>
-                Right-click on a point to exclude/include.
+              <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.68rem" }}>
+                Right-click on a point to exclude/include
               </Typography>
             </Box>
-            {selectedFrame && (
-              <Box sx={{ textAlign: "right" }}>
-                <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.7rem" }}>
-                  Selected tilt: {selectedFrame.tiltAngle != null ? `${selectedFrame.tiltAngle.toFixed(2)}°` : "-"}
-                </Typography>
-              </Box>
-            )}
 
             <Box
               sx={{
+                flex: 1,
+                minHeight: 0,
                 display: "flex",
                 alignItems: "center",
-                justifyContent: "flex-end",
-                gap: 0.75,
-                flexWrap: "wrap",
-                minWidth: 0,
+                justifyContent: "center",
+                p: 0.5,
+              }}
+              onContextMenu={(evt) => {
+                evt.preventDefault();
+                evt.stopPropagation();
+                openChartContextMenu(evt.clientX, evt.clientY);
               }}
             >
-              {selectedFrame && (
-                <Box sx={{ textAlign: "right" }}>
-                  <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.7rem" }}>
-                    Selected tilt: {selectedFrame.tiltAngle != null ? `${selectedFrame.tiltAngle.toFixed(2)}°` : "-"}
-                  </Typography>
-                </Box>
+              {!plotData.length ? (
+                <Typography variant="body2" color="text.secondary" sx={{ fontSize: "0.8rem" }}>
+                  No CTF data available for the selected series.
+                </Typography>
+              ) : (
+                <Plot
+                  data={plotData as any}
+                  layout={plotLayout as any}
+                  config={plotConfig as any}
+                  style={{ width: "100%", height: "100%" }}
+                  useResizeHandler
+                  onHover={handlePlotHover as any}
+                  onUnhover={handlePlotUnhover as any}
+                  onClick={handlePlotClick as any}
+                />
               )}
-
-              <ExternalViewersBar
-                projectId={projectId}
-                protocolId={protocolId}
-                outputName={outputName}
-                objectId={selectedSeriesId}
-                objectKind="ctfTomoSeries"
-                disabled={selectedSeriesId == null}
-              />
-
-              <Tooltip title="Show metadata viewer">
-                <span>
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    startIcon={<MetadataIcon fontSize="small" />}
-                    disabled={!canOpenMetadata}
-                    onClick={() => setMainMode("metadata")}
-                    sx={{ textTransform: "none" }}
-                  >
-                    Metadata
-                  </Button>
-                </span>
-              </Tooltip>
             </Box>
-
           </Paper>
 
-          <Box sx={{ borderBottom: "1px solid #e5e7eb", px: 1 }}>
-            <Tabs
-              value={viewMode}
-              onChange={(e, value: "seriesChart" | "psdView") => handleChartTabChange(e, value)}
-              textColor="primary"
-              indicatorColor="primary"
-              sx={{
-                minHeight: 32,
-                "& .MuiTab-root": {
-                  minHeight: 32,
-                  fontSize: "0.75rem",
-                  textTransform: "none",
-                  paddingX: 1.5,
-                  paddingY: 0,
-                },
-              }}
-            >
-              <Tab label="CTF chart" value="seriesChart" />
-              <Tab label="PSD view" value="psdView" />
-            </Tabs>
-          </Box>
-
-          <Box
+          <Paper
+            elevation={0}
             sx={{
-              flex: 1,
+              flex: 0.75,
               minHeight: 0,
               display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              bgcolor: "background.default",
-              p: 1,
+              flexDirection: "column",
+              border: "1px solid #e5e7eb",
+              borderRadius: 1.5,
+              overflow: "hidden",
+              bgcolor: "background.paper",
             }}
           >
-            {isPsdMode ? (
-              psdLoading ? (
+            <Box
+              sx={{
+                px: 1,
+                py: 0.5,
+                borderBottom: "1px solid #e5e7eb",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+              }}
+            >
+              <Typography variant="caption" sx={{ fontWeight: 700, fontSize: "0.72rem" }}>
+                PSD preview
+              </Typography>
+              {selectedFrame && (
+                <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.68rem" }}>
+                  Tilt: {selectedFrame.tiltAngle != null ? `${selectedFrame.tiltAngle.toFixed(2)}°` : "-"}
+                </Typography>
+              )}
+            </Box>
+
+            <Box
+              sx={{
+                flex: 1,
+                minHeight: 0,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                p: 1,
+              }}
+            >
+              {psdLoading ? (
                 <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
                   <CircularProgress size={18} />
                   <Typography variant="body2" sx={{ fontSize: "0.8rem" }}>
@@ -1415,65 +1402,23 @@ export default function CTFTomoViewer({ projectId, protocolId, outputName }: CTF
                   {psdError}
                 </Typography>
               ) : psdImageUrl ? (
-                <Box component="img" src={psdImageUrl} alt="PSD view" sx={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} />
+                <Box
+                  component="img"
+                  src={psdImageUrl}
+                  alt="PSD view"
+                  sx={{
+                    maxWidth: "100%",
+                    maxHeight: "100%",
+                    objectFit: "contain",
+                  }}
+                />
               ) : (
                 <Typography variant="body2" color="text.secondary" sx={{ fontSize: "0.8rem" }}>
-                  No PSD image available for the selected view.
+                  Select a CTF view with PSD data to preview it here.
                 </Typography>
-              )
-            ) : !plotData.length ? (
-              <Typography variant="body2" color="text.secondary" sx={{ fontSize: "0.8rem" }}>
-                No CTF data available for the selected series.
-              </Typography>
-            ) : (
-              <Box
-                sx={{
-                  width: "100%",
-                  maxWidth: 920,
-                  mx: "auto",
-                  aspectRatio: "1 / 1",
-                  minHeight: 320,
-                }}
-                onContextMenu={(evt) => {
-                  evt.preventDefault();
-                  evt.stopPropagation();
-                  openChartContextMenu(evt.clientX, evt.clientY);
-                }}
-              >
-                <Plot
-                  data={plotData as any}
-                  layout={plotLayout as any}
-                  config={plotConfig as any}
-                  style={{ width: "100%", height: "100%" }}
-                  useResizeHandler
-                  onHover={handlePlotHover as any}
-                  onUnhover={handlePlotUnhover as any}
-                  onClick={handlePlotClick as any}
-                />
-              </Box>
-            )}
-          </Box>
-
-          <Box
-            sx={{
-              p: 0.75,
-              borderTop: "1px solid #e5e7eb",
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              bgcolor: "background.paper",
-            }}
-          >
-            <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.7rem" }}>
-              {totalFrames > 0 ? `Views: ${totalFrames}` : "No views loaded"}
-            </Typography>
-            {selectedFrame && (
-              <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.7rem" }}>
-                DefocusU: {formatNumber(selectedFrame.defocusU)} Å, DefocusV: {formatNumber(selectedFrame.defocusV)} Å, Resolution:{" "}
-                {formatNumber(selectedFrame.resolution)} Å
-              </Typography>
-            )}
-          </Box>
+              )}
+            </Box>
+          </Paper>
         </Box>
       </Box>
 
