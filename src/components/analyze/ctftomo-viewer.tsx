@@ -265,7 +265,7 @@ export default function CTFTomoViewer({ projectId, protocolId, outputName }: CTF
         if (items.length > 0) {
           const firstId = items[0].ctfSeriesId;
           setSelectedSeriesId(firstId);
-          setExpandedSeriesId(firstId);
+          setExpandedSeriesId(null);
           setViewMode("seriesChart");
         }
       } catch (e: any) {
