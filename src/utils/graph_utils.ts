@@ -458,7 +458,7 @@ export function buildGraphElements(
   nodeSizeMap?: NodeSizeMap | null
 ) {
   const spacingX = direction === "TB" ? 480 : 1250;
-  const spacingY = direction === "TB" ? 660 : 430;
+  const spacingY = direction === "TB" ? 680 : 480;
 
   const nodes: Node[] = [];
   const edges: Edge[] = [];
@@ -515,7 +515,7 @@ export function buildGraphElements(
     });
 
     const gapX = 720;
-    const gapY = 260;
+    const gapY = 300;
 
     const softWidths = estWidths.map((w) => Math.round(w * 0.45));
     const avgSoftW =

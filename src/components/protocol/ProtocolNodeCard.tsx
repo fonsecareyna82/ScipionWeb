@@ -2422,9 +2422,11 @@ export default function ProtocolNodeCard({
                 >
                   {hasOutputs ? (
                     <div className={styles.outputsList}>
-                      <div className={styles.sectionHeader}>
-                        <span className={styles.sectionTitle}>Outputs</span>
-                      </div>
+                      {!thumbnailMode ? (
+                        <div className={styles.sectionHeader}>
+                          <span className={styles.sectionTitle}>Outputs</span>
+                        </div>
+                      ) : null}
 
                       <div
                         className={[

@@ -263,7 +263,30 @@
 }
 
 .outputsReservedThumbs {
-  --swOutputsListMaxHeight: 220px;
+  --swOutputsListMaxHeight: 320px;
+  height: var(--swOutputsListMaxHeight);
+}
+
+.card[data-thumbnail-mode="true"] .cardContent {
+  margin-top: 4px;
+  padding: 6px 10px 2px;
+}
+
+.card[data-thumbnail-mode="true"] .sectionContentThumbs {
+  height: 100%;
+  max-height: 100%;
+  padding-top: 0;
+  padding-bottom: 0;
+  align-items: stretch;
+}
+
+.card[data-thumbnail-mode="true"] .outputThumbTile {
+  min-height: 0;
+  height: 100%;
+}
+
+.card[data-thumbnail-mode="true"] .outputThumbImageWrap {
+  height: 100%;
 }
 
 .outputsList {
@@ -330,9 +353,8 @@
 
 .sectionContentThumbs {
   display: grid;
-  align-items: start;
-  gap: 10px;
-  overflow-y: hidden;
+  padding-top: 0;
+  padding-bottom: 0;
 }
 
 .sectionContentThumbsSingle {
@@ -420,22 +442,22 @@
 }
 
 .outputThumbTileSingle {
-  --swOutputThumbImageHeight: 210px;
+  --swOutputThumbImageHeight: 318px;
   --swOutputThumbImagePadding: 1px;
 }
 
 .outputThumbTileDouble {
-  --swOutputThumbImageHeight: 210px;
+  --swOutputThumbImageHeight: 318px;
   --swOutputThumbImagePadding: 1px;
 }
 
 .outputThumbTileTriple {
-  --swOutputThumbImageHeight: 210px;
+  --swOutputThumbImageHeight: 318px;
   --swOutputThumbImagePadding: 1px;
 }
 
 .outputThumbTileMany {
-  --swOutputThumbImageHeight: 100px;
+  --swOutputThumbImageHeight: 250px;
   --swOutputThumbImagePadding: 1px;
 }
 
@@ -1301,7 +1323,7 @@
 
 /* Keep thumbnail mode neutral so previews remain visually dominant */
 .card[data-thumbnail-mode="true"] {
-  background-color: #ffffff !important;
+  background-color: #f8f8f8 !important;
   background-image: none !important;
   border-color: rgba(15, 23, 42, 0.14);
 }
