@@ -22,7 +22,6 @@ import { styled } from "@mui/material/styles";
 import Plot from "react-plotly.js";
 import { useProjectService } from "@/ProjectServiceContext";
 import { ZoomIn, Layers3, HelpCircle, BoxIcon, Table as TableLucide, Pause, Play } from "lucide-react";
-import GpuVolumeView from "./gpu-volume-view";
 import MeshVolumeView from "./mesh-volume-view";
 import type { VolumeSurfaceMesh } from "@/services/ProjectService";
 import { MetadataViewer } from "./metadata-viewer";
@@ -118,7 +117,7 @@ const HELP_TEXT: Record<string, string> = {
 };
 
 const SliceSlider = styled(Slider)(({ theme }) => ({
-  height: 4,
+  height: 2,
   paddingTop: 14,
   paddingBottom: 30,
   "& .MuiSlider-thumb": { width: 14, height: 14 },
