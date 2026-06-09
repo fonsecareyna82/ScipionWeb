@@ -1334,7 +1334,7 @@
 }
 
 .card[data-thumbnail-mode="true"] .footer {
-  background: #ffffff;
+  background: #f8f8f8;
   border-top-color: rgba(15, 23, 42, 0.10);
 }
 
