@@ -306,6 +306,12 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
 
   const canCompareProjects = projectWorkspaceTabs.length >= 2;
 
+  const fetchProtocolDetailsForComparison = useCallback(
+    (projectName: string, protocolId: string) =>
+      svc.fetchProtocolDetails(projectName, protocolId),
+    [svc],
+  );
+
   const fetchProjectForComparison = useCallback(
     (projectName: string) => svc.fetchProject(projectName),
     [svc],
@@ -931,6 +937,7 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
         tabs={projectWorkspaceTabs}
         onClose={() => setCompareOpen(false)}
         fetchProject={fetchProjectForComparison}
+        fetchProtocolDetails={fetchProtocolDetailsForComparison}
       />
     </>
   );
