@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { Check, Copy, Download, RefreshCw, X } from "lucide-react";
+import { openPrintableComparisonReport } from "./project-comparison-report";
 
 type ProjectWorkspaceCompareTab = {
   id: string;
@@ -88,7 +89,7 @@ type MatchCandidate = {
   paramDiffRows: ParamDiffRow[];
 };
 
-type ReportActionStatus = "idle" | "copied" | "downloaded" | "error";
+type ReportActionStatus = "idle" | "copied" | "downloaded" | "pdf" | "error";
 
 const paramCategoryLabels: Record<ParamDiffCategory, string> = {
   inputs: "Inputs",
@@ -893,7 +894,23 @@ function ReportActions(props: { comparison: CompareResult }) {
     }
   };
 
-  const handleDownload = () => {
+  const handleExportPdf = () => {
+    try {
+      openPrintableComparisonReport({
+        title: "Project comparison report",
+        subtitle: `${props.comparison.left.title} vs ${props.comparison.right.title}`,
+        markdown: report,
+        fileName: fileName.replace(/\.md$/, ".pdf"),
+      });
+
+      setStatus("pdf");
+      window.setTimeout(() => setStatus("idle"), 1800);
+    } catch {
+      setStatus("error");
+    }
+  };
+
+  const handleExportMarkdown = () => {
     downloadTextFile(fileName, report);
     setStatus("downloaded");
     window.setTimeout(() => setStatus("idle"), 1800);
@@ -905,9 +922,10 @@ function ReportActions(props: { comparison: CompareResult }) {
         <div className="min-w-0">
           <h3 className="text-sm font-bold text-slate-950 dark:text-white">Shareable comparison report</h3>
           <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-            Copy the scientific summary or export a Markdown report with metrics, deltas and critical parameter differences.
+            Copy the scientific summary, open a printable PDF report or export the editable Markdown source.
           </p>
         </div>
+
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
@@ -917,14 +935,25 @@ function ReportActions(props: { comparison: CompareResult }) {
             <Copy className="h-3.5 w-3.5" />
             Copy summary
           </button>
+
           <button
             type="button"
-            onClick={handleDownload}
+            onClick={handleExportPdf}
             className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800 transition hover:bg-emerald-100 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-200 dark:hover:bg-emerald-950/50"
           >
             <Download className="h-3.5 w-3.5" />
-            Export report
+            Export PDF
           </button>
+
+          <button
+            type="button"
+            onClick={handleExportMarkdown}
+            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+          >
+            <Download className="h-3.5 w-3.5" />
+            Export Markdown
+          </button>
+
           {status !== "idle" ? (
             <span
               className={classNames(
@@ -935,7 +964,13 @@ function ReportActions(props: { comparison: CompareResult }) {
               )}
             >
               {status === "error" ? <X className="h-3 w-3" /> : <Check className="h-3 w-3" />}
-              {status === "copied" ? "Copied" : status === "downloaded" ? "Downloaded" : "Failed"}
+              {status === "copied"
+                ? "Copied"
+                : status === "pdf"
+                  ? "PDF opened"
+                  : status === "downloaded"
+                    ? "Downloaded"
+                    : "Failed"}
             </span>
           ) : null}
         </div>
