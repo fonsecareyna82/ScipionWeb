@@ -12,6 +12,7 @@ type ProjectWorkspaceCompareDialogProps = {
   tabs: ProjectWorkspaceCompareTab[];
   onClose: () => void;
   fetchProject: (projectName: string) => Promise<any>;
+  fetchProtocolDetails?: (projectName: string, protocolId: string) => Promise<any>;
 };
 
 type ProtocolParams = Record<string, string>;
@@ -37,6 +38,12 @@ type ProjectSummary = {
 
 type ProtocolMatchType = "shared" | "changed" | "only-left" | "only-right";
 
+type ParamDiffRow = {
+  name: string;
+  leftValue: string;
+  rightValue: string;
+};
+
 type ProtocolComparisonRow = {
   key: string;
   className: string;
@@ -46,10 +53,10 @@ type ProtocolComparisonRow = {
   paramDiffRows: ParamDiffRow[];
 };
 
-type ParamDiffRow = {
-  name: string;
-  leftValue: string;
-  rightValue: string;
+type ProtocolDetailsDiffState = {
+  loading: boolean;
+  error: string | null;
+  rows: ParamDiffRow[] | null;
 };
 
 type CompareResult = {
@@ -75,6 +82,10 @@ function getText(value: unknown, fallback = ""): string {
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function unwrapProtocolPayload(payload: any): any {
+  return payload?.protocol ?? payload?.data ?? payload?.result ?? payload;
 }
 
 function stringifyParamValue(value: unknown): string {
@@ -104,6 +115,7 @@ function stringifyParamValue(value: unknown): string {
 }
 
 function extractProtocolParams(raw: any): ProtocolParams {
+  const protocol = unwrapProtocolPayload(raw);
   const candidateKeys = [
     "params",
     "parameters",
@@ -114,7 +126,7 @@ function extractProtocolParams(raw: any): ProtocolParams {
   ];
 
   const source = candidateKeys
-    .map((key) => raw?.[key])
+    .map((key) => protocol?.[key])
     .find((candidate) => isPlainRecord(candidate));
 
   if (!isPlainRecord(source)) return {};
@@ -127,7 +139,8 @@ function extractProtocolParams(raw: any): ProtocolParams {
 }
 
 function getOutputCount(raw: any): number {
-  const outputs = raw?.outputs ?? raw?.outputList ?? raw?.resultOutputs;
+  const protocol = unwrapProtocolPayload(raw);
+  const outputs = protocol?.outputs ?? protocol?.outputList ?? protocol?.resultOutputs;
 
   if (Array.isArray(outputs)) return outputs.length;
   if (outputs && typeof outputs === "object") return Object.keys(outputs).length;
@@ -136,30 +149,31 @@ function getOutputCount(raw: any): number {
 }
 
 function normalizeProtocol(raw: any, fallbackId: string): ProtocolSummary {
+  const protocol = unwrapProtocolPayload(raw);
   const id = getText(
-    raw?.id ?? raw?.objId ?? raw?.objectId ?? raw?.protocolId ?? raw?.runId,
+    protocol?.id ?? protocol?.objId ?? protocol?.objectId ?? protocol?.protocolId ?? protocol?.runId,
     fallbackId,
   );
 
   const label = getText(
-    raw?.runName ?? raw?.label ?? raw?.name ?? raw?.protocolName ?? raw?.className,
+    protocol?.runName ?? protocol?.label ?? protocol?.name ?? protocol?.protocolName ?? protocol?.className,
     id,
   );
 
   const className = getText(
-    raw?.className ?? raw?.protocolClassName ?? raw?.protocolClass ?? raw?.protocol ?? raw?.classname,
+    protocol?.className ?? protocol?.protocolClassName ?? protocol?.protocolClass ?? protocol?.protocol ?? protocol?.classname,
     label,
   );
 
-  const status = getText(raw?.status ?? raw?.state ?? raw?.runState, "unknown").toLowerCase();
+  const status = getText(protocol?.status ?? protocol?.state ?? protocol?.runState, "unknown").toLowerCase();
 
   return {
     id,
     label,
     className,
     status,
-    outputCount: getOutputCount(raw),
-    params: extractProtocolParams(raw),
+    outputCount: getOutputCount(protocol),
+    params: extractProtocolParams(protocol),
   };
 }
 
@@ -224,19 +238,22 @@ function getClassOrder(left: ProtocolSummary[], right: ProtocolSummary[]): strin
   return ordered;
 }
 
-function getParamDiffRows(leftProtocol?: ProtocolSummary, rightProtocol?: ProtocolSummary): ParamDiffRow[] {
-  if (!leftProtocol || !rightProtocol) return [];
-
-  const keys = Array.from(new Set([...Object.keys(leftProtocol.params), ...Object.keys(rightProtocol.params)]))
+function getParamDiffRows(leftParams: ProtocolParams, rightParams: ProtocolParams): ParamDiffRow[] {
+  const keys = Array.from(new Set([...Object.keys(leftParams), ...Object.keys(rightParams)]))
     .sort((a, b) => a.localeCompare(b));
 
   return keys
     .map((name) => ({
       name,
-      leftValue: leftProtocol.params[name] ?? "",
-      rightValue: rightProtocol.params[name] ?? "",
+      leftValue: leftParams[name] ?? "",
+      rightValue: rightParams[name] ?? "",
     }))
     .filter((row) => row.leftValue !== row.rightValue);
+}
+
+function getProtocolParamDiffRows(leftProtocol?: ProtocolSummary, rightProtocol?: ProtocolSummary): ParamDiffRow[] {
+  if (!leftProtocol || !rightProtocol) return [];
+  return getParamDiffRows(leftProtocol.params, rightProtocol.params);
 }
 
 function getProtocolMatchType(
@@ -269,7 +286,7 @@ function buildProtocolRows(left: ProjectSummary, right: ProjectSummary): Protoco
     return Array.from({ length: rowCount }).map((_, index) => {
       const leftProtocol = leftProtocols[index];
       const rightProtocol = rightProtocols[index];
-      const paramDiffRows = getParamDiffRows(leftProtocol, rightProtocol);
+      const paramDiffRows = getProtocolParamDiffRows(leftProtocol, rightProtocol);
 
       return {
         key: `${className}:${index}:${leftProtocol?.id ?? "none"}:${rightProtocol?.id ?? "none"}`,
@@ -465,11 +482,28 @@ function ProtocolCell(props: { protocol?: ProtocolSummary }) {
   );
 }
 
-function ParamDiffTable(props: { rows: ParamDiffRow[] }) {
+function ParamDiffTable(props: { rows: ParamDiffRow[]; loading?: boolean; error?: string | null }) {
+  if (props.loading) {
+    return (
+      <div className="flex items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 p-3 text-xs text-gray-600 dark:border-gray-700 dark:bg-slate-900 dark:text-gray-300">
+        <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+        Loading protocol details...
+      </div>
+    );
+  }
+
+  if (props.error) {
+    return (
+      <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-200">
+        Could not load protocol details: {props.error}
+      </div>
+    );
+  }
+
   if (!props.rows.length) {
     return (
       <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 text-xs text-gray-500 dark:border-gray-700 dark:bg-slate-900 dark:text-gray-400">
-        No parameter differences detected from the loaded project payload.
+        No parameter differences detected.
       </div>
     );
   }
@@ -498,20 +532,74 @@ function ParamDiffTable(props: { rows: ParamDiffRow[] }) {
   );
 }
 
-function ProtocolDiffTable(props: { rows: ProtocolComparisonRow[]; leftTitle: string; rightTitle: string }) {
+function ProtocolDiffTable(props: {
+  rows: ProtocolComparisonRow[];
+  leftTitle: string;
+  rightTitle: string;
+  leftProjectName: string;
+  rightProjectName: string;
+  fetchProtocolDetails?: (projectName: string, protocolId: string) => Promise<any>;
+}) {
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+  const [detailsDiffByRow, setDetailsDiffByRow] = useState<Record<string, ProtocolDetailsDiffState>>({});
 
   if (!props.rows.length) {
     return <p className="text-sm text-gray-500 dark:text-gray-400">No comparable protocols found.</p>;
   }
 
-  const toggleRow = (rowKey: string) => {
+  const loadDetailsDiff = async (row: ProtocolComparisonRow) => {
+    if (!props.fetchProtocolDetails || !row.leftProtocol || !row.rightProtocol) return;
+    if (detailsDiffByRow[row.key]?.rows || detailsDiffByRow[row.key]?.loading) return;
+
+    setDetailsDiffByRow((prev) => ({
+      ...prev,
+      [row.key]: {
+        loading: true,
+        error: null,
+        rows: null,
+      },
+    }));
+
+    try {
+      const [leftDetails, rightDetails] = await Promise.all([
+        props.fetchProtocolDetails(props.leftProjectName, row.leftProtocol.id),
+        props.fetchProtocolDetails(props.rightProjectName, row.rightProtocol.id),
+      ]);
+
+      const leftParams = extractProtocolParams(leftDetails);
+      const rightParams = extractProtocolParams(rightDetails);
+
+      setDetailsDiffByRow((prev) => ({
+        ...prev,
+        [row.key]: {
+          loading: false,
+          error: null,
+          rows: getParamDiffRows(leftParams, rightParams),
+        },
+      }));
+    } catch (err: any) {
+      setDetailsDiffByRow((prev) => ({
+        ...prev,
+        [row.key]: {
+          loading: false,
+          error: err?.message ?? String(err),
+          rows: null,
+        },
+      }));
+    }
+  };
+
+  const toggleRow = (row: ProtocolComparisonRow) => {
     setExpandedRows((prev) => {
       const next = new Set(prev);
-      if (next.has(rowKey)) next.delete(rowKey);
-      else next.add(rowKey);
+      if (next.has(row.key)) next.delete(row.key);
+      else next.add(row.key);
       return next;
     });
+
+    if (!expandedRows.has(row.key)) {
+      void loadDetailsDiff(row);
+    }
   };
 
   return (
@@ -531,6 +619,17 @@ function ProtocolDiffTable(props: { rows: ProtocolComparisonRow[]; leftTitle: st
             {props.rows.map((row) => {
               const isExpanded = expandedRows.has(row.key);
               const canShowParams = Boolean(row.leftProtocol && row.rightProtocol);
+              const detailsState = detailsDiffByRow[row.key];
+              const rows = detailsState?.rows ?? row.paramDiffRows;
+              const paramLabel = detailsState?.rows
+                ? detailsState.rows.length
+                  ? `${detailsState.rows.length} detail diff`
+                  : "Details"
+                : row.paramDiffRows.length
+                  ? `${row.paramDiffRows.length} diff`
+                  : props.fetchProtocolDetails
+                    ? "Details"
+                    : "View";
 
               return (
                 <Fragment key={row.key}>
@@ -552,7 +651,7 @@ function ProtocolDiffTable(props: { rows: ProtocolComparisonRow[]; leftTitle: st
                     <td className="px-3 py-3 text-right align-top">
                       <button
                         type="button"
-                        onClick={() => toggleRow(row.key)}
+                        onClick={() => toggleRow(row)}
                         disabled={!canShowParams}
                         className={classNames(
                           "rounded-lg border px-2 py-1 text-xs font-semibold transition",
@@ -561,7 +660,7 @@ function ProtocolDiffTable(props: { rows: ProtocolComparisonRow[]; leftTitle: st
                             : "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400 dark:border-gray-700 dark:bg-slate-800 dark:text-gray-500",
                         )}
                       >
-                        {isExpanded ? "Hide" : row.paramDiffRows.length ? `${row.paramDiffRows.length} diff` : "View"}
+                        {isExpanded ? "Hide" : paramLabel}
                       </button>
                     </td>
                   </tr>
@@ -572,7 +671,7 @@ function ProtocolDiffTable(props: { rows: ProtocolComparisonRow[]; leftTitle: st
                         <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
                           Parameter differences
                         </div>
-                        <ParamDiffTable rows={row.paramDiffRows} />
+                        <ParamDiffTable rows={rows} loading={detailsState?.loading} error={detailsState?.error} />
                       </td>
                     </tr>
                   ) : null}
@@ -591,6 +690,7 @@ export default function ProjectWorkspaceCompareDialog({
   tabs,
   onClose,
   fetchProject,
+  fetchProtocolDetails,
 }: ProjectWorkspaceCompareDialogProps) {
   const [leftProjectName, setLeftProjectName] = useState("");
   const [rightProjectName, setRightProjectName] = useState("");
@@ -655,7 +755,7 @@ export default function ProjectWorkspaceCompareDialog({
           <div className="min-w-0">
             <h2 className="text-lg font-bold tracking-tight text-gray-950 dark:text-white">Compare projects</h2>
             <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
-              Protocol-level workflow comparison, parameter differences, status distribution and protocol class overlap.
+              Protocol-level workflow comparison, lazy parameter details, status distribution and protocol class overlap.
             </p>
           </div>
 
@@ -729,7 +829,7 @@ export default function ProjectWorkspaceCompareDialog({
                 <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-slate-950">
                   <h3 className="text-sm font-bold text-gray-950 dark:text-white">Workflow similarity</h3>
                   <div className="mt-3 grid grid-cols-2 gap-3">
-                    <StatBox label="Score" value={`${comparison.similarityScore}%`} hint="Class, status, output and parameter overlap" />
+                    <StatBox label="Score" value={`${comparison.similarityScore}%`} hint="Class, status, output and initial parameter overlap" />
                     <StatBox label="Compared rows" value={comparison.protocolRows.length} />
                   </div>
                 </div>
@@ -748,7 +848,7 @@ export default function ProjectWorkspaceCompareDialog({
                   <div>
                     <h3 className="text-sm font-bold text-gray-950 dark:text-white">Protocol-level workflow diff</h3>
                     <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                      Protocols are grouped by class and paired by their occurrence order. Expand a row to inspect parameter differences.
+                      Protocols are grouped by class and paired by their occurrence order. Expand a row to load protocol details and inspect parameter differences.
                     </p>
                   </div>
                 </div>
@@ -756,6 +856,9 @@ export default function ProjectWorkspaceCompareDialog({
                   rows={comparison.protocolRows}
                   leftTitle={comparison.left.title}
                   rightTitle={comparison.right.title}
+                  leftProjectName={leftTab?.projectName ?? ""}
+                  rightProjectName={rightTab?.projectName ?? ""}
+                  fetchProtocolDetails={fetchProtocolDetails}
                 />
               </div>
 
