@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { RefreshCw, X } from "lucide-react";
 
 type ProjectWorkspaceCompareTab = {
@@ -14,12 +14,15 @@ type ProjectWorkspaceCompareDialogProps = {
   fetchProject: (projectName: string) => Promise<any>;
 };
 
+type ProtocolParams = Record<string, string>;
+
 type ProtocolSummary = {
   id: string;
   label: string;
   className: string;
   status: string;
   outputCount: number;
+  params: ProtocolParams;
 };
 
 type ProjectSummary = {
@@ -40,6 +43,13 @@ type ProtocolComparisonRow = {
   leftProtocol?: ProtocolSummary;
   rightProtocol?: ProtocolSummary;
   matchType: ProtocolMatchType;
+  paramDiffRows: ParamDiffRow[];
+};
+
+type ParamDiffRow = {
+  name: string;
+  leftValue: string;
+  rightValue: string;
 };
 
 type CompareResult = {
@@ -61,6 +71,59 @@ function classNames(...xs: Array<string | false | null | undefined>): string {
 function getText(value: unknown, fallback = ""): string {
   const text = String(value ?? "").trim();
   return text || fallback;
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function stringifyParamValue(value: unknown): string {
+  if (value === null || value === undefined) return "";
+
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+
+  if (Array.isArray(value)) {
+    if (value.length <= 6 && value.every((item) => ["string", "number", "boolean"].includes(typeof item))) {
+      return value.map((item) => String(item)).join(", ");
+    }
+
+    return JSON.stringify(value);
+  }
+
+  if (isPlainRecord(value)) {
+    if ("value" in value) return stringifyParamValue(value.value);
+    if ("currentValue" in value) return stringifyParamValue(value.currentValue);
+    if ("default" in value) return stringifyParamValue(value.default);
+
+    return JSON.stringify(value);
+  }
+
+  return String(value);
+}
+
+function extractProtocolParams(raw: any): ProtocolParams {
+  const candidateKeys = [
+    "params",
+    "parameters",
+    "formValues",
+    "values",
+    "paramValues",
+    "inputParams",
+  ];
+
+  const source = candidateKeys
+    .map((key) => raw?.[key])
+    .find((candidate) => isPlainRecord(candidate));
+
+  if (!isPlainRecord(source)) return {};
+
+  return Object.fromEntries(
+    Object.entries(source)
+      .filter(([key]) => !key.startsWith("_"))
+      .map(([key, value]) => [key, stringifyParamValue(value)]),
+  );
 }
 
 function getOutputCount(raw: any): number {
@@ -96,6 +159,7 @@ function normalizeProtocol(raw: any, fallbackId: string): ProtocolSummary {
     className,
     status,
     outputCount: getOutputCount(raw),
+    params: extractProtocolParams(raw),
   };
 }
 
@@ -160,9 +224,25 @@ function getClassOrder(left: ProtocolSummary[], right: ProtocolSummary[]): strin
   return ordered;
 }
 
+function getParamDiffRows(leftProtocol?: ProtocolSummary, rightProtocol?: ProtocolSummary): ParamDiffRow[] {
+  if (!leftProtocol || !rightProtocol) return [];
+
+  const keys = Array.from(new Set([...Object.keys(leftProtocol.params), ...Object.keys(rightProtocol.params)]))
+    .sort((a, b) => a.localeCompare(b));
+
+  return keys
+    .map((name) => ({
+      name,
+      leftValue: leftProtocol.params[name] ?? "",
+      rightValue: rightProtocol.params[name] ?? "",
+    }))
+    .filter((row) => row.leftValue !== row.rightValue);
+}
+
 function getProtocolMatchType(
   leftProtocol?: ProtocolSummary,
   rightProtocol?: ProtocolSummary,
+  paramDiffRows: ParamDiffRow[] = [],
 ): ProtocolMatchType {
   if (leftProtocol && !rightProtocol) return "only-left";
   if (!leftProtocol && rightProtocol) return "only-right";
@@ -171,8 +251,9 @@ function getProtocolMatchType(
   const sameStatus = leftProtocol.status === rightProtocol.status;
   const sameOutputs = leftProtocol.outputCount === rightProtocol.outputCount;
   const sameLabel = leftProtocol.label === rightProtocol.label;
+  const sameParams = paramDiffRows.length === 0;
 
-  return sameStatus && sameOutputs && sameLabel ? "shared" : "changed";
+  return sameStatus && sameOutputs && sameLabel && sameParams ? "shared" : "changed";
 }
 
 function buildProtocolRows(left: ProjectSummary, right: ProjectSummary): ProtocolComparisonRow[] {
@@ -188,13 +269,15 @@ function buildProtocolRows(left: ProjectSummary, right: ProjectSummary): Protoco
     return Array.from({ length: rowCount }).map((_, index) => {
       const leftProtocol = leftProtocols[index];
       const rightProtocol = rightProtocols[index];
+      const paramDiffRows = getParamDiffRows(leftProtocol, rightProtocol);
 
       return {
         key: `${className}:${index}:${leftProtocol?.id ?? "none"}:${rightProtocol?.id ?? "none"}`,
         className,
         leftProtocol,
         rightProtocol,
-        matchType: getProtocolMatchType(leftProtocol, rightProtocol),
+        paramDiffRows,
+        matchType: getProtocolMatchType(leftProtocol, rightProtocol, paramDiffRows),
       };
     });
   });
@@ -371,47 +454,131 @@ function ProtocolCell(props: { protocol?: ProtocolSummary }) {
         <span>{props.protocol.status}</span>
         <span>·</span>
         <span>{props.protocol.outputCount} outputs</span>
+        {Object.keys(props.protocol.params).length ? (
+          <>
+            <span>·</span>
+            <span>{Object.keys(props.protocol.params).length} params</span>
+          </>
+        ) : null}
       </div>
     </div>
   );
 }
 
-function ProtocolDiffTable(props: { rows: ProtocolComparisonRow[]; leftTitle: string; rightTitle: string }) {
+function ParamDiffTable(props: { rows: ParamDiffRow[] }) {
   if (!props.rows.length) {
-    return <p className="text-sm text-gray-500 dark:text-gray-400">No comparable protocols found.</p>;
+    return (
+      <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 text-xs text-gray-500 dark:border-gray-700 dark:bg-slate-900 dark:text-gray-400">
+        No parameter differences detected from the loaded project payload.
+      </div>
+    );
   }
 
   return (
     <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700">
-      <div className="max-h-[420px] overflow-auto">
-        <table className="w-full min-w-[980px] text-left text-sm">
+      <table className="w-full text-left text-xs">
+        <thead className="bg-gray-100 uppercase tracking-wide text-gray-500 dark:bg-slate-900 dark:text-gray-400">
+          <tr>
+            <th className="w-[28%] px-3 py-2">Parameter</th>
+            <th className="w-[36%] px-3 py-2">Left value</th>
+            <th className="w-[36%] px-3 py-2">Right value</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-200 bg-white dark:divide-gray-700 dark:bg-slate-950">
+          {props.rows.map((row) => (
+            <tr key={row.name}>
+              <td className="px-3 py-2 font-semibold text-gray-900 dark:text-gray-100">{row.name}</td>
+              <td className="max-w-[420px] break-words px-3 py-2 text-gray-700 dark:text-gray-300">{row.leftValue || "—"}</td>
+              <td className="max-w-[420px] break-words px-3 py-2 text-gray-700 dark:text-gray-300">{row.rightValue || "—"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function ProtocolDiffTable(props: { rows: ProtocolComparisonRow[]; leftTitle: string; rightTitle: string }) {
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+
+  if (!props.rows.length) {
+    return <p className="text-sm text-gray-500 dark:text-gray-400">No comparable protocols found.</p>;
+  }
+
+  const toggleRow = (rowKey: string) => {
+    setExpandedRows((prev) => {
+      const next = new Set(prev);
+      if (next.has(rowKey)) next.delete(rowKey);
+      else next.add(rowKey);
+      return next;
+    });
+  };
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700">
+      <div className="max-h-[520px] overflow-auto">
+        <table className="w-full min-w-[1080px] text-left text-sm">
           <thead className="sticky top-0 z-10 bg-gray-100 text-xs uppercase tracking-wide text-gray-500 dark:bg-slate-900 dark:text-gray-400">
             <tr>
-              <th className="w-[28%] px-3 py-2">Protocol class</th>
-              <th className="w-[28%] px-3 py-2">{props.leftTitle}</th>
-              <th className="w-[28%] px-3 py-2">{props.rightTitle}</th>
-              <th className="w-[16%] px-3 py-2">Match</th>
+              <th className="w-[25%] px-3 py-2">Protocol class</th>
+              <th className="w-[27%] px-3 py-2">{props.leftTitle}</th>
+              <th className="w-[27%] px-3 py-2">{props.rightTitle}</th>
+              <th className="w-[12%] px-3 py-2">Match</th>
+              <th className="w-[9%] px-3 py-2 text-right">Params</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200 bg-white dark:divide-gray-700 dark:bg-slate-950">
-            {props.rows.map((row) => (
-              <tr key={row.key}>
-                <td className="px-3 py-3 align-top">
-                  <div className="max-w-[320px] truncate font-semibold text-gray-900 dark:text-gray-100" title={row.className}>
-                    {row.className}
-                  </div>
-                </td>
-                <td className="px-3 py-3 align-top">
-                  <ProtocolCell protocol={row.leftProtocol} />
-                </td>
-                <td className="px-3 py-3 align-top">
-                  <ProtocolCell protocol={row.rightProtocol} />
-                </td>
-                <td className="px-3 py-3 align-top">
-                  <MatchBadge matchType={row.matchType} />
-                </td>
-              </tr>
-            ))}
+            {props.rows.map((row) => {
+              const isExpanded = expandedRows.has(row.key);
+              const canShowParams = Boolean(row.leftProtocol && row.rightProtocol);
+
+              return (
+                <Fragment key={row.key}>
+                  <tr>
+                    <td className="px-3 py-3 align-top">
+                      <div className="max-w-[320px] truncate font-semibold text-gray-900 dark:text-gray-100" title={row.className}>
+                        {row.className}
+                      </div>
+                    </td>
+                    <td className="px-3 py-3 align-top">
+                      <ProtocolCell protocol={row.leftProtocol} />
+                    </td>
+                    <td className="px-3 py-3 align-top">
+                      <ProtocolCell protocol={row.rightProtocol} />
+                    </td>
+                    <td className="px-3 py-3 align-top">
+                      <MatchBadge matchType={row.matchType} />
+                    </td>
+                    <td className="px-3 py-3 text-right align-top">
+                      <button
+                        type="button"
+                        onClick={() => toggleRow(row.key)}
+                        disabled={!canShowParams}
+                        className={classNames(
+                          "rounded-lg border px-2 py-1 text-xs font-semibold transition",
+                          canShowParams
+                            ? "border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-slate-900 dark:text-gray-200 dark:hover:bg-slate-800"
+                            : "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400 dark:border-gray-700 dark:bg-slate-800 dark:text-gray-500",
+                        )}
+                      >
+                        {isExpanded ? "Hide" : row.paramDiffRows.length ? `${row.paramDiffRows.length} diff` : "View"}
+                      </button>
+                    </td>
+                  </tr>
+
+                  {isExpanded && canShowParams ? (
+                    <tr>
+                      <td colSpan={5} className="bg-gray-50 px-3 py-3 dark:bg-slate-900/60">
+                        <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                          Parameter differences
+                        </div>
+                        <ParamDiffTable rows={row.paramDiffRows} />
+                      </td>
+                    </tr>
+                  ) : null}
+                </Fragment>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -488,7 +655,7 @@ export default function ProjectWorkspaceCompareDialog({
           <div className="min-w-0">
             <h2 className="text-lg font-bold tracking-tight text-gray-950 dark:text-white">Compare projects</h2>
             <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
-              Protocol-level workflow comparison, status distribution and protocol class overlap.
+              Protocol-level workflow comparison, parameter differences, status distribution and protocol class overlap.
             </p>
           </div>
 
@@ -562,7 +729,7 @@ export default function ProjectWorkspaceCompareDialog({
                 <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-slate-950">
                   <h3 className="text-sm font-bold text-gray-950 dark:text-white">Workflow similarity</h3>
                   <div className="mt-3 grid grid-cols-2 gap-3">
-                    <StatBox label="Score" value={`${comparison.similarityScore}%`} hint="Class, status and output overlap" />
+                    <StatBox label="Score" value={`${comparison.similarityScore}%`} hint="Class, status, output and parameter overlap" />
                     <StatBox label="Compared rows" value={comparison.protocolRows.length} />
                   </div>
                 </div>
@@ -581,7 +748,7 @@ export default function ProjectWorkspaceCompareDialog({
                   <div>
                     <h3 className="text-sm font-bold text-gray-950 dark:text-white">Protocol-level workflow diff</h3>
                     <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                      Protocols are grouped by class and paired by their occurrence order in each workflow.
+                      Protocols are grouped by class and paired by their occurrence order. Expand a row to inspect parameter differences.
                     </p>
                   </div>
                 </div>
