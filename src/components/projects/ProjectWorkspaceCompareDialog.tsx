@@ -39,12 +39,16 @@ type ProjectSummary = {
 
 type ProtocolMatchType = "shared" | "changed" | "only-left" | "only-right";
 type ProtocolMatchQuality = "strong" | "likely" | "weak" | "none";
-type ComparisonFilter = "all" | "changed" | "param-diff" | "only-left" | "only-right" | "shared" | "weak";
+type ComparisonFilter = "all" | "changed" | "param-diff" | "critical-param" | "only-left" | "only-right" | "shared" | "weak";
+type ParamDiffCategory = "inputs" | "sampling" | "mask" | "reconstruction" | "compute" | "metadata" | "other";
+type ParamDiffSeverity = "critical" | "important" | "minor";
 
 type ParamDiffRow = {
   name: string;
   leftValue: string;
   rightValue: string;
+  category: ParamDiffCategory;
+  severity: ParamDiffSeverity;
 };
 
 type ProtocolComparisonRow = {
@@ -83,6 +87,26 @@ type MatchCandidate = {
   score: number;
   paramDiffRows: ParamDiffRow[];
 };
+
+const paramCategoryLabels: Record<ParamDiffCategory, string> = {
+  inputs: "Inputs",
+  sampling: "Sampling and resolution",
+  mask: "Mask and geometry",
+  reconstruction: "Reconstruction strategy",
+  compute: "Compute and performance",
+  metadata: "Metadata and bookkeeping",
+  other: "Other parameters",
+};
+
+const paramCategoryOrder: ParamDiffCategory[] = [
+  "inputs",
+  "sampling",
+  "mask",
+  "reconstruction",
+  "compute",
+  "metadata",
+  "other",
+];
 
 function classNames(...xs: Array<string | false | null | undefined>): string {
   return xs.filter(Boolean).join(" ");
@@ -309,17 +333,55 @@ function getMatchQuality(score: number, matchType: ProtocolMatchType): ProtocolM
   return "weak";
 }
 
+function getParamDiffCategory(name: string): ParamDiffCategory {
+  const key = normalizeComparableText(name);
+
+  if (/input|source|particle|volume|micrograph|movie|tilt|coordinate|ctf|metadata|dataset|set/.test(key)) return "inputs";
+  if (/sampling|pixel|angst|resolution|box|bin|scale|downsample|fourier|freq|frequency|lowpass|highpass|nyquist/.test(key)) return "sampling";
+  if (/mask|diameter|radius|inner|outer|threshold|crop|shape|size|padding|symmetry|sym/.test(key)) return "mask";
+  if (/class|refine|iteration|align|angular|search|regularization|tau|initial|reference|reconstruct|extract|pick|classification/.test(key)) return "reconstruction";
+  if (/gpu|cpu|thread|mpi|memory|queue|lane|batch|split|parallel|compute|cache|ssd/.test(key)) return "compute";
+  if (/label|name|comment|note|tag|date|path|file|suffix|prefix|version/.test(key)) return "metadata";
+
+  return "other";
+}
+
+function getParamDiffSeverity(name: string, category: ParamDiffCategory): ParamDiffSeverity {
+  const key = normalizeComparableText(name);
+
+  if (/input|source|particle|volume|micrograph|movie|tilt|coordinate|ctf|dataset|symmetry|sym|mask|diameter|radius|pixel|sampling|box|resolution|reference|class|refine|classification/.test(key)) {
+    return "critical";
+  }
+
+  if (category === "sampling" || category === "mask" || category === "reconstruction" || category === "inputs") {
+    return "important";
+  }
+
+  if (category === "compute") return "minor";
+  return "important";
+}
+
+function hasCriticalParamDiff(row: ProtocolComparisonRow): boolean {
+  return row.paramDiffRows.some((paramRow) => paramRow.severity === "critical");
+}
+
 function getParamDiffRows(leftParams: ProtocolParams, rightParams: ProtocolParams): ParamDiffRow[] {
   const keys = Array.from(new Set([...Object.keys(leftParams), ...Object.keys(rightParams)])).sort((a, b) =>
     a.localeCompare(b),
   );
 
   return keys
-    .map((name) => ({
-      name,
-      leftValue: leftParams[name] ?? "",
-      rightValue: rightParams[name] ?? "",
-    }))
+    .map((name) => {
+      const category = getParamDiffCategory(name);
+
+      return {
+        name,
+        leftValue: leftParams[name] ?? "",
+        rightValue: rightParams[name] ?? "",
+        category,
+        severity: getParamDiffSeverity(name, category),
+      };
+    })
     .filter((row) => row.leftValue !== row.rightValue);
 }
 
@@ -491,6 +553,7 @@ function getComparisonInsights(
   const onlyRight = protocolRows.filter((row) => row.matchType === "only-right").length;
   const changed = protocolRows.filter((row) => row.matchType === "changed").length;
   const paramDiff = protocolRows.filter((row) => row.paramDiffRows.length > 0).length;
+  const criticalParamDiff = protocolRows.filter(hasCriticalParamDiff).length;
   const weak = protocolRows.filter((row) => row.matchQuality === "weak").length;
   const outputDelta = left.outputCount - right.outputCount;
   const topDeltas = classDeltas.filter((row) => row.delta !== 0).slice(0, 3);
@@ -504,7 +567,9 @@ function getComparisonInsights(
     insights.push(`${changed} matched protocol rows changed by label, status, outputs or parameters.`);
   }
 
-  if (paramDiff) {
+  if (criticalParamDiff) {
+    insights.push(`${criticalParamDiff} matched rows include critical parameter differences in inputs, sampling, masks or reconstruction settings.`);
+  } else if (paramDiff) {
     insights.push(`${paramDiff} matched rows already show parameter differences from the loaded project payload.`);
   }
 
@@ -732,6 +797,21 @@ function ConfidenceBadge(props: { score: number; quality: ProtocolMatchQuality }
   );
 }
 
+function SeverityBadge(props: { severity: ParamDiffSeverity }) {
+  const tone =
+    props.severity === "critical"
+      ? "border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-200"
+      : props.severity === "important"
+        ? "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200"
+        : "border-gray-200 bg-gray-50 text-gray-600 dark:border-gray-700 dark:bg-slate-900 dark:text-gray-300";
+
+  return (
+    <span className={classNames("inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold capitalize", tone)}>
+      {props.severity}
+    </span>
+  );
+}
+
 function ProtocolCell(props: { protocol?: ProtocolSummary }) {
   if (!props.protocol) {
     return <span className="text-xs text-gray-400 dark:text-gray-500">Missing</span>;
@@ -762,6 +842,15 @@ function ProtocolCell(props: { protocol?: ProtocolSummary }) {
   );
 }
 
+function groupParamDiffRows(rows: ParamDiffRow[]): Array<{ category: ParamDiffCategory; rows: ParamDiffRow[] }> {
+  return paramCategoryOrder
+    .map((category) => ({
+      category,
+      rows: rows.filter((row) => row.category === category),
+    }))
+    .filter((group) => group.rows.length > 0);
+}
+
 function ParamDiffTable(props: { rows: ParamDiffRow[]; loading?: boolean; error?: string | null; sourceLabel?: string }) {
   if (props.loading) {
     return (
@@ -788,24 +877,35 @@ function ParamDiffTable(props: { rows: ParamDiffRow[]; loading?: boolean; error?
     );
   }
 
+  const groupedRows = groupParamDiffRows(props.rows);
+
   return (
     <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700">
       <table className="w-full table-fixed text-left text-xs">
         <thead className="bg-gray-100 uppercase tracking-wide text-gray-500 dark:bg-slate-900 dark:text-gray-400">
           <tr>
-            <th className="w-[28%] px-3 py-2">Parameter</th>
-            <th className="w-[36%] px-3 py-2">Left value</th>
-            <th className="w-[36%] px-3 py-2">Right value</th>
+            <th className="w-[24%] px-3 py-2">Parameter</th>
+            <th className="w-[14%] px-3 py-2">Severity</th>
+            <th className="w-[31%] px-3 py-2">Left value</th>
+            <th className="w-[31%] px-3 py-2">Right value</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-200 bg-white dark:divide-gray-700 dark:bg-slate-950">
-          {props.rows.map((row) => (
-            <tr key={row.name}>
-              <td className="break-words px-3 py-2 font-semibold text-gray-900 dark:text-gray-100">{row.name}</td>
-              <td className="break-words px-3 py-2 text-gray-700 dark:text-gray-300">{row.leftValue || "—"}</td>
-              <td className="break-words px-3 py-2 text-gray-700 dark:text-gray-300">{row.rightValue || "—"}</td>
-            </tr>
-          ))}
+          {groupedRows.flatMap((group) => [
+            <tr key={`${group.category}:heading`}>
+              <td colSpan={4} className="bg-blue-50 px-3 py-2 text-[11px] font-bold uppercase tracking-wide text-blue-800 dark:bg-blue-950/30 dark:text-blue-200">
+                {paramCategoryLabels[group.category]}
+              </td>
+            </tr>,
+            ...group.rows.map((row) => (
+              <tr key={`${group.category}:${row.name}`}>
+                <td className="break-words px-3 py-2 font-semibold text-gray-900 dark:text-gray-100">{row.name}</td>
+                <td className="px-3 py-2"><SeverityBadge severity={row.severity} /></td>
+                <td className="break-words px-3 py-2 text-gray-700 dark:text-gray-300">{row.leftValue || "—"}</td>
+                <td className="break-words px-3 py-2 text-gray-700 dark:text-gray-300">{row.rightValue || "—"}</td>
+              </tr>
+            )),
+          ])}
         </tbody>
       </table>
     </div>
@@ -817,6 +917,7 @@ function getFilterCounts(rows: ProtocolComparisonRow[]): Record<ComparisonFilter
     all: rows.length,
     changed: rows.filter((row) => row.matchType === "changed").length,
     "param-diff": rows.filter((row) => row.paramDiffRows.length > 0).length,
+    "critical-param": rows.filter(hasCriticalParamDiff).length,
     "only-left": rows.filter((row) => row.matchType === "only-left").length,
     "only-right": rows.filter((row) => row.matchType === "only-right").length,
     shared: rows.filter((row) => row.matchType === "shared").length,
@@ -827,6 +928,7 @@ function getFilterCounts(rows: ProtocolComparisonRow[]): Record<ComparisonFilter
 function filterProtocolRows(rows: ProtocolComparisonRow[], filter: ComparisonFilter): ProtocolComparisonRow[] {
   if (filter === "all") return rows;
   if (filter === "param-diff") return rows.filter((row) => row.paramDiffRows.length > 0);
+  if (filter === "critical-param") return rows.filter(hasCriticalParamDiff);
   if (filter === "weak") return rows.filter((row) => row.matchQuality === "weak");
   return rows.filter((row) => row.matchType === filter);
 }
@@ -934,6 +1036,7 @@ function ProtocolDiffTable(props: {
         <FilterButton active={activeFilter === "all"} label="All" count={filterCounts.all} onClick={() => setActiveFilter("all")} />
         <FilterButton active={activeFilter === "changed"} label="Changed" count={filterCounts.changed} onClick={() => setActiveFilter("changed")} />
         <FilterButton active={activeFilter === "param-diff"} label="Param diff" count={filterCounts["param-diff"]} onClick={() => setActiveFilter("param-diff")} />
+        <FilterButton active={activeFilter === "critical-param"} label="Critical params" count={filterCounts["critical-param"]} onClick={() => setActiveFilter("critical-param")} />
         <FilterButton active={activeFilter === "only-left"} label="Only left" count={filterCounts["only-left"]} onClick={() => setActiveFilter("only-left")} />
         <FilterButton active={activeFilter === "only-right"} label="Only right" count={filterCounts["only-right"]} onClick={() => setActiveFilter("only-right")} />
         <FilterButton active={activeFilter === "shared"} label="Shared" count={filterCounts.shared} onClick={() => setActiveFilter("shared")} />
@@ -967,9 +1070,10 @@ function ProtocolDiffTable(props: {
                     : "initial project payload";
                 const effectiveMatchType = detailsLoaded ? getProtocolMatchType(row.leftProtocol, row.rightProtocol, rows) : row.matchType;
                 const effectiveQuality = detailsLoaded ? getMatchQuality(row.matchScore, effectiveMatchType) : row.matchQuality;
+                const criticalRows = rows.filter((paramRow) => paramRow.severity === "critical").length;
                 const paramLabel = detailsLoaded
                   ? rows.length
-                    ? `${rows.length} detail diff`
+                    ? `${rows.length} detail diff${criticalRows ? ` · ${criticalRows} critical` : ""}`
                     : "Details loaded"
                   : props.fetchProtocolDetails
                     ? row.paramDiffRows.length
@@ -995,7 +1099,9 @@ function ProtocolDiffTable(props: {
                           className={classNames(
                             "max-w-full rounded-lg border px-2 py-1 text-xs font-semibold transition",
                             canShowParams
-                              ? "border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-slate-900 dark:text-gray-200 dark:hover:bg-slate-800"
+                              ? criticalRows
+                                ? "border-red-300 bg-red-50 text-red-700 hover:bg-red-100 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-200 dark:hover:bg-red-950/50"
+                                : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-slate-900 dark:text-gray-200 dark:hover:bg-slate-800"
                               : "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400 dark:border-gray-700 dark:bg-slate-800 dark:text-gray-500",
                           )}
                           title={paramLabel}
@@ -1108,7 +1214,7 @@ export default function ProjectWorkspaceCompareDialog({
           <div className="min-w-0">
             <h2 className="text-lg font-bold tracking-tight text-gray-950 dark:text-white">Compare projects</h2>
             <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
-              Smart workflow comparison with confidence scoring, quick filters and protocol-level parameter loading.
+              Smart workflow comparison with confidence scoring, critical parameter classification and protocol-level detail loading.
             </p>
           </div>
 
@@ -1187,7 +1293,7 @@ export default function ProjectWorkspaceCompareDialog({
                   <div>
                     <h3 className="text-sm font-bold text-gray-950 dark:text-white">Protocol-level workflow diff</h3>
                     <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                      Rows are matched by protocol class, label similarity, status, outputs, parameter overlap and id proximity. Use filters to focus on relevant differences.
+                      Rows are matched by protocol class, label similarity, status, outputs, parameter overlap and id proximity. Parameter diffs are grouped by scientific category and severity.
                     </p>
                   </div>
                 </div>
