@@ -15,7 +15,6 @@ import ImportProjectDialog from "@/components/projects/ImportProjectDialog";
 import ProjectPage from "./ProjectPage";
 import "./project-workspaces.css";
 
-const GRID_VPORT_OFFSET_PX = 250;
 const WORKSPACE_TABS_STORAGE_KEY = "scipion.projects.workspaceTabs.v1";
 const PROJECTS_VIEW_MODE_STORAGE_KEY = "scipion.projects.viewMode.v1";
 
@@ -551,7 +550,7 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
           className={classNames(
             "inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-semibold transition",
             viewMode === "cards"
-               ? "bg-[#333d49] text-white shadow-sm"
+              ? "bg-[#333d49] text-white shadow-sm"
               : "text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-white/[0.04]",
           )}
         >
@@ -687,14 +686,14 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
     <div
       className={classNames(
         crispText,
-        "relative overflow-hidden rounded-2xl border p-5 shadow-sm",
+        "relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border p-5 shadow-sm",
         "border-gray-300/90 bg-white",
         "dark:border-gray-700 dark:bg-slate-900",
         "lg:p-6",
       )}
     >
-      <div className="relative">
-        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        <div className="mb-4 shrink-0 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <h3 className="text-[15px] font-semibold tracking-[0.01em] text-gray-950 dark:text-white">
@@ -793,7 +792,7 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
           </div>
         </div>
 
-        <div className="mb-4 grid grid-cols-1 gap-3 lg:grid-cols-12">
+        <div className="mb-4 shrink-0 grid grid-cols-1 gap-3 lg:grid-cols-12">
           <div className="lg:col-span-6">
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500 dark:text-gray-400" />
@@ -822,9 +821,8 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
         </div>
 
         <div
-          className="overscroll-contain"
+          className="min-h-0 flex-1 overscroll-contain"
           style={{
-            height: `calc(100vh - ${GRID_VPORT_OFFSET_PX}px)`,
             overflowY: "auto",
             WebkitOverflowScrolling: "touch",
             paddingRight: 4,
@@ -856,7 +854,7 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
     <>
       <PageMeta title={`Scipion | ${activeProjectTitle}`} description="Projects page" />
 
-      <div className="flex min-h-0 flex-col gap-2">
+      <div className="flex h-[calc(100dvh-96px)] min-h-0 flex-col gap-2 overflow-hidden">
         {renderWorkspaceTabs()}
         {activeWorkspaceId === projectsWorkspaceTab.id ? (
           renderProjectsListWorkspace()
