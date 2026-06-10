@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { RefreshCw, X } from "lucide-react";
+import { Check, Copy, Download, RefreshCw, X } from "lucide-react";
 
 type ProjectWorkspaceCompareTab = {
   id: string;
@@ -87,6 +87,8 @@ type MatchCandidate = {
   score: number;
   paramDiffRows: ParamDiffRow[];
 };
+
+type ReportActionStatus = "idle" | "copied" | "downloaded" | "error";
 
 const paramCategoryLabels: Record<ParamDiffCategory, string> = {
   inputs: "Inputs",
@@ -665,6 +667,156 @@ function buildComparison(
   };
 }
 
+function getSafeFileName(value: string): string {
+  const safeName = normalizeComparableText(value)
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9.-]/g, "")
+    .slice(0, 80);
+
+  return safeName || "project-comparison";
+}
+
+function formatProtocolForReport(protocol?: ProtocolSummary): string {
+  if (!protocol) return "Missing";
+  return `${protocol.id} ${protocol.label} (${protocol.status}, ${protocol.outputCount} outputs)`;
+}
+
+function formatParamValueForReport(value: string): string {
+  const text = value || "—";
+  return text.replace(/\|/g, "\\|").replace(/\n/g, " ");
+}
+
+function buildComparisonReportMarkdown(comparison: CompareResult): string {
+  const changedRows = comparison.protocolRows.filter((row) => row.matchType === "changed");
+  const onlyLeftRows = comparison.protocolRows.filter((row) => row.matchType === "only-left");
+  const onlyRightRows = comparison.protocolRows.filter((row) => row.matchType === "only-right");
+  const weakRows = comparison.protocolRows.filter((row) => row.matchQuality === "weak");
+  const criticalRows = comparison.protocolRows.filter(hasCriticalParamDiff);
+  const keyRows = comparison.protocolRows
+    .filter((row) => row.matchType !== "shared" || row.matchQuality === "weak" || row.paramDiffRows.length > 0)
+    .slice(0, 30);
+  const lines: string[] = [];
+
+  lines.push("# Project comparison report");
+  lines.push("");
+  lines.push(`Generated: ${new Date().toISOString()}`);
+  lines.push("");
+  lines.push("## Projects");
+  lines.push(`- Left: ${comparison.left.title}${comparison.left.fullTitle !== comparison.left.title ? ` (${comparison.left.fullTitle})` : ""}`);
+  lines.push(`- Right: ${comparison.right.title}${comparison.right.fullTitle !== comparison.right.title ? ` (${comparison.right.fullTitle})` : ""}`);
+  lines.push("");
+  lines.push("## Metrics");
+  lines.push(`- Workflow similarity: ${comparison.similarityScore}%`);
+  lines.push(`- Left protocols: ${comparison.left.protocolCount}`);
+  lines.push(`- Right protocols: ${comparison.right.protocolCount}`);
+  lines.push(`- Left outputs: ${comparison.left.outputCount}`);
+  lines.push(`- Right outputs: ${comparison.right.outputCount}`);
+  lines.push(`- Changed rows: ${changedRows.length}`);
+  lines.push(`- Critical parameter rows: ${criticalRows.length}`);
+  lines.push(`- Only left rows: ${onlyLeftRows.length}`);
+  lines.push(`- Only right rows: ${onlyRightRows.length}`);
+  lines.push(`- Weak matches: ${weakRows.length}`);
+  lines.push("");
+  lines.push("## Scientific summary");
+  comparison.insights.forEach((insight) => lines.push(`- ${insight}`));
+  lines.push("");
+
+  lines.push("## Status distribution");
+  lines.push("| Status | Left | Right |");
+  lines.push("| --- | ---: | ---: |");
+  comparison.statusRows.forEach((row) => {
+    lines.push(`| ${row.name} | ${row.left} | ${row.right} |`);
+  });
+  lines.push("");
+
+  lines.push("## Largest protocol class deltas");
+  lines.push("| Class | Left | Right | Delta |");
+  lines.push("| --- | ---: | ---: | ---: |");
+  comparison.classDeltas.forEach((row) => {
+    lines.push(`| ${row.name} | ${row.left} | ${row.right} | ${row.delta > 0 ? "+" : ""}${row.delta} |`);
+  });
+  lines.push("");
+
+  lines.push("## Key workflow differences");
+  lines.push("| Class | Left protocol | Right protocol | Match | Confidence | Parameter diffs | Critical diffs |");
+  lines.push("| --- | --- | --- | --- | ---: | ---: | ---: |");
+  keyRows.forEach((row) => {
+    const criticalCount = row.paramDiffRows.filter((paramRow) => paramRow.severity === "critical").length;
+    lines.push(
+      `| ${row.className} | ${formatProtocolForReport(row.leftProtocol)} | ${formatProtocolForReport(row.rightProtocol)} | ${row.matchType} | ${row.matchScore}% | ${row.paramDiffRows.length} | ${criticalCount} |`,
+    );
+  });
+  lines.push("");
+
+  if (criticalRows.length) {
+    lines.push("## Critical parameter differences");
+    criticalRows.slice(0, 15).forEach((row) => {
+      const criticalParams = row.paramDiffRows.filter((paramRow) => paramRow.severity === "critical");
+      lines.push("");
+      lines.push(`### ${row.className}`);
+      lines.push(`Left: ${formatProtocolForReport(row.leftProtocol)}`);
+      lines.push(`Right: ${formatProtocolForReport(row.rightProtocol)}`);
+      lines.push("");
+      lines.push("| Category | Parameter | Left value | Right value |");
+      lines.push("| --- | --- | --- | --- |");
+      criticalParams.slice(0, 20).forEach((paramRow) => {
+        lines.push(
+          `| ${paramCategoryLabels[paramRow.category]} | ${paramRow.name} | ${formatParamValueForReport(paramRow.leftValue)} | ${formatParamValueForReport(paramRow.rightValue)} |`,
+        );
+      });
+    });
+    lines.push("");
+  }
+
+  return lines.join("\n");
+}
+
+function getReportFileName(comparison: CompareResult): string {
+  const left = getSafeFileName(comparison.left.title);
+  const right = getSafeFileName(comparison.right.title);
+  return `project-comparison-${left}-vs-${right}.md`;
+}
+
+async function copyTextToClipboard(text: string): Promise<void> {
+  if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  if (typeof document === "undefined") {
+    throw new Error("Clipboard is not available");
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.style.position = "fixed";
+  textarea.style.left = "-9999px";
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+
+  const copied = document.execCommand("copy");
+  document.body.removeChild(textarea);
+
+  if (!copied) {
+    throw new Error("Clipboard copy failed");
+  }
+}
+
+function downloadTextFile(fileName: string, content: string): void {
+  if (typeof document === "undefined") return;
+
+  const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
 function StatBox(props: { label: string; value: string | number; hint?: string }) {
   return (
     <div className="min-w-0 rounded-xl border border-gray-200 bg-white p-3 shadow-sm dark:border-gray-700 dark:bg-slate-950">
@@ -721,6 +873,72 @@ function InsightPanel(props: { insights: string[] }) {
             {insight}
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+function ReportActions(props: { comparison: CompareResult }) {
+  const [status, setStatus] = useState<ReportActionStatus>("idle");
+  const report = useMemo(() => buildComparisonReportMarkdown(props.comparison), [props.comparison]);
+  const fileName = useMemo(() => getReportFileName(props.comparison), [props.comparison]);
+
+  const handleCopy = async () => {
+    try {
+      await copyTextToClipboard(report);
+      setStatus("copied");
+      window.setTimeout(() => setStatus("idle"), 1800);
+    } catch {
+      setStatus("error");
+    }
+  };
+
+  const handleDownload = () => {
+    downloadTextFile(fileName, report);
+    setStatus("downloaded");
+    window.setTimeout(() => setStatus("idle"), 1800);
+  };
+
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-sm dark:border-slate-700 dark:bg-slate-950/90">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="min-w-0">
+          <h3 className="text-sm font-bold text-slate-950 dark:text-white">Shareable comparison report</h3>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            Copy the scientific summary or export a Markdown report with metrics, deltas and critical parameter differences.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={handleCopy}
+            className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-800 transition hover:bg-blue-100 dark:border-blue-900/60 dark:bg-blue-950/30 dark:text-blue-200 dark:hover:bg-blue-950/50"
+          >
+            <Copy className="h-3.5 w-3.5" />
+            Copy summary
+          </button>
+          <button
+            type="button"
+            onClick={handleDownload}
+            className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800 transition hover:bg-emerald-100 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-200 dark:hover:bg-emerald-950/50"
+          >
+            <Download className="h-3.5 w-3.5" />
+            Export report
+          </button>
+          {status !== "idle" ? (
+            <span
+              className={classNames(
+                "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold",
+                status === "error"
+                  ? "border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-200"
+                  : "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-200",
+              )}
+            >
+              {status === "error" ? <X className="h-3 w-3" /> : <Check className="h-3 w-3" />}
+              {status === "copied" ? "Copied" : status === "downloaded" ? "Downloaded" : "Failed"}
+            </span>
+          ) : null}
+        </div>
       </div>
     </div>
   );
@@ -1287,6 +1505,7 @@ export default function ProjectWorkspaceCompareDialog({
               </div>
 
               <InsightPanel insights={comparison.insights} />
+              <ReportActions comparison={comparison} />
 
               <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-slate-950">
                 <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
