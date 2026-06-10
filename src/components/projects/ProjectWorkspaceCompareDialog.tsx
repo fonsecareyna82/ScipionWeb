@@ -482,12 +482,12 @@ function ProtocolCell(props: { protocol?: ProtocolSummary }) {
   );
 }
 
-function ParamDiffTable(props: { rows: ParamDiffRow[]; loading?: boolean; error?: string | null }) {
+function ParamDiffTable(props: { rows: ParamDiffRow[]; loading?: boolean; error?: string | null; sourceLabel?: string }) {
   if (props.loading) {
     return (
       <div className="flex items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 p-3 text-xs text-gray-600 dark:border-gray-700 dark:bg-slate-900 dark:text-gray-300">
         <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-        Loading protocol details...
+        Loading protocol details from fetchProtocolDetails...
       </div>
     );
   }
@@ -503,7 +503,7 @@ function ParamDiffTable(props: { rows: ParamDiffRow[]; loading?: boolean; error?
   if (!props.rows.length) {
     return (
       <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 text-xs text-gray-500 dark:border-gray-700 dark:bg-slate-900 dark:text-gray-400">
-        No parameter differences detected.
+        No parameter differences detected{props.sourceLabel ? ` (${props.sourceLabel}).` : "."}
       </div>
     );
   }
@@ -542,6 +542,11 @@ function ProtocolDiffTable(props: {
 }) {
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [detailsDiffByRow, setDetailsDiffByRow] = useState<Record<string, ProtocolDetailsDiffState>>({});
+
+  useEffect(() => {
+    setExpandedRows(new Set());
+    setDetailsDiffByRow({});
+  }, [props.leftProjectName, props.rightProjectName, props.rows]);
 
   if (!props.rows.length) {
     return <p className="text-sm text-gray-500 dark:text-gray-400">No comparable protocols found.</p>;
@@ -621,14 +626,25 @@ function ProtocolDiffTable(props: {
               const canShowParams = Boolean(row.leftProtocol && row.rightProtocol);
               const detailsState = detailsDiffByRow[row.key];
               const rows = detailsState?.rows ?? row.paramDiffRows;
-              const paramLabel = detailsState?.rows
-                ? detailsState.rows.length
-                  ? `${detailsState.rows.length} detail diff`
-                  : "Details"
-                : row.paramDiffRows.length
-                  ? `${row.paramDiffRows.length} diff`
-                  : props.fetchProtocolDetails
-                    ? "Details"
+              const detailsLoaded = Boolean(detailsState?.rows);
+              const detailsSourceLabel = detailsLoaded
+                ? "loaded from protocol details"
+                : props.fetchProtocolDetails
+                  ? "initial project payload, details not loaded yet"
+                  : "initial project payload";
+              const effectiveMatchType = detailsLoaded
+                ? getProtocolMatchType(row.leftProtocol, row.rightProtocol, rows)
+                : row.matchType;
+              const paramLabel = detailsLoaded
+                ? rows.length
+                  ? `${rows.length} detail diff`
+                  : "Details loaded"
+                : props.fetchProtocolDetails
+                  ? row.paramDiffRows.length
+                    ? `${row.paramDiffRows.length} initial diff · load`
+                    : "Load details"
+                  : row.paramDiffRows.length
+                    ? `${row.paramDiffRows.length} diff`
                     : "View";
 
               return (
@@ -646,7 +662,7 @@ function ProtocolDiffTable(props: {
                       <ProtocolCell protocol={row.rightProtocol} />
                     </td>
                     <td className="px-3 py-3 align-top">
-                      <MatchBadge matchType={row.matchType} />
+                      <MatchBadge matchType={effectiveMatchType} />
                     </td>
                     <td className="px-3 py-3 text-right align-top">
                       <button
@@ -668,10 +684,20 @@ function ProtocolDiffTable(props: {
                   {isExpanded && canShowParams ? (
                     <tr>
                       <td colSpan={5} className="bg-gray-50 px-3 py-3 dark:bg-slate-900/60">
-                        <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                          Parameter differences
+                        <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs">
+                          <span className="font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                            Parameter differences
+                          </span>
+                          <span className="rounded-full border border-gray-200 bg-white px-2 py-0.5 font-semibold text-gray-600 dark:border-gray-700 dark:bg-slate-950 dark:text-gray-300">
+                            {detailsState?.loading ? "Loading protocol details" : detailsSourceLabel}
+                          </span>
                         </div>
-                        <ParamDiffTable rows={rows} loading={detailsState?.loading} error={detailsState?.error} />
+                        <ParamDiffTable
+                          rows={rows}
+                          loading={detailsState?.loading}
+                          error={detailsState?.error}
+                          sourceLabel={detailsSourceLabel}
+                        />
                       </td>
                     </tr>
                   ) : null}
@@ -755,7 +781,7 @@ export default function ProjectWorkspaceCompareDialog({
           <div className="min-w-0">
             <h2 className="text-lg font-bold tracking-tight text-gray-950 dark:text-white">Compare projects</h2>
             <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
-              Protocol-level workflow comparison, lazy parameter details, status distribution and protocol class overlap.
+              Protocol-level workflow comparison, explicit protocol detail loading, status distribution and protocol class overlap.
             </p>
           </div>
 
@@ -848,7 +874,7 @@ export default function ProjectWorkspaceCompareDialog({
                   <div>
                     <h3 className="text-sm font-bold text-gray-950 dark:text-white">Protocol-level workflow diff</h3>
                     <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                      Protocols are grouped by class and paired by their occurrence order. Expand a row to load protocol details and inspect parameter differences.
+                      Use Load details in the Params column to call fetchProtocolDetails and inspect protocol-level parameter differences.
                     </p>
                   </div>
                 </div>
