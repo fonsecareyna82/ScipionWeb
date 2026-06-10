@@ -854,7 +854,7 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
     <>
       <PageMeta title={`Scipion | ${activeProjectTitle}`} description="Projects page" />
 
-      <div className="flex h-[calc(100dvh-68px)] min-h-0 flex-col gap-2 overflow-hidden">
+      <div className="flex h-[calc(100dvh-70px)] min-h-0 flex-col gap-2 overflow-hidden">
         {renderWorkspaceTabs()}
         {activeWorkspaceId === projectsWorkspaceTab.id ? (
           renderProjectsListWorkspace()
