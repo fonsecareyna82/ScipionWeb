@@ -87,18 +87,21 @@ function normalizeProtocol(raw: any, fallbackId: string): ProtocolSummary {
   };
 }
 
+function isProjectRootProtocol(protocol: ProtocolSummary): boolean {
+  const values = [protocol.id, protocol.label, protocol.className].map((value) => value.trim().toUpperCase());
+  return values.includes("PROJECT");
+}
+
 function normalizeProtocols(rawProtocols: unknown): ProtocolSummary[] {
-  if (Array.isArray(rawProtocols)) {
-    return rawProtocols.map((item, index) => normalizeProtocol(item, String(index + 1)));
-  }
+  const protocols = Array.isArray(rawProtocols)
+    ? rawProtocols.map((item, index) => normalizeProtocol(item, String(index + 1)))
+    : rawProtocols && typeof rawProtocols === "object"
+      ? Object.entries(rawProtocols as Record<string, unknown>).map(([key, value]) =>
+        normalizeProtocol(value, key),
+      )
+      : [];
 
-  if (rawProtocols && typeof rawProtocols === "object") {
-    return Object.entries(rawProtocols as Record<string, unknown>).map(([key, value]) =>
-      normalizeProtocol(value, key),
-    );
-  }
-
-  return [];
+  return protocols.filter((protocol) => !isProjectRootProtocol(protocol));
 }
 
 function countBy(items: ProtocolSummary[], picker: (item: ProtocolSummary) => string): Map<string, number> {
