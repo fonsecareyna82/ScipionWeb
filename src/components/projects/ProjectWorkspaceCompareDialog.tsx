@@ -29,6 +29,7 @@ type ProtocolSummary = {
 type ProjectSummary = {
   id: string;
   title: string;
+  fullTitle: string;
   protocols: ProtocolSummary[];
   protocolCount: number;
   outputCount: number;
@@ -88,6 +89,17 @@ function unwrapProtocolPayload(payload: any): any {
   return payload?.protocol ?? payload?.data ?? payload?.result ?? payload;
 }
 
+function getProjectDisplayName(tab: ProjectWorkspaceCompareTab, payload: any): { title: string; fullTitle: string } {
+  const rawTitle = getText(payload?.name ?? payload?.shortName ?? payload?.title ?? tab.projectName, tab.projectName);
+  const tabTitle = getText(tab.title, rawTitle);
+  const title = tabTitle.includes("/") ? tabTitle.split("/").filter(Boolean).at(-1) ?? tabTitle : tabTitle;
+
+  return {
+    title,
+    fullTitle: rawTitle,
+  };
+}
+
 function stringifyParamValue(value: unknown): string {
   if (value === null || value === undefined) return "";
 
@@ -116,18 +128,8 @@ function stringifyParamValue(value: unknown): string {
 
 function extractProtocolParams(raw: any): ProtocolParams {
   const protocol = unwrapProtocolPayload(raw);
-  const candidateKeys = [
-    "params",
-    "parameters",
-    "formValues",
-    "values",
-    "paramValues",
-    "inputParams",
-  ];
-
-  const source = candidateKeys
-    .map((key) => protocol?.[key])
-    .find((candidate) => isPlainRecord(candidate));
+  const candidateKeys = ["params", "parameters", "formValues", "values", "paramValues", "inputParams"];
+  const source = candidateKeys.map((key) => protocol?.[key]).find((candidate) => isPlainRecord(candidate));
 
   if (!isPlainRecord(source)) return {};
 
@@ -154,17 +156,14 @@ function normalizeProtocol(raw: any, fallbackId: string): ProtocolSummary {
     protocol?.id ?? protocol?.objId ?? protocol?.objectId ?? protocol?.protocolId ?? protocol?.runId,
     fallbackId,
   );
-
   const label = getText(
     protocol?.runName ?? protocol?.label ?? protocol?.name ?? protocol?.protocolName ?? protocol?.className,
     id,
   );
-
   const className = getText(
     protocol?.className ?? protocol?.protocolClassName ?? protocol?.protocolClass ?? protocol?.protocol ?? protocol?.classname,
     label,
   );
-
   const status = getText(protocol?.status ?? protocol?.state ?? protocol?.runState, "unknown").toLowerCase();
 
   return {
@@ -186,9 +185,7 @@ function normalizeProtocols(rawProtocols: unknown): ProtocolSummary[] {
   const protocols = Array.isArray(rawProtocols)
     ? rawProtocols.map((item, index) => normalizeProtocol(item, String(index + 1)))
     : rawProtocols && typeof rawProtocols === "object"
-      ? Object.entries(rawProtocols as Record<string, unknown>).map(([key, value]) =>
-        normalizeProtocol(value, key),
-      )
+      ? Object.entries(rawProtocols as Record<string, unknown>).map(([key, value]) => normalizeProtocol(value, key))
       : [];
 
   return protocols.filter((protocol) => !isProjectRootProtocol(protocol));
@@ -239,8 +236,9 @@ function getClassOrder(left: ProtocolSummary[], right: ProtocolSummary[]): strin
 }
 
 function getParamDiffRows(leftParams: ProtocolParams, rightParams: ProtocolParams): ParamDiffRow[] {
-  const keys = Array.from(new Set([...Object.keys(leftParams), ...Object.keys(rightParams)]))
-    .sort((a, b) => a.localeCompare(b));
+  const keys = Array.from(new Set([...Object.keys(leftParams), ...Object.keys(rightParams)])).sort((a, b) =>
+    a.localeCompare(b),
+  );
 
   return keys
     .map((name) => ({
@@ -317,11 +315,12 @@ function calculateSimilarityScore(rows: ProtocolComparisonRow[]): number {
 function summarizeProject(tab: ProjectWorkspaceCompareTab, payload: any): ProjectSummary {
   const protocols = normalizeProtocols(payload?.protocols ?? payload?.protocolsMap ?? payload?.workflow);
   const id = getText(payload?.id ?? payload?.projectId ?? tab.projectName, tab.projectName);
-  const title = getText(payload?.name ?? payload?.shortName ?? payload?.title ?? tab.title, tab.title);
+  const { title, fullTitle } = getProjectDisplayName(tab, payload);
 
   return {
     id,
     title,
+    fullTitle,
     protocols,
     protocolCount: protocols.length,
     outputCount: protocols.reduce((total, protocol) => total + protocol.outputCount, 0),
@@ -383,14 +382,33 @@ function buildComparison(
 
 function StatBox(props: { label: string; value: string | number; hint?: string }) {
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm dark:border-gray-700 dark:bg-slate-950">
-      <div className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+    <div className="min-w-0 rounded-xl border border-gray-200 bg-white p-3 shadow-sm dark:border-gray-700 dark:bg-slate-950">
+      <div className="truncate text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
         {props.label}
       </div>
-      <div className="mt-1 text-2xl font-bold tracking-tight text-gray-950 dark:text-white">
+      <div className="mt-1 truncate text-2xl font-bold tracking-tight text-gray-950 dark:text-white">
         {props.value}
       </div>
-      {props.hint ? <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">{props.hint}</div> : null}
+      {props.hint ? <div className="mt-1 line-clamp-2 text-xs text-gray-500 dark:text-gray-400">{props.hint}</div> : null}
+    </div>
+  );
+}
+
+function ProjectSummaryCard(props: { project: ProjectSummary }) {
+  return (
+    <div className="min-w-0 rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-slate-950">
+      <h3 className="truncate text-sm font-bold text-gray-950 dark:text-white" title={props.project.fullTitle}>
+        {props.project.title}
+      </h3>
+      {props.project.fullTitle && props.project.fullTitle !== props.project.title ? (
+        <p className="mt-1 truncate text-xs text-gray-500 dark:text-gray-400" title={props.project.fullTitle}>
+          {props.project.fullTitle}
+        </p>
+      ) : null}
+      <div className="mt-3 grid min-w-0 grid-cols-2 gap-3">
+        <StatBox label="Protocols" value={props.project.protocolCount} />
+        <StatBox label="Outputs" value={props.project.outputCount} />
+      </div>
     </div>
   );
 }
@@ -410,7 +428,7 @@ function ChipList(props: { items: string[]; emptyText: string; tone?: "green" | 
   return (
     <div className="flex flex-wrap gap-2">
       {props.items.slice(0, 30).map((item) => (
-        <span key={item} className={classNames("rounded-full border px-2.5 py-1 text-xs font-semibold", toneClass)}>
+        <span key={item} className={classNames("max-w-full truncate rounded-full border px-2.5 py-1 text-xs font-semibold", toneClass)} title={item}>
           {item}
         </span>
       ))}
@@ -442,14 +460,9 @@ function MatchBadge(props: { matchType: ProtocolMatchType }) {
       className: "border-purple-200 bg-purple-50 text-purple-800 dark:border-purple-900/60 dark:bg-purple-950/30 dark:text-purple-200",
     },
   };
-
   const item = config[props.matchType];
 
-  return (
-    <span className={classNames("inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold", item.className)}>
-      {item.label}
-    </span>
-  );
+  return <span className={classNames("inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold", item.className)}>{item.label}</span>;
 }
 
 function ProtocolCell(props: { protocol?: ProtocolSummary }) {
@@ -463,11 +476,11 @@ function ProtocolCell(props: { protocol?: ProtocolSummary }) {
         <span className="shrink-0 rounded-md bg-gray-100 px-1.5 py-0.5 text-[11px] font-bold text-gray-700 dark:bg-slate-800 dark:text-gray-200">
           {props.protocol.id}
         </span>
-        <span className="truncate text-sm font-semibold text-gray-900 dark:text-gray-100" title={props.protocol.label}>
+        <span className="min-w-0 truncate text-sm font-semibold text-gray-900 dark:text-gray-100" title={props.protocol.label}>
           {props.protocol.label}
         </span>
       </div>
-      <div className="mt-1 flex flex-wrap gap-1.5 text-[11px] text-gray-500 dark:text-gray-400">
+      <div className="mt-1 flex min-w-0 flex-wrap gap-1.5 text-[11px] text-gray-500 dark:text-gray-400">
         <span>{props.protocol.status}</span>
         <span>·</span>
         <span>{props.protocol.outputCount} outputs</span>
@@ -510,7 +523,7 @@ function ParamDiffTable(props: { rows: ParamDiffRow[]; loading?: boolean; error?
 
   return (
     <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700">
-      <table className="w-full text-left text-xs">
+      <table className="w-full table-fixed text-left text-xs">
         <thead className="bg-gray-100 uppercase tracking-wide text-gray-500 dark:bg-slate-900 dark:text-gray-400">
           <tr>
             <th className="w-[28%] px-3 py-2">Parameter</th>
@@ -521,9 +534,9 @@ function ParamDiffTable(props: { rows: ParamDiffRow[]; loading?: boolean; error?
         <tbody className="divide-y divide-gray-200 bg-white dark:divide-gray-700 dark:bg-slate-950">
           {props.rows.map((row) => (
             <tr key={row.name}>
-              <td className="px-3 py-2 font-semibold text-gray-900 dark:text-gray-100">{row.name}</td>
-              <td className="max-w-[420px] break-words px-3 py-2 text-gray-700 dark:text-gray-300">{row.leftValue || "—"}</td>
-              <td className="max-w-[420px] break-words px-3 py-2 text-gray-700 dark:text-gray-300">{row.rightValue || "—"}</td>
+              <td className="break-words px-3 py-2 font-semibold text-gray-900 dark:text-gray-100">{row.name}</td>
+              <td className="break-words px-3 py-2 text-gray-700 dark:text-gray-300">{row.leftValue || "—"}</td>
+              <td className="break-words px-3 py-2 text-gray-700 dark:text-gray-300">{row.rightValue || "—"}</td>
             </tr>
           ))}
         </tbody>
@@ -558,11 +571,7 @@ function ProtocolDiffTable(props: {
 
     setDetailsDiffByRow((prev) => ({
       ...prev,
-      [row.key]: {
-        loading: true,
-        error: null,
-        rows: null,
-      },
+      [row.key]: { loading: true, error: null, rows: null },
     }));
 
     try {
@@ -570,26 +579,17 @@ function ProtocolDiffTable(props: {
         props.fetchProtocolDetails(props.leftProjectName, row.leftProtocol.id),
         props.fetchProtocolDetails(props.rightProjectName, row.rightProtocol.id),
       ]);
-
       const leftParams = extractProtocolParams(leftDetails);
       const rightParams = extractProtocolParams(rightDetails);
 
       setDetailsDiffByRow((prev) => ({
         ...prev,
-        [row.key]: {
-          loading: false,
-          error: null,
-          rows: getParamDiffRows(leftParams, rightParams),
-        },
+        [row.key]: { loading: false, error: null, rows: getParamDiffRows(leftParams, rightParams) },
       }));
     } catch (err: any) {
       setDetailsDiffByRow((prev) => ({
         ...prev,
-        [row.key]: {
-          loading: false,
-          error: err?.message ?? String(err),
-          rows: null,
-        },
+        [row.key]: { loading: false, error: err?.message ?? String(err), rows: null },
       }));
     }
   };
@@ -610,14 +610,14 @@ function ProtocolDiffTable(props: {
   return (
     <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700">
       <div className="max-h-[520px] overflow-auto">
-        <table className="w-full min-w-[1080px] text-left text-sm">
+        <table className="w-full table-fixed text-left text-sm">
           <thead className="sticky top-0 z-10 bg-gray-100 text-xs uppercase tracking-wide text-gray-500 dark:bg-slate-900 dark:text-gray-400">
             <tr>
-              <th className="w-[25%] px-3 py-2">Protocol class</th>
-              <th className="w-[27%] px-3 py-2">{props.leftTitle}</th>
-              <th className="w-[27%] px-3 py-2">{props.rightTitle}</th>
-              <th className="w-[12%] px-3 py-2">Match</th>
-              <th className="w-[9%] px-3 py-2 text-right">Params</th>
+              <th className="w-[22%] px-3 py-2">Protocol class</th>
+              <th className="w-[28%] px-3 py-2"><span className="block truncate" title={props.leftTitle}>{props.leftTitle}</span></th>
+              <th className="w-[28%] px-3 py-2"><span className="block truncate" title={props.rightTitle}>{props.rightTitle}</span></th>
+              <th className="w-[12%] px-3 py-2 text-right">Params</th>
+              <th className="w-[10%] px-3 py-2">Match</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200 bg-white dark:divide-gray-700 dark:bg-slate-950">
@@ -632,9 +632,7 @@ function ProtocolDiffTable(props: {
                 : props.fetchProtocolDetails
                   ? "initial project payload, details not loaded yet"
                   : "initial project payload";
-              const effectiveMatchType = detailsLoaded
-                ? getProtocolMatchType(row.leftProtocol, row.rightProtocol, rows)
-                : row.matchType;
+              const effectiveMatchType = detailsLoaded ? getProtocolMatchType(row.leftProtocol, row.rightProtocol, rows) : row.matchType;
               const paramLabel = detailsLoaded
                 ? rows.length
                   ? `${rows.length} detail diff`
@@ -651,53 +649,39 @@ function ProtocolDiffTable(props: {
                 <Fragment key={row.key}>
                   <tr>
                     <td className="px-3 py-3 align-top">
-                      <div className="max-w-[320px] truncate font-semibold text-gray-900 dark:text-gray-100" title={row.className}>
-                        {row.className}
-                      </div>
+                      <div className="truncate font-semibold text-gray-900 dark:text-gray-100" title={row.className}>{row.className}</div>
                     </td>
-                    <td className="px-3 py-3 align-top">
-                      <ProtocolCell protocol={row.leftProtocol} />
-                    </td>
-                    <td className="px-3 py-3 align-top">
-                      <ProtocolCell protocol={row.rightProtocol} />
-                    </td>
-                    <td className="px-3 py-3 align-top">
-                      <MatchBadge matchType={effectiveMatchType} />
-                    </td>
+                    <td className="px-3 py-3 align-top"><ProtocolCell protocol={row.leftProtocol} /></td>
+                    <td className="px-3 py-3 align-top"><ProtocolCell protocol={row.rightProtocol} /></td>
                     <td className="px-3 py-3 text-right align-top">
                       <button
                         type="button"
                         onClick={() => toggleRow(row)}
                         disabled={!canShowParams}
                         className={classNames(
-                          "rounded-lg border px-2 py-1 text-xs font-semibold transition",
+                          "max-w-full rounded-lg border px-2 py-1 text-xs font-semibold transition",
                           canShowParams
                             ? "border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-slate-900 dark:text-gray-200 dark:hover:bg-slate-800"
                             : "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400 dark:border-gray-700 dark:bg-slate-800 dark:text-gray-500",
                         )}
+                        title={paramLabel}
                       >
-                        {isExpanded ? "Hide" : paramLabel}
+                        <span className="block truncate">{isExpanded ? "Hide" : paramLabel}</span>
                       </button>
                     </td>
+                    <td className="px-3 py-3 align-top"><MatchBadge matchType={effectiveMatchType} /></td>
                   </tr>
 
                   {isExpanded && canShowParams ? (
                     <tr>
                       <td colSpan={5} className="bg-gray-50 px-3 py-3 dark:bg-slate-900/60">
                         <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs">
-                          <span className="font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                            Parameter differences
-                          </span>
+                          <span className="font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Parameter differences</span>
                           <span className="rounded-full border border-gray-200 bg-white px-2 py-0.5 font-semibold text-gray-600 dark:border-gray-700 dark:bg-slate-950 dark:text-gray-300">
                             {detailsState?.loading ? "Loading protocol details" : detailsSourceLabel}
                           </span>
                         </div>
-                        <ParamDiffTable
-                          rows={rows}
-                          loading={detailsState?.loading}
-                          error={detailsState?.error}
-                          sourceLabel={detailsSourceLabel}
-                        />
+                        <ParamDiffTable rows={rows} loading={detailsState?.loading} error={detailsState?.error} sourceLabel={detailsSourceLabel} />
                       </td>
                     </tr>
                   ) : null}
@@ -754,7 +738,6 @@ export default function ProjectWorkspaceCompareDialog({
         ]);
 
         if (cancelled) return;
-
         setComparison(buildComparison(leftTab, leftPayload, rightTab, rightPayload));
       } catch (err: any) {
         if (cancelled) return;
@@ -804,9 +787,7 @@ export default function ProjectWorkspaceCompareDialog({
               className="mt-1 w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-900 outline-none focus:border-indigo-500/60 focus:ring-2 focus:ring-indigo-500/10 dark:border-gray-700 dark:bg-slate-950 dark:text-white"
             >
               {orderedTabs.map((tab) => (
-                <option key={tab.id} value={tab.projectName}>
-                  {tab.title}
-                </option>
+                <option key={tab.id} value={tab.projectName}>{tab.title}</option>
               ))}
             </select>
           </label>
@@ -819,9 +800,7 @@ export default function ProjectWorkspaceCompareDialog({
               className="mt-1 w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-900 outline-none focus:border-indigo-500/60 focus:ring-2 focus:ring-indigo-500/10 dark:border-gray-700 dark:bg-slate-950 dark:text-white"
             >
               {orderedTabs.map((tab) => (
-                <option key={tab.id} value={tab.projectName}>
-                  {tab.title}
-                </option>
+                <option key={tab.id} value={tab.projectName}>{tab.title}</option>
               ))}
             </select>
           </label>
@@ -843,30 +822,18 @@ export default function ProjectWorkspaceCompareDialog({
             </div>
           ) : comparison ? (
             <div className="space-y-4">
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-                <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-slate-950">
-                  <h3 className="text-sm font-bold text-gray-950 dark:text-white">{comparison.left.title}</h3>
-                  <div className="mt-3 grid grid-cols-2 gap-3">
-                    <StatBox label="Protocols" value={comparison.left.protocolCount} />
-                    <StatBox label="Outputs" value={comparison.left.outputCount} />
-                  </div>
-                </div>
+              <div className="grid min-w-0 grid-cols-1 gap-3 md:grid-cols-3">
+                <ProjectSummaryCard project={comparison.left} />
 
-                <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-slate-950">
-                  <h3 className="text-sm font-bold text-gray-950 dark:text-white">Workflow similarity</h3>
-                  <div className="mt-3 grid grid-cols-2 gap-3">
+                <div className="min-w-0 rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-slate-950">
+                  <h3 className="truncate text-sm font-bold text-gray-950 dark:text-white">Workflow similarity</h3>
+                  <div className="mt-3 grid min-w-0 grid-cols-2 gap-3">
                     <StatBox label="Score" value={`${comparison.similarityScore}%`} hint="Class, status, output and initial parameter overlap" />
                     <StatBox label="Compared rows" value={comparison.protocolRows.length} />
                   </div>
                 </div>
 
-                <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-slate-950">
-                  <h3 className="text-sm font-bold text-gray-950 dark:text-white">{comparison.right.title}</h3>
-                  <div className="mt-3 grid grid-cols-2 gap-3">
-                    <StatBox label="Protocols" value={comparison.right.protocolCount} />
-                    <StatBox label="Outputs" value={comparison.right.outputCount} />
-                  </div>
-                </div>
+                <ProjectSummaryCard project={comparison.right} />
               </div>
 
               <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-slate-950">
@@ -891,25 +858,19 @@ export default function ProjectWorkspaceCompareDialog({
               <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
                 <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-slate-950">
                   <h3 className="text-sm font-bold text-gray-950 dark:text-white">Common protocol classes</h3>
-                  <p className="mb-3 mt-1 text-xs text-gray-500 dark:text-gray-400">
-                    Classes present in both projects.
-                  </p>
+                  <p className="mb-3 mt-1 text-xs text-gray-500 dark:text-gray-400">Classes present in both projects.</p>
                   <ChipList items={comparison.commonClasses} emptyText="No shared protocol classes." tone="green" />
                 </div>
 
                 <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-slate-950">
                   <h3 className="text-sm font-bold text-gray-950 dark:text-white">Only in left project</h3>
-                  <p className="mb-3 mt-1 text-xs text-gray-500 dark:text-gray-400">
-                    Protocol classes unique to the left project.
-                  </p>
+                  <p className="mb-3 mt-1 text-xs text-gray-500 dark:text-gray-400">Protocol classes unique to the left project.</p>
                   <ChipList items={comparison.onlyLeftClasses} emptyText="No unique protocol classes." tone="amber" />
                 </div>
 
                 <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-slate-950">
                   <h3 className="text-sm font-bold text-gray-950 dark:text-white">Only in right project</h3>
-                  <p className="mb-3 mt-1 text-xs text-gray-500 dark:text-gray-400">
-                    Protocol classes unique to the right project.
-                  </p>
+                  <p className="mb-3 mt-1 text-xs text-gray-500 dark:text-gray-400">Protocol classes unique to the right project.</p>
                   <ChipList items={comparison.onlyRightClasses} emptyText="No unique protocol classes." tone="amber" />
                 </div>
               </div>
@@ -918,26 +879,22 @@ export default function ProjectWorkspaceCompareDialog({
                 <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-slate-950">
                   <h3 className="text-sm font-bold text-gray-950 dark:text-white">Largest protocol class deltas</h3>
                   <div className="mt-3 overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700">
-                    <table className="w-full text-left text-sm">
+                    <table className="w-full table-fixed text-left text-sm">
                       <thead className="bg-gray-100 text-xs uppercase tracking-wide text-gray-500 dark:bg-slate-900 dark:text-gray-400">
                         <tr>
-                          <th className="px-3 py-2">Class</th>
-                          <th className="px-3 py-2 text-right">Left</th>
-                          <th className="px-3 py-2 text-right">Right</th>
-                          <th className="px-3 py-2 text-right">Delta</th>
+                          <th className="w-[52%] px-3 py-2">Class</th>
+                          <th className="w-[16%] px-3 py-2 text-right">Left</th>
+                          <th className="w-[16%] px-3 py-2 text-right">Right</th>
+                          <th className="w-[16%] px-3 py-2 text-right">Delta</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                         {comparison.classDeltas.map((row) => (
                           <tr key={row.name}>
-                            <td className="max-w-[260px] truncate px-3 py-2 text-gray-900 dark:text-gray-100" title={row.name}>
-                              {row.name}
-                            </td>
+                            <td className="truncate px-3 py-2 text-gray-900 dark:text-gray-100" title={row.name}>{row.name}</td>
                             <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">{row.left}</td>
                             <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">{row.right}</td>
-                            <td className="px-3 py-2 text-right font-semibold text-gray-900 dark:text-gray-100">
-                              {row.delta > 0 ? `+${row.delta}` : row.delta}
-                            </td>
+                            <td className="px-3 py-2 text-right font-semibold text-gray-900 dark:text-gray-100">{row.delta > 0 ? `+${row.delta}` : row.delta}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -948,7 +905,7 @@ export default function ProjectWorkspaceCompareDialog({
                 <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-slate-950">
                   <h3 className="text-sm font-bold text-gray-950 dark:text-white">Status distribution</h3>
                   <div className="mt-3 overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700">
-                    <table className="w-full text-left text-sm">
+                    <table className="w-full table-fixed text-left text-sm">
                       <thead className="bg-gray-100 text-xs uppercase tracking-wide text-gray-500 dark:bg-slate-900 dark:text-gray-400">
                         <tr>
                           <th className="px-3 py-2">Status</th>
@@ -959,7 +916,7 @@ export default function ProjectWorkspaceCompareDialog({
                       <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                         {comparison.statusRows.map((row) => (
                           <tr key={row.name}>
-                            <td className="px-3 py-2 text-gray-900 dark:text-gray-100">{row.name}</td>
+                            <td className="truncate px-3 py-2 text-gray-900 dark:text-gray-100">{row.name}</td>
                             <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">{row.left}</td>
                             <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">{row.right}</td>
                           </tr>
