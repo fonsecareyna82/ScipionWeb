@@ -32,6 +32,16 @@ type ProjectSummary = {
   statusCounts: Map<string, number>;
 };
 
+type ProtocolMatchType = "shared" | "changed" | "only-left" | "only-right";
+
+type ProtocolComparisonRow = {
+  key: string;
+  className: string;
+  leftProtocol?: ProtocolSummary;
+  rightProtocol?: ProtocolSummary;
+  matchType: ProtocolMatchType;
+};
+
 type CompareResult = {
   left: ProjectSummary;
   right: ProjectSummary;
@@ -40,6 +50,8 @@ type CompareResult = {
   onlyRightClasses: string[];
   classDeltas: Array<{ name: string; left: number; right: number; delta: number }>;
   statusRows: Array<{ name: string; left: number; right: number }>;
+  protocolRows: ProtocolComparisonRow[];
+  similarityScore: number;
 };
 
 function classNames(...xs: Array<string | false | null | undefined>): string {
@@ -123,6 +135,85 @@ function getUnionKeys(a: Map<string, number>, b: Map<string, number>): string[] 
   return Array.from(new Set([...a.keys(), ...b.keys()])).sort((x, y) => x.localeCompare(y));
 }
 
+function groupByClass(protocols: ProtocolSummary[]): Map<string, ProtocolSummary[]> {
+  const groups = new Map<string, ProtocolSummary[]>();
+
+  for (const protocol of protocols) {
+    const current = groups.get(protocol.className) ?? [];
+    current.push(protocol);
+    groups.set(protocol.className, current);
+  }
+
+  return groups;
+}
+
+function getClassOrder(left: ProtocolSummary[], right: ProtocolSummary[]): string[] {
+  const seen = new Set<string>();
+  const ordered: string[] = [];
+
+  for (const protocol of [...left, ...right]) {
+    if (seen.has(protocol.className)) continue;
+    seen.add(protocol.className);
+    ordered.push(protocol.className);
+  }
+
+  return ordered;
+}
+
+function getProtocolMatchType(
+  leftProtocol?: ProtocolSummary,
+  rightProtocol?: ProtocolSummary,
+): ProtocolMatchType {
+  if (leftProtocol && !rightProtocol) return "only-left";
+  if (!leftProtocol && rightProtocol) return "only-right";
+  if (!leftProtocol || !rightProtocol) return "changed";
+
+  const sameStatus = leftProtocol.status === rightProtocol.status;
+  const sameOutputs = leftProtocol.outputCount === rightProtocol.outputCount;
+  const sameLabel = leftProtocol.label === rightProtocol.label;
+
+  return sameStatus && sameOutputs && sameLabel ? "shared" : "changed";
+}
+
+function buildProtocolRows(left: ProjectSummary, right: ProjectSummary): ProtocolComparisonRow[] {
+  const leftGroups = groupByClass(left.protocols);
+  const rightGroups = groupByClass(right.protocols);
+  const classOrder = getClassOrder(left.protocols, right.protocols);
+
+  return classOrder.flatMap((className) => {
+    const leftProtocols = leftGroups.get(className) ?? [];
+    const rightProtocols = rightGroups.get(className) ?? [];
+    const rowCount = Math.max(leftProtocols.length, rightProtocols.length);
+
+    return Array.from({ length: rowCount }).map((_, index) => {
+      const leftProtocol = leftProtocols[index];
+      const rightProtocol = rightProtocols[index];
+
+      return {
+        key: `${className}:${index}:${leftProtocol?.id ?? "none"}:${rightProtocol?.id ?? "none"}`,
+        className,
+        leftProtocol,
+        rightProtocol,
+        matchType: getProtocolMatchType(leftProtocol, rightProtocol),
+      };
+    });
+  });
+}
+
+function calculateSimilarityScore(rows: ProtocolComparisonRow[]): number {
+  if (!rows.length) return 0;
+
+  const weights: Record<ProtocolMatchType, number> = {
+    shared: 1,
+    changed: 0.65,
+    "only-left": 0,
+    "only-right": 0,
+  };
+
+  const score = rows.reduce((total, row) => total + weights[row.matchType], 0) / rows.length;
+  return Math.round(score * 100);
+}
+
 function summarizeProject(tab: ProjectWorkspaceCompareTab, payload: any): ProjectSummary {
   const protocols = normalizeProtocols(payload?.protocols ?? payload?.protocolsMap ?? payload?.workflow);
   const id = getText(payload?.id ?? payload?.projectId ?? tab.projectName, tab.projectName);
@@ -154,6 +245,7 @@ function buildComparison(
   const commonClasses = leftClasses.filter((name) => rightSet.has(name));
   const onlyLeftClasses = leftClasses.filter((name) => !rightSet.has(name));
   const onlyRightClasses = rightClasses.filter((name) => !leftSet.has(name));
+  const protocolRows = buildProtocolRows(left, right);
 
   const classDeltas = getUnionKeys(left.classCounts, right.classCounts)
     .map((name) => {
@@ -184,6 +276,8 @@ function buildComparison(
     onlyRightClasses,
     classDeltas,
     statusRows,
+    protocolRows,
+    similarityScore: calculateSimilarityScore(protocolRows),
   };
 }
 
@@ -225,6 +319,102 @@ function ChipList(props: { items: string[]; emptyText: string; tone?: "green" | 
           +{props.items.length - 30} more
         </span>
       ) : null}
+    </div>
+  );
+}
+
+function MatchBadge(props: { matchType: ProtocolMatchType }) {
+  const config: Record<ProtocolMatchType, { label: string; className: string }> = {
+    shared: {
+      label: "Shared",
+      className: "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-200",
+    },
+    changed: {
+      label: "Changed",
+      className: "border-sky-200 bg-sky-50 text-sky-800 dark:border-sky-900/60 dark:bg-sky-950/30 dark:text-sky-200",
+    },
+    "only-left": {
+      label: "Only left",
+      className: "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200",
+    },
+    "only-right": {
+      label: "Only right",
+      className: "border-purple-200 bg-purple-50 text-purple-800 dark:border-purple-900/60 dark:bg-purple-950/30 dark:text-purple-200",
+    },
+  };
+
+  const item = config[props.matchType];
+
+  return (
+    <span className={classNames("inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold", item.className)}>
+      {item.label}
+    </span>
+  );
+}
+
+function ProtocolCell(props: { protocol?: ProtocolSummary }) {
+  if (!props.protocol) {
+    return <span className="text-xs text-gray-400 dark:text-gray-500">Missing</span>;
+  }
+
+  return (
+    <div className="min-w-0">
+      <div className="flex min-w-0 items-center gap-2">
+        <span className="shrink-0 rounded-md bg-gray-100 px-1.5 py-0.5 text-[11px] font-bold text-gray-700 dark:bg-slate-800 dark:text-gray-200">
+          {props.protocol.id}
+        </span>
+        <span className="truncate text-sm font-semibold text-gray-900 dark:text-gray-100" title={props.protocol.label}>
+          {props.protocol.label}
+        </span>
+      </div>
+      <div className="mt-1 flex flex-wrap gap-1.5 text-[11px] text-gray-500 dark:text-gray-400">
+        <span>{props.protocol.status}</span>
+        <span>·</span>
+        <span>{props.protocol.outputCount} outputs</span>
+      </div>
+    </div>
+  );
+}
+
+function ProtocolDiffTable(props: { rows: ProtocolComparisonRow[]; leftTitle: string; rightTitle: string }) {
+  if (!props.rows.length) {
+    return <p className="text-sm text-gray-500 dark:text-gray-400">No comparable protocols found.</p>;
+  }
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700">
+      <div className="max-h-[420px] overflow-auto">
+        <table className="w-full min-w-[980px] text-left text-sm">
+          <thead className="sticky top-0 z-10 bg-gray-100 text-xs uppercase tracking-wide text-gray-500 dark:bg-slate-900 dark:text-gray-400">
+            <tr>
+              <th className="w-[28%] px-3 py-2">Protocol class</th>
+              <th className="w-[28%] px-3 py-2">{props.leftTitle}</th>
+              <th className="w-[28%] px-3 py-2">{props.rightTitle}</th>
+              <th className="w-[16%] px-3 py-2">Match</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-200 bg-white dark:divide-gray-700 dark:bg-slate-950">
+            {props.rows.map((row) => (
+              <tr key={row.key}>
+                <td className="px-3 py-3 align-top">
+                  <div className="max-w-[320px] truncate font-semibold text-gray-900 dark:text-gray-100" title={row.className}>
+                    {row.className}
+                  </div>
+                </td>
+                <td className="px-3 py-3 align-top">
+                  <ProtocolCell protocol={row.leftProtocol} />
+                </td>
+                <td className="px-3 py-3 align-top">
+                  <ProtocolCell protocol={row.rightProtocol} />
+                </td>
+                <td className="px-3 py-3 align-top">
+                  <MatchBadge matchType={row.matchType} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -293,12 +483,12 @@ export default function ProjectWorkspaceCompareDialog({
 
   return (
     <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
-      <div className="flex max-h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-gray-200 bg-gray-50 shadow-2xl dark:border-gray-700 dark:bg-slate-900">
+      <div className="flex max-h-[90vh] w-full max-w-7xl flex-col overflow-hidden rounded-2xl border border-gray-200 bg-gray-50 shadow-2xl dark:border-gray-700 dark:bg-slate-900">
         <div className="flex shrink-0 items-start justify-between gap-4 border-b border-gray-200 bg-white px-5 py-4 dark:border-gray-700 dark:bg-slate-950">
           <div className="min-w-0">
             <h2 className="text-lg font-bold tracking-tight text-gray-950 dark:text-white">Compare projects</h2>
             <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
-              First workspace comparison: protocol counts, status distribution and protocol class overlap.
+              Protocol-level workflow comparison, status distribution and protocol class overlap.
             </p>
           </div>
 
@@ -360,12 +550,20 @@ export default function ProjectWorkspaceCompareDialog({
             </div>
           ) : comparison ? (
             <div className="space-y-4">
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
                 <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-slate-950">
                   <h3 className="text-sm font-bold text-gray-950 dark:text-white">{comparison.left.title}</h3>
                   <div className="mt-3 grid grid-cols-2 gap-3">
                     <StatBox label="Protocols" value={comparison.left.protocolCount} />
                     <StatBox label="Outputs" value={comparison.left.outputCount} />
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-slate-950">
+                  <h3 className="text-sm font-bold text-gray-950 dark:text-white">Workflow similarity</h3>
+                  <div className="mt-3 grid grid-cols-2 gap-3">
+                    <StatBox label="Score" value={`${comparison.similarityScore}%`} hint="Class, status and output overlap" />
+                    <StatBox label="Compared rows" value={comparison.protocolRows.length} />
                   </div>
                 </div>
 
@@ -376,6 +574,22 @@ export default function ProjectWorkspaceCompareDialog({
                     <StatBox label="Outputs" value={comparison.right.outputCount} />
                   </div>
                 </div>
+              </div>
+
+              <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-slate-950">
+                <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+                  <div>
+                    <h3 className="text-sm font-bold text-gray-950 dark:text-white">Protocol-level workflow diff</h3>
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      Protocols are grouped by class and paired by their occurrence order in each workflow.
+                    </p>
+                  </div>
+                </div>
+                <ProtocolDiffTable
+                  rows={comparison.protocolRows}
+                  leftTitle={comparison.left.title}
+                  rightTitle={comparison.right.title}
+                />
               </div>
 
               <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
