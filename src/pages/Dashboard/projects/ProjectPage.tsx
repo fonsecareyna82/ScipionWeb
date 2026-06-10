@@ -1145,6 +1145,7 @@ export default function ProjectPage() {
   // pendingNewNodesRef tracks node ids before an operation that creates new nodes (duplicate/add)
   const pendingNewNodesRef = useRef<{
     beforeIds: Set<string>;
+    beforePositions?: Map<string, { x: number; y: number }>;
     operation?: "duplicate" | "add";
     duplicatedPairs?: Array<{
       sourceId: string;
@@ -2584,6 +2585,26 @@ export default function ProjectPage() {
   };
 
 
+  const preservePendingExistingNodePositions = (
+    loadedNodes: Node[],
+  ): Node[] => {
+    const pending = pendingNewNodesRef.current;
+
+    if (!pending?.beforePositions || viewModeRef.current !== "hierarchical") {
+      return loadedNodes;
+    }
+
+    return loadedNodes.map((node) => {
+      const previousPosition = pending.beforePositions?.get(String(node.id));
+      if (!previousPosition) return node;
+
+      return {
+        ...node,
+        position: previousPosition,
+      };
+    });
+  };
+
 
   const mergeEdges = (newEdges: Edge[]) => {
     const oldEdgesMap = new Map(edges.map((e) => [e.id, e]));
@@ -2817,7 +2838,7 @@ export default function ProjectPage() {
 
         const nodesWithPositions =
           viewMode === "hierarchical"
-            ? loadNodesWithPositions(loadedNodes)
+            ? preservePendingExistingNodePositions(loadNodesWithPositions(loadedNodes))
             : loadedNodes;
 
         const edgesMerged = viewMode === "grid" ? [] : mergeEdges(loadedEdges);
@@ -3774,8 +3795,9 @@ export default function ProjectPage() {
     if (idx < 0) return nodesList;
 
     // snap all nodes to exact level coord (prevents drift across levels)
+    // Keep the current level coordinate for existing nodes.
     const posMap = new Map<string, { x: number; y: number }>();
-    for (const n of sorted) posMap.set(n.id, setLevelCoord(dir, n.position, levelPos));
+    for (const n of sorted) posMap.set(n.id, n.position);
 
     // anchor stays fixed on axis (but snapped in level coord)
     const anchorPos = posMap.get(anchorId)!;
@@ -3919,14 +3941,13 @@ export default function ProjectPage() {
 
           if (!pair?.sourcePosition) return node;
 
-          const sourceLevelKey = inferNearestLevelKey(dir, pair.sourcePosition, prev);
-          const sourceLevelPos = sourceLevelKey * step;
+          const sourceLevelCoord = getLevelCoord(dir, pair.sourcePosition);
           const sourceAxis = getAxisCoord(dir, pair.sourcePosition);
           const desiredAxis = sourceAxis + duplicateGap;
 
           const desiredPosition = setAxisCoord(
             dir,
-            setLevelCoord(dir, node.position, sourceLevelPos),
+            setLevelCoord(dir, node.position, sourceLevelCoord),
             desiredAxis
           );
 
@@ -4299,6 +4320,17 @@ export default function ProjectPage() {
     if (cleanIds.length === 0) return;
 
     const beforeIds = new Set(nodesRef.current.map((n) => String(n.id)));
+    const beforePositions = new Map<string, { x: number; y: number }>();
+
+    for (const node of nodesRef.current) {
+      const nodeId = String(node.id);
+      if (!nodeId || !node.position) continue;
+
+      beforePositions.set(nodeId, {
+        x: node.position.x,
+        y: node.position.y,
+      });
+    }
 
     const sourcePositionById = new Map<string, { x: number; y: number }>();
     for (const id of cleanIds) {
@@ -4310,6 +4342,7 @@ export default function ProjectPage() {
 
     pendingNewNodesRef.current = {
       beforeIds,
+      beforePositions,
       operation: "duplicate",
       duplicatedPairs: [],
     };
@@ -4324,6 +4357,7 @@ export default function ProjectPage() {
 
       pendingNewNodesRef.current = {
         beforeIds,
+        beforePositions,
         operation: "duplicate",
         duplicatedPairs: duplicatedFromBackend
           .map((pair: any) => {
