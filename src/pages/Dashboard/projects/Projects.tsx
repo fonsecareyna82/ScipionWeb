@@ -14,6 +14,7 @@ import toast from "react-hot-toast";
 import ImportProjectDialog from "@/components/projects/ImportProjectDialog";
 import ProjectPage from "./ProjectPage";
 import "./project-workspaces.css";
+import ProjectWorkspaceCompareDialog from "@/components/projects/ProjectWorkspaceCompareDialog";
 
 const WORKSPACE_TABS_STORAGE_KEY = "scipion.projects.workspaceTabs.v1";
 const PROJECTS_VIEW_MODE_STORAGE_KEY = "scipion.projects.viewMode.v1";
@@ -292,6 +293,24 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
     [svc, loadProjects],
   );
 
+  const [compareOpen, setCompareOpen] = useState(false);
+
+  const projectWorkspaceTabs = useMemo(
+    () =>
+      workspaceTabs.filter(
+        (tab): tab is Extract<WorkspaceTab, { type: "project" }> =>
+          tab.type === "project",
+      ),
+    [workspaceTabs],
+  );
+
+  const canCompareProjects = projectWorkspaceTabs.length >= 2;
+
+  const fetchProjectForComparison = useCallback(
+    (projectName: string) => svc.fetchProject(projectName),
+    [svc],
+  );
+
   useEffect(() => {
     if (!isProjectsWorkspaceActive) {
       setLoading(false);
@@ -528,6 +547,24 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
           </div>
         );
       })}
+      <button
+        type="button"
+        onClick={() => setCompareOpen(true)}
+        disabled={!canCompareProjects}
+        className={classNames(
+          "ml-auto inline-flex shrink-0 items-center rounded-xl border px-3 py-2 text-sm font-semibold transition",
+          canCompareProjects
+            ? "border-indigo-300 bg-indigo-50 text-indigo-800 hover:bg-indigo-100 dark:border-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-100 dark:hover:bg-indigo-900/50"
+            : "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400 dark:border-gray-700 dark:bg-slate-800 dark:text-gray-500",
+        )}
+        title={
+          canCompareProjects
+            ? "Compare opened projects"
+            : "Open at least two project tabs to compare"
+        }
+      >
+        Compare
+      </button>
     </div>
   );
 
@@ -887,6 +924,13 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
         projectName={shareProject?.name}
         projectOwnerId={shareProject?.projectOwnerId ?? undefined}
         onClose={() => setShareProject(null)}
+      />
+
+      <ProjectWorkspaceCompareDialog
+        open={compareOpen}
+        tabs={projectWorkspaceTabs}
+        onClose={() => setCompareOpen(false)}
+        fetchProject={fetchProjectForComparison}
       />
     </>
   );
