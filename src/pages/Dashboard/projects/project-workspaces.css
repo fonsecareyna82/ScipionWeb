@@ -1,11 +1,31 @@
 /* Workspace tabs reserve vertical space above ProjectPage. */
+.project-workspace-panel {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+
 .project-workspace-panel .projectpage-widget-root {
-  --ppHostOffset: 40px;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  flex: 1 1 auto;
 }
 
 .project-workspace-panel .projectpage-widget-root .h-app {
-  height: calc(90vh - var(--ppHostOffset, 0px));
-  min-height: calc(90vh - var(--ppHostOffset, 0px));
+  height: 100% !important;
+  min-height: 0 !important;
+}
+
+.project-workspace-panel .projectpage-widget-root .dock-scroll {
+  max-height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.project-workspace-panel .projectpage-widget-root .dock-panel {
+  min-height: 0;
 }
 
 [aria-label="Project workspaces"] {

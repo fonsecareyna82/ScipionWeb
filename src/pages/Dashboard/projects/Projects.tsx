@@ -854,12 +854,12 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
     <>
       <PageMeta title={`Scipion | ${activeProjectTitle}`} description="Projects page" />
 
-      <div className="flex h-[calc(100dvh-96px)] min-h-0 flex-col gap-2 overflow-hidden">
+      <div className="flex h-[calc(100dvh-68px)] min-h-0 flex-col gap-2 overflow-hidden">
         {renderWorkspaceTabs()}
         {activeWorkspaceId === projectsWorkspaceTab.id ? (
           renderProjectsListWorkspace()
         ) : (
-          <div className="project-workspace-panel min-h-0">
+          <div className="project-workspace-panel flex min-h-0 flex-1 overflow-hidden">
             <ProjectPage key={activeWorkspaceId} />
           </div>
         )}
