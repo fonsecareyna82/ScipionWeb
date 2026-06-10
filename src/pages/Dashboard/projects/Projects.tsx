@@ -484,7 +484,7 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
     <div
       className={classNames(
         crispText,
-        "flex min-w-0 items-center gap-2 overflow-x-auto rounded-2xl border px-3 py-2 shadow-sm",
+        "flex min-w-0 shrink-0 items-center gap-2 overflow-x-auto rounded-2xl border px-3 py-2 shadow-sm",
         "border-gray-300/90 bg-white",
         "dark:border-gray-700 dark:bg-slate-900",
       )}
