@@ -36,14 +36,14 @@ function CardShell(props: {
   return (
     <div
       className={classNames(
-        "relative overflow-hidden rounded-2xl border p-5 shadow-sm backdrop-blur",
+        "relative flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border p-5 shadow-sm backdrop-blur",
         "border-gray-200/70 bg-white/80",
         "dark:border-gray-800/80 dark:bg-white/[0.03]",
         "lg:p-6",
       )}
     >
-      <div className="relative">
-        <div className="mb-4 flex items-start justify-between gap-4">
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        <div className="mb-4 shrink-0 flex items-start justify-between gap-4">
           <div className="min-w-0">
             <h3 className="text-base font-semibold text-gray-800 dark:text-white/90">
               {props.title}
@@ -117,14 +117,14 @@ function TabButton(props: {
         "focus:outline-none focus:ring-2 focus:ring-indigo-500/25 dark:focus:ring-indigo-400/25",
         props.active
           ? [
-              "border-indigo-500/70 bg-indigo-600 text-white shadow-md shadow-indigo-500/20",
-              "ring-1 ring-indigo-500/30",
-              "dark:border-indigo-400/70 dark:bg-indigo-500 dark:text-white dark:shadow-indigo-500/20",
-            ].join(" ")
+            "border-indigo-500/70 bg-indigo-600 text-white shadow-md shadow-indigo-500/20",
+            "ring-1 ring-indigo-500/30",
+            "dark:border-indigo-400/70 dark:bg-indigo-500 dark:text-white dark:shadow-indigo-500/20",
+          ].join(" ")
           : [
-              "border-transparent text-gray-700 hover:border-gray-200 hover:bg-gray-50/80",
-              "dark:text-gray-200 dark:hover:border-gray-700 dark:hover:bg-gray-800/40",
-            ].join(" "),
+            "border-transparent text-gray-700 hover:border-gray-200 hover:bg-gray-50/80",
+            "dark:text-gray-200 dark:hover:border-gray-700 dark:hover:bg-gray-800/40",
+          ].join(" "),
       )}
     >
       {props.children}
@@ -376,280 +376,282 @@ export default function Plugins() {
         }}
       />
 
-      <CardShell
-        title="Plugins"
-        subtitle="Install, remove, and monitor Scipion plugins and background tasks."
-      >
-        {loading && (
-          <div
-            role="status"
-            aria-live="polite"
-            className="absolute inset-0 z-[80] flex flex-col items-center justify-center rounded-2xl bg-white/75 backdrop-blur-[2px] dark:bg-gray-900/75"
-            style={{ pointerEvents: "auto" }}
-          >
-            <div className="relative">
-              <div className="h-8 w-8 rounded-full border-2 border-gray-300 dark:border-gray-700" />
-              <div className="absolute inset-0 animate-spin rounded-full border-2 border-transparent border-t-gray-700 dark:border-t-gray-200" />
-            </div>
-            <p className="mt-3 text-xs tracking-wide text-gray-700 dark:text-gray-200">
-              Loading <span className="font-medium">Plugins</span>…
-            </p>
-          </div>
-        )}
-
-        {!loading && error ? (
-          <div className="rounded-xl border border-red-200/70 bg-red-50/80 p-4 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200">
-            {error}
-          </div>
-        ) : !loading ? (
-          <>
-            <div className="flex flex-col gap-3">
-              <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-                <div className="rounded-xl border border-gray-300/80 bg-white/70 p-1 dark:border-gray-700/80 dark:bg-white/[0.02]">
-                  <div className="flex flex-wrap gap-1">
-                    <TabButton
-                      active={activeTab === "installed"}
-                      onClick={() => setActiveTab("installed")}
-                    >
-                      Installed ({installedPlugins.length})
-                    </TabButton>
-
-                    <TabButton
-                      active={activeTab === "available"}
-                      onClick={() => setActiveTab("available")}
-                    >
-                      Available ({availablePlugins.length})
-                    </TabButton>
-
-                    <TabButton
-                      active={activeTab === "tasks"}
-                      onClick={() => setActiveTab("tasks")}
-                    >
-                      Tasks ({tasksCount})
-                    </TabButton>
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap gap-2">
-                  <SecondaryButton
-                    onClick={() => setInstallDevelOpen(true)}
-                    title="Install a local Scipion plugin in devel mode"
-                    className="!border-[#333d49] !bg-[#333d49] !text-white shadow-sm shadow-slate-900/10 hover:!border-[#2b3440] hover:!bg-[#2b3440] hover:!text-white hover:shadow-md dark:!border-slate-600 dark:!bg-[#333d49] dark:!text-white dark:hover:!border-slate-500 dark:hover:!bg-[#2b3440]"
-                  >
-                    <FolderPlus className="h-4 w-4 text-white" />
-                    Install local plugin
-                  </SecondaryButton>
-                  <StatPill label="Installed" value={installedPlugins.length} />
-                  <StatPill label="Available" value={availablePlugins.length} />
-                  <StatPill label="Devel" value={develPlugins.length} />
-                  <StatPill label="Tasks" value={tasksCount} />
-                </div>
+      <div className="h-[calc(100dvh-88px)] min-h-0 overflow-hidden">
+        <CardShell
+          title="Plugins"
+          subtitle="Install, remove, and monitor Scipion plugins and background tasks."
+        >
+          {loading && (
+            <div
+              role="status"
+              aria-live="polite"
+              className="absolute inset-0 z-[80] flex flex-col items-center justify-center rounded-2xl bg-white/75 backdrop-blur-[2px] dark:bg-gray-900/75"
+              style={{ pointerEvents: "auto" }}
+            >
+              <div className="relative">
+                <div className="h-8 w-8 rounded-full border-2 border-gray-300 dark:border-gray-700" />
+                <div className="absolute inset-0 animate-spin rounded-full border-2 border-transparent border-t-gray-700 dark:border-t-gray-200" />
               </div>
+              <p className="mt-3 text-xs tracking-wide text-gray-700 dark:text-gray-200">
+                Loading <span className="font-medium">Plugins</span>…
+              </p>
+            </div>
+          )}
 
-              {activeTab !== "tasks" ? (
-                <div className="rounded-xl border border-gray-300/80 bg-white/70 p-1 dark:border-gray-700/80 dark:bg-white/[0.02]">
-                  <div className="flex flex-wrap gap-1">
-                    <TabButton
-                      active={activeCategoryId === "all"}
-                      onClick={() => setActiveCategoryId("all")}
-                    >
-                      All ({displayedPlugins.length})
-                    </TabButton>
-
-                    {categoryTabs.map((category) => (
+          {!loading && error ? (
+            <div className="rounded-xl border border-red-200/70 bg-red-50/80 p-4 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200">
+              {error}
+            </div>
+          ) : !loading ? (
+            <div className="flex min-h-0 flex-1 flex-col">
+              <div className="shrink-0 flex flex-col gap-3">
+                <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                  <div className="rounded-xl border border-gray-300/80 bg-white/70 p-1 dark:border-gray-700/80 dark:bg-white/[0.02]">
+                    <div className="flex flex-wrap gap-1">
                       <TabButton
-                        key={category.id}
-                        active={activeCategoryId === category.id}
-                        onClick={() => setActiveCategoryId(category.id)}
+                        active={activeTab === "installed"}
+                        onClick={() => setActiveTab("installed")}
                       >
-                        {category.title} ({category.count})
+                        Installed ({installedPlugins.length})
                       </TabButton>
-                    ))}
+
+                      <TabButton
+                        active={activeTab === "available"}
+                        onClick={() => setActiveTab("available")}
+                      >
+                        Available ({availablePlugins.length})
+                      </TabButton>
+
+                      <TabButton
+                        active={activeTab === "tasks"}
+                        onClick={() => setActiveTab("tasks")}
+                      >
+                        Tasks ({tasksCount})
+                      </TabButton>
+                    </div>
                   </div>
-                </div>
-              ) : null}
 
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                <div className="relative w-full max-w-[420px]">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
-
-                  <input
-                    type="text"
-                    placeholder={activeTab === "tasks" ? "Search task…" : "Search plugin…"}
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    className={classNames(
-                      "w-full rounded-xl border py-2 pl-9 pr-10 text-sm font-semibold outline-none transition",
-                      "border-gray-200/70 bg-white/70 text-gray-800 placeholder:text-gray-400",
-                      "focus:border-indigo-500/40 focus:ring-2 focus:ring-indigo-500/10",
-                      "dark:border-gray-800/80 dark:bg-white/[0.02] dark:text-white/90 dark:placeholder:text-gray-500",
-                      "dark:focus:border-indigo-400/40 dark:focus:ring-indigo-400/15",
-                    )}
-                  />
-
-                  {search ? (
-                    <button
-                      type="button"
-                      onClick={() => setSearch("")}
-                      className="absolute right-2 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 dark:text-gray-500 dark:hover:bg-white/[0.04] dark:hover:text-gray-200"
-                      aria-label="Clear search"
+                  <div className="flex flex-wrap gap-2">
+                    <SecondaryButton
+                      onClick={() => setInstallDevelOpen(true)}
+                      title="Install a local Scipion plugin in devel mode"
+                      className="!border-[#333d49] !bg-[#333d49] !text-white shadow-sm shadow-slate-900/10 hover:!border-[#2b3440] hover:!bg-[#2b3440] hover:!text-white hover:shadow-md dark:!border-slate-600 dark:!bg-[#333d49] dark:!text-white dark:hover:!border-slate-500 dark:hover:!bg-[#2b3440]"
                     >
-                      <X className="h-4 w-4" />
-                    </button>
-                  ) : null}
+                      <FolderPlus className="h-4 w-4 text-white" />
+                      Install local plugin
+                    </SecondaryButton>
+                    <StatPill label="Installed" value={installedPlugins.length} />
+                    <StatPill label="Available" value={availablePlugins.length} />
+                    <StatPill label="Devel" value={develPlugins.length} />
+                    <StatPill label="Tasks" value={tasksCount} />
+                  </div>
                 </div>
 
                 {activeTab !== "tasks" ? (
-                  <PluginViewToggle viewMode={viewMode} onViewModeChange={setViewMode} />
+                  <div className="rounded-xl border border-gray-300/80 bg-white/70 p-1 dark:border-gray-700/80 dark:bg-white/[0.02]">
+                    <div className="flex flex-wrap gap-1">
+                      <TabButton
+                        active={activeCategoryId === "all"}
+                        onClick={() => setActiveCategoryId("all")}
+                      >
+                        All ({displayedPlugins.length})
+                      </TabButton>
+
+                      {categoryTabs.map((category) => (
+                        <TabButton
+                          key={category.id}
+                          active={activeCategoryId === category.id}
+                          onClick={() => setActiveCategoryId(category.id)}
+                        >
+                          {category.title} ({category.count})
+                        </TabButton>
+                      ))}
+                    </div>
+                  </div>
                 ) : null}
-              </div>
-            </div>
 
-            {activeTab === "tasks" ? (
-              <div className="mt-4 overflow-hidden rounded-2xl border border-gray-200/70 bg-white/70 shadow-sm dark:border-gray-800/80 dark:bg-white/[0.01]">
-                <div
-                  className={classNames(
-                    "grid grid-cols-12 gap-3 border-b border-gray-200/70 px-4 py-3 text-xs font-semibold text-gray-600 dark:border-gray-800/70 dark:bg-white/[0.02] dark:text-gray-300",
-                    "bg-gray-50/80",
-                  )}
-                >
-                  <div className="col-span-4">Plugin</div>
-                  <div className="col-span-3">Operation</div>
-                  <div className="col-span-3">Status</div>
-                  <div className="col-span-2 text-right">Updated</div>
-                </div>
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                  <div className="relative w-full max-w-[420px]">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
 
-                <div className="divide-y divide-gray-200/70 dark:divide-gray-800/70">
-                  {filteredTasks.map((t) => (
-                    <button
-                      key={t.taskId}
-                      type="button"
-                      onClick={() => openTaskPlugin(t.pipName)}
+                    <input
+                      type="text"
+                      placeholder={activeTab === "tasks" ? "Search task…" : "Search plugin…"}
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
                       className={classNames(
-                        "grid w-full grid-cols-12 gap-3 px-4 py-3 text-left transition",
-                        "cursor-pointer hover:bg-gray-50/80 focus:outline-none focus:ring-2 focus:ring-indigo-500/20",
-                        "dark:hover:bg-white/[0.02] dark:focus:ring-indigo-400/20",
+                        "w-full rounded-xl border py-2 pl-9 pr-10 text-sm font-semibold outline-none transition",
+                        "border-gray-200/70 bg-white/70 text-gray-800 placeholder:text-gray-400",
+                        "focus:border-indigo-500/40 focus:ring-2 focus:ring-indigo-500/10",
+                        "dark:border-gray-800/80 dark:bg-white/[0.02] dark:text-white/90 dark:placeholder:text-gray-500",
+                        "dark:focus:border-indigo-400/40 dark:focus:ring-indigo-400/15",
                       )}
-                      title={`Open ${t.pluginName ?? t.pipName}`}
-                      aria-label={`Open ${t.pluginName ?? t.pipName}`}
-                    >
-                      <div className="col-span-12 min-w-0 md:col-span-4">
-                        <div className="truncate text-sm font-semibold text-gray-900 dark:text-white/90">
-                          {t.pluginName ?? t.pipName}
-                        </div>
-                        <div className="mt-1 truncate text-xs text-gray-500 dark:text-gray-400">
-                          {t.pipName}
-                        </div>
-                        {t.pipNames && t.pipNames.length > 0 ? (
-                          <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                            {t.pipNames.length} selected plugin{t.pipNames.length === 1 ? "" : "s"}
-                          </div>
-                        ) : null}
-                      </div>
-
-                      <div className="col-span-6 text-sm text-gray-700 dark:text-gray-300 md:col-span-3">
-                        {getTaskOperationLabel(t.operation)}
-                      </div>
-
-                      <div className="col-span-6 md:col-span-3">
-                        <span className="inline-flex items-center gap-2 rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-800 dark:bg-white/10 dark:text-gray-200">
-                          {(t.status === "PENDING" || t.status === "STARTED" || t.status === "PROGRESS") && (
-                            <span className="h-3 w-3 animate-spin rounded-full border-2 border-gray-400 border-t-transparent" />
-                          )}
-                          {t.status}
-                        </span>
-
-                        {t.step ? (
-                          <div className="mt-1 break-all text-xs text-gray-600 dark:text-gray-400">
-                            {t.step}
-                          </div>
-                        ) : null}
-
-                        {t.error ? (
-                          <div className="mt-1 break-all text-xs text-red-500 dark:text-red-300">
-                            {t.error}
-                          </div>
-                        ) : null}
-                      </div>
-
-                      <div className="col-span-12 text-left text-xs text-gray-600 dark:text-gray-400 md:col-span-2 md:text-right">
-                        {formatTimeAgo(t.updatedAtMs)}
-                      </div>
-                    </button>
-                  ))}
-
-                  {filteredTasks.length === 0 && (
-                    <div className="px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
-                      No active tasks.
-                    </div>
-                  )}
-                </div>
-              </div>
-            ) : viewMode === "cards" ? (
-              <div className="mt-4 rounded-2xl border border-gray-200/70 bg-white/40 p-4 dark:border-gray-800/80 dark:bg-white/[0.01]">
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-5">
-                  {filteredPlugins.map((plugin) => (
-                    <PluginCard
-                      key={plugin.pipName}
-                      {...plugin}
-                      processingState={processingByPipName.get(plugin.pipName) ?? null}
                     />
-                  ))}
 
-                  {filteredPlugins.length === 0 && (
-                    <div className="col-span-full py-8 text-center text-sm text-gray-500 dark:text-gray-400">
-                      No plugins found.
-                    </div>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <div className="mt-4 grid grid-cols-1 gap-4 2xl:grid-cols-[minmax(0,1fr)_360px]">
-                <div className="min-w-0">
-                  <div className="sticky top-4 z-30 mb-3 rounded-2xl bg-white/90 pb-1 backdrop-blur dark:bg-slate-950/90">
-                    <PluginSelectionBar
-                      selectedCount={selectedPlugins.length}
-                      actionableCount={actionableSelectedPlugins.length}
-                      busy={batchBusy}
-                      optionChecked={batchSkipBinaries}
-                      optionLabel="Skip binaries"
-                      primaryLabel={selectionPrimaryLabel}
-                      busyLabel={selectionBusyLabel}
-                      className="shadow-sm shadow-slate-900/10"
-                      onOptionChange={setBatchSkipBinaries}
-                      onPrimaryAction={installSelectedPlugins}
-                      onClearSelection={() => setSelectedPipNames(new Set())}
-                    />
+                    {search ? (
+                      <button
+                        type="button"
+                        onClick={() => setSearch("")}
+                        className="absolute right-2 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 dark:text-gray-500 dark:hover:bg-white/[0.04] dark:hover:text-gray-200"
+                        aria-label="Clear search"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    ) : null}
                   </div>
 
-                  <div className="min-w-0 overflow-x-auto rounded-2xl">
-                    <PluginListTable
-                      plugins={filteredPlugins}
-                      selectedPipNames={selectedPipNames}
-                      processingByPipName={processingByPipName}
-                      activePluginPipName={activeListPluginPipName}
-                      maxHeightClassName="max-h-[calc(100vh-430px)]"
-                      onTogglePlugin={togglePluginSelection}
-                      onToggleAllVisible={toggleAllVisiblePlugins}
-                      onSelectPlugin={(plugin) => setActiveListPluginPipName(plugin.pipName)}
+                  {activeTab !== "tasks" ? (
+                    <PluginViewToggle viewMode={viewMode} onViewModeChange={setViewMode} />
+                  ) : null}
+                </div>
+              </div>
+
+              {activeTab === "tasks" ? (
+                <div className="mt-4 flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-gray-200/70 bg-white/70 shadow-sm dark:border-gray-800/80 dark:bg-white/[0.01]">
+                  <div
+                    className={classNames(
+                      "grid grid-cols-12 gap-3 border-b border-gray-200/70 px-4 py-3 text-xs font-semibold text-gray-600 dark:border-gray-800/70 dark:bg-white/[0.02] dark:text-gray-300",
+                      "bg-gray-50/80",
+                    )}
+                  >
+                    <div className="col-span-4">Plugin</div>
+                    <div className="col-span-3">Operation</div>
+                    <div className="col-span-3">Status</div>
+                    <div className="col-span-2 text-right">Updated</div>
+                  </div>
+
+                  <div className="min-h-0 flex-1 divide-y divide-gray-200/70 overflow-y-auto overscroll-contain dark:divide-gray-800/70">
+                    {filteredTasks.map((t) => (
+                      <button
+                        key={t.taskId}
+                        type="button"
+                        onClick={() => openTaskPlugin(t.pipName)}
+                        className={classNames(
+                          "grid w-full grid-cols-12 gap-3 px-4 py-3 text-left transition",
+                          "cursor-pointer hover:bg-gray-50/80 focus:outline-none focus:ring-2 focus:ring-indigo-500/20",
+                          "dark:hover:bg-white/[0.02] dark:focus:ring-indigo-400/20",
+                        )}
+                        title={`Open ${t.pluginName ?? t.pipName}`}
+                        aria-label={`Open ${t.pluginName ?? t.pipName}`}
+                      >
+                        <div className="col-span-12 min-w-0 md:col-span-4">
+                          <div className="truncate text-sm font-semibold text-gray-900 dark:text-white/90">
+                            {t.pluginName ?? t.pipName}
+                          </div>
+                          <div className="mt-1 truncate text-xs text-gray-500 dark:text-gray-400">
+                            {t.pipName}
+                          </div>
+                          {t.pipNames && t.pipNames.length > 0 ? (
+                            <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                              {t.pipNames.length} selected plugin{t.pipNames.length === 1 ? "" : "s"}
+                            </div>
+                          ) : null}
+                        </div>
+
+                        <div className="col-span-6 text-sm text-gray-700 dark:text-gray-300 md:col-span-3">
+                          {getTaskOperationLabel(t.operation)}
+                        </div>
+
+                        <div className="col-span-6 md:col-span-3">
+                          <span className="inline-flex items-center gap-2 rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-800 dark:bg-white/10 dark:text-gray-200">
+                            {(t.status === "PENDING" || t.status === "STARTED" || t.status === "PROGRESS") && (
+                              <span className="h-3 w-3 animate-spin rounded-full border-2 border-gray-400 border-t-transparent" />
+                            )}
+                            {t.status}
+                          </span>
+
+                          {t.step ? (
+                            <div className="mt-1 break-all text-xs text-gray-600 dark:text-gray-400">
+                              {t.step}
+                            </div>
+                          ) : null}
+
+                          {t.error ? (
+                            <div className="mt-1 break-all text-xs text-red-500 dark:text-red-300">
+                              {t.error}
+                            </div>
+                          ) : null}
+                        </div>
+
+                        <div className="col-span-12 text-left text-xs text-gray-600 dark:text-gray-400 md:col-span-2 md:text-right">
+                          {formatTimeAgo(t.updatedAtMs)}
+                        </div>
+                      </button>
+                    ))}
+
+                    {filteredTasks.length === 0 && (
+                      <div className="px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
+                        No active tasks.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : viewMode === "cards" ? (
+                <div className="mt-4 min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-2xl border border-gray-200/70 bg-white/40 p-4 dark:border-gray-800/80 dark:bg-white/[0.01]">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-5">
+                    {filteredPlugins.map((plugin) => (
+                      <PluginCard
+                        key={plugin.pipName}
+                        {...plugin}
+                        processingState={processingByPipName.get(plugin.pipName) ?? null}
+                      />
+                    ))}
+
+                    {filteredPlugins.length === 0 && (
+                      <div className="col-span-full py-8 text-center text-sm text-gray-500 dark:text-gray-400">
+                        No plugins found.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-4 grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-hidden 2xl:grid-cols-[minmax(0,1fr)_360px]">
+                  <div className="flex min-h-0 min-w-0 flex-col overflow-hidden">
+                    <div className="z-30 mb-3 shrink-0 rounded-2xl bg-white/90 pb-1 backdrop-blur dark:bg-slate-950/90">
+                      <PluginSelectionBar
+                        selectedCount={selectedPlugins.length}
+                        actionableCount={actionableSelectedPlugins.length}
+                        busy={batchBusy}
+                        optionChecked={batchSkipBinaries}
+                        optionLabel="Skip binaries"
+                        primaryLabel={selectionPrimaryLabel}
+                        busyLabel={selectionBusyLabel}
+                        className="shadow-sm shadow-slate-900/10"
+                        onOptionChange={setBatchSkipBinaries}
+                        onPrimaryAction={installSelectedPlugins}
+                        onClearSelection={() => setSelectedPipNames(new Set())}
+                      />
+                    </div>
+
+                    <div className="min-h-0 min-w-0 flex-1 overflow-hidden rounded-2xl">
+                      <PluginListTable
+                        plugins={filteredPlugins}
+                        selectedPipNames={selectedPipNames}
+                        processingByPipName={processingByPipName}
+                        activePluginPipName={activeListPluginPipName}
+                        maxHeightClassName="max-h-none"
+                        onTogglePlugin={togglePluginSelection}
+                        onToggleAllVisible={toggleAllVisiblePlugins}
+                        onSelectPlugin={(plugin) => setActiveListPluginPipName(plugin.pipName)}
+                        onOpenDetails={openPluginDetails}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="2xl:sticky 2xl:top-4 2xl:self-start">
+                    <PluginQuickDetailsPanel
+                      plugin={activeListPlugin}
+                      processingState={activeListPlugin ? processingByPipName.get(activeListPlugin.pipName) ?? null : null}
+                      onClose={() => setActiveListPluginPipName(null)}
                       onOpenDetails={openPluginDetails}
                     />
                   </div>
                 </div>
-
-                <div className="2xl:sticky 2xl:top-4 2xl:self-start">
-                  <PluginQuickDetailsPanel
-                    plugin={activeListPlugin}
-                    processingState={activeListPlugin ? processingByPipName.get(activeListPlugin.pipName) ?? null : null}
-                    onClose={() => setActiveListPluginPipName(null)}
-                    onOpenDetails={openPluginDetails}
-                  />
-                </div>
-              </div>
-            )}
-          </>
-        ) : null}
-      </CardShell>
+              )}
+            </div>
+          ) : null}
+        </CardShell >
+      </div>
     </>
   );
 }
