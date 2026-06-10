@@ -63,6 +63,7 @@ import { useProjectService } from "@/ProjectServiceContext";
 import {
   hasProjectEffectiveSettingsService,
   type ProjectEffectiveSettings,
+  type ProtocolOutputThumbnailItem,
 } from "@/services/ProjectService";
 import { Project } from "@/types/project";
 import Label from "@/components/form/Label";
@@ -91,6 +92,7 @@ interface StatusNodeData {
   projectId?: string | number;
   outputs?: unknown[];
   inputs?: unknown[];
+  outputThumbnails?: Record<string, ProtocolOutputThumbnailItem>;
 
   // Progress/timing
   cpuTime?: string;
@@ -478,6 +480,140 @@ const getProtocolRowDisplayName = (row: any) => {
 };
 
 
+const PROTOCOL_OUTPUT_THUMBNAIL_SIZE = 128;
+
+function getOutputNameFromNodeOutput(output: unknown): string {
+  if (!output || typeof output !== "object") return "";
+
+  const obj = output as Record<string, unknown>;
+
+  const directName = obj.outputName ?? obj.name;
+  if (typeof directName === "string" && directName.trim()) {
+    return directName.trim();
+  }
+
+  const entries = Object.entries(obj);
+  if (entries.length === 1) {
+    const [wrappedName, wrappedValue] = entries[0];
+    if (wrappedValue && typeof wrappedValue === "object") {
+      return String(wrappedName ?? "").trim();
+    }
+  }
+
+  return "";
+}
+
+function getOutputThumbnailCacheKey(
+  projectId: string | number,
+  protocolId: string | number,
+  outputName: string,
+  size: number,
+): string {
+  return [
+    String(projectId),
+    String(protocolId),
+    String(outputName),
+    `size=${size}`,
+  ].join("|");
+}
+
+function mergeOutputThumbnailsIntoNodes(
+  nodes: Node<StatusNodeData>[],
+  items: ProtocolOutputThumbnailItem[],
+): Node<StatusNodeData>[] {
+  if (!items.length) return nodes;
+
+  const byProtocolId = new Map<string, Record<string, ProtocolOutputThumbnailItem>>();
+
+  for (const item of items) {
+    if (!item.exists || !item.thumbnailDataUrl) continue;
+
+    const protocolId = String(item.protocolId ?? "").trim();
+    const outputName = String(item.outputName ?? "").trim();
+
+    if (!protocolId || !outputName) continue;
+
+    const current = byProtocolId.get(protocolId) ?? {};
+    current[outputName] = item;
+    byProtocolId.set(protocolId, current);
+  }
+
+  if (!byProtocolId.size) return nodes;
+
+  let changed = false;
+
+  const nextNodes = nodes.map((node) => {
+    const protocolThumbs = byProtocolId.get(String(node.id));
+    if (!protocolThumbs) return node;
+
+    changed = true;
+
+    return {
+      ...node,
+      data: {
+        ...node.data,
+        outputThumbnails: {
+          ...(node.data?.outputThumbnails ?? {}),
+          ...protocolThumbs,
+        },
+      },
+    };
+  });
+
+  return changed ? nextNodes : nodes;
+}
+
+function preserveExistingOutputThumbnails(
+  nextNodes: Node<StatusNodeData>[],
+  currentNodes: Node[],
+): Node<StatusNodeData>[] {
+  const thumbnailsByNodeId = new Map<string, Record<string, ProtocolOutputThumbnailItem>>();
+
+  for (const node of currentNodes) {
+    const thumbs = (node as any)?.data?.outputThumbnails;
+    if (thumbs && typeof thumbs === "object") {
+      thumbnailsByNodeId.set(String(node.id), thumbs);
+    }
+  }
+
+  if (!thumbnailsByNodeId.size) return nextNodes;
+
+  return nextNodes.map((node) => {
+    const thumbs = thumbnailsByNodeId.get(String(node.id));
+    if (!thumbs) return node;
+
+    return {
+      ...node,
+      data: {
+        ...node.data,
+        outputThumbnails: thumbs,
+      },
+    };
+  });
+}
+
+function clearOutputThumbnailsFromNodes(
+  nodes: Node<StatusNodeData>[],
+): Node<StatusNodeData>[] {
+  let changed = false;
+
+  const nextNodes = nodes.map((node) => {
+    if (!node.data?.outputThumbnails) return node;
+
+    changed = true;
+
+    const nextData = { ...node.data };
+    delete nextData.outputThumbnails;
+
+    return {
+      ...node,
+      data: nextData,
+    };
+  });
+
+  return changed ? nextNodes : nodes;
+}
+
 export default function ProjectPage() {
   const hostIsDark = useHostDarkMode();
   const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/.test(navigator.platform);
@@ -490,6 +626,15 @@ export default function ProjectPage() {
 
   const [projectEffectiveSettings, setProjectEffectiveSettings] =
     useState<ProjectEffectiveSettings | null>(null);
+
+  const protocolOutputThumbnailsEnabled = useMemo(() => {
+    const raw = projectEffectiveSettings?.settings?.user as Record<string, unknown> | null | undefined;
+
+    return raw?.protocolOutputThumbnailsEnabled === true;
+  }, [projectEffectiveSettings]);
+
+  const protocolOutputThumbnailsEnabledRef = useRef(false);
+  protocolOutputThumbnailsEnabledRef.current = protocolOutputThumbnailsEnabled;
 
   const [projectEffectiveSettingsLoading, setProjectEffectiveSettingsLoading] =
     useState(false);
@@ -664,38 +809,35 @@ export default function ProjectPage() {
   const effectiveDefaultQueueName = effectiveInstanceSettings?.defaultQueueName ?? "";
 
   const loadProjectEffectiveSettings = useCallback(
-    async (nextProjectId?: string | number) => {
-      // loadProjectEffectiveSettings
+    async (nextProjectId?: string | number): Promise<ProjectEffectiveSettings | null> => {
       if (nextProjectId == null) {
         setProjectEffectiveSettings(null);
         setProjectEffectiveSettingsLoading(false);
-        return;
+        return null;
       }
 
       if (!hasProjectEffectiveSettingsService(svc)) {
         setProjectEffectiveSettings(null);
         setProjectEffectiveSettingsLoading(false);
-        return;
+        return null;
       }
 
       try {
         setProjectEffectiveSettingsLoading(true);
         const data = await svc.fetchProjectEffectiveSettings(nextProjectId);
-        setProjectEffectiveSettings(data ?? null);
+        const normalized = data ?? null;
+        setProjectEffectiveSettings(normalized);
+        return normalized;
       } catch (err) {
         console.warn("fetchProjectEffectiveSettings failed", err);
         setProjectEffectiveSettings(null);
+        return null;
       } finally {
         setProjectEffectiveSettingsLoading(false);
       }
     },
-    [svc]
+    [svc],
   );
-
-  useEffect(() => {
-    // syncProjectEffectiveSettings
-    void loadProjectEffectiveSettings(projectId);
-  }, [projectId, loadProjectEffectiveSettings]);
 
   // Bump this to force rerender when policy is loaded/changed
   const [policyRevision, setPolicyRevision] = useState(0);
@@ -924,6 +1066,8 @@ export default function ProjectPage() {
   }, [openForms]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState<StatusNodeData>([]);
+  const outputThumbnailCacheRef = useRef<Map<string, ProtocolOutputThumbnailItem>>(new Map());
+  const outputThumbnailInFlightRef = useRef<Promise<void> | null>(null);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge[]>([]);
   const [tableData, setTableData] = useState<any[]>([]);
   const sortedTableData = useMemo(() => {
@@ -972,9 +1116,36 @@ export default function ProjectPage() {
 
   const projectIdRef = useRef<string | number | undefined>(undefined);
 
+  const seedNodesWithSelectionAndThumbnails = useCallback(
+    (
+      sourceNodes: Node[],
+      selectedIds: Set<string>,
+    ): Node<StatusNodeData>[] => {
+      let seededNodes: Node<StatusNodeData>[] = sourceNodes.map((n) => {
+        const node = n as Node<StatusNodeData>;
+
+        return {
+          ...node,
+          selected: selectedIds.has(node.id),
+        };
+      });
+
+      if (protocolOutputThumbnailsEnabled) {
+        seededNodes = preserveExistingOutputThumbnails(
+          seededNodes,
+          nodesRef.current,
+        );
+      }
+
+      return seededNodes;
+    },
+    [protocolOutputThumbnailsEnabled],
+  );
+
   // pendingNewNodesRef tracks node ids before an operation that creates new nodes (duplicate/add)
   const pendingNewNodesRef = useRef<{
     beforeIds: Set<string>;
+    beforePositions?: Map<string, { x: number; y: number }>;
     operation?: "duplicate" | "add";
     duplicatedPairs?: Array<{
       sourceId: string;
@@ -1110,6 +1281,8 @@ export default function ProjectPage() {
   } | null>(null);
 
   const TIME_TO_REFRESH = 15000;
+  const PROTOCOL_OUTPUT_THUMBNAIL_CHUNK_SIZE = 24;
+  const PROTOCOL_OUTPUT_THUMBNAIL_CHUNK_DELAY_MS = 50;
   const localStorageKey = `project-${projectName}-node-positions`;
 
   const [, setIsSwitchingLayout] = useState(false);
@@ -1132,6 +1305,189 @@ export default function ProjectPage() {
   useEffect(() => { nodesRef.current = nodes; }, [nodes]);
   const edgesRef = useRef<Edge[]>(edges);
   useEffect(() => { edgesRef.current = edges; }, [edges]);
+
+  const fetchProtocolOutputThumbnailItemsForNodes = useCallback(
+    async (
+      projectIdValue: string | number | undefined,
+      sourceNodes: Node<StatusNodeData>[],
+      enabled: boolean,
+      maxNewRequests?: number,
+    ): Promise<ProtocolOutputThumbnailItem[]> => {
+      if (!enabled) return [];
+      if (projectIdValue == null) return [];
+      if (!Array.isArray(sourceNodes) || sourceNodes.length === 0) return [];
+      if (typeof (svc as any).fetchProtocolOutputThumbnails !== "function") return [];
+
+      const cachedItems: ProtocolOutputThumbnailItem[] = [];
+      const requests: Array<{ protocolId: string | number; outputName: string }> = [];
+      const seen = new Set<string>();
+
+      for (const node of sourceNodes) {
+        const protocolId = String(node.id ?? "").trim();
+        if (!protocolId || protocolId === "PROJECT") continue;
+
+        const outputs = Array.isArray(node.data?.outputs) ? node.data.outputs : [];
+
+        for (const output of outputs) {
+          const outputName = getOutputNameFromNodeOutput(output);
+          if (!outputName) continue;
+
+          const cacheKey = getOutputThumbnailCacheKey(
+            projectIdValue,
+            protocolId,
+            outputName,
+            PROTOCOL_OUTPUT_THUMBNAIL_SIZE,
+          );
+
+          if (seen.has(cacheKey)) continue;
+          seen.add(cacheKey);
+
+          const cached = outputThumbnailCacheRef.current.get(cacheKey);
+          if (cached) {
+            cachedItems.push(cached);
+            continue;
+          }
+
+          if (
+            typeof maxNewRequests === "number" &&
+            maxNewRequests > 0 &&
+            requests.length >= maxNewRequests
+          ) {
+            continue;
+          }
+
+          requests.push({
+            protocolId,
+            outputName,
+          });
+        }
+      }
+
+      if (!requests.length) return cachedItems;
+      if (outputThumbnailInFlightRef.current) return cachedItems;
+
+      const run = (async () => {
+        const result = await (svc as any).fetchProtocolOutputThumbnails(projectIdValue, {
+          size: PROTOCOL_OUTPUT_THUMBNAIL_SIZE,
+          inlineImages: true,
+          outputs: requests,
+        });
+
+        const items = Array.isArray(result?.items)
+          ? result.items as ProtocolOutputThumbnailItem[]
+          : [];
+
+        for (const item of items) {
+          const protocolId = String(item.protocolId ?? "").trim();
+          const outputName = String(item.outputName ?? "").trim();
+
+          if (!protocolId || !outputName) continue;
+
+          const cacheKey = getOutputThumbnailCacheKey(
+            projectIdValue,
+            protocolId,
+            outputName,
+            PROTOCOL_OUTPUT_THUMBNAIL_SIZE,
+          );
+
+          outputThumbnailCacheRef.current.set(cacheKey, item);
+        }
+
+        return items;
+      })();
+
+      outputThumbnailInFlightRef.current = run.then(() => undefined);
+
+      try {
+        const items = await run;
+        return [...cachedItems, ...items];
+      } catch (err) {
+        console.warn("fetchProtocolOutputThumbnails failed", err);
+        return cachedItems;
+      } finally {
+        outputThumbnailInFlightRef.current = null;
+      }
+    },
+    [svc],
+  );
+
+  const loadProtocolOutputThumbnailsForNodes = useCallback(
+    async (
+      projectIdValue: string | number | undefined,
+      sourceNodes: Node<StatusNodeData>[],
+      enabledOverride?: boolean,
+    ) => {
+      const enabled = enabledOverride ?? protocolOutputThumbnailsEnabled;
+      if (!enabled) return;
+
+      let safetyCounter = 0;
+
+      while (safetyCounter < 50) {
+        safetyCounter += 1;
+
+        const cacheSizeBefore = outputThumbnailCacheRef.current.size;
+
+        const items = await fetchProtocolOutputThumbnailItemsForNodes(
+          projectIdValue,
+          sourceNodes,
+          true,
+          PROTOCOL_OUTPUT_THUMBNAIL_CHUNK_SIZE,
+        );
+
+        const cacheSizeAfter = outputThumbnailCacheRef.current.size;
+        const loadedNewCacheItems = cacheSizeAfter > cacheSizeBefore;
+
+        if (items.length) {
+          setNodes((prev) =>
+            mergeOutputThumbnailsIntoNodes(
+              prev as Node<StatusNodeData>[],
+              items,
+            ),
+          );
+        }
+
+        if (!loadedNewCacheItems) break;
+
+        await new Promise<void>((resolve) => {
+          window.setTimeout(resolve, PROTOCOL_OUTPUT_THUMBNAIL_CHUNK_DELAY_MS);
+        });
+      }
+    },
+    [
+      fetchProtocolOutputThumbnailItemsForNodes,
+      protocolOutputThumbnailsEnabled,
+      setNodes,
+    ],
+  );
+
+  useEffect(() => {
+    if (!protocolOutputThumbnailsEnabled) return;
+    if (!project) return;
+
+    const projectIdValue =
+      (project as any)?.id ??
+      (project as any)?.projectId;
+
+    if (projectIdValue == null) return;
+
+    const currentNodes = nodesRef.current as Node<StatusNodeData>[];
+    if (!currentNodes.length) return;
+
+    void loadProtocolOutputThumbnailsForNodes(projectIdValue, currentNodes);
+  }, [
+    protocolOutputThumbnailsEnabled,
+    project,
+    loadProtocolOutputThumbnailsForNodes,
+  ]);
+
+  useEffect(() => {
+    if (protocolOutputThumbnailsEnabled) return;
+
+    outputThumbnailCacheRef.current.clear();
+    outputThumbnailInFlightRef.current = null;
+
+    setNodes((prev) => clearOutputThumbnailsFromNodes(prev as Node<StatusNodeData>[]));
+  }, [protocolOutputThumbnailsEnabled, setNodes]);
 
   const isRunningNode = (n: Node) => (n as any).data?.status === "running";
 
@@ -2040,6 +2396,7 @@ export default function ProjectPage() {
         () => getProjectId(),
         () => getAnalyzeViewerService(),
         () => contextMenuVisibilityPolicyRef.current,
+        () => protocolOutputThumbnailsEnabledRef.current,
       ),
     };
 
@@ -2228,6 +2585,26 @@ export default function ProjectPage() {
   };
 
 
+  const preservePendingExistingNodePositions = (
+    loadedNodes: Node[],
+  ): Node[] => {
+    const pending = pendingNewNodesRef.current;
+
+    if (!pending?.beforePositions || viewModeRef.current !== "hierarchical") {
+      return loadedNodes;
+    }
+
+    return loadedNodes.map((node) => {
+      const previousPosition = pending.beforePositions?.get(String(node.id));
+      if (!previousPosition) return node;
+
+      return {
+        ...node,
+        position: previousPosition,
+      };
+    });
+  };
+
 
   const mergeEdges = (newEdges: Edge[]) => {
     const oldEdgesMap = new Map(edges.map((e) => [e.id, e]));
@@ -2289,6 +2666,9 @@ export default function ProjectPage() {
 
   useEffect(() => {
     // resetFirstCenterOnProjectChange
+    outputThumbnailCacheRef.current.clear();
+    outputThumbnailInFlightRef.current = null;
+
     firstLoadRef.current = true;
     setNodesLoadedOnce(false);
 
@@ -2306,6 +2686,18 @@ export default function ProjectPage() {
       const data = await svc.fetchProject(projectName);
       setProject(data);
       setTagAssignments(extractAssignmentsFromProjectProtocols((data as any)?.protocols));
+
+      const loadedProjectId =
+        (data as any)?.id ??
+        (data as any)?.projectId;
+
+      const effectiveSettings = await loadProjectEffectiveSettings(loadedProjectId);
+
+      const effectiveUserSettings =
+        effectiveSettings?.settings?.user as Record<string, unknown> | null | undefined;
+
+      const shouldLoadProtocolThumbnails =
+        effectiveUserSettings?.protocolOutputThumbnailsEnabled === true;
 
       if (data.protocols) {
         const mode = viewModeRef.current;
@@ -2348,8 +2740,17 @@ export default function ProjectPage() {
           : new Set<string>();
         pathSelRef.current.edges = recomputedEdgeSet;
 
+        let nextNodes: Node<StatusNodeData>[] = nodesWithTick.map((n) => {
+          const node = n as Node<StatusNodeData>;
+
+          return {
+            ...node,
+            selected: unifiedSelectedIds.has(node.id),
+          };
+        });
+
         startTransition(() => {
-          setNodes(nodesWithTick.map((n) => ({ ...n, selected: unifiedSelectedIds.has(n.id) })));
+          setNodes(nextNodes);
           setEdges((_) => {
             let base = mode === "grid" ? [] : loadedEdges;
             base = paintEdgeHighlight(base, selectedIdRef.current ?? null);
@@ -2358,6 +2759,14 @@ export default function ProjectPage() {
           });
           setTableData(table ?? []);
         });
+
+        if (shouldLoadProtocolThumbnails) {
+          void loadProtocolOutputThumbnailsForNodes(
+            loadedProjectId,
+            nextNodes,
+            true,
+          );
+        }
 
         setNodeTicks(initialTicks);
         setNodesLoadedOnce(true);
@@ -2380,18 +2789,30 @@ export default function ProjectPage() {
       setIsLoadingProject(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectName, svc, paintEdgeHighlight, paintPathHighlight, computeEdgesForMode, snapViewportToTopLeft]);
+  }, [
+    projectName,
+    svc,
+    paintEdgeHighlight,
+    paintPathHighlight,
+    computeEdgesForMode,
+    snapViewportToTopLeft,
+    fetchProtocolOutputThumbnailItemsForNodes,
+  ]);
 
   useEffect(() => {
     setIsLoadingProject(true);
     setProjectEffectiveSettings(null);
     setProjectEffectiveSettingsLoading(false);
 
-    // eslint-disable-next-line @typescript-eslint/no-floating-promises
-    fetchAndLoadProject();
-    // only reload when changing project
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    outputThumbnailCacheRef.current.clear();
+    outputThumbnailInFlightRef.current = null;
   }, [projectName]);
+
+  useEffect(() => {
+    if (!projectName) return;
+
+    void fetchAndLoadProject();
+  }, [projectName, fetchAndLoadProject]);
 
   /* ------------------------ Refresh ------------------------ */
   const handleRefresh = useCallback(async () => {
@@ -2417,7 +2838,7 @@ export default function ProjectPage() {
 
         const nodesWithPositions =
           viewMode === "hierarchical"
-            ? loadNodesWithPositions(loadedNodes)
+            ? preservePendingExistingNodePositions(loadNodesWithPositions(loadedNodes))
             : loadedNodes;
 
         const edgesMerged = viewMode === "grid" ? [] : mergeEdges(loadedEdges);
@@ -2429,13 +2850,18 @@ export default function ProjectPage() {
             : { ...n, selected: unifiedSelectedIds.has(n.id) }
         );
 
+        const nodesSeedWithThumbnails = preserveExistingOutputThumbnails(
+          nodesSeed as Node<StatusNodeData>[],
+          nodesRef.current,
+        );
+
         const recomputedEdgeSet = unifiedSelectedIds.size
           ? computeEdgesForMode(unifiedSelectedIds, pathEdgeModeRef.current)
           : new Set<string>();
         pathSelRef.current.edges = recomputedEdgeSet;
 
         startTransition(() => {
-          setNodes(nodesSeed);
+          setNodes(nodesSeedWithThumbnails);
           setEdges((_) => {
             let out = paintEdgeHighlight(edgesMerged, selectedIdRef.current ?? null);
             if (recomputedEdgeSet.size) out = paintPathHighlight(out, recomputedEdgeSet);
@@ -2443,6 +2869,13 @@ export default function ProjectPage() {
           });
           setTableData(table ?? []);
         });
+
+        if (protocolOutputThumbnailsEnabled) {
+          void loadProtocolOutputThumbnailsForNodes(
+            (data as any)?.id ?? (data as any)?.projectId,
+            nodesSeedWithThumbnails,
+          );
+        }
 
         setNodeTicks((prev) => {
           const updated: Record<string, number> = {};
@@ -2523,13 +2956,29 @@ export default function ProjectPage() {
     );
 
     const sel = getUnifiedSelectedIds();
-    const seeded = newNodes.map((n) => ({ ...n, selected: sel.has(n.id) }));
+    const seeded = seedNodesWithSelectionAndThumbnails(newNodes, sel);
 
     setNodes(seeded);
     setEdges([]); // grid has no edges
 
+    if (protocolOutputThumbnailsEnabled) {
+      const currentProjectId = getProjectId();
+
+      if (currentProjectId != null) {
+        void loadProtocolOutputThumbnailsForNodes(currentProjectId, seeded);
+      }
+    }
+
     requestAnimationFrame(() => snapViewportToTopLeft(GRID_ZOOM));
-  }, [gridWidth, viewMode, project, graphDirection, snapViewportToTopLeft]);
+  }, [gridWidth,
+    viewMode,
+    project,
+    graphDirection,
+    snapViewportToTopLeft,
+    seedNodesWithSelectionAndThumbnails,
+    protocolOutputThumbnailsEnabled,
+    loadProtocolOutputThumbnailsForNodes,
+  ]);
 
   /* ------------------------ Reorganize ------------------------ */
   const handleReorganize = useCallback(
@@ -2569,7 +3018,11 @@ export default function ProjectPage() {
             : loadedNodes;
 
         const unifiedSelectedIds = getUnifiedSelectedIds();
-        const nodesSeeded = nodesWithPositions.map((n) => ({ ...n, selected: unifiedSelectedIds.has(n.id) }));
+        const nodesSeeded = seedNodesWithSelectionAndThumbnails(
+          nodesWithPositions,
+          unifiedSelectedIds,
+        );
+
         const recomputedEdgeSet = unifiedSelectedIds.size
           ? computeEdgesForMode(unifiedSelectedIds, pathEdgeModeRef.current)
           : new Set<string>();
@@ -2582,6 +3035,17 @@ export default function ProjectPage() {
             if (recomputedEdgeSet.size) out = paintPathHighlight(out, recomputedEdgeSet);
             return out;
           });
+
+          if (protocolOutputThumbnailsEnabled) {
+            const currentProjectId =
+              (data as any)?.id ??
+              (data as any)?.projectId ??
+              getProjectId();
+
+            if (currentProjectId != null) {
+              void loadProtocolOutputThumbnailsForNodes(currentProjectId, nodesSeeded);
+            }
+          }
           setTableData(table ?? []);
           setNodeTicks((prev) => {
             const seeded: Record<string, number> = {};
@@ -2612,7 +3076,11 @@ export default function ProjectPage() {
         setHideGraphDuringCenter(false);
       }
     },
-    [projectName, viewMode, graphDirection, centerLikeButton, svc, paintEdgeHighlight, paintPathHighlight, computeEdgesForMode, gridWidth]
+    [projectName, viewMode, graphDirection, centerLikeButton, svc, paintEdgeHighlight, paintPathHighlight, computeEdgesForMode, gridWidth,
+      seedNodesWithSelectionAndThumbnails,
+      protocolOutputThumbnailsEnabled,
+      loadProtocolOutputThumbnailsForNodes,
+    ]
   );
 
   /* ------------------------ Ticks updater ------------------------ */
@@ -2708,7 +3176,11 @@ export default function ProjectPage() {
       viewMode === "hierarchical" ? loadNodesWithPositions(loadedNodes) : loadedNodes;
 
     const unifiedSelectedIds = getUnifiedSelectedIds();
-    const nodesSeeded = nodesWithPositions.map((n) => ({ ...n, selected: unifiedSelectedIds.has(n.id) }));
+    const nodesSeeded = seedNodesWithSelectionAndThumbnails(
+      nodesWithPositions,
+      unifiedSelectedIds,
+    );
+
     const recomputedEdgeSet = unifiedSelectedIds.size
       ? computeEdgesForMode(unifiedSelectedIds, pathEdgeModeRef.current)
       : new Set<string>();
@@ -2725,6 +3197,14 @@ export default function ProjectPage() {
         return out;
       });
     });
+
+    if (protocolOutputThumbnailsEnabled) {
+      const currentProjectId = getProjectId();
+
+      if (currentProjectId != null) {
+        void loadProtocolOutputThumbnailsForNodes(currentProjectId, nodesSeeded);
+      }
+    }
 
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
@@ -2751,8 +3231,20 @@ export default function ProjectPage() {
         });
       });
     });
-  }, [graphDirection, viewMode, project, paintEdgeHighlight, paintPathHighlight, computeEdgesForMode, gridWidth, centerLikeButton, snapViewportToTopLeft]);
-
+  }, [
+    graphDirection,
+    viewMode,
+    project,
+    paintEdgeHighlight,
+    paintPathHighlight,
+    computeEdgesForMode,
+    gridWidth,
+    centerLikeButton,
+    snapViewportToTopLeft,
+    seedNodesWithSelectionAndThumbnails,
+    protocolOutputThumbnailsEnabled,
+    loadProtocolOutputThumbnailsForNodes,
+  ]);
   /* ------------------------ First-center ONLY once after initial load ------------------------ */
   useEffect(() => {
     if (!nodesLoadedOnce || !firstLoadRef.current) return;
@@ -3303,8 +3795,9 @@ export default function ProjectPage() {
     if (idx < 0) return nodesList;
 
     // snap all nodes to exact level coord (prevents drift across levels)
+    // Keep the current level coordinate for existing nodes.
     const posMap = new Map<string, { x: number; y: number }>();
-    for (const n of sorted) posMap.set(n.id, setLevelCoord(dir, n.position, levelPos));
+    for (const n of sorted) posMap.set(n.id, n.position);
 
     // anchor stays fixed on axis (but snapped in level coord)
     const anchorPos = posMap.get(anchorId)!;
@@ -3448,14 +3941,13 @@ export default function ProjectPage() {
 
           if (!pair?.sourcePosition) return node;
 
-          const sourceLevelKey = inferNearestLevelKey(dir, pair.sourcePosition, prev);
-          const sourceLevelPos = sourceLevelKey * step;
+          const sourceLevelCoord = getLevelCoord(dir, pair.sourcePosition);
           const sourceAxis = getAxisCoord(dir, pair.sourcePosition);
           const desiredAxis = sourceAxis + duplicateGap;
 
           const desiredPosition = setAxisCoord(
             dir,
-            setLevelCoord(dir, node.position, sourceLevelPos),
+            setLevelCoord(dir, node.position, sourceLevelCoord),
             desiredAxis
           );
 
@@ -3828,6 +4320,17 @@ export default function ProjectPage() {
     if (cleanIds.length === 0) return;
 
     const beforeIds = new Set(nodesRef.current.map((n) => String(n.id)));
+    const beforePositions = new Map<string, { x: number; y: number }>();
+
+    for (const node of nodesRef.current) {
+      const nodeId = String(node.id);
+      if (!nodeId || !node.position) continue;
+
+      beforePositions.set(nodeId, {
+        x: node.position.x,
+        y: node.position.y,
+      });
+    }
 
     const sourcePositionById = new Map<string, { x: number; y: number }>();
     for (const id of cleanIds) {
@@ -3839,6 +4342,7 @@ export default function ProjectPage() {
 
     pendingNewNodesRef.current = {
       beforeIds,
+      beforePositions,
       operation: "duplicate",
       duplicatedPairs: [],
     };
@@ -3853,6 +4357,7 @@ export default function ProjectPage() {
 
       pendingNewNodesRef.current = {
         beforeIds,
+        beforePositions,
         operation: "duplicate",
         duplicatedPairs: duplicatedFromBackend
           .map((pair: any) => {
@@ -4856,7 +5361,11 @@ export default function ProjectPage() {
                 multiSelectionKeyCode={isMac ? "Meta" : "Control"}
                 selectionKeyCode="Shift"
                 selectionOnDrag
-                style={{ width: "100%", height: "100%" }}
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  backgroundColor: hostIsDark ? "#0b1120" : "#f3f4f6"
+                }}
                 proOptions={{ hideAttribution: true }}
                 nodesConnectable={viewMode !== "grid"}
                 connectOnClick={viewMode !== "grid"}
@@ -4879,7 +5388,10 @@ export default function ProjectPage() {
                     }}
                   />
                 )}
-                <Background />
+                <Background
+                  color={hostIsDark ? "rgba(148, 163, 184, 0.18)" : "rgba(148, 163, 184, 0.35)"}
+                  gap={24}
+                />
               </ReactFlow>
             </ReactFlowProvider>
           </div>

@@ -3,17 +3,14 @@
   /* Local CSS variables (no :root) */
   --swNodeWidth: 950px;
 
-  --swOutputRowHeight: 40px;
+  --swOutputRowHeight: 45px;
   --swOutputVisibleRows: 3.4;
 
   /* Matches the old look (the old margin-top: 12px), but now it's accounted for */
   --swOutputRowGap: 12px;
 
   /* Reserve exactly visibleRows * rowHeight + gaps */
-  --swOutputsListMaxHeight: calc(
-    (var(--swOutputRowHeight) * var(--swOutputVisibleRows)) +
-      (var(--swOutputRowGap) * (var(--swOutputVisibleRows) - 1))
-  );
+  --swOutputsListMaxHeight: calc((var(--swOutputRowHeight) * var(--swOutputVisibleRows)) + (var(--swOutputRowGap) * (var(--swOutputVisibleRows) - 1)));
 
   /* Fixed header height for the Outputs section, so reserved area includes it */
   --swOutputsHeaderHeight: 48px;
@@ -143,10 +140,12 @@
     transform: scale(1);
     box-shadow: 0 0 6px rgba(3, 88, 14, 0.8);
   }
+
   50% {
     transform: scale(1.08);
     box-shadow: 0 0 16px rgba(3, 88, 14, 0.9);
   }
+
   100% {
     transform: scale(1);
     box-shadow: 0 0 6px rgba(3, 88, 14, 0.8);
@@ -263,6 +262,33 @@
   height: calc(var(--swOutputsHeaderHeight) + var(--swOutputsListMaxHeight));
 }
 
+.outputsReservedThumbs {
+  --swOutputsListMaxHeight: 320px;
+  height: var(--swOutputsListMaxHeight);
+}
+
+.card[data-thumbnail-mode="true"] .cardContent {
+  margin-top: 4px;
+  padding: 6px 10px 2px;
+}
+
+.card[data-thumbnail-mode="true"] .sectionContentThumbs {
+  height: 100%;
+  max-height: 100%;
+  padding-top: 0;
+  padding-bottom: 0;
+  align-items: stretch;
+}
+
+.card[data-thumbnail-mode="true"] .outputThumbTile {
+  min-height: 0;
+  height: 100%;
+}
+
+.card[data-thumbnail-mode="true"] .outputThumbImageWrap {
+  height: 100%;
+}
+
 .outputsList {
   width: 100%;
   height: 100%;
@@ -323,6 +349,209 @@
   max-width: calc(var(--swNodeWidth) - 40px);
 
   transition: opacity 160ms ease, box-shadow 160ms ease;
+}
+
+.sectionContentThumbs {
+  display: grid;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.sectionContentThumbsSingle {
+  grid-template-columns: max-content;
+  justify-content: center;
+}
+
+.sectionContentThumbsDouble {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.sectionContentThumbsTriple {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.sectionContentThumbsMany {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.outputThumbTile {
+  justify-self: center;
+  width: fit-content;
+  max-width: 100%;
+  min-height: 100%;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  overflow: visible;
+}
+
+.outputThumbTile:hover {
+  box-shadow: 0 3px 8px rgba(15, 23, 42, 0.12);
+}
+
+.outputThumbImageWrap {
+  position: relative;
+  height: var(--swOutputThumbImageHeight, 112px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--swOutputThumbImagePadding, 8px);
+  background: transparent;
+  border-bottom: 0;
+  overflow: hidden;
+}
+
+.outputThumbImageFrame {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  max-width: 100%;
+  height: 100%;
+  line-height: 0;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.outputThumbImageFrameEmpty {
+  width: var(--swOutputThumbImageHeight, 112px);
+  max-width: 100%;
+}
+
+.outputThumbTileMissing {
+  opacity: 0.92;
+}
+
+.outputThumbPlaceholder {
+  width: 100%;
+  height: 100%;
+  min-width: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 22px 8px;
+  border-radius: 6px;
+  border: 1px dashed rgba(31, 41, 55, 0.28);
+  background: rgba(255, 255, 255, 0.18);
+  color: rgba(31, 41, 55, 0.68);
+  font-size: clamp(1.65rem, 1vw, 1.05rem);
+  font-weight: 700;
+  line-height: 1.1;
+  text-align: center;
+}
+
+.outputThumbTileSingle {
+  --swOutputThumbImageHeight: 318px;
+  --swOutputThumbImagePadding: 1px;
+}
+
+.outputThumbTileDouble {
+  --swOutputThumbImageHeight: 318px;
+  --swOutputThumbImagePadding: 1px;
+}
+
+.outputThumbTileTriple {
+  --swOutputThumbImageHeight: 318px;
+  --swOutputThumbImagePadding: 1px;
+}
+
+.outputThumbTileMany {
+  --swOutputThumbImageHeight: 250px;
+  --swOutputThumbImagePadding: 1px;
+}
+
+.outputThumbImage {
+  display: block;
+  width: auto;
+  height: 100%;
+  max-width: 100%;
+  object-fit: contain;
+}
+
+.outputThumbFooter {
+  position: absolute;
+  left: 4px;
+  bottom: 4px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: left;
+
+  max-width: calc(100% - 8px);
+  min-width: 0;
+  padding: 2px 5px;
+
+  border-radius: 4px;
+  background: rgba(31, 41, 55, 0.72);
+  backdrop-filter: blur(2px);
+  pointer-events: none;
+}
+
+.outputThumbText {
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #ffffff;
+  font-size: clamp(0.95rem, 1.15vw, 1.2rem);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+  line-height: 1.15;
+  font-weight: 600;
+  text-align: left;
+}
+
+.outputThumbBadge {
+  position: absolute;
+  z-index: 2;
+  max-width: calc(100% - 6px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: rgba(31, 41, 55, 0.72);
+  backdrop-filter: blur(2px);
+  color: #ffffff;
+  font-size: clamp(1.48rem, 0.95vw, 1rem);
+  line-height: 1.15;
+  pointer-events: none;
+}
+
+.outputThumbBadgeTopLeft {
+  top: 2px;
+  left: 2px;
+  max-width: 62%;
+}
+
+.outputThumbBadgeTopRight {
+  top: 2px;
+  right: 2px;
+  max-width: 50%;
+  text-align: right;
+}
+
+.outputThumbBadgeBottomLeft {
+  bottom: 2px;
+  left: 2px;
+  max-width: 70%;
+}
+
+.outputThumbBadgeBottomRight {
+  bottom: 2px;
+  right: 2px;
+  max-width: 45%;
+  text-align: right;
+}
+
+.outputThumbTileMany .outputThumbText {
+  font-size: 1rem;
+}
+
+.outputThumbTileTriple .outputThumbText {
+  font-size: 1.05rem;
 }
 
 .outputPillDragging {
@@ -475,13 +704,14 @@
 
 .menuContent {
   width: 15rem;
-   background-color: var(--color-popover, #fff);
+  background-color: var(--color-popover, #fff);
   color: var(--color-popover-foreground, #111827);
   border: 1px solid var(--color-border, #e5e7eb);
   border-radius: 0.5rem;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
   padding: 0.25rem;
 }
+
 /* Radix state for hovered/focused items */
 .menuContent [data-highlighted] {
   background-color: var(--color-accent, #f3f4f6);
@@ -496,7 +726,7 @@
 .subMenuContent {
   width: 25rem;
   margin-bottom: 1.5rem;
-   background-color: var(--color-popover, #fff);
+  background-color: var(--color-popover, #fff);
   color: var(--color-popover-foreground, #111827);
   border: 1px solid var(--color-border, #e5e7eb);
   border-radius: 0.5rem;
@@ -541,22 +771,26 @@
   width: 44px;
   height: 44px;
 }
+
 .footer {
   display: flex;
   flex-direction: column;
-  align-items: stretch; /* key: prevents centering the whole row */
+  align-items: stretch;
+  /* key: prevents centering the whole row */
   width: 100%;
 }
 
 .footerTopRow {
   display: flex;
   align-items: center;
-  justify-content: space-between; /* left vs right */
+  justify-content: space-between;
+  /* left vs right */
   width: 100%;
 }
 
 .timeRow {
-  margin-left: auto; /* hard guarantee it goes to the right */
+  margin-left: auto;
+  /* hard guarantee it goes to the right */
 }
 
 .footerTagsRow {
@@ -572,17 +806,21 @@
 .tagChip {
   display: inline-flex;
   align-items: center;
-  padding: 8px 16px;      /* bigger */
+  padding: 8px 16px;
+  /* bigger */
   border-radius: 999px;
   border: 1px solid rgba(15, 23, 42, 0.18);
-  font-size: 30px;        /* bigger */
-  line-height: 22px;      /* bigger */
+  font-size: 30px;
+  /* bigger */
+  line-height: 22px;
+  /* bigger */
   color: #fdfdfd;
 
   /* optional extra punch if still small due to zoom */
   transform: scale(1.06);
   transform-origin: left center;
-  margin-left: 8px; /* to visually compensate the transform */
+  margin-left: 8px;
+  /* to visually compensate the transform */
 }
 
 .tagChipText {
@@ -645,10 +883,12 @@
 .nextStepList::-webkit-scrollbar {
   width: 10px;
 }
+
 .nextStepList::-webkit-scrollbar-track {
   background: rgba(15, 23, 42, 0.12);
   border-radius: 999px;
 }
+
 .nextStepList::-webkit-scrollbar-thumb {
   background: rgba(15, 23, 42, 0.45);
   border-radius: 999px;
@@ -672,7 +912,8 @@
   align-items: center;
   gap: 8px;
   flex: 1;
-  min-width: 0; /* criticalForEllipsis */
+  min-width: 0;
+  /* criticalForEllipsis */
 }
 
 .nextStepItemIcon {
@@ -864,6 +1105,7 @@
   0% {
     transform: translateX(-120%);
   }
+
   100% {
     transform: translateX(220%);
   }
@@ -1077,4 +1319,113 @@
 
 :global(.dark) :global(.react-flow__node.selected) {
   z-index: 20;
+}
+
+/* Keep thumbnail mode neutral so previews remain visually dominant */
+.card[data-thumbnail-mode="true"] {
+  background-color: #f8f8f8 !important;
+  background-image: none !important;
+  border-color: rgba(15, 23, 42, 0.14);
+}
+
+.card[data-thumbnail-mode="true"] .header {
+  background: #eef0f3;
+  border-bottom-color: rgba(15, 23, 42, 0.14);
+}
+
+.card[data-thumbnail-mode="true"] .footer {
+  background: #f8f8f8;
+  border-top-color: rgba(15, 23, 42, 0.10);
+}
+
+.card[data-thumbnail-mode="true"] .sectionHeader {
+  background: #f6f7f9;
+  border-bottom-color: rgba(15, 23, 42, 0.10);
+}
+
+.card[data-thumbnail-mode="true"] .sectionTitle {
+  color: #111827;
+}
+
+:global(.dark) .card[data-thumbnail-mode="true"] {
+  background-color: #000000 !important;
+  background-image: none !important;
+  border-color: rgba(148, 163, 184, 0.28);
+  color: #e5e7eb;
+}
+
+:global(.dark) .card[data-thumbnail-mode="true"] .header {
+  background: #111827;
+  border-bottom-color: rgba(148, 163, 184, 0.24);
+}
+
+:global(.dark) .card[data-thumbnail-mode="true"] .footer {
+  background: #000000;
+  border-top-color: rgba(148, 163, 184, 0.20);
+}
+
+:global(.dark) .card[data-thumbnail-mode="true"] .sectionHeader {
+  background: #0f172a;
+  border-bottom-color: rgba(148, 163, 184, 0.24);
+}
+
+:global(.dark) .card[data-thumbnail-mode="true"] .sectionTitle {
+  color: #e5e7eb;
+}
+
+/* Stronger selection only in thumbnail mode */
+.card[data-thumbnail-mode="true"].selected:not(.inPathSelection),
+:global(.react-flow__node.selected) .card[data-thumbnail-mode="true"]:not(.inPathSelection) {
+  border-width: 4px;
+  border-color: #2563eb !important;
+  box-shadow:
+    0 0 0 3px rgba(255, 255, 255, 0.95),
+    0 0 0 9px rgba(37, 99, 235, 0.34),
+    0 16px 34px rgba(15, 23, 42, 0.22);
+}
+
+.card[data-thumbnail-mode="true"].selected:not(.inPathSelection)::after,
+:global(.react-flow__node.selected) .card[data-thumbnail-mode="true"]:not(.inPathSelection)::after {
+  box-shadow: 0 0 0 7px rgba(37, 99, 235, 0.18);
+}
+
+/* Keep path/multiple selection red, only stronger in thumbnail mode */
+.card[data-thumbnail-mode="true"].inPathSelection {
+  border-width: 5px;
+  border-color: #cf0d2e !important;
+  box-shadow:
+    0 0 0 3px rgba(255, 255, 255, 0.95),
+    0 0 0 10px rgba(207, 13, 46, 0.34),
+    0 16px 34px rgba(15, 23, 42, 0.24);
+}
+
+.card[data-thumbnail-mode="true"].inPathSelection::after {
+  box-shadow: 0 0 0 8px rgba(207, 13, 46, 0.18);
+}
+
+/* Dark mode */
+:global(.dark) .card[data-thumbnail-mode="true"].selected:not(.inPathSelection),
+:global(.dark) :global(.react-flow__node.selected) .card[data-thumbnail-mode="true"]:not(.inPathSelection) {
+  border-color: #93c5fd !important;
+  box-shadow:
+    0 0 0 3px rgba(15, 23, 42, 0.95),
+    0 0 0 9px rgba(96, 165, 250, 0.42),
+    0 20px 46px rgba(0, 0, 0, 0.58);
+}
+
+:global(.dark) .card[data-thumbnail-mode="true"].selected:not(.inPathSelection)::after,
+:global(.dark) :global(.react-flow__node.selected) .card[data-thumbnail-mode="true"]:not(.inPathSelection)::after {
+  box-shadow: 0 0 0 7px rgba(96, 165, 250, 0.24);
+}
+
+:global(.dark) .card[data-thumbnail-mode="true"].inPathSelection {
+  border-color: #fb7185 !important;
+  box-shadow:
+    0 0 0 3px rgba(15, 23, 42, 0.95),
+    0 0 0 10px rgba(251, 113, 133, 0.42),
+    0 20px 46px rgba(0, 0, 0, 0.58);
+}
+
+:global(.dark) .card[data-thumbnail-mode="true"].inPathSelection::after {
+  box-shadow: 0 0 0 8px rgba(251, 113, 133, 0.24);
 }

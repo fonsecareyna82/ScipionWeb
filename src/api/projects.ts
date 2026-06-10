@@ -7,6 +7,8 @@ import {
   CTFTomoExclusionsPayload,
   FetchImageSliceOptions,
   ObjectUrlResult,
+  TiltSeriesBatchPreviewResult,
+  TiltSeriesBatchPreviewOptions,
   WorkflowDescriptor,
   TiltExclusionsPayload,
   SettingsObject,
@@ -43,6 +45,9 @@ import {
   ExternalViewerListOptions,
   ExternalViewerLaunchPayload,
   ExternalViewerLaunchResult,
+  ProtocolOutputThumbnailItem,
+  ProtocolOutputThumbnailsOptions,
+  ProtocolOutputThumbnailsResponse,
 } from "@/services/ProjectService";
 
 const ACTION_LAUNCH = "launch";
@@ -401,6 +406,89 @@ export async function fetchProjectThumbnailObjectUrl(
     signal,
     cache: cache ?? "default",
   });
+}
+
+function normalizeProtocolOutputThumbnailItem(raw: any): ProtocolOutputThumbnailItem | null {
+  const protocolId = raw?.protocolId ?? raw?.protocol_id ?? null;
+  const outputName = String(raw?.outputName ?? raw?.output_name ?? "").trim();
+
+  if (protocolId == null || !outputName) return null;
+
+  return {
+    protocolId,
+    outputName,
+    outputClassName: raw?.outputClassName ?? raw?.output_class_name ?? null,
+    exists: raw?.exists !== undefined ? Boolean(raw.exists) : false,
+    cached: raw?.cached !== undefined ? Boolean(raw.cached) : false,
+    thumbnailUrl: raw?.thumbnailUrl ?? raw?.thumbnail_url ?? null,
+    thumbnailDataUrl: raw?.thumbnailDataUrl ?? raw?.thumbnail_data_url ?? null,
+    error: raw?.error ?? null,
+  };
+}
+
+function normalizeProtocolOutputThumbnailsResponse(
+  raw: any,
+  projectId: Id,
+): ProtocolOutputThumbnailsResponse {
+  const itemsRaw = Array.isArray(raw?.items) ? raw.items : [];
+  const items = itemsRaw
+    .map((item: any) => normalizeProtocolOutputThumbnailItem(item))
+    .filter(Boolean) as ProtocolOutputThumbnailItem[];
+
+  return {
+    projectId: raw?.projectId ?? raw?.project_id ?? projectId,
+    size: Number(raw?.size ?? 128),
+    items,
+  };
+}
+
+export async function fetchProtocolOutputThumbnails(
+  projectId: Id,
+  opts: ProtocolOutputThumbnailsOptions,
+): Promise<ProtocolOutputThumbnailsResponse> {
+  const {
+    size = 128,
+    inlineImages = true,
+    outputs,
+    signal,
+    cache,
+  } = opts;
+
+  const cleanOutputs = (outputs ?? [])
+    .map((item) => ({
+      protocolId: Number(item.protocolId),
+      outputName: String(item.outputName ?? "").trim(),
+    }))
+    .filter((item) => Number.isFinite(item.protocolId) && item.outputName.length > 0);
+
+  if (!cleanOutputs.length) {
+    return {
+      projectId,
+      size,
+      items: [],
+    };
+  }
+
+  const response = await fetchWithAuth(`${BASE_URL}/projects/${projectId}/output-thumbnails`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    cache: cache ?? "default",
+    signal,
+    body: JSON.stringify({
+      size,
+      inlineImages,
+      outputs: cleanOutputs,
+    }),
+  });
+
+  if (!response.ok) {
+    throw await toApiError(response, "Failed to fetch protocol output thumbnails");
+  }
+
+  const payload = await safeJson<any>(response);
+  return normalizeProtocolOutputThumbnailsResponse(payload, projectId);
 }
 
 export async function createProject(
@@ -3161,6 +3249,71 @@ export async function fetchTiltSeriesViewImageObjectUrl(
   const revoke = () => URL.revokeObjectURL(objUrl);
 
   return { url: objUrl, revoke };
+}
+
+export async function fetchTiltSeriesViewImagesBatch(
+  projectId: Id,
+  protocolId: Id,
+  outputName: string,
+  tiltSeriesId: Id,
+  opts: TiltSeriesBatchPreviewOptions,
+): Promise<TiltSeriesBatchPreviewResult> {
+  const enc = encodeURIComponent;
+
+  const url = `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/outputs/${enc(
+    outputName,
+  )}/tiltseries/${enc(String(tiltSeriesId))}/tilt/batch`;
+
+  const body = {
+    indices: Array.isArray(opts.indices) ? opts.indices : [],
+    size: opts.size ?? 512,
+    fmt: opts.format ?? "webp",
+    applyTransform: opts.applyTransform ?? true,
+    inline: true,
+  };
+
+  const res = await fetchWithAuth(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    cache: "no-store",
+    signal: opts.signal,
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    throw await toApiError(res, "Failed to fetch tilt series preview batch");
+  }
+
+  const raw = await safeJson<any>(res);
+
+  const items = Array.isArray(raw?.items)
+    ? raw.items
+      .map((item: any) => ({
+        index: Number(item?.index),
+        contentType: item?.contentType ?? item?.content_type ?? null,
+        dataUrl: String(item?.dataUrl ?? item?.data_url ?? ""),
+        cache: item?.cache ?? null,
+      }))
+      .filter((item: any) => Number.isFinite(item.index) && item.dataUrl)
+    : [];
+
+  const errors = Array.isArray(raw?.errors)
+    ? raw.errors
+      .map((item: any) => ({
+        index: Number(item?.index),
+        error: String(item?.error ?? ""),
+      }))
+      .filter((item: any) => Number.isFinite(item.index) && item.error)
+    : [];
+
+  return {
+    tiltSeriesId: String(raw?.tiltSeriesId ?? raw?.tilt_series_id ?? tiltSeriesId),
+    size: Number(raw?.size ?? body.size),
+    fmt: String(raw?.fmt ?? body.fmt),
+    applyTransform: Boolean(raw?.applyTransform ?? raw?.apply_transform ?? body.applyTransform),
+    items,
+    errors,
+  };
 }
 
 export async function fetchTiltSeriesFrames(

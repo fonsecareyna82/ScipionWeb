@@ -67,6 +67,35 @@ export type ProjectThumbnailObjectUrlOptions =
     size?: number;
   };
 
+export type ProtocolOutputThumbnailRequestItem = {
+  protocolId: Id;
+  outputName: string;
+};
+
+export type ProtocolOutputThumbnailItem = {
+  protocolId: Id;
+  outputName: string;
+  outputClassName?: string | null;
+  exists?: boolean;
+  cached?: boolean;
+  thumbnailUrl?: string | null;
+  thumbnailDataUrl?: string | null;
+  error?: string | null;
+};
+
+export type ProtocolOutputThumbnailsResponse = {
+  projectId: Id;
+  size: number;
+  items: ProtocolOutputThumbnailItem[];
+};
+
+export type ProtocolOutputThumbnailsOptions =
+  AuthenticatedRequestOptions & {
+    size?: number;
+    inlineImages?: boolean;
+    outputs: ProtocolOutputThumbnailRequestItem[];
+  };
+
 /** Common ID type to accept either string or number seamlessly. */
 export type Id = string | number | null | undefined;
 
@@ -387,6 +416,33 @@ export type TiltImageOptions = {
   /** Whether to apply alignment or contrast corrections in backend. */
   applyTransform?: boolean;
   /** AbortSignal to cancel in-flight HTTP requests. */
+  signal?: AbortSignal;
+};
+
+export type TiltSeriesBatchPreviewItem = {
+  index: number;
+  contentType?: string | null;
+  dataUrl: string;
+  cache?: string | null;
+};
+
+export type TiltSeriesBatchPreviewResult = {
+  tiltSeriesId: string;
+  size: number;
+  fmt: string;
+  applyTransform: boolean;
+  items: TiltSeriesBatchPreviewItem[];
+  errors?: Array<{
+    index: number;
+    error: string;
+  }>;
+};
+
+export type TiltSeriesBatchPreviewOptions = {
+  indices: number[];
+  size?: number;
+  format?: "png" | "webp" | "jpeg";
+  applyTransform?: boolean;
   signal?: AbortSignal;
 };
 
@@ -1230,6 +1286,11 @@ export interface ProjectService<
     opts?: ProjectThumbnailObjectUrlOptions,
   ): Promise<string>;
 
+  fetchProtocolOutputThumbnails: (
+    projectId: Id,
+    opts: ProtocolOutputThumbnailsOptions,
+  ) => Promise<ProtocolOutputThumbnailsResponse>;
+
 
   /**
    * List projects. It can return an array or a paginated object.
@@ -1600,6 +1661,14 @@ export interface ProjectService<
     viewIndex: number,
     opts?: FetchImageSliceOptions,
   ): Promise<ObjectUrlResult>;
+
+  fetchTiltSeriesViewImagesBatch(
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    tiltSeriesId: Id,
+    opts: TiltSeriesBatchPreviewOptions,
+  ): Promise<TiltSeriesBatchPreviewResult>;
 
   // Tilt series: create a new SetOfTiltSeries based on current exclusions
   createNewSetOfTiltSeries(

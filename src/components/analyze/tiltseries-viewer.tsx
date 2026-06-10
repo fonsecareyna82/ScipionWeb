@@ -1,5 +1,5 @@
 // src/components/analyze/tiltseries-viewer.tsx
-import { useEffect, useMemo, useRef, useState, Fragment } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback, Fragment } from "react";
 import {
   Box,
   CircularProgress,
@@ -78,6 +78,34 @@ type ObjectUrlResult = {
   revoke?: () => void;
 };
 
+type CachedPreview = ObjectUrlResult & {
+  lastUsed: number;
+};
+
+const PREVIEW_CACHE_LIMIT = 80;
+const PREVIEW_NEIGHBOR_OFFSETS = [-5, -1, 1, 5] as const;
+const SCRUBBING_PREVIEW_NEIGHBOR_OFFSETS = [-5, -2, -1, 1, 2, 5] as const;
+
+function buildPreviewCacheKey(
+  projectId: Id,
+  protocolId: Id,
+  outputName: string,
+  tiltSeriesId: Id,
+  frameIndex: number,
+  size: number,
+  applyTransform: boolean,
+): string {
+  return [
+    String(projectId),
+    String(protocolId),
+    outputName,
+    String(tiltSeriesId),
+    String(frameIndex),
+    String(size),
+    applyTransform ? "aligned" : "raw",
+  ].join("|");
+}
+
 type TiltExclusionsMap = Record<
   string,
   {
@@ -116,6 +144,7 @@ export default function TiltSeriesViewer({
     // stopAutoplayWhenLeavingTiltViewer
     if (mainMode === "metadata") {
       setIsPlaying(false);
+      setIsScrubbing(false);
     }
   }, [mainMode]);
 
@@ -141,11 +170,15 @@ export default function TiltSeriesViewer({
 
   const previewAbortRef = useRef<AbortController | null>(null);
   const previewReqIdRef = useRef(0);
-  const lastPreviewRevokeRef = useRef<(() => void) | null>(null);
+  const previewCacheRef = useRef<Map<string, CachedPreview>>(new Map());
+  const previewInFlightRef = useRef<Set<string>>(new Set());
+  const previewPrefetchTimerRef = useRef<number | null>(null);
+  const treeScrollRef = useRef<HTMLDivElement | null>(null);
   // trackPreviewLoadingStateInARefToUseItSafelyInsideIntervals
   const previewLoadingRef = useRef(false);
 
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isScrubbing, setIsScrubbing] = useState(false);
   const autoplayRef = useRef<number | null>(null);
   const playDirectionRef = useRef<1 | -1>(1);
 
@@ -300,7 +333,7 @@ export default function TiltSeriesViewer({
         if (items.length > 0) {
           const firstId = items[0].tiltSeriesId;
           setSelectedSeriesId(firstId);
-          setExpandedSeriesId(firstId);
+          setExpandedSeriesId(null);
         }
       } catch (e: any) {
         if (!cancelled) {
@@ -542,6 +575,229 @@ export default function TiltSeriesViewer({
     }
   };
 
+  const getPreviewFrameIndex = (frame: TiltViewRow | null | undefined, fallbackIndex: number): number => {
+    const rawIndex = frame?.index != null ? Number(frame.index) : fallbackIndex;
+    return Number.isFinite(rawIndex) ? rawIndex : fallbackIndex;
+  };
+
+  const trimPreviewCache = useCallback((keepKeys: Set<string> = new Set()) => {
+    const cache = previewCacheRef.current;
+
+    if (cache.size <= PREVIEW_CACHE_LIMIT) return;
+
+    const entries = Array.from(cache.entries()).sort((a, b) => a[1].lastUsed - b[1].lastUsed);
+
+    for (const [key, cached] of entries) {
+      if (cache.size <= PREVIEW_CACHE_LIMIT) break;
+      if (keepKeys.has(key)) continue;
+
+      try {
+        cached.revoke?.();
+      } catch {
+        // ignore
+      }
+
+      cache.delete(key);
+    }
+  }, []);
+
+  const prefetchPreviewAtIndex = useCallback(
+    (rowIndex: number, size: number) => {
+      if (mainMode !== "viewer") return;
+      if (selectedSeriesId == null) return;
+      if (!framesData?.frames?.length) return;
+      if (rowIndex < 0 || rowIndex >= framesData.frames.length) return;
+
+      const frame = framesData.frames[rowIndex];
+      const frameIndex = getPreviewFrameIndex(frame, rowIndex);
+
+      const cacheKey = buildPreviewCacheKey(
+        projectId,
+        protocolId,
+        outputName,
+        selectedSeriesId,
+        frameIndex,
+        size,
+        applyTransform,
+      );
+
+      if (previewCacheRef.current.has(cacheKey)) return;
+      if (previewInFlightRef.current.has(cacheKey)) return;
+
+      previewInFlightRef.current.add(cacheKey);
+
+      const options: any = {
+        size,
+        normalize: "minmax",
+      };
+
+      if (applyTransform) {
+        options.applyTransform = true;
+      }
+
+      void (svc as any)
+        .fetchTiltSeriesViewImageObjectUrl(
+          projectId,
+          protocolId,
+          outputName,
+          selectedSeriesId,
+          frameIndex,
+          options,
+        )
+        .then((result: ObjectUrlResult | null) => {
+          if (!result?.url) return;
+
+          previewCacheRef.current.set(cacheKey, {
+            url: result.url,
+            revoke: result.revoke,
+            lastUsed: Date.now(),
+          });
+
+          trimPreviewCache(new Set([cacheKey]));
+        })
+        .catch(() => {
+          // ignore background prefetch errors
+        })
+        .finally(() => {
+          previewInFlightRef.current.delete(cacheKey);
+        });
+    },
+    [
+      mainMode,
+      selectedSeriesId,
+      framesData?.frames,
+      projectId,
+      protocolId,
+      outputName,
+      applyTransform,
+      svc,
+      trimPreviewCache,
+    ],
+  );
+
+  const prefetchPreviewBatch = useCallback(
+    (rowIndexes: number[], size: number) => {
+      if (mainMode !== "viewer") return;
+      if (selectedSeriesId == null) return;
+      if (!framesData?.frames?.length) return;
+
+      const pending: Array<{
+        rowIndex: number;
+        frameIndex: number;
+        cacheKey: string;
+      }> = [];
+
+      const seenFrameIndexes = new Set<number>();
+
+      rowIndexes.forEach((rowIndex) => {
+        if (rowIndex < 0 || rowIndex >= framesData.frames.length) return;
+
+        const frame = framesData.frames[rowIndex];
+        const frameIndex = getPreviewFrameIndex(frame, rowIndex);
+
+        if (seenFrameIndexes.has(frameIndex)) return;
+        seenFrameIndexes.add(frameIndex);
+
+        const cacheKey = buildPreviewCacheKey(
+          projectId,
+          protocolId,
+          outputName,
+          selectedSeriesId,
+          frameIndex,
+          size,
+          applyTransform,
+        );
+
+        if (previewCacheRef.current.has(cacheKey)) return;
+        if (previewInFlightRef.current.has(cacheKey)) return;
+
+        pending.push({ rowIndex, frameIndex, cacheKey });
+      });
+
+      if (!pending.length) return;
+
+      const batchFetcher = (svc as any).fetchTiltSeriesViewImagesBatch;
+
+      if (typeof batchFetcher !== "function") {
+        pending.forEach((item) => {
+          prefetchPreviewAtIndex(item.rowIndex, size);
+        });
+        return;
+      }
+
+      pending.forEach((item) => {
+        previewInFlightRef.current.add(item.cacheKey);
+      });
+
+      void batchFetcher(
+        projectId,
+        protocolId,
+        outputName,
+        selectedSeriesId,
+        {
+          indices: pending.map((item) => item.frameIndex),
+          size,
+          format: "webp",
+          applyTransform,
+        },
+      )
+        .then((result: any) => {
+          const items = Array.isArray(result?.items) ? result.items : [];
+
+          items.forEach((item: any) => {
+            const frameIndex = Number(item?.index);
+            const dataUrl = String(item?.dataUrl ?? "");
+
+            if (!Number.isFinite(frameIndex) || !dataUrl) return;
+
+            const cacheKey = buildPreviewCacheKey(
+              projectId,
+              protocolId,
+              outputName,
+              selectedSeriesId,
+              frameIndex,
+              size,
+              applyTransform,
+            );
+
+            previewCacheRef.current.set(cacheKey, {
+              url: dataUrl,
+              revoke: undefined,
+              lastUsed: Date.now(),
+            });
+          });
+
+          trimPreviewCache(new Set(pending.map((item) => item.cacheKey)));
+        })
+        .catch(() => {
+          pending.forEach((item) => {
+            previewInFlightRef.current.delete(item.cacheKey);
+          });
+
+          pending.forEach((item) => {
+            prefetchPreviewAtIndex(item.rowIndex, size);
+          });
+        })
+        .finally(() => {
+          pending.forEach((item) => {
+            previewInFlightRef.current.delete(item.cacheKey);
+          });
+        });
+    },
+    [
+      mainMode,
+      selectedSeriesId,
+      framesData?.frames,
+      projectId,
+      protocolId,
+      outputName,
+      applyTransform,
+      svc,
+      trimPreviewCache,
+      prefetchPreviewAtIndex,
+    ],
+  );
+
   // previewImageForSelectedViewOnlyWhenFramesAreAlreadyLoaded
   useEffect(() => {
 
@@ -559,7 +815,45 @@ export default function TiltSeriesViewer({
       return;
     }
 
-    const frameIndex = selectedFrame.index != null ? Number(selectedFrame.index) : selectedRowIndex;
+    const baseSize = isPlaying || isScrubbing ? 512 : 1024;
+    const frameIndex = getPreviewFrameIndex(selectedFrame, selectedRowIndex);
+
+    const cacheKey = buildPreviewCacheKey(
+      projectId,
+      protocolId,
+      outputName,
+      selectedSeriesId,
+      frameIndex,
+      baseSize,
+      applyTransform,
+    );
+
+    const shouldBypassPreviewCache = previewReloadToken > 0;
+    const cachedPreview = shouldBypassPreviewCache ? undefined : previewCacheRef.current.get(cacheKey);
+
+    if (cachedPreview) {
+      cachedPreview.lastUsed = Date.now();
+
+      previewAbortRef.current?.abort();
+      setPreviewLoading(false);
+      setPreviewError(null);
+      setPreviewUrl(cachedPreview.url);
+
+      return;
+    }
+
+    if (shouldBypassPreviewCache) {
+      const stalePreview = previewCacheRef.current.get(cacheKey);
+      if (stalePreview?.revoke) {
+        try {
+          stalePreview.revoke();
+        } catch {
+          // ignore
+        }
+      }
+
+      previewCacheRef.current.delete(cacheKey);
+    }
 
     previewAbortRef.current?.abort();
     const controller = new AbortController();
@@ -572,7 +866,7 @@ export default function TiltSeriesViewer({
         setPreviewError(null);
 
         // useSmallerPreviewSizeWhenAutoplayIsActiveToReduceLoad
-        const baseSize = isPlaying ? 512 : 1024;
+        const baseSize = isPlaying || isScrubbing ? 512 : 1024;
 
         const options: any = {
           size: baseSize,
@@ -603,14 +897,15 @@ export default function TiltSeriesViewer({
           return;
         }
 
-        if (lastPreviewRevokeRef.current) {
-          try {
-            lastPreviewRevokeRef.current();
-          } catch {
-            // ignore
-          }
+        if (result?.url) {
+          previewCacheRef.current.set(cacheKey, {
+            url: result.url,
+            revoke: result.revoke,
+            lastUsed: Date.now(),
+          });
+
+          trimPreviewCache(new Set([cacheKey]));
         }
-        lastPreviewRevokeRef.current = result?.revoke ?? null;
 
         setPreviewUrl(result?.url ?? null);
       } catch (e: any) {
@@ -645,6 +940,48 @@ export default function TiltSeriesViewer({
     previewReloadToken,
     applyTransform,
     isPlaying,
+    isScrubbing,
+    trimPreviewCache,
+  ]);
+
+
+  useEffect(() => {
+    if (mainMode !== "viewer") return;
+    if (selectedSeriesId == null) return;
+    if (selectedRowIndex == null) return;
+    if (!framesData?.frames?.length) return;
+
+    if (previewPrefetchTimerRef.current != null) {
+      window.clearTimeout(previewPrefetchTimerRef.current);
+      previewPrefetchTimerRef.current = null;
+    }
+
+    const size = isPlaying || isScrubbing ? 512 : 1024;
+    const offsets = isScrubbing ? SCRUBBING_PREVIEW_NEIGHBOR_OFFSETS : PREVIEW_NEIGHBOR_OFFSETS;
+
+    previewPrefetchTimerRef.current = window.setTimeout(() => {
+      prefetchPreviewBatch(
+        offsets.map((offset) => selectedRowIndex + offset),
+        size,
+      );
+
+      previewPrefetchTimerRef.current = null;
+    }, isScrubbing ? 120 : 60);
+
+    return () => {
+      if (previewPrefetchTimerRef.current != null) {
+        window.clearTimeout(previewPrefetchTimerRef.current);
+        previewPrefetchTimerRef.current = null;
+      }
+    };
+  }, [
+    mainMode,
+    selectedSeriesId,
+    selectedRowIndex,
+    framesData?.frames?.length,
+    isPlaying,
+    isScrubbing,
+    prefetchPreviewBatch,
   ]);
 
   // manageDisplayedUrlVsTransitionUrlForSmoothCrossfade
@@ -673,14 +1010,20 @@ export default function TiltSeriesViewer({
       previewReqIdRef.current += 1;
       previewLoadingRef.current = false;
 
-      if (lastPreviewRevokeRef.current) {
+      if (previewPrefetchTimerRef.current != null) {
+        window.clearTimeout(previewPrefetchTimerRef.current);
+        previewPrefetchTimerRef.current = null;
+      }
+
+      previewCacheRef.current.forEach((cached) => {
         try {
-          lastPreviewRevokeRef.current();
+          cached.revoke?.();
         } catch {
           // ignore
         }
-        lastPreviewRevokeRef.current = null;
-      }
+      });
+      previewCacheRef.current.clear();
+      previewInFlightRef.current.clear();
 
       if (autoplayRef.current != null) {
         window.clearInterval(autoplayRef.current);
@@ -690,6 +1033,9 @@ export default function TiltSeriesViewer({
   }, []);
 
   const totalFrames = framesData?.frames.length ?? 0;
+  const sliceSliderMax = Math.max(totalFrames - 1, 0);
+  const sliceSliderValue =
+    selectedRowIndex == null ? 0 : Math.min(Math.max(selectedRowIndex, 0), sliceSliderMax);
 
   const tiltAxisAngle = framesData?.tiltAxisAngle ?? activeSeries?.tiltAxisAngle ?? null;
 
@@ -722,8 +1068,54 @@ export default function TiltSeriesViewer({
     }
   };
 
+  const handleSliceSliderChange = (_: Event, value: number | number[]) => {
+    const rawValue = Array.isArray(value) ? value[0] : value;
+    const nextIndex = Math.round(Number(rawValue));
+
+    if (!Number.isFinite(nextIndex) || totalFrames <= 0) return;
+
+    setIsPlaying(false);
+    setIsScrubbing(true);
+    setSelectedRowIndex(Math.min(Math.max(nextIndex, 0), totalFrames - 1));
+  };
+
+  const handleSliceSliderCommitted = (_: any, value: number | number[]) => {
+    const rawValue = Array.isArray(value) ? value[0] : value;
+    const nextIndex = Math.round(Number(rawValue));
+
+    setIsScrubbing(false);
+
+    if (!Number.isFinite(nextIndex) || totalFrames <= 0) return;
+
+    setSelectedRowIndex(Math.min(Math.max(nextIndex, 0), totalFrames - 1));
+  };
+
+  useEffect(() => {
+    if (mainMode !== "viewer") return;
+    if (selectedRowIndex == null || !framesData?.frames?.length) return;
+    if (selectedSeriesId == null || expandedSeriesId == null) return;
+    if (String(selectedSeriesId) !== String(expandedSeriesId)) return;
+
+    window.requestAnimationFrame(() => {
+      const root = treeScrollRef.current;
+      if (!root) return;
+
+      const selectedRow = root.querySelector('[data-selected-tilt-row="true"]') as HTMLElement | null;
+      if (typeof selectedRow?.scrollIntoView === "function") {
+        selectedRow.scrollIntoView({ block: "nearest", inline: "nearest" });
+      }
+    });
+  }, [
+    mainMode,
+    selectedRowIndex,
+    selectedSeriesId,
+    expandedSeriesId,
+    framesData?.tiltSeriesId,
+    framesData?.frames?.length,
+    filteredFrames.length,
+  ]);
+
   const handleSeriesRowClick = (seriesId: Id) => {
-    setExpandedSeriesId(seriesId);
     setSelectedSeriesId((prev) => (prev != null && String(prev) === String(seriesId) ? prev : seriesId));
   };
 
@@ -1042,6 +1434,7 @@ export default function TiltSeriesViewer({
           </Paper>
 
           <Box
+            ref={treeScrollRef}
             sx={{
               flex: 1,
               minHeight: 0,
@@ -1182,6 +1575,7 @@ export default function TiltSeriesViewer({
                                 key={`${String(s.tiltSeriesId)}-${String(row.viewId)}`}
                                 hover
                                 selected={isSelectedRow}
+                                data-selected-tilt-row={isSelectedRow ? "true" : undefined}
                                 onClick={() => handleRowClick(row)}
                                 sx={{
                                   cursor: "pointer",
@@ -1460,7 +1854,7 @@ export default function TiltSeriesViewer({
               </Typography>
             ) : (
               <>
-                {previewLoading && (
+                {previewLoading && !displayedUrl && !transitionUrl && (
                   <Box
                     sx={{
                       position: "absolute",
@@ -1492,7 +1886,7 @@ export default function TiltSeriesViewer({
                           position: "absolute",
                           top: 0,
                           left: 0,
-                          animation: "tiltFadeIn 220ms ease-out",
+                          animation: "tiltFadeIn 120ms ease-out",
                           "@keyframes tiltFadeIn": {
                             from: { opacity: 0 },
                             to: { opacity: 1 },
@@ -1504,6 +1898,43 @@ export default function TiltSeriesViewer({
                 )}
               </>
             )}
+          </Box>
+
+          <Box
+            sx={{
+              px: 1.5,
+              py: 0.75,
+              borderTop: "1px solid #e5e7eb",
+              bgcolor: "background.paper",
+              display: "flex",
+              alignItems: "center",
+              gap: 1.5,
+            }}
+          >
+
+            <Slider
+              size="small"
+              value={sliceSliderValue}
+              min={0}
+              max={sliceSliderMax}
+              step={1}
+              disabled={totalFrames <= 1}
+              onChange={handleSliceSliderChange}
+              onChangeCommitted={handleSliceSliderCommitted}
+              valueLabelDisplay="auto"
+              valueLabelFormat={(value) => `View ${Number(value) + 1}`}
+              sx={{ flex: 1, minWidth: 120, ml: 10 }}
+            />
+
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ minWidth: 72, textAlign: "right", fontSize: "0.7rem" }}
+            >
+              {selectedRowIndex != null && totalFrames > 0
+                ? `${selectedRowIndex + 1} / ${totalFrames}`
+                : "0 / 0"}
+            </Typography>
           </Box>
 
           <Box

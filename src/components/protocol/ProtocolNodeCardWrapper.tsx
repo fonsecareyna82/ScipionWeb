@@ -47,6 +47,7 @@ export const createStatusNodeWrapper = (
   getProjectId?: () => string | number | undefined,
   getAnalyzeViewerService?: () => ExternalAnalyzeViewerService | undefined,
   getContextMenuVisibility?: () => NodeMenuVisibility | undefined,
+  getProtocolOutputThumbnailsEnabled?: () => boolean,
 ) => {
   return function StatusNodeWrapper(props: NodeProps) {
     const { data, id, ...rest } = props;
@@ -71,15 +72,17 @@ export const createStatusNodeWrapper = (
     const resolvedProjectId = getProjectId?.();
     const analyzeViewerService = getAnalyzeViewerService?.();
     const contextMenuVisibility = getContextMenuVisibility?.();
+    const protocolOutputThumbnailsEnabled =
+      getProtocolOutputThumbnailsEnabled?.() === true;
 
     const mergedData = useMemo(() => {
       const d = (data as any) ?? {};
       return {
         ...d,
-        // injectProjectIdIntoData
         projectId: d.projectId ?? resolvedProjectId,
+        protocolOutputThumbnailsEnabled,
       };
-    }, [data, resolvedProjectId]);
+    }, [data, resolvedProjectId, protocolOutputThumbnailsEnabled]);
 
     return (
       <div

@@ -4,8 +4,18 @@
 }
 
 .project-workspace-panel .projectpage-widget-root .h-app {
-  height: calc(90vh - var(--ppHostOffset, 0px));
-  min-height: calc(90vh - var(--ppHostOffset, 0px));
+  height: calc(91vh - var(--ppHostOffset, 0px));
+  min-height: calc(91vh - var(--ppHostOffset, 0px));
+}
+
+.project-workspace-panel .projectpage-widget-root .dock-scroll {
+  max-height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.project-workspace-panel .projectpage-widget-root .dock-panel {
+  min-height: 0;
 }
 
 [aria-label="Project workspaces"] {

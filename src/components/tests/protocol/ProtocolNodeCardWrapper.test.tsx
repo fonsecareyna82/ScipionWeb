@@ -138,6 +138,7 @@ describe("ProtocolNodeCardWrapper", () => {
         expect(props.data).toEqual({
             label: "Protocol A",
             projectId: "project-7",
+            protocolOutputThumbnailsEnabled: false,
         });
         expect(props.zoomLevel).toBe(1.5);
     });
@@ -153,6 +154,7 @@ describe("ProtocolNodeCardWrapper", () => {
         expect(props.data).toEqual({
             label: "Protocol A",
             projectId: "existing-project",
+            protocolOutputThumbnailsEnabled: false,
         });
     });
 
@@ -169,6 +171,7 @@ describe("ProtocolNodeCardWrapper", () => {
             {
                 label: "Protocol A",
                 projectId: "project-7",
+                protocolOutputThumbnailsEnabled: false,
             },
             undefined,
         );
@@ -176,6 +179,7 @@ describe("ProtocolNodeCardWrapper", () => {
         expect(onDoubleClick).toHaveBeenCalledWith({
             label: "Protocol A",
             projectId: "project-7",
+            protocolOutputThumbnailsEnabled: false,
         });
     });
 

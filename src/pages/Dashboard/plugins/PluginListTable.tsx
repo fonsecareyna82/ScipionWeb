@@ -42,7 +42,7 @@ export default function PluginListTable({
   selectedPipNames,
   processingByPipName,
   activePluginPipName,
-  maxHeightClassName = "max-h-[calc(100vh-360px)]",
+  maxHeightClassName = "",
   onTogglePlugin,
   onToggleAllVisible,
   onSelectPlugin,
@@ -54,8 +54,8 @@ export default function PluginListTable({
   const allSelectableSelected = selectablePlugins.length > 0 && selectablePlugins.every((plugin) => selectedPipNames.has(plugin.pipName));
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-gray-200/70 bg-white/70 shadow-sm dark:border-gray-800/80 dark:bg-white/[0.01]">
-      <div className={classNames("overflow-auto", maxHeightClassName)}>
+    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-gray-200/70 bg-white/70 shadow-sm dark:border-gray-800/80 dark:bg-white/[0.01]">
+      <div className={classNames("min-h-0 flex-1 overflow-auto overscroll-contain", maxHeightClassName)}>
         <div className={classNames(
           listGridClassName,
           "sticky top-0 z-20 border-b border-gray-200/70 bg-gray-50/95 px-4 py-3 text-xs font-semibold text-gray-600 backdrop-blur dark:border-gray-800/70 dark:bg-slate-950/95 dark:text-gray-300",
@@ -89,29 +89,40 @@ export default function PluginListTable({
             return (
               <div
                 key={plugin.pipName}
+                role="button"
+                tabIndex={0}
+                onClick={() => onSelectPlugin(plugin)}
+                onKeyDown={(event) => {
+                  if (event.key !== "Enter" && event.key !== " ") return;
+
+                  event.preventDefault();
+                  onSelectPlugin(plugin);
+                }}
                 className={classNames(
                   listGridClassName,
-                  "px-4 py-3 transition",
+                  "cursor-pointer px-4 py-3 transition focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:focus:ring-indigo-400/20",
                   isActive
                     ? "bg-[#333d49]/[0.08] dark:bg-white/[0.05]"
                     : "hover:bg-gray-50/80 dark:hover:bg-white/[0.02]",
                 )}
+                aria-label={`Show details for ${plugin.name}`}
+                title={`Show details for ${plugin.name}`}
               >
                 <div className="flex items-center justify-center">
                   <input
                     type="checkbox"
                     checked={isSelected}
-                    onChange={() => onTogglePlugin(plugin)}
+                    onClick={(event) => event.stopPropagation()}
+                    onChange={(event) => {
+                      event.stopPropagation();
+                      onTogglePlugin(plugin);
+                    }}
                     disabled={!selectable}
                     aria-label={`Select ${plugin.name}`}
                   />
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => onSelectPlugin(plugin)}
-                  className="flex min-w-0 items-center gap-3 text-left"
-                >
+                <div className="flex min-w-0 items-center gap-3 text-left">
                   <PluginLogo plugin={plugin} />
                   <div className="min-w-0">
                     <div className="truncate text-sm font-semibold text-gray-900 dark:text-white" title={plugin.name}>
@@ -121,7 +132,7 @@ export default function PluginListTable({
                       {plugin.pipName}
                     </div>
                   </div>
-                </button>
+                </div>
 
                 <div className="flex items-center">
                   <span className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-[11px] font-semibold text-gray-700 dark:border-gray-800 dark:bg-white/[0.04] dark:text-gray-200">
@@ -172,7 +183,10 @@ export default function PluginListTable({
                 <div className="flex items-center justify-end">
                   <button
                     type="button"
-                    onClick={() => onOpenDetails(plugin)}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onOpenDetails(plugin);
+                    }}
                     className="inline-flex items-center gap-1.5 rounded-xl border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-800 shadow-sm transition hover:border-gray-400 hover:shadow-md dark:border-gray-700 dark:bg-slate-900 dark:text-white"
                   >
                     <Eye className="h-3.5 w-3.5" />
