@@ -74,7 +74,7 @@ export function openPrintableComparisonReport(options: {
 }): void {
   if (typeof window === "undefined") return;
 
-  const reportWindow = window.open("", "_blank", "noopener,noreferrer,width=1100,height=900");
+  const reportWindow = window.open("", "_blank", "width=1100,height=900,scrollbars=yes,resizable=yes");
   if (!reportWindow) {
     throw new Error("The browser blocked the printable report window");
   }
@@ -218,6 +218,25 @@ export function openPrintableComparisonReport(options: {
       break-inside: avoid;
     }
 
+    .print-actions {
+      display: flex;
+      justify-content: flex-end;
+      padding: 14px 18px;
+      background: #f8fafc;
+      border-bottom: 1px solid #e2e8f0;
+    }
+
+    .print-actions button {
+      border: 1px solid #bfdbfe;
+      background: #2563eb;
+      color: #ffffff;
+      border-radius: 12px;
+      padding: 8px 12px;
+      font-size: 12px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
     table {
       width: 100%;
       border-collapse: collapse;
@@ -276,6 +295,9 @@ export function openPrintableComparisonReport(options: {
 </head>
 <body>
   <main class="report">
+    <div class="print-actions no-print">
+      <button type="button" onclick="window.print()">Print or save as PDF</button>
+    </div>
     <section class="cover">
       <div class="cover-content">
         <div class="eyebrow">ScipionWeb comparison report</div>
@@ -291,13 +313,13 @@ export function openPrintableComparisonReport(options: {
       ${bodyHtml}
     </section>
   </main>
-  <script>
-    window.addEventListener("load", () => {
-      window.focus();
-      window.setTimeout(() => window.print(), 250);
-    });
-  </script>
 </body>
 </html>`);
   reportWindow.document.close();
+  reportWindow.focus();
+
+  window.setTimeout(() => {
+    reportWindow.focus();
+    reportWindow.print();
+  }, 350);
 }
