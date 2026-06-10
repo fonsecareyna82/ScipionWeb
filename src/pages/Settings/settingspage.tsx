@@ -2001,7 +2001,7 @@ export default function SettingsPage() {
       <PageBreadcrumb pageTitle="Settings" />
 
       <div
-        className="relative rounded-2xl border p-5 lg:p-6"
+        className="relative flex h-[calc(100dvh-132px)] min-h-0 flex-col overflow-hidden rounded-2xl border p-5 lg:p-6"
         style={{
           maxWidth: wrapperMaxWidth,
           width: "100%",
@@ -2010,7 +2010,7 @@ export default function SettingsPage() {
           color: colors.text,
         }}
       >
-        <Stack spacing={1.75}>
+        <Stack spacing={1.75} sx={{ width: "100%", height: "100%", minHeight: 0 }}>
           <Paper
             variant="outlined"
             sx={{
@@ -2019,9 +2019,13 @@ export default function SettingsPage() {
               bgcolor: "transparent",
               borderColor: colors.border,
               color: colors.text,
+              display: "flex",
+              flexDirection: "column",
+              flex: 1,
+              minHeight: 0,
             }}
           >
-            <Box sx={{ px: 2, pt: 1.75, pb: 1.25 }}>
+            <Box sx={{ px: 2, pt: 1.75, pb: 1.25, flexShrink: 0 }}>
               <Stack direction={{ xs: "column", sm: "row" }} spacing={1.25} alignItems="flex-start">
                 <Box sx={{ flex: 1 }}>
                   <Typography sx={{ color: colors.muted, fontSize: 13 }}>
@@ -2040,7 +2044,7 @@ export default function SettingsPage() {
               variant="scrollable"
               allowScrollButtonsMobile
               scrollButtons="auto"
-              sx={tabsSx}
+              sx={{ ...tabsSx, flexShrink: 0 }}
             >
               <Tab value="user" label="User" />
               <Tab value="instance" label="Instance" />
@@ -2051,7 +2055,15 @@ export default function SettingsPage() {
 
             <Divider sx={dividerSx} />
 
-            <Box sx={{ p: 2 }}>
+            <Box
+              sx={{
+                p: 2,
+                minHeight: 0,
+                flex: 1,
+                overflowY: "auto",
+                overscrollBehavior: "contain",
+              }}
+            >
               {tab === "user"
                 ? renderUserContent()
                 : tab === "instance"
