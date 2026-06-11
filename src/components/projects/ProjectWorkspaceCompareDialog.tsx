@@ -215,10 +215,10 @@ function getNestedRecordLabel(value: Record<string, unknown>, key: string): stri
 
   return getText(
     nestedValue["label"] ??
-      nestedValue["displayLabel"] ??
-      nestedValue["displayName"] ??
-      nestedValue["title"] ??
-      nestedValue["paramLabel"],
+    nestedValue["displayLabel"] ??
+    nestedValue["displayName"] ??
+    nestedValue["title"] ??
+    nestedValue["paramLabel"],
     "",
   );
 }
@@ -228,10 +228,10 @@ function getInlineParamLabel(value: unknown): string {
 
   const directLabel = getText(
     value["label"] ??
-      value["displayLabel"] ??
-      value["displayName"] ??
-      value["title"] ??
-      value["paramLabel"],
+    value["displayLabel"] ??
+    value["displayName"] ??
+    value["title"] ??
+    value["paramLabel"],
     "",
   );
 
@@ -439,17 +439,68 @@ function getLabelSimilarity(a: string, b: string): number {
   return intersection.length / union.size;
 }
 
-function getParamSimilarity(leftParams: ProtocolParams, rightParams: ProtocolParams): number {
-  const keys = new Set([...Object.keys(leftParams), ...Object.keys(rightParams)]);
+function getParamMatchLabel(
+  name: string,
+  leftLabels: ProtocolParamLabels = {},
+  rightLabels: ProtocolParamLabels = {},
+): string {
+  return getText(leftLabels[name] ?? rightLabels[name] ?? name, name);
+}
 
-  if (!keys.size) return 0.72;
+function isNoisyMatchParam(
+  name: string,
+  leftLabels: ProtocolParamLabels = {},
+  rightLabels: ProtocolParamLabels = {},
+): boolean {
+  const label = getParamMatchLabel(name, leftLabels, rightLabels);
+  const key = normalizeComparableText(`${label} ${name}`);
 
-  let matches = 0;
+  return /run name|comment|expert level|prerequisite|wait for|queue|host|gpu|cpu|thread|mpi|memory|lane|batch|cache|ssd|tag|note|date|version/.test(key);
+}
+
+function getParamMatchWeight(
+  name: string,
+  leftLabels: ProtocolParamLabels = {},
+  rightLabels: ProtocolParamLabels = {},
+): number {
+  const label = getParamMatchLabel(name, leftLabels, rightLabels);
+  const category = getParamDiffCategory(`${label} ${name}`);
+
+  if (category === "inputs") return 2.5;
+  if (category === "sampling") return 2.25;
+  if (category === "mask") return 2;
+  if (category === "reconstruction") return 2;
+  if (category === "metadata") return 0.45;
+  if (category === "compute") return 0.35;
+
+  return 1;
+}
+
+function getParamSimilarity(
+  leftParams: ProtocolParams,
+  rightParams: ProtocolParams,
+  leftLabels: ProtocolParamLabels = {},
+  rightLabels: ProtocolParamLabels = {},
+): number {
+  const keys = Array.from(new Set([...Object.keys(leftParams), ...Object.keys(rightParams)])).filter(
+    (key) => !isNoisyMatchParam(key, leftLabels, rightLabels),
+  );
+
+  if (!keys.length) return 0.72;
+
+  let matchedWeight = 0;
+  let totalWeight = 0;
+
   for (const key of keys) {
-    if ((leftParams[key] ?? "") === (rightParams[key] ?? "")) matches += 1;
+    const weight = getParamMatchWeight(key, leftLabels, rightLabels);
+    totalWeight += weight;
+
+    if ((leftParams[key] ?? "") === (rightParams[key] ?? "")) {
+      matchedWeight += weight;
+    }
   }
 
-  return matches / keys.size;
+  return totalWeight ? matchedWeight / totalWeight : 0.72;
 }
 
 function getIdSimilarity(leftId: string, rightId: string): number {
@@ -467,7 +518,12 @@ function getIdSimilarity(leftId: string, rightId: string): number {
 
 function getProtocolMatchScore(leftProtocol: ProtocolSummary, rightProtocol: ProtocolSummary): number {
   const labelSimilarity = getLabelSimilarity(leftProtocol.label, rightProtocol.label);
-  const paramSimilarity = getParamSimilarity(leftProtocol.params, rightProtocol.params);
+  const paramSimilarity = getParamSimilarity(
+    leftProtocol.params,
+    rightProtocol.params,
+    leftProtocol.paramLabels,
+    rightProtocol.paramLabels,
+  );
   const idSimilarity = getIdSimilarity(leftProtocol.id, rightProtocol.id);
   const statusScore = leftProtocol.status === rightProtocol.status ? 1 : 0;
   const outputScore =
@@ -478,12 +534,12 @@ function getProtocolMatchScore(leftProtocol: ProtocolSummary, rightProtocol: Pro
         : 0;
 
   const score =
-    20 +
-    labelSimilarity * 30 +
-    statusScore * 15 +
-    outputScore * 15 +
-    paramSimilarity * 15 +
-    idSimilarity * 5;
+    18 +
+    labelSimilarity * 32 +
+    paramSimilarity * 30 +
+    outputScore * 10 +
+    statusScore * 8 +
+    idSimilarity * 2;
 
   return Math.min(100, Math.round(score));
 }
@@ -661,8 +717,11 @@ function buildProtocolRows(left: ProjectSummary, right: ProjectSummary): Protoco
     const usedRight = new Set<number>();
     const classRows: ProtocolComparisonRow[] = [];
 
+    const minimumCandidateScore = leftProtocols.length === 1 && rightProtocols.length === 1 ? 36 : 50;
+
     for (const candidate of candidates) {
       if (usedLeft.has(candidate.leftIndex) || usedRight.has(candidate.rightIndex)) continue;
+      if (candidate.score < minimumCandidateScore) continue;
 
       usedLeft.add(candidate.leftIndex);
       usedRight.add(candidate.rightIndex);
