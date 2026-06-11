@@ -1090,6 +1090,22 @@ export default function CTFTomoViewer({ projectId, protocolId, outputName }: CTF
             >
               Help
             </Button>
+
+            <Tooltip title="Show metadata viewer">
+                <span>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    startIcon={<MetadataIcon fontSize="small" />}
+                    disabled={!canOpenMetadata}
+                    onClick={() => setMainMode("metadata")}
+                    sx={{ textTransform: "none" }}
+                  >
+                    Metadata
+                  </Button>
+                </span>
+              </Tooltip>
+
             {seriesLoading && (
               <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
                 <CircularProgress size={14} />
