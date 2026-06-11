@@ -71,6 +71,7 @@ type ProtocolComparisonRow = {
   matchScore: number;
   matchQuality: ProtocolMatchQuality;
   paramDiffRows: ParamDiffRow[];
+  matchReasons: string[];
 };
 
 type CompareResult = {
@@ -215,10 +216,10 @@ function getNestedRecordLabel(value: Record<string, unknown>, key: string): stri
 
   return getText(
     nestedValue["label"] ??
-    nestedValue["displayLabel"] ??
-    nestedValue["displayName"] ??
-    nestedValue["title"] ??
-    nestedValue["paramLabel"],
+      nestedValue["displayLabel"] ??
+      nestedValue["displayName"] ??
+      nestedValue["title"] ??
+      nestedValue["paramLabel"],
     "",
   );
 }
@@ -228,10 +229,10 @@ function getInlineParamLabel(value: unknown): string {
 
   const directLabel = getText(
     value["label"] ??
-    value["displayLabel"] ??
-    value["displayName"] ??
-    value["title"] ??
-    value["paramLabel"],
+      value["displayLabel"] ??
+      value["displayName"] ??
+      value["title"] ??
+      value["paramLabel"],
     "",
   );
 
@@ -439,68 +440,17 @@ function getLabelSimilarity(a: string, b: string): number {
   return intersection.length / union.size;
 }
 
-function getParamMatchLabel(
-  name: string,
-  leftLabels: ProtocolParamLabels = {},
-  rightLabels: ProtocolParamLabels = {},
-): string {
-  return getText(leftLabels[name] ?? rightLabels[name] ?? name, name);
-}
+function getParamSimilarity(leftParams: ProtocolParams, rightParams: ProtocolParams): number {
+  const keys = new Set([...Object.keys(leftParams), ...Object.keys(rightParams)]);
 
-function isNoisyMatchParam(
-  name: string,
-  leftLabels: ProtocolParamLabels = {},
-  rightLabels: ProtocolParamLabels = {},
-): boolean {
-  const label = getParamMatchLabel(name, leftLabels, rightLabels);
-  const key = normalizeComparableText(`${label} ${name}`);
+  if (!keys.size) return 0.72;
 
-  return /run name|comment|expert level|prerequisite|wait for|queue|host|gpu|cpu|thread|mpi|memory|lane|batch|cache|ssd|tag|note|date|version/.test(key);
-}
-
-function getParamMatchWeight(
-  name: string,
-  leftLabels: ProtocolParamLabels = {},
-  rightLabels: ProtocolParamLabels = {},
-): number {
-  const label = getParamMatchLabel(name, leftLabels, rightLabels);
-  const category = getParamDiffCategory(`${label} ${name}`);
-
-  if (category === "inputs") return 2.5;
-  if (category === "sampling") return 2.25;
-  if (category === "mask") return 2;
-  if (category === "reconstruction") return 2;
-  if (category === "metadata") return 0.45;
-  if (category === "compute") return 0.35;
-
-  return 1;
-}
-
-function getParamSimilarity(
-  leftParams: ProtocolParams,
-  rightParams: ProtocolParams,
-  leftLabels: ProtocolParamLabels = {},
-  rightLabels: ProtocolParamLabels = {},
-): number {
-  const keys = Array.from(new Set([...Object.keys(leftParams), ...Object.keys(rightParams)])).filter(
-    (key) => !isNoisyMatchParam(key, leftLabels, rightLabels),
-  );
-
-  if (!keys.length) return 0.72;
-
-  let matchedWeight = 0;
-  let totalWeight = 0;
-
+  let matches = 0;
   for (const key of keys) {
-    const weight = getParamMatchWeight(key, leftLabels, rightLabels);
-    totalWeight += weight;
-
-    if ((leftParams[key] ?? "") === (rightParams[key] ?? "")) {
-      matchedWeight += weight;
-    }
+    if ((leftParams[key] ?? "") === (rightParams[key] ?? "")) matches += 1;
   }
 
-  return totalWeight ? matchedWeight / totalWeight : 0.72;
+  return matches / keys.size;
 }
 
 function getIdSimilarity(leftId: string, rightId: string): number {
@@ -518,12 +468,7 @@ function getIdSimilarity(leftId: string, rightId: string): number {
 
 function getProtocolMatchScore(leftProtocol: ProtocolSummary, rightProtocol: ProtocolSummary): number {
   const labelSimilarity = getLabelSimilarity(leftProtocol.label, rightProtocol.label);
-  const paramSimilarity = getParamSimilarity(
-    leftProtocol.params,
-    rightProtocol.params,
-    leftProtocol.paramLabels,
-    rightProtocol.paramLabels,
-  );
+  const paramSimilarity = getParamSimilarity(leftProtocol.params, rightProtocol.params);
   const idSimilarity = getIdSimilarity(leftProtocol.id, rightProtocol.id);
   const statusScore = leftProtocol.status === rightProtocol.status ? 1 : 0;
   const outputScore =
@@ -534,12 +479,12 @@ function getProtocolMatchScore(leftProtocol: ProtocolSummary, rightProtocol: Pro
         : 0;
 
   const score =
-    18 +
-    labelSimilarity * 32 +
-    paramSimilarity * 30 +
-    outputScore * 10 +
-    statusScore * 8 +
-    idSimilarity * 2;
+    20 +
+    labelSimilarity * 30 +
+    statusScore * 15 +
+    outputScore * 15 +
+    paramSimilarity * 15 +
+    idSimilarity * 5;
 
   return Math.min(100, Math.round(score));
 }
@@ -642,6 +587,72 @@ function getProtocolMatchType(
   return sameStatus && sameOutputs && sameLabel && sameParams ? "shared" : "changed";
 }
 
+
+function getProtocolMatchReasons(
+  leftProtocol: ProtocolSummary | undefined,
+  rightProtocol: ProtocolSummary | undefined,
+  matchScore: number,
+  paramDiffRows: ParamDiffRow[],
+): string[] {
+  if (leftProtocol && !rightProtocol) return ["Protocol exists only in the left project."];
+  if (!leftProtocol && rightProtocol) return ["Protocol exists only in the right project."];
+  if (!leftProtocol || !rightProtocol) return ["Missing protocol data for one side."];
+
+  const reasons: string[] = ["Same protocol class."];
+  const labelSimilarity = getLabelSimilarity(leftProtocol.label, rightProtocol.label);
+  const paramSimilarity = getParamSimilarity(leftProtocol.params, rightProtocol.params);
+  const idSimilarity = getIdSimilarity(leftProtocol.id, rightProtocol.id);
+  const criticalParamCount = paramDiffRows.filter((paramRow) => paramRow.severity === "critical").length;
+
+  if (labelSimilarity >= 0.9) {
+    reasons.push("Run labels are highly similar.");
+  } else if (labelSimilarity >= 0.6) {
+    reasons.push("Run labels are partially similar.");
+  } else {
+    reasons.push("Run labels differ significantly.");
+  }
+
+  if (paramDiffRows.length === 0) {
+    reasons.push("No parameter differences detected in the loaded payload.");
+  } else {
+    reasons.push(`${paramDiffRows.length} parameter differences detected.`);
+  }
+
+  if (criticalParamCount > 0) {
+    reasons.push(`${criticalParamCount} critical parameter differences detected.`);
+  }
+
+  if (paramSimilarity >= 0.85) {
+    reasons.push("Parameter values are highly similar.");
+  } else if (paramSimilarity >= 0.6) {
+    reasons.push("Parameter values are partially similar.");
+  } else {
+    reasons.push("Parameter values differ significantly.");
+  }
+
+  if (leftProtocol.status === rightProtocol.status) {
+    reasons.push("Same execution status.");
+  } else {
+    reasons.push(`Different execution status: ${leftProtocol.status} vs ${rightProtocol.status}.`);
+  }
+
+  if (leftProtocol.outputCount === rightProtocol.outputCount) {
+    reasons.push("Same output count.");
+  } else {
+    reasons.push(`Different output count: ${leftProtocol.outputCount} vs ${rightProtocol.outputCount}.`);
+  }
+
+  if (idSimilarity > 0) {
+    reasons.push("Protocol IDs are close enough to support the match.");
+  }
+
+  if (matchScore < 65) {
+    reasons.push("Low confidence match, review manually.");
+  }
+
+  return reasons;
+}
+
 function groupByClass(protocols: ProtocolSummary[]): Map<string, ProtocolSummary[]> {
   const groups = new Map<string, ProtocolSummary[]>();
 
@@ -686,6 +697,7 @@ function buildMatchedRow(
     matchScore,
     matchQuality: getMatchQuality(matchScore, matchType),
     paramDiffRows,
+    matchReasons: getProtocolMatchReasons(leftProtocol, rightProtocol, matchScore, paramDiffRows),
   };
 }
 
@@ -717,11 +729,8 @@ function buildProtocolRows(left: ProjectSummary, right: ProjectSummary): Protoco
     const usedRight = new Set<number>();
     const classRows: ProtocolComparisonRow[] = [];
 
-    const minimumCandidateScore = leftProtocols.length === 1 && rightProtocols.length === 1 ? 36 : 50;
-
     for (const candidate of candidates) {
       if (usedLeft.has(candidate.leftIndex) || usedRight.has(candidate.rightIndex)) continue;
-      if (candidate.score < minimumCandidateScore) continue;
 
       usedLeft.add(candidate.leftIndex);
       usedRight.add(candidate.rightIndex);
@@ -1888,7 +1897,7 @@ function ProtocolDiffTable(props: {
                       </button>
                     </td>
                     <td className="px-3 py-3 align-top"><MatchBadge matchType={row.matchType} /></td>
-                    <td className="whitespace-nowrap px-3 py-3 align-top"><ConfidenceBadge score={row.matchScore} quality={row.matchQuality} /></td>
+                    <td className="whitespace-nowrap px-3 py-3 align-top" title={row.matchReasons.join("\n") || undefined}><ConfidenceBadge score={row.matchScore} quality={row.matchQuality} /></td>
                   </tr>
                 );
               })}
