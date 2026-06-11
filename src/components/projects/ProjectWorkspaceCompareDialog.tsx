@@ -937,6 +937,9 @@ function buildComparisonReportMarkdown(comparison: CompareResult): string {
   const onlyRightRows = comparison.protocolRows.filter((row) => row.matchType === "only-right");
   const weakRows = comparison.protocolRows.filter((row) => row.matchQuality === "weak");
   const criticalRows = comparison.protocolRows.filter(hasCriticalParamDiff);
+  const matchNoteRows = comparison.protocolRows
+    .filter((row) => row.matchQuality === "weak" || row.matchQuality === "likely" || hasCriticalParamDiff(row))
+    .slice(0, 20);
   const keyRows = comparison.protocolRows
     .filter((row) => row.matchType !== "shared" || row.matchQuality === "weak" || row.paramDiffRows.length > 0)
     .slice(0, 30);
@@ -992,6 +995,25 @@ function buildComparisonReportMarkdown(comparison: CompareResult): string {
     );
   });
   lines.push("");
+
+  if (matchNoteRows.length) {
+    lines.push("## Match confidence notes");
+    matchNoteRows.forEach((row) => {
+      lines.push("");
+      lines.push(`### ${row.className}`);
+      lines.push(`Left: ${formatProtocolForReport(row.leftProtocol)}`);
+      lines.push(`Right: ${formatProtocolForReport(row.rightProtocol)}`);
+      lines.push(`Confidence: ${row.matchQuality} · ${row.matchScore}%`);
+      lines.push("");
+
+      if (row.matchReasons.length) {
+        row.matchReasons.forEach((reason) => lines.push(`- ${reason}`));
+      } else {
+        lines.push("- No detailed match reason was recorded for this row.");
+      }
+    });
+    lines.push("");
+  }
 
   if (criticalRows.length) {
     lines.push("## Critical parameter differences");
