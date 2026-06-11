@@ -922,10 +922,9 @@ function ReportActions(props: { comparison: CompareResult }) {
         <div className="min-w-0">
           <h3 className="text-sm font-bold text-slate-950 dark:text-white">Shareable comparison report</h3>
           <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-            Copy the scientific summary, open a printable PDF report or export the editable Markdown source.
+            Copy the scientific summary or export a Markdown report with metrics, deltas and critical parameter differences.
           </p>
         </div>
-
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
@@ -1033,7 +1032,7 @@ function MatchBadge(props: { matchType: ProtocolMatchType }) {
 
 function ConfidenceBadge(props: { score: number; quality: ProtocolMatchQuality }) {
   if (props.quality === "none") {
-    return <span className="text-[11px] text-gray-400 dark:text-gray-500">No match</span>;
+    return <span className="whitespace-nowrap text-[11px] text-gray-400 dark:text-gray-500">No match</span>;
   }
 
   const tone =
@@ -1044,8 +1043,10 @@ function ConfidenceBadge(props: { score: number; quality: ProtocolMatchQuality }
         : "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200";
 
   return (
-    <span className={classNames("inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold capitalize", tone)}>
-      {props.quality} · {props.score}%
+    <span className={classNames("inline-flex items-center whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-semibold capitalize", tone)}>
+      <span>{props.quality}</span>
+      <span className="mx-1 opacity-70">·</span>
+      <span>{props.score}%</span>
     </span>
   );
 }
@@ -1104,12 +1105,27 @@ function groupParamDiffRows(rows: ParamDiffRow[]): Array<{ category: ParamDiffCa
     .filter((group) => group.rows.length > 0);
 }
 
-function ParamDiffTable(props: { rows: ParamDiffRow[]; loading?: boolean; error?: string | null; sourceLabel?: string }) {
+function ParamDiffTable(props: {
+  rows: ParamDiffRow[];
+  loading?: boolean;
+  error?: string | null;
+  sourceLabel?: string;
+  leftProtocol?: ProtocolSummary;
+  rightProtocol?: ProtocolSummary;
+}) {
+  const [severityFilter, setSeverityFilter] = useState<"all" | ParamDiffSeverity>("all");
+  const [query, setQuery] = useState("");
+
+  useEffect(() => {
+    setSeverityFilter("all");
+    setQuery("");
+  }, [props.leftProtocol?.id, props.rightProtocol?.id, props.sourceLabel]);
+
   if (props.loading) {
     return (
       <div className="flex items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 p-3 text-xs text-gray-600 dark:border-gray-700 dark:bg-slate-900 dark:text-gray-300">
         <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-        Loading protocol details from fetchProtocolDetails...
+        Loading full protocol details...
       </div>
     );
   }
@@ -1130,41 +1146,139 @@ function ParamDiffTable(props: { rows: ParamDiffRow[]; loading?: boolean; error?
     );
   }
 
-  const groupedRows = groupParamDiffRows(props.rows);
+  const normalizedQuery = normalizeComparableText(query);
+  const severityOptions: Array<{ id: "all" | ParamDiffSeverity; label: string }> = [
+    { id: "all", label: "All" },
+    { id: "critical", label: "Critical" },
+    { id: "important", label: "Important" },
+    { id: "minor", label: "Minor" },
+  ];
+
+  const severityCounts: Record<"all" | ParamDiffSeverity, number> = {
+    all: props.rows.length,
+    critical: props.rows.filter((row) => row.severity === "critical").length,
+    important: props.rows.filter((row) => row.severity === "important").length,
+    minor: props.rows.filter((row) => row.severity === "minor").length,
+  };
+
+  const filteredRows = props.rows.filter((row) => {
+    const matchesSeverity = severityFilter === "all" || row.severity === severityFilter;
+    if (!matchesSeverity) return false;
+
+    if (!normalizedQuery) return true;
+
+    const searchableText = normalizeComparableText(
+      `${row.name} ${row.leftValue} ${row.rightValue} ${paramCategoryLabels[row.category]}`,
+    );
+
+    return searchableText.includes(normalizedQuery);
+  });
+
+  const groupedRows = groupParamDiffRows(filteredRows);
+
+  const renderProtocolHeader = (label: string, protocol?: ProtocolSummary) => {
+    if (!protocol) return null;
+
+    return (
+      <div className="min-w-0 rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-slate-950">
+        <div className="mb-2 text-[10px] font-bold uppercase tracking-wide text-gray-400 dark:text-gray-500">
+          {label}
+        </div>
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="shrink-0 rounded-md bg-gray-100 px-1.5 py-0.5 text-[11px] font-bold text-gray-700 dark:bg-slate-800 dark:text-gray-200">
+            {protocol.id}
+          </span>
+          <span className="min-w-0 truncate text-sm font-semibold text-gray-900 dark:text-gray-100" title={protocol.label}>
+            {protocol.label}
+          </span>
+        </div>
+        <div className="mt-1 flex min-w-0 flex-wrap gap-1.5 text-[11px] text-gray-500 dark:text-gray-400">
+          <span>{protocol.status}</span>
+          <span>·</span>
+          <span>{protocol.outputCount} outputs</span>
+          <span>·</span>
+          <span>{Object.keys(protocol.params).length} params</span>
+        </div>
+      </div>
+    );
+  };
 
   return (
-    <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700">
-      <table className="w-full table-fixed text-left text-xs">
-        <thead className="bg-gray-100 uppercase tracking-wide text-gray-500 dark:bg-slate-900 dark:text-gray-400">
-          <tr>
-            <th className="w-[24%] px-3 py-2">Parameter</th>
-            <th className="w-[14%] px-3 py-2">Severity</th>
-            <th className="w-[31%] px-3 py-2">Left value</th>
-            <th className="w-[31%] px-3 py-2">Right value</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-gray-200 bg-white dark:divide-gray-700 dark:bg-slate-950">
-          {groupedRows.flatMap((group) => [
-            <tr key={`${group.category}:heading`}>
-              <td colSpan={4} className="bg-blue-50 px-3 py-2 text-[11px] font-bold uppercase tracking-wide text-blue-800 dark:bg-blue-950/30 dark:text-blue-200">
-                {paramCategoryLabels[group.category]}
-              </td>
-            </tr>,
-            ...group.rows.map((row) => (
-              <tr key={`${group.category}:${row.name}`}>
-                <td className="break-words px-3 py-2 font-semibold text-gray-900 dark:text-gray-100">{row.name}</td>
-                <td className="px-3 py-2"><SeverityBadge severity={row.severity} /></td>
-                <td className="break-words px-3 py-2 text-gray-700 dark:text-gray-300">{row.leftValue || "—"}</td>
-                <td className="break-words px-3 py-2 text-gray-700 dark:text-gray-300">{row.rightValue || "—"}</td>
+    <div className="space-y-3">
+      <div className="grid gap-3 lg:grid-cols-2">
+        {renderProtocolHeader("Left protocol", props.leftProtocol)}
+        {renderProtocolHeader("Right protocol", props.rightProtocol)}
+      </div>
+
+      <div className="flex flex-col gap-2 rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-slate-900/70 lg:flex-row lg:items-center lg:justify-between">
+        <input
+          type="text"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Filter parameters or values..."
+          className="min-w-0 flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-medium text-gray-900 outline-none focus:border-blue-500/60 focus:ring-2 focus:ring-blue-500/10 dark:border-gray-700 dark:bg-slate-950 dark:text-white"
+        />
+
+        <div className="flex flex-wrap gap-1.5">
+          {severityOptions.map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              onClick={() => setSeverityFilter(option.id)}
+              className={classNames(
+                "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition",
+                severityFilter === option.id
+                  ? "border-blue-500 bg-blue-600 text-white shadow-sm shadow-blue-500/20"
+                  : "border-gray-200 bg-white text-gray-700 hover:border-blue-300 hover:bg-blue-50 dark:border-gray-700 dark:bg-slate-950 dark:text-gray-200 dark:hover:border-blue-800 dark:hover:bg-blue-950/30",
+              )}
+            >
+              <span>{option.label}</span>
+              <span className={classNames("rounded-full px-1 py-0.5 text-[10px]", severityFilter === option.id ? "bg-white/20" : "bg-gray-100 dark:bg-slate-800")}>
+                {severityCounts[option.id]}
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {!filteredRows.length ? (
+        <div className="rounded-xl border border-gray-200 bg-white p-3 text-xs text-gray-500 dark:border-gray-700 dark:bg-slate-950 dark:text-gray-400">
+          No parameter differences match the current filters.
+        </div>
+      ) : (
+        <div className="max-h-[360px] overflow-auto rounded-xl border border-gray-200 dark:border-gray-700">
+          <table className="w-full min-w-[900px] table-fixed text-left text-xs">
+            <thead className="sticky top-0 z-10 bg-gray-100 uppercase tracking-wide text-gray-500 dark:bg-slate-900 dark:text-gray-400">
+              <tr>
+                <th className="w-[24%] px-3 py-2">Parameter</th>
+                <th className="w-[14%] px-3 py-2">Severity</th>
+                <th className="w-[31%] px-3 py-2">Left value</th>
+                <th className="w-[31%] px-3 py-2">Right value</th>
               </tr>
-            )),
-          ])}
-        </tbody>
-      </table>
+            </thead>
+            <tbody className="divide-y divide-gray-200 bg-white dark:divide-gray-700 dark:bg-slate-950">
+              {groupedRows.flatMap((group) => [
+                <tr key={`${group.category}:heading`}>
+                  <td colSpan={4} className="sticky top-[33px] z-[5] bg-blue-50 px-3 py-2 text-[11px] font-bold uppercase tracking-wide text-blue-800 dark:bg-blue-950 dark:text-blue-200">
+                    {paramCategoryLabels[group.category]}
+                  </td>
+                </tr>,
+                ...group.rows.map((row) => (
+                  <tr key={`${group.category}:${row.name}`}>
+                    <td className="break-words px-3 py-2 font-semibold text-gray-900 dark:text-gray-100">{row.name}</td>
+                    <td className="px-3 py-2"><SeverityBadge severity={row.severity} /></td>
+                    <td className="break-words px-3 py-2 text-gray-700 dark:text-gray-300">{row.leftValue || "—"}</td>
+                    <td className="break-words px-3 py-2 text-gray-700 dark:text-gray-300">{row.rightValue || "—"}</td>
+                  </tr>
+                )),
+              ])}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
-
 function getFilterCounts(rows: ProtocolComparisonRow[]): Record<ComparisonFilter, number> {
   return {
     all: rows.length,
@@ -1297,16 +1411,16 @@ function ProtocolDiffTable(props: {
       </div>
 
       <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700">
-        <div className="max-h-[520px] overflow-auto">
-          <table className="w-full table-fixed text-left text-sm">
+        <div className="max-h-[62vh] overflow-auto">
+          <table className="w-full min-w-[1120px] table-fixed text-left text-sm">
             <thead className="sticky top-0 z-10 bg-gray-100 text-xs uppercase tracking-wide text-gray-500 dark:bg-slate-900 dark:text-gray-400">
               <tr>
-                <th className="w-[20%] px-3 py-2">Protocol class</th>
-                <th className="w-[26%] px-3 py-2"><span className="block truncate" title={props.leftTitle}>{props.leftTitle}</span></th>
-                <th className="w-[26%] px-3 py-2"><span className="block truncate" title={props.rightTitle}>{props.rightTitle}</span></th>
-                <th className="w-[11%] px-3 py-2 text-right">Params</th>
+                <th className="w-[18%] px-3 py-2">Protocol class</th>
+                <th className="w-[25%] px-3 py-2"><span className="block truncate" title={props.leftTitle}>{props.leftTitle}</span></th>
+                <th className="w-[25%] px-3 py-2"><span className="block truncate" title={props.rightTitle}>{props.rightTitle}</span></th>
+                <th className="w-[12%] px-3 py-2 text-right">Params</th>
                 <th className="w-[9%] px-3 py-2">Match</th>
-                <th className="w-[8%] px-3 py-2">Confidence</th>
+                <th className="w-[11%] px-3 py-2">Confidence</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200 bg-white dark:divide-gray-700 dark:bg-slate-950">
@@ -1330,7 +1444,7 @@ function ProtocolDiffTable(props: {
                     : "Details loaded"
                   : props.fetchProtocolDetails
                     ? row.paramDiffRows.length
-                      ? `${row.paramDiffRows.length} initial diff · load`
+                      ? `${row.paramDiffRows.length} initial diff`
                       : "Load details"
                     : row.paramDiffRows.length
                       ? `${row.paramDiffRows.length} diff`
@@ -1359,7 +1473,7 @@ function ProtocolDiffTable(props: {
                           )}
                           title={paramLabel}
                         >
-                          <span className="block truncate">{isExpanded ? "Hide" : paramLabel}</span>
+                          <span className="block truncate">{isExpanded ? "Hide details" : paramLabel}</span>
                         </button>
                       </td>
                       <td className="px-3 py-3 align-top"><MatchBadge matchType={effectiveMatchType} /></td>
@@ -1375,7 +1489,14 @@ function ProtocolDiffTable(props: {
                               {detailsState?.loading ? "Loading protocol details" : detailsSourceLabel}
                             </span>
                           </div>
-                          <ParamDiffTable rows={rows} loading={detailsState?.loading} error={detailsState?.error} sourceLabel={detailsSourceLabel} />
+                          <ParamDiffTable
+                            rows={rows}
+                            loading={detailsState?.loading}
+                            error={detailsState?.error}
+                            sourceLabel={detailsSourceLabel}
+                            leftProtocol={row.leftProtocol}
+                            rightProtocol={row.rightProtocol}
+                          />
                         </td>
                       </tr>
                     ) : null}
@@ -1547,7 +1668,7 @@ export default function ProjectWorkspaceCompareDialog({
                   <div>
                     <h3 className="text-sm font-bold text-gray-950 dark:text-white">Protocol-level workflow diff</h3>
                     <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                      Rows are matched by protocol class, label similarity, status, outputs, parameter overlap and id proximity. Parameter diffs are grouped by scientific category and severity.
+                      Rows are matched by protocol class, label similarity, status, outputs, parameter overlap and id proximity. The table keeps its header fixed and each expanded row has internal filtering for parameter values.
                     </p>
                   </div>
                 </div>
