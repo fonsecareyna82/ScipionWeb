@@ -14,7 +14,6 @@ type ProjectWorkspaceCompareDialogProps = {
   onClose: () => void;
   fetchProject: (projectName: string) => Promise<any>;
   fetchProtocolDetails?: (projectName: string, protocolId: string) => Promise<any>;
-  onOpenProtocol?: (projectName: string, protocolId: string) => void;
 };
 
 type ProtocolParams = Record<string, string>;
