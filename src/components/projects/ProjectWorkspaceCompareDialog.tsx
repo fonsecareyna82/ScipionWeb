@@ -170,29 +170,152 @@ function stringifyParamValue(value: unknown): string {
   return String(value);
 }
 
-function getProtocolParamSource(raw: any): Record<string, unknown> | null {
-  const protocol = unwrapProtocolPayload(raw);
-  const candidateKeys = ["params", "parameters", "formValues", "values", "paramValues", "inputParams"];
-  const source = candidateKeys.map((key) => protocol?.[key]).find((candidate) => isPlainRecord(candidate));
+function normalizeParamValueSource(source: unknown): Record<string, unknown> | null {
+  if (isPlainRecord(source)) return source;
 
-  return isPlainRecord(source) ? source : null;
+  if (!Array.isArray(source)) return null;
+
+  const entries = source.flatMap((item) => {
+    if (!isPlainRecord(item)) return [];
+
+    const name = getText(item.name ?? item.key ?? item.id, "");
+    if (!name) return [];
+
+    const value =
+      "value" in item
+        ? item.value
+        : "currentValue" in item
+          ? item.currentValue
+          : "default" in item
+            ? item.default
+            : item;
+
+    return [[name, value] as [string, unknown]];
+  });
+
+  return entries.length ? Object.fromEntries(entries) : null;
 }
 
-function getParamLabel(key: string, value: unknown): string {
-  if (isPlainRecord(value)) {
-    const label = getText(
-      value.label ?? value.displayLabel ?? value.displayName ?? value.title ?? value.paramLabel ?? value.name,
-      "",
-    );
+function getProtocolParamValuesSource(raw: any): Record<string, unknown> | null {
+  const protocol = unwrapProtocolPayload(raw);
+  const candidateKeys = ["values", "formValues", "paramValues", "params", "parameters", "inputParams"];
 
-    if (label) return label;
+  for (const key of candidateKeys) {
+    const source = normalizeParamValueSource(protocol?.[key]);
+    if (source) return source;
   }
 
-  return key;
+  return null;
+}
+
+function getNestedRecordLabel(value: Record<string, unknown>, key: string): string {
+  const nestedValue = value[key];
+
+  if (!isPlainRecord(nestedValue)) return "";
+
+  return getText(
+    nestedValue["label"] ??
+      nestedValue["displayLabel"] ??
+      nestedValue["displayName"] ??
+      nestedValue["title"] ??
+      nestedValue["paramLabel"],
+    "",
+  );
+}
+
+function getInlineParamLabel(value: unknown): string {
+  if (!isPlainRecord(value)) return "";
+
+  const directLabel = getText(
+    value["label"] ??
+      value["displayLabel"] ??
+      value["displayName"] ??
+      value["title"] ??
+      value["paramLabel"],
+    "",
+  );
+
+  if (directLabel) return directLabel;
+
+  return (
+    getNestedRecordLabel(value, "param") ||
+    getNestedRecordLabel(value, "definition") ||
+    getNestedRecordLabel(value, "config")
+  );
+}
+
+function collectParamLabelsFromParams(params: unknown, labels: ProtocolParamLabels): void {
+  if (!Array.isArray(params)) return;
+
+  for (const param of params) {
+    if (!isPlainRecord(param)) continue;
+
+    const name = getText(param.name ?? param.key ?? param.id, "");
+    const label = getInlineParamLabel(param);
+
+    if (name && label) {
+      labels[name] = label;
+    }
+
+    collectParamLabelsFromParams(param.params, labels);
+    collectParamLabelsFromParams(param.children, labels);
+    collectParamLabelsFromSections(param.sections, labels);
+
+    if (isPlainRecord(param.form)) {
+      collectParamLabelsFromSections(param.form.sections, labels);
+    }
+  }
+}
+
+function collectParamLabelsFromSections(sections: unknown, labels: ProtocolParamLabels): void {
+  if (!Array.isArray(sections)) return;
+
+  for (const section of sections) {
+    if (!isPlainRecord(section)) continue;
+
+    collectParamLabelsFromParams(section.params, labels);
+    collectParamLabelsFromSections(section.sections, labels);
+  }
+}
+
+function collectInlineParamLabels(raw: any, labels: ProtocolParamLabels): void {
+  const protocol = unwrapProtocolPayload(raw);
+  const candidateKeys = ["params", "parameters", "formValues", "values", "paramValues", "inputParams"];
+
+  for (const key of candidateKeys) {
+    const source = protocol?.[key];
+
+    if (Array.isArray(source)) {
+      for (const item of source) {
+        if (!isPlainRecord(item)) continue;
+
+        const name = getText(item.name ?? item.key ?? item.id, "");
+        const label = getInlineParamLabel(item);
+
+        if (name && label && !labels[name]) {
+          labels[name] = label;
+        }
+      }
+
+      continue;
+    }
+
+    if (!isPlainRecord(source)) continue;
+
+    for (const [name, value] of Object.entries(source)) {
+      if (name.startsWith("_")) continue;
+
+      const label = getInlineParamLabel(value);
+
+      if (label && !labels[name]) {
+        labels[name] = label;
+      }
+    }
+  }
 }
 
 function extractProtocolParams(raw: any): ProtocolParams {
-  const source = getProtocolParamSource(raw);
+  const source = getProtocolParamValuesSource(raw);
 
   if (!source) return {};
 
@@ -204,15 +327,15 @@ function extractProtocolParams(raw: any): ProtocolParams {
 }
 
 function extractProtocolParamLabels(raw: any): ProtocolParamLabels {
-  const source = getProtocolParamSource(raw);
+  const protocol = unwrapProtocolPayload(raw);
+  const labels: ProtocolParamLabels = {};
 
-  if (!source) return {};
+  collectParamLabelsFromSections(protocol?.form?.sections, labels);
+  collectParamLabelsFromSections(protocol?.sections, labels);
+  collectParamLabelsFromSections(protocol?.formSections, labels);
+  collectInlineParamLabels(protocol, labels);
 
-  return Object.fromEntries(
-    Object.entries(source)
-      .filter(([key]) => !key.startsWith("_"))
-      .map(([key, value]) => [key, getParamLabel(key, value)]),
-  );
+  return labels;
 }
 
 function getOutputCount(raw: any): number {
@@ -871,50 +994,17 @@ function downloadTextFile(fileName: string, content: string): void {
   window.setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
-function StatBox(props: { label: string; value: string | number; hint?: string }) {
-  return (
-    <div className="min-w-0 rounded-xl border border-gray-200 bg-white p-3 shadow-sm dark:border-gray-700 dark:bg-slate-950">
-      <div className="truncate text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-        {props.label}
-      </div>
-      <div className="mt-1 truncate text-2xl font-bold tracking-tight text-gray-950 dark:text-white">
-        {props.value}
-      </div>
-      {props.hint ? <div className="mt-1 line-clamp-2 text-xs text-gray-500 dark:text-gray-400">{props.hint}</div> : null}
-    </div>
-  );
-}
-
-function ProjectSummaryCard(props: { project: ProjectSummary }) {
-  return (
-    <div className="min-w-0 rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-slate-950">
-      <h3 className="truncate text-sm font-bold text-gray-950 dark:text-white" title={props.project.fullTitle}>
-        {props.project.title}
-      </h3>
-      {props.project.fullTitle && props.project.fullTitle !== props.project.title ? (
-        <p className="mt-1 truncate text-xs text-gray-500 dark:text-gray-400" title={props.project.fullTitle}>
-          {props.project.fullTitle}
-        </p>
-      ) : null}
-      <div className="mt-3 grid min-w-0 grid-cols-2 gap-3">
-        <StatBox label="Protocols" value={props.project.protocolCount} />
-        <StatBox label="Outputs" value={props.project.outputCount} />
-      </div>
-    </div>
-  );
-}
-
 function InsightPanel(props: { insights: string[] }) {
   return (
-    <div className="rounded-2xl border border-blue-100 bg-blue-50/80 p-4 dark:border-blue-900/50 dark:bg-blue-950/20">
+    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-900/70">
       <div className="mb-3 flex items-center justify-between gap-3">
         <div>
-          <h3 className="text-sm font-bold text-blue-950 dark:text-blue-100">Scientific summary</h3>
-          <p className="mt-1 text-xs text-blue-700/80 dark:text-blue-200/70">
+          <h3 className="text-sm font-bold text-slate-950 dark:text-white">Scientific summary</h3>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
             Auto-generated from smart workflow matching and loaded metadata.
           </p>
         </div>
-        <span className="rounded-full border border-blue-200 bg-white/80 px-2.5 py-1 text-xs font-semibold text-blue-800 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-200">
+        <span className="rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-200">
           Smart diff
         </span>
       </div>
@@ -922,7 +1012,7 @@ function InsightPanel(props: { insights: string[] }) {
         {props.insights.map((insight, index) => (
           <div
             key={`${index}:${insight}`}
-            className="rounded-xl border border-blue-100 bg-white/90 px-3 py-2 text-xs font-medium text-slate-700 shadow-sm dark:border-blue-900/50 dark:bg-slate-950/80 dark:text-slate-200"
+            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 shadow-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
           >
             {insight}
           </div>
@@ -982,55 +1072,36 @@ function ReportActions(props: { comparison: CompareResult }) {
           ? "Markdown downloaded"
           : "Failed";
 
+  const buttonClass =
+    "inline-flex items-center gap-2 rounded-xl border border-slate-600 bg-slate-700 px-3 py-2 text-xs font-semibold text-slate-100 transition hover:bg-slate-600 hover:text-white";
+
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-sm dark:border-slate-700 dark:bg-slate-950/90">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div className="min-w-0">
-          <h3 className="text-sm font-bold text-slate-950 dark:text-white">Shareable comparison report</h3>
-          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-            Copy the scientific summary, open a printable PDF report, or export the editable Markdown source.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={handleCopy}
-            className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-800 transition hover:bg-blue-100 dark:border-blue-900/60 dark:bg-blue-950/30 dark:text-blue-200 dark:hover:bg-blue-950/50"
-          >
-            <Copy className="h-3.5 w-3.5" />
-            Copy summary
-          </button>
-          <button
-            type="button"
-            onClick={handleExportPdf}
-            className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800 transition hover:bg-emerald-100 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-200 dark:hover:bg-emerald-950/50"
-          >
-            <Download className="h-3.5 w-3.5" />
-            Export PDF
-          </button>
-          <button
-            type="button"
-            onClick={handleExportMarkdown}
-            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-          >
-            <Download className="h-3.5 w-3.5" />
-            Export Markdown
-          </button>
-          {status !== "idle" ? (
-            <span
-              className={classNames(
-                "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold",
-                status === "error"
-                  ? "border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-200"
-                  : "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-200",
-              )}
-            >
-              {status === "error" ? <X className="h-3 w-3" /> : <Check className="h-3 w-3" />}
-              {statusLabel}
-            </span>
-          ) : null}
-        </div>
-      </div>
+    <div className="flex flex-wrap items-center justify-end gap-2">
+      <button type="button" onClick={handleCopy} className={buttonClass}>
+        <Copy className="h-3.5 w-3.5" />
+        Copy
+      </button>
+      <button type="button" onClick={handleExportPdf} className={buttonClass}>
+        <Download className="h-3.5 w-3.5" />
+        PDF
+      </button>
+      <button type="button" onClick={handleExportMarkdown} className={buttonClass}>
+        <Download className="h-3.5 w-3.5" />
+        Markdown
+      </button>
+      {status !== "idle" ? (
+        <span
+          className={classNames(
+            "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold",
+            status === "error"
+              ? "border-red-400/60 bg-red-950/40 text-red-100"
+              : "border-emerald-400/60 bg-emerald-950/40 text-emerald-100",
+          )}
+        >
+          {status === "error" ? <X className="h-3 w-3" /> : <Check className="h-3 w-3" />}
+          {statusLabel}
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -1060,6 +1131,146 @@ function ChipList(props: { items: string[]; emptyText: string; tone?: "green" | 
         </span>
       ) : null}
     </div>
+  );
+}
+
+function CompactSummaryItem(props: { label: string; value: string | number; hint?: string; tone?: "default" | "warning" | "danger" }) {
+  const toneClass =
+    props.tone === "danger"
+      ? "border-red-200 bg-red-50 text-red-800 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-200"
+      : props.tone === "warning"
+        ? "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200"
+        : "border-slate-200 bg-white text-slate-800 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100";
+
+  return (
+    <div className={classNames("min-w-0 rounded-xl border px-3 py-2", toneClass)}>
+      <div className="truncate text-[10px] font-bold uppercase tracking-wide opacity-70">{props.label}</div>
+      <div className="mt-0.5 truncate text-lg font-bold">{props.value}</div>
+      {props.hint ? <div className="mt-0.5 truncate text-[11px] font-medium opacity-75">{props.hint}</div> : null}
+    </div>
+  );
+}
+
+function CompactProjectSnapshot(props: { label: string; project: ProjectSummary }) {
+  return (
+    <div className="min-w-0 rounded-xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-950">
+      <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">{props.label}</div>
+      <div className="mt-0.5 truncate text-sm font-bold text-slate-950 dark:text-white" title={props.project.fullTitle}>
+        {props.project.title}
+      </div>
+      <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11px] font-medium text-slate-500 dark:text-slate-400">
+        <span>{props.project.protocolCount} protocols</span>
+        <span>{props.project.outputCount} outputs</span>
+      </div>
+    </div>
+  );
+}
+
+function CompactComparisonSummary(props: { comparison: CompareResult }) {
+  const changedRows = props.comparison.protocolRows.filter((row) => row.matchType === "changed").length;
+  const criticalRows = props.comparison.protocolRows.filter(hasCriticalParamDiff).length;
+  const onlyLeftRows = props.comparison.protocolRows.filter((row) => row.matchType === "only-left").length;
+  const onlyRightRows = props.comparison.protocolRows.filter((row) => row.matchType === "only-right").length;
+  const weakRows = props.comparison.protocolRows.filter((row) => row.matchQuality === "weak").length;
+
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-slate-100/70 p-3 dark:border-slate-700 dark:bg-slate-900/70">
+      <div className="grid min-w-0 grid-cols-1 gap-2 lg:grid-cols-[minmax(0,1.1fr)_repeat(5,minmax(110px,0.7fr))_minmax(0,1.1fr)]">
+        <CompactProjectSnapshot label="Left project" project={props.comparison.left} />
+        <CompactSummaryItem label="Similarity" value={`${props.comparison.similarityScore}%`} />
+        <CompactSummaryItem label="Rows" value={props.comparison.protocolRows.length} />
+        <CompactSummaryItem label="Changed" value={changedRows} tone={changedRows ? "warning" : "default"} />
+        <CompactSummaryItem label="Critical params" value={criticalRows} tone={criticalRows ? "danger" : "default"} />
+        <CompactSummaryItem label="Only left/right" value={`${onlyLeftRows}/${onlyRightRows}`} hint={weakRows ? `${weakRows} weak matches` : undefined} />
+        <CompactProjectSnapshot label="Right project" project={props.comparison.right} />
+      </div>
+    </div>
+  );
+}
+
+function AdvancedComparisonDetails(props: { comparison: CompareResult }) {
+  return (
+    <details className="rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-950">
+      <summary className="cursor-pointer select-none px-4 py-3 text-sm font-bold text-slate-800 transition hover:bg-slate-50 dark:text-slate-100 dark:hover:bg-slate-900">
+        Advanced comparison details
+      </summary>
+
+      <div className="space-y-4 border-t border-slate-200 p-4 dark:border-slate-700">
+        <InsightPanel insights={props.comparison.insights} />
+
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+          <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-slate-950">
+            <h3 className="text-sm font-bold text-gray-950 dark:text-white">Common protocol classes</h3>
+            <p className="mb-3 mt-1 text-xs text-gray-500 dark:text-gray-400">Classes present in both projects.</p>
+            <ChipList items={props.comparison.commonClasses} emptyText="No shared protocol classes." tone="green" />
+          </div>
+
+          <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-slate-950">
+            <h3 className="text-sm font-bold text-gray-950 dark:text-white">Only in left project</h3>
+            <p className="mb-3 mt-1 text-xs text-gray-500 dark:text-gray-400">Protocol classes unique to the left project.</p>
+            <ChipList items={props.comparison.onlyLeftClasses} emptyText="No unique protocol classes." tone="amber" />
+          </div>
+
+          <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-slate-950">
+            <h3 className="text-sm font-bold text-gray-950 dark:text-white">Only in right project</h3>
+            <p className="mb-3 mt-1 text-xs text-gray-500 dark:text-gray-400">Protocol classes unique to the right project.</p>
+            <ChipList items={props.comparison.onlyRightClasses} emptyText="No unique protocol classes." tone="amber" />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+          <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-slate-950">
+            <h3 className="text-sm font-bold text-gray-950 dark:text-white">Largest protocol class deltas</h3>
+            <div className="mt-3 overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700">
+              <table className="w-full table-fixed text-left text-sm">
+                <thead className="bg-gray-100 text-xs uppercase tracking-wide text-gray-500 dark:bg-slate-900 dark:text-gray-400">
+                  <tr>
+                    <th className="w-[52%] px-3 py-2">Class</th>
+                    <th className="w-[16%] px-3 py-2 text-right">Left</th>
+                    <th className="w-[16%] px-3 py-2 text-right">Right</th>
+                    <th className="w-[16%] px-3 py-2 text-right">Delta</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                  {props.comparison.classDeltas.map((row) => (
+                    <tr key={row.name}>
+                      <td className="truncate px-3 py-2 text-gray-900 dark:text-gray-100" title={row.name}>{row.name}</td>
+                      <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">{row.left}</td>
+                      <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">{row.right}</td>
+                      <td className="px-3 py-2 text-right font-semibold text-gray-900 dark:text-gray-100">{row.delta > 0 ? `+${row.delta}` : row.delta}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-slate-950">
+            <h3 className="text-sm font-bold text-gray-950 dark:text-white">Status distribution</h3>
+            <div className="mt-3 overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700">
+              <table className="w-full table-fixed text-left text-sm">
+                <thead className="bg-gray-100 text-xs uppercase tracking-wide text-gray-500 dark:bg-slate-900 dark:text-gray-400">
+                  <tr>
+                    <th className="px-3 py-2">Status</th>
+                    <th className="px-3 py-2 text-right">Left</th>
+                    <th className="px-3 py-2 text-right">Right</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                  {props.comparison.statusRows.map((row) => (
+                    <tr key={row.name}>
+                      <td className="truncate px-3 py-2 text-gray-900 dark:text-gray-100">{row.name}</td>
+                      <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">{row.left}</td>
+                      <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">{row.right}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </details>
   );
 }
 
@@ -1722,18 +1933,21 @@ export default function ProjectWorkspaceCompareDialog({
             <div className="min-w-0">
               <h2 className="text-lg font-bold tracking-tight text-white">Compare projects</h2>
               <p className="mt-1 text-sm text-slate-300">
-                Smart workflow comparison with confidence scoring, critical parameter classification and protocol-level detail loading.
+                Smart workflow comparison focused on protocol and parameter differences.
               </p>
             </div>
 
-            <button
-              type="button"
-              onClick={onClose}
-              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-600 bg-slate-700 text-slate-200 transition hover:bg-slate-600 hover:text-white"
-              aria-label="Close comparison"
-            >
-              <X className="h-4 w-4" />
-            </button>
+            <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+              {comparison ? <ReportActions comparison={comparison} /> : null}
+              <button
+                type="button"
+                onClick={onClose}
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-600 bg-slate-700 text-slate-200 transition hover:bg-slate-600 hover:text-white"
+                aria-label="Close comparison"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
           </div>
 
           <div className="flex shrink-0 flex-col gap-3 border-b border-gray-200 bg-gray-50 px-5 py-4 dark:border-gray-700 dark:bg-slate-900 md:flex-row md:items-end">
@@ -1776,35 +1990,20 @@ export default function ProjectWorkspaceCompareDialog({
             ) : comparison ? (
               <div className="space-y-4">
                 {loading ? (
-                  <div className="flex items-center gap-2 rounded-2xl border border-blue-200 bg-blue-50 p-3 text-xs font-semibold text-blue-800 dark:border-blue-900/60 dark:bg-blue-950/30 dark:text-blue-200">
+                  <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white p-3 text-xs font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200">
                     <RefreshCw className="h-3.5 w-3.5 animate-spin" />
                     Refreshing project comparison...
                   </div>
                 ) : null}
 
-                <div className="grid min-w-0 grid-cols-1 gap-3 md:grid-cols-3">
-                  <ProjectSummaryCard project={comparison.left} />
-
-                  <div className="min-w-0 rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-slate-950">
-                    <h3 className="truncate text-sm font-bold text-gray-950 dark:text-white">Workflow similarity</h3>
-                    <div className="mt-3 grid min-w-0 grid-cols-2 gap-3">
-                      <StatBox label="Score" value={`${comparison.similarityScore}%`} hint="Smart match confidence, status, outputs and parameters" />
-                      <StatBox label="Compared rows" value={comparison.protocolRows.length} />
-                    </div>
-                  </div>
-
-                  <ProjectSummaryCard project={comparison.right} />
-                </div>
-
-                <InsightPanel insights={comparison.insights} />
-                <ReportActions comparison={comparison} />
+                <CompactComparisonSummary comparison={comparison} />
 
                 <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-slate-950">
                   <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
                     <div>
                       <h3 className="text-sm font-bold text-gray-950 dark:text-white">Protocol-level workflow diff</h3>
                       <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                        Rows are matched by protocol class, label similarity, status, outputs, parameter overlap and id proximity. Use Compare params to review every parameter in a dedicated dialog.
+                        Review matched protocols and open Compare params for the full parameter table.
                       </p>
                     </div>
                   </div>
@@ -1816,77 +2015,7 @@ export default function ProjectWorkspaceCompareDialog({
                   />
                 </div>
 
-                <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
-                  <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-slate-950">
-                    <h3 className="text-sm font-bold text-gray-950 dark:text-white">Common protocol classes</h3>
-                    <p className="mb-3 mt-1 text-xs text-gray-500 dark:text-gray-400">Classes present in both projects.</p>
-                    <ChipList items={comparison.commonClasses} emptyText="No shared protocol classes." tone="green" />
-                  </div>
-
-                  <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-slate-950">
-                    <h3 className="text-sm font-bold text-gray-950 dark:text-white">Only in left project</h3>
-                    <p className="mb-3 mt-1 text-xs text-gray-500 dark:text-gray-400">Protocol classes unique to the left project.</p>
-                    <ChipList items={comparison.onlyLeftClasses} emptyText="No unique protocol classes." tone="amber" />
-                  </div>
-
-                  <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-slate-950">
-                    <h3 className="text-sm font-bold text-gray-950 dark:text-white">Only in right project</h3>
-                    <p className="mb-3 mt-1 text-xs text-gray-500 dark:text-gray-400">Protocol classes unique to the right project.</p>
-                    <ChipList items={comparison.onlyRightClasses} emptyText="No unique protocol classes." tone="amber" />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-                  <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-slate-950">
-                    <h3 className="text-sm font-bold text-gray-950 dark:text-white">Largest protocol class deltas</h3>
-                    <div className="mt-3 overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700">
-                      <table className="w-full table-fixed text-left text-sm">
-                        <thead className="bg-gray-100 text-xs uppercase tracking-wide text-gray-500 dark:bg-slate-900 dark:text-gray-400">
-                          <tr>
-                            <th className="w-[52%] px-3 py-2">Class</th>
-                            <th className="w-[16%] px-3 py-2 text-right">Left</th>
-                            <th className="w-[16%] px-3 py-2 text-right">Right</th>
-                            <th className="w-[16%] px-3 py-2 text-right">Delta</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                          {comparison.classDeltas.map((row) => (
-                            <tr key={row.name}>
-                              <td className="truncate px-3 py-2 text-gray-900 dark:text-gray-100" title={row.name}>{row.name}</td>
-                              <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">{row.left}</td>
-                              <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">{row.right}</td>
-                              <td className="px-3 py-2 text-right font-semibold text-gray-900 dark:text-gray-100">{row.delta > 0 ? `+${row.delta}` : row.delta}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-
-                  <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-slate-950">
-                    <h3 className="text-sm font-bold text-gray-950 dark:text-white">Status distribution</h3>
-                    <div className="mt-3 overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700">
-                      <table className="w-full table-fixed text-left text-sm">
-                        <thead className="bg-gray-100 text-xs uppercase tracking-wide text-gray-500 dark:bg-slate-900 dark:text-gray-400">
-                          <tr>
-                            <th className="px-3 py-2">Status</th>
-                            <th className="px-3 py-2 text-right">Left</th>
-                            <th className="px-3 py-2 text-right">Right</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                          {comparison.statusRows.map((row) => (
-                            <tr key={row.name}>
-                              <td className="truncate px-3 py-2 text-gray-900 dark:text-gray-100">{row.name}</td>
-                              <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">{row.left}</td>
-                              <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">{row.right}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                </div>
+                <AdvancedComparisonDetails comparison={comparison} />
               </div>
             ) : (
               <div className="flex items-center gap-2 rounded-2xl border border-gray-200 bg-white p-4 text-sm text-gray-700 dark:border-gray-700 dark:bg-slate-950 dark:text-gray-200">
