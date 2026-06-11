@@ -66,6 +66,7 @@ import {
   Plus,
   Check,
   FileIcon,
+  ClipboardPaste,
 } from "lucide-react";
 
 import AnalyzeOutputDialog from "@/components/analyze/analyze-output-dialog";
@@ -160,6 +161,9 @@ type StatusNodeProps = {
   onEdit?: (id: string) => void;
   onRename?: (id: string) => void;
   onDuplicate?: (id: string) => void;
+  onCopyWorkflow?: (id: string) => void;
+  onPasteWorkflow?: (id: string) => void;
+  canPasteWorkflow?: boolean;
   onDelete?: (id: string) => void;
   onRestartAll?: (id: string) => void;
   onContinueAll?: (id: string) => void;
@@ -670,6 +674,9 @@ export default function ProtocolNodeCard({
   onEdit,
   onRename,
   onDuplicate,
+  onCopyWorkflow,
+  onPasteWorkflow,
+  canPasteWorkflow = false,
   onDelete,
   onRestartAll,
   onContinueAll,
@@ -1318,6 +1325,13 @@ export default function ProtocolNodeCard({
   const handleEdit = () => onEdit?.(data.id);
   const handleRename = () => onRename?.(data.id);
   const handleDuplicate = () => onDuplicate?.(data.id);
+  const handleCopyWorkflow = () => {
+    if (!isProjectNode) onCopyWorkflow?.(data.id);
+  };
+
+  const handlePasteWorkflow = () => {
+    onPasteWorkflow?.(data.id);
+  };
   const handleDelete = () => onDelete?.(data.id);
   const handleRestartAll = () => onRestartAll?.(data.id);
   const handleContinueAll = () => onContinueAll?.(data.id);
@@ -1619,6 +1633,8 @@ export default function ProtocolNodeCard({
     rename: "F2",
     delete: "Del",
     duplicate: `${mod} + D`,
+    copyWorkflow: `${mod} + C`,
+    pasteWorkflow: `${mod} + V`,
     restartAll: `${modShift} + R`,
     continueAll: `${modShift} + C`,
     resetFrom: `${modShift} + F`,
@@ -2239,8 +2255,39 @@ export default function ProtocolNodeCard({
                         </div>
                       </DropdownMenuItem>)}
 
-                    {(isMenuItemVisible("delete") || isMenuItemVisible("duplicate")) && (
-                      <DropdownMenuSeparator />)}
+                    {onCopyWorkflow && !isProjectNode && (
+                      <DropdownMenuItem onSelect={() => handleCopyWorkflow()}>
+                        <div className={styles.menuRow}>
+                          <span className={styles.menuLeft}>
+                            <Copy className={styles.menuItemIcon} />
+                            <span>Copy workflow</span>
+                          </span>
+                          <ShortcutHint text={shortcuts.copyWorkflow} />
+                        </div>
+                      </DropdownMenuItem>
+                    )}
+
+                    {onPasteWorkflow && (
+                      <DropdownMenuItem
+                        disabled={!canPasteWorkflow}
+                        onSelect={() => handlePasteWorkflow()}
+                      >
+                        <div className={styles.menuRow}>
+                          <span className={styles.menuLeft}>
+                            <ClipboardPaste className={styles.menuItemIcon} />
+                            <span>Paste workflow</span>
+                          </span>
+                          <ShortcutHint text={shortcuts.pasteWorkflow} />
+                        </div>
+                      </DropdownMenuItem>
+                    )}
+
+                    {(isMenuItemVisible("delete") ||
+                      isMenuItemVisible("duplicate") ||
+                      onCopyWorkflow ||
+                      onPasteWorkflow) && (
+                        <DropdownMenuSeparator />
+                      )}
 
                     {isMenuItemVisible("manageTags") && (
                       <DropdownMenuSub>
@@ -2932,8 +2979,39 @@ export default function ProtocolNodeCard({
             </div>
           </ContextMenuItem>)}
 
-        {(isMenuItemVisible("delete") || isMenuItemVisible("duplicate")) && (
-          <ContextMenuSeparator />)}
+        {onCopyWorkflow && !isProjectNode && (
+          <ContextMenuItem onClick={handleCopyWorkflow}>
+            <div className={styles.menuRow}>
+              <span className={styles.menuLeft}>
+                <Copy className={styles.menuItemIcon} />
+                <span>Copy workflow</span>
+              </span>
+              <ShortcutHint text={shortcuts.copyWorkflow} />
+            </div>
+          </ContextMenuItem>
+        )}
+
+        {onPasteWorkflow && (
+          <ContextMenuItem
+            disabled={!canPasteWorkflow}
+            onClick={handlePasteWorkflow}
+          >
+            <div className={styles.menuRow}>
+              <span className={styles.menuLeft}>
+                <ClipboardPaste className={styles.menuItemIcon} />
+                <span>Paste workflow</span>
+              </span>
+              <ShortcutHint text={shortcuts.pasteWorkflow} />
+            </div>
+          </ContextMenuItem>
+        )}
+
+        {(isMenuItemVisible("delete") ||
+          isMenuItemVisible("duplicate") ||
+          onCopyWorkflow ||
+          onPasteWorkflow) && (
+            <ContextMenuSeparator />
+          )}
 
         {isMenuItemVisible("manageTags") && (
           <ContextMenuSub>

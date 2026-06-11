@@ -55,7 +55,8 @@ import {
   AlertTriangle,
   Trash2,
   Play,
-  Square
+  Square,
+  ClipboardPaste,
 } from "lucide-react";
 import { FitViewIcon, TableIcon, TreeIcon } from "@/icons";
 
@@ -123,6 +124,9 @@ type NodeActions = {
   onRename?: (id: string) => void;
   onDuplicate?: (id: string) => void;
   onDelete?: (id: string) => void;
+  onCopyWorkflow?: (id: string) => void;
+  onPasteWorkflow?: (id: string) => void;
+  canPasteWorkflow?: boolean;
   onRestartAll?: (id: string) => void;
   onContinueAll?: (id: string) => void;
   onResetFrom?: (id: string) => void;
@@ -2360,6 +2364,13 @@ export default function ProjectPage() {
             : [String(id)];
         duplicateNow(ids);
       },
+      onCopyWorkflow: () => {
+        void handleCopyWorkflow();
+      },
+      onPasteWorkflow: () => {
+        void handlePasteWorkflow();
+      },
+      canPasteWorkflow: Boolean(workflowClipboard?.workflow),
       onDelete: openDelete,
       onRestartAll: openRestartAll,
       onContinueAll: openContinueAll,
@@ -2374,7 +2385,7 @@ export default function ProjectPage() {
       },
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [handleSelectFrom, handleSelectTo, handleNodeDoubleClick, openFormForProtocolClass]);
+  }, [handleSelectFrom, handleSelectTo, handleNodeDoubleClick, openFormForProtocolClass, workflowClipboard?.workflow,]);
 
 
   /** State and handler for RemoteFileDialog */
@@ -5384,6 +5395,23 @@ export default function ProjectPage() {
                 <button className="pp-canvasMenuItem" onClick={handleAddProtocolFromContext}>
                   <PlusIcon className="pp-canvasMenuIcon" />
                   <span className="text-sm mb-1">Add protocol</span>
+                </button>
+
+                <button
+                  className="pp-canvasMenuItem"
+                  onClick={() => {
+                    handleCloseMenu();
+                    void handlePasteWorkflow();
+                  }}
+                  disabled={!projectId || !workflowClipboard?.workflow}
+                  title={
+                    workflowClipboard?.sourceProjectName
+                      ? `Paste workflow from ${workflowClipboard.sourceProjectName}`
+                      : "Paste copied workflow"
+                  }
+                >
+                  <ClipboardPaste className="pp-canvasMenuIcon" />
+                  <span className="text-sm mb-1">Paste workflow</span>
                 </button>
 
                 <div className="pp-canvasMenuSep" />

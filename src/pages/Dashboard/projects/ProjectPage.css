@@ -1622,3 +1622,16 @@
 .projectpage-widget-root.dark .pp-annotateHelperError {
   color: #f87171;
 }
+
+.pp-canvasMenuItem:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
+.pp-canvasMenuItem:disabled:hover {
+  background: transparent;
+}
+
+.pp-canvasMenuItem:disabled .pp-canvasMenuIcon {
+  opacity: 0.55;
+}
