@@ -1219,6 +1219,52 @@ export type ExportProtocolsResult = {
   protocolIds?: Array<Id>;
 };
 
+export type WorkflowExportRequestPayload = {
+  protocolIds: Id[];
+  includeUpstream?: boolean;
+};
+
+export type WorkflowExportResult = {
+  sourceProjectId: Id;
+  sourceProjectName?: string;
+  protocolIds: Id[];
+  workflow: unknown;
+  scipionWeb?: {
+    format?: string;
+    version?: number;
+    requiredPluginNames?: string[];
+    protocolPlugins?: Array<{
+      protocolId?: string;
+      className?: string;
+      pluginName?: string;
+    }>;
+    exportedAt?: string;
+  };
+  summary?: {
+    protocolCount?: number;
+    requiredPluginNames?: string[];
+  };
+};
+
+export type WorkflowImportRequestPayload = {
+  workflow: unknown;
+  mode?: "append";
+  sourceProjectId?: Id;
+  sourceProjectName?: string;
+};
+
+export type WorkflowImportResult = {
+  status: number;
+  errors: string[];
+  workflow?: unknown[];
+  created?: Array<{
+    sourceId?: Id;
+    newId: Id;
+  }>;
+  protocolsCount?: number;
+  dependenciesCount?: number;
+};
+
 export type WriteRemoteFilePayload = {
   path: string;
   content: string;
@@ -1855,6 +1901,16 @@ export interface ProjectService<
     projectId: Id,
     payload: ExportProtocolsRequestPayload,
   ): Promise<ExportProtocolsResult>;
+
+  exportWorkflowProtocols(
+    projectId: Id,
+    payload: WorkflowExportRequestPayload,
+  ): Promise<WorkflowExportResult>;
+
+  importWorkflowProtocols(
+    projectId: Id,
+    payload: WorkflowImportRequestPayload,
+  ): Promise<WorkflowImportResult>;
 
   writeRemoteFile(
     projectId: Id,

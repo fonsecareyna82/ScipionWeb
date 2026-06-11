@@ -46,6 +46,10 @@ import type {
   ExecuteProtocolWizardResult,
   ExportProtocolsRequestPayload,
   ExportProtocolsResult,
+  WorkflowExportRequestPayload,
+  WorkflowExportResult,
+  WorkflowImportRequestPayload,
+  WorkflowImportResult,
   WriteRemoteFilePayload,
   WriteRemoteFileResult,
   CreateCoords2dOutputPayload,
@@ -239,6 +243,18 @@ const defaultService: ProjectService = {
     payload: WriteRemoteFilePayload,
   ): Promise<WriteRemoteFileResult> =>
     api.writeRemoteFile(toId(projectId), toId(protocolId), payload),
+
+  exportWorkflowProtocols: (
+    projectId: Id,
+    payload: WorkflowExportRequestPayload,
+  ): Promise<WorkflowExportResult> =>
+    api.exportWorkflowProtocols(toId(projectId), payload),
+
+  importWorkflowProtocols: (
+    projectId: Id,
+    payload: WorkflowImportRequestPayload,
+  ): Promise<WorkflowImportResult> =>
+    api.importWorkflowProtocols(toId(projectId), payload),
 
   getNextProtocolSuggestions: (
     projectId: Id,
