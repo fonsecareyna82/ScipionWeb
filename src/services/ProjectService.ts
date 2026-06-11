@@ -812,6 +812,8 @@ export type ContextMenuVisibilityPolicy = {
   browse: boolean,
   continue: boolean,
   duplicate: boolean,
+  copyWorkflow: boolean,
+  pasteWorkflow: boolean,
   export: boolean,
   manageTags: boolean,
   rename: boolean,

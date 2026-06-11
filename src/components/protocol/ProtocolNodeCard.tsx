@@ -67,6 +67,7 @@ import {
   Check,
   FileIcon,
   ClipboardPaste,
+  ClipboardCopy,
 } from "lucide-react";
 
 import AnalyzeOutputDialog from "@/components/analyze/analyze-output-dialog";
@@ -2255,11 +2256,11 @@ export default function ProtocolNodeCard({
                         </div>
                       </DropdownMenuItem>)}
 
-                    {onCopyWorkflow && !isProjectNode && (
+                    {isMenuItemVisible("copyWorkflow") && onCopyWorkflow && !isProjectNode && (
                       <DropdownMenuItem onSelect={() => handleCopyWorkflow()}>
                         <div className={styles.menuRow}>
                           <span className={styles.menuLeft}>
-                            <Copy className={styles.menuItemIcon} />
+                            <ClipboardCopy className={styles.menuItemIcon} />
                             <span>Copy workflow</span>
                           </span>
                           <ShortcutHint text={shortcuts.copyWorkflow} />
@@ -2267,7 +2268,7 @@ export default function ProtocolNodeCard({
                       </DropdownMenuItem>
                     )}
 
-                    {onPasteWorkflow && (
+                    {isMenuItemVisible("pasteWorkflow") && onPasteWorkflow && (
                       <DropdownMenuItem
                         disabled={!canPasteWorkflow}
                         onSelect={() => handlePasteWorkflow()}
@@ -2979,11 +2980,11 @@ export default function ProtocolNodeCard({
             </div>
           </ContextMenuItem>)}
 
-        {onCopyWorkflow && !isProjectNode && (
+        {isMenuItemVisible("copyWorkflow") && onCopyWorkflow && !isProjectNode && (
           <ContextMenuItem onClick={handleCopyWorkflow}>
             <div className={styles.menuRow}>
               <span className={styles.menuLeft}>
-                <Copy className={styles.menuItemIcon} />
+                <ClipboardCopy className={styles.menuItemIcon} />
                 <span>Copy workflow</span>
               </span>
               <ShortcutHint text={shortcuts.copyWorkflow} />
@@ -2991,7 +2992,7 @@ export default function ProtocolNodeCard({
           </ContextMenuItem>
         )}
 
-        {onPasteWorkflow && (
+        {isMenuItemVisible("pasteWorkflow") && onPasteWorkflow && (
           <ContextMenuItem
             disabled={!canPasteWorkflow}
             onClick={handlePasteWorkflow}

@@ -57,6 +57,7 @@ import {
   Play,
   Square,
   ClipboardPaste,
+  CheckSquare,
 } from "lucide-react";
 import { FitViewIcon, TableIcon, TreeIcon } from "@/icons";
 
@@ -802,6 +803,8 @@ export default function ProjectPage() {
     continue: true,
     delete: true,
     duplicate: true,
+    copyWorkflow: true,
+    pasteWorkflow: true,
     export: true,
     manageTags: true,
     nextSteps: true,
@@ -879,6 +882,8 @@ export default function ProjectPage() {
           browse: Boolean(remotePolicy.browse),
           continue: Boolean(remotePolicy.continue),
           duplicate: Boolean(remotePolicy.duplicate),
+          copyWorkflow: Boolean(remotePolicy.copyWorkflow),
+          pasteWorkflow: Boolean(remotePolicy.pasteWorkflow),
           export: Boolean(remotePolicy.export),
           manageTags: Boolean(remotePolicy.manageTags),
           rename: Boolean(remotePolicy.rename),
@@ -5007,6 +5012,8 @@ export default function ProjectPage() {
 
   /* ------------------------ Render ------------------------ */
   const isGrid = viewMode === "grid";
+  const canSelectAllWorkflow = getAllWorkflowProtocolIds().size > 0;
+
   return (
     <div className={`projectpage-widget-root ${hostIsDark ? "dark" : ""}`}>
       <div className="h-app min-h-0 flex flex-col relative overflow-hidden bg-background text-foreground">
@@ -5397,6 +5404,8 @@ export default function ProjectPage() {
                   <span className="text-sm mb-1">Add protocol</span>
                 </button>
 
+                
+                {contextMenuVisibilityPolicyRef.current.pasteWorkflow && (
                 <button
                   className="pp-canvasMenuItem"
                   onClick={() => {
@@ -5413,7 +5422,20 @@ export default function ProjectPage() {
                   <ClipboardPaste className="pp-canvasMenuIcon" />
                   <span className="text-sm mb-1">Paste workflow</span>
                 </button>
+                )}
 
+                <button
+                  className="pp-canvasMenuItem"
+                  onClick={() => {
+                    handleCloseMenu();
+                    handleSelectAllWorkflow();
+                  }}
+                  disabled={!canSelectAllWorkflow}
+                  title="Select all workflow protocols"
+                >
+                  <CheckSquare className="pp-canvasMenuIcon" />
+                  <span className="text-sm mb-1">Select all workflow</span>
+                </button>
                 <div className="pp-canvasMenuSep" />
 
                 <button
