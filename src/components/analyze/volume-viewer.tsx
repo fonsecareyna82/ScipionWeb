@@ -2558,25 +2558,6 @@ function OrthoSlicePanel({
         </Typography>
       </Box>
 
-      {loading && imageUrl && (
-        <Box
-          sx={{
-            position: "absolute",
-            top: 6,
-            right: 6,
-            width: 18,
-            height: 18,
-            borderRadius: "50%",
-            bgcolor: "rgba(255,255,255,0.9)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <CircularProgress size={12} />
-        </Box>
-      )}
-
       {error && imageUrl && (
         <Box
           sx={{
