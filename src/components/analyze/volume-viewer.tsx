@@ -73,6 +73,9 @@ const SLICE_PREVIEW_MAX_SIDE = 768;
 const SLICE_PREVIEW_FORMAT = "webp" as const;
 const SLICE_PREVIEW_QUALITY = 70;
 
+const SLICE_DRAG_PREVIEW_MAX_SIDE = 384;
+const SLICE_DRAG_PREVIEW_QUALITY = 55;
+
 const ORTHO_AXIS_COLORS = {
   x: "#ef4444",
   y: "#22c55e",
@@ -187,9 +190,23 @@ export default function VolumeViewer({
   const [sliceIndexY, setSliceIndexY] = useState(0);
   const [sliceIndexX, setSliceIndexX] = useState(0);
 
+  const [draggingSlice, setDraggingSlice] = useState<null | "single" | "z" | "y" | "x">(null);
+
   const throttledSliceIndexZ = useThrottledValue(sliceIndexZ, SLICE_SLIDER_THROTTLE_MS);
   const throttledSliceIndexY = useThrottledValue(sliceIndexY, SLICE_SLIDER_THROTTLE_MS);
   const throttledSliceIndexX = useThrottledValue(sliceIndexX, SLICE_SLIDER_THROTTLE_MS);
+
+  const effectiveSliceIndex =
+    draggingSlice === "single" ? throttledSliceIndex : sliceIndex;
+
+  const effectiveSliceIndexZ =
+    draggingSlice === "z" ? throttledSliceIndexZ : sliceIndexZ;
+
+  const effectiveSliceIndexY =
+    draggingSlice === "y" ? throttledSliceIndexY : sliceIndexY;
+
+  const effectiveSliceIndexX =
+    draggingSlice === "x" ? throttledSliceIndexX : sliceIndexX;
 
   const [colormap, setColormap] = useState<string>("viridis");
   const [interp2d, setInterp2d] = useState<Interp2d>("linear");
@@ -495,14 +512,34 @@ export default function VolumeViewer({
   const readyTripleSlices =
     selectedId != null && !!meta && dims.x > 0 && dims.y > 0 && dims.z > 0;
 
-  const sliceFetchOptions = useMemo(
-    () => ({
-      thumb: SLICE_PREVIEW_MAX_SIDE,
+  const buildSliceFetchOptions = useCallback(
+    (isDragging: boolean) => ({
+      thumb: isDragging ? SLICE_DRAG_PREVIEW_MAX_SIDE : SLICE_PREVIEW_MAX_SIDE,
       format: SLICE_PREVIEW_FORMAT,
       fast: true,
-      quality: SLICE_PREVIEW_QUALITY,
+      quality: isDragging ? SLICE_DRAG_PREVIEW_QUALITY : SLICE_PREVIEW_QUALITY,
     }),
     [],
+  );
+
+  const singleSliceFetchOptions = useMemo(
+    () => buildSliceFetchOptions(draggingSlice === "single"),
+    [buildSliceFetchOptions, draggingSlice],
+  );
+
+  const zSliceFetchOptions = useMemo(
+    () => buildSliceFetchOptions(draggingSlice === "z"),
+    [buildSliceFetchOptions, draggingSlice],
+  );
+
+  const ySliceFetchOptions = useMemo(
+    () => buildSliceFetchOptions(draggingSlice === "y"),
+    [buildSliceFetchOptions, draggingSlice],
+  );
+
+  const xSliceFetchOptions = useMemo(
+    () => buildSliceFetchOptions(draggingSlice === "x"),
+    [buildSliceFetchOptions, draggingSlice],
   );
 
   const canShowExternalViewers = Boolean(
@@ -533,11 +570,10 @@ export default function VolumeViewer({
     outputName,
     volumeId: selectedId,
     axis,
-    sliceIndex: throttledSliceIndex,
     maxSlice,
     colormap,
-    reloadKey: sliceReloadNonce,
-    requestOptions: sliceFetchOptions,
+    sliceIndex: effectiveSliceIndex,
+    requestOptions: singleSliceFetchOptions,
   });
 
   const frontUrl = singleSlice.url;
@@ -551,11 +587,11 @@ export default function VolumeViewer({
     outputName,
     volumeId: selectedId,
     axis: "z",
-    sliceIndex: throttledSliceIndexZ,
+    sliceIndex: effectiveSliceIndexZ,
     maxSlice: maxSliceZ,
     colormap,
     reloadKey: sliceReloadNonce,
-    requestOptions: sliceFetchOptions,
+    requestOptions: zSliceFetchOptions,
   });
 
   const ySlice = useVolumeSliceImage({
@@ -566,11 +602,11 @@ export default function VolumeViewer({
     outputName,
     volumeId: selectedId,
     axis: "y",
-    sliceIndex: throttledSliceIndexY,
+    sliceIndex: effectiveSliceIndexY,
     maxSlice: maxSliceY,
     colormap,
     reloadKey: sliceReloadNonce,
-    requestOptions: sliceFetchOptions,
+    requestOptions: ySliceFetchOptions,
   });
 
   const xSlice = useVolumeSliceImage({
@@ -581,11 +617,11 @@ export default function VolumeViewer({
     outputName,
     volumeId: selectedId,
     axis: "x",
-    sliceIndex: throttledSliceIndexX,
+    sliceIndex: effectiveSliceIndexX,
     maxSlice: maxSliceX,
     colormap,
     reloadKey: sliceReloadNonce,
-    requestOptions: sliceFetchOptions,
+    requestOptions: xSliceFetchOptions,
   });
 
   const metadataSurfaceLevelRange = useMemo<[number, number] | null>(() => {
@@ -1482,7 +1518,14 @@ export default function VolumeViewer({
                             value={Math.min(sliceIndex, maxSlice)}
                             min={0}
                             max={maxSlice}
-                            onChange={(v) => setSliceIndex(v)}
+                            onChange={(v) => {
+                              setDraggingSlice("single");
+                              setSliceIndex(v);
+                            }}
+                            onChangeCommitted={(v) => {
+                              setSliceIndex(v);
+                              setDraggingSlice((current) => current === "single" ? null : current);
+                            }}
                             disabled={!readySlices}
                           />
                         </>
@@ -1495,7 +1538,14 @@ export default function VolumeViewer({
                             value={Math.min(sliceIndexZ, maxSliceZ)}
                             min={0}
                             max={maxSliceZ}
-                            onChange={(v) => setSliceIndexZ(v)}
+                            onChange={(v) => {
+                              setDraggingSlice("z");
+                              setSliceIndexZ(v);
+                            }}
+                            onChangeCommitted={(v) => {
+                              setSliceIndexZ(v);
+                              setDraggingSlice((current) => current === "z" ? null : current);
+                            }}
                             disabled={!readyTripleSlices}
                             axisColor={ORTHO_AXIS_COLORS.z}
                           />
@@ -1506,7 +1556,14 @@ export default function VolumeViewer({
                             value={Math.min(sliceIndexY, maxSliceY)}
                             min={0}
                             max={maxSliceY}
-                            onChange={(v) => setSliceIndexY(v)}
+                            onChange={(v) => {
+                              setDraggingSlice("y");
+                              setSliceIndexY(v);
+                            }}
+                            onChangeCommitted={(v) => {
+                              setSliceIndexY(v);
+                              setDraggingSlice((current) => current === "y" ? null : current);
+                            }}
                             disabled={!readyTripleSlices}
                             axisColor={ORTHO_AXIS_COLORS.y}
                           />
@@ -1517,7 +1574,14 @@ export default function VolumeViewer({
                             value={Math.min(sliceIndexX, maxSliceX)}
                             min={0}
                             max={maxSliceX}
-                            onChange={(v) => setSliceIndexX(v)}
+                            onChange={(v) => {
+                              setDraggingSlice("x");
+                              setSliceIndexX(v);
+                            }}
+                            onChangeCommitted={(v) => {
+                              setSliceIndexX(v);
+                              setDraggingSlice((current) => current === "x" ? null : current);
+                            }}
                             disabled={!readyTripleSlices}
                             axisColor={ORTHO_AXIS_COLORS.x}
                           />
@@ -2110,6 +2174,7 @@ function AxisSliceSliderControl({
   min,
   max,
   onChange,
+  onChangeCommitted,
   disabled,
   axisColor,
 }: {
@@ -2120,9 +2185,12 @@ function AxisSliceSliderControl({
   min: number;
   max: number;
   onChange: (value: number) => void;
+  onChangeCommitted?: (value: number) => void;
   disabled?: boolean;
   axisColor?: string;
 }) {
+  const normalizeSliderValue = (v: number | number[]) =>
+    Array.isArray(v) ? v[0] : v;
   return (
     <Box sx={{ mt: 0.5 }}>
       <Box sx={{ display: "inline-flex", gap: 0.5, alignItems: "center" }}>
@@ -2140,7 +2208,10 @@ function AxisSliceSliderControl({
         min={min}
         max={Math.max(min, max)}
         step={1}
-        onChange={(_, v) => onChange(v as number)}
+        onChange={(_, v) => onChange(normalizeSliderValue(v as number | number[]))}
+        onChangeCommitted={(_, v) => {
+          onChangeCommitted?.(normalizeSliderValue(v as number | number[]));
+        }}
         disabled={disabled}
         valueLabelDisplay="auto"
         valueLabelFormat={(v) => `${(v as number) + 1}`}
