@@ -104,8 +104,8 @@ const POINT_COLOR_PALETTE: { label: string; value: string }[] = [
 ];
 
 const TOMOGRAM_CMAP_OPTIONS = [
-  "viridis",
   "gray",
+  "viridis",
   "magma",
   "plasma",
   "inferno",
@@ -341,7 +341,7 @@ export default function Coords3dViewer({
 
   const [brightness, setBrightness] = useState<number>(1.0);
   const [contrast, setContrast] = useState<number>(1.0);
-  const [tomogramColormap, setTomogramColormap] = useState<string>("viridis");
+  const [tomogramColormap, setTomogramColormap] = useState<string>("gray");
   const [debugGrid, setDebugGrid] = useState<boolean>(DEBUG_SYNTHETIC_GRID);
 
   const [pointColor, setPointColor] = useState<string>("#ef4444");

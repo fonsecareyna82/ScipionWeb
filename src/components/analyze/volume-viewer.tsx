@@ -57,8 +57,8 @@ type SliceImageState = {
 
 const DEFAULT_AXIS: "z" | "y" | "x" = "z";
 const CMAP_OPTIONS = [
-  "viridis",
   "gray",
+  "viridis",
   "magma",
   "plasma",
   "inferno",
@@ -208,7 +208,7 @@ export default function VolumeViewer({
   const effectiveSliceIndexX =
     draggingSlice === "x" ? throttledSliceIndexX : sliceIndexX;
 
-  const [colormap, setColormap] = useState<string>("viridis");
+  const [colormap, setColormap] = useState<string>("gray");
   const [interp2d, setInterp2d] = useState<Interp2d>("linear");
   const [sharpen2d, setSharpen2d] = useState(false);
   const [brightness2d, setBrightness2d] = useState(0);
