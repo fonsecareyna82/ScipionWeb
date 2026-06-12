@@ -137,7 +137,10 @@ export type VolumeSliceOptions = {
   scale?: number;
   inline?: boolean;
   signal?: AbortSignal;
-  format?: string;
+  format?: "png" | "webp" | "jpeg";
+  thumb?: number;
+  fast?: boolean;
+  quality?: number;
 };
 
 export type VolumeSliceObjectUrl = {
