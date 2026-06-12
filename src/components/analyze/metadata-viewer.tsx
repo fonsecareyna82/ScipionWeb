@@ -349,6 +349,7 @@ const SELECTION_IDS_SCAN_PAGE_SIZE = 500;
 
 const MAX_CONCURRENT_IMAGE_REQUESTS = 4;
 const MAX_IMAGE_CACHE_ENTRIES = 400;
+const IMAGE_LAZY_ROOT_MARGIN = "600px 0px";
 
 const HEADER_BG = "#f3f4f6";
 
@@ -405,42 +406,50 @@ const closeBtnSx = {
 const imageJobQueue: ImageJob[] = [];
 let activeImageJobs = 0;
 
-function scheduleNextImageJob() {
-  if (activeImageJobs >= MAX_CONCURRENT_IMAGE_REQUESTS) {
-    return;
-  }
-
-  const job = imageJobQueue.shift();
-  if (!job) return;
-
-  if (job.isCancelled()) {
-    scheduleNextImageJob();
-    return;
-  }
-
-  activeImageJobs += 1;
-
-  void (async () => {
-    try {
-      const result = await job.run();
-
-      if (!job.isCancelled()) {
-        job.onSuccess(result);
-      } else {
-        result.revoke();
-      }
-    } catch (error) {
-      if (!job.isCancelled()) {
-        job.onError(error);
-      }
-    } finally {
-      activeImageJobs -= 1;
-      scheduleNextImageJob();
+function pruneCancelledImageJobs() {
+  for (let index = imageJobQueue.length - 1; index >= 0; index -= 1) {
+    if (imageJobQueue[index].isCancelled()) {
+      imageJobQueue.splice(index, 1);
     }
-  })();
+  }
+}
+
+function scheduleNextImageJob() {
+  pruneCancelledImageJobs();
+
+  while (activeImageJobs < MAX_CONCURRENT_IMAGE_REQUESTS) {
+    const job = imageJobQueue.shift();
+    if (!job) return;
+
+    if (job.isCancelled()) {
+      continue;
+    }
+
+    activeImageJobs += 1;
+
+    void (async () => {
+      try {
+        const result = await job.run();
+
+        if (!job.isCancelled()) {
+          job.onSuccess(result);
+        } else {
+          result.revoke();
+        }
+      } catch (error) {
+        if (!job.isCancelled()) {
+          job.onError(error);
+        }
+      } finally {
+        activeImageJobs = Math.max(0, activeImageJobs - 1);
+        scheduleNextImageJob();
+      }
+    })();
+  }
 }
 
 function enqueueImageJob(job: ImageJob) {
+  pruneCancelledImageJobs();
   imageJobQueue.push(job);
   scheduleNextImageJob();
 }
@@ -2104,28 +2113,86 @@ function MetadataImageCell({
   onClick,
   imageCacheRef,
 }: MetadataImageCellProps) {
+  const rootRef = useRef<HTMLDivElement | null>(null);
+
+  const [isVisible, setIsVisible] = useState(false);
   const [thumbUrl, setThumbUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const svcRef = useProjectServiceRef();
 
+  const imageCacheKey = useMemo(
+    () =>
+      [
+        projectId,
+        protocolId,
+        outputName,
+        tableName,
+        rowIndexInTable,
+        columnName,
+        cell.path,
+        size,
+      ].join("|"),
+    [
+      cell.path,
+      columnName,
+      outputName,
+      projectId,
+      protocolId,
+      rowIndexInTable,
+      size,
+      tableName,
+    ],
+  );
+
+  useEffect(() => {
+    setIsVisible(false);
+  }, [imageCacheKey]);
+
+  useEffect(() => {
+    const element = rootRef.current;
+    if (!element) return;
+
+    if (typeof IntersectionObserver === "undefined") {
+      setIsVisible(true);
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (!entry?.isIntersecting) return;
+
+        setIsVisible(true);
+        observer.disconnect();
+      },
+      {
+        root: null,
+        rootMargin: IMAGE_LAZY_ROOT_MARGIN,
+        threshold: 0.01,
+      },
+    );
+
+    observer.observe(element);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [imageCacheKey]);
+
   useEffect(() => {
     const cache = imageCacheRef.current;
 
-    const key = [
-      projectId,
-      protocolId,
-      outputName,
-      tableName,
-      rowIndexInTable,
-      columnName,
-      cell.path,
-      size,
-    ].join("|");
-
-    const cached = getImageCacheEntry(cache, key);
+    const cached = getImageCacheEntry(cache, imageCacheKey);
     if (cached) {
       setThumbUrl(cached.url);
+      setError(null);
+      setLoading(false);
+      return;
+    }
+
+    if (!isVisible) {
+      setThumbUrl(null);
       setError(null);
       setLoading(false);
       return;
@@ -2155,7 +2222,7 @@ function MetadataImageCell({
           return;
         }
 
-        setImageCacheEntry(imageCacheRef.current, key, { url, revoke });
+        setImageCacheEntry(imageCacheRef.current, imageCacheKey, { url, revoke });
         setThumbUrl(url);
         setError(null);
         setLoading(false);
@@ -2173,9 +2240,10 @@ function MetadataImageCell({
       cancelled = true;
     };
   }, [
-    cell.path,
     columnName,
+    imageCacheKey,
     imageCacheRef,
+    isVisible,
     outputName,
     projectId,
     protocolId,
@@ -2195,6 +2263,7 @@ function MetadataImageCell({
 
   return (
     <Box
+      ref={rootRef}
       onClick={handleClick}
       sx={{
         cursor: "pointer",
