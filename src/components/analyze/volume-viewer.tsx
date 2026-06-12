@@ -69,6 +69,10 @@ const CMAP_OPTIONS = [
 const SURFACE_MAX_TRIANGLES = 550000;
 const SLICE_SLIDER_THROTTLE_MS = 80;
 
+const SLICE_PREVIEW_MAX_SIDE = 768;
+const SLICE_PREVIEW_FORMAT = "webp" as const;
+const SLICE_PREVIEW_QUALITY = 70;
+
 const ORTHO_AXIS_COLORS = {
   x: "#ef4444",
   y: "#22c55e",
@@ -195,14 +199,6 @@ export default function VolumeViewer({
 
   const [pan2d, setPan2d] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
 
-  const [frontUrl, setFrontUrl] = useState<string | null>(null);
-  const [imgError, setImgError] = useState<string | null>(null);
-  const [_, setLoadingSlice] = useState(false);
-
-  const reqIdRef = useRef(0);
-  const singleSliceControllersRef = useRef<Set<AbortController>>(new Set());
-  const singleSliceRequestKeyRef = useRef<string | null>(null);
-  const singleSliceAppliedReqIdRef = useRef(0);
 
   const [sliceReloadNonce, setSliceReloadNonce] = useState(0);
   const bumpSliceReload = useCallback(() => {
@@ -499,6 +495,16 @@ export default function VolumeViewer({
   const readyTripleSlices =
     selectedId != null && !!meta && dims.x > 0 && dims.y > 0 && dims.z > 0;
 
+  const sliceFetchOptions = useMemo(
+    () => ({
+      thumb: SLICE_PREVIEW_MAX_SIDE,
+      format: SLICE_PREVIEW_FORMAT,
+      fast: true,
+      quality: SLICE_PREVIEW_QUALITY,
+    }),
+    [],
+  );
+
   const canShowExternalViewers = Boolean(
     selectedId != null &&
     meta != null &&
@@ -519,107 +525,23 @@ export default function VolumeViewer({
     setPan2d({ x: 0, y: 0 });
   }, [selectedId, axis]);
 
-  useEffect(() => {
-    if (
-      !readySlices ||
-      viewMode !== "slices" ||
-      sliceLayoutMode !== "single"
-    ) {
-      singleSliceControllersRef.current.forEach((controller) => controller.abort());
-      singleSliceControllersRef.current.clear();
-      setImgError(null);
-      return;
-    }
-
-    const idx = Math.max(0, Math.min(throttledSliceIndex, maxSlice));
-    const requestKey = [
-      projectId,
-      protocolId,
-      outputName,
-      selectedId,
-      axis,
-      colormap,
-      sliceReloadNonce,
-    ].map(String).join("|");
-
-    if (singleSliceRequestKeyRef.current !== requestKey) {
-      singleSliceControllersRef.current.forEach((controller) => controller.abort());
-      singleSliceControllersRef.current.clear();
-      singleSliceRequestKeyRef.current = requestKey;
-      singleSliceAppliedReqIdRef.current = 0;
-    }
-
-    const controller = new AbortController();
-    singleSliceControllersRef.current.add(controller);
-
-    const requestId = ++reqIdRef.current;
-    setImgError(null);
-
-    (async () => {
-      try {
-        setLoadingSlice(true);
-
-        const { url, revoke } = await svc.fetchVolumeSliceObjectUrl(
-          projectId,
-          protocolId,
-          outputName,
-          selectedId!,
-          idx,
-          { axis, cmap: colormap, signal: controller.signal },
-        );
-
-        if (controller.signal.aborted || singleSliceRequestKeyRef.current !== requestKey) {
-          revoke();
-          return;
-        }
-
-        if (requestId < singleSliceAppliedReqIdRef.current) {
-          revoke();
-          return;
-        }
-
-        singleSliceAppliedReqIdRef.current = requestId;
-
-        setFrontUrl((prev) => {
-          if (prev && prev !== url) {
-            // Previous URL can be revoked by the service if needed.
-          }
-          return url;
-        });
-      } catch (e: any) {
-        if (controller.signal.aborted) return;
-        if (singleSliceRequestKeyRef.current === requestKey) {
-          setImgError(e?.message || "Failed to render slice");
-        }
-      } finally {
-        singleSliceControllersRef.current.delete(controller);
-        if (reqIdRef.current === requestId) {
-          setLoadingSlice(false);
-        }
-      }
-    })();
-  }, [
-    readySlices,
-    viewMode,
-    sliceLayoutMode,
-    throttledSliceIndex,
-    axis,
-    colormap,
-    selectedId,
-    maxSlice,
+  const singleSlice = useVolumeSliceImage({
+    enabled: viewMode === "slices" && sliceLayoutMode === "single" && readySlices,
+    svc,
     projectId,
     protocolId,
     outputName,
-    svc,
-    sliceReloadNonce,
-  ]);
+    volumeId: selectedId,
+    axis,
+    sliceIndex: throttledSliceIndex,
+    maxSlice,
+    colormap,
+    reloadKey: sliceReloadNonce,
+    requestOptions: sliceFetchOptions,
+  });
 
-  useEffect(() => {
-    return () => {
-      singleSliceControllersRef.current.forEach((controller) => controller.abort());
-      singleSliceControllersRef.current.clear();
-    };
-  }, []);
+  const frontUrl = singleSlice.url;
+  const imgError = singleSlice.error;
 
   const zSlice = useVolumeSliceImage({
     enabled: viewMode === "slices" && sliceLayoutMode === "triple" && readyTripleSlices,
@@ -633,6 +555,7 @@ export default function VolumeViewer({
     maxSlice: maxSliceZ,
     colormap,
     reloadKey: sliceReloadNonce,
+    requestOptions: sliceFetchOptions,
   });
 
   const ySlice = useVolumeSliceImage({
@@ -647,6 +570,7 @@ export default function VolumeViewer({
     maxSlice: maxSliceY,
     colormap,
     reloadKey: sliceReloadNonce,
+    requestOptions: sliceFetchOptions,
   });
 
   const xSlice = useVolumeSliceImage({
@@ -661,6 +585,7 @@ export default function VolumeViewer({
     maxSlice: maxSliceX,
     colormap,
     reloadKey: sliceReloadNonce,
+    requestOptions: sliceFetchOptions,
   });
 
   const metadataSurfaceLevelRange = useMemo<[number, number] | null>(() => {
@@ -2617,6 +2542,7 @@ function useVolumeSliceImage({
   maxSlice,
   colormap,
   reloadKey,
+  requestOptions,
 }: {
   enabled: boolean;
   svc: any;
@@ -2629,21 +2555,102 @@ function useVolumeSliceImage({
   maxSlice: number;
   colormap: string;
   reloadKey?: number;
+  requestOptions?: {
+    thumb?: number;
+    format?: "png" | "webp" | "jpeg";
+    fast?: boolean;
+    quality?: number;
+  };
 }): SliceImageState {
   const [url, setUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const controllersRef = useRef<Set<AbortController>>(new Set());
-  const reqIdRef = useRef(0);
-  const appliedReqIdRef = useRef(0);
+  const controllerRef = useRef<AbortController | null>(null);
+  const inFlightRef = useRef(false);
+  const pendingJobRef = useRef<{ requestKey: string; sliceIndex: number } | null>(null);
   const requestKeyRef = useRef<string | null>(null);
   const revokeRef = useRef<(() => void) | null>(null);
+  const runNextRef = useRef<(() => void) | null>(null);
+
+  runNextRef.current = () => {
+    if (inFlightRef.current) return;
+
+    const job = pendingJobRef.current;
+    if (!job) {
+      setLoading(false);
+      return;
+    }
+
+    pendingJobRef.current = null;
+    inFlightRef.current = true;
+
+    const controller = new AbortController();
+    controllerRef.current = controller;
+
+    setLoading(true);
+    setError(null);
+
+    (async () => {
+      try {
+        const result = await svc.fetchVolumeSliceObjectUrl(
+          projectId,
+          protocolId,
+          outputName,
+          volumeId,
+          job.sliceIndex,
+          {
+            axis,
+            cmap: colormap,
+            thumb: requestOptions?.thumb,
+            format: requestOptions?.format,
+            fast: requestOptions?.fast,
+            quality: requestOptions?.quality,
+            signal: controller.signal,
+          },
+        );
+
+        if (controller.signal.aborted || requestKeyRef.current !== job.requestKey) {
+          result?.revoke?.();
+          return;
+        }
+
+        if (revokeRef.current) {
+          try {
+            revokeRef.current();
+          } catch {
+            // Ignore revoke errors.
+          }
+        }
+
+        revokeRef.current = result?.revoke ?? null;
+        setUrl(result?.url ?? null);
+      } catch (e: any) {
+        if (controller.signal.aborted || requestKeyRef.current !== job.requestKey) return;
+        setError(e?.message || `Failed to load ${axis.toUpperCase()} slice`);
+      } finally {
+        if (controllerRef.current === controller) {
+          controllerRef.current = null;
+        }
+
+        inFlightRef.current = false;
+
+        if (pendingJobRef.current) {
+          runNextRef.current?.();
+        } else {
+          setLoading(false);
+        }
+      }
+    })();
+  };
 
   useEffect(() => {
     if (!enabled || volumeId == null || sliceIndex == null) {
-      controllersRef.current.forEach((controller) => controller.abort());
-      controllersRef.current.clear();
+      controllerRef.current?.abort();
+      controllerRef.current = null;
+      pendingJobRef.current = null;
+      inFlightRef.current = false;
+      requestKeyRef.current = null;
       setLoading(false);
       setError(null);
       return;
@@ -2658,71 +2665,26 @@ function useVolumeSliceImage({
       axis,
       colormap,
       reloadKey ?? "",
+      requestOptions?.thumb ?? "",
+      requestOptions?.format ?? "",
+      requestOptions?.fast ?? "",
+      requestOptions?.quality ?? "",
     ].map(String).join("|");
 
     if (requestKeyRef.current !== requestKey) {
-      controllersRef.current.forEach((controller) => controller.abort());
-      controllersRef.current.clear();
+      controllerRef.current?.abort();
+      controllerRef.current = null;
+      pendingJobRef.current = null;
+      inFlightRef.current = false;
       requestKeyRef.current = requestKey;
-      appliedReqIdRef.current = 0;
     }
 
-    const controller = new AbortController();
-    controllersRef.current.add(controller);
+    pendingJobRef.current = {
+      requestKey,
+      sliceIndex: clampedIndex,
+    };
 
-    const reqId = ++reqIdRef.current;
-
-    (async () => {
-      try {
-        setLoading(true);
-        setError(null);
-
-        const result = await svc.fetchVolumeSliceObjectUrl(
-          projectId,
-          protocolId,
-          outputName,
-          volumeId,
-          clampedIndex,
-          {
-            axis,
-            cmap: colormap,
-            signal: controller.signal,
-          },
-        );
-
-        if (controller.signal.aborted || requestKeyRef.current !== requestKey) {
-          result?.revoke?.();
-          return;
-        }
-
-        if (reqId < appliedReqIdRef.current) {
-          result?.revoke?.();
-          return;
-        }
-
-        appliedReqIdRef.current = reqId;
-
-        if (revokeRef.current) {
-          try {
-            revokeRef.current();
-          } catch {
-            // Ignore revoke errors.
-          }
-        }
-
-        revokeRef.current = result?.revoke ?? null;
-        setUrl(result?.url ?? null);
-      } catch (e: any) {
-        if (controller.signal.aborted || requestKeyRef.current !== requestKey) return;
-        setError(e?.message || `Failed to load ${axis.toUpperCase()} slice`);
-        setUrl(null);
-      } finally {
-        controllersRef.current.delete(controller);
-        if (reqIdRef.current === reqId) {
-          setLoading(false);
-        }
-      }
-    })();
+    runNextRef.current?.();
   }, [
     enabled,
     svc,
@@ -2735,12 +2697,17 @@ function useVolumeSliceImage({
     maxSlice,
     colormap,
     reloadKey,
+    requestOptions?.thumb,
+    requestOptions?.format,
+    requestOptions?.fast,
+    requestOptions?.quality,
   ]);
 
   useEffect(() => {
     return () => {
-      controllersRef.current.forEach((controller) => controller.abort());
-      controllersRef.current.clear();
+      controllerRef.current?.abort();
+      controllerRef.current = null;
+      pendingJobRef.current = null;
 
       if (revokeRef.current) {
         try {
