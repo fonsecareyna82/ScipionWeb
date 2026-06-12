@@ -83,8 +83,25 @@ type CachedPreview = ObjectUrlResult & {
 };
 
 const PREVIEW_CACHE_LIMIT = 80;
+
+const PREVIEW_SIZE_INTERACTIVE = 512;
+const PREVIEW_SIZE_NORMAL = 768;
+const PREVIEW_SIZE_REFRESH = 1024;
+
 const PREVIEW_NEIGHBOR_OFFSETS = [-5, -1, 1, 5] as const;
+const PREVIEW_FORWARD_OFFSETS = [1, 2, 3, 5, 8] as const;
+const PREVIEW_BACKWARD_OFFSETS = [-1, -2, -3, -5, -8] as const;
 const SCRUBBING_PREVIEW_NEIGHBOR_OFFSETS = [-5, -2, -1, 1, 2, 5] as const;
+
+function getPreviewRequestSize(
+  isPlaying: boolean,
+  isScrubbing: boolean,
+  isRefresh: boolean,
+): number {
+  if (isRefresh) return PREVIEW_SIZE_REFRESH;
+  if (isPlaying || isScrubbing) return PREVIEW_SIZE_INTERACTIVE;
+  return PREVIEW_SIZE_NORMAL;
+}
 
 function buildPreviewCacheKey(
   projectId: Id,
@@ -168,6 +185,7 @@ export default function TiltSeriesViewer({
 
   const [previewReloadToken, setPreviewReloadToken] = useState(0);
 
+  const consumedPreviewReloadTokenRef = useRef(0);
   const previewAbortRef = useRef<AbortController | null>(null);
   const previewReqIdRef = useRef(0);
   const previewCacheRef = useRef<Map<string, CachedPreview>>(new Map());
@@ -815,8 +833,16 @@ export default function TiltSeriesViewer({
       return;
     }
 
-    const baseSize = isPlaying || isScrubbing ? 512 : 1024;
     const frameIndex = getPreviewFrameIndex(selectedFrame, selectedRowIndex);
+
+    const shouldBypassPreviewCache =
+      previewReloadToken !== consumedPreviewReloadTokenRef.current;
+
+    const previewSize = getPreviewRequestSize(
+      isPlaying,
+      isScrubbing,
+      shouldBypassPreviewCache,
+    );
 
     const cacheKey = buildPreviewCacheKey(
       projectId,
@@ -824,11 +850,10 @@ export default function TiltSeriesViewer({
       outputName,
       selectedSeriesId,
       frameIndex,
-      baseSize,
+      previewSize,
       applyTransform,
     );
 
-    const shouldBypassPreviewCache = previewReloadToken > 0;
     const cachedPreview = shouldBypassPreviewCache ? undefined : previewCacheRef.current.get(cacheKey);
 
     if (cachedPreview) {
@@ -853,6 +878,7 @@ export default function TiltSeriesViewer({
       }
 
       previewCacheRef.current.delete(cacheKey);
+      consumedPreviewReloadTokenRef.current = previewReloadToken;
     }
 
     previewAbortRef.current?.abort();
@@ -865,11 +891,8 @@ export default function TiltSeriesViewer({
         setPreviewLoading(true);
         setPreviewError(null);
 
-        // useSmallerPreviewSizeWhenAutoplayIsActiveToReduceLoad
-        const baseSize = isPlaying || isScrubbing ? 512 : 1024;
-
         const options: any = {
-          size: baseSize,
+          size: previewSize,
           normalize: "minmax",
           signal: controller.signal,
         };
@@ -956,8 +979,15 @@ export default function TiltSeriesViewer({
       previewPrefetchTimerRef.current = null;
     }
 
-    const size = isPlaying || isScrubbing ? 512 : 1024;
-    const offsets = isScrubbing ? SCRUBBING_PREVIEW_NEIGHBOR_OFFSETS : PREVIEW_NEIGHBOR_OFFSETS;
+    const size = isPlaying || isScrubbing ? PREVIEW_SIZE_INTERACTIVE : PREVIEW_SIZE_NORMAL;
+
+    const offsets = isPlaying
+      ? playDirectionRef.current === 1
+        ? PREVIEW_FORWARD_OFFSETS
+        : PREVIEW_BACKWARD_OFFSETS
+      : isScrubbing
+        ? SCRUBBING_PREVIEW_NEIGHBOR_OFFSETS
+        : PREVIEW_NEIGHBOR_OFFSETS;
 
     previewPrefetchTimerRef.current = window.setTimeout(() => {
       prefetchPreviewBatch(
