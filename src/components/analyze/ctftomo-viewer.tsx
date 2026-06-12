@@ -722,6 +722,14 @@ export default function CTFTomoViewer({ projectId, protocolId, outputName }: CTF
     return [min - pad, max + pad];
   }, [chartRows]);
 
+  const selectedChartRow = useMemo(() => {
+    if (!selectedFrame) return null;
+
+    return (
+      chartRows.find((row) => String(row.viewId) === String(selectedFrame.viewId)) ?? null
+    );
+  }, [chartRows, selectedFrame]);
+
   const plotData = useMemo(() => {
     if (!chartRows.length) return [];
 
@@ -753,6 +761,70 @@ export default function CTFTomoViewer({ projectId, protocolId, outputName }: CTF
       "DefocusU: %{customdata[1]:.2f} Å<br>" +
       "DefocusV: %{customdata[2]:.2f} Å<br>" +
       "Resolution: %{customdata[3]:.2f} Å<extra></extra>";
+
+    const selectedPointTraces: any[] = [];
+
+    if (selectedChartRow) {
+      const selectedCustomData = [[
+        String(selectedChartRow.viewId),
+        selectedChartRow.defocusU,
+        selectedChartRow.defocusV,
+        selectedChartRow.resolution,
+        selectedChartRow.excluded,
+      ]];
+
+      const selectedMarker = {
+        size: 10,
+        color: "rgba(250,204,21,0.9)",
+        line: { color: "#111827", width: 2 },
+        symbol: "circle",
+      };
+
+      if (selectedChartRow.defocusU != null) {
+        selectedPointTraces.push({
+          type: "scatter",
+          mode: "markers",
+          name: "Selected DefocusU",
+          x: [selectedChartRow.tiltAngle],
+          y: [selectedChartRow.defocusU],
+          customdata: selectedCustomData,
+          hovertemplate: "Selected view<br>" + hovertemplateAll,
+          marker: selectedMarker,
+          yaxis: "y",
+          showlegend: false,
+        });
+      }
+
+      if (selectedChartRow.defocusV != null) {
+        selectedPointTraces.push({
+          type: "scatter",
+          mode: "markers",
+          name: "Selected DefocusV",
+          x: [selectedChartRow.tiltAngle],
+          y: [selectedChartRow.defocusV],
+          customdata: selectedCustomData,
+          hovertemplate: "Selected view<br>" + hovertemplateAll,
+          marker: selectedMarker,
+          yaxis: "y",
+          showlegend: false,
+        });
+      }
+
+      if (selectedChartRow.resolution != null) {
+        selectedPointTraces.push({
+          type: "scatter",
+          mode: "markers",
+          name: "Selected Resolution",
+          x: [selectedChartRow.tiltAngle],
+          y: [selectedChartRow.resolution],
+          customdata: selectedCustomData,
+          hovertemplate: "Selected view<br>" + hovertemplateAll,
+          marker: selectedMarker,
+          yaxis: "y2",
+          showlegend: false,
+        });
+      }
+    }
 
     return [
       {
@@ -811,11 +883,12 @@ export default function CTFTomoViewer({ projectId, protocolId, outputName }: CTF
           "DefocusU: %{customdata[1]:.2f} Å<br>" +
           "DefocusV: %{customdata[2]:.2f} Å<br>" +
           "Resolution: %{customdata[3]:.2f} Å<extra></extra>",
-        marker: { size: 10, color: "#140101", symbol: "o" },
+        marker: { size: 3, color: "#140101", symbol: "o" },
         yaxis: "y",
       },
+      ...selectedPointTraces,
     ] as any[];
-  }, [chartRows]);
+  }, [chartRows, selectedChartRow]);
 
   const plotLayout = useMemo(() => {
     return {
@@ -1092,19 +1165,19 @@ export default function CTFTomoViewer({ projectId, protocolId, outputName }: CTF
             </Button>
 
             <Tooltip title="Show metadata viewer">
-                <span>
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    startIcon={<MetadataIcon fontSize="small" />}
-                    disabled={!canOpenMetadata}
-                    onClick={() => setMainMode("metadata")}
-                    sx={{ textTransform: "none" }}
-                  >
-                    Metadata
-                  </Button>
-                </span>
-              </Tooltip>
+              <span>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  startIcon={<MetadataIcon fontSize="small" />}
+                  disabled={!canOpenMetadata}
+                  onClick={() => setMainMode("metadata")}
+                  sx={{ textTransform: "none" }}
+                >
+                  Metadata
+                </Button>
+              </span>
+            </Tooltip>
 
             {seriesLoading && (
               <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
