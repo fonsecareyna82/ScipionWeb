@@ -68,7 +68,7 @@ import type {
 } from "@/api/projects";
 import { CloseIcon } from "@/icons";
 import { useProjectService } from "@/ProjectServiceContext";
-import { MetadataPlotterDialog } from "./metadata-plotter-dialog"
+import { MetadataPlotterDialog } from "./metadata-plotter-dialog";
 type MetadataViewerProps = {
   projectId: number;
   protocolId: number;
@@ -3426,7 +3426,12 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
     anchorRowIndex: viewMode === "gallery" ? galleryAnchorRowIndex : null,
   });
 
+  const lastImageThumbSizeRef = useRef(imageThumbSize);
+
   useEffect(() => {
+    if (lastImageThumbSizeRef.current === imageThumbSize) return;
+    lastImageThumbSizeRef.current = imageThumbSize;
+
     if (focusedRowIndex == null) return;
 
     if (viewMode === "table") {
@@ -3837,8 +3842,22 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
       return;
     }
 
-    if (viewMode === "table" && focusedRowIndex != null) {
-      jumpToRowIndex(focusedRowIndex);
+    if (viewMode === "table") {
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          if (focusedRowIndex != null) {
+            jumpToRowIndex(focusedRowIndex);
+            return;
+          }
+
+          const container = scrollRef.current;
+          if (container) {
+            container.scrollTop = 0;
+          }
+
+          jumpToRowIndex(0);
+        });
+      });
     }
   }, [viewMode, focusedRowIndex, jumpToRowIndex]);
 
