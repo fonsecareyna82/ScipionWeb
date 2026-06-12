@@ -341,6 +341,7 @@ const IMAGE_COL_PADDING = 24;
 const MIN_THUMB_SIZE = 80;
 const MAX_THUMB_SIZE = 640;
 const ZOOM_STEP_PERCENT = 25;
+const ZOOM_APPLY_DEBOUNCE_MS = 300;
 const ZOOM_MIN_PERCENT = Math.round((MIN_THUMB_SIZE / BASE_THUMB_SIZE) * 100);
 const ZOOM_MAX_PERCENT = Math.round((MAX_THUMB_SIZE / BASE_THUMB_SIZE) * 100);
 
@@ -350,6 +351,10 @@ const SELECTION_IDS_SCAN_PAGE_SIZE = 500;
 const MAX_CONCURRENT_IMAGE_REQUESTS = 4;
 const MAX_IMAGE_CACHE_ENTRIES = 400;
 const IMAGE_LAZY_ROOT_MARGIN = "600px 0px";
+
+const METADATA_IMAGE_PRIMARY_FORMAT = "webp";
+const METADATA_IMAGE_FALLBACK_FORMAT = "png";
+const METADATA_IMAGE_CACHE_VARIANT = "webp-png-fallback";
 
 const HEADER_BG = "#f3f4f6";
 
@@ -1019,6 +1024,11 @@ function parseNumberInput(raw: string): number | null {
 
   const n = Number(noSpaces);
   return Number.isFinite(n) ? n : null;
+}
+
+function clampZoomPercent(value: number): number {
+  if (!Number.isFinite(value)) return 100;
+  return Math.min(ZOOM_MAX_PERCENT, Math.max(ZOOM_MIN_PERCENT, Math.round(value)));
 }
 
 function isNumericOperator(op: CriteriaOperator): boolean {
@@ -2132,6 +2142,7 @@ function MetadataImageCell({
         columnName,
         cell.path,
         size,
+        METADATA_IMAGE_CACHE_VARIANT,
       ].join("|"),
     [
       cell.path,
@@ -2206,16 +2217,41 @@ function MetadataImageCell({
 
     const job: ImageJob = {
       isCancelled: () => cancelled,
-      run: () =>
-        svcRef.current.fetchMetadataImageCellObjectUrl(
-          projectId,
-          protocolId,
-          outputName,
-          tableName,
-          rowIndexInTable,
-          columnName,
-          { size, applyTransform: false, inline: true, format: "png" },
-        ),
+      run: async () => {
+        const baseOptions = {
+          size,
+          applyTransform: false,
+          inline: true,
+        };
+
+        try {
+          return await svcRef.current.fetchMetadataImageCellObjectUrl(
+            projectId,
+            protocolId,
+            outputName,
+            tableName,
+            rowIndexInTable,
+            columnName,
+            {
+              ...baseOptions,
+              format: METADATA_IMAGE_PRIMARY_FORMAT,
+            },
+          );
+        } catch {
+          return svcRef.current.fetchMetadataImageCellObjectUrl(
+            projectId,
+            protocolId,
+            outputName,
+            tableName,
+            rowIndexInTable,
+            columnName,
+            {
+              ...baseOptions,
+              format: METADATA_IMAGE_FALLBACK_FORMAT,
+            },
+          );
+        }
+      },
       onSuccess: ({ url, revoke }) => {
         if (cancelled) {
           revoke();
@@ -3231,12 +3267,23 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
   const hasImageColumns = imageColumns.length > 0;
   const firstImageColumn = imageColumns[0] ?? null;
 
+  const [zoomInputPercent, setZoomInputPercent] = useState<number>(100);
   const [zoomPercent, setZoomPercent] = useState<number>(100);
+  const zoomApplyTimeoutRef = useRef<number | null>(null);
 
   const imageThumbSize = useMemo(() => {
     const scaled = Math.round((BASE_THUMB_SIZE * zoomPercent) / 100);
     return Math.min(MAX_THUMB_SIZE, Math.max(MIN_THUMB_SIZE, scaled));
   }, [zoomPercent]);
+
+  useEffect(() => {
+    return () => {
+      if (zoomApplyTimeoutRef.current != null) {
+        window.clearTimeout(zoomApplyTimeoutRef.current);
+        zoomApplyTimeoutRef.current = null;
+      }
+    };
+  }, []);
 
   const imageColMinWidth = useMemo(() => imageThumbSize + IMAGE_COL_PADDING, [imageThumbSize]);
 
@@ -3244,6 +3291,27 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
     if (!hasImageColumns) return false;
     return selectedImageCell != null;
   }, [hasImageColumns, selectedImageCell]);
+
+  const applyZoomPercent = useCallback((value: number, immediate = false) => {
+    const nextZoomPercent = clampZoomPercent(value);
+
+    setZoomInputPercent(nextZoomPercent);
+
+    if (zoomApplyTimeoutRef.current != null) {
+      window.clearTimeout(zoomApplyTimeoutRef.current);
+      zoomApplyTimeoutRef.current = null;
+    }
+
+    if (immediate) {
+      setZoomPercent(nextZoomPercent);
+      return;
+    }
+
+    zoomApplyTimeoutRef.current = window.setTimeout(() => {
+      setZoomPercent(nextZoomPercent);
+      zoomApplyTimeoutRef.current = null;
+    }, ZOOM_APPLY_DEBOUNCE_MS);
+  }, []);
 
   const [goToIdInput, setGoToIdInput] = useState<string>("");
   const [goToBusy, setGoToBusy] = useState(false);
@@ -3357,6 +3425,22 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
     sortAsc,
     anchorRowIndex: viewMode === "gallery" ? galleryAnchorRowIndex : null,
   });
+
+  useEffect(() => {
+    if (focusedRowIndex == null) return;
+
+    if (viewMode === "table") {
+      window.requestAnimationFrame(() => {
+        jumpToRowIndex(focusedRowIndex);
+      });
+      return;
+    }
+
+    if (viewMode === "gallery") {
+      setGalleryAnchorRowIndex(focusedRowIndex);
+      pendingGalleryScrollIndexRef.current = focusedRowIndex;
+    }
+  }, [focusedRowIndex, imageThumbSize, jumpToRowIndex, viewMode]);
 
   const [matrixColumnNames, setMatrixColumnNames] = useState<Set<string>>(() => new Set());
   const matrixColumnNamesRef = useRef<Set<string>>(new Set());
@@ -4677,12 +4761,20 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
                 size="small"
                 type="number"
                 label="Zoom"
-                value={zoomPercent}
+                value={zoomInputPercent}
                 onChange={(e) => {
                   const raw = Number(e.target.value);
                   if (!Number.isFinite(raw)) return;
-                  const next = Math.min(ZOOM_MAX_PERCENT, Math.max(ZOOM_MIN_PERCENT, raw));
-                  setZoomPercent(next);
+                  applyZoomPercent(raw, false);
+                }}
+                onBlur={() => {
+                  applyZoomPercent(zoomInputPercent, true);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    applyZoomPercent(zoomInputPercent, true);
+                  }
                 }}
                 disabled={!zoomEnabled}
                 sx={{ width: 120 }}
