@@ -4622,6 +4622,13 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
     return col?.alias || col?.name || contextMenu.columnName;
   }, [allColumns, contextMenu]);
 
+  const selectionDialogColumnLabel = useMemo(() => {
+    if (!selectionDialog.open || selectionDialog.kind !== "criteria") return null;
+
+    const column = allColumns.find((item) => item.name === selectionDialog.columnName);
+    return column?.alias || column?.name || selectionDialog.columnName;
+  }, [allColumns, selectionDialog]);
+
   return (
     <Box
       sx={{
@@ -5356,288 +5363,492 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
           if (reason === "backdropClick") return;
           closeSelectionDialog();
         }}
-        maxWidth="sm"
+        maxWidth="md"
         fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 3,
+            overflow: "hidden",
+            border: "1px solid rgba(15,23,42,0.08)",
+            boxShadow: "0 24px 52px rgba(15,23,42,0.22), 0 10px 20px rgba(15,23,42,0.12)",
+          },
+        }}
       >
-        <DialogTitle sx={{ fontSize: "0.95rem", fontWeight: 700 }}>
-          {selectionDialog.open ? selectionDialog.title : "Selection"}
+        <DialogTitle
+          sx={{
+            px: 2,
+            py: 1.45,
+            display: "flex",
+            alignItems: "center",
+            gap: 1.25,
+            background: "linear-gradient(135deg, #0f172a 0%, #1e293b 55%, #334155 100%)",
+            color: "#e2e8f0",
+            borderBottom: "1px solid rgba(255,255,255,0.08)",
+          }}
+        >
+          <Box
+            sx={{
+              width: 34,
+              height: 34,
+              borderRadius: 2,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background: "rgba(255,255,255,0.10)",
+              border: "1px solid rgba(255,255,255,0.16)",
+              color: "#e0f2fe",
+              flexShrink: 0,
+            }}
+          >
+            <Filter size={18} />
+          </Box>
+
+          <Box sx={{ minWidth: 0, flex: 1 }}>
+            <Typography
+              variant="subtitle1"
+              sx={{
+                fontWeight: 800,
+                lineHeight: 1.15,
+                color: "#f8fafc",
+              }}
+            >
+              {selectionDialog.open ? selectionDialog.title : "Selection"}
+            </Typography>
+
+            <Typography
+              variant="caption"
+              sx={{
+                color: "rgba(226,232,240,0.82)",
+                display: "block",
+                mt: 0.25,
+              }}
+            >
+              Build a stable row selection from metadata values, ranges, or row positions
+            </Typography>
+          </Box>
+
+          <IconButton
+            size="small"
+            onClick={closeSelectionDialog}
+            disabled={selectionBusy}
+            aria-label="Close selection dialog"
+            sx={{
+              color: "#e2e8f0",
+              border: "1px solid rgba(255,255,255,0.18)",
+              background: "rgba(255,255,255,0.06)",
+              "&:hover": {
+                background: "rgba(255,255,255,0.12)",
+                borderColor: "rgba(255,255,255,0.28)",
+              },
+              "&.Mui-disabled": {
+                color: "rgba(226,232,240,0.4)",
+                borderColor: "rgba(255,255,255,0.08)",
+              },
+            }}
+          >
+            <CloseIcon fontSize="small" />
+          </IconButton>
         </DialogTitle>
 
-        <DialogContent dividers>
-          {selectionDialogError && (
-            <Box sx={{ mb: 1.5 }}>
-              <Typography variant="body2" color="error" sx={{ fontWeight: 600 }}>
-                {selectionDialogError}
+        <DialogContent
+          dividers
+          sx={{
+            p: 0,
+            background:
+              "linear-gradient(180deg, rgba(248,250,252,0.98) 0%, rgba(241,245,249,0.92) 100%)",
+          }}
+        >
+          <Box
+            sx={{
+              p: 2.25,
+              display: "flex",
+              flexDirection: "column",
+              gap: 1.5,
+            }}
+          >
+            {selectionDialogError && (
+              <Box sx={{ mb: 1.5 }}>
+                <Typography variant="body2" color="error" sx={{ fontWeight: 600 }}>
+                  {selectionDialogError}
+                </Typography>
+              </Box>
+            )}
+
+            {selectionProgress && (
+              <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1 }}>
+                Selecting… {selectionProgress.done}/{selectionProgress.total}
               </Typography>
-            </Box>
-          )}
+            )}
 
-          {selectionProgress && (
-            <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1 }}>
-              Selecting… {selectionProgress.done}/{selectionProgress.total}
-            </Typography>
-          )}
+            {selectionDialog.open && selectionDialog.kind === "range" && (
+              <Box sx={{ display: "flex", gap: 1.5 }}>
+                <TextField
+                  label="Start (row #)"
+                  size="small"
+                  value={selectionDialog.startValue}
+                  onChange={(e) =>
+                    setSelectionDialog((prev) =>
+                      prev.open && prev.kind === "range" ? { ...prev, startValue: e.target.value } : prev,
+                    )
+                  }
+                  disabled={selectionBusy}
+                  fullWidth
+                />
+                <TextField
+                  label="End (row #)"
+                  size="small"
+                  value={selectionDialog.endValue}
+                  onChange={(e) =>
+                    setSelectionDialog((prev) =>
+                      prev.open && prev.kind === "range" ? { ...prev, endValue: e.target.value } : prev,
+                    )
+                  }
+                  disabled={selectionBusy}
+                  fullWidth
+                />
+              </Box>
+            )}
 
-          {selectionDialog.open && selectionDialog.kind === "range" && (
-            <Box sx={{ display: "flex", gap: 1.5 }}>
+            {selectionDialog.open && selectionDialog.kind === "indexCompare" && (
               <TextField
-                label="Start (row #)"
+                label="Row #"
                 size="small"
-                value={selectionDialog.startValue}
+                value={selectionDialog.value}
                 onChange={(e) =>
                   setSelectionDialog((prev) =>
-                    prev.open && prev.kind === "range" ? { ...prev, startValue: e.target.value } : prev,
+                    prev.open && prev.kind === "indexCompare" ? { ...prev, value: e.target.value } : prev,
                   )
                 }
                 disabled={selectionBusy}
                 fullWidth
               />
-              <TextField
-                label="End (row #)"
-                size="small"
-                value={selectionDialog.endValue}
-                onChange={(e) =>
-                  setSelectionDialog((prev) =>
-                    prev.open && prev.kind === "range" ? { ...prev, endValue: e.target.value } : prev,
-                  )
-                }
-                disabled={selectionBusy}
-                fullWidth
-              />
-            </Box>
-          )}
+            )}
 
-          {selectionDialog.open && selectionDialog.kind === "indexCompare" && (
-            <TextField
-              label="Row #"
-              size="small"
-              value={selectionDialog.value}
-              onChange={(e) =>
-                setSelectionDialog((prev) =>
-                  prev.open && prev.kind === "indexCompare" ? { ...prev, value: e.target.value } : prev,
-                )
-              }
-              disabled={selectionBusy}
-              fullWidth
-            />
-          )}
-
-          {selectionDialog.open && selectionDialog.kind === "criteria" && (
-            <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
-              <Typography variant="caption" color="text.secondary">
-                Column: <strong>{contextMenuColumnLabel ?? selectionDialog.columnName}</strong>
-              </Typography>
-
-              <Box sx={{ display: "flex", gap: 1.5, flexWrap: "wrap" }}>
-                <FormControl size="small" sx={{ minWidth: 240, flex: 1 }}>
-                  <InputLabel id="criteria-operator-label">Operator</InputLabel>
-                  <Select
-                    labelId="criteria-operator-label"
-                    label="Operator"
-                    value={selectionDialog.operator}
-                    onChange={(e) => {
-                      const nextOp = e.target.value as CriteriaOperator;
-                      setSelectionDialog((prev) =>
-                        prev.open && prev.kind === "criteria"
-                          ? {
-                            ...prev,
-                            operator: nextOp,
-                            treatAsNumber: isNumericOperator(nextOp) ? true : prev.treatAsNumber,
-                          }
-                          : prev,
-                      );
+            {selectionDialog.open && selectionDialog.kind === "criteria" && (
+              <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
+                <Paper
+                  variant="outlined"
+                  sx={{
+                    p: 1.5,
+                    borderRadius: 2.5,
+                    borderColor: "rgba(15,23,42,0.08)",
+                    background: "rgba(255,255,255,0.86)",
+                    boxShadow: "0 1px 2px rgba(15,23,42,0.04)",
+                  }}
+                >
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      color: "text.secondary",
+                      fontWeight: 700,
+                      textTransform: "uppercase",
+                      letterSpacing: 0.4,
+                      display: "block",
+                      mb: 0.75,
                     }}
-                    disabled={selectionBusy}
                   >
-                    <MenuItem value="equals">Equals</MenuItem>
-                    <MenuItem value="notEquals">Not equals</MenuItem>
-                    <Divider />
-                    <MenuItem value="contains">Contains</MenuItem>
-                    <MenuItem value="startsWith">Starts with</MenuItem>
-                    <MenuItem value="endsWith">Ends with</MenuItem>
-                    <MenuItem value="regex">Regex</MenuItem>
-                    <Divider />
-                    <MenuItem value="isEmpty">Is empty</MenuItem>
-                    <MenuItem value="isNotEmpty">Is not empty</MenuItem>
-                    <MenuItem value="isImage">Is image</MenuItem>
-                    <MenuItem value="isNotImage">Is not image</MenuItem>
-                    <Divider />
-                    <MenuItem value="gt">Greater than</MenuItem>
-                    <MenuItem value="gte">Greater or equal</MenuItem>
-                    <MenuItem value="lt">Less than</MenuItem>
-                    <MenuItem value="lte">Less or equal</MenuItem>
-                    <MenuItem value="between">Between</MenuItem>
-                  </Select>
-                </FormControl>
+                    Target column
+                  </Typography>
 
-                <FormControl size="small" sx={{ minWidth: 240, flex: 1 }}>
-                  <InputLabel id="criteria-setop-label">Apply as</InputLabel>
-                  <Select
-                    labelId="criteria-setop-label"
-                    label="Apply as"
-                    value={selectionDialog.setOp}
-                    onChange={(e) =>
-                      setSelectionDialog((prev) =>
-                        prev.open && prev.kind === "criteria"
-                          ? { ...prev, setOp: e.target.value as SelectionSetOp }
-                          : prev,
-                      )
-                    }
-                    disabled={selectionBusy}
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
+                    <Box
+                      sx={{
+                        px: 1.25,
+                        py: 0.65,
+                        borderRadius: 999,
+                        bgcolor: "rgba(14,165,233,0.10)",
+                        color: "#075985",
+                        border: "1px solid rgba(14,165,233,0.20)",
+                        fontSize: "0.8rem",
+                        fontWeight: 800,
+                        maxWidth: "100%",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                      }}
+                    >
+                      {selectionDialogColumnLabel ?? selectionDialog.columnName}
+                    </Box>
+
+                    <Typography variant="caption" color="text.secondary">
+                      Criteria will be evaluated against this metadata column.
+                    </Typography>
+                  </Box>
+                </Paper>
+
+                <Paper
+                  variant="outlined"
+                  sx={{
+                    p: 1.5,
+                    borderRadius: 2.5,
+                    borderColor: "rgba(15,23,42,0.08)",
+                    background: "rgba(255,255,255,0.92)",
+                    boxShadow: "0 1px 2px rgba(15,23,42,0.04)",
+                  }}
+                >
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      color: "text.secondary",
+                      fontWeight: 700,
+                      textTransform: "uppercase",
+                      letterSpacing: 0.4,
+                      display: "block",
+                      mb: 1.25,
+                    }}
                   >
-                    <MenuItem value="replace">{getSetOpLabel("replace")}</MenuItem>
-                    <MenuItem value="add">{getSetOpLabel("add")}</MenuItem>
-                    <MenuItem value="remove">{getSetOpLabel("remove")}</MenuItem>
-                    <MenuItem value="intersect">{getSetOpLabel("intersect")}</MenuItem>
-                  </Select>
-                </FormControl>
-              </Box>
+                    Criteria
+                  </Typography>
 
-              <Box sx={{ display: "flex", gap: 1.5, flexWrap: "wrap" }}>
-                <FormControl size="small" sx={{ minWidth: 240, flex: 1 }}>
-                  <InputLabel id="criteria-scope-label">Scope</InputLabel>
-                  <Select
-                    labelId="criteria-scope-label"
-                    label="Scope"
-                    value={selectionDialog.scope}
-                    onChange={(e) =>
-                      setSelectionDialog((prev) =>
-                        prev.open && prev.kind === "criteria"
-                          ? { ...prev, scope: e.target.value as SelectionScope }
-                          : prev,
-                      )
-                    }
-                    disabled={selectionBusy}
-                  >
-                    <MenuItem value="allRows">{getScopeLabel("allRows")}</MenuItem>
-                    <MenuItem value="currentSelection">{getScopeLabel("currentSelection")}</MenuItem>
-                  </Select>
-                </FormControl>
+                  <Box sx={{ display: "flex", gap: 1.5, flexWrap: "wrap" }}>
+                    <FormControl size="small" sx={{ minWidth: 240, flex: 1 }}>
+                      <InputLabel id="criteria-operator-label">Operator</InputLabel>
+                      <Select
+                        labelId="criteria-operator-label"
+                        label="Operator"
+                        value={selectionDialog.operator}
+                        onChange={(e) => {
+                          const nextOp = e.target.value as CriteriaOperator;
+                          setSelectionDialog((prev) =>
+                            prev.open && prev.kind === "criteria"
+                              ? {
+                                ...prev,
+                                operator: nextOp,
+                                treatAsNumber: isNumericOperator(nextOp) ? true : prev.treatAsNumber,
+                              }
+                              : prev,
+                          );
+                        }}
+                        disabled={selectionBusy}
+                      >
+                        <MenuItem value="equals">Equals</MenuItem>
+                        <MenuItem value="notEquals">Not equals</MenuItem>
+                        <Divider />
+                        <MenuItem value="contains">Contains</MenuItem>
+                        <MenuItem value="startsWith">Starts with</MenuItem>
+                        <MenuItem value="endsWith">Ends with</MenuItem>
+                        <MenuItem value="regex">Regex</MenuItem>
+                        <Divider />
+                        <MenuItem value="isEmpty">Is empty</MenuItem>
+                        <MenuItem value="isNotEmpty">Is not empty</MenuItem>
+                        <MenuItem value="isImage">Is image</MenuItem>
+                        <MenuItem value="isNotImage">Is not image</MenuItem>
+                        <Divider />
+                        <MenuItem value="gt">Greater than</MenuItem>
+                        <MenuItem value="gte">Greater or equal</MenuItem>
+                        <MenuItem value="lt">Less than</MenuItem>
+                        <MenuItem value="lte">Less or equal</MenuItem>
+                        <MenuItem value="between">Between</MenuItem>
+                      </Select>
+                    </FormControl>
 
-                <FormControl size="small" sx={{ minWidth: 240, flex: 1 }}>
-                  <InputLabel id="criteria-type-label">Compare as</InputLabel>
-                  <Select
-                    labelId="criteria-type-label"
-                    label="Compare as"
-                    value={selectionDialog.treatAsNumber ? "number" : "text"}
-                    onChange={(e) =>
-                      setSelectionDialog((prev) =>
-                        prev.open && prev.kind === "criteria"
-                          ? { ...prev, treatAsNumber: e.target.value === "number" }
-                          : prev,
-                      )
-                    }
-                    disabled={selectionBusy}
-                  >
-                    <MenuItem value="text">Text</MenuItem>
-                    <MenuItem value="number">Number</MenuItem>
-                  </Select>
-                </FormControl>
-              </Box>
+                    <FormControl size="small" sx={{ minWidth: 220, flex: 1 }}>
+                      <InputLabel id="criteria-type-label">Compare as</InputLabel>
+                      <Select
+                        labelId="criteria-type-label"
+                        label="Compare as"
+                        value={selectionDialog.treatAsNumber ? "number" : "text"}
+                        onChange={(e) =>
+                          setSelectionDialog((prev) =>
+                            prev.open && prev.kind === "criteria"
+                              ? { ...prev, treatAsNumber: e.target.value === "number" }
+                              : prev,
+                          )
+                        }
+                        disabled={selectionBusy}
+                      >
+                        <MenuItem value="text">Text</MenuItem>
+                        <MenuItem value="number">Number</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Box>
 
-              <Box sx={{ display: "flex", gap: 1.5, flexWrap: "wrap" }}>
-                <TextField
-                  label="Value"
-                  size="small"
-                  value={selectionDialog.value1}
-                  onChange={(e) =>
-                    setSelectionDialog((prev) =>
-                      prev.open && prev.kind === "criteria" ? { ...prev, value1: e.target.value } : prev,
-                    )
-                  }
-                  disabled={
-                    selectionBusy ||
-                    ["isEmpty", "isNotEmpty", "isImage", "isNotImage"].includes(selectionDialog.operator)
-                  }
-                  fullWidth
-                />
-
-                <TextField
-                  label="Value 2"
-                  size="small"
-                  value={selectionDialog.value2}
-                  onChange={(e) =>
-                    setSelectionDialog((prev) =>
-                      prev.open && prev.kind === "criteria" ? { ...prev, value2: e.target.value } : prev,
-                    )
-                  }
-                  disabled={selectionBusy || selectionDialog.operator !== "between"}
-                  fullWidth
-                />
-              </Box>
-
-              <Box sx={{ display: "flex", gap: 2, alignItems: "center", flexWrap: "wrap" }}>
-                <FormControl size="small" sx={{ minWidth: 240 }}>
-                  <InputLabel id="criteria-case-label">Case</InputLabel>
-                  <Select
-                    labelId="criteria-case-label"
-                    label="Case"
-                    value={selectionDialog.caseSensitive ? "sensitive" : "insensitive"}
-                    onChange={(e) =>
-                      setSelectionDialog((prev) =>
-                        prev.open && prev.kind === "criteria"
-                          ? { ...prev, caseSensitive: e.target.value === "sensitive" }
-                          : prev,
-                      )
-                    }
-                    disabled={selectionBusy}
-                  >
-                    <MenuItem value="insensitive">Case-insensitive</MenuItem>
-                    <MenuItem value="sensitive">Case-sensitive</MenuItem>
-                  </Select>
-                </FormControl>
-
-                <FormControlLabel
-                  control={
-                    <Checkbox
+                  <Box sx={{ display: "flex", gap: 1.5, flexWrap: "wrap", mt: 1.5 }}>
+                    <TextField
+                      label="Value"
                       size="small"
-                      checked={selectionDialog.negate}
+                      value={selectionDialog.value1}
                       onChange={(e) =>
                         setSelectionDialog((prev) =>
-                          prev.open && prev.kind === "criteria"
-                            ? { ...prev, negate: e.target.checked }
-                            : prev,
+                          prev.open && prev.kind === "criteria" ? { ...prev, value1: e.target.value } : prev,
                         )
                       }
-                      disabled={selectionBusy}
+                      disabled={
+                        selectionBusy ||
+                        ["isEmpty", "isNotEmpty", "isImage", "isNotImage"].includes(selectionDialog.operator)
+                      }
+                      sx={{ flex: 1, minWidth: 240 }}
                     />
-                  }
-                  label={
-                    <Typography variant="caption" sx={{ fontWeight: 600 }}>
-                      Negate (NOT)
-                    </Typography>
-                  }
-                />
-              </Box>
 
-              <Box
-                sx={{
-                  borderRadius: 2,
-                  px: 1.25,
-                  py: 1,
-                  border: "1px solid rgba(148,163,184,0.24)",
-                  backgroundColor: "rgba(248,250,252,0.8)",
-                }}
-              >
-                <Typography variant="caption" color="text.secondary">
-                  Result will use <strong>row ids</strong> for stable selection across sorting.
-                </Typography>
-                <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.25 }}>
-                  Operator: <strong>{getOperatorLabel(selectionDialog.operator)}</strong>, Apply as:{" "}
-                  <strong>{getSetOpLabel(selectionDialog.setOp)}</strong>, Scope:{" "}
-                  <strong>{getScopeLabel(selectionDialog.scope)}</strong>
-                </Typography>
+                    <TextField
+                      label="Value 2"
+                      size="small"
+                      value={selectionDialog.value2}
+                      onChange={(e) =>
+                        setSelectionDialog((prev) =>
+                          prev.open && prev.kind === "criteria" ? { ...prev, value2: e.target.value } : prev,
+                        )
+                      }
+                      disabled={selectionBusy || selectionDialog.operator !== "between"}
+                      sx={{ flex: 1, minWidth: 240 }}
+                    />
+                  </Box>
+                </Paper>
+
+                <Paper
+                  variant="outlined"
+                  sx={{
+                    p: 1.5,
+                    borderRadius: 2.5,
+                    borderColor: "rgba(15,23,42,0.08)",
+                    background: "rgba(255,255,255,0.92)",
+                    boxShadow: "0 1px 2px rgba(15,23,42,0.04)",
+                  }}
+                >
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      color: "text.secondary",
+                      fontWeight: 700,
+                      textTransform: "uppercase",
+                      letterSpacing: 0.4,
+                      display: "block",
+                      mb: 1.25,
+                    }}
+                  >
+                    Selection behavior
+                  </Typography>
+
+                  <Box sx={{ display: "flex", gap: 1.5, flexWrap: "wrap" }}>
+                    <FormControl size="small" sx={{ minWidth: 220, flex: 1 }}>
+                      <InputLabel id="criteria-setop-label">Apply as</InputLabel>
+                      <Select
+                        labelId="criteria-setop-label"
+                        label="Apply as"
+                        value={selectionDialog.setOp}
+                        onChange={(e) =>
+                          setSelectionDialog((prev) =>
+                            prev.open && prev.kind === "criteria"
+                              ? { ...prev, setOp: e.target.value as SelectionSetOp }
+                              : prev,
+                          )
+                        }
+                        disabled={selectionBusy}
+                      >
+                        <MenuItem value="replace">{getSetOpLabel("replace")}</MenuItem>
+                        <MenuItem value="add">{getSetOpLabel("add")}</MenuItem>
+                        <MenuItem value="remove">{getSetOpLabel("remove")}</MenuItem>
+                        <MenuItem value="intersect">{getSetOpLabel("intersect")}</MenuItem>
+                      </Select>
+                    </FormControl>
+
+                    <FormControl size="small" sx={{ minWidth: 220, flex: 1 }}>
+                      <InputLabel id="criteria-scope-label">Scope</InputLabel>
+                      <Select
+                        labelId="criteria-scope-label"
+                        label="Scope"
+                        value={selectionDialog.scope}
+                        onChange={(e) =>
+                          setSelectionDialog((prev) =>
+                            prev.open && prev.kind === "criteria"
+                              ? { ...prev, scope: e.target.value as SelectionScope }
+                              : prev,
+                          )
+                        }
+                        disabled={selectionBusy}
+                      >
+                        <MenuItem value="allRows">{getScopeLabel("allRows")}</MenuItem>
+                        <MenuItem value="currentSelection">{getScopeLabel("currentSelection")}</MenuItem>
+                      </Select>
+                    </FormControl>
+
+                    <FormControl size="small" sx={{ minWidth: 220, flex: 1 }}>
+                      <InputLabel id="criteria-case-label">Case</InputLabel>
+                      <Select
+                        labelId="criteria-case-label"
+                        label="Case"
+                        value={selectionDialog.caseSensitive ? "sensitive" : "insensitive"}
+                        onChange={(e) =>
+                          setSelectionDialog((prev) =>
+                            prev.open && prev.kind === "criteria"
+                              ? { ...prev, caseSensitive: e.target.value === "sensitive" }
+                              : prev,
+                          )
+                        }
+                        disabled={selectionBusy}
+                      >
+                        <MenuItem value="insensitive">Case-insensitive</MenuItem>
+                        <MenuItem value="sensitive">Case-sensitive</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Box>
+
+                  <Box sx={{ display: "flex", alignItems: "center", mt: 1.25 }}>
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          size="small"
+                          checked={selectionDialog.negate}
+                          onChange={(e) =>
+                            setSelectionDialog((prev) =>
+                              prev.open && prev.kind === "criteria"
+                                ? { ...prev, negate: e.target.checked }
+                                : prev,
+                            )
+                          }
+                          disabled={selectionBusy}
+                        />
+                      }
+                      label={
+                        <Typography variant="caption" sx={{ fontWeight: 700 }}>
+                          Negate criteria
+                        </Typography>
+                      }
+                    />
+                  </Box>
+                </Paper>
+
+                <Box
+                  sx={{
+                    borderRadius: 2.5,
+                    px: 1.5,
+                    py: 1.15,
+                    border: "1px solid rgba(14,165,233,0.18)",
+                    background: "linear-gradient(135deg, rgba(14,165,233,0.08), rgba(59,130,246,0.06))",
+                  }}
+                >
+                  <Typography variant="caption" color="text.secondary">
+                    Result will use <strong>row ids</strong> for stable selection across sorting.
+                  </Typography>
+
+                  <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.25 }}>
+                    Operator: <strong>{getOperatorLabel(selectionDialog.operator)}</strong>, Apply as:{" "}
+                    <strong>{getSetOpLabel(selectionDialog.setOp)}</strong>, Scope:{" "}
+                    <strong>{getScopeLabel(selectionDialog.scope)}</strong>
+                  </Typography>
+                </Box>
               </Box>
-            </Box>
-          )}
+            )}
+          </Box>
         </DialogContent>
 
-        <DialogActions>
+        <DialogActions
+          sx={{
+            px: 2.25,
+            py: 1.5,
+            gap: 1,
+            background: "#f8fafc",
+            borderTop: "1px solid rgba(15,23,42,0.08)",
+          }}
+        >
           <Button
             variant="outlined"
             onClick={closeSelectionDialog}
             disabled={selectionBusy}
-            sx={{ textTransform: "none" }}
+            sx={{
+              textTransform: "none",
+              fontWeight: 700,
+              borderRadius: 2,
+            }}
           >
             Cancel
           </Button>
@@ -5669,7 +5880,13 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
               await runColumnCriteriaSelection();
             }}
             disabled={selectionBusy}
-            sx={{ textTransform: "none", fontWeight: 700 }}
+            sx={{
+              textTransform: "none",
+              fontWeight: 800,
+              px: 2.25,
+              borderRadius: 2,
+              boxShadow: "0 8px 18px rgba(37,99,235,0.22)",
+            }}
           >
             {selectionBusy ? "Applying…" : "Apply"}
           </Button>
