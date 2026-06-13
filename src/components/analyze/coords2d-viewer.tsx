@@ -164,6 +164,18 @@ const ROW_SELECTED_HOVER = "rgba(191,219,254,0.95)";
 const ROW_SELECTED_TEXT = "#0f172a";
 const DEFAULT_PICK_COLOR = "#06b6d4";
 
+const VIEWER_TEXT_SX = {
+  "& .MuiButton-root": {
+    textTransform: "none",
+  },
+  "& .MuiChip-label": {
+    textTransform: "none",
+  },
+  "& .MuiTableCell-root": {
+    textTransform: "none",
+  },
+};
+
 const THUMBNAIL_SIZE = 72;
 const THUMBNAIL_CONCURRENCY = 6;
 const THUMBNAIL_FLUSH_SIZE = 12;
@@ -2053,6 +2065,7 @@ function Coords2dViewer({
         minHeight: 0,
         bgcolor: VIEWER_BG,
         position: "relative",
+        ...VIEWER_TEXT_SX,
       }}
     >
       <Box
@@ -2832,6 +2845,7 @@ function Coords2dViewer({
             variant="outlined"
             onClick={() => setConfirmationAction(null)}
             disabled={creatingOutput}
+            sx={{ textTransform: "none" }}
           >
             Cancel
           </Button>
@@ -2842,17 +2856,18 @@ function Coords2dViewer({
             disabled={creatingOutput}
             startIcon={creatingOutput ? <CircularProgress size={14} /> : undefined}
             sx={{
+              textTransform: "none",
               bgcolor: confirmationAction === "create-output" ? "#b22a2a" : undefined,
               "&:hover": {
                 bgcolor: confirmationAction === "create-output" ? "#922020" : undefined,
               },
             }}
           >
-            {creatingOutput ? "Creating..." : confirmationConfirmLabel}
-          </Button>
-        </DialogActions>
-      </Dialog>
-    </Box>
+          {creatingOutput ? "Creating..." : confirmationConfirmLabel}
+        </Button>
+      </DialogActions>
+    </Dialog>
+    </Box >
   );
 }
 
