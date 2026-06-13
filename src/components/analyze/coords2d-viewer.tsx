@@ -674,6 +674,9 @@ function Coords2dViewer({
   const pendingPointMoveRef = useRef<PendingPointMove | null>(null);
   const histogramImageDataRef = useRef<HistogramImageData | null>(null);
 
+  const transformFrameRef = useRef<number | null>(null);
+  const pendingTransformRef = useRef<ViewTransform | null>(null);
+
   const micrographsLoadKeyRef = useRef("");
   const thumbnailSourceKeyRef = useRef("");
   const thumbnailLoadKeyRef = useRef("");
@@ -797,6 +800,10 @@ function Coords2dViewer({
 
       if (pointMoveFrameRef.current !== null) {
         cancelAnimationFrame(pointMoveFrameRef.current);
+      }
+
+      if (transformFrameRef.current !== null) {
+        cancelAnimationFrame(transformFrameRef.current);
       }
 
       Object.values(thumbnailObjectUrlsRef.current).forEach((item) => {
@@ -1866,6 +1873,24 @@ function Coords2dViewer({
     [findPointAt, markMicrographUpdated, selectedMicId, updateMicrographParticleCount],
   );
 
+  const scheduleTransform = useCallback((nextTransform: ViewTransform) => {
+    pendingTransformRef.current = nextTransform;
+
+    if (transformFrameRef.current !== null) return;
+
+    transformFrameRef.current = requestAnimationFrame(() => {
+      transformFrameRef.current = null;
+
+      const pendingTransform = pendingTransformRef.current;
+      pendingTransformRef.current = null;
+
+      if (!pendingTransform) return;
+
+      setTransform(pendingTransform);
+    });
+  }, []);
+
+
   const handleWheel = useCallback(
     (event: ReactWheelEvent<HTMLCanvasElement>) => {
       if (toolMode !== "pan") return;
@@ -2019,14 +2044,14 @@ function Coords2dViewer({
       }
 
       if (drag.type === "pan") {
-        setTransform((current) => ({
-          ...current,
+        scheduleTransform({
+          scale: transform.scale,
           offsetX: drag.offsetX + dx,
           offsetY: drag.offsetY + dy,
-        }));
+        });
       }
     },
-    [erasePointAt, imageWorldSize, schedulePointMove, screenToWorld],
+    [erasePointAt, imageWorldSize, schedulePointMove, scheduleTransform, screenToWorld, transform.scale],
   );
 
   const handleMouseUp = useCallback(
