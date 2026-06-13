@@ -1,4 +1,5 @@
 import {
+  memo,
   useCallback,
   useEffect,
   useMemo,
@@ -345,7 +346,7 @@ const ZOOM_APPLY_DEBOUNCE_MS = 300;
 const ZOOM_MIN_PERCENT = Math.round((MIN_THUMB_SIZE / BASE_THUMB_SIZE) * 100);
 const ZOOM_MAX_PERCENT = Math.round((MAX_THUMB_SIZE / BASE_THUMB_SIZE) * 100);
 
-const GALLERY_PAGE_SIZE = 120;
+const GALLERY_PAGE_SIZE = 80;
 const SELECTION_IDS_SCAN_PAGE_SIZE = 500;
 
 const MAX_CONCURRENT_IMAGE_REQUESTS = 4;
@@ -412,9 +413,9 @@ const imageJobQueue: ImageJob[] = [];
 let activeImageJobs = 0;
 
 function pruneCancelledImageJobs() {
-  for (let index = imageJobQueue.length - 1; index >= 0; index -= 1) {
-    if (imageJobQueue[index].isCancelled()) {
-      imageJobQueue.splice(index, 1);
+  for (let i = imageJobQueue.length - 1; i >= 0; i -= 1) {
+    if (imageJobQueue[i].isCancelled()) {
+      imageJobQueue.splice(i, 1);
     }
   }
 }
@@ -2336,7 +2337,7 @@ function MetadataImageCell({
   );
 }
 
-function MetadataTablePanel({
+const MetadataTablePanel = memo(function MetadataTablePanel({
   viewMode,
   schema,
   totalRows,
@@ -2782,9 +2783,9 @@ function MetadataTablePanel({
       )}
     </Paper>
   );
-}
+});
 
-function MetadataGalleryPanel({
+const MetadataGalleryPanel = memo(function MetadataGalleryPanel({
   viewMode,
   schema,
   firstImageColumn,
@@ -3010,7 +3011,7 @@ function MetadataGalleryPanel({
       </Box>
     </Paper >
   );
-}
+});
 
 function ColumnsDialog({
   open,
@@ -3459,13 +3460,13 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
     let changed = false;
 
     for (const col of allColumns) {
+      if (next.has(col.name)) continue;
+
       for (const row of windowRows) {
         const cell = row.values?.[col.index] as MetadataCell;
         if (cell && isMatrixCell(cell)) {
-          if (!next.has(col.name)) {
-            next.add(col.name);
-            changed = true;
-          }
+          next.add(col.name);
+          changed = true;
           break;
         }
       }
@@ -4923,47 +4924,49 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
         </Typography>
       )}
 
-      <MetadataTablePanel
-        viewMode={viewMode}
-        schema={schema}
-        totalRows={totalRows}
-        visibleColumns={visibleColumns}
-        columnSettings={columnSettings}
-        rowHeight={rowHeight}
-        rowSizeForScroll={rowSizeForScroll}
-        imageThumbSize={imageThumbSize}
-        imageColMinWidth={imageColMinWidth}
-        tableMinWidth={tableMinWidth}
-        windowRows={windowRows}
-        windowOffset={windowOffset}
-        windowLoading={windowLoading}
-        windowError={windowError}
-        topSpacerHeight={topSpacerHeight}
-        bottomSpacerHeight={bottomSpacerHeight}
-        hasData={hasData}
-        scrollRef={scrollRef}
-        handleScroll={handleScroll}
-        isRowSelected={isRowSelected}
-        onPrimaryRowClick={handlePrimaryRowClick}
-        onRowContextMenu={handleTableRowContextMenu}
-        onHeaderContextMenu={handleHeaderContextMenu}
-        selectedRowIndex={selectedRowIndex}
-        selectedImageCell={selectedImageCell}
-        setSelectedRowIndex={setSelectedRowIndex}
-        setSelectedImageCell={setSelectedImageCell}
-        projectId={projectId}
-        protocolId={protocolId}
-        outputName={outputName}
-        selectedTable={selectedTable}
-        imageCacheRef={imageCacheRef}
-        sortBy={sortBy}
-        sortAsc={sortAsc}
-        onToggleSort={toggleSortForColumn}
-        matrixColumnNames={matrixColumnNames}
-        embedded={embedded}
-      />
+      {viewMode === "table" && (
+        <MetadataTablePanel
+          viewMode={viewMode}
+          schema={schema}
+          totalRows={totalRows}
+          visibleColumns={visibleColumns}
+          columnSettings={columnSettings}
+          rowHeight={rowHeight}
+          rowSizeForScroll={rowSizeForScroll}
+          imageThumbSize={imageThumbSize}
+          imageColMinWidth={imageColMinWidth}
+          tableMinWidth={tableMinWidth}
+          windowRows={windowRows}
+          windowOffset={windowOffset}
+          windowLoading={windowLoading}
+          windowError={windowError}
+          topSpacerHeight={topSpacerHeight}
+          bottomSpacerHeight={bottomSpacerHeight}
+          hasData={hasData}
+          scrollRef={scrollRef}
+          handleScroll={handleScroll}
+          isRowSelected={isRowSelected}
+          onPrimaryRowClick={handlePrimaryRowClick}
+          onRowContextMenu={handleTableRowContextMenu}
+          onHeaderContextMenu={handleHeaderContextMenu}
+          selectedRowIndex={selectedRowIndex}
+          selectedImageCell={selectedImageCell}
+          setSelectedRowIndex={setSelectedRowIndex}
+          setSelectedImageCell={setSelectedImageCell}
+          projectId={projectId}
+          protocolId={protocolId}
+          outputName={outputName}
+          selectedTable={selectedTable}
+          imageCacheRef={imageCacheRef}
+          sortBy={sortBy}
+          sortAsc={sortAsc}
+          onToggleSort={toggleSortForColumn}
+          matrixColumnNames={matrixColumnNames}
+          embedded={embedded}
+        />
+      )}
 
-      {selectedTable && schema && totalRows > 0 && (
+      {viewMode === "gallery" && selectedTable && schema && totalRows > 0 && (
         <MetadataGalleryPanel
           viewMode={viewMode}
           schema={schema}
