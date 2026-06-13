@@ -138,6 +138,11 @@ type ParticleCropCacheEntry = {
   url: string;
 };
 
+type MicrographImageCacheEntry = ObjectUrlResult & {
+  image: HTMLImageElement;
+  usedAt: number;
+};
+
 type PendingPointMove = {
   micKey: string;
   pointId: string;
@@ -182,6 +187,9 @@ const THUMBNAIL_SIZE = 72;
 const THUMBNAIL_CONCURRENCY = 6;
 const THUMBNAIL_FLUSH_SIZE = 12;
 const PARTICLE_CROP_BATCH_SIZE = 40;
+
+const MICROGRAPH_IMAGE_SIZE = 2200;
+const MICROGRAPH_IMAGE_CACHE_LIMIT = 4;
 
 
 function createDragState(): DragState {
@@ -683,6 +691,9 @@ function Coords2dViewer({
   const thumbnailUrlsRef = useRef<Record<string, string>>({});
   const thumbnailObjectUrlsRef = useRef<Record<string, ObjectUrlResult>>({});
 
+  const imageCacheSourceKeyRef = useRef("");
+  const imageObjectUrlCacheRef = useRef<Record<string, MicrographImageCacheEntry>>({});
+
   const [micrographs, setMicrographs] = useState<Coords2dMicrograph[]>([]);
   const [selectedMicId, setSelectedMicId] = useState<Id | null>(null);
   const [pointsByMicId, setPointsByMicId] = useState<Record<string, ViewerPoint[]>>({});
@@ -811,6 +822,12 @@ function Coords2dViewer({
       });
 
       thumbnailObjectUrlsRef.current = {};
+
+      Object.values(imageObjectUrlCacheRef.current).forEach((item) => {
+        item.revoke?.();
+      });
+
+      imageObjectUrlCacheRef.current = {};
     };
   }, []);
 
@@ -1055,6 +1072,17 @@ function Coords2dViewer({
   ]);
 
   useEffect(() => {
+    const sourceKey = `${projectId}:${protocolId}:${outputName}`;
+
+    if (imageCacheSourceKeyRef.current !== sourceKey) {
+      Object.values(imageObjectUrlCacheRef.current).forEach((item) => {
+        item.revoke?.();
+      });
+
+      imageObjectUrlCacheRef.current = {};
+      imageCacheSourceKeyRef.current = sourceKey;
+    }
+
     if (!selectedMicId) {
       setImageUrl(null);
       setImage(null);
@@ -1063,8 +1091,24 @@ function Coords2dViewer({
       return;
     }
 
+    const micKey = toStringId(selectedMicId);
+    const cached = imageObjectUrlCacheRef.current[micKey];
+
+    if (cached) {
+      cached.usedAt = Date.now();
+
+      setImageUrl(cached.url);
+      setImage(cached.image);
+      setLoadingImage(false);
+      setImageLoadAttempted(true);
+      setPreviewHiddenPointIds(new Set());
+      setHistogramOpen(false);
+      return;
+    }
+
     let cancelled = false;
     let objectUrl: ObjectUrlResult | null = null;
+    let storedInCache = false;
 
     setImageUrl(null);
     setImage(null);
@@ -1081,7 +1125,7 @@ function Coords2dViewer({
             protocolId,
             outputName,
             selectedMicId,
-            { size: 2200, format: "png" },
+            { size: MICROGRAPH_IMAGE_SIZE, format: "png" },
           ),
         );
 
@@ -1092,23 +1136,60 @@ function Coords2dViewer({
             setImageLoadAttempted(true);
             setLoadingImage(false);
           }
+
           return;
         }
 
-        if (cancelled) return;
+        if (cancelled) {
+          objectUrl.revoke?.();
+          return;
+        }
 
         const img = new Image();
 
         img.onload = () => {
-          if (cancelled) return;
-          setImageUrl(objectUrl?.url ?? null);
+          if (!objectUrl) return;
+
+          if (cancelled) {
+            objectUrl.revoke?.();
+            return;
+          }
+
+          const cache = imageObjectUrlCacheRef.current;
+
+          cache[micKey] = {
+            ...objectUrl,
+            image: img,
+            usedAt: Date.now(),
+          };
+
+          storedInCache = true;
+
+          const entries = Object.entries(cache);
+
+          if (entries.length > MICROGRAPH_IMAGE_CACHE_LIMIT) {
+            entries
+              .sort(([, first], [, second]) => first.usedAt - second.usedAt)
+              .slice(0, entries.length - MICROGRAPH_IMAGE_CACHE_LIMIT)
+              .forEach(([key, entry]) => {
+                entry.revoke?.();
+                delete cache[key];
+              });
+          }
+
+          setImageUrl(objectUrl.url);
           setImage(img);
           setImageLoadAttempted(true);
           setLoadingImage(false);
         };
 
         img.onerror = () => {
+          if (objectUrl && !storedInCache) {
+            objectUrl.revoke?.();
+          }
+
           if (cancelled) return;
+
           setImageUrl(null);
           setImage(null);
           setImageLoadAttempted(true);
@@ -1130,7 +1211,10 @@ function Coords2dViewer({
 
     return () => {
       cancelled = true;
-      objectUrl?.revoke?.();
+
+      if (objectUrl && !storedInCache) {
+        objectUrl.revoke?.();
+      }
     };
   }, [service, projectId, protocolId, outputName, selectedMicId]);
 
