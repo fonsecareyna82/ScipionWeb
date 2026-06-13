@@ -1199,12 +1199,16 @@ function useIsMountedRef() {
   return isMountedRef;
 }
 
-function useElementSize<T extends Element>(ref: { current: T | null }) {
+function useElementSize<T extends Element>(ref: { current: T | null }, refreshKey?: unknown) {
   const [size, setSize] = useState({ width: 0, height: 0 });
 
   useEffect(() => {
     const element = ref.current;
-    if (!element) return;
+
+    if (!element) {
+      setSize({ width: 0, height: 0 });
+      return;
+    }
 
     const resizeObserver = new ResizeObserver((entries) => {
       const rect = entries[0]?.contentRect;
@@ -1217,7 +1221,7 @@ function useElementSize<T extends Element>(ref: { current: T | null }) {
     return () => {
       resizeObserver.disconnect();
     };
-  }, [ref]);
+  }, [ref, refreshKey]);
 
   return size;
 }
@@ -1557,29 +1561,6 @@ function useVirtualTableWindow(params: {
     if (viewModeRef.current === "table") void loadWindow(0);
   }, [schema, selectedTable, totalRows, sortBy, sortAsc, loadWindow, invalidateWindowState]);
 
-
-  useEffect(() => {
-    if (
-      viewMode === "table" &&
-      schema &&
-      selectedTable &&
-      totalRows > 0 &&
-      windowRows.length === 0 &&
-      !windowLoading &&
-      !windowError
-    ) {
-      void loadWindow(0);
-    }
-  }, [
-    viewMode,
-    schema,
-    selectedTable,
-    totalRows,
-    windowRows.length,
-    windowLoading,
-    windowError,
-    loadWindow,
-  ]);
 
   useEffect(() => {
     if (
@@ -2139,7 +2120,6 @@ function MetadataImageCell({
         protocolId,
         outputName,
         tableName,
-        rowIndexInTable,
         columnName,
         cell.path,
         size,
@@ -2151,7 +2131,6 @@ function MetadataImageCell({
       outputName,
       projectId,
       protocolId,
-      rowIndexInTable,
       size,
       tableName,
     ],
@@ -2928,20 +2907,12 @@ const MetadataGalleryPanel = memo(function MetadataGalleryPanel({
                     />
                   ) : (
                     <Box
+                      aria-hidden="true"
                       sx={{
                         width: imageThumbSize,
                         height: imageThumbSize,
-                        borderRadius: 1,
-                        border: "1px dashed rgba(148,163,184,0.6)",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
                       }}
-                    >
-                      <Typography variant="caption" color="text.secondary">
-                        no image
-                      </Typography>
-                    </Box>
+                    />
                   )}
 
                   <Box sx={{ minHeight: 18 }}>
@@ -3177,7 +3148,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const galleryScrollRef = useRef<HTMLDivElement | null>(null);
-  const { height: viewportHeight } = useElementSize(scrollRef);
+  const { height: viewportHeight } = useElementSize(scrollRef, viewMode);
 
   const { imageCacheRef, clearImageCache } = useImageCache();
 
@@ -5109,34 +5080,37 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
         </Box>
       </Paper>
 
-      <ColumnsDialog
-        open={columnsDialogOpen}
-        onClose={closeColumnsDialog}
-        onApply={applyColumnsDialog}
-        allColumns={allColumns}
-        columnSettings={columnSettings}
-        draftColumnSettings={draftColumnSettings}
-        updateDraftColumnSettings={updateDraftColumnSettings}
-      />
+      {columnsDialogOpen && (
+        <ColumnsDialog
+          open={columnsDialogOpen}
+          onClose={closeColumnsDialog}
+          onApply={applyColumnsDialog}
+          allColumns={allColumns}
+          columnSettings={columnSettings}
+          draftColumnSettings={draftColumnSettings}
+          updateDraftColumnSettings={updateDraftColumnSettings}
+        />
+      )}
 
-
-      <MetadataPlotterDialog
-        open={plotterOpen}
-        onClose={() => setPlotterOpen(false)}
-        projectId={projectId}
-        protocolId={protocolId}
-        outputName={outputName}
-        selectedTable={selectedTable}
-        schema={schema}
-        totalRows={totalRows}
-        allColumns={allColumns}
-        schemaActions={schemaActions}
-        sortBy={sortBy}
-        sortAsc={sortAsc}
-        svcRef={svcRef as any}
-        isRowSelectedInViewer={isRowSelected}
-        viewerSelectedCount={effectiveSelectedCount}
-      />
+      {plotterOpen && (
+        <MetadataPlotterDialog
+          open={plotterOpen}
+          onClose={() => setPlotterOpen(false)}
+          projectId={projectId}
+          protocolId={protocolId}
+          outputName={outputName}
+          selectedTable={selectedTable}
+          schema={schema}
+          totalRows={totalRows}
+          allColumns={allColumns}
+          schemaActions={schemaActions}
+          sortBy={sortBy}
+          sortAsc={sortAsc}
+          svcRef={svcRef as any}
+          isRowSelectedInViewer={isRowSelected}
+          viewerSelectedCount={effectiveSelectedCount}
+        />
+      )}
 
       {/* Context menu (direct, small typography) */}
       <Menu
