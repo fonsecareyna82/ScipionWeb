@@ -1,4 +1,5 @@
 import {
+  memo,
   useCallback,
   useEffect,
   useMemo,
@@ -7,6 +8,7 @@ import {
   type MouseEvent as ReactMouseEvent,
   type WheelEvent as ReactWheelEvent,
 } from "react";
+
 import {
   Alert,
   Box,
@@ -572,6 +574,80 @@ function HistogramChart({
 
   return <canvas ref={canvasRef} />;
 }
+
+type MicrographTableRowProps = {
+  micrograph: Coords2dMicrograph;
+  index: number;
+  selected: boolean;
+  thumbnailUrl?: string;
+  updated: boolean;
+  onSelect: (micId: Id) => void;
+};
+
+const MicrographTableRow = memo(function MicrographTableRow({
+  micrograph,
+  index,
+  selected,
+  thumbnailUrl,
+  updated,
+  onSelect,
+}: MicrographTableRowProps) {
+  const micKey = toStringId(micrograph.id);
+  const label = getMicrographLabel(micrograph);
+
+  return (
+    <TableRow
+      hover
+      selected={selected}
+      onClick={() => onSelect(micrograph.id)}
+      sx={{
+        cursor: "pointer",
+        "&.Mui-selected td": {
+          bgcolor: ROW_SELECTED,
+          color: ROW_SELECTED_TEXT,
+        },
+        "&.Mui-selected:hover td": {
+          bgcolor: ROW_SELECTED_HOVER,
+        },
+      }}
+    >
+      <TableCell>{micrograph.index ?? index + 1}</TableCell>
+
+      <TableCell>
+        {thumbnailUrl ? (
+          <Box
+            component="img"
+            src={thumbnailUrl}
+            alt={label}
+            sx={{
+              width: 46,
+              height: 34,
+              objectFit: "cover",
+              display: "block",
+              border: "1px solid rgba(15,23,42,0.25)",
+              bgcolor: "#111827",
+            }}
+          />
+        ) : (
+          <Box
+            sx={{
+              width: 46,
+              height: 34,
+              bgcolor: "rgba(15,23,42,0.18)",
+              border: "1px solid rgba(15,23,42,0.25)",
+            }}
+          />
+        )}
+      </TableCell>
+
+      <TableCell>{label}</TableCell>
+
+      <TableCell align="center">{micrograph.particles ?? 0}</TableCell>
+
+      <TableCell align="center">{updated ? "Yes" : "No"}</TableCell>
+    </TableRow>
+  );
+});
 
 function Coords2dViewer({
   projectId,
@@ -1729,6 +1805,12 @@ function Coords2dViewer({
     worldToScreen,
   ]);
 
+
+  const handleSelectMicrograph = useCallback((micId: Id) => {
+    setSelectedMicId(micId);
+    setSelectedPointId(null);
+  }, []);
+
   const toggleFilter = useCallback((key: keyof ImageFilters) => {
     setFilters((current) => ({
       ...current,
@@ -2409,66 +2491,17 @@ function Coords2dViewer({
             <TableBody>
               {micrographs.map((micrograph, index) => {
                 const micKey = toStringId(micrograph.id);
-                const selected = micKey === selectedMicKey;
-                const thumbnailUrl = thumbnailUrls[micKey];
 
                 return (
-                  <TableRow
+                  <MicrographTableRow
                     key={micKey}
-                    hover
-                    selected={selected}
-                    onClick={() => {
-                      setSelectedMicId(micrograph.id);
-                      setSelectedPointId(null);
-                    }}
-                    sx={{
-                      cursor: "pointer",
-                      "&.Mui-selected td": {
-                        bgcolor: ROW_SELECTED,
-                        color: ROW_SELECTED_TEXT,
-                      },
-                      "&.Mui-selected:hover td": {
-                        bgcolor: ROW_SELECTED_HOVER,
-                      },
-                    }}
-                  >
-                    <TableCell>{micrograph.index ?? index + 1}</TableCell>
-
-                    <TableCell>
-                      {thumbnailUrl ? (
-                        <Box
-                          component="img"
-                          src={thumbnailUrl}
-                          alt={getMicrographLabel(micrograph)}
-                          sx={{
-                            width: 46,
-                            height: 34,
-                            objectFit: "cover",
-                            display: "block",
-                            border: "1px solid rgba(15,23,42,0.25)",
-                            bgcolor: "#111827",
-                          }}
-                        />
-                      ) : (
-                        <Box
-                          sx={{
-                            width: 46,
-                            height: 34,
-                            bgcolor: "rgba(15,23,42,0.18)",
-                            border: "1px solid rgba(15,23,42,0.25)",
-                          }}
-                        />
-                      )}
-                    </TableCell>
-
-                    <TableCell>{getMicrographLabel(micrograph)}</TableCell>
-
-                    <TableCell align="center">{micrograph.particles ?? 0}</TableCell>
-
-                    <TableCell align="center">
-                      {updatedMicIds.has(micKey) || micrograph.updated ? "Yes" : "No"}
-                    </TableCell>
-                  </TableRow>
+                    micrograph={micrograph}
+                    index={index}
+                    selected={micKey === selectedMicKey}
+                    thumbnailUrl={thumbnailUrls[micKey]}
+                    updated={updatedMicIds.has(micKey) || Boolean(micrograph.updated)}
+                    onSelect={handleSelectMicrograph}
+                  />
                 );
               })}
             </TableBody>
@@ -2863,10 +2896,10 @@ function Coords2dViewer({
               },
             }}
           >
-          {creatingOutput ? "Creating..." : confirmationConfirmLabel}
-        </Button>
-      </DialogActions>
-    </Dialog>
+            {creatingOutput ? "Creating..." : confirmationConfirmLabel}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box >
   );
 }
