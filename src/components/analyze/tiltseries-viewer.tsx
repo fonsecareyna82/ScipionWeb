@@ -1069,13 +1069,6 @@ export default function TiltSeriesViewer({
 
   const tiltAxisAngle = framesData?.tiltAxisAngle ?? activeSeries?.tiltAxisAngle ?? null;
 
-  const canShowExternalViewers = Boolean(
-    selectedSeriesId != null &&
-    framesData &&
-    String(framesData.tiltSeriesId) === String(selectedSeriesId) &&
-    framesData.frames.length > 0 &&
-    !framesLoading,
-  );
 
   const canGoPrev = selectedRowIndex != null && selectedRowIndex > 0 && totalFrames > 0;
   const canGoNext = selectedRowIndex != null && totalFrames > 0 && selectedRowIndex < totalFrames - 1;

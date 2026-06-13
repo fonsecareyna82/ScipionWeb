@@ -27,7 +27,6 @@ import {
   TextField,
   MenuItem,
   Chip,
-  Snackbar,
   Alert,
 } from "@mui/material";
 import { HelpCircle, Layers as Layers3, Box as BoxIcon, Table as TableLucide } from "lucide-react";
@@ -323,7 +322,6 @@ export default function Coords3dViewer({
   const [saveDialogOpen, setSaveDialogOpen] = useState<boolean>(false);
   const [saveBusy, setSaveBusy] = useState<boolean>(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [saveToast, setSaveToast] = useState<string | null>(null);
 
   const [editMode, setEditMode] = useState<boolean>(false);
 
