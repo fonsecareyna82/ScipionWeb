@@ -47,7 +47,6 @@ import {
   Hand,
   ImageMinus,
   LocateFixed,
-  MousePointer2,
   Plus,
   RotateCcw,
   Save,
@@ -67,7 +66,6 @@ import type {
   Id,
   ObjectUrlResult,
 } from "@/services/ProjectService";
-import { Close } from "@mui/icons-material";
 
 type Coords2dViewerProps = {
   projectId: number;
@@ -155,11 +153,22 @@ const MIN_BOX_SIZE = 10;
 const MAX_BOX_SIZE = 240;
 const PARTICLE_GALLERY_SIZE = 74;
 
-const PANEL_BORDER = "1px solid rgba(100,116,139,0.35)";
-const HEADER_BG = "#e5e7eb";
-const TOOLBAR_BG = "#eeeeee";
-const ROW_SELECTED = "#3f617b";
-const DEFAULT_PICK_COLOR = "#00d5d5";
+const PANEL_BORDER = "1px solid rgba(148,163,184,0.4)";
+const VIEWER_BG = "#f8fafc";
+const HEADER_BG = "#f3f4f6";
+const TOOLBAR_BG = "rgba(248,250,252,0.95)";
+const CANVAS_OUTER_BG = "#e5e7eb";
+const CANVAS_BG = "#d1d5db";
+const ROW_SELECTED = "rgba(219,234,254,0.95)";
+const ROW_SELECTED_HOVER = "rgba(191,219,254,0.95)";
+const ROW_SELECTED_TEXT = "#0f172a";
+const DEFAULT_PICK_COLOR = "#06b6d4";
+
+const THUMBNAIL_SIZE = 72;
+const THUMBNAIL_CONCURRENCY = 6;
+const THUMBNAIL_FLUSH_SIZE = 12;
+const PARTICLE_CROP_BATCH_SIZE = 40;
+
 
 function createDragState(): DragState {
   return {
@@ -800,45 +809,81 @@ function Coords2dViewer({
         });
       }
 
-      for (const micrograph of micrographs) {
-        if (cancelled) return;
-
+      const pendingMicrographs = micrographs.filter((micrograph) => {
         const micKey = toStringId(micrograph.id);
-        if (!micKey) continue;
+        if (!micKey) return false;
+        if (micrograph.thumbnailUrl) return false;
+        if (thumbnailUrlsRef.current[micKey]) return false;
+        if (thumbnailObjectUrlsRef.current[micKey]) return false;
 
-        if (micrograph.thumbnailUrl) continue;
-        if (thumbnailUrlsRef.current[micKey]) continue;
-        if (thumbnailObjectUrlsRef.current[micKey]) continue;
+        return true;
+      });
 
-        try {
-          const result = normalizeObjectUrl(
-            await service.fetchCoords2dMicrographThumbnailObjectUrl(
-              projectId,
-              protocolId,
-              outputName,
-              micrograph.id,
-              { size: 72, format: "png" },
-            ),
-          );
+      if (!pendingMicrographs.length) return;
 
-          if (!result || cancelled) continue;
+      let cursor = 0;
+      let pendingUrls: Record<string, string> = {};
 
-          thumbnailObjectUrlsRef.current[micKey] = result;
+      const flushPendingUrls = () => {
+        const keys = Object.keys(pendingUrls);
+        if (!keys.length) return;
 
-          setThumbnailUrls((current) => {
-            if (current[micKey]) return current;
+        const patch = pendingUrls;
+        pendingUrls = {};
 
-            const next = {
-              ...current,
-              [micKey]: result.url,
-            };
+        setThumbnailUrls((current) => {
+          const next = {
+            ...current,
+            ...patch,
+          };
 
-            thumbnailUrlsRef.current = next;
-            return next;
-          });
-        } catch {
-          continue;
+          thumbnailUrlsRef.current = next;
+          return next;
+        });
+      };
+
+      async function worker() {
+        while (!cancelled && cursor < pendingMicrographs.length) {
+          const micrograph = pendingMicrographs[cursor];
+          cursor += 1;
+
+          const micKey = toStringId(micrograph.id);
+          if (!micKey) continue;
+
+          try {
+            const result = normalizeObjectUrl(
+              await service.fetchCoords2dMicrographThumbnailObjectUrl(
+                projectId,
+                protocolId,
+                outputName,
+                micrograph.id,
+                { size: THUMBNAIL_SIZE, format: "png" },
+              ),
+            );
+
+            if (!result || cancelled) continue;
+
+            thumbnailObjectUrlsRef.current[micKey] = result;
+            pendingUrls[micKey] = result.url;
+
+            if (Object.keys(pendingUrls).length >= THUMBNAIL_FLUSH_SIZE) {
+              flushPendingUrls();
+            }
+          } catch {
+            continue;
+          }
         }
+      }
+
+      await Promise.all(
+        Array.from(
+          { length: Math.min(THUMBNAIL_CONCURRENCY, pendingMicrographs.length) },
+          () => worker(),
+        ),
+      );
+
+      if (!cancelled) {
+        flushPendingUrls();
       }
     }
 
@@ -1000,9 +1045,19 @@ function Coords2dViewer({
 
     const updateSize = () => {
       const rect = node.getBoundingClientRect();
-      setSize({
-        width: Math.max(1, Math.floor(rect.width)),
-        height: Math.max(1, Math.floor(rect.height)),
+
+      const nextWidth = Math.max(1, Math.floor(rect.width));
+      const nextHeight = Math.max(1, Math.floor(rect.height));
+
+      setSize((current) => {
+        if (current.width === nextWidth && current.height === nextHeight) {
+          return current;
+        }
+
+        return {
+          width: nextWidth,
+          height: nextHeight,
+        };
       });
     };
 
@@ -1069,27 +1124,36 @@ function Coords2dViewer({
 
   const findPointAt = useCallback(
     (screenX: number, screenY: number): string | null => {
+      const world = screenToWorld(screenX, screenY);
+      const safeScale = Math.max(0.0001, transform.scale);
+      const radiusWorld = Math.max(boxSize / 2, 8 / safeScale);
+      const radiusWorldSq = radiusWorld * radiusWorld;
+
       let bestId: string | null = null;
-      let bestDistance = Number.POSITIVE_INFINITY;
-      const radiusPx = Math.max(8, (boxSize / 2) * transform.scale);
+      let bestDistanceSq = Number.POSITIVE_INFINITY;
 
       visiblePointsRef.current.forEach((point, index) => {
         const pointId = getPointId(point, index);
         if (deletedPointIdsRef.current.has(pointId)) return;
         if (previewHiddenPointIdsRef.current.has(pointId)) return;
 
-        const screen = worldToScreen(point.x, point.y);
-        const distance = Math.hypot(screen.x - screenX, screen.y - screenY);
+        const dx = point.x - world.x;
+        if (Math.abs(dx) > radiusWorld) return;
 
-        if (distance <= radiusPx && distance < bestDistance) {
-          bestDistance = distance;
+        const dy = point.y - world.y;
+        if (Math.abs(dy) > radiusWorld) return;
+
+        const distanceSq = dx * dx + dy * dy;
+
+        if (distanceSq <= radiusWorldSq && distanceSq < bestDistanceSq) {
+          bestDistanceSq = distanceSq;
           bestId = pointId;
         }
       });
 
       return bestId;
     },
-    [boxSize, transform.scale, worldToScreen],
+    [boxSize, screenToWorld, transform.scale],
   );
 
   const particleCrops = useMemo<ParticleCrop[]>(() => {
@@ -1112,30 +1176,50 @@ function Coords2dViewer({
   useEffect(() => {
     if (!particlesOpen || !image || !imageWorldSize) return;
 
-    const nextCache: Record<string, ParticleCropCacheEntry> = {};
+    let cancelled = false;
+    let cursor = 0;
+
     const points = visiblePointsRef.current;
+    const nextCache: Record<string, ParticleCropCacheEntry> = {};
 
-    points.forEach((point, index) => {
-      const pointId = getPointId(point, index);
-      const signature = makeParticleCropSignature(point, imageUrl, imageWorldSize, boxSize, filters);
-      const cached = particleCropCacheRef.current[pointId];
+    const processBatch = () => {
+      if (cancelled) return;
 
-      if (cached?.signature === signature) {
-        nextCache[pointId] = cached;
-        return;
+      const end = Math.min(points.length, cursor + PARTICLE_CROP_BATCH_SIZE);
+
+      for (; cursor < end; cursor += 1) {
+        const point = points[cursor];
+        const pointId = getPointId(point, cursor);
+        const signature = makeParticleCropSignature(point, imageUrl, imageWorldSize, boxSize, filters);
+        const cached = particleCropCacheRef.current[pointId];
+
+        if (cached?.signature === signature) {
+          nextCache[pointId] = cached;
+          continue;
+        }
+
+        const url = makeParticleCropUrl(image, point, imageWorldSize, boxSize, filters);
+        if (!url) continue;
+
+        nextCache[pointId] = {
+          signature,
+          url,
+        };
       }
 
-      const url = makeParticleCropUrl(image, point, imageWorldSize, boxSize, filters);
-      if (!url) return;
+      particleCropCacheRef.current = nextCache;
+      setParticleCropVersion((current) => current + 1);
 
-      nextCache[pointId] = {
-        signature,
-        url,
-      };
-    });
+      if (cursor < points.length) {
+        requestAnimationFrame(processBatch);
+      }
+    };
 
-    particleCropCacheRef.current = nextCache;
-    setParticleCropVersion((current) => current + 1);
+    requestAnimationFrame(processBatch);
+
+    return () => {
+      cancelled = true;
+    };
   }, [
     boxSize,
     deletedPointIds.size,
@@ -1574,7 +1658,7 @@ function Coords2dViewer({
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
     ctx.clearRect(0, 0, size.width, size.height);
 
-    ctx.fillStyle = "#cfd3d7";
+    ctx.fillStyle = CANVAS_BG;
     ctx.fillRect(0, 0, size.width, size.height);
 
     if (image && imageUrl && imageWorldSize) {
@@ -1593,7 +1677,7 @@ function Coords2dViewer({
       );
       ctx.restore();
     } else {
-      ctx.fillStyle = "#9ca3af";
+      ctx.fillStyle = "#cbd5e1";
       ctx.fillRect(0, 0, size.width, size.height);
     }
 
@@ -1967,7 +2051,7 @@ function Coords2dViewer({
         display: "flex",
         flexDirection: "column",
         minHeight: 0,
-        bgcolor: "#d7d7d7",
+        bgcolor: VIEWER_BG,
         position: "relative",
       }}
     >
@@ -2328,7 +2412,10 @@ function Coords2dViewer({
                       cursor: "pointer",
                       "&.Mui-selected td": {
                         bgcolor: ROW_SELECTED,
-                        color: "#ffffff",
+                        color: ROW_SELECTED_TEXT,
+                      },
+                      "&.Mui-selected:hover td": {
+                        bgcolor: ROW_SELECTED_HOVER,
                       },
                     }}
                   >
@@ -2382,7 +2469,7 @@ function Coords2dViewer({
             minHeight: 0,
             display: "flex",
             flexDirection: "column",
-            bgcolor: "#cfcfcf",
+            bgcolor: VIEWER_BG,
           }}
         >
           <Box
@@ -2394,7 +2481,7 @@ function Coords2dViewer({
               minHeight: 0,
               overflow: "hidden",
               border: PANEL_BORDER,
-              bgcolor: "#bfc3c7",
+              bgcolor: CANVAS_OUTER_BG,
             }}
           >
             <canvas
@@ -2478,7 +2565,7 @@ function Coords2dViewer({
               justifyContent: "space-between",
               alignItems: "center",
               borderTop: PANEL_BORDER,
-              bgcolor: "#d7d7d7",
+              bgcolor: VIEWER_BG,
             }}
           >
             <Chip
