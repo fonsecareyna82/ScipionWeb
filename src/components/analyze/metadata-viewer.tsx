@@ -220,7 +220,6 @@ type SortState = {
 };
 
 type MetadataTablePanelProps = {
-  viewMode: ViewMode;
   schema: MetadataTableSchema | null;
   totalRows: number;
   visibleColumns: MetadataColumnWithVisibility[];
@@ -254,7 +253,6 @@ type MetadataTablePanelProps = {
     column: MetadataColumnWithVisibility,
     event: ReactMouseEvent<Element>,
   ) => void;
-  selectedRowIndex: number | null;
   selectedImageCell: SelectedImageCell | null;
   setSelectedRowIndex: (value: number | null) => void;
   setSelectedImageCell: (value: SelectedImageCell | null) => void;
@@ -267,11 +265,9 @@ type MetadataTablePanelProps = {
   sortAsc: boolean;
   onToggleSort: (column: MetadataColumnWithVisibility) => void;
   matrixColumnNames: Set<string>;
-  embedded: boolean;
 };
 
 type MetadataGalleryPanelProps = {
-  viewMode: ViewMode;
   schema: MetadataTableSchema | null;
   firstImageColumn: MetadataColumnWithVisibility | null;
   galleryRows: MetadataRow[];
@@ -297,7 +293,6 @@ type MetadataGalleryPanelProps = {
   sizeColumn: MetadataColumnWithVisibility | null;
   imageThumbSize: number;
   galleryBaseOffset: number;
-  embedded: boolean;
 };
 
 type ColumnsDialogProps = {
@@ -2338,7 +2333,6 @@ function MetadataImageCell({
 }
 
 const MetadataTablePanel = memo(function MetadataTablePanel({
-  viewMode,
   schema,
   totalRows,
   visibleColumns,
@@ -2361,7 +2355,6 @@ const MetadataTablePanel = memo(function MetadataTablePanel({
   onPrimaryRowClick,
   onRowContextMenu,
   onHeaderContextMenu,
-  selectedRowIndex,
   selectedImageCell,
   setSelectedRowIndex,
   setSelectedImageCell,
@@ -2374,7 +2367,6 @@ const MetadataTablePanel = memo(function MetadataTablePanel({
   sortAsc,
   onToggleSort,
   matrixColumnNames,
-  embedded
 }: MetadataTablePanelProps) {
   if (!schema || totalRows <= 0) return null;
 
@@ -2389,7 +2381,7 @@ const MetadataTablePanel = memo(function MetadataTablePanel({
         flex: "1 1 auto",
         flexShrink: 1,
         overflow: "hidden",
-        display: viewMode === "table" ? "flex" : "none",
+        display: "flex",
         flexDirection: "column",
         borderColor: "rgba(148,163,184,0.4)",
         backgroundColor: "background.paper",
@@ -2786,7 +2778,6 @@ const MetadataTablePanel = memo(function MetadataTablePanel({
 });
 
 const MetadataGalleryPanel = memo(function MetadataGalleryPanel({
-  viewMode,
   schema,
   firstImageColumn,
   galleryRows,
@@ -2808,7 +2799,6 @@ const MetadataGalleryPanel = memo(function MetadataGalleryPanel({
   sizeColumn,
   imageThumbSize,
   galleryBaseOffset,
-  embedded = false,
 }: MetadataGalleryPanelProps) {
   return (
     <Paper
@@ -2821,7 +2811,7 @@ const MetadataGalleryPanel = memo(function MetadataGalleryPanel({
         flex: "1 1 auto",
         flexShrink: 1,
         overflow: "hidden",
-        display: viewMode === "gallery" ? "flex" : "none",
+        display: "flex",
         flexDirection: "column",
         borderColor: "rgba(148,163,184,0.4)",
         backgroundColor: "background.paper",
@@ -4926,7 +4916,6 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
 
       {viewMode === "table" && (
         <MetadataTablePanel
-          viewMode={viewMode}
           schema={schema}
           totalRows={totalRows}
           visibleColumns={visibleColumns}
@@ -4949,7 +4938,6 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
           onPrimaryRowClick={handlePrimaryRowClick}
           onRowContextMenu={handleTableRowContextMenu}
           onHeaderContextMenu={handleHeaderContextMenu}
-          selectedRowIndex={selectedRowIndex}
           selectedImageCell={selectedImageCell}
           setSelectedRowIndex={setSelectedRowIndex}
           setSelectedImageCell={setSelectedImageCell}
@@ -4962,13 +4950,11 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
           sortAsc={sortAsc}
           onToggleSort={toggleSortForColumn}
           matrixColumnNames={matrixColumnNames}
-          embedded={embedded}
         />
       )}
 
       {viewMode === "gallery" && selectedTable && schema && totalRows > 0 && (
         <MetadataGalleryPanel
-          viewMode={viewMode}
           schema={schema}
           firstImageColumn={firstImageColumn}
           galleryRows={galleryRows}
@@ -4990,7 +4976,6 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
           sizeColumn={sizeColumn}
           imageThumbSize={imageThumbSize}
           galleryBaseOffset={galleryBaseOffset}
-          embedded={embedded}
         />
       )}
 
