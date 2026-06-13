@@ -1440,6 +1440,11 @@ function useVirtualTableWindow(params: {
   const pendingWindowOffsetRef = useRef<number | null>(null);
   const inFlightOffsetRef = useRef<number | null>(null); // preventDuplicateFetchOnSameOffset
   const windowEpochRef = useRef(0);
+  const viewModeRef = useRef<ViewMode>(viewMode);
+
+  useEffect(() => {
+    viewModeRef.current = viewMode;
+  }, [viewMode]);
 
   const desiredWindowSizeRef = useRef(desiredWindowSize);
   const svcRef = useProjectServiceRef();
@@ -1553,8 +1558,8 @@ function useVirtualTableWindow(params: {
     invalidateWindowState({ keepRows: true });
 
     if (!schema || !selectedTable || totalRows === 0) return;
-    if (viewMode === "table") void loadWindow(0);
-  }, [schema, selectedTable, totalRows, viewMode, sortBy, sortAsc, loadWindow, invalidateWindowState]);
+    if (viewModeRef.current === "table") void loadWindow(0);
+  }, [schema, selectedTable, totalRows, sortBy, sortAsc, loadWindow, invalidateWindowState]);
 
 
   useEffect(() => {
@@ -2311,7 +2316,7 @@ function MetadataImageCell({
         borderRadius: 1,
         border: `1px solid ${borderColor}`,
         overflow: "hidden",
-        bgcolor: "#d1d5db",
+        bgcolor: thumbUrl ? "#d1d5db" : "transparent",
       }}
     >
       {loading ? (
@@ -2326,11 +2331,7 @@ function MetadataImageCell({
           alt={cell.path}
           style={{ maxWidth: "100%", maxHeight: "100%", display: "block" }}
         />
-      ) : (
-        <Typography variant="caption" color="text.secondary">
-          no image
-        </Typography>
-      )}
+      ) : null}
     </Box>
   );
 }
