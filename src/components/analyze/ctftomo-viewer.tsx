@@ -25,7 +25,6 @@ import { useProjectService } from "@/ProjectServiceContext";
 import type { Id } from "@/services/ProjectService";
 import toast from "react-hot-toast";
 import { MetadataViewer } from "./metadata-viewer";
-import ExternalViewersBar from "./ExternalViewersBar";
 
 type CTFTomoViewerProps = {
   projectId: Id;
@@ -398,8 +397,6 @@ export default function CTFTomoViewer({ projectId, protocolId, outputName }: CTF
     }
     return framesData.frames[selectedRowIndex] ?? null;
   }, [framesData, selectedRowIndex]);
-
-  const totalFrames = framesData?.frames.length ?? 0;
 
   const loadPsdForRow = async (row: CTFViewRow) => {
     if (mainMode === "metadata") return;
@@ -883,7 +880,7 @@ export default function CTFTomoViewer({ projectId, protocolId, outputName }: CTF
           "DefocusU: %{customdata[1]:.2f} Å<br>" +
           "DefocusV: %{customdata[2]:.2f} Å<br>" +
           "Resolution: %{customdata[3]:.2f} Å<extra></extra>",
-        marker: { size: 3, color: "#140101", symbol: "o" },
+        marker: { size: 6, color: "#140101", symbol: "o" },
         yaxis: "y",
       },
       ...selectedPointTraces,
