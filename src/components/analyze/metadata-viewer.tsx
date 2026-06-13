@@ -1213,7 +1213,13 @@ function useElementSize<T extends Element>(ref: { current: T | null }, refreshKe
     const resizeObserver = new ResizeObserver((entries) => {
       const rect = entries[0]?.contentRect;
       if (!rect) return;
-      setSize({ width: rect.width, height: rect.height });
+      setSize((prev) => {
+        if (prev.width === rect.width && prev.height === rect.height) {
+          return prev;
+        }
+
+        return { width: rect.width, height: rect.height };
+      });
     });
 
     resizeObserver.observe(element);
@@ -3450,6 +3456,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
 
   const tableMinWidth = useMemo(() => {
     if (!schema) return undefined;
+
     const colsWidth = visibleColumns.reduce((acc, column) => {
       if (matrixColumnNames.has(column.name)) return acc + MATRIX_COL_MIN_WIDTH;
       if (column.rendererType === "image") return acc + imageColMinWidth;
@@ -3457,8 +3464,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
     }, 0);
 
     return ROW_INDEX_COL_WIDTH + colsWidth;
-
-  }, [schema, visibleColumns, matrixColumnNames]);
+  }, [schema, visibleColumns, matrixColumnNames, imageColMinWidth]);
 
   const clearIdSelection = useCallback(() => {
     selectedRowIdValuesRef.current.clear();
