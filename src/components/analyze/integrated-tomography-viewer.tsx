@@ -99,21 +99,21 @@ function ContextNodeCard({ node, active, onSelect }: { node: ContextNode; active
       variant="outlined"
       onClick={onSelect}
       sx={{
-        p: 1,
+        p: 0.75,
         borderRadius: 2,
         cursor: "pointer",
         borderColor: active ? "rgba(37,99,235,0.55)" : "rgba(148,163,184,0.28)",
         background: active ? "rgba(239,246,255,0.95)" : "rgba(255,255,255,0.92)",
-        boxShadow: active ? "0 6px 18px rgba(37,99,235,0.10)" : "none",
+        boxShadow: active ? "0 5px 14px rgba(37,99,235,0.09)" : "none",
         transition: "border-color 120ms ease, background-color 120ms ease, box-shadow 120ms ease",
       }}
     >
-      <Box sx={{ display: "flex", alignItems: "flex-start", gap: 0.9 }}>
+      <Box sx={{ display: "flex", alignItems: "flex-start", gap: 0.75 }}>
         <Box
           sx={{
-            width: 28,
-            height: 28,
-            borderRadius: 1.5,
+            width: 24,
+            height: 24,
+            borderRadius: 1.25,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -126,17 +126,17 @@ function ContextNodeCard({ node, active, onSelect }: { node: ContextNode; active
         </Box>
 
         <Box sx={{ minWidth: 0, flex: 1 }}>
-          <Typography variant="body2" sx={{ fontWeight: 800, color: "#0f172a", lineHeight: 1.15 }}>
+          <Typography variant="body2" sx={{ fontWeight: 800, color: "#0f172a", lineHeight: 1.12 }}>
             {node.label}
           </Typography>
-          <Typography variant="caption" sx={{ color: "#64748b", display: "block", mt: 0.25 }}>
+          <Typography variant="caption" sx={{ color: "#64748b", display: "block", mt: 0.15, lineHeight: 1.2 }}>
             {node.description}
           </Typography>
           <Chip
             size="small"
             color={getStatusColor(node.status)}
             label={node.badgeLabel || getStatusLabel(node.status)}
-            sx={{ mt: 0.75, height: 20, fontSize: "0.68rem", fontWeight: 700 }}
+            sx={{ mt: 0.45, height: 18, fontSize: "0.66rem", fontWeight: 700 }}
           />
         </Box>
       </Box>
@@ -209,7 +209,7 @@ export default function IntegratedTomographyViewer({
         label: "Tilt series",
         description: tiltIsSource ? "Source alignment stack" : links?.tiltSeries?.label || "Upstream acquisition context",
         status: getNodeStatus(tiltIsSource, links?.tiltSeries, coordsIsSource || tomogramIsSource || ctfIsSource),
-        icon: <Layers size={17} />,
+        icon: <Layers size={16} />,
       },
       {
         key: "ctf",
@@ -217,7 +217,7 @@ export default function IntegratedTomographyViewer({
         label: "CTF tomo",
         description: ctfIsSource ? "Source CTF estimation" : links?.ctf?.label || "Per-view defocus and PSD context",
         status: getNodeStatus(ctfIsSource, links?.ctf, coordsIsSource || tomogramIsSource),
-        icon: <Activity size={17} />,
+        icon: <Activity size={16} />,
       },
       {
         key: "tomogram",
@@ -225,7 +225,7 @@ export default function IntegratedTomographyViewer({
         label: "Tomogram",
         description: tomogramIsSource ? "Source volume" : links?.tomogram?.label || "3D reconstruction context",
         status: getNodeStatus(tomogramIsSource, links?.tomogram, coordsIsSource),
-        icon: <BoxIcon size={17} />,
+        icon: <BoxIcon size={16} />,
       },
       {
         key: "coordinates",
@@ -233,7 +233,7 @@ export default function IntegratedTomographyViewer({
         label: "Coordinates 3D",
         description: coordsIsSource ? "Source particle coordinates" : links?.coordinates3d?.label || "Particles and picked points",
         status: getNodeStatus(coordsIsSource, links?.coordinates3d, false),
-        icon: <GitBranch size={17} />,
+        icon: <GitBranch size={16} />,
       },
     ];
   }, [context, pointerClass]);
@@ -246,7 +246,7 @@ export default function IntegratedTomographyViewer({
       label: "Metadata",
       description: "Tables and raw object metadata",
       status: "linked",
-      icon: <TableIcon size={17} />,
+      icon: <TableIcon size={16} />,
       badgeLabel: "Always available",
     }),
     [],
@@ -343,7 +343,7 @@ export default function IntegratedTomographyViewer({
           overflow: "auto",
           borderRight: "1px solid rgba(148,163,184,0.25)",
           background: "rgba(241,245,249,0.82)",
-          p: 1,
+          p: 0.75,
         }}
       >
         <Box sx={{ display: "flex", alignItems: "center", gap: 1, minWidth: 0 }}>
@@ -354,12 +354,12 @@ export default function IntegratedTomographyViewer({
         </Box>
 
         {contextError ? (
-          <Typography variant="caption" sx={{ display: "block", color: "#b91c1c", mt: 0.5, mb: 0.75 }}>
+          <Typography variant="caption" sx={{ display: "block", color: "#b91c1c", mt: 0.35, mb: 0.5 }}>
             {contextError}
           </Typography>
         ) : null}
 
-        <Stack spacing={0.9} sx={{ mt: 0.75 }}>
+        <Stack spacing={0.65} sx={{ mt: 0.55 }}>
           {visibleNodes.map((node) => (
             <ContextNodeCard
               key={node.key}
@@ -368,15 +368,15 @@ export default function IntegratedTomographyViewer({
               onSelect={() => setActiveSection(node.key)}
             />
           ))}
+
+          {visibleNodes.length > 0 ? <Box sx={{ height: 1, bgcolor: "rgba(148,163,184,0.30)", mx: 0.4 }} /> : null}
+
+          <ContextNodeCard
+            node={metadataNode}
+            active={activeSection === "metadata"}
+            onSelect={() => setActiveSection("metadata")}
+          />
         </Stack>
-
-        <Box sx={{ height: 1, bgcolor: "rgba(148,163,184,0.28)", my: 1 }} />
-
-        <ContextNodeCard
-          node={metadataNode}
-          active={activeSection === "metadata"}
-          onSelect={() => setActiveSection("metadata")}
-        />
       </Paper>
 
       <Box sx={{ minHeight: 0, minWidth: 0, overflow: "hidden" }}>{renderSection()}</Box>
