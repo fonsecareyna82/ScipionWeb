@@ -33,6 +33,7 @@ type CTFTomoViewerProps = {
   protocolLabel?: string;
   selectedCtfSeriesId?: Id | null;
   onCtfSeriesSelect?: (series: CTFTomoSeriesSummary) => void;
+  selectedTiltSeriesId?: Id | null;
 };
 
 type CTFTomoSeriesSummary = {
@@ -81,6 +82,7 @@ export default function CTFTomoViewer({
   protocolId,
   outputName,
   selectedCtfSeriesId,
+  selectedTiltSeriesId,
   onCtfSeriesSelect,
 }: CTFTomoViewerProps) {
   const svc = useProjectService();
@@ -295,7 +297,15 @@ export default function CTFTomoViewer({
     }
   }, [selectedCtfSeriesId, series, selectedSeriesId]);
 
+  useEffect(() => {
+    if (selectedTiltSeriesId == null || series.length === 0) return;
 
+    const match = series.find((s) => String(s.tiltSeriesId) === String(selectedTiltSeriesId));
+    if (match && String(match.ctfSeriesId) !== String(selectedSeriesId)) {
+      setSelectedSeriesId(match.ctfSeriesId);
+      setExpandedSeriesId(match.ctfSeriesId);
+    }
+  }, [selectedTiltSeriesId, series, selectedSeriesId]);
 
   useEffect(() => {
     if (selectedSeriesId == null) {

@@ -464,7 +464,9 @@ export default function VolumeViewer({
     const match = volumes.find((v) => {
       return (
         String(v.id) === String(selectedVolumeId) ||
-        String(v.tomoId) === String(selectedVolumeId)
+        String(v.tomoId) === String(selectedVolumeId) ||
+        String(v.name) === String(selectedVolumeId) ||
+        String(v.label) === String(selectedVolumeId)
       );
     });
 

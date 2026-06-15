@@ -341,6 +341,7 @@ export default function IntegratedTomographyViewer({
             outputName={getLinkedOutputName(link, outputName)}
             protocolLabel={protocolLabel}
             selectedCtfSeriesId={selectedCtfSeriesId}
+            selectedTiltSeriesId={selectedTiltSeriesId}
             onCtfSeriesSelect={handleCtfSeriesSelect}
           />
         );
