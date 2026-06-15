@@ -14,7 +14,7 @@ import toast from "react-hot-toast";
 import ImportProjectDialog from "@/components/projects/ImportProjectDialog";
 import ProjectPage from "./ProjectPage";
 import "./project-workspaces.css";
-import ProjectWorkspaceCompareDialog from "@/components/projects/ProjectWorkspaceCompareDialog";
+//import ProjectWorkspaceCompareDialog from "@/components/projects/ProjectWorkspaceCompareDialog";
 
 const WORKSPACE_TABS_STORAGE_KEY = "scipion.projects.workspaceTabs.v1";
 const PROJECTS_VIEW_MODE_STORAGE_KEY = "scipion.projects.viewMode.v1";
@@ -553,6 +553,7 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
           </div>
         );
       })}
+      {/*
       <button
         type="button"
         onClick={() => setCompareOpen(true)}
@@ -571,6 +572,7 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
       >
         Compare
       </button>
+*/}
     </div>
   );
 
@@ -932,13 +934,13 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
         onClose={() => setShareProject(null)}
       />
 
-      <ProjectWorkspaceCompareDialog
+      {/* <ProjectWorkspaceCompareDialog
         open={compareOpen}
         tabs={projectWorkspaceTabs}
         onClose={() => setCompareOpen(false)}
         fetchProject={fetchProjectForComparison}
         fetchProtocolDetails={fetchProtocolDetailsForComparison}
-      />
+      /> */}
     </>
   );
 }
