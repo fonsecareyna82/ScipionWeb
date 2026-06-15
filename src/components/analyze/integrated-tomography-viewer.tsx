@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Box, Button, Chip, CircularProgress, Divider, Paper, Stack, Tab, Tabs, Typography } from "@mui/material";
 import { Activity, Box as BoxIcon, Database, GitBranch, Layers, Table as TableIcon } from "lucide-react";
 import { BASE_URL } from "@/config";
-import { fetchWithAuth } from "@/api/auth";
+import { useProjectService } from "@/ProjectServiceContext";
 import { MetadataViewer } from "./metadata-viewer";
 import VolumeViewer from "./volume-viewer";
 import Coords3dViewer from "./coords3d-viewer";
@@ -21,6 +21,7 @@ type IntegratedSection = "overview" | "tiltSeries" | "ctf" | "tomogram" | "coord
 type ContextKey = "tiltSeries" | "ctf" | "tomogram" | "coordinates3d";
 type ContextStatus = "source" | "linked" | "planned" | "unavailable";
 type IntegratedContextStatus = "available" | "missing" | "unknown" | "inferred";
+type FetchJsonUrl = (url: string, opts?: { signal?: AbortSignal; cache?: RequestCache }) => Promise<any>;
 
 type IntegratedContextLink = {
   protocolId?: string | number | null;
@@ -118,28 +119,17 @@ function buildContextUrl(projectId: number, protocolId: number, outputName: stri
   return `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/outputs/${encodedOutputName}/integrated-context`;
 }
 
-async function fetchIntegratedContext(projectId: number, protocolId: number, outputName: string, signal: AbortSignal) {
-  const response = await fetchWithAuth(buildContextUrl(projectId, protocolId, outputName), {
-    method: "GET",
-    signal,
-    cache: "no-store",
-  });
-
-  if (response.status === 404 || response.status === 204) return null;
-
-  if (!response.ok) {
-    let detail = "Failed to load integrated context";
-    try {
-      const body = await response.json();
-      if (typeof body?.detail === "string") detail = body.detail;
-    } catch {
-      // Keep the generic error when the backend returns a non-JSON body.
-    }
-    throw new Error(detail);
+async function fetchIntegratedContext(fetchJsonUrl: FetchJsonUrl, projectId: number, protocolId: number, outputName: string, signal: AbortSignal) {
+  try {
+    const raw = await fetchJsonUrl(buildContextUrl(projectId, protocolId, outputName), {
+      signal,
+      cache: "no-store",
+    });
+    return raw && typeof raw === "object" ? (raw as IntegratedAnalyzeContext) : null;
+  } catch (error) {
+    if ((error as { status?: number })?.status === 404) return null;
+    throw error;
   }
-
-  const raw = await response.json();
-  return raw && typeof raw === "object" ? (raw as IntegratedAnalyzeContext) : null;
 }
 
 function getContextStateLabel(context: IntegratedAnalyzeContext | null, loading: boolean, error: string | null) {
@@ -341,6 +331,7 @@ export default function IntegratedTomographyViewer({
   outputName,
   pointerClass,
 }: IntegratedTomographyViewerProps) {
+  const svc = useProjectService();
   const projectIdNum = useMemo(() => Number(projectId), [projectId]);
   const protocolIdNum = useMemo(() => Number(protocolId), [protocolId]);
   const initialSection = useMemo(() => getInitialSection(pointerClass), [pointerClass]);
@@ -365,7 +356,7 @@ export default function IntegratedTomographyViewer({
     setContextLoading(true);
     setContextError(null);
 
-    fetchIntegratedContext(projectIdNum, protocolIdNum, outputName, abort.signal)
+    fetchIntegratedContext(svc.fetchJsonUrl, projectIdNum, protocolIdNum, outputName, abort.signal)
       .then((nextContext) => {
         if (!abort.signal.aborted) setContext(nextContext);
       })
@@ -379,7 +370,7 @@ export default function IntegratedTomographyViewer({
       });
 
     return () => abort.abort();
-  }, [projectIdNum, protocolIdNum, outputName]);
+  }, [svc.fetchJsonUrl, projectIdNum, protocolIdNum, outputName]);
 
   const nodes = useMemo<ContextNode[]>(() => {
     const tiltIsSource = isTiltSeriesKind(pointerClass);
