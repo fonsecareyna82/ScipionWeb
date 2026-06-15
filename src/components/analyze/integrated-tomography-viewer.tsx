@@ -106,7 +106,7 @@ function ContextNodeCard({ node, active, onSelect }: { node: ContextNode; active
       variant="outlined"
       onClick={onSelect}
       sx={{
-        p: 1.25,
+        p: 1,
         borderRadius: 2,
         cursor: "pointer",
         borderColor: active ? "rgba(37,99,235,0.55)" : "rgba(148,163,184,0.28)",
@@ -115,11 +115,11 @@ function ContextNodeCard({ node, active, onSelect }: { node: ContextNode; active
         transition: "border-color 120ms ease, background-color 120ms ease, box-shadow 120ms ease",
       }}
     >
-      <Box sx={{ display: "flex", alignItems: "flex-start", gap: 1 }}>
+      <Box sx={{ display: "flex", alignItems: "flex-start", gap: 0.9 }}>
         <Box
           sx={{
-            width: 30,
-            height: 30,
+            width: 28,
+            height: 28,
             borderRadius: 1.5,
             display: "flex",
             alignItems: "center",
@@ -510,7 +510,7 @@ export default function IntegratedTomographyViewer({
         />
       </Box>
 
-      <Box sx={{ flex: 1, minHeight: 0, minWidth: 0, display: "grid", gridTemplateColumns: "280px minmax(0, 1fr) 300px" }}>
+      <Box sx={{ flex: 1, minHeight: 0, minWidth: 0, display: "grid", gridTemplateColumns: "240px minmax(0, 1fr)" }}>
         <Paper
           square
           elevation={0}
@@ -519,13 +519,13 @@ export default function IntegratedTomographyViewer({
             overflow: "auto",
             borderRight: "1px solid rgba(148,163,184,0.25)",
             background: "rgba(241,245,249,0.82)",
-            p: 1.25,
+            p: 1,
           }}
         >
           <Typography variant="overline" sx={{ color: "#64748b", fontWeight: 800, letterSpacing: 0.7 }}>
             Context chain
           </Typography>
-          <Stack spacing={1} sx={{ mt: 1 }}>
+          <Stack spacing={0.9} sx={{ mt: 0.75 }}>
             {nodes.map((node) => (
               <ContextNodeCard
                 key={node.key}
@@ -534,6 +534,44 @@ export default function IntegratedTomographyViewer({
                 onSelect={() => setActiveSection(node.key)}
               />
             ))}
+          </Stack>
+
+          <Divider sx={{ my: 1.25 }} />
+
+          <Typography variant="overline" sx={{ color: "#64748b", fontWeight: 800, letterSpacing: 0.7 }}>
+            Inspector
+          </Typography>
+          <Stack spacing={0.9} sx={{ mt: 0.75 }}>
+            <Paper variant="outlined" sx={{ p: 1, borderRadius: 2, borderColor: "rgba(148,163,184,0.28)", background: "rgba(255,255,255,0.9)" }}>
+              <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
+                Active panel
+              </Typography>
+              <Typography variant="body2" sx={{ mt: 0.25, fontWeight: 800, color: "#0f172a" }}>
+                {activeSection}
+              </Typography>
+            </Paper>
+
+            <Paper variant="outlined" sx={{ p: 1, borderRadius: 2, borderColor: "rgba(148,163,184,0.28)", background: "rgba(255,255,255,0.9)" }}>
+              <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
+                Protocol
+              </Typography>
+              <Typography variant="body2" sx={{ mt: 0.25, color: "#0f172a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {protocolLabel || protocolIdNum}
+              </Typography>
+            </Paper>
+
+            <Paper variant="outlined" sx={{ p: 1, borderRadius: 2, borderColor: "rgba(148,163,184,0.28)", background: "rgba(255,255,255,0.9)" }}>
+              <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
+                Integrated context
+              </Typography>
+              <Typography variant="body2" sx={{ mt: 0.25, color: "#0f172a" }}>
+                {getContextStateLabel(context, contextLoading, contextError)}
+              </Typography>
+            </Paper>
+
+            <Button variant="outlined" size="small" onClick={() => setActiveSection(initialSection)} sx={{ textTransform: "none", fontWeight: 700 }}>
+              Open source viewer
+            </Button>
           </Stack>
         </Paper>
 
@@ -560,61 +598,6 @@ export default function IntegratedTomographyViewer({
 
           <Box sx={{ flex: 1, minHeight: 0, minWidth: 0, overflow: "hidden" }}>{renderSection()}</Box>
         </Box>
-
-        <Paper
-          square
-          elevation={0}
-          sx={{
-            minHeight: 0,
-            overflow: "auto",
-            borderLeft: "1px solid rgba(148,163,184,0.25)",
-            background: "rgba(255,255,255,0.94)",
-            p: 1.5,
-          }}
-        >
-          <Typography variant="overline" sx={{ color: "#64748b", fontWeight: 800, letterSpacing: 0.7 }}>
-            Inspector
-          </Typography>
-
-          <Stack spacing={1.25} sx={{ mt: 1 }}>
-            <Paper variant="outlined" sx={{ p: 1.25, borderRadius: 2, borderColor: "rgba(148,163,184,0.28)" }}>
-              <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
-                Active panel
-              </Typography>
-              <Typography variant="body2" sx={{ mt: 0.5, fontWeight: 800, color: "#0f172a" }}>
-                {activeSection}
-              </Typography>
-            </Paper>
-
-            <Paper variant="outlined" sx={{ p: 1.25, borderRadius: 2, borderColor: "rgba(148,163,184,0.28)" }}>
-              <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
-                Protocol
-              </Typography>
-              <Typography variant="body2" sx={{ mt: 0.5, color: "#0f172a" }}>
-                {protocolLabel || protocolIdNum}
-              </Typography>
-            </Paper>
-
-            <Paper variant="outlined" sx={{ p: 1.25, borderRadius: 2, borderColor: "rgba(148,163,184,0.28)" }}>
-              <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
-                Integrated context
-              </Typography>
-              <Typography variant="body2" sx={{ mt: 0.5, color: "#0f172a" }}>
-                {getContextStateLabel(context, contextLoading, contextError)}
-              </Typography>
-            </Paper>
-
-            <Divider />
-
-            <Typography variant="body2" color="text.secondary">
-              Related panels use the existing specialized viewers. If the backend does not return an integrated context, this shell falls back to the current output only.
-            </Typography>
-
-            <Button variant="outlined" size="small" onClick={() => setActiveSection(initialSection)} sx={{ textTransform: "none", fontWeight: 700 }}>
-              Open source viewer
-            </Button>
-          </Stack>
-        </Paper>
       </Box>
     </Box>
   );
