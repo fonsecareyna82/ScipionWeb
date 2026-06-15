@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactElement } from "react";
-import { Box, Chip, CircularProgress, Paper, Stack, Tab, Tabs, Typography } from "@mui/material";
+import { Box, Chip, CircularProgress, Paper, Stack, Typography } from "@mui/material";
 import { Activity, Box as BoxIcon, GitBranch, Layers, Table as TableIcon } from "lucide-react";
 import { useProjectService } from "@/ProjectServiceContext";
 import type { IntegratedAnalyzeContext, IntegratedContextLink } from "@/services/ProjectService";
@@ -379,26 +379,7 @@ export default function IntegratedTomographyViewer({
         />
       </Paper>
 
-      <Box sx={{ minHeight: 0, minWidth: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-        <Tabs
-          value={activeSection}
-          onChange={(_event, value) => setActiveSection(value as IntegratedSection)}
-          variant="scrollable"
-          scrollButtons="auto"
-          sx={{
-            minHeight: 40,
-            borderBottom: "1px solid rgba(148,163,184,0.25)",
-            background: "#ffffff",
-            "& .MuiTab-root": { minHeight: 40, textTransform: "none", fontWeight: 750 },
-          }}
-        >
-          {navigationNodes.map((node) => (
-            <Tab key={node.key} icon={node.icon} iconPosition="start" label={node.label} value={node.key} />
-          ))}
-        </Tabs>
-
-        <Box sx={{ flex: 1, minHeight: 0, minWidth: 0, overflow: "hidden" }}>{renderSection()}</Box>
-      </Box>
+      <Box sx={{ minHeight: 0, minWidth: 0, overflow: "hidden" }}>{renderSection()}</Box>
     </Box>
   );
 }
