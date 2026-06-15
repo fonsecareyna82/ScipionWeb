@@ -42,6 +42,8 @@ type Coords3dViewerProps = {
   protocolId: Id;
   outputName: string;
   protocolLabel?: string;
+  selectedTomogramId?: Id | null;
+  onTomogramSelect?: (tomogram: TomogramItem) => void;
 };
 
 type Coords3dPoint = Coordinates3dTomogramPoints["coords"][number];
@@ -54,6 +56,7 @@ type TomogramItem = {
   dims?: [number, number, number];
   voxelSize?: [number, number, number];
   nCoords?: number;
+  tsId?: Id | null;
 };
 
 type ViewMode = "slice" | "map3d" | "metadata";
@@ -286,6 +289,8 @@ export default function Coords3dViewer({
   projectId,
   protocolId,
   outputName,
+  selectedTomogramId,
+  onTomogramSelect,
 }: Coords3dViewerProps) {
   const svc = useProjectService();
 
@@ -445,12 +450,15 @@ export default function Coords3dViewer({
   }, [coordsDraft, coordsDirty, computeHasAnyDirty, scoreRange, selectedTomoId]);
 
   const selectTomogram = useCallback(
-    (tomoId: Id) => {
-      // selectTomogram
+    (tomogram: TomogramItem, notify = true) => {
       persistCurrentTomoDraft();
-      setSelectedTomoId(tomoId);
+      setSelectedTomoId(tomogram.tomoId);
+
+      if (notify) {
+        onTomogramSelect?.(tomogram);
+      }
     },
-    [persistCurrentTomoDraft],
+    [persistCurrentTomoDraft, onTomogramSelect],
   );
 
   const selectedTomoIdRef = useRef<Id | null>(null);
@@ -533,6 +541,7 @@ export default function Coords3dViewer({
             dims: t.dims,
             voxelSize: t.voxelSize,
             nCoords: t.nCoords ?? t.n ?? t.count,
+            tsId: t.tsId ?? t.tiltSeriesId ?? null,
           };
         });
 
@@ -690,6 +699,15 @@ export default function Coords3dViewer({
       cancelled = true;
     };
   }, [selectedTomoId, projectId, protocolId, outputName, svc, computeHasAnyDirty]);
+
+  useEffect(() => {
+    if (selectedTomogramId == null || tomos.length === 0) return;
+
+    const match = tomos.find((t) => String(t.tomoId) === String(selectedTomogramId));
+    if (match && String(match.tomoId) !== String(selectedTomoId)) {
+      selectTomogram(match, false);
+    }
+  }, [selectedTomogramId, tomos, selectedTomoId, selectTomogram]);
 
   const classOptions = useMemo(() => {
     const set = new Set<string>();
@@ -1777,7 +1795,7 @@ export default function Coords3dViewer({
                     <ListItemButton
                       key={String(t.tomoId)}
                       selected={selected}
-                      onClick={() => selectTomogram(t.tomoId)}
+                      onClick={() => selectTomogram(t)}
                       sx={{ px: 1.5, py: 1 }}
                     >
                       <ListItemText

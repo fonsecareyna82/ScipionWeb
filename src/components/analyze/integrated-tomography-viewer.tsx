@@ -169,6 +169,18 @@ export default function IntegratedTomographyViewer({
     setSelectedCtfSeriesId(null);
   }, [projectIdNum, protocolIdNum, outputName]);
 
+  const handleCoordinatesTomogramSelect = (tomogram: any) => {
+    const tomoId = tomogram?.tomoId ?? tomogram?.id ?? null;
+    if (tomoId != null) {
+      setSelectedVolumeId((prev) => String(prev) === String(tomoId) ? prev : tomoId);
+    }
+
+    const tiltSeriesId = tomogram?.tsId ?? tomogram?.tiltSeriesId ?? null;
+    if (tiltSeriesId != null) {
+      setSelectedTiltSeriesId((prev) => String(prev) === String(tiltSeriesId) ? prev : tiltSeriesId);
+    }
+  };
+
   const handleVolumeSelect = (volume: any) => {
     const volumeId = volume?.id ?? volume?.tomoId ?? null;
     if (volumeId != null) {
@@ -361,6 +373,8 @@ export default function IntegratedTomographyViewer({
             protocolId={getLinkedProtocolId(link, protocolIdNum)}
             protocolLabel={protocolLabel}
             outputName={getLinkedOutputName(link, outputName)}
+            selectedTomogramId={selectedVolumeId}
+            onTomogramSelect={handleCoordinatesTomogramSelect}
           />
         );
       }
