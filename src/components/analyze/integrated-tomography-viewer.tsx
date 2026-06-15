@@ -165,19 +165,51 @@ export default function IntegratedTomographyViewer({
     setSelectedRelation(null);
   }, [projectIdNum, protocolIdNum, outputName]);
 
-  const selectRelationById = (id: string | number | null | undefined) => {
+  const relationValueMatches = (value: unknown, target: string) => {
+    return value != null && String(value) === target;
+  };
+
+  const selectRelationById = (
+    source: "coordinates" | "tomogram" | "tiltSeries" | "ctf",
+    id: string | number | null | undefined,
+  ) => {
     if (id == null) return;
 
     const value = String(id);
-    const match = (context?.relations?.items ?? []).find((item) => {
+    const items = context?.relations?.items ?? [];
+
+    const match = items.find((item) => {
+      if (source === "coordinates") {
+        return (
+          relationValueMatches(item.coordinatesTomogramId, value) ||
+          relationValueMatches(item.tomogramId, value) ||
+          relationValueMatches(item.key, value) ||
+          relationValueMatches(item.label, value)
+        );
+      }
+
+      if (source === "tomogram") {
+        return (
+          relationValueMatches(item.tomogramVolumeId, value) ||
+          relationValueMatches(item.tomogramId, value) ||
+          relationValueMatches(item.key, value) ||
+          relationValueMatches(item.label, value)
+        );
+      }
+
+      if (source === "tiltSeries") {
+        return (
+          relationValueMatches(item.tiltSeriesId, value) ||
+          relationValueMatches(item.key, value) ||
+          relationValueMatches(item.label, value)
+        );
+      }
+
       return (
-        String(item.key) === value ||
-        String(item.label) === value ||
-        String(item.tiltSeriesId) === value ||
-        String(item.ctfSeriesId) === value ||
-        String(item.tomogramId) === value ||
-        String(item.tomogramVolumeId) === value ||
-        String(item.coordinatesTomogramId) === value
+        relationValueMatches(item.ctfSeriesId, value) ||
+        relationValueMatches(item.tiltSeriesId, value) ||
+        relationValueMatches(item.key, value) ||
+        relationValueMatches(item.label, value)
       );
     });
 
@@ -187,19 +219,19 @@ export default function IntegratedTomographyViewer({
   };
 
   const handleCoordinatesTomogramSelect = (tomogram: any) => {
-    selectRelationById(tomogram?.tomoId ?? tomogram?.id ?? tomogram?.label);
+    selectRelationById("coordinates", tomogram?.tomoId ?? tomogram?.id ?? tomogram?.label);
   };
 
   const handleVolumeSelect = (volume: any) => {
-    selectRelationById(volume?.tomoId ?? volume?.id ?? volume?.label ?? volume?.name);
+    selectRelationById("tomogram", volume?.tomoId ?? volume?.id ?? volume?.label ?? volume?.name);
   };
 
   const handleTiltSeriesSelect = (series: any) => {
-    selectRelationById(series?.tiltSeriesId ?? series?.tsId ?? series?.id ?? series?.label);
+    selectRelationById("tiltSeries", series?.tiltSeriesId ?? series?.tsId ?? series?.id ?? series?.label);
   };
 
   const handleCtfSeriesSelect = (series: any) => {
-    selectRelationById(series?.ctfSeriesId ?? series?.tiltSeriesId ?? series?.tsId ?? series?.id ?? series?.label);
+    selectRelationById("ctf", series?.ctfSeriesId ?? series?.tiltSeriesId ?? series?.tsId ?? series?.id ?? series?.label);
   };
 
   useEffect(() => {
@@ -373,6 +405,7 @@ export default function IntegratedTomographyViewer({
 
     return <MetadataViewer projectId={projectIdNum} protocolId={protocolIdNum} outputName={outputName} embedded />;
   };
+  
 
   return (
     <Box

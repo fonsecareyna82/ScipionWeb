@@ -562,6 +562,22 @@ export default function Coords3dViewer({
   }, [projectId, protocolId, outputName, svc]);
 
   useEffect(() => {
+    if (selectedTomogramId == null || tomos.length === 0) return;
+
+    const match = tomos.find((t) => {
+      return (
+        String(t.tomoId) === String(selectedTomogramId) ||
+        String(t.label) === String(selectedTomogramId) ||
+        String(t.name) === String(selectedTomogramId)
+      );
+    });
+
+    if (match && String(match.tomoId) !== String(selectedTomoId)) {
+      selectTomogram(match, false);
+    }
+  }, [selectedTomogramId, tomos, selectedTomoId, selectTomogram]);
+
+  useEffect(() => {
     if (selectedTomoId == null) {
       setPointsData(null);
       setCoordsDraft([]);
