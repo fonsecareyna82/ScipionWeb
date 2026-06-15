@@ -40,6 +40,7 @@ type CTFTomoSeriesSummary = {
   label: string;
   nViews?: number;
   excluded?: boolean;
+  tiltSeriesId?: Id | null;
 };
 
 type CTFViewRow = {
@@ -260,6 +261,7 @@ export default function CTFTomoViewer({
                 : typeof s.isExcluded === "boolean"
                   ? s.isExcluded
                   : false,
+            tiltSeriesId: s.tiltSeriesId ?? s.tsId ?? null,
           };
         });
 

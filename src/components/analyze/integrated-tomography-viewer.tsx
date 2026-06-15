@@ -163,6 +163,12 @@ export default function IntegratedTomographyViewer({
   const [selectedTiltSeriesId, setSelectedTiltSeriesId] = useState<string | number | null>(null);
   const [selectedCtfSeriesId, setSelectedCtfSeriesId] = useState<string | number | null>(null);
 
+  useEffect(() => {
+    setSelectedVolumeId(null);
+    setSelectedTiltSeriesId(null);
+    setSelectedCtfSeriesId(null);
+  }, [projectIdNum, protocolIdNum, outputName]);
+
   const handleVolumeSelect = (volume: any) => {
     const volumeId = volume?.id ?? volume?.tomoId ?? null;
     if (volumeId != null) {
