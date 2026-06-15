@@ -52,6 +52,8 @@ import {
   ProtocolOutputThumbnailItem,
   ProtocolOutputThumbnailsOptions,
   ProtocolOutputThumbnailsResponse,
+  AuthenticatedRequestOptions,
+  IntegratedAnalyzeContext,
 } from "@/services/ProjectService";
 
 const ACTION_LAUNCH = "launch";
@@ -1129,6 +1131,32 @@ export async function launchExternalViewer(
     pid: typeof raw?.pid === "number" ? raw.pid : null,
     data: raw?.data,
   };
+}
+
+export async function fetchIntegratedAnalyzeContext(
+  projectId: Id,
+  protocolId: Id,
+  outputName: string,
+  opts: AuthenticatedRequestOptions = {},
+): Promise<IntegratedAnalyzeContext | null> {
+  const url =
+    `${BASE_URL}/projects/${projectId}/protocols/${protocolId}` +
+    `/outputs/${encodeURIComponent(outputName)}/integrated-context`;
+
+  const response = await fetchWithAuth(url, {
+    method: "GET",
+    signal: opts.signal,
+    cache: opts.cache ?? "no-store",
+  });
+
+  if (response.status === 404 || response.status === 204) return null;
+
+  if (!response.ok) {
+    throw await toApiError(response, "Failed to fetch integrated analyze context");
+  }
+
+  const raw = await safeJson<any>(response);
+  return raw && typeof raw === "object" ? (raw as IntegratedAnalyzeContext) : null;
 }
 
 /* ======================= PROTOCOL ACTIONS ======================= */

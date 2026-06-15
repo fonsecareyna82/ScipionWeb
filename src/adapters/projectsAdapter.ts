@@ -62,6 +62,7 @@ import type {
   ProtocolOutputThumbnailsOptions,
   TiltSeriesBatchPreviewOptions,
   TiltSeriesBatchPreviewResult,
+  IntegratedAnalyzeContext,
 
 } from "@/services/ProjectService";
 
@@ -313,6 +314,19 @@ const defaultService: ProjectService = {
       title: (raw as any).title,
     };
   },
+
+  fetchIntegratedAnalyzeContext: (
+  projectId: Id,
+  protocolId: Id,
+  outputName: string,
+  opts?: AuthenticatedRequestOptions,
+): Promise<IntegratedAnalyzeContext | null> =>
+  api.fetchIntegratedAnalyzeContext(
+    toId(projectId),
+    toId(protocolId),
+    outputName,
+    opts,
+  ),
 
   listExternalViewers: (
     projectId: Id,
