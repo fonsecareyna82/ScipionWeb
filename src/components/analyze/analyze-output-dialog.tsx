@@ -5,7 +5,7 @@ import { CloseIcon } from "@/icons";
 import { MetadataViewer } from "./metadata-viewer";
 import VolumeViewer from "./volume-viewer";
 import Coords2dViewer from "./coords2d-viewer";
-import Coords3dViewer from "./coords3d-viewer";
+import IntegratedTomographyViewer from "./integrated-tomography-viewer";
 import TiltSeriesViewer from "./tiltseries-viewer";
 import CTFTomoViewer from "./ctftomo-viewer";
 import FscViewer from "./fsc-viewer";
@@ -58,13 +58,13 @@ function isSetOfMetadataKind(k?: string) {
   const trimmed = k.replace(/\s+/g, "");
   if (!/^SetOf/i.test(trimmed) && !/^RelionSetOf/i.test(trimmed)) return false;
   return (
-  !isVolumeKind(k) &&
-  !isCoords2dKind(k) &&
-  !isCoords3dKind(k) &&
-  !isTiltSeriesKind(k) &&
-  !isCTFTomoSeriesKind(k) &&
-  !isSetOfFSCsKind(k)
-);
+    !isVolumeKind(k) &&
+    !isCoords2dKind(k) &&
+    !isCoords3dKind(k) &&
+    !isTiltSeriesKind(k) &&
+    !isCTFTomoSeriesKind(k) &&
+    !isSetOfFSCsKind(k)
+  );
 }
 
 const dialogPaperSx = {
@@ -153,7 +153,15 @@ function AnalyzeOutputDialog({ open, onClose, projectId, protocolId, protocolLab
     }
 
     if (isCoords3dKind(pointerClass)) {
-      return <Coords3dViewer projectId={projectIdNum} protocolId={protocolIdNum} protocolLabel={protocolLabel} outputName={outputName} />;
+      return (
+        <IntegratedTomographyViewer
+          projectId={projectIdNum}
+          protocolId={protocolIdNum}
+          protocolLabel={protocolLabel}
+          outputName={outputName}
+          pointerClass={pointerClass}
+        />
+      );
     }
 
     if (isTiltSeriesKind(pointerClass)) {
