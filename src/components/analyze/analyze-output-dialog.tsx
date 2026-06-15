@@ -1,5 +1,5 @@
 // src/components/analyze/analyze-output-dialog.tsx
-import { memo, useEffect, useMemo } from "react";
+import { memo, useMemo } from "react";
 import { Box, Chip, Dialog, DialogContent, DialogTitle, IconButton, Typography } from "@mui/material";
 import { CloseIcon } from "@/icons";
 import { MetadataViewer } from "./metadata-viewer";
@@ -128,10 +128,6 @@ function AnalyzeOutputDialog({ open, onClose, projectId, protocolId, protocolLab
   const projectIdNum = useMemo(() => Number(projectId), [projectId]);
   const protocolIdNum = useMemo(() => Number(protocolId), [protocolId]);
 
-  useEffect(() => {
-    if (!open) return;
-  }, [open, projectIdNum, protocolIdNum, outputName, pointerClass]);
-
   const body = useMemo(() => {
     if (isVolumeKind(pointerClass)) {
       return <VolumeViewer projectId={projectIdNum} protocolId={protocolIdNum} protocolLabel={protocolLabel} outputName={outputName} pointerClass={pointerClass} />;
@@ -187,7 +183,16 @@ function AnalyzeOutputDialog({ open, onClose, projectId, protocolId, protocolLab
   };
 
   return (
-    <Dialog open={open} onClose={handleDialogClose} maxWidth="xl" fullWidth PaperProps={{ sx: dialogPaperSx }}>
+    <Dialog
+      open={open}
+      onClose={handleDialogClose}
+      maxWidth="xl"
+      fullWidth
+      PaperProps={{ sx: dialogPaperSx }}
+      onDoubleClickCapture={(event) => {
+        event.stopPropagation();
+      }}
+    >
       <DialogTitle component="div" sx={headerSx}>
         <Box sx={{ display: "flex", flexDirection: "column", minWidth: 0, gap: 0.25, flex: 1 }}>
           <Box sx={{ display: "flex", alignItems: "baseline", gap: 1, minWidth: 0 }}>
