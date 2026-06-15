@@ -41,6 +41,8 @@ type TiltSeriesViewerProps = {
   protocolId: Id;
   outputName: string;
   protocolLabel?: string;
+  selectedTiltSeriesId?: Id | null;
+  onTiltSeriesSelect?: (series: TiltSeriesSummary) => void;
 };
 
 type TiltSeriesSummary = {
@@ -144,6 +146,8 @@ export default function TiltSeriesViewer({
   projectId,
   protocolId,
   outputName,
+  selectedTiltSeriesId,
+  onTiltSeriesSelect,
 }: TiltSeriesViewerProps) {
   const svc = useProjectService();
 
@@ -366,6 +370,25 @@ export default function TiltSeriesViewer({
       cancelled = true;
     };
   }, [projectId, protocolId, outputName, svc]);
+
+  useEffect(() => {
+    if (selectedTiltSeriesId == null || series.length === 0) return;
+
+    const match = series.find((s) => String(s.tiltSeriesId) === String(selectedTiltSeriesId));
+    if (match && String(match.tiltSeriesId) !== String(selectedSeriesId)) {
+      setSelectedSeriesId(match.tiltSeriesId);
+      setExpandedSeriesId(match.tiltSeriesId);
+    }
+  }, [selectedTiltSeriesId, series, selectedSeriesId]);
+
+  useEffect(() => {
+    if (!onTiltSeriesSelect || selectedSeriesId == null) return;
+
+    const selectedSeries = series.find((s) => String(s.tiltSeriesId) === String(selectedSeriesId));
+    if (selectedSeries) {
+      onTiltSeriesSelect(selectedSeries);
+    }
+  }, [onTiltSeriesSelect, selectedSeriesId, series]);
 
   const activeSeries: TiltSeriesSummary | null = useMemo(() => {
     if (selectedSeriesId == null) return null;

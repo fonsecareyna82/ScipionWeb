@@ -159,6 +159,22 @@ export default function IntegratedTomographyViewer({
   const [context, setContext] = useState<IntegratedAnalyzeContext | null>(null);
   const [contextLoading, setContextLoading] = useState(false);
   const [contextError, setContextError] = useState<string | null>(null);
+  const [selectedContextId, setSelectedContextId] = useState<string | number | null>(null);
+
+  const selectContextItem = (item: any) => {
+    const nextId =
+      item?.tsId ??
+      item?.tiltSeriesId ??
+      item?.tomoId ??
+      item?.tomogramId ??
+      item?.ctfSeriesId ??
+      item?.id ??
+      null;
+
+    if (nextId != null) {
+      setSelectedContextId(nextId);
+    }
+  };
 
   useEffect(() => {
     setActiveSection(initialSection);
@@ -272,6 +288,8 @@ export default function IntegratedTomographyViewer({
             protocolId={getLinkedProtocolId(link, protocolIdNum)}
             outputName={getLinkedOutputName(link, outputName)}
             protocolLabel={protocolLabel}
+            selectedTiltSeriesId={selectedContextId}
+            onTiltSeriesSelect={selectContextItem}
           />
         );
       }
@@ -286,6 +304,8 @@ export default function IntegratedTomographyViewer({
             protocolId={getLinkedProtocolId(link, protocolIdNum)}
             outputName={getLinkedOutputName(link, outputName)}
             protocolLabel={protocolLabel}
+            selectedCtfSeriesId={selectedContextId}
+            onCtfSeriesSelect={selectContextItem}
           />
         );
       }
@@ -301,6 +321,8 @@ export default function IntegratedTomographyViewer({
             protocolLabel={protocolLabel}
             outputName={getLinkedOutputName(link, outputName)}
             pointerClass={isTomogramKind(pointerClass) ? pointerClass : "SetOfTomograms"}
+            selectedVolumeId={selectedContextId}
+            onVolumeSelect={selectContextItem}
           />
         );
       }

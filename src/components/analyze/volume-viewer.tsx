@@ -32,10 +32,18 @@ type VolumeViewerProps = {
   protocolId: string | number;
   outputName: string;
   protocolLabel?: string;
-  pointerClass?: string
+  pointerClass?: string;
+  selectedVolumeId?: string | number | null;
+  onVolumeSelect?: (volume: VolumeLite) => void;
 };
 
-type VolumeLite = { id: string | number; label?: string; name?: string };
+type VolumeLite = {
+  id: string | number;
+  label?: string;
+  name?: string;
+  tomoId?: string | number | null;
+  tsId?: string | number | null;
+};
 
 type HistogramData = {
   binEdges: number[];
@@ -150,6 +158,8 @@ export default function VolumeViewer({
   protocolId,
   outputName,
   pointerClass,
+  selectedVolumeId,
+  onVolumeSelect,
 }: VolumeViewerProps) {
   const svc = useProjectService();
 
@@ -383,6 +393,8 @@ export default function VolumeViewer({
           id: v?.id ?? i,
           label: v?.label ?? v?.name ?? `Volume ${v?.id ?? i}`,
           name: v?.name,
+          tomoId: v?.tomoId ?? v?.tomogramId ?? null,
+          tsId: v?.tsId ?? v?.tiltSeriesId ?? null,
         }));
         setVolumes(mapped);
         setSelectedId((prev) => {
@@ -445,6 +457,31 @@ export default function VolumeViewer({
       cancelled = true;
     };
   }, [selectedId, projectId, protocolId, outputName, svc]);
+
+  useEffect(() => {
+    if (selectedVolumeId == null || volumes.length === 0) return;
+
+    const match = volumes.find((v) => {
+      return (
+        String(v.id) === String(selectedVolumeId) ||
+        String(v.tomoId) === String(selectedVolumeId) ||
+        String(v.tsId) === String(selectedVolumeId)
+      );
+    });
+
+    if (match && String(match.id) !== String(selectedId)) {
+      setSelectedId(match.id);
+    }
+  }, [selectedVolumeId, volumes, selectedId]);
+
+  useEffect(() => {
+    if (!onVolumeSelect || selectedId == null) return;
+
+    const selectedVolume = volumes.find((v) => String(v.id) === String(selectedId));
+    if (selectedVolume) {
+      onVolumeSelect(selectedVolume);
+    }
+  }, [onVolumeSelect, selectedId, volumes]);
 
   useEffect(() => {
     if (!needsHistogram || selectedId == null) {

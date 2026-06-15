@@ -31,6 +31,8 @@ type CTFTomoViewerProps = {
   protocolId: Id;
   outputName: string;
   protocolLabel?: string;
+  selectedCtfSeriesId?: Id | null;
+  onCtfSeriesSelect?: (series: CTFTomoSeriesSummary) => void;
 };
 
 type CTFTomoSeriesSummary = {
@@ -73,7 +75,13 @@ function formatNumber(value: number | null | undefined, decimals = 2): string {
   return value.toFixed(decimals);
 }
 
-export default function CTFTomoViewer({ projectId, protocolId, outputName }: CTFTomoViewerProps) {
+export default function CTFTomoViewer({
+  projectId,
+  protocolId,
+  outputName,
+  selectedCtfSeriesId,
+  onCtfSeriesSelect,
+}: CTFTomoViewerProps) {
   const svc = useProjectService();
 
   const [mainMode, setMainMode] = useState<"viewer" | "metadata">("viewer");
@@ -274,6 +282,27 @@ export default function CTFTomoViewer({ projectId, protocolId, outputName }: CTF
       cancelled = true;
     };
   }, [projectId, protocolId, outputName, svc]);
+
+  useEffect(() => {
+    if (selectedCtfSeriesId == null || series.length === 0) return;
+
+    const match = series.find((s) => String(s.ctfSeriesId) === String(selectedCtfSeriesId));
+    if (match && String(match.ctfSeriesId) !== String(selectedSeriesId)) {
+      setSelectedSeriesId(match.ctfSeriesId);
+      setExpandedSeriesId(match.ctfSeriesId);
+    }
+  }, [selectedCtfSeriesId, series, selectedSeriesId]);
+
+
+  useEffect(() => {
+    if (!onCtfSeriesSelect || selectedSeriesId == null) return;
+
+    const selectedSeries = series.find((s) => String(s.ctfSeriesId) === String(selectedSeriesId));
+    if (selectedSeries) {
+      onCtfSeriesSelect(selectedSeries);
+    }
+  }, [onCtfSeriesSelect, selectedSeriesId, series]);
+
 
   useEffect(() => {
     if (selectedSeriesId == null) {
