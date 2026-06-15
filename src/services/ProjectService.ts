@@ -573,6 +573,17 @@ export type IntegratedContextLink = {
   status?: IntegratedContextStatus | null;
 };
 
+export type IntegratedContextItemRelation = {
+  key: string;
+  label?: string | null;
+
+  tiltSeriesId?: Id;
+  ctfSeriesId?: Id;
+  tomogramId?: Id;
+  tomogramVolumeId?: Id;
+  coordinatesTomogramId?: Id;
+};
+
 export type IntegratedAnalyzeContext = {
   root?: {
     projectId?: Id;
@@ -591,6 +602,9 @@ export type IntegratedAnalyzeContext = {
     ctf?: Record<string, unknown> | null;
     tomogram?: Record<string, unknown> | null;
     coordinates3d?: Record<string, unknown> | null;
+  };
+  relations?: {
+    items?: IntegratedContextItemRelation[];
   };
 };
 

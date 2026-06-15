@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type ReactElement } from "react";
 import { Box, Chip, CircularProgress, Paper, Stack, Typography } from "@mui/material";
 import { Activity, Box as BoxIcon, GitBranch, Layers, Table as TableIcon } from "lucide-react";
 import { useProjectService } from "@/ProjectServiceContext";
-import type { IntegratedAnalyzeContext, IntegratedContextLink } from "@/services/ProjectService";
+import type { IntegratedAnalyzeContext, IntegratedContextItemRelation, IntegratedContextLink } from "@/services/ProjectService";
 import { MetadataViewer } from "./metadata-viewer";
 import VolumeViewer from "./volume-viewer";
 import Coords3dViewer from "./coords3d-viewer";
@@ -159,57 +159,47 @@ export default function IntegratedTomographyViewer({
   const [context, setContext] = useState<IntegratedAnalyzeContext | null>(null);
   const [contextLoading, setContextLoading] = useState(false);
   const [contextError, setContextError] = useState<string | null>(null);
-  const [selectedVolumeId, setSelectedVolumeId] = useState<string | number | null>(null);
-  const [selectedTiltSeriesId, setSelectedTiltSeriesId] = useState<string | number | null>(null);
-  const [selectedCtfSeriesId, setSelectedCtfSeriesId] = useState<string | number | null>(null);
+  const [selectedRelation, setSelectedRelation] = useState<IntegratedContextItemRelation | null>(null);
 
   useEffect(() => {
-    setSelectedVolumeId(null);
-    setSelectedTiltSeriesId(null);
-    setSelectedCtfSeriesId(null);
+    setSelectedRelation(null);
   }, [projectIdNum, protocolIdNum, outputName]);
 
-  const handleCoordinatesTomogramSelect = (tomogram: any) => {
-    const tomoId = tomogram?.tomoId ?? tomogram?.id ?? null;
-    if (tomoId != null) {
-      setSelectedVolumeId((prev) => String(prev) === String(tomoId) ? prev : tomoId);
-    }
+  const selectRelationById = (id: string | number | null | undefined) => {
+    if (id == null) return;
 
-    const tiltSeriesId = tomogram?.tsId ?? tomogram?.tiltSeriesId ?? null;
-    if (tiltSeriesId != null) {
-      setSelectedTiltSeriesId((prev) => String(prev) === String(tiltSeriesId) ? prev : tiltSeriesId);
+    const value = String(id);
+    const match = (context?.relations?.items ?? []).find((item) => {
+      return (
+        String(item.key) === value ||
+        String(item.label) === value ||
+        String(item.tiltSeriesId) === value ||
+        String(item.ctfSeriesId) === value ||
+        String(item.tomogramId) === value ||
+        String(item.tomogramVolumeId) === value ||
+        String(item.coordinatesTomogramId) === value
+      );
+    });
+
+    if (match) {
+      setSelectedRelation((prev) => (prev?.key === match.key ? prev : match));
     }
+  };
+
+  const handleCoordinatesTomogramSelect = (tomogram: any) => {
+    selectRelationById(tomogram?.tomoId ?? tomogram?.id ?? tomogram?.label);
   };
 
   const handleVolumeSelect = (volume: any) => {
-    const volumeId = volume?.id ?? volume?.tomoId ?? null;
-    if (volumeId != null) {
-      setSelectedVolumeId((prev) => String(prev) === String(volumeId) ? prev : volumeId);
-    }
-
-    const tiltSeriesId = volume?.tsId ?? volume?.tiltSeriesId ?? null;
-    if (tiltSeriesId != null) {
-      setSelectedTiltSeriesId((prev) => String(prev) === String(tiltSeriesId) ? prev : tiltSeriesId);
-    }
+    selectRelationById(volume?.tomoId ?? volume?.id ?? volume?.label ?? volume?.name);
   };
 
   const handleTiltSeriesSelect = (series: any) => {
-    const tiltSeriesId = series?.tiltSeriesId ?? series?.tsId ?? null;
-    if (tiltSeriesId != null) {
-      setSelectedTiltSeriesId((prev) => String(prev) === String(tiltSeriesId) ? prev : tiltSeriesId);
-    }
+    selectRelationById(series?.tiltSeriesId ?? series?.tsId ?? series?.id ?? series?.label);
   };
 
   const handleCtfSeriesSelect = (series: any) => {
-    const ctfSeriesId = series?.ctfSeriesId ?? null;
-    if (ctfSeriesId != null) {
-      setSelectedCtfSeriesId((prev) => String(prev) === String(ctfSeriesId) ? prev : ctfSeriesId);
-    }
-
-    const tiltSeriesId = series?.tiltSeriesId ?? series?.tsId ?? null;
-    if (tiltSeriesId != null) {
-      setSelectedTiltSeriesId((prev) => String(prev) === String(tiltSeriesId) ? prev : tiltSeriesId);
-    }
+    selectRelationById(series?.ctfSeriesId ?? series?.tiltSeriesId ?? series?.tsId ?? series?.id ?? series?.label);
   };
 
   useEffect(() => {
@@ -324,7 +314,7 @@ export default function IntegratedTomographyViewer({
             protocolId={getLinkedProtocolId(link, protocolIdNum)}
             outputName={getLinkedOutputName(link, outputName)}
             protocolLabel={protocolLabel}
-            selectedTiltSeriesId={selectedTiltSeriesId}
+            selectedTiltSeriesId={selectedRelation?.tiltSeriesId ?? null}
             onTiltSeriesSelect={handleTiltSeriesSelect}
           />
         );
@@ -340,8 +330,8 @@ export default function IntegratedTomographyViewer({
             protocolId={getLinkedProtocolId(link, protocolIdNum)}
             outputName={getLinkedOutputName(link, outputName)}
             protocolLabel={protocolLabel}
-            selectedCtfSeriesId={selectedCtfSeriesId}
-            selectedTiltSeriesId={selectedTiltSeriesId}
+            selectedCtfSeriesId={selectedRelation?.ctfSeriesId ?? null}
+            selectedTiltSeriesId={selectedRelation?.tiltSeriesId ?? null}
             onCtfSeriesSelect={handleCtfSeriesSelect}
           />
         );
@@ -358,7 +348,7 @@ export default function IntegratedTomographyViewer({
             protocolLabel={protocolLabel}
             outputName={getLinkedOutputName(link, outputName)}
             pointerClass={isTomogramKind(pointerClass) ? pointerClass : "SetOfTomograms"}
-            selectedVolumeId={selectedVolumeId}
+            selectedVolumeId={selectedRelation?.tomogramVolumeId ?? selectedRelation?.tomogramId ?? null}
             onVolumeSelect={handleVolumeSelect}
           />
         );
@@ -374,7 +364,7 @@ export default function IntegratedTomographyViewer({
             protocolId={getLinkedProtocolId(link, protocolIdNum)}
             protocolLabel={protocolLabel}
             outputName={getLinkedOutputName(link, outputName)}
-            selectedTomogramId={selectedVolumeId}
+            selectedTomogramId={selectedRelation?.coordinatesTomogramId ?? selectedRelation?.tomogramId ?? null}
             onTomogramSelect={handleCoordinatesTomogramSelect}
           />
         );
