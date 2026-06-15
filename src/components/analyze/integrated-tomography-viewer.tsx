@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { Box, Chip, CircularProgress, Paper, Stack, Tab, Tabs, Typography } from "@mui/material";
-import { Activity, Box as BoxIcon, Database, GitBranch, Layers, Table as TableIcon } from "lucide-react";
+import { Box, Chip, CircularProgress, Paper, Stack, Typography } from "@mui/material";
+import { Activity, Box as BoxIcon, GitBranch, Layers, Table as TableIcon } from "lucide-react";
 import { useProjectService } from "@/ProjectServiceContext";
 import type { IntegratedAnalyzeContext, IntegratedContextLink } from "@/services/ProjectService";
 import { MetadataViewer } from "./metadata-viewer";
@@ -17,26 +17,26 @@ type IntegratedTomographyViewerProps = {
   pointerClass?: string;
 };
 
-type IntegratedSection = "overview" | "tiltSeries" | "ctf" | "tomogram" | "coordinates" | "metadata";
+type IntegratedSection = "tiltSeries" | "ctf" | "tomogram" | "coordinates" | "metadata";
 type ContextKey = "tiltSeries" | "ctf" | "tomogram" | "coordinates3d";
 type ContextStatus = "source" | "linked" | "planned" | "unavailable";
 
 type ContextNode = {
   key: IntegratedSection;
-  contextKey: ContextKey;
+  contextKey?: ContextKey;
   label: string;
   description: string;
   status: ContextStatus;
   icon: ReactNode;
+  badgeLabel?: string;
 };
 
 function normalizedKind(value?: string) {
   return (value ?? "").replace(/\s+/g, "").toLowerCase();
 }
 
-function isVolumeKind(value?: string) {
-  const kind = normalizedKind(value);
-  return kind === "volume" || kind === "volumemask" || kind === "setofvolumes" || kind === "setoftomograms";
+function isTomogramKind(value?: string) {
+  return normalizedKind(value) === "setoftomograms";
 }
 
 function isCoords3dKind(value?: string) {
@@ -54,10 +54,10 @@ function isCTFTomoKind(value?: string) {
 
 function getInitialSection(pointerClass?: string): IntegratedSection {
   if (isCoords3dKind(pointerClass)) return "coordinates";
-  if (isVolumeKind(pointerClass)) return "tomogram";
+  if (isTomogramKind(pointerClass)) return "tomogram";
   if (isCTFTomoKind(pointerClass)) return "ctf";
   if (isTiltSeriesKind(pointerClass)) return "tiltSeries";
-  return "overview";
+  return "metadata";
 }
 
 function getStatusColor(status: ContextStatus): "success" | "info" | "default" {
@@ -91,13 +91,6 @@ function getLinkedProtocolId(link: IntegratedContextLink | null | undefined, fal
 
 function getLinkedOutputName(link: IntegratedContextLink | null | undefined, fallbackOutputName: string) {
   return link?.outputName || fallbackOutputName;
-}
-
-function getContextStateLabel(context: IntegratedAnalyzeContext | null, loading: boolean, error: string | null) {
-  if (loading) return "Loading context";
-  if (error) return "Context error";
-  if (context) return "Context ready";
-  return "Pointer fallback";
 }
 
 function ContextNodeCard({ node, active, onSelect }: { node: ContextNode; active: boolean; onSelect: () => void }) {
@@ -142,146 +135,12 @@ function ContextNodeCard({ node, active, onSelect }: { node: ContextNode; active
           <Chip
             size="small"
             color={getStatusColor(node.status)}
-            label={getStatusLabel(node.status)}
+            label={node.badgeLabel || getStatusLabel(node.status)}
             sx={{ mt: 0.75, height: 20, fontSize: "0.68rem", fontWeight: 700 }}
           />
         </Box>
       </Box>
     </Paper>
-  );
-}
-
-function EmptyIntegratedPanel({ title, outputName }: { title: string; outputName: string }) {
-  return (
-    <Box
-      sx={{
-        height: "100%",
-        minHeight: 0,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        p: 3,
-        background: "linear-gradient(180deg, rgba(248,250,252,0.98) 0%, rgba(241,245,249,0.92) 100%)",
-      }}
-    >
-      <Paper
-        variant="outlined"
-        sx={{
-          maxWidth: 520,
-          p: 2.5,
-          borderRadius: 3,
-          borderColor: "rgba(148,163,184,0.28)",
-          textAlign: "center",
-          background: "rgba(255,255,255,0.92)",
-        }}
-      >
-        <Typography variant="subtitle1" sx={{ fontWeight: 800, color: "#0f172a" }}>
-          {title}
-        </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-          This panel is ready for the integrated context API. The current output is {" "}
-          <strong>{outputName}</strong>, but this related entity is not linked yet.
-        </Typography>
-      </Paper>
-    </Box>
-  );
-}
-
-function OverviewPanel({
-  nodes,
-  outputName,
-  pointerClass,
-  context,
-  contextLoading,
-  contextError,
-}: {
-  nodes: ContextNode[];
-  outputName: string;
-  pointerClass?: string;
-  context: IntegratedAnalyzeContext | null;
-  contextLoading: boolean;
-  contextError: string | null;
-}) {
-  const sourceNode = nodes.find((node) => node.status === "source");
-  const linkedCount = nodes.filter((node) => node.status === "linked").length;
-
-  return (
-    <Box sx={{ height: "100%", minHeight: 0, overflow: "auto", p: 2 }}>
-      <Stack spacing={2}>
-        <Paper
-          variant="outlined"
-          sx={{
-            p: 2,
-            borderRadius: 3,
-            borderColor: "rgba(148,163,184,0.28)",
-            background: "linear-gradient(135deg, rgba(15,23,42,0.96) 0%, rgba(30,41,59,0.96) 100%)",
-            color: "#e2e8f0",
-          }}
-        >
-          <Typography variant="overline" sx={{ color: "rgba(226,232,240,0.72)", letterSpacing: 0.8 }}>
-            Integrated tomography context
-          </Typography>
-          <Typography variant="h6" sx={{ fontWeight: 850, lineHeight: 1.2, color: "#f8fafc" }}>
-            {outputName}
-          </Typography>
-          <Typography variant="body2" sx={{ mt: 1, color: "rgba(226,232,240,0.82)" }}>
-            The viewer keeps tilt series, CTF, tomograms and coordinates in one workspace. When the integrated context endpoint returns links, related panels open their existing viewers directly.
-          </Typography>
-        </Paper>
-
-        <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 3, borderColor: "rgba(148,163,184,0.28)" }}>
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1, minWidth: 0 }}>
-            {contextLoading ? <CircularProgress size={16} /> : null}
-            <Typography variant="subtitle2" sx={{ fontWeight: 800, color: "#0f172a", flex: 1 }}>
-              Context loader
-            </Typography>
-            <Chip
-              size="small"
-              color={contextError ? "default" : context ? "success" : "info"}
-              variant={contextError ? "outlined" : "filled"}
-              label={getContextStateLabel(context, contextLoading, contextError)}
-              sx={{ fontWeight: 700 }}
-            />
-          </Box>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-            {contextError
-              ? contextError
-              : context
-                ? `${linkedCount} related panel${linkedCount === 1 ? "" : "s"} linked by backend context.`
-                : "No integrated context was returned. The viewer is using pointer-class fallback without breaking existing viewers."}
-          </Typography>
-        </Paper>
-
-        <Box sx={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 1.25 }}>
-          {nodes.map((node) => (
-            <Paper
-              key={node.key}
-              variant="outlined"
-              sx={{ p: 1.5, borderRadius: 2.5, borderColor: "rgba(148,163,184,0.28)" }}
-            >
-              <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
-                {node.label}
-              </Typography>
-              <Typography variant="body2" sx={{ mt: 0.5, fontWeight: 800, color: "#0f172a" }}>
-                {getStatusLabel(node.status)}
-              </Typography>
-            </Paper>
-          ))}
-        </Box>
-
-        <Paper variant="outlined" sx={{ p: 2, borderRadius: 3, borderColor: "rgba(148,163,184,0.28)" }}>
-          <Typography variant="subtitle2" sx={{ fontWeight: 800, color: "#0f172a" }}>
-            Current source
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>
-            Source block: <strong>{sourceNode?.label ?? "Unknown"}</strong>
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Pointer class: <code>{context?.root?.outputClass || pointerClass || "unknown"}</code>
-          </Typography>
-        </Paper>
-      </Stack>
-    </Box>
   );
 }
 
@@ -339,7 +198,7 @@ export default function IntegratedTomographyViewer({
   const nodes = useMemo<ContextNode[]>(() => {
     const tiltIsSource = isTiltSeriesKind(pointerClass);
     const ctfIsSource = isCTFTomoKind(pointerClass);
-    const tomogramIsSource = isVolumeKind(pointerClass);
+    const tomogramIsSource = isTomogramKind(pointerClass);
     const coordsIsSource = isCoords3dKind(pointerClass);
     const links = context?.links;
 
@@ -379,21 +238,30 @@ export default function IntegratedTomographyViewer({
     ];
   }, [context, pointerClass]);
 
+  const visibleNodes = useMemo(() => nodes.filter((node) => node.status === "source" || node.status === "linked"), [nodes]);
+
+  const metadataNode = useMemo<ContextNode>(
+    () => ({
+      key: "metadata",
+      label: "Metadata",
+      description: "Tables and raw object metadata",
+      status: "linked",
+      icon: <TableIcon size={17} />,
+      badgeLabel: "Always available",
+    }),
+    [],
+  );
+
+  const navigationNodes = useMemo(() => [...visibleNodes, metadataNode], [visibleNodes, metadataNode]);
+
+  useEffect(() => {
+    if (!navigationNodes.some((node) => node.key === activeSection)) {
+      setActiveSection(navigationNodes[0]?.key || "metadata");
+    }
+  }, [activeSection, navigationNodes]);
+
   const renderSection = () => {
     const links = context?.links;
-
-    if (activeSection === "overview") {
-      return (
-        <OverviewPanel
-          nodes={nodes}
-          outputName={outputName}
-          pointerClass={pointerClass}
-          context={context}
-          contextLoading={contextLoading}
-          contextError={contextError}
-        />
-      );
-    }
 
     if (activeSection === "tiltSeries") {
       const link = links?.tiltSeries;
@@ -407,7 +275,6 @@ export default function IntegratedTomographyViewer({
           />
         );
       }
-      return <EmptyIntegratedPanel title="Tilt series context" outputName={outputName} />;
     }
 
     if (activeSection === "ctf") {
@@ -422,23 +289,21 @@ export default function IntegratedTomographyViewer({
           />
         );
       }
-      return <EmptyIntegratedPanel title="CTF tomo context" outputName={outputName} />;
     }
 
     if (activeSection === "tomogram") {
       const link = links?.tomogram;
-      if (isVolumeKind(pointerClass) || isAvailableLink(link)) {
+      if (isTomogramKind(pointerClass) || isAvailableLink(link)) {
         return (
           <VolumeViewer
             projectId={projectIdNum}
             protocolId={getLinkedProtocolId(link, protocolIdNum)}
             protocolLabel={protocolLabel}
             outputName={getLinkedOutputName(link, outputName)}
-            pointerClass={isVolumeKind(pointerClass) ? pointerClass : "SetOfTomograms"}
+            pointerClass={isTomogramKind(pointerClass) ? pointerClass : "SetOfTomograms"}
           />
         );
       }
-      return <EmptyIntegratedPanel title="Tomogram context" outputName={outputName} />;
     }
 
     if (activeSection === "coordinates") {
@@ -453,7 +318,6 @@ export default function IntegratedTomographyViewer({
           />
         );
       }
-      return <EmptyIntegratedPanel title="Coordinates context" outputName={outputName} />;
     }
 
     return <MetadataViewer projectId={projectIdNum} protocolId={protocolIdNum} outputName={outputName} embedded />;
@@ -482,11 +346,21 @@ export default function IntegratedTomographyViewer({
           p: 1,
         }}
       >
-        <Typography variant="overline" sx={{ color: "#64748b", fontWeight: 800, letterSpacing: 0.7 }}>
-          Context chain
-        </Typography>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1, minWidth: 0 }}>
+          <Typography variant="overline" sx={{ color: "#64748b", fontWeight: 800, letterSpacing: 0.7, flex: 1 }}>
+            Context chain
+          </Typography>
+          {contextLoading ? <CircularProgress size={13} /> : null}
+        </Box>
+
+        {contextError ? (
+          <Typography variant="caption" sx={{ display: "block", color: "#b91c1c", mt: 0.5, mb: 0.75 }}>
+            {contextError}
+          </Typography>
+        ) : null}
+
         <Stack spacing={0.9} sx={{ mt: 0.75 }}>
-          {nodes.map((node) => (
+          {visibleNodes.map((node) => (
             <ContextNodeCard
               key={node.key}
               node={node}
@@ -495,31 +369,17 @@ export default function IntegratedTomographyViewer({
             />
           ))}
         </Stack>
+
+        <Box sx={{ height: 1, bgcolor: "rgba(148,163,184,0.28)", my: 1 }} />
+
+        <ContextNodeCard
+          node={metadataNode}
+          active={activeSection === "metadata"}
+          onSelect={() => setActiveSection("metadata")}
+        />
       </Paper>
 
-      <Box sx={{ minHeight: 0, minWidth: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-        <Tabs
-          value={activeSection}
-          onChange={(_event, value) => setActiveSection(value as IntegratedSection)}
-          variant="scrollable"
-          scrollButtons="auto"
-          sx={{
-            minHeight: 40,
-            borderBottom: "1px solid rgba(148,163,184,0.25)",
-            background: "#ffffff",
-            "& .MuiTab-root": { minHeight: 40, textTransform: "none", fontWeight: 750 },
-          }}
-        >
-          <Tab icon={<Database size={15} />} iconPosition="start" label="Overview" value="overview" />
-          <Tab icon={<Layers size={15} />} iconPosition="start" label="Tilt series" value="tiltSeries" />
-          <Tab icon={<Activity size={15} />} iconPosition="start" label="CTF" value="ctf" />
-          <Tab icon={<BoxIcon size={15} />} iconPosition="start" label="Tomogram" value="tomogram" />
-          <Tab icon={<GitBranch size={15} />} iconPosition="start" label="Coordinates" value="coordinates" />
-          <Tab icon={<TableIcon size={15} />} iconPosition="start" label="Metadata" value="metadata" />
-        </Tabs>
-
-        <Box sx={{ flex: 1, minHeight: 0, minWidth: 0, overflow: "hidden" }}>{renderSection()}</Box>
-      </Box>
+      <Box sx={{ minHeight: 0, minWidth: 0, overflow: "hidden" }}>{renderSection()}</Box>
     </Box>
   );
 }
