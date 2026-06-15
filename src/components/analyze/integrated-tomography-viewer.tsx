@@ -159,20 +159,38 @@ export default function IntegratedTomographyViewer({
   const [context, setContext] = useState<IntegratedAnalyzeContext | null>(null);
   const [contextLoading, setContextLoading] = useState(false);
   const [contextError, setContextError] = useState<string | null>(null);
-  const [selectedContextId, setSelectedContextId] = useState<string | number | null>(null);
+  const [selectedVolumeId, setSelectedVolumeId] = useState<string | number | null>(null);
+  const [selectedTiltSeriesId, setSelectedTiltSeriesId] = useState<string | number | null>(null);
+  const [selectedCtfSeriesId, setSelectedCtfSeriesId] = useState<string | number | null>(null);
 
-  const selectContextItem = (item: any) => {
-    const nextId =
-      item?.tsId ??
-      item?.tiltSeriesId ??
-      item?.tomoId ??
-      item?.tomogramId ??
-      item?.ctfSeriesId ??
-      item?.id ??
-      null;
+  const handleVolumeSelect = (volume: any) => {
+    const volumeId = volume?.id ?? volume?.tomoId ?? null;
+    if (volumeId != null) {
+      setSelectedVolumeId((prev) => String(prev) === String(volumeId) ? prev : volumeId);
+    }
 
-    if (nextId != null) {
-      setSelectedContextId(nextId);
+    const tiltSeriesId = volume?.tsId ?? volume?.tiltSeriesId ?? null;
+    if (tiltSeriesId != null) {
+      setSelectedTiltSeriesId((prev) => String(prev) === String(tiltSeriesId) ? prev : tiltSeriesId);
+    }
+  };
+
+  const handleTiltSeriesSelect = (series: any) => {
+    const tiltSeriesId = series?.tiltSeriesId ?? series?.tsId ?? null;
+    if (tiltSeriesId != null) {
+      setSelectedTiltSeriesId((prev) => String(prev) === String(tiltSeriesId) ? prev : tiltSeriesId);
+    }
+  };
+
+  const handleCtfSeriesSelect = (series: any) => {
+    const ctfSeriesId = series?.ctfSeriesId ?? null;
+    if (ctfSeriesId != null) {
+      setSelectedCtfSeriesId((prev) => String(prev) === String(ctfSeriesId) ? prev : ctfSeriesId);
+    }
+
+    const tiltSeriesId = series?.tiltSeriesId ?? series?.tsId ?? null;
+    if (tiltSeriesId != null) {
+      setSelectedTiltSeriesId((prev) => String(prev) === String(tiltSeriesId) ? prev : tiltSeriesId);
     }
   };
 
@@ -288,8 +306,8 @@ export default function IntegratedTomographyViewer({
             protocolId={getLinkedProtocolId(link, protocolIdNum)}
             outputName={getLinkedOutputName(link, outputName)}
             protocolLabel={protocolLabel}
-            selectedTiltSeriesId={selectedContextId}
-            onTiltSeriesSelect={selectContextItem}
+            selectedTiltSeriesId={selectedTiltSeriesId}
+            onTiltSeriesSelect={handleTiltSeriesSelect}
           />
         );
       }
@@ -304,8 +322,8 @@ export default function IntegratedTomographyViewer({
             protocolId={getLinkedProtocolId(link, protocolIdNum)}
             outputName={getLinkedOutputName(link, outputName)}
             protocolLabel={protocolLabel}
-            selectedCtfSeriesId={selectedContextId}
-            onCtfSeriesSelect={selectContextItem}
+            selectedCtfSeriesId={selectedCtfSeriesId}
+            onCtfSeriesSelect={handleCtfSeriesSelect}
           />
         );
       }
@@ -321,8 +339,8 @@ export default function IntegratedTomographyViewer({
             protocolLabel={protocolLabel}
             outputName={getLinkedOutputName(link, outputName)}
             pointerClass={isTomogramKind(pointerClass) ? pointerClass : "SetOfTomograms"}
-            selectedVolumeId={selectedContextId}
-            onVolumeSelect={selectContextItem}
+            selectedVolumeId={selectedVolumeId}
+            onVolumeSelect={handleVolumeSelect}
           />
         );
       }

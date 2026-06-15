@@ -464,8 +464,7 @@ export default function VolumeViewer({
     const match = volumes.find((v) => {
       return (
         String(v.id) === String(selectedVolumeId) ||
-        String(v.tomoId) === String(selectedVolumeId) ||
-        String(v.tsId) === String(selectedVolumeId)
+        String(v.tomoId) === String(selectedVolumeId)
       );
     });
 
@@ -473,15 +472,6 @@ export default function VolumeViewer({
       setSelectedId(match.id);
     }
   }, [selectedVolumeId, volumes, selectedId]);
-
-  useEffect(() => {
-    if (!onVolumeSelect || selectedId == null) return;
-
-    const selectedVolume = volumes.find((v) => String(v.id) === String(selectedId));
-    if (selectedVolume) {
-      onVolumeSelect(selectedVolume);
-    }
-  }, [onVolumeSelect, selectedId, volumes]);
 
   useEffect(() => {
     if (!needsHistogram || selectedId == null) {
@@ -1136,7 +1126,10 @@ export default function VolumeViewer({
                   <ListItemButton
                     key={String(v.id)}
                     selected={selected}
-                    onClick={() => setSelectedId(v.id)}
+                    onClick={() => {
+                      setSelectedId(v.id);
+                      onVolumeSelect?.(v);
+                    }}
                     sx={{ px: 1.5, py: 1 }}
                   >
                     <ListItemText

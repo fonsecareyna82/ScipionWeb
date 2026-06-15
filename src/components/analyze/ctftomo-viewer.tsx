@@ -294,15 +294,6 @@ export default function CTFTomoViewer({
   }, [selectedCtfSeriesId, series, selectedSeriesId]);
 
 
-  useEffect(() => {
-    if (!onCtfSeriesSelect || selectedSeriesId == null) return;
-
-    const selectedSeries = series.find((s) => String(s.ctfSeriesId) === String(selectedSeriesId));
-    if (selectedSeries) {
-      onCtfSeriesSelect(selectedSeries);
-    }
-  }, [onCtfSeriesSelect, selectedSeriesId, series]);
-
 
   useEffect(() => {
     if (selectedSeriesId == null) {
@@ -513,6 +504,12 @@ export default function CTFTomoViewer({
   const handleSeriesRowClick = (seriesId: Id) => {
     setExpandedSeriesId(seriesId);
     setSelectedSeriesId((prev) => (prev != null && String(prev) === String(seriesId) ? prev : seriesId));
+
+    const selectedSeries = series.find((s) => String(s.ctfSeriesId) === String(seriesId));
+    if (selectedSeries) {
+      onCtfSeriesSelect?.(selectedSeries);
+    }
+
     setPsdError(null);
     abortPsdLoad();
     disposePsdImageUrl();
@@ -1300,6 +1297,7 @@ export default function CTFTomoViewer({
                                     setSelectedSeriesId((prev) =>
                                       prev != null && String(prev) === String(s.ctfSeriesId) ? prev : s.ctfSeriesId,
                                     );
+                                    onCtfSeriesSelect?.(s);
                                     setPsdError(null);
                                     disposePsdImageUrl();
                                   }

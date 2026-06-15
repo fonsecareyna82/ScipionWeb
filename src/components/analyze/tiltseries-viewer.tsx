@@ -381,14 +381,6 @@ export default function TiltSeriesViewer({
     }
   }, [selectedTiltSeriesId, series, selectedSeriesId]);
 
-  useEffect(() => {
-    if (!onTiltSeriesSelect || selectedSeriesId == null) return;
-
-    const selectedSeries = series.find((s) => String(s.tiltSeriesId) === String(selectedSeriesId));
-    if (selectedSeries) {
-      onTiltSeriesSelect(selectedSeries);
-    }
-  }, [onTiltSeriesSelect, selectedSeriesId, series]);
 
   const activeSeries: TiltSeriesSummary | null = useMemo(() => {
     if (selectedSeriesId == null) return null;
@@ -1163,6 +1155,11 @@ export default function TiltSeriesViewer({
 
   const handleSeriesRowClick = (seriesId: Id) => {
     setSelectedSeriesId((prev) => (prev != null && String(prev) === String(seriesId) ? prev : seriesId));
+
+    const selectedSeries = series.find((s) => String(s.tiltSeriesId) === String(seriesId));
+    if (selectedSeries) {
+      onTiltSeriesSelect?.(selectedSeries);
+    }
   };
 
   const handleRefreshPreview = () => {
@@ -1579,6 +1576,7 @@ export default function TiltSeriesViewer({
                                     setSelectedSeriesId((prev) =>
                                       prev != null && String(prev) === String(s.tiltSeriesId) ? prev : s.tiltSeriesId,
                                     );
+                                    onTiltSeriesSelect?.(s);
                                   }
                                 }}
                                 sx={{ mr: 0.25 }}
