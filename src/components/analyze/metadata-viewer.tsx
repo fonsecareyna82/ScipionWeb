@@ -4853,108 +4853,120 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
         </Box>
       </Box>
 
-      {tablesLoading && (
-        <Box sx={{ display: "flex", gap: 1, alignItems: "center", mb: 1 }}>
-          <CircularProgress size={16} />
-          <Typography variant="body2">Loading tables…</Typography>
-        </Box>
-      )}
+      <Box
+        sx={{
+          flex: "1 1 auto",
+          minHeight: 0,
+          minWidth: 0,
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
+        }}
+      >
 
-      {tablesError && (
-        <Typography variant="body2" color="error" sx={{ mb: 1 }}>
-          {tablesError}
-        </Typography>
-      )}
+        {tablesLoading && (
+          <Box sx={{ display: "flex", gap: 1, alignItems: "center", mb: 1 }}>
+            <CircularProgress size={16} />
+            <Typography variant="body2">Loading tables…</Typography>
+          </Box>
+        )}
 
-      {!tablesLoading && !tablesError && tables && tables.length === 0 && (
-        <Typography variant="body2" color="text.secondary">
-          No metadata tables for this output.
-        </Typography>
-      )}
+        {tablesError && (
+          <Typography variant="body2" color="error" sx={{ mb: 1 }}>
+            {tablesError}
+          </Typography>
+        )}
 
-      {selectedTable && schemaLoading && !schema && (
-        <Box sx={{ display: "flex", gap: 1, alignItems: "center", mt: 2 }}>
-          <CircularProgress size={18} />
-          <Typography variant="body2">Loading schema…</Typography>
-        </Box>
-      )}
+        {!tablesLoading && !tablesError && tables && tables.length === 0 && (
+          <Typography variant="body2" color="text.secondary">
+            No metadata tables for this output.
+          </Typography>
+        )}
 
-      {selectedTable && schemaError && (
-        <Typography variant="body2" color="error" sx={{ mt: 2 }}>
-          {schemaError}
-        </Typography>
-      )}
+        {selectedTable && schemaLoading && !schema && (
+          <Box sx={{ display: "flex", gap: 1, alignItems: "center", mt: 2 }}>
+            <CircularProgress size={18} />
+            <Typography variant="body2">Loading schema…</Typography>
+          </Box>
+        )}
 
-      {selectedTable && schema && totalRows === 0 && (
-        <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-          This table has no rows.
-        </Typography>
-      )}
+        {selectedTable && schemaError && (
+          <Typography variant="body2" color="error" sx={{ mt: 2 }}>
+            {schemaError}
+          </Typography>
+        )}
 
-      {viewMode === "table" && (
-        <MetadataTablePanel
-          schema={schema}
-          totalRows={totalRows}
-          visibleColumns={visibleColumns}
-          columnSettings={columnSettings}
-          rowHeight={rowHeight}
-          rowSizeForScroll={rowSizeForScroll}
-          imageThumbSize={imageThumbSize}
-          imageColMinWidth={imageColMinWidth}
-          tableMinWidth={tableMinWidth}
-          windowRows={windowRows}
-          windowOffset={windowOffset}
-          windowLoading={windowLoading}
-          windowError={windowError}
-          topSpacerHeight={topSpacerHeight}
-          bottomSpacerHeight={bottomSpacerHeight}
-          hasData={hasData}
-          scrollRef={scrollRef}
-          handleScroll={handleScroll}
-          isRowSelected={isRowSelected}
-          onPrimaryRowClick={handlePrimaryRowClick}
-          onRowContextMenu={handleTableRowContextMenu}
-          onHeaderContextMenu={handleHeaderContextMenu}
-          selectedImageCell={selectedImageCell}
-          setSelectedRowIndex={setSelectedRowIndex}
-          setSelectedImageCell={setSelectedImageCell}
-          projectId={projectId}
-          protocolId={protocolId}
-          outputName={outputName}
-          selectedTable={selectedTable}
-          imageCacheRef={imageCacheRef}
-          sortBy={sortBy}
-          sortAsc={sortAsc}
-          onToggleSort={toggleSortForColumn}
-          matrixColumnNames={matrixColumnNames}
-        />
-      )}
+        {selectedTable && schema && totalRows === 0 && (
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+            This table has no rows.
+          </Typography>
+        )}
 
-      {viewMode === "gallery" && selectedTable && schema && totalRows > 0 && (
-        <MetadataGalleryPanel
-          schema={schema}
-          firstImageColumn={firstImageColumn}
-          galleryRows={galleryRows}
-          galleryLoading={galleryLoading}
-          galleryError={galleryError}
-          galleryScrollRef={galleryScrollRef}
-          handleGalleryScroll={handleGalleryScroll}
-          isRowSelected={isRowSelected}
-          onPrimaryRowClick={handlePrimaryRowClick}
-          selectedImageCell={selectedImageCell}
-          setSelectedRowIndex={setSelectedRowIndex}
-          setSelectedImageCell={setSelectedImageCell}
-          projectId={projectId}
-          protocolId={protocolId}
-          outputName={outputName}
-          selectedTable={selectedTable}
-          imageCacheRef={imageCacheRef}
-          showSizeLabel={showSizeLabel}
-          sizeColumn={sizeColumn}
-          imageThumbSize={imageThumbSize}
-          galleryBaseOffset={galleryBaseOffset}
-        />
-      )}
+        {viewMode === "table" && (
+          <MetadataTablePanel
+            schema={schema}
+            totalRows={totalRows}
+            visibleColumns={visibleColumns}
+            columnSettings={columnSettings}
+            rowHeight={rowHeight}
+            rowSizeForScroll={rowSizeForScroll}
+            imageThumbSize={imageThumbSize}
+            imageColMinWidth={imageColMinWidth}
+            tableMinWidth={tableMinWidth}
+            windowRows={windowRows}
+            windowOffset={windowOffset}
+            windowLoading={windowLoading}
+            windowError={windowError}
+            topSpacerHeight={topSpacerHeight}
+            bottomSpacerHeight={bottomSpacerHeight}
+            hasData={hasData}
+            scrollRef={scrollRef}
+            handleScroll={handleScroll}
+            isRowSelected={isRowSelected}
+            onPrimaryRowClick={handlePrimaryRowClick}
+            onRowContextMenu={handleTableRowContextMenu}
+            onHeaderContextMenu={handleHeaderContextMenu}
+            selectedImageCell={selectedImageCell}
+            setSelectedRowIndex={setSelectedRowIndex}
+            setSelectedImageCell={setSelectedImageCell}
+            projectId={projectId}
+            protocolId={protocolId}
+            outputName={outputName}
+            selectedTable={selectedTable}
+            imageCacheRef={imageCacheRef}
+            sortBy={sortBy}
+            sortAsc={sortAsc}
+            onToggleSort={toggleSortForColumn}
+            matrixColumnNames={matrixColumnNames}
+          />
+        )}
+
+        {viewMode === "gallery" && selectedTable && schema && totalRows > 0 && (
+          <MetadataGalleryPanel
+            schema={schema}
+            firstImageColumn={firstImageColumn}
+            galleryRows={galleryRows}
+            galleryLoading={galleryLoading}
+            galleryError={galleryError}
+            galleryScrollRef={galleryScrollRef}
+            handleGalleryScroll={handleGalleryScroll}
+            isRowSelected={isRowSelected}
+            onPrimaryRowClick={handlePrimaryRowClick}
+            selectedImageCell={selectedImageCell}
+            setSelectedRowIndex={setSelectedRowIndex}
+            setSelectedImageCell={setSelectedImageCell}
+            projectId={projectId}
+            protocolId={protocolId}
+            outputName={outputName}
+            selectedTable={selectedTable}
+            imageCacheRef={imageCacheRef}
+            showSizeLabel={showSizeLabel}
+            sizeColumn={sizeColumn}
+            imageThumbSize={imageThumbSize}
+            galleryBaseOffset={galleryBaseOffset}
+          />
+        )}
+      </Box>
 
       {/* Footer */}
       <Paper
