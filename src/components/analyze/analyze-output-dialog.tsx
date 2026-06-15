@@ -6,8 +6,6 @@ import { MetadataViewer } from "./metadata-viewer";
 import VolumeViewer from "./volume-viewer";
 import Coords2dViewer from "./coords2d-viewer";
 import IntegratedTomographyViewer from "./integrated-tomography-viewer";
-import TiltSeriesViewer from "./tiltseries-viewer";
-import CTFTomoViewer from "./ctftomo-viewer";
 import FscViewer from "./fsc-viewer";
 
 type AnalyzeOutputRef = { paramClass: string; value: string; info: string };
@@ -28,7 +26,7 @@ function normalizedKind(k?: string) {
 
 function isVolumeKind(k?: string) {
   const s = normalizedKind(k);
-  return s === "volume" || s === "volumemask" || s === "setofvolumes" || s === "setoftomograms";
+  return s === "volume" || s === "volumemask" || s === "setofvolumes";
 }
 
 function isCoords2dKind(k?: string) {
@@ -47,6 +45,11 @@ function isTiltSeriesKind(k?: string) {
 
 function isCTFTomoSeriesKind(k?: string) {
   return normalizedKind(k).includes("setofctftomoseries");
+}
+
+
+function isTomographyIntegratedKind(k?: string) {
+  return isCoords3dKind(k) || isTiltSeriesKind(k) || isCTFTomoSeriesKind(k) || normalizedKind(k) === "setoftomograms";
 }
 
 function isSetOfFSCsKind(k?: string) {
@@ -136,8 +139,26 @@ function AnalyzeOutputDialog({ open, onClose, projectId, protocolId, protocolLab
   const protocolIdNum = useMemo(() => Number(protocolId), [protocolId]);
 
   const body = useMemo(() => {
+
+    if (isTomographyIntegratedKind(pointerClass)) {
+      return (
+        <IntegratedTomographyViewer
+          projectId={projectIdNum}
+          protocolId={protocolIdNum}
+          protocolLabel={protocolLabel}
+          outputName={outputName}
+          pointerClass={pointerClass}
+        />
+      );
+    }
+
     if (isVolumeKind(pointerClass)) {
-      return <VolumeViewer projectId={projectIdNum} protocolId={protocolIdNum} protocolLabel={protocolLabel} outputName={outputName} pointerClass={pointerClass} />;
+      return <VolumeViewer
+        projectId={projectIdNum}
+        protocolId={protocolIdNum}
+        protocolLabel={protocolLabel}
+        outputName={outputName}
+        pointerClass={pointerClass} />;
     }
 
     if (isCoords2dKind(pointerClass)) {
@@ -150,26 +171,6 @@ function AnalyzeOutputDialog({ open, onClose, projectId, protocolId, protocolLab
           onClose={onClose}
         />
       );
-    }
-
-    if (isCoords3dKind(pointerClass)) {
-      return (
-        <IntegratedTomographyViewer
-          projectId={projectIdNum}
-          protocolId={protocolIdNum}
-          protocolLabel={protocolLabel}
-          outputName={outputName}
-          pointerClass={pointerClass}
-        />
-      );
-    }
-
-    if (isTiltSeriesKind(pointerClass)) {
-      return <TiltSeriesViewer projectId={projectIdNum} protocolId={protocolIdNum} outputName={outputName} />;
-    }
-
-    if (isCTFTomoSeriesKind(pointerClass)) {
-      return <CTFTomoViewer projectId={projectIdNum} protocolId={protocolIdNum} outputName={outputName} />;
     }
 
     if (isSetOfMetadataKind(pointerClass)) {
