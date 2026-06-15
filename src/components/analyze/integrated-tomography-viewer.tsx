@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { Box, Button, Chip, CircularProgress, Divider, Paper, Stack, Tab, Tabs, Typography } from "@mui/material";
+import { Box, Chip, CircularProgress, Paper, Stack, Tab, Tabs, Typography } from "@mui/material";
 import { Activity, Box as BoxIcon, Database, GitBranch, Layers, Table as TableIcon } from "lucide-react";
 import { useProjectService } from "@/ProjectServiceContext";
 import type { IntegratedAnalyzeContext, IntegratedContextLink } from "@/services/ProjectService";
@@ -459,145 +459,66 @@ export default function IntegratedTomographyViewer({
     return <MetadataViewer projectId={projectIdNum} protocolId={protocolIdNum} outputName={outputName} embedded />;
   };
 
-  const sourceNode = nodes.find((node) => node.status === "source");
-
   return (
     <Box
       sx={{
         height: "100%",
         minHeight: 0,
         minWidth: 0,
-        display: "flex",
-        flexDirection: "column",
+        display: "grid",
+        gridTemplateColumns: "220px minmax(0, 1fr)",
         overflow: "hidden",
         background: "#f8fafc",
       }}
     >
-      <Box
+      <Paper
+        square
+        elevation={0}
         sx={{
-          px: 1.5,
-          py: 1,
-          display: "flex",
-          alignItems: "center",
-          gap: 1.25,
-          borderBottom: "1px solid rgba(148,163,184,0.25)",
-          background: "linear-gradient(180deg, rgba(255,255,255,0.96) 0%, rgba(248,250,252,0.96) 100%)",
-          flexShrink: 0,
+          minHeight: 0,
+          overflow: "auto",
+          borderRight: "1px solid rgba(148,163,184,0.25)",
+          background: "rgba(241,245,249,0.82)",
+          p: 1,
         }}
       >
-        <Box sx={{ minWidth: 0, flex: 1 }}>
-          <Typography variant="subtitle2" sx={{ fontWeight: 850, color: "#0f172a", lineHeight: 1.15 }}>
-            Integrated tomography viewer
-          </Typography>
-          <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.25 }}>
-            {outputName} {pointerClass ? `- ${pointerClass}` : ""}
-          </Typography>
-        </Box>
+        <Typography variant="overline" sx={{ color: "#64748b", fontWeight: 800, letterSpacing: 0.7 }}>
+          Context chain
+        </Typography>
+        <Stack spacing={0.9} sx={{ mt: 0.75 }}>
+          {nodes.map((node) => (
+            <ContextNodeCard
+              key={node.key}
+              node={node}
+              active={activeSection === node.key}
+              onSelect={() => setActiveSection(node.key)}
+            />
+          ))}
+        </Stack>
+      </Paper>
 
-        <Chip
-          size="small"
-          color="primary"
-          variant="outlined"
-          label={sourceNode ? `Source: ${sourceNode.label}` : "Source: unknown"}
-          sx={{ fontWeight: 700 }}
-        />
-        <Chip
-          size="small"
-          color={context ? "success" : "default"}
-          variant="outlined"
-          label={getContextStateLabel(context, contextLoading, contextError)}
-          sx={{ fontWeight: 700 }}
-        />
-      </Box>
-
-      <Box sx={{ flex: 1, minHeight: 0, minWidth: 0, display: "grid", gridTemplateColumns: "240px minmax(0, 1fr)" }}>
-        <Paper
-          square
-          elevation={0}
+      <Box sx={{ minHeight: 0, minWidth: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <Tabs
+          value={activeSection}
+          onChange={(_event, value) => setActiveSection(value as IntegratedSection)}
+          variant="scrollable"
+          scrollButtons="auto"
           sx={{
-            minHeight: 0,
-            overflow: "auto",
-            borderRight: "1px solid rgba(148,163,184,0.25)",
-            background: "rgba(241,245,249,0.82)",
-            p: 1,
+            minHeight: 40,
+            borderBottom: "1px solid rgba(148,163,184,0.25)",
+            background: "#ffffff",
+            "& .MuiTab-root": { minHeight: 40, textTransform: "none", fontWeight: 750 },
           }}
         >
-          <Typography variant="overline" sx={{ color: "#64748b", fontWeight: 800, letterSpacing: 0.7 }}>
-            Context chain
-          </Typography>
-          <Stack spacing={0.9} sx={{ mt: 0.75 }}>
-            {nodes.map((node) => (
-              <ContextNodeCard
-                key={node.key}
-                node={node}
-                active={activeSection === node.key}
-                onSelect={() => setActiveSection(node.key)}
-              />
-            ))}
-          </Stack>
+          <Tab icon={<Database size={15} />} iconPosition="start" label="Overview" value="overview" />
+          <Tab icon={<Layers size={15} />} iconPosition="start" label="Tilt series" value="tiltSeries" />
+          <Tab icon={<Activity size={15} />} iconPosition="start" label="CTF" value="ctf" />
+          <Tab icon={<BoxIcon size={15} />} iconPosition="start" label="Tomogram" value="tomogram" />
+          <Tab icon={<GitBranch size={15} />} iconPosition="start" label="Coordinates" value="coordinates" />
+          <Tab icon={<TableIcon size={15} />} iconPosition="start" label="Metadata" value="metadata" />
+        </Tabs>
 
-          <Divider sx={{ my: 1.25 }} />
-
-          <Typography variant="overline" sx={{ color: "#64748b", fontWeight: 800, letterSpacing: 0.7 }}>
-            Inspector
-          </Typography>
-          <Stack spacing={0.9} sx={{ mt: 0.75 }}>
-            <Paper variant="outlined" sx={{ p: 1, borderRadius: 2, borderColor: "rgba(148,163,184,0.28)", background: "rgba(255,255,255,0.9)" }}>
-              <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
-                Active panel
-              </Typography>
-              <Typography variant="body2" sx={{ mt: 0.25, fontWeight: 800, color: "#0f172a" }}>
-                {activeSection}
-              </Typography>
-            </Paper>
-
-            <Paper variant="outlined" sx={{ p: 1, borderRadius: 2, borderColor: "rgba(148,163,184,0.28)", background: "rgba(255,255,255,0.9)" }}>
-              <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
-                Protocol
-              </Typography>
-              <Typography variant="body2" sx={{ mt: 0.25, color: "#0f172a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {protocolLabel || protocolIdNum}
-              </Typography>
-            </Paper>
-
-            <Paper variant="outlined" sx={{ p: 1, borderRadius: 2, borderColor: "rgba(148,163,184,0.28)", background: "rgba(255,255,255,0.9)" }}>
-              <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
-                Integrated context
-              </Typography>
-              <Typography variant="body2" sx={{ mt: 0.25, color: "#0f172a" }}>
-                {getContextStateLabel(context, contextLoading, contextError)}
-              </Typography>
-            </Paper>
-
-            <Button variant="outlined" size="small" onClick={() => setActiveSection(initialSection)} sx={{ textTransform: "none", fontWeight: 700 }}>
-              Open source viewer
-            </Button>
-          </Stack>
-        </Paper>
-
-        <Box sx={{ minHeight: 0, minWidth: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-          <Tabs
-            value={activeSection}
-            onChange={(_event, value) => setActiveSection(value as IntegratedSection)}
-            variant="scrollable"
-            scrollButtons="auto"
-            sx={{
-              minHeight: 40,
-              borderBottom: "1px solid rgba(148,163,184,0.25)",
-              background: "#ffffff",
-              "& .MuiTab-root": { minHeight: 40, textTransform: "none", fontWeight: 750 },
-            }}
-          >
-            <Tab icon={<Database size={15} />} iconPosition="start" label="Overview" value="overview" />
-            <Tab icon={<Layers size={15} />} iconPosition="start" label="Tilt series" value="tiltSeries" />
-            <Tab icon={<Activity size={15} />} iconPosition="start" label="CTF" value="ctf" />
-            <Tab icon={<BoxIcon size={15} />} iconPosition="start" label="Tomogram" value="tomogram" />
-            <Tab icon={<GitBranch size={15} />} iconPosition="start" label="Coordinates" value="coordinates" />
-            <Tab icon={<TableIcon size={15} />} iconPosition="start" label="Metadata" value="metadata" />
-          </Tabs>
-
-          <Box sx={{ flex: 1, minHeight: 0, minWidth: 0, overflow: "hidden" }}>{renderSection()}</Box>
-        </Box>
+        <Box sx={{ flex: 1, minHeight: 0, minWidth: 0, overflow: "hidden" }}>{renderSection()}</Box>
       </Box>
     </Box>
   );
