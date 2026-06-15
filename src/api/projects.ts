@@ -34,6 +34,10 @@ import {
   ExecuteProtocolWizardResult,
   ExportProtocolsRequestPayload,
   ExportProtocolsResult,
+  WorkflowExportRequestPayload,
+  WorkflowExportResult,
+  WorkflowImportRequestPayload,
+  WorkflowImportResult,
   WriteRemoteFilePayload,
   WriteRemoteFileResult,
   Coords2dMicrographsResult,
@@ -1173,6 +1177,47 @@ export async function exportProtocols(
   }
 
   return safeJson<ExportProtocolsResult>(response);
+}
+
+
+export async function exportWorkflowProtocols(
+  projectId: Id,
+  payload: WorkflowExportRequestPayload,
+): Promise<WorkflowExportResult> {
+  const response = await fetchWithAuth(
+    `${BASE_URL}/projects/${projectId}/protocols/export-workflow`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload ?? {}),
+    },
+  );
+
+  if (!response.ok) {
+    throw await toApiError(response, "Failed to export workflow protocols");
+  }
+
+  return safeJson<WorkflowExportResult>(response);
+}
+
+export async function importWorkflowProtocols(
+  projectId: Id,
+  payload: WorkflowImportRequestPayload,
+): Promise<WorkflowImportResult> {
+  const response = await fetchWithAuth(
+    `${BASE_URL}/projects/${projectId}/protocols/import-workflow`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload ?? {}),
+    },
+  );
+
+  if (!response.ok) {
+    throw await toApiError(response, "Failed to import workflow protocols");
+  }
+
+  return safeJson<WorkflowImportResult>(response);
 }
 
 export async function deleteProtocol(projectId: Id, protocolIds: Id[]): Promise<any> {

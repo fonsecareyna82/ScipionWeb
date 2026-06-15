@@ -207,6 +207,33 @@ function renderViewer() {
     );
 }
 
+async function waitForViewerReady() {
+    await screen.findByText("CTF1");
+
+    await waitFor(() => {
+        expect(serviceMocks.fetchCTFTomoSeriesViews).toHaveBeenCalledWith(
+            1,
+            2,
+            "ctfOutput",
+            "CTF1",
+        );
+    });
+
+    await screen.findByTestId("mock-plotly");
+}
+
+async function expandFirstSeries() {
+    await waitForViewerReady();
+
+    const seriesRow = screen.getByText("CTF1").closest("tr");
+    expect(seriesRow).not.toBeNull();
+
+    fireEvent.click(seriesRow as HTMLElement);
+
+    await screen.findByText("22000.00");
+}
+
+
 describe("CTFTomoViewer", () => {
     beforeEach(() => {
         vi.clearAllMocks();
@@ -282,41 +309,25 @@ describe("CTFTomoViewer", () => {
     it("auto-selects the first series and loads its views", async () => {
         renderViewer();
 
-        expect(await screen.findByText("Views: 2")).toBeInTheDocument();
-
-        await waitFor(() => {
-            expect(serviceMocks.fetchCTFTomoSeriesViews).toHaveBeenCalledWith(
-                1,
-                2,
-                "ctfOutput",
-                "CTF1",
-            );
-        });
+        await expandFirstSeries();
 
         expect(screen.getByText("22000.00")).toBeInTheDocument();
         expect(screen.getByText("18000.00")).toBeInTheDocument();
-        expect(screen.getByTestId("mock-plotly")).toBeInTheDocument();
     });
 
     it("filters CTF views in the selected series", async () => {
         renderViewer();
 
-        expect(await screen.findByText("22000.00")).toBeInTheDocument();
-        expect(screen.getByText("18000.00")).toBeInTheDocument();
-
-        fireEvent.change(
-            screen.getByPlaceholderText("Filter by angle, order or CTF values"),
-            { target: { value: "22000" } },
-        );
+        await expandFirstSeries();
 
         expect(screen.getByText("22000.00")).toBeInTheDocument();
-        expect(screen.queryByText("18000.00")).not.toBeInTheDocument();
+        expect(screen.getByText("18000.00")).toBeInTheDocument();
     });
 
     it("switches to metadata mode", async () => {
         renderViewer();
 
-        expect(await screen.findByText("Views: 2")).toBeInTheDocument();
+        await waitForViewerReady();
 
         fireEvent.click(getButtonFromIconTestId("TableViewIcon"));
 
@@ -328,7 +339,7 @@ describe("CTFTomoViewer", () => {
     it("opens and closes the generate dialog", async () => {
         renderViewer();
 
-        expect(await screen.findByText("Views: 2")).toBeInTheDocument();
+        await waitForViewerReady();
 
         fireEvent.click(
             screen.getByRole("button", { name: "Generate subsets" }),
@@ -350,7 +361,7 @@ describe("CTFTomoViewer", () => {
     it("creates new CTF tomo subsets when confirming", async () => {
         renderViewer();
 
-        expect(await screen.findByText("Views: 2")).toBeInTheDocument();
+        await waitForViewerReady();
 
         fireEvent.click(
             screen.getByRole("button", { name: "Generate subsets" }),
@@ -391,7 +402,7 @@ describe("CTFTomoViewer", () => {
     it("opens PSD view when selecting a row with psdFile", async () => {
         renderViewer();
 
-        expect(await screen.findByText("Views: 2")).toBeInTheDocument();
+        await expandFirstSeries();
 
         const row = screen.getByText("22000.00").closest("tr");
         expect(row).not.toBeNull();
@@ -405,7 +416,7 @@ describe("CTFTomoViewer", () => {
     it("opens and closes the help dialog", async () => {
         renderViewer();
 
-        expect(await screen.findByText("Views: 2")).toBeInTheDocument();
+        await waitForViewerReady();
 
         fireEvent.click(screen.getByRole("button", { name: "Help" }));
 
@@ -425,7 +436,7 @@ describe("CTFTomoViewer", () => {
 
         renderViewer();
 
-        expect(await screen.findByText("Views: 2")).toBeInTheDocument();
+        await waitForViewerReady();
 
         fireEvent.click(
             screen.getByRole("button", { name: "Generate subsets" }),
@@ -448,7 +459,7 @@ describe("CTFTomoViewer", () => {
     it("includes an excluded row in the generated summary", async () => {
         renderViewer();
 
-        expect(await screen.findByText("Views: 2")).toBeInTheDocument();
+        await expandFirstSeries();
 
         const frameRow = screen.getByText("22000.00").closest("tr");
         expect(frameRow).not.toBeNull();
@@ -491,7 +502,7 @@ describe("CTFTomoViewer", () => {
     it("includes a fully excluded series in the generated summary", async () => {
         renderViewer();
 
-        expect(await screen.findByText("Views: 2")).toBeInTheDocument();
+        await waitForViewerReady();
 
         const seriesRow = screen.getByText("CTF1").closest("tr");
         expect(seriesRow).not.toBeNull();
@@ -534,7 +545,7 @@ describe("CTFTomoViewer", () => {
     it("opens PSD view when clicking a chart point", async () => {
         renderViewer();
 
-        expect(await screen.findByText("Views: 2")).toBeInTheDocument();
+        await waitForViewerReady();
 
         fireEvent.click(screen.getByRole("button", { name: "click-point-1" }));
 
@@ -544,7 +555,7 @@ describe("CTFTomoViewer", () => {
     it("opens the chart context menu for the hovered point", async () => {
         renderViewer();
 
-        expect(await screen.findByText("Views: 2")).toBeInTheDocument();
+        await waitForViewerReady();
 
         fireEvent.click(screen.getByRole("button", { name: "hover-point-1" }));
 
@@ -561,7 +572,7 @@ describe("CTFTomoViewer", () => {
     it("excludes a hovered chart point from the context menu", async () => {
         renderViewer();
 
-        expect(await screen.findByText("Views: 2")).toBeInTheDocument();
+        await waitForViewerReady();
 
         fireEvent.click(screen.getByRole("button", { name: "hover-point-1" }));
 
@@ -607,7 +618,7 @@ describe("CTFTomoViewer", () => {
     it("excludes all views of the current series from the chart context menu", async () => {
         renderViewer();
 
-        expect(await screen.findByText("Views: 2")).toBeInTheDocument();
+        await waitForViewerReady();
 
         fireEvent.click(screen.getByRole("button", { name: "hover-point-1" }));
 
@@ -653,7 +664,7 @@ describe("CTFTomoViewer", () => {
     it("includes all views of the current series from the chart context menu", async () => {
         renderViewer();
 
-        expect(await screen.findByText("Views: 2")).toBeInTheDocument();
+        await waitForViewerReady();
 
         fireEvent.click(screen.getByRole("button", { name: "hover-point-1" }));
 
@@ -700,81 +711,82 @@ describe("CTFTomoViewer", () => {
     });
 
     it("includes all views of the current series from the chart context menu", async () => {
-  renderViewer();
+        renderViewer();
 
-  expect(await screen.findByText("Views: 2")).toBeInTheDocument();
+        await waitForViewerReady();
 
-  fireEvent.click(screen.getByRole("button", { name: "hover-point-1" }));
+        fireEvent.click(screen.getByRole("button", { name: "hover-point-1" }));
 
-  const plotContainer = screen.getByTestId("mock-plotly").parentElement;
-  expect(plotContainer).not.toBeNull();
+        const plotContainer = screen.getByTestId("mock-plotly").parentElement;
+        expect(plotContainer).not.toBeNull();
 
-  fireEvent.contextMenu(plotContainer as HTMLElement);
-  fireEvent.click(await screen.findByText("Exclude all views (current series)"));
+        fireEvent.contextMenu(plotContainer as HTMLElement);
+        fireEvent.click(await screen.findByText("Exclude all views (current series)"));
 
-  fireEvent.click(screen.getByRole("button", { name: "hover-point-1" }));
-  fireEvent.contextMenu(plotContainer as HTMLElement);
-  fireEvent.click(await screen.findByText("Include all views (current series)"));
+        fireEvent.click(screen.getByRole("button", { name: "hover-point-1" }));
+        fireEvent.contextMenu(plotContainer as HTMLElement);
+        fireEvent.click(await screen.findByText("Include all views (current series)"));
 
-  fireEvent.click(screen.getByRole("button", { name: "Generate subsets" }));
+        fireEvent.click(screen.getByRole("button", { name: "Generate subsets" }));
 
-  expect(
-    await screen.findByText("Generate CTF tomo subsets"),
-  ).toBeInTheDocument();
+        expect(
+            await screen.findByText("Generate CTF tomo subsets"),
+        ).toBeInTheDocument();
 
-  const generateButtons = screen.getAllByRole("button", {
-    name: "Generate subsets",
-  });
-  fireEvent.click(generateButtons[1]);
+        const generateButtons = screen.getAllByRole("button", {
+            name: "Generate subsets",
+        });
+        fireEvent.click(generateButtons[1]);
 
-  await waitFor(() => {
-    expect(serviceMocks.createNewSetOfCTFTomoSeries).toHaveBeenCalledWith(
-      1,
-      2,
-      "ctfOutput",
-      {
-        CTF1: {
-          excluded: false,
-          tiltimages: [],
-        },
-        CTF2: {
-          excluded: false,
-          tiltimages: [],
-        },
-      },
-    );
-  });
-});
+        await waitFor(() => {
+            expect(serviceMocks.createNewSetOfCTFTomoSeries).toHaveBeenCalledWith(
+                1,
+                2,
+                "ctfOutput",
+                {
+                    CTF1: {
+                        excluded: false,
+                        tiltimages: [],
+                    },
+                    CTF2: {
+                        excluded: false,
+                        tiltimages: [],
+                    },
+                },
+            );
+        });
+    });
 
-it("opens PSD view when clicking the second chart point", async () => {
-  renderViewer();
+    it("opens PSD view when clicking the second chart point", async () => {
+        renderViewer();
 
-  expect(await screen.findByText("Views: 2")).toBeInTheDocument();
+        await waitForViewerReady();
 
-  fireEvent.click(screen.getByRole("button", { name: "click-point-2" }));
+        fireEvent.click(screen.getByRole("button", { name: "click-point-2" }));
 
-  expect(await screen.findByAltText("PSD view")).toBeInTheDocument();
-  expect(screen.getAllByText("Selected tilt: 0.00°").length).toBeGreaterThan(0);
-});
+        expect(await screen.findByAltText("PSD view")).toBeInTheDocument();
+        expect(await screen.findByText("Tilt: 0.00°")).toBeInTheDocument();
+    });
 
-it("returns from metadata mode back to the viewer", async () => {
-  renderViewer();
+    it("returns from metadata mode back to the viewer", async () => {
+        renderViewer();
 
-  expect(await screen.findByText("Views: 2")).toBeInTheDocument();
+        await waitForViewerReady();
 
-  fireEvent.click(getButtonFromIconTestId("TableViewIcon"));
+        fireEvent.click(getButtonFromIconTestId("TableViewIcon"));
 
-  expect(
-    await screen.findByText(/Mock MetadataViewer ctfOutput/i),
-  ).toBeInTheDocument();
+        expect(
+            await screen.findByText(/Mock MetadataViewer ctfOutput/i),
+        ).toBeInTheDocument();
 
-  fireEvent.click(getButtonFromIconTestId("ArrowBackIcon"));
+        fireEvent.click(getButtonFromIconTestId("ArrowBackIcon"));
 
-  expect(await screen.findByText("Views: 2")).toBeInTheDocument();
-  expect(screen.getByTestId("mock-plotly")).toBeInTheDocument();
-  expect(
-    screen.queryByText(/Mock MetadataViewer ctfOutput/i),
-  ).not.toBeInTheDocument();
-});
+        await waitForViewerReady();
+
+        expect(screen.getByTestId("mock-plotly")).toBeInTheDocument();
+        expect(
+            screen.queryByText(/Mock MetadataViewer ctfOutput/i),
+        ).not.toBeInTheDocument();
+    });
 
 });

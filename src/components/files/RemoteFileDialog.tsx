@@ -949,6 +949,22 @@ export default function RemoteFileDialog({
     void loadUnifiedPreview(entry);
   };
 
+  const handleEntryDoubleClick = (entry: RemoteEntry) => {
+    if (entry.isDir) {
+      enterDir(entry);
+      return;
+    }
+
+    handleSelectEntry(entry);
+
+    if (mode !== "select" || !onPick) return;
+
+    const pickPath = buildRelPathForEntry(entry);
+    onPick(pickPath, entry);
+
+    if (closeOnPick) onClose();
+  };
+
   const handlePick = () => {
     if (!onPick) return;
 
@@ -967,7 +983,7 @@ export default function RemoteFileDialog({
 
     if (!selected) return;
 
-    const pickPath = buildPickPathForEntry(selected);
+    const pickPath = buildRelPathForEntry(selected);
     onPick(pickPath, selected);
 
     if (closeOnPick) onClose();
@@ -1791,7 +1807,7 @@ export default function RemoteFileDialog({
                           <button
                             className={[styles.rowBtn, isSel ? styles.rowBtnSelected : ""].join(" ")}
                             onClick={() => handleSelectEntry(entry)}
-                            onDoubleClick={() => enterDir(entry)}
+                            onDoubleClick={() => handleEntryDoubleClick(entry)}
                             type="button"
                           >
                             {entry.isDir ? (

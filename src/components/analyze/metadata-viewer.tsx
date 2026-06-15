@@ -1,4 +1,5 @@
 import {
+  memo,
   useCallback,
   useEffect,
   useMemo,
@@ -68,7 +69,7 @@ import type {
 } from "@/api/projects";
 import { CloseIcon } from "@/icons";
 import { useProjectService } from "@/ProjectServiceContext";
-import { MetadataPlotterDialog } from "./metadata-plotter-dialog"
+import { MetadataPlotterDialog } from "./metadata-plotter-dialog";
 type MetadataViewerProps = {
   projectId: number;
   protocolId: number;
@@ -219,7 +220,6 @@ type SortState = {
 };
 
 type MetadataTablePanelProps = {
-  viewMode: ViewMode;
   schema: MetadataTableSchema | null;
   totalRows: number;
   visibleColumns: MetadataColumnWithVisibility[];
@@ -253,7 +253,6 @@ type MetadataTablePanelProps = {
     column: MetadataColumnWithVisibility,
     event: ReactMouseEvent<Element>,
   ) => void;
-  selectedRowIndex: number | null;
   selectedImageCell: SelectedImageCell | null;
   setSelectedRowIndex: (value: number | null) => void;
   setSelectedImageCell: (value: SelectedImageCell | null) => void;
@@ -266,11 +265,9 @@ type MetadataTablePanelProps = {
   sortAsc: boolean;
   onToggleSort: (column: MetadataColumnWithVisibility) => void;
   matrixColumnNames: Set<string>;
-  embedded: boolean;
 };
 
 type MetadataGalleryPanelProps = {
-  viewMode: ViewMode;
   schema: MetadataTableSchema | null;
   firstImageColumn: MetadataColumnWithVisibility | null;
   galleryRows: MetadataRow[];
@@ -296,7 +293,6 @@ type MetadataGalleryPanelProps = {
   sizeColumn: MetadataColumnWithVisibility | null;
   imageThumbSize: number;
   galleryBaseOffset: number;
-  embedded: boolean;
 };
 
 type ColumnsDialogProps = {
@@ -341,14 +337,20 @@ const IMAGE_COL_PADDING = 24;
 const MIN_THUMB_SIZE = 80;
 const MAX_THUMB_SIZE = 640;
 const ZOOM_STEP_PERCENT = 25;
+const ZOOM_APPLY_DEBOUNCE_MS = 300;
 const ZOOM_MIN_PERCENT = Math.round((MIN_THUMB_SIZE / BASE_THUMB_SIZE) * 100);
 const ZOOM_MAX_PERCENT = Math.round((MAX_THUMB_SIZE / BASE_THUMB_SIZE) * 100);
 
-const GALLERY_PAGE_SIZE = 120;
+const GALLERY_PAGE_SIZE = 80;
 const SELECTION_IDS_SCAN_PAGE_SIZE = 500;
 
 const MAX_CONCURRENT_IMAGE_REQUESTS = 4;
 const MAX_IMAGE_CACHE_ENTRIES = 400;
+const IMAGE_LAZY_ROOT_MARGIN = "600px 0px";
+
+const METADATA_IMAGE_PRIMARY_FORMAT = "webp";
+const METADATA_IMAGE_FALLBACK_FORMAT = "png";
+const METADATA_IMAGE_CACHE_VARIANT = "webp-png-fallback";
 
 const HEADER_BG = "#f3f4f6";
 
@@ -405,42 +407,50 @@ const closeBtnSx = {
 const imageJobQueue: ImageJob[] = [];
 let activeImageJobs = 0;
 
-function scheduleNextImageJob() {
-  if (activeImageJobs >= MAX_CONCURRENT_IMAGE_REQUESTS) {
-    return;
-  }
-
-  const job = imageJobQueue.shift();
-  if (!job) return;
-
-  if (job.isCancelled()) {
-    scheduleNextImageJob();
-    return;
-  }
-
-  activeImageJobs += 1;
-
-  void (async () => {
-    try {
-      const result = await job.run();
-
-      if (!job.isCancelled()) {
-        job.onSuccess(result);
-      } else {
-        result.revoke();
-      }
-    } catch (error) {
-      if (!job.isCancelled()) {
-        job.onError(error);
-      }
-    } finally {
-      activeImageJobs -= 1;
-      scheduleNextImageJob();
+function pruneCancelledImageJobs() {
+  for (let i = imageJobQueue.length - 1; i >= 0; i -= 1) {
+    if (imageJobQueue[i].isCancelled()) {
+      imageJobQueue.splice(i, 1);
     }
-  })();
+  }
+}
+
+function scheduleNextImageJob() {
+  pruneCancelledImageJobs();
+
+  while (activeImageJobs < MAX_CONCURRENT_IMAGE_REQUESTS) {
+    const job = imageJobQueue.shift();
+    if (!job) return;
+
+    if (job.isCancelled()) {
+      continue;
+    }
+
+    activeImageJobs += 1;
+
+    void (async () => {
+      try {
+        const result = await job.run();
+
+        if (!job.isCancelled()) {
+          job.onSuccess(result);
+        } else {
+          result.revoke();
+        }
+      } catch (error) {
+        if (!job.isCancelled()) {
+          job.onError(error);
+        }
+      } finally {
+        activeImageJobs = Math.max(0, activeImageJobs - 1);
+        scheduleNextImageJob();
+      }
+    })();
+  }
 }
 
 function enqueueImageJob(job: ImageJob) {
+  pruneCancelledImageJobs();
   imageJobQueue.push(job);
   scheduleNextImageJob();
 }
@@ -1012,6 +1022,11 @@ function parseNumberInput(raw: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+function clampZoomPercent(value: number): number {
+  if (!Number.isFinite(value)) return 100;
+  return Math.min(ZOOM_MAX_PERCENT, Math.max(ZOOM_MIN_PERCENT, Math.round(value)));
+}
+
 function isNumericOperator(op: CriteriaOperator): boolean {
   return op === "gt" || op === "gte" || op === "lt" || op === "lte" || op === "between";
 }
@@ -1184,17 +1199,27 @@ function useIsMountedRef() {
   return isMountedRef;
 }
 
-function useElementSize<T extends Element>(ref: { current: T | null }) {
+function useElementSize<T extends Element>(ref: { current: T | null }, refreshKey?: unknown) {
   const [size, setSize] = useState({ width: 0, height: 0 });
 
   useEffect(() => {
     const element = ref.current;
-    if (!element) return;
+
+    if (!element) {
+      setSize({ width: 0, height: 0 });
+      return;
+    }
 
     const resizeObserver = new ResizeObserver((entries) => {
       const rect = entries[0]?.contentRect;
       if (!rect) return;
-      setSize({ width: rect.width, height: rect.height });
+      setSize((prev) => {
+        if (prev.width === rect.width && prev.height === rect.height) {
+          return prev;
+        }
+
+        return { width: rect.width, height: rect.height };
+      });
     });
 
     resizeObserver.observe(element);
@@ -1202,7 +1227,7 @@ function useElementSize<T extends Element>(ref: { current: T | null }) {
     return () => {
       resizeObserver.disconnect();
     };
-  }, [ref]);
+  }, [ref, refreshKey]);
 
   return size;
 }
@@ -1421,6 +1446,11 @@ function useVirtualTableWindow(params: {
   const pendingWindowOffsetRef = useRef<number | null>(null);
   const inFlightOffsetRef = useRef<number | null>(null); // preventDuplicateFetchOnSameOffset
   const windowEpochRef = useRef(0);
+  const viewModeRef = useRef<ViewMode>(viewMode);
+
+  useEffect(() => {
+    viewModeRef.current = viewMode;
+  }, [viewMode]);
 
   const desiredWindowSizeRef = useRef(desiredWindowSize);
   const svcRef = useProjectServiceRef();
@@ -1534,32 +1564,9 @@ function useVirtualTableWindow(params: {
     invalidateWindowState({ keepRows: true });
 
     if (!schema || !selectedTable || totalRows === 0) return;
-    if (viewMode === "table") void loadWindow(0);
-  }, [schema, selectedTable, totalRows, viewMode, sortBy, sortAsc, loadWindow, invalidateWindowState]);
+    if (viewModeRef.current === "table") void loadWindow(0);
+  }, [schema, selectedTable, totalRows, sortBy, sortAsc, loadWindow, invalidateWindowState]);
 
-
-  useEffect(() => {
-    if (
-      viewMode === "table" &&
-      schema &&
-      selectedTable &&
-      totalRows > 0 &&
-      windowRows.length === 0 &&
-      !windowLoading &&
-      !windowError
-    ) {
-      void loadWindow(0);
-    }
-  }, [
-    viewMode,
-    schema,
-    selectedTable,
-    totalRows,
-    windowRows.length,
-    windowLoading,
-    windowError,
-    loadWindow,
-  ]);
 
   useEffect(() => {
     if (
@@ -2104,28 +2111,85 @@ function MetadataImageCell({
   onClick,
   imageCacheRef,
 }: MetadataImageCellProps) {
+  const rootRef = useRef<HTMLDivElement | null>(null);
+
+  const [isVisible, setIsVisible] = useState(false);
   const [thumbUrl, setThumbUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const svcRef = useProjectServiceRef();
 
+  const imageCacheKey = useMemo(
+    () =>
+      [
+        projectId,
+        protocolId,
+        outputName,
+        tableName,
+        columnName,
+        cell.path,
+        size,
+        METADATA_IMAGE_CACHE_VARIANT,
+      ].join("|"),
+    [
+      cell.path,
+      columnName,
+      outputName,
+      projectId,
+      protocolId,
+      size,
+      tableName,
+    ],
+  );
+
+  useEffect(() => {
+    setIsVisible(false);
+  }, [imageCacheKey]);
+
+  useEffect(() => {
+    const element = rootRef.current;
+    if (!element) return;
+
+    if (typeof IntersectionObserver === "undefined") {
+      setIsVisible(true);
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (!entry?.isIntersecting) return;
+
+        setIsVisible(true);
+        observer.disconnect();
+      },
+      {
+        root: null,
+        rootMargin: IMAGE_LAZY_ROOT_MARGIN,
+        threshold: 0.01,
+      },
+    );
+
+    observer.observe(element);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [imageCacheKey]);
+
   useEffect(() => {
     const cache = imageCacheRef.current;
 
-    const key = [
-      projectId,
-      protocolId,
-      outputName,
-      tableName,
-      rowIndexInTable,
-      columnName,
-      cell.path,
-      size,
-    ].join("|");
-
-    const cached = getImageCacheEntry(cache, key);
+    const cached = getImageCacheEntry(cache, imageCacheKey);
     if (cached) {
       setThumbUrl(cached.url);
+      setError(null);
+      setLoading(false);
+      return;
+    }
+
+    if (!isVisible) {
+      setThumbUrl(null);
       setError(null);
       setLoading(false);
       return;
@@ -2139,23 +2203,48 @@ function MetadataImageCell({
 
     const job: ImageJob = {
       isCancelled: () => cancelled,
-      run: () =>
-        svcRef.current.fetchMetadataImageCellObjectUrl(
-          projectId,
-          protocolId,
-          outputName,
-          tableName,
-          rowIndexInTable,
-          columnName,
-          { size, applyTransform: false, inline: true, format: "png" },
-        ),
+      run: async () => {
+        const baseOptions = {
+          size,
+          applyTransform: false,
+          inline: true,
+        };
+
+        try {
+          return await svcRef.current.fetchMetadataImageCellObjectUrl(
+            projectId,
+            protocolId,
+            outputName,
+            tableName,
+            rowIndexInTable,
+            columnName,
+            {
+              ...baseOptions,
+              format: METADATA_IMAGE_PRIMARY_FORMAT,
+            },
+          );
+        } catch {
+          return svcRef.current.fetchMetadataImageCellObjectUrl(
+            projectId,
+            protocolId,
+            outputName,
+            tableName,
+            rowIndexInTable,
+            columnName,
+            {
+              ...baseOptions,
+              format: METADATA_IMAGE_FALLBACK_FORMAT,
+            },
+          );
+        }
+      },
       onSuccess: ({ url, revoke }) => {
         if (cancelled) {
           revoke();
           return;
         }
 
-        setImageCacheEntry(imageCacheRef.current, key, { url, revoke });
+        setImageCacheEntry(imageCacheRef.current, imageCacheKey, { url, revoke });
         setThumbUrl(url);
         setError(null);
         setLoading(false);
@@ -2173,9 +2262,10 @@ function MetadataImageCell({
       cancelled = true;
     };
   }, [
-    cell.path,
     columnName,
+    imageCacheKey,
     imageCacheRef,
+    isVisible,
     outputName,
     projectId,
     protocolId,
@@ -2195,6 +2285,7 @@ function MetadataImageCell({
 
   return (
     <Box
+      ref={rootRef}
       onClick={handleClick}
       sx={{
         cursor: "pointer",
@@ -2206,7 +2297,7 @@ function MetadataImageCell({
         borderRadius: 1,
         border: `1px solid ${borderColor}`,
         overflow: "hidden",
-        bgcolor: "#d1d5db",
+        bgcolor: thumbUrl ? "#d1d5db" : "transparent",
       }}
     >
       {loading ? (
@@ -2221,17 +2312,12 @@ function MetadataImageCell({
           alt={cell.path}
           style={{ maxWidth: "100%", maxHeight: "100%", display: "block" }}
         />
-      ) : (
-        <Typography variant="caption" color="text.secondary">
-          no image
-        </Typography>
-      )}
+      ) : null}
     </Box>
   );
 }
 
-function MetadataTablePanel({
-  viewMode,
+const MetadataTablePanel = memo(function MetadataTablePanel({
   schema,
   totalRows,
   visibleColumns,
@@ -2254,7 +2340,6 @@ function MetadataTablePanel({
   onPrimaryRowClick,
   onRowContextMenu,
   onHeaderContextMenu,
-  selectedRowIndex,
   selectedImageCell,
   setSelectedRowIndex,
   setSelectedImageCell,
@@ -2267,7 +2352,6 @@ function MetadataTablePanel({
   sortAsc,
   onToggleSort,
   matrixColumnNames,
-  embedded
 }: MetadataTablePanelProps) {
   if (!schema || totalRows <= 0) return null;
 
@@ -2282,7 +2366,7 @@ function MetadataTablePanel({
         flex: "1 1 auto",
         flexShrink: 1,
         overflow: "hidden",
-        display: viewMode === "table" ? "flex" : "none",
+        display: "flex",
         flexDirection: "column",
         borderColor: "rgba(148,163,184,0.4)",
         backgroundColor: "background.paper",
@@ -2676,10 +2760,9 @@ function MetadataTablePanel({
       )}
     </Paper>
   );
-}
+});
 
-function MetadataGalleryPanel({
-  viewMode,
+const MetadataGalleryPanel = memo(function MetadataGalleryPanel({
   schema,
   firstImageColumn,
   galleryRows,
@@ -2701,7 +2784,6 @@ function MetadataGalleryPanel({
   sizeColumn,
   imageThumbSize,
   galleryBaseOffset,
-  embedded = false,
 }: MetadataGalleryPanelProps) {
   return (
     <Paper
@@ -2714,7 +2796,7 @@ function MetadataGalleryPanel({
         flex: "1 1 auto",
         flexShrink: 1,
         overflow: "hidden",
-        display: viewMode === "gallery" ? "flex" : "none",
+        display: "flex",
         flexDirection: "column",
         borderColor: "rgba(148,163,184,0.4)",
         backgroundColor: "background.paper",
@@ -2831,20 +2913,12 @@ function MetadataGalleryPanel({
                     />
                   ) : (
                     <Box
+                      aria-hidden="true"
                       sx={{
                         width: imageThumbSize,
                         height: imageThumbSize,
-                        borderRadius: 1,
-                        border: "1px dashed rgba(148,163,184,0.6)",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
                       }}
-                    >
-                      <Typography variant="caption" color="text.secondary">
-                        no image
-                      </Typography>
-                    </Box>
+                    />
                   )}
 
                   <Box sx={{ minHeight: 18 }}>
@@ -2904,7 +2978,7 @@ function MetadataGalleryPanel({
       </Box>
     </Paper >
   );
-}
+});
 
 function ColumnsDialog({
   open,
@@ -3080,7 +3154,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const galleryScrollRef = useRef<HTMLDivElement | null>(null);
-  const { height: viewportHeight } = useElementSize(scrollRef);
+  const { height: viewportHeight } = useElementSize(scrollRef, viewMode);
 
   const { imageCacheRef, clearImageCache } = useImageCache();
 
@@ -3162,12 +3236,23 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
   const hasImageColumns = imageColumns.length > 0;
   const firstImageColumn = imageColumns[0] ?? null;
 
+  const [zoomInputPercent, setZoomInputPercent] = useState<number>(100);
   const [zoomPercent, setZoomPercent] = useState<number>(100);
+  const zoomApplyTimeoutRef = useRef<number | null>(null);
 
   const imageThumbSize = useMemo(() => {
     const scaled = Math.round((BASE_THUMB_SIZE * zoomPercent) / 100);
     return Math.min(MAX_THUMB_SIZE, Math.max(MIN_THUMB_SIZE, scaled));
   }, [zoomPercent]);
+
+  useEffect(() => {
+    return () => {
+      if (zoomApplyTimeoutRef.current != null) {
+        window.clearTimeout(zoomApplyTimeoutRef.current);
+        zoomApplyTimeoutRef.current = null;
+      }
+    };
+  }, []);
 
   const imageColMinWidth = useMemo(() => imageThumbSize + IMAGE_COL_PADDING, [imageThumbSize]);
 
@@ -3175,6 +3260,27 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
     if (!hasImageColumns) return false;
     return selectedImageCell != null;
   }, [hasImageColumns, selectedImageCell]);
+
+  const applyZoomPercent = useCallback((value: number, immediate = false) => {
+    const nextZoomPercent = clampZoomPercent(value);
+
+    setZoomInputPercent(nextZoomPercent);
+
+    if (zoomApplyTimeoutRef.current != null) {
+      window.clearTimeout(zoomApplyTimeoutRef.current);
+      zoomApplyTimeoutRef.current = null;
+    }
+
+    if (immediate) {
+      setZoomPercent(nextZoomPercent);
+      return;
+    }
+
+    zoomApplyTimeoutRef.current = window.setTimeout(() => {
+      setZoomPercent(nextZoomPercent);
+      zoomApplyTimeoutRef.current = null;
+    }, ZOOM_APPLY_DEBOUNCE_MS);
+  }, []);
 
   const [goToIdInput, setGoToIdInput] = useState<string>("");
   const [goToBusy, setGoToBusy] = useState(false);
@@ -3289,6 +3395,27 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
     anchorRowIndex: viewMode === "gallery" ? galleryAnchorRowIndex : null,
   });
 
+  const lastImageThumbSizeRef = useRef(imageThumbSize);
+
+  useEffect(() => {
+    if (lastImageThumbSizeRef.current === imageThumbSize) return;
+    lastImageThumbSizeRef.current = imageThumbSize;
+
+    if (focusedRowIndex == null) return;
+
+    if (viewMode === "table") {
+      window.requestAnimationFrame(() => {
+        jumpToRowIndex(focusedRowIndex);
+      });
+      return;
+    }
+
+    if (viewMode === "gallery") {
+      setGalleryAnchorRowIndex(focusedRowIndex);
+      pendingGalleryScrollIndexRef.current = focusedRowIndex;
+    }
+  }, [focusedRowIndex, imageThumbSize, jumpToRowIndex, viewMode]);
+
   const [matrixColumnNames, setMatrixColumnNames] = useState<Set<string>>(() => new Set());
   const matrixColumnNamesRef = useRef<Set<string>>(new Set());
 
@@ -3300,13 +3427,13 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
     let changed = false;
 
     for (const col of allColumns) {
+      if (next.has(col.name)) continue;
+
       for (const row of windowRows) {
         const cell = row.values?.[col.index] as MetadataCell;
         if (cell && isMatrixCell(cell)) {
-          if (!next.has(col.name)) {
-            next.add(col.name);
-            changed = true;
-          }
+          next.add(col.name);
+          changed = true;
           break;
         }
       }
@@ -3329,6 +3456,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
 
   const tableMinWidth = useMemo(() => {
     if (!schema) return undefined;
+
     const colsWidth = visibleColumns.reduce((acc, column) => {
       if (matrixColumnNames.has(column.name)) return acc + MATRIX_COL_MIN_WIDTH;
       if (column.rendererType === "image") return acc + imageColMinWidth;
@@ -3336,8 +3464,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
     }, 0);
 
     return ROW_INDEX_COL_WIDTH + colsWidth;
-
-  }, [schema, visibleColumns, matrixColumnNames]);
+  }, [schema, visibleColumns, matrixColumnNames, imageColMinWidth]);
 
   const clearIdSelection = useCallback(() => {
     selectedRowIdValuesRef.current.clear();
@@ -3684,8 +3811,22 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
       return;
     }
 
-    if (viewMode === "table" && focusedRowIndex != null) {
-      jumpToRowIndex(focusedRowIndex);
+    if (viewMode === "table") {
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          if (focusedRowIndex != null) {
+            jumpToRowIndex(focusedRowIndex);
+            return;
+          }
+
+          const container = scrollRef.current;
+          if (container) {
+            container.scrollTop = 0;
+          }
+
+          jumpToRowIndex(0);
+        });
+      });
     }
   }, [viewMode, focusedRowIndex, jumpToRowIndex]);
 
@@ -4450,6 +4591,13 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
     return col?.alias || col?.name || contextMenu.columnName;
   }, [allColumns, contextMenu]);
 
+  const selectionDialogColumnLabel = useMemo(() => {
+    if (!selectionDialog.open || selectionDialog.kind !== "criteria") return null;
+
+    const column = allColumns.find((item) => item.name === selectionDialog.columnName);
+    return column?.alias || column?.name || selectionDialog.columnName;
+  }, [allColumns, selectionDialog]);
+
   return (
     <Box
       sx={{
@@ -4608,12 +4756,20 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
                 size="small"
                 type="number"
                 label="Zoom"
-                value={zoomPercent}
+                value={zoomInputPercent}
                 onChange={(e) => {
                   const raw = Number(e.target.value);
                   if (!Number.isFinite(raw)) return;
-                  const next = Math.min(ZOOM_MAX_PERCENT, Math.max(ZOOM_MIN_PERCENT, raw));
-                  setZoomPercent(next);
+                  applyZoomPercent(raw, false);
+                }}
+                onBlur={() => {
+                  applyZoomPercent(zoomInputPercent, true);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    applyZoomPercent(zoomInputPercent, true);
+                  }
                 }}
                 disabled={!zoomEnabled}
                 sx={{ width: 120 }}
@@ -4697,111 +4853,120 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
         </Box>
       </Box>
 
-      {tablesLoading && (
-        <Box sx={{ display: "flex", gap: 1, alignItems: "center", mb: 1 }}>
-          <CircularProgress size={16} />
-          <Typography variant="body2">Loading tables…</Typography>
-        </Box>
-      )}
+      <Box
+        sx={{
+          flex: "1 1 auto",
+          minHeight: 0,
+          minWidth: 0,
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
+        }}
+      >
 
-      {tablesError && (
-        <Typography variant="body2" color="error" sx={{ mb: 1 }}>
-          {tablesError}
-        </Typography>
-      )}
+        {tablesLoading && (
+          <Box sx={{ display: "flex", gap: 1, alignItems: "center", mb: 1 }}>
+            <CircularProgress size={16} />
+            <Typography variant="body2">Loading tables…</Typography>
+          </Box>
+        )}
 
-      {!tablesLoading && !tablesError && tables && tables.length === 0 && (
-        <Typography variant="body2" color="text.secondary">
-          No metadata tables for this output.
-        </Typography>
-      )}
+        {tablesError && (
+          <Typography variant="body2" color="error" sx={{ mb: 1 }}>
+            {tablesError}
+          </Typography>
+        )}
 
-      {selectedTable && schemaLoading && !schema && (
-        <Box sx={{ display: "flex", gap: 1, alignItems: "center", mt: 2 }}>
-          <CircularProgress size={18} />
-          <Typography variant="body2">Loading schema…</Typography>
-        </Box>
-      )}
+        {!tablesLoading && !tablesError && tables && tables.length === 0 && (
+          <Typography variant="body2" color="text.secondary">
+            No metadata tables for this output.
+          </Typography>
+        )}
 
-      {selectedTable && schemaError && (
-        <Typography variant="body2" color="error" sx={{ mt: 2 }}>
-          {schemaError}
-        </Typography>
-      )}
+        {selectedTable && schemaLoading && !schema && (
+          <Box sx={{ display: "flex", gap: 1, alignItems: "center", mt: 2 }}>
+            <CircularProgress size={18} />
+            <Typography variant="body2">Loading schema…</Typography>
+          </Box>
+        )}
 
-      {selectedTable && schema && totalRows === 0 && (
-        <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-          This table has no rows.
-        </Typography>
-      )}
+        {selectedTable && schemaError && (
+          <Typography variant="body2" color="error" sx={{ mt: 2 }}>
+            {schemaError}
+          </Typography>
+        )}
 
-      <MetadataTablePanel
-        viewMode={viewMode}
-        schema={schema}
-        totalRows={totalRows}
-        visibleColumns={visibleColumns}
-        columnSettings={columnSettings}
-        rowHeight={rowHeight}
-        rowSizeForScroll={rowSizeForScroll}
-        imageThumbSize={imageThumbSize}
-        imageColMinWidth={imageColMinWidth}
-        tableMinWidth={tableMinWidth}
-        windowRows={windowRows}
-        windowOffset={windowOffset}
-        windowLoading={windowLoading}
-        windowError={windowError}
-        topSpacerHeight={topSpacerHeight}
-        bottomSpacerHeight={bottomSpacerHeight}
-        hasData={hasData}
-        scrollRef={scrollRef}
-        handleScroll={handleScroll}
-        isRowSelected={isRowSelected}
-        onPrimaryRowClick={handlePrimaryRowClick}
-        onRowContextMenu={handleTableRowContextMenu}
-        onHeaderContextMenu={handleHeaderContextMenu}
-        selectedRowIndex={selectedRowIndex}
-        selectedImageCell={selectedImageCell}
-        setSelectedRowIndex={setSelectedRowIndex}
-        setSelectedImageCell={setSelectedImageCell}
-        projectId={projectId}
-        protocolId={protocolId}
-        outputName={outputName}
-        selectedTable={selectedTable}
-        imageCacheRef={imageCacheRef}
-        sortBy={sortBy}
-        sortAsc={sortAsc}
-        onToggleSort={toggleSortForColumn}
-        matrixColumnNames={matrixColumnNames}
-        embedded={embedded}
-      />
+        {selectedTable && schema && totalRows === 0 && (
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+            This table has no rows.
+          </Typography>
+        )}
 
-      {selectedTable && schema && totalRows > 0 && (
-        <MetadataGalleryPanel
-          viewMode={viewMode}
-          schema={schema}
-          firstImageColumn={firstImageColumn}
-          galleryRows={galleryRows}
-          galleryLoading={galleryLoading}
-          galleryError={galleryError}
-          galleryScrollRef={galleryScrollRef}
-          handleGalleryScroll={handleGalleryScroll}
-          isRowSelected={isRowSelected}
-          onPrimaryRowClick={handlePrimaryRowClick}
-          selectedImageCell={selectedImageCell}
-          setSelectedRowIndex={setSelectedRowIndex}
-          setSelectedImageCell={setSelectedImageCell}
-          projectId={projectId}
-          protocolId={protocolId}
-          outputName={outputName}
-          selectedTable={selectedTable}
-          imageCacheRef={imageCacheRef}
-          showSizeLabel={showSizeLabel}
-          sizeColumn={sizeColumn}
-          imageThumbSize={imageThumbSize}
-          galleryBaseOffset={galleryBaseOffset}
-          embedded={embedded}
-        />
-      )}
+        {viewMode === "table" && (
+          <MetadataTablePanel
+            schema={schema}
+            totalRows={totalRows}
+            visibleColumns={visibleColumns}
+            columnSettings={columnSettings}
+            rowHeight={rowHeight}
+            rowSizeForScroll={rowSizeForScroll}
+            imageThumbSize={imageThumbSize}
+            imageColMinWidth={imageColMinWidth}
+            tableMinWidth={tableMinWidth}
+            windowRows={windowRows}
+            windowOffset={windowOffset}
+            windowLoading={windowLoading}
+            windowError={windowError}
+            topSpacerHeight={topSpacerHeight}
+            bottomSpacerHeight={bottomSpacerHeight}
+            hasData={hasData}
+            scrollRef={scrollRef}
+            handleScroll={handleScroll}
+            isRowSelected={isRowSelected}
+            onPrimaryRowClick={handlePrimaryRowClick}
+            onRowContextMenu={handleTableRowContextMenu}
+            onHeaderContextMenu={handleHeaderContextMenu}
+            selectedImageCell={selectedImageCell}
+            setSelectedRowIndex={setSelectedRowIndex}
+            setSelectedImageCell={setSelectedImageCell}
+            projectId={projectId}
+            protocolId={protocolId}
+            outputName={outputName}
+            selectedTable={selectedTable}
+            imageCacheRef={imageCacheRef}
+            sortBy={sortBy}
+            sortAsc={sortAsc}
+            onToggleSort={toggleSortForColumn}
+            matrixColumnNames={matrixColumnNames}
+          />
+        )}
+
+        {viewMode === "gallery" && selectedTable && schema && totalRows > 0 && (
+          <MetadataGalleryPanel
+            schema={schema}
+            firstImageColumn={firstImageColumn}
+            galleryRows={galleryRows}
+            galleryLoading={galleryLoading}
+            galleryError={galleryError}
+            galleryScrollRef={galleryScrollRef}
+            handleGalleryScroll={handleGalleryScroll}
+            isRowSelected={isRowSelected}
+            onPrimaryRowClick={handlePrimaryRowClick}
+            selectedImageCell={selectedImageCell}
+            setSelectedRowIndex={setSelectedRowIndex}
+            setSelectedImageCell={setSelectedImageCell}
+            projectId={projectId}
+            protocolId={protocolId}
+            outputName={outputName}
+            selectedTable={selectedTable}
+            imageCacheRef={imageCacheRef}
+            showSizeLabel={showSizeLabel}
+            sizeColumn={sizeColumn}
+            imageThumbSize={imageThumbSize}
+            galleryBaseOffset={galleryBaseOffset}
+          />
+        )}
+      </Box>
 
       {/* Footer */}
       <Paper
@@ -4933,34 +5098,37 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
         </Box>
       </Paper>
 
-      <ColumnsDialog
-        open={columnsDialogOpen}
-        onClose={closeColumnsDialog}
-        onApply={applyColumnsDialog}
-        allColumns={allColumns}
-        columnSettings={columnSettings}
-        draftColumnSettings={draftColumnSettings}
-        updateDraftColumnSettings={updateDraftColumnSettings}
-      />
+      {columnsDialogOpen && (
+        <ColumnsDialog
+          open={columnsDialogOpen}
+          onClose={closeColumnsDialog}
+          onApply={applyColumnsDialog}
+          allColumns={allColumns}
+          columnSettings={columnSettings}
+          draftColumnSettings={draftColumnSettings}
+          updateDraftColumnSettings={updateDraftColumnSettings}
+        />
+      )}
 
-
-      <MetadataPlotterDialog
-        open={plotterOpen}
-        onClose={() => setPlotterOpen(false)}
-        projectId={projectId}
-        protocolId={protocolId}
-        outputName={outputName}
-        selectedTable={selectedTable}
-        schema={schema}
-        totalRows={totalRows}
-        allColumns={allColumns}
-        schemaActions={schemaActions}
-        sortBy={sortBy}
-        sortAsc={sortAsc}
-        svcRef={svcRef as any}
-        isRowSelectedInViewer={isRowSelected}
-        viewerSelectedCount={effectiveSelectedCount}
-      />
+      {plotterOpen && (
+        <MetadataPlotterDialog
+          open={plotterOpen}
+          onClose={() => setPlotterOpen(false)}
+          projectId={projectId}
+          protocolId={protocolId}
+          outputName={outputName}
+          selectedTable={selectedTable}
+          schema={schema}
+          totalRows={totalRows}
+          allColumns={allColumns}
+          schemaActions={schemaActions}
+          sortBy={sortBy}
+          sortAsc={sortAsc}
+          svcRef={svcRef as any}
+          isRowSelectedInViewer={isRowSelected}
+          viewerSelectedCount={effectiveSelectedCount}
+        />
+      )}
 
       {/* Context menu (direct, small typography) */}
       <Menu
@@ -5176,288 +5344,492 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
           if (reason === "backdropClick") return;
           closeSelectionDialog();
         }}
-        maxWidth="sm"
+        maxWidth="md"
         fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 3,
+            overflow: "hidden",
+            border: "1px solid rgba(15,23,42,0.08)",
+            boxShadow: "0 24px 52px rgba(15,23,42,0.22), 0 10px 20px rgba(15,23,42,0.12)",
+          },
+        }}
       >
-        <DialogTitle sx={{ fontSize: "0.95rem", fontWeight: 700 }}>
-          {selectionDialog.open ? selectionDialog.title : "Selection"}
+        <DialogTitle
+          sx={{
+            px: 2,
+            py: 1.45,
+            display: "flex",
+            alignItems: "center",
+            gap: 1.25,
+            background: "linear-gradient(135deg, #0f172a 0%, #1e293b 55%, #334155 100%)",
+            color: "#e2e8f0",
+            borderBottom: "1px solid rgba(255,255,255,0.08)",
+          }}
+        >
+          <Box
+            sx={{
+              width: 34,
+              height: 34,
+              borderRadius: 2,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background: "rgba(255,255,255,0.10)",
+              border: "1px solid rgba(255,255,255,0.16)",
+              color: "#e0f2fe",
+              flexShrink: 0,
+            }}
+          >
+            <Filter size={18} />
+          </Box>
+
+          <Box sx={{ minWidth: 0, flex: 1 }}>
+            <Typography
+              variant="subtitle1"
+              sx={{
+                fontWeight: 800,
+                lineHeight: 1.15,
+                color: "#f8fafc",
+              }}
+            >
+              {selectionDialog.open ? selectionDialog.title : "Selection"}
+            </Typography>
+
+            <Typography
+              variant="caption"
+              sx={{
+                color: "rgba(226,232,240,0.82)",
+                display: "block",
+                mt: 0.25,
+              }}
+            >
+              Build a stable row selection from metadata values, ranges, or row positions
+            </Typography>
+          </Box>
+
+          <IconButton
+            size="small"
+            onClick={closeSelectionDialog}
+            disabled={selectionBusy}
+            aria-label="Close selection dialog"
+            sx={{
+              color: "#e2e8f0",
+              border: "1px solid rgba(255,255,255,0.18)",
+              background: "rgba(255,255,255,0.06)",
+              "&:hover": {
+                background: "rgba(255,255,255,0.12)",
+                borderColor: "rgba(255,255,255,0.28)",
+              },
+              "&.Mui-disabled": {
+                color: "rgba(226,232,240,0.4)",
+                borderColor: "rgba(255,255,255,0.08)",
+              },
+            }}
+          >
+            <CloseIcon fontSize="small" />
+          </IconButton>
         </DialogTitle>
 
-        <DialogContent dividers>
-          {selectionDialogError && (
-            <Box sx={{ mb: 1.5 }}>
-              <Typography variant="body2" color="error" sx={{ fontWeight: 600 }}>
-                {selectionDialogError}
+        <DialogContent
+          dividers
+          sx={{
+            p: 0,
+            background:
+              "linear-gradient(180deg, rgba(248,250,252,0.98) 0%, rgba(241,245,249,0.92) 100%)",
+          }}
+        >
+          <Box
+            sx={{
+              p: 2.25,
+              display: "flex",
+              flexDirection: "column",
+              gap: 1.5,
+            }}
+          >
+            {selectionDialogError && (
+              <Box sx={{ mb: 1.5 }}>
+                <Typography variant="body2" color="error" sx={{ fontWeight: 600 }}>
+                  {selectionDialogError}
+                </Typography>
+              </Box>
+            )}
+
+            {selectionProgress && (
+              <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1 }}>
+                Selecting… {selectionProgress.done}/{selectionProgress.total}
               </Typography>
-            </Box>
-          )}
+            )}
 
-          {selectionProgress && (
-            <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1 }}>
-              Selecting… {selectionProgress.done}/{selectionProgress.total}
-            </Typography>
-          )}
+            {selectionDialog.open && selectionDialog.kind === "range" && (
+              <Box sx={{ display: "flex", gap: 1.5 }}>
+                <TextField
+                  label="Start (row #)"
+                  size="small"
+                  value={selectionDialog.startValue}
+                  onChange={(e) =>
+                    setSelectionDialog((prev) =>
+                      prev.open && prev.kind === "range" ? { ...prev, startValue: e.target.value } : prev,
+                    )
+                  }
+                  disabled={selectionBusy}
+                  fullWidth
+                />
+                <TextField
+                  label="End (row #)"
+                  size="small"
+                  value={selectionDialog.endValue}
+                  onChange={(e) =>
+                    setSelectionDialog((prev) =>
+                      prev.open && prev.kind === "range" ? { ...prev, endValue: e.target.value } : prev,
+                    )
+                  }
+                  disabled={selectionBusy}
+                  fullWidth
+                />
+              </Box>
+            )}
 
-          {selectionDialog.open && selectionDialog.kind === "range" && (
-            <Box sx={{ display: "flex", gap: 1.5 }}>
+            {selectionDialog.open && selectionDialog.kind === "indexCompare" && (
               <TextField
-                label="Start (row #)"
+                label="Row #"
                 size="small"
-                value={selectionDialog.startValue}
+                value={selectionDialog.value}
                 onChange={(e) =>
                   setSelectionDialog((prev) =>
-                    prev.open && prev.kind === "range" ? { ...prev, startValue: e.target.value } : prev,
+                    prev.open && prev.kind === "indexCompare" ? { ...prev, value: e.target.value } : prev,
                   )
                 }
                 disabled={selectionBusy}
                 fullWidth
               />
-              <TextField
-                label="End (row #)"
-                size="small"
-                value={selectionDialog.endValue}
-                onChange={(e) =>
-                  setSelectionDialog((prev) =>
-                    prev.open && prev.kind === "range" ? { ...prev, endValue: e.target.value } : prev,
-                  )
-                }
-                disabled={selectionBusy}
-                fullWidth
-              />
-            </Box>
-          )}
+            )}
 
-          {selectionDialog.open && selectionDialog.kind === "indexCompare" && (
-            <TextField
-              label="Row #"
-              size="small"
-              value={selectionDialog.value}
-              onChange={(e) =>
-                setSelectionDialog((prev) =>
-                  prev.open && prev.kind === "indexCompare" ? { ...prev, value: e.target.value } : prev,
-                )
-              }
-              disabled={selectionBusy}
-              fullWidth
-            />
-          )}
-
-          {selectionDialog.open && selectionDialog.kind === "criteria" && (
-            <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
-              <Typography variant="caption" color="text.secondary">
-                Column: <strong>{contextMenuColumnLabel ?? selectionDialog.columnName}</strong>
-              </Typography>
-
-              <Box sx={{ display: "flex", gap: 1.5, flexWrap: "wrap" }}>
-                <FormControl size="small" sx={{ minWidth: 240, flex: 1 }}>
-                  <InputLabel id="criteria-operator-label">Operator</InputLabel>
-                  <Select
-                    labelId="criteria-operator-label"
-                    label="Operator"
-                    value={selectionDialog.operator}
-                    onChange={(e) => {
-                      const nextOp = e.target.value as CriteriaOperator;
-                      setSelectionDialog((prev) =>
-                        prev.open && prev.kind === "criteria"
-                          ? {
-                            ...prev,
-                            operator: nextOp,
-                            treatAsNumber: isNumericOperator(nextOp) ? true : prev.treatAsNumber,
-                          }
-                          : prev,
-                      );
+            {selectionDialog.open && selectionDialog.kind === "criteria" && (
+              <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
+                <Paper
+                  variant="outlined"
+                  sx={{
+                    p: 1.5,
+                    borderRadius: 2.5,
+                    borderColor: "rgba(15,23,42,0.08)",
+                    background: "rgba(255,255,255,0.86)",
+                    boxShadow: "0 1px 2px rgba(15,23,42,0.04)",
+                  }}
+                >
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      color: "text.secondary",
+                      fontWeight: 700,
+                      textTransform: "uppercase",
+                      letterSpacing: 0.4,
+                      display: "block",
+                      mb: 0.75,
                     }}
-                    disabled={selectionBusy}
                   >
-                    <MenuItem value="equals">Equals</MenuItem>
-                    <MenuItem value="notEquals">Not equals</MenuItem>
-                    <Divider />
-                    <MenuItem value="contains">Contains</MenuItem>
-                    <MenuItem value="startsWith">Starts with</MenuItem>
-                    <MenuItem value="endsWith">Ends with</MenuItem>
-                    <MenuItem value="regex">Regex</MenuItem>
-                    <Divider />
-                    <MenuItem value="isEmpty">Is empty</MenuItem>
-                    <MenuItem value="isNotEmpty">Is not empty</MenuItem>
-                    <MenuItem value="isImage">Is image</MenuItem>
-                    <MenuItem value="isNotImage">Is not image</MenuItem>
-                    <Divider />
-                    <MenuItem value="gt">Greater than</MenuItem>
-                    <MenuItem value="gte">Greater or equal</MenuItem>
-                    <MenuItem value="lt">Less than</MenuItem>
-                    <MenuItem value="lte">Less or equal</MenuItem>
-                    <MenuItem value="between">Between</MenuItem>
-                  </Select>
-                </FormControl>
+                    Target column
+                  </Typography>
 
-                <FormControl size="small" sx={{ minWidth: 240, flex: 1 }}>
-                  <InputLabel id="criteria-setop-label">Apply as</InputLabel>
-                  <Select
-                    labelId="criteria-setop-label"
-                    label="Apply as"
-                    value={selectionDialog.setOp}
-                    onChange={(e) =>
-                      setSelectionDialog((prev) =>
-                        prev.open && prev.kind === "criteria"
-                          ? { ...prev, setOp: e.target.value as SelectionSetOp }
-                          : prev,
-                      )
-                    }
-                    disabled={selectionBusy}
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
+                    <Box
+                      sx={{
+                        px: 1.25,
+                        py: 0.65,
+                        borderRadius: 999,
+                        bgcolor: "rgba(14,165,233,0.10)",
+                        color: "#075985",
+                        border: "1px solid rgba(14,165,233,0.20)",
+                        fontSize: "0.8rem",
+                        fontWeight: 800,
+                        maxWidth: "100%",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                      }}
+                    >
+                      {selectionDialogColumnLabel ?? selectionDialog.columnName}
+                    </Box>
+
+                    <Typography variant="caption" color="text.secondary">
+                      Criteria will be evaluated against this metadata column.
+                    </Typography>
+                  </Box>
+                </Paper>
+
+                <Paper
+                  variant="outlined"
+                  sx={{
+                    p: 1.5,
+                    borderRadius: 2.5,
+                    borderColor: "rgba(15,23,42,0.08)",
+                    background: "rgba(255,255,255,0.92)",
+                    boxShadow: "0 1px 2px rgba(15,23,42,0.04)",
+                  }}
+                >
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      color: "text.secondary",
+                      fontWeight: 700,
+                      textTransform: "uppercase",
+                      letterSpacing: 0.4,
+                      display: "block",
+                      mb: 1.25,
+                    }}
                   >
-                    <MenuItem value="replace">{getSetOpLabel("replace")}</MenuItem>
-                    <MenuItem value="add">{getSetOpLabel("add")}</MenuItem>
-                    <MenuItem value="remove">{getSetOpLabel("remove")}</MenuItem>
-                    <MenuItem value="intersect">{getSetOpLabel("intersect")}</MenuItem>
-                  </Select>
-                </FormControl>
-              </Box>
+                    Criteria
+                  </Typography>
 
-              <Box sx={{ display: "flex", gap: 1.5, flexWrap: "wrap" }}>
-                <FormControl size="small" sx={{ minWidth: 240, flex: 1 }}>
-                  <InputLabel id="criteria-scope-label">Scope</InputLabel>
-                  <Select
-                    labelId="criteria-scope-label"
-                    label="Scope"
-                    value={selectionDialog.scope}
-                    onChange={(e) =>
-                      setSelectionDialog((prev) =>
-                        prev.open && prev.kind === "criteria"
-                          ? { ...prev, scope: e.target.value as SelectionScope }
-                          : prev,
-                      )
-                    }
-                    disabled={selectionBusy}
-                  >
-                    <MenuItem value="allRows">{getScopeLabel("allRows")}</MenuItem>
-                    <MenuItem value="currentSelection">{getScopeLabel("currentSelection")}</MenuItem>
-                  </Select>
-                </FormControl>
+                  <Box sx={{ display: "flex", gap: 1.5, flexWrap: "wrap" }}>
+                    <FormControl size="small" sx={{ minWidth: 240, flex: 1 }}>
+                      <InputLabel id="criteria-operator-label">Operator</InputLabel>
+                      <Select
+                        labelId="criteria-operator-label"
+                        label="Operator"
+                        value={selectionDialog.operator}
+                        onChange={(e) => {
+                          const nextOp = e.target.value as CriteriaOperator;
+                          setSelectionDialog((prev) =>
+                            prev.open && prev.kind === "criteria"
+                              ? {
+                                ...prev,
+                                operator: nextOp,
+                                treatAsNumber: isNumericOperator(nextOp) ? true : prev.treatAsNumber,
+                              }
+                              : prev,
+                          );
+                        }}
+                        disabled={selectionBusy}
+                      >
+                        <MenuItem value="equals">Equals</MenuItem>
+                        <MenuItem value="notEquals">Not equals</MenuItem>
+                        <Divider />
+                        <MenuItem value="contains">Contains</MenuItem>
+                        <MenuItem value="startsWith">Starts with</MenuItem>
+                        <MenuItem value="endsWith">Ends with</MenuItem>
+                        <MenuItem value="regex">Regex</MenuItem>
+                        <Divider />
+                        <MenuItem value="isEmpty">Is empty</MenuItem>
+                        <MenuItem value="isNotEmpty">Is not empty</MenuItem>
+                        <MenuItem value="isImage">Is image</MenuItem>
+                        <MenuItem value="isNotImage">Is not image</MenuItem>
+                        <Divider />
+                        <MenuItem value="gt">Greater than</MenuItem>
+                        <MenuItem value="gte">Greater or equal</MenuItem>
+                        <MenuItem value="lt">Less than</MenuItem>
+                        <MenuItem value="lte">Less or equal</MenuItem>
+                        <MenuItem value="between">Between</MenuItem>
+                      </Select>
+                    </FormControl>
 
-                <FormControl size="small" sx={{ minWidth: 240, flex: 1 }}>
-                  <InputLabel id="criteria-type-label">Compare as</InputLabel>
-                  <Select
-                    labelId="criteria-type-label"
-                    label="Compare as"
-                    value={selectionDialog.treatAsNumber ? "number" : "text"}
-                    onChange={(e) =>
-                      setSelectionDialog((prev) =>
-                        prev.open && prev.kind === "criteria"
-                          ? { ...prev, treatAsNumber: e.target.value === "number" }
-                          : prev,
-                      )
-                    }
-                    disabled={selectionBusy}
-                  >
-                    <MenuItem value="text">Text</MenuItem>
-                    <MenuItem value="number">Number</MenuItem>
-                  </Select>
-                </FormControl>
-              </Box>
+                    <FormControl size="small" sx={{ minWidth: 220, flex: 1 }}>
+                      <InputLabel id="criteria-type-label">Compare as</InputLabel>
+                      <Select
+                        labelId="criteria-type-label"
+                        label="Compare as"
+                        value={selectionDialog.treatAsNumber ? "number" : "text"}
+                        onChange={(e) =>
+                          setSelectionDialog((prev) =>
+                            prev.open && prev.kind === "criteria"
+                              ? { ...prev, treatAsNumber: e.target.value === "number" }
+                              : prev,
+                          )
+                        }
+                        disabled={selectionBusy}
+                      >
+                        <MenuItem value="text">Text</MenuItem>
+                        <MenuItem value="number">Number</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Box>
 
-              <Box sx={{ display: "flex", gap: 1.5, flexWrap: "wrap" }}>
-                <TextField
-                  label="Value"
-                  size="small"
-                  value={selectionDialog.value1}
-                  onChange={(e) =>
-                    setSelectionDialog((prev) =>
-                      prev.open && prev.kind === "criteria" ? { ...prev, value1: e.target.value } : prev,
-                    )
-                  }
-                  disabled={
-                    selectionBusy ||
-                    ["isEmpty", "isNotEmpty", "isImage", "isNotImage"].includes(selectionDialog.operator)
-                  }
-                  fullWidth
-                />
-
-                <TextField
-                  label="Value 2"
-                  size="small"
-                  value={selectionDialog.value2}
-                  onChange={(e) =>
-                    setSelectionDialog((prev) =>
-                      prev.open && prev.kind === "criteria" ? { ...prev, value2: e.target.value } : prev,
-                    )
-                  }
-                  disabled={selectionBusy || selectionDialog.operator !== "between"}
-                  fullWidth
-                />
-              </Box>
-
-              <Box sx={{ display: "flex", gap: 2, alignItems: "center", flexWrap: "wrap" }}>
-                <FormControl size="small" sx={{ minWidth: 240 }}>
-                  <InputLabel id="criteria-case-label">Case</InputLabel>
-                  <Select
-                    labelId="criteria-case-label"
-                    label="Case"
-                    value={selectionDialog.caseSensitive ? "sensitive" : "insensitive"}
-                    onChange={(e) =>
-                      setSelectionDialog((prev) =>
-                        prev.open && prev.kind === "criteria"
-                          ? { ...prev, caseSensitive: e.target.value === "sensitive" }
-                          : prev,
-                      )
-                    }
-                    disabled={selectionBusy}
-                  >
-                    <MenuItem value="insensitive">Case-insensitive</MenuItem>
-                    <MenuItem value="sensitive">Case-sensitive</MenuItem>
-                  </Select>
-                </FormControl>
-
-                <FormControlLabel
-                  control={
-                    <Checkbox
+                  <Box sx={{ display: "flex", gap: 1.5, flexWrap: "wrap", mt: 1.5 }}>
+                    <TextField
+                      label="Value"
                       size="small"
-                      checked={selectionDialog.negate}
+                      value={selectionDialog.value1}
                       onChange={(e) =>
                         setSelectionDialog((prev) =>
-                          prev.open && prev.kind === "criteria"
-                            ? { ...prev, negate: e.target.checked }
-                            : prev,
+                          prev.open && prev.kind === "criteria" ? { ...prev, value1: e.target.value } : prev,
                         )
                       }
-                      disabled={selectionBusy}
+                      disabled={
+                        selectionBusy ||
+                        ["isEmpty", "isNotEmpty", "isImage", "isNotImage"].includes(selectionDialog.operator)
+                      }
+                      sx={{ flex: 1, minWidth: 240 }}
                     />
-                  }
-                  label={
-                    <Typography variant="caption" sx={{ fontWeight: 600 }}>
-                      Negate (NOT)
-                    </Typography>
-                  }
-                />
-              </Box>
 
-              <Box
-                sx={{
-                  borderRadius: 2,
-                  px: 1.25,
-                  py: 1,
-                  border: "1px solid rgba(148,163,184,0.24)",
-                  backgroundColor: "rgba(248,250,252,0.8)",
-                }}
-              >
-                <Typography variant="caption" color="text.secondary">
-                  Result will use <strong>row ids</strong> for stable selection across sorting.
-                </Typography>
-                <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.25 }}>
-                  Operator: <strong>{getOperatorLabel(selectionDialog.operator)}</strong>, Apply as:{" "}
-                  <strong>{getSetOpLabel(selectionDialog.setOp)}</strong>, Scope:{" "}
-                  <strong>{getScopeLabel(selectionDialog.scope)}</strong>
-                </Typography>
+                    <TextField
+                      label="Value 2"
+                      size="small"
+                      value={selectionDialog.value2}
+                      onChange={(e) =>
+                        setSelectionDialog((prev) =>
+                          prev.open && prev.kind === "criteria" ? { ...prev, value2: e.target.value } : prev,
+                        )
+                      }
+                      disabled={selectionBusy || selectionDialog.operator !== "between"}
+                      sx={{ flex: 1, minWidth: 240 }}
+                    />
+                  </Box>
+                </Paper>
+
+                <Paper
+                  variant="outlined"
+                  sx={{
+                    p: 1.5,
+                    borderRadius: 2.5,
+                    borderColor: "rgba(15,23,42,0.08)",
+                    background: "rgba(255,255,255,0.92)",
+                    boxShadow: "0 1px 2px rgba(15,23,42,0.04)",
+                  }}
+                >
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      color: "text.secondary",
+                      fontWeight: 700,
+                      textTransform: "uppercase",
+                      letterSpacing: 0.4,
+                      display: "block",
+                      mb: 1.25,
+                    }}
+                  >
+                    Selection behavior
+                  </Typography>
+
+                  <Box sx={{ display: "flex", gap: 1.5, flexWrap: "wrap" }}>
+                    <FormControl size="small" sx={{ minWidth: 220, flex: 1 }}>
+                      <InputLabel id="criteria-setop-label">Apply as</InputLabel>
+                      <Select
+                        labelId="criteria-setop-label"
+                        label="Apply as"
+                        value={selectionDialog.setOp}
+                        onChange={(e) =>
+                          setSelectionDialog((prev) =>
+                            prev.open && prev.kind === "criteria"
+                              ? { ...prev, setOp: e.target.value as SelectionSetOp }
+                              : prev,
+                          )
+                        }
+                        disabled={selectionBusy}
+                      >
+                        <MenuItem value="replace">{getSetOpLabel("replace")}</MenuItem>
+                        <MenuItem value="add">{getSetOpLabel("add")}</MenuItem>
+                        <MenuItem value="remove">{getSetOpLabel("remove")}</MenuItem>
+                        <MenuItem value="intersect">{getSetOpLabel("intersect")}</MenuItem>
+                      </Select>
+                    </FormControl>
+
+                    <FormControl size="small" sx={{ minWidth: 220, flex: 1 }}>
+                      <InputLabel id="criteria-scope-label">Scope</InputLabel>
+                      <Select
+                        labelId="criteria-scope-label"
+                        label="Scope"
+                        value={selectionDialog.scope}
+                        onChange={(e) =>
+                          setSelectionDialog((prev) =>
+                            prev.open && prev.kind === "criteria"
+                              ? { ...prev, scope: e.target.value as SelectionScope }
+                              : prev,
+                          )
+                        }
+                        disabled={selectionBusy}
+                      >
+                        <MenuItem value="allRows">{getScopeLabel("allRows")}</MenuItem>
+                        <MenuItem value="currentSelection">{getScopeLabel("currentSelection")}</MenuItem>
+                      </Select>
+                    </FormControl>
+
+                    <FormControl size="small" sx={{ minWidth: 220, flex: 1 }}>
+                      <InputLabel id="criteria-case-label">Case</InputLabel>
+                      <Select
+                        labelId="criteria-case-label"
+                        label="Case"
+                        value={selectionDialog.caseSensitive ? "sensitive" : "insensitive"}
+                        onChange={(e) =>
+                          setSelectionDialog((prev) =>
+                            prev.open && prev.kind === "criteria"
+                              ? { ...prev, caseSensitive: e.target.value === "sensitive" }
+                              : prev,
+                          )
+                        }
+                        disabled={selectionBusy}
+                      >
+                        <MenuItem value="insensitive">Case-insensitive</MenuItem>
+                        <MenuItem value="sensitive">Case-sensitive</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Box>
+
+                  <Box sx={{ display: "flex", alignItems: "center", mt: 1.25 }}>
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          size="small"
+                          checked={selectionDialog.negate}
+                          onChange={(e) =>
+                            setSelectionDialog((prev) =>
+                              prev.open && prev.kind === "criteria"
+                                ? { ...prev, negate: e.target.checked }
+                                : prev,
+                            )
+                          }
+                          disabled={selectionBusy}
+                        />
+                      }
+                      label={
+                        <Typography variant="caption" sx={{ fontWeight: 700 }}>
+                          Negate criteria
+                        </Typography>
+                      }
+                    />
+                  </Box>
+                </Paper>
+
+                <Box
+                  sx={{
+                    borderRadius: 2.5,
+                    px: 1.5,
+                    py: 1.15,
+                    border: "1px solid rgba(14,165,233,0.18)",
+                    background: "linear-gradient(135deg, rgba(14,165,233,0.08), rgba(59,130,246,0.06))",
+                  }}
+                >
+                  <Typography variant="caption" color="text.secondary">
+                    Result will use <strong>row ids</strong> for stable selection across sorting.
+                  </Typography>
+
+                  <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.25 }}>
+                    Operator: <strong>{getOperatorLabel(selectionDialog.operator)}</strong>, Apply as:{" "}
+                    <strong>{getSetOpLabel(selectionDialog.setOp)}</strong>, Scope:{" "}
+                    <strong>{getScopeLabel(selectionDialog.scope)}</strong>
+                  </Typography>
+                </Box>
               </Box>
-            </Box>
-          )}
+            )}
+          </Box>
         </DialogContent>
 
-        <DialogActions>
+        <DialogActions
+          sx={{
+            px: 2.25,
+            py: 1.5,
+            gap: 1,
+            background: "#f8fafc",
+            borderTop: "1px solid rgba(15,23,42,0.08)",
+          }}
+        >
           <Button
             variant="outlined"
             onClick={closeSelectionDialog}
             disabled={selectionBusy}
-            sx={{ textTransform: "none" }}
+            sx={{
+              textTransform: "none",
+              fontWeight: 700,
+              borderRadius: 2,
+            }}
           >
             Cancel
           </Button>
@@ -5489,7 +5861,13 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
               await runColumnCriteriaSelection();
             }}
             disabled={selectionBusy}
-            sx={{ textTransform: "none", fontWeight: 700 }}
+            sx={{
+              textTransform: "none",
+              fontWeight: 800,
+              px: 2.25,
+              borderRadius: 2,
+              boxShadow: "0 8px 18px rgba(37,99,235,0.22)",
+            }}
           >
             {selectionBusy ? "Applying…" : "Apply"}
           </Button>

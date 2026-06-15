@@ -55,7 +55,9 @@ import {
   AlertTriangle,
   Trash2,
   Play,
-  Square
+  Square,
+  ClipboardPaste,
+  CheckSquare,
 } from "lucide-react";
 import { FitViewIcon, TableIcon, TreeIcon } from "@/icons";
 
@@ -123,6 +125,9 @@ type NodeActions = {
   onRename?: (id: string) => void;
   onDuplicate?: (id: string) => void;
   onDelete?: (id: string) => void;
+  onCopyWorkflow?: (id: string) => void;
+  onPasteWorkflow?: (id: string) => void;
+  canPasteWorkflow?: boolean;
   onRestartAll?: (id: string) => void;
   onContinueAll?: (id: string) => void;
   onResetFrom?: (id: string) => void;
@@ -200,6 +205,16 @@ type ProtocolHelpState = {
   loading: boolean;
   error: string | null;
 };
+
+type WorkflowClipboardState = {
+  sourceProjectId: string | number;
+  sourceProjectName?: string;
+  protocolIds: string[];
+  workflow: unknown;
+  copiedAt: string;
+};
+
+let workflowClipboardMemory: WorkflowClipboardState | null = null;
 
 function normalizeHelpText(raw: unknown): string {
   // normalizeHelpText
@@ -692,6 +707,14 @@ export default function ProjectPage() {
   const [workflowsLoadedOnce, setWorkflowsLoadedOnce] = useState(false);
   const [miniMapEnabled, setMiniMapEnabled] = useState(true);
 
+  const [workflowClipboard, setWorkflowClipboardState] =
+    useState<WorkflowClipboardState | null>(() => workflowClipboardMemory);
+
+  const setWorkflowClipboard = useCallback((next: WorkflowClipboardState | null) => {
+    workflowClipboardMemory = next;
+    setWorkflowClipboardState(next);
+  }, []);
+
   // focusModeState
   const [focusModeEnabled, setFocusModeEnabled] = useState(false);
 
@@ -780,6 +803,8 @@ export default function ProjectPage() {
     continue: true,
     delete: true,
     duplicate: true,
+    copyWorkflow: true,
+    pasteWorkflow: true,
     export: true,
     manageTags: true,
     nextSteps: true,
@@ -857,6 +882,8 @@ export default function ProjectPage() {
           browse: Boolean(remotePolicy.browse),
           continue: Boolean(remotePolicy.continue),
           duplicate: Boolean(remotePolicy.duplicate),
+          copyWorkflow: Boolean(remotePolicy.copyWorkflow),
+          pasteWorkflow: Boolean(remotePolicy.pasteWorkflow),
           export: Boolean(remotePolicy.export),
           manageTags: Boolean(remotePolicy.manageTags),
           rename: Boolean(remotePolicy.rename),
@@ -2342,6 +2369,13 @@ export default function ProjectPage() {
             : [String(id)];
         duplicateNow(ids);
       },
+      onCopyWorkflow: () => {
+        void handleCopyWorkflow();
+      },
+      onPasteWorkflow: () => {
+        void handlePasteWorkflow();
+      },
+      canPasteWorkflow: Boolean(workflowClipboard?.workflow),
       onDelete: openDelete,
       onRestartAll: openRestartAll,
       onContinueAll: openContinueAll,
@@ -2356,7 +2390,7 @@ export default function ProjectPage() {
       },
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [handleSelectFrom, handleSelectTo, handleNodeDoubleClick, openFormForProtocolClass]);
+  }, [handleSelectFrom, handleSelectTo, handleNodeDoubleClick, openFormForProtocolClass, workflowClipboard?.workflow,]);
 
 
   /** State and handler for RemoteFileDialog */
@@ -4302,6 +4336,121 @@ export default function ProjectPage() {
     return "Operation failed";
   };
 
+  const getSelectedProtocolIdsForWorkflowCopy = (): string[] => {
+    return Array.from(new Set(
+      Array.from(getUnifiedSelectedIds())
+        .map(String)
+        .filter((id) => id && id !== "PROJECT")
+    ));
+  };
+
+  const handleCopyWorkflow = async () => {
+    const currentProjectId = getProjectId();
+
+    if (currentProjectId == null) {
+      toast.error("Project is not loaded yet.");
+      return;
+    }
+
+    const protocolIds = getSelectedProtocolIdsForWorkflowCopy();
+
+    if (!protocolIds.length) {
+      toast.error("Select at least one protocol to copy.");
+      return;
+    }
+
+    try {
+      const result = await svc.exportWorkflowProtocols(currentProjectId, {
+        protocolIds,
+        includeUpstream: false,
+      });
+
+      setWorkflowClipboard({
+        sourceProjectId: result.sourceProjectId ?? currentProjectId,
+        sourceProjectName:
+          result.sourceProjectName ??
+          String((project as any)?.name ?? (project as any)?.shortName ?? projectName ?? ""),
+        protocolIds: (result.protocolIds ?? protocolIds).map(String),
+        workflow: result.workflow,
+        copiedAt: new Date().toISOString(),
+      });
+
+      toast.success(
+        protocolIds.length > 1
+          ? `${protocolIds.length} protocols copied.`
+          : "Protocol copied."
+      );
+    } catch (e) {
+      console.error("copy workflow failed", e);
+      toast.error(getErrorMsg(e));
+    }
+  };
+
+  const handlePasteWorkflow = async () => {
+    const currentProjectId = getProjectId();
+    const clipboard = workflowClipboardMemory ?? workflowClipboard;
+
+    if (currentProjectId == null) {
+      toast.error("Project is not loaded yet.");
+      return;
+    }
+
+    if (!clipboard?.workflow) {
+      toast.error("No workflow copied.");
+      return;
+    }
+
+    const beforeIds = new Set(nodesRef.current.map((n) => String(n.id)));
+    const beforePositions = new Map<string, { x: number; y: number }>();
+
+    for (const node of nodesRef.current) {
+      const nodeId = String(node.id);
+      if (!nodeId || !node.position) continue;
+
+      beforePositions.set(nodeId, {
+        x: node.position.x,
+        y: node.position.y,
+      });
+    }
+
+    pendingNewNodesRef.current = {
+      beforeIds,
+      beforePositions,
+      operation: "add",
+    };
+
+    try {
+      const result = await svc.importWorkflowProtocols(currentProjectId, {
+        workflow: clipboard.workflow,
+        mode: "append",
+        sourceProjectId: clipboard.sourceProjectId,
+        sourceProjectName: clipboard.sourceProjectName,
+      });
+
+      if (!ensureApiOk(result as ApiWorkflowResponse, "Paste workflow failed.")) {
+        pendingNewNodesRef.current = null;
+        return;
+      }
+
+      const createdCount = Array.isArray(result.created) ? result.created.length : 0;
+
+      toast.success(
+        createdCount > 1
+          ? `${createdCount} protocols pasted.`
+          : createdCount === 1
+            ? "Protocol pasted."
+            : "Workflow pasted."
+      );
+
+      clearAllSelectionHard();
+      await Promise.resolve(handleRefreshRef.current?.());
+    } catch (e) {
+      console.error("paste workflow failed", e);
+      toast.error(getErrorMsg(e));
+      pendingNewNodesRef.current = null;
+    }
+  };
+
   const getNodeLabelById = (id: string) => {
     const node = nodesRef.current.find((n) => n.id === id);
     return ((node as any)?.data?.label as string) || id;
@@ -4563,6 +4712,24 @@ export default function ProjectPage() {
         return;
       }
 
+      if (modPressed(e) && !e.shiftKey && e.key.toLowerCase() === "c") {
+        e.preventDefault();
+        e.stopPropagation();
+        (e as any).stopImmediatePropagation?.();
+
+        void handleCopyWorkflow();
+        return;
+      }
+
+      if (modPressed(e) && !e.shiftKey && e.key.toLowerCase() === "v") {
+        e.preventDefault();
+        e.stopPropagation();
+        (e as any).stopImmediatePropagation?.();
+
+        void handlePasteWorkflow();
+        return;
+      }
+
       const ids = getSelectedIds();
       const selectedId = selectedIdRef.current;
 
@@ -4665,6 +4832,8 @@ export default function ProjectPage() {
     closeAllDockedForms,
     handleProtocolsDrawerOpenChange,
     handleOpenWorkflows,
+    handleCopyWorkflow,
+    handlePasteWorkflow,
   ]);
 
   function getHostIsDark() {
@@ -4843,6 +5012,8 @@ export default function ProjectPage() {
 
   /* ------------------------ Render ------------------------ */
   const isGrid = viewMode === "grid";
+  const canSelectAllWorkflow = getAllWorkflowProtocolIds().size > 0;
+
   return (
     <div className={`projectpage-widget-root ${hostIsDark ? "dark" : ""}`}>
       <div className="h-app min-h-0 flex flex-col relative overflow-hidden bg-background text-foreground">
@@ -5233,6 +5404,38 @@ export default function ProjectPage() {
                   <span className="text-sm mb-1">Add protocol</span>
                 </button>
 
+                
+                {contextMenuVisibilityPolicyRef.current.pasteWorkflow && (
+                <button
+                  className="pp-canvasMenuItem"
+                  onClick={() => {
+                    handleCloseMenu();
+                    void handlePasteWorkflow();
+                  }}
+                  disabled={!projectId || !workflowClipboard?.workflow}
+                  title={
+                    workflowClipboard?.sourceProjectName
+                      ? `Paste workflow from ${workflowClipboard.sourceProjectName}`
+                      : "Paste copied workflow"
+                  }
+                >
+                  <ClipboardPaste className="pp-canvasMenuIcon" />
+                  <span className="text-sm mb-1">Paste workflow</span>
+                </button>
+                )}
+
+                <button
+                  className="pp-canvasMenuItem"
+                  onClick={() => {
+                    handleCloseMenu();
+                    handleSelectAllWorkflow();
+                  }}
+                  disabled={!canSelectAllWorkflow}
+                  title="Select all workflow protocols"
+                >
+                  <CheckSquare className="pp-canvasMenuIcon" />
+                  <span className="text-sm mb-1">Select all workflow</span>
+                </button>
                 <div className="pp-canvasMenuSep" />
 
                 <button

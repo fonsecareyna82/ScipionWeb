@@ -27,7 +27,6 @@ import {
   TextField,
   MenuItem,
   Chip,
-  Snackbar,
   Alert,
 } from "@mui/material";
 import { HelpCircle, Layers as Layers3, Box as BoxIcon, Table as TableLucide } from "lucide-react";
@@ -83,6 +82,10 @@ const NEARBY_SLICE_RANGE = 10;
 const MIN_NEARBY_SLICE_FACTOR = 0.25;
 const DEBUG_SYNTHETIC_GRID = false;
 
+const SLICE_SLIDER_THROTTLE_MS = 200;
+
+const SLICE_PREVIEW_FORMAT = "webp" as const;
+
 const ORTHO_AXIS_COLORS = {
   x: "#ef4444",
   y: "#22c55e",
@@ -97,6 +100,16 @@ const POINT_COLOR_PALETTE: { label: string; value: string }[] = [
   { label: "Yellow", value: "#eab308" },
   { label: "Cyan", value: "#06b6d4" },
   { label: "Magenta", value: "#ec4899" },
+];
+
+const TOMOGRAM_CMAP_OPTIONS = [
+  "gray",
+  "viridis",
+  "magma",
+  "plasma",
+  "inferno",
+  "cividis",
+  "turbo",
 ];
 
 const HELP_TEXT: Record<string, string> = {
@@ -114,6 +127,8 @@ const HELP_TEXT: Record<string, string> = {
     "Adjust slice brightness client-side. This only affects the displayed image overlay.",
   contrast:
     "Adjust slice contrast client-side. This only affects the displayed image overlay.",
+  tomogramColormap:
+    "Colormap used to render the tomogram slice images.",
   pointColor:
     "Choose the fixed color used for coordinate markers. In 3D mode, this applies when 3D color mode is set to Fixed.",
   pointSize:
@@ -307,7 +322,6 @@ export default function Coords3dViewer({
   const [saveDialogOpen, setSaveDialogOpen] = useState<boolean>(false);
   const [saveBusy, setSaveBusy] = useState<boolean>(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [saveToast, setSaveToast] = useState<string | null>(null);
 
   const [editMode, setEditMode] = useState<boolean>(false);
 
@@ -325,6 +339,7 @@ export default function Coords3dViewer({
 
   const [brightness, setBrightness] = useState<number>(1.0);
   const [contrast, setContrast] = useState<number>(1.0);
+  const [tomogramColormap, setTomogramColormap] = useState<string>("gray");
   const [debugGrid, setDebugGrid] = useState<boolean>(DEBUG_SYNTHETIC_GRID);
 
   const [pointColor, setPointColor] = useState<string>("#ef4444");
@@ -367,6 +382,13 @@ export default function Coords3dViewer({
 
   const [sliceIndexX, setSliceIndexX] = useState<number | null>(null);
   const [sliceIndexY, setSliceIndexY] = useState<number | null>(null);
+
+  const [draggingSlice, setDraggingSlice] = useState<null | "z" | "x" | "y">(null);
+
+  const [displayedSliceIndexZ, setDisplayedSliceIndexZ] = useState<number | null>(null);
+  const [displayedSliceIndexX, setDisplayedSliceIndexX] = useState<number | null>(null);
+  const [displayedSliceIndexY, setDisplayedSliceIndexY] = useState<number | null>(null);
+
   const [sliceXImageUrl, setSliceXImageUrl] = useState<string | null>(null);
   const [sliceYImageUrl, setSliceYImageUrl] = useState<string | null>(null);
   const [sliceXError, setSliceXError] = useState<string | null>(null);
@@ -378,9 +400,19 @@ export default function Coords3dViewer({
   const sliceXReqIdRef = useRef(0);
   const sliceYReqIdRef = useRef(0);
 
-  const throttledSliceIndex = useThrottledValue(sliceIndex, 200);
-  const throttledSliceIndexX = useThrottledValue(sliceIndexX, 200);
-  const throttledSliceIndexY = useThrottledValue(sliceIndexY, 200);
+  const throttledSliceIndex = useThrottledValue(sliceIndex, SLICE_SLIDER_THROTTLE_MS);
+  const throttledSliceIndexX = useThrottledValue(sliceIndexX, SLICE_SLIDER_THROTTLE_MS);
+  const throttledSliceIndexY = useThrottledValue(sliceIndexY, SLICE_SLIDER_THROTTLE_MS);
+
+  const effectiveSliceIndex =
+    draggingSlice === "z" ? throttledSliceIndex : sliceIndex;
+
+  const effectiveSliceIndexX =
+    draggingSlice === "x" ? throttledSliceIndexX : sliceIndexX;
+
+  const effectiveSliceIndexY =
+    draggingSlice === "y" ? throttledSliceIndexY : sliceIndexY;
+
 
   const openHelp = (key: string) => {
     setHelpKey(key);
@@ -453,6 +485,30 @@ export default function Coords3dViewer({
     setContrast(1.0);
     setPickedPoint3d(null);
   }, [selectedTomoId, viewMode]);
+
+  useEffect(() => {
+    sliceAbortRef.current?.abort();
+    sliceXAbortRef.current?.abort();
+    sliceYAbortRef.current?.abort();
+
+    setSliceImageUrl(null);
+    setSliceXImageUrl(null);
+    setSliceYImageUrl(null);
+
+    setDisplayedSliceIndexZ(null);
+    setDisplayedSliceIndexX(null);
+    setDisplayedSliceIndexY(null);
+
+    setSliceError(null);
+    setSliceXError(null);
+    setSliceYError(null);
+
+    setSliceLoading(false);
+    setSliceXLoading(false);
+    setSliceYLoading(false);
+
+    setDraggingSlice(null);
+  }, [selectedTomoId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -795,17 +851,23 @@ export default function Coords3dViewer({
     });
   }, [filteredPoints, sliceIndex]);
 
+  const overlaySliceIndexZ = sliceImageUrl ? displayedSliceIndexZ : sliceIndex;
+  const overlaySliceIndexX = sliceXImageUrl ? displayedSliceIndexX : sliceIndexX;
+  const overlaySliceIndexY = sliceYImageUrl ? displayedSliceIndexY : sliceIndexY;
+
   const slicePointsSvgZ = useMemo(
-    () => computeSlicePointsSvg(filteredPoints, "z", sliceIndex, tomoDims),
-    [filteredPoints, sliceIndex, tomoDims],
+    () => computeSlicePointsSvg(filteredPoints, "z", overlaySliceIndexZ, tomoDims),
+    [filteredPoints, overlaySliceIndexZ, tomoDims],
   );
+
   const slicePointsSvgX = useMemo(
-    () => computeSlicePointsSvg(filteredPoints, "x", sliceIndexX, tomoDims),
-    [filteredPoints, sliceIndexX, tomoDims],
+    () => computeSlicePointsSvg(filteredPoints, "x", overlaySliceIndexX, tomoDims),
+    [filteredPoints, overlaySliceIndexX, tomoDims],
   );
+
   const slicePointsSvgY = useMemo(
-    () => computeSlicePointsSvg(filteredPoints, "y", sliceIndexY, tomoDims),
-    [filteredPoints, sliceIndexY, tomoDims],
+    () => computeSlicePointsSvg(filteredPoints, "y", overlaySliceIndexY, tomoDims),
+    [filteredPoints, overlaySliceIndexY, tomoDims],
   );
 
   const totalCoords = coordsDraft.length;
@@ -840,6 +902,18 @@ export default function Coords3dViewer({
     !pointsError,
   );
 
+  const buildSliceFetchOptions = useCallback(
+    (axis: SliceAxis, _isDragging: boolean, signal: AbortSignal) => ({
+      axis,
+      cmap: tomogramColormap,
+      format: SLICE_PREVIEW_FORMAT,
+      normalize: "minmax",
+      scale: 1,
+      signal,
+    }),
+    [tomogramColormap],
+  );
+
   useEffect(() => {
     const needZSlice = viewMode === "slice" || viewMode === "map3d";
     const shouldSkipForDebug = viewMode === "slice" && debugGrid;
@@ -854,7 +928,7 @@ export default function Coords3dViewer({
       !pointsData ||
       !coordsReadyForSelectedTomo ||
       effectiveTomoId == null ||
-      throttledSliceIndex == null ||
+      effectiveSliceIndex == null ||
       maxSliceZ == null ||
       maxSliceZ < 0
     ) {
@@ -863,7 +937,7 @@ export default function Coords3dViewer({
       return;
     }
 
-    const clamped = Math.max(0, Math.min(throttledSliceIndex, maxSliceZ));
+    const clamped = Math.max(0, Math.min(effectiveSliceIndex, maxSliceZ));
 
     sliceAbortRef.current?.abort();
     const controller = new AbortController();
@@ -881,13 +955,7 @@ export default function Coords3dViewer({
           outputName,
           effectiveTomoId,
           clamped,
-          {
-            axis: "z",
-            format: "webp",
-            normalize: "minmax",
-            scale: 1,
-            signal: controller.signal,
-          },
+          buildSliceFetchOptions("z", draggingSlice === "z", controller.signal),
         );
 
         if (controller.signal.aborted || sliceReqIdRef.current !== reqId) {
@@ -901,7 +969,11 @@ export default function Coords3dViewer({
           return;
         }
 
-        setSliceImageUrl(result?.url ?? null);
+        const nextUrl = result?.url ?? null;
+        setSliceImageUrl(nextUrl);
+        if (nextUrl) {
+          setDisplayedSliceIndexZ(clamped);
+        }
       } catch (e: any) {
         if (controller.signal.aborted || sliceReqIdRef.current !== reqId) return;
         setSliceError(e?.message || "Failed to load tomogram slice");
@@ -919,7 +991,9 @@ export default function Coords3dViewer({
     pointsData,
     coordsReadyForSelectedTomo,
     effectiveTomoId,
-    throttledSliceIndex,
+    effectiveSliceIndex,
+    draggingSlice,
+    buildSliceFetchOptions,
     maxSliceZ,
     projectId,
     protocolId,
@@ -942,7 +1016,7 @@ export default function Coords3dViewer({
       !pointsData ||
       !coordsReadyForSelectedTomo ||
       effectiveTomoId == null ||
-      throttledSliceIndexX == null ||
+      effectiveSliceIndexX == null ||
       maxSliceX == null ||
       maxSliceX < 0
     ) {
@@ -951,7 +1025,7 @@ export default function Coords3dViewer({
       return;
     }
 
-    const clamped = Math.max(0, Math.min(throttledSliceIndexX, maxSliceX));
+    const clamped = Math.max(0, Math.min(effectiveSliceIndexX, maxSliceX));
 
     sliceXAbortRef.current?.abort();
     const controller = new AbortController();
@@ -969,13 +1043,7 @@ export default function Coords3dViewer({
           outputName,
           effectiveTomoId,
           clamped,
-          {
-            axis: "x",
-            format: "webp",
-            normalize: "minmax",
-            scale: 1,
-            signal: controller.signal,
-          },
+          buildSliceFetchOptions("x", draggingSlice === "x", controller.signal),
         );
 
         if (controller.signal.aborted || sliceXReqIdRef.current !== reqId) {
@@ -989,7 +1057,11 @@ export default function Coords3dViewer({
           return;
         }
 
-        setSliceXImageUrl(result?.url ?? null);
+        const nextUrl = result?.url ?? null;
+        setSliceXImageUrl(nextUrl);
+        if (nextUrl) {
+          setDisplayedSliceIndexX(clamped);
+        }
       } catch (e: any) {
         if (controller.signal.aborted || sliceXReqIdRef.current !== reqId) return;
         setSliceXError(e?.message || "Failed to load tomogram slice (X)");
@@ -1008,7 +1080,9 @@ export default function Coords3dViewer({
     pointsData,
     coordsReadyForSelectedTomo,
     effectiveTomoId,
-    throttledSliceIndexX,
+    effectiveSliceIndexX,
+    draggingSlice,
+    buildSliceFetchOptions,
     maxSliceX,
     projectId,
     protocolId,
@@ -1031,7 +1105,7 @@ export default function Coords3dViewer({
       !pointsData ||
       !coordsReadyForSelectedTomo ||
       effectiveTomoId == null ||
-      throttledSliceIndexY == null ||
+      effectiveSliceIndexY == null ||
       maxSliceY == null ||
       maxSliceY < 0
     ) {
@@ -1040,7 +1114,7 @@ export default function Coords3dViewer({
       return;
     }
 
-    const clamped = Math.max(0, Math.min(throttledSliceIndexY, maxSliceY));
+    const clamped = Math.max(0, Math.min(effectiveSliceIndexY, maxSliceY));
 
     sliceYAbortRef.current?.abort();
     const controller = new AbortController();
@@ -1058,13 +1132,7 @@ export default function Coords3dViewer({
           outputName,
           effectiveTomoId,
           clamped,
-          {
-            axis: "y",
-            format: "webp",
-            normalize: "minmax",
-            scale: 1,
-            signal: controller.signal,
-          },
+          buildSliceFetchOptions("y", draggingSlice === "y", controller.signal),
         );
 
         if (controller.signal.aborted || sliceYReqIdRef.current !== reqId) {
@@ -1078,7 +1146,11 @@ export default function Coords3dViewer({
           return;
         }
 
-        setSliceYImageUrl(result?.url ?? null);
+        const nextUrl = result?.url ?? null;
+        setSliceYImageUrl(nextUrl);
+        if (nextUrl) {
+          setDisplayedSliceIndexY(clamped);
+        }
       } catch (e: any) {
         if (controller.signal.aborted || sliceYReqIdRef.current !== reqId) return;
         setSliceYError(e?.message || "Failed to load tomogram slice (Y)");
@@ -1097,7 +1169,9 @@ export default function Coords3dViewer({
     pointsData,
     coordsReadyForSelectedTomo,
     effectiveTomoId,
-    throttledSliceIndexY,
+    effectiveSliceIndexY,
+    draggingSlice,
+    buildSliceFetchOptions, ,
     maxSliceY,
     projectId,
     protocolId,
@@ -2692,7 +2766,14 @@ export default function Coords3dViewer({
                             openHelp={openHelp}
                             value={sliceIndex}
                             max={maxSliceZ}
-                            onChange={setSliceIndex}
+                            onChange={(v) => {
+                              setDraggingSlice("z");
+                              setSliceIndex(v);
+                            }}
+                            onChangeCommitted={(v) => {
+                              setSliceIndex(v);
+                              setDraggingSlice((current) => current === "z" ? null : current);
+                            }}
                             axisColor={ORTHO_AXIS_COLORS.z}
                           />
 
@@ -2703,7 +2784,14 @@ export default function Coords3dViewer({
                               openHelp={openHelp}
                               value={sliceIndexX}
                               max={maxSliceX}
-                              onChange={setSliceIndexX}
+                              onChange={(v) => {
+                                setDraggingSlice("x");
+                                setSliceIndexX(v);
+                              }}
+                              onChangeCommitted={(v) => {
+                                setSliceIndexX(v);
+                                setDraggingSlice((current) => current === "x" ? null : current);
+                              }}
                               axisColor={ORTHO_AXIS_COLORS.x}
                             />
                           )}
@@ -2715,7 +2803,14 @@ export default function Coords3dViewer({
                               openHelp={openHelp}
                               value={sliceIndexY}
                               max={maxSliceY}
-                              onChange={setSliceIndexY}
+                              onChange={(v) => {
+                                setDraggingSlice("y");
+                                setSliceIndexY(v);
+                              }}
+                              onChangeCommitted={(v) => {
+                                setSliceIndexY(v);
+                                setDraggingSlice((current) => current === "y" ? null : current);
+                              }}
                               axisColor={ORTHO_AXIS_COLORS.y}
                             />
                           )}
@@ -2811,6 +2906,30 @@ export default function Coords3dViewer({
                     ) : (
                       <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5, ml: 1 }}>
                         <Typography variant="subtitle2">Appearance</Typography>
+
+                        <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
+                          <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
+                            <Typography variant="caption" color="text.secondary">
+                              Tomogram colormap
+                            </Typography>
+                            <IconButton size="small" onClick={() => openHelp("tomogramColormap")}>
+                              <HelpCircle size={14} />
+                            </IconButton>
+                          </Box>
+                          <TextField
+                            size="small"
+                            select
+                            value={tomogramColormap}
+                            onChange={(e) => setTomogramColormap(e.target.value)}
+                            SelectProps={{ MenuProps: { disablePortal: true } }}
+                          >
+                            {TOMOGRAM_CMAP_OPTIONS.map((cm) => (
+                              <MenuItem key={cm} value={cm}>
+                                {cm}
+                              </MenuItem>
+                            ))}
+                          </TextField>
+                        </Box>
 
                         <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
                           <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
@@ -3093,6 +3212,7 @@ function SliderField({
   value,
   max,
   onChange,
+  onChangeCommitted,
   axisColor,
 }: {
   label: string;
@@ -3101,8 +3221,11 @@ function SliderField({
   value: number | null;
   max: number | null;
   onChange: (v: number) => void;
+  onChangeCommitted?: (v: number) => void;
   axisColor?: string;
 }) {
+  const normalizeSliderValue = (v: number | number[]) =>
+    Array.isArray(v) ? v[0] : v;
   return (
     <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
       <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
@@ -3121,7 +3244,10 @@ function SliderField({
             min={0}
             max={max}
             step={1}
-            onChange={(_, v) => onChange(v as number)}
+            onChange={(_, v) => onChange(normalizeSliderValue(v as number | number[]))}
+            onChangeCommitted={(_, v) => {
+              onChangeCommitted?.(normalizeSliderValue(v as number | number[]));
+            }}
             valueLabelDisplay="auto"
             valueLabelFormat={(v) => String((v as number) + 1)}
             sx={

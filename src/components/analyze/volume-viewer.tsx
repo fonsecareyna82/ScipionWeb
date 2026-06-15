@@ -57,8 +57,8 @@ type SliceImageState = {
 
 const DEFAULT_AXIS: "z" | "y" | "x" = "z";
 const CMAP_OPTIONS = [
-  "viridis",
   "gray",
+  "viridis",
   "magma",
   "plasma",
   "inferno",
@@ -67,6 +67,15 @@ const CMAP_OPTIONS = [
 ];
 
 const SURFACE_MAX_TRIANGLES = 550000;
+const SLICE_SLIDER_THROTTLE_MS = 80;
+
+const SLICE_PREVIEW_MAX_SIDE = 768;
+const SLICE_PREVIEW_FORMAT = "webp" as const;
+const SLICE_PREVIEW_QUALITY = 70;
+
+const SLICE_DRAG_PREVIEW_MAX_SIDE = 384;
+const SLICE_DRAG_PREVIEW_QUALITY = 55;
+
 const ORTHO_AXIS_COLORS = {
   x: "#ef4444",
   y: "#22c55e",
@@ -175,17 +184,31 @@ export default function VolumeViewer({
 
   const [axis, setAxis] = useState<"z" | "y" | "x">(DEFAULT_AXIS);
   const [sliceIndex, setSliceIndex] = useState(0);
-  const throttledSliceIndex = useThrottledValue(sliceIndex, 200);
+  const throttledSliceIndex = useThrottledValue(sliceIndex, SLICE_SLIDER_THROTTLE_MS);
 
   const [sliceIndexZ, setSliceIndexZ] = useState(0);
   const [sliceIndexY, setSliceIndexY] = useState(0);
   const [sliceIndexX, setSliceIndexX] = useState(0);
 
-  const throttledSliceIndexZ = useThrottledValue(sliceIndexZ, 200);
-  const throttledSliceIndexY = useThrottledValue(sliceIndexY, 200);
-  const throttledSliceIndexX = useThrottledValue(sliceIndexX, 200);
+  const [draggingSlice, setDraggingSlice] = useState<null | "single" | "z" | "y" | "x">(null);
 
-  const [colormap, setColormap] = useState<string>("viridis");
+  const throttledSliceIndexZ = useThrottledValue(sliceIndexZ, SLICE_SLIDER_THROTTLE_MS);
+  const throttledSliceIndexY = useThrottledValue(sliceIndexY, SLICE_SLIDER_THROTTLE_MS);
+  const throttledSliceIndexX = useThrottledValue(sliceIndexX, SLICE_SLIDER_THROTTLE_MS);
+
+  const effectiveSliceIndex =
+    draggingSlice === "single" ? throttledSliceIndex : sliceIndex;
+
+  const effectiveSliceIndexZ =
+    draggingSlice === "z" ? throttledSliceIndexZ : sliceIndexZ;
+
+  const effectiveSliceIndexY =
+    draggingSlice === "y" ? throttledSliceIndexY : sliceIndexY;
+
+  const effectiveSliceIndexX =
+    draggingSlice === "x" ? throttledSliceIndexX : sliceIndexX;
+
+  const [colormap, setColormap] = useState<string>("gray");
   const [interp2d, setInterp2d] = useState<Interp2d>("linear");
   const [sharpen2d, setSharpen2d] = useState(false);
   const [brightness2d, setBrightness2d] = useState(0);
@@ -193,12 +216,6 @@ export default function VolumeViewer({
 
   const [pan2d, setPan2d] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
 
-  const [frontUrl, setFrontUrl] = useState<string | null>(null);
-  const [imgError, setImgError] = useState<string | null>(null);
-  const [_, setLoadingSlice] = useState(false);
-
-  const reqIdRef = useRef(0);
-  const abortRef = useRef<AbortController | null>(null);
 
   const [sliceReloadNonce, setSliceReloadNonce] = useState(0);
   const bumpSliceReload = useCallback(() => {
@@ -495,6 +512,36 @@ export default function VolumeViewer({
   const readyTripleSlices =
     selectedId != null && !!meta && dims.x > 0 && dims.y > 0 && dims.z > 0;
 
+  const buildSliceFetchOptions = useCallback(
+    (isDragging: boolean) => ({
+      thumb: isDragging ? SLICE_DRAG_PREVIEW_MAX_SIDE : SLICE_PREVIEW_MAX_SIDE,
+      format: SLICE_PREVIEW_FORMAT,
+      fast: true,
+      quality: isDragging ? SLICE_DRAG_PREVIEW_QUALITY : SLICE_PREVIEW_QUALITY,
+    }),
+    [],
+  );
+
+  const singleSliceFetchOptions = useMemo(
+    () => buildSliceFetchOptions(draggingSlice === "single"),
+    [buildSliceFetchOptions, draggingSlice],
+  );
+
+  const zSliceFetchOptions = useMemo(
+    () => buildSliceFetchOptions(draggingSlice === "z"),
+    [buildSliceFetchOptions, draggingSlice],
+  );
+
+  const ySliceFetchOptions = useMemo(
+    () => buildSliceFetchOptions(draggingSlice === "y"),
+    [buildSliceFetchOptions, draggingSlice],
+  );
+
+  const xSliceFetchOptions = useMemo(
+    () => buildSliceFetchOptions(draggingSlice === "x"),
+    [buildSliceFetchOptions, draggingSlice],
+  );
+
   const canShowExternalViewers = Boolean(
     selectedId != null &&
     meta != null &&
@@ -515,76 +562,22 @@ export default function VolumeViewer({
     setPan2d({ x: 0, y: 0 });
   }, [selectedId, axis]);
 
-  useEffect(() => {
-    if (
-      !readySlices ||
-      viewMode !== "slices" ||
-      sliceLayoutMode !== "single"
-    ) {
-      setImgError(null);
-      return;
-    }
-
-    const idx = Math.max(0, Math.min(throttledSliceIndex, maxSlice));
-
-    abortRef.current?.abort();
-    const myAbort = new AbortController();
-    abortRef.current = myAbort;
-
-    const myReq = ++reqIdRef.current;
-    setImgError(null);
-
-    (async () => {
-      try {
-        setLoadingSlice(true);
-        const { url, revoke } = await svc.fetchVolumeSliceObjectUrl(
-          projectId,
-          protocolId,
-          outputName,
-          selectedId!,
-          idx,
-          { axis, cmap: colormap, signal: myAbort.signal },
-        );
-
-        if (reqIdRef.current !== myReq) {
-          revoke();
-          return;
-        }
-
-        setFrontUrl((prev) => {
-          if (prev && prev !== url) {
-            // Previous URL can be revoked by the service if needed.
-          }
-          return url;
-        });
-      } catch (e: any) {
-        if (e?.name === "AbortError") return;
-        if (reqIdRef.current === myReq) {
-          setImgError(e?.message || "Failed to render slice");
-        }
-      } finally {
-        if (reqIdRef.current === myReq) setLoadingSlice(false);
-      }
-    })();
-
-    return () => {
-      myAbort.abort();
-    };
-  }, [
-    readySlices,
-    viewMode,
-    sliceLayoutMode,
-    throttledSliceIndex,
-    axis,
-    colormap,
-    selectedId,
-    maxSlice,
+  const singleSlice = useVolumeSliceImage({
+    enabled: viewMode === "slices" && sliceLayoutMode === "single" && readySlices,
+    svc,
     projectId,
     protocolId,
     outputName,
-    svc,
-    sliceReloadNonce,
-  ]);
+    volumeId: selectedId,
+    axis,
+    maxSlice,
+    colormap,
+    sliceIndex: effectiveSliceIndex,
+    requestOptions: singleSliceFetchOptions,
+  });
+
+  const frontUrl = singleSlice.url;
+  const imgError = singleSlice.error;
 
   const zSlice = useVolumeSliceImage({
     enabled: viewMode === "slices" && sliceLayoutMode === "triple" && readyTripleSlices,
@@ -594,10 +587,11 @@ export default function VolumeViewer({
     outputName,
     volumeId: selectedId,
     axis: "z",
-    sliceIndex: throttledSliceIndexZ,
+    sliceIndex: effectiveSliceIndexZ,
     maxSlice: maxSliceZ,
     colormap,
     reloadKey: sliceReloadNonce,
+    requestOptions: zSliceFetchOptions,
   });
 
   const ySlice = useVolumeSliceImage({
@@ -608,10 +602,11 @@ export default function VolumeViewer({
     outputName,
     volumeId: selectedId,
     axis: "y",
-    sliceIndex: throttledSliceIndexY,
+    sliceIndex: effectiveSliceIndexY,
     maxSlice: maxSliceY,
     colormap,
     reloadKey: sliceReloadNonce,
+    requestOptions: ySliceFetchOptions,
   });
 
   const xSlice = useVolumeSliceImage({
@@ -622,10 +617,11 @@ export default function VolumeViewer({
     outputName,
     volumeId: selectedId,
     axis: "x",
-    sliceIndex: throttledSliceIndexX,
+    sliceIndex: effectiveSliceIndexX,
     maxSlice: maxSliceX,
     colormap,
     reloadKey: sliceReloadNonce,
+    requestOptions: xSliceFetchOptions,
   });
 
   const metadataSurfaceLevelRange = useMemo<[number, number] | null>(() => {
@@ -1522,7 +1518,14 @@ export default function VolumeViewer({
                             value={Math.min(sliceIndex, maxSlice)}
                             min={0}
                             max={maxSlice}
-                            onChange={(v) => setSliceIndex(v)}
+                            onChange={(v) => {
+                              setDraggingSlice("single");
+                              setSliceIndex(v);
+                            }}
+                            onChangeCommitted={(v) => {
+                              setSliceIndex(v);
+                              setDraggingSlice((current) => current === "single" ? null : current);
+                            }}
                             disabled={!readySlices}
                           />
                         </>
@@ -1535,7 +1538,14 @@ export default function VolumeViewer({
                             value={Math.min(sliceIndexZ, maxSliceZ)}
                             min={0}
                             max={maxSliceZ}
-                            onChange={(v) => setSliceIndexZ(v)}
+                            onChange={(v) => {
+                              setDraggingSlice("z");
+                              setSliceIndexZ(v);
+                            }}
+                            onChangeCommitted={(v) => {
+                              setSliceIndexZ(v);
+                              setDraggingSlice((current) => current === "z" ? null : current);
+                            }}
                             disabled={!readyTripleSlices}
                             axisColor={ORTHO_AXIS_COLORS.z}
                           />
@@ -1546,7 +1556,14 @@ export default function VolumeViewer({
                             value={Math.min(sliceIndexY, maxSliceY)}
                             min={0}
                             max={maxSliceY}
-                            onChange={(v) => setSliceIndexY(v)}
+                            onChange={(v) => {
+                              setDraggingSlice("y");
+                              setSliceIndexY(v);
+                            }}
+                            onChangeCommitted={(v) => {
+                              setSliceIndexY(v);
+                              setDraggingSlice((current) => current === "y" ? null : current);
+                            }}
                             disabled={!readyTripleSlices}
                             axisColor={ORTHO_AXIS_COLORS.y}
                           />
@@ -1557,7 +1574,14 @@ export default function VolumeViewer({
                             value={Math.min(sliceIndexX, maxSliceX)}
                             min={0}
                             max={maxSliceX}
-                            onChange={(v) => setSliceIndexX(v)}
+                            onChange={(v) => {
+                              setDraggingSlice("x");
+                              setSliceIndexX(v);
+                            }}
+                            onChangeCommitted={(v) => {
+                              setSliceIndexX(v);
+                              setDraggingSlice((current) => current === "x" ? null : current);
+                            }}
                             disabled={!readyTripleSlices}
                             axisColor={ORTHO_AXIS_COLORS.x}
                           />
@@ -2150,6 +2174,7 @@ function AxisSliceSliderControl({
   min,
   max,
   onChange,
+  onChangeCommitted,
   disabled,
   axisColor,
 }: {
@@ -2160,9 +2185,12 @@ function AxisSliceSliderControl({
   min: number;
   max: number;
   onChange: (value: number) => void;
+  onChangeCommitted?: (value: number) => void;
   disabled?: boolean;
   axisColor?: string;
 }) {
+  const normalizeSliderValue = (v: number | number[]) =>
+    Array.isArray(v) ? v[0] : v;
   return (
     <Box sx={{ mt: 0.5 }}>
       <Box sx={{ display: "inline-flex", gap: 0.5, alignItems: "center" }}>
@@ -2180,7 +2208,10 @@ function AxisSliceSliderControl({
         min={min}
         max={Math.max(min, max)}
         step={1}
-        onChange={(_, v) => onChange(v as number)}
+        onChange={(_, v) => onChange(normalizeSliderValue(v as number | number[]))}
+        onChangeCommitted={(_, v) => {
+          onChangeCommitted?.(normalizeSliderValue(v as number | number[]));
+        }}
         disabled={disabled}
         valueLabelDisplay="auto"
         valueLabelFormat={(v) => `${(v as number) + 1}`}
@@ -2527,25 +2558,6 @@ function OrthoSlicePanel({
         </Typography>
       </Box>
 
-      {loading && imageUrl && (
-        <Box
-          sx={{
-            position: "absolute",
-            top: 6,
-            right: 6,
-            width: 18,
-            height: 18,
-            borderRadius: "50%",
-            bgcolor: "rgba(255,255,255,0.9)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <CircularProgress size={12} />
-        </Box>
-      )}
-
       {error && imageUrl && (
         <Box
           sx={{
@@ -2582,6 +2594,7 @@ function useVolumeSliceImage({
   maxSlice,
   colormap,
   reloadKey,
+  requestOptions,
 }: {
   enabled: boolean;
   svc: any;
@@ -2594,50 +2607,62 @@ function useVolumeSliceImage({
   maxSlice: number;
   colormap: string;
   reloadKey?: number;
+  requestOptions?: {
+    thumb?: number;
+    format?: "png" | "webp" | "jpeg";
+    fast?: boolean;
+    quality?: number;
+  };
 }): SliceImageState {
   const [url, setUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const abortRef = useRef<AbortController | null>(null);
-  const reqIdRef = useRef(0);
+  const controllerRef = useRef<AbortController | null>(null);
+  const inFlightRef = useRef(false);
+  const pendingJobRef = useRef<{ requestKey: string; sliceIndex: number } | null>(null);
+  const requestKeyRef = useRef<string | null>(null);
   const revokeRef = useRef<(() => void) | null>(null);
+  const runNextRef = useRef<(() => void) | null>(null);
 
-  useEffect(() => {
-    if (!enabled || volumeId == null || sliceIndex == null) {
-      abortRef.current?.abort();
+  runNextRef.current = () => {
+    if (inFlightRef.current) return;
+
+    const job = pendingJobRef.current;
+    if (!job) {
       setLoading(false);
-      setError(null);
       return;
     }
 
-    const clampedIndex = Math.max(0, Math.min(sliceIndex, maxSlice));
+    pendingJobRef.current = null;
+    inFlightRef.current = true;
 
-    abortRef.current?.abort();
     const controller = new AbortController();
-    abortRef.current = controller;
+    controllerRef.current = controller;
 
-    const reqId = ++reqIdRef.current;
+    setLoading(true);
+    setError(null);
 
     (async () => {
       try {
-        setLoading(true);
-        setError(null);
-
         const result = await svc.fetchVolumeSliceObjectUrl(
           projectId,
           protocolId,
           outputName,
           volumeId,
-          clampedIndex,
+          job.sliceIndex,
           {
             axis,
             cmap: colormap,
+            thumb: requestOptions?.thumb,
+            format: requestOptions?.format,
+            fast: requestOptions?.fast,
+            quality: requestOptions?.quality,
             signal: controller.signal,
           },
         );
 
-        if (controller.signal.aborted || reqIdRef.current !== reqId) {
+        if (controller.signal.aborted || requestKeyRef.current !== job.requestKey) {
           result?.revoke?.();
           return;
         }
@@ -2653,17 +2678,65 @@ function useVolumeSliceImage({
         revokeRef.current = result?.revoke ?? null;
         setUrl(result?.url ?? null);
       } catch (e: any) {
-        if (controller.signal.aborted || reqIdRef.current !== reqId) return;
+        if (controller.signal.aborted || requestKeyRef.current !== job.requestKey) return;
         setError(e?.message || `Failed to load ${axis.toUpperCase()} slice`);
-        setUrl(null);
       } finally {
-        if (reqIdRef.current === reqId) setLoading(false);
+        if (controllerRef.current === controller) {
+          controllerRef.current = null;
+        }
+
+        inFlightRef.current = false;
+
+        if (pendingJobRef.current) {
+          runNextRef.current?.();
+        } else {
+          setLoading(false);
+        }
       }
     })();
+  };
 
-    return () => {
-      controller.abort();
+  useEffect(() => {
+    if (!enabled || volumeId == null || sliceIndex == null) {
+      controllerRef.current?.abort();
+      controllerRef.current = null;
+      pendingJobRef.current = null;
+      inFlightRef.current = false;
+      requestKeyRef.current = null;
+      setLoading(false);
+      setError(null);
+      return;
+    }
+
+    const clampedIndex = Math.max(0, Math.min(sliceIndex, maxSlice));
+    const requestKey = [
+      projectId,
+      protocolId,
+      outputName,
+      volumeId,
+      axis,
+      colormap,
+      reloadKey ?? "",
+      requestOptions?.thumb ?? "",
+      requestOptions?.format ?? "",
+      requestOptions?.fast ?? "",
+      requestOptions?.quality ?? "",
+    ].map(String).join("|");
+
+    if (requestKeyRef.current !== requestKey) {
+      controllerRef.current?.abort();
+      controllerRef.current = null;
+      pendingJobRef.current = null;
+      inFlightRef.current = false;
+      requestKeyRef.current = requestKey;
+    }
+
+    pendingJobRef.current = {
+      requestKey,
+      sliceIndex: clampedIndex,
     };
+
+    runNextRef.current?.();
   }, [
     enabled,
     svc,
@@ -2676,10 +2749,18 @@ function useVolumeSliceImage({
     maxSlice,
     colormap,
     reloadKey,
+    requestOptions?.thumb,
+    requestOptions?.format,
+    requestOptions?.fast,
+    requestOptions?.quality,
   ]);
 
   useEffect(() => {
     return () => {
+      controllerRef.current?.abort();
+      controllerRef.current = null;
+      pendingJobRef.current = null;
+
       if (revokeRef.current) {
         try {
           revokeRef.current();

@@ -91,7 +91,7 @@ function SecondaryButton(props: {
       disabled={props.disabled}
       title={props.title}
       className={classNames(
-        "inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-2 text-sm font-semibold transition",
+        "inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-2 text-sm  transition",
         "border-gray-200/70 bg-white/70 text-gray-800 shadow-sm hover:border-gray-300/80 hover:shadow-md",
         "dark:border-gray-800/80 dark:bg-white/[0.02] dark:text-white/90 dark:hover:border-gray-700",
         "disabled:cursor-not-allowed disabled:opacity-60",
@@ -113,7 +113,7 @@ function TabButton(props: {
       type="button"
       onClick={props.onClick}
       className={classNames(
-        "rounded-lg border px-3 py-2 text-sm font-semibold transition",
+        "rounded-lg border px-3 py-2 text-sm  transition",
         "focus:outline-none focus:ring-2 focus:ring-indigo-500/25 dark:focus:ring-indigo-400/25",
         props.active
           ? [
@@ -480,7 +480,7 @@ export default function Plugins() {
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
                       className={classNames(
-                        "w-full rounded-xl border py-2 pl-9 pr-10 text-sm font-semibold outline-none transition",
+                        "w-full rounded-xl border py-2 pl-9 pr-10 text-sm  outline-none transition",
                         "border-gray-200/70 bg-white/70 text-gray-800 placeholder:text-gray-400",
                         "focus:border-indigo-500/40 focus:ring-2 focus:ring-indigo-500/10",
                         "dark:border-gray-800/80 dark:bg-white/[0.02] dark:text-white/90 dark:placeholder:text-gray-500",

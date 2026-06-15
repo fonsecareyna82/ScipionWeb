@@ -1,5 +1,5 @@
 // src/components/analyze/analyze-output-dialog.tsx
-import { memo, useEffect, useMemo } from "react";
+import { memo, useMemo } from "react";
 import { Box, Chip, Dialog, DialogContent, DialogTitle, IconButton, Typography } from "@mui/material";
 import { CloseIcon } from "@/icons";
 import { MetadataViewer } from "./metadata-viewer";
@@ -57,7 +57,14 @@ function isSetOfMetadataKind(k?: string) {
   if (!k) return false;
   const trimmed = k.replace(/\s+/g, "");
   if (!/^SetOf/i.test(trimmed) && !/^RelionSetOf/i.test(trimmed)) return false;
-  return !isVolumeKind(k) && !isCoords2dKind(k) && !isCoords3dKind(k) && !isSetOfFSCsKind(k);
+  return (
+  !isVolumeKind(k) &&
+  !isCoords2dKind(k) &&
+  !isCoords3dKind(k) &&
+  !isTiltSeriesKind(k) &&
+  !isCTFTomoSeriesKind(k) &&
+  !isSetOfFSCsKind(k)
+);
 }
 
 const dialogPaperSx = {
@@ -121,16 +128,12 @@ function buildOutputRef(raw: any): AnalyzeOutputRef {
 function AnalyzeOutputDialog({ open, onClose, projectId, protocolId, protocolLabel, outputName, outputRaw }: AnalyzeOutputDialogProps) {
   const pointerClass = useMemo(() => {
     const r = unwrapOutputRaw(outputRaw);
-    return (r?._class || r?.pointerClass || r?.class || r?.type || "").toString();
+    return toStringSafe(r?._class || r?.pointerClass || r?.class || r?.type);
   }, [outputRaw]);
 
   const outputRef = useMemo(() => buildOutputRef(outputRaw), [outputRaw]);
   const projectIdNum = useMemo(() => Number(projectId), [projectId]);
   const protocolIdNum = useMemo(() => Number(protocolId), [protocolId]);
-
-  useEffect(() => {
-    if (!open) return;
-  }, [open, projectIdNum, protocolIdNum, outputName, pointerClass]);
 
   const body = useMemo(() => {
     if (isVolumeKind(pointerClass)) {
@@ -187,12 +190,21 @@ function AnalyzeOutputDialog({ open, onClose, projectId, protocolId, protocolLab
   };
 
   return (
-    <Dialog open={open} onClose={handleDialogClose} maxWidth="xl" fullWidth PaperProps={{ sx: dialogPaperSx }}>
+    <Dialog
+      open={open}
+      onClose={handleDialogClose}
+      maxWidth="xl"
+      fullWidth
+      PaperProps={{ sx: dialogPaperSx }}
+      onDoubleClickCapture={(event) => {
+        event.stopPropagation();
+      }}
+    >
       <DialogTitle component="div" sx={headerSx}>
         <Box sx={{ display: "flex", flexDirection: "column", minWidth: 0, gap: 0.25, flex: 1 }}>
           <Box sx={{ display: "flex", alignItems: "baseline", gap: 1, minWidth: 0 }}>
             <Typography variant="subtitle1" sx={{ color: "#f3f4f6", fontWeight: 600, letterSpacing: 0.2, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>
-              Analyze Result — {outputName}
+              Analyze Result - {outputName}
             </Typography>
             {pointerClass ? <Chip size="small" label={pointerClass} sx={{ height: 22, color: "#e5e7eb", bgcolor: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.18)", "& .MuiChip-label": { px: 1, py: 0.25 } }} /> : null}
           </Box>
