@@ -20,6 +20,7 @@ type IntegratedTomographyViewerProps = {
 type IntegratedSection = "tiltSeries" | "ctf" | "tomogram" | "coordinates" | "metadata";
 type ContextKey = "tiltSeries" | "ctf" | "tomogram" | "coordinates3d";
 type ContextStatus = "source" | "linked" | "planned" | "unavailable";
+type RelationSource = "coordinates" | "tomogram" | "tiltSeries" | "ctf";
 
 type ContextNode = {
   key: IntegratedSection;
@@ -160,78 +161,114 @@ export default function IntegratedTomographyViewer({
   const [contextLoading, setContextLoading] = useState(false);
   const [contextError, setContextError] = useState<string | null>(null);
   const [selectedRelation, setSelectedRelation] = useState<IntegratedContextItemRelation | null>(null);
+  const [selectedRelationSource, setSelectedRelationSource] = useState<RelationSource | null>(null);
 
   useEffect(() => {
     setSelectedRelation(null);
+    setSelectedRelationSource(null);
   }, [projectIdNum, protocolIdNum, outputName]);
 
-  const relationValueMatches = (value: unknown, target: string) => {
-    return value != null && String(value) === target;
+  const normalizeSelectionValue = (value: unknown) => {
+    if (value == null) return null;
+    const text = String(value);
+    return text ? text : null;
   };
 
-  const selectRelationById = (
-    source: "coordinates" | "tomogram" | "tiltSeries" | "ctf",
-    id: string | number | null | undefined,
-  ) => {
-    if (id == null) return;
+  const relationValueMatches = (value: unknown, candidates: string[]) => {
+    const text = normalizeSelectionValue(value);
+    return text != null && candidates.includes(text);
+  };
 
-    const value = String(id);
+  const selectRelationByCandidates = (source: RelationSource, rawCandidates: unknown[]) => {
+    const candidates = rawCandidates
+      .map(normalizeSelectionValue)
+      .filter((value): value is string => Boolean(value));
+
+    if (!candidates.length) {
+      setSelectedRelationSource(source);
+      setSelectedRelation(null);
+      return;
+    }
+
     const items = context?.relations?.items ?? [];
 
-    const match = items.find((item) => {
+    const sourceMatch = items.find((item) => {
       if (source === "coordinates") {
         return (
-          relationValueMatches(item.coordinatesTomogramId, value) ||
-          relationValueMatches(item.tomogramId, value) ||
-          relationValueMatches(item.key, value) ||
-          relationValueMatches(item.label, value)
+          relationValueMatches(item.coordinatesTomogramId, candidates) ||
+          relationValueMatches(item.tomogramId, candidates)
         );
       }
 
       if (source === "tomogram") {
         return (
-          relationValueMatches(item.tomogramVolumeId, value) ||
-          relationValueMatches(item.tomogramId, value) ||
-          relationValueMatches(item.key, value) ||
-          relationValueMatches(item.label, value)
+          relationValueMatches(item.tomogramVolumeId, candidates) ||
+          relationValueMatches(item.tomogramId, candidates)
         );
       }
 
       if (source === "tiltSeries") {
-        return (
-          relationValueMatches(item.tiltSeriesId, value) ||
-          relationValueMatches(item.key, value) ||
-          relationValueMatches(item.label, value)
-        );
+        return relationValueMatches(item.tiltSeriesId, candidates);
       }
 
       return (
-        relationValueMatches(item.ctfSeriesId, value) ||
-        relationValueMatches(item.tiltSeriesId, value) ||
-        relationValueMatches(item.key, value) ||
-        relationValueMatches(item.label, value)
+        relationValueMatches(item.ctfSeriesId, candidates) ||
+        relationValueMatches(item.tiltSeriesId, candidates)
       );
     });
 
-    if (match) {
-      setSelectedRelation((prev) => (prev?.key === match.key ? prev : match));
-    }
+    const fallbackMatch =
+      sourceMatch ??
+      items.find(
+        (item) =>
+          relationValueMatches(item.key, candidates) ||
+          relationValueMatches(item.label, candidates),
+      );
+
+    setSelectedRelationSource(source);
+    setSelectedRelation((prev) => {
+      if (!fallbackMatch) return null;
+      return prev?.key === fallbackMatch.key ? prev : fallbackMatch;
+    });
   };
 
   const handleCoordinatesTomogramSelect = (tomogram: any) => {
-    selectRelationById("coordinates", tomogram?.tomoId ?? tomogram?.id ?? tomogram?.label);
+    selectRelationByCandidates("coordinates", [
+      tomogram?.tomoId,
+      tomogram?.id,
+      tomogram?.label,
+      tomogram?.name,
+      tomogram?.tsId,
+    ]);
   };
 
   const handleVolumeSelect = (volume: any) => {
-    selectRelationById("tomogram", volume?.tomoId ?? volume?.id ?? volume?.label ?? volume?.name);
+    selectRelationByCandidates("tomogram", [
+      volume?.tomoId,
+      volume?.id,
+      volume?.label,
+      volume?.name,
+      volume?.tsId,
+    ]);
   };
 
   const handleTiltSeriesSelect = (series: any) => {
-    selectRelationById("tiltSeries", series?.tiltSeriesId ?? series?.tsId ?? series?.id ?? series?.label);
+    selectRelationByCandidates("tiltSeries", [
+      series?.tiltSeriesId,
+      series?.tsId,
+      series?.id,
+      series?.label,
+    ]);
   };
 
   const handleCtfSeriesSelect = (series: any) => {
-    selectRelationById("ctf", series?.ctfSeriesId ?? series?.tiltSeriesId ?? series?.tsId ?? series?.id ?? series?.label);
+    selectRelationByCandidates("ctf", [
+      series?.ctfSeriesId,
+      series?.tiltSeriesId,
+      series?.tsId,
+      series?.id,
+      series?.label,
+    ]);
   };
 
   useEffect(() => {
@@ -346,7 +383,7 @@ export default function IntegratedTomographyViewer({
             protocolId={getLinkedProtocolId(link, protocolIdNum)}
             outputName={getLinkedOutputName(link, outputName)}
             protocolLabel={protocolLabel}
-            selectedTiltSeriesId={selectedRelation?.tiltSeriesId ?? null}
+            selectedTiltSeriesId={selectedRelationSource === "tiltSeries" ? null : selectedRelation?.tiltSeriesId ?? null}
             onTiltSeriesSelect={handleTiltSeriesSelect}
           />
         );
@@ -362,8 +399,8 @@ export default function IntegratedTomographyViewer({
             protocolId={getLinkedProtocolId(link, protocolIdNum)}
             outputName={getLinkedOutputName(link, outputName)}
             protocolLabel={protocolLabel}
-            selectedCtfSeriesId={selectedRelation?.ctfSeriesId ?? null}
-            selectedTiltSeriesId={selectedRelation?.tiltSeriesId ?? null}
+            selectedCtfSeriesId={selectedRelationSource === "ctf" ? null : selectedRelation?.ctfSeriesId ?? null}
+            selectedTiltSeriesId={selectedRelationSource === "ctf" ? null : selectedRelation?.tiltSeriesId ?? null}
             onCtfSeriesSelect={handleCtfSeriesSelect}
           />
         );
@@ -380,7 +417,11 @@ export default function IntegratedTomographyViewer({
             protocolLabel={protocolLabel}
             outputName={getLinkedOutputName(link, outputName)}
             pointerClass={isTomogramKind(pointerClass) ? pointerClass : "SetOfTomograms"}
-            selectedVolumeId={selectedRelation?.tomogramVolumeId ?? selectedRelation?.tomogramId ?? null}
+            selectedVolumeId={
+              selectedRelationSource === "tomogram"
+                ? null
+                : selectedRelation?.tomogramVolumeId ?? selectedRelation?.tomogramId ?? null
+            }
             onVolumeSelect={handleVolumeSelect}
           />
         );
@@ -396,7 +437,11 @@ export default function IntegratedTomographyViewer({
             protocolId={getLinkedProtocolId(link, protocolIdNum)}
             protocolLabel={protocolLabel}
             outputName={getLinkedOutputName(link, outputName)}
-            selectedTomogramId={selectedRelation?.coordinatesTomogramId ?? selectedRelation?.tomogramId ?? null}
+            selectedTomogramId={
+              selectedRelationSource === "coordinates"
+                ? null
+                : selectedRelation?.coordinatesTomogramId ?? selectedRelation?.tomogramId ?? null
+            }
             onTomogramSelect={handleCoordinatesTomogramSelect}
           />
         );
@@ -405,7 +450,6 @@ export default function IntegratedTomographyViewer({
 
     return <MetadataViewer projectId={projectIdNum} protocolId={protocolIdNum} outputName={outputName} embedded />;
   };
-  
 
   return (
     <Box
