@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactElement } from "react";
-import { Box, Chip, CircularProgress, Collapse, IconButton, Paper, Stack, Typography } from "@mui/material";
+import { Box, CircularProgress, Collapse, IconButton, Paper, Stack, Typography } from "@mui/material";
 import { Activity, Box as BoxIcon, ChevronDown, ChevronRight, GitBranch, Layers, Table as TableIcon } from "lucide-react";
 import { useProjectService } from "@/ProjectServiceContext";
 import type { IntegratedAnalyzeContext, IntegratedContextItemRelation, IntegratedContextLink } from "@/services/ProjectService";
@@ -72,18 +72,6 @@ function getInitialSection(pointerClass?: string): IntegratedSection {
   return "metadata";
 }
 
-function getStatusColor(status: ContextStatus): "success" | "info" | "default" {
-  if (status === "source" || status === "linked") return "success";
-  if (status === "planned") return "info";
-  return "default";
-}
-
-function getStatusLabel(status: ContextStatus) {
-  if (status === "source") return "Current output";
-  if (status === "linked") return "Context linked";
-  if (status === "planned") return "Needs context link";
-  return "Not available";
-}
 
 function isAvailableLink(link?: IntegratedContextLink | null) {
   return Boolean(link?.outputName && (link.status === "available" || link.status === "inferred"));
@@ -133,19 +121,22 @@ function ContextTreeRow({
   item,
   depth,
   active,
+  metadataActive,
   expanded,
   onToggle,
   onSelect,
+  onMetadataSelect,
 }: {
   item: ContextTreeItem;
   depth: number;
   active: boolean;
+  metadataActive?: boolean;
   expanded: boolean;
   onToggle: (id: string) => void;
   onSelect: (item: ContextTreeItem) => void;
+  onMetadataSelect: (item: ContextTreeItem) => void;
 }) {
   const hasChildren = Boolean(item.children?.length);
-  const badge = item.badgeLabel || (item.status ? getStatusLabel(item.status) : null);
 
   return (
     <Box>
@@ -157,7 +148,7 @@ function ContextTreeRow({
           alignItems: "center",
           gap: 0.5,
           pl: 0.25 + depth * 1.45,
-          pr: 0.55,
+          pr: 0.35,
           py: 0.35,
           borderRadius: 1.25,
           cursor: "pointer",
@@ -177,7 +168,7 @@ function ContextTreeRow({
                 top: 0,
                 bottom: 0,
                 width: 1,
-                bgcolor: "rgba(148,163,184,0.32)",
+                bgcolor: "rgba(203,213,225,0.55)",
               }
               : undefined,
         }}
@@ -214,37 +205,18 @@ function ContextTreeRow({
         </Box>
 
         <Box sx={{ minWidth: 0, flex: 1 }}>
-          <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, minWidth: 0 }}>
-            <Typography
-              variant="body2"
-              sx={{
-                minWidth: 0,
-                flex: 1,
-                overflow: "hidden",
-                whiteSpace: "nowrap",
-                textOverflow: "ellipsis",
-                fontWeight: active ? 800 : 700,
-                lineHeight: 1.15,
-              }}
-            >
-              {item.label}
-            </Typography>
-
-            {badge ? (
-              <Chip
-                size="small"
-                color={item.status ? getStatusColor(item.status) : "default"}
-                label={badge}
-                sx={{
-                  height: 17,
-                  maxWidth: 86,
-                  fontSize: "0.62rem",
-                  fontWeight: 700,
-                  "& .MuiChip-label": { px: 0.6, overflow: "hidden", textOverflow: "ellipsis" },
-                }}
-              />
-            ) : null}
-          </Box>
+          <Typography
+            variant="body2"
+            sx={{
+              overflow: "hidden",
+              whiteSpace: "nowrap",
+              textOverflow: "ellipsis",
+              fontWeight: active ? 800 : 700,
+              lineHeight: 1.15,
+            }}
+          >
+            {item.label}
+          </Typography>
 
           {item.description ? (
             <Typography
@@ -263,6 +235,28 @@ function ContextTreeRow({
             </Typography>
           ) : null}
         </Box>
+
+        <IconButton
+          size="small"
+          aria-label={`Open ${item.label} metadata`}
+          onClick={(event) => {
+            event.stopPropagation();
+            onMetadataSelect(item);
+          }}
+          sx={{
+            width: 24,
+            height: 24,
+            color: metadataActive ? "#1d4ed8" : "#94a3b8",
+            background: metadataActive ? "#dbeafe" : "transparent",
+            flexShrink: 0,
+            "&:hover": {
+              color: "#1d4ed8",
+              background: "#eff6ff",
+            },
+          }}
+        >
+          <TableIcon size={14} />
+        </IconButton>
       </Box>
     </Box>
   );
@@ -478,18 +472,6 @@ export default function IntegratedTomographyViewer({
 
   const visibleNodes = useMemo(() => nodes.filter((node) => node.status === "source" || node.status === "linked"), [nodes]);
 
-  const metadataNode = useMemo<ContextNode>(
-    () => ({
-      key: "metadata",
-      label: "Metadata",
-      description: "Tables and raw object metadata",
-      status: "linked",
-      icon: <TableIcon size={16} />,
-      badgeLabel: "Always available",
-    }),
-    [],
-  );
-
   const treeItems = useMemo<ContextTreeItem[]>(() => {
     const bySection = new Map<IntegratedSection, ContextNode>();
     visibleNodes.forEach((node) => bySection.set(node.key, node));
@@ -565,19 +547,18 @@ export default function IntegratedTomographyViewer({
   };
 
   const handleTreeItemSelect = (item: ContextTreeItem) => {
-    if (item.section === "metadata") {
-      setMetadataTargetSection(activeSection === "metadata" ? initialSection : activeSection);
-      setActiveSection("metadata");
-      setSelectedRelationSource(null);
-      return;
-    }
-
     setActiveSection(item.section);
     setSelectedRelationSource(null);
   };
 
+  const handleTreeItemMetadataSelect = (item: ContextTreeItem) => {
+    setMetadataTargetSection(item.section);
+    setActiveSection("metadata");
+    setSelectedRelationSource(null);
+  };
+
   const isTreeItemActive = (item: ContextTreeItem) => {
-    return activeSection === item.section;
+    return activeSection === item.section || (activeSection === "metadata" && metadataTargetSection === item.section);
   };
 
   const renderTreeItem = (item: ContextTreeItem, depth = 0): ReactElement => {
@@ -589,9 +570,11 @@ export default function IntegratedTomographyViewer({
           item={item}
           depth={depth}
           active={isTreeItemActive(item)}
+          metadataActive={activeSection === "metadata" && metadataTargetSection === item.section}
           expanded={expanded}
           onToggle={toggleTreeItem}
           onSelect={handleTreeItemSelect}
+          onMetadataSelect={handleTreeItemMetadataSelect}
         />
 
         {item.children?.length ? (
@@ -763,25 +746,6 @@ export default function IntegratedTomographyViewer({
 
         <Stack spacing={0.25} sx={{ mt: 0.5 }}>
           {treeItems.map((item) => renderTreeItem(item))}
-
-          <Box sx={{ height: 1, bgcolor: "rgba(203,213,225,0.75)", mx: 0.25, my: 0.45 }} />
-
-          <ContextTreeRow
-            item={{
-              id: "metadata",
-              section: "metadata",
-              label: metadataNode.label,
-              description: metadataNode.description,
-              status: metadataNode.status,
-              icon: metadataNode.icon,
-              badgeLabel: metadataNode.badgeLabel,
-            }}
-            depth={0}
-            active={activeSection === "metadata"}
-            expanded
-            onToggle={toggleTreeItem}
-            onSelect={handleTreeItemSelect}
-          />
         </Stack>
       </Paper>
 
