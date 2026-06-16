@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactElement } from "react";
-import { Box, Chip, CircularProgress, Paper, Stack, Typography } from "@mui/material";
-import { Activity, Box as BoxIcon, GitBranch, Layers, Table as TableIcon } from "lucide-react";
+import { Box, Chip, CircularProgress, Collapse, IconButton, Paper, Stack, Typography } from "@mui/material";
+import { Activity, Box as BoxIcon, ChevronDown, ChevronRight, GitBranch, Layers, Table as TableIcon } from "lucide-react";
 import { useProjectService } from "@/ProjectServiceContext";
 import type { IntegratedAnalyzeContext, IntegratedContextItemRelation, IntegratedContextLink } from "@/services/ProjectService";
 import { MetadataViewer } from "./metadata-viewer";
@@ -30,6 +30,17 @@ type ContextNode = {
   status: ContextStatus;
   icon: ReactElement;
   badgeLabel?: string;
+};
+
+type ContextTreeItem = {
+  id: string;
+  section: IntegratedSection;
+  label: string;
+  description?: string;
+  status?: ContextStatus;
+  icon: ReactElement;
+  badgeLabel?: string;
+  children?: ContextTreeItem[];
 };
 
 function normalizedKind(value?: string) {
@@ -94,54 +105,166 @@ function getLinkedOutputName(link: IntegratedContextLink | null | undefined, fal
   return link?.outputName || fallbackOutputName;
 }
 
-function ContextNodeCard({ node, active, onSelect }: { node: ContextNode; active: boolean; onSelect: () => void }) {
+function getTreeLabel(section: IntegratedSection) {
+  if (section === "coordinates") return "Coordinates 3D";
+  if (section === "tomogram") return "Tomograms";
+  if (section === "tiltSeries") return "Tilt series";
+  if (section === "ctf") return "CTFs";
+  return "Metadata";
+}
+
+function getTreeDescription(section: IntegratedSection, node?: ContextNode) {
+  if (section === "coordinates") return node?.description || "Picked particles and tomogram coordinates";
+  if (section === "tomogram") return node?.description || "3D volumes linked to this context";
+  if (section === "tiltSeries") return node?.description || "Acquisition tilt-series context";
+  if (section === "ctf") return node?.description || "Per-view CTF estimation context";
+  return node?.description || "Tables and raw object metadata";
+}
+
+function getTreeIcon(section: IntegratedSection) {
+  if (section === "coordinates") return <GitBranch size={15} />;
+  if (section === "tomogram") return <BoxIcon size={15} />;
+  if (section === "tiltSeries") return <Layers size={15} />;
+  if (section === "ctf") return <Activity size={15} />;
+  return <TableIcon size={15} />;
+}
+
+function ContextTreeRow({
+  item,
+  depth,
+  active,
+  expanded,
+  onToggle,
+  onSelect,
+}: {
+  item: ContextTreeItem;
+  depth: number;
+  active: boolean;
+  expanded: boolean;
+  onToggle: (id: string) => void;
+  onSelect: (item: ContextTreeItem) => void;
+}) {
+  const hasChildren = Boolean(item.children?.length);
+  const badge = item.badgeLabel || (item.status ? getStatusLabel(item.status) : null);
+
   return (
-    <Paper
-      variant="outlined"
-      onClick={onSelect}
-      sx={{
-        p: 0.75,
-        borderRadius: 2,
-        cursor: "pointer",
-        borderColor: active ? "rgba(37,99,235,0.55)" : "rgba(148,163,184,0.28)",
-        background: active ? "rgba(239,246,255,0.95)" : "rgba(255,255,255,0.92)",
-        boxShadow: active ? "0 5px 14px rgba(37,99,235,0.09)" : "none",
-        transition: "border-color 120ms ease, background-color 120ms ease, box-shadow 120ms ease",
-      }}
-    >
-      <Box sx={{ display: "flex", alignItems: "flex-start", gap: 0.75 }}>
+    <Box>
+      <Box
+        onClick={() => onSelect(item)}
+        sx={{
+          minHeight: 34,
+          display: "flex",
+          alignItems: "center",
+          gap: 0.5,
+          pl: 0.25 + depth * 1.45,
+          pr: 0.55,
+          py: 0.35,
+          borderRadius: 1.25,
+          cursor: "pointer",
+          position: "relative",
+          color: active ? "#0f172a" : "#334155",
+          background: active ? "rgba(37,99,235,0.10)" : "transparent",
+          border: active ? "1px solid rgba(37,99,235,0.28)" : "1px solid transparent",
+          "&:hover": {
+            background: active ? "rgba(37,99,235,0.12)" : "rgba(148,163,184,0.13)",
+          },
+          "&:before":
+            depth > 0
+              ? {
+                  content: '""',
+                  position: "absolute",
+                  left: 10 + (depth - 1) * 18,
+                  top: 0,
+                  bottom: 0,
+                  width: 1,
+                  bgcolor: "rgba(148,163,184,0.32)",
+                }
+              : undefined,
+        }}
+      >
+        {hasChildren ? (
+          <IconButton
+            size="small"
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggle(item.id);
+            }}
+            sx={{ width: 20, height: 20, color: "#64748b", flexShrink: 0 }}
+          >
+            {expanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+          </IconButton>
+        ) : (
+          <Box sx={{ width: 20, flexShrink: 0 }} />
+        )}
+
         <Box
           sx={{
-            width: 24,
-            height: 24,
-            borderRadius: 1.25,
+            width: 22,
+            height: 22,
+            borderRadius: 1,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            color: active ? "#1d4ed8" : "#475569",
-            background: active ? "rgba(37,99,235,0.10)" : "rgba(148,163,184,0.12)",
+            color: active ? "#1d4ed8" : "#64748b",
+            background: active ? "rgba(37,99,235,0.12)" : "rgba(148,163,184,0.12)",
             flexShrink: 0,
           }}
         >
-          {node.icon}
+          {item.icon}
         </Box>
 
         <Box sx={{ minWidth: 0, flex: 1 }}>
-          <Typography variant="body2" sx={{ fontWeight: 800, color: "#0f172a", lineHeight: 1.12 }}>
-            {node.label}
-          </Typography>
-          <Typography variant="caption" sx={{ color: "#64748b", display: "block", mt: 0.15, lineHeight: 1.2 }}>
-            {node.description}
-          </Typography>
-          <Chip
-            size="small"
-            color={getStatusColor(node.status)}
-            label={node.badgeLabel || getStatusLabel(node.status)}
-            sx={{ mt: 0.45, height: 18, fontSize: "0.66rem", fontWeight: 700 }}
-          />
+          <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, minWidth: 0 }}>
+            <Typography
+              variant="body2"
+              sx={{
+                minWidth: 0,
+                flex: 1,
+                overflow: "hidden",
+                whiteSpace: "nowrap",
+                textOverflow: "ellipsis",
+                fontWeight: active ? 800 : 700,
+                lineHeight: 1.15,
+              }}
+            >
+              {item.label}
+            </Typography>
+
+            {badge ? (
+              <Chip
+                size="small"
+                color={item.status ? getStatusColor(item.status) : "default"}
+                label={badge}
+                sx={{
+                  height: 17,
+                  maxWidth: 86,
+                  fontSize: "0.62rem",
+                  fontWeight: 700,
+                  "& .MuiChip-label": { px: 0.6, overflow: "hidden", textOverflow: "ellipsis" },
+                }}
+              />
+            ) : null}
+          </Box>
+
+          {item.description ? (
+            <Typography
+              variant="caption"
+              sx={{
+                display: "block",
+                mt: 0.1,
+                color: "#64748b",
+                lineHeight: 1.15,
+                overflow: "hidden",
+                whiteSpace: "nowrap",
+                textOverflow: "ellipsis",
+              }}
+            >
+              {item.description}
+            </Typography>
+          ) : null}
         </Box>
       </Box>
-    </Paper>
+    </Box>
   );
 }
 
@@ -162,10 +285,12 @@ export default function IntegratedTomographyViewer({
   const [contextError, setContextError] = useState<string | null>(null);
   const [selectedRelation, setSelectedRelation] = useState<IntegratedContextItemRelation | null>(null);
   const [selectedRelationSource, setSelectedRelationSource] = useState<RelationSource | null>(null);
+  const [collapsedTreeIds, setCollapsedTreeIds] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
     setSelectedRelation(null);
     setSelectedRelationSource(null);
+    setCollapsedTreeIds(new Set());
   }, [projectIdNum, protocolIdNum, outputName]);
 
   const normalizeSelectionValue = (value: unknown) => {
@@ -363,13 +488,124 @@ export default function IntegratedTomographyViewer({
     [],
   );
 
-  const navigationNodes = useMemo(() => [...visibleNodes, metadataNode], [visibleNodes, metadataNode]);
+  const treeItems = useMemo<ContextTreeItem[]>(() => {
+    const bySection = new Map<IntegratedSection, ContextNode>();
+    visibleNodes.forEach((node) => bySection.set(node.key, node));
+
+    const canShow = (section: IntegratedSection) => Boolean(bySection.get(section));
+
+    const makeItem = (section: IntegratedSection, children: ContextTreeItem[] = []): ContextTreeItem | null => {
+      const node = bySection.get(section);
+      if (!node) return null;
+
+      return {
+        id: `section-${section}`,
+        section,
+        label: getTreeLabel(section),
+        description: getTreeDescription(section, node),
+        status: node.status,
+        icon: getTreeIcon(section),
+        badgeLabel: node.badgeLabel,
+        children,
+      };
+    };
+
+    const makeAvailableChildren = () => {
+      const children: ContextTreeItem[] = [];
+
+      if (canShow("tiltSeries")) {
+        const item = makeItem("tiltSeries");
+        if (item) children.push(item);
+      }
+
+      if (canShow("ctf")) {
+        const item = makeItem("ctf");
+        if (item) children.push(item);
+      }
+
+      return children;
+    };
+
+    const roots: Array<ContextTreeItem | null> = [];
+
+    if (isCoords3dKind(pointerClass)) {
+      const tomogramChildren = makeAvailableChildren();
+      const tomogramItem = canShow("tomogram") ? makeItem("tomogram", tomogramChildren) : null;
+      const coordinatesChildren = tomogramItem ? [tomogramItem] : tomogramChildren;
+      roots.push(makeItem("coordinates", coordinatesChildren));
+    } else if (isTomogramKind(pointerClass)) {
+      roots.push(makeItem("tomogram", makeAvailableChildren()));
+    } else if (isCTFTomoKind(pointerClass)) {
+      const ctfChildren: ContextTreeItem[] = [];
+
+      if (canShow("tiltSeries")) {
+        const item = makeItem("tiltSeries");
+        if (item) ctfChildren.push(item);
+      }
+
+      roots.push(makeItem("ctf", ctfChildren));
+    } else if (isTiltSeriesKind(pointerClass)) {
+      roots.push(makeItem("tiltSeries"));
+    } else {
+      roots.push(...visibleNodes.map((node) => makeItem(node.key)));
+    }
+
+    return roots.filter((item): item is ContextTreeItem => Boolean(item));
+  }, [pointerClass, visibleNodes]);
+
+  const toggleTreeItem = (id: string) => {
+    setCollapsedTreeIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleTreeItemSelect = (item: ContextTreeItem) => {
+    setActiveSection(item.section);
+    setSelectedRelationSource(null);
+  };
+
+  const isTreeItemActive = (item: ContextTreeItem) => {
+    return activeSection === item.section;
+  };
+
+  const renderTreeItem = (item: ContextTreeItem, depth = 0): ReactElement => {
+    const expanded = !collapsedTreeIds.has(item.id);
+
+    return (
+      <Box key={item.id}>
+        <ContextTreeRow
+          item={item}
+          depth={depth}
+          active={isTreeItemActive(item)}
+          expanded={expanded}
+          onToggle={toggleTreeItem}
+          onSelect={handleTreeItemSelect}
+        />
+
+        {item.children?.length ? (
+          <Collapse in={expanded} timeout={120} unmountOnExit>
+            <Stack spacing={0.25} sx={{ mt: 0.25 }}>
+              {item.children.map((child) => renderTreeItem(child, depth + 1))}
+            </Stack>
+          </Collapse>
+        ) : null}
+      </Box>
+    );
+  };
 
   useEffect(() => {
-    if (!navigationNodes.some((node) => node.key === activeSection)) {
-      setActiveSection(navigationNodes[0]?.key || "metadata");
+    const availableSections = new Set<IntegratedSection>([
+      ...visibleNodes.map((node) => node.key),
+      "metadata",
+    ]);
+
+    if (!availableSections.has(activeSection)) {
+      setActiveSection(visibleNodes[0]?.key || "metadata");
     }
-  }, [activeSection, navigationNodes]);
+  }, [activeSection, visibleNodes]);
 
   const renderSection = () => {
     const links = context?.links;
@@ -458,7 +694,7 @@ export default function IntegratedTomographyViewer({
         minHeight: 0,
         minWidth: 0,
         display: "grid",
-        gridTemplateColumns: "220px minmax(0, 1fr)",
+        gridTemplateColumns: "280px minmax(0, 1fr)",
         overflow: "hidden",
         background: "#f8fafc",
       }}
@@ -470,41 +706,50 @@ export default function IntegratedTomographyViewer({
           minHeight: 0,
           overflow: "auto",
           borderRight: "1px solid rgba(148,163,184,0.25)",
-          background: "rgba(241,245,249,0.82)",
-          p: 0.75,
+          background: "linear-gradient(180deg, rgba(248,250,252,0.98) 0%, rgba(241,245,249,0.94) 100%)",
+          p: 0.85,
         }}
       >
-        <Box sx={{ display: "flex", alignItems: "center", gap: 1, minWidth: 0 }}>
-          <Typography variant="overline" sx={{ color: "#64748b", fontWeight: 800, letterSpacing: 0.7, flex: 1 }}>
-            Context chain
-          </Typography>
-          {contextLoading ? <CircularProgress size={13} /> : null}
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1, minWidth: 0, mb: 0.75 }}>
+          <Box sx={{ minWidth: 0, flex: 1 }}>
+            <Typography variant="overline" sx={{ display: "block", color: "#64748b", fontWeight: 800, letterSpacing: 0.7, lineHeight: 1.1 }}>
+              Tomography context
+            </Typography>
+            <Typography variant="caption" sx={{ display: "block", color: "#94a3b8", lineHeight: 1.15, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {pointerClass || "Integrated viewer"}
+            </Typography>
+          </Box>
+          {contextLoading ? <CircularProgress size={14} /> : null}
         </Box>
 
         {contextError ? (
-          <Typography variant="caption" sx={{ display: "block", color: "#b91c1c", mt: 0.35, mb: 0.5 }}>
+          <Typography variant="caption" sx={{ display: "block", color: "#b91c1c", mb: 0.65 }}>
             {contextError}
           </Typography>
         ) : null}
 
-        <Stack spacing={0.65} sx={{ mt: 0.55 }}>
-          {visibleNodes.map((node) => (
-            <ContextNodeCard
-              key={node.key}
-              node={node}
-              active={activeSection === node.key}
-              onSelect={() => setActiveSection(node.key)}
-            />
-          ))}
-
-          {visibleNodes.length > 0 ? <Box sx={{ height: 1, bgcolor: "rgba(148,163,184,0.30)", mx: 0.4 }} /> : null}
-
-          <ContextNodeCard
-            node={metadataNode}
-            active={activeSection === "metadata"}
-            onSelect={() => setActiveSection("metadata")}
-          />
+        <Stack spacing={0.3}>
+          {treeItems.map((item) => renderTreeItem(item))}
         </Stack>
+
+        <Box sx={{ height: 1, bgcolor: "rgba(148,163,184,0.35)", mx: 0.4, my: 0.8 }} />
+
+        <ContextTreeRow
+          item={{
+            id: "metadata",
+            section: "metadata",
+            label: metadataNode.label,
+            description: metadataNode.description,
+            status: metadataNode.status,
+            icon: metadataNode.icon,
+            badgeLabel: metadataNode.badgeLabel,
+          }}
+          depth={0}
+          active={activeSection === "metadata"}
+          expanded
+          onToggle={toggleTreeItem}
+          onSelect={handleTreeItemSelect}
+        />
       </Paper>
 
       <Box sx={{ minHeight: 0, minWidth: 0, overflow: "hidden" }}>{renderSection()}</Box>
