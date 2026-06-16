@@ -501,14 +501,6 @@ export default function Coords3dViewer({
     sliceXAbortRef.current?.abort();
     sliceYAbortRef.current?.abort();
 
-    setSliceImageUrl(null);
-    setSliceXImageUrl(null);
-    setSliceYImageUrl(null);
-
-    setDisplayedSliceIndexZ(null);
-    setDisplayedSliceIndexX(null);
-    setDisplayedSliceIndexY(null);
-
     setSliceError(null);
     setSliceXError(null);
     setSliceYError(null);
@@ -606,8 +598,6 @@ export default function Coords3dViewer({
       try {
         setPointsLoading(true);
         setPointsError(null);
-        setPointsData(null);
-        setCoordsDraft([]);
         setPickedPoint3d(null);
 
         const data = await (svc as any).fetchCoords3dForTomogram(
@@ -797,6 +787,12 @@ export default function Coords3dViewer({
   const tomoDimsY = tomoDims ? tomoDims[1] : null;
   const tomoDimsZ = tomoDims ? tomoDims[2] : null;
 
+  const coordsReadyForSelectedTomo = useMemo(() => {
+    if (!pointsData || selectedTomoId == null) return false;
+    if (pointsData.tomoId == null) return true;
+    return String(pointsData.tomoId) === String(selectedTomoId);
+  }, [pointsData, selectedTomoId]);
+
   const tripleSliceGridFractions = useMemo(() => {
     if (!tomoDims) return null;
 
@@ -836,28 +832,37 @@ export default function Coords3dViewer({
   }, [tomoDimsY]);
 
   useEffect(() => {
+    if (!coordsReadyForSelectedTomo) return;
+
     if (maxSliceZ == null) {
       setSliceIndex(null);
       return;
     }
+
     setSliceIndex(Math.round(maxSliceZ / 2));
-  }, [selectedTomoId, maxSliceZ]);
+  }, [coordsReadyForSelectedTomo, maxSliceZ]);
 
   useEffect(() => {
+    if (!coordsReadyForSelectedTomo) return;
+
     if (maxSliceX == null) {
       setSliceIndexX(null);
       return;
     }
+
     setSliceIndexX(Math.round(maxSliceX / 2));
-  }, [selectedTomoId, maxSliceX]);
+  }, [coordsReadyForSelectedTomo, maxSliceX]);
 
   useEffect(() => {
+    if (!coordsReadyForSelectedTomo) return;
+
     if (maxSliceY == null) {
       setSliceIndexY(null);
       return;
     }
+
     setSliceIndexY(Math.round(maxSliceY / 2));
-  }, [selectedTomoId, maxSliceY]);
+  }, [coordsReadyForSelectedTomo, maxSliceY]);
 
   useEffect(() => {
     if (!tomoDims) {
@@ -908,11 +913,7 @@ export default function Coords3dViewer({
 
   const totalCoords = coordsDraft.length;
 
-  const coordsReadyForSelectedTomo = useMemo(() => {
-    if (!pointsData || selectedTomoId == null) return false;
-    if (pointsData.tomoId == null) return true;
-    return String(pointsData.tomoId) === String(selectedTomoId);
-  }, [pointsData, selectedTomoId]);
+
 
   const effectiveTomoId: Id | null = useMemo(() => {
     if (
@@ -1264,6 +1265,41 @@ export default function Coords3dViewer({
     viewMode === "map3d" || (viewMode === "slice" && sliceLayoutMode === "triple");
   const showYAxisSlider =
     viewMode === "map3d" || (viewMode === "slice" && sliceLayoutMode === "triple");
+
+  const hasVisibleViewerContent =
+    viewMode === "map3d"
+      ? pointsData != null && coordsDraft.length > 0
+      : viewMode === "slice" &&
+      !debugGrid &&
+      (
+        (sliceLayoutMode === "single" && !!sliceImageUrl) ||
+        (sliceLayoutMode === "triple" && (!!sliceImageUrl || !!sliceXImageUrl || !!sliceYImageUrl))
+      );
+
+  const [delayedPointsLoading, setDelayedPointsLoading] = useState(false);
+
+  useEffect(() => {
+    if (!pointsLoading) {
+      setDelayedPointsLoading(false);
+      return;
+    }
+
+    if (!hasVisibleViewerContent) {
+      setDelayedPointsLoading(true);
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setDelayedPointsLoading(true);
+    }, 180);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [pointsLoading, hasVisibleViewerContent]);
+
+  const viewerLoadingVisible =
+    pointsLoading && (!hasVisibleViewerContent || delayedPointsLoading);
 
   const pickedPointKey = useMemo(() => {
     const id = (pickedPoint3d as any)?.id;
@@ -2045,7 +2081,7 @@ export default function Coords3dViewer({
                       </Box>
                     )}
                   </Box>
-                ) : pointsLoading ? (
+                ) : viewerLoadingVisible ? (
                   <Box sx={{ m: "auto", display: "flex", gap: 1, alignItems: "center" }}>
                     <CircularProgress size={18} />
                     <Typography variant="body2">Loading coordinates…</Typography>
