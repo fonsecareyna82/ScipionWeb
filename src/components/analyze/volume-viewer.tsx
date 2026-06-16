@@ -35,6 +35,7 @@ type VolumeViewerProps = {
   pointerClass?: string;
   selectedVolumeId?: string | number | null;
   onVolumeSelect?: (volume: VolumeLite) => void;
+  hideMetadataAction?: boolean;
 };
 
 type VolumeLite = {
@@ -160,6 +161,7 @@ export default function VolumeViewer({
   pointerClass,
   selectedVolumeId,
   onVolumeSelect,
+  hideMetadataAction = false,
 }: VolumeViewerProps) {
   const svc = useProjectService();
 
@@ -1192,14 +1194,14 @@ export default function VolumeViewer({
                     3D Map
                   </Box>
                 </ToggleButton>
-                {pClass.toLowerCase().startsWith('setof') && (
+                {pClass.toLowerCase().startsWith("setof") && !hideMetadataAction ? (
                   <ToggleButton value="metadata" disabled={!canOpenMetadata}>
                     <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
                       <TableLucide size={14} />
                       Metadata
                     </Box>
                   </ToggleButton>
-                )}
+                ) : null}
 
               </ToggleButtonGroup>
             </Box>

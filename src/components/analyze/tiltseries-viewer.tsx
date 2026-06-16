@@ -43,6 +43,7 @@ type TiltSeriesViewerProps = {
   protocolLabel?: string;
   selectedTiltSeriesId?: Id | null;
   onTiltSeriesSelect?: (series: TiltSeriesSummary) => void;
+  hideMetadataAction?: boolean;
 };
 
 type TiltSeriesSummary = {
@@ -148,6 +149,7 @@ export default function TiltSeriesViewer({
   outputName,
   selectedTiltSeriesId,
   onTiltSeriesSelect,
+  hideMetadataAction = false,
 }: TiltSeriesViewerProps) {
   const svc = useProjectService();
 
@@ -1715,20 +1717,22 @@ export default function TiltSeriesViewer({
                 minWidth: 0,
               }}
             >
-              <Tooltip title="Show metadata viewer">
-                <span>
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    startIcon={<MetadataIcon fontSize="small" />}
-                    disabled={!canOpenMetadata}
-                    onClick={() => setMainMode("metadata")}
-                    sx={{ textTransform: "none" }}
-                  >
-                    Metadata
-                  </Button>
-                </span>
-              </Tooltip>
+              {!hideMetadataAction ? (
+                <Tooltip title="Show metadata viewer">
+                  <span>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      startIcon={<MetadataIcon fontSize="small" />}
+                      disabled={!canOpenMetadata}
+                      onClick={() => setMainMode("metadata")}
+                      sx={{ textTransform: "none" }}
+                    >
+                      Metadata
+                    </Button>
+                  </span>
+                </Tooltip>
+              ) : null}
 
               <ExternalViewersBar
                 projectId={projectId}

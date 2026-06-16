@@ -34,6 +34,7 @@ type CTFTomoViewerProps = {
   selectedCtfSeriesId?: Id | null;
   onCtfSeriesSelect?: (series: CTFTomoSeriesSummary) => void;
   selectedTiltSeriesId?: Id | null;
+  hideMetadataAction?: boolean;
 };
 
 type CTFTomoSeriesSummary = {
@@ -84,6 +85,7 @@ export default function CTFTomoViewer({
   selectedCtfSeriesId,
   selectedTiltSeriesId,
   onCtfSeriesSelect,
+  hideMetadataAction = false,
 }: CTFTomoViewerProps) {
   const svc = useProjectService();
 
@@ -1199,20 +1201,22 @@ export default function CTFTomoViewer({
               Help
             </Button>
 
-            <Tooltip title="Show metadata viewer">
-              <span>
-                <Button
-                  size="small"
-                  variant="outlined"
-                  startIcon={<MetadataIcon fontSize="small" />}
-                  disabled={!canOpenMetadata}
-                  onClick={() => setMainMode("metadata")}
-                  sx={{ textTransform: "none" }}
-                >
-                  Metadata
-                </Button>
-              </span>
-            </Tooltip>
+            {!hideMetadataAction ? (
+              <Tooltip title="Show metadata viewer">
+                <span>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    startIcon={<MetadataIcon fontSize="small" />}
+                    disabled={!canOpenMetadata}
+                    onClick={() => setMainMode("metadata")}
+                    sx={{ textTransform: "none" }}
+                  >
+                    Metadata
+                  </Button>
+                </span>
+              </Tooltip>
+            ) : null}
 
             {seriesLoading && (
               <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>

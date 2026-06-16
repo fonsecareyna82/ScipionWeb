@@ -44,6 +44,7 @@ type Coords3dViewerProps = {
   protocolLabel?: string;
   selectedTomogramId?: Id | null;
   onTomogramSelect?: (tomogram: TomogramItem) => void;
+  hideMetadataAction: boolean;
 };
 
 type Coords3dPoint = Coordinates3dTomogramPoints["coords"][number];
@@ -291,6 +292,7 @@ export default function Coords3dViewer({
   outputName,
   selectedTomogramId,
   onTomogramSelect,
+  hideMetadataAction = false,
 }: Coords3dViewerProps) {
   const svc = useProjectService();
 
@@ -1880,12 +1882,14 @@ export default function Coords3dViewer({
                     </Box>
                   </ToggleButton>
 
-                  <ToggleButton value="metadata" disabled={!canOpenMetadata}>
-                    <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
-                      <TableLucide size={14} />
-                      Metadata
-                    </Box>
-                  </ToggleButton>
+                  {!hideMetadataAction ? (
+                    <ToggleButton value="metadata" disabled={!canOpenMetadata}>
+                      <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
+                        <TableLucide size={14} />
+                        Metadata
+                      </Box>
+                    </ToggleButton>
+                  ) : null}
                 </ToggleButtonGroup>
 
                 {viewMode === "map3d" && (

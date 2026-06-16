@@ -282,6 +282,7 @@ export default function IntegratedTomographyViewer({
   const [selectedRelation, setSelectedRelation] = useState<IntegratedContextItemRelation | null>(null);
   const [selectedRelationSource, setSelectedRelationSource] = useState<RelationSource | null>(null);
   const [collapsedTreeIds, setCollapsedTreeIds] = useState<Set<string>>(() => new Set());
+  const hideMetadataAction: boolean = true;
 
   useEffect(() => {
     setSelectedRelation(null);
@@ -614,6 +615,7 @@ export default function IntegratedTomographyViewer({
             protocolLabel={protocolLabel}
             selectedTiltSeriesId={selectedRelationSource === "tiltSeries" ? null : selectedRelation?.tiltSeriesId ?? null}
             onTiltSeriesSelect={handleTiltSeriesSelect}
+            hideMetadataAction
           />
         );
       }
@@ -631,6 +633,7 @@ export default function IntegratedTomographyViewer({
             selectedCtfSeriesId={selectedRelationSource === "ctf" ? null : selectedRelation?.ctfSeriesId ?? null}
             selectedTiltSeriesId={selectedRelationSource === "ctf" ? null : selectedRelation?.tiltSeriesId ?? null}
             onCtfSeriesSelect={handleCtfSeriesSelect}
+            hideMetadataAction
           />
         );
       }
@@ -652,6 +655,7 @@ export default function IntegratedTomographyViewer({
                 : selectedRelation?.tomogramVolumeId ?? selectedRelation?.tomogramId ?? null
             }
             onVolumeSelect={handleVolumeSelect}
+            hideMetadataAction
           />
         );
       }
@@ -672,6 +676,7 @@ export default function IntegratedTomographyViewer({
                 : selectedRelation?.coordinatesTomogramId ?? selectedRelation?.tomogramId ?? null
             }
             onTomogramSelect={handleCoordinatesTomogramSelect}
+            hideMetadataAction
           />
         );
       }
