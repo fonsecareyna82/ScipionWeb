@@ -367,11 +367,22 @@ export default function VolumeViewer({
   }, [viewMode, renderMode3d, autoRotate3d, gpuError, mapData]);
 
   useEffect(() => {
+    surfaceAbortRef.current?.abort();
+
+    setMapLoading(false);
+    setSurfaceRefreshing(false);
+    setMapError(null);
+    setMapData(null);
     setSurfaceMesh(null);
     setSurfaceResolvedLevel(null);
     setSurfaceLevel3d(null);
     setSurfaceLevelRange(null);
     setGpuError(null);
+
+    lastLoadedRef.current = {
+      ...lastLoadedRef.current,
+      volumeId: null,
+    };
   }, [selectedId]);
 
   useEffect(() => {
@@ -523,6 +534,15 @@ export default function VolumeViewer({
 
   const dims = useMemo(() => getDimsZYXtoXYZ(meta), [meta]);
 
+  const selectedMetaReady =
+    selectedId != null &&
+    meta != null &&
+    metaVolumeId != null &&
+    String(metaVolumeId) === String(selectedId);
+
+  const volumeSwitching =
+    selectedId != null && !metaError && (metaLoading || !selectedMetaReady);
+
   const maxSlice = Math.max(0, dims[axis] - 1);
   const maxSliceZ = Math.max(0, dims.z - 1);
   const maxSliceY = Math.max(0, dims.y - 1);
@@ -539,9 +559,9 @@ export default function VolumeViewer({
     setSliceIndexX(Math.max(0, Math.floor(maxSliceX / 2)));
   }, [selectedId, maxSliceZ, maxSliceY, maxSliceX]);
 
-  const readySlices = selectedId != null && !!meta && dims[axis] > 0;
+  const readySlices = selectedId != null && selectedMetaReady && dims[axis] > 0;
   const readyTripleSlices =
-    selectedId != null && !!meta && dims.x > 0 && dims.y > 0 && dims.z > 0;
+    selectedId != null && selectedMetaReady && dims.x > 0 && dims.y > 0 && dims.z > 0;
 
   const buildSliceFetchOptions = useCallback(
     (isDragging: boolean) => ({
@@ -654,6 +674,33 @@ export default function VolumeViewer({
     reloadKey: sliceReloadNonce,
     requestOptions: xSliceFetchOptions,
   });
+
+  const sliceImagesLoading =
+    viewMode === "slices" &&
+    !volumeSwitching &&
+    (
+      (sliceLayoutMode === "single" && singleSlice.loading && !singleSlice.url) ||
+      (sliceLayoutMode === "triple" &&
+        ((zSlice.loading && !zSlice.url) ||
+          (ySlice.loading && !ySlice.url) ||
+          (xSlice.loading && !xSlice.url)))
+    );
+
+  const waitingFor3dData =
+    viewMode === "map3d" &&
+    selectedId != null &&
+    !mapError &&
+    !gpuError &&
+    (
+      (usesSurfaceMesh3d && !surfaceMesh) ||
+      (!usesSurfaceMesh3d && !mapData)
+    );
+
+  const showViewerLoading =
+    volumeSwitching ||
+    sliceImagesLoading ||
+    mapLoading ||
+    waitingFor3dData;
 
   const metadataSurfaceLevelRange = useMemo<[number, number] | null>(() => {
 
@@ -1108,7 +1155,9 @@ export default function VolumeViewer({
           {loadingList ? (
             <Box sx={{ p: 2, display: "flex", gap: 1, alignItems: "center" }}>
               <CircularProgress size={18} />
-              <Typography variant="body2"></Typography>
+              <Typography variant="body2" color="text.secondary">
+                Loading tomograms...
+              </Typography>
             </Box>
           ) : listError ? (
             <Box sx={{ p: 2 }}>
@@ -1311,10 +1360,16 @@ export default function VolumeViewer({
                   : undefined
               }
             >
-              {metaLoading ? (
-                <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
+              {showViewerLoading ? (
+                <Box sx={{ display: "flex", gap: 1, alignItems: "center", color: "text.secondary" }}>
                   <CircularProgress size={18} />
-                  <Typography variant="body2"></Typography>
+                  <Typography variant="body2">
+                    {viewMode === "map3d"
+                      ? "Loading 3D map..."
+                      : volumeSwitching
+                        ? "Loading tomogram..."
+                        : "Loading slices..."}
+                  </Typography>
                 </Box>
               ) : metaError ? (
                 <Typography variant="body2" color="error">
@@ -1391,11 +1446,6 @@ export default function VolumeViewer({
                     No image
                   </Typography>
                 )
-              ) : mapLoading ? (
-                <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
-                  <CircularProgress size={18} />
-                  <Typography variant="body2">Loading 3D volume…</Typography>
-                </Box>
               ) : mapError ? (
                 <Typography variant="body2" color="error">
                   {mapError}
@@ -1422,9 +1472,7 @@ export default function VolumeViewer({
                 </Typography>
               ) : (
                 <Typography variant="body2" color="text.secondary">
-                  {usesSurfaceMesh3d
-                    ? "Load the surface to start adjusting the level."
-                    : "Load the 3D volume to start rendering."}
+                  3D data is not available for this tomogram.
                 </Typography>
               )}
             </Box>
@@ -1929,7 +1977,7 @@ export default function VolumeViewer({
 
                       {!surfaceLevelRange && (
                         <Typography variant="caption" color="text.secondary">
-                          Load the surface to enable level control.
+                          Level control will be available when the surface is ready.
                         </Typography>
                       )}
                     </Box>
