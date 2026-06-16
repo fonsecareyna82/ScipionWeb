@@ -1860,11 +1860,7 @@ export default function Coords3dViewer({
                           noWrap: true,
                         }}
                         primary={t.label}
-                        secondary={
-                          t.nCoords != null
-                            ? `${t.nCoords} coords${isDirty ? " · modified" : ""}`
-                            : (t.name ?? undefined)
-                        }
+                        
                       />
                     </ListItemButton>
                   );
