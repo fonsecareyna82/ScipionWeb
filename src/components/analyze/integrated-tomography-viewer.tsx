@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactElement } from "react";
-import { Box, CircularProgress, Collapse, IconButton, Paper, Stack, Typography } from "@mui/material";
+import { Box, CircularProgress, Collapse, IconButton, Paper, Stack, Tooltip, Typography } from "@mui/material";
 import { Activity, Box as BoxIcon, ChevronDown, ChevronRight, GitBranch, Layers, Table as TableIcon } from "lucide-react";
 import { useProjectService } from "@/ProjectServiceContext";
 import type { IntegratedAnalyzeContext, IntegratedContextItemRelation, IntegratedContextLink } from "@/services/ProjectService";
@@ -168,7 +168,6 @@ function ContextTreeRow({
                 top: 0,
                 bottom: 0,
                 width: 1,
-                bgcolor: "rgba(203,213,225,0.55)",
               }
               : undefined,
         }}
@@ -236,27 +235,29 @@ function ContextTreeRow({
           ) : null}
         </Box>
 
-        <IconButton
-          size="small"
-          aria-label={`Open ${item.label} metadata`}
-          onClick={(event) => {
-            event.stopPropagation();
-            onMetadataSelect(item);
-          }}
-          sx={{
-            width: 24,
-            height: 24,
-            color: metadataActive ? "#1d4ed8" : "#94a3b8",
-            background: metadataActive ? "#dbeafe" : "transparent",
-            flexShrink: 0,
-            "&:hover": {
-              color: "#1d4ed8",
-              background: "#eff6ff",
-            },
-          }}
-        >
-          <TableIcon size={14} />
-        </IconButton>
+        <Tooltip title="Metadata" placement="right" arrow>
+          <IconButton
+            size="small"
+            aria-label={`Open ${item.label} metadata`}
+            onClick={(event) => {
+              event.stopPropagation();
+              onMetadataSelect(item);
+            }}
+            sx={{
+              width: 24,
+              height: 24,
+              color: metadataActive ? "#1d4ed8" : "#94a3b8",
+              background: metadataActive ? "#dbeafe" : "transparent",
+              flexShrink: 0,
+              "&:hover": {
+                color: "#1d4ed8",
+                background: "#eff6ff",
+              },
+            }}
+          >
+            <TableIcon size={14} />
+          </IconButton>
+        </Tooltip>
       </Box>
     </Box>
   );
@@ -439,7 +440,7 @@ export default function IntegratedTomographyViewer({
         key: "tiltSeries",
         contextKey: "tiltSeries",
         label: "Tilt series",
-        description: tiltIsSource ? "Source alignment stack" : links?.tiltSeries?.label || "Upstream acquisition context",
+        description: tiltIsSource ? "Source stack" : 'TS associated',
         status: getNodeStatus(tiltIsSource, links?.tiltSeries, coordsIsSource || tomogramIsSource || ctfIsSource),
         icon: <Layers size={16} />,
       },
@@ -447,7 +448,7 @@ export default function IntegratedTomographyViewer({
         key: "ctf",
         contextKey: "ctf",
         label: "CTF tomo",
-        description: ctfIsSource ? "Source CTF estimation" : links?.ctf?.label || "Per-view defocus and PSD context",
+        description: ctfIsSource ? "Source CTF" : 'CTF associated',
         status: getNodeStatus(ctfIsSource, links?.ctf, coordsIsSource || tomogramIsSource),
         icon: <Activity size={16} />,
       },
@@ -455,7 +456,7 @@ export default function IntegratedTomographyViewer({
         key: "tomogram",
         contextKey: "tomogram",
         label: "Tomogram",
-        description: tomogramIsSource ? "Source volume" : links?.tomogram?.label || "3D reconstruction context",
+        description: tomogramIsSource ? "Source tomograms" : "Tomograms associated",
         status: getNodeStatus(tomogramIsSource, links?.tomogram, coordsIsSource),
         icon: <BoxIcon size={16} />,
       },
@@ -463,7 +464,7 @@ export default function IntegratedTomographyViewer({
         key: "coordinates",
         contextKey: "coordinates3d",
         label: "Coordinates 3D",
-        description: coordsIsSource ? "Source particle coordinates" : links?.coordinates3d?.label || "Particles and picked points",
+        description: coordsIsSource ? "Particle coordinates" : links?.coordinates3d?.label || "Particles and picked points",
         status: getNodeStatus(coordsIsSource, links?.coordinates3d, false),
         icon: <GitBranch size={16} />,
       },
@@ -710,7 +711,7 @@ export default function IntegratedTomographyViewer({
         minHeight: 0,
         minWidth: 0,
         display: "grid",
-        gridTemplateColumns: "280px minmax(0, 1fr)",
+        gridTemplateColumns: "250px minmax(0, 1fr)",
         overflow: "hidden",
         background: "#f8fafc",
       }}
