@@ -436,9 +436,6 @@ export default function VolumeViewer({
 
     let cancelled = false;
 
-    setMeta(null);
-    setMetaVolumeId(null);
-
     (async () => {
       try {
         setMetaLoading(true);
@@ -549,15 +546,19 @@ export default function VolumeViewer({
   const maxSliceX = Math.max(0, dims.x - 1);
 
   useEffect(() => {
+    if (!selectedMetaReady) return;
+
     const mid = Math.max(0, Math.floor(maxSlice / 2));
     setSliceIndex(mid);
-  }, [selectedId, axis, maxSlice]);
+  }, [selectedMetaReady, axis, maxSlice]);
 
   useEffect(() => {
+    if (!selectedMetaReady) return;
+
     setSliceIndexZ(Math.max(0, Math.floor(maxSliceZ / 2)));
     setSliceIndexY(Math.max(0, Math.floor(maxSliceY / 2)));
     setSliceIndexX(Math.max(0, Math.floor(maxSliceX / 2)));
-  }, [selectedId, maxSliceZ, maxSliceY, maxSliceX]);
+  }, [selectedMetaReady, maxSliceZ, maxSliceY, maxSliceX]);
 
   const readySlices = selectedId != null && selectedMetaReady && dims[axis] > 0;
   const readyTripleSlices =
@@ -701,6 +702,38 @@ export default function VolumeViewer({
     sliceImagesLoading ||
     mapLoading ||
     waitingFor3dData;
+
+  const hasVisibleSliceContent =
+    viewMode === "slices" &&
+    (
+      (sliceLayoutMode === "single" && !!singleSlice.url) ||
+      (sliceLayoutMode === "triple" && (!!zSlice.url || !!ySlice.url || !!xSlice.url))
+    );
+
+  const [delayedViewerLoading, setDelayedViewerLoading] = useState(false);
+
+  useEffect(() => {
+    if (!showViewerLoading) {
+      setDelayedViewerLoading(false);
+      return;
+    }
+
+    if (!hasVisibleSliceContent) {
+      setDelayedViewerLoading(true);
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setDelayedViewerLoading(true);
+    }, 180);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [showViewerLoading, hasVisibleSliceContent]);
+
+  const viewerLoadingVisible =
+    showViewerLoading && (!hasVisibleSliceContent || delayedViewerLoading);
 
   const metadataSurfaceLevelRange = useMemo<[number, number] | null>(() => {
 
@@ -1360,7 +1393,7 @@ export default function VolumeViewer({
                   : undefined
               }
             >
-              {showViewerLoading ? (
+              {viewerLoadingVisible ? (
                 <Box sx={{ display: "flex", gap: 1, alignItems: "center", color: "text.secondary" }}>
                   <CircularProgress size={18} />
                   <Typography variant="body2">
