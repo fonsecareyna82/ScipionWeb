@@ -163,22 +163,22 @@ function ContextTreeRow({
           cursor: "pointer",
           position: "relative",
           color: active ? "#0f172a" : "#334155",
-          background: active ? "rgba(37,99,235,0.10)" : "transparent",
+          background: active ? "#eff6ff" : "#ffffff",
           border: active ? "1px solid rgba(37,99,235,0.28)" : "1px solid transparent",
           "&:hover": {
-            background: active ? "rgba(37,99,235,0.12)" : "rgba(148,163,184,0.13)",
+            background: active ? "#dbeafe" : "#f8fafc",
           },
           "&:before":
             depth > 0
               ? {
-                  content: '""',
-                  position: "absolute",
-                  left: 10 + (depth - 1) * 18,
-                  top: 0,
-                  bottom: 0,
-                  width: 1,
-                  bgcolor: "rgba(148,163,184,0.32)",
-                }
+                content: '""',
+                position: "absolute",
+                left: 10 + (depth - 1) * 18,
+                top: 0,
+                bottom: 0,
+                width: 1,
+                bgcolor: "rgba(148,163,184,0.32)",
+              }
               : undefined,
         }}
       >
@@ -206,7 +206,7 @@ function ContextTreeRow({
             alignItems: "center",
             justifyContent: "center",
             color: active ? "#1d4ed8" : "#64748b",
-            background: active ? "rgba(37,99,235,0.12)" : "rgba(148,163,184,0.12)",
+            background: active ? "#dbeafe" : "#f8fafc",
             flexShrink: 0,
           }}
         >
@@ -280,6 +280,7 @@ export default function IntegratedTomographyViewer({
   const protocolIdNum = useMemo(() => Number(protocolId), [protocolId]);
   const initialSection = useMemo(() => getInitialSection(pointerClass), [pointerClass]);
   const [activeSection, setActiveSection] = useState<IntegratedSection>(initialSection);
+  const [metadataTargetSection, setMetadataTargetSection] = useState<IntegratedSection>(initialSection);
   const [context, setContext] = useState<IntegratedAnalyzeContext | null>(null);
   const [contextLoading, setContextLoading] = useState(false);
   const [contextError, setContextError] = useState<string | null>(null);
@@ -290,8 +291,9 @@ export default function IntegratedTomographyViewer({
   useEffect(() => {
     setSelectedRelation(null);
     setSelectedRelationSource(null);
+    setMetadataTargetSection(initialSection);
     setCollapsedTreeIds(new Set());
-  }, [projectIdNum, protocolIdNum, outputName]);
+  }, [projectIdNum, protocolIdNum, outputName, initialSection]);
 
   const normalizeSelectionValue = (value: unknown) => {
     if (value == null) return null;
@@ -563,6 +565,13 @@ export default function IntegratedTomographyViewer({
   };
 
   const handleTreeItemSelect = (item: ContextTreeItem) => {
+    if (item.section === "metadata") {
+      setMetadataTargetSection(activeSection === "metadata" ? initialSection : activeSection);
+      setActiveSection("metadata");
+      setSelectedRelationSource(null);
+      return;
+    }
+
     setActiveSection(item.section);
     setSelectedRelationSource(null);
   };
@@ -684,6 +693,30 @@ export default function IntegratedTomographyViewer({
       }
     }
 
+    if (activeSection === "metadata") {
+      const links = context?.links;
+
+      const metadataLink =
+        metadataTargetSection === "tiltSeries"
+          ? links?.tiltSeries
+          : metadataTargetSection === "ctf"
+            ? links?.ctf
+            : metadataTargetSection === "tomogram"
+              ? links?.tomogram
+              : metadataTargetSection === "coordinates"
+                ? links?.coordinates3d
+                : null;
+
+      return (
+        <MetadataViewer
+          projectId={projectIdNum}
+          protocolId={getLinkedProtocolId(metadataLink, protocolIdNum)}
+          outputName={getLinkedOutputName(metadataLink, outputName)}
+          embedded
+        />
+      );
+    }
+
     return <MetadataViewer projectId={projectIdNum} protocolId={protocolIdNum} outputName={outputName} embedded />;
   };
 
@@ -704,10 +737,10 @@ export default function IntegratedTomographyViewer({
         elevation={0}
         sx={{
           minHeight: 0,
-          overflow: "auto",
-          borderRight: "1px solid rgba(148,163,184,0.25)",
-          background: "linear-gradient(180deg, rgba(248,250,252,0.98) 0%, rgba(241,245,249,0.94) 100%)",
-          p: 0.85,
+          overflow: "hidden",
+          borderRight: "1px solid rgba(226,232,240,0.95)",
+          background: "#ffffff",
+          p: 1,
         }}
       >
         <Box sx={{ display: "flex", alignItems: "center", gap: 1, minWidth: 0, mb: 0.75 }}>
@@ -728,28 +761,28 @@ export default function IntegratedTomographyViewer({
           </Typography>
         ) : null}
 
-        <Stack spacing={0.3}>
+        <Stack spacing={0.25} sx={{ mt: 0.5 }}>
           {treeItems.map((item) => renderTreeItem(item))}
+
+          <Box sx={{ height: 1, bgcolor: "rgba(203,213,225,0.75)", mx: 0.25, my: 0.45 }} />
+
+          <ContextTreeRow
+            item={{
+              id: "metadata",
+              section: "metadata",
+              label: metadataNode.label,
+              description: metadataNode.description,
+              status: metadataNode.status,
+              icon: metadataNode.icon,
+              badgeLabel: metadataNode.badgeLabel,
+            }}
+            depth={0}
+            active={activeSection === "metadata"}
+            expanded
+            onToggle={toggleTreeItem}
+            onSelect={handleTreeItemSelect}
+          />
         </Stack>
-
-        <Box sx={{ height: 1, bgcolor: "rgba(148,163,184,0.35)", mx: 0.4, my: 0.8 }} />
-
-        <ContextTreeRow
-          item={{
-            id: "metadata",
-            section: "metadata",
-            label: metadataNode.label,
-            description: metadataNode.description,
-            status: metadataNode.status,
-            icon: metadataNode.icon,
-            badgeLabel: metadataNode.badgeLabel,
-          }}
-          depth={0}
-          active={activeSection === "metadata"}
-          expanded
-          onToggle={toggleTreeItem}
-          onSelect={handleTreeItemSelect}
-        />
       </Paper>
 
       <Box sx={{ minHeight: 0, minWidth: 0, overflow: "hidden" }}>{renderSection()}</Box>
