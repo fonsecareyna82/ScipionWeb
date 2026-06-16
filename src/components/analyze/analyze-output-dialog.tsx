@@ -77,11 +77,12 @@ const dialogPaperSx = {
   boxShadow: "0 10px 20px rgba(0,0,0,0.15), 0 6px 10px rgba(0,0,0,0.08)",
   display: "flex",
   flexDirection: "column",
-  height: "96vh",
-  maxHeight: "97vh",
+  width: "93vw",
+  maxWidth: "93vw",
+  height: "97vh",
+  maxHeight: "98vh",
   minHeight: 650,
 };
-
 const headerSx = {
   px: 2,
   py: 1.25,
@@ -202,7 +203,7 @@ function AnalyzeOutputDialog({ open, onClose, projectId, protocolId, protocolLab
     <Dialog
       open={open}
       onClose={handleDialogClose}
-      maxWidth="xl"
+      maxWidth={false}
       fullWidth
       PaperProps={{ sx: dialogPaperSx }}
       onDoubleClickCapture={(event) => {
