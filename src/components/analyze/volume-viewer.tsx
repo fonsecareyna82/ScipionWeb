@@ -76,6 +76,7 @@ const CMAP_OPTIONS = [
 ];
 
 const SURFACE_MAX_TRIANGLES = 550000;
+const SURFACE_REQUEST_TIMEOUT_MS = 30000;
 const SLICE_SLIDER_THROTTLE_MS = 80;
 
 const SLICE_PREVIEW_MAX_SIDE = 768;
@@ -252,7 +253,9 @@ export default function VolumeViewer({
 
 
   const [surfaceRefreshing, setSurfaceRefreshing] = useState(false);
+  const [surfaceRefreshError, setSurfaceRefreshError] = useState<string | null>(null);
   const surfaceAbortRef = useRef<AbortController | null>(null);
+  const surfaceRequestSeqRef = useRef(0);
 
   const [maxDim3d, setMaxDim3d] = useState(192);
   const [method3d, setMethod3d] = useState<"none" | "binning" | "stride">(
@@ -368,9 +371,11 @@ export default function VolumeViewer({
 
   useEffect(() => {
     surfaceAbortRef.current?.abort();
+    surfaceRequestSeqRef.current += 1;
 
     setMapLoading(false);
     setSurfaceRefreshing(false);
+    setSurfaceRefreshError(null);
     setMapError(null);
     setMapData(null);
     setSurfaceMesh(null);
@@ -780,6 +785,15 @@ export default function VolumeViewer({
     return [level - width, level + width];
   }, []);
 
+  const cancelSurfaceRefresh = useCallback(() => {
+    surfaceRequestSeqRef.current += 1;
+    surfaceAbortRef.current?.abort();
+    surfaceAbortRef.current = null;
+    setSurfaceRefreshing(false);
+    setMapLoading(false);
+    setSurfaceRefreshError("Surface update cancelled. Keeping the previous surface.");
+  }, []);
+
   const reloadSurfaceMesh = useCallback(
     async (level: number | null, opts: { silent?: boolean } = {}) => {
       if (selectedId == null) return;
@@ -789,6 +803,9 @@ export default function VolumeViewer({
       const controller = new AbortController();
       surfaceAbortRef.current = controller;
 
+      const requestSeq = surfaceRequestSeqRef.current + 1;
+      surfaceRequestSeqRef.current = requestSeq;
+
       const silent = opts.silent === true;
 
       if (silent) {
@@ -797,10 +814,32 @@ export default function VolumeViewer({
         setMapLoading(true);
       }
 
+      setSurfaceRefreshError(null);
       setMapError(null);
       setGpuError(null);
 
       const requestLevel = clampIsoLevelToOpenRange(level, surfaceLevelRange);
+
+      let timedOut = false;
+      const timeoutId = window.setTimeout(() => {
+        if (surfaceRequestSeqRef.current !== requestSeq) return;
+
+        timedOut = true;
+        surfaceRequestSeqRef.current += 1;
+        controller.abort();
+
+        if (surfaceAbortRef.current === controller) {
+          surfaceAbortRef.current = null;
+        }
+
+        if (silent) {
+          setSurfaceRefreshing(false);
+          setSurfaceRefreshError("Surface update timed out. Keeping the previous surface.");
+        } else {
+          setMapLoading(false);
+          setMapError("Surface loading timed out. Try a lower maxDim or binning.");
+        }
+      }, SURFACE_REQUEST_TIMEOUT_MS);
 
       try {
         const mesh = await svc.getVolumeSurfaceMesh(
@@ -817,13 +856,19 @@ export default function VolumeViewer({
           },
         );
 
-        if (controller.signal.aborted) return;
+        if (
+          controller.signal.aborted ||
+          surfaceRequestSeqRef.current !== requestSeq
+        ) {
+          return;
+        }
 
         const resolvedLevel = Number.isFinite(mesh?.level) ? Number(mesh.level) : null;
 
         setSurfaceMesh(mesh);
         setSurfaceResolvedLevel(resolvedLevel);
         setMapData(null);
+        setSurfaceRefreshError(null);
 
         if (metadataSurfaceLevelRange) {
           setSurfaceLevelRange(metadataSurfaceLevelRange);
@@ -836,7 +881,6 @@ export default function VolumeViewer({
             return buildFallbackSurfaceLevelRange(resolvedLevel);
           });
         }
-        setMapData(null);
 
         lastLoadedRef.current = {
           volumeId: selectedId,
@@ -846,20 +890,34 @@ export default function VolumeViewer({
           surfaceLevel: requestLevel,
         };
       } catch (e: any) {
-        if (controller.signal.aborted || e?.name === "AbortError") return;
+        if (surfaceRequestSeqRef.current !== requestSeq) return;
 
-        setMapError(e?.message || "Failed to load surface mesh");
-        setSurfaceMesh(null);
-        setSurfaceResolvedLevel(null);
+        if (controller.signal.aborted || e?.name === "AbortError") {
+          if (!timedOut) return;
+        }
+
+        const message = e?.message || "Failed to load surface mesh";
+
+        if (silent) {
+          setSurfaceRefreshError(message);
+        } else {
+          setMapError(message);
+          setSurfaceMesh(null);
+          setSurfaceResolvedLevel(null);
+        }
       } finally {
+        window.clearTimeout(timeoutId);
+
         if (surfaceAbortRef.current === controller) {
           surfaceAbortRef.current = null;
         }
 
-        if (silent) {
-          setSurfaceRefreshing(false);
-        } else {
-          setMapLoading(false);
+        if (surfaceRequestSeqRef.current === requestSeq) {
+          if (silent) {
+            setSurfaceRefreshing(false);
+          } else {
+            setMapLoading(false);
+          }
         }
       }
     },
@@ -1968,7 +2026,7 @@ export default function VolumeViewer({
                               displayRange={surfaceLevelRange}
                               validRange={surfaceLevelRange ?? surfaceLevelRange}
                               value={surfaceLevelValue}
-                              disabled={selectedId == null || mapLoading}
+                              disabled={selectedId == null || mapLoading || surfaceRefreshing}
                               onHelp={openHelp("surfaceLevel3d")}
                               onChange={(level) => {
                                 setSurfaceLevel3d(level);
@@ -1980,10 +2038,11 @@ export default function VolumeViewer({
                             />
                           )}
 
-                          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                          <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
                             <Button
                               size="small"
                               variant="outlined"
+                              disabled={selectedId == null || mapLoading || surfaceRefreshing}
                               onClick={() => {
                                 setSurfaceLevel3d(null);
                                 void reloadSurfaceMesh(null, { silent: true });
@@ -1994,11 +2053,27 @@ export default function VolumeViewer({
                             </Button>
 
                             {surfaceRefreshing && (
-                              <Typography variant="caption" color="text.secondary">
-                                updating surface…
-                              </Typography>
+                              <>
+                                <Typography variant="caption" color="text.secondary">
+                                  updating surface…
+                                </Typography>
+                                <Button
+                                  size="small"
+                                  variant="text"
+                                  onClick={cancelSurfaceRefresh}
+                                  sx={{ textTransform: "none", minWidth: 0 }}
+                                >
+                                  Cancel
+                                </Button>
+                              </>
                             )}
                           </Box>
+
+                          {surfaceRefreshError && (
+                            <Typography variant="caption" color="warning.main">
+                              {surfaceRefreshError}
+                            </Typography>
+                          )}
 
                           {surfaceResolvedLevel != null && (
                             <Typography variant="caption" color="text.secondary">

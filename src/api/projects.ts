@@ -54,6 +54,7 @@ import {
   ProtocolOutputThumbnailsResponse,
   AuthenticatedRequestOptions,
   IntegratedAnalyzeContext,
+  ProtocolStep,
 } from "@/services/ProjectService";
 
 const ACTION_LAUNCH = "launch";
@@ -963,6 +964,24 @@ export async function loadProtocols(projectId: number): Promise<any> {
   );
   if (!response.ok) throw await toApiError(response, "Failed to fetch protocols");
   return safeJson<any>(response);
+}
+
+/*====================== PROTOCOL STEPS ========================== */
+export async function fetchProtocolSteps(
+  projectId: Id,
+  protocolId: Id,
+): Promise<ProtocolStep[]> {
+  const response = await fetchWithAuth(
+    `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/steps`,
+    { method: "GET", cache: "no-store" },
+  );
+
+  if (!response.ok) {
+    throw await toApiError(response, "Failed to fetch protocol steps");
+  }
+
+  const raw = await safeJson<any>(response);
+  return Array.isArray(raw) ? raw : [];
 }
 
 /* ======================= PROJECT WORKFLOWS ======================= */

@@ -96,6 +96,23 @@ export type ProtocolOutputThumbnailsOptions =
     outputs: ProtocolOutputThumbnailRequestItem[];
   };
 
+
+export type ProtocolStep = {
+  index: number;
+  name: string;
+  status: string;
+  prerequisites?: number[];
+  args?: unknown;
+  initTime?: string | null;
+  endTime?: string | null;
+  elapsedSeconds?: number | null;
+  error?: string | null;
+  interactive?: boolean;
+  needsGpu?: boolean;
+  event?: string | null;
+  updatedAt?: string | null;
+};
+
 /** Common ID type to accept either string or number seamlessly. */
 export type Id = string | number | null | undefined;
 
@@ -1417,6 +1434,9 @@ export interface ProjectService<
 
   /** Load all protocols for a project. */
   loadProtocols(projectId: Id): Promise<TProtocol[] | any>;
+
+  /** Load the protocol steps. */
+  fetchProtocolSteps(projectId: Id, protocolId: Id): Promise<ProtocolStep[]>;
 
   /**
   * List predefined workflows / pipelines available for a project.
