@@ -4706,7 +4706,7 @@ export default function ProjectPage() {
         return;
       }
 
-      if (modPressed(e) && e.shiftKey && e.key.toLowerCase() === "d") {
+      if (modPressed(e) && e.shiftKey && e.key.toLowerCase() === "s") {
         e.preventDefault();
         e.stopPropagation();
         (e as any).stopImmediatePropagation?.();

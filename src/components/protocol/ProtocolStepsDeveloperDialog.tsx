@@ -49,26 +49,48 @@ function StepGraphNode({ data }: NodeProps) {
         <div
             title={nodeData.tooltip}
             className={[
-                "flex items-center justify-center border text-slate-900 shadow-sm",
+                "relative flex items-center justify-center border text-slate-900 shadow-sm",
                 isRoot
                     ? "h-[34px] min-w-[112px] border-sky-300 bg-[#a5e5f2] px-3 text-[13px] font-semibold"
                     : "h-[34px] min-w-[38px] border-sky-300 bg-[#a5e5f2] px-2 text-[13px] font-semibold",
             ].join(" ")}
         >
             <Handle
+                id="top"
                 type="target"
                 position={Position.Top}
                 isConnectable={false}
-                style={{ opacity: 0, pointerEvents: "none" }}
+                style={{
+                    top: -1,
+                    width: 1,
+                    height: 1,
+                    minWidth: 1,
+                    minHeight: 1,
+                    border: "none",
+                    background: "transparent",
+                    opacity: 0,
+                    pointerEvents: "none",
+                }}
             />
 
             {nodeData.label}
 
             <Handle
+                id="bottom"
                 type="source"
                 position={Position.Bottom}
                 isConnectable={false}
-                style={{ opacity: 0, pointerEvents: "none" }}
+                style={{
+                    bottom: -1,
+                    width: 1,
+                    height: 1,
+                    minWidth: 1,
+                    minHeight: 1,
+                    border: "none",
+                    background: "transparent",
+                    opacity: 0,
+                    pointerEvents: "none",
+                }}
             />
         </div>
     );
@@ -241,11 +263,14 @@ function buildStepGraph(steps: ProtocolStep[]): { nodes: Node<StepGraphData>[]; 
                     id: `${source}-${getStepNodeId(stepIndex)}`,
                     source,
                     target: getStepNodeId(stepIndex),
-                    type: "straight",
+                    sourceHandle: "bottom",
+                    targetHandle: "top",
+                    type: "bezier",
                     animated: false,
                     style: {
-                        stroke: "#b8b8b8",
-                        strokeWidth: 1,
+                        stroke: "#9ca3af",
+                        strokeWidth: 1.2,
+                        strokeLinecap: "round",
                     },
                 });
             }
