@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/dialog/dialog";
 import { Button } from "@/components/ui/button";
 import { useProjectService } from "@/ProjectServiceContext";
-import type { Id, ProtocolStep } from "@/services/ProjectService";
+import type { Id, ProtocolStep, ProtocolStepStatus } from "@/services/ProjectService";
 
 type Props = {
     open: boolean;
@@ -294,6 +294,7 @@ export default function ProtocolStepsDeveloperDialog({
     const [selectedIndex, setSelectedIndex] = useState(0);
     const [treeOpen, setTreeOpen] = useState(false);
     const [loading, setLoading] = useState(false);
+    const [statusUpdating, setStatusUpdating] = useState<ProtocolStepStatus | null>(null);
     const [error, setError] = useState<string | null>(null);
 
     const selectedStep = steps[selectedIndex] ?? null;
@@ -334,6 +335,41 @@ export default function ProtocolStepsDeveloperDialog({
         }
     }, [svc, projectId, protocolId]);
 
+    const updateSelectedStepStatus = useCallback(
+        async (nextStatus: ProtocolStepStatus) => {
+            if (!projectId || !protocolId || !selectedStep) return;
+
+            setStatusUpdating(nextStatus);
+            setError(null);
+
+            try {
+                const updatedStep = await svc.updateProtocolStepStatus(
+                    projectId,
+                    protocolId,
+                    Number(selectedStep.index),
+                    nextStatus,
+                );
+
+                const updatedIndex = Number((updatedStep as any)?.index ?? selectedStep.index);
+                const mergedStep: ProtocolStep =
+                    updatedStep && typeof updatedStep === "object"
+                        ? { ...selectedStep, ...updatedStep }
+                        : { ...selectedStep, status: nextStatus };
+
+                setSteps((current) =>
+                    current.map((step) =>
+                        Number(step.index) === updatedIndex ? mergedStep : step,
+                    ),
+                );
+            } catch (err: any) {
+                setError(err?.message || "Failed to update protocol step status.");
+            } finally {
+                setStatusUpdating(null);
+            }
+        },
+        [svc, projectId, protocolId, selectedStep],
+    );
+
     useEffect(() => {
         if (!open) return;
         void loadSteps();
@@ -357,6 +393,10 @@ export default function ProtocolStepsDeveloperDialog({
         },
         [steps],
     );
+
+    const resetBusy = statusUpdating === "new";
+    const finishBusy = statusUpdating === "finished";
+    const statusButtonsDisabled = loading || statusUpdating !== null || !selectedStep;
 
     return (
         <>
@@ -393,21 +433,23 @@ export default function ProtocolStepsDeveloperDialog({
 
                         <button
                             type="button"
-                            disabled
-                            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-slate-300 bg-white px-2.5 text-xs font-medium text-slate-700 shadow-sm disabled:opacity-60"
-                            title="Reset action will be implemented later"
+                            onClick={() => void updateSelectedStepStatus("new")}
+                            disabled={statusButtonsDisabled}
+                            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-slate-300 bg-white px-2.5 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-60 disabled:hover:bg-white"
+                            title="Reset selected step to new"
                         >
-                            <RotateCcw className="h-3.5 w-3.5" />
+                            <RotateCcw className={`h-3.5 w-3.5 ${resetBusy ? "animate-spin" : ""}`} />
                             Reset
                         </button>
 
                         <button
                             type="button"
-                            disabled
-                            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-slate-300 bg-white px-2.5 text-xs font-medium text-slate-700 shadow-sm disabled:opacity-60"
-                            title="Finish action will be implemented later"
+                            onClick={() => void updateSelectedStepStatus("finished")}
+                            disabled={statusButtonsDisabled}
+                            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-slate-300 bg-white px-2.5 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-60 disabled:hover:bg-white"
+                            title="Mark selected step as finished"
                         >
-                            <CheckCircle2 className="h-3.5 w-3.5" />
+                            <CheckCircle2 className={`h-3.5 w-3.5 ${finishBusy ? "animate-pulse" : ""}`} />
                             Finish
                         </button>
 
@@ -416,7 +458,7 @@ export default function ProtocolStepsDeveloperDialog({
                             variant="outline"
                             className="ml-auto h-8 px-2.5 text-xs bg-white"
                             onClick={() => void loadSteps()}
-                            disabled={loading || !projectId || !protocolId}
+                            disabled={loading || statusUpdating !== null || !projectId || !protocolId}
                         >
                             <RefreshCw className={`h-3.5 w-3.5 mr-1 ${loading ? "animate-spin" : ""}`} />
                             Refresh
