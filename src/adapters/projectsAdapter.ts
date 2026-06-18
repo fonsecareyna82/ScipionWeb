@@ -160,7 +160,20 @@ const defaultService: ProjectService = {
 
   // ---- Protocol steps
   fetchProtocolSteps: (projectId: Id, protocolId: Id) =>
-  api.fetchProtocolSteps(toId(projectId), toId(protocolId)),
+    api.fetchProtocolSteps(toId(projectId), toId(protocolId)),
+
+  updateProtocolStepStatus: (
+    projectId: Id,
+    protocolId: Id,
+    stepIndex: number,
+    status: "new" | "finished",
+  ) =>
+    api.updateProtocolStepStatus(
+      toId(projectId),
+      toId(protocolId),
+      stepIndex,
+      status,
+    ),
 
   /**
    * Fetch predefined workflows / pipelines for a given project.
@@ -320,17 +333,17 @@ const defaultService: ProjectService = {
   },
 
   fetchIntegratedAnalyzeContext: (
-  projectId: Id,
-  protocolId: Id,
-  outputName: string,
-  opts?: AuthenticatedRequestOptions,
-): Promise<IntegratedAnalyzeContext | null> =>
-  api.fetchIntegratedAnalyzeContext(
-    toId(projectId),
-    toId(protocolId),
-    outputName,
-    opts,
-  ),
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    opts?: AuthenticatedRequestOptions,
+  ): Promise<IntegratedAnalyzeContext | null> =>
+    api.fetchIntegratedAnalyzeContext(
+      toId(projectId),
+      toId(protocolId),
+      outputName,
+      opts,
+    ),
 
   listExternalViewers: (
     projectId: Id,

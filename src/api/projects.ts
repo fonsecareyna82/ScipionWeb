@@ -55,6 +55,7 @@ import {
   AuthenticatedRequestOptions,
   IntegratedAnalyzeContext,
   ProtocolStep,
+  ProtocolStepStatus,
 } from "@/services/ProjectService";
 
 const ACTION_LAUNCH = "launch";
@@ -982,6 +983,28 @@ export async function fetchProtocolSteps(
 
   const raw = await safeJson<any>(response);
   return Array.isArray(raw) ? raw : [];
+}
+
+export async function updateProtocolStepStatus(
+  projectId: Id,
+  protocolId: Id,
+  stepIndex: number,
+  status: ProtocolStepStatus,
+): Promise<ProtocolStep> {
+  const response = await fetchWithAuth(
+    `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/steps/${stepIndex}/status`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    },
+  );
+
+  if (!response.ok) {
+    throw await toApiError(response, "Failed to update protocol step status");
+  }
+
+  return safeJson<ProtocolStep>(response);
 }
 
 /* ======================= PROJECT WORKFLOWS ======================= */

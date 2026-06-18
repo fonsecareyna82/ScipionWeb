@@ -97,6 +97,7 @@ export type ProtocolOutputThumbnailsOptions =
   };
 
 
+/** Protocol steps. */
 export type ProtocolStep = {
   index: number;
   name: string;
@@ -112,6 +113,8 @@ export type ProtocolStep = {
   event?: string | null;
   updatedAt?: string | null;
 };
+
+export type ProtocolStepStatus = "new" | "finished";
 
 /** Common ID type to accept either string or number seamlessly. */
 export type Id = string | number | null | undefined;
@@ -1437,6 +1440,14 @@ export interface ProjectService<
 
   /** Load the protocol steps. */
   fetchProtocolSteps(projectId: Id, protocolId: Id): Promise<ProtocolStep[]>;
+
+  /** Update one protocol step status. */
+  updateProtocolStepStatus(
+    projectId: Id,
+    protocolId: Id,
+    stepIndex: number,
+    status: ProtocolStepStatus,
+  ): Promise<ProtocolStep>;
 
   /**
   * List predefined workflows / pipelines available for a project.
