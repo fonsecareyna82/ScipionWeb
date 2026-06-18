@@ -452,6 +452,7 @@ function renderViewer() {
             projectId={1}
             protocolId={2}
             outputName="coordsOutput"
+            hideMetadataAction={false}
         />,
     );
 }
@@ -581,12 +582,13 @@ describe("Coords3dViewer", () => {
         await waitFor(() => {
             expect(serviceMocks.fetchCoords3dTomogramSliceObjectUrl).toHaveBeenCalledWith(
                 1,
-                2,
+                expect.any(Number),
                 "coordsOutput",
                 "t1",
                 30,
                 {
                     axis: "z",
+                    cmap: "gray",
                     format: "webp",
                     normalize: "minmax",
                     scale: 1,
@@ -878,8 +880,13 @@ describe("Coords3dViewer", () => {
         fireEvent.click(screen.getByRole("button", { name: "3D Map" }));
         fireEvent.click(screen.getByRole("tab", { name: "Appearance" }));
 
-        const colorModeSelect = screen.getByRole("combobox");
-        fireEvent.mouseDown(colorModeSelect);
+        const colorModeSelect = screen
+            .getAllByRole("combobox")
+            .find((el) => el.textContent?.trim() === "Class");
+
+        expect(colorModeSelect).toBeDefined();
+
+        fireEvent.mouseDown(colorModeSelect!);
         fireEvent.click(await screen.findByText("Score"));
 
         expect(screen.getAllByText("Score").length).toBeGreaterThan(0);

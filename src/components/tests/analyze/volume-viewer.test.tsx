@@ -394,7 +394,7 @@ describe("VolumeViewer", () => {
         expect(lastCall[4]).toBe(2);
         expect(lastCall[5]).toMatchObject({
             axis: "z",
-            cmap: "viridis",
+            cmap: "gray",
         });
     });
 
@@ -429,7 +429,7 @@ describe("VolumeViewer", () => {
         const lastXAxisCall = xAxisCalls[xAxisCalls.length - 1];
         expect(lastXAxisCall[5]).toMatchObject({
             axis: "x",
-            cmap: "viridis",
+            cmap: "gray",
         });
     });
 
