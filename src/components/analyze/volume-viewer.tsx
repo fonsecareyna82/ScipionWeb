@@ -32,10 +32,19 @@ type VolumeViewerProps = {
   protocolId: string | number;
   outputName: string;
   protocolLabel?: string;
-  pointerClass?: string
+  pointerClass?: string;
+  selectedVolumeId?: string | number | null;
+  onVolumeSelect?: (volume: VolumeLite) => void;
+  hideMetadataAction?: boolean;
 };
 
-type VolumeLite = { id: string | number; label?: string; name?: string };
+type VolumeLite = {
+  id: string | number;
+  label?: string;
+  name?: string;
+  tomoId?: string | number | null;
+  tsId?: string | number | null;
+};
 
 type HistogramData = {
   binEdges: number[];
@@ -67,6 +76,7 @@ const CMAP_OPTIONS = [
 ];
 
 const SURFACE_MAX_TRIANGLES = 550000;
+const SURFACE_REQUEST_TIMEOUT_MS = 30000;
 const SLICE_SLIDER_THROTTLE_MS = 80;
 
 const SLICE_PREVIEW_MAX_SIDE = 768;
@@ -150,6 +160,9 @@ export default function VolumeViewer({
   protocolId,
   outputName,
   pointerClass,
+  selectedVolumeId,
+  onVolumeSelect,
+  hideMetadataAction = false,
 }: VolumeViewerProps) {
   const svc = useProjectService();
 
@@ -240,7 +253,9 @@ export default function VolumeViewer({
 
 
   const [surfaceRefreshing, setSurfaceRefreshing] = useState(false);
+  const [surfaceRefreshError, setSurfaceRefreshError] = useState<string | null>(null);
   const surfaceAbortRef = useRef<AbortController | null>(null);
+  const surfaceRequestSeqRef = useRef(0);
 
   const [maxDim3d, setMaxDim3d] = useState(192);
   const [method3d, setMethod3d] = useState<"none" | "binning" | "stride">(
@@ -355,11 +370,24 @@ export default function VolumeViewer({
   }, [viewMode, renderMode3d, autoRotate3d, gpuError, mapData]);
 
   useEffect(() => {
+    surfaceAbortRef.current?.abort();
+    surfaceRequestSeqRef.current += 1;
+
+    setMapLoading(false);
+    setSurfaceRefreshing(false);
+    setSurfaceRefreshError(null);
+    setMapError(null);
+    setMapData(null);
     setSurfaceMesh(null);
     setSurfaceResolvedLevel(null);
     setSurfaceLevel3d(null);
     setSurfaceLevelRange(null);
     setGpuError(null);
+
+    lastLoadedRef.current = {
+      ...lastLoadedRef.current,
+      volumeId: null,
+    };
   }, [selectedId]);
 
   useEffect(() => {
@@ -383,6 +411,8 @@ export default function VolumeViewer({
           id: v?.id ?? i,
           label: v?.label ?? v?.name ?? `Volume ${v?.id ?? i}`,
           name: v?.name,
+          tomoId: v?.tomoId ?? v?.tomogramId ?? null,
+          tsId: v?.tsId ?? v?.tiltSeriesId ?? null,
         }));
         setVolumes(mapped);
         setSelectedId((prev) => {
@@ -410,9 +440,6 @@ export default function VolumeViewer({
     }
 
     let cancelled = false;
-
-    setMeta(null);
-    setMetaVolumeId(null);
 
     (async () => {
       try {
@@ -445,6 +472,23 @@ export default function VolumeViewer({
       cancelled = true;
     };
   }, [selectedId, projectId, protocolId, outputName, svc]);
+
+  useEffect(() => {
+    if (selectedVolumeId == null || volumes.length === 0) return;
+
+    const match = volumes.find((v) => {
+      return (
+        String(v.id) === String(selectedVolumeId) ||
+        String(v.tomoId) === String(selectedVolumeId) ||
+        String(v.name) === String(selectedVolumeId) ||
+        String(v.label) === String(selectedVolumeId)
+      );
+    });
+
+    if (match && String(match.id) !== String(selectedId)) {
+      setSelectedId(match.id);
+    }
+  }, [selectedVolumeId, volumes, selectedId]);
 
   useEffect(() => {
     if (!needsHistogram || selectedId == null) {
@@ -492,25 +536,38 @@ export default function VolumeViewer({
 
   const dims = useMemo(() => getDimsZYXtoXYZ(meta), [meta]);
 
+  const selectedMetaReady =
+    selectedId != null &&
+    meta != null &&
+    metaVolumeId != null &&
+    String(metaVolumeId) === String(selectedId);
+
+  const volumeSwitching =
+    selectedId != null && !metaError && (metaLoading || !selectedMetaReady);
+
   const maxSlice = Math.max(0, dims[axis] - 1);
   const maxSliceZ = Math.max(0, dims.z - 1);
   const maxSliceY = Math.max(0, dims.y - 1);
   const maxSliceX = Math.max(0, dims.x - 1);
 
   useEffect(() => {
+    if (!selectedMetaReady) return;
+
     const mid = Math.max(0, Math.floor(maxSlice / 2));
     setSliceIndex(mid);
-  }, [selectedId, axis, maxSlice]);
+  }, [selectedMetaReady, axis, maxSlice]);
 
   useEffect(() => {
+    if (!selectedMetaReady) return;
+
     setSliceIndexZ(Math.max(0, Math.floor(maxSliceZ / 2)));
     setSliceIndexY(Math.max(0, Math.floor(maxSliceY / 2)));
     setSliceIndexX(Math.max(0, Math.floor(maxSliceX / 2)));
-  }, [selectedId, maxSliceZ, maxSliceY, maxSliceX]);
+  }, [selectedMetaReady, maxSliceZ, maxSliceY, maxSliceX]);
 
-  const readySlices = selectedId != null && !!meta && dims[axis] > 0;
+  const readySlices = selectedId != null && selectedMetaReady && dims[axis] > 0;
   const readyTripleSlices =
-    selectedId != null && !!meta && dims.x > 0 && dims.y > 0 && dims.z > 0;
+    selectedId != null && selectedMetaReady && dims.x > 0 && dims.y > 0 && dims.z > 0;
 
   const buildSliceFetchOptions = useCallback(
     (isDragging: boolean) => ({
@@ -624,6 +681,65 @@ export default function VolumeViewer({
     requestOptions: xSliceFetchOptions,
   });
 
+  const sliceImagesLoading =
+    viewMode === "slices" &&
+    !volumeSwitching &&
+    (
+      (sliceLayoutMode === "single" && singleSlice.loading && !singleSlice.url) ||
+      (sliceLayoutMode === "triple" &&
+        ((zSlice.loading && !zSlice.url) ||
+          (ySlice.loading && !ySlice.url) ||
+          (xSlice.loading && !xSlice.url)))
+    );
+
+  const waitingFor3dData =
+    viewMode === "map3d" &&
+    selectedId != null &&
+    !mapError &&
+    !gpuError &&
+    (
+      (usesSurfaceMesh3d && !surfaceMesh) ||
+      (!usesSurfaceMesh3d && !mapData)
+    );
+
+  const showViewerLoading =
+    volumeSwitching ||
+    sliceImagesLoading ||
+    mapLoading ||
+    waitingFor3dData;
+
+  const hasVisibleSliceContent =
+    viewMode === "slices" &&
+    (
+      (sliceLayoutMode === "single" && !!singleSlice.url) ||
+      (sliceLayoutMode === "triple" && (!!zSlice.url || !!ySlice.url || !!xSlice.url))
+    );
+
+  const [delayedViewerLoading, setDelayedViewerLoading] = useState(false);
+
+  useEffect(() => {
+    if (!showViewerLoading) {
+      setDelayedViewerLoading(false);
+      return;
+    }
+
+    if (!hasVisibleSliceContent) {
+      setDelayedViewerLoading(true);
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setDelayedViewerLoading(true);
+    }, 180);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [showViewerLoading, hasVisibleSliceContent]);
+
+  const viewerLoadingVisible =
+    showViewerLoading && (!hasVisibleSliceContent || delayedViewerLoading);
+
   const metadataSurfaceLevelRange = useMemo<[number, number] | null>(() => {
 
     const meshMin = firstFiniteNumber(surfaceMesh?.rangeMin);
@@ -669,6 +785,15 @@ export default function VolumeViewer({
     return [level - width, level + width];
   }, []);
 
+  const cancelSurfaceRefresh = useCallback(() => {
+    surfaceRequestSeqRef.current += 1;
+    surfaceAbortRef.current?.abort();
+    surfaceAbortRef.current = null;
+    setSurfaceRefreshing(false);
+    setMapLoading(false);
+    setSurfaceRefreshError("Surface update cancelled. Keeping the previous surface.");
+  }, []);
+
   const reloadSurfaceMesh = useCallback(
     async (level: number | null, opts: { silent?: boolean } = {}) => {
       if (selectedId == null) return;
@@ -678,6 +803,9 @@ export default function VolumeViewer({
       const controller = new AbortController();
       surfaceAbortRef.current = controller;
 
+      const requestSeq = surfaceRequestSeqRef.current + 1;
+      surfaceRequestSeqRef.current = requestSeq;
+
       const silent = opts.silent === true;
 
       if (silent) {
@@ -686,10 +814,32 @@ export default function VolumeViewer({
         setMapLoading(true);
       }
 
+      setSurfaceRefreshError(null);
       setMapError(null);
       setGpuError(null);
 
       const requestLevel = clampIsoLevelToOpenRange(level, surfaceLevelRange);
+
+      let timedOut = false;
+      const timeoutId = window.setTimeout(() => {
+        if (surfaceRequestSeqRef.current !== requestSeq) return;
+
+        timedOut = true;
+        surfaceRequestSeqRef.current += 1;
+        controller.abort();
+
+        if (surfaceAbortRef.current === controller) {
+          surfaceAbortRef.current = null;
+        }
+
+        if (silent) {
+          setSurfaceRefreshing(false);
+          setSurfaceRefreshError("Surface update timed out. Keeping the previous surface.");
+        } else {
+          setMapLoading(false);
+          setMapError("Surface loading timed out. Try a lower maxDim or binning.");
+        }
+      }, SURFACE_REQUEST_TIMEOUT_MS);
 
       try {
         const mesh = await svc.getVolumeSurfaceMesh(
@@ -706,13 +856,19 @@ export default function VolumeViewer({
           },
         );
 
-        if (controller.signal.aborted) return;
+        if (
+          controller.signal.aborted ||
+          surfaceRequestSeqRef.current !== requestSeq
+        ) {
+          return;
+        }
 
         const resolvedLevel = Number.isFinite(mesh?.level) ? Number(mesh.level) : null;
 
         setSurfaceMesh(mesh);
         setSurfaceResolvedLevel(resolvedLevel);
         setMapData(null);
+        setSurfaceRefreshError(null);
 
         if (metadataSurfaceLevelRange) {
           setSurfaceLevelRange(metadataSurfaceLevelRange);
@@ -725,7 +881,6 @@ export default function VolumeViewer({
             return buildFallbackSurfaceLevelRange(resolvedLevel);
           });
         }
-        setMapData(null);
 
         lastLoadedRef.current = {
           volumeId: selectedId,
@@ -735,20 +890,34 @@ export default function VolumeViewer({
           surfaceLevel: requestLevel,
         };
       } catch (e: any) {
-        if (controller.signal.aborted || e?.name === "AbortError") return;
+        if (surfaceRequestSeqRef.current !== requestSeq) return;
 
-        setMapError(e?.message || "Failed to load surface mesh");
-        setSurfaceMesh(null);
-        setSurfaceResolvedLevel(null);
+        if (controller.signal.aborted || e?.name === "AbortError") {
+          if (!timedOut) return;
+        }
+
+        const message = e?.message || "Failed to load surface mesh";
+
+        if (silent) {
+          setSurfaceRefreshError(message);
+        } else {
+          setMapError(message);
+          setSurfaceMesh(null);
+          setSurfaceResolvedLevel(null);
+        }
       } finally {
+        window.clearTimeout(timeoutId);
+
         if (surfaceAbortRef.current === controller) {
           surfaceAbortRef.current = null;
         }
 
-        if (silent) {
-          setSurfaceRefreshing(false);
-        } else {
-          setMapLoading(false);
+        if (surfaceRequestSeqRef.current === requestSeq) {
+          if (silent) {
+            setSurfaceRefreshing(false);
+          } else {
+            setMapLoading(false);
+          }
         }
       }
     },
@@ -1077,7 +1246,9 @@ export default function VolumeViewer({
           {loadingList ? (
             <Box sx={{ p: 2, display: "flex", gap: 1, alignItems: "center" }}>
               <CircularProgress size={18} />
-              <Typography variant="body2"></Typography>
+              <Typography variant="body2" color="text.secondary">
+                Loading tomograms...
+              </Typography>
             </Box>
           ) : listError ? (
             <Box sx={{ p: 2 }}>
@@ -1099,7 +1270,10 @@ export default function VolumeViewer({
                   <ListItemButton
                     key={String(v.id)}
                     selected={selected}
-                    onClick={() => setSelectedId(v.id)}
+                    onClick={() => {
+                      setSelectedId(v.id);
+                      onVolumeSelect?.(v);
+                    }}
                     sx={{ px: 1.5, py: 1 }}
                   >
                     <ListItemText
@@ -1160,14 +1334,14 @@ export default function VolumeViewer({
                     3D Map
                   </Box>
                 </ToggleButton>
-                {pClass.toLowerCase().startsWith('setof') && (
+                {pClass.toLowerCase().startsWith("setof") && !hideMetadataAction ? (
                   <ToggleButton value="metadata" disabled={!canOpenMetadata}>
                     <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
                       <TableLucide size={14} />
                       Metadata
                     </Box>
                   </ToggleButton>
-                )}
+                ) : null}
 
               </ToggleButtonGroup>
             </Box>
@@ -1277,10 +1451,16 @@ export default function VolumeViewer({
                   : undefined
               }
             >
-              {metaLoading ? (
-                <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
+              {viewerLoadingVisible ? (
+                <Box sx={{ display: "flex", gap: 1, alignItems: "center", color: "text.secondary" }}>
                   <CircularProgress size={18} />
-                  <Typography variant="body2"></Typography>
+                  <Typography variant="body2">
+                    {viewMode === "map3d"
+                      ? "Loading 3D map..."
+                      : volumeSwitching
+                        ? "Loading tomogram..."
+                        : "Loading slices..."}
+                  </Typography>
                 </Box>
               ) : metaError ? (
                 <Typography variant="body2" color="error">
@@ -1357,11 +1537,6 @@ export default function VolumeViewer({
                     No image
                   </Typography>
                 )
-              ) : mapLoading ? (
-                <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
-                  <CircularProgress size={18} />
-                  <Typography variant="body2">Loading 3D volume…</Typography>
-                </Box>
               ) : mapError ? (
                 <Typography variant="body2" color="error">
                   {mapError}
@@ -1388,9 +1563,7 @@ export default function VolumeViewer({
                 </Typography>
               ) : (
                 <Typography variant="body2" color="text.secondary">
-                  {usesSurfaceMesh3d
-                    ? "Load the surface to start adjusting the level."
-                    : "Load the 3D volume to start rendering."}
+                  3D data is not available for this tomogram.
                 </Typography>
               )}
             </Box>
@@ -1853,7 +2026,7 @@ export default function VolumeViewer({
                               displayRange={surfaceLevelRange}
                               validRange={surfaceLevelRange ?? surfaceLevelRange}
                               value={surfaceLevelValue}
-                              disabled={selectedId == null || mapLoading}
+                              disabled={selectedId == null || mapLoading || surfaceRefreshing}
                               onHelp={openHelp("surfaceLevel3d")}
                               onChange={(level) => {
                                 setSurfaceLevel3d(level);
@@ -1865,10 +2038,11 @@ export default function VolumeViewer({
                             />
                           )}
 
-                          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                          <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
                             <Button
                               size="small"
                               variant="outlined"
+                              disabled={selectedId == null || mapLoading || surfaceRefreshing}
                               onClick={() => {
                                 setSurfaceLevel3d(null);
                                 void reloadSurfaceMesh(null, { silent: true });
@@ -1879,11 +2053,27 @@ export default function VolumeViewer({
                             </Button>
 
                             {surfaceRefreshing && (
-                              <Typography variant="caption" color="text.secondary">
-                                updating surface…
-                              </Typography>
+                              <>
+                                <Typography variant="caption" color="text.secondary">
+                                  updating surface…
+                                </Typography>
+                                <Button
+                                  size="small"
+                                  variant="text"
+                                  onClick={cancelSurfaceRefresh}
+                                  sx={{ textTransform: "none", minWidth: 0 }}
+                                >
+                                  Cancel
+                                </Button>
+                              </>
                             )}
                           </Box>
+
+                          {surfaceRefreshError && (
+                            <Typography variant="caption" color="warning.main">
+                              {surfaceRefreshError}
+                            </Typography>
+                          )}
 
                           {surfaceResolvedLevel != null && (
                             <Typography variant="caption" color="text.secondary">
@@ -1895,7 +2085,7 @@ export default function VolumeViewer({
 
                       {!surfaceLevelRange && (
                         <Typography variant="caption" color="text.secondary">
-                          Load the surface to enable level control.
+                          Level control will be available when the surface is ready.
                         </Typography>
                       )}
                     </Box>

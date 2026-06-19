@@ -12,6 +12,7 @@ import React, {
 } from "react";
 
 import ProtocolForm from "@/components/protocol/ProtocolForm";
+import ProtocolStepsDeveloperDialog from "@/components/protocol/ProtocolStepsDeveloperDialog";
 import { buildGraphElements } from "@/utils/graph_utils";
 
 import ReactFlow, {
@@ -1081,6 +1082,16 @@ export default function ProjectPage() {
 
   const portalRootRef = useRef<HTMLDivElement | null>(null);
   const [dialogContainer, setDialogContainer] = useState<HTMLElement | null>(null);
+
+  const [protocolStepsDialog, setProtocolStepsDialog] = useState<{
+    open: boolean;
+    protocolId: string | null;
+    protocolLabel: string;
+  }>({
+    open: false,
+    protocolId: null,
+    protocolLabel: "",
+  });
 
   useEffect(() => {
     setDialogContainer(portalRootRef.current);
@@ -3734,6 +3745,17 @@ export default function ProjectPage() {
     return String(data.runName ?? data.label ?? id);
   };
 
+  const openProtocolStepsDialog = useCallback((id: string) => {
+    const protocolId = String(id ?? "").trim();
+    if (!protocolId || protocolId === "PROJECT") return;
+
+    setProtocolStepsDialog({
+      open: true,
+      protocolId,
+      protocolLabel: findNodeRunName(protocolId),
+    });
+  }, []);
+
   const findNodeEditableRunName = (id: string) => {
     const n = nodesRef.current.find((m) => m.id === id);
     const data: any = (n as any)?.data ?? {};
@@ -4675,11 +4697,28 @@ export default function ProjectPage() {
         dlgRename.open ||
         anyActionDialogOpen ||
         dlgResetFrom.open ||
+        protocolStepsDialog.open ||
         fileDialogOpen ||
         drawerOpen ||
         contextMenu.visible ||
         isTypingTarget(e.target)
       ) {
+        return;
+      }
+
+      if (modPressed(e) && e.shiftKey && e.key.toLowerCase() === "d") {
+        e.preventDefault();
+        e.stopPropagation();
+        (e as any).stopImmediatePropagation?.();
+
+        const ids = getSelectedIds();
+
+        if (ids.length !== 1) {
+          toast.error(ids.length > 1 ? "Select only one protocol." : "Select a protocol first.");
+          return;
+        }
+
+        openProtocolStepsDialog(ids[0]);
         return;
       }
 
@@ -4834,6 +4873,8 @@ export default function ProjectPage() {
     handleOpenWorkflows,
     handleCopyWorkflow,
     handlePasteWorkflow,
+    protocolStepsDialog.open,
+    openProtocolStepsDialog,
   ]);
 
   function getHostIsDark() {
@@ -5404,24 +5445,24 @@ export default function ProjectPage() {
                   <span className="text-sm mb-1">Add protocol</span>
                 </button>
 
-                
+
                 {contextMenuVisibilityPolicyRef.current.pasteWorkflow && (
-                <button
-                  className="pp-canvasMenuItem"
-                  onClick={() => {
-                    handleCloseMenu();
-                    void handlePasteWorkflow();
-                  }}
-                  disabled={!projectId || !workflowClipboard?.workflow}
-                  title={
-                    workflowClipboard?.sourceProjectName
-                      ? `Paste workflow from ${workflowClipboard.sourceProjectName}`
-                      : "Paste copied workflow"
-                  }
-                >
-                  <ClipboardPaste className="pp-canvasMenuIcon" />
-                  <span className="text-sm mb-1">Paste workflow</span>
-                </button>
+                  <button
+                    className="pp-canvasMenuItem"
+                    onClick={() => {
+                      handleCloseMenu();
+                      void handlePasteWorkflow();
+                    }}
+                    disabled={!projectId || !workflowClipboard?.workflow}
+                    title={
+                      workflowClipboard?.sourceProjectName
+                        ? `Paste workflow from ${workflowClipboard.sourceProjectName}`
+                        : "Paste copied workflow"
+                    }
+                  >
+                    <ClipboardPaste className="pp-canvasMenuIcon" />
+                    <span className="text-sm mb-1">Paste workflow</span>
+                  </button>
                 )}
 
                 <button
@@ -6488,6 +6529,23 @@ export default function ProjectPage() {
             />
           </div>
         </TagsDialog>
+
+        {/* ================= ProtocolSteps ================= */}
+        <ProtocolStepsDeveloperDialog
+          open={protocolStepsDialog.open}
+          projectId={getProjectId()}
+          protocolId={protocolStepsDialog.protocolId}
+          protocolLabel={protocolStepsDialog.protocolLabel}
+          container={dialogContainer}
+          onOpenChange={(open) =>
+            setProtocolStepsDialog((prev) => ({
+              ...prev,
+              open,
+              protocolId: open ? prev.protocolId : null,
+              protocolLabel: open ? prev.protocolLabel : "",
+            }))
+          }
+        />
 
         {/* ================= RemoteFileDialog ================= */}
         {canOpenFileDialog && (

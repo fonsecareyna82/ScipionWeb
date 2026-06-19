@@ -52,6 +52,10 @@ import {
   ProtocolOutputThumbnailItem,
   ProtocolOutputThumbnailsOptions,
   ProtocolOutputThumbnailsResponse,
+  AuthenticatedRequestOptions,
+  IntegratedAnalyzeContext,
+  ProtocolStep,
+  ProtocolStepStatus,
 } from "@/services/ProjectService";
 
 const ACTION_LAUNCH = "launch";
@@ -963,6 +967,46 @@ export async function loadProtocols(projectId: number): Promise<any> {
   return safeJson<any>(response);
 }
 
+/*====================== PROTOCOL STEPS ========================== */
+export async function fetchProtocolSteps(
+  projectId: Id,
+  protocolId: Id,
+): Promise<ProtocolStep[]> {
+  const response = await fetchWithAuth(
+    `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/steps`,
+    { method: "GET", cache: "no-store" },
+  );
+
+  if (!response.ok) {
+    throw await toApiError(response, "Failed to fetch protocol steps");
+  }
+
+  const raw = await safeJson<any>(response);
+  return Array.isArray(raw) ? raw : [];
+}
+
+export async function updateProtocolStepStatus(
+  projectId: Id,
+  protocolId: Id,
+  stepIndex: number,
+  status: ProtocolStepStatus,
+): Promise<ProtocolStep> {
+  const response = await fetchWithAuth(
+    `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/steps/${stepIndex}/status`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    },
+  );
+
+  if (!response.ok) {
+    throw await toApiError(response, "Failed to update protocol step status");
+  }
+
+  return safeJson<ProtocolStep>(response);
+}
+
 /* ======================= PROJECT WORKFLOWS ======================= */
 
 /**
@@ -1129,6 +1173,32 @@ export async function launchExternalViewer(
     pid: typeof raw?.pid === "number" ? raw.pid : null,
     data: raw?.data,
   };
+}
+
+export async function fetchIntegratedAnalyzeContext(
+  projectId: Id,
+  protocolId: Id,
+  outputName: string,
+  opts: AuthenticatedRequestOptions = {},
+): Promise<IntegratedAnalyzeContext | null> {
+  const url =
+    `${BASE_URL}/projects/${projectId}/protocols/${protocolId}` +
+    `/outputs/${encodeURIComponent(outputName)}/integrated-context`;
+
+  const response = await fetchWithAuth(url, {
+    method: "GET",
+    signal: opts.signal,
+    cache: opts.cache ?? "no-store",
+  });
+
+  if (response.status === 404 || response.status === 204) return null;
+
+  if (!response.ok) {
+    throw await toApiError(response, "Failed to fetch integrated analyze context");
+  }
+
+  const raw = await safeJson<any>(response);
+  return raw && typeof raw === "object" ? (raw as IntegratedAnalyzeContext) : null;
 }
 
 /* ======================= PROTOCOL ACTIONS ======================= */

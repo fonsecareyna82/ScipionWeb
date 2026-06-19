@@ -62,6 +62,7 @@ import type {
   ProtocolOutputThumbnailsOptions,
   TiltSeriesBatchPreviewOptions,
   TiltSeriesBatchPreviewResult,
+  IntegratedAnalyzeContext,
 
 } from "@/services/ProjectService";
 
@@ -156,6 +157,23 @@ const defaultService: ProjectService = {
 
   // --- Protocol lifecycle ---
   loadProtocols: (projectId: Id) => api.loadProtocols(Number(projectId)),
+
+  // ---- Protocol steps
+  fetchProtocolSteps: (projectId: Id, protocolId: Id) =>
+    api.fetchProtocolSteps(toId(projectId), toId(protocolId)),
+
+  updateProtocolStepStatus: (
+    projectId: Id,
+    protocolId: Id,
+    stepIndex: number,
+    status: "new" | "finished",
+  ) =>
+    api.updateProtocolStepStatus(
+      toId(projectId),
+      toId(protocolId),
+      stepIndex,
+      status,
+    ),
 
   /**
    * Fetch predefined workflows / pipelines for a given project.
@@ -313,6 +331,19 @@ const defaultService: ProjectService = {
       title: (raw as any).title,
     };
   },
+
+  fetchIntegratedAnalyzeContext: (
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    opts?: AuthenticatedRequestOptions,
+  ): Promise<IntegratedAnalyzeContext | null> =>
+    api.fetchIntegratedAnalyzeContext(
+      toId(projectId),
+      toId(protocolId),
+      outputName,
+      opts,
+    ),
 
   listExternalViewers: (
     projectId: Id,

@@ -99,7 +99,7 @@ describe("RemoteFileDialog", () => {
     fireEvent.click(screen.getByText("file.txt"));
     fireEvent.click(screen.getByRole("button", { name: "Select" }));
 
-    expect(onPick).toHaveBeenCalledWith("/root/file.txt", fileEntry);
+   expect(onPick).toHaveBeenCalledWith("file.txt", fileEntry);
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 

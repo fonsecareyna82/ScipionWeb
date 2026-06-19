@@ -31,6 +31,10 @@ type CTFTomoViewerProps = {
   protocolId: Id;
   outputName: string;
   protocolLabel?: string;
+  selectedCtfSeriesId?: Id | null;
+  onCtfSeriesSelect?: (series: CTFTomoSeriesSummary) => void;
+  selectedTiltSeriesId?: Id | null;
+  hideMetadataAction?: boolean;
 };
 
 type CTFTomoSeriesSummary = {
@@ -38,6 +42,7 @@ type CTFTomoSeriesSummary = {
   label: string;
   nViews?: number;
   excluded?: boolean;
+  tiltSeriesId?: Id | null;
 };
 
 type CTFViewRow = {
@@ -73,7 +78,15 @@ function formatNumber(value: number | null | undefined, decimals = 2): string {
   return value.toFixed(decimals);
 }
 
-export default function CTFTomoViewer({ projectId, protocolId, outputName }: CTFTomoViewerProps) {
+export default function CTFTomoViewer({
+  projectId,
+  protocolId,
+  outputName,
+  selectedCtfSeriesId,
+  selectedTiltSeriesId,
+  onCtfSeriesSelect,
+  hideMetadataAction = false,
+}: CTFTomoViewerProps) {
   const svc = useProjectService();
 
   const [mainMode, setMainMode] = useState<"viewer" | "metadata">("viewer");
@@ -252,6 +265,7 @@ export default function CTFTomoViewer({ projectId, protocolId, outputName }: CTF
                 : typeof s.isExcluded === "boolean"
                   ? s.isExcluded
                   : false,
+            tiltSeriesId: s.tiltSeriesId ?? s.tsId ?? null,
           };
         });
 
@@ -274,6 +288,26 @@ export default function CTFTomoViewer({ projectId, protocolId, outputName }: CTF
       cancelled = true;
     };
   }, [projectId, protocolId, outputName, svc]);
+
+  useEffect(() => {
+    if (selectedCtfSeriesId == null || series.length === 0) return;
+
+    const match = series.find((s) => String(s.ctfSeriesId) === String(selectedCtfSeriesId));
+    if (match && String(match.ctfSeriesId) !== String(selectedSeriesId)) {
+      setSelectedSeriesId(match.ctfSeriesId);
+      setExpandedSeriesId(match.ctfSeriesId);
+    }
+  }, [selectedCtfSeriesId, series, selectedSeriesId]);
+
+  useEffect(() => {
+    if (selectedTiltSeriesId == null || series.length === 0) return;
+
+    const match = series.find((s) => String(s.tiltSeriesId) === String(selectedTiltSeriesId));
+    if (match && String(match.ctfSeriesId) !== String(selectedSeriesId)) {
+      setSelectedSeriesId(match.ctfSeriesId);
+      setExpandedSeriesId(match.ctfSeriesId);
+    }
+  }, [selectedTiltSeriesId, series, selectedSeriesId]);
 
   useEffect(() => {
     if (selectedSeriesId == null) {
@@ -484,6 +518,12 @@ export default function CTFTomoViewer({ projectId, protocolId, outputName }: CTF
   const handleSeriesRowClick = (seriesId: Id) => {
     setExpandedSeriesId(seriesId);
     setSelectedSeriesId((prev) => (prev != null && String(prev) === String(seriesId) ? prev : seriesId));
+
+    const selectedSeries = series.find((s) => String(s.ctfSeriesId) === String(seriesId));
+    if (selectedSeries) {
+      onCtfSeriesSelect?.(selectedSeries);
+    }
+
     setPsdError(null);
     abortPsdLoad();
     disposePsdImageUrl();
@@ -1161,20 +1201,22 @@ export default function CTFTomoViewer({ projectId, protocolId, outputName }: CTF
               Help
             </Button>
 
-            <Tooltip title="Show metadata viewer">
-              <span>
-                <Button
-                  size="small"
-                  variant="outlined"
-                  startIcon={<MetadataIcon fontSize="small" />}
-                  disabled={!canOpenMetadata}
-                  onClick={() => setMainMode("metadata")}
-                  sx={{ textTransform: "none" }}
-                >
-                  Metadata
-                </Button>
-              </span>
-            </Tooltip>
+            {!hideMetadataAction ? (
+              <Tooltip title="Show metadata viewer">
+                <span>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    startIcon={<MetadataIcon fontSize="small" />}
+                    disabled={!canOpenMetadata}
+                    onClick={() => setMainMode("metadata")}
+                    sx={{ textTransform: "none" }}
+                  >
+                    Metadata
+                  </Button>
+                </span>
+              </Tooltip>
+            ) : null}
 
             {seriesLoading && (
               <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
@@ -1271,6 +1313,7 @@ export default function CTFTomoViewer({ projectId, protocolId, outputName }: CTF
                                     setSelectedSeriesId((prev) =>
                                       prev != null && String(prev) === String(s.ctfSeriesId) ? prev : s.ctfSeriesId,
                                     );
+                                    onCtfSeriesSelect?.(s);
                                     setPsdError(null);
                                     disposePsdImageUrl();
                                   }

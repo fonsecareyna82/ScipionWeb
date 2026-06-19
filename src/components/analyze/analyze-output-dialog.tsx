@@ -5,9 +5,7 @@ import { CloseIcon } from "@/icons";
 import { MetadataViewer } from "./metadata-viewer";
 import VolumeViewer from "./volume-viewer";
 import Coords2dViewer from "./coords2d-viewer";
-import Coords3dViewer from "./coords3d-viewer";
-import TiltSeriesViewer from "./tiltseries-viewer";
-import CTFTomoViewer from "./ctftomo-viewer";
+import IntegratedTomographyViewer from "./integrated-tomography-viewer";
 import FscViewer from "./fsc-viewer";
 
 type AnalyzeOutputRef = { paramClass: string; value: string; info: string };
@@ -28,7 +26,7 @@ function normalizedKind(k?: string) {
 
 function isVolumeKind(k?: string) {
   const s = normalizedKind(k);
-  return s === "volume" || s === "volumemask" || s === "setofvolumes" || s === "setoftomograms";
+  return s === "volume" || s === "volumemask" || s === "setofvolumes";
 }
 
 function isCoords2dKind(k?: string) {
@@ -49,6 +47,11 @@ function isCTFTomoSeriesKind(k?: string) {
   return normalizedKind(k).includes("setofctftomoseries");
 }
 
+
+function isTomographyIntegratedKind(k?: string) {
+  return isCoords3dKind(k) || isTiltSeriesKind(k) || isCTFTomoSeriesKind(k) || normalizedKind(k) === "setoftomograms";
+}
+
 function isSetOfFSCsKind(k?: string) {
   return normalizedKind(k).includes("setoffsc");
 }
@@ -58,13 +61,13 @@ function isSetOfMetadataKind(k?: string) {
   const trimmed = k.replace(/\s+/g, "");
   if (!/^SetOf/i.test(trimmed) && !/^RelionSetOf/i.test(trimmed)) return false;
   return (
-  !isVolumeKind(k) &&
-  !isCoords2dKind(k) &&
-  !isCoords3dKind(k) &&
-  !isTiltSeriesKind(k) &&
-  !isCTFTomoSeriesKind(k) &&
-  !isSetOfFSCsKind(k)
-);
+    !isVolumeKind(k) &&
+    !isCoords2dKind(k) &&
+    !isCoords3dKind(k) &&
+    !isTiltSeriesKind(k) &&
+    !isCTFTomoSeriesKind(k) &&
+    !isSetOfFSCsKind(k)
+  );
 }
 
 const dialogPaperSx = {
@@ -74,11 +77,12 @@ const dialogPaperSx = {
   boxShadow: "0 10px 20px rgba(0,0,0,0.15), 0 6px 10px rgba(0,0,0,0.08)",
   display: "flex",
   flexDirection: "column",
-  height: "96vh",
-  maxHeight: "97vh",
+  width: "93vw",
+  maxWidth: "93vw",
+  height: "97vh",
+  maxHeight: "98vh",
   minHeight: 650,
 };
-
 const headerSx = {
   px: 2,
   py: 1.25,
@@ -136,8 +140,26 @@ function AnalyzeOutputDialog({ open, onClose, projectId, protocolId, protocolLab
   const protocolIdNum = useMemo(() => Number(protocolId), [protocolId]);
 
   const body = useMemo(() => {
+
+    if (isTomographyIntegratedKind(pointerClass)) {
+      return (
+        <IntegratedTomographyViewer
+          projectId={projectIdNum}
+          protocolId={protocolIdNum}
+          protocolLabel={protocolLabel}
+          outputName={outputName}
+          pointerClass={pointerClass}
+        />
+      );
+    }
+
     if (isVolumeKind(pointerClass)) {
-      return <VolumeViewer projectId={projectIdNum} protocolId={protocolIdNum} protocolLabel={protocolLabel} outputName={outputName} pointerClass={pointerClass} />;
+      return <VolumeViewer
+        projectId={projectIdNum}
+        protocolId={protocolIdNum}
+        protocolLabel={protocolLabel}
+        outputName={outputName}
+        pointerClass={pointerClass} />;
     }
 
     if (isCoords2dKind(pointerClass)) {
@@ -150,18 +172,6 @@ function AnalyzeOutputDialog({ open, onClose, projectId, protocolId, protocolLab
           onClose={onClose}
         />
       );
-    }
-
-    if (isCoords3dKind(pointerClass)) {
-      return <Coords3dViewer projectId={projectIdNum} protocolId={protocolIdNum} protocolLabel={protocolLabel} outputName={outputName} />;
-    }
-
-    if (isTiltSeriesKind(pointerClass)) {
-      return <TiltSeriesViewer projectId={projectIdNum} protocolId={protocolIdNum} outputName={outputName} />;
-    }
-
-    if (isCTFTomoSeriesKind(pointerClass)) {
-      return <CTFTomoViewer projectId={projectIdNum} protocolId={protocolIdNum} outputName={outputName} />;
     }
 
     if (isSetOfMetadataKind(pointerClass)) {
@@ -193,7 +203,7 @@ function AnalyzeOutputDialog({ open, onClose, projectId, protocolId, protocolLab
     <Dialog
       open={open}
       onClose={handleDialogClose}
-      maxWidth="xl"
+      maxWidth={false}
       fullWidth
       PaperProps={{ sx: dialogPaperSx }}
       onDoubleClickCapture={(event) => {

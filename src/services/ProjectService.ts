@@ -96,6 +96,26 @@ export type ProtocolOutputThumbnailsOptions =
     outputs: ProtocolOutputThumbnailRequestItem[];
   };
 
+
+/** Protocol steps. */
+export type ProtocolStep = {
+  index: number;
+  name: string;
+  status: string;
+  prerequisites?: number[];
+  args?: unknown;
+  initTime?: string | null;
+  endTime?: string | null;
+  elapsedSeconds?: number | null;
+  error?: string | null;
+  interactive?: boolean;
+  needsGpu?: boolean;
+  event?: string | null;
+  updatedAt?: string | null;
+};
+
+export type ProtocolStepStatus = "new" | "finished";
+
 /** Common ID type to accept either string or number seamlessly. */
 export type Id = string | number | null | undefined;
 
@@ -562,6 +582,51 @@ export type AnalyzeViewerResolveDecision =
     title?: string;
   };
 
+
+export type IntegratedContextStatus = "available" | "missing" | "unknown" | "inferred";
+
+export type IntegratedContextLink = {
+  protocolId?: Id;
+  outputName?: string | null;
+  itemId?: Id;
+  label?: string | null;
+  status?: IntegratedContextStatus | null;
+};
+
+export type IntegratedContextItemRelation = {
+  key: string;
+  label?: string | null;
+
+  tiltSeriesId?: Id;
+  ctfSeriesId?: Id;
+  tomogramId?: Id;
+  tomogramVolumeId?: Id;
+  coordinatesTomogramId?: Id;
+};
+
+export type IntegratedAnalyzeContext = {
+  root?: {
+    projectId?: Id;
+    protocolId?: Id;
+    outputName?: string | null;
+    outputClass?: string | null;
+  };
+  links?: {
+    tiltSeries?: IntegratedContextLink | null;
+    ctf?: IntegratedContextLink | null;
+    tomogram?: IntegratedContextLink | null;
+    coordinates3d?: IntegratedContextLink | null;
+  };
+  summaries?: {
+    tiltSeries?: Record<string, unknown> | null;
+    ctf?: Record<string, unknown> | null;
+    tomogram?: Record<string, unknown> | null;
+    coordinates3d?: Record<string, unknown> | null;
+  };
+  relations?: {
+    items?: IntegratedContextItemRelation[];
+  };
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // User (sharing / collaboration)
@@ -1373,6 +1438,17 @@ export interface ProjectService<
   /** Load all protocols for a project. */
   loadProtocols(projectId: Id): Promise<TProtocol[] | any>;
 
+  /** Load the protocol steps. */
+  fetchProtocolSteps(projectId: Id, protocolId: Id): Promise<ProtocolStep[]>;
+
+  /** Update one protocol step status. */
+  updateProtocolStepStatus(
+    projectId: Id,
+    protocolId: Id,
+    stepIndex: number,
+    status: ProtocolStepStatus,
+  ): Promise<ProtocolStep>;
+
   /**
   * List predefined workflows / pipelines available for a project.
   * Backend may filter them by project type, owner, or permissions.
@@ -1466,6 +1542,14 @@ export interface ProjectService<
   resolveAnalyzeViewer(
     ctx: AnalyzeViewerResolveContext
   ): Promise<AnalyzeViewerResolveDecision>;
+
+
+  fetchIntegratedAnalyzeContext(
+    projectId: Id,
+    protocolId: Id,
+    outputName: string,
+    opts?: AuthenticatedRequestOptions,
+  ): Promise<IntegratedAnalyzeContext | null>;
 
 
   listOutputVolumes(
