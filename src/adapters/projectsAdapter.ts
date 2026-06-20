@@ -643,31 +643,34 @@ const defaultService: ProjectService = {
       asc?: boolean;
     };
 
-    const params = new URLSearchParams();
-    params.set("offset", String(offset));
-    params.set("limit", String(limit));
-    params.set("selectionOnly", String(selectionOnly));
+    const safeLimit = Math.max(1, Number(limit) || 100);
+    const safeOffset = Math.max(0, Number(offset) || 0);
+    const page = Math.floor(safeOffset / safeLimit) + 1;
 
-    // addSortParams
-    if (typeof sortBy === "string" && sortBy.trim()) {
-      params.set("sortBy", sortBy.trim());
-    }
-    if (typeof asc === "boolean") {
-      params.set("asc", String(asc));
-    }
+    const pageData = await api.fetchMetadataTablePage(
+      toId(projectId),
+      toId(protocolId),
+      outputName,
+      tableName,
+      {
+        page,
+        pageSize: safeLimit,
+        selectionOnly,
+        sortBy,
+        asc,
+      },
+    ) as any;
 
-    const enc = encodeURIComponent;
-    const base = `${BASE_URL}/projects/${toId(projectId)}/protocols/${toId(
-      protocolId,
-    )}/outputs/${enc(outputName)}/metadata/tables/${enc(tableName)}/rows`;
-    const url = `${base}?${params.toString()}`;
+    const rows = Array.isArray(pageData?.rows) ? pageData.rows : [];
 
-    const res = await fetchWithAuth(url, { method: "GET" });
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(text || "Failed to fetch metadata window");
-    }
-    return res.json();
+    return {
+      offset: safeOffset,
+      limit: safeLimit,
+      totalRows: Number.isFinite(Number(pageData?.totalRows))
+        ? Number(pageData.totalRows)
+        : rows.length,
+      rows,
+    };
   },
 
   fetchMetadataImageCellObjectUrl: (

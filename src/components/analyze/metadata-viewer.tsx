@@ -5085,11 +5085,6 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
               </Button>
             ))}
 
-          {schemaActions.length === 0 && (
-            <Typography variant="caption" color="text.secondary">
-              No actions available for this table.
-            </Typography>
-          )}
 
           {!embedded && (
             <Button
