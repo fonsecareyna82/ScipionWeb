@@ -3310,6 +3310,20 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
 
   const schemaActions = useMemo(() => getSchemaActions(schema), [schema]);
 
+  const isPropertiesTable = useMemo(() => {
+    const tableName = (selectedTable || "").trim().toLowerCase();
+    const alias = (tableInfo?.alias || "").trim().toLowerCase();
+
+    return tableName === "properties" || alias === "properties";
+  }, [selectedTable, tableInfo]);
+
+  const metadataActions = useMemo(() => {
+    if (isPropertiesTable) return [];
+    return schemaActions;
+  }, [isPropertiesTable, schemaActions]);
+
+  const hasMetadataActions = metadataActions.length > 0;
+
   const isClassTable = useMemo(() => {
     if (!tableInfo) return false;
     const label = (tableInfo.alias || tableInfo.name || "").toLowerCase();
@@ -5038,37 +5052,38 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
             ml: "auto",
           }}
         >
-          {schemaActions.map((actionLabel) => (
-            <Button
-              key={actionLabel}
-              size="small"
-              variant="contained"
-              startIcon={<Plus size={14} />}
-              onClick={() => openActionDialog(actionLabel)}
-              disabled={!schema || effectiveSelectedCount <= 0 || actionSubmitting}
-              sx={{
-                textTransform: "none",
-                fontWeight: 600,
-                color: "#e2e8f0",
-                border: "1px solid rgba(255,255,255,0.08)",
-                background: "linear-gradient(180deg, #1e293b 0%, #0f172a 100%)",
-                boxShadow:
-                  "0 1px 2px rgba(15,23,42,0.25), inset 0 1px 0 rgba(255,255,255,0.06)",
-                "&:hover": {
-                  background: "linear-gradient(180deg, #334155 0%, #1e293b 100%)",
+          {hasMetadataActions &&
+            metadataActions.map((actionLabel) => (
+              <Button
+                key={actionLabel}
+                size="small"
+                variant="contained"
+                startIcon={<Plus size={14} />}
+                onClick={() => openActionDialog(actionLabel)}
+                disabled={!schema || effectiveSelectedCount <= 0 || actionSubmitting}
+                sx={{
+                  textTransform: "none",
+                  fontWeight: 600,
+                  color: "#e2e8f0",
+                  border: "1px solid rgba(255,255,255,0.08)",
+                  background: "linear-gradient(180deg, #1e293b 0%, #0f172a 100%)",
                   boxShadow:
-                    "0 2px 6px rgba(15,23,42,0.28), inset 0 1px 0 rgba(255,255,255,0.08)",
-                },
-                "&.Mui-disabled": {
-                  color: "rgba(226,232,240,0.55)",
-                  background: "rgba(15,23,42,0.35)",
-                  borderColor: "rgba(148,163,184,0.18)",
-                },
-              }}
-            >
-              {actionLabel}
-            </Button>
-          ))}
+                    "0 1px 2px rgba(15,23,42,0.25), inset 0 1px 0 rgba(255,255,255,0.06)",
+                  "&:hover": {
+                    background: "linear-gradient(180deg, #334155 0%, #1e293b 100%)",
+                    boxShadow:
+                      "0 2px 6px rgba(15,23,42,0.28), inset 0 1px 0 rgba(255,255,255,0.08)",
+                  },
+                  "&.Mui-disabled": {
+                    color: "rgba(226,232,240,0.55)",
+                    background: "rgba(15,23,42,0.35)",
+                    borderColor: "rgba(148,163,184,0.18)",
+                  },
+                }}
+              >
+                {actionLabel}
+              </Button>
+            ))}
 
           {schemaActions.length === 0 && (
             <Typography variant="caption" color="text.secondary">
