@@ -360,8 +360,11 @@ export interface MetadataTableSchema {
   hasColumnId: boolean;
   columns: MetadataColumn[];
 
-  /** Optional actions advertised by the backend for this table (UI will render buttons). */
+  /** Optional actions advertised by the backend for this table. */
   actions?: string[];
+
+  /** Optional column names advertised by the backend as gallery metadata. */
+  additionalInfoColumns?: string[];
 }
 
 export type MetadataTableActionPayload = {

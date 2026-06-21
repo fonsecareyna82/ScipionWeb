@@ -3314,10 +3314,26 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
     };
   }, []);
 
-  const sizeColumn = useMemo(() => {
-    if (!allColumns.length) return null;
-    return allColumns.find((item) => item.name === "_size") ?? null;
-  }, [allColumns]);
+  const galleryInfoColumns = useMemo(() => {
+  const rawColumns = schema?.additionalInfoColumns;
+  if (!Array.isArray(rawColumns)) return [];
+
+  return rawColumns.filter(
+    (columnName): columnName is string =>
+      typeof columnName === "string" && columnName.trim().length > 0,
+  );
+}, [schema?.additionalInfoColumns]);
+
+const sizeColumn = useMemo(() => {
+  if (!allColumns.length) return null;
+
+  const canUseSizeColumn =
+    galleryInfoColumns.length === 0 || galleryInfoColumns.includes("_size");
+
+  if (!canUseSizeColumn) return null;
+
+  return allColumns.find((item) => item.name === "_size") ?? null;
+}, [allColumns, galleryInfoColumns]);
 
   const schemaActions = useMemo(() => getSchemaActions(schema), [schema]);
 
