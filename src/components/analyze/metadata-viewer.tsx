@@ -512,6 +512,26 @@ function formatCellValue(value: MetadataCell): ReactNode {
   }
 }
 
+function formatGallerySizeLabel(value: MetadataCell | undefined): string | null {
+  if (value === null || value === undefined || value === "") return null;
+
+  let count: number | null = null;
+
+  if (typeof value === "number" && Number.isFinite(value)) {
+    count = value;
+  } else if (typeof value === "string") {
+    const parsed = Number(value.trim());
+    if (Number.isFinite(parsed)) {
+      count = parsed;
+    }
+  }
+
+  if (count === null) return null;
+
+  const normalizedCount = Math.max(0, Math.trunc(count));
+  return normalizedCount === 1 ? "1 item" : `${normalizedCount} items`;
+}
+
 type MatrixCellValue = Extract<MetadataCell, { kind: "matrix" }>;
 
 function isMatrixCell(cell: MetadataCell): cell is MatrixCellValue {
@@ -2857,13 +2877,10 @@ const MetadataGalleryPanel = memo(function MetadataGalleryPanel({
                 selectedImageCell.rowIndexInTable === globalRowIndex &&
                 selectedImageCell.columnName === firstImageColumn.name;
 
-              let sizeLabel: string | null = null;
-              if (showSizeLabel && sizeColumn) {
-                const sizeValue = row.values[sizeColumn.index];
-                if (sizeValue !== null && sizeValue !== undefined && sizeValue !== "") {
-                  sizeLabel = `size=${sizeValue}`;
-                }
-              }
+              const sizeLabel =
+                showSizeLabel && sizeColumn
+                  ? formatGallerySizeLabel(row.values[sizeColumn.index])
+                  : null;
 
               return (
                 <Box
@@ -3299,14 +3316,8 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
 
   const sizeColumn = useMemo(() => {
     if (!allColumns.length) return null;
-
-    const column = allColumns.find((item) => item.name === "_size");
-    if (!column) return null;
-
-    const settings = columnSettings[column.name];
-    const visible = settings?.visible ?? (column.visible !== false);
-    return visible ? column : null;
-  }, [allColumns, columnSettings]);
+    return allColumns.find((item) => item.name === "_size") ?? null;
+  }, [allColumns]);
 
   const schemaActions = useMemo(() => getSchemaActions(schema), [schema]);
 
@@ -3324,13 +3335,7 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
 
   const hasMetadataActions = metadataActions.length > 0;
 
-  const isClassTable = useMemo(() => {
-    if (!tableInfo) return false;
-    const label = (tableInfo.alias || tableInfo.name || "").toLowerCase();
-    return label.startsWith("class2d") || label.startsWith("class3d");
-  }, [tableInfo]);
-
-  const showSizeLabel = isClassTable && !!sizeColumn;
+  const showSizeLabel = !!sizeColumn;
 
   const rowHeight = hasImageColumns ? imageThumbSize + IMAGE_ROW_PADDING : NORMAL_ROW_HEIGHT;
 
