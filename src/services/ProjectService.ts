@@ -589,6 +589,7 @@ export type AnalyzeViewerResolveDecision =
 export type IntegratedContextStatus =
   | "available"
   | "related"
+  | "derived"
   | "missing"
   | "unknown"
   | "inferred";

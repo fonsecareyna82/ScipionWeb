@@ -79,6 +79,7 @@ function isAvailableLink(link?: IntegratedContextLink | null) {
     (
       link.status === "available" ||
       link.status === "related" ||
+      link.status === "derived" ||
       link.status === "inferred"
     ),
   );
