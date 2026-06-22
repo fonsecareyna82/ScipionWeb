@@ -34,7 +34,6 @@ type VolumeViewerProps = {
   protocolLabel?: string;
   pointerClass?: string;
   selectedVolumeId?: string | number | null;
-  allowedVolumeIds?: Array<string | number | null | undefined>;
   onVolumeSelect?: (volume: VolumeLite) => void;
   hideMetadataAction?: boolean;
 };
@@ -162,7 +161,6 @@ export default function VolumeViewer({
   outputName,
   pointerClass,
   selectedVolumeId,
-  allowedVolumeIds,
   onVolumeSelect,
   hideMetadataAction = false,
 }: VolumeViewerProps) {
@@ -171,33 +169,6 @@ export default function VolumeViewer({
   const projectIdNum = useMemo(() => Number(projectId), [projectId]);
   const protocolIdNum = useMemo(() => Number(protocolId), [protocolId]);
   const pClass = useMemo(() => String(pointerClass), [pointerClass]);
-
-  const allowedVolumeIdSet = useMemo(() => {
-    const values = (allowedVolumeIds ?? [])
-      .filter((value): value is string | number => value !== null && value !== undefined && String(value) !== "")
-      .map((value) => String(value));
-
-    return values.length ? new Set(values) : null;
-  }, [allowedVolumeIds]);
-
-  const volumeMatchesAllowedIds = useCallback(
-    (volume: VolumeLite) => {
-      if (!allowedVolumeIdSet) return true;
-
-      const candidates = [
-        volume.id,
-        volume.tomoId,
-        volume.tsId,
-        volume.name,
-        volume.label,
-      ];
-
-      return candidates.some(
-        (value) => value !== null && value !== undefined && allowedVolumeIdSet.has(String(value)),
-      );
-    },
-    [allowedVolumeIdSet],
-  );
 
   const canOpenMetadata = useMemo(() => {
     return Number.isFinite(projectIdNum) && Number.isFinite(protocolIdNum);
@@ -443,10 +414,9 @@ export default function VolumeViewer({
           tomoId: v?.tomoId ?? v?.tomogramId ?? null,
           tsId: v?.tsId ?? v?.tiltSeriesId ?? null,
         }));
-        const visibleMapped = mapped.filter(volumeMatchesAllowedIds);
-        setVolumes(visibleMapped);
+        setVolumes(mapped);
         setSelectedId((prev) => {
-          const exists = visibleMapped.find(
+          const exists = mapped.find(
             (m) => String(m.id) === String(prev ?? -999),
           );
           return exists ? (prev as any) : mapped[0]?.id ?? null;
@@ -460,7 +430,7 @@ export default function VolumeViewer({
     return () => {
       cancelled = true;
     };
- }, [projectId, protocolId, outputName, svc, volumeMatchesAllowedIds]);
+  }, [projectId, protocolId, outputName, svc]);
 
   useEffect(() => {
     if (selectedId == null) {
