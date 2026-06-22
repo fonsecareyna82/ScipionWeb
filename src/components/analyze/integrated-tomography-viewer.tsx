@@ -377,13 +377,15 @@ export default function IntegratedTomographyViewer({
     ]);
   };
 
-  const handleVolumeSelect = (volume: any) => {
+    const handleVolumeSelect = (volume: any) => {
     selectRelationByCandidates("tomogram", [
       volume?.tomoId,
+      volume?.tomogramId,
       volume?.id,
       volume?.label,
       volume?.name,
       volume?.tsId,
+      volume?.tiltSeriesId,
     ]);
   };
 
