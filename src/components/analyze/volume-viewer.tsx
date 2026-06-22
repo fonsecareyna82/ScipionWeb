@@ -480,6 +480,7 @@ export default function VolumeViewer({
       return (
         String(v.id) === String(selectedVolumeId) ||
         String(v.tomoId) === String(selectedVolumeId) ||
+        String(v.tsId) === String(selectedVolumeId) ||
         String(v.name) === String(selectedVolumeId) ||
         String(v.label) === String(selectedVolumeId)
       );

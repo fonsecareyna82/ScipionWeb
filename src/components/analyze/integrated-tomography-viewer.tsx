@@ -670,7 +670,13 @@ export default function IntegratedTomographyViewer({
             selectedVolumeId={
               selectedRelationSource === "tomogram"
                 ? null
-                : selectedRelation?.tomogramVolumeId ?? selectedRelation?.tomogramId ?? null
+                : selectedRelation?.tomogramVolumeId ??
+                selectedRelation?.tomogramId ??
+                (selectedRelation as any)?.sourceTomoId ??
+                selectedRelation?.tiltSeriesId ??
+                (selectedRelation as any)?.tsId ??
+                selectedRelation?.ctfSeriesId ??
+                null
             }
             onVolumeSelect={handleVolumeSelect}
             hideMetadataAction
@@ -691,7 +697,13 @@ export default function IntegratedTomographyViewer({
             selectedTomogramId={
               selectedRelationSource === "coordinates"
                 ? null
-                : selectedRelation?.coordinatesTomogramId ?? selectedRelation?.tomogramId ?? null
+                : selectedRelation?.coordinatesTomogramId ??
+                selectedRelation?.tomogramId ??
+                (selectedRelation as any)?.sourceTomoId ??
+                selectedRelation?.tiltSeriesId ??
+                (selectedRelation as any)?.tsId ??
+                selectedRelation?.ctfSeriesId ??
+                null
             }
             onTomogramSelect={handleCoordinatesTomogramSelect}
             hideMetadataAction
