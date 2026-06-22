@@ -282,7 +282,10 @@ export default function IntegratedTomographyViewer({
   const protocolIdNum = useMemo(() => Number(protocolId), [protocolId]);
   const [context, setContext] = useState<IntegratedAnalyzeContext | null>(null);
   const resolvedPointerClass = context?.root?.outputClass || pointerClass;
-  const initialSection = useMemo(() => getInitialSection(pointerClass), [pointerClass]);
+  const initialSection = useMemo(
+    () => getInitialSection(resolvedPointerClass),
+    [resolvedPointerClass],
+  );
   const [activeSection, setActiveSection] = useState<IntegratedSection>(initialSection);
   const [metadataTargetSection, setMetadataTargetSection] = useState<IntegratedSection>(initialSection);
   const [contextLoading, setContextLoading] = useState(false);
@@ -609,6 +612,28 @@ export default function IntegratedTomographyViewer({
     }
   }, [activeSection, visibleNodes]);
 
+  const relatedTomogramIds = useMemo(() => {
+    if (!isCoords3dKind(resolvedPointerClass)) return undefined;
+
+    const values = new Set<string | number>();
+
+    for (const item of context?.relations?.items ?? []) {
+      [
+        item.tomogramVolumeId,
+        item.tomogramId,
+        item.coordinatesTomogramId,
+        item.key,
+        item.label,
+      ].forEach((value) => {
+        if (value !== null && value !== undefined && String(value) !== "") {
+          values.add(value as string | number);
+        }
+      });
+    }
+
+    return values.size ? Array.from(values) : undefined;
+  }, [context?.relations?.items, resolvedPointerClass]);
+
   const renderSection = () => {
     const links = context?.links;
 
@@ -662,6 +687,7 @@ export default function IntegratedTomographyViewer({
                 ? null
                 : selectedRelation?.tomogramVolumeId ?? selectedRelation?.tomogramId ?? null
             }
+            allowedVolumeIds={relatedTomogramIds}
             onVolumeSelect={handleVolumeSelect}
             hideMetadataAction
           />
