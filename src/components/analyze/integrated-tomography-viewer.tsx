@@ -342,8 +342,6 @@ export default function IntegratedTomographyViewer({
           relationValueMatches(item.ctfSeriesId, candidates) ||
           relationValueMatches(item.tomogramId, candidates) ||
           relationValueMatches((item as any).sourceTomoId, candidates) ||
-          relationValueMatches(item.key, candidates) ||
-          relationValueMatches(item.label, candidates) ||
           relationValueMatches(item.tomogramVolumeId, candidates)
         );
       }
@@ -383,12 +381,10 @@ export default function IntegratedTomographyViewer({
     ]);
   };
 
-    const handleVolumeSelect = (volume: any) => {
+  const handleVolumeSelect = (volume: any) => {
     selectRelationByCandidates("tomogram", [
       volume?.tsId,
       volume?.tiltSeriesId,
-      volume?.label,
-      volume?.name,
       volume?.tomoId,
       volume?.tomogramId,
       volume?.id,
