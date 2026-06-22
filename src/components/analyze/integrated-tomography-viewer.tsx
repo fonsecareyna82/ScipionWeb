@@ -74,7 +74,14 @@ function getInitialSection(pointerClass?: string): IntegratedSection {
 
 
 function isAvailableLink(link?: IntegratedContextLink | null) {
-  return Boolean(link?.outputName && (link.status === "available" || link.status === "inferred"));
+  return Boolean(
+    link?.outputName &&
+    (
+      link.status === "available" ||
+      link.status === "related" ||
+      link.status === "inferred"
+    ),
+  );
 }
 
 function getNodeStatus(isSource: boolean, link: IntegratedContextLink | null | undefined, canBeLinked: boolean): ContextStatus {
@@ -273,10 +280,11 @@ export default function IntegratedTomographyViewer({
   const svc = useProjectService();
   const projectIdNum = useMemo(() => Number(projectId), [projectId]);
   const protocolIdNum = useMemo(() => Number(protocolId), [protocolId]);
+  const [context, setContext] = useState<IntegratedAnalyzeContext | null>(null);
+  const resolvedPointerClass = context?.root?.outputClass || pointerClass;
   const initialSection = useMemo(() => getInitialSection(pointerClass), [pointerClass]);
   const [activeSection, setActiveSection] = useState<IntegratedSection>(initialSection);
   const [metadataTargetSection, setMetadataTargetSection] = useState<IntegratedSection>(initialSection);
-  const [context, setContext] = useState<IntegratedAnalyzeContext | null>(null);
   const [contextLoading, setContextLoading] = useState(false);
   const [contextError, setContextError] = useState<string | null>(null);
   const [selectedRelation, setSelectedRelation] = useState<IntegratedContextItemRelation | null>(null);
@@ -430,10 +438,10 @@ export default function IntegratedTomographyViewer({
   }, [svc, projectIdNum, protocolIdNum, outputName]);
 
   const nodes = useMemo<ContextNode[]>(() => {
-    const tiltIsSource = isTiltSeriesKind(pointerClass);
-    const ctfIsSource = isCTFTomoKind(pointerClass);
-    const tomogramIsSource = isTomogramKind(pointerClass);
-    const coordsIsSource = isCoords3dKind(pointerClass);
+    const tiltIsSource = isTiltSeriesKind(resolvedPointerClass);
+    const ctfIsSource = isCTFTomoKind(resolvedPointerClass);
+    const tomogramIsSource = isTomogramKind(resolvedPointerClass);
+    const coordsIsSource = isCoords3dKind(resolvedPointerClass);
     const links = context?.links;
 
     return [
@@ -470,7 +478,7 @@ export default function IntegratedTomographyViewer({
         icon: <GitBranch size={16} />,
       },
     ];
-  }, [context, pointerClass]);
+  }, [context, resolvedPointerClass]);
 
   const visibleNodes = useMemo(() => nodes.filter((node) => node.status === "source" || node.status === "linked"), [nodes]);
 
@@ -514,14 +522,14 @@ export default function IntegratedTomographyViewer({
 
     const roots: Array<ContextTreeItem | null> = [];
 
-    if (isCoords3dKind(pointerClass)) {
+    if (isCoords3dKind(resolvedPointerClass)) {
       const tomogramChildren = makeAvailableChildren();
       const tomogramItem = canShow("tomogram") ? makeItem("tomogram", tomogramChildren) : null;
       const coordinatesChildren = tomogramItem ? [tomogramItem] : tomogramChildren;
       roots.push(makeItem("coordinates", coordinatesChildren));
-    } else if (isTomogramKind(pointerClass)) {
+    } else if (isTomogramKind(resolvedPointerClass)) {
       roots.push(makeItem("tomogram", makeAvailableChildren()));
-    } else if (isCTFTomoKind(pointerClass)) {
+    } else if (isCTFTomoKind(resolvedPointerClass)) {
       const ctfChildren: ContextTreeItem[] = [];
 
       if (canShow("tiltSeries")) {
@@ -530,14 +538,14 @@ export default function IntegratedTomographyViewer({
       }
 
       roots.push(makeItem("ctf", ctfChildren));
-    } else if (isTiltSeriesKind(pointerClass)) {
+    } else if (isTiltSeriesKind(resolvedPointerClass)) {
       roots.push(makeItem("tiltSeries"));
     } else {
       roots.push(...visibleNodes.map((node) => makeItem(node.key)));
     }
 
     return roots.filter((item): item is ContextTreeItem => Boolean(item));
-  }, [pointerClass, visibleNodes]);
+  }, [resolvedPointerClass, visibleNodes]);
 
   const toggleTreeItem = (id: string) => {
     setCollapsedTreeIds((prev) => {
@@ -606,7 +614,7 @@ export default function IntegratedTomographyViewer({
 
     if (activeSection === "tiltSeries") {
       const link = links?.tiltSeries;
-      if (isTiltSeriesKind(pointerClass) || isAvailableLink(link)) {
+      if (isTiltSeriesKind(resolvedPointerClass) || isAvailableLink(link)) {
         return (
           <TiltSeriesViewer
             projectId={projectIdNum}
@@ -623,7 +631,7 @@ export default function IntegratedTomographyViewer({
 
     if (activeSection === "ctf") {
       const link = links?.ctf;
-      if (isCTFTomoKind(pointerClass) || isAvailableLink(link)) {
+      if (isCTFTomoKind(resolvedPointerClass) || isAvailableLink(link)) {
         return (
           <CTFTomoViewer
             projectId={projectIdNum}
@@ -641,14 +649,14 @@ export default function IntegratedTomographyViewer({
 
     if (activeSection === "tomogram") {
       const link = links?.tomogram;
-      if (isTomogramKind(pointerClass) || isAvailableLink(link)) {
+      if (isTomogramKind(resolvedPointerClass) || isAvailableLink(link)) {
         return (
           <VolumeViewer
             projectId={projectIdNum}
             protocolId={getLinkedProtocolId(link, protocolIdNum)}
             protocolLabel={protocolLabel}
             outputName={getLinkedOutputName(link, outputName)}
-            pointerClass={isTomogramKind(pointerClass) ? pointerClass : "SetOfTomograms"}
+            pointerClass={isTomogramKind(resolvedPointerClass) ? resolvedPointerClass : "SetOfTomograms"}
             selectedVolumeId={
               selectedRelationSource === "tomogram"
                 ? null
@@ -663,7 +671,7 @@ export default function IntegratedTomographyViewer({
 
     if (activeSection === "coordinates") {
       const link = links?.coordinates3d;
-      if (isCoords3dKind(pointerClass) || isAvailableLink(link)) {
+      if (isCoords3dKind(resolvedPointerClass) || isAvailableLink(link)) {
         return (
           <Coords3dViewer
             projectId={projectIdNum}

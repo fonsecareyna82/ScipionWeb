@@ -586,7 +586,12 @@ export type AnalyzeViewerResolveDecision =
   };
 
 
-export type IntegratedContextStatus = "available" | "missing" | "unknown" | "inferred";
+export type IntegratedContextStatus =
+  | "available"
+  | "related"
+  | "missing"
+  | "unknown"
+  | "inferred";
 
 export type IntegratedContextLink = {
   protocolId?: Id;
