@@ -1217,15 +1217,29 @@ export default function RemoteFileDialog({
   }, [items, filterText, sortDir]);
 
   useEffect(() => {
-    // keepSelectionIfStillVisible
-    if (!selected) return;
-    const stillThere = visibleItems.some((e) => sameEntry(e, selected));
-    if (!stillThere) {
+  // autoSelectFirstVisibleEntry
+  if (!open || loading || error) return;
+
+  const firstVisible = visibleItems[0] ?? null;
+
+  if (!firstVisible) {
+    if (selected) {
       setSelected(null);
       clearPreviewState();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visibleItems]);
+    return;
+  }
+
+  const stillThere = selected
+    ? visibleItems.some((e) => sameEntry(e, selected))
+    : false;
+
+  if (!stillThere) {
+    handleSelectEntry(firstVisible);
+  }
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [open, loading, error, visibleItems]);
 
   const onKeyDown: React.KeyboardEventHandler = (e) => {
     if (!open) return;
