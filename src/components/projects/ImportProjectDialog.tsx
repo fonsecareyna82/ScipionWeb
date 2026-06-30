@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Box,
   Button,
@@ -125,6 +125,42 @@ export default function ImportProjectDialog({
   const [copyProject, setCopyProject] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [openBrowser, setOpenBrowser] = useState(false);
+  const [browserDialogKey, setBrowserDialogKey] = useState(0);
+  const browserRootAbsRef = useRef("");
+
+  const normalizePosixPath = (path: string) =>
+    String(path || "").replace(/\\/g, "/").replace(/\/+/g, "/").trim();
+
+  const isAbsolutePath = (path: string) => {
+    const normalized = normalizePosixPath(path);
+    return normalized.startsWith("/") || /^[A-Za-z]:\//.test(normalized);
+  };
+
+  const buildAbsoluteProjectLocation = (pickedPath: string, entry?: RemoteEntry) => {
+    const entryAbsPath = normalizePosixPath(entry?.absPath || "");
+    if (entryAbsPath && isAbsolutePath(entryAbsPath)) {
+      return entryAbsPath;
+    }
+
+    const normalizedPickedPath = normalizePosixPath(pickedPath || "");
+    if (normalizedPickedPath && isAbsolutePath(normalizedPickedPath)) {
+      return normalizedPickedPath;
+    }
+
+    const rootAbs = normalizePosixPath(browserRootAbsRef.current || "").replace(/\/+$/g, "");
+    if (!rootAbs) {
+      return normalizedPickedPath;
+    }
+
+    const relPath = normalizedPickedPath.replace(/^\/+/, "");
+    return relPath ? `${rootAbs}/${relPath}` : rootAbs;
+  };
+
+  const handleResolveBrowserPaths = async () => {
+    const resolved = await resolveBrowserPaths();
+    browserRootAbsRef.current = normalizePosixPath(resolved?.rootAbs || "");
+    return resolved;
+  };
 
   const textFieldSx = {
     "& .MuiOutlinedInput-root": {
@@ -193,6 +229,7 @@ export default function ImportProjectDialog({
   useEffect(() => {
     if (!open) return;
 
+    browserRootAbsRef.current = "";
     setProjectLocation("");
     setProjectName("");
     setCopyProject(false);
@@ -310,7 +347,12 @@ export default function ImportProjectDialog({
 
                 <IconButton
                   aria-label="Browse project location"
-                  onClick={() => setOpenBrowser(true)}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    setBrowserDialogKey((key) => key + 1);
+                    setOpenBrowser(true);
+                  }}
                   disabled={submitting}
                   sx={{
                     border: `1px solid ${alpha(
@@ -428,19 +470,22 @@ export default function ImportProjectDialog({
         </DialogActions>
       </Dialog>
 
-      <RemoteFileDialog
-        open={openBrowser}
-        onClose={() => setOpenBrowser(false)}
-        title="Select project location"
-        resolveBrowserPaths={resolveBrowserPaths}
-        listRemoteDirectory={listRemoteDirectory}
-        previewRemoteEntry={previewRemoteEntry}
-        buildDownloadUrl={buildDownloadUrl}
-        onPick={(relativePath) => {
-          setProjectLocation(relativePath);
-          setOpenBrowser(false);
-        }}
-      />
+      {openBrowser && (
+        <RemoteFileDialog
+          key={browserDialogKey}
+          open={openBrowser}
+          onClose={() => setOpenBrowser(false)}
+          title="Select project location"
+          resolveBrowserPaths={handleResolveBrowserPaths}
+          listRemoteDirectory={listRemoteDirectory}
+          previewRemoteEntry={previewRemoteEntry}
+          buildDownloadUrl={buildDownloadUrl}
+          onPick={(pickedPath, entry) => {
+            setProjectLocation(buildAbsoluteProjectLocation(pickedPath, entry));
+            setOpenBrowser(false);
+          }}
+        />
+      )}
     </>
   );
 }

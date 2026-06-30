@@ -512,6 +512,26 @@ function formatCellValue(value: MetadataCell): ReactNode {
   }
 }
 
+function formatGallerySizeLabel(value: MetadataCell | undefined): string | null {
+  if (value === null || value === undefined || value === "") return null;
+
+  let count: number | null = null;
+
+  if (typeof value === "number" && Number.isFinite(value)) {
+    count = value;
+  } else if (typeof value === "string") {
+    const parsed = Number(value.trim());
+    if (Number.isFinite(parsed)) {
+      count = parsed;
+    }
+  }
+
+  if (count === null) return null;
+
+  const normalizedCount = Math.max(0, Math.trunc(count));
+  return normalizedCount === 1 ? "1 item" : `${normalizedCount} items`;
+}
+
 type MatrixCellValue = Extract<MetadataCell, { kind: "matrix" }>;
 
 function isMatrixCell(cell: MetadataCell): cell is MatrixCellValue {
@@ -2857,13 +2877,10 @@ const MetadataGalleryPanel = memo(function MetadataGalleryPanel({
                 selectedImageCell.rowIndexInTable === globalRowIndex &&
                 selectedImageCell.columnName === firstImageColumn.name;
 
-              let sizeLabel: string | null = null;
-              if (showSizeLabel && sizeColumn) {
-                const sizeValue = row.values[sizeColumn.index];
-                if (sizeValue !== null && sizeValue !== undefined && sizeValue !== "") {
-                  sizeLabel = `size=${sizeValue}`;
-                }
-              }
+              const sizeLabel =
+                showSizeLabel && sizeColumn
+                  ? formatGallerySizeLabel(row.values[sizeColumn.index])
+                  : null;
 
               return (
                 <Box
@@ -3297,26 +3314,44 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
     };
   }, []);
 
-  const sizeColumn = useMemo(() => {
-    if (!allColumns.length) return null;
+  const galleryInfoColumns = useMemo(() => {
+  const rawColumns = schema?.additionalInfoColumns;
+  if (!Array.isArray(rawColumns)) return [];
 
-    const column = allColumns.find((item) => item.name === "_size");
-    if (!column) return null;
+  return rawColumns.filter(
+    (columnName): columnName is string =>
+      typeof columnName === "string" && columnName.trim().length > 0,
+  );
+}, [schema?.additionalInfoColumns]);
 
-    const settings = columnSettings[column.name];
-    const visible = settings?.visible ?? (column.visible !== false);
-    return visible ? column : null;
-  }, [allColumns, columnSettings]);
+const sizeColumn = useMemo(() => {
+  if (!allColumns.length) return null;
+
+  const canUseSizeColumn =
+    galleryInfoColumns.length === 0 || galleryInfoColumns.includes("_size");
+
+  if (!canUseSizeColumn) return null;
+
+  return allColumns.find((item) => item.name === "_size") ?? null;
+}, [allColumns, galleryInfoColumns]);
 
   const schemaActions = useMemo(() => getSchemaActions(schema), [schema]);
 
-  const isClassTable = useMemo(() => {
-    if (!tableInfo) return false;
-    const label = (tableInfo.alias || tableInfo.name || "").toLowerCase();
-    return label.startsWith("class2d") || label.startsWith("class3d");
-  }, [tableInfo]);
+  const isPropertiesTable = useMemo(() => {
+    const tableName = (selectedTable || "").trim().toLowerCase();
+    const alias = (tableInfo?.alias || "").trim().toLowerCase();
 
-  const showSizeLabel = isClassTable && !!sizeColumn;
+    return tableName === "properties" || alias === "properties";
+  }, [selectedTable, tableInfo]);
+
+  const metadataActions = useMemo(() => {
+    if (isPropertiesTable) return [];
+    return schemaActions;
+  }, [isPropertiesTable, schemaActions]);
+
+  const hasMetadataActions = metadataActions.length > 0;
+
+  const showSizeLabel = !!sizeColumn;
 
   const rowHeight = hasImageColumns ? imageThumbSize + IMAGE_ROW_PADDING : NORMAL_ROW_HEIGHT;
 
@@ -5038,43 +5073,39 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
             ml: "auto",
           }}
         >
-          {schemaActions.map((actionLabel) => (
-            <Button
-              key={actionLabel}
-              size="small"
-              variant="contained"
-              startIcon={<Plus size={14} />}
-              onClick={() => openActionDialog(actionLabel)}
-              disabled={!schema || effectiveSelectedCount <= 0 || actionSubmitting}
-              sx={{
-                textTransform: "none",
-                fontWeight: 600,
-                color: "#e2e8f0",
-                border: "1px solid rgba(255,255,255,0.08)",
-                background: "linear-gradient(180deg, #1e293b 0%, #0f172a 100%)",
-                boxShadow:
-                  "0 1px 2px rgba(15,23,42,0.25), inset 0 1px 0 rgba(255,255,255,0.06)",
-                "&:hover": {
-                  background: "linear-gradient(180deg, #334155 0%, #1e293b 100%)",
+          {hasMetadataActions &&
+            metadataActions.map((actionLabel) => (
+              <Button
+                key={actionLabel}
+                size="small"
+                variant="contained"
+                startIcon={<Plus size={14} />}
+                onClick={() => openActionDialog(actionLabel)}
+                disabled={!schema || effectiveSelectedCount <= 0 || actionSubmitting}
+                sx={{
+                  textTransform: "none",
+                  fontWeight: 600,
+                  color: "#e2e8f0",
+                  border: "1px solid rgba(255,255,255,0.08)",
+                  background: "linear-gradient(180deg, #1e293b 0%, #0f172a 100%)",
                   boxShadow:
-                    "0 2px 6px rgba(15,23,42,0.28), inset 0 1px 0 rgba(255,255,255,0.08)",
-                },
-                "&.Mui-disabled": {
-                  color: "rgba(226,232,240,0.55)",
-                  background: "rgba(15,23,42,0.35)",
-                  borderColor: "rgba(148,163,184,0.18)",
-                },
-              }}
-            >
-              {actionLabel}
-            </Button>
-          ))}
+                    "0 1px 2px rgba(15,23,42,0.25), inset 0 1px 0 rgba(255,255,255,0.06)",
+                  "&:hover": {
+                    background: "linear-gradient(180deg, #334155 0%, #1e293b 100%)",
+                    boxShadow:
+                      "0 2px 6px rgba(15,23,42,0.28), inset 0 1px 0 rgba(255,255,255,0.08)",
+                  },
+                  "&.Mui-disabled": {
+                    color: "rgba(226,232,240,0.55)",
+                    background: "rgba(15,23,42,0.35)",
+                    borderColor: "rgba(148,163,184,0.18)",
+                  },
+                }}
+              >
+                {actionLabel}
+              </Button>
+            ))}
 
-          {schemaActions.length === 0 && (
-            <Typography variant="caption" color="text.secondary">
-              No actions available for this table.
-            </Typography>
-          )}
 
           {!embedded && (
             <Button

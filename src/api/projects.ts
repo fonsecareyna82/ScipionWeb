@@ -2929,16 +2929,12 @@ export interface MetadataTableSchema {
   alias: string;
   hasColumnId: boolean;
   columns: MetadataColumn[];
-}
 
-export interface MetadataTableSchema {
-  name: string;
-  alias: string;
-  hasColumnId: boolean;
-  columns: MetadataColumn[];
-
-  /** Optional action buttons to display in the metadata viewer */
+  /** Optional actions advertised by the backend for this table. */
   actions?: string[];
+
+  /** Optional column names advertised by the backend as gallery metadata. */
+  additionalInfoColumns?: string[];
 }
 
 export type MetadataTableActionPayload = {

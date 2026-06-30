@@ -561,6 +561,7 @@ export default function Coords3dViewer({
     const match = tomos.find((t) => {
       return (
         String(t.tomoId) === String(selectedTomogramId) ||
+        String(t.tsId) === String(selectedTomogramId) ||
         String(t.label) === String(selectedTomogramId) ||
         String(t.name) === String(selectedTomogramId)
       );
@@ -1860,7 +1861,7 @@ export default function Coords3dViewer({
                           noWrap: true,
                         }}
                         primary={t.label}
-                        
+
                       />
                     </ListItemButton>
                   );
