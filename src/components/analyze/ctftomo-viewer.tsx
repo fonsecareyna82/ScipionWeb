@@ -1234,7 +1234,14 @@ export default function CTFTomoViewer({
           </Paper>
 
           <Box sx={{ flex: 1, minHeight: 0, overflowY: "auto", overflowX: "hidden" }}>
-            {framesLoading && !framesData ? (
+            {seriesLoading && !series.length ? (
+              <Box sx={{ p: 2, display: "flex", gap: 1, alignItems: "center" }}>
+                <CircularProgress size={18} />
+                <Typography variant="body2" color="text.secondary">
+                  Loading CTF tomo series…
+                </Typography>
+              </Box>
+            ) : framesLoading && !framesData ? (
               <Box sx={{ p: 2, display: "flex", gap: 1, alignItems: "center" }}>
                 <CircularProgress size={18} />
                 <Typography variant="body2">Loading CTF tomo views…</Typography>

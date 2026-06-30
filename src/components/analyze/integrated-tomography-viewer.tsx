@@ -294,6 +294,9 @@ export default function IntegratedTomographyViewer({
   const [selectedRelation, setSelectedRelation] = useState<IntegratedContextItemRelation | null>(null);
   const [selectedRelationSource, setSelectedRelationSource] = useState<RelationSource | null>(null);
   const [collapsedTreeIds, setCollapsedTreeIds] = useState<Set<string>>(() => new Set());
+  const [mountedSections, setMountedSections] = useState<Set<IntegratedSection>>(
+    () => new Set([initialSection]),
+  );
   const hideMetadataAction = true;
 
   useEffect(() => {
@@ -301,7 +304,18 @@ export default function IntegratedTomographyViewer({
     setSelectedRelationSource(null);
     setMetadataTargetSection(initialSection);
     setCollapsedTreeIds(new Set());
+    setMountedSections(new Set([initialSection]));
   }, [projectIdNum, protocolIdNum, outputName, initialSection]);
+
+  useEffect(() => {
+    setMountedSections((prev) => {
+      if (prev.has(activeSection)) return prev;
+
+      const next = new Set(prev);
+      next.add(activeSection);
+      return next;
+    });
+  }, [activeSection]);
 
   const normalizeSelectionValue = (value: unknown) => {
     if (value == null) return null;
@@ -650,11 +664,10 @@ export default function IntegratedTomographyViewer({
     return sourceSections[section] || isAvailableLink(getSectionLink(section));
   };
 
-  const renderSection = () => {
-    const links = context?.links;
-
-    if (activeSection === "tiltSeries") {
+  const renderSection = (section: IntegratedSection = activeSection) => {
+    if (section === "tiltSeries") {
       const link = getSectionLink("tiltSeries");
+
       if (isSectionAvailable("tiltSeries")) {
         return (
           <TiltSeriesViewer
@@ -670,8 +683,9 @@ export default function IntegratedTomographyViewer({
       }
     }
 
-    if (activeSection === "ctf") {
+    if (section === "ctf") {
       const link = getSectionLink("ctf");
+
       if (isSectionAvailable("ctf")) {
         return (
           <CTFTomoViewer
@@ -688,8 +702,9 @@ export default function IntegratedTomographyViewer({
       }
     }
 
-    if (activeSection === "tomogram") {
+    if (section === "tomogram") {
       const link = getSectionLink("tomogram");
+
       if (isSectionAvailable("tomogram")) {
         return (
           <VolumeViewer
@@ -716,8 +731,9 @@ export default function IntegratedTomographyViewer({
       }
     }
 
-    if (activeSection === "coordinates") {
+    if (section === "coordinates") {
       const link = getSectionLink("coordinates");
+
       if (isSectionAvailable("coordinates")) {
         return (
           <Coords3dViewer
@@ -743,19 +759,11 @@ export default function IntegratedTomographyViewer({
       }
     }
 
-    if (activeSection === "metadata") {
-      const links = context?.links;
-
+    if (section === "metadata") {
       const metadataLink =
-        metadataTargetSection === "tiltSeries"
-          ? links?.tiltSeries
-          : metadataTargetSection === "ctf"
-            ? links?.ctf
-            : metadataTargetSection === "tomogram"
-              ? links?.tomogram
-              : metadataTargetSection === "coordinates"
-                ? links?.coordinates3d
-                : null;
+        metadataTargetSection === "metadata"
+          ? null
+          : getSectionLink(metadataTargetSection as Exclude<IntegratedSection, "metadata">);
 
       return (
         <MetadataViewer
@@ -816,7 +824,22 @@ export default function IntegratedTomographyViewer({
         </Stack>
       </Paper>
 
-      <Box sx={{ minHeight: 0, minWidth: 0, overflow: "hidden" }}>{renderSection()}</Box>
+      <Box sx={{ minHeight: 0, minWidth: 0, overflow: "hidden", position: "relative" }}>
+        {Array.from(mountedSections).map((section) => (
+          <Box
+            key={section}
+            sx={{
+              display: activeSection === section ? "block" : "none",
+              height: "100%",
+              minHeight: 0,
+              minWidth: 0,
+              overflow: "hidden",
+            }}
+          >
+            {renderSection(section)}
+          </Box>
+        ))}
+      </Box>
     </Box>
   );
 }
