@@ -1463,14 +1463,6 @@ export default function TiltSeriesViewer({
             >
               Save
             </Button>
-            {seriesLoading && (
-              <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-                <CircularProgress size={14} />
-                <Typography variant="caption" sx={{ fontSize: "0.7rem" }}>
-                  Loading tilt series…
-                </Typography>
-              </Box>
-            )}
             {seriesError && !seriesLoading && (
               <Typography variant="caption" color="error" sx={{ fontSize: "0.7rem" }}>
                 {seriesError}
