@@ -307,15 +307,6 @@ export default function IntegratedTomographyViewer({
     setMountedSections(new Set([initialSection]));
   }, [projectIdNum, protocolIdNum, outputName, initialSection]);
 
-  useEffect(() => {
-    setMountedSections((prev) => {
-      if (prev.has(activeSection)) return prev;
-
-      const next = new Set(prev);
-      next.add(activeSection);
-      return next;
-    });
-  }, [activeSection]);
 
   const normalizeSelectionValue = (value: unknown) => {
     if (value == null) return null;
@@ -579,11 +570,27 @@ export default function IntegratedTomographyViewer({
   };
 
   const handleTreeItemSelect = (item: ContextTreeItem) => {
+    setMountedSections((prev) => {
+      if (prev.has(item.section)) return prev;
+
+      const next = new Set(prev);
+      next.add(item.section);
+      return next;
+    });
+
     setActiveSection(item.section);
     setSelectedRelationSource(null);
   };
 
   const handleTreeItemMetadataSelect = (item: ContextTreeItem) => {
+    setMountedSections((prev) => {
+      if (prev.has("metadata")) return prev;
+
+      const next = new Set(prev);
+      next.add("metadata");
+      return next;
+    });
+
     setMetadataTargetSection(item.section);
     setActiveSection("metadata");
     setSelectedRelationSource(null);
