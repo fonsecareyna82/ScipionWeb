@@ -617,12 +617,45 @@ export default function IntegratedTomographyViewer({
     }
   }, [activeSection, visibleNodes]);
 
+  const sourceSections = useMemo(
+    () => ({
+      tiltSeries: isTiltSeriesKind(resolvedPointerClass),
+      ctf: isCTFTomoKind(resolvedPointerClass),
+      tomogram: isTomogramKind(resolvedPointerClass),
+      coordinates: isCoords3dKind(resolvedPointerClass),
+    }),
+    [resolvedPointerClass],
+  );
+
+  const getSectionLink = (
+    section: Exclude<IntegratedSection, "metadata">,
+  ): IntegratedContextLink | null | undefined => {
+    const links = context?.links;
+
+    if (sourceSections[section]) {
+      return null;
+    }
+
+    if (section === "tiltSeries") return links?.tiltSeries;
+    if (section === "ctf") return links?.ctf;
+    if (section === "tomogram") return links?.tomogram;
+    if (section === "coordinates") return links?.coordinates3d;
+
+    return null;
+  };
+
+  const isSectionAvailable = (
+    section: Exclude<IntegratedSection, "metadata">,
+  ): boolean => {
+    return sourceSections[section] || isAvailableLink(getSectionLink(section));
+  };
+
   const renderSection = () => {
     const links = context?.links;
 
     if (activeSection === "tiltSeries") {
-      const link = links?.tiltSeries;
-      if (isTiltSeriesKind(resolvedPointerClass) || isAvailableLink(link)) {
+      const link = getSectionLink("tiltSeries");
+      if (isSectionAvailable("tiltSeries")) {
         return (
           <TiltSeriesViewer
             projectId={projectIdNum}
@@ -638,8 +671,8 @@ export default function IntegratedTomographyViewer({
     }
 
     if (activeSection === "ctf") {
-      const link = links?.ctf;
-      if (isCTFTomoKind(resolvedPointerClass) || isAvailableLink(link)) {
+      const link = getSectionLink("ctf");
+      if (isSectionAvailable("ctf")) {
         return (
           <CTFTomoViewer
             projectId={projectIdNum}
@@ -656,8 +689,8 @@ export default function IntegratedTomographyViewer({
     }
 
     if (activeSection === "tomogram") {
-      const link = links?.tomogram;
-      if (isTomogramKind(resolvedPointerClass) || isAvailableLink(link)) {
+      const link = getSectionLink("tomogram");
+      if (isSectionAvailable("tomogram")) {
         return (
           <VolumeViewer
             projectId={projectIdNum}
@@ -684,8 +717,8 @@ export default function IntegratedTomographyViewer({
     }
 
     if (activeSection === "coordinates") {
-      const link = links?.coordinates3d;
-      if (isCoords3dKind(resolvedPointerClass) || isAvailableLink(link)) {
+      const link = getSectionLink("coordinates");
+      if (isSectionAvailable("coordinates")) {
         return (
           <Coords3dViewer
             projectId={projectIdNum}
