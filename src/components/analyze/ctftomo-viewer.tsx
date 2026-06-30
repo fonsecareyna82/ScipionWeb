@@ -1232,12 +1232,7 @@ export default function CTFTomoViewer({
                   Loading CTF tomo series…
                 </Typography>
               </Box>
-            ) : framesLoading && !framesData ? (
-              <Box sx={{ p: 2, display: "flex", gap: 1, alignItems: "center" }}>
-                <CircularProgress size={18} />
-                <Typography variant="body2">Loading CTF tomo views…</Typography>
-              </Box>
-            ) : framesError && !framesData ? (
+            ): framesError && !framesData ? (
               <Box sx={{ p: 2 }}>
                 <Typography variant="body2" color="error">
                   {framesError}
