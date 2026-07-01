@@ -857,12 +857,6 @@ export default function Projects({ service, fetchList }: ProjectsPageProps) {
               />
             </div>
           </div>
-
-          <div className="grid grid-cols-1 gap-3 lg:col-span-6 sm:grid-cols-3">
-            <StatCard label="Total" value={stats.total} />
-            <StatCard label="Owned" value={stats.owned} />
-            <StatCard label="Shared" value={stats.shared} />
-          </div>
         </div>
 
         <div
