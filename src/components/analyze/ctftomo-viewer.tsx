@@ -1217,15 +1217,6 @@ export default function CTFTomoViewer({
                 </span>
               </Tooltip>
             ) : null}
-
-            {seriesLoading && (
-              <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-                <CircularProgress size={14} />
-                <Typography variant="caption" sx={{ fontSize: "0.7rem" }}>
-                  Loading CTF tomo series…
-                </Typography>
-              </Box>
-            )}
             {seriesError && !seriesLoading && (
               <Typography variant="caption" color="error" sx={{ fontSize: "0.7rem" }}>
                 {seriesError}
@@ -1234,12 +1225,14 @@ export default function CTFTomoViewer({
           </Paper>
 
           <Box sx={{ flex: 1, minHeight: 0, overflowY: "auto", overflowX: "hidden" }}>
-            {framesLoading && !framesData ? (
+            {seriesLoading && !series.length ? (
               <Box sx={{ p: 2, display: "flex", gap: 1, alignItems: "center" }}>
                 <CircularProgress size={18} />
-                <Typography variant="body2">Loading CTF tomo views…</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Loading CTF tomo series…
+                </Typography>
               </Box>
-            ) : framesError && !framesData ? (
+            ): framesError && !framesData ? (
               <Box sx={{ p: 2 }}>
                 <Typography variant="body2" color="error">
                   {framesError}

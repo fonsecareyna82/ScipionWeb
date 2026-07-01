@@ -1463,14 +1463,6 @@ export default function TiltSeriesViewer({
             >
               Save
             </Button>
-            {seriesLoading && (
-              <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-                <CircularProgress size={14} />
-                <Typography variant="caption" sx={{ fontSize: "0.7rem" }}>
-                  Loading tilt series…
-                </Typography>
-              </Box>
-            )}
             {seriesError && !seriesLoading && (
               <Typography variant="caption" color="error" sx={{ fontSize: "0.7rem" }}>
                 {seriesError}
@@ -1487,12 +1479,14 @@ export default function TiltSeriesViewer({
               overflowX: "hidden",
             }}
           >
-            {framesLoading && !framesData ? (
+            {seriesLoading && !series.length ? (
               <Box sx={{ p: 2, display: "flex", gap: 1, alignItems: "center" }}>
                 <CircularProgress size={18} />
-                <Typography variant="body2">Loading tilt views…</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Loading tilt series…
+                </Typography>
               </Box>
-            ) : framesError && !framesData ? (
+            ): framesError && !framesData ? (
               <Box sx={{ p: 2 }}>
                 <Typography variant="body2" color="error">
                   {framesError}

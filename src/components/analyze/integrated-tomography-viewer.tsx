@@ -294,6 +294,9 @@ export default function IntegratedTomographyViewer({
   const [selectedRelation, setSelectedRelation] = useState<IntegratedContextItemRelation | null>(null);
   const [selectedRelationSource, setSelectedRelationSource] = useState<RelationSource | null>(null);
   const [collapsedTreeIds, setCollapsedTreeIds] = useState<Set<string>>(() => new Set());
+  const [mountedSections, setMountedSections] = useState<Set<IntegratedSection>>(
+    () => new Set([initialSection]),
+  );
   const hideMetadataAction = true;
 
   useEffect(() => {
@@ -301,7 +304,9 @@ export default function IntegratedTomographyViewer({
     setSelectedRelationSource(null);
     setMetadataTargetSection(initialSection);
     setCollapsedTreeIds(new Set());
+    setMountedSections(new Set([initialSection]));
   }, [projectIdNum, protocolIdNum, outputName, initialSection]);
+
 
   const normalizeSelectionValue = (value: unknown) => {
     if (value == null) return null;
@@ -565,11 +570,27 @@ export default function IntegratedTomographyViewer({
   };
 
   const handleTreeItemSelect = (item: ContextTreeItem) => {
+    setMountedSections((prev) => {
+      if (prev.has(item.section)) return prev;
+
+      const next = new Set(prev);
+      next.add(item.section);
+      return next;
+    });
+
     setActiveSection(item.section);
     setSelectedRelationSource(null);
   };
 
   const handleTreeItemMetadataSelect = (item: ContextTreeItem) => {
+    setMountedSections((prev) => {
+      if (prev.has("metadata")) return prev;
+
+      const next = new Set(prev);
+      next.add("metadata");
+      return next;
+    });
+
     setMetadataTargetSection(item.section);
     setActiveSection("metadata");
     setSelectedRelationSource(null);
@@ -617,12 +638,44 @@ export default function IntegratedTomographyViewer({
     }
   }, [activeSection, visibleNodes]);
 
-  const renderSection = () => {
+  const sourceSections = useMemo(
+    () => ({
+      tiltSeries: isTiltSeriesKind(resolvedPointerClass),
+      ctf: isCTFTomoKind(resolvedPointerClass),
+      tomogram: isTomogramKind(resolvedPointerClass),
+      coordinates: isCoords3dKind(resolvedPointerClass),
+    }),
+    [resolvedPointerClass],
+  );
+
+  const getSectionLink = (
+    section: Exclude<IntegratedSection, "metadata">,
+  ): IntegratedContextLink | null | undefined => {
     const links = context?.links;
 
-    if (activeSection === "tiltSeries") {
-      const link = links?.tiltSeries;
-      if (isTiltSeriesKind(resolvedPointerClass) || isAvailableLink(link)) {
+    if (sourceSections[section]) {
+      return null;
+    }
+
+    if (section === "tiltSeries") return links?.tiltSeries;
+    if (section === "ctf") return links?.ctf;
+    if (section === "tomogram") return links?.tomogram;
+    if (section === "coordinates") return links?.coordinates3d;
+
+    return null;
+  };
+
+  const isSectionAvailable = (
+    section: Exclude<IntegratedSection, "metadata">,
+  ): boolean => {
+    return sourceSections[section] || isAvailableLink(getSectionLink(section));
+  };
+
+  const renderSection = (section: IntegratedSection = activeSection) => {
+    if (section === "tiltSeries") {
+      const link = getSectionLink("tiltSeries");
+
+      if (isSectionAvailable("tiltSeries")) {
         return (
           <TiltSeriesViewer
             projectId={projectIdNum}
@@ -637,9 +690,10 @@ export default function IntegratedTomographyViewer({
       }
     }
 
-    if (activeSection === "ctf") {
-      const link = links?.ctf;
-      if (isCTFTomoKind(resolvedPointerClass) || isAvailableLink(link)) {
+    if (section === "ctf") {
+      const link = getSectionLink("ctf");
+
+      if (isSectionAvailable("ctf")) {
         return (
           <CTFTomoViewer
             projectId={projectIdNum}
@@ -655,9 +709,10 @@ export default function IntegratedTomographyViewer({
       }
     }
 
-    if (activeSection === "tomogram") {
-      const link = links?.tomogram;
-      if (isTomogramKind(resolvedPointerClass) || isAvailableLink(link)) {
+    if (section === "tomogram") {
+      const link = getSectionLink("tomogram");
+
+      if (isSectionAvailable("tomogram")) {
         return (
           <VolumeViewer
             projectId={projectIdNum}
@@ -683,9 +738,10 @@ export default function IntegratedTomographyViewer({
       }
     }
 
-    if (activeSection === "coordinates") {
-      const link = links?.coordinates3d;
-      if (isCoords3dKind(resolvedPointerClass) || isAvailableLink(link)) {
+    if (section === "coordinates") {
+      const link = getSectionLink("coordinates");
+
+      if (isSectionAvailable("coordinates")) {
         return (
           <Coords3dViewer
             projectId={projectIdNum}
@@ -710,19 +766,11 @@ export default function IntegratedTomographyViewer({
       }
     }
 
-    if (activeSection === "metadata") {
-      const links = context?.links;
-
+    if (section === "metadata") {
       const metadataLink =
-        metadataTargetSection === "tiltSeries"
-          ? links?.tiltSeries
-          : metadataTargetSection === "ctf"
-            ? links?.ctf
-            : metadataTargetSection === "tomogram"
-              ? links?.tomogram
-              : metadataTargetSection === "coordinates"
-                ? links?.coordinates3d
-                : null;
+        metadataTargetSection === "metadata"
+          ? null
+          : getSectionLink(metadataTargetSection as Exclude<IntegratedSection, "metadata">);
 
       return (
         <MetadataViewer
@@ -783,7 +831,22 @@ export default function IntegratedTomographyViewer({
         </Stack>
       </Paper>
 
-      <Box sx={{ minHeight: 0, minWidth: 0, overflow: "hidden" }}>{renderSection()}</Box>
+      <Box sx={{ minHeight: 0, minWidth: 0, overflow: "hidden", position: "relative" }}>
+        {Array.from(mountedSections).map((section) => (
+          <Box
+            key={section}
+            sx={{
+              display: activeSection === section ? "block" : "none",
+              height: "100%",
+              minHeight: 0,
+              minWidth: 0,
+              overflow: "hidden",
+            }}
+          >
+            {renderSection(section)}
+          </Box>
+        ))}
+      </Box>
     </Box>
   );
 }
