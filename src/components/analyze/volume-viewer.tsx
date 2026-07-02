@@ -79,12 +79,12 @@ const SURFACE_MAX_TRIANGLES = 550000;
 const SURFACE_REQUEST_TIMEOUT_MS = 30000;
 const SLICE_SLIDER_THROTTLE_MS = 80;
 
-const SLICE_PREVIEW_MAX_SIDE = 768;
+const SLICE_PREVIEW_MAX_SIDE = 400;
 const SLICE_PREVIEW_FORMAT = "webp" as const;
 const SLICE_PREVIEW_QUALITY = 70;
 
-const SLICE_DRAG_PREVIEW_MAX_SIDE = 384;
-const SLICE_DRAG_PREVIEW_QUALITY = 55;
+const SLICE_DRAG_PREVIEW_MAX_SIDE = 256;
+const SLICE_DRAG_PREVIEW_QUALITY = 65;
 
 const ORTHO_AXIS_COLORS = {
   x: "#ef4444",
@@ -2612,7 +2612,7 @@ function OrthoSlicePanel({
     if (!imageUrl) {
       return (
         <Typography variant="caption" color="text.secondary">
-          No image
+          Waiting for image…
         </Typography>
       );
     }
@@ -2962,7 +2962,17 @@ function useVolumeSliceImage({
     };
   }, []);
 
-  return { url, loading, error };
+  const effectiveLoading =
+    loading ||
+    (
+      enabled &&
+      volumeId != null &&
+      sliceIndex != null &&
+      !url &&
+      !error
+    );
+
+  return { url, loading: effectiveLoading, error };
 }
 
 /**
