@@ -2673,7 +2673,39 @@ export default function ProjectPage() {
     }
   };
 
+  const preparePendingAddProtocolFromForm = () => {
+    if (viewModeRef.current !== "hierarchical") return;
 
+    const beforeIds = new Set(nodesRef.current.map((n) => String(n.id)));
+    const beforePositions = new Map<string, { x: number; y: number }>();
+
+    for (const node of nodesRef.current) {
+      const nodeId = String(node.id ?? "").trim();
+      const position = node.position;
+
+      if (!nodeId || !position) continue;
+
+      if (
+        typeof position.x !== "number" ||
+        typeof position.y !== "number" ||
+        !Number.isFinite(position.x) ||
+        !Number.isFinite(position.y)
+      ) {
+        continue;
+      }
+
+      beforePositions.set(nodeId, {
+        x: position.x,
+        y: position.y,
+      });
+    }
+
+    pendingNewNodesRef.current = {
+      beforeIds,
+      beforePositions,
+      operation: "add",
+    };
+  };
 
   /* ------------------------ Wait for nodes helper ------------------------ */
   const waitForNodesReady = async (expectedCount: number, timeoutMs = 2500): Promise<boolean> => {
@@ -3769,8 +3801,8 @@ export default function ProjectPage() {
   };
 
   // layoutConstantsForHierarchical
-  const hierSpacingX = (dir: "TB" | "LR") => (dir === "TB" ? 300 : 1150);
-  const hierSpacingY = (dir: "TB" | "LR") => (dir === "TB" ? 580 : 380);
+  const hierSpacingX = (dir: "TB" | "LR") => (dir === "TB" ? 480 : 1250);
+  const hierSpacingY = (dir: "TB" | "LR") => (dir === "TB" ? 680 : 480);
 
   // minGapBetweenSiblings is intentionally small; packing should be compact
   const minGapBetweenSiblings = 40;
@@ -3796,7 +3828,7 @@ export default function ProjectPage() {
     return (dir === "TB" ? width : height) + 40;
   };
 
-    const getLevelSize = (dir: "TB" | "LR", n: Node<any>) => {
+  const getLevelSize = (dir: "TB" | "LR", n: Node<any>) => {
     const anyN: any = n as any;
     const mw = Number(anyN.measured?.width ?? anyN.width);
     const mh = Number(anyN.measured?.height ?? anyN.height);
@@ -4226,7 +4258,7 @@ export default function ProjectPage() {
     pendingPlacementRef.current = null;
   };
 
-    const tryResolveNewNodesCollisions = () => {
+  const tryResolveNewNodesCollisions = () => {
     const pending = pendingNewNodesRef.current;
     if (!pending) return;
 
@@ -5910,6 +5942,11 @@ export default function ProjectPage() {
                     projectProtocols={project?.protocols ?? {}}
                     variant="docked"
                     projectEffectiveSettings={projectEffectiveSettings}
+                    onSaved={() => {
+                      if (String(f.key).startsWith("class:")) {
+                        preparePendingAddProtocolFromForm();
+                      }
+                    }}
                     onClose={() => {
                       handleRefreshRef.current?.();
                       setTimeout(() => handleRefreshRef.current?.(), 800);
@@ -5920,6 +5957,10 @@ export default function ProjectPage() {
                       closeFormByKey(f.key);
                     }}
                     onExecuted={() => {
+                      if (String(f.key).startsWith("class:")) {
+                        preparePendingAddProtocolFromForm();
+                      }
+
                       scheduleDoubleRefresh(5000, true);
                     }}
                   />
