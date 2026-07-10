@@ -3964,8 +3964,8 @@ export default function ProjectPage() {
       )
       .filter(Boolean) as GraphBlockBounds[];
 
-    const axisGap = dir === "TB" ? 360 : 180;
-    const levelGap = dir === "TB" ? 140 : 180;
+    const axisGap = dir === "TB" ? 220 : 120;
+    const levelGap = dir === "TB" ? 120 : 150;
 
     const collides = (deltaAxis: number): boolean => {
       const movedBounds = shiftBoundsOnAxis(duplicateBounds, deltaAxis);
@@ -3977,7 +3977,7 @@ export default function ProjectPage() {
 
     if (!collides(preferredDelta)) return preferredDelta;
 
-    const step = dir === "TB" ? 420 : 280;
+    const step = dir === "TB" ? 220 : 160;
 
     for (let i = 1; i <= 80; i++) {
       const rightDelta = preferredDelta + i * step;
@@ -4054,7 +4054,7 @@ export default function ProjectPage() {
       return { nodes: nodesList, changedMap };
     }
 
-    const branchGap = dir === "TB" ? 900 : 620;
+    const branchGap = dir === "TB" ? 420 : 300;
 
     const preferredDelta =
       sourceBounds.maxAxis + branchGap - duplicateBounds.minAxis;
