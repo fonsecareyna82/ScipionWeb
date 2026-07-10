@@ -283,7 +283,31 @@ function buildSubtreeAlignedPlacements(params: {
     return levelDelta !== 0 ? levelDelta : stableIdCompare(a, b);
   });
 
-  const gap = direction === "TB" ? Math.round(spacingX * 0.45) : Math.round(spacingY * 0.78);
+  const siblingGap = direction === "TB" ? Math.round(spacingX * 0.45) : Math.round(spacingY * 0.78);
+  const rootBranchGap = direction === "TB" ? Math.round(spacingX * 1.4) : Math.round(spacingY * 1.8);
+  const disconnectedRootGap = direction === "TB" ? Math.round(spacingX * 1.1) : Math.round(spacingY * 1.4);
+
+  const getChildrenGap = (parentId: string): number => {
+    return parentId === "PROJECT" ? rootBranchGap : siblingGap;
+  };
+
+  const getRootGap = (leftRootId: string, rightRootId: string): number => {
+    return leftRootId === "PROJECT" || rightRootId === "PROJECT"
+      ? rootBranchGap
+      : disconnectedRootGap;
+  };
+
+  const getPairGapTotal = (
+    ids: string[],
+    getGap: (leftId: string, rightId: string) => number
+  ): number => {
+    let total = 0;
+    for (let i = 1; i < ids.length; i++) {
+      total += getGap(ids[i - 1], ids[i]);
+    }
+    return total;
+  };
+
   const spanMemo = new Map<string, number>();
 
   const computeSpan = (id: string, stack = new Set<string>()): number => {
@@ -306,10 +330,11 @@ function buildSubtreeAlignedPlacements(params: {
     stack.add(id);
 
     const children = layoutChildren[id] ?? [];
+    const childrenGap = getChildrenGap(id);
     const childrenTotal =
       children.length > 0
         ? children.reduce((sum, childId) => sum + computeSpan(childId, stack), 0) +
-        Math.max(0, children.length - 1) * gap
+        Math.max(0, children.length - 1) * childrenGap
         : 0;
 
     stack.delete(id);
@@ -334,28 +359,34 @@ function buildSubtreeAlignedPlacements(params: {
     const children = layoutChildren[id] ?? [];
     if (children.length === 0) return;
 
+    const childrenGap = getChildrenGap(id);
     const childrenTotal =
       children.reduce((sum, childId) => sum + computeSpan(childId), 0) +
-      Math.max(0, children.length - 1) * gap;
+      Math.max(0, children.length - 1) * childrenGap;
 
     let cursor = start + (span - childrenTotal) / 2;
 
     for (const childId of children) {
       const childSpan = computeSpan(childId);
       placeNode(childId, cursor);
-      cursor += childSpan + gap;
+      cursor += childSpan + childrenGap;
     }
   };
 
   const rootTotal =
     roots.reduce((sum, rootId) => sum + computeSpan(rootId), 0) +
-    Math.max(0, roots.length - 1) * gap;
+    getPairGapTotal(roots, getRootGap);
 
   let cursor = -rootTotal / 2;
-  for (const rootId of roots) {
+  for (let i = 0; i < roots.length; i++) {
+    const rootId = roots[i];
     const rootSpan = computeSpan(rootId);
     placeNode(rootId, cursor);
-    cursor += rootSpan + gap;
+    cursor += rootSpan;
+
+    if (i < roots.length - 1) {
+      cursor += getRootGap(rootId, roots[i + 1]);
+    }
   }
 
   const levelIds: Record<number, string[]> = {};
@@ -445,6 +476,7 @@ function buildSubtreeAlignedPlacements(params: {
  * Improvements:
  * - Hierarchical mode uses a subtree-aligned layout so children stay grouped around
  *   their primary visual parent while preserving all real workflow edges.
+ * - Root-level branches use a larger visual gap so independent subgraphs remain readable.
  * - Grid mode can follow traversal order (parents before children) to reduce visual confusion.
  * - Layout uses deterministic size estimates and optional measured node dimensions.
  */
