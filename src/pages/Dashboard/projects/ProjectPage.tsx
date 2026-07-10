@@ -3796,6 +3796,269 @@ export default function ProjectPage() {
     return (dir === "TB" ? width : height) + 40;
   };
 
+    const getLevelSize = (dir: "TB" | "LR", n: Node<any>) => {
+    const anyN: any = n as any;
+    const mw = Number(anyN.measured?.width ?? anyN.width);
+    const mh = Number(anyN.measured?.height ?? anyN.height);
+
+    const width = Number.isFinite(mw) && mw > 0 ? Math.ceil(mw) : 900;
+    const height = Number.isFinite(mh) && mh > 0 ? Math.ceil(mh) : 520;
+
+    return (dir === "TB" ? height : width) + 40;
+  };
+
+  type GraphBlockBounds = {
+    minAxis: number;
+    maxAxis: number;
+    minLevel: number;
+    maxLevel: number;
+  };
+
+  const getBoundsFromPositionItems = (
+    dir: "TB" | "LR",
+    items: Array<{
+      id: string;
+      position: { x: number; y: number };
+      node?: Node<any> | null;
+    }>
+  ): GraphBlockBounds | null => {
+    let minAxis = Infinity;
+    let maxAxis = -Infinity;
+    let minLevel = Infinity;
+    let maxLevel = -Infinity;
+    let count = 0;
+
+    for (const item of items) {
+      const pos = item.position;
+      if (
+        typeof pos?.x !== "number" ||
+        typeof pos?.y !== "number" ||
+        !Number.isFinite(pos.x) ||
+        !Number.isFinite(pos.y)
+      ) {
+        continue;
+      }
+
+      const axis = getAxisCoord(dir, pos);
+      const level = getLevelCoord(dir, pos);
+
+      const axisSize = item.node ? getAxisSize(dir, item.node) : dir === "TB" ? 940 : 560;
+      const levelSize = item.node ? getLevelSize(dir, item.node) : dir === "TB" ? 560 : 940;
+
+      minAxis = Math.min(minAxis, axis - axisSize / 2);
+      maxAxis = Math.max(maxAxis, axis + axisSize / 2);
+      minLevel = Math.min(minLevel, level - levelSize / 2);
+      maxLevel = Math.max(maxLevel, level + levelSize / 2);
+      count += 1;
+    }
+
+    if (count === 0) return null;
+
+    return {
+      minAxis,
+      maxAxis,
+      minLevel,
+      maxLevel,
+    };
+  };
+
+  const getBlockBoundsForNodeIds = (
+    dir: "TB" | "LR",
+    nodesList: Node<any>[],
+    ids: Set<string>
+  ): GraphBlockBounds | null => {
+    return getBoundsFromPositionItems(
+      dir,
+      nodesList
+        .filter((n) => ids.has(String(n.id)))
+        .map((n) => ({
+          id: String(n.id),
+          position: n.position,
+          node: n,
+        }))
+    );
+  };
+
+  const intervalsOverlap = (
+    minA: number,
+    maxA: number,
+    minB: number,
+    maxB: number,
+    gap: number
+  ) => {
+    return minA < maxB + gap && maxA + gap > minB;
+  };
+
+  const blocksOverlap = (
+    a: GraphBlockBounds,
+    b: GraphBlockBounds,
+    axisGap: number,
+    levelGap: number
+  ) => {
+    return (
+      intervalsOverlap(a.minAxis, a.maxAxis, b.minAxis, b.maxAxis, axisGap) &&
+      intervalsOverlap(a.minLevel, a.maxLevel, b.minLevel, b.maxLevel, levelGap)
+    );
+  };
+
+  const shiftBoundsOnAxis = (
+    bounds: GraphBlockBounds,
+    deltaAxis: number
+  ): GraphBlockBounds => ({
+    ...bounds,
+    minAxis: bounds.minAxis + deltaAxis,
+    maxAxis: bounds.maxAxis + deltaAxis,
+  });
+
+  const findFreeDuplicateBlockDelta = (
+    dir: "TB" | "LR",
+    nodesList: Node<any>[],
+    duplicateIds: Set<string>,
+    preferredDelta: number
+  ): number => {
+    const duplicateBounds = getBlockBoundsForNodeIds(dir, nodesList, duplicateIds);
+    if (!duplicateBounds) return preferredDelta;
+
+    const obstacleBounds = nodesList
+      .filter((n) => !duplicateIds.has(String(n.id)))
+      .map((n) =>
+        getBoundsFromPositionItems(dir, [
+          {
+            id: String(n.id),
+            position: n.position,
+            node: n,
+          },
+        ])
+      )
+      .filter(Boolean) as GraphBlockBounds[];
+
+    const axisGap = dir === "TB" ? 360 : 180;
+    const levelGap = dir === "TB" ? 140 : 180;
+
+    const collides = (deltaAxis: number): boolean => {
+      const movedBounds = shiftBoundsOnAxis(duplicateBounds, deltaAxis);
+
+      return obstacleBounds.some((obstacle) =>
+        blocksOverlap(movedBounds, obstacle, axisGap, levelGap)
+      );
+    };
+
+    if (!collides(preferredDelta)) return preferredDelta;
+
+    const step = dir === "TB" ? 420 : 280;
+
+    for (let i = 1; i <= 80; i++) {
+      const rightDelta = preferredDelta + i * step;
+      if (!collides(rightDelta)) return rightDelta;
+
+      const leftDelta = preferredDelta - i * step;
+      if (!collides(leftDelta)) return leftDelta;
+    }
+
+    return preferredDelta;
+  };
+
+  const placeDuplicatedNodesAsBranchBlock = (
+    dir: "TB" | "LR",
+    nodesList: Node<any>[],
+    duplicatedPairs: Array<{
+      sourceId: string;
+      newId: string;
+      sourcePosition?: { x: number; y: number };
+    }>
+  ): {
+    nodes: Node<any>[];
+    changedMap: Map<string, { x: number; y: number }>;
+  } => {
+    const nodeById = new Map(nodesList.map((n) => [String(n.id), n]));
+    const validPairs = duplicatedPairs.filter((pair) => nodeById.has(String(pair.newId)));
+
+    const duplicateIds = new Set(validPairs.map((pair) => String(pair.newId)));
+    const changedMap = new Map<string, { x: number; y: number }>();
+
+    if (duplicateIds.size === 0) {
+      return { nodes: nodesList, changedMap };
+    }
+
+    const duplicateBounds = getBlockBoundsForNodeIds(dir, nodesList, duplicateIds);
+    if (!duplicateBounds) {
+      return { nodes: nodesList, changedMap };
+    }
+
+    const sourceItems = validPairs
+      .map((pair) => {
+        const sourceId = String(pair.sourceId);
+        const sourceNode = nodeById.get(sourceId) ?? null;
+        const sourcePosition = pair.sourcePosition ?? sourceNode?.position;
+
+        if (!sourcePosition) return null;
+
+        return {
+          id: sourceId,
+          position: sourcePosition,
+          node: sourceNode,
+        };
+      })
+      .filter(Boolean) as Array<{
+        id: string;
+        position: { x: number; y: number };
+        node?: Node<any> | null;
+      }>;
+
+    const sourceBounds =
+      getBoundsFromPositionItems(dir, sourceItems) ??
+      getBoundsFromPositionItems(
+        dir,
+        nodesList
+          .filter((n) => !duplicateIds.has(String(n.id)))
+          .map((n) => ({
+            id: String(n.id),
+            position: n.position,
+            node: n,
+          }))
+      );
+
+    if (!sourceBounds) {
+      return { nodes: nodesList, changedMap };
+    }
+
+    const branchGap = dir === "TB" ? 900 : 620;
+
+    const preferredDelta =
+      sourceBounds.maxAxis + branchGap - duplicateBounds.minAxis;
+
+    const resolvedDelta = findFreeDuplicateBlockDelta(
+      dir,
+      nodesList,
+      duplicateIds,
+      preferredDelta
+    );
+
+    const nextNodes = nodesList.map((node) => {
+      const nodeId = String(node.id);
+      if (!duplicateIds.has(nodeId)) return node;
+
+      const nextPosition = setAxisCoord(
+        dir,
+        node.position,
+        getAxisCoord(dir, node.position) + resolvedDelta
+      );
+
+      changedMap.set(nodeId, nextPosition);
+
+      return {
+        ...node,
+        position: nextPosition,
+        selected: true,
+      };
+    });
+
+    return {
+      nodes: nextNodes,
+      changedMap,
+    };
+  };
+
   const getLevelStep = (dir: "TB" | "LR") => (dir === "TB" ? hierSpacingY(dir) : hierSpacingX(dir));
 
   // inferNearestLevelKey snaps a raw point to the closest existing level among current nodes
@@ -3963,7 +4226,7 @@ export default function ProjectPage() {
     pendingPlacementRef.current = null;
   };
 
-  const tryResolveNewNodesCollisions = () => {
+    const tryResolveNewNodesCollisions = () => {
     const pending = pendingNewNodesRef.current;
     if (!pending) return;
 
@@ -3978,49 +4241,44 @@ export default function ProjectPage() {
 
     const dir = graphDirRef.current;
 
+    if (
+      pending.operation === "duplicate" &&
+      Array.isArray(pending.duplicatedPairs) &&
+      pending.duplicatedPairs.length > 0
+    ) {
+      setNodes((prev) => {
+        const result = placeDuplicatedNodesAsBranchBlock(
+          dir,
+          prev,
+          pending.duplicatedPairs ?? []
+        );
+
+        const changedItems = Array.from(result.changedMap.entries()).map(
+          ([id, position]) => ({
+            id,
+            position,
+          })
+        );
+
+        if (changedItems.length) {
+          persistPositionsBulk(dir, changedItems);
+        }
+
+        pendingNewNodesRef.current = null;
+
+        return result.nodes;
+      });
+
+      return;
+    }
+
     setNodes((prev) => {
       const step = getLevelStep(dir);
 
-      let seededPrev = prev;
-      const seededChangedMap = new Map<string, { x: number; y: number }>();
-
-      if (
-        pending.operation === "duplicate" &&
-        Array.isArray(pending.duplicatedPairs) &&
-        pending.duplicatedPairs.length > 0
-      ) {
-        const duplicateGap = 720;
-
-        seededPrev = prev.map((node) => {
-          const nodeId = String(node.id);
-          const pair = pending.duplicatedPairs?.find((p) => p.newId === nodeId);
-
-          if (!pair?.sourcePosition) return node;
-
-          const sourceLevelCoord = getLevelCoord(dir, pair.sourcePosition);
-          const sourceAxis = getAxisCoord(dir, pair.sourcePosition);
-          const desiredAxis = sourceAxis + duplicateGap;
-
-          const desiredPosition = setAxisCoord(
-            dir,
-            setLevelCoord(dir, node.position, sourceLevelCoord),
-            desiredAxis
-          );
-
-          seededChangedMap.set(nodeId, desiredPosition);
-
-          return {
-            ...node,
-            position: desiredPosition,
-            selected: true,
-          };
-        });
-      }
-
-      // groupNewNodesByLevelKey
       const newIdsByLevel = new Map<number, string[]>();
+
       for (const id of newIds) {
-        const node = seededPrev.find((n) => String(n.id) === id);
+        const node = prev.find((n) => String(n.id) === id);
         if (!node) continue;
 
         const levelKey = Math.round(getLevelCoord(dir, node.position) / step);
@@ -4029,22 +4287,20 @@ export default function ProjectPage() {
         newIdsByLevel.set(levelKey, arr);
       }
 
-      // ifNodesNotReadyYetKeepPendingForNextRetry
       if (newIdsByLevel.size === 0) return prev;
 
-      // processLevelsInStableOrder
       const levelKeys = Array.from(newIdsByLevel.keys()).sort((a, b) => a - b);
 
-      let nodesAcc = seededPrev;
-      const changedMap = new Map<string, { x: number; y: number }>(seededChangedMap);
+      let nodesAcc = prev;
+      const changedMap = new Map<string, { x: number; y: number }>();
 
       for (const levelKey of levelKeys) {
         const idsInLevel = newIdsByLevel.get(levelKey) ?? [];
         if (idsInLevel.length === 0) continue;
 
-        // pickAnchorForThisLevel: highestNumericIdForStability
         let anchorId = idsInLevel[0];
         let bestNum = Number.NEGATIVE_INFINITY;
+
         for (const id of idsInLevel) {
           const n = parseInt(id, 10);
           if (!Number.isNaN(n) && n > bestNum) {
@@ -4053,17 +4309,15 @@ export default function ProjectPage() {
           }
         }
 
-        // snapshotPositionsInThisLevelBefore
         const beforePos = new Map<string, { x: number; y: number }>();
+
         for (const n of nodesAcc) {
           const k = Math.round(getLevelCoord(dir, n.position) / step);
           if (k === levelKey) beforePos.set(String(n.id), n.position);
         }
 
-        // resolveOverlapsForThisLevel
         nodesAcc = resolveOverlapsInLevel(dir, nodesAcc, anchorId, levelKey);
 
-        // collectChangesForPersistence
         for (const n of nodesAcc) {
           const k = Math.round(getLevelCoord(dir, n.position) / step);
           if (k !== levelKey) continue;
@@ -4083,18 +4337,14 @@ export default function ProjectPage() {
       }));
 
       if (changedItems.length) {
-        // note: side effect inside setState is acceptable here because it is idempotent and tied to user action
         persistPositionsBulk(dir, changedItems);
       }
 
-      // clearPendingOnceApplied (only if we actually processed at least one level)
       pendingNewNodesRef.current = null;
 
       return nodesAcc;
     });
   };
-
-
 
 
   const handleContextMenu = (event: React.MouseEvent) => {
