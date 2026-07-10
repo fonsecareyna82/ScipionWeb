@@ -2692,6 +2692,43 @@ export default function ProjectPage() {
     );
   };
 
+  const getProjectPositionChange = (
+    beforeNodes: Node[],
+    afterNodes: Node[]
+  ): { id: string; position: { x: number; y: number } } | null => {
+    const beforeProject = beforeNodes.find((n) => String(n.id) === "PROJECT");
+    const afterProject = afterNodes.find((n) => String(n.id) === "PROJECT");
+
+    const beforePosition = beforeProject?.position;
+    const afterPosition = afterProject?.position;
+
+    if (
+      !afterPosition ||
+      typeof afterPosition.x !== "number" ||
+      typeof afterPosition.y !== "number" ||
+      !Number.isFinite(afterPosition.x) ||
+      !Number.isFinite(afterPosition.y)
+    ) {
+      return null;
+    }
+
+    if (
+      beforePosition &&
+      beforePosition.x === afterPosition.x &&
+      beforePosition.y === afterPosition.y
+    ) {
+      return null;
+    }
+
+    return {
+      id: "PROJECT",
+      position: {
+        x: afterPosition.x,
+        y: afterPosition.y,
+      },
+    };
+  };
+
   const loadNodesWithPositions = (loadedNodes: Node[]) => {
     const saved = readPersistedPositions(storageKeyHier, graphDirection);
 
@@ -4337,9 +4374,21 @@ export default function ProjectPage() {
         .map((n) => ({ id: n.id, position: n.position }));
 
       // note: side effect inside setState is acceptable here because it is idempotent and tied to user action
+      const centeredNodes = centerProjectOverGraphBranches(resolved);
+
+      const projectPositionChange = getProjectPositionChange(
+        resolved,
+        centeredNodes
+      );
+
+      if (projectPositionChange) {
+        levelIds.push(projectPositionChange);
+      }
+
+      // note: side effect inside setState is acceptable here because it is idempotent and tied to user action
       persistPositionsBulk(dir, levelIds);
 
-      return resolved;
+      return centeredNodes;
     });
 
     pendingPlacementRef.current = null;
@@ -4372,6 +4421,8 @@ export default function ProjectPage() {
           pending.duplicatedPairs ?? []
         );
 
+        const centeredNodes = centerProjectOverGraphBranches(result.nodes);
+
         const changedItems = Array.from(result.changedMap.entries()).map(
           ([id, position]) => ({
             id,
@@ -4379,13 +4430,22 @@ export default function ProjectPage() {
           })
         );
 
+        const projectPositionChange = getProjectPositionChange(
+          result.nodes,
+          centeredNodes
+        );
+
+        if (projectPositionChange) {
+          changedItems.push(projectPositionChange);
+        }
+
         if (changedItems.length) {
           persistPositionsBulk(dir, changedItems);
         }
 
         pendingNewNodesRef.current = null;
 
-        return result.nodes;
+        return centeredNodes;
       });
 
       return;
@@ -4455,13 +4515,24 @@ export default function ProjectPage() {
         position,
       }));
 
+      const centeredNodes = centerProjectOverGraphBranches(nodesAcc);
+
+      const projectPositionChange = getProjectPositionChange(
+        nodesAcc,
+        centeredNodes
+      );
+
+      if (projectPositionChange) {
+        changedItems.push(projectPositionChange);
+      }
+
       if (changedItems.length) {
         persistPositionsBulk(dir, changedItems);
       }
 
       pendingNewNodesRef.current = null;
 
-      return nodesAcc;
+      return centeredNodes;
     });
   };
 
