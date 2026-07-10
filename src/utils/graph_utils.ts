@@ -313,11 +313,31 @@ function getResolvedPlacementCrossSize(params: {
     : Math.max(280, Math.min(560, size));
 }
 
+function getResolvedPlacementLevelSize(params: {
+  id: string;
+  direction: Direction;
+  protocols: Record<string, ProtocolNode>;
+  projectName: string;
+  nodeSizeMap?: NodeSizeMap | null;
+}): number {
+  const { id, direction, protocols, projectName, nodeSizeMap } = params;
+  const label = getGraphNodeLabel(id, protocols, projectName);
+
+  const size =
+    direction === "TB"
+      ? getNodeHeight(id, label, nodeSizeMap)
+      : getNodeWidth(id, label, nodeSizeMap);
+
+  return direction === "TB"
+    ? Math.max(260, Math.min(560, size))
+    : Math.max(780, Math.min(1040, size));
+}
+
 function findNearestFreeAxis(params: {
   id: string;
   desiredAxis: number;
+  desiredLevel: number;
   direction: Direction;
-  level: number;
   levelMap: Record<string, number>;
   placements: Record<string, GraphPosition>;
   protocols: Record<string, ProtocolNode>;
@@ -327,17 +347,25 @@ function findNearestFreeAxis(params: {
   const {
     id,
     desiredAxis,
+    desiredLevel,
     direction,
-    level,
-    levelMap,
     placements,
     protocols,
     projectName,
     nodeSizeMap,
   } = params;
 
-  const overlapGap = direction === "TB" ? 320 : 80;
-  const selfSize = getResolvedPlacementCrossSize({
+  const crossGap = direction === "TB" ? 320 : 80;
+  const levelGap = direction === "TB" ? 120 : 160;
+
+  const selfCrossSize = getResolvedPlacementCrossSize({
+    id,
+    direction,
+    protocols,
+    projectName,
+    nodeSizeMap,
+  });
+  const selfLevelSize = getResolvedPlacementLevelSize({
     id,
     direction,
     protocols,
@@ -346,13 +374,18 @@ function findNearestFreeAxis(params: {
   });
 
   const neighbors = Object.entries(placements)
-    .filter(([otherId, position]) => {
-      if (otherId === id || !position) return false;
-      return (levelMap[otherId] ?? Number.NaN) === level;
-    })
+    .filter(([otherId, position]) => otherId !== id && Boolean(position))
     .map(([otherId, position]) => ({
       axis: getPlacementAxis(direction, position),
-      size: getResolvedPlacementCrossSize({
+      level: getPlacementLevel(direction, position),
+      crossSize: getResolvedPlacementCrossSize({
+        id: otherId,
+        direction,
+        protocols,
+        projectName,
+        nodeSizeMap,
+      }),
+      levelSize: getResolvedPlacementLevelSize({
         id: otherId,
         direction,
         protocols,
@@ -363,8 +396,13 @@ function findNearestFreeAxis(params: {
 
   const isFree = (axis: number): boolean => {
     for (const neighbor of neighbors) {
-      const minDistance = selfSize / 2 + neighbor.size / 2 + overlapGap;
-      if (Math.abs(axis - neighbor.axis) < minDistance) return false;
+      const minCrossDistance = selfCrossSize / 2 + neighbor.crossSize / 2 + crossGap;
+      const minLevelDistance = selfLevelSize / 2 + neighbor.levelSize / 2 + levelGap;
+
+      const overlapsInCrossAxis = Math.abs(axis - neighbor.axis) < minCrossDistance;
+      const overlapsInLevelAxis = Math.abs(desiredLevel - neighbor.level) < minLevelDistance;
+
+      if (overlapsInCrossAxis && overlapsInLevelAxis) return false;
     }
 
     return true;
@@ -372,7 +410,7 @@ function findNearestFreeAxis(params: {
 
   if (isFree(desiredAxis)) return desiredAxis;
 
-  const step = Math.max(160, Math.round(selfSize * 0.45));
+  const step = Math.max(160, Math.round(selfCrossSize * 0.45));
   for (let i = 1; i <= 80; i++) {
     const right = desiredAxis + i * step;
     if (isFree(right)) return right;
@@ -453,8 +491,8 @@ function applyPersistedPositionsAndPlaceNewNodes(params: {
     const resolvedAxis = findNearestFreeAxis({
       id,
       desiredAxis,
+      desiredLevel,
       direction,
-      level,
       levelMap,
       placements: nextPlacements,
       protocols,
@@ -716,6 +754,8 @@ function buildSubtreeAlignedPlacements(params: {
  * - Root-level branches use a larger visual gap so independent subgraphs remain readable.
  * - When manual positions exist, known nodes keep those positions and new nodes are
  *   locally placed near their primary parent instead of reorganizing the whole graph.
+ * - New nodes are placed using visual bounding-box collision checks, so they avoid
+ *   overlapping nearby branches even when those branches were manually moved.
  * - Grid mode can follow traversal order (parents before children) to reduce visual confusion.
  * - Layout uses deterministic size estimates and optional measured node dimensions.
  */
