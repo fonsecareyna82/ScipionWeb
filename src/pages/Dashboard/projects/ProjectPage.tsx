@@ -2616,17 +2616,98 @@ export default function ProjectPage() {
     });
   };
 
+  const centerProjectOverGraphBranches = (sourceNodes: Node[]): Node[] => {
+    if (viewModeRef.current !== "hierarchical") return sourceNodes;
+
+    const dir = graphDirectionRef2.current;
+    const projectNode = sourceNodes.find((n) => String(n.id) === "PROJECT");
+    if (!projectNode?.position) return sourceNodes;
+
+    const branchNodes = sourceNodes.filter((n) => {
+      if (String(n.id) === "PROJECT") return false;
+
+      const position = n.position;
+      return (
+        typeof position?.x === "number" &&
+        Number.isFinite(position.x) &&
+        typeof position?.y === "number" &&
+        Number.isFinite(position.y)
+      );
+    });
+
+    if (branchNodes.length === 0) return sourceNodes;
+
+    const getAxis = (pos: { x: number; y: number }) => (dir === "TB" ? pos.x : pos.y);
+
+    const setAxis = (pos: { x: number; y: number }, axis: number) =>
+      dir === "TB" ? { x: axis, y: pos.y } : { x: pos.x, y: axis };
+
+    const getAxisSizeForNode = (node: Node<any>) => {
+      const anyNode: any = node as any;
+      const measuredWidth = Number(anyNode.measured?.width ?? anyNode.width);
+      const measuredHeight = Number(anyNode.measured?.height ?? anyNode.height);
+
+      const width =
+        Number.isFinite(measuredWidth) && measuredWidth > 0
+          ? Math.ceil(measuredWidth)
+          : 900;
+
+      const height =
+        Number.isFinite(measuredHeight) && measuredHeight > 0
+          ? Math.ceil(measuredHeight)
+          : 520;
+
+      return (dir === "TB" ? width : height) + 40;
+    };
+
+    let minAxis = Infinity;
+    let maxAxis = -Infinity;
+
+    for (const node of branchNodes) {
+      const axis = getAxis(node.position);
+      const axisSize = getAxisSizeForNode(node);
+
+      minAxis = Math.min(minAxis, axis - axisSize / 2);
+      maxAxis = Math.max(maxAxis, axis + axisSize / 2);
+    }
+
+    if (!Number.isFinite(minAxis) || !Number.isFinite(maxAxis)) return sourceNodes;
+
+    const centeredAxis = (minAxis + maxAxis) / 2;
+    const currentProjectAxis = getAxis(projectNode.position);
+
+    if (Math.abs(currentProjectAxis - centeredAxis) < 1) {
+      return sourceNodes;
+    }
+
+    const nextProjectPosition = setAxis(projectNode.position, centeredAxis);
+
+    return sourceNodes.map((node) =>
+      String(node.id) === "PROJECT"
+        ? {
+          ...node,
+          position: nextProjectPosition,
+        }
+        : node
+    );
+  };
+
   const loadNodesWithPositions = (loadedNodes: Node[]) => {
     const saved = readPersistedPositions(storageKeyHier, graphDirection);
-    if (!saved.length) return loadedNodes;
+
+    if (!saved.length) {
+      return centerProjectOverGraphBranches(loadedNodes);
+    }
 
     const byId = new Map<string, { x: number; y: number }>();
     for (const p of saved) byId.set(p.id, p.position);
 
-    return loadedNodes.map((n) => {
+    const nodesWithSavedPositions = loadedNodes.map((n) => {
       const pos = byId.get(n.id);
       return pos ? { ...n, position: pos } : n;
     });
+
+    return centerProjectOverGraphBranches(nodesWithSavedPositions);
   };
 
 
@@ -2636,10 +2717,14 @@ export default function ProjectPage() {
     const pending = pendingNewNodesRef.current;
 
     if (!pending?.beforePositions || viewModeRef.current !== "hierarchical") {
-      return loadedNodes;
+      return centerProjectOverGraphBranches(loadedNodes);
     }
 
-    return loadedNodes.map((node) => {
+    const nodesWithPreservedPositions = loadedNodes.map((node) => {
+      // PROJECT should remain centered over the current graph branches.
+      // Do not freeze its old position during incremental add/duplicate refreshes.
+      if (String(node.id) === "PROJECT") return node;
+
       const previousPosition = pending.beforePositions?.get(String(node.id));
       if (!previousPosition) return node;
 
@@ -2648,6 +2733,8 @@ export default function ProjectPage() {
         position: previousPosition,
       };
     });
+
+    return centerProjectOverGraphBranches(nodesWithPreservedPositions);
   };
 
 
