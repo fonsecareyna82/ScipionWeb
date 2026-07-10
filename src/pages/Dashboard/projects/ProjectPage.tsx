@@ -4079,8 +4079,20 @@ export default function ProjectPage() {
     duplicateIds: Set<string>,
     preferredDelta: number
   ): number => {
-    const duplicateBounds = getBlockBoundsForNodeIds(dir, nodesList, duplicateIds);
-    if (!duplicateBounds) return preferredDelta;
+    const duplicateNodeBounds = nodesList
+      .filter((n) => duplicateIds.has(String(n.id)))
+      .map((n) =>
+        getBoundsFromPositionItems(dir, [
+          {
+            id: String(n.id),
+            position: n.position,
+            node: n,
+          },
+        ])
+      )
+      .filter(Boolean) as GraphBlockBounds[];
+
+    if (!duplicateNodeBounds.length) return preferredDelta;
 
     const obstacleBounds = nodesList
       .filter((n) => !duplicateIds.has(String(n.id)))
@@ -4095,20 +4107,24 @@ export default function ProjectPage() {
       )
       .filter(Boolean) as GraphBlockBounds[];
 
-    const axisGap = dir === "TB" ? 220 : 120;
-    const levelGap = dir === "TB" ? 120 : 150;
+    const axisGap = dir === "TB" ? 120 : 80;
+    const levelGap = dir === "TB" ? 100 : 120;
 
     const collides = (deltaAxis: number): boolean => {
-      const movedBounds = shiftBoundsOnAxis(duplicateBounds, deltaAxis);
+      const movedDuplicateBounds = duplicateNodeBounds.map((bounds) =>
+        shiftBoundsOnAxis(bounds, deltaAxis)
+      );
 
-      return obstacleBounds.some((obstacle) =>
-        blocksOverlap(movedBounds, obstacle, axisGap, levelGap)
+      return movedDuplicateBounds.some((duplicateBounds) =>
+        obstacleBounds.some((obstacle) =>
+          blocksOverlap(duplicateBounds, obstacle, axisGap, levelGap)
+        )
       );
     };
 
     if (!collides(preferredDelta)) return preferredDelta;
 
-    const step = dir === "TB" ? 220 : 160;
+    const step = dir === "TB" ? 120 : 100;
 
     for (let i = 1; i <= 80; i++) {
       const rightDelta = preferredDelta + i * step;
@@ -4185,7 +4201,7 @@ export default function ProjectPage() {
       return { nodes: nodesList, changedMap };
     }
 
-    const branchGap = dir === "TB" ? 420 : 300;
+    const branchGap = dir === "TB" ? 220 : 180;
 
     const preferredDelta =
       sourceBounds.maxAxis + branchGap - duplicateBounds.minAxis;
