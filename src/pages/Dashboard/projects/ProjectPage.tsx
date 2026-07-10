@@ -3419,6 +3419,12 @@ export default function ProjectPage() {
 
         if (viewMode === "hierarchical") {
           centerLikeButton(nodesWithPositions, true);
+
+          window.setTimeout(() => {
+            if (viewModeRef.current === "hierarchical") {
+              handleRefreshRef.current?.();
+            }
+          }, 0);
         } else {
           snapViewportToTopLeft(GRID_ZOOM);
         }
