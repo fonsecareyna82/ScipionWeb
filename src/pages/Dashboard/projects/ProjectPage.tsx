@@ -2616,10 +2616,11 @@ export default function ProjectPage() {
     });
   };
 
-  const centerProjectOverGraphBranches = (sourceNodes: Node[]): Node[] => {
-    if (viewModeRef.current !== "hierarchical") return sourceNodes;
-
-    const dir = graphDirectionRef2.current;
+  const centerProjectOverGraphBranches = (
+    sourceNodes: Node[],
+    dirOverride?: "TB" | "LR"
+  ): Node[] => {
+    const dir = dirOverride ?? graphDirection;
     const projectNode = sourceNodes.find((n) => String(n.id) === "PROJECT");
     if (!projectNode?.position) return sourceNodes;
 
@@ -2733,7 +2734,7 @@ export default function ProjectPage() {
     const saved = readPersistedPositions(storageKeyHier, graphDirection);
 
     if (!saved.length) {
-      return centerProjectOverGraphBranches(loadedNodes);
+      return centerProjectOverGraphBranches(loadedNodes, graphDirection);
     }
 
     const byId = new Map<string, { x: number; y: number }>();
@@ -2744,7 +2745,7 @@ export default function ProjectPage() {
       return pos ? { ...n, position: pos } : n;
     });
 
-    return centerProjectOverGraphBranches(nodesWithSavedPositions);
+    return centerProjectOverGraphBranches(nodesWithSavedPositions, graphDirection);
   };
 
 
@@ -2754,7 +2755,7 @@ export default function ProjectPage() {
     const pending = pendingNewNodesRef.current;
 
     if (!pending?.beforePositions || viewModeRef.current !== "hierarchical") {
-      return centerProjectOverGraphBranches(loadedNodes);
+      return centerProjectOverGraphBranches(loadedNodes, graphDirection);
     }
 
     const nodesWithPreservedPositions = loadedNodes.map((node) => {
@@ -2771,7 +2772,7 @@ export default function ProjectPage() {
       };
     });
 
-    return centerProjectOverGraphBranches(nodesWithPreservedPositions);
+    return centerProjectOverGraphBranches(nodesWithPreservedPositions, graphDirection);
   };
 
 
@@ -4380,7 +4381,7 @@ export default function ProjectPage() {
         .map((n) => ({ id: n.id, position: n.position }));
 
       // note: side effect inside setState is acceptable here because it is idempotent and tied to user action
-      const centeredNodes = centerProjectOverGraphBranches(resolved);
+      const centeredNodes = centerProjectOverGraphBranches(resolved, dir);
 
       const projectPositionChange = getProjectPositionChange(
         resolved,
@@ -4427,7 +4428,7 @@ export default function ProjectPage() {
           pending.duplicatedPairs ?? []
         );
 
-        const centeredNodes = centerProjectOverGraphBranches(result.nodes);
+        const centeredNodes = centerProjectOverGraphBranches(result.nodes, dir);
 
         const changedItems = Array.from(result.changedMap.entries()).map(
           ([id, position]) => ({
@@ -4521,7 +4522,7 @@ export default function ProjectPage() {
         position,
       }));
 
-      const centeredNodes = centerProjectOverGraphBranches(nodesAcc);
+      const centeredNodes = centerProjectOverGraphBranches(nodesAcc, dir);
 
       const projectPositionChange = getProjectPositionChange(
         nodesAcc,
