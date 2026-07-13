@@ -135,6 +135,32 @@ function isElapsedTimerStatus(
   );
 }
 
+function continuesElapsedTimerSession(
+  previousStatus: unknown,
+  nextStatus: unknown,
+): boolean {
+  const previous =
+    normalizeProtocolStatus(
+      previousStatus
+    );
+
+  const next =
+    normalizeProtocolStatus(
+      nextStatus
+    );
+
+  return (
+    previous === "launched" &&
+    (
+      next === "launched" ||
+      next === "running"
+    )
+  ) || (
+      previous === "running" &&
+      next === "running"
+    );
+}
+
 function toElapsedSeconds(
   value: unknown,
 ): number {
@@ -170,8 +196,9 @@ function mergeNodeElapsedTick(
   }
 
   const continuesActiveSession =
-    isElapsedTimerStatus(
+    continuesElapsedTimerSession(
       currentNode?.data?.status,
+      freshStatus,
     );
 
   const currentElapsed = toElapsedSeconds(
@@ -216,25 +243,27 @@ function mergeTableElapsedTick(
     return nextRow;
   }
 
-  const currentRowIsActive =
-    isElapsedTimerStatus(
+  const currentRowContinues =
+    continuesElapsedTimerSession(
       currentRow?.status,
+      freshRow?.status,
     );
 
-  const currentNodeIsActive =
-    isElapsedTimerStatus(
+  const currentNodeContinues =
+    continuesElapsedTimerSession(
       currentNode?.data?.status,
+      freshRow?.status,
     );
 
   const currentElapsed = Math.max(
-    currentRowIsActive
+    currentRowContinues
       ? toElapsedSeconds(
         currentRow?.tick ??
         currentRow?.elapsedTime,
       )
       : 0,
 
-    currentNodeIsActive
+    currentNodeContinues
       ? toElapsedSeconds(
         currentNode?.data?.tick ??
         currentNode?.data?.elapsedTime,
@@ -243,8 +272,8 @@ function mergeTableElapsedTick(
   );
 
   const continuesActiveSession =
-    currentRowIsActive ||
-    currentNodeIsActive;
+    currentRowContinues ||
+    currentNodeContinues;
 
   return {
     ...freshRow,
@@ -1676,21 +1705,6 @@ export default function ProjectPage() {
     setNodes((prev) => clearOutputThumbnailsFromNodes(prev as Node<StatusNodeData>[]));
   }, [protocolOutputThumbnailsEnabled, setNodes]);
 
-  const isElapsedTimerStatus = (status: unknown): boolean => {
-    const normalizedStatus = String(status ?? "")
-      .trim()
-      .toLowerCase();
-
-    return (
-      normalizedStatus === "launched" ||
-      normalizedStatus === "running"
-    );
-  };
-
-  const isElapsedTimerNode = (node: Node): boolean =>
-    isElapsedTimerStatus(
-      (node as any).data?.status
-    );
 
   // Workflows
   const [workflowsOpen, setWorkflowsOpen] = useState(false);
@@ -3395,17 +3409,45 @@ export default function ProjectPage() {
       GRID_ZOOM
     );
 
-    const sel = getUnifiedSelectedIds();
-    const seeded = seedNodesWithSelectionAndThumbnails(newNodes, sel);
+    const sel =
+      getUnifiedSelectedIds();
 
-    setNodes(seeded);
+    const seeded =
+      seedNodesWithSelectionAndThumbnails(
+        newNodes,
+        sel
+      );
+
+    const currentNodesById =
+      new Map(
+        (
+          nodesRef.current as
+          Node<StatusNodeData>[]
+        ).map((node) => [
+          String(node.id),
+          node,
+        ])
+      );
+
+    const seededWithLiveTicks =
+      seeded.map((node) =>
+        mergeNodeElapsedTick(
+          node as Node<StatusNodeData>,
+
+          currentNodesById.get(
+            String(node.id),
+          ),
+        )
+      );
+
+    setNodes(seededWithLiveTicks);
     setEdges([]); // grid has no edges
 
     if (protocolOutputThumbnailsEnabled) {
       const currentProjectId = getProjectId();
 
       if (currentProjectId != null) {
-        void loadProtocolOutputThumbnailsForNodes(currentProjectId, seeded);
+        void loadProtocolOutputThumbnailsForNodes(currentProjectId, seededWithLiveTicks);
       }
     }
 
@@ -3445,10 +3487,48 @@ export default function ProjectPage() {
           getEffectiveZoom()
         );
 
+        const currentNodesById =
+          new Map(
+            (
+              nodesRef.current as
+              Node<StatusNodeData>[]
+            ).map((node) => [
+              String(node.id),
+              node,
+            ])
+          );
+
         if (viewMode === "table") {
-          startTransition(() => setTableData(table ?? []));
-          disablePersistenceRef.current = false;
+          setTableData((currentRows) => {
+            const currentRowsById =
+              new Map(
+                currentRows.map((row) => [
+                  String(row.id),
+                  row,
+                ])
+              );
+
+            return (table ?? []).map(
+              (freshRow) =>
+                mergeTableElapsedTick(
+                  freshRow,
+
+                  currentRowsById.get(
+                    String(freshRow.id),
+                  ),
+
+                  currentNodesById.get(
+                    String(freshRow.id),
+                  ),
+                )
+            );
+          });
+
+          disablePersistenceRef.current =
+            false;
+
           setHideGraphDuringCenter(false);
+
           return;
         }
 
@@ -3463,13 +3543,24 @@ export default function ProjectPage() {
           unifiedSelectedIds,
         );
 
+        const nodesWithLiveTicks =
+          nodesSeeded.map((node) =>
+            mergeNodeElapsedTick(
+              node as Node<StatusNodeData>,
+
+              currentNodesById.get(
+                String(node.id),
+              ),
+            )
+          );
+
         const recomputedEdgeSet = unifiedSelectedIds.size
           ? computeEdgesForMode(unifiedSelectedIds, pathEdgeModeRef.current)
           : new Set<string>();
         pathSelRef.current.edges = recomputedEdgeSet;
 
         startTransition(() => {
-          setNodes(nodesSeeded);
+          setNodes(nodesWithLiveTicks);
           setEdges((_) => {
             let out = viewMode === "grid" ? [] : paintEdgeHighlight(loadedEdges, selectedIdRef.current ?? null);
             if (recomputedEdgeSet.size) out = paintPathHighlight(out, recomputedEdgeSet);
@@ -3483,10 +3574,33 @@ export default function ProjectPage() {
               getProjectId();
 
             if (currentProjectId != null) {
-              void loadProtocolOutputThumbnailsForNodes(currentProjectId, nodesSeeded);
+              void loadProtocolOutputThumbnailsForNodes(currentProjectId, nodesWithLiveTicks);
             }
           }
-          setTableData(table ?? []);
+          setTableData((currentRows) => {
+            const currentRowsById =
+              new Map(
+                currentRows.map((row) => [
+                  String(row.id),
+                  row,
+                ])
+              );
+
+            return (table ?? []).map(
+              (freshRow) =>
+                mergeTableElapsedTick(
+                  freshRow,
+
+                  currentRowsById.get(
+                    String(freshRow.id),
+                  ),
+
+                  currentNodesById.get(
+                    String(freshRow.id),
+                  ),
+                )
+            );
+          });
         });
 
         requestAnimationFrame(() => {
