@@ -7155,7 +7155,7 @@ export default function ProjectPage() {
                     toast.success("Restart started.");
                     setDlgRestartAll({ open: false, id: null });
 
-                    scheduleDoubleRefresh(5000, true);
+                    scheduleDoubleRefresh(8000, true);
                   } catch (err) {
                     console.error(err);
                     toast.error(getErrorMsg(err));
