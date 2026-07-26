@@ -5513,15 +5513,35 @@ export default function ProjectPage() {
   const openResetFrom = (id: string) => setDlgResetFrom({ open: true, id: String(id) });
 
   const openStop = (id: string) => {
+    const clickedId = String(id);
+
+    const clickedNode = nodesRef.current.find(
+      (node) => String(node.id) === clickedId
+    );
+
+    const visuallySelectedIds = nodesRef.current
+      .filter(
+        (node) =>
+          node.selected &&
+          String(node.id) !== "PROJECT"
+      )
+      .map(
+        (node) => String(node.id)
+      );
+
     const ids =
-      pathSelRef.current.nodes.size > 0
-        ? Array.from(pathSelRef.current.nodes).map(String).filter((x) => x !== "PROJECT")
-        : [String(id)];
+      clickedNode?.selected &&
+        visuallySelectedIds.length > 0
+        ? Array.from(
+          new Set(visuallySelectedIds)
+        )
+        : [clickedId];
 
-    setDlgStop({ open: true, ids });
+    setDlgStop({
+      open: true,
+      ids,
+    });
   };
-
-
 
 
   const submitRename = async () => {
