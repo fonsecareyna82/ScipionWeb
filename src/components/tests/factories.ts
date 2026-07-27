@@ -104,7 +104,6 @@ export function makeImportProjectPayload(
   return {
     projectLocation: `/tmp/project-${seq}`,
     projectName: `Imported Project ${seq}`,
-    copyProject: true,
     ...overrides,
   };
 }

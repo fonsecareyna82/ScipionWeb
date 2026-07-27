@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import {
   Box,
   Button,
-  Checkbox,
   Dialog,
   DialogActions,
   DialogContent,
@@ -10,12 +9,11 @@ import {
   IconButton,
   Stack,
   TextField,
-  Tooltip,
   Typography,
   alpha,
   useTheme,
 } from "@mui/material";
-import { FolderOpen, HelpCircle, X } from "lucide-react";
+import { FolderOpen, X } from "lucide-react";
 import toast from "react-hot-toast";
 
 import RemoteFileDialog, {
@@ -122,7 +120,6 @@ export default function ImportProjectDialog({
 
   const [projectLocation, setProjectLocation] = useState("");
   const [projectName, setProjectName] = useState("");
-  const [copyProject, setCopyProject] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [openBrowser, setOpenBrowser] = useState(false);
   const [browserDialogKey, setBrowserDialogKey] = useState(0);
@@ -232,7 +229,6 @@ export default function ImportProjectDialog({
     browserRootAbsRef.current = "";
     setProjectLocation("");
     setProjectName("");
-    setCopyProject(false);
     setSubmitting(false);
     setOpenBrowser(false);
   }, [open]);
@@ -247,7 +243,6 @@ export default function ImportProjectDialog({
       await onImport({
         projectLocation: trimmedLocation,
         projectName: projectName.trim() || undefined,
-        copyProject,
       });
 
       onClose();
@@ -367,41 +362,25 @@ export default function ImportProjectDialog({
               </Stack>
             </Box>
 
-            <Box>
-              <Stack spacing={0.75}>
-                <Stack direction="row" alignItems="center" spacing={1}>
-                  <Checkbox
-                    checked={copyProject}
-                    onChange={(e) => setCopyProject(e.target.checked)}
-                    disabled={submitting}
-                    size="small"
-                    sx={{ p: 0.5 }}
-                  />
-
-                  <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                    Copy project
-                  </Typography>
-
-                  <Tooltip
-                    title="If disabled, the imported project will be linked using a symbolic link instead of copying the whole directory."
-                    arrow
-                    placement="top"
-                  >
-                    <Box
-                      component="span"
-                      sx={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        color: alpha(theme.palette.text.primary, 0.72),
-                      }}
-                    >
-                      <HelpCircle size={15} />
-                    </Box>
-                  </Tooltip>
-                </Stack>
-
-
-              </Stack>
+            <Box
+              sx={{
+                px: 1.5,
+                py: 1.25,
+                borderRadius: 1,
+                backgroundColor: alpha(theme.palette.primary.main, 0.06),
+                border: `1px solid ${alpha(theme.palette.primary.main, 0.18)}`,
+              }}
+            >
+              <Typography
+                variant="body2"
+                sx={{
+                  color: theme.palette.text.secondary,
+                  lineHeight: 1.5,
+                }}
+              >
+                The project will be copied into the ScipionWeb workspace.
+                The original project will not be modified.
+              </Typography>
             </Box>
 
             <Box>
