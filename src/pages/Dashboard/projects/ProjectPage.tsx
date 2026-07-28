@@ -1,4 +1,5 @@
 import "./ProjectPage.css";
+import { APP_VERSION, formatWidgetBuildTimestamp, hasWidgetBuildInfo, WIDGET_BUILD_TIMESTAMP } from "@/buildInfo";
 import { useParams } from "react-router-dom";
 import React, {
   useCallback,
@@ -59,6 +60,7 @@ import {
   Square,
   ClipboardPaste,
   CheckSquare,
+  Info,
 } from "lucide-react";
 import { FitViewIcon, TableIcon, TreeIcon } from "@/icons";
 
@@ -898,6 +900,7 @@ export default function ProjectPage() {
 
   // focusModeState
   const [focusModeEnabled, setFocusModeEnabled] = useState(false);
+  const [buildInfoOpen, setBuildInfoOpen] = useState(false);
 
   const analyzeViewerService = useMemo<ExternalAnalyzeViewerService>(() => {
     return {
@@ -6515,6 +6518,18 @@ export default function ProjectPage() {
                   <FocusIcon className="pp-btnIcon" />
                 </button>
 
+                {hasWidgetBuildInfo() && (
+                  <button
+                    type="button"
+                    onClick={() => setBuildInfoOpen(true)}
+                    className="pp-flowControlBtn"
+                    title="Build info"
+                    aria-label="Build info"
+                  >
+                    <Info className="pp-btnIcon" />
+                  </button>
+                )}
+
               </div>
             </div>
 
@@ -6912,6 +6927,45 @@ export default function ProjectPage() {
             </div>
           </DialogContent>
         </Dialog>
+
+        {hasWidgetBuildInfo() && (
+          <Dialog open={buildInfoOpen} onOpenChange={setBuildInfoOpen}>
+            <DialogContent
+              container={dialogContainer ?? undefined}
+              className="sm:max-w-md p-0 overflow-hidden border border-border bg-background shadow-xl rounded-xl pp-buildInfoDialog"
+            >
+              <div className="pp-buildInfoHeader">
+                <DialogTitle className="pp-buildInfoTitle">Build info</DialogTitle>
+                <DialogDescription className="pp-buildInfoSubtitle">
+                  Project page widget
+                </DialogDescription>
+              </div>
+
+              <dl className="pp-buildInfoList">
+                {APP_VERSION && (
+                  <>
+                    <dt>Version</dt>
+                    <dd>{APP_VERSION}</dd>
+                  </>
+                )}
+                {WIDGET_BUILD_TIMESTAMP && (
+                  <>
+                    <dt>Built</dt>
+                    <dd>{formatWidgetBuildTimestamp(WIDGET_BUILD_TIMESTAMP)}</dd>
+                    <dt>Build time (UTC)</dt>
+                    <dd className="pp-buildInfoMono">{WIDGET_BUILD_TIMESTAMP}</dd>
+                  </>
+                )}
+              </dl>
+
+              <DialogFooter className="pp-buildInfoFooter">
+                <Button variant="outline" onClick={() => setBuildInfoOpen(false)} className="min-w-28">
+                  Close
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        )}
 
         <Dialog
           open={dlgDelete.open}

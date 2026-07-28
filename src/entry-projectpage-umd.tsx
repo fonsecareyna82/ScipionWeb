@@ -24,6 +24,7 @@ import { DragProvider } from "./components/protocol/DragContext";
 import { ThemeProvider } from "./context/ThemeContext";
 import type { ProjectService } from "./services/ProjectService";
 import type { WidgetGlobal } from "./types/global-widget";
+import { WIDGET_BUILD_TIMESTAMP } from "./buildInfo";
 import ProjectPage from "./pages/Dashboard/projects/ProjectPage";
 
 class WidgetErrorBoundary extends React.Component<
@@ -641,5 +642,8 @@ if (typeof window !== "undefined") {
   const prev = (window as any).MyProjectsWidget as WidgetGlobal | undefined;
   (window as any).MyProjectsWidget = { ...(prev || {}), mountProjectPageWidget };
   // eslint-disable-next-line no-console
-  console.log("ProjectPageWidget: ready under window.MyProjectsWidget");
+  console.log(
+    "ProjectPageWidget: ready under window.MyProjectsWidget",
+    WIDGET_BUILD_TIMESTAMP ? `(built ${WIDGET_BUILD_TIMESTAMP})` : "",
+  );
 }
