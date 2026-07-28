@@ -1019,6 +1019,11 @@ const defaultService: ProjectService = {
       payload,
     ),
 
+  resolveTableViewPane: async () => ({
+    kind: "empty" as const,
+    message: "Table viewer pane is not configured for standalone mode.",
+  }),
+
 };
 
 export default defaultService;

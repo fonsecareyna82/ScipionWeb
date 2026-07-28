@@ -326,6 +326,8 @@ function normalizeServiceAPI(srv: any): ProjectService {
   mapFn("getMetadataImageCellUrl", "getMetadataImageCellUrl");
   mapFn("runMetadataTableAction", "runMetadataTableAction");
 
+  mapFn("resolveTableViewPane", "resolveTableViewPane", "getTableViewPane");
+
   mapFn("listOutputTiltSeries", "listOutputTiltSeries");
   mapFn("fetchTiltSeriesFrames", "fetchTiltSeriesFrames");
   mapFn("fetchTiltSeriesViewImageObjectUrl", "fetchTiltSeriesViewImageObjectUrl");
@@ -412,6 +414,10 @@ function normalizeServiceAPI(srv: any): ProjectService {
   ensureFn("listOutputCTFTomoSeries", async () => []);
   ensureFn("listUsers", async () => []);
   ensureFn("listProjectShares", async () => []);
+  ensureFn("resolveTableViewPane", async () => ({
+    kind: "empty",
+    message: "No viewer configured.",
+  }));
 
   if (rawListProjectTags) {
     normalized.listProjectTags = async (projectId: any) => {

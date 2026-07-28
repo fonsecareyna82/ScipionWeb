@@ -403,6 +403,64 @@ export interface MetadataPage {
   totalRows: number;
   rows: MetadataRow[];
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Generic table + side-pane viewer (EMhub-pluggable)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type TableViewContext = {
+  projectId?: Id;
+  protocolId?: Id;
+  outputName?: string;
+  tableKey?: string;
+  [key: string]: unknown;
+};
+
+export type TableViewColumn = {
+  id: string;
+  label: string;
+  align?: "left" | "center" | "right";
+  width?: number | string;
+};
+
+export type TableViewRowAction = {
+  id: string;
+  label: string;
+};
+
+export type TableViewRow = {
+  id: string | number;
+  cells: Record<string, string | number | boolean | null | undefined>;
+  actions?: TableViewRowAction[];
+};
+
+export type TableViewData = {
+  columns: TableViewColumn[];
+  rows: TableViewRow[];
+  title?: string;
+};
+
+export type TableViewPaneRequest = TableViewContext & {
+  rowId: string | number;
+  actionId: string;
+  /** Full row payload from the table (helps svc resolve pane content). */
+  row?: TableViewRow;
+};
+
+export type TableViewPaneContent =
+  | { kind: "empty"; message?: string; title?: string }
+  | { kind: "text"; text: string; title?: string }
+  | { kind: "html"; html: string; title?: string }
+  | { kind: "iframe"; src: string; title?: string }
+  | { kind: "image"; src: string; alt?: string; title?: string }
+  | { kind: "plotly"; figure: Record<string, unknown>; title?: string };
+
+export function hasTableViewService(
+  svc: Pick<ProjectService, "resolveTableViewPane"> | null | undefined,
+): boolean {
+  return !!svc && typeof svc.resolveTableViewPane === "function";
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Analyze Results (FSCs)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -575,13 +633,19 @@ export type AnalyzeViewerResolveDecision =
   }
   | {
     handled: true;
-    // Usually a Flask route that will render the viewer
+    // External viewer (legacy EMhub routes, Flask pages, etc.)
     url: string;
-
-    // Optional behavior hints for the frontend
     target?: "_self" | "_blank";
     kind?: "redirect" | "iframe";
     title?: string;
+  }
+  | {
+    handled: true;
+    viewer: "table-viewer-pane";
+    tableViewContext: TableViewContext;
+    tableViewData: TableViewData;
+    title?: string;
+    emptyPaneMessage?: string;
   };
 
 
@@ -2061,5 +2125,10 @@ export interface ProjectService<
     outputName: string,
     payload: CreateCoords2dOutputPayload,
   ): Promise<CreateCoords2dOutputResult>;
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Generic table + side-pane viewer (EMhub-pluggable)
+  // ─────────────────────────────────────────────────────────────────────────────
+  resolveTableViewPane(request: TableViewPaneRequest): Promise<TableViewPaneContent>;
 
 }

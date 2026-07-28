@@ -71,6 +71,12 @@ import {
 } from "lucide-react";
 
 import AnalyzeOutputDialog from "@/components/analyze/analyze-output-dialog";
+import TableViewerDialog from "@/components/analyze/table-viewer-dialog";
+import {
+  openExternalAnalyzeDecision,
+  tableViewerStateFromDecision,
+  type TableViewerDialogState,
+} from "@/utils/analyze-viewer-decision";
 import type {
   AnalyzeViewerResolveContext,
   AnalyzeViewerResolveDecision,
@@ -315,21 +321,7 @@ const normalizeOutputItem = (outputObj: unknown): NormalizedOutput | null => {
 
 
 const openDecisionUrl = (decision: AnalyzeViewerResolveDecision) => {
-  // openDecisionUrl
-  if (!decision || decision.handled !== true) return false;
-
-  const url = decision.url;
-  if (!url) return false;
-
-  const target = decision.target ?? "_blank";
-
-  if (target === "_self") {
-    window.location.assign(url);
-    return true;
-  }
-
-  window.open(url, "_blank", "noopener,noreferrer");
-  return true;
+  return openExternalAnalyzeDecision(decision);
 };
 
 type ReactFlowSelectionEvent = ReactMouseEvent | ReactPointerEvent<HTMLDivElement>;
@@ -1662,6 +1654,7 @@ export default function ProtocolNodeCard({
     outputName: string;
     outputRaw: any;
   } | null>(null);
+  const [tableViewerState, setTableViewerState] = useState<TableViewerDialogState | null>(null);
 
   const analyzeProjectId = useMemo(() => {
     const n = Number(data.projectId);
@@ -1981,8 +1974,18 @@ export default function ProtocolNodeCard({
 
           const decision = await maybeResolve(ctx);
           if (decision?.handled === true) {
+            const tableState = tableViewerStateFromDecision(decision, {
+              protocolLabel: headerDisplayName,
+              pointerClass: normalized?.pointerClass,
+            });
+            if (tableState) {
+              setTableViewerState(tableState);
+              return;
+            }
+
             const opened = openDecisionUrl(decision);
             if (opened) return;
+            return;
           }
         } catch {
           // ignoreResolveErrorsAndFallbackToInternal
@@ -3150,6 +3153,19 @@ export default function ProtocolNodeCard({
           protocolLabel={headerDisplayName}
           outputName={analyzeTarget.outputName}
           outputRaw={analyzeTarget.outputRaw}
+        />
+      ) : null}
+
+      {tableViewerState ? (
+        <TableViewerDialog
+          open
+          onClose={() => setTableViewerState(null)}
+          context={tableViewerState.context}
+          tableData={tableViewerState.tableData}
+          title={tableViewerState.title}
+          pointerClass={tableViewerState.pointerClass}
+          protocolLabel={tableViewerState.protocolLabel}
+          emptyPaneMessage={tableViewerState.emptyPaneMessage}
         />
       ) : null}
 
