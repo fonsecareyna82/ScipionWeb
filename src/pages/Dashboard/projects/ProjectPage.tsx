@@ -135,6 +135,16 @@ function isElapsedTimerStatus(
   );
 }
 
+function isProtocolRefreshActive(status: unknown): boolean {
+  const normalized = normalizeProtocolStatus(status);
+
+  return (
+    normalized === "launched" ||
+    normalized === "running" ||
+    normalized === "scheduled"
+  );
+}
+
 function continuesElapsedTimerSession(
   previousStatus: unknown,
   nextStatus: unknown,
@@ -1136,6 +1146,10 @@ export default function ProjectPage() {
 
   const openFormsRef = useRef<OpenForm[]>([]);
 
+  const syncProtocolDetailsToGraphRef = useRef<
+    (protocolId: string, details: any) => void
+  >(() => { });
+
   useEffect(() => {
     openFormsRef.current = openForms;
   }, [openForms]);
@@ -1186,6 +1200,13 @@ export default function ProjectPage() {
     }
 
     if (!detailsById.size) return;
+
+    for (const [protocolId, details] of detailsById) {
+      syncProtocolDetailsToGraphRef.current(
+        protocolId,
+        details
+      );
+    }
 
     setOpenForms((prev) =>
       prev.map((form) => {
@@ -1497,7 +1518,8 @@ export default function ProjectPage() {
     beforeIds: Set<string>;
   } | null>(null);
 
-  const TIME_TO_REFRESH = 15000;
+  const ACTIVE_TIME_TO_REFRESH = 5000;
+  const IDLE_TIME_TO_REFRESH = 15000;
   const PROTOCOL_OUTPUT_THUMBNAIL_CHUNK_SIZE = 24;
   const PROTOCOL_OUTPUT_THUMBNAIL_CHUNK_DELAY_MS = 50;
   const localStorageKey = `project-${projectName}-node-positions`;
@@ -1519,6 +1541,84 @@ export default function ProjectPage() {
 
   const nodesRef = useRef<Node[]>(nodes);
   useEffect(() => { nodesRef.current = nodes; }, [nodes]);
+
+  const syncProtocolDetailsToGraph = useCallback(
+    (
+      protocolId: string,
+      details: any,
+    ) => {
+      const info = details?.info;
+
+      if (!info || typeof info !== "object") return;
+
+      const outputs = Array.isArray(info.outputs)
+        ? info.outputs
+        : undefined;
+
+      const status = typeof info.status === "string"
+        ? info.status
+        : undefined;
+
+      if (
+        outputs === undefined &&
+        status === undefined
+      ) {
+        return;
+      }
+
+      setNodes((currentNodes) =>
+        currentNodes.map((node) => {
+          if (
+            String(node.id) !==
+            String(protocolId)
+          ) {
+            return node;
+          }
+
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              ...(outputs !== undefined
+                ? { outputs }
+                : {}),
+              ...(status !== undefined
+                ? { status }
+                : {}),
+            },
+          };
+        })
+      );
+
+      setTableData((currentRows) =>
+        currentRows.map((row) => {
+          if (
+            String(row?.id) !==
+            String(protocolId)
+          ) {
+            return row;
+          }
+
+          return {
+            ...row,
+            ...(outputs !== undefined
+              ? { outputs }
+              : {}),
+            ...(status !== undefined
+              ? { status }
+              : {}),
+          };
+        })
+      );
+    },
+    [setNodes],
+  );
+
+  useEffect(() => {
+    syncProtocolDetailsToGraphRef.current =
+      syncProtocolDetailsToGraph;
+  }, [syncProtocolDetailsToGraph]);
+
   const edgesRef = useRef<Edge[]>(edges);
   useEffect(() => { edgesRef.current = edges; }, [edges]);
 
@@ -2378,6 +2478,11 @@ export default function ProjectPage() {
       try {
         const details = await fetcher();
 
+        syncProtocolDetailsToGraph(
+          id,
+          details
+        );
+
         if (dockEpochRef.current !== dockEpoch) {
           // dockWasGloballyClosedWhileFetching
           return;
@@ -2397,7 +2502,12 @@ export default function ProjectPage() {
         openingFormIdsRef.current.delete(id);
       }
     },
-    [projectName, applyEdgeHighlight, syncUnifiedSelectedIds]
+    [
+      projectName,
+      applyEdgeHighlight,
+      syncUnifiedSelectedIds,
+      syncProtocolDetailsToGraph,
+    ]
   );
 
 
@@ -3369,8 +3479,48 @@ export default function ProjectPage() {
   const handleRefreshRef = useRef(handleRefresh);
   useEffect(() => { handleRefreshRef.current = handleRefresh; }, [handleRefresh]);
   useEffect(() => {
-    const interval = setInterval(() => { handleRefreshRef.current(); }, TIME_TO_REFRESH);
-    return () => clearInterval(interval);
+    let cancelled = false;
+    let timerId: number | null = null;
+
+    const scheduleRefresh = (
+      delay: number,
+    ) => {
+      timerId = window.setTimeout(
+        async () => {
+          await handleRefreshRef.current();
+
+          if (cancelled) return;
+
+          const hasActiveProtocol =
+            nodesRef.current.some(
+              (node) =>
+                String(node.id) !== "PROJECT" &&
+                isProtocolRefreshActive(
+                  node.data?.status
+                )
+            );
+
+          scheduleRefresh(
+            hasActiveProtocol
+              ? ACTIVE_TIME_TO_REFRESH
+              : IDLE_TIME_TO_REFRESH
+          );
+        },
+        delay,
+      );
+    };
+
+    scheduleRefresh(
+      ACTIVE_TIME_TO_REFRESH
+    );
+
+    return () => {
+      cancelled = true;
+
+      if (timerId !== null) {
+        window.clearTimeout(timerId);
+      }
+    };
   }, []);
 
   useEffect(() => {
