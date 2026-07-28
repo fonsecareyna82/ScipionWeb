@@ -107,16 +107,23 @@ function TableViewerPaneContent({
           />
         </Box>
       );
-    case "plotly":
+    case "plotly": {
+      const backendLayout = (content.figure.layout ?? {}) as Record<string, unknown>;
+      const backendMargin = (backendLayout.margin ?? {}) as Record<string, number>;
       return (
         <Box sx={{ p: 1, height: "100%", minHeight: 0 }}>
           <Plot
             data={(content.figure.data as any[]) ?? []}
             layout={{
-              ...(content.figure.layout as Record<string, unknown> | undefined),
+              ...backendLayout,
               autosize: true,
-              margin: { l: 40, r: 16, t: content.title ? 40 : 16, b: 40 },
-              title: content.title,
+              margin: {
+                l: backendMargin.l ?? 72,
+                r: backendMargin.r ?? 16,
+                t: content.title ? 40 : (backendMargin.t ?? 16),
+                b: backendMargin.b ?? 56,
+              },
+              title: content.title ?? backendLayout.title,
             }}
             config={{
               ...(content.figure.config as Record<string, unknown> | undefined),
@@ -128,6 +135,7 @@ function TableViewerPaneContent({
           />
         </Box>
       );
+    }
     case "empty":
     default:
       return (
