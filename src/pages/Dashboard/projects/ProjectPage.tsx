@@ -171,14 +171,26 @@ function continuesElapsedTimerSession(
     );
 }
 
-function toElapsedSeconds(
-  value: unknown,
-): number {
-  const seconds = Number(value);
+function toElapsedSeconds(value: unknown): number {
+  if (typeof value === "number") return Number.isFinite(value) && value >= 0 ? value : 0;
 
-  return Number.isFinite(seconds) && seconds >= 0
-    ? seconds
-    : 0;
+  const text = String(value ?? "").trim();
+  if (!text) return 0;
+
+  const numericValue = Number(text);
+  if (Number.isFinite(numericValue) && numericValue >= 0) return numericValue;
+
+  const dayMatch = /^(\d+)\s+days?,\s*(.+)$/i.exec(text);
+  const days = dayMatch ? Number(dayMatch[1]) : 0;
+  const timeText = dayMatch ? dayMatch[2] : text;
+  const parts = timeText.split(":").map(Number);
+
+  if (parts.length !== 3 || parts.some((part) => !Number.isFinite(part) || part < 0)) return 0;
+
+  const [hours, minutes, seconds] = parts;
+  if (minutes >= 60 || seconds >= 60) return 0;
+
+  return days * 86400 + hours * 3600 + minutes * 60 + seconds;
 }
 
 function mergeNodeElapsedTick(
