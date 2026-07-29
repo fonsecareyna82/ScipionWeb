@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CheckCircle2, GitBranch, RefreshCw, RotateCcw } from "lucide-react";
 import ReactFlow, {
     Background,
@@ -105,6 +105,19 @@ function formatElapsed(value: unknown): string {
     const s = Math.floor(total % 60);
 
     return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+const STEP_REFRESH_INTERVAL_MS = 5000;
+
+function getDisplayedStepElapsedSeconds(step: ProtocolStep, nowMs: number, snapshotAtMs: number): number {
+    const rawElapsed = Number(step.elapsedSeconds ?? 0);
+    const storedElapsed = Number.isFinite(rawElapsed) && rawElapsed >= 0 ? rawElapsed : 0;
+    const status = String(step.status ?? "").trim().toLowerCase();
+
+    if (status !== "running") return storedElapsed;
+
+    const localDeltaSeconds = Math.max(0, (nowMs - snapshotAtMs) / 1000);
+    return storedElapsed + localDeltaSeconds;
 }
 
 function formatValue(value: unknown): string {
@@ -296,8 +309,16 @@ export default function ProtocolStepsDeveloperDialog({
     const [loading, setLoading] = useState(false);
     const [statusUpdating, setStatusUpdating] = useState<ProtocolStepStatus | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const [stepsSnapshotAtMs, setStepsSnapshotAtMs] = useState(() => Date.now());
+    const [clockNowMs, setClockNowMs] = useState(() => Date.now());
 
     const selectedStep = steps[selectedIndex] ?? null;
+    const selectedStepIndexRef = useRef<number | null>(null);
+
+    useEffect(() => {
+        const stepIndex = Number(selectedStep?.index);
+        selectedStepIndexRef.current = Number.isFinite(stepIndex) ? stepIndex : null;
+    }, [selectedStep]);
 
     const graph = useMemo(() => buildStepGraph(steps), [steps]);
 
@@ -317,21 +338,45 @@ export default function ProtocolStepsDeveloperDialog({
         setTreeNodes((current) => applyNodeChanges(changes, current) as Node<StepGraphData>[]);
     }, []);
 
-    const loadSteps = useCallback(async () => {
+    const loadSteps = useCallback(async (silent = false) => {
         if (!projectId || !protocolId) return;
 
-        setLoading(true);
-        setError(null);
+        if (!silent) {
+            setLoading(true);
+            setError(null);
+        }
 
         try {
             const items = await svc.fetchProtocolSteps(projectId, protocolId);
-            setSteps(Array.isArray(items) ? items : []);
-            setSelectedIndex(0);
+            const nextSteps = Array.isArray(items) ? items : [];
+            const selectedStepIndex = selectedStepIndexRef.current;
+            const snapshotAtMs = Date.now();
+
+            setSteps(nextSteps);
+            setStepsSnapshotAtMs(snapshotAtMs);
+            setClockNowMs(snapshotAtMs);
+            setError(null);
+
+            setSelectedIndex((currentIndex) => {
+                if (selectedStepIndex !== null) {
+                    const matchingIndex = nextSteps.findIndex((step) => Number(step.index) === selectedStepIndex);
+                    if (matchingIndex >= 0) return matchingIndex;
+                }
+
+                if (nextSteps.length === 0) return 0;
+                return Math.min(currentIndex, nextSteps.length - 1);
+            });
         } catch (err: any) {
+            if (silent) {
+                console.warn("Failed to refresh protocol steps.", err);
+                return;
+            }
+
             setSteps([]);
+            setSelectedIndex(0);
             setError(err?.message || "Failed to load protocol steps.");
         } finally {
-            setLoading(false);
+            if (!silent) setLoading(false);
         }
     }, [svc, projectId, protocolId]);
 
@@ -357,10 +402,12 @@ export default function ProtocolStepsDeveloperDialog({
                         : { ...selectedStep, status: nextStatus };
 
                 setSteps((current) =>
-                    current.map((step) =>
-                        Number(step.index) === updatedIndex ? mergedStep : step,
-                    ),
+                    current.map((step) => Number(step.index) === updatedIndex ? mergedStep : step),
                 );
+
+                const snapshotAtMs = Date.now();
+                setStepsSnapshotAtMs(snapshotAtMs);
+                setClockNowMs(snapshotAtMs);
             } catch (err: any) {
                 setError(err?.message || "Failed to update protocol step status.");
             } finally {
@@ -373,6 +420,28 @@ export default function ProtocolStepsDeveloperDialog({
     useEffect(() => {
         if (!open) return;
         void loadSteps();
+    }, [open, loadSteps]);
+
+    useEffect(() => {
+        if (!open) return;
+
+        setClockNowMs(Date.now());
+
+        const intervalId = window.setInterval(() => {
+            setClockNowMs(Date.now());
+        }, 1000);
+
+        return () => window.clearInterval(intervalId);
+    }, [open]);
+
+    useEffect(() => {
+        if (!open) return;
+
+        const intervalId = window.setInterval(() => {
+            void loadSteps(true);
+        }, STEP_REFRESH_INTERVAL_MS);
+
+        return () => window.clearInterval(intervalId);
     }, [open, loadSteps]);
 
     useEffect(() => {
@@ -534,7 +603,9 @@ export default function ProtocolStepsDeveloperDialog({
                                                         {status || "-"}
                                                     </span>
                                                 </td>
-                                                <td className="px-2 py-1 font-mono">{formatElapsed(step.elapsedSeconds)}</td>
+                                                <td className="px-2 py-1 font-mono">
+                                                    {formatElapsed(getDisplayedStepElapsedSeconds(step, clockNowMs, stepsSnapshotAtMs))}
+                                                </td>
                                                 <td className="px-2 py-1">{getStepClass(step)}</td>
                                             </tr>
                                         );
