@@ -1301,6 +1301,7 @@ export default function ProjectPage() {
 
   const [nodes, setNodes, onNodesChange] = useNodesState<StatusNodeData>([]);
   const outputThumbnailCacheRef = useRef<Map<string, ProtocolOutputThumbnailItem>>(new Map());
+  const outputThumbnailRetryAfterRef = useRef<Map<string, number>>(new Map());
   const outputThumbnailInFlightRef = useRef<Promise<void> | null>(null);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge[]>([]);
   const [tableData, setTableData] = useState<any[]>([]);
@@ -1517,6 +1518,7 @@ export default function ProjectPage() {
   const IDLE_TIME_TO_REFRESH = 15000;
   const PROTOCOL_OUTPUT_THUMBNAIL_CHUNK_SIZE = 24;
   const PROTOCOL_OUTPUT_THUMBNAIL_CHUNK_DELAY_MS = 50;
+  const PROTOCOL_OUTPUT_THUMBNAIL_RETRY_DELAY_MS = 30_000;
   const localStorageKey = `project-${projectName}-node-positions`;
 
   const [, setIsSwitchingLayout] = useState(false);
@@ -1659,6 +1661,16 @@ export default function ProjectPage() {
             continue;
           }
 
+          const retryAfter = outputThumbnailRetryAfterRef.current.get(cacheKey) ?? 0;
+
+          if (retryAfter > Date.now()) {
+            continue;
+          }
+
+          if (retryAfter) {
+            outputThumbnailRetryAfterRef.current.delete(cacheKey);
+          }
+
           if (
             typeof maxNewRequests === "number" &&
             maxNewRequests > 0 &&
@@ -1701,7 +1713,12 @@ export default function ProjectPage() {
             PROTOCOL_OUTPUT_THUMBNAIL_SIZE,
           );
 
-          outputThumbnailCacheRef.current.set(cacheKey, item);
+          if (item.exists && (item.thumbnailDataUrl || item.thumbnailUrl)) {
+            outputThumbnailCacheRef.current.set(cacheKey, item);
+            outputThumbnailRetryAfterRef.current.delete(cacheKey);
+          } else {
+            outputThumbnailRetryAfterRef.current.set(cacheKey, Date.now() + PROTOCOL_OUTPUT_THUMBNAIL_RETRY_DELAY_MS);
+          }
         }
 
         return items;
@@ -1795,6 +1812,7 @@ export default function ProjectPage() {
     if (protocolOutputThumbnailsEnabled) return;
 
     outputThumbnailCacheRef.current.clear();
+    outputThumbnailRetryAfterRef.current.clear();
     outputThumbnailInFlightRef.current = null;
 
     setNodes((prev) => clearOutputThumbnailsFromNodes(prev as Node<StatusNodeData>[]));
@@ -3151,6 +3169,7 @@ export default function ProjectPage() {
   useEffect(() => {
     // resetFirstCenterOnProjectChange
     outputThumbnailCacheRef.current.clear();
+    outputThumbnailRetryAfterRef.current.clear();
     outputThumbnailInFlightRef.current = null;
 
     firstLoadRef.current = true;
@@ -3289,6 +3308,7 @@ export default function ProjectPage() {
     setProjectEffectiveSettingsLoading(false);
 
     outputThumbnailCacheRef.current.clear();
+    outputThumbnailRetryAfterRef.current.clear();
     outputThumbnailInFlightRef.current = null;
   }, [projectName]);
 
