@@ -421,6 +421,10 @@ export type TableViewColumn = {
   label: string;
   align?: "left" | "center" | "right";
   width?: number | string;
+  /** When false, the column header is not sortable. Defaults to true. */
+  sortable?: boolean;
+  /** Actions rendered inline on this column's cells (e.g. open metadata for a path). */
+  actions?: TableViewRowAction[];
 };
 
 export type TableViewRowAction = {
@@ -443,8 +447,15 @@ export type TableViewData = {
 export type TableViewPaneRequest = TableViewContext & {
   rowId: string | number;
   actionId: string;
+  /** Column that triggered the action, when bound to a column cell. */
+  columnId?: string;
   /** Full row payload from the table (helps svc resolve pane content). */
   row?: TableViewRow;
+};
+
+export type TableViewImageSliderAxisContent = {
+  slices: Record<string, string>;
+  sliderPrefix?: string;
 };
 
 export type TableViewPaneContent =
@@ -453,7 +464,18 @@ export type TableViewPaneContent =
   | { kind: "html"; html: string; title?: string }
   | { kind: "iframe"; src: string; title?: string }
   | { kind: "image"; src: string; alt?: string; title?: string }
-  | { kind: "plotly"; figure: Record<string, unknown>; title?: string };
+  | { kind: "plotly"; figure: Record<string, unknown>; title?: string }
+  | {
+      kind: "imageSlider";
+      title?: string;
+      slices?: Record<string, string>;
+      sliderPrefix?: string;
+      axes?: Record<string, TableViewImageSliderAxisContent>;
+      initialSlice?: string | number;
+      dimensions?: [number, number, number];
+      layout?: "volume" | "stack";
+      coordinates?: { x: number[]; y: number[]; z: number[] };
+    };
 
 export function hasTableViewService(
   svc: Pick<ProjectService, "resolveTableViewPane"> | null | undefined,

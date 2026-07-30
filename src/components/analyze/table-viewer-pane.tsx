@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   Box,
   Button,
@@ -9,15 +9,19 @@ import {
   TableCell,
   TableHead,
   TableRow,
+  TableSortLabel,
   Typography,
 } from "@mui/material";
 import Plot from "react-plotly.js";
 import { useProjectService } from "@/ProjectServiceContext";
+import TableViewerImageSlider from "./table-viewer-image-slider";
 import type {
+  TableViewColumn,
   TableViewContext,
   TableViewData,
   TableViewPaneContent,
   TableViewRow,
+  TableViewRowAction,
 } from "@/services/ProjectService";
 
 export type TableViewerPaneProps = {
@@ -36,13 +40,187 @@ type ActivePane = {
   row: TableViewRow;
   actionId: string;
   actionLabel: string;
+  columnId?: string;
   content: TableViewPaneContent;
 };
+
+type SortDirection = "asc" | "desc";
+
+function compareCellValues(a: unknown, b: unknown): number {
+  if (a == null && b == null) return 0;
+  if (a == null) return 1;
+  if (b == null) return -1;
+
+  if (typeof a === "boolean" && typeof b === "boolean") {
+    return Number(a) - Number(b);
+  }
+
+  const aNum = typeof a === "number" ? a : Number(String(a));
+  const bNum = typeof b === "number" ? b : Number(String(b));
+  if (Number.isFinite(aNum) && Number.isFinite(bNum)) {
+    return aNum - bNum;
+  }
+
+  return String(a).localeCompare(String(b), undefined, {
+    numeric: true,
+    sensitivity: "base",
+  });
+}
+
+function isColumnSortable(column: TableViewColumn): boolean {
+  return column.sortable !== false;
+}
+
+function isNumericValue(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
 
 function formatCell(value: unknown): string {
   if (value == null) return "";
   if (typeof value === "boolean") return value ? "yes" : "no";
+
+  if (isNumericValue(value)) {
+    return Number.isInteger(value) ? String(value) : value.toFixed(2);
+  }
+
+  const str = String(value).trim();
+  if (!str) return "";
+
+  if (/^-?\d+\.\d+(?:[eE][+-]?\d+)?$/.test(str)) {
+    const num = Number(str);
+    if (Number.isFinite(num)) return num.toFixed(2);
+  }
+
+  if (/^-?\d+(?:[eE][+-]?\d+)?$/.test(str)) {
+    return str;
+  }
+
   return String(value);
+}
+
+function columnContentWidthCh(
+  column: TableViewColumn,
+  rows: TableViewRow[],
+): number {
+  if (column.width != null) {
+    if (typeof column.width === "number") {
+      return column.width / 8;
+    }
+    const match = String(column.width).match(/^([\d.]+)ch$/);
+    if (match) return Number(match[1]);
+  }
+
+  let maxLen = column.label.length;
+  for (const row of rows) {
+    maxLen = Math.max(maxLen, formatCell(row.cells[column.id]).length);
+  }
+
+  const sortExtra = isColumnSortable(column) ? 2 : 0;
+  const actionExtra = (column.actions?.length ?? 0) > 0 ? 1 : 0;
+  return Math.min(Math.max(maxLen + sortExtra + actionExtra + 2, 6), 36);
+}
+
+function actionsColumnWidthCh(rows: TableViewRow[]): number {
+  let maxLen = "Actions".length;
+  for (const row of rows) {
+    const labels = (row.actions ?? []).map((action) => action.label).join("  ");
+    maxLen = Math.max(maxLen, labels.length + (row.actions?.length ?? 0) * 2);
+  }
+  return Math.min(Math.max(maxLen + 4, 10), 28);
+}
+
+const TABLE_PATH_CELL_FIELDS: Record<string, string> = {
+  starFile: "starFilePath",
+  alignedStack: "alignedStackPath",
+  tomogram: "tomogramPath",
+};
+
+function pathTooltipForColumn(
+  columnId: string,
+  row: TableViewRow,
+  formatted: string,
+): string | undefined {
+  const pathKey = TABLE_PATH_CELL_FIELDS[columnId];
+  if (!pathKey) return undefined;
+  const fullPath = row.cells[pathKey];
+  if (fullPath == null || fullPath === "") return undefined;
+  const pathText = String(fullPath);
+  return pathText !== formatted ? pathText : undefined;
+}
+
+function TableCellContent({
+  column,
+  row,
+  value,
+  paneLoading,
+  isActive,
+  activeActionId,
+  onAction,
+}: {
+  column: TableViewColumn;
+  row: TableViewRow;
+  value: unknown;
+  paneLoading: boolean;
+  isActive: boolean;
+  activeActionId?: string;
+  onAction: (row: TableViewRow, action: TableViewRowAction, columnId?: string) => void;
+}) {
+  const formatted = formatCell(value);
+  const actions = column.actions ?? [];
+  const pathTooltip = pathTooltipForColumn(column.id, row, formatted);
+  if (!actions.length || !formatted) {
+    return <>{formatted}</>;
+  }
+
+  if (actions.length === 1) {
+    const action = actions[0];
+    const selected = isActive && activeActionId === action.id;
+    return (
+      <Button
+        size="small"
+        variant="text"
+        color={selected ? "primary" : "inherit"}
+        onClick={() => onAction(row, action, column.id)}
+        disabled={paneLoading}
+        title={pathTooltip ?? action.label}
+        sx={{
+          p: 0,
+          minWidth: 0,
+          textTransform: "none",
+          font: "inherit",
+          letterSpacing: "inherit",
+          justifyContent: "flex-start",
+          textAlign: "inherit",
+          color: selected ? "primary.main" : "text.primary",
+          textDecoration: selected ? "underline" : "none",
+          "&:hover": {
+            textDecoration: "underline",
+            bgcolor: "transparent",
+          },
+        }}
+      >
+        {formatted}
+      </Button>
+    );
+  }
+
+  return (
+    <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 0.5 }}>
+      <Box component="span">{formatted}</Box>
+      {actions.map((action) => (
+        <Button
+          key={action.id}
+          size="small"
+          variant={isActive && activeActionId === action.id ? "contained" : "text"}
+          onClick={() => onAction(row, action, column.id)}
+          disabled={paneLoading}
+          sx={{ textTransform: "none", minWidth: 0 }}
+        >
+          {action.label}
+        </Button>
+      ))}
+    </Box>
+  );
 }
 
 function TableViewerPaneContent({
@@ -136,6 +314,12 @@ function TableViewerPaneContent({
         </Box>
       );
     }
+    case "imageSlider":
+      return (
+        <Box sx={{ height: "100%", minHeight: 0 }}>
+          <TableViewerImageSlider content={content} />
+        </Box>
+      );
     case "empty":
     default:
       return (
@@ -170,19 +354,32 @@ export default function TableViewerPane({
   const [activePane, setActivePane] = useState<ActivePane | null>(null);
   const [paneLoading, setPaneLoading] = useState(false);
   const [paneError, setPaneError] = useState<string | null>(null);
+  const [sortColumnId, setSortColumnId] = useState<string | null>(null);
+  const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
 
   const handleRowAction = useCallback(
-    async (row: TableViewRow, actionId: string, actionLabel: string) => {
+    async (
+      row: TableViewRow,
+      action: TableViewRowAction,
+      columnId?: string,
+    ) => {
       setPaneLoading(true);
       setPaneError(null);
       try {
         const content = await svc.resolveTableViewPane({
           ...context,
           rowId: row.id,
-          actionId,
+          actionId: action.id,
+          columnId,
           row,
         });
-        setActivePane({ row, actionId, actionLabel, content });
+        setActivePane({
+          row,
+          actionId: action.id,
+          actionLabel: action.label,
+          columnId,
+          content,
+        });
       } catch (err) {
         console.error("[TableViewerPane] resolveTableViewPane failed:", err);
         setActivePane(null);
@@ -198,6 +395,42 @@ export default function TableViewerPane({
   const columns = tableData.columns ?? [];
   const rows = tableData.rows ?? [];
   const showActionsColumn = rows.some((row) => (row.actions?.length ?? 0) > 0);
+
+  const handleSortColumn = useCallback((columnId: string) => {
+    if (sortColumnId === columnId) {
+      setSortDirection((currentDirection) =>
+        currentDirection === "asc" ? "desc" : "asc",
+      );
+      return;
+    }
+    setSortColumnId(columnId);
+    setSortDirection("asc");
+  }, [sortColumnId]);
+
+  const sortedRows = useMemo(() => {
+    if (!sortColumnId) return rows;
+
+    const direction = sortDirection === "asc" ? 1 : -1;
+    return [...rows].sort((left, right) => {
+      const cmp = compareCellValues(
+        left.cells[sortColumnId],
+        right.cells[sortColumnId],
+      );
+      if (cmp !== 0) return cmp * direction;
+      return compareCellValues(left.id, right.id) * direction;
+    });
+  }, [rows, sortColumnId, sortDirection]);
+
+  const columnWidths = useMemo(() => {
+    const widths: Record<string, string> = {};
+    for (const col of columns) {
+      widths[col.id] = `${columnContentWidthCh(col, rows)}ch`;
+    }
+    if (showActionsColumn) {
+      widths.__actions = `${actionsColumnWidthCh(rows)}ch`;
+    }
+    return widths;
+  }, [columns, rows, showActionsColumn]);
 
   const paneTitle =
     activePane?.content.title ??
@@ -251,27 +484,68 @@ export default function TableViewerPane({
               </Typography>
             </Box>
           ) : (
-            <Table size="small" stickyHeader>
+            <Table
+              size="small"
+              stickyHeader
+              sx={{ width: "max-content", minWidth: "100%", tableLayout: "auto" }}
+            >
               <TableHead>
                 <TableRow>
-                  {columns.map((col) => (
-                    <TableCell
-                      key={col.id}
-                      align={col.align ?? "left"}
-                      sx={{ width: col.width, fontWeight: 600, whiteSpace: "nowrap" }}
-                    >
-                      {col.label}
-                    </TableCell>
-                  ))}
+                  {columns.map((col) => {
+                    const sortable = isColumnSortable(col);
+                    const active = sortColumnId === col.id;
+                    return (
+                      <TableCell
+                        key={col.id}
+                        align={col.align ?? "left"}
+                        sortDirection={active ? sortDirection : false}
+                        sx={{
+                          width: columnWidths[col.id],
+                          minWidth: columnWidths[col.id],
+                          maxWidth: columnWidths[col.id],
+                          fontWeight: 600,
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                      >
+                        {sortable ? (
+                          <TableSortLabel
+                            active={active}
+                            direction={active ? sortDirection : "asc"}
+                            onClick={() => handleSortColumn(col.id)}
+                            sx={
+                              col.align === "right"
+                                ? { flexDirection: "row-reverse" }
+                                : undefined
+                            }
+                          >
+                            {col.label}
+                          </TableSortLabel>
+                        ) : (
+                          col.label
+                        )}
+                      </TableCell>
+                    );
+                  })}
                   {showActionsColumn && (
-                    <TableCell align="right" sx={{ fontWeight: 600, whiteSpace: "nowrap" }}>
+                    <TableCell
+                      align="right"
+                      sx={{
+                        width: columnWidths.__actions,
+                        minWidth: columnWidths.__actions,
+                        maxWidth: columnWidths.__actions,
+                        fontWeight: 600,
+                        whiteSpace: "nowrap",
+                      }}
+                    >
                       Actions
                     </TableCell>
                   )}
                 </TableRow>
               </TableHead>
               <TableBody>
-                {rows.map((row) => {
+                {sortedRows.map((row) => {
                   const isActive = activePane?.row.id === row.id;
                   return (
                     <TableRow
@@ -281,18 +555,45 @@ export default function TableViewerPane({
                       sx={{ "&.Mui-selected": { bgcolor: "action.selected" } }}
                     >
                       {columns.map((col) => (
-                        <TableCell key={col.id} align={col.align ?? "left"}>
-                          {formatCell(row.cells[col.id])}
+                        <TableCell
+                          key={col.id}
+                          align={col.align ?? "left"}
+                          sx={{
+                            width: columnWidths[col.id],
+                            minWidth: columnWidths[col.id],
+                            maxWidth: columnWidths[col.id],
+                            whiteSpace: "nowrap",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                          }}
+                        >
+                          <TableCellContent
+                            column={col}
+                            row={row}
+                            value={row.cells[col.id]}
+                            paneLoading={paneLoading}
+                            isActive={isActive}
+                            activeActionId={activePane?.actionId}
+                            onAction={handleRowAction}
+                          />
                         </TableCell>
                       ))}
                       {showActionsColumn && (
-                        <TableCell align="right" sx={{ whiteSpace: "nowrap" }}>
+                        <TableCell
+                          align="right"
+                          sx={{
+                            width: columnWidths.__actions,
+                            minWidth: columnWidths.__actions,
+                            maxWidth: columnWidths.__actions,
+                            whiteSpace: "nowrap",
+                          }}
+                        >
                           {(row.actions ?? []).map((action) => (
                             <Button
                               key={action.id}
                               size="small"
                               variant={isActive && activePane?.actionId === action.id ? "contained" : "text"}
-                              onClick={() => void handleRowAction(row, action.id, action.label)}
+                              onClick={() => void handleRowAction(row, action)}
                               disabled={paneLoading}
                               sx={{ ml: 0.5, textTransform: "none", minWidth: 0 }}
                             >
@@ -328,7 +629,11 @@ export default function TableViewerPane({
             borderColor: "divider",
           }}
         >
-          <Typography variant="subtitle2" noWrap title={paneTitle}>
+          <Typography
+            variant="subtitle2"
+            sx={{ wordBreak: "break-all", whiteSpace: "normal" }}
+            title={paneTitle}
+          >
             {paneTitle}
           </Typography>
         </Paper>
