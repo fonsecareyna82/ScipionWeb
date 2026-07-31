@@ -5362,14 +5362,19 @@ export default function ProjectPage() {
           pending.duplicatedPairs ?? []
         );
 
-        const centeredNodes = centerProjectOverGraphBranches(result.nodes, dir);
+        const alignedNodes = alignPendingSingleChildrenToParents(result.nodes);
+        const centeredNodes = centerProjectOverGraphBranches(alignedNodes, dir);
 
-        const changedItems = Array.from(result.changedMap.entries()).map(
-          ([id, position]) => ({
-            id,
-            position,
-          })
+        const duplicatedIds = new Set(
+          (pending.duplicatedPairs ?? []).map((pair) => String(pair.newId))
         );
+
+        const changedItems = centeredNodes
+          .filter((node) => duplicatedIds.has(String(node.id)))
+          .map((node) => ({
+            id: String(node.id),
+            position: node.position,
+          }));
 
         const projectPositionChange = getProjectPositionChange(
           result.nodes,
@@ -5898,7 +5903,7 @@ export default function ProjectPage() {
       beforePositions,
       operation: "duplicate",
       duplicatedPairs: [],
-      reflowWholeGraph: true,
+      reflowWholeGraph: false,
     };
 
     try {
@@ -5913,7 +5918,7 @@ export default function ProjectPage() {
         beforeIds,
         beforePositions,
         operation: "duplicate",
-        reflowWholeGraph: true,
+        reflowWholeGraph: false,
         duplicatedPairs: duplicatedFromBackend
           .map((pair: any) => {
             const sourceId = String(pair?.sourceId ?? "");
