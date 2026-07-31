@@ -90,6 +90,21 @@ function uniqStable(arr: string[]): string[] {
   return out;
 }
 
+export function getGraphTopologySignature(protocols: Record<string, ProtocolNode>): string {
+  return Object.keys(protocols)
+    .sort(stableIdCompare)
+    .map((id) => {
+      const children = uniqStable(
+        Array.isArray(protocols[id]?.children)
+          ? protocols[id].children.map(String)
+          : []
+      );
+
+      return `${id}>${children.join(",")}`;
+    })
+    .join("|");
+}
+
 function getTraversalOrderForGrid(protocols: Record<string, ProtocolNode>): string[] {
   // getTraversalOrderForGrid
   const visited = new Set<string>();
@@ -127,6 +142,47 @@ function getGraphNodeLabel(
   return id === "PROJECT" ? projectName : protocols[id]?.label || id;
 }
 
+function getProtocolOutputsCount(
+  id: string,
+  protocols: Record<string, ProtocolNode>
+): number {
+  if (id === "PROJECT") return 0;
+
+  const rawOutputs = (protocols[id] as any)?.outputs;
+
+  if (Array.isArray(rawOutputs)) {
+    return rawOutputs.length;
+  }
+
+  if (rawOutputs && typeof rawOutputs === "object") {
+    return Object.keys(rawOutputs).length;
+  }
+
+  return 0;
+}
+
+function getEstimatedGraphNodeHeight(params: {
+  id: string;
+  protocols: Record<string, ProtocolNode>;
+  projectName: string;
+  nodeSizeMap?: NodeSizeMap | null;
+}): number {
+  const { id, protocols, projectName, nodeSizeMap } = params;
+
+  const measuredHeight = nodeSizeMap?.[id]?.height;
+  if (typeof measuredHeight === "number" && measuredHeight > 0) {
+    return Math.ceil(measuredHeight);
+  }
+
+  const label = getGraphNodeLabel(id, protocols, projectName);
+  const baseHeight = estimateNodeHeight(label);
+  const outputsCount = getProtocolOutputsCount(id, protocols);
+
+  const extraOutputsHeight = Math.max(0, outputsCount) * 32;
+
+  return baseHeight + extraOutputsHeight;
+}
+
 function getNodeCrossSize(params: {
   id: string;
   direction: Direction;
@@ -139,7 +195,12 @@ function getNodeCrossSize(params: {
 
   return direction === "TB"
     ? getNodeWidth(id, label, nodeSizeMap)
-    : getNodeHeight(id, label, nodeSizeMap);
+    : getEstimatedGraphNodeHeight({
+      id,
+      protocols,
+      projectName,
+      nodeSizeMap,
+    });
 }
 
 function getNodePackingCrossSize(params: {
@@ -159,11 +220,18 @@ function getNodePackingCrossSize(params: {
   }
 
   const estimatedSize =
-    direction === "TB" ? estimateLabelWidth(label) : estimateNodeHeight(label);
+    direction === "TB"
+      ? estimateLabelWidth(label)
+      : getEstimatedGraphNodeHeight({
+        id,
+        protocols,
+        projectName,
+        nodeSizeMap,
+      });
 
   return direction === "TB"
-    ? Math.max(320, Math.min(520, Math.round(estimatedSize * 0.52)))
-    : Math.max(240, Math.min(420, Math.round(estimatedSize * 0.75)));
+    ? Math.max(700, Math.min(960, estimatedSize))
+    : Math.max(340, Math.min(680, estimatedSize));
 }
 
 function getChildRankUnderParent(
@@ -228,76 +296,6 @@ function selectPrimaryLayoutParent(params: {
   return parents[0] ?? null;
 }
 
-function isValidGraphPosition(raw: any): raw is GraphPosition {
-  return (
-    typeof raw?.x === "number" &&
-    Number.isFinite(raw.x) &&
-    typeof raw?.y === "number" &&
-    Number.isFinite(raw.y)
-  );
-}
-
-function readPersistedGraphPositions(
-  projectName: string,
-  direction: Direction
-): Map<string, GraphPosition> {
-  const out = new Map<string, GraphPosition>();
-
-  try {
-    if (typeof window === "undefined") return out;
-    const storage = window.localStorage;
-    if (!storage) return out;
-
-    const key = `project-${projectName}-node-positions-${direction}-hier`;
-    const raw = storage.getItem(key);
-    if (!raw) return out;
-
-    const parsed = JSON.parse(raw);
-    const items =
-      Array.isArray(parsed)
-        ? direction === "TB"
-          ? parsed
-          : []
-        : parsed?.version === 2 && parsed?.direction === direction && Array.isArray(parsed?.positions)
-          ? parsed.positions
-          : [];
-
-    for (const item of items) {
-      const id = String(item?.id ?? "").trim();
-      const position = item?.position;
-      if (!id || !isValidGraphPosition(position)) continue;
-      out.set(id, { x: position.x, y: position.y });
-    }
-  } catch {
-    // noOp: bad localStorage should never break graph layout
-  }
-
-  return out;
-}
-
-function getPlacementAxis(direction: Direction, position: GraphPosition): number {
-  return direction === "TB" ? position.x : position.y;
-}
-
-function setPlacementAxis(
-  direction: Direction,
-  position: GraphPosition,
-  axis: number
-): GraphPosition {
-  return direction === "TB" ? { x: axis, y: position.y } : { x: position.x, y: axis };
-}
-
-function getPlacementLevel(direction: Direction, position: GraphPosition): number {
-  return direction === "TB" ? position.y : position.x;
-}
-
-function setPlacementLevel(
-  direction: Direction,
-  position: GraphPosition,
-  level: number
-): GraphPosition {
-  return direction === "TB" ? { x: position.x, y: level } : { x: level, y: position.y };
-}
 
 function getResolvedPlacementCrossSize(params: {
   id: string;
@@ -309,201 +307,8 @@ function getResolvedPlacementCrossSize(params: {
   const size = getNodeCrossSize(params);
 
   return params.direction === "TB"
-    ? Math.max(780, Math.min(1040, size))
-    : Math.max(280, Math.min(560, size));
-}
-
-function getResolvedPlacementLevelSize(params: {
-  id: string;
-  direction: Direction;
-  protocols: Record<string, ProtocolNode>;
-  projectName: string;
-  nodeSizeMap?: NodeSizeMap | null;
-}): number {
-  const { id, direction, protocols, projectName, nodeSizeMap } = params;
-  const label = getGraphNodeLabel(id, protocols, projectName);
-
-  const size =
-    direction === "TB"
-      ? getNodeHeight(id, label, nodeSizeMap)
-      : getNodeWidth(id, label, nodeSizeMap);
-
-  return direction === "TB"
-    ? Math.max(260, Math.min(560, size))
-    : Math.max(780, Math.min(1040, size));
-}
-
-function findNearestFreeAxis(params: {
-  id: string;
-  desiredAxis: number;
-  desiredLevel: number;
-  direction: Direction;
-  levelMap: Record<string, number>;
-  placements: Record<string, GraphPosition>;
-  protocols: Record<string, ProtocolNode>;
-  projectName: string;
-  nodeSizeMap?: NodeSizeMap | null;
-}): number {
-  const {
-    id,
-    desiredAxis,
-    desiredLevel,
-    direction,
-    placements,
-    protocols,
-    projectName,
-    nodeSizeMap,
-  } = params;
-
-  const crossGap = direction === "TB" ? 320 : 80;
-  const levelGap = direction === "TB" ? 120 : 160;
-
-  const selfCrossSize = getResolvedPlacementCrossSize({
-    id,
-    direction,
-    protocols,
-    projectName,
-    nodeSizeMap,
-  });
-  const selfLevelSize = getResolvedPlacementLevelSize({
-    id,
-    direction,
-    protocols,
-    projectName,
-    nodeSizeMap,
-  });
-
-  const neighbors = Object.entries(placements)
-    .filter(([otherId, position]) => otherId !== id && Boolean(position))
-    .map(([otherId, position]) => ({
-      axis: getPlacementAxis(direction, position),
-      level: getPlacementLevel(direction, position),
-      crossSize: getResolvedPlacementCrossSize({
-        id: otherId,
-        direction,
-        protocols,
-        projectName,
-        nodeSizeMap,
-      }),
-      levelSize: getResolvedPlacementLevelSize({
-        id: otherId,
-        direction,
-        protocols,
-        projectName,
-        nodeSizeMap,
-      }),
-    }));
-
-  const isFree = (axis: number): boolean => {
-    for (const neighbor of neighbors) {
-      const minCrossDistance = selfCrossSize / 2 + neighbor.crossSize / 2 + crossGap;
-      const minLevelDistance = selfLevelSize / 2 + neighbor.levelSize / 2 + levelGap;
-
-      const overlapsInCrossAxis = Math.abs(axis - neighbor.axis) < minCrossDistance;
-      const overlapsInLevelAxis = Math.abs(desiredLevel - neighbor.level) < minLevelDistance;
-
-      if (overlapsInCrossAxis && overlapsInLevelAxis) return false;
-    }
-
-    return true;
-  };
-
-  if (isFree(desiredAxis)) return desiredAxis;
-
-  const step = Math.max(160, Math.round(selfCrossSize * 0.45));
-  for (let i = 1; i <= 80; i++) {
-    const right = desiredAxis + i * step;
-    if (isFree(right)) return right;
-
-    const left = desiredAxis - i * step;
-    if (isFree(left)) return left;
-  }
-
-  return desiredAxis + step;
-}
-
-function applyPersistedPositionsAndPlaceNewNodes(params: {
-  placements: Record<string, GraphPosition>;
-  levelMap: Record<string, number>;
-  parentMap: Record<string, string[]>;
-  protocols: Record<string, ProtocolNode>;
-  projectName: string;
-  direction: Direction;
-  spacingX: number;
-  spacingY: number;
-  nodeSizeMap?: NodeSizeMap | null;
-}): Record<string, GraphPosition> {
-  const {
-    placements,
-    levelMap,
-    parentMap,
-    protocols,
-    projectName,
-    direction,
-    spacingX,
-    spacingY,
-    nodeSizeMap,
-  } = params;
-
-  const persisted = readPersistedGraphPositions(projectName, direction);
-  if (persisted.size === 0) return placements;
-
-  const nodeIds = Object.keys(levelMap).sort((a, b) => {
-    const levelDelta = (levelMap[a] ?? 0) - (levelMap[b] ?? 0);
-    return levelDelta !== 0 ? levelDelta : stableIdCompare(a, b);
-  });
-  const nodeSet = new Set(nodeIds);
-  const nextPlacements: Record<string, GraphPosition> = { ...placements };
-  const persistedCurrentNodeIds = new Set<string>();
-
-  for (const [id, position] of persisted.entries()) {
-    if (!nodeSet.has(id)) continue;
-    nextPlacements[id] = position;
-    persistedCurrentNodeIds.add(id);
-  }
-
-  const unsavedNodeIds = nodeIds.filter((id) => {
-    if (id === "PROJECT") return false;
-    if (persistedCurrentNodeIds.has(id)) return false;
-    return Boolean(nextPlacements[id]);
-  });
-
-  if (unsavedNodeIds.length === 0) return nextPlacements;
-
-  const levelStep = direction === "TB" ? spacingY : spacingX;
-
-  for (const id of unsavedNodeIds) {
-    const parentId = selectPrimaryLayoutParent({ id, parentMap, levelMap, protocols });
-    const parentPosition = parentId ? nextPlacements[parentId] : null;
-    if (!parentPosition) continue;
-
-    const level = levelMap[id] ?? 0;
-    const desiredLevel = level * levelStep;
-    const desiredAxis = getPlacementAxis(direction, parentPosition);
-
-    const currentPosition = nextPlacements[id];
-    const desiredPosition = setPlacementAxis(
-      direction,
-      setPlacementLevel(direction, currentPosition, desiredLevel),
-      desiredAxis
-    );
-
-    const resolvedAxis = findNearestFreeAxis({
-      id,
-      desiredAxis,
-      desiredLevel,
-      direction,
-      levelMap,
-      placements: nextPlacements,
-      protocols,
-      projectName,
-      nodeSizeMap,
-    });
-
-    nextPlacements[id] = setPlacementAxis(direction, desiredPosition, resolvedAxis);
-  }
-
-  return nextPlacements;
+    ? Math.max(700, Math.min(960, size))
+    : Math.max(340, Math.min(680, size));
 }
 
 function buildSubtreeAlignedPlacements(params: {
@@ -562,9 +367,9 @@ function buildSubtreeAlignedPlacements(params: {
     return levelDelta !== 0 ? levelDelta : stableIdCompare(a, b);
   });
 
-  const siblingGap = direction === "TB" ? Math.round(spacingX * 0.45) : Math.round(spacingY * 0.78);
-  const rootBranchGap = direction === "TB" ? Math.round(spacingX * 1.4) : Math.round(spacingY * 1.8);
-  const disconnectedRootGap = direction === "TB" ? Math.round(spacingX * 1.1) : Math.round(spacingY * 1.4);
+  const siblingGap = direction === "TB" ? 260 : 220;
+  const rootBranchGap = direction === "TB" ? 80 : 120;
+  const disconnectedRootGap = direction === "TB" ? 190 : 150;
 
   const getChildrenGap = (parentId: string): number => {
     return parentId === "PROJECT" ? rootBranchGap : siblingGap;
@@ -668,77 +473,158 @@ function buildSubtreeAlignedPlacements(params: {
     }
   }
 
+  const getPlacementAxis = (id: string): number => {
+    const position = placements[id];
+    return direction === "TB" ? position.x : position.y;
+  };
+
+  const setPlacementAxis = (id: string, axis: number): void => {
+    placements[id] = direction === "TB"
+      ? { ...placements[id], x: axis }
+      : { ...placements[id], y: axis };
+  };
+
+  const getResolvedCrossSize = (id: string): number => {
+    return getResolvedPlacementCrossSize({ id, direction, protocols, projectName, nodeSizeMap });
+  };
+
+  const getNearestRealChildren = (id: string): string[] => {
+    const parentLevel = levelMap[id];
+
+    if (typeof parentLevel !== "number") {
+      return [];
+    }
+
+    const children = uniqStable(
+      Array.isArray(protocols[id]?.children)
+        ? protocols[id].children.map(String)
+        : []
+    ).filter((childId) => {
+      const childLevel = levelMap[childId];
+
+      return Boolean(placements[childId]) &&
+        typeof childLevel === "number" &&
+        childLevel > parentLevel;
+    });
+
+    if (children.length === 0) {
+      return [];
+    }
+
+    const nearestLevel = Math.min(...children.map((childId) => levelMap[childId] as number));
+
+    return children.filter((childId) => levelMap[childId] === nearestLevel);
+  };
+
+  const getChildrenCenterAxis = (children: string[]): number | null => {
+    let minAxis = Number.POSITIVE_INFINITY;
+    let maxAxis = Number.NEGATIVE_INFINITY;
+
+    for (const childId of children) {
+      const childAxis = getPlacementAxis(childId);
+      const childSize = getResolvedCrossSize(childId);
+
+      minAxis = Math.min(minAxis, childAxis - childSize / 2);
+      maxAxis = Math.max(maxAxis, childAxis + childSize / 2);
+    }
+
+    if (!Number.isFinite(minAxis) || !Number.isFinite(maxAxis)) {
+      return null;
+    }
+
+    return (minAxis + maxAxis) / 2;
+  };
+
   const levelIds: Record<number, string[]> = {};
+
   for (const id of nodeIds) {
     const level = levelMap[id] ?? 0;
-    if (!levelIds[level]) levelIds[level] = [];
+
+    if (!levelIds[level]) {
+      levelIds[level] = [];
+    }
+
     levelIds[level].push(id);
   }
 
-  const overlapGap = direction === "TB" ? 320 : 80;
+    const parentAlignmentGap = direction === "TB" ? 360 : 240;
 
-  const getResolvedCrossSize = (id: string): number => {
-    return getResolvedPlacementCrossSize({
-      id,
-      direction,
-      protocols,
-      projectName,
-      nodeSizeMap,
-    });
-  };
+  const levelsDescending = Object.keys(levelIds).map(Number).filter(Number.isFinite).sort((a, b) => b - a);
 
-  for (const ids of Object.values(levelIds)) {
-    const sorted = ids
-      .filter((id) => Boolean(placements[id]))
-      .sort((a, b) => {
-        const pa = placements[a];
-        const pb = placements[b];
-        const coordA = direction === "TB" ? pa.x : pa.y;
-        const coordB = direction === "TB" ? pb.x : pb.y;
-        return coordA !== coordB ? coordA - coordB : stableIdCompare(a, b);
-      });
+  for (const level of levelsDescending) {
+    const idsInLevel = (levelIds[level] ?? []).filter((id) => id !== "PROJECT" && Boolean(placements[id]));
 
-    if (sorted.length < 2) continue;
+    const items = idsInLevel.map((id) => {
+      const realChildren = getNearestRealChildren(id);
+      const childrenAxis = getChildrenCenterAxis(realChildren);
+      const currentAxis = getPlacementAxis(id);
 
-    const originalBounds = sorted.map((id) => {
-      const coord = direction === "TB" ? placements[id].x : placements[id].y;
-      const size = getResolvedCrossSize(id);
-      return { id, center: coord, size, left: coord - size / 2, right: coord + size / 2 };
+      return {
+        id,
+        size: getResolvedCrossSize(id),
+        currentAxis,
+        desiredAxis: childrenAxis ?? currentAxis,
+        alignsToChildren: childrenAxis !== null,
+      };
     });
 
-    const originalCenter =
-      (Math.min(...originalBounds.map((item) => item.left)) +
-        Math.max(...originalBounds.map((item) => item.right))) /
-      2;
+    const needsAlignment = items.some((item) => item.alignsToChildren && Math.abs(item.desiredAxis - item.currentAxis) > 0.5);
 
-    const resolvedCenters: Record<string, number> = {};
-    let previousRight = Number.NEGATIVE_INFINITY;
-
-    for (const item of originalBounds) {
-      const minCenter = previousRight + overlapGap + item.size / 2;
-      const center = Math.max(item.center, minCenter);
-      resolvedCenters[item.id] = center;
-      previousRight = center + item.size / 2;
+    if (!needsAlignment) {
+      continue;
     }
 
-    const resolvedBounds = originalBounds.map((item) => {
-      const center = resolvedCenters[item.id];
-      return { left: center - item.size / 2, right: center + item.size / 2 };
+    items.sort((a, b) => {
+      if (a.desiredAxis !== b.desiredAxis) {
+        return a.desiredAxis - b.desiredAxis;
+      }
+
+      return stableIdCompare(a.id, b.id);
     });
 
-    const resolvedCenter =
-      (Math.min(...resolvedBounds.map((item) => item.left)) +
-        Math.max(...resolvedBounds.map((item) => item.right))) /
-      2;
+    const resolvedAxes = new Map<string, number>();
+    let previousRight = Number.NEGATIVE_INFINITY;
 
-    const recenterOffset = originalCenter - resolvedCenter;
+    for (const item of items) {
+      const minCenter = previousRight + parentAlignmentGap + item.size / 2;
+      const resolvedAxis = Math.max(item.desiredAxis, minCenter);
 
-    for (const id of sorted) {
-      const resolvedCenterForId = resolvedCenters[id] + recenterOffset;
-      placements[id] =
-        direction === "TB"
-          ? { ...placements[id], x: resolvedCenterForId }
-          : { ...placements[id], y: resolvedCenterForId };
+      resolvedAxes.set(item.id, resolvedAxis);
+      previousRight = resolvedAxis + item.size / 2;
+    }
+
+    const desiredLeft = Math.min(...items.map((item) => item.desiredAxis - item.size / 2));
+    const desiredRight = Math.max(...items.map((item) => item.desiredAxis + item.size / 2));
+    const resolvedLeft = Math.min(...items.map((item) => (resolvedAxes.get(item.id) ?? item.desiredAxis) - item.size / 2));
+    const resolvedRight = Math.max(...items.map((item) => (resolvedAxes.get(item.id) ?? item.desiredAxis) + item.size / 2));
+    const desiredGroupCenter = (desiredLeft + desiredRight) / 2;
+    const resolvedGroupCenter = (resolvedLeft + resolvedRight) / 2;
+    const recenterOffset = desiredGroupCenter - resolvedGroupCenter;
+
+    for (const item of items) {
+      const resolvedAxis = resolvedAxes.get(item.id) ?? item.desiredAxis;
+      setPlacementAxis(item.id, resolvedAxis + recenterOffset);
+    }
+  }
+
+  if (placements.PROJECT) {
+    let minGraphAxis = Number.POSITIVE_INFINITY;
+    let maxGraphAxis = Number.NEGATIVE_INFINITY;
+
+    for (const id of nodeIds) {
+      if (id === "PROJECT" || !placements[id]) {
+        continue;
+      }
+
+      const nodeAxis = getPlacementAxis(id);
+      const nodeSize = getResolvedCrossSize(id);
+
+      minGraphAxis = Math.min(minGraphAxis, nodeAxis - nodeSize / 2);
+      maxGraphAxis = Math.max(maxGraphAxis, nodeAxis + nodeSize / 2);
+    }
+
+    if (Number.isFinite(minGraphAxis) && Number.isFinite(maxGraphAxis)) {
+      setPlacementAxis("PROJECT", (minGraphAxis + maxGraphAxis) / 2);
     }
   }
 
@@ -752,10 +638,9 @@ function buildSubtreeAlignedPlacements(params: {
  * - Hierarchical mode uses a subtree-aligned layout so children stay grouped around
  *   their primary visual parent while preserving all real workflow edges.
  * - Root-level branches use a larger visual gap so independent subgraphs remain readable.
- * - When manual positions exist, known nodes keep those positions and new nodes are
- *   locally placed near their primary parent instead of reorganizing the whole graph.
- * - New nodes are placed using visual bounding-box collision checks, so they avoid
- *   overlapping nearby branches even when those branches were manually moved.
+ * - Primary subtrees preserve their compact span-based placement.
+ * - Parent nodes are centered over the nearest visible layer of their real children.
+ * - Parent-level collisions are resolved without moving descendant subtrees.
  * - Grid mode can follow traversal order (parents before children) to reduce visual confusion.
  * - Layout uses deterministic size estimates and optional measured node dimensions.
  */
@@ -888,7 +773,7 @@ export function buildGraphElements(
           tags: Array.isArray(prot?.tags) ? prot?.tags : [],
         },
         position: { x, y },
-        draggable: true,
+        draggable: id !== "PROJECT",
         sourcePosition,
         targetPosition,
       });
@@ -978,19 +863,7 @@ export function buildGraphElements(
     levelBuckets[lvl] = uniqStable(levelBuckets[lvl] ?? []);
   }
 
-  let placements = buildSubtreeAlignedPlacements({
-    levelMap,
-    parentMap,
-    protocols,
-    projectName,
-    direction,
-    spacingX,
-    spacingY,
-    nodeSizeMap,
-  });
-
-  placements = applyPersistedPositionsAndPlaceNewNodes({
-    placements,
+  const placements = buildSubtreeAlignedPlacements({
     levelMap,
     parentMap,
     protocols,

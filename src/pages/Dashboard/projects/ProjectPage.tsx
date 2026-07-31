@@ -14,7 +14,7 @@ import React, {
 
 import ProtocolForm from "@/components/protocol/ProtocolForm";
 import ProtocolStepsDeveloperDialog from "@/components/protocol/ProtocolStepsDeveloperDialog";
-import { buildGraphElements } from "@/utils/graph_utils";
+import { buildGraphElements, getGraphTopologySignature } from "@/utils/graph_utils";
 
 import ReactFlow, {
   Background,
@@ -137,6 +137,16 @@ function isElapsedTimerStatus(
   );
 }
 
+function isProtocolRefreshActive(status: unknown): boolean {
+  const normalized = normalizeProtocolStatus(status);
+
+  return (
+    normalized === "launched" ||
+    normalized === "running" ||
+    normalized === "scheduled"
+  );
+}
+
 function continuesElapsedTimerSession(
   previousStatus: unknown,
   nextStatus: unknown,
@@ -163,14 +173,9 @@ function continuesElapsedTimerSession(
     );
 }
 
-function toElapsedSeconds(
-  value: unknown,
-): number {
+function toElapsedSeconds(value: unknown): number {
   const seconds = Number(value);
-
-  return Number.isFinite(seconds) && seconds >= 0
-    ? seconds
-    : 0;
+  return Number.isFinite(seconds) && seconds >= 0 ? seconds : 0;
 }
 
 function mergeNodeElapsedTick(
@@ -1139,6 +1144,10 @@ export default function ProjectPage() {
 
   const openFormsRef = useRef<OpenForm[]>([]);
 
+  const syncProtocolDetailsToGraphRef = useRef<
+    (protocolId: string, details: any) => void
+  >(() => { });
+
   useEffect(() => {
     openFormsRef.current = openForms;
   }, [openForms]);
@@ -1189,6 +1198,13 @@ export default function ProjectPage() {
     }
 
     if (!detailsById.size) return;
+
+    for (const [protocolId, details] of detailsById) {
+      syncProtocolDetailsToGraphRef.current(
+        protocolId,
+        details
+      );
+    }
 
     setOpenForms((prev) =>
       prev.map((form) => {
@@ -1288,6 +1304,7 @@ export default function ProjectPage() {
 
   const [nodes, setNodes, onNodesChange] = useNodesState<StatusNodeData>([]);
   const outputThumbnailCacheRef = useRef<Map<string, ProtocolOutputThumbnailItem>>(new Map());
+  const outputThumbnailRetryAfterRef = useRef<Map<string, number>>(new Map());
   const outputThumbnailInFlightRef = useRef<Promise<void> | null>(null);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge[]>([]);
   const [tableData, setTableData] = useState<any[]>([]);
@@ -1367,6 +1384,7 @@ export default function ProjectPage() {
     beforeIds: Set<string>;
     beforePositions?: Map<string, { x: number; y: number }>;
     operation?: "duplicate" | "add";
+    reflowWholeGraph?: boolean;
     duplicatedPairs?: Array<{
       sourceId: string;
       newId: string;
@@ -1500,9 +1518,11 @@ export default function ProjectPage() {
     beforeIds: Set<string>;
   } | null>(null);
 
-  const TIME_TO_REFRESH = 15000;
+  const ACTIVE_TIME_TO_REFRESH = 5000;
+  const IDLE_TIME_TO_REFRESH = 15000;
   const PROTOCOL_OUTPUT_THUMBNAIL_CHUNK_SIZE = 24;
   const PROTOCOL_OUTPUT_THUMBNAIL_CHUNK_DELAY_MS = 50;
+  const PROTOCOL_OUTPUT_THUMBNAIL_RETRY_DELAY_MS = 30_000;
   const localStorageKey = `project-${projectName}-node-positions`;
 
   const [, setIsSwitchingLayout] = useState(false);
@@ -1522,6 +1542,84 @@ export default function ProjectPage() {
 
   const nodesRef = useRef<Node[]>(nodes);
   useEffect(() => { nodesRef.current = nodes; }, [nodes]);
+
+  const syncProtocolDetailsToGraph = useCallback(
+    (
+      protocolId: string,
+      details: any,
+    ) => {
+      const info = details?.info;
+
+      if (!info || typeof info !== "object") return;
+
+      const outputs = Array.isArray(info.outputs)
+        ? info.outputs
+        : undefined;
+
+      const status = typeof info.status === "string"
+        ? info.status
+        : undefined;
+
+      if (
+        outputs === undefined &&
+        status === undefined
+      ) {
+        return;
+      }
+
+      setNodes((currentNodes) =>
+        currentNodes.map((node) => {
+          if (
+            String(node.id) !==
+            String(protocolId)
+          ) {
+            return node;
+          }
+
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              ...(outputs !== undefined
+                ? { outputs }
+                : {}),
+              ...(status !== undefined
+                ? { status }
+                : {}),
+            },
+          };
+        })
+      );
+
+      setTableData((currentRows) =>
+        currentRows.map((row) => {
+          if (
+            String(row?.id) !==
+            String(protocolId)
+          ) {
+            return row;
+          }
+
+          return {
+            ...row,
+            ...(outputs !== undefined
+              ? { outputs }
+              : {}),
+            ...(status !== undefined
+              ? { status }
+              : {}),
+          };
+        })
+      );
+    },
+    [setNodes],
+  );
+
+  useEffect(() => {
+    syncProtocolDetailsToGraphRef.current =
+      syncProtocolDetailsToGraph;
+  }, [syncProtocolDetailsToGraph]);
+
   const edgesRef = useRef<Edge[]>(edges);
   useEffect(() => { edgesRef.current = edges; }, [edges]);
 
@@ -1567,6 +1665,16 @@ export default function ProjectPage() {
             continue;
           }
 
+          const retryAfter = outputThumbnailRetryAfterRef.current.get(cacheKey) ?? 0;
+
+          if (retryAfter > Date.now()) {
+            continue;
+          }
+
+          if (retryAfter) {
+            outputThumbnailRetryAfterRef.current.delete(cacheKey);
+          }
+
           if (
             typeof maxNewRequests === "number" &&
             maxNewRequests > 0 &&
@@ -1609,7 +1717,12 @@ export default function ProjectPage() {
             PROTOCOL_OUTPUT_THUMBNAIL_SIZE,
           );
 
-          outputThumbnailCacheRef.current.set(cacheKey, item);
+          if (item.exists && (item.thumbnailDataUrl || item.thumbnailUrl)) {
+            outputThumbnailCacheRef.current.set(cacheKey, item);
+            outputThumbnailRetryAfterRef.current.delete(cacheKey);
+          } else {
+            outputThumbnailRetryAfterRef.current.set(cacheKey, Date.now() + PROTOCOL_OUTPUT_THUMBNAIL_RETRY_DELAY_MS);
+          }
         }
 
         return items;
@@ -1703,6 +1816,7 @@ export default function ProjectPage() {
     if (protocolOutputThumbnailsEnabled) return;
 
     outputThumbnailCacheRef.current.clear();
+    outputThumbnailRetryAfterRef.current.clear();
     outputThumbnailInFlightRef.current = null;
 
     setNodes((prev) => clearOutputThumbnailsFromNodes(prev as Node<StatusNodeData>[]));
@@ -2381,6 +2495,11 @@ export default function ProjectPage() {
       try {
         const details = await fetcher();
 
+        syncProtocolDetailsToGraph(
+          id,
+          details
+        );
+
         if (dockEpochRef.current !== dockEpoch) {
           // dockWasGloballyClosedWhileFetching
           return;
@@ -2400,7 +2519,12 @@ export default function ProjectPage() {
         openingFormIdsRef.current.delete(id);
       }
     },
-    [projectName, applyEdgeHighlight, syncUnifiedSelectedIds]
+    [
+      projectName,
+      applyEdgeHighlight,
+      syncUnifiedSelectedIds,
+      syncProtocolDetailsToGraph,
+    ]
   );
 
 
@@ -2629,21 +2753,23 @@ export default function ProjectPage() {
   const nodeTypes = nodeTypesRef.current;
 
   /* --------------------- Persistence of positions --------------------- */
-  /* --------------------- Persistence of positions --------------------- */
-  type PersistedNodePositionsV2 = {
-    version: 2;
+
+  type PersistedNodePositionsV6 = {
+    version: 6;
     direction: "TB" | "LR";
+    topologySignature: string;
     positions: Array<{ id: string; position: { x: number; y: number } }>;
   };
 
-  const nodePositionsVersion = 2;
+  const nodePositionsVersion = 6;
+  const graphTopologySignatureRef = useRef("");
 
   const storageKeyHier = `${localStorageKey}-${graphDirection}-hier`;
   const viewportStorageKey = `${localStorageKey}-${viewMode}-${graphDirection}-viewport`;
 
   const safeParseJson = (raw: string | null): unknown => {
-    // safeParseJson
     if (!raw) return null;
+
     try {
       return JSON.parse(raw);
     } catch {
@@ -2651,55 +2777,48 @@ export default function ProjectPage() {
     }
   };
 
-  const isValidPosItem = (v: any): v is { id: string; position: { x: number; y: number } } => {
-    // isValidPosItem
-    const idOk = typeof v?.id === "string" && v.id.length > 0;
-    const xOk = typeof v?.position?.x === "number" && Number.isFinite(v.position.x);
-    const yOk = typeof v?.position?.y === "number" && Number.isFinite(v.position.y);
+  const isValidPosItem = (value: any): value is { id: string; position: { x: number; y: number } } => {
+    const idOk = typeof value?.id === "string" && value.id.length > 0;
+    const xOk = typeof value?.position?.x === "number" && Number.isFinite(value.position.x);
+    const yOk = typeof value?.position?.y === "number" && Number.isFinite(value.position.y);
+
     return idOk && xOk && yOk;
   };
 
   const readPersistedPositions = (
     key: string,
-    expectedDirection: "TB" | "LR"
+    expectedDirection: "TB" | "LR",
+    expectedTopologySignature: string
   ): Array<{ id: string; position: { x: number; y: number } }> => {
-    // readPersistedPositions
     const parsed = safeParseJson(localStorage.getItem(key));
-    if (!parsed) return [];
 
-    // Legacy format: Array<{id, position}>
-    // Important: ignore legacy arrays in LR to prevent TB positions being applied in LR.
-    if (Array.isArray(parsed)) {
-      if (expectedDirection !== "TB") return [];
-      return parsed.filter(isValidPosItem);
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      return [];
     }
 
-    // V2 format: {version, direction, positions}
-    if (typeof parsed === "object" && parsed !== null) {
-      const obj: any = parsed;
-      const versionOk = obj.version === nodePositionsVersion;
-      const dirOk = obj.direction === expectedDirection;
-      const posArr = Array.isArray(obj.positions) ? obj.positions : null;
+    const payload = parsed as Partial<PersistedNodePositionsV6>;
 
-      if (versionOk && dirOk && posArr) {
-        return posArr.filter(isValidPosItem);
-      }
-    }
+    if (payload.version !== nodePositionsVersion) return [];
+    if (payload.direction !== expectedDirection) return [];
+    if (payload.topologySignature !== expectedTopologySignature) return [];
+    if (!Array.isArray(payload.positions)) return [];
 
-    return [];
+    return payload.positions.filter(isValidPosItem);
   };
 
   const writePersistedPositions = (
     key: string,
     direction: "TB" | "LR",
+    topologySignature: string,
     positions: Array<{ id: string; position: { x: number; y: number } }>
   ) => {
-    // writePersistedPositions
-    const payload: PersistedNodePositionsV2 = {
+    const payload: PersistedNodePositionsV6 = {
       version: nodePositionsVersion,
       direction,
+      topologySignature,
       positions,
     };
+
     localStorage.setItem(key, JSON.stringify(payload));
   };
 
@@ -2784,15 +2903,27 @@ export default function ProjectPage() {
 
     setNodes((nds) => {
       const updated = applyNodeChanges(changes, nds);
-      const positions = updated.map((n) => ({ id: n.id, position: n.position }));
+      const shouldRecenterProject = changes.some((change) => change.type !== "select");
+      const resolvedNodes = shouldRecenterProject
+        ? centerProjectOverGraphBranches(updated, graphDirection)
+        : updated;
+
+      const positions = resolvedNodes.map((node) => ({
+        id: node.id,
+        position: node.position,
+      }));
 
       try {
-        writePersistedPositions(storageKeyHier, graphDirection, positions);
+        const topologySignature = graphTopologySignatureRef.current;
+
+        if (topologySignature) {
+          writePersistedPositions(storageKeyHier, graphDirection, topologySignature, positions);
+        }
       } catch {
         // noOp
       }
 
-      return updated;
+      return resolvedNodes;
     });
   };
 
@@ -2910,22 +3041,57 @@ export default function ProjectPage() {
     };
   };
 
-  const loadNodesWithPositions = (loadedNodes: Node[]) => {
-    const saved = readPersistedPositions(storageKeyHier, graphDirection);
+  const loadNodesWithPositions = (
+    loadedNodes: Node[],
+    protocols: Record<string, any>
+  ): Node[] => {
+    const topologySignature = getGraphTopologySignature(protocols);
+    graphTopologySignatureRef.current = topologySignature;
 
-    if (!saved.length) {
-      return centerProjectOverGraphBranches(loadedNodes, graphDirection);
+    const saved = readPersistedPositions(
+      storageKeyHier,
+      graphDirection,
+      topologySignature
+    );
+
+    const savedById = new Map<string, { x: number; y: number }>();
+
+    for (const item of saved) {
+      savedById.set(item.id, item.position);
     }
 
-    const byId = new Map<string, { x: number; y: number }>();
-    for (const p of saved) byId.set(p.id, p.position);
+    const nodesWithPositions = saved.length
+      ? loadedNodes.map((node) => {
+        if (String(node.id) === "PROJECT") return node;
 
-    const nodesWithSavedPositions = loadedNodes.map((n) => {
-      const pos = byId.get(n.id);
-      return pos ? { ...n, position: pos } : n;
-    });
+        const savedPosition = savedById.get(String(node.id));
 
-    return centerProjectOverGraphBranches(nodesWithSavedPositions, graphDirection);
+        return savedPosition
+          ? { ...node, position: savedPosition }
+          : node;
+      })
+      : loadedNodes;
+
+    const resolvedNodes = centerProjectOverGraphBranches(
+      nodesWithPositions,
+      graphDirection
+    );
+
+    try {
+      writePersistedPositions(
+        storageKeyHier,
+        graphDirection,
+        topologySignature,
+        resolvedNodes.map((node) => ({
+          id: String(node.id),
+          position: node.position,
+        }))
+      );
+    } catch {
+      // noOp
+    }
+
+    return resolvedNodes;
   };
 
 
@@ -2933,6 +3099,9 @@ export default function ProjectPage() {
     loadedNodes: Node[],
   ): Node[] => {
     const pending = pendingNewNodesRef.current;
+    if (pending?.reflowWholeGraph) {
+      return centerProjectOverGraphBranches(loadedNodes, graphDirection);
+    }
 
     if (!pending?.beforePositions || viewModeRef.current !== "hierarchical") {
       return centerProjectOverGraphBranches(loadedNodes, graphDirection);
@@ -2963,16 +3132,41 @@ export default function ProjectPage() {
 
 
   // persistPositionsBulk writes multiple node positions in a single localStorage write
-  const persistPositionsBulk = (direction: "TB" | "LR", items: Array<{ id: string; position: { x: number; y: number } }>) => {
+  const persistPositionsBulk = (
+    direction: "TB" | "LR",
+    items: Array<{ id: string; position: { x: number; y: number } }>
+  ) => {
     try {
-      const key = storageKeyHier;
-      const saved = readPersistedPositions(key, direction);
-      const byId = new Map(saved.map((p) => [p.id, p.position]));
+      const topologySignature = graphTopologySignatureRef.current;
+      if (!topologySignature) return;
 
-      for (const it of items) byId.set(it.id, it.position);
+      const saved = readPersistedPositions(
+        storageKeyHier,
+        direction,
+        topologySignature
+      );
 
-      const merged = Array.from(byId.entries()).map(([id, position]) => ({ id, position }));
-      writePersistedPositions(key, direction, merged);
+      const positionsById = new Map(
+        saved.map((item) => [item.id, item.position])
+      );
+
+      for (const item of items) {
+        positionsById.set(item.id, item.position);
+      }
+
+      const merged = Array.from(
+        positionsById.entries()
+      ).map(([id, position]) => ({
+        id,
+        position,
+      }));
+
+      writePersistedPositions(
+        storageKeyHier,
+        direction,
+        topologySignature,
+        merged
+      );
     } catch {
       // noOp
     }
@@ -3009,6 +3203,7 @@ export default function ProjectPage() {
       beforeIds,
       beforePositions,
       operation: "add",
+      reflowWholeGraph: true,
     };
   };
 
@@ -3049,6 +3244,7 @@ export default function ProjectPage() {
   useEffect(() => {
     // resetFirstCenterOnProjectChange
     outputThumbnailCacheRef.current.clear();
+    outputThumbnailRetryAfterRef.current.clear();
     outputThumbnailInFlightRef.current = null;
 
     firstLoadRef.current = true;
@@ -3107,7 +3303,7 @@ export default function ProjectPage() {
 
         const nodesWithPositions =
           mode === "hierarchical"
-            ? loadNodesWithPositions(loadedNodes)
+            ? loadNodesWithPositions(loadedNodes, data.protocols)
             : loadedNodes;
 
         const nodesWithTick =
@@ -3187,6 +3383,7 @@ export default function ProjectPage() {
     setProjectEffectiveSettingsLoading(false);
 
     outputThumbnailCacheRef.current.clear();
+    outputThumbnailRetryAfterRef.current.clear();
     outputThumbnailInFlightRef.current = null;
   }, [projectName]);
 
@@ -3253,10 +3450,11 @@ export default function ProjectPage() {
 
         const nodesWithPositions =
           viewMode === "hierarchical"
-            ? preservePendingExistingNodePositions(loadNodesWithPositions(loadedNodes))
+            ? preservePendingExistingNodePositions(loadNodesWithPositions(loadedNodes, data.protocols))
             : loadedNodes;
 
         const edgesMerged = viewMode === "grid" ? [] : mergeEdges(loadedEdges);
+        edgesRef.current = edgesMerged;
 
         const unifiedSelectedIds = getUnifiedSelectedIds();
         const nodesSeed =
@@ -3372,8 +3570,48 @@ export default function ProjectPage() {
   const handleRefreshRef = useRef(handleRefresh);
   useEffect(() => { handleRefreshRef.current = handleRefresh; }, [handleRefresh]);
   useEffect(() => {
-    const interval = setInterval(() => { handleRefreshRef.current(); }, TIME_TO_REFRESH);
-    return () => clearInterval(interval);
+    let cancelled = false;
+    let timerId: number | null = null;
+
+    const scheduleRefresh = (
+      delay: number,
+    ) => {
+      timerId = window.setTimeout(
+        async () => {
+          await handleRefreshRef.current();
+
+          if (cancelled) return;
+
+          const hasActiveProtocol =
+            nodesRef.current.some(
+              (node) =>
+                String(node.id) !== "PROJECT" &&
+                isProtocolRefreshActive(
+                  node.data?.status
+                )
+            );
+
+          scheduleRefresh(
+            hasActiveProtocol
+              ? ACTIVE_TIME_TO_REFRESH
+              : IDLE_TIME_TO_REFRESH
+          );
+        },
+        delay,
+      );
+    };
+
+    scheduleRefresh(
+      ACTIVE_TIME_TO_REFRESH
+    );
+
+    return () => {
+      cancelled = true;
+
+      if (timerId !== null) {
+        window.clearTimeout(timerId);
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -3537,7 +3775,7 @@ export default function ProjectPage() {
 
         const nodesWithPositions =
           viewMode === "hierarchical"
-            ? loadNodesWithPositions(loadedNodes)
+            ? loadNodesWithPositions(loadedNodes, data.protocols)
             : loadedNodes;
 
         const unifiedSelectedIds = getUnifiedSelectedIds();
@@ -3800,7 +4038,7 @@ export default function ProjectPage() {
       );
 
     const nodesWithPositions =
-      viewMode === "hierarchical" ? loadNodesWithPositions(loadedNodes) : loadedNodes;
+      viewMode === "hierarchical" ? loadNodesWithPositions(loadedNodes, project.protocols) : loadedNodes;
 
     const unifiedSelectedIds = getUnifiedSelectedIds();
     const nodesSeeded = seedNodesWithSelectionAndThumbnails(
@@ -4885,9 +5123,224 @@ export default function ProjectPage() {
     pendingPlacementRef.current = null;
   };
 
+  const alignPendingSingleChildrenToParents = (currentNodes: Node[]): Node[] => {
+    const pending = pendingNewNodesRef.current;
+
+    if (!pending || viewModeRef.current !== "hierarchical") {
+      return currentNodes;
+    }
+
+    const newIds = new Set(
+      currentNodes
+        .map((node) => String(node.id))
+        .filter((id) => !pending.beforeIds.has(id))
+    );
+
+    if (newIds.size === 0) {
+      return currentNodes;
+    }
+
+    const updatedById = new Map(
+      currentNodes.map((node) => [
+        String(node.id),
+        {
+          ...node,
+          position: { ...node.position },
+        },
+      ])
+    );
+
+    const incomingParentsByChild = new Map<string, string[]>();
+    const outgoingChildrenByParent = new Map<string, string[]>();
+
+    for (const edge of edgesRef.current) {
+      const sourceId = String(edge.source);
+      const targetId = String(edge.target);
+
+      const incomingParents = incomingParentsByChild.get(targetId) ?? [];
+
+      if (!incomingParents.includes(sourceId)) {
+        incomingParents.push(sourceId);
+        incomingParentsByChild.set(targetId, incomingParents);
+      }
+
+      const outgoingChildren = outgoingChildrenByParent.get(sourceId) ?? [];
+
+      if (!outgoingChildren.includes(targetId)) {
+        outgoingChildren.push(targetId);
+        outgoingChildrenByParent.set(sourceId, outgoingChildren);
+      }
+    }
+
+    const getNodeSize = (node: Node): { width: number; height: number } => {
+      const measured = (node as any).measured;
+      const width = measured?.width ?? node.width ?? 700;
+      const height = measured?.height ?? node.height ?? 340;
+
+      return {
+        width: typeof width === "number" && width > 0 ? width : 700,
+        height: typeof height === "number" && height > 0 ? height : 340,
+      };
+    };
+
+    const getNodeRect = (node: Node) => {
+      const { width, height } = getNodeSize(node);
+
+      return {
+        left: node.position.x,
+        right: node.position.x + width,
+        top: node.position.y,
+        bottom: node.position.y + height,
+      };
+    };
+
+    const nodesOverlap = (firstNode: Node, secondNode: Node): boolean => {
+      const firstRect = getNodeRect(firstNode);
+      const secondRect = getNodeRect(secondNode);
+      const margin = graphDirection === "TB" ? 80 : 60;
+
+      return !(
+        firstRect.right + margin <= secondRect.left ||
+        firstRect.left >= secondRect.right + margin ||
+        firstRect.bottom + margin <= secondRect.top ||
+        firstRect.top >= secondRect.bottom + margin
+      );
+    };
+
+    const alignChildToParent = (childNode: Node, parentNode: Node): Node => {
+      const childSize = getNodeSize(childNode);
+      const parentSize = getNodeSize(parentNode);
+
+      if (graphDirection === "TB") {
+        const parentCenterX = parentNode.position.x + parentSize.width / 2;
+
+        return {
+          ...childNode,
+          position: {
+            ...childNode.position,
+            x: parentCenterX - childSize.width / 2,
+          },
+        };
+      }
+
+      const parentCenterY = parentNode.position.y + parentSize.height / 2;
+
+      return {
+        ...childNode,
+        position: {
+          ...childNode.position,
+          y: parentCenterY - childSize.height / 2,
+        },
+      };
+    };
+
+    const readyNewIds = new Set<string>();
+    const unresolvedNewIds = new Set(newIds);
+
+    for (let pass = 0; pass < newIds.size; pass++) {
+      let passChanged = false;
+
+      for (const childId of Array.from(unresolvedNewIds)) {
+        const childNode = updatedById.get(childId);
+
+        if (!childNode) {
+          unresolvedNewIds.delete(childId);
+          continue;
+        }
+
+        const parentIds = incomingParentsByChild.get(childId) ?? [];
+
+        const parentId =
+          parentIds.find((id) => newIds.has(id) && readyNewIds.has(id)) ??
+          parentIds.find((id) => !newIds.has(id)) ??
+          null;
+
+        if (!parentId) {
+          if (parentIds.length === 0) {
+            readyNewIds.add(childId);
+            unresolvedNewIds.delete(childId);
+            passChanged = true;
+          }
+
+          continue;
+        }
+
+        const parentNode = updatedById.get(parentId);
+
+        if (!parentNode) {
+          readyNewIds.add(childId);
+          unresolvedNewIds.delete(childId);
+          passChanged = true;
+          continue;
+        }
+
+        const parentChildren = outgoingChildrenByParent.get(parentId) ?? [];
+
+        if (parentChildren.length !== 1 || parentChildren[0] !== childId) {
+          readyNewIds.add(childId);
+          unresolvedNewIds.delete(childId);
+          passChanged = true;
+          continue;
+        }
+
+        const alignedChild = alignChildToParent(childNode, parentNode);
+
+        const collides = Array.from(updatedById.entries()).some(([otherId, otherNode]) => {
+          if (otherId === childId || otherId === parentId) {
+            return false;
+          }
+
+          return nodesOverlap(alignedChild, otherNode);
+        });
+
+        if (!collides) {
+          updatedById.set(childId, alignedChild);
+        }
+
+        readyNewIds.add(childId);
+        unresolvedNewIds.delete(childId);
+        passChanged = true;
+      }
+
+      if (!passChanged) {
+        break;
+      }
+    }
+
+    const resolvedNodes = currentNodes.map((node) => updatedById.get(String(node.id)) ?? node);
+
+    return centerProjectOverGraphBranches(resolvedNodes, graphDirection);
+  };
+
   const tryResolveNewNodesCollisions = () => {
     const pending = pendingNewNodesRef.current;
     if (!pending) return;
+
+    if (pending.reflowWholeGraph) {
+      setNodes((currentNodes) => {
+        const hasNewNodes = currentNodes.some((node) => !pending.beforeIds.has(String(node.id)));
+
+        if (!hasNewNodes) {
+          return currentNodes;
+        }
+
+        const resolvedNodes = alignPendingSingleChildrenToParents(currentNodes);
+
+        persistPositionsBulk(
+          graphDirection,
+          resolvedNodes.map((node) => ({
+            id: String(node.id),
+            position: node.position,
+          }))
+        );
+
+        pendingNewNodesRef.current = null;
+
+        return resolvedNodes;
+      });
+
+      return;
+    }
 
     if (viewModeRef.current !== "hierarchical") return;
 
@@ -4912,14 +5365,19 @@ export default function ProjectPage() {
           pending.duplicatedPairs ?? []
         );
 
-        const centeredNodes = centerProjectOverGraphBranches(result.nodes, dir);
+        const alignedNodes = alignPendingSingleChildrenToParents(result.nodes);
+        const centeredNodes = centerProjectOverGraphBranches(alignedNodes, dir);
 
-        const changedItems = Array.from(result.changedMap.entries()).map(
-          ([id, position]) => ({
-            id,
-            position,
-          })
+        const duplicatedIds = new Set(
+          (pending.duplicatedPairs ?? []).map((pair) => String(pair.newId))
         );
+
+        const changedItems = centeredNodes
+          .filter((node) => duplicatedIds.has(String(node.id)))
+          .map((node) => ({
+            id: String(node.id),
+            position: node.position,
+          }));
 
         const projectPositionChange = getProjectPositionChange(
           result.nodes,
@@ -5370,6 +5828,7 @@ export default function ProjectPage() {
       beforeIds,
       beforePositions,
       operation: "add",
+      reflowWholeGraph: true,
     };
 
     try {
@@ -5447,6 +5906,7 @@ export default function ProjectPage() {
       beforePositions,
       operation: "duplicate",
       duplicatedPairs: [],
+      reflowWholeGraph: false,
     };
 
     try {
@@ -5461,6 +5921,7 @@ export default function ProjectPage() {
         beforeIds,
         beforePositions,
         operation: "duplicate",
+        reflowWholeGraph: false,
         duplicatedPairs: duplicatedFromBackend
           .map((pair: any) => {
             const sourceId = String(pair?.sourceId ?? "");
