@@ -5119,11 +5119,214 @@ export default function ProjectPage() {
     pendingPlacementRef.current = null;
   };
 
+  const alignPendingSingleChildrenToParents = (currentNodes: Node[]): Node[] => {
+    const pending = pendingNewNodesRef.current;
+
+    if (!pending || viewModeRef.current !== "hierarchical") {
+      return currentNodes;
+    }
+
+    const newIds = new Set(
+      currentNodes
+        .map((node) => String(node.id))
+        .filter((id) => !pending.beforeIds.has(id))
+    );
+
+    if (newIds.size === 0) {
+      return currentNodes;
+    }
+
+    const updatedById = new Map(
+      currentNodes.map((node) => [
+        String(node.id),
+        {
+          ...node,
+          position: { ...node.position },
+        },
+      ])
+    );
+
+    const incomingParentsByChild = new Map<string, string[]>();
+    const outgoingChildrenByParent = new Map<string, string[]>();
+
+    for (const edge of edges) {
+      const sourceId = String(edge.source);
+      const targetId = String(edge.target);
+
+      const incomingParents = incomingParentsByChild.get(targetId) ?? [];
+
+      if (!incomingParents.includes(sourceId)) {
+        incomingParents.push(sourceId);
+        incomingParentsByChild.set(targetId, incomingParents);
+      }
+
+      const outgoingChildren = outgoingChildrenByParent.get(sourceId) ?? [];
+
+      if (!outgoingChildren.includes(targetId)) {
+        outgoingChildren.push(targetId);
+        outgoingChildrenByParent.set(sourceId, outgoingChildren);
+      }
+    }
+
+    const getNodeSize = (node: Node): { width: number; height: number } => {
+      const measured = (node as any).measured;
+      const width = measured?.width ?? node.width ?? 700;
+      const height = measured?.height ?? node.height ?? 340;
+
+      return {
+        width: typeof width === "number" && width > 0 ? width : 700,
+        height: typeof height === "number" && height > 0 ? height : 340,
+      };
+    };
+
+    const getNodeRect = (node: Node) => {
+      const { width, height } = getNodeSize(node);
+
+      return {
+        left: node.position.x,
+        right: node.position.x + width,
+        top: node.position.y,
+        bottom: node.position.y + height,
+      };
+    };
+
+    const nodesOverlap = (firstNode: Node, secondNode: Node): boolean => {
+      const firstRect = getNodeRect(firstNode);
+      const secondRect = getNodeRect(secondNode);
+      const margin = graphDirection === "TB" ? 80 : 60;
+
+      return !(
+        firstRect.right + margin <= secondRect.left ||
+        firstRect.left >= secondRect.right + margin ||
+        firstRect.bottom + margin <= secondRect.top ||
+        firstRect.top >= secondRect.bottom + margin
+      );
+    };
+
+    const alignChildToParent = (childNode: Node, parentNode: Node): Node => {
+      const childSize = getNodeSize(childNode);
+      const parentSize = getNodeSize(parentNode);
+
+      if (graphDirection === "TB") {
+        const parentCenterX = parentNode.position.x + parentSize.width / 2;
+
+        return {
+          ...childNode,
+          position: {
+            ...childNode.position,
+            x: parentCenterX - childSize.width / 2,
+          },
+        };
+      }
+
+      const parentCenterY = parentNode.position.y + parentSize.height / 2;
+
+      return {
+        ...childNode,
+        position: {
+          ...childNode.position,
+          y: parentCenterY - childSize.height / 2,
+        },
+      };
+    };
+
+    const readyNewIds = new Set<string>();
+    const unresolvedNewIds = new Set(newIds);
+
+    for (let pass = 0; pass < newIds.size; pass++) {
+      let passChanged = false;
+
+      for (const childId of Array.from(unresolvedNewIds)) {
+        const childNode = updatedById.get(childId);
+
+        if (!childNode) {
+          unresolvedNewIds.delete(childId);
+          continue;
+        }
+
+        const parentIds = incomingParentsByChild.get(childId) ?? [];
+
+        const parentId =
+          parentIds.find((id) => newIds.has(id) && readyNewIds.has(id)) ??
+          parentIds.find((id) => !newIds.has(id)) ??
+          null;
+
+        if (!parentId) {
+          if (parentIds.length === 0) {
+            readyNewIds.add(childId);
+            unresolvedNewIds.delete(childId);
+            passChanged = true;
+          }
+
+          continue;
+        }
+
+        const parentNode = updatedById.get(parentId);
+
+        if (!parentNode) {
+          readyNewIds.add(childId);
+          unresolvedNewIds.delete(childId);
+          passChanged = true;
+          continue;
+        }
+
+        const parentChildren = outgoingChildrenByParent.get(parentId) ?? [];
+
+        if (parentChildren.length !== 1 || parentChildren[0] !== childId) {
+          readyNewIds.add(childId);
+          unresolvedNewIds.delete(childId);
+          passChanged = true;
+          continue;
+        }
+
+        const alignedChild = alignChildToParent(childNode, parentNode);
+
+        const collides = Array.from(updatedById.entries()).some(([otherId, otherNode]) => {
+          if (otherId === childId || otherId === parentId) {
+            return false;
+          }
+
+          return nodesOverlap(alignedChild, otherNode);
+        });
+
+        if (!collides) {
+          updatedById.set(childId, alignedChild);
+        }
+
+        readyNewIds.add(childId);
+        unresolvedNewIds.delete(childId);
+        passChanged = true;
+      }
+
+      if (!passChanged) {
+        break;
+      }
+    }
+
+    const resolvedNodes = currentNodes.map((node) => updatedById.get(String(node.id)) ?? node);
+
+    return centerProjectOverGraphBranches(resolvedNodes, graphDirection);
+  };
+
   const tryResolveNewNodesCollisions = () => {
     const pending = pendingNewNodesRef.current;
     if (!pending) return;
 
     if (pending.reflowWholeGraph) {
+      setNodes((currentNodes) => {
+        const resolvedNodes = alignPendingSingleChildrenToParents(currentNodes);
+
+        persistPositionsBulk(
+          graphDirection,
+          resolvedNodes.map((node) => ({
+            id: String(node.id),
+            position: node.position,
+          }))
+        );
+
+        return resolvedNodes;
+      });
+
       pendingNewNodesRef.current = null;
       return;
     }
