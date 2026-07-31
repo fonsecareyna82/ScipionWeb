@@ -1389,6 +1389,10 @@ export default function ProjectPage() {
     }>;
   } | null>(null);
 
+  const pendingDeletionRef = useRef<{
+    beforePositions: Map<string, { x: number; y: number }>;
+  } | null>(null);
+
   useEffect(() => {
     // forceNodeRerenderAfterPolicyChange
     if (policyRevision === 0) return;
@@ -3121,6 +3125,38 @@ export default function ProjectPage() {
     return centerProjectOverGraphBranches(nodesWithPreservedPositions, graphDirection);
   };
 
+  const preservePendingDeletedNodePositions = (loadedNodes: Node[]): Node[] => {
+    const pending = pendingDeletionRef.current;
+
+    if (!pending || viewModeRef.current !== "hierarchical") {
+      return loadedNodes;
+    }
+
+    const nodesWithPreservedPositions = loadedNodes.map((node) => {
+      if (String(node.id) === "PROJECT") return node;
+
+      const previousPosition = pending.beforePositions.get(String(node.id));
+
+      return previousPosition
+        ? { ...node, position: previousPosition }
+        : node;
+    });
+
+    const resolvedNodes = centerProjectOverGraphBranches(nodesWithPreservedPositions, graphDirection);
+    const topologySignature = graphTopologySignatureRef.current;
+
+    if (topologySignature) {
+      const positions = resolvedNodes.map((node) => ({
+        id: String(node.id),
+        position: node.position,
+      }));
+
+      writePersistedPositions(storageKeyHier, graphDirection, topologySignature, positions);
+    }
+
+    return resolvedNodes;
+  };
+
 
   const mergeEdges = (newEdges: Edge[]) => {
     const oldEdgesMap = new Map(edges.map((e) => [e.id, e]));
@@ -3447,7 +3483,7 @@ export default function ProjectPage() {
 
         const nodesWithPositions =
           viewMode === "hierarchical"
-            ? preservePendingExistingNodePositions(loadNodesWithPositions(loadedNodes, data.protocols))
+            ? preservePendingDeletedNodePositions(preservePendingExistingNodePositions(loadNodesWithPositions(loadedNodes, data.protocols)))
             : loadedNodes;
 
         const edgesMerged = viewMode === "grid" ? [] : mergeEdges(loadedEdges);
@@ -7473,11 +7509,36 @@ export default function ProjectPage() {
                     return;
                   }
 
+                  if (viewModeRef.current === "hierarchical") {
+                    const beforePositions = new Map<string, { x: number; y: number }>();
+
+                    for (const node of nodesRef.current) {
+                      const nodeId = String(node.id);
+                      const position = node.position;
+
+                      if (!nodeId || !position) continue;
+                      if (!Number.isFinite(position.x) || !Number.isFinite(position.y)) continue;
+
+                      beforePositions.set(nodeId, {
+                        x: position.x,
+                        y: position.y,
+                      });
+                    }
+
+                    pendingDeletionRef.current = { beforePositions };
+                  } else {
+                    pendingDeletionRef.current = null;
+                  }
+
                   setDeleteBusy(true);
 
                   try {
                     const res = await svc.deleteProtocol(projectName, ids);
-                    if (!ensureApiOk(res, "Delete failed.")) return;
+
+                    if (!ensureApiOk(res, "Delete failed.")) {
+                      pendingDeletionRef.current = null;
+                      return;
+                    }
 
                     clearAllSelectionHard();
 
@@ -7489,7 +7550,9 @@ export default function ProjectPage() {
 
                     setDlgDelete({ open: false, ids: [] });
                     await handleRefresh();
+                    pendingDeletionRef.current = null;
                   } catch (err) {
+                    pendingDeletionRef.current = null;
                     console.error(err);
                     toast.error(getErrorMsg(err));
                   } finally {
