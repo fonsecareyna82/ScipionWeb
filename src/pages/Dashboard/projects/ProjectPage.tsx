@@ -3555,9 +3555,9 @@ export default function ProjectPage() {
       }
 
       if (pendingNewNodesRef.current) {
-        setTimeout(() => tryResolveNewNodesCollisions(), 80);
-        setTimeout(() => tryResolveNewNodesCollisions(), 420);
-        setTimeout(() => tryResolveNewNodesCollisions(), 1250);
+        setTimeout(() => tryResolveNewNodesCollisions(edgesMerged), 80);
+        setTimeout(() => tryResolveNewNodesCollisions(edgesMerged), 420);
+        setTimeout(() => tryResolveNewNodesCollisions(edgesMerged), 1250);
       }
     }
 
@@ -5119,7 +5119,7 @@ export default function ProjectPage() {
     pendingPlacementRef.current = null;
   };
 
-  const alignPendingSingleChildrenToParents = (currentNodes: Node[]): Node[] => {
+  const alignPendingSingleChildrenToParents = (currentNodes: Node[], currentEdges: Edge[]): Node[] => {
     const pending = pendingNewNodesRef.current;
 
     if (!pending || viewModeRef.current !== "hierarchical") {
@@ -5149,7 +5149,7 @@ export default function ProjectPage() {
     const incomingParentsByChild = new Map<string, string[]>();
     const outgoingChildrenByParent = new Map<string, string[]>();
 
-    for (const edge of edges) {
+    for (const edge of currentEdges) {
       const sourceId = String(edge.source);
       const targetId = String(edge.target);
 
@@ -5308,13 +5308,19 @@ export default function ProjectPage() {
     return centerProjectOverGraphBranches(resolvedNodes, graphDirection);
   };
 
-  const tryResolveNewNodesCollisions = () => {
+  const tryResolveNewNodesCollisions = (currentEdges: Edge[]) => {
     const pending = pendingNewNodesRef.current;
     if (!pending) return;
 
     if (pending.reflowWholeGraph) {
       setNodes((currentNodes) => {
-        const resolvedNodes = alignPendingSingleChildrenToParents(currentNodes);
+        const hasNewNodes = currentNodes.some((node) => !pending.beforeIds.has(String(node.id)));
+
+        if (!hasNewNodes) {
+          return currentNodes;
+        }
+
+        const resolvedNodes = alignPendingSingleChildrenToParents(currentNodes, currentEdges);
 
         persistPositionsBulk(
           graphDirection,
@@ -5324,10 +5330,11 @@ export default function ProjectPage() {
           }))
         );
 
+        pendingNewNodesRef.current = null;
+
         return resolvedNodes;
       });
 
-      pendingNewNodesRef.current = null;
       return;
     }
 
