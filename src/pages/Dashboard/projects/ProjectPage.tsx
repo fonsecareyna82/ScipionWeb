@@ -2901,7 +2901,15 @@ export default function ProjectPage() {
 
     setNodes((nds) => {
       const updated = applyNodeChanges(changes, nds);
-      const positions = updated.map((n) => ({ id: n.id, position: n.position }));
+      const shouldRecenterProject = changes.some((change) => change.type !== "select");
+      const resolvedNodes = shouldRecenterProject
+        ? centerProjectOverGraphBranches(updated, graphDirection)
+        : updated;
+
+      const positions = resolvedNodes.map((node) => ({
+        id: node.id,
+        position: node.position,
+      }));
 
       try {
         const topologySignature = graphTopologySignatureRef.current;
@@ -2913,7 +2921,7 @@ export default function ProjectPage() {
         // noOp
       }
 
-      return updated;
+      return resolvedNodes;
     });
   };
 
@@ -3052,6 +3060,8 @@ export default function ProjectPage() {
 
     const nodesWithPositions = saved.length
       ? loadedNodes.map((node) => {
+        if (String(node.id) === "PROJECT") return node;
+
         const savedPosition = savedById.get(String(node.id));
 
         return savedPosition

@@ -491,7 +491,22 @@ function buildSubtreeAlignedPlacements(params: {
     const currentAxis = getPlacementAxis(id);
 
     if (id === "PROJECT") {
-      return currentAxis;
+      let minAxis = Number.POSITIVE_INFINITY;
+      let maxAxis = Number.NEGATIVE_INFINITY;
+
+      for (const nodeId of nodeIds) {
+        if (nodeId === "PROJECT" || !placements[nodeId]) continue;
+
+        const nodeAxis = getPlacementAxis(nodeId);
+        const nodeSize = getResolvedCrossSize(nodeId);
+
+        minAxis = Math.min(minAxis, nodeAxis - nodeSize / 2);
+        maxAxis = Math.max(maxAxis, nodeAxis + nodeSize / 2);
+      }
+
+      return Number.isFinite(minAxis) && Number.isFinite(maxAxis)
+        ? (minAxis + maxAxis) / 2
+        : currentAxis;
     }
 
     const visibleChildren = getNearestVisibleChildren(id);
@@ -733,7 +748,7 @@ export function buildGraphElements(
           tags: Array.isArray(prot?.tags) ? prot?.tags : [],
         },
         position: { x, y },
-        draggable: true,
+        draggable: id !== "PROJECT",
         sourcePosition,
         targetPosition,
       });
