@@ -547,71 +547,63 @@ function buildSubtreeAlignedPlacements(params: {
     levelIds[level].push(id);
   }
 
-  const secondaryParentGap = direction === "TB" ? 360 : 240;
+    const parentAlignmentGap = direction === "TB" ? 360 : 240;
 
-  const levelsDescending = Object.keys(levelIds)
-    .map(Number)
-    .filter(Number.isFinite)
-    .sort((a, b) => b - a);
+  const levelsDescending = Object.keys(levelIds).map(Number).filter(Number.isFinite).sort((a, b) => b - a);
 
   for (const level of levelsDescending) {
-    const idsInLevel = (levelIds[level] ?? []).filter((id) => Boolean(placements[id]));
+    const idsInLevel = (levelIds[level] ?? []).filter((id) => id !== "PROJECT" && Boolean(placements[id]));
 
-    const secondaryParentIds = idsInLevel.filter((id) => {
-      if (id === "PROJECT") return false;
-
-      const primaryChildren = layoutChildren[id] ?? [];
+    const items = idsInLevel.map((id) => {
       const realChildren = getNearestRealChildren(id);
+      const childrenAxis = getChildrenCenterAxis(realChildren);
+      const currentAxis = getPlacementAxis(id);
 
-      return primaryChildren.length === 0 && realChildren.length > 0;
+      return {
+        id,
+        size: getResolvedCrossSize(id),
+        currentAxis,
+        desiredAxis: childrenAxis ?? currentAxis,
+        alignsToChildren: childrenAxis !== null,
+      };
     });
 
-    for (const id of secondaryParentIds) {
-      const realChildren = getNearestRealChildren(id);
-      const desiredAxis = getChildrenCenterAxis(realChildren);
+    const needsAlignment = items.some((item) => item.alignsToChildren && Math.abs(item.desiredAxis - item.currentAxis) > 0.5);
 
-      if (desiredAxis === null) {
-        continue;
+    if (!needsAlignment) {
+      continue;
+    }
+
+    items.sort((a, b) => {
+      if (a.desiredAxis !== b.desiredAxis) {
+        return a.desiredAxis - b.desiredAxis;
       }
 
-      const sortedLevel = [...idsInLevel].sort((a, b) => {
-        const axisA = getPlacementAxis(a);
-        const axisB = getPlacementAxis(b);
+      return stableIdCompare(a.id, b.id);
+    });
 
-        return axisA !== axisB ? axisA - axisB : stableIdCompare(a, b);
-      });
+    const resolvedAxes = new Map<string, number>();
+    let previousRight = Number.NEGATIVE_INFINITY;
 
-      const index = sortedLevel.indexOf(id);
+    for (const item of items) {
+      const minCenter = previousRight + parentAlignmentGap + item.size / 2;
+      const resolvedAxis = Math.max(item.desiredAxis, minCenter);
 
-      if (index === -1) {
-        continue;
-      }
+      resolvedAxes.set(item.id, resolvedAxis);
+      previousRight = resolvedAxis + item.size / 2;
+    }
 
-      const ownSize = getResolvedCrossSize(id);
-      const leftNeighborId = index > 0 ? sortedLevel[index - 1] : null;
-      const rightNeighborId = index < sortedLevel.length - 1 ? sortedLevel[index + 1] : null;
+    const desiredLeft = Math.min(...items.map((item) => item.desiredAxis - item.size / 2));
+    const desiredRight = Math.max(...items.map((item) => item.desiredAxis + item.size / 2));
+    const resolvedLeft = Math.min(...items.map((item) => (resolvedAxes.get(item.id) ?? item.desiredAxis) - item.size / 2));
+    const resolvedRight = Math.max(...items.map((item) => (resolvedAxes.get(item.id) ?? item.desiredAxis) + item.size / 2));
+    const desiredGroupCenter = (desiredLeft + desiredRight) / 2;
+    const resolvedGroupCenter = (resolvedLeft + resolvedRight) / 2;
+    const recenterOffset = desiredGroupCenter - resolvedGroupCenter;
 
-      let minAxis = Number.NEGATIVE_INFINITY;
-      let maxAxis = Number.POSITIVE_INFINITY;
-
-      if (leftNeighborId) {
-        const leftAxis = getPlacementAxis(leftNeighborId);
-        const leftSize = getResolvedCrossSize(leftNeighborId);
-        minAxis = leftAxis + leftSize / 2 + secondaryParentGap + ownSize / 2;
-      }
-
-      if (rightNeighborId) {
-        const rightAxis = getPlacementAxis(rightNeighborId);
-        const rightSize = getResolvedCrossSize(rightNeighborId);
-        maxAxis = rightAxis - rightSize / 2 - secondaryParentGap - ownSize / 2;
-      }
-
-      if (minAxis > maxAxis) {
-        continue;
-      }
-
-      const resolvedAxis = Math.max(minAxis, Math.min(maxAxis, desiredAxis));
-      setPlacementAxis(id, resolvedAxis);
+    for (const item of items) {
+      const resolvedAxis = resolvedAxes.get(item.id) ?? item.desiredAxis;
+      setPlacementAxis(item.id, resolvedAxis + recenterOffset);
     }
   }
 
@@ -647,7 +639,8 @@ function buildSubtreeAlignedPlacements(params: {
  *   their primary visual parent while preserving all real workflow edges.
  * - Root-level branches use a larger visual gap so independent subgraphs remain readable.
  * - Primary subtrees preserve their compact span-based placement.
- * - Secondary-only parents move toward shared children only within available local space.
+ * - Parent nodes are centered over the nearest visible layer of their real children.
+ * - Parent-level collisions are resolved without moving descendant subtrees.
  * - Grid mode can follow traversal order (parents before children) to reduce visual confusion.
  * - Layout uses deterministic size estimates and optional measured node dimensions.
  */
