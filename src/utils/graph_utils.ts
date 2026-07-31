@@ -367,9 +367,9 @@ function buildSubtreeAlignedPlacements(params: {
     return levelDelta !== 0 ? levelDelta : stableIdCompare(a, b);
   });
 
-  const siblingGap = direction === "TB" ? 140 : 110;
-  const rootBranchGap = direction === "TB" ? 320 : 220;
-  const disconnectedRootGap = direction === "TB" ? 240 : 180;
+  const siblingGap = direction === "TB" ? 260 : 220;
+  const rootBranchGap = direction === "TB" ? 80 : 120;
+  const disconnectedRootGap = direction === "TB" ? 190 : 150;
 
   const getChildrenGap = (parentId: string): number => {
     return parentId === "PROJECT" ? rootBranchGap : siblingGap;
@@ -473,7 +473,7 @@ function buildSubtreeAlignedPlacements(params: {
     }
   }
 
-    const getPlacementAxis = (id: string): number => {
+  const getPlacementAxis = (id: string): number => {
     const position = placements[id];
     return direction === "TB" ? position.x : position.y;
   };
@@ -547,7 +547,7 @@ function buildSubtreeAlignedPlacements(params: {
     levelIds[level].push(id);
   }
 
-  const secondaryParentGap = direction === "TB" ? 120 : 90;
+  const secondaryParentGap = direction === "TB" ? 360 : 240;
 
   const levelsDescending = Object.keys(levelIds)
     .map(Number)

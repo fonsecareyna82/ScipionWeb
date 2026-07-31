@@ -2751,14 +2751,14 @@ export default function ProjectPage() {
 
   /* --------------------- Persistence of positions --------------------- */
 
-  type PersistedNodePositionsV5 = {
-    version: 5;
+  type PersistedNodePositionsV6 = {
+    version: 6;
     direction: "TB" | "LR";
     topologySignature: string;
     positions: Array<{ id: string; position: { x: number; y: number } }>;
   };
 
-  const nodePositionsVersion = 5;
+  const nodePositionsVersion = 6;
   const graphTopologySignatureRef = useRef("");
 
   const storageKeyHier = `${localStorageKey}-${graphDirection}-hier`;
@@ -2793,7 +2793,7 @@ export default function ProjectPage() {
       return [];
     }
 
-    const payload = parsed as Partial<PersistedNodePositionsV5>;
+    const payload = parsed as Partial<PersistedNodePositionsV6>;
 
     if (payload.version !== nodePositionsVersion) return [];
     if (payload.direction !== expectedDirection) return [];
@@ -2809,7 +2809,7 @@ export default function ProjectPage() {
     topologySignature: string,
     positions: Array<{ id: string; position: { x: number; y: number } }>
   ) => {
-    const payload: PersistedNodePositionsV5 = {
+    const payload: PersistedNodePositionsV6 = {
       version: nodePositionsVersion,
       direction,
       topologySignature,
