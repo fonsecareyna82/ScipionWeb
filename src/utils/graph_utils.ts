@@ -485,7 +485,7 @@ function buildSubtreeAlignedPlacements(params: {
     levelIds[level].push(id);
   }
 
-  const overlapGap = direction === "TB" ? 140 : 110;
+  const overlapGap = direction === "TB" ? 300 : 250;
 
   const getPlacementAxis = (id: string): number => {
     const position = placements[id];
