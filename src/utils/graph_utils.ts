@@ -230,8 +230,8 @@ function getNodePackingCrossSize(params: {
       });
 
   return direction === "TB"
-    ? Math.max(700, Math.min(960, estimatedSize))
-    : Math.max(340, Math.min(680, estimatedSize));
+    ? 950
+    : Math.max(520, Math.min(680, estimatedSize));
 }
 
 function getChildRankUnderParent(
@@ -307,8 +307,8 @@ function getResolvedPlacementCrossSize(params: {
   const size = getNodeCrossSize(params);
 
   return params.direction === "TB"
-    ? Math.max(700, Math.min(960, size))
-    : Math.max(340, Math.min(680, size));
+    ? Math.max(950, size)
+    : Math.max(520, size);
 }
 
 function buildSubtreeAlignedPlacements(params: {
@@ -547,7 +547,7 @@ function buildSubtreeAlignedPlacements(params: {
     levelIds[level].push(id);
   }
 
-    const parentAlignmentGap = direction === "TB" ? 360 : 240;
+  const parentAlignmentGap = direction === "TB" ? 360 : 240;
 
   const levelsDescending = Object.keys(levelIds).map(Number).filter(Number.isFinite).sort((a, b) => b - a);
 

@@ -3705,7 +3705,6 @@ export default function ProjectPage() {
     async (opts?: { preserveZoom?: boolean }) => {
       if (!projectName) return;
       try {
-        try { localStorage.removeItem(storageKeyHier); } catch { }
         disablePersistenceRef.current = true;
         setHideGraphDuringCenter(true);
 
@@ -5365,29 +5364,12 @@ export default function ProjectPage() {
         const alignedNodes = alignPendingSingleChildrenToParents(result.nodes);
         const centeredNodes = centerProjectOverGraphBranches(alignedNodes, dir);
 
-        const duplicatedIds = new Set(
-          (pending.duplicatedPairs ?? []).map((pair) => String(pair.newId))
-        );
+        const positionsToPersist = centeredNodes.map((node) => ({
+          id: String(node.id),
+          position: node.position,
+        }));
 
-        const changedItems = centeredNodes
-          .filter((node) => duplicatedIds.has(String(node.id)))
-          .map((node) => ({
-            id: String(node.id),
-            position: node.position,
-          }));
-
-        const projectPositionChange = getProjectPositionChange(
-          result.nodes,
-          centeredNodes
-        );
-
-        if (projectPositionChange) {
-          changedItems.push(projectPositionChange);
-        }
-
-        if (changedItems.length) {
-          persistPositionsBulk(dir, changedItems);
-        }
+        persistPositionsBulk(dir, positionsToPersist);
 
         pendingNewNodesRef.current = null;
 
