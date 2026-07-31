@@ -142,6 +142,47 @@ function getGraphNodeLabel(
   return id === "PROJECT" ? projectName : protocols[id]?.label || id;
 }
 
+function getProtocolOutputsCount(
+  id: string,
+  protocols: Record<string, ProtocolNode>
+): number {
+  if (id === "PROJECT") return 0;
+
+  const rawOutputs = (protocols[id] as any)?.outputs;
+
+  if (Array.isArray(rawOutputs)) {
+    return rawOutputs.length;
+  }
+
+  if (rawOutputs && typeof rawOutputs === "object") {
+    return Object.keys(rawOutputs).length;
+  }
+
+  return 0;
+}
+
+function getEstimatedGraphNodeHeight(params: {
+  id: string;
+  protocols: Record<string, ProtocolNode>;
+  projectName: string;
+  nodeSizeMap?: NodeSizeMap | null;
+}): number {
+  const { id, protocols, projectName, nodeSizeMap } = params;
+
+  const measuredHeight = nodeSizeMap?.[id]?.height;
+  if (typeof measuredHeight === "number" && measuredHeight > 0) {
+    return Math.ceil(measuredHeight);
+  }
+
+  const label = getGraphNodeLabel(id, protocols, projectName);
+  const baseHeight = estimateNodeHeight(label);
+  const outputsCount = getProtocolOutputsCount(id, protocols);
+
+  const extraOutputsHeight = Math.max(0, outputsCount) * 32;
+
+  return baseHeight + extraOutputsHeight;
+}
+
 function getNodeCrossSize(params: {
   id: string;
   direction: Direction;
@@ -154,7 +195,12 @@ function getNodeCrossSize(params: {
 
   return direction === "TB"
     ? getNodeWidth(id, label, nodeSizeMap)
-    : getNodeHeight(id, label, nodeSizeMap);
+    : getEstimatedGraphNodeHeight({
+      id,
+      protocols,
+      projectName,
+      nodeSizeMap,
+    });
 }
 
 function getNodePackingCrossSize(params: {
@@ -174,11 +220,18 @@ function getNodePackingCrossSize(params: {
   }
 
   const estimatedSize =
-    direction === "TB" ? estimateLabelWidth(label) : estimateNodeHeight(label);
+    direction === "TB"
+      ? estimateLabelWidth(label)
+      : getEstimatedGraphNodeHeight({
+        id,
+        protocols,
+        projectName,
+        nodeSizeMap,
+      });
 
   return direction === "TB"
-    ? Math.max(780, Math.min(1040, estimatedSize))
-    : Math.max(280, Math.min(560, estimatedSize));
+    ? Math.max(700, Math.min(960, estimatedSize))
+    : Math.max(340, Math.min(680, estimatedSize));
 }
 
 function getChildRankUnderParent(
@@ -254,8 +307,8 @@ function getResolvedPlacementCrossSize(params: {
   const size = getNodeCrossSize(params);
 
   return params.direction === "TB"
-    ? Math.max(780, Math.min(1040, size))
-    : Math.max(280, Math.min(560, size));
+    ? Math.max(700, Math.min(960, size))
+    : Math.max(340, Math.min(680, size));
 }
 
 function buildSubtreeAlignedPlacements(params: {
@@ -314,9 +367,9 @@ function buildSubtreeAlignedPlacements(params: {
     return levelDelta !== 0 ? levelDelta : stableIdCompare(a, b);
   });
 
-  const siblingGap = direction === "TB" ? Math.round(spacingX * 0.45) : Math.round(spacingY * 0.78);
-  const rootBranchGap = direction === "TB" ? Math.round(spacingX * 1.8) : Math.round(spacingY * 1.6);
-  const disconnectedRootGap = direction === "TB" ? Math.round(spacingX * 1.5) : Math.round(spacingY * 1.25);
+  const siblingGap = direction === "TB" ? Math.round(spacingX * 0.42) : Math.round(spacingY * 0.78);
+  const rootBranchGap = direction === "TB" ? Math.round(spacingX * 1.55) : Math.round(spacingY * 1.6);
+  const disconnectedRootGap = direction === "TB" ? Math.round(spacingX * 1.3) : Math.round(spacingY * 1.25);
 
   const getChildrenGap = (parentId: string): number => {
     return parentId === "PROJECT" ? rootBranchGap : siblingGap;
@@ -432,7 +485,7 @@ function buildSubtreeAlignedPlacements(params: {
     levelIds[level].push(id);
   }
 
-  const overlapGap = direction === "TB" ? 220 : 70;
+  const overlapGap = direction === "TB" ? 140 : 110;
 
   const getPlacementAxis = (id: string): number => {
     const position = placements[id];
