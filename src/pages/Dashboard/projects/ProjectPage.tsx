@@ -3125,7 +3125,203 @@ export default function ProjectPage() {
     return centerProjectOverGraphBranches(nodesWithPreservedPositions, graphDirection);
   };
 
-  const preservePendingDeletedNodePositions = (loadedNodes: Node[]): Node[] => {
+
+  const compactSurvivingProjectBranchesAfterDeletion = (
+    sourceNodes: Node[],
+    currentEdges: Edge[],
+    dir: "TB" | "LR"
+  ): Node[] => {
+    const nodeById = new Map(sourceNodes.map((node) => [String(node.id), node]));
+    const protocolNodes = sourceNodes.filter((node) => String(node.id) !== "PROJECT");
+
+    if (protocolNodes.length < 2) {
+      return sourceNodes;
+    }
+
+    const getAxis = (node: Node): number => dir === "TB" ? node.position.x : node.position.y;
+
+    const setAxis = (node: Node, axis: number): Node => ({
+      ...node,
+      position: dir === "TB"
+        ? { ...node.position, x: axis }
+        : { ...node.position, y: axis },
+    });
+
+    const getNodeAxisSize = (node: Node): number => {
+      const measured = (node as any).measured;
+      const measuredWidth = Number(measured?.width ?? node.width);
+      const measuredHeight = Number(measured?.height ?? node.height);
+      const width = Number.isFinite(measuredWidth) && measuredWidth > 0 ? Math.ceil(measuredWidth) : 950;
+      const height = Number.isFinite(measuredHeight) && measuredHeight > 0 ? Math.ceil(measuredHeight) : 520;
+
+      return (dir === "TB" ? width : height) + 40;
+    };
+
+    const outgoingBySource = new Map<string, string[]>();
+    const incomingFromProtocols = new Map<string, number>();
+    const projectRootIds = new Set<string>();
+
+    for (const edge of currentEdges) {
+      const sourceId = String(edge.source);
+      const targetId = String(edge.target);
+
+      if (!nodeById.has(targetId)) continue;
+
+      if (sourceId === "PROJECT") {
+        projectRootIds.add(targetId);
+        continue;
+      }
+
+      if (!nodeById.has(sourceId)) continue;
+
+      const children = outgoingBySource.get(sourceId) ?? [];
+
+      if (!children.includes(targetId)) {
+        children.push(targetId);
+        outgoingBySource.set(sourceId, children);
+      }
+
+      incomingFromProtocols.set(targetId, (incomingFromProtocols.get(targetId) ?? 0) + 1);
+    }
+
+    for (const node of protocolNodes) {
+      const nodeId = String(node.id);
+
+      if ((incomingFromProtocols.get(nodeId) ?? 0) === 0) {
+        projectRootIds.add(nodeId);
+      }
+    }
+
+    const rootIds = Array.from(projectRootIds)
+      .filter((id) => nodeById.has(id))
+      .sort((leftId, rightId) => {
+        const leftNode = nodeById.get(leftId)!;
+        const rightNode = nodeById.get(rightId)!;
+        return getAxis(leftNode) - getAxis(rightNode);
+      });
+
+    if (rootIds.length < 2) {
+      return sourceNodes;
+    }
+
+    const reachableByRoot = new Map<string, Set<string>>();
+
+    for (const rootId of rootIds) {
+      const reachable = new Set<string>();
+      const pendingIds = [rootId];
+
+      while (pendingIds.length > 0) {
+        const currentId = pendingIds.pop();
+
+        if (!currentId || reachable.has(currentId) || !nodeById.has(currentId)) {
+          continue;
+        }
+
+        reachable.add(currentId);
+
+        for (const childId of outgoingBySource.get(currentId) ?? []) {
+          pendingIds.push(childId);
+        }
+      }
+
+      reachableByRoot.set(rootId, reachable);
+    }
+
+    const nodeIdsByRoot = new Map<string, string[]>();
+
+    for (const rootId of rootIds) {
+      nodeIdsByRoot.set(rootId, []);
+    }
+
+    for (const node of protocolNodes) {
+      const nodeId = String(node.id);
+      const nodeAxis = getAxis(node);
+
+      const candidateRootIds = rootIds.filter((rootId) => reachableByRoot.get(rootId)?.has(nodeId));
+
+      const resolvedRootId = (candidateRootIds.length > 0 ? candidateRootIds : rootIds)
+        .slice()
+        .sort((leftId, rightId) => {
+          const leftDistance = Math.abs(getAxis(nodeById.get(leftId)!) - nodeAxis);
+          const rightDistance = Math.abs(getAxis(nodeById.get(rightId)!) - nodeAxis);
+
+          if (leftDistance !== rightDistance) {
+            return leftDistance - rightDistance;
+          }
+
+          return getAxis(nodeById.get(leftId)!) - getAxis(nodeById.get(rightId)!);
+        })[0];
+
+      nodeIdsByRoot.get(resolvedRootId)?.push(nodeId);
+    }
+
+    const branchBlocks = rootIds
+      .map((rootId) => {
+        const nodeIds = nodeIdsByRoot.get(rootId) ?? [];
+        let minAxis = Number.POSITIVE_INFINITY;
+        let maxAxis = Number.NEGATIVE_INFINITY;
+
+        for (const nodeId of nodeIds) {
+          const node = nodeById.get(nodeId);
+
+          if (!node) continue;
+
+          const axis = getAxis(node);
+          const size = getNodeAxisSize(node);
+
+          minAxis = Math.min(minAxis, axis - size / 2);
+          maxAxis = Math.max(maxAxis, axis + size / 2);
+        }
+
+        return {
+          rootId,
+          nodeIds,
+          minAxis,
+          maxAxis,
+        };
+      })
+      .filter((block) => block.nodeIds.length > 0 && Number.isFinite(block.minAxis) && Number.isFinite(block.maxAxis))
+      .sort((left, right) => left.minAxis - right.minAxis);
+
+    if (branchBlocks.length < 2) {
+      return sourceNodes;
+    }
+
+    const branchGap = dir === "TB" ? 80 : 120;
+    const axisOffsetByNodeId = new Map<string, number>();
+    let previousMaxAxis = branchBlocks[0].maxAxis;
+
+    for (let index = 1; index < branchBlocks.length; index++) {
+      const block = branchBlocks[index];
+      const targetMinAxis = previousMaxAxis + branchGap;
+      const offset = Math.min(0, targetMinAxis - block.minAxis);
+
+      for (const nodeId of block.nodeIds) {
+        axisOffsetByNodeId.set(nodeId, offset);
+      }
+
+      previousMaxAxis = Math.max(previousMaxAxis, block.maxAxis + offset);
+    }
+
+    return sourceNodes.map((node) => {
+      const nodeId = String(node.id);
+
+      if (nodeId === "PROJECT") {
+        return node;
+      }
+
+      const offset = axisOffsetByNodeId.get(nodeId) ?? 0;
+
+      return Math.abs(offset) > 0.5
+        ? setAxis(node, getAxis(node) + offset)
+        : node;
+    });
+  };
+
+  const preservePendingDeletedNodePositions = (
+    loadedNodes: Node[],
+    currentEdges: Edge[]
+  ): Node[] => {
     const pending = pendingDeletionRef.current;
 
     if (!pending || viewModeRef.current !== "hierarchical") {
@@ -3142,7 +3338,8 @@ export default function ProjectPage() {
         : node;
     });
 
-    const resolvedNodes = centerProjectOverGraphBranches(nodesWithPreservedPositions, graphDirection);
+    const compactedNodes = compactSurvivingProjectBranchesAfterDeletion(nodesWithPreservedPositions, currentEdges, graphDirection);
+    const resolvedNodes = centerProjectOverGraphBranches(compactedNodes, graphDirection);
     const topologySignature = graphTopologySignatureRef.current;
 
     if (topologySignature) {
@@ -3151,12 +3348,15 @@ export default function ProjectPage() {
         position: node.position,
       }));
 
-      writePersistedPositions(storageKeyHier, graphDirection, topologySignature, positions);
+      try {
+        writePersistedPositions(storageKeyHier, graphDirection, topologySignature, positions);
+      } catch {
+        // noOp
+      }
     }
 
     return resolvedNodes;
   };
-
 
   const mergeEdges = (newEdges: Edge[]) => {
     const oldEdgesMap = new Map(edges.map((e) => [e.id, e]));
@@ -3481,10 +3681,7 @@ export default function ProjectPage() {
           return;
         }
 
-        const nodesWithPositions =
-          viewMode === "hierarchical"
-            ? preservePendingDeletedNodePositions(preservePendingExistingNodePositions(loadNodesWithPositions(loadedNodes, data.protocols)))
-            : loadedNodes;
+        const nodesWithPositions = viewMode === "hierarchical" ? preservePendingDeletedNodePositions(preservePendingExistingNodePositions(loadNodesWithPositions(loadedNodes, data.protocols)), loadedEdges) : loadedNodes;
 
         const edgesMerged = viewMode === "grid" ? [] : mergeEdges(loadedEdges);
         edgesRef.current = edgesMerged;
