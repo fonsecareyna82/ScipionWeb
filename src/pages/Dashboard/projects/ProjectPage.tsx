@@ -13,7 +13,7 @@ import React, {
 
 import ProtocolForm from "@/components/protocol/ProtocolForm";
 import ProtocolStepsDeveloperDialog from "@/components/protocol/ProtocolStepsDeveloperDialog";
-import { buildGraphElements } from "@/utils/graph_utils";
+import { buildGraphElements, getGraphTopologySignature } from "@/utils/graph_utils";
 
 import ReactFlow, {
   Background,
@@ -1381,6 +1381,7 @@ export default function ProjectPage() {
     beforeIds: Set<string>;
     beforePositions?: Map<string, { x: number; y: number }>;
     operation?: "duplicate" | "add";
+    reflowWholeGraph?: boolean;
     duplicatedPairs?: Array<{
       sourceId: string;
       newId: string;
@@ -2750,20 +2751,23 @@ export default function ProjectPage() {
 
   /* --------------------- Persistence of positions --------------------- */
   /* --------------------- Persistence of positions --------------------- */
-  type PersistedNodePositionsV2 = {
-    version: 2;
+
+  type PersistedNodePositionsV3 = {
+    version: 3;
     direction: "TB" | "LR";
+    topologySignature: string;
     positions: Array<{ id: string; position: { x: number; y: number } }>;
   };
 
-  const nodePositionsVersion = 2;
+  const nodePositionsVersion = 3;
+  const graphTopologySignatureRef = useRef("");
 
   const storageKeyHier = `${localStorageKey}-${graphDirection}-hier`;
   const viewportStorageKey = `${localStorageKey}-${viewMode}-${graphDirection}-viewport`;
 
   const safeParseJson = (raw: string | null): unknown => {
-    // safeParseJson
     if (!raw) return null;
+
     try {
       return JSON.parse(raw);
     } catch {
@@ -2771,55 +2775,48 @@ export default function ProjectPage() {
     }
   };
 
-  const isValidPosItem = (v: any): v is { id: string; position: { x: number; y: number } } => {
-    // isValidPosItem
-    const idOk = typeof v?.id === "string" && v.id.length > 0;
-    const xOk = typeof v?.position?.x === "number" && Number.isFinite(v.position.x);
-    const yOk = typeof v?.position?.y === "number" && Number.isFinite(v.position.y);
+  const isValidPosItem = (value: any): value is { id: string; position: { x: number; y: number } } => {
+    const idOk = typeof value?.id === "string" && value.id.length > 0;
+    const xOk = typeof value?.position?.x === "number" && Number.isFinite(value.position.x);
+    const yOk = typeof value?.position?.y === "number" && Number.isFinite(value.position.y);
+
     return idOk && xOk && yOk;
   };
 
   const readPersistedPositions = (
     key: string,
-    expectedDirection: "TB" | "LR"
+    expectedDirection: "TB" | "LR",
+    expectedTopologySignature: string
   ): Array<{ id: string; position: { x: number; y: number } }> => {
-    // readPersistedPositions
     const parsed = safeParseJson(localStorage.getItem(key));
-    if (!parsed) return [];
 
-    // Legacy format: Array<{id, position}>
-    // Important: ignore legacy arrays in LR to prevent TB positions being applied in LR.
-    if (Array.isArray(parsed)) {
-      if (expectedDirection !== "TB") return [];
-      return parsed.filter(isValidPosItem);
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      return [];
     }
 
-    // V2 format: {version, direction, positions}
-    if (typeof parsed === "object" && parsed !== null) {
-      const obj: any = parsed;
-      const versionOk = obj.version === nodePositionsVersion;
-      const dirOk = obj.direction === expectedDirection;
-      const posArr = Array.isArray(obj.positions) ? obj.positions : null;
+    const payload = parsed as Partial<PersistedNodePositionsV3>;
 
-      if (versionOk && dirOk && posArr) {
-        return posArr.filter(isValidPosItem);
-      }
-    }
+    if (payload.version !== nodePositionsVersion) return [];
+    if (payload.direction !== expectedDirection) return [];
+    if (payload.topologySignature !== expectedTopologySignature) return [];
+    if (!Array.isArray(payload.positions)) return [];
 
-    return [];
+    return payload.positions.filter(isValidPosItem);
   };
 
   const writePersistedPositions = (
     key: string,
     direction: "TB" | "LR",
+    topologySignature: string,
     positions: Array<{ id: string; position: { x: number; y: number } }>
   ) => {
-    // writePersistedPositions
-    const payload: PersistedNodePositionsV2 = {
+    const payload: PersistedNodePositionsV3 = {
       version: nodePositionsVersion,
       direction,
+      topologySignature,
       positions,
     };
+
     localStorage.setItem(key, JSON.stringify(payload));
   };
 
@@ -2907,7 +2904,11 @@ export default function ProjectPage() {
       const positions = updated.map((n) => ({ id: n.id, position: n.position }));
 
       try {
-        writePersistedPositions(storageKeyHier, graphDirection, positions);
+        const topologySignature = graphTopologySignatureRef.current;
+
+        if (topologySignature) {
+          writePersistedPositions(storageKeyHier, graphDirection, topologySignature, positions);
+        }
       } catch {
         // noOp
       }
@@ -3030,22 +3031,55 @@ export default function ProjectPage() {
     };
   };
 
-  const loadNodesWithPositions = (loadedNodes: Node[]) => {
-    const saved = readPersistedPositions(storageKeyHier, graphDirection);
+  const loadNodesWithPositions = (
+    loadedNodes: Node[],
+    protocols: Record<string, any>
+  ): Node[] => {
+    const topologySignature = getGraphTopologySignature(protocols);
+    graphTopologySignatureRef.current = topologySignature;
 
-    if (!saved.length) {
-      return centerProjectOverGraphBranches(loadedNodes, graphDirection);
+    const saved = readPersistedPositions(
+      storageKeyHier,
+      graphDirection,
+      topologySignature
+    );
+
+    const savedById = new Map<string, { x: number; y: number }>();
+
+    for (const item of saved) {
+      savedById.set(item.id, item.position);
     }
 
-    const byId = new Map<string, { x: number; y: number }>();
-    for (const p of saved) byId.set(p.id, p.position);
+    const nodesWithPositions = saved.length
+      ? loadedNodes.map((node) => {
+        const savedPosition = savedById.get(String(node.id));
 
-    const nodesWithSavedPositions = loadedNodes.map((n) => {
-      const pos = byId.get(n.id);
-      return pos ? { ...n, position: pos } : n;
-    });
+        return savedPosition
+          ? { ...node, position: savedPosition }
+          : node;
+      })
+      : loadedNodes;
 
-    return centerProjectOverGraphBranches(nodesWithSavedPositions, graphDirection);
+    const resolvedNodes = centerProjectOverGraphBranches(
+      nodesWithPositions,
+      graphDirection
+    );
+
+    try {
+      writePersistedPositions(
+        storageKeyHier,
+        graphDirection,
+        topologySignature,
+        resolvedNodes.map((node) => ({
+          id: String(node.id),
+          position: node.position,
+        }))
+      );
+    } catch {
+      // noOp
+    }
+
+    return resolvedNodes;
   };
 
 
@@ -3053,6 +3087,9 @@ export default function ProjectPage() {
     loadedNodes: Node[],
   ): Node[] => {
     const pending = pendingNewNodesRef.current;
+    if (pending?.reflowWholeGraph) {
+      return centerProjectOverGraphBranches(loadedNodes, graphDirection);
+    }
 
     if (!pending?.beforePositions || viewModeRef.current !== "hierarchical") {
       return centerProjectOverGraphBranches(loadedNodes, graphDirection);
@@ -3083,16 +3120,41 @@ export default function ProjectPage() {
 
 
   // persistPositionsBulk writes multiple node positions in a single localStorage write
-  const persistPositionsBulk = (direction: "TB" | "LR", items: Array<{ id: string; position: { x: number; y: number } }>) => {
+  const persistPositionsBulk = (
+    direction: "TB" | "LR",
+    items: Array<{ id: string; position: { x: number; y: number } }>
+  ) => {
     try {
-      const key = storageKeyHier;
-      const saved = readPersistedPositions(key, direction);
-      const byId = new Map(saved.map((p) => [p.id, p.position]));
+      const topologySignature = graphTopologySignatureRef.current;
+      if (!topologySignature) return;
 
-      for (const it of items) byId.set(it.id, it.position);
+      const saved = readPersistedPositions(
+        storageKeyHier,
+        direction,
+        topologySignature
+      );
 
-      const merged = Array.from(byId.entries()).map(([id, position]) => ({ id, position }));
-      writePersistedPositions(key, direction, merged);
+      const positionsById = new Map(
+        saved.map((item) => [item.id, item.position])
+      );
+
+      for (const item of items) {
+        positionsById.set(item.id, item.position);
+      }
+
+      const merged = Array.from(
+        positionsById.entries()
+      ).map(([id, position]) => ({
+        id,
+        position,
+      }));
+
+      writePersistedPositions(
+        storageKeyHier,
+        direction,
+        topologySignature,
+        merged
+      );
     } catch {
       // noOp
     }
@@ -3129,6 +3191,7 @@ export default function ProjectPage() {
       beforeIds,
       beforePositions,
       operation: "add",
+      reflowWholeGraph: true,
     };
   };
 
@@ -3228,7 +3291,7 @@ export default function ProjectPage() {
 
         const nodesWithPositions =
           mode === "hierarchical"
-            ? loadNodesWithPositions(loadedNodes)
+            ? loadNodesWithPositions(loadedNodes, data.protocols)
             : loadedNodes;
 
         const nodesWithTick =
@@ -3375,7 +3438,7 @@ export default function ProjectPage() {
 
         const nodesWithPositions =
           viewMode === "hierarchical"
-            ? preservePendingExistingNodePositions(loadNodesWithPositions(loadedNodes))
+            ? preservePendingExistingNodePositions(loadNodesWithPositions(loadedNodes, data.protocols))
             : loadedNodes;
 
         const edgesMerged = viewMode === "grid" ? [] : mergeEdges(loadedEdges);
@@ -3699,7 +3762,7 @@ export default function ProjectPage() {
 
         const nodesWithPositions =
           viewMode === "hierarchical"
-            ? loadNodesWithPositions(loadedNodes)
+            ? loadNodesWithPositions(loadedNodes, data.protocols)
             : loadedNodes;
 
         const unifiedSelectedIds = getUnifiedSelectedIds();
@@ -3962,7 +4025,7 @@ export default function ProjectPage() {
       );
 
     const nodesWithPositions =
-      viewMode === "hierarchical" ? loadNodesWithPositions(loadedNodes) : loadedNodes;
+      viewMode === "hierarchical" ? loadNodesWithPositions(loadedNodes, project.protocols) : loadedNodes;
 
     const unifiedSelectedIds = getUnifiedSelectedIds();
     const nodesSeeded = seedNodesWithSelectionAndThumbnails(
@@ -5051,6 +5114,11 @@ export default function ProjectPage() {
     const pending = pendingNewNodesRef.current;
     if (!pending) return;
 
+    if (pending.reflowWholeGraph) {
+      pendingNewNodesRef.current = null;
+      return;
+    }
+
     if (viewModeRef.current !== "hierarchical") return;
 
     const currentIds = new Set(nodesRef.current.map((n) => String(n.id)));
@@ -5532,6 +5600,7 @@ export default function ProjectPage() {
       beforeIds,
       beforePositions,
       operation: "add",
+      reflowWholeGraph: true,
     };
 
     try {
@@ -5609,6 +5678,7 @@ export default function ProjectPage() {
       beforePositions,
       operation: "duplicate",
       duplicatedPairs: [],
+      reflowWholeGraph: true,
     };
 
     try {
@@ -5623,6 +5693,7 @@ export default function ProjectPage() {
         beforeIds,
         beforePositions,
         operation: "duplicate",
+        reflowWholeGraph: true,
         duplicatedPairs: duplicatedFromBackend
           .map((pair: any) => {
             const sourceId = String(pair?.sourceId ?? "");
