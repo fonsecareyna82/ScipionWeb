@@ -7393,33 +7393,33 @@ export default function ProjectPage() {
           <Dialog open={buildInfoOpen} onOpenChange={setBuildInfoOpen}>
             <DialogContent
               container={dialogContainer ?? undefined}
-              className="sm:max-w-md p-0 overflow-hidden border border-border bg-background shadow-xl rounded-xl pp-buildInfoDialog"
+              className="sm:max-w-md p-0 overflow-hidden border border-border bg-background shadow-xl rounded-xl"
             >
-              <div className="pp-buildInfoHeader">
-                <DialogTitle className="pp-buildInfoTitle">Build info</DialogTitle>
-                <DialogDescription className="pp-buildInfoSubtitle">
-                  Project page widget
-                </DialogDescription>
-              </div>
+              <DialogHeader className="border-b border-border px-5 py-4 text-left">
+                <DialogTitle className="text-base font-semibold leading-6">
+                  Build info
+                </DialogTitle>
+                <DialogDescription>Project page widget</DialogDescription>
+              </DialogHeader>
 
-              <dl className="pp-buildInfoList">
+              <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2.5 px-5 py-4 text-sm">
                 {APP_VERSION && (
                   <>
-                    <dt>Version</dt>
+                    <dt className="font-medium text-muted-foreground">Version</dt>
                     <dd>{APP_VERSION}</dd>
                   </>
                 )}
                 {WIDGET_BUILD_TIMESTAMP && (
                   <>
-                    <dt>Built</dt>
+                    <dt className="font-medium text-muted-foreground">Built</dt>
                     <dd>{formatWidgetBuildTimestamp(WIDGET_BUILD_TIMESTAMP)}</dd>
-                    <dt>Build time (UTC)</dt>
-                    <dd className="pp-buildInfoMono">{WIDGET_BUILD_TIMESTAMP}</dd>
+                    <dt className="font-medium text-muted-foreground">Build time (UTC)</dt>
+                    <dd className="break-all font-mono text-xs">{WIDGET_BUILD_TIMESTAMP}</dd>
                   </>
                 )}
               </dl>
 
-              <DialogFooter className="pp-buildInfoFooter">
+              <DialogFooter className="border-t border-border bg-background px-5 py-4 sm:justify-center">
                 <Button variant="outline" onClick={() => setBuildInfoOpen(false)} className="min-w-28">
                   Close
                 </Button>

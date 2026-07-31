@@ -378,60 +378,6 @@
   display: flex;
 }
 
-.projectpage-widget-root .pp-buildInfoDialog {
-  padding: 0;
-}
-
-.projectpage-widget-root .pp-buildInfoHeader {
-  padding: 16px 20px 12px;
-  border-bottom: 1px solid var(--border, rgba(148, 163, 184, 0.25));
-}
-
-.projectpage-widget-root .pp-buildInfoTitle {
-  font-size: 1rem;
-  font-weight: 600;
-  line-height: 1.35;
-  margin: 0;
-}
-
-.projectpage-widget-root .pp-buildInfoSubtitle {
-  margin-top: 4px;
-  font-size: 0.8125rem;
-  color: var(--muted-foreground, #64748b);
-}
-
-.projectpage-widget-root .pp-buildInfoList {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 10px 16px;
-  margin: 0;
-  padding: 16px 20px;
-}
-
-.projectpage-widget-root .pp-buildInfoList dt {
-  margin: 0;
-  font-size: 0.8125rem;
-  font-weight: 500;
-  color: var(--muted-foreground, #64748b);
-}
-
-.projectpage-widget-root .pp-buildInfoList dd {
-  margin: 0;
-  font-size: 0.875rem;
-  word-break: break-word;
-}
-
-.projectpage-widget-root .pp-buildInfoMono {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 0.8125rem;
-}
-
-.projectpage-widget-root .pp-buildInfoFooter {
-  padding: 12px 20px 16px;
-  border-top: 1px solid var(--border, rgba(148, 163, 184, 0.25));
-  justify-content: center;
-}
-
 /* ─────────────────────────────────────────────
    searchBox
    ───────────────────────────────────────────── */
