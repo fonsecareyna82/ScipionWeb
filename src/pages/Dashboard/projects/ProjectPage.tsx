@@ -3451,6 +3451,7 @@ export default function ProjectPage() {
             : loadedNodes;
 
         const edgesMerged = viewMode === "grid" ? [] : mergeEdges(loadedEdges);
+        edgesRef.current = edgesMerged;
 
         const unifiedSelectedIds = getUnifiedSelectedIds();
         const nodesSeed =
@@ -3555,9 +3556,9 @@ export default function ProjectPage() {
       }
 
       if (pendingNewNodesRef.current) {
-        setTimeout(() => tryResolveNewNodesCollisions(edgesMerged), 80);
-        setTimeout(() => tryResolveNewNodesCollisions(edgesMerged), 420);
-        setTimeout(() => tryResolveNewNodesCollisions(edgesMerged), 1250);
+        setTimeout(() => tryResolveNewNodesCollisions(), 80);
+        setTimeout(() => tryResolveNewNodesCollisions(), 420);
+        setTimeout(() => tryResolveNewNodesCollisions(), 1250);
       }
     }
 
@@ -5119,7 +5120,7 @@ export default function ProjectPage() {
     pendingPlacementRef.current = null;
   };
 
-  const alignPendingSingleChildrenToParents = (currentNodes: Node[], currentEdges: Edge[]): Node[] => {
+  const alignPendingSingleChildrenToParents = (currentNodes: Node[]): Node[] => {
     const pending = pendingNewNodesRef.current;
 
     if (!pending || viewModeRef.current !== "hierarchical") {
@@ -5149,7 +5150,7 @@ export default function ProjectPage() {
     const incomingParentsByChild = new Map<string, string[]>();
     const outgoingChildrenByParent = new Map<string, string[]>();
 
-    for (const edge of currentEdges) {
+    for (const edge of edgesRef.current) {
       const sourceId = String(edge.source);
       const targetId = String(edge.target);
 
@@ -5308,7 +5309,7 @@ export default function ProjectPage() {
     return centerProjectOverGraphBranches(resolvedNodes, graphDirection);
   };
 
-  const tryResolveNewNodesCollisions = (currentEdges: Edge[]) => {
+  const tryResolveNewNodesCollisions = () => {
     const pending = pendingNewNodesRef.current;
     if (!pending) return;
 
@@ -5320,7 +5321,7 @@ export default function ProjectPage() {
           return currentNodes;
         }
 
-        const resolvedNodes = alignPendingSingleChildrenToParents(currentNodes, currentEdges);
+        const resolvedNodes = alignPendingSingleChildrenToParents(currentNodes);
 
         persistPositionsBulk(
           graphDirection,
