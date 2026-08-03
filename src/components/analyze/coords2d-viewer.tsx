@@ -1007,7 +1007,7 @@ function Coords2dViewer({
   }, [service, projectId, protocolId, outputName, micrographs]);
 
   useEffect(() => {
-    if (!selectedMicKey || !selectedMicId) return;
+    if (!selectedMicKey || selectedMicId === null || selectedMicId === undefined) return;
     if (pointsByMicId[selectedMicKey]) return;
 
     let cancelled = false;
@@ -1083,7 +1083,7 @@ function Coords2dViewer({
       imageCacheSourceKeyRef.current = sourceKey;
     }
 
-    if (!selectedMicId) {
+    if (selectedMicId === null || selectedMicId === undefined) {
       setImageUrl(null);
       setImage(null);
       setLoadingImage(false);
@@ -1116,6 +1116,7 @@ function Coords2dViewer({
     setImageLoadAttempted(false);
     setPreviewHiddenPointIds(new Set());
     setHistogramOpen(false);
+    setError(null);
 
     async function loadImage() {
       try {
@@ -1194,15 +1195,17 @@ function Coords2dViewer({
           setImage(null);
           setImageLoadAttempted(true);
           setLoadingImage(false);
+          setError("The micrograph image returned by the backend could not be decoded.");
         };
 
         img.src = objectUrl.url;
-      } catch {
+      } catch (err) {
         if (!cancelled) {
           setImageUrl(null);
           setImage(null);
           setImageLoadAttempted(true);
           setLoadingImage(false);
+          setError(err instanceof Error ? err.message : "Failed to load micrograph image");
         }
       }
     }
@@ -1278,12 +1281,12 @@ function Coords2dViewer({
     setTransform(computeFitTransform(bounds, size));
   }, [bounds, size]);
 
-  useEffect(() => {
-    if (!selectedMicKey) return;
+    useEffect(() => {
+    if (!selectedMicKey || loadingCoordinates) return;
 
     const nextBounds = getBounds(visiblePointsRef.current, imageWorldSize, boxSize);
     setTransform(computeFitTransform(nextBounds, size));
-  }, [selectedMicKey, imageUrl, size.width, size.height, imageWorldSize, boxSize]);
+  }, [selectedMicKey, imageUrl, size.width, size.height, imageWorldSize, boxSize, loadingCoordinates]);
 
   const worldToScreen = useCallback(
     (x: number, y: number) => ({
