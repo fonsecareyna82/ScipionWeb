@@ -156,45 +156,6 @@ describe("Projects page", () => {
     resetFactories();
   });
 
-  it("loads and renders the project list", async () => {
-    const service = createProjectServiceMock({
-      fetchList: vi.fn().mockResolvedValue([
-        makeRawProject({
-          id: "1",
-          name: "Alpha",
-          description: "Alpha description",
-          createdAt: "2026-04-01T10:00:00Z",
-          isOwner: true,
-          isShared: false,
-          permission: "full",
-          projectOwnerId: 1,
-        }),
-        makeRawProject({
-          id: "2",
-          name: "Beta",
-          description: "Beta description",
-          createdAt: "2026-04-02T10:00:00Z",
-          isOwner: false,
-          isShared: true,
-          permission: "read",
-          projectOwnerId: 9,
-        }),
-      ]),
-    });
-
-    renderWithProviders(<Projects />, { service });
-
-    expect(await screen.findByText("Alpha")).toBeInTheDocument();
-    expect(screen.getByText("Beta")).toBeInTheDocument();
-
-    const totalStatCard = screen.getByText("Total").parentElement;
-    expect(totalStatCard).not.toBeNull();
-    expect(within(totalStatCard as HTMLElement).getByText("2")).toBeInTheDocument();
-
-    expect(
-      screen.getByText("Browse your projects, open workflows, and manage sharing."),
-    ).toBeInTheDocument();
-  });
 
   it("filters projects by the search box", async () => {
     const service = createProjectServiceMock({

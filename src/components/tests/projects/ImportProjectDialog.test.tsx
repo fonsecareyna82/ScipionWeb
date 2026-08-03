@@ -118,14 +118,12 @@ describe("ImportProjectDialog", () => {
       target: { value: "  Imported Alpha  " },
     });
 
-    fireEvent.click(screen.getByRole("checkbox"));
     fireEvent.click(screen.getByRole("button", { name: "Import" }));
 
     await waitFor(() => {
       expect(onImport).toHaveBeenCalledWith({
         projectLocation: "/tmp/project",
         projectName: "Imported Alpha",
-        copyProject: true,
       });
     });
 
@@ -162,7 +160,6 @@ describe("ImportProjectDialog", () => {
       expect(onImport).toHaveBeenCalledWith({
         projectLocation: "/tmp/project",
         projectName: undefined,
-        copyProject: false,
       });
     });
   });

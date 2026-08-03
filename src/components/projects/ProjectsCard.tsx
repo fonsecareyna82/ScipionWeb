@@ -458,7 +458,7 @@ export default function ProjectCard(props: ProjectCardProps) {
             maxOutputsPerProtocol: 2,
             inlineImages: true,
             signal: controller.signal,
-            cache: "default",
+            cache: "no-store",
           });
         }
 
@@ -637,10 +637,16 @@ export default function ProjectCard(props: ProjectCardProps) {
     galleryHasPendingImages,
   ]);
 
-  const shouldLoadProjectFallback = useMemo(() => {
-    if (!thumbnailUrl) return false;
-    return true;
-  }, [thumbnailUrl]);
+  const shouldLoadProjectFallback = useMemo(
+    () => Boolean(
+      thumbnailUrl &&
+      !thumbnailItemsUrl
+    ),
+    [
+      thumbnailUrl,
+      thumbnailItemsUrl,
+    ],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -934,6 +940,7 @@ export default function ProjectCard(props: ProjectCardProps) {
 
   const showProjectFallback =
     Boolean(projectThumbnailSrc) &&
+    !thumbnailItemsUrl &&
     !showGallery;
 
   const showGalleryLoading =

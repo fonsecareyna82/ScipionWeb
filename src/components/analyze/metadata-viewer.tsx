@@ -2317,7 +2317,7 @@ function MetadataImageCell({
         borderRadius: 1,
         border: `1px solid ${borderColor}`,
         overflow: "hidden",
-        bgcolor: thumbUrl ? "#d1d5db" : "transparent",
+        bgcolor: thumbUrl ? "#111827" : "transparent",
       }}
     >
       {loading ? (
@@ -2330,7 +2330,12 @@ function MetadataImageCell({
         <img
           src={thumbUrl}
           alt={cell.path}
-          style={{ maxWidth: "100%", maxHeight: "100%", display: "block" }}
+          style={{
+            width: "100%",
+            height: "100%",
+            objectFit: "contain",
+            display: "block",
+          }}
         />
       ) : null}
     </Box>
@@ -3315,25 +3320,25 @@ export function MetadataViewer({ projectId, protocolId, outputName, onClose, emb
   }, []);
 
   const galleryInfoColumns = useMemo(() => {
-  const rawColumns = schema?.additionalInfoColumns;
-  if (!Array.isArray(rawColumns)) return [];
+    const rawColumns = schema?.additionalInfoColumns;
+    if (!Array.isArray(rawColumns)) return [];
 
-  return rawColumns.filter(
-    (columnName): columnName is string =>
-      typeof columnName === "string" && columnName.trim().length > 0,
-  );
-}, [schema?.additionalInfoColumns]);
+    return rawColumns.filter(
+      (columnName): columnName is string =>
+        typeof columnName === "string" && columnName.trim().length > 0,
+    );
+  }, [schema?.additionalInfoColumns]);
 
-const sizeColumn = useMemo(() => {
-  if (!allColumns.length) return null;
+  const sizeColumn = useMemo(() => {
+    if (!allColumns.length) return null;
 
-  const canUseSizeColumn =
-    galleryInfoColumns.length === 0 || galleryInfoColumns.includes("_size");
+    const canUseSizeColumn =
+      galleryInfoColumns.length === 0 || galleryInfoColumns.includes("_size");
 
-  if (!canUseSizeColumn) return null;
+    if (!canUseSizeColumn) return null;
 
-  return allColumns.find((item) => item.name === "_size") ?? null;
-}, [allColumns, galleryInfoColumns]);
+    return allColumns.find((item) => item.name === "_size") ?? null;
+  }, [allColumns, galleryInfoColumns]);
 
   const schemaActions = useMemo(() => getSchemaActions(schema), [schema]);
 

@@ -126,7 +126,6 @@ export type ProjectPayload = { name: string; description?: string };
 export type ImportProjectPayload = {
   projectLocation: string;
   projectName?: string;
-  copyProject: boolean;
 };
 
 /** Volume list item used by Analyze Results. */

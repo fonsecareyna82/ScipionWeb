@@ -104,6 +104,7 @@ type ProtocolFormProps = {
   projectProtocols: any;
   onClose: () => void;
   onExecuted?: () => void;
+  onSaved?: () => void;
   /** Presentation variant: "drawer" (default) slides in from the right; "docked" fills its parent panel. */
   variant?: "drawer" | "docked";
   projectEffectiveSettings?: ProjectEffectiveSettings | null;
@@ -187,6 +188,7 @@ export default function ProtocolForm({
   projectProtocols = [],
   onClose,
   onExecuted,
+  onSaved,
   variant = "drawer",
   projectEffectiveSettings = null,
 }: ProtocolFormProps) {
@@ -1583,12 +1585,14 @@ export default function ProtocolForm({
 
       if (errors.length === 0) {
         toast.success(`Saved protocol ${returnedProtocolId} successfully.`);
+        onSaved?.();
         requestClose();
         return;
       }
 
       const msg = formatErrorsForDialog(errors);
       toast.error(`Saved with warnings: ${msg}`);
+      onSaved?.();
       requestClose();
     } catch (err: any) {
       const payload = getBackendPayloadFromError(err);

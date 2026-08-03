@@ -520,7 +520,6 @@ export async function importProject(
     body: JSON.stringify({
       projectLocation: payload.projectLocation,
       projectName: payload.projectName,
-      copyProject: payload.copyProject,
     }),
   });
 

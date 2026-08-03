@@ -2612,7 +2612,7 @@ function OrthoSlicePanel({
     if (!imageUrl) {
       return (
         <Typography variant="caption" color="text.secondary">
-          No image
+          Waiting for image…
         </Typography>
       );
     }
@@ -2962,7 +2962,17 @@ function useVolumeSliceImage({
     };
   }, []);
 
-  return { url, loading, error };
+  const effectiveLoading =
+    loading ||
+    (
+      enabled &&
+      volumeId != null &&
+      sliceIndex != null &&
+      !url &&
+      !error
+    );
+
+  return { url, loading: effectiveLoading, error };
 }
 
 /**

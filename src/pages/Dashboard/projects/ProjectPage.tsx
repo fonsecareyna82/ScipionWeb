@@ -13,7 +13,7 @@ import React, {
 
 import ProtocolForm from "@/components/protocol/ProtocolForm";
 import ProtocolStepsDeveloperDialog from "@/components/protocol/ProtocolStepsDeveloperDialog";
-import { buildGraphElements } from "@/utils/graph_utils";
+import { buildGraphElements, getGraphTopologySignature } from "@/utils/graph_utils";
 
 import ReactFlow, {
   Background,
@@ -114,6 +114,183 @@ interface StatusNodeData {
   tagIds?: string[];
 }
 
+const ELAPSED_TIMER_STATUSES = new Set([
+  "launched",
+  "running",
+]);
+
+function normalizeProtocolStatus(
+  status: unknown,
+): string {
+  return String(status ?? "")
+    .trim()
+    .toLowerCase();
+}
+
+function isElapsedTimerStatus(
+  status: unknown,
+): boolean {
+  return ELAPSED_TIMER_STATUSES.has(
+    normalizeProtocolStatus(status),
+  );
+}
+
+function isProtocolRefreshActive(status: unknown): boolean {
+  const normalized = normalizeProtocolStatus(status);
+
+  return (
+    normalized === "launched" ||
+    normalized === "running" ||
+    normalized === "scheduled"
+  );
+}
+
+function continuesElapsedTimerSession(
+  previousStatus: unknown,
+  nextStatus: unknown,
+): boolean {
+  const previous =
+    normalizeProtocolStatus(
+      previousStatus
+    );
+
+  const next =
+    normalizeProtocolStatus(
+      nextStatus
+    );
+
+  return (
+    previous === "launched" &&
+    (
+      next === "launched" ||
+      next === "running"
+    )
+  ) || (
+      previous === "running" &&
+      next === "running"
+    );
+}
+
+function toElapsedSeconds(value: unknown): number {
+  const seconds = Number(value);
+  return Number.isFinite(seconds) && seconds >= 0 ? seconds : 0;
+}
+
+function mergeNodeElapsedTick(
+  freshNode: Node<StatusNodeData>,
+  currentNode?: Node<StatusNodeData>,
+): Node<StatusNodeData> {
+  const freshStatus =
+    freshNode.data?.status;
+
+  const backendElapsed = toElapsedSeconds(
+    freshNode.data?.elapsedTime,
+  );
+
+  const nextData = {
+    ...freshNode.data,
+  };
+
+  if (!isElapsedTimerStatus(freshStatus)) {
+    delete nextData.tick;
+
+    return {
+      ...freshNode,
+      data: nextData,
+    };
+  }
+
+  const continuesActiveSession =
+    continuesElapsedTimerSession(
+      currentNode?.data?.status,
+      freshStatus,
+    );
+
+  const currentElapsed = toElapsedSeconds(
+    currentNode?.data?.tick ??
+    currentNode?.data?.elapsedTime,
+  );
+
+  return {
+    ...freshNode,
+    data: {
+      ...nextData,
+      tick: continuesActiveSession
+        ? Math.max(
+          currentElapsed,
+          backendElapsed,
+        )
+        : backendElapsed,
+    },
+  };
+}
+
+function mergeTableElapsedTick(
+  freshRow: any,
+  currentRow?: any,
+  currentNode?: Node<StatusNodeData>,
+): any {
+  const backendElapsed = toElapsedSeconds(
+    freshRow?.elapsedTime,
+  );
+
+  if (
+    !isElapsedTimerStatus(
+      freshRow?.status,
+    )
+  ) {
+    const nextRow = {
+      ...freshRow,
+    };
+
+    delete nextRow.tick;
+
+    return nextRow;
+  }
+
+  const currentRowContinues =
+    continuesElapsedTimerSession(
+      currentRow?.status,
+      freshRow?.status,
+    );
+
+  const currentNodeContinues =
+    continuesElapsedTimerSession(
+      currentNode?.data?.status,
+      freshRow?.status,
+    );
+
+  const currentElapsed = Math.max(
+    currentRowContinues
+      ? toElapsedSeconds(
+        currentRow?.tick ??
+        currentRow?.elapsedTime,
+      )
+      : 0,
+
+    currentNodeContinues
+      ? toElapsedSeconds(
+        currentNode?.data?.tick ??
+        currentNode?.data?.elapsedTime,
+      )
+      : 0,
+  );
+
+  const continuesActiveSession =
+    currentRowContinues ||
+    currentNodeContinues;
+
+  return {
+    ...freshRow,
+    tick: continuesActiveSession
+      ? Math.max(
+        currentElapsed,
+        backendElapsed,
+      )
+      : backendElapsed,
+  };
+}
+
 interface ContextMenuState {
   visible: boolean;
   x: number; // pane-relative
@@ -156,9 +333,17 @@ function getProtocolFormStatus(details: any): string {
   return "";
 }
 
-function shouldRefreshProtocolForm(details: any): boolean {
-  const status = getProtocolFormStatus(details);
-  return status === "running" || status === "scheduled";
+function shouldRefreshProtocolForm(
+  details: any
+): boolean {
+  const status =
+    getProtocolFormStatus(details);
+
+  return (
+    status === "launched" ||
+    status === "running" ||
+    status === "scheduled"
+  );
 }
 
 function mergeLiveProtocolFormDetails(currentDetails: any, freshDetails: any): any {
@@ -956,6 +1141,10 @@ export default function ProjectPage() {
 
   const openFormsRef = useRef<OpenForm[]>([]);
 
+  const syncProtocolDetailsToGraphRef = useRef<
+    (protocolId: string, details: any) => void
+  >(() => { });
+
   useEffect(() => {
     openFormsRef.current = openForms;
   }, [openForms]);
@@ -1006,6 +1195,13 @@ export default function ProjectPage() {
     }
 
     if (!detailsById.size) return;
+
+    for (const [protocolId, details] of detailsById) {
+      syncProtocolDetailsToGraphRef.current(
+        protocolId,
+        details
+      );
+    }
 
     setOpenForms((prev) =>
       prev.map((form) => {
@@ -1105,6 +1301,7 @@ export default function ProjectPage() {
 
   const [nodes, setNodes, onNodesChange] = useNodesState<StatusNodeData>([]);
   const outputThumbnailCacheRef = useRef<Map<string, ProtocolOutputThumbnailItem>>(new Map());
+  const outputThumbnailRetryAfterRef = useRef<Map<string, number>>(new Map());
   const outputThumbnailInFlightRef = useRef<Promise<void> | null>(null);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge[]>([]);
   const [tableData, setTableData] = useState<any[]>([]);
@@ -1142,7 +1339,6 @@ export default function ProjectPage() {
 
   const [viewMode, setViewMode] = useState<"hierarchical" | "grid" | "table">("hierarchical");
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
-  const [nodeTicks, setNodeTicks] = useState<Record<string, number>>({});
   const rowRefs = useRef<Record<string, HTMLTableRowElement | null>>({});
   const tableContainerRef = useRef<HTMLDivElement | null>(null);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
@@ -1185,11 +1381,16 @@ export default function ProjectPage() {
     beforeIds: Set<string>;
     beforePositions?: Map<string, { x: number; y: number }>;
     operation?: "duplicate" | "add";
+    reflowWholeGraph?: boolean;
     duplicatedPairs?: Array<{
       sourceId: string;
       newId: string;
       sourcePosition?: { x: number; y: number };
     }>;
+  } | null>(null);
+
+  const pendingDeletionRef = useRef<{
+    beforePositions: Map<string, { x: number; y: number }>;
   } | null>(null);
 
   useEffect(() => {
@@ -1318,13 +1519,14 @@ export default function ProjectPage() {
     beforeIds: Set<string>;
   } | null>(null);
 
-  const TIME_TO_REFRESH = 15000;
+  const ACTIVE_TIME_TO_REFRESH = 5000;
+  const IDLE_TIME_TO_REFRESH = 15000;
   const PROTOCOL_OUTPUT_THUMBNAIL_CHUNK_SIZE = 24;
   const PROTOCOL_OUTPUT_THUMBNAIL_CHUNK_DELAY_MS = 50;
+  const PROTOCOL_OUTPUT_THUMBNAIL_RETRY_DELAY_MS = 30_000;
   const localStorageKey = `project-${projectName}-node-positions`;
 
   const [, setIsSwitchingLayout] = useState(false);
-  const [, setTableVisible] = useState(viewMode === "table");
   const [nodesLoadedOnce, setNodesLoadedOnce] = useState(false);
   const firstLoadRef = useRef(true);
   const skipNextGridSnapRef = useRef(false);
@@ -1341,6 +1543,84 @@ export default function ProjectPage() {
 
   const nodesRef = useRef<Node[]>(nodes);
   useEffect(() => { nodesRef.current = nodes; }, [nodes]);
+
+  const syncProtocolDetailsToGraph = useCallback(
+    (
+      protocolId: string,
+      details: any,
+    ) => {
+      const info = details?.info;
+
+      if (!info || typeof info !== "object") return;
+
+      const outputs = Array.isArray(info.outputs)
+        ? info.outputs
+        : undefined;
+
+      const status = typeof info.status === "string"
+        ? info.status
+        : undefined;
+
+      if (
+        outputs === undefined &&
+        status === undefined
+      ) {
+        return;
+      }
+
+      setNodes((currentNodes) =>
+        currentNodes.map((node) => {
+          if (
+            String(node.id) !==
+            String(protocolId)
+          ) {
+            return node;
+          }
+
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              ...(outputs !== undefined
+                ? { outputs }
+                : {}),
+              ...(status !== undefined
+                ? { status }
+                : {}),
+            },
+          };
+        })
+      );
+
+      setTableData((currentRows) =>
+        currentRows.map((row) => {
+          if (
+            String(row?.id) !==
+            String(protocolId)
+          ) {
+            return row;
+          }
+
+          return {
+            ...row,
+            ...(outputs !== undefined
+              ? { outputs }
+              : {}),
+            ...(status !== undefined
+              ? { status }
+              : {}),
+          };
+        })
+      );
+    },
+    [setNodes],
+  );
+
+  useEffect(() => {
+    syncProtocolDetailsToGraphRef.current =
+      syncProtocolDetailsToGraph;
+  }, [syncProtocolDetailsToGraph]);
+
   const edgesRef = useRef<Edge[]>(edges);
   useEffect(() => { edgesRef.current = edges; }, [edges]);
 
@@ -1386,6 +1666,16 @@ export default function ProjectPage() {
             continue;
           }
 
+          const retryAfter = outputThumbnailRetryAfterRef.current.get(cacheKey) ?? 0;
+
+          if (retryAfter > Date.now()) {
+            continue;
+          }
+
+          if (retryAfter) {
+            outputThumbnailRetryAfterRef.current.delete(cacheKey);
+          }
+
           if (
             typeof maxNewRequests === "number" &&
             maxNewRequests > 0 &&
@@ -1428,7 +1718,12 @@ export default function ProjectPage() {
             PROTOCOL_OUTPUT_THUMBNAIL_SIZE,
           );
 
-          outputThumbnailCacheRef.current.set(cacheKey, item);
+          if (item.exists && (item.thumbnailDataUrl || item.thumbnailUrl)) {
+            outputThumbnailCacheRef.current.set(cacheKey, item);
+            outputThumbnailRetryAfterRef.current.delete(cacheKey);
+          } else {
+            outputThumbnailRetryAfterRef.current.set(cacheKey, Date.now() + PROTOCOL_OUTPUT_THUMBNAIL_RETRY_DELAY_MS);
+          }
         }
 
         return items;
@@ -1522,12 +1817,12 @@ export default function ProjectPage() {
     if (protocolOutputThumbnailsEnabled) return;
 
     outputThumbnailCacheRef.current.clear();
+    outputThumbnailRetryAfterRef.current.clear();
     outputThumbnailInFlightRef.current = null;
 
     setNodes((prev) => clearOutputThumbnailsFromNodes(prev as Node<StatusNodeData>[]));
   }, [protocolOutputThumbnailsEnabled, setNodes]);
 
-  const isRunningNode = (n: Node) => (n as any).data?.status === "running";
 
   // Workflows
   const [workflowsOpen, setWorkflowsOpen] = useState(false);
@@ -2201,6 +2496,11 @@ export default function ProjectPage() {
       try {
         const details = await fetcher();
 
+        syncProtocolDetailsToGraph(
+          id,
+          details
+        );
+
         if (dockEpochRef.current !== dockEpoch) {
           // dockWasGloballyClosedWhileFetching
           return;
@@ -2220,7 +2520,12 @@ export default function ProjectPage() {
         openingFormIdsRef.current.delete(id);
       }
     },
-    [projectName, applyEdgeHighlight, syncUnifiedSelectedIds]
+    [
+      projectName,
+      applyEdgeHighlight,
+      syncUnifiedSelectedIds,
+      syncProtocolDetailsToGraph,
+    ]
   );
 
 
@@ -2449,21 +2754,23 @@ export default function ProjectPage() {
   const nodeTypes = nodeTypesRef.current;
 
   /* --------------------- Persistence of positions --------------------- */
-  /* --------------------- Persistence of positions --------------------- */
-  type PersistedNodePositionsV2 = {
-    version: 2;
+
+  type PersistedNodePositionsV6 = {
+    version: 6;
     direction: "TB" | "LR";
+    topologySignature: string;
     positions: Array<{ id: string; position: { x: number; y: number } }>;
   };
 
-  const nodePositionsVersion = 2;
+  const nodePositionsVersion = 6;
+  const graphTopologySignatureRef = useRef("");
 
   const storageKeyHier = `${localStorageKey}-${graphDirection}-hier`;
   const viewportStorageKey = `${localStorageKey}-${viewMode}-${graphDirection}-viewport`;
 
   const safeParseJson = (raw: string | null): unknown => {
-    // safeParseJson
     if (!raw) return null;
+
     try {
       return JSON.parse(raw);
     } catch {
@@ -2471,55 +2778,48 @@ export default function ProjectPage() {
     }
   };
 
-  const isValidPosItem = (v: any): v is { id: string; position: { x: number; y: number } } => {
-    // isValidPosItem
-    const idOk = typeof v?.id === "string" && v.id.length > 0;
-    const xOk = typeof v?.position?.x === "number" && Number.isFinite(v.position.x);
-    const yOk = typeof v?.position?.y === "number" && Number.isFinite(v.position.y);
+  const isValidPosItem = (value: any): value is { id: string; position: { x: number; y: number } } => {
+    const idOk = typeof value?.id === "string" && value.id.length > 0;
+    const xOk = typeof value?.position?.x === "number" && Number.isFinite(value.position.x);
+    const yOk = typeof value?.position?.y === "number" && Number.isFinite(value.position.y);
+
     return idOk && xOk && yOk;
   };
 
   const readPersistedPositions = (
     key: string,
-    expectedDirection: "TB" | "LR"
+    expectedDirection: "TB" | "LR",
+    expectedTopologySignature: string
   ): Array<{ id: string; position: { x: number; y: number } }> => {
-    // readPersistedPositions
     const parsed = safeParseJson(localStorage.getItem(key));
-    if (!parsed) return [];
 
-    // Legacy format: Array<{id, position}>
-    // Important: ignore legacy arrays in LR to prevent TB positions being applied in LR.
-    if (Array.isArray(parsed)) {
-      if (expectedDirection !== "TB") return [];
-      return parsed.filter(isValidPosItem);
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      return [];
     }
 
-    // V2 format: {version, direction, positions}
-    if (typeof parsed === "object" && parsed !== null) {
-      const obj: any = parsed;
-      const versionOk = obj.version === nodePositionsVersion;
-      const dirOk = obj.direction === expectedDirection;
-      const posArr = Array.isArray(obj.positions) ? obj.positions : null;
+    const payload = parsed as Partial<PersistedNodePositionsV6>;
 
-      if (versionOk && dirOk && posArr) {
-        return posArr.filter(isValidPosItem);
-      }
-    }
+    if (payload.version !== nodePositionsVersion) return [];
+    if (payload.direction !== expectedDirection) return [];
+    if (payload.topologySignature !== expectedTopologySignature) return [];
+    if (!Array.isArray(payload.positions)) return [];
 
-    return [];
+    return payload.positions.filter(isValidPosItem);
   };
 
   const writePersistedPositions = (
     key: string,
     direction: "TB" | "LR",
+    topologySignature: string,
     positions: Array<{ id: string; position: { x: number; y: number } }>
   ) => {
-    // writePersistedPositions
-    const payload: PersistedNodePositionsV2 = {
+    const payload: PersistedNodePositionsV6 = {
       version: nodePositionsVersion,
       direction,
+      topologySignature,
       positions,
     };
+
     localStorage.setItem(key, JSON.stringify(payload));
   };
 
@@ -2604,29 +2904,195 @@ export default function ProjectPage() {
 
     setNodes((nds) => {
       const updated = applyNodeChanges(changes, nds);
-      const positions = updated.map((n) => ({ id: n.id, position: n.position }));
+      const shouldRecenterProject = changes.some((change) => change.type !== "select");
+      const resolvedNodes = shouldRecenterProject
+        ? centerProjectOverGraphBranches(updated, graphDirection)
+        : updated;
+
+      const positions = resolvedNodes.map((node) => ({
+        id: node.id,
+        position: node.position,
+      }));
 
       try {
-        writePersistedPositions(storageKeyHier, graphDirection, positions);
+        const topologySignature = graphTopologySignatureRef.current;
+
+        if (topologySignature) {
+          writePersistedPositions(storageKeyHier, graphDirection, topologySignature, positions);
+        }
       } catch {
         // noOp
       }
 
-      return updated;
+      return resolvedNodes;
     });
   };
 
-  const loadNodesWithPositions = (loadedNodes: Node[]) => {
-    const saved = readPersistedPositions(storageKeyHier, graphDirection);
-    if (!saved.length) return loadedNodes;
+  const centerProjectOverGraphBranches = (
+    sourceNodes: Node[],
+    dirOverride?: "TB" | "LR"
+  ): Node[] => {
+    const dir = dirOverride ?? graphDirection;
+    const projectNode = sourceNodes.find((n) => String(n.id) === "PROJECT");
+    if (!projectNode?.position) return sourceNodes;
 
-    const byId = new Map<string, { x: number; y: number }>();
-    for (const p of saved) byId.set(p.id, p.position);
+    const branchNodes = sourceNodes.filter((n) => {
+      if (String(n.id) === "PROJECT") return false;
 
-    return loadedNodes.map((n) => {
-      const pos = byId.get(n.id);
-      return pos ? { ...n, position: pos } : n;
+      const position = n.position;
+      return (
+        typeof position?.x === "number" &&
+        Number.isFinite(position.x) &&
+        typeof position?.y === "number" &&
+        Number.isFinite(position.y)
+      );
     });
+
+    if (branchNodes.length === 0) return sourceNodes;
+
+    const getAxis = (pos: { x: number; y: number }) => (dir === "TB" ? pos.x : pos.y);
+
+    const setAxis = (pos: { x: number; y: number }, axis: number) =>
+      dir === "TB" ? { x: axis, y: pos.y } : { x: pos.x, y: axis };
+
+    const getAxisSizeForNode = (node: Node<any>) => {
+      const anyNode: any = node as any;
+      const measuredWidth = Number(anyNode.measured?.width ?? anyNode.width);
+      const measuredHeight = Number(anyNode.measured?.height ?? anyNode.height);
+
+      const width =
+        Number.isFinite(measuredWidth) && measuredWidth > 0
+          ? Math.ceil(measuredWidth)
+          : 900;
+
+      const height =
+        Number.isFinite(measuredHeight) && measuredHeight > 0
+          ? Math.ceil(measuredHeight)
+          : 520;
+
+      return (dir === "TB" ? width : height) + 40;
+    };
+
+    let minAxis = Infinity;
+    let maxAxis = -Infinity;
+
+    for (const node of branchNodes) {
+      const axis = getAxis(node.position);
+      const axisSize = getAxisSizeForNode(node);
+
+      minAxis = Math.min(minAxis, axis - axisSize / 2);
+      maxAxis = Math.max(maxAxis, axis + axisSize / 2);
+    }
+
+    if (!Number.isFinite(minAxis) || !Number.isFinite(maxAxis)) return sourceNodes;
+
+    const centeredAxis = (minAxis + maxAxis) / 2;
+    const currentProjectAxis = getAxis(projectNode.position);
+
+    if (Math.abs(currentProjectAxis - centeredAxis) < 1) {
+      return sourceNodes;
+    }
+
+    const nextProjectPosition = setAxis(projectNode.position, centeredAxis);
+
+    return sourceNodes.map((node) =>
+      String(node.id) === "PROJECT"
+        ? {
+          ...node,
+          position: nextProjectPosition,
+        }
+        : node
+    );
+  };
+
+  const getProjectPositionChange = (
+    beforeNodes: Node[],
+    afterNodes: Node[]
+  ): { id: string; position: { x: number; y: number } } | null => {
+    const beforeProject = beforeNodes.find((n) => String(n.id) === "PROJECT");
+    const afterProject = afterNodes.find((n) => String(n.id) === "PROJECT");
+
+    const beforePosition = beforeProject?.position;
+    const afterPosition = afterProject?.position;
+
+    if (
+      !afterPosition ||
+      typeof afterPosition.x !== "number" ||
+      typeof afterPosition.y !== "number" ||
+      !Number.isFinite(afterPosition.x) ||
+      !Number.isFinite(afterPosition.y)
+    ) {
+      return null;
+    }
+
+    if (
+      beforePosition &&
+      beforePosition.x === afterPosition.x &&
+      beforePosition.y === afterPosition.y
+    ) {
+      return null;
+    }
+
+    return {
+      id: "PROJECT",
+      position: {
+        x: afterPosition.x,
+        y: afterPosition.y,
+      },
+    };
+  };
+
+  const loadNodesWithPositions = (
+    loadedNodes: Node[],
+    protocols: Record<string, any>
+  ): Node[] => {
+    const topologySignature = getGraphTopologySignature(protocols);
+    graphTopologySignatureRef.current = topologySignature;
+
+    const saved = readPersistedPositions(
+      storageKeyHier,
+      graphDirection,
+      topologySignature
+    );
+
+    const savedById = new Map<string, { x: number; y: number }>();
+
+    for (const item of saved) {
+      savedById.set(item.id, item.position);
+    }
+
+    const nodesWithPositions = saved.length
+      ? loadedNodes.map((node) => {
+        if (String(node.id) === "PROJECT") return node;
+
+        const savedPosition = savedById.get(String(node.id));
+
+        return savedPosition
+          ? { ...node, position: savedPosition }
+          : node;
+      })
+      : loadedNodes;
+
+    const resolvedNodes = centerProjectOverGraphBranches(
+      nodesWithPositions,
+      graphDirection
+    );
+
+    try {
+      writePersistedPositions(
+        storageKeyHier,
+        graphDirection,
+        topologySignature,
+        resolvedNodes.map((node) => ({
+          id: String(node.id),
+          position: node.position,
+        }))
+      );
+    } catch {
+      // noOp
+    }
+
+    return resolvedNodes;
   };
 
 
@@ -2634,12 +3100,19 @@ export default function ProjectPage() {
     loadedNodes: Node[],
   ): Node[] => {
     const pending = pendingNewNodesRef.current;
-
-    if (!pending?.beforePositions || viewModeRef.current !== "hierarchical") {
-      return loadedNodes;
+    if (pending?.reflowWholeGraph) {
+      return centerProjectOverGraphBranches(loadedNodes, graphDirection);
     }
 
-    return loadedNodes.map((node) => {
+    if (!pending?.beforePositions || viewModeRef.current !== "hierarchical") {
+      return centerProjectOverGraphBranches(loadedNodes, graphDirection);
+    }
+
+    const nodesWithPreservedPositions = loadedNodes.map((node) => {
+      // PROJECT should remain centered over the current graph branches.
+      // Do not freeze its old position during incremental add/duplicate refreshes.
+      if (String(node.id) === "PROJECT") return node;
+
       const previousPosition = pending.beforePositions?.get(String(node.id));
       if (!previousPosition) return node;
 
@@ -2648,8 +3121,242 @@ export default function ProjectPage() {
         position: previousPosition,
       };
     });
+
+    return centerProjectOverGraphBranches(nodesWithPreservedPositions, graphDirection);
   };
 
+
+  const compactSurvivingProjectBranchesAfterDeletion = (
+    sourceNodes: Node[],
+    currentEdges: Edge[],
+    dir: "TB" | "LR"
+  ): Node[] => {
+    const nodeById = new Map(sourceNodes.map((node) => [String(node.id), node]));
+    const protocolNodes = sourceNodes.filter((node) => String(node.id) !== "PROJECT");
+
+    if (protocolNodes.length < 2) {
+      return sourceNodes;
+    }
+
+    const getAxis = (node: Node): number => dir === "TB" ? node.position.x : node.position.y;
+
+    const setAxis = (node: Node, axis: number): Node => ({
+      ...node,
+      position: dir === "TB"
+        ? { ...node.position, x: axis }
+        : { ...node.position, y: axis },
+    });
+
+    const getNodeAxisSize = (node: Node): number => {
+      const measured = (node as any).measured;
+      const measuredWidth = Number(measured?.width ?? node.width);
+      const measuredHeight = Number(measured?.height ?? node.height);
+      const width = Number.isFinite(measuredWidth) && measuredWidth > 0 ? Math.ceil(measuredWidth) : 950;
+      const height = Number.isFinite(measuredHeight) && measuredHeight > 0 ? Math.ceil(measuredHeight) : 520;
+
+      return (dir === "TB" ? width : height) + 40;
+    };
+
+    const outgoingBySource = new Map<string, string[]>();
+    const incomingFromProtocols = new Map<string, number>();
+    const projectRootIds = new Set<string>();
+
+    for (const edge of currentEdges) {
+      const sourceId = String(edge.source);
+      const targetId = String(edge.target);
+
+      if (!nodeById.has(targetId)) continue;
+
+      if (sourceId === "PROJECT") {
+        projectRootIds.add(targetId);
+        continue;
+      }
+
+      if (!nodeById.has(sourceId)) continue;
+
+      const children = outgoingBySource.get(sourceId) ?? [];
+
+      if (!children.includes(targetId)) {
+        children.push(targetId);
+        outgoingBySource.set(sourceId, children);
+      }
+
+      incomingFromProtocols.set(targetId, (incomingFromProtocols.get(targetId) ?? 0) + 1);
+    }
+
+    for (const node of protocolNodes) {
+      const nodeId = String(node.id);
+
+      if ((incomingFromProtocols.get(nodeId) ?? 0) === 0) {
+        projectRootIds.add(nodeId);
+      }
+    }
+
+    const rootIds = Array.from(projectRootIds)
+      .filter((id) => nodeById.has(id))
+      .sort((leftId, rightId) => {
+        const leftNode = nodeById.get(leftId)!;
+        const rightNode = nodeById.get(rightId)!;
+        return getAxis(leftNode) - getAxis(rightNode);
+      });
+
+    if (rootIds.length < 2) {
+      return sourceNodes;
+    }
+
+    const reachableByRoot = new Map<string, Set<string>>();
+
+    for (const rootId of rootIds) {
+      const reachable = new Set<string>();
+      const pendingIds = [rootId];
+
+      while (pendingIds.length > 0) {
+        const currentId = pendingIds.pop();
+
+        if (!currentId || reachable.has(currentId) || !nodeById.has(currentId)) {
+          continue;
+        }
+
+        reachable.add(currentId);
+
+        for (const childId of outgoingBySource.get(currentId) ?? []) {
+          pendingIds.push(childId);
+        }
+      }
+
+      reachableByRoot.set(rootId, reachable);
+    }
+
+    const nodeIdsByRoot = new Map<string, string[]>();
+
+    for (const rootId of rootIds) {
+      nodeIdsByRoot.set(rootId, []);
+    }
+
+    for (const node of protocolNodes) {
+      const nodeId = String(node.id);
+      const nodeAxis = getAxis(node);
+
+      const candidateRootIds = rootIds.filter((rootId) => reachableByRoot.get(rootId)?.has(nodeId));
+
+      const resolvedRootId = (candidateRootIds.length > 0 ? candidateRootIds : rootIds)
+        .slice()
+        .sort((leftId, rightId) => {
+          const leftDistance = Math.abs(getAxis(nodeById.get(leftId)!) - nodeAxis);
+          const rightDistance = Math.abs(getAxis(nodeById.get(rightId)!) - nodeAxis);
+
+          if (leftDistance !== rightDistance) {
+            return leftDistance - rightDistance;
+          }
+
+          return getAxis(nodeById.get(leftId)!) - getAxis(nodeById.get(rightId)!);
+        })[0];
+
+      nodeIdsByRoot.get(resolvedRootId)?.push(nodeId);
+    }
+
+    const branchBlocks = rootIds
+      .map((rootId) => {
+        const nodeIds = nodeIdsByRoot.get(rootId) ?? [];
+        let minAxis = Number.POSITIVE_INFINITY;
+        let maxAxis = Number.NEGATIVE_INFINITY;
+
+        for (const nodeId of nodeIds) {
+          const node = nodeById.get(nodeId);
+
+          if (!node) continue;
+
+          const axis = getAxis(node);
+          const size = getNodeAxisSize(node);
+
+          minAxis = Math.min(minAxis, axis - size / 2);
+          maxAxis = Math.max(maxAxis, axis + size / 2);
+        }
+
+        return {
+          rootId,
+          nodeIds,
+          minAxis,
+          maxAxis,
+        };
+      })
+      .filter((block) => block.nodeIds.length > 0 && Number.isFinite(block.minAxis) && Number.isFinite(block.maxAxis))
+      .sort((left, right) => left.minAxis - right.minAxis);
+
+    if (branchBlocks.length < 2) {
+      return sourceNodes;
+    }
+
+    const branchGap = dir === "TB" ? 80 : 120;
+    const axisOffsetByNodeId = new Map<string, number>();
+    let previousMaxAxis = branchBlocks[0].maxAxis;
+
+    for (let index = 1; index < branchBlocks.length; index++) {
+      const block = branchBlocks[index];
+      const targetMinAxis = previousMaxAxis + branchGap;
+      const offset = Math.min(0, targetMinAxis - block.minAxis);
+
+      for (const nodeId of block.nodeIds) {
+        axisOffsetByNodeId.set(nodeId, offset);
+      }
+
+      previousMaxAxis = Math.max(previousMaxAxis, block.maxAxis + offset);
+    }
+
+    return sourceNodes.map((node) => {
+      const nodeId = String(node.id);
+
+      if (nodeId === "PROJECT") {
+        return node;
+      }
+
+      const offset = axisOffsetByNodeId.get(nodeId) ?? 0;
+
+      return Math.abs(offset) > 0.5
+        ? setAxis(node, getAxis(node) + offset)
+        : node;
+    });
+  };
+
+  const preservePendingDeletedNodePositions = (
+    loadedNodes: Node[],
+    currentEdges: Edge[]
+  ): Node[] => {
+    const pending = pendingDeletionRef.current;
+
+    if (!pending || viewModeRef.current !== "hierarchical") {
+      return loadedNodes;
+    }
+
+    const nodesWithPreservedPositions = loadedNodes.map((node) => {
+      if (String(node.id) === "PROJECT") return node;
+
+      const previousPosition = pending.beforePositions.get(String(node.id));
+
+      return previousPosition
+        ? { ...node, position: previousPosition }
+        : node;
+    });
+
+    const compactedNodes = compactSurvivingProjectBranchesAfterDeletion(nodesWithPreservedPositions, currentEdges, graphDirection);
+    const resolvedNodes = centerProjectOverGraphBranches(compactedNodes, graphDirection);
+    const topologySignature = graphTopologySignatureRef.current;
+
+    if (topologySignature) {
+      const positions = resolvedNodes.map((node) => ({
+        id: String(node.id),
+        position: node.position,
+      }));
+
+      try {
+        writePersistedPositions(storageKeyHier, graphDirection, topologySignature, positions);
+      } catch {
+        // noOp
+      }
+    }
+
+    return resolvedNodes;
+  };
 
   const mergeEdges = (newEdges: Edge[]) => {
     const oldEdgesMap = new Map(edges.map((e) => [e.id, e]));
@@ -2658,22 +3365,80 @@ export default function ProjectPage() {
 
 
   // persistPositionsBulk writes multiple node positions in a single localStorage write
-  const persistPositionsBulk = (direction: "TB" | "LR", items: Array<{ id: string; position: { x: number; y: number } }>) => {
+  const persistPositionsBulk = (
+    direction: "TB" | "LR",
+    items: Array<{ id: string; position: { x: number; y: number } }>
+  ) => {
     try {
-      const key = storageKeyHier;
-      const saved = readPersistedPositions(key, direction);
-      const byId = new Map(saved.map((p) => [p.id, p.position]));
+      const topologySignature = graphTopologySignatureRef.current;
+      if (!topologySignature) return;
 
-      for (const it of items) byId.set(it.id, it.position);
+      const saved = readPersistedPositions(
+        storageKeyHier,
+        direction,
+        topologySignature
+      );
 
-      const merged = Array.from(byId.entries()).map(([id, position]) => ({ id, position }));
-      writePersistedPositions(key, direction, merged);
+      const positionsById = new Map(
+        saved.map((item) => [item.id, item.position])
+      );
+
+      for (const item of items) {
+        positionsById.set(item.id, item.position);
+      }
+
+      const merged = Array.from(
+        positionsById.entries()
+      ).map(([id, position]) => ({
+        id,
+        position,
+      }));
+
+      writePersistedPositions(
+        storageKeyHier,
+        direction,
+        topologySignature,
+        merged
+      );
     } catch {
       // noOp
     }
   };
 
+  const preparePendingAddProtocolFromForm = () => {
+    if (viewModeRef.current !== "hierarchical") return;
 
+    const beforeIds = new Set(nodesRef.current.map((n) => String(n.id)));
+    const beforePositions = new Map<string, { x: number; y: number }>();
+
+    for (const node of nodesRef.current) {
+      const nodeId = String(node.id ?? "").trim();
+      const position = node.position;
+
+      if (!nodeId || !position) continue;
+
+      if (
+        typeof position.x !== "number" ||
+        typeof position.y !== "number" ||
+        !Number.isFinite(position.x) ||
+        !Number.isFinite(position.y)
+      ) {
+        continue;
+      }
+
+      beforePositions.set(nodeId, {
+        x: position.x,
+        y: position.y,
+      });
+    }
+
+    pendingNewNodesRef.current = {
+      beforeIds,
+      beforePositions,
+      operation: "add",
+      reflowWholeGraph: true,
+    };
+  };
 
   /* ------------------------ Wait for nodes helper ------------------------ */
   const waitForNodesReady = async (expectedCount: number, timeoutMs = 2500): Promise<boolean> => {
@@ -2712,6 +3477,7 @@ export default function ProjectPage() {
   useEffect(() => {
     // resetFirstCenterOnProjectChange
     outputThumbnailCacheRef.current.clear();
+    outputThumbnailRetryAfterRef.current.clear();
     outputThumbnailInFlightRef.current = null;
 
     firstLoadRef.current = true;
@@ -2754,8 +3520,15 @@ export default function ProjectPage() {
           data.shortName, data.protocols, mode, dir, width, effectiveZoom
         );
 
+        const tableWithTick = (
+          table ?? []
+        ).map((row) =>
+          mergeTableElapsedTick(row)
+        );
+
         if (mode === "table") {
-          startTransition(() => setTableData(table ?? []));
+          setTableData(tableWithTick);
+
           setIsLoadingProject(false);
           setIsRefreshing(false);
           return;
@@ -2763,21 +3536,15 @@ export default function ProjectPage() {
 
         const nodesWithPositions =
           mode === "hierarchical"
-            ? loadNodesWithPositions(loadedNodes)
+            ? loadNodesWithPositions(loadedNodes, data.protocols)
             : loadedNodes;
 
-        const initialTicks: Record<string, number> = {};
-        nodesWithPositions.forEach((n) => {
-          if (isRunningNode(n)) {
-            initialTicks[n.id] = Number((n as any).data?.elapsedTime) ?? 0;
-          }
-        });
-
-        const nodesWithTick = nodesWithPositions.map((n) =>
-          isRunningNode(n)
-            ? { ...n, data: { ...(n as any).data, tick: initialTicks[n.id] ?? Number((n as any).data?.elapsedTime) ?? 0 } }
-            : n
-        );
+        const nodesWithTick =
+          nodesWithPositions.map((node) =>
+            mergeNodeElapsedTick(
+              node as Node<StatusNodeData>,
+            )
+          );
 
         const unifiedSelectedIds = getUnifiedSelectedIds();
         const recomputedEdgeSet = unifiedSelectedIds.size
@@ -2802,7 +3569,7 @@ export default function ProjectPage() {
             if (recomputedEdgeSet.size) base = paintPathHighlight(base, recomputedEdgeSet);
             return base;
           });
-          setTableData(table ?? []);
+          setTableData(tableWithTick);
         });
 
         if (shouldLoadProtocolThumbnails) {
@@ -2813,7 +3580,6 @@ export default function ProjectPage() {
           );
         }
 
-        setNodeTicks(initialTicks);
         setNodesLoadedOnce(true);
 
         if (mode === "grid") {
@@ -2850,6 +3616,7 @@ export default function ProjectPage() {
     setProjectEffectiveSettingsLoading(false);
 
     outputThumbnailCacheRef.current.clear();
+    outputThumbnailRetryAfterRef.current.clear();
     outputThumbnailInFlightRef.current = null;
   }, [projectName]);
 
@@ -2875,25 +3642,73 @@ export default function ProjectPage() {
           getEffectiveZoom()
         );
 
+        const freshTableRows = table ?? [];
+
+        const currentNodesById = new Map(
+          (
+            nodesRef.current as
+            Node<StatusNodeData>[]
+          ).map((node) => [
+            String(node.id),
+            node,
+          ])
+        );
+
         if (viewMode === "table") {
-          startTransition(() => setTableData(table ?? []));
+          setTableData((currentRows) => {
+            const currentRowsById = new Map(
+              currentRows.map((row) => [
+                String(row.id),
+                row,
+              ])
+            );
+
+            return freshTableRows.map(
+              (freshRow) =>
+                mergeTableElapsedTick(
+                  freshRow,
+                  currentRowsById.get(
+                    String(freshRow.id),
+                  ),
+                  currentNodesById.get(
+                    String(freshRow.id),
+                  ),
+                )
+            );
+          });
+
           setIsRefreshing(false);
           return;
         }
 
-        const nodesWithPositions =
-          viewMode === "hierarchical"
-            ? preservePendingExistingNodePositions(loadNodesWithPositions(loadedNodes))
-            : loadedNodes;
+        const nodesWithPositions = viewMode === "hierarchical" ? preservePendingDeletedNodePositions(preservePendingExistingNodePositions(loadNodesWithPositions(loadedNodes, data.protocols)), loadedEdges) : loadedNodes;
 
         const edgesMerged = viewMode === "grid" ? [] : mergeEdges(loadedEdges);
+        edgesRef.current = edgesMerged;
 
         const unifiedSelectedIds = getUnifiedSelectedIds();
-        const nodesSeed = nodesWithPositions.map((n) =>
-          isRunningNode(n)
-            ? { ...n, data: { ...(n as any).data, tick: (nodeTicks[n.id] ?? Number((n as any).data?.elapsedTime) ?? 0) }, selected: unifiedSelectedIds.has(n.id) }
-            : { ...n, selected: unifiedSelectedIds.has(n.id) }
-        );
+        const nodesSeed =
+          nodesWithPositions.map(
+            (freshNode) => {
+              const mergedNode =
+                mergeNodeElapsedTick(
+                  freshNode as
+                  Node<StatusNodeData>,
+
+                  currentNodesById.get(
+                    String(freshNode.id),
+                  ),
+                );
+
+              return {
+                ...mergedNode,
+                selected:
+                  unifiedSelectedIds.has(
+                    freshNode.id
+                  ),
+              };
+            }
+          );
 
         const nodesSeedWithThumbnails = preserveExistingOutputThumbnails(
           nodesSeed as Node<StatusNodeData>[],
@@ -2905,14 +3720,48 @@ export default function ProjectPage() {
           : new Set<string>();
         pathSelRef.current.edges = recomputedEdgeSet;
 
-        startTransition(() => {
-          setNodes(nodesSeedWithThumbnails);
-          setEdges((_) => {
-            let out = paintEdgeHighlight(edgesMerged, selectedIdRef.current ?? null);
-            if (recomputedEdgeSet.size) out = paintPathHighlight(out, recomputedEdgeSet);
-            return out;
-          });
-          setTableData(table ?? []);
+        setNodes(
+          nodesSeedWithThumbnails
+        );
+
+        setEdges((_) => {
+          let out = paintEdgeHighlight(
+            edgesMerged,
+            selectedIdRef.current ?? null
+          );
+
+          if (recomputedEdgeSet.size) {
+            out = paintPathHighlight(
+              out,
+              recomputedEdgeSet
+            );
+          }
+
+          return out;
+        });
+
+        setTableData((currentRows) => {
+          const currentRowsById = new Map(
+            currentRows.map((row) => [
+              String(row.id),
+              row,
+            ])
+          );
+
+          return freshTableRows.map(
+            (freshRow) =>
+              mergeTableElapsedTick(
+                freshRow,
+
+                currentRowsById.get(
+                  String(freshRow.id),
+                ),
+
+                currentNodesById.get(
+                  String(freshRow.id),
+                ),
+              )
+          );
         });
 
         if (protocolOutputThumbnailsEnabled) {
@@ -2922,15 +3771,6 @@ export default function ProjectPage() {
           );
         }
 
-        setNodeTicks((prev) => {
-          const updated: Record<string, number> = {};
-          nodesWithPositions.forEach((n) => {
-            const status = (n as any).data?.status;
-            const elapsed = Number((n as any).data?.elapsedTime) ?? 0;
-            if (status === "running") updated[n.id] = Math.max(prev[n.id] ?? 0, elapsed);
-          });
-          return updated;
-        });
 
         if (viewMode === "grid") {
           requestAnimationFrame(() => snapViewportToTopLeft(GRID_ZOOM));
@@ -2955,13 +3795,53 @@ export default function ProjectPage() {
       }
     }
 
-  }, [projectName, viewMode, graphDirection, nodeTicks, svc, paintEdgeHighlight, paintPathHighlight, computeEdgesForMode, gridWidth]);
+  }, [projectName, viewMode, graphDirection, svc, paintEdgeHighlight, paintPathHighlight, computeEdgesForMode, gridWidth]);
 
   const handleRefreshRef = useRef(handleRefresh);
   useEffect(() => { handleRefreshRef.current = handleRefresh; }, [handleRefresh]);
   useEffect(() => {
-    const interval = setInterval(() => { handleRefreshRef.current(); }, TIME_TO_REFRESH);
-    return () => clearInterval(interval);
+    let cancelled = false;
+    let timerId: number | null = null;
+
+    const scheduleRefresh = (
+      delay: number,
+    ) => {
+      timerId = window.setTimeout(
+        async () => {
+          await handleRefreshRef.current();
+
+          if (cancelled) return;
+
+          const hasActiveProtocol =
+            nodesRef.current.some(
+              (node) =>
+                String(node.id) !== "PROJECT" &&
+                isProtocolRefreshActive(
+                  node.data?.status
+                )
+            );
+
+          scheduleRefresh(
+            hasActiveProtocol
+              ? ACTIVE_TIME_TO_REFRESH
+              : IDLE_TIME_TO_REFRESH
+          );
+        },
+        delay,
+      );
+    };
+
+    scheduleRefresh(
+      ACTIVE_TIME_TO_REFRESH
+    );
+
+    return () => {
+      cancelled = true;
+
+      if (timerId !== null) {
+        window.clearTimeout(timerId);
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -3000,17 +3880,45 @@ export default function ProjectPage() {
       GRID_ZOOM
     );
 
-    const sel = getUnifiedSelectedIds();
-    const seeded = seedNodesWithSelectionAndThumbnails(newNodes, sel);
+    const sel =
+      getUnifiedSelectedIds();
 
-    setNodes(seeded);
+    const seeded =
+      seedNodesWithSelectionAndThumbnails(
+        newNodes,
+        sel
+      );
+
+    const currentNodesById =
+      new Map(
+        (
+          nodesRef.current as
+          Node<StatusNodeData>[]
+        ).map((node) => [
+          String(node.id),
+          node,
+        ])
+      );
+
+    const seededWithLiveTicks =
+      seeded.map((node) =>
+        mergeNodeElapsedTick(
+          node as Node<StatusNodeData>,
+
+          currentNodesById.get(
+            String(node.id),
+          ),
+        )
+      );
+
+    setNodes(seededWithLiveTicks);
     setEdges([]); // grid has no edges
 
     if (protocolOutputThumbnailsEnabled) {
       const currentProjectId = getProjectId();
 
       if (currentProjectId != null) {
-        void loadProtocolOutputThumbnailsForNodes(currentProjectId, seeded);
+        void loadProtocolOutputThumbnailsForNodes(currentProjectId, seededWithLiveTicks);
       }
     }
 
@@ -3030,7 +3938,6 @@ export default function ProjectPage() {
     async (opts?: { preserveZoom?: boolean }) => {
       if (!projectName) return;
       try {
-        try { localStorage.removeItem(storageKeyHier); } catch { }
         disablePersistenceRef.current = true;
         setHideGraphDuringCenter(true);
 
@@ -3050,16 +3957,54 @@ export default function ProjectPage() {
           getEffectiveZoom()
         );
 
+        const currentNodesById =
+          new Map(
+            (
+              nodesRef.current as
+              Node<StatusNodeData>[]
+            ).map((node) => [
+              String(node.id),
+              node,
+            ])
+          );
+
         if (viewMode === "table") {
-          startTransition(() => setTableData(table ?? []));
-          disablePersistenceRef.current = false;
+          setTableData((currentRows) => {
+            const currentRowsById =
+              new Map(
+                currentRows.map((row) => [
+                  String(row.id),
+                  row,
+                ])
+              );
+
+            return (table ?? []).map(
+              (freshRow) =>
+                mergeTableElapsedTick(
+                  freshRow,
+
+                  currentRowsById.get(
+                    String(freshRow.id),
+                  ),
+
+                  currentNodesById.get(
+                    String(freshRow.id),
+                  ),
+                )
+            );
+          });
+
+          disablePersistenceRef.current =
+            false;
+
           setHideGraphDuringCenter(false);
+
           return;
         }
 
         const nodesWithPositions =
           viewMode === "hierarchical"
-            ? loadNodesWithPositions(loadedNodes)
+            ? loadNodesWithPositions(loadedNodes, data.protocols)
             : loadedNodes;
 
         const unifiedSelectedIds = getUnifiedSelectedIds();
@@ -3068,13 +4013,24 @@ export default function ProjectPage() {
           unifiedSelectedIds,
         );
 
+        const nodesWithLiveTicks =
+          nodesSeeded.map((node) =>
+            mergeNodeElapsedTick(
+              node as Node<StatusNodeData>,
+
+              currentNodesById.get(
+                String(node.id),
+              ),
+            )
+          );
+
         const recomputedEdgeSet = unifiedSelectedIds.size
           ? computeEdgesForMode(unifiedSelectedIds, pathEdgeModeRef.current)
           : new Set<string>();
         pathSelRef.current.edges = recomputedEdgeSet;
 
         startTransition(() => {
-          setNodes(nodesSeeded);
+          setNodes(nodesWithLiveTicks);
           setEdges((_) => {
             let out = viewMode === "grid" ? [] : paintEdgeHighlight(loadedEdges, selectedIdRef.current ?? null);
             if (recomputedEdgeSet.size) out = paintPathHighlight(out, recomputedEdgeSet);
@@ -3088,19 +4044,32 @@ export default function ProjectPage() {
               getProjectId();
 
             if (currentProjectId != null) {
-              void loadProtocolOutputThumbnailsForNodes(currentProjectId, nodesSeeded);
+              void loadProtocolOutputThumbnailsForNodes(currentProjectId, nodesWithLiveTicks);
             }
           }
-          setTableData(table ?? []);
-          setNodeTicks((prev) => {
-            const seeded: Record<string, number> = {};
-            nodesWithPositions.forEach((n) => {
-              if ((n as any).data?.status === "running") {
-                const v = Number((n as any).data?.elapsedTime) ?? prev[n.id] ?? 0;
-                seeded[n.id] = v;
-              }
-            });
-            return seeded;
+          setTableData((currentRows) => {
+            const currentRowsById =
+              new Map(
+                currentRows.map((row) => [
+                  String(row.id),
+                  row,
+                ])
+              );
+
+            return (table ?? []).map(
+              (freshRow) =>
+                mergeTableElapsedTick(
+                  freshRow,
+
+                  currentRowsById.get(
+                    String(freshRow.id),
+                  ),
+
+                  currentNodesById.get(
+                    String(freshRow.id),
+                  ),
+                )
+            );
           });
         });
 
@@ -3130,39 +4099,78 @@ export default function ProjectPage() {
 
   /* ------------------------ Ticks updater ------------------------ */
   useEffect(() => {
-    const interval = setInterval(() => {
-      let nextTicks: Record<string, number> = {};
-      setNodeTicks((prev) => {
-        const next: Record<string, number> = {};
-        for (const id in prev) next[id] = prev[id] + 1;
-        nextTicks = next;
-        return next;
-      });
+    const interval =
+      window.setInterval(() => {
+        setNodes((currentNodes) => {
+          let changed = false;
 
-      setNodes((prev) => {
-        if (!prev || prev.length === 0) return prev;
-        let changed = false;
-        const updated = prev.map((n) => {
-          if (!isRunningNode(n)) return n;
-          const prevTick = Number((n as any).data?.tick ?? (n as any).data?.elapsedTime ?? 0);
-          const newTick = nextTicks[n.id] !== undefined ? nextTicks[n.id] : prevTick + 1;
-          if (newTick === prevTick) return n;
-          changed = true;
-          return { ...n, data: { ...(n as any).data, tick: newTick } };
+          const nextNodes =
+            currentNodes.map((node) => {
+              if (
+                !isElapsedTimerStatus(
+                  node.data?.status
+                )
+              ) {
+                return node;
+              }
+
+              const currentElapsed =
+                toElapsedSeconds(
+                  node.data?.tick ??
+                  node.data?.elapsedTime
+                );
+
+              changed = true;
+
+              return {
+                ...node,
+                data: {
+                  ...node.data,
+                  tick:
+                    currentElapsed + 1,
+                },
+              };
+            });
+
+          return changed
+            ? nextNodes
+            : currentNodes;
         });
-        return changed ? updated : prev;
-      });
 
-      setTableData((prev) =>
-        prev.map((row) =>
-          row.status === "running"
-            ? { ...row, tick: (row.tick ?? Number(row.elapsedTime) ?? 0) + 1 }
-            : row
-        )
-      );
-    }, 1000);
-    return () => clearInterval(interval);
-  }, []);
+        setTableData((currentRows) => {
+          let changed = false;
+
+          const nextRows =
+            currentRows.map((row) => {
+              if (
+                !isElapsedTimerStatus(
+                  row.status
+                )
+              ) {
+                return row;
+              }
+
+              changed = true;
+
+              return {
+                ...row,
+                tick:
+                  toElapsedSeconds(
+                    row.tick ??
+                    row.elapsedTime
+                  ) + 1,
+              };
+            });
+
+          return changed
+            ? nextRows
+            : currentRows;
+        });
+      }, 1000);
+
+    return () =>
+      window.clearInterval(interval);
+  }, [setNodes]);
 
   /* ------------------------ Layout change effect ------------------------ */
   const prevLayout = useRef({ viewMode, graphDirection });
@@ -3177,27 +4185,68 @@ export default function ProjectPage() {
     }
 
     if (viewMode === "table") {
-      const { table } = buildGraphElements(
-        project.shortName,
-        project.protocols,
-        "table",
-        graphDirection,
-        gridWidth || flowWrapperRef.current?.clientWidth,
-        getEffectiveZoom()
-      );
+      const { table } =
+        buildGraphElements(
+          project.shortName,
+          project.protocols,
+          "table",
+          graphDirection,
+          gridWidth ||
+          flowWrapperRef.current
+            ?.clientWidth,
+          getEffectiveZoom(),
+        );
 
-      startTransition(() => setTableData(table ?? []));
-      setIsSwitchingLayout(true);
+      const currentNodesById =
+        new Map(
+          (
+            nodesRef.current as
+            Node<StatusNodeData>[]
+          ).map((node) => [
+            String(node.id),
+            node,
+          ])
+        );
 
-      requestAnimationFrame(() => {
-        setTimeout(() => setIsSwitchingLayout(false), 60);
+      setTableData((currentRows) => {
+        const currentRowsById =
+          new Map(
+            currentRows.map((row) => [
+              String(row.id),
+              row,
+            ])
+          );
+
+        return (table ?? []).map(
+          (freshRow) =>
+            mergeTableElapsedTick(
+              freshRow,
+
+              currentRowsById.get(
+                String(freshRow.id),
+              ),
+
+              currentNodesById.get(
+                String(freshRow.id),
+              ),
+            )
+        );
       });
 
-      if (pathSelRef.current.nodes.size === 0) {
-        setHighlightedId(selectedIdRef.current ?? null);
+      if (
+        pathSelRef.current.nodes
+          .size === 0
+      ) {
+        setHighlightedId(
+          selectedIdRef.current ?? null
+        );
       }
 
-      prevLayout.current = { viewMode, graphDirection };
+      prevLayout.current = {
+        viewMode,
+        graphDirection,
+      };
+
       return;
     }
 
@@ -3218,13 +4267,34 @@ export default function ProjectPage() {
       );
 
     const nodesWithPositions =
-      viewMode === "hierarchical" ? loadNodesWithPositions(loadedNodes) : loadedNodes;
+      viewMode === "hierarchical" ? loadNodesWithPositions(loadedNodes, project.protocols) : loadedNodes;
 
     const unifiedSelectedIds = getUnifiedSelectedIds();
     const nodesSeeded = seedNodesWithSelectionAndThumbnails(
       nodesWithPositions,
       unifiedSelectedIds,
     );
+
+    const currentNodesById = new Map(
+      (
+        nodesRef.current as
+        Node<StatusNodeData>[]
+      ).map((node) => [
+        String(node.id),
+        node,
+      ])
+    );
+
+    const nodesWithLiveTicks =
+      nodesSeeded.map((node) =>
+        mergeNodeElapsedTick(
+          node as Node<StatusNodeData>,
+
+          currentNodesById.get(
+            String(node.id),
+          ),
+        )
+      );
 
     const recomputedEdgeSet = unifiedSelectedIds.size
       ? computeEdgesForMode(unifiedSelectedIds, pathEdgeModeRef.current)
@@ -3234,20 +4304,33 @@ export default function ProjectPage() {
     disablePersistenceRef.current = true;
     setIsSwitchingLayout(true);
 
-    startTransition(() => {
-      setNodes(nodesSeeded);
-      setEdges((_) => {
-        let out = viewMode === "grid" ? [] : paintEdgeHighlight(loadedEdges, selectedIdRef.current ?? null);
-        if (recomputedEdgeSet.size) out = paintPathHighlight(out, recomputedEdgeSet);
-        return out;
-      });
+    setNodes(nodesWithLiveTicks);
+
+    setEdges((_) => {
+      let out =
+        viewMode === "grid"
+          ? []
+          : paintEdgeHighlight(
+            loadedEdges,
+            selectedIdRef.current ??
+            null,
+          );
+
+      if (recomputedEdgeSet.size) {
+        out = paintPathHighlight(
+          out,
+          recomputedEdgeSet,
+        );
+      }
+
+      return out;
     });
 
     if (protocolOutputThumbnailsEnabled) {
       const currentProjectId = getProjectId();
 
       if (currentProjectId != null) {
-        void loadProtocolOutputThumbnailsForNodes(currentProjectId, nodesSeeded);
+        void loadProtocolOutputThumbnailsForNodes(currentProjectId, nodesWithLiveTicks);
       }
     }
 
@@ -3263,6 +4346,12 @@ export default function ProjectPage() {
 
         if (viewMode === "hierarchical") {
           centerLikeButton(nodesWithPositions, true);
+
+          window.setTimeout(() => {
+            if (viewModeRef.current === "hierarchical") {
+              handleRefreshRef.current?.();
+            }
+          }, 0);
         } else {
           snapViewportToTopLeft(GRID_ZOOM);
         }
@@ -3355,25 +4444,34 @@ export default function ProjectPage() {
 
   useEffect(() => {
     if (viewMode !== "table") {
-      setTableVisible(false);
-      didScrollForTableRef.current = false;
-      tableScrollRetriesRef.current = 0;
+      didScrollForTableRef.current =
+        false;
+
+      tableScrollRetriesRef.current =
+        0;
+
       return;
     }
 
-    setTableVisible(false);
-    setIsSwitchingLayout(true);
     requestAnimationFrame(() => {
-      setTableVisible(true);
-      requestAnimationFrame(() => {
-        setTimeout(() => setIsSwitchingLayout(false), 60);
-        if (!didScrollForTableRef.current) {
-          tableScrollRetriesRef.current = 0;
-          requestAnimationFrame(scrollSelectedRowIntoViewOnce);
-        }
-      });
+      if (
+        didScrollForTableRef.current
+      ) {
+        return;
+      }
+
+      tableScrollRetriesRef.current =
+        0;
+
+      requestAnimationFrame(
+        scrollSelectedRowIntoViewOnce
+      );
     });
-  }, [viewMode, scrollSelectedRowIntoViewOnce]);
+  }, [
+    viewMode,
+    tableData,
+    scrollSelectedRowIntoViewOnce,
+  ]);
 
   useEffect(() => {
     if (viewMode === "table" && pathSelRef.current.nodes.size === 0) {
@@ -3769,8 +4867,8 @@ export default function ProjectPage() {
   };
 
   // layoutConstantsForHierarchical
-  const hierSpacingX = (dir: "TB" | "LR") => (dir === "TB" ? 300 : 1150);
-  const hierSpacingY = (dir: "TB" | "LR") => (dir === "TB" ? 580 : 380);
+  const hierSpacingX = (dir: "TB" | "LR") => (dir === "TB" ? 480 : 1250);
+  const hierSpacingY = (dir: "TB" | "LR") => (dir === "TB" ? 680 : 480);
 
   // minGapBetweenSiblings is intentionally small; packing should be compact
   const minGapBetweenSiblings = 40;
@@ -3794,6 +4892,285 @@ export default function ProjectPage() {
 
     // addPadding to be safer with card shadows/margins
     return (dir === "TB" ? width : height) + 40;
+  };
+
+  const getLevelSize = (dir: "TB" | "LR", n: Node<any>) => {
+    const anyN: any = n as any;
+    const mw = Number(anyN.measured?.width ?? anyN.width);
+    const mh = Number(anyN.measured?.height ?? anyN.height);
+
+    const width = Number.isFinite(mw) && mw > 0 ? Math.ceil(mw) : 900;
+    const height = Number.isFinite(mh) && mh > 0 ? Math.ceil(mh) : 520;
+
+    return (dir === "TB" ? height : width) + 40;
+  };
+
+  type GraphBlockBounds = {
+    minAxis: number;
+    maxAxis: number;
+    minLevel: number;
+    maxLevel: number;
+  };
+
+  const getBoundsFromPositionItems = (
+    dir: "TB" | "LR",
+    items: Array<{
+      id: string;
+      position: { x: number; y: number };
+      node?: Node<any> | null;
+    }>
+  ): GraphBlockBounds | null => {
+    let minAxis = Infinity;
+    let maxAxis = -Infinity;
+    let minLevel = Infinity;
+    let maxLevel = -Infinity;
+    let count = 0;
+
+    for (const item of items) {
+      const pos = item.position;
+      if (
+        typeof pos?.x !== "number" ||
+        typeof pos?.y !== "number" ||
+        !Number.isFinite(pos.x) ||
+        !Number.isFinite(pos.y)
+      ) {
+        continue;
+      }
+
+      const axis = getAxisCoord(dir, pos);
+      const level = getLevelCoord(dir, pos);
+
+      const axisSize = item.node ? getAxisSize(dir, item.node) : dir === "TB" ? 940 : 560;
+      const levelSize = item.node ? getLevelSize(dir, item.node) : dir === "TB" ? 560 : 940;
+
+      minAxis = Math.min(minAxis, axis - axisSize / 2);
+      maxAxis = Math.max(maxAxis, axis + axisSize / 2);
+      minLevel = Math.min(minLevel, level - levelSize / 2);
+      maxLevel = Math.max(maxLevel, level + levelSize / 2);
+      count += 1;
+    }
+
+    if (count === 0) return null;
+
+    return {
+      minAxis,
+      maxAxis,
+      minLevel,
+      maxLevel,
+    };
+  };
+
+  const getBlockBoundsForNodeIds = (
+    dir: "TB" | "LR",
+    nodesList: Node<any>[],
+    ids: Set<string>
+  ): GraphBlockBounds | null => {
+    return getBoundsFromPositionItems(
+      dir,
+      nodesList
+        .filter((n) => ids.has(String(n.id)))
+        .map((n) => ({
+          id: String(n.id),
+          position: n.position,
+          node: n,
+        }))
+    );
+  };
+
+  const intervalsOverlap = (
+    minA: number,
+    maxA: number,
+    minB: number,
+    maxB: number,
+    gap: number
+  ) => {
+    return minA < maxB + gap && maxA + gap > minB;
+  };
+
+  const blocksOverlap = (
+    a: GraphBlockBounds,
+    b: GraphBlockBounds,
+    axisGap: number,
+    levelGap: number
+  ) => {
+    return (
+      intervalsOverlap(a.minAxis, a.maxAxis, b.minAxis, b.maxAxis, axisGap) &&
+      intervalsOverlap(a.minLevel, a.maxLevel, b.minLevel, b.maxLevel, levelGap)
+    );
+  };
+
+  const shiftBoundsOnAxis = (
+    bounds: GraphBlockBounds,
+    deltaAxis: number
+  ): GraphBlockBounds => ({
+    ...bounds,
+    minAxis: bounds.minAxis + deltaAxis,
+    maxAxis: bounds.maxAxis + deltaAxis,
+  });
+
+  const findFreeDuplicateBlockDelta = (
+    dir: "TB" | "LR",
+    nodesList: Node<any>[],
+    duplicateIds: Set<string>,
+    preferredDelta: number
+  ): number => {
+    const duplicateNodeBounds = nodesList
+      .filter((n) => duplicateIds.has(String(n.id)))
+      .map((n) =>
+        getBoundsFromPositionItems(dir, [
+          {
+            id: String(n.id),
+            position: n.position,
+            node: n,
+          },
+        ])
+      )
+      .filter(Boolean) as GraphBlockBounds[];
+
+    if (!duplicateNodeBounds.length) return preferredDelta;
+
+    const obstacleBounds = nodesList
+      .filter((n) => !duplicateIds.has(String(n.id)))
+      .map((n) =>
+        getBoundsFromPositionItems(dir, [
+          {
+            id: String(n.id),
+            position: n.position,
+            node: n,
+          },
+        ])
+      )
+      .filter(Boolean) as GraphBlockBounds[];
+
+    const axisGap = dir === "TB" ? 120 : 80;
+    const levelGap = dir === "TB" ? 100 : 120;
+
+    const collides = (deltaAxis: number): boolean => {
+      const movedDuplicateBounds = duplicateNodeBounds.map((bounds) =>
+        shiftBoundsOnAxis(bounds, deltaAxis)
+      );
+
+      return movedDuplicateBounds.some((duplicateBounds) =>
+        obstacleBounds.some((obstacle) =>
+          blocksOverlap(duplicateBounds, obstacle, axisGap, levelGap)
+        )
+      );
+    };
+
+    if (!collides(preferredDelta)) return preferredDelta;
+
+    const step = dir === "TB" ? 120 : 100;
+
+    for (let i = 1; i <= 80; i++) {
+      const rightDelta = preferredDelta + i * step;
+      if (!collides(rightDelta)) return rightDelta;
+
+      const leftDelta = preferredDelta - i * step;
+      if (!collides(leftDelta)) return leftDelta;
+    }
+
+    return preferredDelta;
+  };
+
+  const placeDuplicatedNodesAsBranchBlock = (
+    dir: "TB" | "LR",
+    nodesList: Node<any>[],
+    duplicatedPairs: Array<{
+      sourceId: string;
+      newId: string;
+      sourcePosition?: { x: number; y: number };
+    }>
+  ): {
+    nodes: Node<any>[];
+    changedMap: Map<string, { x: number; y: number }>;
+  } => {
+    const nodeById = new Map(nodesList.map((n) => [String(n.id), n]));
+    const validPairs = duplicatedPairs.filter((pair) => nodeById.has(String(pair.newId)));
+
+    const duplicateIds = new Set(validPairs.map((pair) => String(pair.newId)));
+    const changedMap = new Map<string, { x: number; y: number }>();
+
+    if (duplicateIds.size === 0) {
+      return { nodes: nodesList, changedMap };
+    }
+
+    const duplicateBounds = getBlockBoundsForNodeIds(dir, nodesList, duplicateIds);
+    if (!duplicateBounds) {
+      return { nodes: nodesList, changedMap };
+    }
+
+    const sourceItems = validPairs
+      .map((pair) => {
+        const sourceId = String(pair.sourceId);
+        const sourceNode = nodeById.get(sourceId) ?? null;
+        const sourcePosition = pair.sourcePosition ?? sourceNode?.position;
+
+        if (!sourcePosition) return null;
+
+        return {
+          id: sourceId,
+          position: sourcePosition,
+          node: sourceNode,
+        };
+      })
+      .filter(Boolean) as Array<{
+        id: string;
+        position: { x: number; y: number };
+        node?: Node<any> | null;
+      }>;
+
+    const sourceBounds =
+      getBoundsFromPositionItems(dir, sourceItems) ??
+      getBoundsFromPositionItems(
+        dir,
+        nodesList
+          .filter((n) => !duplicateIds.has(String(n.id)))
+          .map((n) => ({
+            id: String(n.id),
+            position: n.position,
+            node: n,
+          }))
+      );
+
+    if (!sourceBounds) {
+      return { nodes: nodesList, changedMap };
+    }
+
+    const branchGap = dir === "TB" ? 220 : 180;
+
+    const preferredDelta =
+      sourceBounds.maxAxis + branchGap - duplicateBounds.minAxis;
+
+    const resolvedDelta = findFreeDuplicateBlockDelta(
+      dir,
+      nodesList,
+      duplicateIds,
+      preferredDelta
+    );
+
+    const nextNodes = nodesList.map((node) => {
+      const nodeId = String(node.id);
+      if (!duplicateIds.has(nodeId)) return node;
+
+      const nextPosition = setAxisCoord(
+        dir,
+        node.position,
+        getAxisCoord(dir, node.position) + resolvedDelta
+      );
+
+      changedMap.set(nodeId, nextPosition);
+
+      return {
+        ...node,
+        position: nextPosition,
+        selected: true,
+      };
+    });
+
+    return {
+      nodes: nextNodes,
+      changedMap,
+    };
   };
 
   const getLevelStep = (dir: "TB" | "LR") => (dir === "TB" ? hierSpacingY(dir) : hierSpacingX(dir));
@@ -3955,17 +5332,244 @@ export default function ProjectPage() {
         .map((n) => ({ id: n.id, position: n.position }));
 
       // note: side effect inside setState is acceptable here because it is idempotent and tied to user action
+      const centeredNodes = centerProjectOverGraphBranches(resolved, dir);
+
+      const projectPositionChange = getProjectPositionChange(
+        resolved,
+        centeredNodes
+      );
+
+      if (projectPositionChange) {
+        levelIds.push(projectPositionChange);
+      }
+
+      // note: side effect inside setState is acceptable here because it is idempotent and tied to user action
       persistPositionsBulk(dir, levelIds);
 
-      return resolved;
+      return centeredNodes;
     });
 
     pendingPlacementRef.current = null;
   };
 
+  const alignPendingSingleChildrenToParents = (currentNodes: Node[]): Node[] => {
+    const pending = pendingNewNodesRef.current;
+
+    if (!pending || viewModeRef.current !== "hierarchical") {
+      return currentNodes;
+    }
+
+    const newIds = new Set(
+      currentNodes
+        .map((node) => String(node.id))
+        .filter((id) => !pending.beforeIds.has(id))
+    );
+
+    if (newIds.size === 0) {
+      return currentNodes;
+    }
+
+    const updatedById = new Map(
+      currentNodes.map((node) => [
+        String(node.id),
+        {
+          ...node,
+          position: { ...node.position },
+        },
+      ])
+    );
+
+    const incomingParentsByChild = new Map<string, string[]>();
+    const outgoingChildrenByParent = new Map<string, string[]>();
+
+    for (const edge of edgesRef.current) {
+      const sourceId = String(edge.source);
+      const targetId = String(edge.target);
+
+      const incomingParents = incomingParentsByChild.get(targetId) ?? [];
+
+      if (!incomingParents.includes(sourceId)) {
+        incomingParents.push(sourceId);
+        incomingParentsByChild.set(targetId, incomingParents);
+      }
+
+      const outgoingChildren = outgoingChildrenByParent.get(sourceId) ?? [];
+
+      if (!outgoingChildren.includes(targetId)) {
+        outgoingChildren.push(targetId);
+        outgoingChildrenByParent.set(sourceId, outgoingChildren);
+      }
+    }
+
+    const getNodeSize = (node: Node): { width: number; height: number } => {
+      const measured = (node as any).measured;
+      const width = measured?.width ?? node.width ?? 700;
+      const height = measured?.height ?? node.height ?? 340;
+
+      return {
+        width: typeof width === "number" && width > 0 ? width : 700,
+        height: typeof height === "number" && height > 0 ? height : 340,
+      };
+    };
+
+    const getNodeRect = (node: Node) => {
+      const { width, height } = getNodeSize(node);
+
+      return {
+        left: node.position.x,
+        right: node.position.x + width,
+        top: node.position.y,
+        bottom: node.position.y + height,
+      };
+    };
+
+    const nodesOverlap = (firstNode: Node, secondNode: Node): boolean => {
+      const firstRect = getNodeRect(firstNode);
+      const secondRect = getNodeRect(secondNode);
+      const margin = graphDirection === "TB" ? 80 : 60;
+
+      return !(
+        firstRect.right + margin <= secondRect.left ||
+        firstRect.left >= secondRect.right + margin ||
+        firstRect.bottom + margin <= secondRect.top ||
+        firstRect.top >= secondRect.bottom + margin
+      );
+    };
+
+    const alignChildToParent = (childNode: Node, parentNode: Node): Node => {
+      const childSize = getNodeSize(childNode);
+      const parentSize = getNodeSize(parentNode);
+
+      if (graphDirection === "TB") {
+        const parentCenterX = parentNode.position.x + parentSize.width / 2;
+
+        return {
+          ...childNode,
+          position: {
+            ...childNode.position,
+            x: parentCenterX - childSize.width / 2,
+          },
+        };
+      }
+
+      const parentCenterY = parentNode.position.y + parentSize.height / 2;
+
+      return {
+        ...childNode,
+        position: {
+          ...childNode.position,
+          y: parentCenterY - childSize.height / 2,
+        },
+      };
+    };
+
+    const readyNewIds = new Set<string>();
+    const unresolvedNewIds = new Set(newIds);
+
+    for (let pass = 0; pass < newIds.size; pass++) {
+      let passChanged = false;
+
+      for (const childId of Array.from(unresolvedNewIds)) {
+        const childNode = updatedById.get(childId);
+
+        if (!childNode) {
+          unresolvedNewIds.delete(childId);
+          continue;
+        }
+
+        const parentIds = incomingParentsByChild.get(childId) ?? [];
+
+        const parentId =
+          parentIds.find((id) => newIds.has(id) && readyNewIds.has(id)) ??
+          parentIds.find((id) => !newIds.has(id)) ??
+          null;
+
+        if (!parentId) {
+          if (parentIds.length === 0) {
+            readyNewIds.add(childId);
+            unresolvedNewIds.delete(childId);
+            passChanged = true;
+          }
+
+          continue;
+        }
+
+        const parentNode = updatedById.get(parentId);
+
+        if (!parentNode) {
+          readyNewIds.add(childId);
+          unresolvedNewIds.delete(childId);
+          passChanged = true;
+          continue;
+        }
+
+        const parentChildren = outgoingChildrenByParent.get(parentId) ?? [];
+
+        if (parentChildren.length !== 1 || parentChildren[0] !== childId) {
+          readyNewIds.add(childId);
+          unresolvedNewIds.delete(childId);
+          passChanged = true;
+          continue;
+        }
+
+        const alignedChild = alignChildToParent(childNode, parentNode);
+
+        const collides = Array.from(updatedById.entries()).some(([otherId, otherNode]) => {
+          if (otherId === childId || otherId === parentId) {
+            return false;
+          }
+
+          return nodesOverlap(alignedChild, otherNode);
+        });
+
+        if (!collides) {
+          updatedById.set(childId, alignedChild);
+        }
+
+        readyNewIds.add(childId);
+        unresolvedNewIds.delete(childId);
+        passChanged = true;
+      }
+
+      if (!passChanged) {
+        break;
+      }
+    }
+
+    const resolvedNodes = currentNodes.map((node) => updatedById.get(String(node.id)) ?? node);
+
+    return centerProjectOverGraphBranches(resolvedNodes, graphDirection);
+  };
+
   const tryResolveNewNodesCollisions = () => {
     const pending = pendingNewNodesRef.current;
     if (!pending) return;
+
+    if (pending.reflowWholeGraph) {
+      setNodes((currentNodes) => {
+        const hasNewNodes = currentNodes.some((node) => !pending.beforeIds.has(String(node.id)));
+
+        if (!hasNewNodes) {
+          return currentNodes;
+        }
+
+        const resolvedNodes = alignPendingSingleChildrenToParents(currentNodes);
+
+        persistPositionsBulk(
+          graphDirection,
+          resolvedNodes.map((node) => ({
+            id: String(node.id),
+            position: node.position,
+          }))
+        );
+
+        pendingNewNodesRef.current = null;
+
+        return resolvedNodes;
+      });
+
+      return;
+    }
 
     if (viewModeRef.current !== "hierarchical") return;
 
@@ -3978,49 +5582,43 @@ export default function ProjectPage() {
 
     const dir = graphDirRef.current;
 
+    if (
+      pending.operation === "duplicate" &&
+      Array.isArray(pending.duplicatedPairs) &&
+      pending.duplicatedPairs.length > 0
+    ) {
+      setNodes((prev) => {
+        const result = placeDuplicatedNodesAsBranchBlock(
+          dir,
+          prev,
+          pending.duplicatedPairs ?? []
+        );
+
+        const alignedNodes = alignPendingSingleChildrenToParents(result.nodes);
+        const centeredNodes = centerProjectOverGraphBranches(alignedNodes, dir);
+
+        const positionsToPersist = centeredNodes.map((node) => ({
+          id: String(node.id),
+          position: node.position,
+        }));
+
+        persistPositionsBulk(dir, positionsToPersist);
+
+        pendingNewNodesRef.current = null;
+
+        return centeredNodes;
+      });
+
+      return;
+    }
+
     setNodes((prev) => {
       const step = getLevelStep(dir);
 
-      let seededPrev = prev;
-      const seededChangedMap = new Map<string, { x: number; y: number }>();
-
-      if (
-        pending.operation === "duplicate" &&
-        Array.isArray(pending.duplicatedPairs) &&
-        pending.duplicatedPairs.length > 0
-      ) {
-        const duplicateGap = 720;
-
-        seededPrev = prev.map((node) => {
-          const nodeId = String(node.id);
-          const pair = pending.duplicatedPairs?.find((p) => p.newId === nodeId);
-
-          if (!pair?.sourcePosition) return node;
-
-          const sourceLevelCoord = getLevelCoord(dir, pair.sourcePosition);
-          const sourceAxis = getAxisCoord(dir, pair.sourcePosition);
-          const desiredAxis = sourceAxis + duplicateGap;
-
-          const desiredPosition = setAxisCoord(
-            dir,
-            setLevelCoord(dir, node.position, sourceLevelCoord),
-            desiredAxis
-          );
-
-          seededChangedMap.set(nodeId, desiredPosition);
-
-          return {
-            ...node,
-            position: desiredPosition,
-            selected: true,
-          };
-        });
-      }
-
-      // groupNewNodesByLevelKey
       const newIdsByLevel = new Map<number, string[]>();
+
       for (const id of newIds) {
-        const node = seededPrev.find((n) => String(n.id) === id);
+        const node = prev.find((n) => String(n.id) === id);
         if (!node) continue;
 
         const levelKey = Math.round(getLevelCoord(dir, node.position) / step);
@@ -4029,22 +5627,20 @@ export default function ProjectPage() {
         newIdsByLevel.set(levelKey, arr);
       }
 
-      // ifNodesNotReadyYetKeepPendingForNextRetry
       if (newIdsByLevel.size === 0) return prev;
 
-      // processLevelsInStableOrder
       const levelKeys = Array.from(newIdsByLevel.keys()).sort((a, b) => a - b);
 
-      let nodesAcc = seededPrev;
-      const changedMap = new Map<string, { x: number; y: number }>(seededChangedMap);
+      let nodesAcc = prev;
+      const changedMap = new Map<string, { x: number; y: number }>();
 
       for (const levelKey of levelKeys) {
         const idsInLevel = newIdsByLevel.get(levelKey) ?? [];
         if (idsInLevel.length === 0) continue;
 
-        // pickAnchorForThisLevel: highestNumericIdForStability
         let anchorId = idsInLevel[0];
         let bestNum = Number.NEGATIVE_INFINITY;
+
         for (const id of idsInLevel) {
           const n = parseInt(id, 10);
           if (!Number.isNaN(n) && n > bestNum) {
@@ -4053,17 +5649,15 @@ export default function ProjectPage() {
           }
         }
 
-        // snapshotPositionsInThisLevelBefore
         const beforePos = new Map<string, { x: number; y: number }>();
+
         for (const n of nodesAcc) {
           const k = Math.round(getLevelCoord(dir, n.position) / step);
           if (k === levelKey) beforePos.set(String(n.id), n.position);
         }
 
-        // resolveOverlapsForThisLevel
         nodesAcc = resolveOverlapsInLevel(dir, nodesAcc, anchorId, levelKey);
 
-        // collectChangesForPersistence
         for (const n of nodesAcc) {
           const k = Math.round(getLevelCoord(dir, n.position) / step);
           if (k !== levelKey) continue;
@@ -4082,19 +5676,26 @@ export default function ProjectPage() {
         position,
       }));
 
+      const centeredNodes = centerProjectOverGraphBranches(nodesAcc, dir);
+
+      const projectPositionChange = getProjectPositionChange(
+        nodesAcc,
+        centeredNodes
+      );
+
+      if (projectPositionChange) {
+        changedItems.push(projectPositionChange);
+      }
+
       if (changedItems.length) {
-        // note: side effect inside setState is acceptable here because it is idempotent and tied to user action
         persistPositionsBulk(dir, changedItems);
       }
 
-      // clearPendingOnceApplied (only if we actually processed at least one level)
       pendingNewNodesRef.current = null;
 
-      return nodesAcc;
+      return centeredNodes;
     });
   };
-
-
 
 
   const handleContextMenu = (event: React.MouseEvent) => {
@@ -4439,6 +6040,7 @@ export default function ProjectPage() {
       beforeIds,
       beforePositions,
       operation: "add",
+      reflowWholeGraph: true,
     };
 
     try {
@@ -4516,6 +6118,7 @@ export default function ProjectPage() {
       beforePositions,
       operation: "duplicate",
       duplicatedPairs: [],
+      reflowWholeGraph: false,
     };
 
     try {
@@ -4530,6 +6133,7 @@ export default function ProjectPage() {
         beforeIds,
         beforePositions,
         operation: "duplicate",
+        reflowWholeGraph: false,
         duplicatedPairs: duplicatedFromBackend
           .map((pair: any) => {
             const sourceId = String(pair?.sourceId ?? "");
@@ -4585,15 +6189,35 @@ export default function ProjectPage() {
   const openResetFrom = (id: string) => setDlgResetFrom({ open: true, id: String(id) });
 
   const openStop = (id: string) => {
+    const clickedId = String(id);
+
+    const clickedNode = nodesRef.current.find(
+      (node) => String(node.id) === clickedId
+    );
+
+    const visuallySelectedIds = nodesRef.current
+      .filter(
+        (node) =>
+          node.selected &&
+          String(node.id) !== "PROJECT"
+      )
+      .map(
+        (node) => String(node.id)
+      );
+
     const ids =
-      pathSelRef.current.nodes.size > 0
-        ? Array.from(pathSelRef.current.nodes).map(String).filter((x) => x !== "PROJECT")
-        : [String(id)];
+      clickedNode?.selected &&
+        visuallySelectedIds.length > 0
+        ? Array.from(
+          new Set(visuallySelectedIds)
+        )
+        : [clickedId];
 
-    setDlgStop({ open: true, ids });
+    setDlgStop({
+      open: true,
+      ids,
+    });
   };
-
-
 
 
   const submitRename = async () => {
@@ -5660,6 +7284,11 @@ export default function ProjectPage() {
                     projectProtocols={project?.protocols ?? {}}
                     variant="docked"
                     projectEffectiveSettings={projectEffectiveSettings}
+                    onSaved={() => {
+                      if (String(f.key).startsWith("class:")) {
+                        preparePendingAddProtocolFromForm();
+                      }
+                    }}
                     onClose={() => {
                       handleRefreshRef.current?.();
                       setTimeout(() => handleRefreshRef.current?.(), 800);
@@ -5670,6 +7299,10 @@ export default function ProjectPage() {
                       closeFormByKey(f.key);
                     }}
                     onExecuted={() => {
+                      if (String(f.key).startsWith("class:")) {
+                        preparePendingAddProtocolFromForm();
+                      }
+
                       scheduleDoubleRefresh(5000, true);
                     }}
                   />
@@ -6073,11 +7706,36 @@ export default function ProjectPage() {
                     return;
                   }
 
+                  if (viewModeRef.current === "hierarchical") {
+                    const beforePositions = new Map<string, { x: number; y: number }>();
+
+                    for (const node of nodesRef.current) {
+                      const nodeId = String(node.id);
+                      const position = node.position;
+
+                      if (!nodeId || !position) continue;
+                      if (!Number.isFinite(position.x) || !Number.isFinite(position.y)) continue;
+
+                      beforePositions.set(nodeId, {
+                        x: position.x,
+                        y: position.y,
+                      });
+                    }
+
+                    pendingDeletionRef.current = { beforePositions };
+                  } else {
+                    pendingDeletionRef.current = null;
+                  }
+
                   setDeleteBusy(true);
 
                   try {
                     const res = await svc.deleteProtocol(projectName, ids);
-                    if (!ensureApiOk(res, "Delete failed.")) return;
+
+                    if (!ensureApiOk(res, "Delete failed.")) {
+                      pendingDeletionRef.current = null;
+                      return;
+                    }
 
                     clearAllSelectionHard();
 
@@ -6089,7 +7747,9 @@ export default function ProjectPage() {
 
                     setDlgDelete({ open: false, ids: [] });
                     await handleRefresh();
+                    pendingDeletionRef.current = null;
                   } catch (err) {
+                    pendingDeletionRef.current = null;
                     console.error(err);
                     toast.error(getErrorMsg(err));
                   } finally {
@@ -6218,7 +7878,7 @@ export default function ProjectPage() {
                     toast.success("Restart started.");
                     setDlgRestartAll({ open: false, id: null });
 
-                    scheduleDoubleRefresh(5000, true);
+                    scheduleDoubleRefresh(8000, true);
                   } catch (err) {
                     console.error(err);
                     toast.error(getErrorMsg(err));
