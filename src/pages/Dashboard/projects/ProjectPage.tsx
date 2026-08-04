@@ -2766,6 +2766,7 @@ export default function ProjectPage() {
   const graphTopologySignatureRef = useRef("");
 
   const storageKeyHier = `${localStorageKey}-${graphDirection}-hier`;
+  const manualNodeOriginsStorageKey = `${storageKeyHier}-manual-origins`;
   const viewportStorageKey = `${localStorageKey}-${viewMode}-${graphDirection}-viewport`;
 
   const safeParseJson = (raw: string | null): unknown => {
@@ -2784,6 +2785,83 @@ export default function ProjectPage() {
     const yOk = typeof value?.position?.y === "number" && Number.isFinite(value.position.y);
 
     return idOk && xOk && yOk;
+  };
+
+  type PersistedManualNodeOriginsV1 = {
+    version: 1;
+    direction: "TB" | "LR";
+    topologySignature: string;
+    positions: Array<{ id: string; position: { x: number; y: number } }>;
+  };
+
+  const readManualNodeOrigins = (): Map<string, { x: number; y: number }> => {
+    const topologySignature = graphTopologySignatureRef.current;
+
+    if (!topologySignature) {
+      return new Map();
+    }
+
+    try {
+      const parsed = safeParseJson(localStorage.getItem(manualNodeOriginsStorageKey));
+
+      if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+        return new Map();
+      }
+
+      const payload = parsed as Partial<PersistedManualNodeOriginsV1>;
+
+      if (
+        payload.version !== 1 ||
+        payload.direction !== graphDirection ||
+        payload.topologySignature !== topologySignature ||
+        !Array.isArray(payload.positions)
+      ) {
+        localStorage.removeItem(manualNodeOriginsStorageKey);
+        return new Map();
+      }
+
+      return new Map(
+        payload.positions
+          .filter(isValidPosItem)
+          .map((item) => [item.id, item.position])
+      );
+    } catch {
+      return new Map();
+    }
+  };
+
+  const writeManualNodeOrigins = (
+    positionsById: Map<string, { x: number; y: number }>
+  ): void => {
+    const topologySignature = graphTopologySignatureRef.current;
+
+    if (!topologySignature) {
+      return;
+    }
+
+    try {
+      const payload: PersistedManualNodeOriginsV1 = {
+        version: 1,
+        direction: graphDirection,
+        topologySignature,
+        positions: Array.from(positionsById.entries()).map(([id, position]) => ({
+          id,
+          position,
+        })),
+      };
+
+      localStorage.setItem(manualNodeOriginsStorageKey, JSON.stringify(payload));
+    } catch {
+      // noOp
+    }
+  };
+
+  const clearManualNodeOrigins = (): void => {
+    try {
+      localStorage.removeItem(manualNodeOriginsStorageKey);
+    } catch {
+      // noOp
+    }
   };
 
   const readPersistedPositions = (
@@ -2903,6 +2981,43 @@ export default function ProjectPage() {
     }
 
     setNodes((nds) => {
+      const manualOrigins = readManualNodeOrigins();
+      let manualOriginsChanged = false;
+
+      for (const change of changes) {
+        if (change.type !== "position" || (change as any).dragging !== true) {
+          continue;
+        }
+
+        const nodeId = String(change.id);
+
+        if (nodeId === "PROJECT" || manualOrigins.has(nodeId)) {
+          continue;
+        }
+
+        const currentNode = nds.find((node) => String(node.id) === nodeId);
+        const currentPosition = currentNode?.position;
+
+        if (
+          !currentPosition ||
+          !Number.isFinite(currentPosition.x) ||
+          !Number.isFinite(currentPosition.y)
+        ) {
+          continue;
+        }
+
+        manualOrigins.set(nodeId, {
+          x: currentPosition.x,
+          y: currentPosition.y,
+        });
+
+        manualOriginsChanged = true;
+      }
+
+      if (manualOriginsChanged) {
+        writeManualNodeOrigins(manualOrigins);
+      }
+
       const updated = applyNodeChanges(changes, nds);
       const shouldRecenterProject = changes.some((change) => change.type !== "select");
       const resolvedNodes = shouldRecenterProject
@@ -4002,10 +4117,55 @@ export default function ProjectPage() {
           return;
         }
 
-        const nodesWithPositions =
+        const persistedNodes =
           viewMode === "hierarchical"
             ? loadNodesWithPositions(loadedNodes, data.protocols)
             : loadedNodes;
+
+        const manualOrigins =
+          viewMode === "hierarchical"
+            ? readManualNodeOrigins()
+            : new Map<string, { x: number; y: number }>();
+
+        const nodesWithPositions =
+          manualOrigins.size > 0
+            ? centerProjectOverGraphBranches(
+              persistedNodes.map((node) => {
+                if (String(node.id) === "PROJECT") {
+                  return node;
+                }
+
+                const originalPosition = manualOrigins.get(String(node.id));
+
+                return originalPosition
+                  ? { ...node, position: originalPosition }
+                  : node;
+              }),
+              graphDirection
+            )
+            : persistedNodes;
+
+        if (viewMode === "hierarchical" && manualOrigins.size > 0) {
+          const topologySignature = graphTopologySignatureRef.current;
+
+          if (topologySignature) {
+            try {
+              writePersistedPositions(
+                storageKeyHier,
+                graphDirection,
+                topologySignature,
+                nodesWithPositions.map((node) => ({
+                  id: String(node.id),
+                  position: node.position,
+                }))
+              );
+            } catch {
+              // noOp
+            }
+          }
+
+          clearManualNodeOrigins();
+        }
 
         const unifiedSelectedIds = getUnifiedSelectedIds();
         const nodesSeeded = seedNodesWithSelectionAndThumbnails(
