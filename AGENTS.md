@@ -34,3 +34,7 @@ React 18 + TypeScript + Vite, TailwindCSS v4 + ShadCN/UI, ReactFlow (protocol wo
 - **Two test runners are configured simultaneously**: both `jest.config.js` and `vitest.config.ts` exist, with `jest`/`babel-jest` and `vitest` both in `devDependencies`. Only vitest is actually wired to `npm test`; `jest.config.js` appears vestigial. Don't run `npx jest` expecting it to reflect the real test suite — use `npm test`.
 - `package.json`'s `name: "tailadmin-react"` (see Stack above) is cosmetic leftover, not a sign this is still template code — check `src/` for the real app structure instead of trusting the manifest name.
 - This repo is standalone/HTTP-only towards Scipion — if something looks like it needs a direct Python/Scipion import, that's a sign it belongs in `ScipionAPI` instead, not here.
+
+## Keeping this document current
+
+This file describes the repo as of the last time someone updated it — it will drift out of date as the code changes. If your change touches anything described above (stack, architecture map, testing setup, dependencies, gotchas), update the relevant section in this file as part of the same change, not as a separate follow-up. Don't wait to be asked.
