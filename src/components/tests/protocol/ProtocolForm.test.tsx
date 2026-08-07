@@ -524,5 +524,61 @@ describe("ProtocolForm", () => {
         expect(onExecuted).toHaveBeenCalledTimes(1);
     });
 
+        it("skips the queue dialog when queue execution is mandatory", async () => {
+        const { onExecuted } = renderQueueComponent({
+            projectEffectiveSettings: {
+                projectId: 1,
+                settings: {
+                    user: {},
+                    instance: {
+                        defaultQueueName: "gpu",
+                    },
+                    host: {
+                        mandatory: true,
+                        queues: [
+                            {
+                                name: "gpu",
+                                params: [
+                                    {
+                                        variableName: "threads",
+                                        value: "8",
+                                        label: "Threads",
+                                        help: "Queue threads",
+                                    },
+                                ],
+                            },
+                        ],
+                    },
+                },
+            },
+        });
+
+        fireEvent.click(screen.getByRole("button", { name: "Launch" }));
+
+        expect(screen.queryByText("Queue settings")).not.toBeInTheDocument();
+
+        await waitFor(() => {
+            expect(mockExecuteProtocol).toHaveBeenCalledWith(
+                1,
+                "7",
+                "ProtImportMovies",
+                {
+                    inputLabel: "hello",
+                    useQueue: true,
+                    queueName: "gpu",
+                    threads: "8",
+                    _useQueue: true,
+                    _queueName: "gpu",
+                    _queueParams: {
+                        threads: "8",
+                    },
+                },
+                "launch",
+            );
+        });
+
+        expect(onExecuted).toHaveBeenCalledTimes(1);
+    });
+
 
 });

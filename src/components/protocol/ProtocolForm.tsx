@@ -1542,10 +1542,17 @@ export default function ProtocolForm({
       return;
     }
 
-    const draft = buildQueueDraft(activeQueueName);
+    const draft = buildQueueDraft(
+      effectiveQueueMandatory ? effectiveDefaultQueueName : activeQueueName
+    );
 
     if (!draft) {
       toast.error("Unable to prepare queue settings.");
+      return;
+    }
+
+    if (effectiveQueueMandatory) {
+      await executeNow(modeKey, draft);
       return;
     }
 
