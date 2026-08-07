@@ -418,22 +418,6 @@ export default function ImportProjectDialog({
           }}
         >
           <Button
-            onClick={handleImport}
-            variant="contained"
-            color="error"
-            disabled={submitting || !projectLocation.trim()}
-            sx={{
-              minWidth: 100,
-              textTransform: "none",
-              fontWeight: 700,
-              boxShadow: "none",
-              borderRadius: 3,
-            }}
-          >
-            {submitting ? "Importing..." : "Import"}
-          </Button>
-
-          <Button
             onClick={onClose}
             variant="outlined"
             disabled={submitting}
@@ -445,6 +429,21 @@ export default function ImportProjectDialog({
             }}
           >
             Cancel
+          </Button>
+          <Button
+            onClick={handleImport}
+            variant="contained"
+            color="info"
+            disabled={submitting || !projectLocation.trim()}
+            sx={{
+              minWidth: 100,
+              textTransform: "none",
+              fontWeight: 700,
+              boxShadow: "none",
+              borderRadius: 3,
+            }}
+          >
+            {submitting ? "Importing..." : "Import"}
           </Button>
         </DialogActions>
       </Dialog>
