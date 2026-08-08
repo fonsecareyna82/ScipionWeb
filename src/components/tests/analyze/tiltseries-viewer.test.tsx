@@ -466,6 +466,8 @@ describe("TiltSeriesViewer", () => {
             expect(screen.getByText("View 2 of 2")).toBeInTheDocument();
 
             fireEvent.click(getButtonFromIconTestId("StopIcon"));
+
+            await flushMicrotasks();
         } finally {
             vi.useRealTimers();
         }

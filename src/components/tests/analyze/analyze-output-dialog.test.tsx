@@ -9,12 +9,24 @@ const mocks = vi.hoisted(() => ({
     ctfTomoViewerSpy: vi.fn(),
     metadataViewerSpy: vi.fn(),
     fscViewerSpy: vi.fn(),
+    fetchIntegratedAnalyzeContext: vi.fn().mockResolvedValue({
+        root: {},
+        links: {},
+        summaries: {},
+        relations: { items: [] },
+    }),
 }));
 
 vi.mock("@/icons", () => ({
     CloseIcon: (props: Record<string, unknown>) => (
         <svg data-testid="close-icon" {...props} />
     ),
+}));
+
+vi.mock("@/ProjectServiceContext", () => ({
+    useProjectService: () => ({
+        fetchIntegratedAnalyzeContext: mocks.fetchIntegratedAnalyzeContext,
+    }),
 }));
 
 vi.mock("../../analyze/volume-viewer", () => ({
@@ -121,7 +133,7 @@ describe("AnalyzeOutputDialog", () => {
         );
     });
 
-    it("renders the coords3d viewer for SetOfCoordinates3D outputs", () => {
+    it("renders the coords3d viewer for SetOfCoordinates3D outputs", async () => {
         render(
             <AnalyzeOutputDialog
                 {...makeProps({
@@ -132,7 +144,7 @@ describe("AnalyzeOutputDialog", () => {
             />,
         );
 
-        expect(screen.getByText("Mock Coords3dViewer")).toBeInTheDocument();
+        expect(await screen.findByText("Mock Coords3dViewer")).toBeInTheDocument();
         expect(mocks.coords3dViewerSpy).toHaveBeenCalledWith(
             expect.objectContaining({
                 projectId: 12,
@@ -143,7 +155,7 @@ describe("AnalyzeOutputDialog", () => {
         );
     });
 
-    it("renders the tilt series viewer for SetOfTiltSeries outputs", () => {
+    it("renders the tilt series viewer for SetOfTiltSeries outputs", async () => {
         render(
             <AnalyzeOutputDialog
                 {...makeProps({
@@ -154,7 +166,7 @@ describe("AnalyzeOutputDialog", () => {
             />,
         );
 
-        expect(screen.getByText("Mock TiltSeriesViewer")).toBeInTheDocument();
+        expect(await screen.findByText("Mock TiltSeriesViewer")).toBeInTheDocument();
         expect(mocks.tiltSeriesViewerSpy).toHaveBeenCalledWith(
             expect.objectContaining({
                 projectId: 12,
@@ -164,7 +176,7 @@ describe("AnalyzeOutputDialog", () => {
         );
     });
 
-    it("renders the CTF tomo viewer for SetOfCTFTomoSeries outputs", () => {
+    it("renders the CTF tomo viewer for SetOfCTFTomoSeries outputs", async () => {
         render(
             <AnalyzeOutputDialog
                 {...makeProps({
@@ -175,7 +187,7 @@ describe("AnalyzeOutputDialog", () => {
             />,
         );
 
-        expect(screen.getByText("Mock CTFTomoViewer")).toBeInTheDocument();
+        expect(await screen.findByText("Mock CTFTomoViewer")).toBeInTheDocument();
         expect(mocks.ctfTomoViewerSpy).toHaveBeenCalledWith(
             expect.objectContaining({
                 projectId: 12,

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const serviceMocks = vi.hoisted(() => ({
@@ -713,11 +713,16 @@ describe("Coords3dViewer", () => {
         expect(await screen.findByText("Total 3")).toBeInTheDocument();
 
         const sliders = screen.getAllByRole("slider");
-        const scoreUpperThumb = sliders[1];
+        const scoreUpperThumb = sliders[2];
 
-        scoreUpperThumb.focus();
-        fireEvent.keyDown(scoreUpperThumb, { key: "Home" });
+        await act(async () => {
+            scoreUpperThumb.focus();
+            fireEvent.keyDown(scoreUpperThumb, { key: "Home" });
+        });
 
+        await waitFor(() => {
+            expect(screen.getByText("Shown 1")).toBeInTheDocument();
+        });
     });
 
     it("limits the number of shown points with maxPoints", async () => {
@@ -819,6 +824,9 @@ describe("Coords3dViewer", () => {
         expect(await screen.findByText("Total 3")).toBeInTheDocument();
 
         fireEvent.click(screen.getByRole("button", { name: "3D Map" }));
+        expect(
+            await screen.findByText(/3D map · drag orbit · wheel zoom/i),
+        ).toBeInTheDocument();
         fireEvent.click(screen.getByRole("tab", { name: "Appearance" }));
 
         const showSlicePlanes = screen.getByLabelText("Show slice planes");
@@ -838,6 +846,9 @@ describe("Coords3dViewer", () => {
         expect(await screen.findByText("Total 3")).toBeInTheDocument();
 
         fireEvent.click(screen.getByRole("button", { name: "3D Map" }));
+        expect(
+            await screen.findByText(/3D map · drag orbit · wheel zoom/i),
+        ).toBeInTheDocument();
         fireEvent.click(screen.getByRole("tab", { name: "Appearance" }));
 
         const showBox = screen.getByLabelText("Show volume box");
@@ -859,6 +870,9 @@ describe("Coords3dViewer", () => {
         expect(await screen.findByText("Total 3")).toBeInTheDocument();
 
         fireEvent.click(screen.getByRole("button", { name: "3D Map" }));
+        expect(
+            await screen.findByText(/3D map · drag orbit · wheel zoom/i),
+        ).toBeInTheDocument();
         fireEvent.click(screen.getByRole("tab", { name: "Appearance" }));
 
         const syncPick = screen.getByLabelText("Sync 3D click to slices");

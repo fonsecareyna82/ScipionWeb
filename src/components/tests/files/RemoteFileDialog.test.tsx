@@ -85,6 +85,10 @@ describe("RemoteFileDialog", () => {
 
     expect(screen.getByText("notes.txt")).toBeInTheDocument();
     expect(screen.queryByText("folderA")).not.toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(previewRemoteEntry).toHaveBeenCalledWith("notes.txt");
+    });
   });
 
   it("selects a file and calls onPick on Select", async () => {
@@ -97,6 +101,11 @@ describe("RemoteFileDialog", () => {
     expect(await screen.findByText("file.txt")).toBeInTheDocument();
 
     fireEvent.click(screen.getByText("file.txt"));
+
+    await waitFor(() => {
+      expect(previewRemoteEntry).toHaveBeenCalledWith("file.txt");
+    });
+
     fireEvent.click(screen.getByRole("button", { name: "Select" }));
 
    expect(onPick).toHaveBeenCalledWith("file.txt", fileEntry);
