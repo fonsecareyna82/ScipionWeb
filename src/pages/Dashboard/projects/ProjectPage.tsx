@@ -147,6 +147,33 @@ function isProtocolRefreshActive(status: unknown): boolean {
   );
 }
 
+function mergeNodeOutputs(
+  freshNode: Node<StatusNodeData>,
+  currentNode?: Node<StatusNodeData>,
+): Node<StatusNodeData> {
+  const freshOutputs = Array.isArray(freshNode.data?.outputs)
+    ? freshNode.data.outputs
+    : [];
+  const currentOutputs = Array.isArray(currentNode?.data?.outputs)
+    ? currentNode.data.outputs
+    : [];
+
+  if (
+    !isProtocolRefreshActive(freshNode.data?.status) ||
+    freshOutputs.length >= currentOutputs.length
+  ) {
+    return freshNode;
+  }
+
+  return {
+    ...freshNode,
+    data: {
+      ...freshNode.data,
+      outputs: currentOutputs,
+    },
+  };
+}
+
 function continuesElapsedTimerSession(
   previousStatus: unknown,
   nextStatus: unknown,
@@ -1552,7 +1579,7 @@ export default function ProjectPage() {
 
       if (!info || typeof info !== "object") return;
 
-      const outputs = Array.isArray(info.outputs)
+      const outputs = Array.isArray(info.outputs) && info.outputs.length > 0
         ? info.outputs
         : undefined;
 
@@ -3461,13 +3488,17 @@ export default function ProjectPage() {
           nodesWithPositions.map(
             (freshNode) => {
               const mergedNode =
-                mergeNodeElapsedTick(
-                  freshNode as
-                  Node<StatusNodeData>,
+                mergeNodeOutputs(
+                  mergeNodeElapsedTick(
+                    freshNode as Node<StatusNodeData>,
 
+                    currentNodesById.get(
+                      String(freshNode.id),
+                    ),
+                  ),
                   currentNodesById.get(
                     String(freshNode.id),
-                  ),
+                  ) as Node<StatusNodeData> | undefined,
                 );
 
               return {
