@@ -15,6 +15,7 @@ import RemoteFileDialog, {
   RemoteEntry,
   RemotePreview,
 } from "@/components/files/RemoteFileDialog";
+import OverflowTooltipText from "@/components/ui/overflow-tooltip-text";
 
 import { Handle, Position, useReactFlow } from "reactflow";
 import styles from "./ProtocolNodeCard.module.css";
@@ -2617,6 +2618,33 @@ export default function ProtocolNodeCard({
                             void openOutputViewer(outputName, outputObj, value);
                           };
 
+                          const outputInfoTooltipText = labelTextValue;
+                          const shouldShowOutputInfoTooltip =
+                            outputInfoTooltipText.length >= 48 ||
+                            outputInfoTooltipText.includes("\n") ||
+                            (shouldUseOutputTiles && outputInfoTooltipText !== overlayTitle);
+
+                          const outputInfoTooltipProps = shouldShowOutputInfoTooltip
+                            ? {
+                                title: outputInfoTooltipText,
+                                placement: "top" as const,
+                                arrow: true,
+                                enterDelay: 300,
+                                slotProps: {
+                                  popper: { sx: { zIndex: 26000 } },
+                                  tooltip: {
+                                    sx: {
+                                      maxWidth: 560,
+                                      whiteSpace: "pre-wrap",
+                                      wordBreak: "break-word",
+                                      fontSize: "0.95rem",
+                                      lineHeight: 1.35,
+                                    },
+                                  },
+                                },
+                              }
+                            : null;
+
                           if (shouldUseOutputTiles) {
                             const hasThumbnail = Boolean(thumbnailSrc);
 
@@ -2629,7 +2657,7 @@ export default function ProtocolNodeCard({
                                     ? styles.outputThumbTileTriple
                                     : styles.outputThumbTileMany;
 
-                            return (
+                            const thumbTile = (
                               <div
                                 key={pillKey}
                                 className={[
@@ -2640,7 +2668,6 @@ export default function ProtocolNodeCard({
                                   "nodrag",
                                 ].filter(Boolean).join(" ")}
                                 draggable
-                                title={labelText}
                                 onMouseDown={handleOutputMouseDown}
                                 onClick={handleOpenOutput}
                                 onDragStart={handleOutputDragStart}
@@ -2667,31 +2694,47 @@ export default function ProtocolNodeCard({
                                     )}
 
                                     {overlayTopLeft ? (
-                                      <div className={`${styles.outputThumbBadge} ${styles.outputThumbBadgeTopLeft}`}>
-                                        {overlayTopLeft}
-                                      </div>
+                                      <OverflowTooltipText
+                                        as="div"
+                                        text={overlayTopLeft}
+                                        className={`${styles.outputThumbBadge} ${styles.outputThumbBadgeTopLeft}`}
+                                      />
                                     ) : null}
 
                                     {overlayTopRight ? (
-                                      <div className={`${styles.outputThumbBadge} ${styles.outputThumbBadgeTopRight}`}>
-                                        {overlayTopRight}
-                                      </div>
+                                      <OverflowTooltipText
+                                        as="div"
+                                        text={overlayTopRight}
+                                        className={`${styles.outputThumbBadge} ${styles.outputThumbBadgeTopRight}`}
+                                      />
                                     ) : null}
 
                                     {overlayBottomLeft ? (
-                                      <div className={`${styles.outputThumbBadge} ${styles.outputThumbBadgeBottomLeft}`}>
-                                        {overlayBottomLeft}
-                                      </div>
+                                      <OverflowTooltipText
+                                        as="div"
+                                        text={overlayBottomLeft}
+                                        className={`${styles.outputThumbBadge} ${styles.outputThumbBadgeBottomLeft}`}
+                                      />
                                     ) : null}
 
                                     {overlayBottomRight ? (
-                                      <div className={`${styles.outputThumbBadge} ${styles.outputThumbBadgeBottomRight}`}>
-                                        {overlayBottomRight}
-                                      </div>
+                                      <OverflowTooltipText
+                                        as="div"
+                                        text={overlayBottomRight}
+                                        className={`${styles.outputThumbBadge} ${styles.outputThumbBadgeBottomRight}`}
+                                      />
                                     ) : null}
                                   </div>
                                 </div>
                               </div>
+                            );
+
+                            if (!outputInfoTooltipProps) return thumbTile;
+
+                            return (
+                              <Tooltip key={pillKey} {...outputInfoTooltipProps}>
+                                {thumbTile}
+                              </Tooltip>
                             );
                           }
 
@@ -2712,7 +2755,10 @@ export default function ProtocolNodeCard({
                               onDragEnd={handleOutputDragEnd}
                             >
                               <ArrowUpRight className={styles.outputIcon} />
-                              <span className={styles.outputText}>{labelText}</span>
+                              <OverflowTooltipText
+                                text={outputInfoTooltipText}
+                                className={styles.outputText}
+                              />
 
                               <button
                                 type="button"

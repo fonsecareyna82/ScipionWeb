@@ -591,12 +591,22 @@ function VolumeSliderLayout({
       ? sliceDisplaySize("x", volumeDimensions, pixelScale)
       : undefined;
 
+  const gridTemplateRows = useMemo(() => {
+    if (!volumeDimensions) return "max-content 1fr";
+    const [, dimY, dimZ] = volumeDimensions;
+    const ySliceHeight = dimZ;
+    const zSliceHeight = dimY;
+    if (ySliceHeight <= 0 || zSliceHeight <= 0) return "max-content 1fr";
+    // Top row = Y slices (height dimZ); bottom row = Z slices (height dimY).
+    return `${ySliceHeight}fr ${zSliceHeight}fr`;
+  }, [volumeDimensions]);
+
   return (
     <Box
       sx={{
         display: "grid",
         gridTemplateColumns: "1fr 1fr",
-        gridTemplateRows: "max-content 1fr",
+        gridTemplateRows,
         gap: 1,
         width: "100%",
         height: "100%",
