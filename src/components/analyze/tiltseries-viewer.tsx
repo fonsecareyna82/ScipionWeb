@@ -1486,7 +1486,7 @@ export default function TiltSeriesViewer({
                   Loading tilt series…
                 </Typography>
               </Box>
-            ): framesError && !framesData ? (
+            ) : framesError && !framesData ? (
               <Box sx={{ p: 2 }}>
                 <Typography variant="body2" color="error">
                   {framesError}
@@ -1734,6 +1734,7 @@ export default function TiltSeriesViewer({
                 outputName={outputName}
                 objectId={selectedSeriesId}
                 objectKind="tiltSeries"
+                disabled={selectedSeriesId == null}
               />
             </Box>
 
