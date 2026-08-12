@@ -2357,7 +2357,7 @@ export async function fetchOutputPreview(
   projectId: Id,
   protocolId: string | number,
   outputName: string,
-  opts?: { table?: string },
+  opts?: { table?: string; signal?: AbortSignal },
 ): Promise<PreviewResult> {
   const enc = encodeURIComponent;
   const qp: string[] = ["inline=true"];
@@ -2367,7 +2367,10 @@ export async function fetchOutputPreview(
   )}`;
   const url = qp.length ? `${base}?${qp.join("&")}` : base;
   const downloadUrl = `${base}?inline=false`;
-  const response = await fetchWithAuth(url, { method: "GET" });
+  const response = await fetchWithAuth(url, {
+    method: "GET",
+    signal: opts?.signal,
+  });
   if (!response.ok)
     throw await toApiError(response, "Failed previewing the output");
   return buildPreviewResult(response, downloadUrl);

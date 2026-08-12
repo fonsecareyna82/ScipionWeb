@@ -243,8 +243,8 @@ const defaultService: ProjectService = {
     projectId: Id,
     protocolId: Id,
     path: string,
-    opts?: { table?: string },
-  ) => api.fetchOutputPreview(toId(projectId), toId(protocolId), path, opts),
+    opts?: { table?: string; signal?: AbortSignal },
+) => api.fetchOutputPreview(toId(projectId), toId(protocolId), path, opts),
 
   previewRemoteEntry: (projectId: Id, protocolId: Id, path: string) =>
     api.previewRemoteEntry(toId(projectId), toId(protocolId), path),

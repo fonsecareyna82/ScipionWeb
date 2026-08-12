@@ -1519,7 +1519,7 @@ export interface ProjectService<
     projectId: string,
     protocolId: string,
     path: string,
-    opts?: { table?: string }
+    opts?: { table?: string; signal?: AbortSignal }
   ): Promise<any>;
   previewRemoteEntry(
     projectId: Id,
