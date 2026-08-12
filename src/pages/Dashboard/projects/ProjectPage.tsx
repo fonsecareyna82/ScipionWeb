@@ -158,10 +158,15 @@ function mergeNodeOutputs(
     ? currentNode.data.outputs
     : [];
 
-  if (
-    !isProtocolRefreshActive(freshNode.data?.status) ||
-    freshOutputs.length >= currentOutputs.length
-  ) {
+  if (!isProtocolRefreshActive(freshNode.data?.status)) {
+    return freshNode;
+  }
+
+  if (!currentOutputs.length) {
+    return freshNode;
+  }
+
+  if (freshOutputs.length >= currentOutputs.length) {
     return freshNode;
   }
 
