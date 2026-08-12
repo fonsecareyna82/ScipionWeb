@@ -412,7 +412,14 @@ export type TableViewContext = {
   projectId?: Id;
   protocolId?: Id;
   outputName?: string;
+  /** Relative path to the STAR (or source) file used to build the table. */
+  outputPath?: string;
+  /** Alias for outputPath used by some callers/backends. */
+  starPath?: string;
+  /** Output pointer class (e.g. Tomograms, TiltSeries). */
+  pointerClass?: string;
   tableKey?: string;
+  protocolLabel?: string;
   [key: string]: unknown;
 };
 
@@ -436,6 +443,8 @@ export type TableViewRow = {
   id: string | number;
   cells: Record<string, string | number | boolean | null | undefined>;
   actions?: TableViewRowAction[];
+  /** When false, the row starts deselected in the table viewer. Defaults to true. */
+  enabled?: boolean;
 };
 
 export type TableViewData = {
@@ -451,6 +460,19 @@ export type TableViewPaneRequest = TableViewContext & {
   columnId?: string;
   /** Full row payload from the table (helps svc resolve pane content). */
   row?: TableViewRow;
+};
+
+export type TableViewSubsetRequest = TableViewContext & {
+  /** Selected item names (typically rlnTomoName / tomoName values). */
+  subsetItems: string[];
+};
+
+export type TableViewSubsetResult = {
+  success: boolean;
+  message?: string;
+  count?: number;
+  /** Relative path to the source file the subset was requested from. */
+  sourceFile?: string;
 };
 
 export type TableViewImageSliderAxisContent = {
@@ -2152,5 +2174,6 @@ export interface ProjectService<
   // Generic table + side-pane viewer (EMhub-pluggable)
   // ─────────────────────────────────────────────────────────────────────────────
   resolveTableViewPane(request: TableViewPaneRequest): Promise<TableViewPaneContent>;
+  createTableViewSubset(request: TableViewSubsetRequest): Promise<TableViewSubsetResult>;
 
 }

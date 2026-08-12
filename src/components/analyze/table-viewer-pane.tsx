@@ -1,8 +1,17 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Box,
   Button,
+  Checkbox,
   CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Divider,
+  IconButton,
+  Menu,
+  MenuItem,
   Paper,
   Table,
   TableBody,
@@ -12,6 +21,7 @@ import {
   TableSortLabel,
   Typography,
 } from "@mui/material";
+import MoreVertIcon from "@mui/icons-material/MoreVert";
 import Plot from "react-plotly.js";
 import { useProjectService } from "@/ProjectServiceContext";
 import TableViewerImageSlider from "./table-viewer-image-slider";
@@ -45,6 +55,31 @@ type ActivePane = {
 };
 
 type SortDirection = "asc" | "desc";
+
+const SELECTION_COLUMN_WIDTH = "4.75ch";
+const DISABLED_ROW_BG = "rgba(255, 235, 235, 0.55)";
+
+function rowKey(row: TableViewRow): string {
+  return String(row.id);
+}
+
+function rowTomoName(row: TableViewRow): string {
+  const value = row.cells.rlnTomoName ?? row.cells.tomoName ?? row.id;
+  return value == null ? "" : String(value);
+}
+
+function formatSelectionPercent(count: number, total: number): string {
+  if (total <= 0) return "0.0%";
+  return `${((count / total) * 100).toFixed(1)}%`;
+}
+
+function initialEnabledByRowId(rows: TableViewRow[]): Record<string, boolean> {
+  const state: Record<string, boolean> = {};
+  for (const row of rows) {
+    state[rowKey(row)] = row.enabled !== false;
+  }
+  return state;
+}
 
 function compareCellValues(a: unknown, b: unknown): number {
   if (a == null && b == null) return 0;
@@ -356,6 +391,15 @@ export default function TableViewerPane({
   const [paneError, setPaneError] = useState<string | null>(null);
   const [sortColumnId, setSortColumnId] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
+  const [enabledByRowId, setEnabledByRowId] = useState<Record<string, boolean>>(() =>
+    initialEnabledByRowId(tableData.rows ?? []),
+  );
+  const [rowMenuAnchor, setRowMenuAnchor] = useState<HTMLElement | null>(null);
+  const [rowMenuIndex, setRowMenuIndex] = useState<number | null>(null);
+  const [subsetDialogOpen, setSubsetDialogOpen] = useState(false);
+  const [subsetDialogLoading, setSubsetDialogLoading] = useState(false);
+  const [subsetDialogMessage, setSubsetDialogMessage] = useState<string | null>(null);
+  const [subsetDialogError, setSubsetDialogError] = useState<string | null>(null);
 
   const handleRowAction = useCallback(
     async (
@@ -396,6 +440,18 @@ export default function TableViewerPane({
   const rows = tableData.rows ?? [];
   const showActionsColumn = rows.some((row) => (row.actions?.length ?? 0) > 0);
 
+  const rowsSignature = useMemo(
+    () =>
+      rows
+        .map((row) => `${rowKey(row)}:${row.enabled === false ? 0 : 1}`)
+        .join("|"),
+    [rows],
+  );
+
+  useEffect(() => {
+    setEnabledByRowId(initialEnabledByRowId(rows));
+  }, [rowsSignature, rows]);
+
   const handleSortColumn = useCallback((columnId: string) => {
     if (sortColumnId === columnId) {
       setSortDirection((currentDirection) =>
@@ -420,6 +476,160 @@ export default function TableViewerPane({
       return compareCellValues(left.id, right.id) * direction;
     });
   }, [rows, sortColumnId, sortDirection]);
+
+  const isRowEnabled = useCallback(
+    (row: TableViewRow) => enabledByRowId[rowKey(row)] !== false,
+    [enabledByRowId],
+  );
+
+  const setRowEnabled = useCallback((row: TableViewRow, enabled: boolean) => {
+    setEnabledByRowId((prev) => ({ ...prev, [rowKey(row)]: enabled }));
+  }, []);
+
+  const applyEnabledToRange = useCallback(
+    (startIndex: number, endIndex: number, enabled: boolean) => {
+      const start = Math.min(startIndex, endIndex);
+      const end = Math.max(startIndex, endIndex);
+      setEnabledByRowId((prev) => {
+        const next = { ...prev };
+        for (let index = start; index <= end; index += 1) {
+          const row = sortedRows[index];
+          if (row) next[rowKey(row)] = enabled;
+        }
+        return next;
+      });
+    },
+    [sortedRows],
+  );
+
+  const invertRowSelection = useCallback(() => {
+    setEnabledByRowId((prev) => {
+      const next = { ...prev };
+      for (const row of rows) {
+        const key = rowKey(row);
+        next[key] = !(prev[key] !== false);
+      }
+      return next;
+    });
+  }, [rows]);
+
+  const selectionStats = useMemo(() => {
+    const total = rows.length;
+    let selected = 0;
+    for (const row of rows) {
+      if (enabledByRowId[rowKey(row)] !== false) selected += 1;
+    }
+    return {
+      total,
+      selected,
+      deselected: total - selected,
+    };
+  }, [rows, enabledByRowId]);
+
+  const selectedTomoNames = useMemo(
+    () =>
+      rows
+        .filter((row) => enabledByRowId[rowKey(row)] !== false)
+        .map((row) => rowTomoName(row))
+        .filter(Boolean),
+    [rows, enabledByRowId],
+  );
+
+  const openRowMenu = useCallback(
+    (event: React.MouseEvent<HTMLElement>, rowIndex: number) => {
+      event.stopPropagation();
+      setRowMenuAnchor(event.currentTarget);
+      setRowMenuIndex(rowIndex);
+    },
+    [],
+  );
+
+  const closeRowMenu = useCallback(() => {
+    setRowMenuAnchor(null);
+    setRowMenuIndex(null);
+  }, []);
+
+  const handleMenuSelectToHere = useCallback(() => {
+    if (rowMenuIndex == null) return;
+    applyEnabledToRange(0, rowMenuIndex, true);
+    closeRowMenu();
+  }, [applyEnabledToRange, closeRowMenu, rowMenuIndex]);
+
+  const handleMenuSelectFromHere = useCallback(() => {
+    if (rowMenuIndex == null) return;
+    applyEnabledToRange(rowMenuIndex, sortedRows.length - 1, true);
+    closeRowMenu();
+  }, [applyEnabledToRange, closeRowMenu, rowMenuIndex, sortedRows.length]);
+
+  const handleMenuDeselectToHere = useCallback(() => {
+    if (rowMenuIndex == null) return;
+    applyEnabledToRange(0, rowMenuIndex, false);
+    closeRowMenu();
+  }, [applyEnabledToRange, closeRowMenu, rowMenuIndex]);
+
+  const handleMenuDeselectFromHere = useCallback(() => {
+    if (rowMenuIndex == null) return;
+    applyEnabledToRange(rowMenuIndex, sortedRows.length - 1, false);
+    closeRowMenu();
+  }, [applyEnabledToRange, closeRowMenu, rowMenuIndex, sortedRows.length]);
+
+  const handleMenuInvertSelection = useCallback(() => {
+    invertRowSelection();
+    closeRowMenu();
+  }, [closeRowMenu, invertRowSelection]);
+
+  const closeSubsetDialog = useCallback(() => {
+    setSubsetDialogOpen(false);
+    setSubsetDialogLoading(false);
+    setSubsetDialogMessage(null);
+    setSubsetDialogError(null);
+  }, []);
+
+  const handleCreateSubset = useCallback(async () => {
+    setSubsetDialogOpen(true);
+    setSubsetDialogLoading(true);
+    setSubsetDialogMessage(null);
+    setSubsetDialogError(null);
+
+    try {
+      if (typeof svc.createTableViewSubset !== "function") {
+        throw new Error("Subset creation is not available in this environment.");
+      }
+
+      const sourcePath =
+        (typeof context.outputPath === "string" && context.outputPath) ||
+        (typeof context.starPath === "string" && context.starPath) ||
+        "";
+
+      if (!sourcePath) {
+        throw new Error("Missing source file path for this table viewer.");
+      }
+
+      const result = await svc.createTableViewSubset({
+        ...context,
+        outputPath: sourcePath,
+        starPath: sourcePath,
+        subsetItems: selectedTomoNames,
+      });
+
+      if (!result.success) {
+        setSubsetDialogError(result.message ?? "Failed to create subset.");
+        return;
+      }
+
+      setSubsetDialogMessage(
+        result.message ??
+          `Subset request accepted for ${result.count ?? selectedTomoNames.length} item(s).`,
+      );
+    } catch (err) {
+      console.error("[TableViewerPane] createTableViewSubset failed:", err);
+      setSubsetDialogError(
+        err instanceof Error ? err.message : "Failed to create subset.",
+      );
+    } finally {
+      setSubsetDialogLoading(false);
+    }
+  }, [context, selectedTomoNames, svc]);
 
   const columnWidths = useMemo(() => {
     const widths: Record<string, string> = {};
@@ -476,6 +686,41 @@ export default function TableViewerPane({
           </Typography>
         </Paper>
 
+        {rows.length > 0 ? (
+          <Paper
+            square
+            elevation={0}
+            sx={{
+              px: 1.5,
+              py: 0.75,
+              borderBottom: "1px solid",
+              borderColor: "divider",
+              display: "flex",
+              alignItems: "center",
+              gap: 2,
+              flexWrap: "wrap",
+            }}
+          >
+            <Typography variant="caption" color="text.secondary">
+              Selected: {selectionStats.selected} (
+              {formatSelectionPercent(selectionStats.selected, selectionStats.total)})
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              Deselected: {selectionStats.deselected} (
+              {formatSelectionPercent(selectionStats.deselected, selectionStats.total)})
+            </Typography>
+            <Button
+              size="small"
+              variant="outlined"
+              onClick={() => void handleCreateSubset()}
+              disabled={selectionStats.selected === 0 || subsetDialogLoading}
+              sx={{ textTransform: "none" }}
+            >
+              Create Subset
+            </Button>
+          </Paper>
+        ) : null}
+
         <Box sx={{ flex: 1, minHeight: 0, overflow: "auto" }}>
           {rows.length === 0 ? (
             <Box sx={{ p: 3 }}>
@@ -491,6 +736,15 @@ export default function TableViewerPane({
             >
               <TableHead>
                 <TableRow>
+                  <TableCell
+                    sx={{
+                      width: SELECTION_COLUMN_WIDTH,
+                      minWidth: SELECTION_COLUMN_WIDTH,
+                      maxWidth: SELECTION_COLUMN_WIDTH,
+                      px: 0.25,
+                      pr: 1.25,
+                    }}
+                  />
                   {columns.map((col) => {
                     const sortable = isColumnSortable(col);
                     const active = sortColumnId === col.id;
@@ -545,15 +799,61 @@ export default function TableViewerPane({
                 </TableRow>
               </TableHead>
               <TableBody>
-                {sortedRows.map((row) => {
+                {sortedRows.map((row, rowIndex) => {
                   const isActive = activePane?.row.id === row.id;
+                  const enabled = isRowEnabled(row);
                   return (
                     <TableRow
                       key={String(row.id)}
                       hover
                       selected={isActive}
-                      sx={{ "&.Mui-selected": { bgcolor: "action.selected" } }}
+                      sx={{
+                        bgcolor: enabled ? undefined : DISABLED_ROW_BG,
+                        "&.Mui-selected": {
+                          bgcolor: enabled
+                            ? "action.selected"
+                            : "rgba(255, 210, 210, 0.85)",
+                        },
+                        "&:hover": {
+                          bgcolor: enabled ? undefined : "rgba(255, 220, 220, 0.75)",
+                        },
+                      }}
                     >
+                      <TableCell
+                        sx={{
+                          width: SELECTION_COLUMN_WIDTH,
+                          minWidth: SELECTION_COLUMN_WIDTH,
+                          maxWidth: SELECTION_COLUMN_WIDTH,
+                          px: 0.25,
+                          pr: 1.25,
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        <Box
+                          sx={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 0,
+                          }}
+                        >
+                          <Checkbox
+                            size="small"
+                            checked={enabled}
+                            onChange={(_, checked) => setRowEnabled(row, checked)}
+                            onClick={(event) => event.stopPropagation()}
+                            inputProps={{ "aria-label": `Select ${rowTomoName(row)}` }}
+                            sx={{ p: 0.25, mr: -0.75 }}
+                          />
+                          <IconButton
+                            size="small"
+                            aria-label="Row selection actions"
+                            onClick={(event) => openRowMenu(event, rowIndex)}
+                            sx={{ p: 0.25 }}
+                          >
+                            <MoreVertIcon sx={{ fontSize: 18 }} />
+                          </IconButton>
+                        </Box>
+                      </TableCell>
                       {columns.map((col) => (
                         <TableCell
                           key={col.id}
@@ -609,6 +909,61 @@ export default function TableViewerPane({
             </Table>
           )}
         </Box>
+
+        <Menu
+          anchorEl={rowMenuAnchor}
+          open={Boolean(rowMenuAnchor)}
+          onClose={closeRowMenu}
+          anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+          transformOrigin={{ vertical: "top", horizontal: "right" }}
+        >
+          <MenuItem onClick={handleMenuSelectToHere}>Select to here</MenuItem>
+          <MenuItem onClick={handleMenuSelectFromHere}>Select from here</MenuItem>
+          <Divider />
+          <MenuItem onClick={handleMenuDeselectToHere}>Deselect to here</MenuItem>
+          <MenuItem onClick={handleMenuDeselectFromHere}>Deselect from here</MenuItem>
+          <Divider />
+          <MenuItem onClick={handleMenuInvertSelection}>Invert selection</MenuItem>
+        </Menu>
+
+        <Dialog
+          open={subsetDialogOpen}
+          onClose={closeSubsetDialog}
+          maxWidth="sm"
+          fullWidth
+        >
+          <DialogTitle>Create Subset</DialogTitle>
+          <DialogContent dividers>
+            {subsetDialogLoading ? (
+              <Box
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 1.5,
+                  py: 2,
+                }}
+              >
+                <CircularProgress size={22} />
+                <Typography variant="body2" color="text.secondary">
+                  Creating subset…
+                </Typography>
+              </Box>
+            ) : subsetDialogError ? (
+              <Typography variant="body2" color="error">
+                {subsetDialogError}
+              </Typography>
+            ) : (
+              <Typography variant="body2" sx={{ whiteSpace: "pre-wrap" }}>
+                {subsetDialogMessage}
+              </Typography>
+            )}
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={closeSubsetDialog} disabled={subsetDialogLoading}>
+              Close
+            </Button>
+          </DialogActions>
+        </Dialog>
       </Box>
 
       <Box

@@ -327,6 +327,7 @@ function normalizeServiceAPI(srv: any): ProjectService {
   mapFn("runMetadataTableAction", "runMetadataTableAction");
 
   mapFn("resolveTableViewPane", "resolveTableViewPane", "getTableViewPane");
+  mapFn("createTableViewSubset", "createTableViewSubset");
 
   mapFn("listOutputTiltSeries", "listOutputTiltSeries");
   mapFn("fetchTiltSeriesFrames", "fetchTiltSeriesFrames");
@@ -417,6 +418,11 @@ function normalizeServiceAPI(srv: any): ProjectService {
   ensureFn("resolveTableViewPane", async () => ({
     kind: "empty",
     message: "No viewer configured.",
+  }));
+  ensureFn("createTableViewSubset", async (request: { subsetItems?: string[] }) => ({
+    success: true,
+    count: request?.subsetItems?.length ?? 0,
+    message: `Demo: received ${request?.subsetItems?.length ?? 0} item(s). Subset creation is not implemented yet.`,
   }));
 
   if (rawListProjectTags) {
