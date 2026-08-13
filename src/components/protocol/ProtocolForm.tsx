@@ -2747,54 +2747,274 @@ export default function ProtocolForm({
       />
 
       {/* Workflow execution confirmation */}
-      <Dialog open={Boolean(pendingWorkflowExecution)} onClose={() => { if (!isBusy) setPendingWorkflowExecution(null); }} maxWidth="sm" fullWidth>
-        <DialogTitle>
-          {pendingWorkflowExecution?.modeKey === "continue" ? "Continue workflow?" : "Restart workflow?"}
+      <Dialog
+        open={Boolean(pendingWorkflowExecution)}
+        onClose={() => {
+          if (!isBusy) setPendingWorkflowExecution(null);
+        }}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: "22px",
+            overflow: "hidden",
+            border: "1px solid rgba(51, 61, 73, 0.16)",
+            boxShadow: "0 28px 80px rgba(15, 23, 42, 0.30)",
+            backgroundImage: "none",
+          },
+        }}
+      >
+        <DialogTitle
+          sx={{
+            m: 0,
+            p: 0,
+            backgroundColor: "#333d49",
+            color: "#ffffff",
+            borderBottom: "1px solid rgba(255,255,255,0.08)",
+          }}
+        >
+          <Box sx={{ display: "flex", alignItems: "flex-start", gap: 1.5, px: 2.5, py: 2 }}>
+            <Box
+              sx={{
+                width: 38,
+                height: 38,
+                borderRadius: "10px",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flex: "0 0 auto",
+                backgroundColor: "rgba(255,255,255,0.10)",
+                border: "1px solid rgba(255,255,255,0.15)",
+                color: pendingWorkflowExecution?.modeKey === "continue" ? "#bae6fd" : "#fde68a",
+              }}
+            >
+              <ExecuteIcon fontSize="small" />
+            </Box>
+
+            <Box sx={{ minWidth: 0, flex: 1 }}>
+              <Typography component="div" sx={{ color: "#ffffff", fontSize: "1rem", fontWeight: 600, lineHeight: 1.5 }}>
+                {pendingWorkflowExecution?.modeKey === "continue" ? "Continue workflow?" : "Restart workflow?"}
+              </Typography>
+
+              <Typography sx={{ mt: 0.4, color: "rgba(255,255,255,0.75)", fontSize: "0.875rem", lineHeight: 1.45 }}>
+                This action affects protocols that depend on the selected protocol.
+              </Typography>
+            </Box>
+
+            <IconButton
+              size="small"
+              onClick={() => setPendingWorkflowExecution(null)}
+              disabled={isBusy}
+              sx={{
+                mt: -0.25,
+                mr: -0.5,
+                color: "rgba(255,255,255,0.82)",
+                border: "1px solid rgba(255,255,255,0.14)",
+                backgroundColor: "rgba(255,255,255,0.06)",
+                "&:hover": {
+                  backgroundColor: "rgba(255,255,255,0.12)",
+                },
+              }}
+            >
+              <CloseIcon fontSize="small" />
+            </IconButton>
+          </Box>
         </DialogTitle>
 
-        <DialogContent dividers>
-          <Typography sx={{ mb: 1.5 }}>
-            Previous results of the following protocols will be affected:
-          </Typography>
+        <DialogContent sx={{ px: 2.5, py: 2.5 }}>
+          <Box
+            sx={(theme) => ({
+              borderRadius: "12px",
+              border: "1px solid",
+              borderColor: theme.palette.mode === "dark" ? "rgba(148,163,184,0.24)" : "#e2e8f0",
+              backgroundColor: theme.palette.mode === "dark" ? "rgba(30,41,59,0.45)" : "#f8fafc",
+              px: 2,
+              py: 1.75,
+            })}
+          >
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1.5 }}>
+              <Box
+                sx={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: "50%",
+                  backgroundColor: pendingWorkflowExecution?.modeKey === "continue" ? "#0ea5e9" : "#f59e0b",
+                }}
+              />
 
-          <Box component="ul" sx={{ m: 0, mb: 2.5, pl: 3 }}>
-            {(pendingWorkflowExecution?.preflight?.affectedProtocols ?? []).map((protocol) => (
-              <Box component="li" key={protocol.protocolId} sx={{ mb: 0.5 }}>
-                <Typography component="span" sx={{ fontWeight: 600 }}>
-                  {protocol.runName}
-                </Typography>
+              <Typography sx={{ fontSize: "0.875rem", fontWeight: 700 }}>
+                {pendingWorkflowExecution?.preflight?.affectedProtocols?.length === 1
+                  ? "1 dependent protocol will be affected"
+                  : `${pendingWorkflowExecution?.preflight?.affectedProtocols?.length ?? 0} dependent protocols will be affected`}
+              </Typography>
+            </Box>
 
-                <Typography component="span" sx={{ ml: 1, color: "text.secondary" }}>
-                  ({protocol.status})
-                </Typography>
-              </Box>
-            ))}
+            <Box sx={{ display: "grid", gap: 1, maxHeight: 190, overflowY: "auto", pr: 0.5 }}>
+              {(pendingWorkflowExecution?.preflight?.affectedProtocols ?? []).map((protocol) => (
+                <Box
+                  key={protocol.protocolId}
+                  sx={(theme) => ({
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 1,
+                    minWidth: 0,
+                    px: 1.5,
+                    py: 1,
+                    borderRadius: "9px",
+                    backgroundColor: theme.palette.mode === "dark" ? "rgba(15,23,42,0.50)" : "#ffffff",
+                    border: "1px solid",
+                    borderColor: theme.palette.mode === "dark" ? "rgba(148,163,184,0.18)" : "#e2e8f0",
+                  })}
+                >
+                  <Box
+                    component="span"
+                    sx={(theme) => ({
+                      flex: "0 0 auto",
+                      borderRadius: "999px",
+                      px: 1,
+                      py: 0.35,
+                      fontFamily: "monospace",
+                      fontSize: "0.72rem",
+                      fontWeight: 700,
+                      backgroundColor: theme.palette.mode === "dark" ? "rgba(51,65,85,0.90)" : "#f1f5f9",
+                      color: theme.palette.mode === "dark" ? "#e2e8f0" : "#475569",
+                      border: "1px solid",
+                      borderColor: theme.palette.mode === "dark" ? "rgba(148,163,184,0.22)" : "#e2e8f0",
+                    })}
+                  >
+                    {protocol.protocolId}
+                  </Box>
+
+                  <Typography sx={{ minWidth: 0, flex: 1, fontSize: "0.875rem", fontWeight: 600 }} noWrap>
+                    {protocol.runName}
+                  </Typography>
+
+                  <Box
+                    component="span"
+                    sx={{
+                      flex: "0 0 auto",
+                      borderRadius: "999px",
+                      px: 1,
+                      py: 0.35,
+                      fontSize: "0.72rem",
+                      fontWeight: 700,
+                      textTransform: "capitalize",
+                      backgroundColor: protocol.active ? "#ffedd5" : "#f1f5f9",
+                      color: protocol.active ? "#c2410c" : "#64748b",
+                    }}
+                  >
+                    {protocol.status}
+                  </Box>
+                </Box>
+              ))}
+            </Box>
           </Box>
 
-          <Typography sx={{ mb: 2, fontWeight: 600 }}>
-            Do you really want to {String(pendingWorkflowExecution?.modeKey ?? "").toUpperCase()} the workflow?
-          </Typography>
+          <Box
+            sx={(theme) => ({
+              mt: 2,
+              borderRadius: "12px",
+              border: "1px solid",
+              borderColor: theme.palette.mode === "dark" ? "rgba(245,158,11,0.30)" : "#fde68a",
+              backgroundColor: theme.palette.mode === "dark" ? "rgba(120,53,15,0.20)" : "#fffbeb",
+              px: 2,
+              py: 1.5,
+            })}
+          >
+            <Typography sx={{ fontSize: "0.875rem", fontWeight: 700 }}>
+              Do you really want to {String(pendingWorkflowExecution?.modeKey ?? "").toUpperCase()} the workflow?
+            </Typography>
 
-          <Typography sx={{ mb: 0.75 }}>
-            <strong>Single:</strong> Only this protocol will be executed. All listed descendant protocols will be reset to Saved.
-          </Typography>
+            <Typography sx={(theme) => ({ mt: 0.5, fontSize: "0.82rem", color: theme.palette.mode === "dark" ? "#cbd5e1" : "#64748b", lineHeight: 1.5 })}>
+              Choose whether to execute only the selected protocol or the complete affected subworkflow.
+            </Typography>
+          </Box>
 
-          <Typography>
-            <strong>All:</strong> This protocol and all listed descendant protocols will be executed.
-          </Typography>
+          <Box sx={{ mt: 2, display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 1.5 }}>
+            <Box
+              sx={(theme) => ({
+                borderRadius: "12px",
+                border: "1px solid",
+                borderColor: theme.palette.mode === "dark" ? "rgba(59,130,246,0.30)" : "#bfdbfe",
+                backgroundColor: theme.palette.mode === "dark" ? "rgba(30,58,138,0.15)" : "#eff6ff",
+                px: 1.75,
+                py: 1.5,
+              })}
+            >
+              <Typography sx={{ fontSize: "0.875rem", fontWeight: 700, color: "#2563eb" }}>
+                Single
+              </Typography>
+
+              <Typography sx={(theme) => ({ mt: 0.4, fontSize: "0.78rem", lineHeight: 1.45, color: theme.palette.mode === "dark" ? "#cbd5e1" : "#64748b" })}>
+                Execute only this protocol. All listed descendants will be reset to Saved.
+              </Typography>
+            </Box>
+
+            <Box
+              sx={(theme) => ({
+                borderRadius: "12px",
+                border: "1px solid",
+                borderColor: theme.palette.mode === "dark" ? "rgba(245,158,11,0.30)" : "#fde68a",
+                backgroundColor: theme.palette.mode === "dark" ? "rgba(120,53,15,0.15)" : "#fffbeb",
+                px: 1.75,
+                py: 1.5,
+              })}
+            >
+              <Typography sx={{ fontSize: "0.875rem", fontWeight: 700, color: "#d97706" }}>
+                All
+              </Typography>
+
+              <Typography sx={(theme) => ({ mt: 0.4, fontSize: "0.78rem", lineHeight: 1.45, color: theme.palette.mode === "dark" ? "#cbd5e1" : "#64748b" })}>
+                Execute this protocol and every affected descendant in the subworkflow.
+              </Typography>
+            </Box>
+          </Box>
         </DialogContent>
 
-        <DialogActions>
-          <Button variant="contained" onClick={() => executeWorkflowScope("single")} disabled={isBusy}>
+        <DialogActions
+          sx={(theme) => ({
+            px: 2.5,
+            py: 2,
+            gap: 1,
+            borderTop: "1px solid",
+            borderColor: theme.palette.mode === "dark" ? "rgba(148,163,184,0.18)" : "#e2e8f0",
+            backgroundColor: theme.palette.mode === "dark" ? "rgba(15,23,42,0.45)" : "#f8fafc",
+          })}
+        >
+          <Button
+            variant="outlined"
+            onClick={() => setPendingWorkflowExecution(null)}
+            disabled={isBusy}
+            sx={{ textTransform: "none", minWidth: 90, borderRadius: "9px" }}
+          >
+            Cancel
+          </Button>
+
+          <Button
+            variant="contained"
+            onClick={() => executeWorkflowScope("single")}
+            disabled={isBusy}
+            sx={{ textTransform: "none", minWidth: 90, borderRadius: "9px" }}
+          >
             Single
           </Button>
 
-          <Button variant="contained" color="warning" onClick={() => executeWorkflowScope("all")} disabled={isBusy}>
+          <Button
+            variant="contained"
+            onClick={() => executeWorkflowScope("all")}
+            disabled={isBusy}
+            sx={{
+              textTransform: "none",
+              minWidth: 90,
+              borderRadius: "9px",
+              backgroundColor: "#f59e0b",
+              color: "#ffffff",
+              "&:hover": {
+                backgroundColor: "#d97706",
+              },
+            }}
+          >
             All
-          </Button>
-
-          <Button variant="outlined" onClick={() => setPendingWorkflowExecution(null)} disabled={isBusy}>
-            Cancel
           </Button>
         </DialogActions>
       </Dialog>
