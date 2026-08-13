@@ -56,6 +56,9 @@ import {
   IntegratedAnalyzeContext,
   ProtocolStep,
   ProtocolStepStatus,
+  ProtocolWorkflowExecutionPreflight,
+  ProtocolWorkflowExecutionMode,
+  ProtocolWorkflowExecutionScope,
 } from "@/services/ProjectService";
 
 const ACTION_LAUNCH = "launch";
@@ -65,6 +68,8 @@ const ACTION_RESTART_ALL = "restart-all";
 const ACTION_CONTINUE_ALL = "continue-all";
 const ACTION_RESET_FROM = "reset-from";
 const ACTION_STOP = "stop";
+const ACTION_WORKFLOW_EXECUTION = "workflow-execution";
+
 
 type Id = string | number | null | undefined;
 
@@ -1320,6 +1325,22 @@ export async function continueAll(projectId: Id, protocolId: Id): Promise<any> {
   );
   if (!response.ok)
     throw await toApiError(response, "Failed to continue protocol");
+  return safeJson<any>(response);
+}
+
+export async function getProtocolWorkflowExecutionPreflight(projectId: Id, protocolId: Id, mode: ProtocolWorkflowExecutionMode): Promise<ProtocolWorkflowExecutionPreflight> {
+  const response = await fetchWithAuth(`${BASE_URL}/projects/${projectId}/protocols/${protocolId}/${ACTION_WORKFLOW_EXECUTION}/preflight?mode=${encodeURIComponent(mode)}`, { method: "GET", cache: "no-store" });
+
+  if (!response.ok) throw await toApiError(response, "Failed to prepare workflow execution");
+
+  return safeJson<ProtocolWorkflowExecutionPreflight>(response);
+}
+
+export async function executeProtocolWorkflow(projectId: Id, protocolId: Id, protocolClassName: string, params: Record<string, unknown>, mode: ProtocolWorkflowExecutionMode, scope: ProtocolWorkflowExecutionScope): Promise<any> {
+  const response = await fetchWithAuth(`${BASE_URL}/projects/${projectId}/protocols/${protocolId}/${ACTION_WORKFLOW_EXECUTION}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ protocolClassName, params, mode, scope }) });
+
+  if (!response.ok) throw await toApiError(response, "Failed to execute workflow");
+
   return safeJson<any>(response);
 }
 

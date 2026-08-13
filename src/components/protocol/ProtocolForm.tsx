@@ -92,7 +92,7 @@ import {
   syncProtUnionPointerClassInParams,
 } from "@/utils/protocolform.protunion";
 
-import { ProjectEffectiveSettings } from "@/services/ProjectService";
+import { ProjectEffectiveSettings, ProtocolWorkflowExecutionPreflight, ProtocolWorkflowExecutionScope } from "@/services/ProjectService";
 import WizardDialogHost from "./wizards/wizard-dialog-host";
 import { useProtocolWizards } from "./wizards/use_protocol_wizards";
 import { buildWizardUiProps } from "./wizards/protocol_wizard_meta";
@@ -134,6 +134,12 @@ type QueueLaunchDraftParam = {
 type QueueLaunchDraft = {
   queueName: string;
   params: QueueLaunchDraftParam[];
+};
+
+type PendingWorkflowExecution = {
+  modeKey: "continue" | "restart";
+  queueOverride: QueueLaunchDraft | null;
+  preflight: ProtocolWorkflowExecutionPreflight;
 };
 
 function normalizeEffectiveHostQueues(raw: unknown): EffectiveHostQueue[] {
@@ -392,6 +398,7 @@ export default function ProtocolForm({
   const [queueDialogOpen, setQueueDialogOpen] = useState(false);
   const [pendingExecuteMode, setPendingExecuteMode] = useState<string | null>(null);
   const [queueDraft, setQueueDraft] = useState<QueueLaunchDraft | null>(null);
+  const [pendingWorkflowExecution, setPendingWorkflowExecution] = useState<PendingWorkflowExecution | null>(null);
 
   // Global Output Selector
   const [openSelector, setOpenSelector] = useState(false);
@@ -1515,9 +1522,81 @@ export default function ProtocolForm({
     }
   };
 
+  const beginExecute = async (modeKey: string, queueOverride: QueueLaunchDraft | null = null) => {
+    const normalizedModeKey = String(modeKey ?? "").trim().toLowerCase();
+
+    if (normalizedModeKey !== "continue" && normalizedModeKey !== "restart") {
+      await executeNow(modeKey, queueOverride);
+      return;
+    }
+
+    setActionLoading("execute");
+
+    try {
+      const pid = String(protocolId ?? "");
+      const preflight = await svc.getProtocolWorkflowExecutionPreflight(projectId, pid, normalizedModeKey);
+
+      if (!preflight?.requiresConfirmation) {
+        setActionLoading(null);
+        await executeNow(normalizedModeKey, queueOverride);
+        return;
+      }
+
+      setPendingWorkflowExecution({ modeKey: normalizedModeKey, queueOverride, preflight });
+    } catch (err: any) {
+      const backendPayload = getBackendPayloadFromError(err);
+      const errors = getErrorsFromBackendPayload(backendPayload);
+      const message = errors.length > 0 ? formatErrorsForDialog(errors) : String(err?.message || "Failed to prepare workflow execution");
+      openExecErrorDialog("Execution error", message);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const executeWorkflowScope = async (scope: ProtocolWorkflowExecutionScope) => {
+    const pending = pendingWorkflowExecution;
+
+    if (!pending) return;
+
+    setPendingWorkflowExecution(null);
+    setActionLoading("execute");
+    setValidationErrors([]);
+
+    try {
+      const pid = String(protocolId ?? "");
+      const serializedParams = getSerializedParams();
+      const finalParams = mergeQueueDraftIntoParams(serializedParams, pending.queueOverride);
+      const res: any = await svc.executeProtocolWorkflow(projectId, pid, protocolClassName, finalParams, pending.modeKey, scope);
+      const errors = getErrorsFromBackendPayload(res);
+
+      if (errors.length > 0) {
+        setValidationErrors(errors);
+        setShowValidationDialog(true);
+        return;
+      }
+
+      onExecuted?.();
+      requestClose();
+    } catch (err: any) {
+      const httpStatus = getHttpStatusFromError(err);
+      const backendPayload = getBackendPayloadFromError(err);
+      const errors = getErrorsFromBackendPayload(backendPayload);
+
+      if (errors.length > 0 && httpStatus === 422) {
+        setValidationErrors(errors);
+        setShowValidationDialog(true);
+        return;
+      }
+
+      const message = errors.length > 0 ? formatErrorsForDialog(errors) : String(err?.message || "Error executing workflow");
+      openExecErrorDialog("Execution error", message);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   // handleExecute
   const handleExecute = async (modeKey: string) => {
-
     const normalizedModeKey = String(modeKey ?? "").trim().toLowerCase();
 
     if (normalizedModeKey === "stop") {
@@ -1528,7 +1607,7 @@ export default function ProtocolForm({
     const shouldUseQueue = useQueueEnabled || effectiveQueueMandatory;
 
     if (!shouldUseQueue) {
-      await executeNow(modeKey, null);
+      await beginExecute(modeKey, null);
       return;
     }
 
@@ -1542,9 +1621,7 @@ export default function ProtocolForm({
       return;
     }
 
-    const draft = buildQueueDraft(
-      effectiveQueueMandatory ? effectiveDefaultQueueName : activeQueueName
-    );
+    const draft = buildQueueDraft(effectiveQueueMandatory ? effectiveDefaultQueueName : activeQueueName);
 
     if (!draft) {
       toast.error("Unable to prepare queue settings.");
@@ -1552,7 +1629,7 @@ export default function ProtocolForm({
     }
 
     if (effectiveQueueMandatory) {
-      await executeNow(modeKey, draft);
+      await beginExecute(modeKey, draft);
       return;
     }
 
@@ -1568,13 +1645,14 @@ export default function ProtocolForm({
       return;
     }
 
+    const modeKey = pendingExecuteMode;
     const draft = queueDraft;
 
     applyQueueDraftToProtocolState(draft);
     setQueueDialogOpen(false);
     setPendingExecuteMode(null);
 
-    await executeNow(pendingExecuteMode, draft);
+    await beginExecute(modeKey, draft);
   };
 
   // handleSave
@@ -2667,6 +2745,61 @@ export default function ProtocolForm({
         onSelect={handleSelectOutput}
         multiSelect={false}
       />
+
+      {/* Workflow execution confirmation */}
+      <Dialog open={Boolean(pendingWorkflowExecution)} onClose={() => { if (!isBusy) setPendingWorkflowExecution(null); }} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          {pendingWorkflowExecution?.modeKey === "continue" ? "Continue workflow?" : "Restart workflow?"}
+        </DialogTitle>
+
+        <DialogContent dividers>
+          <Typography sx={{ mb: 1.5 }}>
+            Previous results of the following protocols will be affected:
+          </Typography>
+
+          <Box component="ul" sx={{ m: 0, mb: 2.5, pl: 3 }}>
+            {(pendingWorkflowExecution?.preflight?.affectedProtocols ?? []).map((protocol) => (
+              <Box component="li" key={protocol.protocolId} sx={{ mb: 0.5 }}>
+                <Typography component="span" sx={{ fontWeight: 600 }}>
+                  {protocol.runName}
+                </Typography>
+
+                <Typography component="span" sx={{ ml: 1, color: "text.secondary" }}>
+                  ({protocol.status})
+                </Typography>
+              </Box>
+            ))}
+          </Box>
+
+          <Typography sx={{ mb: 2, fontWeight: 600 }}>
+            Do you really want to {String(pendingWorkflowExecution?.modeKey ?? "").toUpperCase()} the workflow?
+          </Typography>
+
+          <Typography sx={{ mb: 0.75 }}>
+            <strong>Single:</strong> Only this protocol will be executed. All listed descendant protocols will be reset to Saved.
+          </Typography>
+
+          <Typography>
+            <strong>All:</strong> This protocol and all listed descendant protocols will be executed.
+          </Typography>
+        </DialogContent>
+
+        <DialogActions>
+          <Button variant="contained" onClick={() => executeWorkflowScope("single")} disabled={isBusy}>
+            Single
+          </Button>
+
+          <Button variant="contained" color="warning" onClick={() => executeWorkflowScope("all")} disabled={isBusy}>
+            All
+          </Button>
+
+          <Button variant="outlined" onClick={() => setPendingWorkflowExecution(null)} disabled={isBusy}>
+            Cancel
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Queue dialog */}
 
       {/* Queue dialog */}
       <Dialog

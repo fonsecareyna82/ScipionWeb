@@ -214,6 +214,12 @@ const defaultService: ProjectService = {
   continueAll: (projectId: Id, protocolId: Id) =>
     api.continueAll(toId(projectId), toId(protocolId)),
 
+  getProtocolWorkflowExecutionPreflight: (projectId, protocolId, mode) => 
+    api.getProtocolWorkflowExecutionPreflight(toId(projectId), toId(protocolId), mode),
+
+  executeProtocolWorkflow: (projectId, protocolId, protocolClassName, params, mode, scope) => 
+    api.executeProtocolWorkflow(toId(projectId), toId(protocolId), protocolClassName, params, mode, scope),
+
   resetFrom: (projectId: Id, protocolId: Id) =>
     api.resetFrom(toId(projectId), toId(protocolId)),
 
@@ -244,7 +250,7 @@ const defaultService: ProjectService = {
     protocolId: Id,
     path: string,
     opts?: { table?: string; signal?: AbortSignal },
-) => api.fetchOutputPreview(toId(projectId), toId(protocolId), path, opts),
+  ) => api.fetchOutputPreview(toId(projectId), toId(protocolId), path, opts),
 
   previewRemoteEntry: (projectId: Id, protocolId: Id, path: string) =>
     api.previewRemoteEntry(toId(projectId), toId(protocolId), path),

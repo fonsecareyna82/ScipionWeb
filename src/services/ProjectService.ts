@@ -1356,6 +1356,33 @@ export type WriteRemoteFileResult = {
   mimeType?: string;
 };
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Protocol workflows launch / execution options
+// ─────────────────────────────────────────────────────────────────────────────  
+
+export type ProtocolWorkflowExecutionMode = "continue" | "restart";
+export type ProtocolWorkflowExecutionScope = "single" | "all";
+
+export type ProtocolWorkflowAffectedProtocol = {
+  protocolId: string;
+  runName: string;
+  status: string;
+  level: number;
+  active: boolean;
+};
+
+export type ProtocolWorkflowExecutionPreflight = {
+  protocolId: string;
+  mode: ProtocolWorkflowExecutionMode;
+  requiresConfirmation: boolean;
+  selectedProtocol?: ProtocolWorkflowAffectedProtocol | null;
+  affectedProtocols: ProtocolWorkflowAffectedProtocol[];
+  activeProtocolIds: string[];
+};
+
+
+
 // ─────────────────────────────────────────────────────────────────────────────
 // ProjectService interface
 // ─────────────────────────────────────────────────────────────────────────────  
@@ -1533,6 +1560,18 @@ export interface ProjectService<
     protocolId: Id,
     opts?: NextProtocolSuggestionsOptions
   ): Promise<NextProtocolSuggestion[]>;
+
+  getProtocolWorkflowExecutionPreflight(
+    projectId: Id, 
+    protocolId: Id, 
+    mode: ProtocolWorkflowExecutionMode): Promise<ProtocolWorkflowExecutionPreflight>;
+  executeProtocolWorkflow(
+    projectId: Id, 
+    protocolId: Id, 
+    protocolClassName: string, 
+    params: Record<string, unknown>, 
+    mode: ProtocolWorkflowExecutionMode, 
+    scope: ProtocolWorkflowExecutionScope): Promise<TProject>;
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Analyze Results (FSCs)
