@@ -374,6 +374,36 @@ describe("ProtocolForm", () => {
         mockFormatErrorsForDialog.mockImplementation((errors) => errors.join("\n"));
     });
 
+    it("reuses the created protocol after a new protocol launch fails validation", async () => {
+        const data: any = createData();
+        data.info.protocolId = null;
+        data.info.status = "new";
+
+        mockExecuteProtocol.mockRejectedValueOnce({ status: 422, payload: { status: 1, errors: ["DLTK is not installed"], workflow: [], protocolId: "42" } });
+        mockExecuteProtocol.mockResolvedValueOnce({});
+        mockGetErrorsFromBackendPayload.mockImplementation((payload: any) => Array.isArray(payload?.errors) ? payload.errors : []);
+
+        renderComponent({ data });
+
+        fireEvent.click(screen.getByRole("button", { name: "Launch" }));
+
+        expect(await screen.findByTestId("validation-dialog")).toBeInTheDocument();
+
+        await waitFor(() => {
+            expect(mockExecuteProtocol).toHaveBeenCalledTimes(1);
+        });
+
+        expect(mockExecuteProtocol.mock.calls[0][1]).toBe("");
+
+        fireEvent.click(screen.getByRole("button", { name: "Launch" }));
+
+        await waitFor(() => {
+            expect(mockExecuteProtocol).toHaveBeenCalledTimes(2);
+        });
+
+        expect(mockExecuteProtocol.mock.calls[1][1]).toBe("42");
+    });
+
     it("renders the protocol header, top tabs and first section", async () => {
         renderComponent();
 
@@ -524,7 +554,7 @@ describe("ProtocolForm", () => {
         expect(onExecuted).toHaveBeenCalledTimes(1);
     });
 
-        it("skips the queue dialog when queue execution is mandatory", async () => {
+    it("skips the queue dialog when queue execution is mandatory", async () => {
         const { onExecuted } = renderQueueComponent({
             projectEffectiveSettings: {
                 projectId: 1,

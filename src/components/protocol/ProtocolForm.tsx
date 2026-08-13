@@ -337,6 +337,7 @@ export default function ProtocolForm({
   const [topTab, setTopTab] = useState(0);
   const [sectionTab, setSectionTab] = useState(0);
   const [protocolDetails, setProtocolDetails] = useState<any>({});
+  const effectiveProtocolId = String(protocolDetails?.id ?? protocolId ?? "").trim();
   const protocolDisplayName = useMemo(() => {
     const candidates = [
       protocolDetails?.runName,
@@ -385,7 +386,7 @@ export default function ProtocolForm({
     svc,
     enabled: topTab === 2,
     projectId,
-    protocolId,
+    protocolId: effectiveProtocolId,
     protocolStatus: protocolDetails.status,
   });
 
@@ -1456,7 +1457,7 @@ export default function ProtocolForm({
     setPointInVolumeVoxel,
   } = useProtocolWizards({
     projectId,
-    protocolId,
+    protocolId: effectiveProtocolId,
     protocolClassName,
     protocolDetails,
     svc,
@@ -1464,6 +1465,15 @@ export default function ProtocolForm({
     applyWizardParamUpdates,
     openExecErrorDialog,
   });
+
+  const adoptCreatedProtocolId = (payload: any) => {
+    const returnedProtocolId = String(payload?.protocolId ?? "").trim();
+
+    if (!returnedProtocolId || effectiveProtocolId) return;
+
+    setProtocolDetails((prev: any) => ({ ...prev, id: returnedProtocolId, status: String(prev?.status ?? "").trim().toLowerCase() === "new" ? "saved" : prev?.status }));
+    onSaved?.();
+  };
 
   const executeNow = async (
     modeKey: string,
@@ -1473,7 +1483,7 @@ export default function ProtocolForm({
     setValidationErrors([]);
 
     try {
-      const pid = String(protocolId ?? "");
+      const pid = effectiveProtocolId;
       const serializedParams = getSerializedParams();
       const finalParams = mergeQueueDraftIntoParams(serializedParams, queueOverride);
 
@@ -1498,6 +1508,7 @@ export default function ProtocolForm({
     } catch (err: any) {
       const httpStatus = getHttpStatusFromError(err);
       const backendPayload = getBackendPayloadFromError(err);
+      adoptCreatedProtocolId(backendPayload);
       const errors = getErrorsFromBackendPayload(backendPayload);
 
       if (errors.length > 0) {
@@ -1533,7 +1544,7 @@ export default function ProtocolForm({
     setActionLoading("execute");
 
     try {
-      const pid = String(protocolId ?? "");
+      const pid = effectiveProtocolId;
       const preflight = await svc.getProtocolWorkflowExecutionPreflight(projectId, pid, normalizedModeKey);
 
       if (!preflight?.requiresConfirmation) {
@@ -1563,7 +1574,7 @@ export default function ProtocolForm({
     setValidationErrors([]);
 
     try {
-      const pid = String(protocolId ?? "");
+      const pid = effectiveProtocolId;
       const serializedParams = getSerializedParams();
       const finalParams = mergeQueueDraftIntoParams(serializedParams, pending.queueOverride);
       const res: any = await svc.executeProtocolWorkflow(projectId, pid, protocolClassName, finalParams, pending.modeKey, scope);
@@ -1660,7 +1671,7 @@ export default function ProtocolForm({
     setActionLoading("save");
 
     try {
-      const pid = String(protocolId ?? "");
+      const pid = effectiveProtocolId;
       const serialized = getSerializedParams();
 
       const res: any = await svc.saveProtocol(projectId, pid, protocolClassName, serialized);
@@ -2449,7 +2460,7 @@ export default function ProtocolForm({
       <div className={styles.formHeader}>
         <div className={styles.formTitleWrapper}>
           <Box className="inline-flex items-center justify-center rounded-full bg-green-500 text-black text-xs font-bold px-2 py-1">
-            {String(protocolId ?? "")}
+            {effectiveProtocolId}
           </Box>
           <span className="text-white">{protocolDetails.label}</span>
           <span
@@ -2618,7 +2629,7 @@ export default function ProtocolForm({
             {topTab === 1 && (
               <ProtocolOutputsPanel
                 projectId={projectId}
-                protocolId={protocolId}
+                protocolId={effectiveProtocolId}
                 protocolLabel={protocolDisplayName}
                 outputsFromApi={outputsFromApi}
               />
@@ -2712,13 +2723,11 @@ export default function ProtocolForm({
           }
           title={`Select file for: ${pathDialog.title ?? pathDialog.stateKey}`}
           projectId={projectId}
-          protocolId={protocolId}
-          resolveBrowserPaths={() => svc.resolveBrowserPaths(projectId, protocolId)}
-          listRemoteDirectory={(p) => svc.listRemoteDirectory(projectId, protocolId, p)}
-          previewRemoteEntry={(p) => svc.previewRemoteEntry(projectId, protocolId, p)}
-          buildDownloadUrl={(p, inline) =>
-            svc.buildProtocolDownloadUrl(projectId, protocolId, p, !!inline)
-          }
+          protocolId={effectiveProtocolId}
+          resolveBrowserPaths={() => svc.resolveBrowserPaths(projectId, effectiveProtocolId)}
+          listRemoteDirectory={(p) => svc.listRemoteDirectory(projectId, effectiveProtocolId, p)}
+          previewRemoteEntry={(p) => svc.previewRemoteEntry(projectId, effectiveProtocolId, p)}
+          buildDownloadUrl={(p, inline) => svc.buildProtocolDownloadUrl(projectId, effectiveProtocolId, p, !!inline)}
           onPick={(relativePath) => {
             const stateKey = pathDialog.stateKey;
 
