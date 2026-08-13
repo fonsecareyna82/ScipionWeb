@@ -2800,8 +2800,6 @@ export default function ProtocolForm({
       </Dialog>
 
       {/* Queue dialog */}
-
-      {/* Queue dialog */}
       <Dialog
         open={queueDialogOpen}
         onClose={() => {
