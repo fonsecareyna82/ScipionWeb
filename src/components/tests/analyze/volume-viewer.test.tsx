@@ -681,7 +681,7 @@ describe("VolumeViewer", () => {
 
         const methodSelect = screen.getAllByRole("combobox")[0];
         fireEvent.mouseDown(methodSelect);
-        fireEvent.click(await screen.findByRole("option", { name: "binning" }));
+        fireEvent.click(await screen.findByText("binning", { selector: '[role="option"]' }));
 
         fireEvent.click(screen.getByRole("button", { name: "Reload data" }));
 
