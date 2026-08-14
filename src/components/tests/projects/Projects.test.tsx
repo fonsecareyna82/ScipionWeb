@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { Route, Routes } from "react-router-dom";
 import { makeRawProject, resetFactories } from "../factories";
 import { createProjectServiceMock, renderWithProviders } from "../test-utils";
 import Projects from "@/pages/Dashboard/projects/Projects";
@@ -150,10 +151,15 @@ vi.mock("react-hot-toast", () => ({
   },
 }));
 
+vi.mock("@/pages/Dashboard/projects/ProjectPage", () => ({
+  default: () => <div>Mock ProjectPage</div>,
+}));
+
 describe("Projects page", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     resetFactories();
+    window.sessionStorage.clear();
   });
 
 
@@ -340,5 +346,51 @@ describe("Projects page", () => {
 
     expect(within(betaCard).getByText("selected")).toBeInTheDocument();
     expect(within(alphaCard).getByText("not-selected")).toBeInTheDocument();
+  });
+  it("resolves the active project workspace name without switching tabs", async () => {
+    const service = createProjectServiceMock({
+      fetchList: vi.fn().mockResolvedValue([
+        makeRawProject({
+          id: "7",
+          name: "TestYunior",
+          description: "Test project",
+        }),
+      ]),
+    });
+
+    renderWithProviders(
+      <Routes>
+        <Route
+          path="/project/load/:projectName"
+          element={<Projects />}
+        />
+      </Routes>,
+      {
+        route: "/project/load/7",
+        service,
+      },
+    );
+
+    const workspace = screen.getByLabelText(
+      "Project workspaces",
+    );
+
+    expect(
+      within(workspace).queryByRole(
+        "button",
+        { name: "7" },
+      ),
+    ).not.toBeInTheDocument();
+
+    expect(
+      await within(workspace).findByRole(
+        "button",
+        { name: "TestYunior" },
+      ),
+    ).toBeInTheDocument();
+
+    expect(
+      within(workspace).getByText("|"),
+    ).toBeInTheDocument();
   });
 });
