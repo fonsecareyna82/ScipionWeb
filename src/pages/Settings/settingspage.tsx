@@ -383,7 +383,7 @@ export default function SettingsPage() {
 
   const [tab, setTab] = useState<TabKey>("user");
 
-  const [userLoading, setUserLoading] = useState(false);
+  const [userLoading, setUserLoading] = useState(true);
   const [userError, setUserError] = useState<string | null>(null);
   const [userBase, setUserBase] = useState<UserSettings | null>(null);
   const [userDraft, setUserDraft] = useState<UserSettings | null>(null);
