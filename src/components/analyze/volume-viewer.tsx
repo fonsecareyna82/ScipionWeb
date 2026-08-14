@@ -671,7 +671,7 @@ export default function VolumeViewer({
   });
 
   const ySlice = useVolumeSliceImage({
-    enabled: viewMode === "slices" && sliceLayoutMode === "triple" && readyTripleSlices,
+    enabled: active && viewMode === "slices" && sliceLayoutMode === "triple" && readyTripleSlices,
     svc,
     projectId,
     protocolId,
@@ -941,6 +941,7 @@ export default function VolumeViewer({
       }
     },
     [
+      active,
       selectedId,
       svc,
       projectId,
@@ -998,6 +999,7 @@ export default function VolumeViewer({
       setMapLoading(false);
     }
   }, [
+    active,
     selectedId,
     svc,
     projectId,

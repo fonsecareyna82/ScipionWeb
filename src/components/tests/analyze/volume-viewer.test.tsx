@@ -681,7 +681,7 @@ describe("VolumeViewer", () => {
 
         const methodSelect = screen.getAllByRole("combobox")[0];
         fireEvent.mouseDown(methodSelect);
-        fireEvent.click(await screen.findByText("stride"));
+        fireEvent.click(await screen.findByRole("option", { name: "binning" }));
 
         fireEvent.click(screen.getByRole("button", { name: "Reload data" }));
 
@@ -693,7 +693,7 @@ describe("VolumeViewer", () => {
                 1,
                 expect.objectContaining({
                     maxDim: 192,
-                    method: "stride",
+                    method: "binning",
                 }),
             );
         });
@@ -743,7 +743,7 @@ describe("VolumeViewer", () => {
         fireEvent.click(screen.getByRole("button", { name: "3D Map" }));
 
         await new Promise((resolve) => window.setTimeout(resolve, 50));
-
+        expect(serviceMocks.fetchVolumeSliceObjectUrl).not.toHaveBeenCalled();
         expect(serviceMocks.getVolumeSurfaceMesh).not.toHaveBeenCalled();
 
         rerender(<VolumeViewer projectId={1} protocolId={2} outputName="volumeOutput" pointerClass="SetOfVolumes" active />);
