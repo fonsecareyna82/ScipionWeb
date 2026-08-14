@@ -733,6 +733,7 @@ export default function IntegratedTomographyViewer({
             }
             onVolumeSelect={handleVolumeSelect}
             hideMetadataAction={hideMetadataAction}
+            active={activeSection === "tomogram"}
           />
         );
       }

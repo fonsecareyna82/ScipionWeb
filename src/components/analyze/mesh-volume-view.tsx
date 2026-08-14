@@ -12,6 +12,7 @@ export type MeshVolumeViewProps = {
     autoRotateSpeed?: number;
     cameraStateKey?: string | number | null;
     onError?: (message: string) => void;
+    active?: boolean;
 };
 
 type MeshCameraState = {
@@ -108,9 +109,11 @@ export default function MeshVolumeView({
     autoRotateSpeed = 3.8,
     cameraStateKey = "default",
     onError,
+    active = true,
 }: MeshVolumeViewProps) {
     const hostRef = useRef<HTMLDivElement | null>(null);
     const autoRotateRef = useRef(autoRotate);
+    const activeRef = useRef(active);
     const autoRotateSpeedRef = useRef(autoRotateSpeed);
 
     const currentCameraStateKey = useMemo(() => String(cameraStateKey ?? "default"), [cameraStateKey]);
@@ -141,6 +144,10 @@ export default function MeshVolumeView({
     useEffect(() => {
         autoRotateSpeedRef.current = autoRotateSpeed;
     }, [autoRotateSpeed]);
+
+    useEffect(() => {
+        activeRef.current = active;
+    }, [active]);
 
     useEffect(() => {
         const host = hostRef.current;
@@ -364,8 +371,10 @@ export default function MeshVolumeView({
 
             const animate = () => {
                 frameId = window.requestAnimationFrame(animate);
-
                 const dt = clock.getDelta();
+
+                if (!activeRef.current) return;
+
                 if (autoRotateRef.current) {
                     surfacePivot.rotation.z += dt * (autoRotateSpeedRef.current / 10);
                 }

@@ -325,8 +325,8 @@ describe("VolumeViewer", () => {
                 1,
                 expect.objectContaining({
                     maxDim: 192,
-                    method: "none",
-                    maxTriangles: 550000,
+                    method: "stride",
+                    maxTriangles: 220000,
                 }),
             );
         });
@@ -448,7 +448,7 @@ describe("VolumeViewer", () => {
                 1,
                 expect.objectContaining({
                     maxDim: 192,
-                    method: "none",
+                    method: "stride",
                 }),
             );
         });
@@ -467,7 +467,7 @@ describe("VolumeViewer", () => {
                 1,
                 expect.objectContaining({
                     maxDim: 104,
-                    method: "none",
+                    method: "stride",
                 }),
             );
         });
@@ -674,7 +674,7 @@ describe("VolumeViewer", () => {
                 1,
                 expect.objectContaining({
                     maxDim: 192,
-                    method: "none",
+                    method: "stride",
                 }),
             );
         });
@@ -734,5 +734,22 @@ describe("VolumeViewer", () => {
 
         expect(await screen.findByText("Y (XZ)")).toBeInTheDocument();
         expect(screen.queryByText("Mock MetadataViewer volumeOutput")).not.toBeInTheDocument();
+    });
+    it("does not start 3D work while the viewer is inactive", async () => {
+        const { rerender } = render(<VolumeViewer projectId={1} protocolId={2} outputName="volumeOutput" pointerClass="SetOfVolumes" active={false} />);
+
+        expect(await screen.findByText("Vol A")).toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole("button", { name: "3D Map" }));
+
+        await new Promise((resolve) => window.setTimeout(resolve, 50));
+
+        expect(serviceMocks.getVolumeSurfaceMesh).not.toHaveBeenCalled();
+
+        rerender(<VolumeViewer projectId={1} protocolId={2} outputName="volumeOutput" pointerClass="SetOfVolumes" active />);
+
+        await waitFor(() => {
+            expect(serviceMocks.getVolumeSurfaceMesh).toHaveBeenCalled();
+        });
     });
 });

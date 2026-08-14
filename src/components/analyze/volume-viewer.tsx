@@ -36,6 +36,7 @@ type VolumeViewerProps = {
   selectedVolumeId?: string | number | null;
   onVolumeSelect?: (volume: VolumeLite) => void;
   hideMetadataAction?: boolean;
+  active?: boolean;
 };
 
 type VolumeLite = {
@@ -75,7 +76,7 @@ const CMAP_OPTIONS = [
   "turbo",
 ];
 
-const SURFACE_MAX_TRIANGLES = 550000;
+const SURFACE_MAX_TRIANGLES = 220000;
 const SURFACE_REQUEST_TIMEOUT_MS = 30000;
 const SLICE_SLIDER_THROTTLE_MS = 80;
 
@@ -96,7 +97,7 @@ const HELP_TEXT: Record<string, string> = {
   maxDim3d:
     "Maximum dimension used for the downsampled 3D volume. Higher values look better but are slower.",
   method3d:
-    "Downsampling method: None keeps original size. Binning averages blocks. Stride skips voxels. ",
+    "Downsampling method for interactive 3D rendering. Stride is the fastest option. None preserves the original grid only when the volume is already within the safe interactive limit.",
   colormap3d: "Colormap applied to the rendered 3D volume.",
   opacity3d:
     "Opacity of the volume along the ray. Higher values make the map more solid.",
@@ -163,6 +164,7 @@ export default function VolumeViewer({
   selectedVolumeId,
   onVolumeSelect,
   hideMetadataAction = false,
+  active = true,
 }: VolumeViewerProps) {
   const svc = useProjectService();
 
@@ -258,9 +260,7 @@ export default function VolumeViewer({
   const surfaceRequestSeqRef = useRef(0);
 
   const [maxDim3d, setMaxDim3d] = useState(192);
-  const [method3d, setMethod3d] = useState<"none" | "binning" | "stride">(
-    "none",
-  );
+  const [method3d, setMethod3d] = useState<"none" | "binning" | "stride">("stride");
 
   const [surfaceCount, setSurfaceCount] = useState(3);
   const [opacity3d, setOpacity3d] = useState(1);
@@ -274,8 +274,7 @@ export default function VolumeViewer({
     useState<RenderMode3d>("surface");
 
   const usesSurfaceMesh3d = renderMode3d === "surface" || renderMode3d === "mesh";
-  const needsHistogram =
-    showHistogram || (viewMode === "map3d" && usesSurfaceMesh3d && selectedId != null);
+  const needsHistogram = active && (showHistogram || (viewMode === "map3d" && usesSurfaceMesh3d && selectedId != null && surfaceMesh != null));
 
   const lastLoadedRef = useRef<{
     volumeId: string | number | null;
@@ -286,7 +285,7 @@ export default function VolumeViewer({
   }>({
     volumeId: null,
     maxDim: 192,
-    method: "none",
+    method: "stride",
     renderMode: "surface",
     surfaceLevel: null,
   });
@@ -306,6 +305,25 @@ export default function VolumeViewer({
   };
 
   const [autoRotate3d, setAutoRotate3d] = useState(false);
+
+  useEffect(() => {
+    if (active) return;
+
+    surfaceRequestSeqRef.current += 1;
+    surfaceAbortRef.current?.abort();
+    surfaceAbortRef.current = null;
+    setMapLoading(false);
+    setSurfaceRefreshing(false);
+    setAutoRotate3d(false);
+  }, [active]);
+
+  useEffect(() => {
+    return () => {
+      surfaceRequestSeqRef.current += 1;
+      surfaceAbortRef.current?.abort();
+      surfaceAbortRef.current = null;
+    };
+  }, []);
 
   // stopAutoRotateWhenLeaving3d
   useEffect(() => {
@@ -621,7 +639,7 @@ export default function VolumeViewer({
   }, [selectedId, axis]);
 
   const singleSlice = useVolumeSliceImage({
-    enabled: viewMode === "slices" && sliceLayoutMode === "single" && readySlices,
+    enabled: active && viewMode === "slices" && sliceLayoutMode === "single" && readySlices,
     svc,
     projectId,
     protocolId,
@@ -638,7 +656,7 @@ export default function VolumeViewer({
   const imgError = singleSlice.error;
 
   const zSlice = useVolumeSliceImage({
-    enabled: viewMode === "slices" && sliceLayoutMode === "triple" && readyTripleSlices,
+    enabled: active && viewMode === "slices" && sliceLayoutMode === "triple" && readyTripleSlices,
     svc,
     projectId,
     protocolId,
@@ -668,7 +686,7 @@ export default function VolumeViewer({
   });
 
   const xSlice = useVolumeSliceImage({
-    enabled: viewMode === "slices" && sliceLayoutMode === "triple" && readyTripleSlices,
+    enabled: active && viewMode === "slices" && sliceLayoutMode === "triple" && readyTripleSlices,
     svc,
     projectId,
     protocolId,
@@ -797,7 +815,7 @@ export default function VolumeViewer({
 
   const reloadSurfaceMesh = useCallback(
     async (level: number | null, opts: { silent?: boolean } = {}) => {
-      if (selectedId == null) return;
+      if (!active || selectedId == null) return;
 
       surfaceAbortRef.current?.abort();
 
@@ -938,7 +956,7 @@ export default function VolumeViewer({
   );
 
   const load3d = useCallback(async () => {
-    if (selectedId == null) return;
+    if (!active || selectedId == null) return;
 
     setMapLoading(true);
     setMapError(null);
@@ -994,6 +1012,7 @@ export default function VolumeViewer({
   ]);
 
   useEffect(() => {
+    if (!active) return;
     if (viewMode !== "map3d") return;
     if (selectedId == null) return;
 
@@ -1001,7 +1020,7 @@ export default function VolumeViewer({
     if (last.volumeId !== selectedId || last.renderMode !== renderMode3d) {
       load3d();
     }
-  }, [viewMode, selectedId, renderMode3d, load3d]);
+  }, [active, viewMode, selectedId, renderMode3d, load3d]);
 
   const dataDirty = useMemo(() => {
     const last = lastLoadedRef.current;
@@ -1552,6 +1571,7 @@ export default function VolumeViewer({
                   autoRotateSpeed={3.8}
                   cameraStateKey={selectedId}
                   onError={handleMeshError}
+                  active={active && viewMode === "map3d"}
                 />
               ) : usesSurfaceMesh3d && gpuError ? (
                 <Typography variant="body2" color="error">
