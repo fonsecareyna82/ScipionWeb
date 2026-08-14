@@ -15,6 +15,7 @@ import RemoteFileDialog, {
   RemoteEntry,
   RemotePreview,
 } from "@/components/files/RemoteFileDialog";
+import OverflowTooltipText from "@/components/ui/overflow-tooltip-text";
 
 import { Handle, Position, useReactFlow } from "reactflow";
 import styles from "./ProtocolNodeCard.module.css";
@@ -71,6 +72,12 @@ import {
 } from "lucide-react";
 
 import AnalyzeOutputDialog from "@/components/analyze/analyze-output-dialog";
+import TableViewerDialog from "@/components/analyze/table-viewer-dialog";
+import {
+  openExternalAnalyzeDecision,
+  tableViewerStateFromDecision,
+  type TableViewerDialogState,
+} from "@/utils/analyze-viewer-decision";
 import type {
   AnalyzeViewerResolveContext,
   AnalyzeViewerResolveDecision,
@@ -315,21 +322,7 @@ const normalizeOutputItem = (outputObj: unknown): NormalizedOutput | null => {
 
 
 const openDecisionUrl = (decision: AnalyzeViewerResolveDecision) => {
-  // openDecisionUrl
-  if (!decision || decision.handled !== true) return false;
-
-  const url = decision.url;
-  if (!url) return false;
-
-  const target = decision.target ?? "_blank";
-
-  if (target === "_self") {
-    window.location.assign(url);
-    return true;
-  }
-
-  window.open(url, "_blank", "noopener,noreferrer");
-  return true;
+  return openExternalAnalyzeDecision(decision);
 };
 
 type ReactFlowSelectionEvent = ReactMouseEvent | ReactPointerEvent<HTMLDivElement>;
@@ -1662,6 +1655,7 @@ export default function ProtocolNodeCard({
     outputName: string;
     outputRaw: any;
   } | null>(null);
+  const [tableViewerState, setTableViewerState] = useState<TableViewerDialogState | null>(null);
 
   const analyzeProjectId = useMemo(() => {
     const n = Number(data.projectId);
@@ -1981,8 +1975,18 @@ export default function ProtocolNodeCard({
 
           const decision = await maybeResolve(ctx);
           if (decision?.handled === true) {
+            const tableState = tableViewerStateFromDecision(decision, {
+              protocolLabel: headerDisplayName,
+              pointerClass: normalized?.pointerClass,
+            });
+            if (tableState) {
+              setTableViewerState(tableState);
+              return;
+            }
+
             const opened = openDecisionUrl(decision);
             if (opened) return;
+            return;
           }
         } catch {
           // ignoreResolveErrorsAndFallbackToInternal
@@ -2614,6 +2618,33 @@ export default function ProtocolNodeCard({
                             void openOutputViewer(outputName, outputObj, value);
                           };
 
+                          const outputInfoTooltipText = labelTextValue;
+                          const shouldShowOutputInfoTooltip =
+                            outputInfoTooltipText.length >= 48 ||
+                            outputInfoTooltipText.includes("\n") ||
+                            (shouldUseOutputTiles && outputInfoTooltipText !== overlayTitle);
+
+                          const outputInfoTooltipProps = shouldShowOutputInfoTooltip
+                            ? {
+                                title: outputInfoTooltipText,
+                                placement: "top" as const,
+                                arrow: true,
+                                enterDelay: 300,
+                                slotProps: {
+                                  popper: { sx: { zIndex: 26000 } },
+                                  tooltip: {
+                                    sx: {
+                                      maxWidth: 560,
+                                      whiteSpace: "pre-wrap",
+                                      wordBreak: "break-word",
+                                      fontSize: "0.95rem",
+                                      lineHeight: 1.35,
+                                    },
+                                  },
+                                },
+                              }
+                            : null;
+
                           if (shouldUseOutputTiles) {
                             const hasThumbnail = Boolean(thumbnailSrc);
 
@@ -2626,7 +2657,7 @@ export default function ProtocolNodeCard({
                                     ? styles.outputThumbTileTriple
                                     : styles.outputThumbTileMany;
 
-                            return (
+                            const thumbTile = (
                               <div
                                 key={pillKey}
                                 className={[
@@ -2637,7 +2668,6 @@ export default function ProtocolNodeCard({
                                   "nodrag",
                                 ].filter(Boolean).join(" ")}
                                 draggable
-                                title={labelText}
                                 onMouseDown={handleOutputMouseDown}
                                 onClick={handleOpenOutput}
                                 onDragStart={handleOutputDragStart}
@@ -2664,31 +2694,47 @@ export default function ProtocolNodeCard({
                                     )}
 
                                     {overlayTopLeft ? (
-                                      <div className={`${styles.outputThumbBadge} ${styles.outputThumbBadgeTopLeft}`}>
-                                        {overlayTopLeft}
-                                      </div>
+                                      <OverflowTooltipText
+                                        as="div"
+                                        text={overlayTopLeft}
+                                        className={`${styles.outputThumbBadge} ${styles.outputThumbBadgeTopLeft}`}
+                                      />
                                     ) : null}
 
                                     {overlayTopRight ? (
-                                      <div className={`${styles.outputThumbBadge} ${styles.outputThumbBadgeTopRight}`}>
-                                        {overlayTopRight}
-                                      </div>
+                                      <OverflowTooltipText
+                                        as="div"
+                                        text={overlayTopRight}
+                                        className={`${styles.outputThumbBadge} ${styles.outputThumbBadgeTopRight}`}
+                                      />
                                     ) : null}
 
                                     {overlayBottomLeft ? (
-                                      <div className={`${styles.outputThumbBadge} ${styles.outputThumbBadgeBottomLeft}`}>
-                                        {overlayBottomLeft}
-                                      </div>
+                                      <OverflowTooltipText
+                                        as="div"
+                                        text={overlayBottomLeft}
+                                        className={`${styles.outputThumbBadge} ${styles.outputThumbBadgeBottomLeft}`}
+                                      />
                                     ) : null}
 
                                     {overlayBottomRight ? (
-                                      <div className={`${styles.outputThumbBadge} ${styles.outputThumbBadgeBottomRight}`}>
-                                        {overlayBottomRight}
-                                      </div>
+                                      <OverflowTooltipText
+                                        as="div"
+                                        text={overlayBottomRight}
+                                        className={`${styles.outputThumbBadge} ${styles.outputThumbBadgeBottomRight}`}
+                                      />
                                     ) : null}
                                   </div>
                                 </div>
                               </div>
+                            );
+
+                            if (!outputInfoTooltipProps) return thumbTile;
+
+                            return (
+                              <Tooltip key={pillKey} {...outputInfoTooltipProps}>
+                                {thumbTile}
+                              </Tooltip>
                             );
                           }
 
@@ -2709,7 +2755,10 @@ export default function ProtocolNodeCard({
                               onDragEnd={handleOutputDragEnd}
                             >
                               <ArrowUpRight className={styles.outputIcon} />
-                              <span className={styles.outputText}>{labelText}</span>
+                              <OverflowTooltipText
+                                text={outputInfoTooltipText}
+                                className={styles.outputText}
+                              />
 
                               <button
                                 type="button"
@@ -3150,6 +3199,19 @@ export default function ProtocolNodeCard({
           protocolLabel={headerDisplayName}
           outputName={analyzeTarget.outputName}
           outputRaw={analyzeTarget.outputRaw}
+        />
+      ) : null}
+
+      {tableViewerState ? (
+        <TableViewerDialog
+          open
+          onClose={() => setTableViewerState(null)}
+          context={tableViewerState.context}
+          tableData={tableViewerState.tableData}
+          title={tableViewerState.title}
+          pointerClass={tableViewerState.pointerClass}
+          protocolLabel={tableViewerState.protocolLabel}
+          emptyPaneMessage={tableViewerState.emptyPaneMessage}
         />
       ) : null}
 

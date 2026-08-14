@@ -24,6 +24,7 @@ import { DragProvider } from "./components/protocol/DragContext";
 import { ThemeProvider } from "./context/ThemeContext";
 import type { ProjectService } from "./services/ProjectService";
 import type { WidgetGlobal } from "./types/global-widget";
+import { WIDGET_BUILD_TIMESTAMP } from "./buildInfo";
 import ProjectPage from "./pages/Dashboard/projects/ProjectPage";
 
 class WidgetErrorBoundary extends React.Component<
@@ -325,6 +326,9 @@ function normalizeServiceAPI(srv: any): ProjectService {
   mapFn("getMetadataImageCellUrl", "getMetadataImageCellUrl");
   mapFn("runMetadataTableAction", "runMetadataTableAction");
 
+  mapFn("resolveTableViewPane", "resolveTableViewPane", "getTableViewPane");
+  mapFn("createTableViewSubset", "createTableViewSubset");
+
   mapFn("listOutputTiltSeries", "listOutputTiltSeries");
   mapFn("fetchTiltSeriesFrames", "fetchTiltSeriesFrames");
   mapFn("fetchTiltSeriesViewImageObjectUrl", "fetchTiltSeriesViewImageObjectUrl");
@@ -411,6 +415,15 @@ function normalizeServiceAPI(srv: any): ProjectService {
   ensureFn("listOutputCTFTomoSeries", async () => []);
   ensureFn("listUsers", async () => []);
   ensureFn("listProjectShares", async () => []);
+  ensureFn("resolveTableViewPane", async () => ({
+    kind: "empty",
+    message: "No viewer configured.",
+  }));
+  ensureFn("createTableViewSubset", async (request: { subsetItems?: string[] }) => ({
+    success: true,
+    count: request?.subsetItems?.length ?? 0,
+    message: `Demo: received ${request?.subsetItems?.length ?? 0} item(s). Subset creation is not implemented yet.`,
+  }));
 
   if (rawListProjectTags) {
     normalized.listProjectTags = async (projectId: any) => {
@@ -641,5 +654,8 @@ if (typeof window !== "undefined") {
   const prev = (window as any).MyProjectsWidget as WidgetGlobal | undefined;
   (window as any).MyProjectsWidget = { ...(prev || {}), mountProjectPageWidget };
   // eslint-disable-next-line no-console
-  console.log("ProjectPageWidget: ready under window.MyProjectsWidget");
+  console.log(
+    "ProjectPageWidget: ready under window.MyProjectsWidget",
+    WIDGET_BUILD_TIMESTAMP ? `(built ${WIDGET_BUILD_TIMESTAMP})` : "",
+  );
 }

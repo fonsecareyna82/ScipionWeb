@@ -1025,6 +1025,17 @@ const defaultService: ProjectService = {
       payload,
     ),
 
+  resolveTableViewPane: async () => ({
+    kind: "empty" as const,
+    message: "Table viewer pane is not configured for standalone mode.",
+  }),
+
+  createTableViewSubset: async (request) => ({
+    success: true,
+    count: request.subsetItems.length,
+    message: `Standalone mode: received ${request.subsetItems.length} item(s). Subset creation is not configured.`,
+  }),
+
 };
 
 export default defaultService;

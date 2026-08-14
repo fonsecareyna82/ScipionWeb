@@ -566,6 +566,7 @@
 
 .outputText {
   display: inline-block;
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

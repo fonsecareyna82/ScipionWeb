@@ -1,5 +1,6 @@
 // vite.config.ts
 import path from "path";
+import { readFileSync } from "fs";
 import react from "@vitejs/plugin-react";
 import svgr from "vite-plugin-svgr";
 import inject from "@rollup/plugin-inject";
@@ -13,6 +14,10 @@ const svgrOptions = {
     namedExport: "ReactComponent" as const,
   },
 };
+
+const pkg = JSON.parse(
+  readFileSync(path.resolve(__dirname, "package.json"), "utf8"),
+) as { version?: string };
 
 export default defineConfig((env: ConfigEnv): UserConfig => {
   // decideBuildTarget
@@ -175,6 +180,8 @@ export default defineConfig((env: ConfigEnv): UserConfig => {
     server,
     define: {
       "process.env.NODE_ENV": JSON.stringify(process.env.NODE_ENV ?? "production"),
+      __WIDGET_BUILD_TIMESTAMP__: JSON.stringify(isUmd ? new Date().toISOString() : ""),
+      __APP_VERSION__: JSON.stringify(isUmd ? (pkg.version ?? "") : ""),
     },
   };
 });
