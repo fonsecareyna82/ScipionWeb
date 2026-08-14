@@ -136,6 +136,17 @@ describe("ProtocolsTree", () => {
         expect(screen.queryByText("Refine volume")).not.toBeInTheDocument();
     });
 
+    it("keeps all descendants when the search matches a parent package", () => {
+        render(<ProtocolsTree data={[{ text: "All", tag: "section", childs: [{ text: "IMOD", tag: "package", childs: [{ text: "Fiducial model", tag: "protocol", value: "imod-fiducial" }, { text: "Tilt-series alignment", tag: "protocol", value: "imod-align" }] }, { text: "RELION", tag: "package", childs: [{ text: "Refine 3D", tag: "protocol", value: "relion-refine" }] }] }]} searchText="imod" />);
+
+        expect(screen.getByText("All")).toBeInTheDocument();
+        expect(screen.getByText("IMOD")).toBeInTheDocument();
+        expect(screen.getByText("Fiducial model")).toBeInTheDocument();
+        expect(screen.getByText("Tilt-series alignment")).toBeInTheDocument();
+        expect(screen.queryByText("RELION")).not.toBeInTheDocument();
+        expect(screen.queryByText("Refine 3D")).not.toBeInTheDocument();
+    });
+
     it("highlights search matches", () => {
         const { container } = render(
             <ProtocolsTree

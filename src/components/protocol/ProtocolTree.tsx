@@ -118,16 +118,18 @@ interface ProtocolsTreeProps {
 // --- Recursive search ---
 const filterTree = (nodes: ProtocolNode[], search: string): ProtocolNode[] => {
   const lowerSearch = search.toLowerCase();
-  return nodes
-    .map((node) => {
-      const matches = node.text.toLowerCase().includes(lowerSearch);
-      const filteredChildren = node.childs ? filterTree(node.childs, search) : undefined;
-      if (matches || (filteredChildren && filteredChildren.length > 0)) {
-        return { ...node, childs: filteredChildren };
-      }
-      return null;
-    })
-    .filter(Boolean) as ProtocolNode[];
+
+  return nodes.map((node) => {
+    const matches = node.text.toLowerCase().includes(lowerSearch);
+
+    if (matches) return { ...node, childs: node.childs };
+
+    const filteredChildren = node.childs ? filterTree(node.childs, search) : undefined;
+
+    if (filteredChildren && filteredChildren.length > 0) return { ...node, childs: filteredChildren };
+
+    return null;
+  }).filter(Boolean) as ProtocolNode[];
 };
 
 // --- Highlight function ---
