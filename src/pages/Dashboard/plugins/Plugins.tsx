@@ -135,7 +135,19 @@ function TabButton(props: {
 export default function Plugins() {
   const navigate = useNavigate();
   const { tasks, installing, removing, registerTask } = useProcessingPlugins();
+
   const tasksCount = tasks.length;
+
+  const activeTasksCount = useMemo(
+    () =>
+      tasks.filter(
+        (task) =>
+          !["SUCCESS", "FAILURE", "CANCELLED"].includes(
+            String(task.status).toUpperCase(),
+          ),
+      ).length,
+    [tasks],
+  );
 
   const {
     data: plugins = [],
@@ -143,7 +155,7 @@ export default function Plugins() {
     isError,
     refetch,
   } = usePlugins({
-    refetchInterval: tasksCount > 0 ? 2000 : false,
+    refetchInterval: activeTasksCount > 0 ? 2000 : false,
   });
 
   const [activeTab, setActiveTab] = useState<TabKey>("available");
@@ -157,10 +169,10 @@ export default function Plugins() {
   const [batchBusy, setBatchBusy] = useState(false);
 
   useEffect(() => {
-    if (tasksCount === 0) {
-      void refetch();
-    }
-  }, [tasksCount, refetch]);
+  if (activeTasksCount === 0) {
+    void refetch();
+  }
+}, [activeTasksCount, refetch]);
 
   useEffect(() => {
     setActiveCategoryId("all");
@@ -440,10 +452,11 @@ export default function Plugins() {
                       <FolderPlus className="h-4 w-4 text-white" />
                       Install local plugin
                     </SecondaryButton>
+                    {/*
                     <StatPill label="Installed" value={installedPlugins.length} />
                     <StatPill label="Available" value={availablePlugins.length} />
                     <StatPill label="Devel" value={develPlugins.length} />
-                    <StatPill label="Tasks" value={tasksCount} />
+                    <StatPill label="Tasks" value={tasksCount} /> */}
                   </div>
                 </div>
 
@@ -581,7 +594,7 @@ export default function Plugins() {
 
                     {filteredTasks.length === 0 && (
                       <div className="px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
-                        No active tasks.
+                        No tasks yet.
                       </div>
                     )}
                   </div>

@@ -1,9 +1,26 @@
 // src/hooks/useProcessingPlugins.tsx
-import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { getTaskStatus, type TaskStatusResponse } from "@/api/plugins";
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
+  fetchPluginTasks,
+  type PersistentPluginTask,
+  type PluginTaskBackend,
+  type TaskStatusResponse,
+} from "@/api/plugins";
 import { useQueryClient } from "@tanstack/react-query";
 
-export type PluginTaskOperation = "install" | "install-batch" | "install-devel" | "uninstall";
+export type PluginTaskOperation =
+  | "install"
+  | "install-batch"
+  | "install-devel"
+  | "uninstall";
 
 export type PluginTask = {
   taskId: string;
@@ -14,7 +31,13 @@ export type PluginTask = {
   status: string;
   error?: string | null;
   step?: string | null;
+  result?: unknown;
+  meta?: unknown;
+  backend?: PluginTaskBackend;
+  acknowledged?: boolean;
+  createdAtMs: number;
   startedAtMs: number;
+  finishedAtMs?: number | null;
   updatedAtMs: number;
 };
 
@@ -28,6 +51,7 @@ type ProcessingContextType = {
   finishRemove: (pip: string) => void;
 
   tasks: PluginTask[];
+
   registerTask: (task: {
     taskId: string;
     pipName: string;
@@ -36,57 +60,237 @@ type ProcessingContextType = {
     operation: PluginTaskOperation;
     initialStatus?: string;
   }) => void;
+
   waitForTask: (taskId: string) => Promise<TaskStatusResponse>;
+  refreshTasks: () => Promise<void>;
 
   clearProcessingState: () => void;
 };
 
-const LS_KEY_V1 = "processing-plugins";
-const LS_KEY_V2 = "processing-plugins-v2";
+const LEGACY_STORAGE_KEYS = [
+  "processing-plugins",
+  "processing-plugins-v2",
+];
 
-const ProcessingCtx = createContext<ProcessingContextType | null>(null);
+const ProcessingCtx = createContext<ProcessingContextType | null>(
+  null,
+);
 
 type Deferred = {
   promise: Promise<TaskStatusResponse>;
-  resolve: (v: TaskStatusResponse) => void;
-  reject: (e: unknown) => void;
+  resolve: (value: TaskStatusResponse) => void;
+  reject: (error: unknown) => void;
 };
 
 function createDeferred(): Deferred {
-  let resolve!: (v: TaskStatusResponse) => void;
-  let reject!: (e: unknown) => void;
+  let resolve!: (value: TaskStatusResponse) => void;
+  let reject!: (error: unknown) => void;
 
-  const promise = new Promise<TaskStatusResponse>((res, rej) => {
-    resolve = res;
-    reject = rej;
-  });
+  const promise = new Promise<TaskStatusResponse>(
+    (resolvePromise, rejectPromise) => {
+      resolve = resolvePromise;
+      reject = rejectPromise;
+    },
+  );
 
-  return { promise, resolve, reject };
+  return {
+    promise,
+    resolve,
+    reject,
+  };
 }
 
-function isTerminalStatus(status: string) {
-  return status === "SUCCESS" || status === "FAILURE";
+function normalizeStatus(status: string | null | undefined): string {
+  return String(status ?? "UNKNOWN")
+    .trim()
+    .toUpperCase();
 }
 
-function isInstallOperation(operation: PluginTaskOperation) {
-  return operation === "install" || operation === "install-batch" || operation === "install-devel";
+function isTerminalStatus(status: string): boolean {
+  const normalized = normalizeStatus(status);
+
+  return (
+    normalized === "SUCCESS" ||
+    normalized === "FAILURE" ||
+    normalized === "CANCELLED"
+  );
 }
 
-function getTaskPipNames(task: Pick<PluginTask, "pipName" | "pipNames">): string[] {
-  if (Array.isArray(task.pipNames) && task.pipNames.length > 0) {
+function isInstallOperation(
+  operation: PluginTaskOperation,
+): boolean {
+  return (
+    operation === "install" ||
+    operation === "install-batch" ||
+    operation === "install-devel"
+  );
+}
+
+function getTaskPipNames(
+  task: Pick<PluginTask, "pipName" | "pipNames">,
+): string[] {
+  if (
+    Array.isArray(task.pipNames) &&
+    task.pipNames.length > 0
+  ) {
     return task.pipNames;
   }
-  return task.pipName ? [task.pipName] : [];
+
+  return task.pipName
+    ? [task.pipName]
+    : [];
 }
 
-export function ProcessingProvider({ children }: { children: React.ReactNode }) {
-  const [installing, setInstalling] = useState<Set<string>>(new Set());
-  const [removing, setRemoving] = useState<Set<string>>(new Set());
-  const [tasks, setTasks] = useState<PluginTask[]>([]);
+function parseDateMs(
+  value: string | null | undefined,
+  fallback: number,
+): number {
+  if (!value) {
+    return fallback;
+  }
 
-  const tasksRef = useRef<PluginTask[]>([]);
-  const deferredByIdRef = useRef<Map<string, Deferred>>(new Map());
-  const pollingInFlightRef = useRef(false);
+  const parsed = Date.parse(value);
+
+  return Number.isFinite(parsed)
+    ? parsed
+    : fallback;
+}
+
+function getPayloadPluginNames(
+  payload: Record<string, unknown>,
+): string[] {
+  const rawPlugins = payload.plugins;
+
+  if (!Array.isArray(rawPlugins)) {
+    return [];
+  }
+
+  return rawPlugins
+    .filter(
+      (value): value is string =>
+        typeof value === "string" &&
+        value.trim().length > 0,
+    )
+    .map((value) => value.trim());
+}
+
+function mapPersistentTask(
+  task: PersistentPluginTask,
+): PluginTask {
+  const now = Date.now();
+  const payload = task.payload ?? {};
+
+  const pipNames = getPayloadPluginNames(
+    payload,
+  );
+
+  const payloadPluginName =
+    typeof payload.pluginName === "string"
+      ? payload.pluginName.trim()
+      : "";
+
+  const pipName =
+    payloadPluginName ||
+    pipNames[0] ||
+    task.subject;
+
+  const createdAtMs = parseDateMs(
+    task.createdAt,
+    now,
+  );
+
+  const startedAtMs = parseDateMs(
+    task.startedAt,
+    createdAtMs,
+  );
+
+  const updatedAtMs = parseDateMs(
+    task.updatedAt,
+    startedAtMs,
+  );
+
+  const finishedAtMs = task.finishedAt
+    ? parseDateMs(
+        task.finishedAt,
+        updatedAtMs,
+      )
+    : null;
+
+  return {
+    taskId: task.taskId,
+    pipName,
+    pipNames:
+      pipNames.length > 0
+        ? pipNames
+        : [pipName],
+    pluginName:
+      task.subjectLabel ??
+      task.subject,
+    operation:
+      task.operation as PluginTaskOperation,
+    status: normalizeStatus(
+      task.status,
+    ),
+    error: task.error ?? null,
+    step: task.step ?? null,
+    result: task.result,
+    meta: task.meta,
+    backend:
+      task.backend === "local"
+        ? "local"
+        : "celery",
+    acknowledged:
+      Boolean(task.acknowledged),
+    createdAtMs,
+    startedAtMs,
+    finishedAtMs,
+    updatedAtMs,
+  };
+}
+
+function toTaskStatusResponse(
+  task: PluginTask,
+): TaskStatusResponse {
+  return {
+    taskId: task.taskId,
+    status: task.status,
+    result: task.result,
+    error: task.error ?? null,
+    meta: task.meta,
+    backend: task.backend,
+  };
+}
+
+export function ProcessingProvider({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const [installing, setInstalling] = useState<Set<string>>(
+    new Set(),
+  );
+
+  const [removing, setRemoving] = useState<Set<string>>(
+    new Set(),
+  );
+
+  const [tasks, setTasks] = useState<PluginTask[]>(
+    [],
+  );
+
+  const tasksRef = useRef<PluginTask[]>(
+    [],
+  );
+
+  const deferredByIdRef = useRef<
+    Map<string, Deferred>
+  >(
+    new Map(),
+  );
+
+  const refreshInFlightRef = useRef(
+    false,
+  );
 
   const queryClient = useQueryClient();
 
@@ -94,273 +298,634 @@ export function ProcessingProvider({ children }: { children: React.ReactNode }) 
     tasksRef.current = tasks;
   }, [tasks]);
 
-  useEffect(() => {
-    // Load v2 first
-    const rawV2 = localStorage.getItem(LS_KEY_V2);
-    if (rawV2) {
-      try {
-        const parsed = JSON.parse(rawV2) as {
-          inst?: string[];
-          rem?: string[];
-          tasks?: PluginTask[];
-        };
-
-        const loadedTasks = Array.isArray(parsed.tasks) ? parsed.tasks : [];
-        setTasks(loadedTasks);
-
-        const inst = new Set(parsed.inst ?? []);
-        const rem = new Set(parsed.rem ?? []);
-
-        for (const t of loadedTasks) {
-          if (isTerminalStatus(t.status)) continue;
-          if (isInstallOperation(t.operation)) {
-            getTaskPipNames(t).forEach((pipName) => inst.add(pipName));
-          }
-          if (t.operation === "uninstall") rem.add(t.pipName);
-        }
-
-        setInstalling(inst);
-        setRemoving(rem);
-        return;
-      } catch {
-        // Ignore malformed storage
-      }
-    }
-
-    // Migrate from v1 if present
-    const rawV1 = localStorage.getItem(LS_KEY_V1);
-    if (!rawV1) return;
-
-    try {
-      const parsed = JSON.parse(rawV1) as { inst?: string[]; rem?: string[] };
-      setInstalling(new Set(parsed.inst ?? []));
-      setRemoving(new Set(parsed.rem ?? []));
-      setTasks([]);
-      localStorage.removeItem(LS_KEY_V1);
-    } catch {
-      // Ignore malformed storage
-    }
-  }, []);
-
-  useEffect(() => {
-    localStorage.setItem(
-      LS_KEY_V2,
-      JSON.stringify({
-        inst: Array.from(installing),
-        rem: Array.from(removing),
-        tasks,
-      })
-    );
-  }, [installing, removing, tasks]);
-
-  const startInstall = (pip: string) => setInstalling((s) => new Set(s).add(pip));
-  const finishInstall = (pip: string) =>
-    setInstalling((s) => {
-      const c = new Set(s);
-      c.delete(pip);
-      return c;
-    });
-
-  const startRemove = (pip: string) => setRemoving((s) => new Set(s).add(pip));
-  const finishRemove = (pip: string) =>
-    setRemoving((s) => {
-      const c = new Set(s);
-      c.delete(pip);
-      return c;
-    });
-
-  const registerTask: ProcessingContextType["registerTask"] = (t) => {
-    const now = Date.now();
-    const initialStatus = t.initialStatus ?? "PENDING";
-    const pipNames = Array.isArray(t.pipNames) && t.pipNames.length > 0 ? t.pipNames : [t.pipName];
-
-    setTasks((prev) => {
-      if (prev.some((x) => x.taskId === t.taskId)) return prev;
-      return [
-        {
-          taskId: t.taskId,
-          pipName: t.pipName,
-          pipNames,
-          pluginName: t.pluginName,
-          operation: t.operation,
-          status: initialStatus,
-          error: null,
-          step: null,
-          startedAtMs: now,
-          updatedAtMs: now,
-        },
-        ...prev,
-      ];
-    });
-
-    if (!deferredByIdRef.current.has(t.taskId)) {
-      deferredByIdRef.current.set(t.taskId, createDeferred());
-    }
-
-    if (isInstallOperation(t.operation)) pipNames.forEach(startInstall);
-    if (t.operation === "uninstall") startRemove(t.pipName);
-  };
-
-  const waitForTask: ProcessingContextType["waitForTask"] = (taskId) => {
-    const existing = deferredByIdRef.current.get(taskId);
-    if (existing) return existing.promise;
-
-    const def = createDeferred();
-    deferredByIdRef.current.set(taskId, def);
-    return def.promise;
-  };
-
-  useEffect(() => {
-    if (tasks.length === 0) return;
-
-    const timer = window.setInterval(async () => {
-      if (pollingInFlightRef.current) return;
-      pollingInFlightRef.current = true;
-
-      try {
-        const current = tasksRef.current;
-        const active = current.filter((t) => !isTerminalStatus(t.status));
-        if (active.length === 0) return;
-
-        const results = await Promise.allSettled(active.map((t) => getTaskStatus(t.taskId)));
-
-        // New: if any task reaches terminal state, refresh plugins list via react-query
-        let shouldInvalidatePlugins = false;
-
-        for (let i = 0; i < active.length; i++) {
-          const settled = results[i];
-          if (settled.status === "fulfilled") {
-            if (isTerminalStatus(settled.value.status)) {
-              shouldInvalidatePlugins = true;
-            }
-          } else {
-            // A polling error effectively means the task is no longer reliable -> refresh list
-            shouldInvalidatePlugins = true;
-          }
-        }
-
-        setTasks((prev) => {
-          const prevMap = new Map(prev.map((t) => [t.taskId, t]));
-          const updated: PluginTask[] = [];
-
-          for (let i = 0; i < active.length; i++) {
-            const task = active[i];
-            const settled = results[i];
-            const existingTask = prevMap.get(task.taskId);
-            if (!existingTask) continue;
-
-            if (settled.status === "fulfilled") {
-              const status = settled.value;
-
-              let step: string | null = null;
-              if (status && typeof status.meta === "object" && status.meta != null) {
-                const metaObj = status.meta as Record<string, unknown>;
-                const rawStep = metaObj["step"];
-                if (typeof rawStep === "string") step = rawStep;
-              }
-
-              const nextStatus = status.status;
-              const nextError = status.error ?? null;
-
-              const hasTaskChanged =
-                existingTask.status !== nextStatus ||
-                existingTask.error !== nextError ||
-                existingTask.step !== step;
-
-              const next: PluginTask = {
-                ...existingTask,
-                status: nextStatus,
-                error: nextError,
-                step,
-                updatedAtMs: hasTaskChanged ? Date.now() : existingTask.updatedAtMs,
-              };
-
-              if (isTerminalStatus(next.status)) {
-                const def = deferredByIdRef.current.get(next.taskId);
-                if (def) {
-                  def.resolve(status);
-                  deferredByIdRef.current.delete(next.taskId);
-                }
-
-                if (isInstallOperation(next.operation)) {
-                  getTaskPipNames(next).forEach(finishInstall);
-                }
-                if (next.operation === "uninstall") finishRemove(next.pipName);
-
-                prevMap.delete(task.taskId);
-                continue;
-              }
-
-              updated.push(next);
-              prevMap.delete(task.taskId);
-            } else {
-              const err = String(settled.reason ?? "Task polling failed");
-
-              const def = deferredByIdRef.current.get(task.taskId);
-              if (def) {
-                def.resolve({ taskId: task.taskId, status: "FAILURE", error: err, result: null });
-                deferredByIdRef.current.delete(task.taskId);
-              }
-
-              if (isInstallOperation(task.operation)) {
-                getTaskPipNames(task).forEach(finishInstall);
-              }
-              if (task.operation === "uninstall") finishRemove(task.pipName);
-
-              prevMap.delete(task.taskId);
-            }
-          }
-
-          for (const t of prevMap.values()) {
-            if (isTerminalStatus(t.status)) continue;
-            updated.push(t);
-          }
-
-          updated.sort((a, b) => b.updatedAtMs - a.updatedAtMs);
-          return updated;
-        });
-
-        if (shouldInvalidatePlugins) {
-          void queryClient.invalidateQueries({ queryKey: ["plugins"] });
-        }
-      } finally {
-        pollingInFlightRef.current = false;
-      }
-    }, 1500);
-
-    return () => window.clearInterval(timer);
-  }, [tasks.length]);
-
-  const clearProcessingState = () => {
-    setInstalling(new Set());
-    setRemoving(new Set());
-    setTasks([]);
-    localStorage.removeItem(LS_KEY_V2);
-    deferredByIdRef.current.clear();
-    void queryClient.invalidateQueries({ queryKey: ["plugins"] });
-  };
-
-  const value = useMemo<ProcessingContextType>(
-    () => ({
-      installing,
-      removing,
-      startInstall,
-      finishInstall,
-      startRemove,
-      finishRemove,
-      tasks,
-      registerTask,
-      waitForTask,
-      clearProcessingState,
-    }),
-    [installing, removing, tasks]
+  const startInstall = useCallback(
+    (pip: string) => {
+      setInstalling(
+        (current) =>
+          new Set(current).add(
+            pip,
+          ),
+      );
+    },
+    [],
   );
 
-  return <ProcessingCtx.Provider value={value}>{children}</ProcessingCtx.Provider>;
+  const finishInstall = useCallback(
+    (pip: string) => {
+      setInstalling((current) => {
+        const next = new Set(
+          current,
+        );
+
+        next.delete(
+          pip,
+        );
+
+        return next;
+      });
+    },
+    [],
+  );
+
+  const startRemove = useCallback(
+    (pip: string) => {
+      setRemoving(
+        (current) =>
+          new Set(current).add(
+            pip,
+          ),
+      );
+    },
+    [],
+  );
+
+  const finishRemove = useCallback(
+    (pip: string) => {
+      setRemoving((current) => {
+        const next = new Set(
+          current,
+        );
+
+        next.delete(
+          pip,
+        );
+
+        return next;
+      });
+    },
+    [],
+  );
+
+  const refreshTasks = useCallback(
+    async () => {
+      if (
+        refreshInFlightRef.current
+      ) {
+        return;
+      }
+
+      refreshInFlightRef.current = true;
+
+      try {
+        const persistedTasks =
+          await fetchPluginTasks({
+            limit: 100,
+          });
+
+        const mappedTasks =
+          persistedTasks
+            .map(
+              mapPersistentTask,
+            )
+            .sort(
+              (a, b) =>
+                b.updatedAtMs -
+                a.updatedAtMs,
+            );
+
+        const serverTaskIds = new Set(
+          mappedTasks.map(
+            (task) =>
+              task.taskId,
+          ),
+        );
+
+        const now = Date.now();
+
+        const localPendingTasks =
+          tasksRef.current.filter(
+            (task) =>
+              !serverTaskIds.has(
+                task.taskId,
+              ) &&
+              !isTerminalStatus(
+                task.status,
+              ) &&
+              now -
+                task.startedAtMs <
+                10000,
+          );
+
+        const nextTasks = [
+          ...mappedTasks,
+          ...localPendingTasks,
+        ].sort(
+          (a, b) =>
+            b.updatedAtMs -
+            a.updatedAtMs,
+        );
+
+        const previousById =
+          new Map(
+            tasksRef.current.map(
+              (task) => [
+                task.taskId,
+                task,
+              ],
+            ),
+          );
+
+        let shouldInvalidatePlugins =
+          false;
+
+        for (const task of nextTasks) {
+          const previous =
+            previousById.get(
+              task.taskId,
+            );
+
+          if (
+            isTerminalStatus(
+              task.status,
+            )
+          ) {
+            const deferred =
+              deferredByIdRef.current.get(
+                task.taskId,
+              );
+
+            if (deferred) {
+              deferred.resolve(
+                toTaskStatusResponse(
+                  task,
+                ),
+              );
+
+              deferredByIdRef.current.delete(
+                task.taskId,
+              );
+            }
+
+            if (
+              previous &&
+              !isTerminalStatus(
+                previous.status,
+              )
+            ) {
+              shouldInvalidatePlugins =
+                true;
+            }
+
+            if (
+              isInstallOperation(
+                task.operation,
+              )
+            ) {
+              getTaskPipNames(
+                task,
+              ).forEach(
+                finishInstall,
+              );
+            }
+
+            if (
+              task.operation ===
+              "uninstall"
+            ) {
+              finishRemove(
+                task.pipName,
+              );
+            }
+
+            continue;
+          }
+
+          if (
+            isInstallOperation(
+              task.operation,
+            )
+          ) {
+            getTaskPipNames(
+              task,
+            ).forEach(
+              startInstall,
+            );
+          }
+
+          if (
+            task.operation ===
+            "uninstall"
+          ) {
+            startRemove(
+              task.pipName,
+            );
+          }
+        }
+
+        const trackedPipNames =
+          new Set<string>();
+
+        const activeInstallNames =
+          new Set<string>();
+
+        const activeRemoveNames =
+          new Set<string>();
+
+        for (const task of nextTasks) {
+          const pipNames =
+            getTaskPipNames(
+              task,
+            );
+
+          pipNames.forEach(
+            (pipName) =>
+              trackedPipNames.add(
+                pipName,
+              ),
+          );
+
+          if (
+            isTerminalStatus(
+              task.status,
+            )
+          ) {
+            continue;
+          }
+
+          if (
+            isInstallOperation(
+              task.operation,
+            )
+          ) {
+            pipNames.forEach(
+              (pipName) =>
+                activeInstallNames.add(
+                  pipName,
+                ),
+            );
+          }
+
+          if (
+            task.operation ===
+            "uninstall"
+          ) {
+            activeRemoveNames.add(
+              task.pipName,
+            );
+          }
+        }
+
+        setInstalling(
+          (current) => {
+            const next = new Set(
+              current,
+            );
+
+            trackedPipNames.forEach(
+              (pipName) =>
+                next.delete(
+                  pipName,
+                ),
+            );
+
+            activeInstallNames.forEach(
+              (pipName) =>
+                next.add(
+                  pipName,
+                ),
+            );
+
+            return next;
+          },
+        );
+
+        setRemoving(
+          (current) => {
+            const next = new Set(
+              current,
+            );
+
+            trackedPipNames.forEach(
+              (pipName) =>
+                next.delete(
+                  pipName,
+                ),
+            );
+
+            activeRemoveNames.forEach(
+              (pipName) =>
+                next.add(
+                  pipName,
+                ),
+            );
+
+            return next;
+          },
+        );
+
+        setTasks(
+          nextTasks,
+        );
+
+        if (
+          shouldInvalidatePlugins
+        ) {
+          void queryClient.invalidateQueries({
+            queryKey: [
+              "plugins",
+            ],
+          });
+        }
+      } catch (error) {
+        console.error(
+          "Failed to refresh persistent plugin tasks",
+          error,
+        );
+      } finally {
+        refreshInFlightRef.current =
+          false;
+      }
+    },
+    [
+      finishInstall,
+      finishRemove,
+      queryClient,
+      startInstall,
+      startRemove,
+    ],
+  );
+
+  useEffect(() => {
+    for (const key of LEGACY_STORAGE_KEYS) {
+      localStorage.removeItem(
+        key,
+      );
+    }
+
+    void refreshTasks();
+  }, [refreshTasks]);
+
+  const hasActiveTasks = useMemo(
+    () =>
+      tasks.some(
+        (task) =>
+          !isTerminalStatus(
+            task.status,
+          ),
+      ),
+    [tasks],
+  );
+
+  useEffect(() => {
+    const intervalMs =
+      hasActiveTasks
+        ? 1500
+        : 10000;
+
+    const timer =
+      window.setInterval(
+        () => {
+          void refreshTasks();
+        },
+        intervalMs,
+      );
+
+    return () =>
+      window.clearInterval(
+        timer,
+      );
+  }, [
+    hasActiveTasks,
+    refreshTasks,
+  ]);
+
+  const registerTask =
+    useCallback<
+      ProcessingContextType["registerTask"]
+    >(
+      (task) => {
+        const now =
+          Date.now();
+
+        const initialStatus =
+          normalizeStatus(
+            task.initialStatus ??
+              "PENDING",
+          );
+
+        const pipNames =
+          Array.isArray(
+            task.pipNames,
+          ) &&
+          task.pipNames.length > 0
+            ? task.pipNames
+            : [task.pipName];
+
+        setTasks((current) => {
+          if (
+            current.some(
+              (item) =>
+                item.taskId ===
+                task.taskId,
+            )
+          ) {
+            return current;
+          }
+
+          return [
+            {
+              taskId:
+                task.taskId,
+              pipName:
+                task.pipName,
+              pipNames,
+              pluginName:
+                task.pluginName,
+              operation:
+                task.operation,
+              status:
+                initialStatus,
+              error:
+                null,
+              step:
+                null,
+              createdAtMs:
+                now,
+              startedAtMs:
+                now,
+              finishedAtMs:
+                null,
+              updatedAtMs:
+                now,
+            },
+            ...current,
+          ];
+        });
+
+        if (
+          !deferredByIdRef.current.has(
+            task.taskId,
+          )
+        ) {
+          deferredByIdRef.current.set(
+            task.taskId,
+            createDeferred(),
+          );
+        }
+
+        if (
+          isInstallOperation(
+            task.operation,
+          )
+        ) {
+          pipNames.forEach(
+            startInstall,
+          );
+        }
+
+        if (
+          task.operation ===
+          "uninstall"
+        ) {
+          startRemove(
+            task.pipName,
+          );
+        }
+
+        window.setTimeout(
+          () => {
+            void refreshTasks();
+          },
+          100,
+        );
+      },
+      [
+        refreshTasks,
+        startInstall,
+        startRemove,
+      ],
+    );
+
+  const waitForTask =
+    useCallback<
+      ProcessingContextType["waitForTask"]
+    >(
+      (taskId) => {
+        const existingTask =
+          tasksRef.current.find(
+            (task) =>
+              task.taskId ===
+              taskId,
+          );
+
+        if (
+          existingTask &&
+          isTerminalStatus(
+            existingTask.status,
+          )
+        ) {
+          return Promise.resolve(
+            toTaskStatusResponse(
+              existingTask,
+            ),
+          );
+        }
+
+        const existingDeferred =
+          deferredByIdRef.current.get(
+            taskId,
+          );
+
+        if (existingDeferred) {
+          return existingDeferred.promise;
+        }
+
+        const deferred =
+          createDeferred();
+
+        deferredByIdRef.current.set(
+          taskId,
+          deferred,
+        );
+
+        return deferred.promise;
+      },
+      [],
+    );
+
+  const clearProcessingState =
+    useCallback(
+      () => {
+        setInstalling(
+          new Set(),
+        );
+
+        setRemoving(
+          new Set(),
+        );
+
+        deferredByIdRef.current.clear();
+
+        for (const key of LEGACY_STORAGE_KEYS) {
+          localStorage.removeItem(
+            key,
+          );
+        }
+
+        void refreshTasks();
+
+        void queryClient.invalidateQueries({
+          queryKey: [
+            "plugins",
+          ],
+        });
+      },
+      [
+        queryClient,
+        refreshTasks,
+      ],
+    );
+
+  const value =
+    useMemo<ProcessingContextType>(
+      () => ({
+        installing,
+        removing,
+        startInstall,
+        finishInstall,
+        startRemove,
+        finishRemove,
+        tasks,
+        registerTask,
+        waitForTask,
+        refreshTasks,
+        clearProcessingState,
+      }),
+      [
+        installing,
+        removing,
+        startInstall,
+        finishInstall,
+        startRemove,
+        finishRemove,
+        tasks,
+        registerTask,
+        waitForTask,
+        refreshTasks,
+        clearProcessingState,
+      ],
+    );
+
+  return (
+    <ProcessingCtx.Provider
+      value={value}
+    >
+      {children}
+    </ProcessingCtx.Provider>
+  );
 }
 
 export function useProcessingPlugins() {
-  const ctx = useContext(ProcessingCtx);
-  if (!ctx) throw new Error("useProcessingPlugins must be under <ProcessingProvider>");
-  return ctx;
+  const context =
+    useContext(
+      ProcessingCtx,
+    );
+
+  if (!context) {
+    throw new Error(
+      "useProcessingPlugins must be under <ProcessingProvider>",
+    );
+  }
+
+  return context;
 }

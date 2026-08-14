@@ -70,6 +70,34 @@ export type PluginTaskLogResponse = {
   backend?: PluginTaskBackend;
 };
 
+export type PersistentPluginTask = {
+  id: number;
+  taskId: string;
+  taskType: string;
+  operation: string;
+  subject: string;
+  subjectLabel?: string | null;
+  status: string;
+  step?: string | null;
+  error?: string | null;
+  result?: unknown;
+  meta?: unknown;
+  payload?: Record<string, unknown>;
+  backend: PluginTaskBackend | string;
+  acknowledged: boolean;
+  retryOfTaskId?: string | null;
+  createdAt: string;
+  startedAt?: string | null;
+  finishedAt?: string | null;
+  updatedAt: string;
+};
+
+export type FetchPluginTasksOptions = {
+  status?: string;
+  includeAcknowledged?: boolean;
+  limit?: number;
+};
+
 export type InstallPluginOptions = {
   skipBinaries?: boolean;
 };
@@ -278,6 +306,66 @@ export async function installDevelPlugin(options: InstallDevelPluginOptions): Pr
 export async function getTaskStatus(taskId: string): Promise<TaskStatusResponse> {
   const response = await fetchWithAuth(`${BASE_URL}/plugins/tasks/${taskId}`);
   if (!response.ok) throw new Error(await readErrorMessage(response, "Error fetching task status"));
+  return response.json();
+}
+
+export async function fetchPluginTasks(
+  options: FetchPluginTasksOptions = {},
+): Promise<PersistentPluginTask[]> {
+  const params = new URLSearchParams();
+
+  if (options.status) {
+    params.set("status", options.status);
+  }
+
+  if (options.includeAcknowledged) {
+    params.set("includeAcknowledged", "true");
+  }
+
+  if (options.limit != null) {
+    params.set("limit", String(options.limit));
+  }
+
+  const query = params.toString();
+
+  const url = query
+    ? `${BASE_URL}/plugins/tasks?${query}`
+    : `${BASE_URL}/plugins/tasks`;
+
+  const response = await fetchWithAuth(url);
+
+  if (!response.ok) {
+    throw new Error(
+      await readErrorMessage(
+        response,
+        "Error fetching plugin tasks",
+      ),
+    );
+  }
+
+  return response.json();
+}
+
+
+export async function acknowledgePluginTask(
+  taskId: string,
+): Promise<PersistentPluginTask> {
+  const response = await fetchWithAuth(
+    `${BASE_URL}/plugins/tasks/${encodeURIComponent(taskId)}/acknowledge`,
+    {
+      method: "POST",
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      await readErrorMessage(
+        response,
+        "Error dismissing plugin task",
+      ),
+    );
+  }
+
   return response.json();
 }
 
