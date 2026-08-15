@@ -1231,7 +1231,7 @@ export default function PluginTaskCenter({
                         }
                     />
 
-                    <aside className="absolute inset-y-0 right-0 flex w-full max-w-3xl flex-col border-l border-gray-200 bg-white shadow-2xl dark:border-gray-800 dark:bg-slate-950">
+                    <aside className="absolute inset-y-0 right-0 flex w-full max-w-3xl flex-col border-l border-gray-200 bg-white/95 shadow-2xl backdrop-blur-xl dark:border-gray-700 dark:bg-gray-900/95">
                         <div className="flex shrink-0 items-start justify-between gap-4 border-b border-gray-200 px-5 py-4 dark:border-gray-800">
                             <div className="min-w-0">
                                 <div className="flex flex-wrap items-center gap-2">
@@ -1329,14 +1329,14 @@ export default function PluginTaskCenter({
                             ref={
                                 logViewportRef
                             }
-                            className="min-h-0 flex-1 overflow-auto bg-slate-950 p-5"
+                            className="min-h-0 flex-1 overflow-auto bg-transparent p-5"
                         >
                             {cleanLogText ? (
-                                <pre className="whitespace-pre-wrap break-words font-mono text-xs leading-5 text-slate-200">
+                                <pre className="whitespace-pre-wrap break-words font-mono text-xs leading-5 text-gray-700 dark:text-gray-200">
                                     {cleanLogText}
                                 </pre>
                             ) : (
-                                <div className="flex h-full min-h-[240px] items-center justify-center text-sm text-slate-400">
+                                <div className="flex h-full min-h-[240px] items-center justify-center text-sm text-gray-500 dark:text-gray-400">
                                     {logLoading ? (
                                         <div className="flex items-center gap-2">
                                             <Loader2 className="h-4 w-4 animate-spin" />
