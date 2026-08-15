@@ -44,49 +44,71 @@ import type {
 const AUTO_REFRESH_MS = 3000;
 const RECENT_LIMIT = 25;
 
-type StatusColor =
-    | "default"
-    | "primary"
-    | "success"
-    | "error"
-    | "warning"
-    | "info";
+const protocolStatusColors:
+    Record<
+        string,
+        {
+            backgroundColor: string;
+            color: string;
+        }
+    > = {
+    running: {
+        backgroundColor: "#918516",
+        color: "#FFFFFF",
+    },
+    saved: {
+        backgroundColor: "#1E90FF",
+        color: "#FFFFFF",
+    },
+    launched: {
+        backgroundColor: "#1E90FF",
+        color: "#FFFFFF",
+    },
+    finished: {
+        backgroundColor: "#28A745",
+        color: "#FFFFFF",
+    },
+    failed: {
+        backgroundColor: "#DC3545",
+        color: "#FFFFFF",
+    },
+    aborted: {
+        backgroundColor: "#DC3545",
+        color: "#FFFFFF",
+    },
+    interactive: {
+        backgroundColor: "#FFC107",
+        color: "#1F2937",
+    },
+    scheduled: {
+        backgroundColor: "#918516",
+        color: "#FFFFFF",
+    },
+    new: {
+        backgroundColor: "#1E90FF",
+        color: "#FFFFFF",
+    },
+};
 
 
-function getStatusColor(
+function getProtocolStatusSx(
     status: string,
-): StatusColor {
-    switch (
-    String(status || "")
+) {
+    const normalizedStatus = String(
+        status || "",
+    )
         .trim()
-        .toLowerCase()
-    ) {
-        case "finished":
-        case "success":
-            return "success";
+        .toLowerCase();
 
-        case "failed":
-        case "failure":
-            return "error";
-
-        case "aborted":
-        case "cancelled":
-        case "revoked":
-            return "warning";
-
-        case "running":
-        case "launched":
-        case "started":
-        case "progress":
-            return "info";
-
-        case "scheduled":
-        case "pending":
-            return "primary";
-
-        default:
-            return "default";
-    }
+    return (
+        protocolStatusColors[
+        normalizedStatus
+        ]
+        ?? {
+            backgroundColor: "#6B7280",
+            color: "#FFFFFF",
+        }
+    );
 }
 
 
@@ -824,13 +846,16 @@ export default function JobsSettingsPanel() {
                                                         >
                                                             <Chip
                                                                 size="small"
-                                                                color={getStatusColor(
-                                                                    job.protocolStatus,
-                                                                )}
                                                                 label={
                                                                     job.protocolStatus
                                                                     || "unknown"
                                                                 }
+                                                                sx={{
+                                                                    ...getProtocolStatusSx(
+                                                                        job.protocolStatus,
+                                                                    ),
+                                                                    fontWeight: 700,
+                                                                }}
                                                             />
 
                                                             {job.celeryState ? (
@@ -996,10 +1021,13 @@ export default function JobsSettingsPanel() {
                                                     <TableCell>
                                                         <Chip
                                                             size="small"
-                                                            color={getStatusColor(
-                                                                job.status,
-                                                            )}
                                                             label={job.status}
+                                                            sx={{
+                                                                ...getProtocolStatusSx(
+                                                                    job.status,
+                                                                ),
+                                                                fontWeight: 700,
+                                                            }}
                                                         />
                                                     </TableCell>
 
