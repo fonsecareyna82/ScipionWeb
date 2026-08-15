@@ -3,30 +3,44 @@ import { Modal } from "../ui/modal";
 import Button from "../ui/button/Button";
 import Input from "../form/input/InputField";
 import Label from "../form/Label";
+import { useEffect, useState } from "react";
+import { UserProfile } from "@/types/user";
+import { getUserProfile, updateUserProfile } from "@/api/auth";
 
 export default function UserAddressCard() {
   const { isOpen, openModal, closeModal } = useModal();
-  const handleSave = () => {
-    // Handle save logic here
-    console.log("Saving changes...");
-    closeModal();
-  };
+  const [user, setUser] = useState<UserProfile | null>(null);
+  const [addressData, setAddressData] = useState<Partial<UserProfile>>({});
+
+  useEffect(() => {
+    async function fetchUser() {
+      const data = await getUserProfile();
+      setUser(data);
+      setAddressData({
+        country: data.country,
+        city: data.city,
+        postalCode: data.postalCode,
+      });
+    }
+    fetchUser();
+  }, []);
+
   return (
     <>
       <div className="p-5 border border-gray-200 rounded-2xl dark:border-gray-800 lg:p-6">
         <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <h4 className="text-lg font-semibold text-gray-800 dark:text-white/90 lg:mb-6">
+            <h4 className="text-lg font-semibold text-gray-800 dark:text-white/90 lg:mb-6 ml-6">
               Address
             </h4>
 
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-7 2xl:gap-x-32">
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-7 2xl:gap-x-32 ml-6">
               <div>
-                <p className="mb-2 text-xs leading-normal text-gray-500 dark:text-gray-400">
+                <p className="mb-2 text-xs leading-normal text-gray-500 dark:text-gray-400 ">
                   Country
                 </p>
                 <p className="text-sm font-medium text-gray-800 dark:text-white/90">
-                  Spain.
+                {user?.country || "—"}
                 </p>
               </div>
 
@@ -35,7 +49,7 @@ export default function UserAddressCard() {
                   City/State
                 </p>
                 <p className="text-sm font-medium text-gray-800 dark:text-white/90">
-                  Madrid, Spain.
+                {user?.city ? `${user.city}, ${user.country}` : "—"}
                 </p>
               </div>
 
@@ -44,18 +58,11 @@ export default function UserAddressCard() {
                   Postal Code
                 </p>
                 <p className="text-sm font-medium text-gray-800 dark:text-white/90">
-                  28049
+                {user?.postalCode || "—"}
                 </p>
               </div>
 
-              <div>
-                <p className="mb-2 text-xs leading-normal text-gray-500 dark:text-gray-400">
-                  TAX ID
-                </p>
-                <p className="text-sm font-medium text-gray-800 dark:text-white/90">
-                  -
-                </p>
-              </div>
+              
             </div>
           </div>
 
@@ -82,51 +89,58 @@ export default function UserAddressCard() {
           </button>
         </div>
       </div>
-      <Modal isOpen={isOpen} onClose={closeModal} className="max-w-[700px] m-4">
-        <div className="relative w-full p-4 overflow-y-auto bg-white no-scrollbar rounded-3xl dark:bg-gray-900 lg:p-11">
-          <div className="px-2 pr-14">
-            <h4 className="mb-2 text-2xl font-semibold text-gray-800 dark:text-white/90">
-              Edit Address
-            </h4>
-            <p className="mb-6 text-sm text-gray-500 dark:text-gray-400 lg:mb-7">
-              Update your details to keep your profile up-to-date.
-            </p>
-          </div>
-          <form className="flex flex-col">
-            <div className="px-2 overflow-y-auto custom-scrollbar">
-              <div className="grid grid-cols-1 gap-x-6 gap-y-5 lg:grid-cols-2">
-                <div>
-                  <Label>Country</Label>
-                  <Input type="text" value="Spain" />
-                </div>
+      <Modal isOpen={isOpen} onClose={closeModal} className="max-w-[600px] m-4">
+  <div className="w-full rounded-3xl bg-white p-6 dark:bg-gray-900">
+    <h4 className="mb-4 text-xl font-semibold text-gray-800 dark:text-white/90">
+      Edit Address
+    </h4>
+    <form
+      onSubmit={async (e) => {
+        e.preventDefault();
+        await updateUserProfile(addressData);
+        setUser((prev) => prev ? { ...prev, ...addressData } : null);
+        closeModal();
+      }}
+      className="flex flex-col gap-4"
+    >
+      <div>
+        <Label>Country</Label>
+        <Input
+          type="text"
+          value={addressData.country || ""}
+          onChange={(e) => setAddressData({ ...addressData, country: e.target.value })}
+        />
+      </div>
 
-                <div>
-                  <Label>City/State</Label>
-                  <Input type="text" value="Madrid, Spain." />
-                </div>
+      <div>
+        <Label>City</Label>
+        <Input
+          type="text"
+          value={addressData.city || ""}
+          onChange={(e) => setAddressData({ ...addressData, city: e.target.value })}
+        />
+      </div>
 
-                <div>
-                  <Label>Postal Code</Label>
-                  <Input type="text" value="28049" />
-                </div>
+      <div>
+        <Label>Postal Code</Label>
+        <Input
+          type="text"
+          value={addressData.postalCode || ""}
+          onChange={(e) => setAddressData({ ...addressData, postalCode: e.target.value })}
+        />
+      </div>
 
-                <div>
-                  <Label>TAX ID</Label>
-                  <Input type="text" value="-" />
-                </div>
-              </div>
-            </div>
-            <div className="flex items-center gap-3 px-2 mt-6 lg:justify-end">
-              <Button size="sm" variant="outline" onClick={closeModal}>
-                Close
-              </Button>
-              <Button size="sm" onClick={handleSave}>
-                Save Changes
-              </Button>
-            </div>
-          </form>
-        </div>
-      </Modal>
+      <div className="flex justify-end gap-3 mt-6">
+        <Button size="sm" variant="outline" onClick={closeModal}>
+          Cancel
+        </Button>
+        <Button size="sm" type="submit">
+          Save
+        </Button>
+      </div>
+    </form>
+  </div>
+</Modal>
     </>
   );
 }

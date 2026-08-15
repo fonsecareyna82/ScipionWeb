@@ -1,11 +1,11 @@
 // src/api/protocols.ts
 
+import { BASE_URL } from "@/config";
+import { fetchWithAuth } from "./auth";
 
-const BASE_URL = 'http://localhost:8080';
-
-/**
- * Interface for a protocol node
- */
+/* ============================================================
+ * Tipos base de protocolos
+ * ============================================================ */
 export interface ProtocolNode {
   id: string;
   parents: string[];
@@ -13,37 +13,56 @@ export interface ProtocolNode {
   label: string;
   status: string;
   parameters: Record<string, any>;
+  cpuTime: string;
+  elapsedTime: string;
+  stepsDone: string;
+  numberOfSteps: string;
+  outputs: any;
+  inputs: any;
+  projectId: string;
 }
 
-/**
- * Fetch detailed info of a protocol node by its id
- */
-export async function fetchProtocolDetails(protocolId: string): Promise<ProtocolNode> {
-    const response = await fetch(`${BASE_URL}/projects/protocols/${protocolId}`);
-    if (!response.ok) throw new Error('Failed to fetch protocol details');
-    return response.json();
-  }
+/* ============================================================
+ * Endpoints de protocolos (lo que ya tenías)
+ * ============================================================ */
 
-/**
- * Update a protocol node's data
- */
-export async function updateNode(nodeId: string, data: any): Promise<ProtocolNode> {
-  const response = await fetch(`${BASE_URL}/protocols/node/${nodeId}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  });
-  if (!response.ok) throw new Error('Failed to update node');
+/** Fetch detailed info of a protocol node by its id */
+export async function fetchProtocolDetails(protocolId: string): Promise<ProtocolNode> {
+  const response = await fetchWithAuth(`${BASE_URL}/projects/protocols/${protocolId}`);
+  if (!response.ok) throw new Error("Failed to fetch protocol details");
   return response.json();
 }
 
-/**
- * Launch a protocol for a specific project by ID
- */
-export async function launchProtocol(projectId: string): Promise<any> {
-  const response = await fetch(`${BASE_URL}/protocols/launch?projectId=${projectId}`, {
-    method: 'POST',
+/** Update a protocol node's data */
+export async function updateNode(nodeId: string, data: any): Promise<ProtocolNode> {
+  const response = await fetchWithAuth(`${BASE_URL}/protocols/node/${nodeId}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
   });
-  if (!response.ok) throw new Error('Failed to launch protocol');
+  if (!response.ok) throw new Error("Failed to update node");
+  return response.json();
+}
+
+/** Launch a protocol for a specific project by ID */
+export async function launchProtocol(projectId: string): Promise<any> {
+  const response = await fetchWithAuth(`${BASE_URL}/protocols/launch?projectId=${projectId}`, {
+    method: "POST",
+  });
+  if (!response.ok) throw new Error("Failed to launch protocol");
+  return response.json();
+}
+
+/** Fetch the stdout log of a protocol */
+export async function fetchProtocolLogsStream(
+  projectId: string | number,
+  protocolId: string | number,
+  offset: number,
+  errOffset: number,
+  scheduleOffset: number,
+): Promise<{ newLog: string; newOffset: number }> {
+  const response = await fetchWithAuth(
+    `${BASE_URL}/protocols/logs/${projectId}/${protocolId}/${offset}/${errOffset}/${scheduleOffset}`
+  );
+  if (!response.ok) throw new Error("Failed to fetch protocol logs stream");
   return response.json();
 }

@@ -61,8 +61,22 @@ import { ReactComponent as SaveIcon } from "./save.svg?react";
 import { ReactComponent as ExecuteIcon } from "./execute.svg?react";
 import { ReactComponent as HelpIcon } from "./help.svg?react";
 import { ReactComponent as FindIcon } from "./find.svg?react";
+import { ReactComponent as HomeIcon } from "./home.svg?react";
+import { ReactComponent as UpdateIcon } from "./update.svg?react";
+import { ReactComponent as OpenFolderIcon } from "./open.svg?react";
+import { ReactComponent as RenameIcon } from "./rename.svg?react";
+import { ReactComponent as ImportIcon } from "./import.svg?react";
+import { ReactComponent as TreeIcon } from "./tree.svg?react";
+import { ReactComponent as FitViewIcon } from "./fitview.svg?react";
 
 export {
+  FitViewIcon,
+  TreeIcon,
+  ImportIcon,
+  RenameIcon,
+  OpenFolderIcon,
+  UpdateIcon,
+  HomeIcon,
   FindIcon,
   HelpIcon,
   ExecuteIcon,

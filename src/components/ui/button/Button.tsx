@@ -1,15 +1,20 @@
-import { ReactNode } from "react";
+import * as React from "react";
 
-interface ButtonProps {
-  children: ReactNode; // Button text or content
-  size?: "sm" | "md"; // Button size
-  variant?: "primary" | "outline"; // Button variant
-  startIcon?: ReactNode; // Icon before the text
-  endIcon?: ReactNode; // Icon after the text
-  onClick?: () => void; // Click handler
-  disabled?: boolean; // Disabled state
-  className?: string; // Disabled state
-}
+type ButtonSize = "sm" | "md";
+type ButtonVariant = "primary" | "outline";
+
+type ButtonProps = Omit<
+  React.ButtonHTMLAttributes<HTMLButtonElement>,
+  "type" | "children"
+> & {
+  children: React.ReactNode;
+  size?: ButtonSize;
+  variant?: ButtonVariant;
+  startIcon?: React.ReactNode;
+  endIcon?: React.ReactNode;
+  className?: string;
+  type?: "button" | "submit" | "reset";
+};
 
 const Button: React.FC<ButtonProps> = ({
   children,
@@ -20,30 +25,38 @@ const Button: React.FC<ButtonProps> = ({
   onClick,
   className = "",
   disabled = false,
+  type = "button",
+  ...rest
 }) => {
-  // Size Classes
-  const sizeClasses = {
-    sm: "px-4 py-3 text-sm",
-    md: "px-5 py-3.5 text-sm",
+  // pxBasedSizingToAvoidHostRemScaling
+  const sizeClasses: Record<ButtonSize, string> = {
+    sm: "px-[14px] py-[10px] text-[13px]",
+    md: "px-[18px] py-[12px] text-[14px]",
   };
 
-  // Variant Classes
-  const variantClasses = {
+  // stablePaletteToAvoidMissingBrandTokensInHost
+  const variantClasses: Record<ButtonVariant, string> = {
     primary:
-      "bg-brand-500 text-white shadow-theme-xs hover:bg-brand-600 disabled:bg-brand-300",
+      "bg-blue-600 text-white shadow-sm hover:bg-blue-700 disabled:bg-blue-300",
     outline:
-      "bg-white text-gray-700 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-400 dark:ring-gray-700 dark:hover:bg-white/[0.03] dark:hover:text-gray-300",
+      "bg-white text-gray-800 border border-gray-300 hover:bg-gray-50 " +
+      "dark:bg-gray-900 dark:text-gray-200 dark:border-gray-700 dark:hover:bg-gray-800",
   };
+
+  // baseResetToReduceHostCssInterference
+  const baseClasses =
+    "appearance-none inline-flex items-center justify-center gap-2 " +
+    "rounded-lg font-medium leading-[1.1] select-none whitespace-nowrap " +
+    "transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 " +
+    "disabled:cursor-not-allowed disabled:opacity-50";
 
   return (
     <button
-      className={`inline-flex items-center justify-center gap-2 rounded-lg transition ${className} ${
-        sizeClasses[size]
-      } ${variantClasses[variant]} ${
-        disabled ? "cursor-not-allowed opacity-50" : ""
-      }`}
+      type={type}
+      className={`${baseClasses} ${sizeClasses[size]} ${variantClasses[variant]} ${className}`}
       onClick={onClick}
       disabled={disabled}
+      {...rest}
     >
       {startIcon && <span className="flex items-center">{startIcon}</span>}
       {children}

@@ -1,36 +1,100 @@
 import { useState } from "react";
 import { DropdownItem } from "../ui/dropdown/DropdownItem";
 import { Dropdown } from "../ui/dropdown/Dropdown";
-import { Link } from "react-router";
-import { UserCircleIcon } from "../../icons";
+import { useNavigate } from "react-router";
+import { UserIcon } from "@/icons";
+import { getUserProfile } from "@/api/auth";
+import { useTheme as useAppTheme } from "@/context/ThemeContext";
 
 export default function UserDropdown() {
   const [isOpen, setIsOpen] = useState(false);
+  const [user, setUser] = useState<{ firstName: string; lastName: string; email: string } | null>(null);
+  const navigate = useNavigate();
+  const { theme } = useAppTheme();
+  const isDark = theme === "dark";
 
-  function toggleDropdown() {
-    setIsOpen(!isOpen);
-  }
+  const toggleDropdown = async () => {
+    const nextState = !isOpen;
+    setIsOpen(nextState);
+
+    if (nextState && !user) {
+      try {
+        const data = await getUserProfile();
+        setUser(data);
+      } catch (error) {
+        console.error("Error fetching user profile:", error);
+      }
+    }
+  };
 
   function closeDropdown() {
     setIsOpen(false);
   }
+
+  const handleLogout = () => {
+    localStorage.removeItem("accessToken");
+    navigate("/");
+  };
+
+  const triggerClassName = [
+    "flex items-center dropdown-toggle transition-colors",
+    isDark ? "text-gray-400" : "text-gray-700",
+  ].join(" ");
+
+  const avatarClassName = [
+    "w-10 h-10 overflow-hidden border rounded-full mr-1",
+    isDark ? "border-gray-800" : "border-gray-200",
+  ].join(" ");
+
+  const arrowClassName = [
+    isDark ? "stroke-gray-400" : "stroke-gray-500",
+    "transition-transform duration-200",
+    isOpen ? "rotate-180" : "",
+  ].join(" ");
+
+  const dropdownClassName = [
+    "absolute right-0 mt-[17px] flex w-[260px] flex-col rounded-2xl border p-3 shadow-theme-lg",
+    isDark ? "border-gray-800 bg-gray-dark" : "border-gray-200 bg-white",
+  ].join(" ");
+
+  const nameClassName = [
+    "block font-medium text-theme-sm",
+    isDark ? "text-gray-400" : "text-gray-700",
+  ].join(" ");
+
+  const emailClassName = [
+    "mt-0.5 block text-theme-xs",
+    isDark ? "text-gray-400" : "text-gray-500",
+  ].join(" ");
+
+  const separatorClassName = [
+    "flex flex-col gap-1 pt-4 pb-3 border-b",
+    isDark ? "border-gray-800" : "border-gray-200",
+  ].join(" ");
+
+  const itemClassName = [
+    "flex items-center gap-3 px-3 py-2 font-medium rounded-lg group text-theme-sm transition-colors",
+    isDark
+      ? "text-gray-400 hover:bg-white/5 hover:text-gray-300"
+      : "text-gray-700 hover:bg-gray-100 hover:text-gray-700",
+  ].join(" ");
+
+  const iconClassName = isDark
+    ? "fill-gray-400 group-hover:fill-gray-300"
+    : "fill-gray-500 group-hover:fill-gray-700";
+
   return (
     <div className="relative">
-      <button
-        onClick={toggleDropdown}
-        className="flex items-center text-gray-700 dropdown-toggle dark:text-gray-400"
-      >
-        <span >
-        <div className="w-10 h-10 overflow-hidden border border-gray-200 rounded-full dark:border-gray-800 ml-2 mr-2">
-              <img src="/images/user/owner.jpg" alt="user" />
+      <button onClick={toggleDropdown} className={triggerClassName}>
+        <div className="flex justify-center items-center">
+          <span>
+            <div className={avatarClassName}>
+              <UserIcon className="w-5 h-5 ml-2 mt-2" />
             </div>
-        </span>
-
-        <span className="block mr-1 font-medium text-theme-sm">Yun</span>
+          </span>
+        </div>
         <svg
-          className={`stroke-gray-500 dark:stroke-gray-400 transition-transform duration-200 ${
-            isOpen ? "rotate-180" : ""
-          }`}
+          className={arrowClassName}
           width="18"
           height="20"
           viewBox="0 0 18 20"
@@ -47,36 +111,18 @@ export default function UserDropdown() {
         </svg>
       </button>
 
-      <Dropdown
-        isOpen={isOpen}
-        onClose={closeDropdown}
-        className="absolute right-0 mt-[17px] flex w-[260px] flex-col rounded-2xl border border-gray-200 bg-white p-3 shadow-theme-lg dark:border-gray-800 dark:bg-gray-dark"
-      >
+      <Dropdown isOpen={isOpen} onClose={closeDropdown} className={dropdownClassName}>
         <div>
-          <span className="block font-medium text-gray-700 text-theme-sm dark:text-gray-400">
-            Yunior C. Fonseca Reyna
+          <span className={nameClassName}>
+            {user ? `${user.firstName} ${user.lastName}` : "Loading..."}
           </span>
-          <span className="mt-0.5 block text-theme-xs text-gray-500 dark:text-gray-400">
-            cfonseca@cnb.csic.es
-          </span>
+          <span className={emailClassName}>{user ? user.email : ""}</span>
         </div>
 
-        <ul className="flex flex-col gap-1 pt-4 pb-3 border-b border-gray-200 dark:border-gray-800">
+        <ul className={separatorClassName}>
           <li>
-            <DropdownItem
-              onItemClick={closeDropdown}
-              tag="a"
-              to="/profile"
-              className="flex items-center gap-3 px-3 py-2 font-medium text-gray-700 rounded-lg group text-theme-sm hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-300"
-            >
-              <svg
-                className="fill-gray-500 group-hover:fill-gray-700 dark:fill-gray-400 dark:group-hover:fill-gray-300"
-                width="24"
-                height="24"
-                viewBox="0 0 24 24"
-                fill="none"
-                xmlns="http://www.w3.org/2000/svg"
-              >
+            <DropdownItem onItemClick={closeDropdown} tag="a" to="/profile" className={itemClassName}>
+              <svg className={iconClassName} width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <path
                   fillRule="evenodd"
                   clipRule="evenodd"
@@ -88,20 +134,8 @@ export default function UserDropdown() {
             </DropdownItem>
           </li>
           <li>
-            <DropdownItem
-              onItemClick={closeDropdown}
-              tag="a"
-              to="/profile"
-              className="flex items-center gap-3 px-3 py-2 font-medium text-gray-700 rounded-lg group text-theme-sm hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-300"
-            >
-              <svg
-                className="fill-gray-500 group-hover:fill-gray-700 dark:fill-gray-400 dark:group-hover:fill-gray-300"
-                width="24"
-                height="24"
-                viewBox="0 0 24 24"
-                fill="none"
-                xmlns="http://www.w3.org/2000/svg"
-              >
+            <DropdownItem onItemClick={closeDropdown} tag="a" to="/profile" className={itemClassName}>
+              <svg className={iconClassName} width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <path
                   fillRule="evenodd"
                   clipRule="evenodd"
@@ -113,20 +147,8 @@ export default function UserDropdown() {
             </DropdownItem>
           </li>
           <li>
-            <DropdownItem
-              onItemClick={closeDropdown}
-              tag="a"
-              to="/profile"
-              className="flex items-center gap-3 px-3 py-2 font-medium text-gray-700 rounded-lg group text-theme-sm hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-300"
-            >
-              <svg
-                className="fill-gray-500 group-hover:fill-gray-700 dark:fill-gray-400 dark:group-hover:fill-gray-300"
-                width="24"
-                height="24"
-                viewBox="0 0 24 24"
-                fill="none"
-                xmlns="http://www.w3.org/2000/svg"
-              >
+            <DropdownItem onItemClick={closeDropdown} tag="a" to="/profile" className={itemClassName}>
+              <svg className={iconClassName} width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <path
                   fillRule="evenodd"
                   clipRule="evenodd"
@@ -138,18 +160,9 @@ export default function UserDropdown() {
             </DropdownItem>
           </li>
         </ul>
-        <Link
-          to="/signin"
-          className="flex items-center gap-3 px-3 py-2 mt-3 font-medium text-gray-700 rounded-lg group text-theme-sm hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-300"
-        >
-          <svg
-            className="fill-gray-500 group-hover:fill-gray-700 dark:group-hover:fill-gray-300"
-            width="24"
-            height="24"
-            viewBox="0 0 24 24"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-          >
+
+        <button onClick={handleLogout} className={`${itemClassName} mt-3`}>
+          <svg className={iconClassName} width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path
               fillRule="evenodd"
               clipRule="evenodd"
@@ -158,7 +171,7 @@ export default function UserDropdown() {
             />
           </svg>
           Sign out
-        </Link>
+        </button>
       </Dropdown>
     </div>
   );
