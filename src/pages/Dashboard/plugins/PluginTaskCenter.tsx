@@ -15,11 +15,13 @@ import {
     Trash2,
     X,
     XCircle,
+    RotateCcw,
 } from "lucide-react";
 
 import {
     acknowledgePluginTask,
     fetchPluginTaskLog,
+    retryPluginTask,
 } from "@/api/plugins";
 import type { PluginTask } from "@/hooks/useProcessingPlugins";
 import {
@@ -284,6 +286,13 @@ export default function PluginTaskCenter({
         new Set(),
     );
 
+    const [
+        retryingTaskIds,
+        setRetryingTaskIds,
+    ] = useState<Set<string>>(
+        new Set(),
+    );
+
     const [copiedKey, setCopiedKey] =
         useState<string | null>(
             null,
@@ -533,6 +542,59 @@ export default function PluginTaskCenter({
         }
     }
 
+    async function retryTask(
+        task: PluginTask,
+    ) {
+        if (
+            !isFailedStatus(
+                task.status,
+            )
+        ) {
+            return;
+        }
+
+        setRetryingTaskIds(
+            (current) => {
+                const next = new Set(
+                    current,
+                );
+
+                next.add(
+                    task.taskId,
+                );
+
+                return next;
+            },
+        );
+
+        try {
+            await retryPluginTask(
+                task.taskId,
+            );
+
+            await onTasksChanged();
+        } catch (error) {
+            console.error(
+                "Could not retry plugin task",
+                error,
+            );
+        } finally {
+            setRetryingTaskIds(
+                (current) => {
+                    const next = new Set(
+                        current,
+                    );
+
+                    next.delete(
+                        task.taskId,
+                    );
+
+                    return next;
+                },
+            );
+        }
+    }
+
     async function dismissTask(
         task: PluginTask,
     ) {
@@ -625,6 +687,11 @@ export default function PluginTaskCenter({
 
         const dismissing =
             dismissingTaskIds.has(
+                task.taskId,
+            );
+
+        const retrying =
+            retryingTaskIds.has(
                 task.taskId,
             );
 
@@ -754,6 +821,28 @@ export default function PluginTaskCenter({
                             >
                                 <ExternalLink className="h-3.5 w-3.5" />
                                 Plugin
+                            </TaskActionButton>
+                        ) : null}
+
+                        {failed ? (
+                            <TaskActionButton
+                                onClick={() =>
+                                    void retryTask(
+                                        task,
+                                    )
+                                }
+                                disabled={
+                                    retrying
+                                }
+                                title="Retry this task with its original parameters"
+                            >
+                                {retrying ? (
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                    <RotateCcw className="h-3.5 w-3.5" />
+                                )}
+
+                                Retry
                             </TaskActionButton>
                         ) : null}
 

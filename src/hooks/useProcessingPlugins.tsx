@@ -35,6 +35,7 @@ export type PluginTask = {
   meta?: unknown;
   backend?: PluginTaskBackend;
   acknowledged?: boolean;
+  retryOfTaskId?: string | null;
   createdAtMs: number;
   startedAtMs: number;
   finishedAtMs?: number | null;
@@ -211,9 +212,9 @@ function mapPersistentTask(
 
   const finishedAtMs = task.finishedAt
     ? parseDateMs(
-        task.finishedAt,
-        updatedAtMs,
-      )
+      task.finishedAt,
+      updatedAtMs,
+    )
     : null;
 
   return {
@@ -241,6 +242,8 @@ function mapPersistentTask(
         : "celery",
     acknowledged:
       Boolean(task.acknowledged),
+    retryOfTaskId:
+      task.retryOfTaskId ?? null,
     createdAtMs,
     startedAtMs,
     finishedAtMs,
@@ -402,8 +405,8 @@ export function ProcessingProvider({
                 task.status,
               ) &&
               now -
-                task.startedAtMs <
-                10000,
+              task.startedAtMs <
+              10000,
           );
 
         const nextTasks = [
@@ -700,14 +703,14 @@ export function ProcessingProvider({
         const initialStatus =
           normalizeStatus(
             task.initialStatus ??
-              "PENDING",
+            "PENDING",
           );
 
         const pipNames =
           Array.isArray(
             task.pipNames,
           ) &&
-          task.pipNames.length > 0
+            task.pipNames.length > 0
             ? task.pipNames
             : [task.pipName];
 

@@ -369,6 +369,28 @@ export async function acknowledgePluginTask(
   return response.json();
 }
 
+export async function retryPluginTask(
+  taskId: string,
+): Promise<TaskStartResponse> {
+  const response = await fetchWithAuth(
+    `${BASE_URL}/plugins/tasks/${encodeURIComponent(taskId)}/retry`,
+    {
+      method: "POST",
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      await readErrorMessage(
+        response,
+        "Error retrying plugin task",
+      ),
+    );
+  }
+
+  return response.json();
+}
+
 export async function fetchPluginTaskLog(
   taskId: string,
   offset = 0,
