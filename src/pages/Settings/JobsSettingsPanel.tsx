@@ -8,7 +8,6 @@ import {
 import {
     Alert,
     Box,
-    Button,
     Card,
     CardContent,
     Chip,
@@ -29,7 +28,7 @@ import {
 import {
     Activity,
     Cpu,
-    RefreshCw,
+    History,
     Server,
 } from "lucide-react";
 
@@ -228,8 +227,6 @@ export default function JobsSettingsPanel() {
     const [loading, setLoading] =
         useState(true);
 
-    const [refreshing, setRefreshing] =
-        useState(false);
 
     const [available, setAvailable] =
         useState(true);
@@ -256,9 +253,7 @@ export default function JobsSettingsPanel() {
 
             requestInFlightRef.current = true;
 
-            if (background) {
-                setRefreshing(true);
-            } else {
+            if (!background) {
                 setLoading(true);
             }
 
@@ -295,7 +290,6 @@ export default function JobsSettingsPanel() {
                     false;
 
                 setLoading(false);
-                setRefreshing(false);
             }
         },
         [svc],
@@ -429,41 +423,6 @@ export default function JobsSettingsPanel() {
                     </Typography>
                 </Box>
 
-                <Stack
-                    direction="row"
-                    spacing={1}
-                    alignItems="center"
-                >
-                    <Chip
-                        size="small"
-                        variant="outlined"
-                        label="Auto refresh 3s"
-                    />
-
-                    <Button
-                        size="small"
-                        variant="outlined"
-                        disabled={refreshing}
-                        startIcon={
-                            refreshing
-                                ? (
-                                    <CircularProgress
-                                        size={14}
-                                    />
-                                )
-                                : (
-                                    <RefreshCw
-                                        size={15}
-                                    />
-                                )
-                        }
-                        onClick={() => {
-                            void loadJobs(true);
-                        }}
-                    >
-                        Refresh
-                    </Button>
-                </Stack>
             </Stack>
 
 
@@ -624,9 +583,13 @@ export default function JobsSettingsPanel() {
             </Box>
 
             <Paper
-                variant="outlined"
+                elevation={0}
                 sx={{
-                    overflow: "hidden",
+                    p: 0.5,
+                    border: 1,
+                    borderColor: "divider",
+                    borderRadius: 2.5,
+                    bgcolor: "action.hover",
                 }}
             >
                 <Tabs
@@ -638,15 +601,105 @@ export default function JobsSettingsPanel() {
                         setJobsView(value);
                     }}
                     variant="fullWidth"
+                    aria-label="Job monitoring views"
+                    sx={{
+                        minHeight: 44,
+
+                        "& .MuiTabs-indicator": {
+                            display: "none",
+                        },
+
+                        "& .MuiTab-root": {
+                            minHeight: 44,
+                            borderRadius: 2,
+                            textTransform: "none",
+                            fontSize: 13,
+                            fontWeight: 800,
+                            color: "text.secondary",
+                            transition: "all 160ms ease",
+                        },
+
+                        "& .MuiTab-root.Mui-selected": {
+                            bgcolor: "background.paper",
+                            color: "text.primary",
+                            boxShadow: 1,
+                        },
+                    }}
                 >
                     <Tab
+                        disableRipple
                         value="active"
-                        label={`Active (${data.activeJobs.length})`}
+                        label={
+                            <Stack
+                                component="span"
+                                direction="row"
+                                spacing={1}
+                                alignItems="center"
+                            >
+                                <Activity size={16} />
+
+                                <Box component="span">
+                                    Active
+                                </Box>
+
+                                <Box
+                                    component="span"
+                                    sx={{
+                                        minWidth: 22,
+                                        height: 22,
+                                        px: 0.75,
+                                        borderRadius: 999,
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        justifyContent: "center",
+                                        bgcolor: "action.selected",
+                                        fontSize: 11,
+                                        fontWeight: 900,
+                                        lineHeight: 1,
+                                    }}
+                                >
+                                    {data.activeJobs.length}
+                                </Box>
+                            </Stack>
+                        }
                     />
 
                     <Tab
+                        disableRipple
                         value="recent"
-                        label={`Recent (${data.recentJobs.length})`}
+                        label={
+                            <Stack
+                                component="span"
+                                direction="row"
+                                spacing={1}
+                                alignItems="center"
+                            >
+                                <History size={16} />
+
+                                <Box component="span">
+                                    Recent
+                                </Box>
+
+                                <Box
+                                    component="span"
+                                    sx={{
+                                        minWidth: 22,
+                                        height: 22,
+                                        px: 0.75,
+                                        borderRadius: 999,
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        justifyContent: "center",
+                                        bgcolor: "action.selected",
+                                        fontSize: 11,
+                                        fontWeight: 900,
+                                        lineHeight: 1,
+                                    }}
+                                >
+                                    {data.recentJobs.length}
+                                </Box>
+                            </Stack>
+                        }
                     />
                 </Tabs>
             </Paper>
@@ -654,27 +707,6 @@ export default function JobsSettingsPanel() {
             {jobsView === "active" ? (
                 <Card variant="outlined">
                     <CardContent>
-                        <Stack
-                            direction="row"
-                            alignItems="center"
-                            justifyContent="space-between"
-                            sx={{ mb: 1.5 }}
-                        >
-                            <Typography
-                                sx={{
-                                    fontSize: 15,
-                                    fontWeight: 800,
-                                }}
-                            >
-                                Active protocol jobs
-                            </Typography>
-
-                            <Chip
-                                size="small"
-                                label={data.activeJobs.length}
-                            />
-                        </Stack>
-
                         {data.activeJobs.length === 0 ? (
                             <Alert severity="success">
                                 No active protocol jobs.
@@ -840,28 +872,6 @@ export default function JobsSettingsPanel() {
             {jobsView === "recent" ? (
                 <Card variant="outlined">
                     <CardContent>
-                        <Stack
-                            direction="row"
-                            alignItems="center"
-                            justifyContent="space-between"
-                            sx={{ mb: 1.5 }}
-                        >
-                            <Typography
-                                sx={{
-                                    fontSize: 15,
-                                    fontWeight: 800,
-                                }}
-                            >
-                                Recent protocol executions
-                            </Typography>
-
-                            <Chip
-                                size="small"
-                                variant="outlined"
-                                label={`${data.recentJobs.length} shown`}
-                            />
-                        </Stack>
-
                         {data.recentJobs.length === 0 ? (
                             <Alert severity="info">
                                 No recent protocol executions.

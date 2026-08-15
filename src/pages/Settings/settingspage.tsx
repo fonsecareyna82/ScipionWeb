@@ -2085,54 +2085,61 @@ export default function SettingsPage() {
                         ? renderTagsContent()
                         : renderEnvironmentContent()}
 
-              <Divider sx={{ my: 2, ...dividerSx }} />
+              {tab !== "jobs" ? (
+                <>
+                  <Divider sx={{ my: 2, ...dividerSx }} />
 
-              <Stack spacing={1}>
-                <Stack
-                  direction={{ xs: "column", sm: "row" }}
-                  spacing={1}
-                  alignItems={{ xs: "stretch", sm: "center" }}
-                  justifyContent="space-between"
-                >
-                  <Typography sx={{ fontWeight: 900, fontSize: 13, color: colors.text }}>
-                    Advanced (read-only JSON)
-                  </Typography>
+                  <Stack spacing={1}>
+                    <Stack
+                      direction={{ xs: "column", sm: "row" }}
+                      spacing={1}
+                      alignItems={{ xs: "stretch", sm: "center" }}
+                      justifyContent="space-between"
+                    >
+                      <Typography sx={{ fontWeight: 900, fontSize: 13, color: colors.text }}>
+                        Advanced (read-only JSON)
+                      </Typography>
 
-                  <Stack direction="row" spacing={1} justifyContent="flex-end">
-                    <Button sx={actionButtonSx} variant="outlined" onClick={() => setShowAdvanced((v) => !v)} size="small">
-                      {showAdvanced ? "Hide" : "Show"}
-                    </Button>
-                    <Button sx={actionButtonSx} variant="outlined" onClick={handleCopyAdvanced} size="small">
-                      Copy
-                    </Button>
+                      <Stack direction="row" spacing={1} justifyContent="flex-end">
+                        <Button sx={actionButtonSx} variant="outlined" onClick={() => setShowAdvanced((v) => !v)} size="small">
+                          {showAdvanced ? "Hide" : "Show"}
+                        </Button>
+                        <Button sx={actionButtonSx} variant="outlined" onClick={handleCopyAdvanced} size="small">
+                          Copy
+                        </Button>
+                      </Stack>
+                    </Stack>
+
+                    <Collapse in={showAdvanced} timeout="auto" unmountOnExit>
+                      <TextField
+                        value={safeStringify(advancedPayload)}
+                        multiline
+                        minRows={10}
+                        fullWidth
+                        size="small"
+                        inputProps={{
+                          readOnly: true,
+                          style: {
+                            fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+                            fontSize: "12px",
+                            color: colors.text,
+                          },
+                        }}
+                        sx={fieldSx}
+                      />
+                      <Typography sx={{ mt: 1, color: colors.muted, fontSize: 12 }}>
+                        This view is intended for diagnostics and support. Use the controls above to edit values.
+                      </Typography>
+                    </Collapse>
                   </Stack>
-                </Stack>
-
-                <Collapse in={showAdvanced} timeout="auto" unmountOnExit>
-                  <TextField
-                    value={safeStringify(advancedPayload)}
-                    multiline
-                    minRows={10}
-                    fullWidth
-                    size="small"
-                    inputProps={{
-                      readOnly: true,
-                      style: {
-                        fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-                        fontSize: "12px",
-                        color: colors.text,
-                      },
-                    }}
-                    sx={fieldSx}
-                  />
-                  <Typography sx={{ mt: 1, color: colors.muted, fontSize: 12 }}>
-                    This view is intended for diagnostics and support. Use the controls above to edit values.
-                  </Typography>
-                </Collapse>
-              </Stack>
+                </>
+              ) : null}
             </Box>
+
           </Paper>
+
         </Stack>
+
       </div>
     </>
   );
