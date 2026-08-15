@@ -1,7 +1,11 @@
 // settingsApi
 import { BASE_URL } from "@/config";
 import { fetchWithAuth } from "./auth";
-import { HostSettings, HostSettingsPatch } from "@/services/ProjectService";
+import type {
+  HostSettings,
+  HostSettingsPatch,
+  JobMonitoringOverview,
+} from "@/services/ProjectService";
 
 export type UserSettings = {
   theme: "system" | "light" | "dark";
@@ -149,6 +153,36 @@ export async function patchInstanceSettings(patch: InstanceSettingsPatch): Promi
   });
   if (!res.ok) throw await toApiError(res, "Failed to patch instance settings");
   return safeJson<InstanceSettings>(res);
+}
+
+/* ======================= jobMonitoring ======================= */
+
+export async function fetchJobsOverview(
+  recentLimit: number = 25,
+): Promise<JobMonitoringOverview> {
+  const limit = Math.max(
+    1,
+    Math.min(
+      100,
+      Math.trunc(Number(recentLimit) || 25),
+    ),
+  );
+
+  const res = await fetchWithAuth(
+    `${BASE_URL}/settings/jobs?recentLimit=${limit}`,
+    {
+      method: "GET",
+    },
+  );
+
+  if (!res.ok) {
+    throw await toApiError(
+      res,
+      "Failed to load job monitoring data",
+    );
+  }
+
+  return safeJson<JobMonitoringOverview>(res);
 }
 
 /* ======================= environmentVariables ======================= */

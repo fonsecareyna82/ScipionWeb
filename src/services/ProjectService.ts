@@ -693,6 +693,56 @@ export type InstanceSettings = {
 
 export type InstanceSettingsPatch = Partial<InstanceSettings>;
 
+export type JobWorker = {
+  name: string;
+  queues: string[];
+  online: boolean;
+  concurrency: number;
+  active: number;
+  reserved: number;
+};
+
+export type ActiveProtocolJob = {
+  taskId: string;
+  projectId: number;
+  projectName?: string | null;
+  protocolId: string;
+  protocolClassName?: string | null;
+  runMode: string;
+  celeryState: string;
+  step?: string | null;
+  protocolStatus: string;
+  worker: string;
+  queue?: string | null;
+  workerPid?: number | null;
+  protocolPid?: number | null;
+  jobIds: string[];
+  startedAt?: string | null;
+  elapsedSeconds?: number | null;
+};
+
+export type RecentProtocolJob = {
+  projectId: number;
+  projectName: string;
+  protocolId: string;
+  protocolClassName: string;
+  status: string;
+  runtimePid?: number | null;
+  jobIds: string[];
+  elapsedTimeSeconds?: number | null;
+  createdAt: string;
+  updatedAt?: string | null;
+};
+
+export type JobMonitoringOverview = {
+  celeryAvailable: boolean;
+  celeryError?: string | null;
+  workers: JobWorker[];
+  activeJobs: ActiveProtocolJob[];
+  recentJobs: RecentProtocolJob[];
+  refreshedAt: string;
+};
+
 export type EnvironmentVariable = {
   name: string;
   value: string;
@@ -1562,15 +1612,15 @@ export interface ProjectService<
   ): Promise<NextProtocolSuggestion[]>;
 
   getProtocolWorkflowExecutionPreflight(
-    projectId: Id, 
-    protocolId: Id, 
+    projectId: Id,
+    protocolId: Id,
     mode: ProtocolWorkflowExecutionMode): Promise<ProtocolWorkflowExecutionPreflight>;
   executeProtocolWorkflow(
-    projectId: Id, 
-    protocolId: Id, 
-    protocolClassName: string, 
-    params: Record<string, unknown>, 
-    mode: ProtocolWorkflowExecutionMode, 
+    projectId: Id,
+    protocolId: Id,
+    protocolClassName: string,
+    params: Record<string, unknown>,
+    mode: ProtocolWorkflowExecutionMode,
     scope: ProtocolWorkflowExecutionScope): Promise<TProject>;
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -1964,6 +2014,8 @@ export interface ProjectService<
   fetchInstanceSettings(): Promise<InstanceSettings>;
   putInstanceSettings(payload: InstanceSettings): Promise<InstanceSettings>;
   patchInstanceSettings(patch: InstanceSettingsPatch): Promise<InstanceSettings>;
+
+  fetchJobsOverview(recentLimit?: number): Promise<JobMonitoringOverview>;
 
   fetchEnvironmentVariables: () => Promise<EnvironmentVariable[]>;
   patchEnvironmentVariables: (patch: EnvironmentVariablesPatch) => Promise<EnvironmentVariable[]>;

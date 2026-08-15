@@ -52,8 +52,16 @@ import HostSettingsPanel, {
   buildHostPatch,
 } from "@/pages/Settings/HostSettingsPanel";
 
+import JobsSettingsPanel from "@/pages/Settings/JobsSettingsPanel";
 
-type TabKey = "user" | "instance" | "host" | "tags" | "environment";
+
+type TabKey =
+  | "user"
+  | "instance"
+  | "jobs"
+  | "host"
+  | "tags"
+  | "environment";
 
 type WorkflowViewMode = "treeTb" | "treeLr" | "grid" | "table";
 
@@ -1077,7 +1085,7 @@ export default function SettingsPage() {
   ]);
 
   const headerRight = useMemo(() => {
-    if (tab === "tags") return null;
+    if (tab === "tags" || tab === "jobs") return null;
 
     const isUser = tab === "user";
     const isInstance = tab === "instance";
@@ -2048,6 +2056,7 @@ export default function SettingsPage() {
             >
               <Tab value="user" label="User" />
               <Tab value="instance" label="Instance" />
+              <Tab value="jobs" label="Jobs" />
               <Tab value="host" label="Host" />
               <Tab value="tags" label="Tags" />
               <Tab value="environment" label="Environment" />
@@ -2068,11 +2077,13 @@ export default function SettingsPage() {
                 ? renderUserContent()
                 : tab === "instance"
                   ? renderInstanceContent()
-                  : tab === "host"
-                    ? renderHostContent()
-                    : tab === "tags"
-                      ? renderTagsContent()
-                      : renderEnvironmentContent()}
+                  : tab === "jobs"
+                    ? <JobsSettingsPanel />
+                    : tab === "host"
+                      ? renderHostContent()
+                      : tab === "tags"
+                        ? renderTagsContent()
+                        : renderEnvironmentContent()}
 
               <Divider sx={{ my: 2, ...dividerSx }} />
 

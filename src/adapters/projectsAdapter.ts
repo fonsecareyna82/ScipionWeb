@@ -36,6 +36,7 @@ import type {
   UserSettingsPatch,
   InstanceSettings,
   InstanceSettingsPatch,
+  JobMonitoringOverview,
   HostSettings,
   HostSettingsPatch,
   ProjectEffectiveSettings,
@@ -214,10 +215,10 @@ const defaultService: ProjectService = {
   continueAll: (projectId: Id, protocolId: Id) =>
     api.continueAll(toId(projectId), toId(protocolId)),
 
-  getProtocolWorkflowExecutionPreflight: (projectId, protocolId, mode) => 
+  getProtocolWorkflowExecutionPreflight: (projectId, protocolId, mode) =>
     api.getProtocolWorkflowExecutionPreflight(toId(projectId), toId(protocolId), mode),
 
-  executeProtocolWorkflow: (projectId, protocolId, protocolClassName, params, mode, scope) => 
+  executeProtocolWorkflow: (projectId, protocolId, protocolClassName, params, mode, scope) =>
     api.executeProtocolWorkflow(toId(projectId), toId(protocolId), protocolClassName, params, mode, scope),
 
   resetFrom: (projectId: Id, protocolId: Id) =>
@@ -886,9 +887,14 @@ const defaultService: ProjectService = {
   putUserSettings: (payload: UserSettings) => settingsApi.putUserSettings(payload),
   patchUserSettings: (patch: UserSettingsPatch) => settingsApi.patchUserSettings(patch),
 
-  fetchInstanceSettings: () => settingsApi.fetchInstanceSettings(),
+    fetchInstanceSettings: () => settingsApi.fetchInstanceSettings(),
   putInstanceSettings: (payload: InstanceSettings) => settingsApi.putInstanceSettings(payload),
   patchInstanceSettings: (patch: InstanceSettingsPatch) => settingsApi.patchInstanceSettings(patch),
+
+  fetchJobsOverview: (
+    recentLimit: number = 25,
+  ): Promise<JobMonitoringOverview> =>
+    settingsApi.fetchJobsOverview(recentLimit),
 
   fetchHostSettings: () => settingsApi.fetchHostSettings(),
   putHostSettings: (payload: HostSettings) => settingsApi.putHostSettings(payload),
