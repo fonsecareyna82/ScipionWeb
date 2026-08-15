@@ -46,6 +46,203 @@ type PluginTaskCenterProps = {
     onTasksChanged: () => Promise<void>;
 };
 
+type AnsiColor =
+    | "black"
+    | "red"
+    | "green"
+    | "yellow"
+    | "blue"
+    | "magenta"
+    | "cyan"
+    | "white"
+    | "brightBlack"
+    | "brightRed"
+    | "brightGreen"
+    | "brightYellow"
+    | "brightBlue"
+    | "brightMagenta"
+    | "brightCyan"
+    | "brightWhite";
+
+
+type AnsiSegment = {
+    text: string;
+    bold: boolean;
+    color: AnsiColor | null;
+};
+
+
+const ansiColorMap: Record<number, AnsiColor> = {
+    30: "black",
+    31: "red",
+    32: "green",
+    33: "yellow",
+    34: "blue",
+    35: "magenta",
+    36: "cyan",
+    37: "white",
+    90: "brightBlack",
+    91: "brightRed",
+    92: "brightGreen",
+    93: "brightYellow",
+    94: "brightBlue",
+    95: "brightMagenta",
+    96: "brightCyan",
+    97: "brightWhite",
+};
+
+
+function getAnsiColorClass(
+    color: AnsiColor | null,
+): string {
+    switch (color) {
+        case "black":
+            return "text-slate-700 dark:text-slate-300";
+        case "red":
+            return "text-red-700 dark:text-red-300";
+        case "green":
+            return "text-emerald-700 dark:text-emerald-300";
+        case "yellow":
+            return "text-amber-700 dark:text-amber-300";
+        case "blue":
+            return "text-blue-700 dark:text-blue-300";
+        case "magenta":
+            return "text-fuchsia-700 dark:text-fuchsia-300";
+        case "cyan":
+            return "text-cyan-700 dark:text-cyan-300";
+        case "white":
+            return "text-slate-700 dark:text-slate-100";
+        case "brightBlack":
+            return "text-slate-500 dark:text-slate-400";
+        case "brightRed":
+            return "text-rose-700 dark:text-rose-300";
+        case "brightGreen":
+            return "text-lime-700 dark:text-lime-300";
+        case "brightYellow":
+            return "text-yellow-700 dark:text-yellow-300";
+        case "brightBlue":
+            return "text-sky-700 dark:text-sky-300";
+        case "brightMagenta":
+            return "text-pink-700 dark:text-pink-300";
+        case "brightCyan":
+            return "text-teal-700 dark:text-teal-300";
+        case "brightWhite":
+            return "text-slate-800 dark:text-white";
+        default:
+            return "text-slate-700 dark:text-slate-200";
+    }
+}
+
+
+function parseAnsiSegments(
+    text: string,
+): AnsiSegment[] {
+    if (!text) {
+        return [];
+    }
+
+    const regex = /\x1b\[([0-9;]*)m/g;
+    const segments: AnsiSegment[] = [];
+
+    let lastIndex = 0;
+    let bold = false;
+    let color: AnsiColor | null = null;
+
+    const pushText = (
+        chunk: string,
+    ) => {
+        if (!chunk) {
+            return;
+        }
+
+        segments.push({
+            text: chunk,
+            bold,
+            color,
+        });
+    };
+
+    for (const match of text.matchAll(regex)) {
+        const fullMatch = match[0];
+        const params = match[1] ?? "";
+        const index = match.index ?? 0;
+
+        if (index > lastIndex) {
+            pushText(
+                text.slice(
+                    lastIndex,
+                    index,
+                ),
+            );
+        }
+
+        const codes =
+            params.length > 0
+                ? params
+                    .split(";")
+                    .map(
+                        (value) =>
+                            Number.parseInt(
+                                value,
+                                10,
+                            ),
+                    )
+                : [0];
+
+        for (
+            let index = 0;
+            index < codes.length;
+            index += 1
+        ) {
+            const code = codes[index];
+
+            if (Number.isNaN(code)) {
+                continue;
+            }
+
+            if (code === 0) {
+                bold = false;
+                color = null;
+                continue;
+            }
+
+            if (code === 1) {
+                bold = true;
+                continue;
+            }
+
+            if (code === 22) {
+                bold = false;
+                continue;
+            }
+
+            if (code === 39) {
+                color = null;
+                continue;
+            }
+
+            if (code in ansiColorMap) {
+                color =
+                    ansiColorMap[code];
+            }
+        }
+
+        lastIndex =
+            index +
+            fullMatch.length;
+    }
+
+    if (lastIndex < text.length) {
+        pushText(
+            text.slice(
+                lastIndex,
+            ),
+        );
+    }
+
+    return segments;
+}
+
 
 function normalizeStatus(status: string): string {
     return String(status || "UNKNOWN")
@@ -485,6 +682,14 @@ export default function PluginTaskCenter({
     const cleanLogText = useMemo(
         () =>
             stripAnsi(
+                logText,
+            ),
+        [logText],
+    );
+
+    const parsedLogSegments = useMemo(
+        () =>
+            parseAnsiSegments(
                 logText,
             ),
         [logText],
@@ -1331,9 +1536,25 @@ export default function PluginTaskCenter({
                             }
                             className="min-h-0 flex-1 overflow-auto bg-transparent p-5"
                         >
-                            {cleanLogText ? (
+                            {parsedLogSegments.length > 0 ? (
                                 <pre className="whitespace-pre-wrap break-words font-mono text-xs leading-5 text-gray-700 dark:text-gray-200">
-                                    {cleanLogText}
+                                    {parsedLogSegments.map(
+                                        (segment, index) => (
+                                            <span
+                                                key={`${index}-${segment.text.length}`}
+                                                className={classNames(
+                                                    getAnsiColorClass(
+                                                        segment.color,
+                                                    ),
+                                                    segment.bold
+                                                        ? "font-semibold"
+                                                        : "",
+                                                )}
+                                            >
+                                                {segment.text}
+                                            </span>
+                                        ),
+                                    )}
                                 </pre>
                             ) : (
                                 <div className="flex h-full min-h-[240px] items-center justify-center text-sm text-gray-500 dark:text-gray-400">
