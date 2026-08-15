@@ -196,19 +196,42 @@ function RuntimeCell({
 }: {
     job: ActiveProtocolJob;
 }) {
+    const hasRuntimeInfo =
+        job.workerPid != null
+        || job.protocolPid != null
+        || job.jobIds.length > 0;
+
+    if (!hasRuntimeInfo) {
+        return (
+            <Typography
+                variant="caption"
+                color="text.secondary"
+            >
+                —
+            </Typography>
+        );
+    }
+
     return (
         <Stack spacing={0.25}>
-            <Typography variant="caption">
-                Worker PID: {job.workerPid ?? "—"}
-            </Typography>
+            {job.workerPid != null ? (
+                <Typography variant="caption">
+                    Celery PID: {job.workerPid}
+                </Typography>
+            ) : null}
 
-            <Typography variant="caption">
-                Protocol PID: {job.protocolPid ?? "—"}
-            </Typography>
+            {job.protocolPid != null ? (
+                <Typography variant="caption">
+                    Protocol PID: {job.protocolPid}
+                </Typography>
+            ) : null}
 
             {job.jobIds.length > 0 ? (
                 <Typography variant="caption">
-                    Job: {job.jobIds.join(", ")}
+                    {job.jobIds.length === 1
+                        ? "Queue job: "
+                        : "Queue jobs: "}
+                    {job.jobIds.join(", ")}
                 </Typography>
             ) : null}
         </Stack>
@@ -732,7 +755,7 @@ export default function JobsSettingsPanel() {
                                             <TableCell>Project</TableCell>
                                             <TableCell>Protocol</TableCell>
                                             <TableCell>Status</TableCell>
-                                            <TableCell>Worker</TableCell>
+                                            <TableCell>Execution</TableCell>
                                             <TableCell>Runtime</TableCell>
                                             <TableCell align="right">
                                                 Elapsed
@@ -810,13 +833,15 @@ export default function JobsSettingsPanel() {
                                                                 }
                                                             />
 
-                                                            <Typography
-                                                                variant="caption"
-                                                                color="text.secondary"
-                                                            >
-                                                                Celery:{" "}
-                                                                {job.celeryState}
-                                                            </Typography>
+                                                            {job.celeryState ? (
+                                                                <Typography
+                                                                    variant="caption"
+                                                                    color="text.secondary"
+                                                                >
+                                                                    Celery:{" "}
+                                                                    {job.celeryState}
+                                                                </Typography>
+                                                            ) : null}
 
                                                             {job.step ? (
                                                                 <Typography
@@ -833,17 +858,30 @@ export default function JobsSettingsPanel() {
                                                         <Typography
                                                             sx={{
                                                                 fontSize: 12,
+                                                                fontWeight: 700,
                                                             }}
                                                         >
-                                                            {job.worker || "Celery details unavailable"}
+                                                            {job.worker
+                                                                ? job.worker
+                                                                : job.jobIds.length > 0
+                                                                    ? (
+                                                                        job.protocolPid
+                                                                            ? "Queue steps runtime"
+                                                                            : "Queued protocol"
+                                                                    )
+                                                                    : job.protocolPid
+                                                                        ? "Local protocol"
+                                                                        : "Protocol runtime"}
                                                         </Typography>
 
-                                                        <Typography
-                                                            variant="caption"
-                                                            color="text.secondary"
-                                                        >
-                                                            {job.queue || "—"}
-                                                        </Typography>
+                                                        {job.worker && job.queue ? (
+                                                            <Typography
+                                                                variant="caption"
+                                                                color="text.secondary"
+                                                            >
+                                                                Queue: {job.queue}
+                                                            </Typography>
+                                                        ) : null}
                                                     </TableCell>
 
                                                     <TableCell>

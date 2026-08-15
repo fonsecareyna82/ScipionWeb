@@ -730,10 +730,10 @@ export type ActiveProtocolJob = {
   protocolId: string;
   protocolClassName?: string | null;
   runMode: string;
-  celeryState: string;
+  celeryState?: string | null;
   step?: string | null;
   protocolStatus: string;
-  worker: string;
+  worker?: string | null;
   queue?: string | null;
   workerPid?: number | null;
   protocolPid?: number | null;
