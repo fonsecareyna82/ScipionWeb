@@ -8,6 +8,7 @@ import React, {
   useRef,
   useState,
 } from "react";
+import toast from "react-hot-toast";
 import {
   fetchPluginTasks,
   type PersistentPluginTask,
@@ -125,6 +126,110 @@ function isInstallOperation(
     operation === "install-batch" ||
     operation === "install-devel"
   );
+}
+
+function getTaskNotificationSubject(
+  task: PluginTask,
+): string {
+  if (
+    task.operation === "install-batch" &&
+    task.pipNames &&
+    task.pipNames.length > 1
+  ) {
+    return `${task.pipNames.length} plugins`;
+  }
+
+  return (
+    task.pluginName ||
+    task.pipName ||
+    "Plugin task"
+  );
+}
+
+
+function getTaskNotificationOperation(
+  operation: PluginTaskOperation,
+): string {
+  if (operation === "uninstall") {
+    return "Uninstall";
+  }
+
+  if (operation === "install-batch") {
+    return "Batch installation";
+  }
+
+  if (operation === "install-devel") {
+    return "Development installation";
+  }
+
+  return "Installation";
+}
+
+
+function getTaskErrorSummary(
+  error: string | null | undefined,
+): string {
+  const value = String(
+    error ?? "",
+  )
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (value.length <= 180) {
+    return value;
+  }
+
+  return `${value.slice(0, 177)}...`;
+}
+
+
+function notifyTerminalTask(
+  task: PluginTask,
+): void {
+  const status = normalizeStatus(
+    task.status,
+  );
+
+  const subject =
+    getTaskNotificationSubject(
+      task,
+    );
+
+  const operation =
+    getTaskNotificationOperation(
+      task.operation,
+    );
+
+  const toastId =
+    `plugin-task-${task.taskId}-${status}`;
+
+  if (status === "SUCCESS") {
+    toast.success(
+      `${subject}: ${operation} completed`,
+      {
+        id: toastId,
+      },
+    );
+
+    return;
+  }
+
+  if (status === "FAILURE") {
+    const error =
+      getTaskErrorSummary(
+        task.error,
+      );
+
+    toast.error(
+      error
+        ? `${subject}: ${operation} failed — ${error}`
+        : `${subject}: ${operation} failed`,
+      {
+        id: toastId,
+        duration: 8000,
+      },
+    );
+  }
 }
 
 function getTaskPipNames(
@@ -467,6 +572,10 @@ export function ProcessingProvider({
             ) {
               shouldInvalidatePlugins =
                 true;
+
+              notifyTerminalTask(
+                task,
+              );
             }
 
             if (

@@ -369,6 +369,40 @@ export async function acknowledgePluginTask(
   return response.json();
 }
 
+export type AcknowledgePluginTasksResponse = {
+  acknowledged: number;
+};
+
+
+export async function acknowledgePluginTasks(
+  statuses: string[],
+): Promise<AcknowledgePluginTasksResponse> {
+  const response = await fetchWithAuth(
+    `${BASE_URL}/plugins/tasks/acknowledge`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        statuses,
+      }),
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      await readErrorMessage(
+        response,
+        "Error clearing plugin task history",
+      ),
+    );
+  }
+
+  return response.json();
+}
+
+
 export async function retryPluginTask(
   taskId: string,
 ): Promise<TaskStartResponse> {

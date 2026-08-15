@@ -4,6 +4,7 @@ import {
     useRef,
     useState,
 } from "react";
+import toast from "react-hot-toast";
 import {
     Activity,
     CheckCircle2,
@@ -20,6 +21,7 @@ import {
 
 import {
     acknowledgePluginTask,
+    acknowledgePluginTasks,
     fetchPluginTaskLog,
     retryPluginTask,
 } from "@/api/plugins";
@@ -31,8 +33,15 @@ import {
 } from "./plugin_helpers";
 
 
+type TaskCenterTab =
+    | "running"
+    | "failed"
+    | "completed";
+
+
 type PluginTaskCenterProps = {
     tasks: PluginTask[];
+    search: string;
     onOpenPlugin: (pipName: string) => void;
     onTasksChanged: () => Promise<void>;
 };
@@ -208,58 +217,56 @@ function TaskActionButton(props: {
 }
 
 
-function TaskSection(props: {
-    title: string;
-    description: string;
-    tasks: PluginTask[];
+function TaskCenterTabButton(props: {
+    active: boolean;
+    label: string;
+    count: number;
+    tone: TaskCenterTab;
     icon: React.ReactNode;
-    emptyText: string;
-    children: (task: PluginTask) => React.ReactNode;
+    onClick: () => void;
 }) {
+    const activeClasses =
+        props.tone === "failed"
+            ? "border-red-500 bg-red-500 text-white shadow-red-500/20"
+            : props.tone === "completed"
+                ? "border-emerald-500 bg-emerald-500 text-white shadow-emerald-500/20"
+                : "border-blue-500 bg-blue-500 text-white shadow-blue-500/20";
+
     return (
-        <section className="overflow-hidden rounded-2xl border border-gray-200/80 bg-white shadow-sm dark:border-gray-800 dark:bg-white/[0.02]">
-            <div className="flex items-center justify-between gap-4 border-b border-gray-200/70 px-4 py-3 dark:border-gray-800">
-                <div className="flex min-w-0 items-center gap-3">
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-gray-50 text-gray-700 dark:border-gray-700 dark:bg-white/[0.04] dark:text-gray-200">
-                        {props.icon}
-                    </div>
-
-                    <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                            <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
-                                {props.title}
-                            </h3>
-
-                            <span className="inline-flex min-w-6 items-center justify-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-semibold text-gray-700 dark:bg-white/10 dark:text-gray-300">
-                                {props.tasks.length}
-                            </span>
-                        </div>
-
-                        <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                            {props.description}
-                        </p>
-                    </div>
-                </div>
-            </div>
-
-            {props.tasks.length > 0 ? (
-                <div className="divide-y divide-gray-200/70 dark:divide-gray-800/70">
-                    {props.tasks.map(
-                        props.children,
-                    )}
-                </div>
-            ) : (
-                <div className="px-5 py-7 text-center text-sm text-gray-500 dark:text-gray-400">
-                    {props.emptyText}
-                </div>
+        <button
+            type="button"
+            onClick={props.onClick}
+            className={classNames(
+                "inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-semibold transition",
+                props.active
+                    ? `${activeClasses} shadow-md`
+                    : "border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50 dark:border-gray-700 dark:bg-white/[0.02] dark:text-gray-200 dark:hover:bg-white/[0.05]",
             )}
-        </section>
+        >
+            {props.icon}
+
+            <span>
+                {props.label}
+            </span>
+
+            <span
+                className={classNames(
+                    "inline-flex min-w-5 items-center justify-center rounded-full px-1.5 py-0.5 text-[10px] font-bold",
+                    props.active
+                        ? "bg-white/20 text-white"
+                        : "bg-gray-100 text-gray-700 dark:bg-white/10 dark:text-gray-300",
+                )}
+            >
+                {props.count}
+            </span>
+        </button>
     );
 }
 
 
 export default function PluginTaskCenter({
     tasks,
+    search,
     onOpenPlugin,
     onTasksChanged,
 }: PluginTaskCenterProps) {
@@ -278,6 +285,18 @@ export default function PluginTaskCenter({
 
     const [logLoading, setLogLoading] =
         useState(false);
+
+    const [
+        activeTaskTab,
+        setActiveTaskTab,
+    ] = useState<TaskCenterTab>(
+        "running",
+    );
+
+    const [
+        clearingHistory,
+        setClearingHistory,
+    ] = useState(false);
 
     const [
         dismissingTaskIds,
@@ -338,6 +357,115 @@ export default function PluginTaskCenter({
             ),
         [tasks],
     );
+
+    const filteredTasks = useMemo(
+        () => {
+            const term = search
+                .trim()
+                .toLowerCase();
+
+            if (!term) {
+                return tasks;
+            }
+
+            return tasks.filter(
+                (task) => {
+                    const searchable = [
+                        task.pluginName,
+                        task.pipName,
+                        ...(task.pipNames ?? []),
+                        task.status,
+                        task.step,
+                        task.error,
+                        getTaskOperationLabel(
+                            task.operation,
+                        ),
+                    ]
+                        .filter(Boolean)
+                        .join(" ")
+                        .toLowerCase();
+
+                    return searchable.includes(
+                        term,
+                    );
+                },
+            );
+        },
+        [
+            tasks,
+            search,
+        ],
+    );
+
+
+    const visibleRunningTasks = useMemo(
+        () =>
+            filteredTasks.filter(
+                (task) =>
+                    isRunningStatus(
+                        task.status,
+                    ),
+            ),
+        [filteredTasks],
+    );
+
+
+    const visibleFailedTasks = useMemo(
+        () =>
+            filteredTasks.filter(
+                (task) =>
+                    isFailedStatus(
+                        task.status,
+                    ),
+            ),
+        [filteredTasks],
+    );
+
+
+    const visibleCompletedTasks = useMemo(
+        () =>
+            filteredTasks.filter(
+                (task) =>
+                    isCompletedStatus(
+                        task.status,
+                    ),
+            ),
+        [filteredTasks],
+    );
+
+
+    const activeTasks =
+        activeTaskTab === "failed"
+            ? visibleFailedTasks
+            : activeTaskTab === "completed"
+                ? visibleCompletedTasks
+                : visibleRunningTasks;
+
+
+    const activeTotalCount =
+        activeTaskTab === "failed"
+            ? failedTasks.length
+            : activeTaskTab === "completed"
+                ? completedTasks.length
+                : runningTasks.length;
+
+
+    const activeDescription =
+        activeTaskTab === "failed"
+            ? "Plugin operations that failed and may require attention."
+            : activeTaskTab === "completed"
+                ? "Successfully completed or cancelled plugin operations."
+                : "Plugin operations currently executing.";
+
+
+    const activeEmptyText =
+        search.trim()
+            ? "No tasks in this tab match your search."
+            : activeTaskTab === "failed"
+                ? "No failed plugin tasks."
+                : activeTaskTab === "completed"
+                    ? "No completed plugin tasks yet."
+                    : "No plugin tasks are currently running.";
 
     const currentLogTask =
         useMemo(() => {
@@ -538,6 +666,74 @@ export default function PluginTaskCenter({
             console.error(
                 "Could not copy task text",
                 error,
+            );
+        }
+    }
+
+    async function clearActiveHistory() {
+        if (
+            activeTaskTab === "running" ||
+            clearingHistory
+        ) {
+            return;
+        }
+
+        const statuses =
+            activeTaskTab === "failed"
+                ? ["FAILURE"]
+                : [
+                    "SUCCESS",
+                    "CANCELLED",
+                ];
+
+        setClearingHistory(
+            true,
+        );
+
+        try {
+            const result =
+                await acknowledgePluginTasks(
+                    statuses,
+                );
+
+            if (
+                logTask &&
+                (
+                    activeTaskTab === "failed"
+                        ? isFailedStatus(
+                            logTask.status,
+                        )
+                        : isCompletedStatus(
+                            logTask.status,
+                        )
+                )
+            ) {
+                setLogTask(
+                    null,
+                );
+            }
+
+            await onTasksChanged();
+
+            toast.success(
+                result.acknowledged === 1
+                    ? "1 task cleared"
+                    : `${result.acknowledged} tasks cleared`,
+            );
+        } catch (error) {
+            console.error(
+                "Could not clear plugin task history",
+                error,
+            );
+
+            toast.error(
+                error instanceof Error
+                    ? error.message
+                    : "Could not clear plugin task history",
+            );
+        } finally {
+            setClearingHistory(
+                false,
             );
         }
     }
@@ -879,110 +1075,142 @@ export default function PluginTaskCenter({
     return (
         <>
             <div className="mt-4 flex min-h-0 flex-1 flex-col overflow-hidden">
-                <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1">
-                    <div className="space-y-4 pb-2">
-                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                            <div className="rounded-2xl border border-blue-200/80 bg-blue-50/70 p-4 dark:border-blue-900/50 dark:bg-blue-950/20">
-                                <div className="flex items-center gap-3">
-                                    <Activity className="h-5 w-5 text-blue-600 dark:text-blue-300" />
-
-                                    <div>
-                                        <div className="text-2xl font-semibold text-blue-900 dark:text-blue-100">
-                                            {
-                                                runningTasks.length
-                                            }
-                                        </div>
-
-                                        <div className="text-xs font-medium text-blue-700 dark:text-blue-300">
-                                            Running
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="rounded-2xl border border-red-200/80 bg-red-50/70 p-4 dark:border-red-900/50 dark:bg-red-950/20">
-                                <div className="flex items-center gap-3">
-                                    <XCircle className="h-5 w-5 text-red-600 dark:text-red-300" />
-
-                                    <div>
-                                        <div className="text-2xl font-semibold text-red-900 dark:text-red-100">
-                                            {
-                                                failedTasks.length
-                                            }
-                                        </div>
-
-                                        <div className="text-xs font-medium text-red-700 dark:text-red-300">
-                                            Failed
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="rounded-2xl border border-emerald-200/80 bg-emerald-50/70 p-4 dark:border-emerald-900/50 dark:bg-emerald-950/20">
-                                <div className="flex items-center gap-3">
-                                    <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-300" />
-
-                                    <div>
-                                        <div className="text-2xl font-semibold text-emerald-900 dark:text-emerald-100">
-                                            {
-                                                completedTasks.length
-                                            }
-                                        </div>
-
-                                        <div className="text-xs font-medium text-emerald-700 dark:text-emerald-300">
-                                            Completed
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <TaskSection
-                            title="Running"
-                            description="Plugin operations currently executing."
-                            tasks={runningTasks}
+                <div className="flex shrink-0 flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                    <div className="flex flex-wrap gap-2">
+                        <TaskCenterTabButton
+                            active={
+                                activeTaskTab ===
+                                "running"
+                            }
+                            label="Running"
+                            count={
+                                runningTasks.length
+                            }
+                            tone="running"
                             icon={
                                 <Activity className="h-4 w-4" />
                             }
-                            emptyText="No plugin tasks are currently running."
-                        >
-                            {renderTask}
-                        </TaskSection>
-
-                        <TaskSection
-                            title="Failed"
-                            description="Tasks that require attention. They remain here until dismissed."
-                            tasks={failedTasks}
-                            icon={
-                                <XCircle className="h-4 w-4 text-red-600 dark:text-red-300" />
+                            onClick={() =>
+                                setActiveTaskTab(
+                                    "running",
+                                )
                             }
-                            emptyText="No failed plugin tasks."
-                        >
-                            {renderTask}
-                        </TaskSection>
+                        />
 
-                        <TaskSection
-                            title="Completed"
-                            description="Successfully completed or cancelled plugin operations."
-                            tasks={completedTasks}
-                            icon={
-                                <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-300" />
+                        <TaskCenterTabButton
+                            active={
+                                activeTaskTab ===
+                                "failed"
                             }
-                            emptyText="No completed plugin tasks yet."
+                            label="Failed"
+                            count={
+                                failedTasks.length
+                            }
+                            tone="failed"
+                            icon={
+                                <XCircle className="h-4 w-4" />
+                            }
+                            onClick={() =>
+                                setActiveTaskTab(
+                                    "failed",
+                                )
+                            }
+                        />
+
+                        <TaskCenterTabButton
+                            active={
+                                activeTaskTab ===
+                                "completed"
+                            }
+                            label="Completed"
+                            count={
+                                completedTasks.length
+                            }
+                            tone="completed"
+                            icon={
+                                <CheckCircle2 className="h-4 w-4" />
+                            }
+                            onClick={() =>
+                                setActiveTaskTab(
+                                    "completed",
+                                )
+                            }
+                        />
+                    </div>
+
+                    {activeTaskTab !== "running" ? (
+                        <TaskActionButton
+                            onClick={() =>
+                                void clearActiveHistory()
+                            }
+                            disabled={
+                                clearingHistory ||
+                                activeTotalCount === 0
+                            }
+                            danger={
+                                activeTaskTab ===
+                                "failed"
+                            }
+                            title={
+                                activeTaskTab ===
+                                    "failed"
+                                    ? "Clear all failed task history"
+                                    : "Clear all completed task history"
+                            }
                         >
-                            {renderTask}
-                        </TaskSection>
+                            {clearingHistory ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                                <Trash2 className="h-3.5 w-3.5" />
+                            )}
 
-                        {tasks.length === 0 ? (
-                            <div className="rounded-2xl border border-dashed border-gray-300 px-6 py-12 text-center dark:border-gray-700">
-                                <Activity className="mx-auto h-8 w-8 text-gray-400" />
+                            {activeTaskTab === "failed"
+                                ? "Clear failed"
+                                : "Clear completed"}
+                        </TaskActionButton>
+                    ) : null}
+                </div>
 
-                                <div className="mt-3 text-sm font-semibold text-gray-800 dark:text-gray-200">
-                                    No plugin tasks
-                                </div>
+                <div className="mt-3 flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-gray-200/80 bg-white shadow-sm dark:border-gray-800 dark:bg-white/[0.02]">
+                    <div className="flex shrink-0 items-center justify-between gap-4 border-b border-gray-200/70 px-4 py-3 dark:border-gray-800">
+                        <div className="min-w-0">
+                            <div className="text-sm font-semibold text-gray-900 dark:text-white">
+                                {activeTaskTab === "failed"
+                                    ? "Failed tasks"
+                                    : activeTaskTab === "completed"
+                                        ? "Completed tasks"
+                                        : "Running tasks"}
+                            </div>
 
-                                <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                                    Install, update or remove a plugin and its task will appear here.
+                            <div className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                                {activeDescription}
+                            </div>
+                        </div>
+
+                        <div className="shrink-0 text-xs font-medium text-gray-500 dark:text-gray-400">
+                            {activeTotalCount} total
+                        </div>
+                    </div>
+
+                    <div className="min-h-0 flex-1 divide-y divide-gray-200/70 overflow-y-auto overscroll-contain dark:divide-gray-800/70">
+                        {activeTasks.map(
+                            renderTask,
+                        )}
+
+                        {activeTasks.length === 0 ? (
+                            <div className="flex min-h-[220px] items-center justify-center px-6 py-10 text-center">
+                                <div>
+                                    {activeTaskTab === "failed" ? (
+                                        <XCircle className="mx-auto h-8 w-8 text-gray-400" />
+                                    ) : activeTaskTab === "completed" ? (
+                                        <CheckCircle2 className="mx-auto h-8 w-8 text-gray-400" />
+                                    ) : (
+                                        <Activity className="mx-auto h-8 w-8 text-gray-400" />
+                                    )}
+
+                                    <div className="mt-3 text-sm font-medium text-gray-600 dark:text-gray-300">
+                                        {activeEmptyText}
+                                    </div>
                                 </div>
                             </div>
                         ) : null}

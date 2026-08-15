@@ -141,7 +141,6 @@ export default function Plugins() {
     refreshTasks,
   } = useProcessingPlugins();
 
-  const tasksCount = tasks.length;
 
   const activeTasksCount = useMemo(
     () =>
@@ -154,14 +153,6 @@ export default function Plugins() {
     [tasks],
   );
 
-  const failedTasksCount = useMemo(
-    () =>
-      tasks.filter(
-        (task) =>
-          String(task.status).toUpperCase() === "FAILURE",
-      ).length,
-    [tasks],
-  );
 
   const {
     data: plugins = [],
@@ -273,18 +264,6 @@ export default function Plugins() {
       return name.includes(term) || pipName.includes(term) || localPath.includes(term) || categoryText.includes(term);
     });
   }, [displayedPlugins, search, activeCategoryId]);
-
-  const filteredTasks = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    if (!term) return tasks;
-
-    return tasks.filter((t) => {
-      const a = (t.pluginName ?? "").toLowerCase();
-      const b = (t.pipName ?? "").toLowerCase();
-      const c = (t.pipNames ?? []).join(" ").toLowerCase();
-      return a.includes(term) || b.includes(term) || c.includes(term);
-    });
-  }, [tasks, search]);
 
   const activeListPlugin = useMemo(() => {
     if (!activeListPluginPipName) return null;
@@ -452,17 +431,7 @@ export default function Plugins() {
                         active={activeTab === "tasks"}
                         onClick={() => setActiveTab("tasks")}
                       >
-                        <span className="inline-flex items-center gap-2">
-                          <span>
-                            Tasks ({tasksCount})
-                          </span>
-
-                          {failedTasksCount > 0 ? (
-                            <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white shadow-sm">
-                              {failedTasksCount}
-                            </span>
-                          ) : null}
-                        </span>
+                        Tasks ({activeTasksCount})
                       </TabButton>
                     </div>
                   </div>
@@ -545,7 +514,8 @@ export default function Plugins() {
 
               {activeTab === "tasks" ? (
                 <PluginTaskCenter
-                  tasks={filteredTasks}
+                  tasks={tasks}
+                  search={search}
                   onOpenPlugin={openTaskPlugin}
                   onTasksChanged={refreshTasks}
                 />
