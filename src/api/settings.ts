@@ -23,7 +23,6 @@ export type UserSettings = {
 export type UserSettingsPatch = Partial<UserSettings>;
 
 export type InstanceSettings = {
-  enableCelery: boolean;
   defaultQueueName: string;
   maxConcurrentRunsPerUser: number;
 

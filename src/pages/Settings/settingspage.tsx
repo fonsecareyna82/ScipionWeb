@@ -79,7 +79,6 @@ type UserSettings = {
 };
 
 type InstanceSettings = {
-  enableCelery: boolean;
   defaultQueueName: string;
   maxConcurrentRunsPerUser: number;
   requireConfirmBeforeExecute: boolean;
@@ -114,7 +113,6 @@ const defaultUserSettings: UserSettings = {
 };
 
 const defaultInstanceSettings: InstanceSettings = {
-  enableCelery: false,
   defaultQueueName: "default",
   maxConcurrentRunsPerUser: 2,
   requireConfirmBeforeExecute: true,
@@ -261,7 +259,6 @@ function sanitizeUserSettings(raw: any): UserSettings {
 function sanitizeInstanceSettings(raw: any): InstanceSettings {
   // sanitizeInstanceSettings
   return {
-    enableCelery: typeof raw?.enableCelery === "boolean" ? raw.enableCelery : defaultInstanceSettings.enableCelery,
     defaultQueueName:
       typeof raw?.defaultQueueName === "string" && raw.defaultQueueName.trim()
         ? raw.defaultQueueName
@@ -1566,22 +1563,6 @@ export default function SettingsPage() {
           <CardHeader title="Execution" subheader="Task execution, queues, and confirmation requirements." sx={cardHeaderSx} />
           <CardContent sx={{ pt: 2 }}>
             <Grid container spacing={2} sx={{ width: "100%" }}>
-              <Grid size={{ xs: 12, md: 6 }}>
-                <FormControlLabel
-                  control={
-                    <Switch
-                      checked={Boolean(instanceDraft.enableCelery)}
-                      onChange={(e) => setInstanceDraft((prev) => (prev ? { ...prev, enableCelery: e.target.checked } : prev))}
-                      size="small"
-                    />
-                  }
-                  label={<Typography sx={{ fontSize: 13.5, fontWeight: 700, color: colors.text }}>Enable Celery</Typography>}
-                />
-                <Typography sx={{ fontSize: fieldFontSize, color: colors.muted }}>
-                  If disabled, the backend may run tasks synchronously.
-                </Typography>
-              </Grid>
-
               <Grid size={{ xs: 12, md: 6 }}>
                 <TextField
                   sx={fieldSx}

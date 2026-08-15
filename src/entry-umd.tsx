@@ -155,7 +155,6 @@ let mockUserSettings: UserSettings = {
 };
 
 let mockInstanceSettings: InstanceSettings = {
-  enableCelery: true,
   defaultQueueName: "default",
   maxConcurrentRunsPerUser: 1,
   requireConfirmBeforeExecute: true,
