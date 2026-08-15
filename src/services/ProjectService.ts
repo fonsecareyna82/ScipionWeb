@@ -685,9 +685,31 @@ export type UserSettingsPatch = Partial<UserSettings>;
 export type InstanceSettings = {
   defaultQueueName: string;
   maxConcurrentRunsPerUser: number;
+};
 
-  requireConfirmBeforeExecute: boolean;
-  requireConfirmBeforeDelete: boolean;
+
+export type InstanceGpuResource = {
+  index: number;
+  name: string;
+  memoryTotalBytes?: number | null;
+};
+
+export type InstanceResources = {
+  hostAlias: string;
+  hostname: string;
+  fqdn: string;
+  schedulerName: string;
+
+  operatingSystem: string;
+  architecture: string;
+  cpuModel: string;
+
+  physicalCores: number;
+  logicalCores: number;
+  ramTotalBytes: number;
+
+  gpuCount: number;
+  gpus: InstanceGpuResource[];
 };
 
 export type InstanceSettingsPatch = Partial<InstanceSettings>;
@@ -813,8 +835,6 @@ export type ProjectRuntimeHostSettings = {
 export type ProjectRuntimeInstanceSettings = {
   defaultQueueName?: string | null;
   maxConcurrentRunsPerUser?: number;
-  requireConfirmBeforeExecute?: boolean;
-  requireConfirmBeforeDelete?: boolean;
 };
 
 export type ProjectEffectiveSettings = {
@@ -2010,6 +2030,7 @@ export interface ProjectService<
   patchUserSettings(patch: UserSettingsPatch): Promise<UserSettings>;
 
   fetchInstanceSettings(): Promise<InstanceSettings>;
+  fetchInstanceResources(): Promise<InstanceResources>;
   putInstanceSettings(payload: InstanceSettings): Promise<InstanceSettings>;
   patchInstanceSettings(patch: InstanceSettingsPatch): Promise<InstanceSettings>;
 

@@ -59,6 +59,7 @@ import type {
   ProtocolTagUpdatePayload,
   ProtocolTagIdsResult,
   RenameProtocolPayload,
+  InstanceResources,
 } from "./services/ProjectService";
 import type { WidgetGlobal } from "./types/global-widget";
 import type { loadWorkflowPayload } from "@/api/projects";
@@ -157,8 +158,29 @@ let mockUserSettings: UserSettings = {
 let mockInstanceSettings: InstanceSettings = {
   defaultQueueName: "default",
   maxConcurrentRunsPerUser: 1,
-  requireConfirmBeforeExecute: true,
-  requireConfirmBeforeDelete: true,
+};
+
+const mockInstanceResources:
+  InstanceResources = {
+  hostAlias: "localhost",
+  hostname: "demo-master",
+  fqdn: "demo-master.local",
+  schedulerName: "Local",
+  operatingSystem: "Linux",
+  architecture: "x86_64",
+  cpuModel: "Demo CPU",
+  physicalCores: 8,
+  logicalCores: 16,
+  ramTotalBytes: 34359738368,
+  gpuCount: 1,
+  gpus: [
+    {
+      index: 0,
+      name: "Demo GPU",
+      memoryTotalBytes:
+        8589934592,
+    },
+  ],
 };
 
 /** defaultMockServiceImplementsPartialProjectService */
@@ -255,7 +277,7 @@ const defaultMockService: Partial<ProjectService> = {
   },
 
   async renameProtocol(_projectId: Id, protocolId: Id, payload: RenameProtocolPayload) {
-    return { id: protocolId, payload: {runName: payload.runName, comment: payload.comment} } as any;
+    return { id: protocolId, payload: { runName: payload.runName, comment: payload.comment } } as any;
   },
 
   async duplicateProtocol(_projectId: Id, items: { id: string; name?: string }[]) {
@@ -294,7 +316,7 @@ const defaultMockService: Partial<ProjectService> = {
     return { handled: false } as any;
   },
 
- 
+
   buildProtocolDownloadUrl(projectId: string, protocolId: string, path: string, inline: boolean) {
     return `/download/${encodeURIComponent(String(projectId))}/${encodeURIComponent(
       String(protocolId)
@@ -361,7 +383,7 @@ const defaultMockService: Partial<ProjectService> = {
     _opts?: VolumeSliceOptions
   ): Promise<VolumeSliceObjectUrl> {
     const url = mockSliceDataUrl(Number(sliceIndex));
-    return { url, revoke: () => {} };
+    return { url, revoke: () => { } };
   },
 
   async getVolumeData3d(
@@ -395,7 +417,7 @@ const defaultMockService: Partial<ProjectService> = {
     sliceIndex: number
   ): Promise<VolumeSliceObjectUrl> {
     const url = mockSliceDataUrl(Number(sliceIndex));
-    return { url, revoke: () => {} };
+    return { url, revoke: () => { } };
   },
 
   async createCoords3dOutputFromPoints() {
@@ -433,7 +455,7 @@ const defaultMockService: Partial<ProjectService> = {
   },
 
   async fetchMetadataImageCellObjectUrl(): Promise<{ url: string; revoke: () => void }> {
-    return { url: mockSliceDataUrl(0), revoke: () => {} };
+    return { url: mockSliceDataUrl(0), revoke: () => { } };
   },
 
   getMetadataImageCellUrl(): string {
@@ -458,7 +480,7 @@ const defaultMockService: Partial<ProjectService> = {
     _outputName: string,
     _tiltSeriesId: Id
   ): Promise<ObjectUrlResult> {
-    return { url: mockSliceDataUrl(0), revoke: () => {} };
+    return { url: mockSliceDataUrl(0), revoke: () => { } };
   },
 
   async createNewSetOfTiltSeries(
@@ -883,6 +905,11 @@ function normalizeServiceAPI(
   mapFn("fetchInstanceSettings", "fetchInstanceSettings", "getInstanceSettings");
   mapFn("putInstanceSettings", "putInstanceSettings", "updateInstanceSettings");
   mapFn("patchInstanceSettings", "patchInstanceSettings");
+  mapFn(
+  "fetchInstanceResources",
+  "fetchInstanceResources",
+  "getInstanceResources",
+);
 
   // settings: environment
   mapFn(

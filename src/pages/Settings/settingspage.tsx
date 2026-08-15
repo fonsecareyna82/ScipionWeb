@@ -53,6 +53,7 @@ import HostSettingsPanel, {
 } from "@/pages/Settings/HostSettingsPanel";
 
 import JobsSettingsPanel from "@/pages/Settings/JobsSettingsPanel";
+import { InstanceResources } from "@/services/ProjectService";
 
 
 type TabKey =
@@ -81,8 +82,6 @@ type UserSettings = {
 type InstanceSettings = {
   defaultQueueName: string;
   maxConcurrentRunsPerUser: number;
-  requireConfirmBeforeExecute: boolean;
-  requireConfirmBeforeDelete: boolean;
 };
 
 type EnvironmentRow = {
@@ -112,11 +111,10 @@ const defaultUserSettings: UserSettings = {
   workflowsAutoRefreshSec: 15,
 };
 
-const defaultInstanceSettings: InstanceSettings = {
+const defaultInstanceSettings:
+  InstanceSettings = {
   defaultQueueName: "default",
-  maxConcurrentRunsPerUser: 2,
-  requireConfirmBeforeExecute: true,
-  requireConfirmBeforeDelete: true,
+  maxConcurrentRunsPerUser: 4,
 };
 
 const wrapperMaxWidth = 980;
@@ -138,6 +136,33 @@ function clampNumber(value: unknown, fallback: number, min?: number, max?: numbe
   const v = Number.isFinite(n) ? n : fallback;
   const vMin = typeof min === "number" ? Math.max(v, min) : v;
   return typeof max === "number" ? Math.min(vMin, max) : vMin;
+}
+
+function formatBytes(
+  value: unknown
+): string {
+  const bytes = Number(value);
+
+  if (
+    !Number.isFinite(bytes) ||
+    bytes <= 0
+  ) {
+    return "—";
+  }
+
+  const gib =
+    bytes / (1024 ** 3);
+
+  if (gib >= 1) {
+    return `${gib.toFixed(
+      gib >= 100 ? 0 : 1
+    )} GiB`;
+  }
+
+  const mib =
+    bytes / (1024 ** 2);
+
+  return `${mib.toFixed(0)} MiB`;
 }
 
 function getErrorMsg(e: any): string {
@@ -256,22 +281,23 @@ function sanitizeUserSettings(raw: any): UserSettings {
   };
 }
 
-function sanitizeInstanceSettings(raw: any): InstanceSettings {
-  // sanitizeInstanceSettings
+function sanitizeInstanceSettings(
+  raw: any
+): InstanceSettings {
   return {
     defaultQueueName:
-      typeof raw?.defaultQueueName === "string" && raw.defaultQueueName.trim()
+      typeof raw?.defaultQueueName === "string" &&
+        raw.defaultQueueName.trim()
         ? raw.defaultQueueName
         : defaultInstanceSettings.defaultQueueName,
-    maxConcurrentRunsPerUser: clampNumber(raw?.maxConcurrentRunsPerUser, defaultInstanceSettings.maxConcurrentRunsPerUser, 1, 64),
-    requireConfirmBeforeExecute:
-      typeof raw?.requireConfirmBeforeExecute === "boolean"
-        ? raw.requireConfirmBeforeExecute
-        : defaultInstanceSettings.requireConfirmBeforeExecute,
-    requireConfirmBeforeDelete:
-      typeof raw?.requireConfirmBeforeDelete === "boolean"
-        ? raw.requireConfirmBeforeDelete
-        : defaultInstanceSettings.requireConfirmBeforeDelete,
+
+    maxConcurrentRunsPerUser: clampNumber(
+      raw?.maxConcurrentRunsPerUser,
+      defaultInstanceSettings
+        .maxConcurrentRunsPerUser,
+      1,
+      64,
+    ),
   };
 }
 
@@ -399,6 +425,28 @@ export default function SettingsPage() {
   const [instanceBase, setInstanceBase] = useState<InstanceSettings | null>(null);
   const [instanceDraft, setInstanceDraft] = useState<InstanceSettings | null>(null);
   const [instanceLoadedOnce, setInstanceLoadedOnce] = useState(false);
+
+  const [
+    instanceResourcesLoading,
+    setInstanceResourcesLoading,
+  ] = useState(false);
+
+  const [
+    instanceResourcesError,
+    setInstanceResourcesError,
+  ] = useState<string | null>(null);
+
+  const [
+    instanceResources,
+    setInstanceResources,
+  ] = useState<InstanceResources | null>(
+    null
+  );
+
+  const [
+    instanceResourcesLoadedOnce,
+    setInstanceResourcesLoadedOnce,
+  ] = useState(false);
 
   const [environmentLoading, setEnvironmentLoading] = useState(false);
   const [environmentError, setEnvironmentError] = useState<string | null>(null);
@@ -869,6 +917,40 @@ export default function SettingsPage() {
     }
   }, [svc]);
 
+  const loadInstanceResources =
+    useCallback(async () => {
+      setInstanceResourcesLoading(
+        true
+      );
+
+      setInstanceResourcesError(
+        null
+      );
+
+      try {
+        const resources =
+          await svc.fetchInstanceResources();
+
+        setInstanceResources(
+          resources
+        );
+
+      } catch (e: any) {
+        setInstanceResourcesError(
+          getErrorMsg(e)
+        );
+
+      } finally {
+        setInstanceResourcesLoading(
+          false
+        );
+
+        setInstanceResourcesLoadedOnce(
+          true
+        );
+      }
+    }, [svc]);
+
   const loadEnvironmentVariables = useCallback(async () => {
     // loadEnvironmentVariables
     setEnvironmentLoading(true);
@@ -908,6 +990,24 @@ export default function SettingsPage() {
     if (instanceLoadedOnce) return;
     void loadInstanceSettings();
   }, [tab, instanceLoadedOnce, loadInstanceSettings]);
+
+  useEffect(() => {
+    if (tab !== "instance") {
+      return;
+    }
+
+    if (
+      instanceResourcesLoadedOnce
+    ) {
+      return;
+    }
+
+    void loadInstanceResources();
+  }, [
+    tab,
+    instanceResourcesLoadedOnce,
+    loadInstanceResources,
+  ]);
 
   useEffect(() => {
     // lazyLoadEnvironmentOnFirstOpen
@@ -1560,7 +1660,7 @@ export default function SettingsPage() {
         {instanceError && <Alert severity="error">{instanceError}</Alert>}
 
         <Card variant="outlined" sx={cardSx}>
-          <CardHeader title="Execution" subheader="Task execution, queues, and confirmation requirements." sx={cardHeaderSx} />
+          <CardHeader title="Execution" subheader="Task execution and per-user concurrency." sx={cardHeaderSx} />
           <CardContent sx={{ pt: 2 }}>
             <Grid container spacing={2} sx={{ width: "100%" }}>
               <Grid size={{ xs: 12, md: 6 }}>
@@ -1585,43 +1685,258 @@ export default function SettingsPage() {
                   inputProps={{ min: 1, max: 64, step: 1 }}
                   onChange={(e) =>
                     setInstanceDraft((prev) =>
-                      prev ? { ...prev, maxConcurrentRunsPerUser: clampNumber(e.target.value, 2, 1, 64) } : prev,
+                      prev ? { ...prev, maxConcurrentRunsPerUser: clampNumber(e.target.value, 4, 1, 64) } : prev,
                     )
                   }
                   helperText="1–64"
                   size="small"
                 />
               </Grid>
-
-              <Grid size={{ xs: 12, md: 6 }}>
-                <Stack spacing={0.5}>
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={Boolean(instanceDraft.requireConfirmBeforeExecute)}
-                        onChange={(e) =>
-                          setInstanceDraft((prev) => (prev ? { ...prev, requireConfirmBeforeExecute: e.target.checked } : prev))
-                        }
-                        size="small"
-                      />
-                    }
-                    label={<Typography sx={{ fontSize: 13.5, fontWeight: 700, color: colors.text }}>Confirm before execute</Typography>}
-                  />
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={Boolean(instanceDraft.requireConfirmBeforeDelete)}
-                        onChange={(e) =>
-                          setInstanceDraft((prev) => (prev ? { ...prev, requireConfirmBeforeDelete: e.target.checked } : prev))
-                        }
-                        size="small"
-                      />
-                    }
-                    label={<Typography sx={{ fontSize: 13.5, fontWeight: 700, color: colors.text }}>Confirm before delete</Typography>}
-                  />
-                </Stack>
-              </Grid>
             </Grid>
+          </CardContent>
+        </Card>
+        <Card
+          variant="outlined"
+          sx={cardSx}
+        >
+          <CardHeader
+            title="Master resources"
+            subheader={
+              "Resources visible to the ScipionAPI " +
+              "process running on the master."
+            }
+            sx={cardHeaderSx}
+          />
+
+          <CardContent sx={{ pt: 2 }}>
+            {(
+              instanceResourcesLoading &&
+              !instanceResources
+            ) ? (
+              <Skeleton
+                variant="rounded"
+                height={180}
+              />
+
+            ) : instanceResourcesError ? (
+              <Alert severity="warning">
+                {instanceResourcesError}
+              </Alert>
+
+            ) : instanceResources ? (
+              <Stack spacing={1.5}>
+                <Grid
+                  container
+                  spacing={1.25}
+                  sx={{ width: "100%" }}
+                >
+                  {[
+                    [
+                      "Host alias",
+                      instanceResources.hostAlias
+                      || "—",
+                    ],
+                    [
+                      "Hostname",
+                      instanceResources.hostname
+                      || "—",
+                    ],
+                    [
+                      "Full host name",
+                      instanceResources.fqdn
+                      || "—",
+                    ],
+                    [
+                      "Scheduler",
+                      instanceResources.schedulerName
+                      || "—",
+                    ],
+                    [
+                      "Operating system",
+                      instanceResources
+                        .operatingSystem
+                      || "—",
+                    ],
+                    [
+                      "Architecture",
+                      instanceResources
+                        .architecture
+                      || "—",
+                    ],
+                    [
+                      "Physical cores",
+                      String(
+                        instanceResources
+                          .physicalCores
+                        ?? "—"
+                      ),
+                    ],
+                    [
+                      "Logical cores",
+                      String(
+                        instanceResources
+                          .logicalCores
+                        ?? "—"
+                      ),
+                    ],
+                    [
+                      "RAM",
+                      formatBytes(
+                        instanceResources
+                          .ramTotalBytes
+                      ),
+                    ],
+                  ].map(
+                    ([label, value]) => (
+                      <Grid
+                        key={label}
+                        size={{
+                          xs: 12,
+                          sm: 6,
+                          md: 4,
+                        }}
+                      >
+                        <Box
+                          sx={{
+                            p: 1.25,
+                            height: "100%",
+                            borderRadius: 2,
+                            border: "1px solid",
+                            borderColor:
+                              colors.border,
+                            bgcolor:
+                              colors.hover,
+                          }}
+                        >
+                          <Typography
+                            sx={{
+                              fontSize: 11.5,
+                              color:
+                                colors.muted,
+                            }}
+                          >
+                            {label}
+                          </Typography>
+
+                          <Typography
+                            sx={{
+                              mt: 0.25,
+                              fontSize: 13,
+                              fontWeight: 800,
+                              color:
+                                colors.text,
+                              overflowWrap:
+                                "anywhere",
+                            }}
+                          >
+                            {value}
+                          </Typography>
+                        </Box>
+                      </Grid>
+                    )
+                  )}
+                </Grid>
+
+                <Box>
+                  <Typography
+                    sx={{
+                      fontSize: 11.5,
+                      color: colors.muted,
+                    }}
+                  >
+                    CPU
+                  </Typography>
+
+                  <Typography
+                    sx={{
+                      mt: 0.25,
+                      fontSize: 13,
+                      fontWeight: 800,
+                      color: colors.text,
+                    }}
+                  >
+                    {
+                      instanceResources
+                        .cpuModel
+                      || "—"
+                    }
+                  </Typography>
+                </Box>
+
+                <Divider sx={dividerSx} />
+
+                <Box>
+                  <Typography
+                    sx={{
+                      mb: 0.75,
+                      fontSize: 11.5,
+                      color: colors.muted,
+                    }}
+                  >
+                    GPUs ({
+                      instanceResources
+                        .gpuCount
+                    })
+                  </Typography>
+
+                  {instanceResources
+                    .gpus.length > 0 ? (
+                    <Stack
+                      direction="row"
+                      spacing={0.75}
+                      useFlexGap
+                      flexWrap="wrap"
+                    >
+                      {instanceResources
+                        .gpus
+                        .map((gpu) => (
+                          <Chip
+                            key={gpu.index}
+                            size="small"
+                            label={
+                              (
+                                `GPU ${gpu.index} · ` +
+                                gpu.name
+                              ) +
+                              (
+                                gpu.memoryTotalBytes
+                                  ? (
+                                    " · " +
+                                    formatBytes(
+                                      gpu
+                                        .memoryTotalBytes
+                                    )
+                                  )
+                                  : ""
+                              )
+                            }
+                          />
+                        ))}
+                    </Stack>
+                  ) : (
+                    <Typography
+                      sx={{
+                        fontSize: 12.5,
+                        color: colors.muted,
+                      }}
+                    >
+                      No NVIDIA GPUs detected
+                      by the API process.
+                    </Typography>
+                  )}
+                </Box>
+              </Stack>
+            ) : (
+              <Typography
+                sx={{
+                  fontSize: 12.5,
+                  color: colors.muted,
+                }}
+              >
+                Resource information
+                is not available.
+              </Typography>
+            )}
           </CardContent>
         </Card>
       </Stack>

@@ -64,6 +64,7 @@ import type {
   TiltSeriesBatchPreviewOptions,
   TiltSeriesBatchPreviewResult,
   IntegratedAnalyzeContext,
+  InstanceResources,
 
 } from "@/services/ProjectService";
 
@@ -887,7 +888,8 @@ const defaultService: ProjectService = {
   putUserSettings: (payload: UserSettings) => settingsApi.putUserSettings(payload),
   patchUserSettings: (patch: UserSettingsPatch) => settingsApi.patchUserSettings(patch),
 
-    fetchInstanceSettings: () => settingsApi.fetchInstanceSettings(),
+  fetchInstanceSettings: () => settingsApi.fetchInstanceSettings(),
+  fetchInstanceResources: (): Promise<InstanceResources> => settingsApi.fetchInstanceResources(),
   putInstanceSettings: (payload: InstanceSettings) => settingsApi.putInstanceSettings(payload),
   patchInstanceSettings: (patch: InstanceSettingsPatch) => settingsApi.patchInstanceSettings(patch),
 
