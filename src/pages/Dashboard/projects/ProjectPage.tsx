@@ -135,16 +135,6 @@ function isElapsedTimerStatus(
   );
 }
 
-function isProtocolRefreshActive(status: unknown): boolean {
-  const normalized = normalizeProtocolStatus(status);
-
-  return (
-    normalized === "launched" ||
-    normalized === "running" ||
-    normalized === "scheduled"
-  );
-}
-
 function continuesElapsedTimerSession(
   previousStatus: unknown,
   nextStatus: unknown,
@@ -828,6 +818,49 @@ export default function ProjectPage() {
   const [projectEffectiveSettings, setProjectEffectiveSettings] =
     useState<ProjectEffectiveSettings | null>(null);
 
+  const effectiveUserSettings = useMemo(() => {
+    const raw =
+      projectEffectiveSettings
+        ?.settings
+        ?.user;
+
+    return (
+      raw &&
+      typeof raw === "object"
+    )
+      ? raw as Record<string, unknown>
+      : null;
+  }, [
+    projectEffectiveSettings,
+  ]);
+
+
+  const workflowAutoRefreshSec =
+    useMemo(() => {
+      if (!effectiveUserSettings) {
+        return null;
+      }
+
+      const value = Number(
+        effectiveUserSettings
+          .workflowsAutoRefreshSec
+      );
+
+      if (!Number.isFinite(value)) {
+        return 15;
+      }
+
+      return Math.max(
+        0,
+        Math.min(
+          300,
+          value,
+        ),
+      );
+    }, [
+      effectiveUserSettings,
+    ]);
+
   const protocolOutputThumbnailsEnabled = useMemo(() => {
     const raw = projectEffectiveSettings?.settings?.user as Record<string, unknown> | null | undefined;
 
@@ -903,6 +936,87 @@ export default function ProjectPage() {
 
   // focusModeState
   const [focusModeEnabled, setFocusModeEnabled] = useState(false);
+
+
+  useEffect(() => {
+    if (!effectiveUserSettings) {
+      return;
+    }
+
+    const workflowViewMode = String(
+      effectiveUserSettings
+        .workflowViewMode
+      ?? "treeTb"
+    )
+      .trim()
+      .toLowerCase();
+
+    switch (workflowViewMode) {
+      case "treelr":
+      case "tree_lr":
+      case "tree-lr":
+      case "lr":
+        setViewMode(
+          "hierarchical"
+        );
+
+        setGraphDirection(
+          "LR"
+        );
+        break;
+
+      case "grid":
+        setViewMode(
+          "grid"
+        );
+        break;
+
+      case "table":
+        setViewMode(
+          "table"
+        );
+        break;
+
+      case "treetb":
+      case "tree_tb":
+      case "tree-tb":
+      case "tb":
+      default:
+        setViewMode(
+          "hierarchical"
+        );
+
+        setGraphDirection(
+          "TB"
+        );
+        break;
+    }
+
+    if (
+      typeof effectiveUserSettings
+        .graphMiniMapEnabled
+      === "boolean"
+    ) {
+      setMiniMapEnabled(
+        effectiveUserSettings
+          .graphMiniMapEnabled
+      );
+    }
+
+    if (
+      typeof effectiveUserSettings
+        .graphFocusModeEnabled
+      === "boolean"
+    ) {
+      setFocusModeEnabled(
+        effectiveUserSettings
+          .graphFocusModeEnabled
+      );
+    }
+  }, [
+    projectName,
+    effectiveUserSettings,
+  ]);
 
   const analyzeViewerService = useMemo<ExternalAnalyzeViewerService>(() => {
     return {
@@ -1012,7 +1126,6 @@ export default function ProjectPage() {
     return Number.isFinite(n) ? n : undefined;
   }, [project]);
 
-  const effectiveUserSettings = projectEffectiveSettings?.settings?.user ?? null;
   const effectiveInstanceSettings = projectEffectiveSettings?.settings?.instance ?? null;
   const effectiveHostSettings = projectEffectiveSettings?.settings?.host ?? null;
 
@@ -1094,31 +1207,6 @@ export default function ProjectPage() {
     };
   }, [svc, projectId]);
 
-
-  useEffect(() => {
-    // loadFocusModeFromStorage
-    if (!projectName) return;
-    try {
-      const raw = localStorage.getItem(`project-${projectName}-focus-mode`);
-      if (raw == null) return;
-      setFocusModeEnabled(Boolean(JSON.parse(raw)));
-    } catch {
-      // noOp
-    }
-  }, [projectName]);
-
-  useEffect(() => {
-    // persistFocusModeToStorage
-    if (!projectName) return;
-    try {
-      localStorage.setItem(
-        `project-${projectName}-focus-mode`,
-        JSON.stringify(focusModeEnabled)
-      );
-    } catch {
-      // noOp
-    }
-  }, [projectName, focusModeEnabled]);
 
   // unifiedSelectionState
   const [unifiedSelectedIdsState, setUnifiedSelectedIdsState] = useState<Set<string>>(
@@ -1519,8 +1607,6 @@ export default function ProjectPage() {
     beforeIds: Set<string>;
   } | null>(null);
 
-  const ACTIVE_TIME_TO_REFRESH = 5000;
-  const IDLE_TIME_TO_REFRESH = 15000;
   const PROTOCOL_OUTPUT_THUMBNAIL_CHUNK_SIZE = 24;
   const PROTOCOL_OUTPUT_THUMBNAIL_CHUNK_DELAY_MS = 50;
   const PROTOCOL_OUTPUT_THUMBNAIL_RETRY_DELAY_MS = 30_000;
@@ -3915,49 +4001,54 @@ export default function ProjectPage() {
   const handleRefreshRef = useRef(handleRefresh);
   useEffect(() => { handleRefreshRef.current = handleRefresh; }, [handleRefresh]);
   useEffect(() => {
+    if (
+      workflowAutoRefreshSec == null ||
+      workflowAutoRefreshSec <= 0
+    ) {
+      return;
+    }
+
     let cancelled = false;
-    let timerId: number | null = null;
+    let timerId:
+      number | null = null;
 
-    const scheduleRefresh = (
-      delay: number,
-    ) => {
-      timerId = window.setTimeout(
-        async () => {
-          await handleRefreshRef.current();
+    const delay =
+      workflowAutoRefreshSec
+      * 1000;
 
-          if (cancelled) return;
-
-          const hasActiveProtocol =
-            nodesRef.current.some(
-              (node) =>
-                String(node.id) !== "PROJECT" &&
-                isProtocolRefreshActive(
-                  node.data?.status
-                )
+    const scheduleRefresh = () => {
+      timerId =
+        window.setTimeout(
+          async () => {
+            await (
+              handleRefreshRef
+                .current?.()
             );
 
-          scheduleRefresh(
-            hasActiveProtocol
-              ? ACTIVE_TIME_TO_REFRESH
-              : IDLE_TIME_TO_REFRESH
-          );
-        },
-        delay,
-      );
+            if (cancelled) {
+              return;
+            }
+
+            scheduleRefresh();
+          },
+          delay,
+        );
     };
 
-    scheduleRefresh(
-      ACTIVE_TIME_TO_REFRESH
-    );
+    scheduleRefresh();
 
     return () => {
       cancelled = true;
 
-      if (timerId !== null) {
-        window.clearTimeout(timerId);
+      if (timerId != null) {
+        window.clearTimeout(
+          timerId
+        );
       }
     };
-  }, []);
+  }, [
+    workflowAutoRefreshSec,
+  ]);
 
   useEffect(() => {
     return () => {

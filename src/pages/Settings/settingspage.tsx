@@ -117,8 +117,9 @@ const defaultInstanceSettings:
   maxConcurrentRunsPerUser: 4,
 };
 
-const wrapperMaxWidth = 980;
-const fieldFontSize = 12;
+const wrapperMaxWidth = 1120;
+const fieldFontSize = 14;
+const helperFontSize = 12.75;
 const environmentNamePattern = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 function safeStringify(value: unknown): string {
@@ -589,10 +590,25 @@ export default function SettingsPage() {
   const fieldSx = useMemo(() => {
     // fieldSx
     return {
-      "& .MuiInputLabel-root": { fontSize: fieldFontSize, color: colors.muted },
-      "& .MuiInputBase-input": { fontSize: fieldFontSize, color: colors.text },
-      "& .MuiFormHelperText-root": { fontSize: fieldFontSize, color: colors.muted },
-      "& .MuiInputAdornment-root": { fontSize: fieldFontSize, color: colors.muted },
+      "& .MuiInputLabel-root": {
+        fontSize: fieldFontSize,
+        color: colors.muted,
+      },
+
+      "& .MuiInputBase-input": {
+        fontSize: fieldFontSize,
+        color: colors.text,
+      },
+
+      "& .MuiFormHelperText-root": {
+        fontSize: helperFontSize,
+        color: colors.muted,
+      },
+
+      "& .MuiInputAdornment-root": {
+        fontSize: helperFontSize,
+        color: colors.muted,
+      },
       "& .MuiOutlinedInput-notchedOutline": { borderColor: colors.border },
       "& .MuiOutlinedInput-root": {
         bgcolor: isDarkMode ? "rgba(255,255,255,0.02)" : "transparent",
@@ -634,8 +650,19 @@ export default function SettingsPage() {
     // cardHeaderSx
     return {
       pb: 0,
-      "& .MuiCardHeader-title": { fontSize: 16, fontWeight: 900, lineHeight: 1.2, color: colors.text },
-      "& .MuiCardHeader-subheader": { fontSize: 12.5, color: colors.muted, mt: 0.25 },
+      "& .MuiCardHeader-title": {
+        fontSize: 17,
+        fontWeight: 900,
+        lineHeight: 1.25,
+        color: colors.text,
+      },
+
+      "& .MuiCardHeader-subheader": {
+        fontSize: 13.5,
+        lineHeight: 1.45,
+        color: colors.muted,
+        mt: 0.4,
+      },
     } as const;
   }, [colors.muted, colors.text]);
 
@@ -660,8 +687,8 @@ export default function SettingsPage() {
       px: 1,
       bgcolor: "transparent",
       "& .MuiTab-root": {
-        minHeight: 44,
-        fontSize: 13,
+        minHeight: 46,
+        fontSize: 14,
         textTransform: "none",
         fontWeight: 800,
         color: colors.muted,
@@ -1467,13 +1494,13 @@ export default function SettingsPage() {
               <Grid size={{ xs: 12, md: 4 }}>
                 <FormControl fullWidth size="small">
                   <InputLabel sx={{ fontSize: fieldFontSize, color: colors.muted }} id="viewModeLabel">
-                    View mode
+                    Default workflow view
                   </InputLabel>
                   <Select
                     sx={selectSx}
                     MenuProps={{ PaperProps: { sx: menuPaperSx } }}
                     labelId="viewModeLabel"
-                    label="View mode"
+                    label="Default workflow view"
                     value={userDraft.workflowViewMode}
                     renderValue={(v) => {
                       const meta = getViewModeMeta(v as WorkflowViewMode);
@@ -1516,10 +1543,10 @@ export default function SettingsPage() {
                       size="small"
                     />
                   }
-                  label={<Typography sx={{ fontSize: 13.5, fontWeight: 700, color: colors.text }}>Mini map</Typography>}
+                  label={<Typography sx={{ fontSize: 14, fontWeight: 700, color: colors.text }}>Show mini map by default</Typography>}
                 />
                 <Typography sx={{ fontSize: fieldFontSize, color: colors.muted }}>
-                  Shows an overview mini map in large workflows.
+                  Shows the workflow overview map when opening a project.
                 </Typography>
               </Grid>
 
@@ -1532,10 +1559,10 @@ export default function SettingsPage() {
                       size="small"
                     />
                   }
-                  label={<Typography sx={{ fontSize: 13.5, fontWeight: 700, color: colors.text }}>Focus mode</Typography>}
+                  label={<Typography sx={{ fontSize: 14, fontWeight: 700, color: colors.text }}>Enable focus mode by default</Typography>}
                 />
                 <Typography sx={{ fontSize: fieldFontSize, color: colors.muted }}>
-                  De-emphasizes non-selected nodes/edges.
+                  De-emphasizes nodes and edges outside the current selection.
                 </Typography>
               </Grid>
 
@@ -1558,7 +1585,7 @@ export default function SettingsPage() {
                     />
                   }
                   label={
-                    <Typography sx={{ fontSize: 13.5, fontWeight: 700, color: colors.text }}>
+                    <Typography sx={{ fontSize: 14, fontWeight: 700, color: colors.text }}>
                       Protocol thumbnails
                     </Typography>
                   }
@@ -1588,10 +1615,10 @@ export default function SettingsPage() {
                       size="small"
                     />
                   }
-                  label={<Typography sx={{ fontSize: 13.5, fontWeight: 700, color: colors.text }}>Auto-refresh</Typography>}
+                  label={<Typography sx={{ fontSize: 14, fontWeight: 700, color: colors.text }}>Workflow auto-refresh</Typography>}
                 />
                 <Typography sx={{ fontSize: fieldFontSize, color: colors.muted }}>
-                  Refreshes workflow view automatically.
+                  Automatically reloads workflow state using the interval below.
                 </Typography>
               </Grid>
 
