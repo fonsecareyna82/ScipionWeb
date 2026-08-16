@@ -779,17 +779,16 @@ export function ProcessingProvider({
   );
 
   useEffect(() => {
-    const intervalMs =
-      hasActiveTasks
-        ? 1500
-        : 10000;
+    if (!hasActiveTasks) {
+      return;
+    }
 
     const timer =
       window.setInterval(
         () => {
           void refreshTasks();
         },
-        intervalMs,
+        1500,
       );
 
     return () =>
