@@ -123,6 +123,10 @@ export type ProtocolRuntimeSummary = {
   cpuTimeSeconds: number;
   elapsedTimeSeconds: number;
 
+  elapsedSessionId?:
+    | string
+    | null;
+
   stepsDone: number;
   numberOfSteps: number;
 };

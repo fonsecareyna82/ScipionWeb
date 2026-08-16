@@ -106,6 +106,11 @@ interface StatusNodeData {
   // Progress/timing
   cpuTime?: string;
   elapsedTime?: string;
+
+  elapsedSessionId?:
+  | string
+  | null;
+
   tick?: number;
   numberOfSteps?: number;
   stepsDone?: number;
@@ -162,9 +167,20 @@ function isElapsedTimerStatus(
   );
 }
 
+function normalizeElapsedSessionId(
+  value: unknown,
+): string {
+  return String(
+    value ?? ""
+  ).trim();
+}
+
+
 function continuesElapsedTimerSession(
   previousStatus: unknown,
   nextStatus: unknown,
+  previousSessionId?: unknown,
+  nextSessionId?: unknown,
 ): boolean {
   const previous =
     normalizeProtocolStatus(
@@ -176,16 +192,47 @@ function continuesElapsedTimerSession(
       nextStatus
     );
 
-  return (
-    previous === "launched" &&
+  const statusContinues =
     (
-      next === "launched" ||
-      next === "running"
+      previous === "launched"
+      &&
+      (
+        next === "launched"
+        ||
+        next === "running"
+      )
     )
-  ) || (
-      previous === "running" &&
+    ||
+    (
+      previous === "running"
+      &&
       next === "running"
     );
+
+  if (!statusContinues) {
+    return false;
+  }
+
+  const nextSession =
+    normalizeElapsedSessionId(
+      nextSessionId
+    );
+
+  // Backward compatibility with hosts
+  // that do not expose elapsedSessionId.
+  if (!nextSession) {
+    return true;
+  }
+
+  const previousSession =
+    normalizeElapsedSessionId(
+      previousSessionId
+    );
+
+  return (
+    previousSession
+    === nextSession
+  );
 }
 
 function toElapsedSeconds(value: unknown): number {
@@ -221,6 +268,12 @@ function mergeNodeElapsedTick(
     continuesElapsedTimerSession(
       currentNode?.data?.status,
       freshStatus,
+      currentNode
+        ?.data
+        ?.elapsedSessionId,
+      freshNode
+        .data
+        ?.elapsedSessionId,
     );
 
   const currentElapsed = toElapsedSeconds(
@@ -269,12 +322,18 @@ function mergeTableElapsedTick(
     continuesElapsedTimerSession(
       currentRow?.status,
       freshRow?.status,
+      currentRow?.elapsedSessionId,
+      freshRow?.elapsedSessionId,
     );
 
   const currentNodeContinues =
     continuesElapsedTimerSession(
       currentNode?.data?.status,
       freshRow?.status,
+      currentNode
+        ?.data
+        ?.elapsedSessionId,
+      freshRow?.elapsedSessionId,
     );
 
   const currentElapsed = Math.max(
@@ -1795,6 +1854,17 @@ export default function ProjectPage() {
             ?? 0
           );
 
+        const elapsedSessionId =
+          summary.elapsedSessionId
+            == null
+            ? null
+            : (
+              String(
+                summary.elapsedSessionId
+              ).trim()
+              || null
+            );
+
         const status =
           String(
             summary.status
@@ -1836,6 +1906,7 @@ export default function ProjectPage() {
                     status,
                     cpuTime,
                     elapsedTime,
+                    elapsedSessionId,
                     stepsDone,
                     numberOfSteps,
                   },
