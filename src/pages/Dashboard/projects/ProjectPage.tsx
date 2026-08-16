@@ -4369,6 +4369,82 @@ export default function ProjectPage() {
           }
 
           applyProtocolRuntimeSummaries(summaries);
+          
+          if (protocolOutputThumbnailsEnabled) {
+            const runtimeOutputsByProtocolId =
+              new Map<string, unknown[]>();
+
+            for (const summary of summaries) {
+              if (
+                !Array.isArray(summary.outputs)
+                ||
+                !summary.outputs.length
+              ) {
+                continue;
+              }
+
+              runtimeOutputsByProtocolId.set(
+                String(summary.protocolId),
+                summary.outputs,
+              );
+            }
+
+            const nodesMissingRuntimeThumbnails = (
+              nodesRef.current as
+              Node<StatusNodeData>[]
+            ).flatMap((node) => {
+              const outputs =
+                runtimeOutputsByProtocolId.get(
+                  String(node.id)
+                );
+
+              if (!outputs?.length) {
+                return [];
+              }
+
+              const outputThumbnails =
+                node.data?.outputThumbnails
+                ?? {};
+
+              const missingOutputs =
+                outputs.filter((output) => {
+                  const outputName =
+                    getOutputNameFromNodeOutput(
+                      output
+                    );
+
+                  return (
+                    !!outputName
+                    &&
+                    !outputThumbnails[
+                    outputName
+                    ]
+                  );
+                });
+
+              if (!missingOutputs.length) {
+                return [];
+              }
+
+              return [{
+                ...node,
+                data: {
+                  ...node.data,
+                  outputs: missingOutputs,
+                },
+              }];
+            });
+
+            if (
+              nodesMissingRuntimeThumbnails.length
+            ) {
+              void loadProtocolOutputThumbnailsForNodes(
+                projectId,
+                nodesMissingRuntimeThumbnails,
+              );
+            }
+          }
+
           for (
             const summary
             of summaries
@@ -4452,12 +4528,14 @@ export default function ProjectPage() {
         );
       }
     };
-  }, [
+    }, [
     workflowAutoRefreshSec,
     liveProtocolIdsKey,
     projectId,
     svc,
     applyProtocolRuntimeSummaries,
+    protocolOutputThumbnailsEnabled,
+    loadProtocolOutputThumbnailsForNodes,
   ]);
 
   useEffect(() => {
