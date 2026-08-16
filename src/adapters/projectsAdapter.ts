@@ -142,6 +142,8 @@ const defaultService: ProjectService = {
   fetchProtocolDetails: (projectId: Id, protocolId: Id) =>
     api.fetchProtocolDetails(toId(projectId), toId(protocolId)),
 
+  fetchProtocolRuntimeSummaries: (projectId: Id, protocolIds: Id[],) => api.fetchProtocolRuntimeSummaries(toId(projectId), protocolIds,),
+
   fetchNewProtocolDetails: (projectId: Id, protocolClass: string) =>
     api.fetchNewProtocolDetails(toId(projectId), protocolClass),
 

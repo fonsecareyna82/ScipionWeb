@@ -256,6 +256,7 @@ function normalizeServiceAPI(srv: any): ProjectService {
   mapFn("loadWorkflow", "applyWorkflow", "applyTemplateToProject", "runWorkflowOnProject");
 
   mapFn("fetchProtocolDetails", "getProtocol", "getProtocolDetails");
+  mapFn("fetchProtocolRuntimeSummaries","fetchProtocolRuntimeSummaries","getProtocolRuntimeSummaries",);
   mapFn("fetchNewProtocolDetails", "getNewProtocol", "newProtocol");
   mapFn("loadProtocols", "listProtocols", "fetchProtocols", "getProtocols");
   mapFn("executeProtocol", "runProtocol", "launchProtocol", "execute");

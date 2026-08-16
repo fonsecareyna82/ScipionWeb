@@ -67,6 +67,7 @@ import {
   hasProjectEffectiveSettingsService,
   type ProjectEffectiveSettings,
   type ProtocolOutputThumbnailItem,
+  type ProtocolRuntimeSummary,
 } from "@/services/ProjectService";
 import {
   DEFAULT_PROJECT_USER_SETTINGS,
@@ -130,6 +131,27 @@ function normalizeProtocolStatus(
   return String(status ?? "")
     .trim()
     .toLowerCase();
+}
+
+const LIVE_PROTOCOL_STATUSES =
+  new Set([
+    "scheduled",
+    "launched",
+    "running",
+  ]);
+
+
+function isLiveProtocolStatus(
+  status: unknown,
+): boolean {
+  return (
+    LIVE_PROTOCOL_STATUSES
+      .has(
+        normalizeProtocolStatus(
+          status
+        )
+      )
+  );
 }
 
 function isElapsedTimerStatus(
@@ -1173,8 +1195,8 @@ export default function ProjectPage() {
 
   const effectiveHostQueues = effectiveHostSettings?.queues ?? [];
   const effectiveDefaultQueueName =
-  effectiveInstanceSettings
-    ?.defaultQueueName
+    effectiveInstanceSettings
+      ?.defaultQueueName
     ?? DEFAULT_PROJECT_INSTANCE_SETTINGS
       .defaultQueueName;
 
@@ -1747,6 +1769,169 @@ export default function ProjectPage() {
     },
     [setNodes],
   );
+
+  const applyProtocolRuntimeSummary =
+    useCallback(
+      (
+        summary:
+          ProtocolRuntimeSummary
+      ) => {
+        const protocolId =
+          String(
+            summary.protocolId
+          );
+
+        const cpuTime =
+          String(
+            summary
+              .cpuTimeSeconds
+            ?? 0
+          );
+
+        const elapsedTime =
+          String(
+            summary
+              .elapsedTimeSeconds
+            ?? 0
+          );
+
+        const status =
+          String(
+            summary.status
+            ?? ""
+          );
+
+        const stepsDone =
+          Number(
+            summary.stepsDone
+            ?? 0
+          );
+
+        const numberOfSteps =
+          Number(
+            summary.numberOfSteps
+            ?? 0
+          );
+
+        setNodes(
+          (currentNodes) =>
+            currentNodes.map(
+              (node) => {
+                if (
+                  String(
+                    node.id
+                  )
+                  !== protocolId
+                ) {
+                  return node;
+                }
+
+                const freshNode:
+                  Node<StatusNodeData> = {
+                  ...node,
+
+                  data: {
+                    ...node.data,
+
+                    status,
+                    cpuTime,
+                    elapsedTime,
+                    stepsDone,
+                    numberOfSteps,
+                  },
+                };
+
+                return (
+                  mergeNodeElapsedTick(
+                    freshNode,
+                    node,
+                  )
+                );
+              }
+            )
+        );
+
+        setTableData(
+          (currentRows) =>
+            currentRows.map(
+              (row) => {
+                if (
+                  String(
+                    row?.id
+                  )
+                  !== protocolId
+                ) {
+                  return row;
+                }
+
+                const freshRow = {
+                  ...row,
+
+                  status,
+                  cpuTime,
+                  elapsedTime,
+                  stepsDone,
+                  numberOfSteps,
+                };
+
+                return (
+                  mergeTableElapsedTick(
+                    freshRow,
+                    row,
+                  )
+                );
+              }
+            )
+        );
+
+        // Keep the project source status
+        // synchronized as well, but only
+        // when the status actually changes.
+        setProject(
+          (currentProject) => {
+            const protocols =
+              (currentProject as any)
+                ?.protocols;
+
+            const currentProtocol =
+              protocols
+              ?.[protocolId];
+
+            if (!currentProtocol) {
+              return currentProject;
+            }
+
+            if (
+              normalizeProtocolStatus(
+                currentProtocol.status
+              )
+              ===
+              normalizeProtocolStatus(
+                status
+              )
+            ) {
+              return currentProject;
+            }
+
+            return {
+              ...currentProject,
+
+              protocols: {
+                ...protocols,
+
+                [protocolId]: {
+                  ...currentProtocol,
+                  status,
+                },
+              },
+            } as Project;
+          }
+        );
+      },
+      [
+        setNodes,
+      ],
+    );
 
   useEffect(() => {
     syncProtocolDetailsToGraphRef.current =
@@ -4044,31 +4229,181 @@ export default function ProjectPage() {
 
   }, [projectName, viewMode, graphDirection, svc, paintEdgeHighlight, paintPathHighlight, computeEdgesForMode, gridWidth]);
 
+  const liveProtocolIdsKey =
+    useMemo(
+      () =>
+        nodes
+          .filter(
+            (node) =>
+              String(
+                node.id
+              ) !== "PROJECT"
+              &&
+              isLiveProtocolStatus(
+                node.data?.status
+              )
+          )
+          .map(
+            (node) =>
+              String(
+                node.id
+              )
+          )
+          .sort(
+            (a, b) =>
+              Number(a)
+              - Number(b)
+          )
+          .join(","),
+      [
+        nodes,
+      ],
+    );
+
   const handleRefreshRef = useRef(handleRefresh);
   useEffect(() => { handleRefreshRef.current = handleRefresh; }, [handleRefresh]);
+
+
+  // Refresh only active protocols without rebuilding the workflow graph.
   useEffect(() => {
+    const refreshSeconds =
+      Number(
+        workflowAutoRefreshSec
+        ?? 5
+      );
+
     if (
-      workflowAutoRefreshSec == null ||
-      workflowAutoRefreshSec <= 0
+      !Number.isFinite(
+        refreshSeconds
+      )
+      ||
+      refreshSeconds <= 0
+      ||
+      !liveProtocolIdsKey
+      ||
+      projectId == null
     ) {
       return;
     }
 
+    const protocolIds =
+      liveProtocolIdsKey
+        .split(",")
+        .map(
+          (protocolId) =>
+            protocolId.trim()
+        )
+        .filter(Boolean);
+
+    if (!protocolIds.length) {
+      return;
+    }
+
     let cancelled = false;
+
     let timerId:
       number | null = null;
 
     const delay =
-      workflowAutoRefreshSec
+      refreshSeconds
       * 1000;
+
+
+    const refreshLiveProtocols =
+      async () => {
+        const fetchRuntime =
+          (
+            svc as any
+          )
+            .fetchProtocolRuntimeSummaries;
+
+        // Backward-compatible fallback.
+        if (
+          typeof fetchRuntime
+          !== "function"
+        ) {
+          await (
+            handleRefreshRef
+              .current?.()
+          );
+
+          return;
+        }
+
+        try {
+          const summaries:
+            ProtocolRuntimeSummary[] =
+            await fetchRuntime(
+              projectId,
+              protocolIds,
+            );
+
+          if (cancelled) {
+            return;
+          }
+
+          for (
+            const summary
+            of summaries
+          ) {
+            applyProtocolRuntimeSummary(
+              summary
+            );
+
+            // Once the protocol leaves the
+            // active state, refresh its
+            // details once to obtain outputs.
+            if (
+              !isLiveProtocolStatus(
+                summary.status
+              )
+            ) {
+              try {
+                const details =
+                  await (
+                    svc
+                      .fetchProtocolDetails(
+                        projectId,
+                        summary.protocolId,
+                      )
+                  );
+
+                if (cancelled) {
+                  return;
+                }
+
+                syncProtocolDetailsToGraphRef
+                  .current?.(
+                    String(
+                      summary.protocolId
+                    ),
+                    details,
+                  );
+
+              } catch (error) {
+                console.warn(
+                  "Final protocol details refresh failed",
+                  error,
+                );
+              }
+            }
+          }
+
+        } catch (error) {
+          console.warn(
+            "Live protocol runtime refresh failed",
+            error,
+          );
+        }
+      };
+
 
     const scheduleRefresh = () => {
       timerId =
         window.setTimeout(
           async () => {
             await (
-              handleRefreshRef
-                .current?.()
+              refreshLiveProtocols()
             );
 
             if (cancelled) {
@@ -4081,7 +4416,9 @@ export default function ProjectPage() {
         );
     };
 
+
     scheduleRefresh();
+
 
     return () => {
       cancelled = true;
@@ -4094,6 +4431,10 @@ export default function ProjectPage() {
     };
   }, [
     workflowAutoRefreshSec,
+    liveProtocolIdsKey,
+    projectId,
+    svc,
+    applyProtocolRuntimeSummary,
   ]);
 
   useEffect(() => {

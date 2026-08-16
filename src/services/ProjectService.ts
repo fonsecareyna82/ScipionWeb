@@ -116,6 +116,17 @@ export type ProtocolStep = {
 
 export type ProtocolStepStatus = "new" | "finished";
 
+export type ProtocolRuntimeSummary = {
+  protocolId: string;
+  status: string;
+
+  cpuTimeSeconds: number;
+  elapsedTimeSeconds: number;
+
+  stepsDone: number;
+  numberOfSteps: number;
+};
+
 /** Common ID type to accept either string or number seamlessly. */
 export type Id = string | number | null | undefined;
 
@@ -1522,6 +1533,8 @@ export interface ProjectService<
 
   /** Get protocol details by project/protocol ids. */
   fetchProtocolDetails(projectId: Id, protocolId: Id): Promise<TProtocol>;
+
+  fetchProtocolRuntimeSummaries?: (projectId: Id, protocolIds: Id[],) => Promise<ProtocolRuntimeSummary[]>;
 
   /** Get "new protocol" details by class within a project. */
   fetchNewProtocolDetails(projectId: Id, protocolClass: string): Promise<TProtocol>;

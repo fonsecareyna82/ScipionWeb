@@ -59,6 +59,7 @@ import {
   ProtocolWorkflowExecutionPreflight,
   ProtocolWorkflowExecutionMode,
   ProtocolWorkflowExecutionScope,
+  ProtocolRuntimeSummary,
 } from "@/services/ProjectService";
 
 const ACTION_LAUNCH = "launch";
@@ -546,6 +547,68 @@ export async function fetchProtocolDetails(
   if (!response.ok)
     throw await toApiError(response, "Failed to fetch protocol details");
   return safeJson<ProtocolNode>(response);
+}
+
+export async function fetchProtocolRuntimeSummaries(
+  projectId: Id,
+  protocolIds: Id[],
+): Promise<ProtocolRuntimeSummary[]> {
+  const normalizedIds =
+    Array.from(
+      new Set(
+        (protocolIds ?? [])
+          .map(
+            (protocolId) =>
+              String(
+                protocolId ?? ""
+              ).trim()
+          )
+          .filter(Boolean)
+      )
+    );
+
+  if (!normalizedIds.length) {
+    return [];
+  }
+
+  const query =
+    new URLSearchParams();
+
+  normalizedIds.forEach(
+    (protocolId) => {
+      query.append(
+        "protocolIds",
+        protocolId,
+      );
+    }
+  );
+
+  const response =
+    await fetchWithAuth(
+      `${BASE_URL}/projects/${projectId}/runtime/protocols?${query.toString()}`,
+      {
+        method: "GET",
+        cache: "no-store",
+      },
+    );
+
+  if (!response.ok) {
+    throw await toApiError(
+      response,
+      "Failed to fetch protocol runtime",
+    );
+  }
+
+  const payload =
+    await safeJson<
+      ProtocolRuntimeSummary[]
+    >(
+      response
+    );
+
+  return Array.isArray(payload)
+    ? payload
+    : [];
 }
 
 export async function fetchNewProtocolDetails(
