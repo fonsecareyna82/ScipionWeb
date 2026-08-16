@@ -1553,19 +1553,57 @@ export default function SettingsPage() {
                     label="Default workflow view"
                     value={userDraft.workflowViewMode}
                     renderValue={(v) => {
-                      const meta = getViewModeMeta(v as WorkflowViewMode);
+                      const meta = getViewModeMeta(
+                        v as UserSettings["workflowViewMode"]
+                      );
+
                       return (
-                        <Stack direction="row" spacing={1} alignItems="center">
-                          <Box sx={{ display: "flex", alignItems: "center", opacity: 0.9 }}>{meta.icon}</Box>
-                          <Typography sx={{ fontSize: fieldFontSize, color: colors.text }}>{meta.label}</Typography>
+                        <Stack
+                          direction="row"
+                          spacing={1}
+                          alignItems="center"
+                        >
+                          <Box
+                            sx={{
+                              display: "flex",
+                              alignItems: "center",
+                              opacity: 0.9,
+                            }}
+                          >
+                            {meta.icon}
+                          </Box>
+
+                          <Typography
+                            sx={{
+                              fontSize: fieldFontSize,
+                              color: colors.text,
+                            }}
+                          >
+                            {meta.label}
+                          </Typography>
                         </Stack>
                       );
                     }}
                     onChange={(e) =>
-                      setUserDraft((prev) => (prev ? { ...prev, workflowViewMode: e.target.value as WorkflowViewMode } : prev))
+                      setUserDraft((prev) =>
+                        prev
+                          ? {
+                            ...prev,
+                            workflowViewMode:
+                              e.target.value as UserSettings["workflowViewMode"],
+                          }
+                          : prev
+                      )
                     }
                   >
-                    {(["treeTb", "treeLr", "grid", "table"] as WorkflowViewMode[]).map((m) => {
+                    {(
+                      [
+                        "treeTb",
+                        "treeLr",
+                        "grid",
+                        "table",
+                      ] as UserSettings["workflowViewMode"][]
+                    ).map((m) => {
                       const meta = getViewModeMeta(m);
                       return (
                         <MenuItem key={m} value={m} sx={{ fontSize: fieldFontSize, color: colors.text }}>
