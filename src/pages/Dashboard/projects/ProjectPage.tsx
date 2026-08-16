@@ -1829,181 +1829,135 @@ export default function ProjectPage() {
     [setNodes],
   );
 
-  const applyProtocolRuntimeSummary =
-    useCallback(
-      (
-        summary:
-          ProtocolRuntimeSummary
-      ) => {
-        const protocolId =
-          String(
-            summary.protocolId
-          );
+  const applyProtocolRuntimeSummaries = useCallback(
+    (summaries: ProtocolRuntimeSummary[]) => {
+      const summaryByProtocolId = new Map(
+        summaries.map((summary) => [String(summary.protocolId), summary])
+      );
 
-        const cpuTime =
-          String(
-            summary
-              .cpuTimeSeconds
-            ?? 0
-          );
+      if (!summaryByProtocolId.size) {
+        return;
+      }
 
-        const elapsedTime =
-          String(
-            summary
-              .elapsedTimeSeconds
-            ?? 0
-          );
+      setNodes((currentNodes) =>
+        currentNodes.map((node) => {
+          const summary = summaryByProtocolId.get(String(node.id));
 
-        const elapsedSessionId =
-          summary.elapsedSessionId
-            == null
-            ? null
-            : (
-              String(
-                summary.elapsedSessionId
-              ).trim()
-              || null
-            );
-
-        const status =
-          String(
-            summary.status
-            ?? ""
-          );
-
-        const stepsDone =
-          Number(
-            summary.stepsDone
-            ?? 0
-          );
-
-        const numberOfSteps =
-          Number(
-            summary.numberOfSteps
-            ?? 0
-          );
-
-        setNodes(
-          (currentNodes) =>
-            currentNodes.map(
-              (node) => {
-                if (
-                  String(
-                    node.id
-                  )
-                  !== protocolId
-                ) {
-                  return node;
-                }
-
-                const freshNode:
-                  Node<StatusNodeData> = {
-                  ...node,
-
-                  data: {
-                    ...node.data,
-
-                    status,
-                    cpuTime,
-                    elapsedTime,
-                    elapsedSessionId,
-                    stepsDone,
-                    numberOfSteps,
-                  },
-                };
-
-                return (
-                  mergeNodeElapsedTick(
-                    freshNode,
-                    node,
-                  )
-                );
-              }
-            )
-        );
-
-        setTableData(
-          (currentRows) =>
-            currentRows.map(
-              (row) => {
-                if (
-                  String(
-                    row?.id
-                  )
-                  !== protocolId
-                ) {
-                  return row;
-                }
-
-                const freshRow = {
-                  ...row,
-
-                  status,
-                  cpuTime,
-                  elapsedTime,
-                  elapsedSessionId,
-                  stepsDone,
-                  numberOfSteps,
-                };
-
-                return (
-                  mergeTableElapsedTick(
-                    freshRow,
-                    row,
-                  )
-                );
-              }
-            )
-        );
-
-        // Keep the project source status
-        // synchronized as well, but only
-        // when the status actually changes.
-        setProject(
-          (currentProject) => {
-            const protocols =
-              (currentProject as any)
-                ?.protocols;
-
-            const currentProtocol =
-              protocols
-              ?.[protocolId];
-
-            if (!currentProtocol) {
-              return currentProject;
-            }
-
-            if (
-              normalizeProtocolStatus(
-                currentProtocol.status
-              )
-              ===
-              normalizeProtocolStatus(
-                status
-              )
-            ) {
-              return currentProject;
-            }
-
-            return {
-              ...currentProject,
-
-              protocols: {
-                ...protocols,
-
-                [protocolId]: {
-                  ...currentProtocol,
-                  status,
-                },
-              },
-            } as Project;
+          if (!summary) {
+            return node;
           }
-        );
-      },
-      [
-        setNodes,
-      ],
-    );
+
+          const status = String(summary.status ?? "");
+          const cpuTime = String(summary.cpuTimeSeconds ?? 0);
+          const elapsedTime = String(summary.elapsedTimeSeconds ?? 0);
+          const outputs = Array.isArray(summary.outputs) ? summary.outputs : undefined;
+          const stepsDone = Number(summary.stepsDone ?? 0);
+          const numberOfSteps = Number(summary.numberOfSteps ?? 0);
+
+          const elapsedSessionId =
+            summary.elapsedSessionId == null
+              ? null
+              : String(summary.elapsedSessionId).trim() || null;
+
+          const freshNode: Node<StatusNodeData> = {
+            ...node,
+            data: {
+              ...node.data,
+              status,
+              cpuTime,
+              elapsedTime,
+              elapsedSessionId,
+              stepsDone,
+              numberOfSteps,
+              ...(outputs !== undefined ? { outputs } : {}),
+            },
+          };
+
+          return mergeNodeElapsedTick(freshNode, node);
+        })
+      );
+
+      setTableData((currentRows) =>
+        currentRows.map((row) => {
+          const summary = summaryByProtocolId.get(String(row?.id));
+
+          if (!summary) {
+            return row;
+          }
+
+          const status = String(summary.status ?? "");
+          const cpuTime = String(summary.cpuTimeSeconds ?? 0);
+          const elapsedTime = String(summary.elapsedTimeSeconds ?? 0);
+          const outputs = Array.isArray(summary.outputs) ? summary.outputs : undefined;
+          const stepsDone = Number(summary.stepsDone ?? 0);
+          const numberOfSteps = Number(summary.numberOfSteps ?? 0);
+
+          const elapsedSessionId =
+            summary.elapsedSessionId == null
+              ? null
+              : String(summary.elapsedSessionId).trim() || null;
+
+          const freshRow = {
+            ...row,
+            status,
+            cpuTime,
+            elapsedTime,
+            elapsedSessionId,
+            stepsDone,
+            numberOfSteps,
+            ...(outputs !== undefined ? { outputs } : {}),
+          };
+
+          return mergeTableElapsedTick(freshRow, row);
+        })
+      );
+
+      setProject((currentProject) => {
+        const protocols = (currentProject as any)?.protocols;
+
+        if (!protocols) {
+          return currentProject;
+        }
+
+        let changed = false;
+        const nextProtocols = { ...protocols };
+
+        for (const [protocolId, summary] of summaryByProtocolId) {
+          const currentProtocol = protocols[protocolId];
+
+          if (!currentProtocol) {
+            continue;
+          }
+
+          const status = String(summary.status ?? "");
+
+          if (
+            normalizeProtocolStatus(currentProtocol.status) ===
+            normalizeProtocolStatus(status)
+          ) {
+            continue;
+          }
+
+          nextProtocols[protocolId] = {
+            ...currentProtocol,
+            status,
+          };
+
+          changed = true;
+        }
+
+        if (!changed) {
+          return currentProject;
+        }
+
+        return {
+          ...currentProject,
+          protocols: nextProtocols,
+        } as Project;
+      });
+    },
+    [setNodes],
+  );
 
   useEffect(() => {
     syncProtocolDetailsToGraphRef.current =
@@ -4414,14 +4368,11 @@ export default function ProjectPage() {
             return;
           }
 
+          applyProtocolRuntimeSummaries(summaries);
           for (
             const summary
             of summaries
           ) {
-            applyProtocolRuntimeSummary(
-              summary
-            );
-
             // Once the protocol leaves the
             // active state, refresh its
             // details once to obtain outputs.
@@ -4506,7 +4457,7 @@ export default function ProjectPage() {
     liveProtocolIdsKey,
     projectId,
     svc,
-    applyProtocolRuntimeSummary,
+    applyProtocolRuntimeSummaries,
   ]);
 
   useEffect(() => {

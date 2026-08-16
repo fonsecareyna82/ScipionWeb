@@ -129,6 +129,7 @@ export type ProtocolRuntimeSummary = {
 
   stepsDone: number;
   numberOfSteps: number;
+  outputs?: unknown[];
 };
 
 /** Common ID type to accept either string or number seamlessly. */
