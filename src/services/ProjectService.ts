@@ -611,6 +611,7 @@ export type IntegratedContextStatus =
 
 export type IntegratedContextLink = {
   protocolId?: Id;
+  publicProtocolId?: Id;
   outputName?: string | null;
   itemId?: Id;
   label?: string | null;

@@ -93,7 +93,7 @@ function getNodeStatus(isSource: boolean, link: IntegratedContextLink | null | u
 }
 
 function getLinkedProtocolId(link: IntegratedContextLink | null | undefined, fallbackProtocolId: number) {
-  const next = Number(link?.protocolId);
+  const next = Number(link?.publicProtocolId ?? link?.protocolId);
   return Number.isFinite(next) ? next : fallbackProtocolId;
 }
 
