@@ -5,42 +5,10 @@ import type {
   HostSettings,
   HostSettingsPatch,
   JobMonitoringOverview,
+  UserSettings,
+  UserSettingsPatch,
 } from "@/services/ProjectService";
 
-export type UserSettings = {
-  theme:
-  | "system"
-  | "light"
-  | "dark";
-
-  uiDensity:
-  | "comfortable"
-  | "compact";
-
-  fontScale: number;
-
-  language:
-  | "en"
-  | "es";
-
-  timeZone: string;
-
-  workflowViewMode:
-  | "treeTb"
-  | "treeLr"
-  | "grid"
-  | "table";
-
-  graphMiniMapEnabled: boolean;
-  graphFocusModeEnabled: boolean;
-
-  protocolOutputThumbnailsEnabled:
-  boolean;
-
-  workflowsAutoRefreshSec: number;
-};
-
-export type UserSettingsPatch = Partial<UserSettings>;
 
 export type InstanceSettings = {
   defaultQueueName: string;

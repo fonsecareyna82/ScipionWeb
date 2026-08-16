@@ -1941,6 +1941,7 @@ export default function ProjectPage() {
                   status,
                   cpuTime,
                   elapsedTime,
+                  elapsedSessionId,
                   stepsDone,
                   numberOfSteps,
                 };

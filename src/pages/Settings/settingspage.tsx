@@ -57,7 +57,12 @@ import {
 } from "@/config/settingsDefaults";
 
 import JobsSettingsPanel from "@/pages/Settings/JobsSettingsPanel";
-import { InstanceResources } from "@/services/ProjectService";
+
+import type {
+  InstanceResources,
+  UserSettings,
+  UserSettingsPatch,
+} from "@/services/ProjectService";
 
 
 type TabKey =
@@ -67,21 +72,6 @@ type TabKey =
   | "host"
   | "tags"
   | "environment";
-
-type WorkflowViewMode = "treeTb" | "treeLr" | "grid" | "table";
-
-type UserSettings = {
-  theme: "light" | "dark";
-  uiDensity: "comfortable" | "compact";
-  fontScale: number;
-  timeZone: string;
-
-  workflowViewMode: WorkflowViewMode;
-  graphMiniMapEnabled: boolean;
-  graphFocusModeEnabled: boolean;
-  protocolOutputThumbnailsEnabled: boolean;
-  workflowsAutoRefreshSec: number;
-};
 
 type InstanceSettings = {
   defaultQueueName: string;
@@ -93,9 +83,11 @@ type EnvironmentRow = {
   value: string;
 };
 
-type UserSettingsPatch = Partial<UserSettings>;
-type InstanceSettingsPatch = Partial<InstanceSettings>;
-type EnvironmentPatch = Record<string, string>;
+type InstanceSettingsPatch =
+  Partial<InstanceSettings>;
+
+type EnvironmentPatch =
+  Record<string, string>;
 
 type ProjectOption = {
   id: string;
@@ -107,6 +99,7 @@ const defaultUserSettings:
   theme: "light",
   uiDensity: "comfortable",
   fontScale: 1.0,
+  language: "en",
   timeZone: "Europe/Madrid",
 
   workflowViewMode:
@@ -262,7 +255,9 @@ function buildEnvironmentPatch(base: EnvironmentRow[], next: EnvironmentRow[]): 
   return patch;
 }
 
-function normalizeWorkflowViewMode(raw: any): WorkflowViewMode {
+function normalizeWorkflowViewMode(
+  raw: any
+): UserSettings["workflowViewMode"] {
   // normalizeWorkflowViewMode
   const v = String(raw ?? "").trim();
   if (!v) return defaultUserSettings.workflowViewMode;
@@ -276,18 +271,50 @@ function normalizeWorkflowViewMode(raw: any): WorkflowViewMode {
   return defaultUserSettings.workflowViewMode;
 }
 
-function sanitizeUserSettings(raw: any): UserSettings {
+function sanitizeUserSettings(
+  raw: any
+): UserSettings {
   // sanitizeUserSettings
   const theme = raw?.theme;
   const uiDensity = raw?.uiDensity;
 
   return {
-    theme: theme === "light" || theme === "dark" ? theme : defaultUserSettings.theme,
-    uiDensity: uiDensity === "compact" || uiDensity === "comfortable" ? uiDensity : defaultUserSettings.uiDensity,
-    fontScale: clampNumber(raw?.fontScale, defaultUserSettings.fontScale, 0.85, 1.25),
-    timeZone: typeof raw?.timeZone === "string" && raw.timeZone.trim() ? raw.timeZone : defaultUserSettings.timeZone,
+    theme:
+      theme === "light"
+        || theme === "dark"
+        ? theme
+        : defaultUserSettings.theme,
 
-    workflowViewMode: normalizeWorkflowViewMode(raw?.workflowViewMode ?? raw?.viewMode),
+    uiDensity:
+      uiDensity === "compact"
+        || uiDensity === "comfortable"
+        ? uiDensity
+        : defaultUserSettings.uiDensity,
+
+    fontScale: clampNumber(
+      raw?.fontScale,
+      defaultUserSettings.fontScale,
+      0.85,
+      1.25,
+    ),
+
+    language:
+      raw?.language === "es"
+        || raw?.language === "en"
+        ? raw.language
+        : defaultUserSettings.language,
+
+    timeZone:
+      typeof raw?.timeZone === "string"
+        && raw.timeZone.trim()
+        ? raw.timeZone
+        : defaultUserSettings.timeZone,
+
+    workflowViewMode:
+      normalizeWorkflowViewMode(
+        raw?.workflowViewMode
+        ?? raw?.viewMode
+      ),
     graphMiniMapEnabled:
       typeof raw?.graphMiniMapEnabled === "boolean" ? raw.graphMiniMapEnabled : defaultUserSettings.graphMiniMapEnabled,
     graphFocusModeEnabled:
@@ -382,7 +409,12 @@ function getTimeZoneOptions(): string[] {
   return fallback;
 }
 
-function getViewModeMeta(mode: WorkflowViewMode): { label: string; icon: React.ReactNode } {
+function getViewModeMeta(
+  mode: UserSettings["workflowViewMode"]
+): {
+  label: string;
+  icon: React.ReactNode;
+} {
   // getViewModeMeta
   switch (mode) {
     case "treeTb":
