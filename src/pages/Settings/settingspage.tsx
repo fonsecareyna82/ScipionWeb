@@ -51,6 +51,10 @@ import HostSettingsPanel, {
   sanitizeHostSettings,
   buildHostPatch,
 } from "@/pages/Settings/HostSettingsPanel";
+import {
+  DEFAULT_PROJECT_USER_SETTINGS,
+  DEFAULT_PROJECT_INSTANCE_SETTINGS,
+} from "@/config/settingsDefaults";
 
 import JobsSettingsPanel from "@/pages/Settings/JobsSettingsPanel";
 import { InstanceResources } from "@/services/ProjectService";
@@ -98,23 +102,37 @@ type ProjectOption = {
   name: string;
 };
 
-const defaultUserSettings: UserSettings = {
+const defaultUserSettings:
+  UserSettings = {
   theme: "light",
   uiDensity: "comfortable",
   fontScale: 1.0,
   timeZone: "Europe/Madrid",
 
-  workflowViewMode: "treeTb",
-  graphMiniMapEnabled: true,
-  graphFocusModeEnabled: false,
-  protocolOutputThumbnailsEnabled: false,
-  workflowsAutoRefreshSec: 15,
+  workflowViewMode:
+    DEFAULT_PROJECT_USER_SETTINGS
+      .workflowViewMode,
+
+  graphMiniMapEnabled:
+    DEFAULT_PROJECT_USER_SETTINGS
+      .graphMiniMapEnabled,
+
+  graphFocusModeEnabled:
+    DEFAULT_PROJECT_USER_SETTINGS
+      .graphFocusModeEnabled,
+
+  protocolOutputThumbnailsEnabled:
+    DEFAULT_PROJECT_USER_SETTINGS
+      .protocolOutputThumbnailsEnabled,
+
+  workflowsAutoRefreshSec:
+    DEFAULT_PROJECT_USER_SETTINGS
+      .workflowsAutoRefreshSec,
 };
 
 const defaultInstanceSettings:
   InstanceSettings = {
-  defaultQueueName: "default",
-  maxConcurrentRunsPerUser: 4,
+  ...DEFAULT_PROJECT_INSTANCE_SETTINGS,
 };
 
 const wrapperMaxWidth = 1120;

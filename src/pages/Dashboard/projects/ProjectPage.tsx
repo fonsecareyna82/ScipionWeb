@@ -68,6 +68,11 @@ import {
   type ProjectEffectiveSettings,
   type ProtocolOutputThumbnailItem,
 } from "@/services/ProjectService";
+import {
+  DEFAULT_PROJECT_USER_SETTINGS,
+  DEFAULT_PROJECT_INSTANCE_SETTINGS,
+  type ProjectUserSettings,
+} from "@/config/settingsDefaults";
 import { Project } from "@/types/project";
 import Label from "@/components/form/Label";
 import { Typography, Link } from "@mui/material";
@@ -818,55 +823,118 @@ export default function ProjectPage() {
   const [projectEffectiveSettings, setProjectEffectiveSettings] =
     useState<ProjectEffectiveSettings | null>(null);
 
-  const effectiveUserSettings = useMemo(() => {
-    const raw =
-      projectEffectiveSettings
-        ?.settings
-        ?.user;
+  const effectiveUserSettings =
+    useMemo<ProjectUserSettings>(() => {
+      const raw =
+        projectEffectiveSettings
+          ?.settings
+          ?.user;
 
-    return (
-      raw &&
-      typeof raw === "object"
-    )
-      ? raw as Record<string, unknown>
-      : null;
-  }, [
-    projectEffectiveSettings,
-  ]);
+      const source =
+        raw &&
+          typeof raw === "object"
+          ? raw as Record<string, unknown>
+          : {};
 
+      const workflowViewModeRaw =
+        String(
+          source.workflowViewMode
+          ?? DEFAULT_PROJECT_USER_SETTINGS
+            .workflowViewMode
+        )
+          .trim()
+          .toLowerCase();
 
-  const workflowAutoRefreshSec =
-    useMemo(() => {
-      if (!effectiveUserSettings) {
-        return null;
+      let workflowViewMode:
+        ProjectUserSettings[
+        "workflowViewMode"
+        ] = "treeTb";
+
+      switch (workflowViewModeRaw) {
+        case "treelr":
+        case "tree_lr":
+        case "tree-lr":
+        case "lr":
+          workflowViewMode =
+            "treeLr";
+          break;
+
+        case "grid":
+          workflowViewMode =
+            "grid";
+          break;
+
+        case "table":
+          workflowViewMode =
+            "table";
+          break;
+
+        case "treetb":
+        case "tree_tb":
+        case "tree-tb":
+        case "tb":
+        default:
+          workflowViewMode =
+            "treeTb";
+          break;
       }
 
-      const value = Number(
-        effectiveUserSettings
+      const refreshValue = Number(
+        source.workflowsAutoRefreshSec
+        ?? DEFAULT_PROJECT_USER_SETTINGS
           .workflowsAutoRefreshSec
       );
 
-      if (!Number.isFinite(value)) {
-        return 15;
-      }
+      return {
+        workflowViewMode,
 
-      return Math.max(
-        0,
-        Math.min(
-          300,
-          value,
-        ),
-      );
+        graphMiniMapEnabled:
+          typeof source
+            .graphMiniMapEnabled
+            === "boolean"
+            ? source.graphMiniMapEnabled
+            : DEFAULT_PROJECT_USER_SETTINGS
+              .graphMiniMapEnabled,
+
+        graphFocusModeEnabled:
+          typeof source
+            .graphFocusModeEnabled
+            === "boolean"
+            ? source.graphFocusModeEnabled
+            : DEFAULT_PROJECT_USER_SETTINGS
+              .graphFocusModeEnabled,
+
+        protocolOutputThumbnailsEnabled:
+          typeof source
+            .protocolOutputThumbnailsEnabled
+            === "boolean"
+            ? source
+              .protocolOutputThumbnailsEnabled
+            : DEFAULT_PROJECT_USER_SETTINGS
+              .protocolOutputThumbnailsEnabled,
+
+        workflowsAutoRefreshSec:
+          Number.isFinite(
+            refreshValue
+          )
+            ? Math.max(
+              0,
+              Math.min(
+                300,
+                refreshValue,
+              ),
+            )
+            : DEFAULT_PROJECT_USER_SETTINGS
+              .workflowsAutoRefreshSec,
+      };
     }, [
-      effectiveUserSettings,
+      projectEffectiveSettings,
     ]);
 
-  const protocolOutputThumbnailsEnabled = useMemo(() => {
-    const raw = projectEffectiveSettings?.settings?.user as Record<string, unknown> | null | undefined;
 
-    return raw?.protocolOutputThumbnailsEnabled === true;
-  }, [projectEffectiveSettings]);
+  const workflowAutoRefreshSec = effectiveUserSettings.workflowsAutoRefreshSec;
 
+  const protocolOutputThumbnailsEnabled = effectiveUserSettings.protocolOutputThumbnailsEnabled;
   const protocolOutputThumbnailsEnabledRef = useRef(false);
   protocolOutputThumbnailsEnabledRef.current = protocolOutputThumbnailsEnabled;
 
@@ -939,23 +1007,10 @@ export default function ProjectPage() {
 
 
   useEffect(() => {
-    if (!effectiveUserSettings) {
-      return;
-    }
-
-    const workflowViewMode = String(
-      effectiveUserSettings
-        .workflowViewMode
-      ?? "treeTb"
-    )
-      .trim()
-      .toLowerCase();
+    const workflowViewMode = effectiveUserSettings.workflowViewMode;
 
     switch (workflowViewMode) {
-      case "treelr":
-      case "tree_lr":
-      case "tree-lr":
-      case "lr":
+      case "treeLr":
         setViewMode(
           "hierarchical"
         );
@@ -977,10 +1032,7 @@ export default function ProjectPage() {
         );
         break;
 
-      case "treetb":
-      case "tree_tb":
-      case "tree-tb":
-      case "tb":
+      case "treeTb":
       default:
         setViewMode(
           "hierarchical"
@@ -992,27 +1044,9 @@ export default function ProjectPage() {
         break;
     }
 
-    if (
-      typeof effectiveUserSettings
-        .graphMiniMapEnabled
-      === "boolean"
-    ) {
-      setMiniMapEnabled(
-        effectiveUserSettings
-          .graphMiniMapEnabled
-      );
-    }
+    setMiniMapEnabled(effectiveUserSettings.graphMiniMapEnabled);
+    setFocusModeEnabled(effectiveUserSettings.graphFocusModeEnabled);
 
-    if (
-      typeof effectiveUserSettings
-        .graphFocusModeEnabled
-      === "boolean"
-    ) {
-      setFocusModeEnabled(
-        effectiveUserSettings
-          .graphFocusModeEnabled
-      );
-    }
   }, [
     projectName,
     effectiveUserSettings,
@@ -1126,11 +1160,23 @@ export default function ProjectPage() {
     return Number.isFinite(n) ? n : undefined;
   }, [project]);
 
-  const effectiveInstanceSettings = projectEffectiveSettings?.settings?.instance ?? null;
-  const effectiveHostSettings = projectEffectiveSettings?.settings?.host ?? null;
+  const effectiveInstanceSettings =
+    projectEffectiveSettings
+      ?.settings
+      ?.instance
+    ?? null;
+  const effectiveHostSettings =
+    projectEffectiveSettings
+      ?.settings
+      ?.host
+    ?? null;
 
   const effectiveHostQueues = effectiveHostSettings?.queues ?? [];
-  const effectiveDefaultQueueName = effectiveInstanceSettings?.defaultQueueName ?? "";
+  const effectiveDefaultQueueName =
+  effectiveInstanceSettings
+    ?.defaultQueueName
+    ?? DEFAULT_PROJECT_INSTANCE_SETTINGS
+      .defaultQueueName;
 
   const loadProjectEffectiveSettings = useCallback(
     async (nextProjectId?: string | number): Promise<ProjectEffectiveSettings | null> => {
