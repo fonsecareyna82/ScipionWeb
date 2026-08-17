@@ -603,6 +603,7 @@ export type TableViewerRowChildren = {
 export type TableViewerRow = {
   id: string | number;
   cells: Record<string, TableViewerCell>;
+  data?: Record<string, unknown>;
   actions?: TableViewerAction[];
   children?: TableViewerRowChildren;
 };
@@ -628,6 +629,28 @@ export type TableViewerContext = {
   pointerClass?: string;
   tableKey?: string;
 };
+
+export type TableViewerActionRequest = {
+  actionId: string;
+  rowId?: string | number;
+  columnId?: string;
+  rowData?: Record<string, unknown>;
+};
+
+export type TableViewerPaneContent =
+  | {
+    kind: "empty";
+    title?: string;
+    message?: string;
+  }
+  | {
+    kind: "coords3d";
+    title?: string;
+    projectId: Id;
+    protocolId: Id;
+    outputName: string;
+    tomogramId?: Id;
+  };
 
 export type AnalyzeViewerResolveContext = {
   projectId: Id;
@@ -1764,6 +1787,11 @@ export interface ProjectService<
     ctx: AnalyzeViewerResolveContext
   ): Promise<AnalyzeViewerResolveDecision>;
 
+
+  resolveTableViewerAction(
+    context: TableViewerContext,
+    request: TableViewerActionRequest
+  ): Promise<TableViewerPaneContent>;
 
   fetchIntegratedAnalyzeContext(
     projectId: Id,

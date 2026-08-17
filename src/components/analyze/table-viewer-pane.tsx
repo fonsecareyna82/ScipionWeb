@@ -23,8 +23,11 @@ import type {
     TableViewerContext,
     TableViewerData,
     TableViewerRow,
+    TableViewerPaneContent,
 } from "@/services/ProjectService";
 import { MetadataViewer } from "./metadata-viewer";
+import Coords3dViewer from "./coords3d-viewer";
+import { useProjectService } from "@/ProjectServiceContext";
 
 type TableViewerPaneProps = {
     context: TableViewerContext;
@@ -40,6 +43,7 @@ type ActivePane =
         action: TableViewerAction;
         row?: TableViewerRow;
         columnId?: string;
+        content: TableViewerPaneContent;
     }
     | null;
 
@@ -65,6 +69,7 @@ export default function TableViewerPane({
     context,
     table,
 }: TableViewerPaneProps) {
+    const svc = useProjectService();
     const [searchValue, setSearchValue] = useState("");
     const [selectedRowId, setSelectedRowId] = useState<string | number | null>(
         null,
@@ -116,7 +121,7 @@ export default function TableViewerPane({
         (table.page?.offset ?? 0) +
         table.rows.length;
 
-    const handleAction = (
+    const handleAction = async (
         action: TableViewerAction,
         row?: TableViewerRow,
         columnId?: string,
@@ -130,12 +135,40 @@ export default function TableViewerPane({
             return;
         }
 
-        setActivePane({
-            kind: "action",
-            action,
-            row,
-            columnId,
-        });
+        try {
+            const content =
+                await svc.resolveTableViewerAction(
+                    context,
+                    {
+                        actionId: action.id,
+                        rowId: row?.id,
+                        columnId,
+                        rowData: row?.data,
+                    },
+                );
+
+            setActivePane({
+                kind: "action",
+                action,
+                row,
+                columnId,
+                content,
+            });
+        } catch (error) {
+            setActivePane({
+                kind: "action",
+                action,
+                row,
+                columnId,
+                content: {
+                    kind: "empty",
+                    message:
+                        error instanceof Error
+                            ? error.message
+                            : "Failed to load viewer.",
+                },
+            });
+        }
     };
 
     const handleRowMenuOpen = (
@@ -801,59 +834,45 @@ export default function TableViewerPane({
                             }
                             embedded
                         />
-                    ) : activePane?.kind ===
-                        "action" ? (
-                        <Box
-                            sx={{
-                                height: "100%",
-                                border:
-                                    "1px dashed #cbd5e1",
-                                borderRadius: 2,
-                                backgroundColor:
-                                    "#ffffff",
-                                display: "flex",
-                                flexDirection:
-                                    "column",
-                                alignItems:
-                                    "center",
-                                justifyContent:
-                                    "center",
-                                px: 3,
-                                textAlign:
-                                    "center",
-                            }}
-                        >
-                            <Typography
-                                sx={{
-                                    fontSize:
-                                        "0.85rem",
-                                    fontWeight: 600,
-                                    color: "#334155",
-                                    mb: 0.5,
-                                }}
-                            >
-                                {
-                                    activePane.action
-                                        .label
+                    ) : activePane?.kind === "action" ? (
+                        activePane.content.kind === "coords3d" ? (
+                            <Coords3dViewer
+                                projectId={
+                                    activePane.content.projectId
                                 }
-                            </Typography>
-
-                            <Typography
-                                variant="caption"
+                                protocolId={
+                                    activePane.content.protocolId
+                                }
+                                outputName={
+                                    activePane.content.outputName
+                                }
+                                selectedTomogramId={
+                                    activePane.content.tomogramId
+                                }
+                                hideMetadataAction
+                            />
+                        ) : (
+                            <Box
                                 sx={{
-                                    color: "#94a3b8",
-                                    maxWidth: 360,
+                                    height: "100%",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    px: 3,
                                 }}
                             >
-                                This action is
-                                connected to the
-                                table contract. Its
-                                viewer content will
-                                be resolved by
-                                ScipionAPI in the
-                                next step.
-                            </Typography>
-                        </Box>
+                                <Typography
+                                    variant="body2"
+                                    sx={{
+                                        color: "#94a3b8",
+                                        textAlign: "center",
+                                    }}
+                                >
+                                    {activePane.content.message ??
+                                        "No viewer content available."}
+                                </Typography>
+                            </Box>
+                        )
                     ) : (
                         <Box
                             sx={{

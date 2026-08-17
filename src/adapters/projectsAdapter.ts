@@ -17,6 +17,9 @@ import type {
   CTFTomoExclusionsPayload,
   AnalyzeViewerResolveContext,
   AnalyzeViewerResolveDecision,
+  TableViewerContext,
+  TableViewerActionRequest,
+  TableViewerPaneContent,
   ProtocolLogChannelsResponse,
   ProtocolLogsChunkResponse,
   ProtocolLogOffsets,
@@ -364,6 +367,55 @@ const defaultService: ProjectService = {
       kind: (raw as any).kind,
       title: (raw as any).title,
     };
+  },
+
+  resolveTableViewerAction: async (
+    context: TableViewerContext,
+    request: TableViewerActionRequest
+  ): Promise<TableViewerPaneContent> => {
+    const projectId = toId(context.projectId);
+    const protocolId = toId(context.protocolId);
+
+    const url =
+      `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/viewer/table/action`;
+
+    const payload = {
+      outputName: context.outputName,
+      pointerClass: context.pointerClass ?? "",
+      tableKey: context.tableKey ?? "",
+      actionId: request.actionId,
+      rowId: request.rowId ?? null,
+      columnId: request.columnId ?? null,
+      rowData: request.rowData ?? {},
+    };
+
+    const res = await fetchWithAuth(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+
+      throw new Error(
+        text ||
+        "Failed to resolve table viewer action"
+      );
+    }
+
+    const raw = await res.json().catch(() => null);
+
+    if (!raw || typeof raw !== "object") {
+      return {
+        kind: "empty",
+        message: "No viewer content was returned.",
+      };
+    }
+
+    return raw as TableViewerPaneContent;
   },
 
   fetchIntegratedAnalyzeContext: (
