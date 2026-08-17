@@ -30,6 +30,7 @@ import type {
 import { MetadataViewer } from "./metadata-viewer";
 import Coords3dViewer from "./coords3d-viewer";
 import TiltSeriesViewer from "./tiltseries-viewer";
+import VolumeViewer from "./volume-viewer";
 import { useProjectService } from "@/ProjectServiceContext";
 
 type TableViewerPaneProps = {
@@ -1136,6 +1137,23 @@ export default function TableViewerPane({
                                     activePane.content.frameIndex
                                 }
                                 hideSeriesTable
+                                hideMetadataAction
+                            />
+                        ) : activePane.content.kind === "volume" ? (
+                            <VolumeViewer
+                                projectId={
+                                    activePane.content.projectId
+                                }
+                                protocolId={
+                                    activePane.content.protocolId
+                                }
+                                outputName={
+                                    activePane.content.outputName
+                                }
+                                selectedVolumeId={
+                                    activePane.content.volumeId
+                                }
+                                hideVolumeList
                                 hideMetadataAction
                             />
                         ) : (

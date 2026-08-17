@@ -35,6 +35,7 @@ type VolumeViewerProps = {
   pointerClass?: string;
   selectedVolumeId?: string | number | null;
   onVolumeSelect?: (volume: VolumeLite) => void;
+  hideVolumeList?: boolean;
   hideMetadataAction?: boolean;
   active?: boolean;
 };
@@ -163,6 +164,7 @@ export default function VolumeViewer({
   pointerClass,
   selectedVolumeId,
   onVolumeSelect,
+  hideVolumeList = false,
   hideMetadataAction = false,
   active = true,
 }: VolumeViewerProps) {
@@ -1251,7 +1253,7 @@ export default function VolumeViewer({
         sx={{
           width: 270,
           borderRight: "1px solid #eee",
-          display: "flex",
+          display: hideVolumeList ? "none" : "flex",
           flexDirection: "column",
           minHeight: 0,
           overflow: "hidden",

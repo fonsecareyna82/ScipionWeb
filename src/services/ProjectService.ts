@@ -672,7 +672,15 @@ export type TableViewerPaneContent =
     outputName: string;
     tiltSeriesId: Id;
     frameIndex?: number;
-  };
+  }
+  | {
+    kind: "volume";
+    title?: string;
+    projectId: Id;
+    protocolId: Id;
+    outputName: string;
+    volumeId: Id;
+};
 
 export type AnalyzeViewerResolveContext = {
   projectId: Id;
