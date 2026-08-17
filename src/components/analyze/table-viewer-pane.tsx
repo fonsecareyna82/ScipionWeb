@@ -814,10 +814,11 @@ export default function TableViewerPane({
                         minWidth: 0,
                         overflow: "hidden",
                         p:
-                            activePane?.kind ===
-                                "metadata"
+                            activePane?.kind === "metadata"
                                 ? 1
-                                : 2,
+                                : activePane?.kind === "action"
+                                    ? 0
+                                    : 2,
                     }}
                 >
                     {activePane?.kind ===
@@ -850,6 +851,7 @@ export default function TableViewerPane({
                                     activePane.content.tomogramId
                                 }
                                 hideMetadataAction
+                                hideTomogramList
                             />
                         ) : (
                             <Box

@@ -44,6 +44,7 @@ type Coords3dViewerProps = {
   protocolLabel?: string;
   selectedTomogramId?: Id | null;
   onTomogramSelect?: (tomogram: TomogramItem) => void;
+  hideTomogramList?: boolean;
   hideMetadataAction: boolean;
 };
 
@@ -292,6 +293,7 @@ export default function Coords3dViewer({
   outputName,
   selectedTomogramId,
   onTomogramSelect,
+  hideTomogramList = false,
   hideMetadataAction = false,
 }: Coords3dViewerProps) {
   const svc = useProjectService();
@@ -1808,7 +1810,7 @@ export default function Coords3dViewer({
           sx={{
             width: 270,
             borderRight: "1px solid #e5e7eb",
-            display: "flex",
+            display: hideTomogramList ? "none" : "flex",
             flexDirection: "column",
             minHeight: 0,
             overflow: "hidden",
