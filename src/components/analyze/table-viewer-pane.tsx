@@ -778,33 +778,13 @@ export default function TableViewerPane({
                             color: "#0f172a",
                         }}
                     >
-                        {activePane?.kind ===
-                            "metadata"
+                        {activePane?.kind === "metadata"
                             ? "Metadata"
-                            : activePane?.kind ===
-                                "action"
-                                ? activePane.action
-                                    .label
+                            : activePane?.kind === "action"
+                                ? activePane.content.title ?? activePane.action.label
                                 : "Viewer"}
                     </Typography>
-
-                    {activePane?.kind ===
-                        "action" &&
-                        activePane.row && (
-                            <Typography
-                                variant="caption"
-                                sx={{
-                                    color:
-                                        "#94a3b8",
-                                }}
-                            >
-                                Row{" "}
-                                {String(
-                                    activePane.row
-                                        .id,
-                                )}
-                            </Typography>
-                        )}
+                    
                 </Box>
 
                 <Box
