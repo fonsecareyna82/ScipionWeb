@@ -2,6 +2,7 @@ import { Fragment, useMemo, useState, type MouseEvent } from "react";
 import {
     Box,
     Button,
+    Checkbox,
     CircularProgress,
     IconButton,
     InputAdornment,
@@ -52,6 +53,15 @@ type ActivePane =
     }
     | null;
 
+type TableViewerDraftEdit = {
+    rowId: string | number;
+    columnId: string;
+    value: boolean;
+    parentRowId?: string | number;
+    childrenId?: string;
+    rowData?: Record<string, unknown>;
+};
+
 function formatCellValue(value: TableViewerCell): string {
     if (value === null || value === undefined) return "";
 
@@ -80,6 +90,10 @@ export default function TableViewerPane({
         null,
     );
     const [activePane, setActivePane] = useState<ActivePane>(null);
+
+    const [draftEdits, setDraftEdits] = useState<
+        Record<string, TableViewerDraftEdit>
+    >({});
 
     const [expandedRowIds, setExpandedRowIds] = useState<Set<string>>(
         () => new Set(),
@@ -278,10 +292,95 @@ export default function TableViewerPane({
         setRowMenuRow(null);
     };
 
+    const buildEditKey = (
+        row: TableViewerRow,
+        columnId: string,
+        parentRow?: TableViewerRow,
+        childrenId?: string,
+    ): string => {
+        return [
+            parentRow
+                ? String(parentRow.id)
+                : "root",
+            childrenId ?? "root",
+            String(row.id),
+            columnId,
+        ].join("|");
+    };
+
+    const getEditableBooleanValue = (
+        row: TableViewerRow,
+        columnId: string,
+        parentRow?: TableViewerRow,
+        childrenId?: string,
+    ): boolean => {
+        const editKey = buildEditKey(
+            row,
+            columnId,
+            parentRow,
+            childrenId,
+        );
+
+        const draftEdit =
+            draftEdits[editKey];
+
+        if (draftEdit) {
+            return Boolean(
+                draftEdit.value,
+            );
+        }
+
+        return Boolean(
+            row.cells[columnId],
+        );
+    };
+
+    const handleBooleanEdit = (
+        event: MouseEvent<HTMLButtonElement>,
+        row: TableViewerRow,
+        columnId: string,
+        parentRow?: TableViewerRow,
+        childrenId?: string,
+    ) => {
+        event.preventDefault();
+        event.stopPropagation();
+
+        const editKey = buildEditKey(
+            row,
+            columnId,
+            parentRow,
+            childrenId,
+        );
+
+        const currentValue =
+            getEditableBooleanValue(
+                row,
+                columnId,
+                parentRow,
+                childrenId,
+            );
+
+        setDraftEdits((prev) => ({
+            ...prev,
+            [editKey]: {
+                rowId: row.id,
+                columnId,
+                value: !currentValue,
+                parentRowId:
+                    parentRow?.id,
+                childrenId,
+                rowData:
+                    row.data,
+            },
+        }));
+    };
+
     const renderCell = (
         row: TableViewerRow,
         columnId: string,
         columnActions?: TableViewerAction[],
+        parentRow?: TableViewerRow,
+        childrenId?: string,
     ) => {
         const text = formatCellValue(
             row.cells[columnId],
@@ -289,6 +388,48 @@ export default function TableViewerPane({
 
         const cellContext =
             row.cellContexts?.[columnId];
+
+        const cellEdit =
+            cellContext?.edit;
+
+        if (
+            cellEdit?.type === "boolean"
+        ) {
+            const checked =
+                getEditableBooleanValue(
+                    row,
+                    columnId,
+                    parentRow,
+                    childrenId,
+                );
+
+            return (
+                <Checkbox
+                    size="small"
+                    checked={checked}
+                    disabled={
+                        cellEdit.disabled
+                    }
+                    onClick={(event) =>
+                        handleBooleanEdit(
+                            event,
+                            row,
+                            columnId,
+                            parentRow,
+                            childrenId,
+                        )
+                    }
+                    sx={{
+                        p: 0.25,
+                        color: "#94a3b8",
+
+                        "&.Mui-checked": {
+                            color: "#3f7f8a",
+                        },
+                    }}
+                />
+            );
+        }
 
         const enabledActions = (
             cellContext?.actions ??
@@ -584,6 +725,25 @@ export default function TableViewerPane({
                             ? `${totalRows} items`
                             : `${table.rows.length} / ${totalRows} loaded`}
                     </Typography>
+
+                    {Object.keys(
+                        draftEdits,
+                    ).length > 0 && (
+                            <Typography
+                                variant="caption"
+                                sx={{
+                                    color: "#285e68",
+                                    fontSize: "0.7rem",
+                                    fontWeight: 700,
+                                    whiteSpace:
+                                        "nowrap",
+                                }}
+                            >
+                                {Object.keys(
+                                    draftEdits,
+                                ).length} changes
+                            </Typography>
+                        )}
 
                     <Box
                         sx={{
@@ -1021,6 +1181,8 @@ export default function TableViewerPane({
                                                                                                             childRow,
                                                                                                             column.id,
                                                                                                             column.actions,
+                                                                                                            row,
+                                                                                                            row.children?.id,
                                                                                                         )}
                                                                                                     </TableCell>
                                                                                                 ),

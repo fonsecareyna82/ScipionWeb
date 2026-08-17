@@ -596,10 +596,17 @@ export type TableViewerActionContext = {
   data?: Record<string, unknown>;
 };
 
+export type TableViewerCellEdit = {
+  type: "boolean";
+  field: string;
+  disabled?: boolean;
+};
+
 export type TableViewerCellContext =
   TableViewerActionContext & {
     defaultAction?: TableViewerAction;
     actions?: TableViewerAction[];
+    edit?: TableViewerCellEdit;
   };
 
 export type TableViewerColumn = {
