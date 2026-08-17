@@ -96,9 +96,9 @@ export default function TableViewerDialog({
                     gap: 1.25,
                     flexShrink: 0,
                     borderBottom:
-                        "1px solid #312e81",
+                        "1px solid #475569",
                     background:
-                        "linear-gradient(135deg, #0f172a 0%, #1e293b 58%, #312e81 100%)",
+                        "linear-gradient(135deg, #1f2937 0%, #334155 58%, #475569 100%)",
                     boxShadow:
                         "0 1px 0 rgba(255,255,255,0.05)",
                 }}
@@ -147,11 +147,11 @@ export default function TableViewerDialog({
                                     borderRadius:
                                         1.25,
                                     color:
-                                        "#e0e7ff",
+                                        "#e2e8f0",
                                     backgroundColor:
-                                        "rgba(99,102,241,0.18)",
+                                        "rgba(255,255,255,0.08)",
                                     border:
-                                        "1px solid rgba(199,210,254,0.28)",
+                                        "1px solid rgba(255,255,255,0.16)",
                                     fontSize:
                                         "0.66rem",
                                     fontWeight:
