@@ -42,7 +42,9 @@ type TiltSeriesViewerProps = {
   outputName: string;
   protocolLabel?: string;
   selectedTiltSeriesId?: Id | null;
+  selectedTiltImageIndex?: number | null;
   onTiltSeriesSelect?: (series: TiltSeriesSummary) => void;
+  hideSeriesTable?: boolean;
   hideMetadataAction?: boolean;
 };
 
@@ -148,7 +150,9 @@ export default function TiltSeriesViewer({
   protocolId,
   outputName,
   selectedTiltSeriesId,
+  selectedTiltImageIndex,
   onTiltSeriesSelect,
+  hideSeriesTable = false,
   hideMetadataAction = false,
 }: TiltSeriesViewerProps) {
   const svc = useProjectService();
@@ -469,8 +473,44 @@ export default function TiltSeriesViewer({
         setFramesData(payload);
 
         if (payload.frames.length > 0) {
-          const firstIncluded = payload.frames.findIndex((f) => !f.excluded);
-          setSelectedRowIndex(firstIncluded >= 0 ? firstIncluded : 0);
+          if (selectedTiltImageIndex != null) {
+            const requestedIndex = payload.frames.findIndex(
+              (frame, framePosition) =>
+                getPreviewFrameIndex(
+                  frame,
+                  framePosition,
+                ) === selectedTiltImageIndex,
+            );
+
+            setSelectedRowIndex(
+              requestedIndex >= 0
+                ? requestedIndex
+                : Math.min(
+                  Math.max(
+                    selectedTiltImageIndex,
+                    0,
+                  ),
+                  payload.frames.length - 1,
+                ),
+            );
+          } else if (hideSeriesTable) {
+            setSelectedRowIndex(
+              Math.floor(
+                payload.frames.length / 2,
+              ),
+            );
+          } else {
+            const firstIncluded =
+              payload.frames.findIndex(
+                (frame) => !frame.excluded,
+              );
+
+            setSelectedRowIndex(
+              firstIncluded >= 0
+                ? firstIncluded
+                : 0,
+            );
+          }
         }
       } catch (e: any) {
         if (!cancelled) {
@@ -485,6 +525,46 @@ export default function TiltSeriesViewer({
       cancelled = true;
     };
   }, [selectedSeriesId, projectId, protocolId, outputName, svc]);
+
+
+  useEffect(() => {
+    if (
+      selectedTiltImageIndex == null ||
+      !framesData?.frames?.length
+    ) {
+      return;
+    }
+
+    const requestedIndex =
+      framesData.frames.findIndex(
+        (frame, framePosition) =>
+          getPreviewFrameIndex(
+            frame,
+            framePosition,
+          ) === selectedTiltImageIndex,
+      );
+
+    if (requestedIndex >= 0) {
+      setSelectedRowIndex(
+        requestedIndex,
+      );
+      return;
+    }
+
+    setSelectedRowIndex(
+      Math.min(
+        Math.max(
+          selectedTiltImageIndex,
+          0,
+        ),
+        framesData.frames.length - 1,
+      ),
+    );
+  }, [
+    selectedTiltImageIndex,
+    framesData?.tiltSeriesId,
+    framesData?.frames,
+  ]);
 
   // derivedFilteredFramesForCurrentSelectedSeries
   const filteredFrames: TiltViewRow[] = useMemo(() => {
@@ -1408,7 +1488,9 @@ export default function TiltSeriesViewer({
           sx={{
             flex: 1.4,
             minWidth: 0,
-            display: "flex",
+            display: hideSeriesTable
+              ? "none"
+              : "flex",
             flexDirection: "column",
             borderRight: "1px solid #e5e7eb",
           }}

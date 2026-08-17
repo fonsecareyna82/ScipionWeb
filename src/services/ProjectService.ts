@@ -604,6 +604,7 @@ export type TableViewerRow = {
   id: string | number;
   cells: Record<string, TableViewerCell>;
   data?: Record<string, unknown>;
+  defaultAction?: TableViewerAction;
   actions?: TableViewerAction[];
   children?: TableViewerRowChildren;
 };
@@ -662,6 +663,15 @@ export type TableViewerPaneContent =
     protocolId: Id;
     outputName: string;
     tomogramId?: Id;
+  }
+  | {
+    kind: "tiltSeries";
+    title?: string;
+    projectId: Id;
+    protocolId: Id;
+    outputName: string;
+    tiltSeriesId: Id;
+    frameIndex?: number;
   };
 
 export type AnalyzeViewerResolveContext = {

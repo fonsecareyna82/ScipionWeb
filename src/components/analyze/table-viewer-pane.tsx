@@ -29,6 +29,7 @@ import type {
 } from "@/services/ProjectService";
 import { MetadataViewer } from "./metadata-viewer";
 import Coords3dViewer from "./coords3d-viewer";
+import TiltSeriesViewer from "./tiltseries-viewer";
 import { useProjectService } from "@/ProjectServiceContext";
 
 type TableViewerPaneProps = {
@@ -607,6 +608,13 @@ export default function TableViewerPane({
                                                     setSelectedRowId(
                                                         row.id,
                                                     );
+
+                                                    if (row.defaultAction) {
+                                                        void handleAction(
+                                                            row.defaultAction,
+                                                            row,
+                                                        );
+                                                    }
                                                 }}
                                                 sx={{
                                                     cursor:
@@ -868,11 +876,20 @@ export default function TableViewerPane({
                                                                                             selected={
                                                                                                 childSelected
                                                                                             }
-                                                                                            onClick={() =>
+                                                                                            onClick={() => {
                                                                                                 setSelectedRowId(
                                                                                                     childRow.id,
-                                                                                                )
-                                                                                            }
+                                                                                                );
+
+                                                                                                if (
+                                                                                                    childRow.defaultAction
+                                                                                                ) {
+                                                                                                    void handleAction(
+                                                                                                        childRow.defaultAction,
+                                                                                                        childRow,
+                                                                                                    );
+                                                                                                }
+                                                                                            }}
                                                                                             sx={{
                                                                                                 cursor:
                                                                                                     "pointer",
@@ -1100,6 +1117,26 @@ export default function TableViewerPane({
                                 }
                                 hideMetadataAction
                                 hideTomogramList
+                            />
+                        ) : activePane.content.kind === "tiltSeries" ? (
+                            <TiltSeriesViewer
+                                projectId={
+                                    activePane.content.projectId
+                                }
+                                protocolId={
+                                    activePane.content.protocolId
+                                }
+                                outputName={
+                                    activePane.content.outputName
+                                }
+                                selectedTiltSeriesId={
+                                    activePane.content.tiltSeriesId
+                                }
+                                selectedTiltImageIndex={
+                                    activePane.content.frameIndex
+                                }
+                                hideSeriesTable
+                                hideMetadataAction
                             />
                         ) : (
                             <Box
