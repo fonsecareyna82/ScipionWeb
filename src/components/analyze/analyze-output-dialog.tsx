@@ -1,6 +1,8 @@
 // src/components/analyze/analyze-output-dialog.tsx
 import { memo, useMemo } from "react";
 import { Box, Chip, Dialog, DialogContent, DialogTitle, IconButton, Typography } from "@mui/material";
+import { createTheme, ThemeProvider as MuiThemeProvider } from "@mui/material/styles";
+import { useTheme as useScipionTheme } from "@/context/ThemeContext";
 import { CloseIcon } from "@/icons";
 import { MetadataViewer } from "./metadata-viewer";
 import VolumeViewer from "./volume-viewer";
@@ -73,7 +75,9 @@ function isSetOfMetadataKind(k?: string) {
 const dialogPaperSx = {
   borderRadius: 2,
   overflow: "hidden",
-  border: "1px solid rgba(0,0,0,0.08)",
+  border: "1px solid",
+  borderColor: "divider",
+  bgcolor: "background.paper",
   boxShadow: "0 10px 20px rgba(0,0,0,0.15), 0 6px 10px rgba(0,0,0,0.08)",
   display: "flex",
   flexDirection: "column",
@@ -130,6 +134,13 @@ function buildOutputRef(raw: any): AnalyzeOutputRef {
 }
 
 function AnalyzeOutputDialog({ open, onClose, projectId, protocolId, protocolLabel, outputName, outputRaw }: AnalyzeOutputDialogProps) {
+  const { theme: appTheme } = useScipionTheme();
+
+  const muiTheme = useMemo(
+    () => createTheme({ palette: { mode: appTheme } }),
+    [appTheme],
+  );
+
   const pointerClass = useMemo(() => {
     const r = unwrapOutputRaw(outputRaw);
     return toStringSafe(r?._class || r?.pointerClass || r?.class || r?.type);
@@ -200,36 +211,38 @@ function AnalyzeOutputDialog({ open, onClose, projectId, protocolId, protocolLab
   };
 
   return (
-    <Dialog
-      open={open}
-      onClose={handleDialogClose}
-      maxWidth={false}
-      fullWidth
-      PaperProps={{ sx: dialogPaperSx }}
-      onDoubleClickCapture={(event) => {
-        event.stopPropagation();
-      }}
-    >
-      <DialogTitle component="div" sx={headerSx}>
-        <Box sx={{ display: "flex", flexDirection: "column", minWidth: 0, gap: 0.25, flex: 1 }}>
-          <Box sx={{ display: "flex", alignItems: "baseline", gap: 1, minWidth: 0 }}>
-            <Typography variant="subtitle1" sx={{ color: "#f3f4f6", fontWeight: 600, letterSpacing: 0.2, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>
-              Analyze Result - {outputName}
+    <MuiThemeProvider theme={muiTheme}>
+      <Dialog
+        open={open}
+        onClose={handleDialogClose}
+        maxWidth={false}
+        fullWidth
+        PaperProps={{ sx: dialogPaperSx }}
+        onDoubleClickCapture={(event) => {
+          event.stopPropagation();
+        }}
+      >
+        <DialogTitle component="div" sx={headerSx}>
+          <Box sx={{ display: "flex", flexDirection: "column", minWidth: 0, gap: 0.25, flex: 1 }}>
+            <Box sx={{ display: "flex", alignItems: "baseline", gap: 1, minWidth: 0 }}>
+              <Typography variant="subtitle1" sx={{ color: "#f3f4f6", fontWeight: 600, letterSpacing: 0.2, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>
+                Analyze Result - {outputName}
+              </Typography>
+              {pointerClass ? <Chip size="small" label={pointerClass} sx={{ height: 22, color: "#e5e7eb", bgcolor: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.18)", "& .MuiChip-label": { px: 1, py: 0.25 } }} /> : null}
+            </Box>
+            <Typography variant="caption" sx={{ color: "rgba(229,231,235,0.78)", overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>
+              Protocol: {String(protocolLabel)}
             </Typography>
-            {pointerClass ? <Chip size="small" label={pointerClass} sx={{ height: 22, color: "#e5e7eb", bgcolor: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.18)", "& .MuiChip-label": { px: 1, py: 0.25 } }} /> : null}
           </Box>
-          <Typography variant="caption" sx={{ color: "rgba(229,231,235,0.78)", overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>
-            Protocol: {String(protocolLabel)}
-          </Typography>
-        </Box>
-        <IconButton onClick={onClose} aria-label="Close analyze dialog" size="small" sx={closeBtnSx}>
-          <CloseIcon fontSize="small" />
-        </IconButton>
-      </DialogTitle>
-      <DialogContent dividers={false} sx={{ p: 0, display: "flex", flex: 1, minHeight: 0, minWidth: 0, overflow: "hidden" }}>
-        <Box sx={{ flex: 1, minHeight: 0, minWidth: 0, overflow: "hidden" }}>{body}</Box>
-      </DialogContent>
-    </Dialog>
+          <IconButton onClick={onClose} aria-label="Close analyze dialog" size="small" sx={closeBtnSx}>
+            <CloseIcon fontSize="small" />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent dividers={false} sx={{ p: 0, display: "flex", flex: 1, minHeight: 0, minWidth: 0, overflow: "hidden" }}>
+          <Box sx={{ flex: 1, minHeight: 0, minWidth: 0, overflow: "hidden" }}>{body}</Box>
+        </DialogContent>
+      </Dialog>
+    </MuiThemeProvider>
   );
 }
 

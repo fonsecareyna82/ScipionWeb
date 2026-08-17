@@ -161,11 +161,12 @@ function ContextTreeRow({
           borderRadius: 1.25,
           cursor: "pointer",
           position: "relative",
-          color: active ? "#0f172a" : "#334155",
-          background: active ? "#eff6ff" : "#ffffff",
-          border: active ? "1px solid rgba(37,99,235,0.28)" : "1px solid transparent",
+          color: "text.primary",
+          bgcolor: active ? "action.selected" : "background.paper",
+          border: "1px solid",
+          borderColor: active ? "primary.main" : "transparent",
           "&:hover": {
-            background: active ? "#dbeafe" : "#f8fafc",
+            bgcolor: active ? "action.selected" : "action.hover",
           },
           "&:before":
             depth > 0
@@ -187,7 +188,7 @@ function ContextTreeRow({
               event.stopPropagation();
               onToggle(item.id);
             }}
-            sx={{ width: 20, height: 20, color: "#64748b", flexShrink: 0 }}
+            sx={{ width: 20, height: 20, color: "text.secondary", flexShrink: 0 }}
           >
             {expanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
           </IconButton>
@@ -203,8 +204,8 @@ function ContextTreeRow({
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            color: active ? "#1d4ed8" : "#64748b",
-            background: active ? "#dbeafe" : "#f8fafc",
+            color: active ? "primary.main" : "text.secondary",
+            bgcolor: active ? "action.selected" : "action.hover",
             flexShrink: 0,
           }}
         >
@@ -231,7 +232,7 @@ function ContextTreeRow({
               sx={{
                 display: "block",
                 mt: 0.1,
-                color: "#64748b",
+                color: "text.secondary",
                 lineHeight: 1.15,
                 overflow: "hidden",
                 whiteSpace: "nowrap",
@@ -254,12 +255,12 @@ function ContextTreeRow({
             sx={{
               width: 24,
               height: 24,
-              color: metadataActive ? "#1d4ed8" : "#94a3b8",
-              background: metadataActive ? "#dbeafe" : "transparent",
+              color: metadataActive ? "primary.main" : "text.disabled",
+              bgcolor: metadataActive ? "action.selected" : "transparent",
               flexShrink: 0,
               "&:hover": {
-                color: "#1d4ed8",
-                background: "#eff6ff",
+                color: "primary.main",
+                bgcolor: "action.hover",
               },
             }}
           >
@@ -795,7 +796,7 @@ export default function IntegratedTomographyViewer({
         display: "grid",
         gridTemplateColumns: "250px minmax(0, 1fr)",
         overflow: "hidden",
-        background: "#f8fafc",
+        bgcolor: "background.default",
       }}
     >
       <Paper
@@ -804,17 +805,18 @@ export default function IntegratedTomographyViewer({
         sx={{
           minHeight: 0,
           overflow: "hidden",
-          borderRight: "1px solid rgba(226,232,240,0.95)",
-          background: "#ffffff",
+          borderRight: "1px solid",
+          borderColor: "divider",
+          bgcolor: "background.paper",
           p: 1,
         }}
       >
         <Box sx={{ display: "flex", alignItems: "center", gap: 1, minWidth: 0, mb: 0.75 }}>
           <Box sx={{ minWidth: 0, flex: 1 }}>
-            <Typography variant="overline" sx={{ display: "block", color: "#64748b", fontWeight: 800, letterSpacing: 0.7, lineHeight: 1.1 }}>
+            <Typography variant="overline" sx={{ display: "block", ccolor: "text.secondary", fontWeight: 800, letterSpacing: 0.7, lineHeight: 1.1 }}>
               Tomography context
             </Typography>
-            <Typography variant="caption" sx={{ display: "block", color: "#94a3b8", lineHeight: 1.15, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            <Typography variant="caption" sx={{ display: "block", color: "text.disabled", lineHeight: 1.15, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {pointerClass || "Integrated viewer"}
             </Typography>
           </Box>
@@ -822,7 +824,7 @@ export default function IntegratedTomographyViewer({
         </Box>
 
         {contextError ? (
-          <Typography variant="caption" sx={{ display: "block", color: "#b91c1c", mb: 0.65 }}>
+          <Typography variant="caption" sx={{ display: "block", color: "error.main", mb: 0.65 }}>
             {contextError}
           </Typography>
         ) : null}

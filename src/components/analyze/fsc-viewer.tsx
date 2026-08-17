@@ -20,6 +20,7 @@ import {
   Switch,
   Typography,
 } from "@mui/material";
+import { useTheme as useMuiTheme } from "@mui/material/styles";
 import { useProjectService } from "@/ProjectServiceContext";
 
 type Id = string | number;
@@ -103,7 +104,7 @@ function normalizeFscRowsPayload(payload: unknown): {
 
   const threshold =
     typeof (payload as { threshold?: unknown } | null)?.threshold === "number" &&
-    Number.isFinite((payload as { threshold?: number }).threshold)
+      Number.isFinite((payload as { threshold?: number }).threshold)
       ? Number((payload as { threshold?: number }).threshold)
       : fallbackThreshold;
 
@@ -117,8 +118,8 @@ function normalizeFscRowsPayload(payload: unknown): {
       const resolutionRaw = (item as { resolution?: unknown } | null)?.resolution;
       const resolution =
         typeof resolutionRaw === "number" &&
-        Number.isFinite(resolutionRaw) &&
-        resolutionRaw > 0
+          Number.isFinite(resolutionRaw) &&
+          resolutionRaw > 0
           ? resolutionRaw
           : null;
 
@@ -312,6 +313,14 @@ function FscPlot({
   threshold0143: number;
   show0143: boolean;
 }) {
+
+  const theme = useMuiTheme();
+  const plotBg = theme.palette.background.paper;
+  const gridColor = theme.palette.divider;
+  const textColor = theme.palette.text.secondary;
+  const axisColor = theme.palette.text.primary;
+  const primaryColor = theme.palette.primary.main;
+
   const width = 1000;
   const height = 520;
   const margin = { top: 24, right: 24, bottom: 52, left: 68 };
@@ -373,7 +382,7 @@ function FscPlot({
         height="100%"
         preserveAspectRatio="none"
       >
-        <rect x={0} y={0} width={width} height={height} fill="#ffffff" />
+        <rect x={0} y={0} width={width} height={height} fill={plotBg} />
 
         {yTicks.map((tick) => {
           const isThreshold = Math.abs(tick - threshold0143) < 1e-9;
@@ -393,7 +402,7 @@ function FscPlot({
                 y={mapY(tick) + 4}
                 fontSize="12"
                 textAnchor="end"
-                fill="#475569"
+                fill={textColor}
               >
                 {tick.toFixed(3).replace(/0+$/, "").replace(/\.$/, "")}
               </text>
@@ -408,7 +417,7 @@ function FscPlot({
               y1={margin.top}
               x2={mapX(tick)}
               y2={height - margin.bottom}
-              stroke="#e2e8f0"
+              stroke={gridColor}
               strokeDasharray="3 3"
             />
             <text
@@ -416,7 +425,7 @@ function FscPlot({
               y={height - margin.bottom + 20}
               fontSize="12"
               textAnchor="middle"
-              fill="#475569"
+              fill={textColor}
             >
               {formatTickLabel(tick)}
             </text>
@@ -428,7 +437,7 @@ function FscPlot({
           y1={height - margin.bottom}
           x2={width - margin.right}
           y2={height - margin.bottom}
-          stroke="#334155"
+          stroke={axisColor}
           strokeWidth="1.5"
         />
         <line
@@ -436,7 +445,7 @@ function FscPlot({
           y1={margin.top}
           x2={margin.left}
           y2={height - margin.bottom}
-          stroke="#334155"
+          stroke={axisColor}
           strokeWidth="1.5"
         />
 
@@ -447,7 +456,7 @@ function FscPlot({
               y1={mapY(threshold0143)}
               x2={width - margin.right}
               y2={mapY(threshold0143)}
-              stroke="#2563eb"
+              stroke={primaryColor}
               strokeWidth="1.5"
               strokeDasharray="8 6"
             />
@@ -456,7 +465,7 @@ function FscPlot({
               y={mapY(threshold0143) - 6}
               fontSize="11"
               textAnchor="end"
-              fill="#2563eb"
+              fill={primaryColor}
             >
               {threshold0143.toFixed(3)}
             </text>
@@ -481,11 +490,11 @@ function FscPlot({
             height={legendHeight}
             rx={8}
             ry={8}
-            fill="#ffffff"
-            stroke="#cbd5e1"
+            fill={plotBg}
+            stroke={gridColor}
           />
           {legendSeries.length === 0 ? (
-            <text x={12} y={24} fontSize="12" fill="#64748b">
+            <text x={12} y={24} fontSize="12" fill={textColor}>
               No visible curves
             </text>
           ) : (
@@ -504,7 +513,7 @@ function FscPlot({
                     stroke={palette[index % palette.length]}
                     strokeWidth="2.5"
                   />
-                  <text x={24} y={0} fontSize="12" fill="#334155">
+                  <text x={24} y={0} fontSize="12" stroke={axisColor}>
                     {`${series.label} (${resolutionText})`}
                   </text>
                 </g>
@@ -518,7 +527,7 @@ function FscPlot({
           y={height - 12}
           fontSize="13"
           textAnchor="middle"
-          fill="#334155"
+          stroke={axisColor}
         >
           Resolution (Å)
         </text>
@@ -527,7 +536,7 @@ function FscPlot({
           transform={`translate(18 ${(margin.top + height - margin.bottom) / 2}) rotate(-90)`}
           fontSize="13"
           textAnchor="middle"
-          fill="#334155"
+          fill={axisColor}
         >
           FSC
         </text>
