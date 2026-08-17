@@ -4,6 +4,10 @@ import { Box, Button, CircularProgress, Typography } from "@mui/material";
 import { useProjectService } from "@/ProjectServiceContext";
 import AnalyzeOutputDialog from "@/components/analyze/analyze-output-dialog";
 
+import TableViewerDialog from "@/components/analyze/table-viewer-dialog";
+import type { AnalyzeViewerResolveDecision } from "@/services/ProjectService";
+
+
 type ProtocolOutputsPanelProps = {
     projectId: number | string | null;
     protocolId: number | string | null;
@@ -38,6 +42,17 @@ export default function ProtocolOutputsPanel({
     const previewUrlRef = useRef<string | null>(null);
 
     const [analyzeOpen, setAnalyzeOpen] = useState(false);
+
+    const [tableViewerState, setTableViewerState] = useState<
+        Extract<
+            AnalyzeViewerResolveDecision,
+            {
+                handled: true;
+                viewer: "table";
+            }
+        > | null
+    >(null);
+
 
     const normalizedOutputs = useMemo<NormalizedOutput[]>(() => {
         const arr = Array.isArray(outputsFromApi) ? outputsFromApi : [];
@@ -164,25 +179,30 @@ export default function ProtocolOutputsPanel({
         const resolveAnalyzeViewer = (svc as any)?.resolveAnalyzeViewer;
         if (typeof resolveAnalyzeViewer === "function") {
             try {
-                const res = await resolveAnalyzeViewer(ctx);
+                const res: AnalyzeViewerResolveDecision =
+                    await resolveAnalyzeViewer(ctx);
 
-                if (res?.handled) {
-                    const url = typeof res?.url === "string" ? res.url : "";
-                    const target = typeof res?.target === "string" ? res.target : "_self";
-
-                    if (url) {
-                        if (target === "_self") {
-                            if (url.startsWith("#")) {
-                                window.location.hash = url.slice(1);
-                            } else {
-                                window.location.assign(url);
-                            }
-                        } else {
-                            window.open(url, target);
-                        }
+                if (res.handled) {
+                    if (res.viewer === "table") {
+                        setTableViewerState(res);
+                        return;
                     }
 
-                    return;
+                    if (res.viewer === "external") {
+                        const target = res.target ?? "_self";
+
+                        if (target === "_self") {
+                            if (res.url.startsWith("#")) {
+                                window.location.hash = res.url.slice(1);
+                            } else {
+                                window.location.assign(res.url);
+                            }
+                        } else {
+                            window.open(res.url, target);
+                        }
+
+                        return;
+                    }
                 }
             } catch (err) {
                 console.warn("[ProtocolOutputsPanel] resolveAnalyzeViewer failed, falling back:", err);
@@ -912,6 +932,18 @@ export default function ProtocolOutputsPanel({
                 outputName={activeOutput?.name || ""}
                 outputRaw={activeOutput?.raw ?? null}
             />
+            {tableViewerState && (
+                <TableViewerDialog
+                    open
+                    onClose={() => setTableViewerState(null)}
+                    context={tableViewerState.context}
+                    table={tableViewerState.table}
+                    title={tableViewerState.title}
+                    protocolLabel={protocolLabel}
+                />
+            )}
+
         </>
+
     );
 }
