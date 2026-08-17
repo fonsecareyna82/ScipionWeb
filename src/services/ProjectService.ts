@@ -659,27 +659,27 @@ export type TableViewerPaneContent =
   | {
     kind: "coords3d";
     title?: string;
-    projectId: Id;
-    protocolId: Id;
+    projectId: NonNullable<Id>;
+    protocolId: NonNullable<Id>;
     outputName: string;
-    tomogramId?: Id;
+    tomogramId?: NonNullable<Id>;
   }
   | {
     kind: "tiltSeries";
     title?: string;
-    projectId: Id;
-    protocolId: Id;
+    projectId: NonNullable<Id>;
+    protocolId: NonNullable<Id>;
     outputName: string;
-    tiltSeriesId: Id;
+    tiltSeriesId: NonNullable<Id>;
     frameIndex?: number;
   }
   | {
     kind: "volume";
     title?: string;
-    projectId: Id;
-    protocolId: Id;
+    projectId: NonNullable<Id>;
+    protocolId: NonNullable<Id>;
     outputName: string;
-    volumeId: Id;
+    volumeId: NonNullable<Id>;
 };
 
 export type AnalyzeViewerResolveContext = {
