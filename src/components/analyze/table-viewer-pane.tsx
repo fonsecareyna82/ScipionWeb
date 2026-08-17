@@ -56,6 +56,7 @@ type ActivePane =
 type TableViewerDraftEdit = {
     rowId: string | number;
     columnId: string;
+    field: string;
     value: boolean;
     parentRowId?: string | number;
     childrenId?: string;
@@ -308,12 +309,112 @@ export default function TableViewerPane({
         ].join("|");
     };
 
+    const getOriginalBooleanValue = (
+        row: TableViewerRow,
+        columnId: string,
+    ): boolean => {
+        return Boolean(
+            row.cells[columnId],
+        );
+    };
+
+    const getActiveParentCascadeValue = (
+        parentRow: TableViewerRow | undefined,
+        childColumnId: string,
+        childrenId: string | undefined,
+    ): boolean | undefined => {
+        if (
+            !parentRow ||
+            !childrenId
+        ) {
+            return undefined;
+        }
+
+        const cellContexts =
+            parentRow.cellContexts ?? {};
+
+        for (
+            const [
+                parentColumnId,
+                cellContext,
+            ] of Object.entries(
+                cellContexts,
+            )
+        ) {
+            const edit =
+                cellContext.edit;
+
+            if (
+                edit?.type !== "boolean" ||
+                !edit.cascadeToChildren
+            ) {
+                continue;
+            }
+
+            const cascade =
+                edit.cascadeToChildren;
+
+            if (
+                cascade.childrenId !==
+                childrenId
+            ) {
+                continue;
+            }
+
+            const targetColumnId =
+                cascade.columnId ??
+                parentColumnId;
+
+            if (
+                targetColumnId !==
+                childColumnId
+            ) {
+                continue;
+            }
+
+            const parentEditKey =
+                buildEditKey(
+                    parentRow,
+                    parentColumnId,
+                );
+
+            const parentDraftEdit =
+                draftEdits[
+                parentEditKey
+                ];
+
+            if (
+                parentDraftEdit !==
+                undefined
+            ) {
+                return Boolean(
+                    parentDraftEdit.value,
+                );
+            }
+        }
+
+        return undefined;
+    };
+
     const getEditableBooleanValue = (
         row: TableViewerRow,
         columnId: string,
         parentRow?: TableViewerRow,
         childrenId?: string,
     ): boolean => {
+        const cascadeValue =
+            getActiveParentCascadeValue(
+                parentRow,
+                columnId,
+                childrenId,
+            );
+
+        if (
+            cascadeValue !== undefined
+        ) {
+            return cascadeValue;
+        }
+
         const editKey = buildEditKey(
             row,
             columnId,
@@ -330,8 +431,35 @@ export default function TableViewerPane({
             );
         }
 
-        return Boolean(
-            row.cells[columnId],
+        return getOriginalBooleanValue(
+            row,
+            columnId,
+        );
+    };
+
+    const isBooleanEditDisabled = (
+        row: TableViewerRow,
+        columnId: string,
+        parentRow?: TableViewerRow,
+        childrenId?: string,
+    ): boolean => {
+        const cellEdit =
+            row.cellContexts?.[
+                columnId
+            ]?.edit;
+
+        if (
+            cellEdit?.disabled
+        ) {
+            return true;
+        }
+
+        return (
+            getActiveParentCascadeValue(
+                parentRow,
+                columnId,
+                childrenId,
+            ) !== undefined
         );
     };
 
@@ -345,12 +473,40 @@ export default function TableViewerPane({
         event.preventDefault();
         event.stopPropagation();
 
+        const cellEdit =
+            row.cellContexts?.[
+                columnId
+            ]?.edit;
+
+        if (
+            cellEdit?.type !== "boolean" ||
+            cellEdit.disabled
+        ) {
+            return;
+        }
+
+        if (
+            getActiveParentCascadeValue(
+                parentRow,
+                columnId,
+                childrenId,
+            ) !== undefined
+        ) {
+            return;
+        }
+
         const editKey = buildEditKey(
             row,
             columnId,
             parentRow,
             childrenId,
         );
+
+        const originalValue =
+            getOriginalBooleanValue(
+                row,
+                columnId,
+            );
 
         const currentValue =
             getEditableBooleanValue(
@@ -360,19 +516,41 @@ export default function TableViewerPane({
                 childrenId,
             );
 
-        setDraftEdits((prev) => ({
-            ...prev,
-            [editKey]: {
+        const nextValue =
+            !currentValue;
+
+        setDraftEdits((prev) => {
+            const next = {
+                ...prev,
+            };
+
+            if (
+                nextValue ===
+                originalValue
+            ) {
+                delete next[
+                    editKey
+                ];
+
+                return next;
+            }
+
+            next[editKey] = {
                 rowId: row.id,
                 columnId,
-                value: !currentValue,
+                field:
+                    cellEdit.field,
+                value:
+                    nextValue,
                 parentRowId:
                     parentRow?.id,
                 childrenId,
                 rowData:
                     row.data,
-            },
-        }));
+            };
+
+            return next;
+        });
     };
 
     const renderCell = (
@@ -408,7 +586,12 @@ export default function TableViewerPane({
                     size="small"
                     checked={checked}
                     disabled={
-                        cellEdit.disabled
+                        isBooleanEditDisabled(
+                            row,
+                            columnId,
+                            parentRow,
+                            childrenId,
+                        )
                     }
                     onClick={(event) =>
                         handleBooleanEdit(
@@ -425,6 +608,14 @@ export default function TableViewerPane({
 
                         "&.Mui-checked": {
                             color: "#3f7f8a",
+                        },
+
+                        "&.Mui-disabled": {
+                            color: "#cbd5e1",
+                        },
+
+                        "&.Mui-disabled.Mui-checked": {
+                            color: "#7aa4ab",
                         },
                     }}
                 />
@@ -741,7 +932,11 @@ export default function TableViewerPane({
                             >
                                 {Object.keys(
                                     draftEdits,
-                                ).length} changes
+                                ).length === 1
+                                    ? "1 change"
+                                    : `${Object.keys(
+                                        draftEdits,
+                                    ).length} changes`}
                             </Typography>
                         )}
 

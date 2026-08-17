@@ -600,6 +600,11 @@ export type TableViewerCellEdit = {
   type: "boolean";
   field: string;
   disabled?: boolean;
+
+  cascadeToChildren?: {
+    childrenId: string;
+    columnId?: string;
+  };
 };
 
 export type TableViewerCellContext =
