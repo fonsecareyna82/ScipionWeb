@@ -20,6 +20,8 @@ import type {
   TableViewerContext,
   TableViewerActionRequest,
   TableViewerPaneContent,
+  TableViewerEditActionRequest,
+  TableViewerEditActionResult,
   ProtocolLogChannelsResponse,
   ProtocolLogsChunkResponse,
   ProtocolLogOffsets,
@@ -419,6 +421,95 @@ const defaultService: ProjectService = {
     }
 
     return raw as TableViewerPaneContent;
+  },
+
+  executeTableViewerEditAction: async (
+    context: TableViewerContext,
+    request: TableViewerEditActionRequest,
+  ): Promise<TableViewerEditActionResult> => {
+    const projectId =
+      toId(context.projectId);
+
+    const protocolId =
+      toId(context.protocolId);
+
+    const url =
+      `${BASE_URL}/projects/${projectId}/protocols/${protocolId}/viewer/table/edit-action`;
+
+    const payload = {
+      outputName:
+        context.outputName,
+
+      pointerClass:
+        context.pointerClass ?? "",
+
+      tableKey:
+        context.tableKey ?? "",
+
+      actionId:
+        request.actionId,
+
+      edits:
+        request.edits,
+    };
+
+    const res = await fetchWithAuth(
+      url,
+      {
+        method: "POST",
+
+        headers: {
+          "Content-Type":
+            "application/json",
+        },
+
+        body:
+          JSON.stringify(
+            payload,
+          ),
+      },
+    );
+
+    if (!res.ok) {
+      const text =
+        await res.text();
+
+      throw new Error(
+        text ||
+        "Failed to execute table edit action",
+      );
+    }
+
+    const raw =
+      await res
+        .json()
+        .catch(() => null);
+
+    if (
+      !raw ||
+      typeof raw !== "object"
+    ) {
+      throw new Error(
+        "No edit action result was returned.",
+      );
+    }
+
+    return {
+      success:
+        raw.success !== false,
+
+      message:
+        typeof raw.message ===
+          "string"
+          ? raw.message
+          : undefined,
+
+      clearEdits:
+        raw.clearEdits === true,
+
+      data:
+        raw.data,
+    };
   },
 
   resolveTableViewerChildren: async (

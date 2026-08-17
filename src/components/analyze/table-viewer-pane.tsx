@@ -28,12 +28,15 @@ import type {
     TableViewerRow,
     TableViewerPaneContent,
     TableViewerChildrenData,
+    TableViewerEdit,
+    TableViewerEditAction,
 } from "@/services/ProjectService";
 import { MetadataViewer } from "./metadata-viewer";
 import Coords3dViewer from "./coords3d-viewer";
 import TiltSeriesViewer from "./tiltseries-viewer";
 import VolumeViewer from "./volume-viewer";
 import { useProjectService } from "@/ProjectServiceContext";
+import toast from "react-hot-toast";
 
 type TableViewerPaneProps = {
     context: TableViewerContext;
@@ -52,16 +55,6 @@ type ActivePane =
         content: TableViewerPaneContent;
     }
     | null;
-
-type TableViewerDraftEdit = {
-    rowId: string | number;
-    columnId: string;
-    field: string;
-    value: boolean;
-    parentRowId?: string | number;
-    childrenId?: string;
-    rowData?: Record<string, unknown>;
-};
 
 function formatCellValue(value: TableViewerCell): string {
     if (value === null || value === undefined) return "";
@@ -93,8 +86,24 @@ export default function TableViewerPane({
     const [activePane, setActivePane] = useState<ActivePane>(null);
 
     const [draftEdits, setDraftEdits] = useState<
-        Record<string, TableViewerDraftEdit>
+        Record<string, TableViewerEdit>
     >({});
+
+    const [
+        editActionBusyId,
+        setEditActionBusyId,
+    ] = useState<string | null>(
+        null,
+    );
+
+    const draftEditList =
+        useMemo(
+            () =>
+                Object.values(
+                    draftEdits,
+                ),
+            [draftEdits],
+        );
 
     const [expandedRowIds, setExpandedRowIds] = useState<Set<string>>(
         () => new Set(),
@@ -209,6 +218,71 @@ export default function TableViewerPane({
                             : "Failed to load viewer.",
                 },
             });
+        }
+    };
+
+    const handleEditAction = async (
+        action: TableViewerEditAction,
+    ) => {
+        if (
+            action.disabled ||
+            editActionBusyId !== null
+        ) {
+            return;
+        }
+
+        if (
+            action.requiresChanges &&
+            draftEditList.length === 0
+        ) {
+            return;
+        }
+
+        setEditActionBusyId(
+            action.id,
+        );
+
+        try {
+            const result =
+                await svc
+                    .executeTableViewerEditAction(
+                        context,
+                        {
+                            actionId:
+                                action.id,
+
+                            edits:
+                                draftEditList,
+                        },
+                    );
+
+            if (!result.success) {
+                throw new Error(
+                    result.message ||
+                    "The action could not be completed.",
+                );
+            }
+
+            if (
+                result.clearEdits
+            ) {
+                setDraftEdits({});
+            }
+
+            toast.success(
+                result.message ||
+                `${action.label} completed.`,
+            );
+        } catch (error) {
+            toast.error(
+                error instanceof Error
+                    ? error.message
+                    : "The action failed.",
+            );
+        } finally {
+            setEditActionBusyId(
+                null,
+            );
         }
     };
 
@@ -917,28 +991,22 @@ export default function TableViewerPane({
                             : `${table.rows.length} / ${totalRows} loaded`}
                     </Typography>
 
-                    {Object.keys(
-                        draftEdits,
-                    ).length > 0 && (
-                            <Typography
-                                variant="caption"
-                                sx={{
-                                    color: "#285e68",
-                                    fontSize: "0.7rem",
-                                    fontWeight: 700,
-                                    whiteSpace:
-                                        "nowrap",
-                                }}
-                            >
-                                {Object.keys(
-                                    draftEdits,
-                                ).length === 1
-                                    ? "1 change"
-                                    : `${Object.keys(
-                                        draftEdits,
-                                    ).length} changes`}
-                            </Typography>
-                        )}
+                    {draftEditList.length > 0 && (
+                        <Typography
+                            variant="caption"
+                            sx={{
+                                color: "#285e68",
+                                fontSize: "0.7rem",
+                                fontWeight: 700,
+                                whiteSpace:
+                                    "nowrap",
+                            }}
+                        >
+                            {draftEditList.length === 1
+                                ? "1 change"
+                                : `${draftEditList.length} changes`}
+                        </Typography>
+                    )}
 
                     <Box
                         sx={{
@@ -978,6 +1046,120 @@ export default function TableViewerPane({
                             </Button>
                         ),
                     )}
+
+                    {draftEditList.length >
+                        0 && (
+                            <Button
+                                size="small"
+                                variant="text"
+                                disabled={
+                                    editActionBusyId !==
+                                    null
+                                }
+                                onClick={() =>
+                                    setDraftEdits({})
+                                }
+                                sx={{
+                                    height: 32,
+                                    px: 1,
+                                    textTransform:
+                                        "none",
+                                    fontSize:
+                                        "0.72rem",
+                                    color:
+                                        "#64748b",
+
+                                    "&:hover": {
+                                        backgroundColor:
+                                            "#f1f5f9",
+                                        color:
+                                            "#334155",
+                                    },
+                                }}
+                            >
+                                Reset
+                            </Button>
+                        )}
+
+                    {(
+                        table.editActions ??
+                        []
+                    ).map(
+                        (action) => {
+                            const busy =
+                                editActionBusyId ===
+                                action.id;
+
+                            const disabled =
+                                Boolean(
+                                    action.disabled,
+                                ) ||
+                                editActionBusyId !==
+                                null ||
+                                (
+                                    Boolean(
+                                        action.requiresChanges,
+                                    ) &&
+                                    draftEditList.length ===
+                                    0
+                                );
+
+                            return (
+                                <Button
+                                    key={
+                                        action.id
+                                    }
+                                    size="small"
+                                    variant="outlined"
+                                    disabled={
+                                        disabled
+                                    }
+                                    onClick={() =>
+                                        void handleEditAction(
+                                            action,
+                                        )
+                                    }
+                                    sx={{
+                                        height: 32,
+                                        minWidth: 72,
+                                        px: 1.25,
+                                        borderRadius:
+                                            1.5,
+                                        textTransform:
+                                            "none",
+                                        fontSize:
+                                            "0.72rem",
+                                        fontWeight:
+                                            700,
+                                        color:
+                                            "#285e68",
+                                        borderColor:
+                                            "#9fc5cc",
+                                        backgroundColor:
+                                            "#f4fafa",
+
+                                        "&:hover": {
+                                            color:
+                                                "#1f4f58",
+                                            borderColor:
+                                                "#6fa1aa",
+                                            backgroundColor:
+                                                "#e3f1f3",
+                                        },
+                                    }}
+                                >
+                                    {busy ? (
+                                        <CircularProgress
+                                            size={14}
+                                        />
+                                    ) : (
+                                        action.label
+                                    )}
+                                </Button>
+                            );
+                        },
+                    )}
+
                 </Box>
 
                 {/* Table */}

@@ -585,6 +585,38 @@ export type TableViewerAction = {
   disabled?: boolean;
 };
 
+export type TableViewerEditAction = {
+  id: string;
+  label: string;
+  icon?: string;
+  disabled?: boolean;
+  requiresChanges?: boolean;
+};
+
+export type TableViewerEdit = {
+  rowId: string | number;
+  columnId: string;
+  field: string;
+  value: TableViewerCell;
+
+  parentRowId?: string | number;
+  childrenId?: string;
+
+  rowData?: Record<string, unknown>;
+};
+
+export type TableViewerEditActionRequest = {
+  actionId: string;
+  edits: TableViewerEdit[];
+};
+
+export type TableViewerEditActionResult = {
+  success: boolean;
+  message?: string;
+  clearEdits?: boolean;
+  data?: unknown;
+};
+
 export type TableViewerActionTarget = {
   protocolId?: NonNullable<Id>;
   outputName?: string;
@@ -667,7 +699,11 @@ export type TableViewerData = {
   title?: string;
   columns: TableViewerColumn[];
   rows: TableViewerRow[];
+
   actions?: TableViewerAction[];
+
+  editActions?: TableViewerEditAction[];
+
   page?: TableViewerPage;
 };
 
@@ -717,7 +753,7 @@ export type TableViewerPaneContent =
     protocolId: NonNullable<Id>;
     outputName: string;
     volumeId: NonNullable<Id>;
-};
+  };
 
 export type AnalyzeViewerResolveContext = {
   projectId: Id;
@@ -1860,10 +1896,15 @@ export interface ProjectService<
     request: TableViewerActionRequest
   ): Promise<TableViewerPaneContent>;
 
+  executeTableViewerEditAction(
+    context: TableViewerContext,
+    request: TableViewerEditActionRequest
+  ): Promise<TableViewerEditActionResult>;
+
   resolveTableViewerChildren(
-  context: TableViewerContext,
-  request: TableViewerChildrenRequest
-): Promise<TableViewerChildrenData>;
+    context: TableViewerContext,
+    request: TableViewerChildrenRequest
+  ): Promise<TableViewerChildrenData>;
 
   fetchIntegratedAnalyzeContext(
     projectId: Id,
