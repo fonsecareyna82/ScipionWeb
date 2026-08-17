@@ -455,6 +455,13 @@ const defaultService: ProjectService = {
     const raw = await res.json().catch(() => null);
 
     return {
+      title:
+        typeof raw?.title === "string"
+          ? raw.title
+          : undefined,
+      columns: Array.isArray(raw?.columns)
+        ? raw.columns
+        : [],
       rows: Array.isArray(raw?.rows)
         ? raw.rows
         : [],

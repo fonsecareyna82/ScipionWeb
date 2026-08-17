@@ -615,6 +615,8 @@ export type TableViewerChildrenRequest = {
 };
 
 export type TableViewerChildrenData = {
+  title?: string;
+  columns: TableViewerColumn[];
   rows: TableViewerRow[];
 };
 

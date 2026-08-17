@@ -25,6 +25,7 @@ import type {
     TableViewerData,
     TableViewerRow,
     TableViewerPaneContent,
+    TableViewerChildrenData,
 } from "@/services/ProjectService";
 import { MetadataViewer } from "./metadata-viewer";
 import Coords3dViewer from "./coords3d-viewer";
@@ -82,7 +83,7 @@ export default function TableViewerPane({
     );
 
     const [childrenByRowId, setChildrenByRowId] = useState<
-        Record<string, TableViewerRow[]>
+        Record<string, TableViewerChildrenData>
     >({});
 
     const [childrenLoading, setChildrenLoading] = useState<Set<string>>(
@@ -231,7 +232,7 @@ export default function TableViewerPane({
 
             setChildrenByRowId((prev) => ({
                 ...prev,
-                [rowKey]: result.rows,
+                [rowKey]: result,
             }));
 
             setExpandedRowIds((prev) => {
@@ -756,92 +757,170 @@ export default function TableViewerPane({
                                                 )}
                                             </TableRow>
                                             {expandedRowIds.has(String(row.id)) &&
-                                                (childrenByRowId[String(row.id)] ?? []).map(
-                                                    (childRow) => {
-                                                        const childSelected =
-                                                            selectedRowId === childRow.id;
+                                                childrenByRowId[String(row.id)] && (() => {
+                                                    const childrenData =
+                                                        childrenByRowId[String(row.id)];
 
-                                                        return (
-                                                            <TableRow
-                                                                key={String(childRow.id)}
-                                                                hover
-                                                                selected={childSelected}
-                                                                onClick={() =>
-                                                                    setSelectedRowId(
-                                                                        childRow.id,
-                                                                    )
+                                                    return (
+                                                        <TableRow>
+                                                            <TableCell
+                                                                colSpan={
+                                                                    table.columns.length +
+                                                                    1 +
+                                                                    (hasRowActions ? 1 : 0)
                                                                 }
                                                                 sx={{
-                                                                    cursor: "pointer",
-                                                                    height: 36,
-
-                                                                    "& td": {
-                                                                        backgroundColor:
-                                                                            childSelected
-                                                                                ? "#f1f5f9"
-                                                                                : "#fbfdff",
-                                                                        borderBottom:
-                                                                            "1px solid #f1f5f9",
-                                                                    },
-
-                                                                    "&:hover td": {
-                                                                        backgroundColor:
-                                                                            "#f8fafc",
-                                                                    },
+                                                                    p: 0,
+                                                                    backgroundColor: "#f8fafc",
+                                                                    borderBottom: "1px solid #e2e8f0",
                                                                 }}
                                                             >
-                                                                <TableCell
+                                                                <Box
                                                                     sx={{
-                                                                        px: 1,
-                                                                        py: 0.5,
+                                                                        ml: 4,
+                                                                        mr: 1,
+                                                                        my: 1,
+                                                                        border: "1px solid #e2e8f0",
+                                                                        borderRadius: 1.5,
+                                                                        overflow: "hidden",
+                                                                        backgroundColor: "#ffffff",
                                                                     }}
                                                                 >
-                                                                    <Box
-                                                                        sx={{
-                                                                            width: 14,
-                                                                            height: 14,
-                                                                        }}
-                                                                    />
-                                                                </TableCell>
-
-                                                                {table.columns.map(
-                                                                    (column, columnIndex) => (
-                                                                        <TableCell
-                                                                            key={column.id}
-                                                                            align={
-                                                                                column.align ??
-                                                                                "left"
-                                                                            }
+                                                                    {childrenData.title && (
+                                                                        <Box
                                                                             sx={{
-                                                                                px: 1.25,
-                                                                                py: 0.5,
-                                                                                pl:
-                                                                                    columnIndex === 0
-                                                                                        ? 3
-                                                                                        : 1.25,
-                                                                                minWidth: 0,
-                                                                                overflow:
-                                                                                    "hidden",
-                                                                                color:
-                                                                                    "#475569",
+                                                                                px: 1.5,
+                                                                                py: 0.75,
+                                                                                borderBottom: "1px solid #e2e8f0",
+                                                                                backgroundColor: "#f8fafc",
                                                                             }}
                                                                         >
-                                                                            {renderCell(
-                                                                                childRow,
-                                                                                column.id,
-                                                                                column.actions,
-                                                                            )}
-                                                                        </TableCell>
-                                                                    ),
-                                                                )}
+                                                                            <Typography
+                                                                                sx={{
+                                                                                    fontSize: "0.72rem",
+                                                                                    fontWeight: 700,
+                                                                                    color: "#475569",
+                                                                                }}
+                                                                            >
+                                                                                {childrenData.title}
+                                                                            </Typography>
+                                                                        </Box>
+                                                                    )}
 
-                                                                {hasRowActions && (
-                                                                    <TableCell />
-                                                                )}
-                                                            </TableRow>
-                                                        );
-                                                    },
-                                                )}
+                                                                    <Table
+                                                                        size="small"
+                                                                        sx={{
+                                                                            tableLayout: "fixed",
+                                                                            width: "100%",
+                                                                        }}
+                                                                    >
+                                                                        <TableHead>
+                                                                            <TableRow>
+                                                                                {childrenData.columns.map(
+                                                                                    (column) => (
+                                                                                        <TableCell
+                                                                                            key={column.id}
+                                                                                            align={
+                                                                                                column.align ??
+                                                                                                "left"
+                                                                                            }
+                                                                                            sx={{
+                                                                                                width:
+                                                                                                    column.width,
+                                                                                                px: 1,
+                                                                                                py: 0.65,
+                                                                                                backgroundColor:
+                                                                                                    "#f8fafc",
+                                                                                                color: "#64748b",
+                                                                                                borderBottom:
+                                                                                                    "1px solid #e2e8f0",
+                                                                                                fontSize:
+                                                                                                    "0.61rem",
+                                                                                                fontWeight: 700,
+                                                                                                letterSpacing:
+                                                                                                    "0.045em",
+                                                                                                textTransform:
+                                                                                                    "uppercase",
+                                                                                                whiteSpace:
+                                                                                                    "nowrap",
+                                                                                            }}
+                                                                                        >
+                                                                                            {column.label}
+                                                                                        </TableCell>
+                                                                                    ),
+                                                                                )}
+                                                                            </TableRow>
+                                                                        </TableHead>
+
+                                                                        <TableBody>
+                                                                            {childrenData.rows.map(
+                                                                                (childRow) => {
+                                                                                    const childSelected =
+                                                                                        selectedRowId ===
+                                                                                        childRow.id;
+
+                                                                                    return (
+                                                                                        <TableRow
+                                                                                            key={String(
+                                                                                                childRow.id,
+                                                                                            )}
+                                                                                            hover
+                                                                                            selected={
+                                                                                                childSelected
+                                                                                            }
+                                                                                            onClick={() =>
+                                                                                                setSelectedRowId(
+                                                                                                    childRow.id,
+                                                                                                )
+                                                                                            }
+                                                                                            sx={{
+                                                                                                cursor:
+                                                                                                    "pointer",
+                                                                                                height: 34,
+
+                                                                                                "& td": {
+                                                                                                    borderBottom:
+                                                                                                        "1px solid #f1f5f9",
+                                                                                                },
+                                                                                            }}
+                                                                                        >
+                                                                                            {childrenData.columns.map(
+                                                                                                (column) => (
+                                                                                                    <TableCell
+                                                                                                        key={
+                                                                                                            column.id
+                                                                                                        }
+                                                                                                        align={
+                                                                                                            column.align ??
+                                                                                                            "left"
+                                                                                                        }
+                                                                                                        sx={{
+                                                                                                            px: 1,
+                                                                                                            py: 0.5,
+                                                                                                            minWidth: 0,
+                                                                                                            overflow:
+                                                                                                                "hidden",
+                                                                                                        }}
+                                                                                                    >
+                                                                                                        {renderCell(
+                                                                                                            childRow,
+                                                                                                            column.id,
+                                                                                                            column.actions,
+                                                                                                        )}
+                                                                                                    </TableCell>
+                                                                                                ),
+                                                                                            )}
+                                                                                        </TableRow>
+                                                                                    );
+                                                                                },
+                                                                            )}
+                                                                        </TableBody>
+                                                                    </Table>
+                                                                </Box>
+                                                            </TableCell>
+                                                        </TableRow>
+                                                    );
+                                                })()}
 
                                         </Fragment>
                                     );
