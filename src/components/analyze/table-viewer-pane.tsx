@@ -34,6 +34,7 @@ import type {
 import { MetadataViewer } from "./metadata-viewer";
 import Coords3dViewer from "./coords3d-viewer";
 import TiltSeriesViewer from "./tiltseries-viewer";
+import CTFTomoViewer from "./ctftomo-viewer";
 import VolumeViewer from "./volume-viewer";
 import { useProjectService } from "@/ProjectServiceContext";
 import toast from "react-hot-toast";
@@ -1776,6 +1777,27 @@ export default function TableViewerPane({
                                 }
                                 hideSeriesTable
                                 hideMetadataAction
+                            />
+                        ) : activePane.content.kind === "ctfTomo" ? (
+                            <CTFTomoViewer
+                                projectId={
+                                    activePane.content.projectId
+                                }
+                                protocolId={
+                                    activePane.content.protocolId
+                                }
+                                outputName={
+                                    activePane.content.outputName
+                                }
+                                selectedCtfSeriesId={
+                                    activePane.content.ctfSeriesId
+                                }
+                                selectedViewId={
+                                    activePane.content.viewId
+                                }
+                                hideSeriesTable
+                                hideMetadataAction
+                                readOnly
                             />
                         ) : activePane.content.kind === "volume" ? (
                             <VolumeViewer

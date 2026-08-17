@@ -746,13 +746,22 @@ export type TableViewerPaneContent =
     tiltSeriesId: NonNullable<Id>;
     frameIndex?: number;
   }
-  | {
+    | {
     kind: "volume";
     title?: string;
     projectId: NonNullable<Id>;
     protocolId: NonNullable<Id>;
     outputName: string;
     volumeId: NonNullable<Id>;
+  }
+  | {
+    kind: "ctfTomo";
+    title?: string;
+    projectId: NonNullable<Id>;
+    protocolId: NonNullable<Id>;
+    outputName: string;
+    ctfSeriesId: NonNullable<Id>;
+    viewId?: NonNullable<Id>;
   };
 
 export type AnalyzeViewerResolveContext = {

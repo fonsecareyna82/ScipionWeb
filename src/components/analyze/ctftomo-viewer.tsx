@@ -31,10 +31,20 @@ type CTFTomoViewerProps = {
   protocolId: Id;
   outputName: string;
   protocolLabel?: string;
+
   selectedCtfSeriesId?: Id | null;
-  onCtfSeriesSelect?: (series: CTFTomoSeriesSummary) => void;
+  selectedViewId?: Id | null;
+
+  onCtfSeriesSelect?: (
+    series: CTFTomoSeriesSummary,
+  ) => void;
+
   selectedTiltSeriesId?: Id | null;
+
+  hideSeriesTable?: boolean;
   hideMetadataAction?: boolean;
+
+  readOnly?: boolean;
 };
 
 type CTFTomoSeriesSummary = {
@@ -83,9 +93,12 @@ export default function CTFTomoViewer({
   protocolId,
   outputName,
   selectedCtfSeriesId,
+  selectedViewId,
   selectedTiltSeriesId,
   onCtfSeriesSelect,
+  hideSeriesTable = false,
   hideMetadataAction = false,
+  readOnly = false,
 }: CTFTomoViewerProps) {
   const svc = useProjectService();
 
@@ -514,6 +527,38 @@ export default function CTFTomoViewer({
       }
     }
   };
+
+  useEffect(() => {
+    if (
+      selectedViewId == null ||
+      !framesData?.frames?.length
+    ) {
+      return;
+    }
+
+    const index =
+      framesData.frames.findIndex(
+        (frame) =>
+          String(frame.viewId) ===
+          String(selectedViewId),
+      );
+
+    if (
+      index < 0 ||
+      index === selectedRowIndex
+    ) {
+      return;
+    }
+
+    handleRowClick(
+      framesData.frames[index],
+    );
+
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    selectedViewId,
+    framesData,
+  ]);
 
   const handleSeriesRowClick = (seriesId: Id) => {
     setExpandedSeriesId(seriesId);
@@ -1127,271 +1172,273 @@ export default function CTFTomoViewer({
           overflow: "hidden",
         }}
       >
-        <Box
-          sx={{
-            flex: 1.4,
-            minWidth: 0,
-            display: "flex",
-            flexDirection: "column",
-            borderRight: "1px solid #e5e7eb",
-          }}
-        >
-          <Paper
-            square
-            elevation={0}
+        {!hideSeriesTable && (
+          <Box
             sx={{
-              p: 0.75,
-              borderBottom: "1px solid #e5e7eb",
+              flex: 1.4,
+              minWidth: 0,
               display: "flex",
-              alignItems: "center",
-              gap: 1,
+              flexDirection: "column",
+              borderRight: "1px solid #e5e7eb",
             }}
           >
-            <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.75rem", whiteSpace: "nowrap" }}>
-              Filter (selected series)
-            </Typography>
-            <TextField
-              size="small"
-              variant="outlined"
-              value={filterText}
-              onChange={(e) => setFilterText(e.target.value)}
-              placeholder="Filter by angle, order or CTF values"
+            <Paper
+              square
+              elevation={0}
               sx={{
-                maxWidth: 260,
-                "& .MuiInputBase-input": { fontSize: "0.75rem", paddingY: 0.5 },
-                "& input::placeholder": { fontSize: "0.7rem" },
-              }}
-            />
-            <Button
-              size="small"
-              variant="contained"
-              color="primary"
-              onClick={handleGenerateClick}
-              disabled={!series.length || generateBusy}
-              sx={{
-                textTransform: "none",
-                fontSize: "0.8rem",
-                paddingX: 1.8,
-                paddingY: 0.4,
-                borderRadius: "6px",
-                boxShadow: "none",
-                bgcolor: "primary.main",
-                "&:hover": { bgcolor: "primary.dark", boxShadow: "none" },
+                p: 0.75,
+                borderBottom: "1px solid #e5e7eb",
+                display: "flex",
+                alignItems: "center",
+                gap: 1,
               }}
             >
-              Generate subsets
-            </Button>
-            <Button
-              size="small"
-              variant="contained"
-              color="inherit"
-              onClick={() => setHelpDialogOpen(true)}
-              sx={{
-                textTransform: "none",
-                fontSize: "0.8rem",
-                paddingX: 1.4,
-                paddingY: 0.4,
-                borderRadius: "6px",
-                boxShadow: "none",
-                bgcolor: "grey.400",
-                color: "text.primary",
-                "&:hover": { bgcolor: "grey.200", boxShadow: "none" },
-              }}
-            >
-              Help
-            </Button>
-
-            {!hideMetadataAction ? (
-              <Tooltip title="Show metadata viewer">
-                <span>
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    startIcon={<MetadataIcon fontSize="small" />}
-                    disabled={!canOpenMetadata}
-                    onClick={() => setMainMode("metadata")}
-                    sx={{ textTransform: "none" }}
-                  >
-                    Metadata
-                  </Button>
-                </span>
-              </Tooltip>
-            ) : null}
-            {seriesError && !seriesLoading && (
-              <Typography variant="caption" color="error" sx={{ fontSize: "0.7rem" }}>
-                {seriesError}
+              <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.75rem", whiteSpace: "nowrap" }}>
+                Filter (selected series)
               </Typography>
-            )}
-          </Paper>
-
-          <Box sx={{ flex: 1, minHeight: 0, overflowY: "auto", overflowX: "hidden" }}>
-            {seriesLoading && !series.length ? (
-              <Box sx={{ p: 2, display: "flex", gap: 1, alignItems: "center" }}>
-                <CircularProgress size={18} />
-                <Typography variant="body2" color="text.secondary">
-                  Loading CTF tomo series…
-                </Typography>
-              </Box>
-            ): framesError && !framesData ? (
-              <Box sx={{ p: 2 }}>
-                <Typography variant="body2" color="error">
-                  {framesError}
-                </Typography>
-              </Box>
-            ) : !series.length ? (
-              <Box sx={{ p: 2 }}>
-                <Typography variant="body2" color="text.secondary">
-                  No CTF tomo series available for this output.
-                </Typography>
-              </Box>
-            ) : (
-              <Table
+              <TextField
                 size="small"
-                stickyHeader
+                variant="outlined"
+                value={filterText}
+                onChange={(e) => setFilterText(e.target.value)}
+                placeholder="Filter by angle, order or CTF values"
                 sx={{
-                  tableLayout: "fixed",
-                  width: "100%",
-                  "& th": { whiteSpace: "nowrap", fontSize: "0.75rem", paddingTop: 0.5, paddingBottom: 0.5 },
-                  "& td": { fontSize: "0.75rem", paddingTop: 0.25, paddingBottom: 0.25 },
+                  maxWidth: 260,
+                  "& .MuiInputBase-input": { fontSize: "0.75rem", paddingY: 0.5 },
+                  "& input::placeholder": { fontSize: "0.7rem" },
+                }}
+              />
+              <Button
+                size="small"
+                variant="contained"
+                color="primary"
+                onClick={handleGenerateClick}
+                disabled={!series.length || generateBusy}
+                sx={{
+                  textTransform: "none",
+                  fontSize: "0.8rem",
+                  paddingX: 1.8,
+                  paddingY: 0.4,
+                  borderRadius: "6px",
+                  boxShadow: "none",
+                  bgcolor: "primary.main",
+                  "&:hover": { bgcolor: "primary.dark", boxShadow: "none" },
                 }}
               >
-                <TableHead>
-                  <TableRow>
-                    <TableCell sx={columnWidths.series}>Tilt series</TableCell>
-                    <TableCell sx={columnWidths.order}>Acq. order</TableCell>
-                    <TableCell sx={columnWidths.angle}>Tilt angle</TableCell>
-                    <TableCell sx={columnWidths.excluded}>Excl.</TableCell>
-                    <TableCell sx={columnWidths.defocusU}>DefocusU (Å)</TableCell>
-                    <TableCell sx={columnWidths.defocusV}>DefocusV (Å)</TableCell>
-                    <TableCell sx={columnWidths.astigmatism}>Astigmatism (Å)</TableCell>
-                    <TableCell sx={columnWidths.resolution}>Resolution (Å)</TableCell>
-                    <TableCell sx={columnWidths.ccValue}>CC value</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {series.map((s) => {
-                    const isExpanded = expandedSeriesId != null && String(expandedSeriesId) === String(s.ctfSeriesId);
-                    const isSelectedSeries = selectedSeriesId != null && String(selectedSeriesId) === String(s.ctfSeriesId);
+                Generate subsets
+              </Button>
+              <Button
+                size="small"
+                variant="contained"
+                color="inherit"
+                onClick={() => setHelpDialogOpen(true)}
+                sx={{
+                  textTransform: "none",
+                  fontSize: "0.8rem",
+                  paddingX: 1.4,
+                  paddingY: 0.4,
+                  borderRadius: "6px",
+                  boxShadow: "none",
+                  bgcolor: "grey.400",
+                  color: "text.primary",
+                  "&:hover": { bgcolor: "grey.200", boxShadow: "none" },
+                }}
+              >
+                Help
+              </Button>
 
-                    const showFramesForThisSeries =
-                      isExpanded && framesData && String(framesData.ctfSeriesId) === String(s.ctfSeriesId);
+              {!hideMetadataAction ? (
+                <Tooltip title="Show metadata viewer">
+                  <span>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      startIcon={<MetadataIcon fontSize="small" />}
+                      disabled={!canOpenMetadata}
+                      onClick={() => setMainMode("metadata")}
+                      sx={{ textTransform: "none" }}
+                    >
+                      Metadata
+                    </Button>
+                  </span>
+                </Tooltip>
+              ) : null}
+              {seriesError && !seriesLoading && (
+                <Typography variant="caption" color="error" sx={{ fontSize: "0.7rem" }}>
+                  {seriesError}
+                </Typography>
+              )}
+            </Paper>
 
-                    const seriesFrames = showFramesForThisSeries ? filteredFrames : [];
+            <Box sx={{ flex: 1, minHeight: 0, overflowY: "auto", overflowX: "hidden" }}>
+              {seriesLoading && !series.length ? (
+                <Box sx={{ p: 2, display: "flex", gap: 1, alignItems: "center" }}>
+                  <CircularProgress size={18} />
+                  <Typography variant="body2" color="text.secondary">
+                    Loading CTF tomo series…
+                  </Typography>
+                </Box>
+              ) : framesError && !framesData ? (
+                <Box sx={{ p: 2 }}>
+                  <Typography variant="body2" color="error">
+                    {framesError}
+                  </Typography>
+                </Box>
+              ) : !series.length ? (
+                <Box sx={{ p: 2 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    No CTF tomo series available for this output.
+                  </Typography>
+                </Box>
+              ) : (
+                <Table
+                  size="small"
+                  stickyHeader
+                  sx={{
+                    tableLayout: "fixed",
+                    width: "100%",
+                    "& th": { whiteSpace: "nowrap", fontSize: "0.75rem", paddingTop: 0.5, paddingBottom: 0.5 },
+                    "& td": { fontSize: "0.75rem", paddingTop: 0.25, paddingBottom: 0.25 },
+                  }}
+                >
+                  <TableHead>
+                    <TableRow>
+                      <TableCell sx={columnWidths.series}>Tilt series</TableCell>
+                      <TableCell sx={columnWidths.order}>Acq. order</TableCell>
+                      <TableCell sx={columnWidths.angle}>Tilt angle</TableCell>
+                      <TableCell sx={columnWidths.excluded}>Excl.</TableCell>
+                      <TableCell sx={columnWidths.defocusU}>DefocusU (Å)</TableCell>
+                      <TableCell sx={columnWidths.defocusV}>DefocusV (Å)</TableCell>
+                      <TableCell sx={columnWidths.astigmatism}>Astigmatism (Å)</TableCell>
+                      <TableCell sx={columnWidths.resolution}>Resolution (Å)</TableCell>
+                      <TableCell sx={columnWidths.ccValue}>CC value</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {series.map((s) => {
+                      const isExpanded = expandedSeriesId != null && String(expandedSeriesId) === String(s.ctfSeriesId);
+                      const isSelectedSeries = selectedSeriesId != null && String(selectedSeriesId) === String(s.ctfSeriesId);
 
-                    return (
-                      <Fragment key={String(s.ctfSeriesId)}>
-                        <TableRow
-                          hover
-                          selected={isSelectedSeries}
-                          onClick={() => handleSeriesRowClick(s.ctfSeriesId)}
-                          sx={{
-                            cursor: "pointer",
-                            ...(s.excluded && {
-                              backgroundColor: "rgba(248,113,113,0.16)",
-                              "&:hover": { backgroundColor: "rgba(248,113,113,0.24)" },
-                              "&.Mui-selected": { backgroundColor: "rgba(248,113,113,0.30)" },
-                              "&.Mui-selected:hover": { backgroundColor: "rgba(248,113,113,0.36)" },
-                            }),
-                          }}
-                        >
-                          <TableCell sx={columnWidths.series}>
-                            <Box sx={{ display: "flex", alignItems: "center", gap: 0.25 }}>
-                              <IconButton
-                                size="small"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  const nextExpanded = isExpanded ? null : s.ctfSeriesId;
-                                  setExpandedSeriesId(nextExpanded);
-                                  if (nextExpanded) {
-                                    setSelectedSeriesId((prev) =>
-                                      prev != null && String(prev) === String(s.ctfSeriesId) ? prev : s.ctfSeriesId,
-                                    );
-                                    onCtfSeriesSelect?.(s);
-                                    setPsdError(null);
-                                    disposePsdImageUrl();
-                                  }
-                                }}
-                                sx={{ mr: 0.25 }}
-                              >
-                                {isExpanded ? <ExpandMore fontSize="small" /> : <ChevronRight fontSize="small" />}
-                              </IconButton>
-                              <Checkbox
-                                size="small"
-                                checked={Boolean(s.excluded)}
-                                onClick={(e) => e.stopPropagation()}
-                                onChange={() => handleToggleExcludeSeries(s.ctfSeriesId)}
-                                sx={{ padding: 0.25 }}
-                              />
-                              <Typography variant="body2" noWrap title={s.label} sx={{ fontSize: "0.75rem" }}>
-                                {String(s.ctfSeriesId)}
-                              </Typography>
-                            </Box>
-                          </TableCell>
-                          <TableCell sx={columnWidths.order} />
-                          <TableCell sx={columnWidths.angle} />
-                          <TableCell sx={columnWidths.excluded} />
-                          <TableCell sx={columnWidths.defocusU} />
-                          <TableCell sx={columnWidths.defocusV} />
-                          <TableCell sx={columnWidths.astigmatism} />
-                          <TableCell sx={columnWidths.resolution} />
-                          <TableCell sx={columnWidths.ccValue} />
-                        </TableRow>
+                      const showFramesForThisSeries =
+                        isExpanded && framesData && String(framesData.ctfSeriesId) === String(s.ctfSeriesId);
 
-                        {showFramesForThisSeries &&
-                          seriesFrames.map((row, idx) => {
-                            const isSelectedRow = idx === selectedFilteredIndex && isSelectedSeries;
-                            return (
-                              <TableRow
-                                key={`${String(s.ctfSeriesId)}-${String(row.viewId)}`}
-                                hover
-                                selected={isSelectedRow}
-                                onClick={() => handleRowClick(row)}
-                                sx={{
-                                  cursor: "pointer",
-                                  ...(row.excluded && {
-                                    backgroundColor: "rgba(248,113,113,0.16)",
-                                    "&:hover": { backgroundColor: "rgba(248,113,113,0.24)" },
-                                    "&.Mui-selected": { backgroundColor: "rgba(248,113,113,0.30)" },
-                                    "&.Mui-selected:hover": { backgroundColor: "rgba(248,113,113,0.36)" },
-                                  }),
-                                }}
-                              >
-                                <TableCell sx={columnWidths.series}>
-                                  <Box sx={{ pl: 6, display: "flex", alignItems: "center" }}>
-                                    <Typography variant="body2" sx={{ fontSize: "0.75rem" }}>
-                                      {row.index != null ? row.index : ""}
-                                    </Typography>
-                                  </Box>
-                                </TableCell>
-                                <TableCell sx={columnWidths.order}>{row.order != null ? row.order : ""}</TableCell>
-                                <TableCell sx={columnWidths.angle}>
-                                  {row.tiltAngle != null ? row.tiltAngle.toFixed(2) : ""}
-                                </TableCell>
-                                <TableCell sx={columnWidths.excluded}>
-                                  <Checkbox
-                                    size="small"
-                                    checked={Boolean(row.excluded)}
-                                    onClick={(e) => e.stopPropagation()}
-                                    onChange={() => handleToggleExcludeRow(row)}
-                                    sx={{ padding: 0.25 }}
-                                  />
-                                </TableCell>
-                                <TableCell sx={columnWidths.defocusU}>{formatNumber(row.defocusU)}</TableCell>
-                                <TableCell sx={columnWidths.defocusV}>{formatNumber(row.defocusV)}</TableCell>
-                                <TableCell sx={columnWidths.astigmatism}>{formatNumber(row.astigmatism)}</TableCell>
-                                <TableCell sx={columnWidths.resolution}>{formatNumber(row.resolution)}</TableCell>
-                                <TableCell sx={columnWidths.ccValue}>{formatNumber(row.ccValue, 3)}</TableCell>
-                              </TableRow>
-                            );
-                          })}
-                      </Fragment>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            )}
+                      const seriesFrames = showFramesForThisSeries ? filteredFrames : [];
+
+                      return (
+                        <Fragment key={String(s.ctfSeriesId)}>
+                          <TableRow
+                            hover
+                            selected={isSelectedSeries}
+                            onClick={() => handleSeriesRowClick(s.ctfSeriesId)}
+                            sx={{
+                              cursor: "pointer",
+                              ...(s.excluded && {
+                                backgroundColor: "rgba(248,113,113,0.16)",
+                                "&:hover": { backgroundColor: "rgba(248,113,113,0.24)" },
+                                "&.Mui-selected": { backgroundColor: "rgba(248,113,113,0.30)" },
+                                "&.Mui-selected:hover": { backgroundColor: "rgba(248,113,113,0.36)" },
+                              }),
+                            }}
+                          >
+                            <TableCell sx={columnWidths.series}>
+                              <Box sx={{ display: "flex", alignItems: "center", gap: 0.25 }}>
+                                <IconButton
+                                  size="small"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const nextExpanded = isExpanded ? null : s.ctfSeriesId;
+                                    setExpandedSeriesId(nextExpanded);
+                                    if (nextExpanded) {
+                                      setSelectedSeriesId((prev) =>
+                                        prev != null && String(prev) === String(s.ctfSeriesId) ? prev : s.ctfSeriesId,
+                                      );
+                                      onCtfSeriesSelect?.(s);
+                                      setPsdError(null);
+                                      disposePsdImageUrl();
+                                    }
+                                  }}
+                                  sx={{ mr: 0.25 }}
+                                >
+                                  {isExpanded ? <ExpandMore fontSize="small" /> : <ChevronRight fontSize="small" />}
+                                </IconButton>
+                                <Checkbox
+                                  size="small"
+                                  checked={Boolean(s.excluded)}
+                                  onClick={(e) => e.stopPropagation()}
+                                  onChange={() => handleToggleExcludeSeries(s.ctfSeriesId)}
+                                  sx={{ padding: 0.25 }}
+                                />
+                                <Typography variant="body2" noWrap title={s.label} sx={{ fontSize: "0.75rem" }}>
+                                  {String(s.ctfSeriesId)}
+                                </Typography>
+                              </Box>
+                            </TableCell>
+                            <TableCell sx={columnWidths.order} />
+                            <TableCell sx={columnWidths.angle} />
+                            <TableCell sx={columnWidths.excluded} />
+                            <TableCell sx={columnWidths.defocusU} />
+                            <TableCell sx={columnWidths.defocusV} />
+                            <TableCell sx={columnWidths.astigmatism} />
+                            <TableCell sx={columnWidths.resolution} />
+                            <TableCell sx={columnWidths.ccValue} />
+                          </TableRow>
+
+                          {showFramesForThisSeries &&
+                            seriesFrames.map((row, idx) => {
+                              const isSelectedRow = idx === selectedFilteredIndex && isSelectedSeries;
+                              return (
+                                <TableRow
+                                  key={`${String(s.ctfSeriesId)}-${String(row.viewId)}`}
+                                  hover
+                                  selected={isSelectedRow}
+                                  onClick={() => handleRowClick(row)}
+                                  sx={{
+                                    cursor: "pointer",
+                                    ...(row.excluded && {
+                                      backgroundColor: "rgba(248,113,113,0.16)",
+                                      "&:hover": { backgroundColor: "rgba(248,113,113,0.24)" },
+                                      "&.Mui-selected": { backgroundColor: "rgba(248,113,113,0.30)" },
+                                      "&.Mui-selected:hover": { backgroundColor: "rgba(248,113,113,0.36)" },
+                                    }),
+                                  }}
+                                >
+                                  <TableCell sx={columnWidths.series}>
+                                    <Box sx={{ pl: 6, display: "flex", alignItems: "center" }}>
+                                      <Typography variant="body2" sx={{ fontSize: "0.75rem" }}>
+                                        {row.index != null ? row.index : ""}
+                                      </Typography>
+                                    </Box>
+                                  </TableCell>
+                                  <TableCell sx={columnWidths.order}>{row.order != null ? row.order : ""}</TableCell>
+                                  <TableCell sx={columnWidths.angle}>
+                                    {row.tiltAngle != null ? row.tiltAngle.toFixed(2) : ""}
+                                  </TableCell>
+                                  <TableCell sx={columnWidths.excluded}>
+                                    <Checkbox
+                                      size="small"
+                                      checked={Boolean(row.excluded)}
+                                      onClick={(e) => e.stopPropagation()}
+                                      onChange={() => handleToggleExcludeRow(row)}
+                                      sx={{ padding: 0.25 }}
+                                    />
+                                  </TableCell>
+                                  <TableCell sx={columnWidths.defocusU}>{formatNumber(row.defocusU)}</TableCell>
+                                  <TableCell sx={columnWidths.defocusV}>{formatNumber(row.defocusV)}</TableCell>
+                                  <TableCell sx={columnWidths.astigmatism}>{formatNumber(row.astigmatism)}</TableCell>
+                                  <TableCell sx={columnWidths.resolution}>{formatNumber(row.resolution)}</TableCell>
+                                  <TableCell sx={columnWidths.ccValue}>{formatNumber(row.ccValue, 3)}</TableCell>
+                                </TableRow>
+                              );
+                            })}
+                        </Fragment>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              )}
+            </Box>
           </Box>
-        </Box>
+        )}
 
         <Box
           sx={{
@@ -1430,9 +1477,17 @@ export default function CTFTomoViewer({
               <Typography variant="caption" sx={{ fontWeight: 700, fontSize: "0.72rem" }}>
                 CTF estimation
               </Typography>
-              <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.68rem" }}>
-                Right-click on a point to exclude/include
-              </Typography>
+              {!readOnly && (
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{
+                    fontSize: "0.68rem",
+                  }}
+                >
+                  Right-click on a point to exclude/include
+                </Typography>
+              )}
             </Box>
 
             <Box
@@ -1444,11 +1499,19 @@ export default function CTFTomoViewer({
                 justifyContent: "center",
                 p: 0.5,
               }}
-              onContextMenu={(evt) => {
-                evt.preventDefault();
-                evt.stopPropagation();
-                openChartContextMenu(evt.clientX, evt.clientY);
-              }}
+              onContextMenu={
+                readOnly
+                  ? undefined
+                  : (evt) => {
+                    evt.preventDefault();
+                    evt.stopPropagation();
+
+                    openChartContextMenu(
+                      evt.clientX,
+                      evt.clientY,
+                    );
+                  }
+              }
             >
               {!plotData.length ? (
                 <Typography variant="body2" color="text.secondary" sx={{ fontSize: "0.8rem" }}>
@@ -1545,7 +1608,10 @@ export default function CTFTomoViewer({
       </Box>
 
       <Menu
-        open={Boolean(chartMenuPos)}
+        open={
+          !readOnly &&
+          Boolean(chartMenuPos)
+        }
         onClose={closeChartContextMenu}
         anchorReference="anchorPosition"
         anchorPosition={chartMenuPos ? { top: chartMenuPos.mouseY, left: chartMenuPos.mouseX } : undefined}
